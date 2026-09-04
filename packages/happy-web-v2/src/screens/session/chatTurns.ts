@@ -1,6 +1,6 @@
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { askUserQuestionDisplayAnswer, type AskQuestion } from './askUserQuestion';
-import { stripHarnessBlocks } from './harness';
+import { parseLocalCommandMessage, parseTaskNotification, stripHarnessBlocks } from './harness';
 import { presentServiceEvent } from './serviceEvent';
 import { stripThinkingWrapper } from './thinking';
 
@@ -39,6 +39,18 @@ export type ChatRow = LeafRow | {
  * 会把它从 `chronological` 整个滤掉，连带 `agentLiveness.currentTurnMessages` 的切点和
  * 队列里的「已排队文件」标签一起坏。
  */
+/**
+ * `UserText` 只有普通文本那条分支会渲染附件条：task-notification、`/command` 包装和
+ * `<local-command-caveat>` 各自早退或走别的形状。把附件挂到那样一条消息上等于让文件
+ * 凭空消失（`file` 行已经被摘走了），所以那几种 owner 一律不摘。
+ */
+function rendersUserBubble(message: Message): boolean {
+    if (message.kind !== 'user-text') return false;
+    const raw = message.displayText ?? message.text;
+    if (parseTaskNotification(raw)) return false;
+    return parseLocalCommandMessage(raw).kind === 'text';
+}
+
 export function extractUserAttachments(messages: Message[]): {
     messages: Message[];
     attachments: Map<string, ToolCallMessage[]>;
@@ -58,7 +70,7 @@ export function extractUserAttachments(messages: Message[]): {
         let end = i;
         while (end < messages.length && isFileEvent(messages[end])) end += 1;
         const owner = messages[end];
-        if (owner && owner.kind === 'user-text') {
+        if (owner && owner.kind === 'user-text' && rendersUserBubble(owner)) {
             attachments.set(owner.id, messages.slice(i, end) as ToolCallMessage[]);
         } else {
             // orphan run (nothing sent with it) — leave it in the transcript so

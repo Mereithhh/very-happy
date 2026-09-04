@@ -223,3 +223,10 @@ describe('rehypeTextLeaves', () => {
         expect(html).not.toMatch(/<tbody[^>]*>\s*<vh-text/);
     });
 });
+
+describe('table cell line breaks reach nested marks', () => {
+    it('splits <br> inside bold text (bold + break is a common table shape)', () => {
+        const html = md('| a |\n| --- |\n| **line1<br>line2** |');
+        expect(html).toContain('<strong>line1<br/>line2</strong>');
+    });
+});

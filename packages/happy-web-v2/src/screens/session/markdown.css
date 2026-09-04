@@ -26,8 +26,13 @@
      the blockquote below. */
   overflow-wrap: break-word;
 }
-.md p + p {
-  margin-top: var(--sp-3);
+/* No `.md p + p { margin-top }`: `.md` is a flex column with `gap: var(--sp-3)`,
+   and margins do not collapse in a flex container — measured 24px between two
+   paragraphs against 12px for p→ul, ul→p and h2→p. The gap owns top-level
+   rhythm; only nested contexts (a blockquote is not a flex container) need
+   their own spacing. */
+.md blockquote p + p {
+  margin-top: var(--sp-2);
 }
 .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
   margin: var(--sp-2) 0 0;
@@ -220,7 +225,11 @@
   min-width: 100%;
   border-collapse: collapse;
   font-size: var(--fs-13);
-  background: var(--bg-1);
+  /* NO background here. The wrapper already provides the surface, and a child's
+     opaque background paints OVER the wrapper's background-image — measured by
+     sampling the rendered pixels, the scroll shadow was a flat --bg-1 strip and
+     had never once been visible. Asserting that `.is-scrollable` is present
+     cannot catch that; compare pixels. */
 }
 .md-table th,
 .md-table td {

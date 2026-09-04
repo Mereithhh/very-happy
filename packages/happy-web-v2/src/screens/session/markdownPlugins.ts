@@ -21,6 +21,9 @@ const SAFE_URL_RE = /^(https?:|mailto:)/i;
 export function safeUrlTransform(url: string): string {
     const trimmed = url.trim();
     if (trimmed.length === 0) return '';
+    // Protocol-relative: no scheme to check, but it still leaves the site. The
+    // rest of this function is a whitelist; this closes the one hole in it.
+    if (trimmed.startsWith('//')) return '';
     // A scheme is present only when the colon comes before any / ? #
     const colon = trimmed.indexOf(':');
     if (colon === -1) return trimmed;                       // relative
@@ -43,26 +46,34 @@ export function rehypeTableCellBreaks() {
     return (tree: Root) => {
         visit(tree, 'element', (node: Element) => {
             if (node.tagName !== 'td' && node.tagName !== 'th') return;
-            const next: Element['children'] = [];
-            let changed = false;
-            for (const child of node.children) {
-                const value = child.type === 'text' ? child.value
-                    : (child as { type: string; value?: string }).type === 'raw' ? (child as { value: string }).value
-                        : null;
-                if (value === null || !BR_RE.test(value)) {
-                    next.push(child);
-                    continue;
-                }
-                changed = true;
-                const parts = value.split(/<br\s*\/?>/gi);
-                parts.forEach((part, index) => {
-                    if (index > 0) next.push({ type: 'element', tagName: 'br', properties: {}, children: [] });
-                    if (part.length > 0) next.push({ type: 'text', value: part } as Text);
-                });
-            }
-            if (changed) node.children = next;
+            // The whole cell subtree, not just its direct children: `**a<br>b**`
+            // puts the text inside <strong>, and bold + line break is a common
+            // combination in a generated table.
+            splitBreaks(node);
         });
     };
+}
+
+function splitBreaks(node: Element) {
+    const next: Element['children'] = [];
+    let changed = false;
+    for (const child of node.children) {
+        const value = child.type === 'text' ? child.value
+            : (child as { type: string; value?: string }).type === 'raw' ? (child as { value: string }).value
+                : null;
+        if (value === null || !BR_RE.test(value)) {
+            if (child.type === 'element') splitBreaks(child);
+            next.push(child);
+            continue;
+        }
+        changed = true;
+        const parts = value.split(/<br\s*\/?>/gi);
+        parts.forEach((part, index) => {
+            if (index > 0) next.push({ type: 'element', tagName: 'br', properties: {}, children: [] });
+            if (part.length > 0) next.push({ type: 'text', value: part } as Text);
+        });
+    }
+    if (changed) node.children = next;
 }
 
 /**

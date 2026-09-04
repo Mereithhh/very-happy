@@ -142,5 +142,8 @@ export function extractOptions(raw: string): { text: string; options: string[] }
             .join('\n')
             .trim();
     }
+    // Removing blocks leaves blank runs behind; harmless for TTS but visible if
+    // this text is ever shown.
+    text = text.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
     return { text, options };
 }

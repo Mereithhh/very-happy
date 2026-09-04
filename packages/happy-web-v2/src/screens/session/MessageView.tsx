@@ -3,7 +3,7 @@
  * upstream in ChatList; here we render the leaf kinds and (for grouped tool
  * runs) hand off to ToolGroupView.
  */
-import { memo, useEffect, useId, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Bot, Brain, Check, ChevronDown, ChevronRight, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage, ToolCallMessage } from '@/sync/typesMessage';
@@ -21,7 +21,7 @@ import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking
 import { presentServiceEvent } from './serviceEvent';
 import { parseDecisionBlock, parseTickReport } from './supervisorCards';
 import { DecisionCard, TickReportCard } from './SupervisorCardViews';
-import { parseAttachedFiles } from './attachedFiles';
+import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
 import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
 import './message.css';
 
@@ -75,7 +75,10 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
         );
     }
 
-    const text = stripHarnessBlocks(parsed.text);
+    // stripAttachedFiles is applied HERE and not inside stripHarnessBlocks:
+    // the CLI only appends the manifest to user prompts, and agent prose in this
+    // repository legitimately talks about the tag (B-355).
+    const text = stripAttachedFiles(stripHarnessBlocks(parsed.text));
     if (!text && attachmentItems.length === 0) return null;
     const canCollapse = shouldCollapseBubble(estimateWrappedLines(text));
     const clamped = canCollapse && !expanded;
@@ -146,9 +149,14 @@ function AgentText({
         setOpen((v) => !v);
     };
 
-    const onOption = (option: string) => {
+    // Must be stable: `Markdown` memoises its parsed tree on [segments,
+    // components, onOption], and this component re-renders on every
+    // `session.thinking` flip (twice per turn). With an inline arrow, every one
+    // of those re-parsed EVERY agent message in the transcript — measured at
+    // +1 full parse per re-render, ~300ms for 100 messages on desktop.
+    const onOption = useCallback((option: string) => {
         void sync.sendMessage(sessionId, option, { source: 'chat' });
-    };
+    }, [sessionId]);
 
     if (message.isThinking) {
         const content = stripThinkingWrapper(stripHarnessBlocks(message.text));
@@ -345,6 +353,17 @@ function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; s
  * and all. `message` objects come from the reducer, which only rebuilds the
  * ones that actually changed, so reference equality is an exact test.
  */
+/**
+ * B-311 的 memo 契约是「reducer 只重建真正变了的消息，所以 message 引用相等就是精确
+ * 判据」。`attachments` 打破了默认浅比较：`extractUserAttachments` 每次都新建那个数组。
+ * 比较器保留 message 的引用判据，只对附件按 id 序列比较。
+ */
+function sameTools(a?: ToolCallMessage[], b?: ToolCallMessage[]): boolean {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    return a.every((tool, i) => tool === b[i]);
+}
+
 export const MessageView = memo(function MessageView({
     message,
     showMeta,
@@ -383,4 +402,10 @@ export const MessageView = memo(function MessageView({
                 </div>
             );
     }
-});
+}, (prev, next) => (
+    prev.message === next.message
+    && prev.showMeta === next.showMeta
+    && prev.sessionId === next.sessionId
+    && prev.thinkingDurationMs === next.thinkingDurationMs
+    && sameTools(prev.attachments, next.attachments)
+));

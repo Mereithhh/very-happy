@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
 import { FileText } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import type { AttachedFileRef } from './attachedFiles';
-import { cachedAttachmentUrl, isPreviewableImage, loadAttachmentUrl } from './attachmentPreview';
+import { cachedAttachmentUrl, forgetAttachmentUrl, isPreviewableImage, loadAttachmentUrl } from './attachmentPreview';
 import './attachments.css';
 
 export interface AttachmentItem {
@@ -78,7 +78,15 @@ function Thumbnail({ sessionId, item }: { sessionId: string; item: AttachmentIte
     if (!url) return null;
     return (
         <a className="ua-thumb" href={url} target="_blank" rel="noopener noreferrer" title={item.name}>
-            <img src={url} alt={item.name} loading="lazy" />
+            <img
+                src={url}
+                alt={item.name}
+                loading="lazy"
+                // The cache is an LRU and the transcript is not virtualised, so a
+                // still-mounted image can have its object URL revoked underneath
+                // it. Drop the entry and let the effect above fetch it again.
+                onError={() => { if (ref) { forgetAttachmentUrl(sessionId, ref); setUrl(null); } }}
+            />
         </a>
     );
 }

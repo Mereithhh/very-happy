@@ -67,6 +67,16 @@ export function stripAttachedFiles(text: string): string {
         .trim();
 }
 
+/**
+ * 比较用的归一化：**两侧必须走同一个函数**。
+ *
+ * `stripAttachedFiles` 只在「有清单」那一支才折叠 3+ 连续换行（无清单时直接 return），
+ * 于是「正文里本来就有连续空行 + 带附件」的消息两侧不相等，重复气泡照样出现。
+ */
+function normalizeForCompare(text: string): string {
+    return stripAttachedFiles(text).replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function hasAttachedFilesBlock(text: string): boolean {
     return BLOCK_RE.test(text);
 }
@@ -82,19 +92,20 @@ export function hasAttachedFilesBlock(text: string): boolean {
  *  3. 剥掉清单后，与它前面最近一条「用户自己发的」文本逐字相同。
  *
  * 已知边界：分页加载时如果「自己那条」还在上一页，条件 3 找不到前驱 → 这条回显会照常
- * 显示（剥掉 XML、带附件条），点「加载更早」之后才归位。这是显示层的软退化，不影响数据。
+ * 显示（剥掉 XML、带清单渲染出的附件条），于是屏幕上短暂出现**两条**附件条——自己那条
+ * 来自 `file` 事件、回显那条来自清单。点「加载更早」之后归位。显示层的软退化，不影响数据。
  */
 export function isDuplicateAttachmentEcho(message: Message, earlier: readonly Message[]): boolean {
     if (message.kind !== 'user-text') return false;
     const raw = message.displayText ?? message.text;
     if (!hasAttachedFilesBlock(raw)) return false;
     if (message.meta?.sentFrom) return false;
-    const stripped = stripAttachedFiles(raw);
+    const stripped = normalizeForCompare(raw);
     for (let i = earlier.length - 1; i >= 0; i--) {
         const candidate = earlier[i];
         if (candidate.kind !== 'user-text') continue;
         if (!candidate.meta?.sentFrom) return false;   // not one of ours: stop looking
-        return stripAttachedFiles(candidate.displayText ?? candidate.text).trim() === stripped.trim();
+        return normalizeForCompare(candidate.displayText ?? candidate.text) === stripped;
     }
     return false;
 }

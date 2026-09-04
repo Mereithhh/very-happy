@@ -7,8 +7,6 @@
  * `<tag>…</tag>` text, and so `/foo` slash-command wrappers collapse cleanly.
  */
 
-import { stripAttachedFiles } from './attachedFiles';
-
 export type LocalCommandMessage =
     | { kind: 'caveat' }
     | { kind: 'command-run'; commandName: string; args?: string }
@@ -19,13 +17,13 @@ const HARNESS_BLOCK_RE =
 
 export function stripHarnessBlocks(text: string): string {
     if (!text || text.indexOf('<') === -1) return text;
-    // `<attached_files>` is the CLI's own prompt augmentation, not a Claude
-    // harness block, but it is machine-facing in exactly the same way and must
-    // never be readable in a chat bubble (B-355; the manifest is rendered as an
-    // attachment strip instead — see attachedFiles.ts).
-    return stripAttachedFiles(text.replace(HARNESS_BLOCK_RE, ''))
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
+    // NOTE: `<attached_files>` is deliberately NOT stripped here. The CLI only
+    // ever appends it to a USER prompt, while this function also runs over
+    // agent prose — and in this repository agents discuss that very tag (specs,
+    // CLI source, this comment). Stripping it here silently destroyed body
+    // text, fenced examples included. It is removed on the user paths instead:
+    // `UserText`, `assistantView`, and the echo check in attachedFiles.ts.
+    return text.replace(HARNESS_BLOCK_RE, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 const CAVEAT_RE = /^\s*<local-command-caveat>[\s\S]*?<\/local-command-caveat>\s*$/;

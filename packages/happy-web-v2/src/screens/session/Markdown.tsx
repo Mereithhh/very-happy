@@ -212,7 +212,14 @@ function useThrottledText(text: string, enabled: boolean): string {
     }, [text, enabled]);
 
     React.useEffect(() => () => {
+        // `timer.current = null` is NOT optional. StrictMode runs a simulated
+        // unmount/remount while KEEPING the fiber's refs, so clearing the
+        // timeout without clearing the ref leaves a dead id behind — every
+        // later effect then hits `if (timer.current) return` and no further
+        // tick is ever scheduled. Measured in dev: a draft froze at the length
+        // it had when it first crossed the throttle threshold.
         if (timer.current) clearTimeout(timer.current);
+        timer.current = null;
     }, []);
 
     return enabled ? shown : text;

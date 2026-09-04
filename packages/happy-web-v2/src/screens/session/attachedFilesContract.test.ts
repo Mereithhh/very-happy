@@ -26,6 +26,14 @@ describe('attached-files prompt contract', () => {
         expect(joined, 'ATTACHED_FILES_NOTE drifted from happy-cli/attachmentContent.ts').toContain(ATTACHED_FILES_NOTE);
     });
 
+    it('the append function actually USES that constant', () => {
+        // Without this, deleting the call while keeping the constant defined
+        // would leave the test above green and the Web stripping a note that is
+        // no longer sent.
+        const fn = source.slice(source.indexOf('export function appendStagedAttachmentsToPrompt'));
+        expect(fn.slice(0, fn.indexOf('\n}'))).toContain('ATTACHMENT_PROMPT_NOTE');
+    });
+
     it('the CLI still wraps the manifest in <attached_files>', () => {
         expect(source).toContain('<attached_files>');
         expect(source).toContain('</attached_files>');

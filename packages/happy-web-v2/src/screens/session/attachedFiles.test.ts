@@ -3,8 +3,8 @@ import type { Message } from '@/sync/typesMessage';
 import {
     ATTACHED_FILES_NOTE,
     dropDuplicateAttachmentEchoes,
-    hasAttachedFilesBlock,
     isDuplicateAttachmentEcho,
+    hasAttachedFilesBlock,
     parseAttachedFiles,
     stripAttachedFiles,
 } from './attachedFiles';
@@ -47,9 +47,16 @@ describe('stripAttachedFiles', () => {
         expect(stripAttachedFiles(augmented(''))).toBe('');
     });
 
-    it('is applied by stripHarnessBlocks, so every bubble path gets it', () => {
-        expect(stripHarnessBlocks(augmented('看看这个'))).toBe('看看这个');
-        expect(hasAttachedFilesBlock(stripHarnessBlocks(augmented('x')))).toBe(false);
+    it('is deliberately NOT part of stripHarnessBlocks — that also runs over agent prose', () => {
+        // The CLI only ever appends the manifest to a USER prompt, and agents in
+        // this repository legitimately discuss the tag (specs, CLI source). When
+        // it lived in stripHarnessBlocks it silently destroyed body text,
+        // including fenced examples.
+        expect(hasAttachedFilesBlock(augmented('x'))).toBe(true);
+        const agentProse = 'The CLI appends this:\n\n```\n<attached_files>\n{"path":"/x"}\n</attached_files>\n```\n\nand then a note.';
+        expect(stripHarnessBlocks(agentProse)).toBe(agentProse);
+        expect(stripHarnessBlocks('what does <attached_files>x</attached_files> mean?'))
+            .toBe('what does <attached_files>x</attached_files> mean?');
     });
 });
 
@@ -79,6 +86,12 @@ describe('duplicate echo detection', () => {
     it('returns the SAME array when there is nothing to drop (memo identity)', () => {
         const messages = [user('a', 'x', 'web')];
         expect(dropDuplicateAttachmentEchoes(messages)).toBe(messages);
+    });
+
+    it('normalises blank runs on BOTH sides (they were folded on one branch only)', () => {
+        const prose = 'line one\n\n\n\nline two';
+        const messages = [user('a', prose, 'web'), user('b', augmented(prose))];
+        expect(dropDuplicateAttachmentEchoes(messages).map((m) => m.id)).toEqual(['a']);
     });
 
     it('known edge: with the original on an earlier page, the echo survives', () => {

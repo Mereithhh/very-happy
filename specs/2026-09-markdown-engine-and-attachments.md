@@ -1,6 +1,6 @@
 # Markdown 引擎替换（GFM 表格）与用户附件呈现
 
-> 状态：Final（v3，两轮对抗式 review 后定稿；实现与实证数据已回填）
+> 状态：Final（v4，三轮对抗式 review 后定稿；实现与实证数据已回填）
 > 日期：2026-09-04 ｜ 关联 backlog：B-354（markdown 引擎/表格）、B-355（附件呈现与重复气泡）
 > 触发：Owner 截图报「UI 对话模式（claude sdk、pi）markdown 没办法很好地渲染 table，
 > 并且输入文件的渲染效果也不好」
@@ -285,7 +285,7 @@ commit 划分：
 
 | 项 | 数值 |
 |---|---|
-| 包体 | `AppRoot` gzip 646.49 kB → **695.30 kB（+48.81 kB / +7.6%）**，低于 +60 kB 阈值 |
+| 包体 | `AppRoot` gzip 646.49 kB → **696.25 kB（+49.76 kB / +7.7%）**，低于 +60 kB 阈值 |
 | 表格窄屏（headless Chromium，touch context，3 列含两列散文） | 390px：溢出 **335px → 0**（表宽 699→364）；500px：**225 → 0**；768px：0 → 0 |
 | 表格窄屏（12 列） | 390px 溢出 379px（**照常横向滚动**，`is-scrollable` + `tabindex=0` + `aria-label` 已实测生效）；768px 溢出 1px |
 | `word-break: break-word` 的坑 | 它等价于 `overflow-wrap: anywhere`，让单元格 min-content 塌到**一个字符**（12 列表被压成竖排字母）。改用 `overflow-wrap: break-word` 后恢复正常 |
@@ -293,9 +293,24 @@ commit 划分：
 | `vh-text` 包裹开销 | +10%（4.1 KB 8.31→9.17 ms，16.4 KB 32.57→35.94 ms） |
 | 真实浏览器验收 | 390/900px × 深浅主题，控制台**零错误**；3 张表、2 个路径链接、2 个 option 按钮、2 个 task 勾选框、单元格内 `<br>`、脚注区各 1；`<img>` 0 个、`rel=preload` 0 个（不可信图片被 chip 化）；页面横向溢出 0 |
 
-**浏览器验收抓到的一个 bug（单测抓不到）**：`rehypeTextLeaves` 原来也包裹**空白文本节点**，
-而 hast 把 `<table>`/`<thead>`/`<tr>` 之间的换行保留为 text 子节点 → React 每行报一次
-「whitespace text nodes cannot be a child of `<table>`」。已修（跳过纯空白节点）并补结构断言。
+### 单测抓不到、只有真实浏览器/像素/StrictMode 才能抓到的六个 bug（全部已修）
+
+| # | 症状 | 为什么单测和「类名断言」抓不到 |
+|---|---|---|
+| 1 | `rehypeTextLeaves` 包裹了**空白文本节点**，hast 把 `<table>/<thead>/<tr>` 之间的换行保留为 text 子节点 → React 每行报一次「whitespace text nodes cannot be a child of `<table>`」 | `renderToStaticMarkup` 不发这个警告 |
+| 2 | **滚动阴影从未可见**：四层 `background-image` 画在包裹器的背景层，而 `.md-table { background: var(--bg-1) }` 作为子元素画在它**上面**并完全覆盖内容盒 | 我原来的验收只断言 `is-scrollable` / `tabindex` / `aria-label` **存在**，这三样都真的生效了。必须**采样像素**：修前右内缘是一条平的 `250`，修后 `228→196`（浅）/ `19→12`（深） |
+| 3 | `useThrottledText` 在 **StrictMode 下永久冻结**：清理只 `clearTimeout` 没把 `timer.current` 置空，而 StrictMode 的模拟卸载**保留 fiber 上的 ref** → 此后每次 effect 都撞 `if (timer.current) return` | node 环境不跑 effect、不做双调用。实测 dev 下草稿冻在 5000 字符、incoming 已到 8000 |
+| 4 | `AgentText` 的 `onOption` 是内联箭头，进了 parse memo 的依赖 → `session.thinking` 每翻一次（每轮两次）**整条 transcript 全量重 parse** | 需要插桩计数真实渲染。实测内联 +1 parse/重渲，`useCallback` +0 |
+| 5 | `stripHarnessBlocks` 里剥 `<attached_files>` 会**销毁 agent 正文**（本仓的 agent 天天讨论这个标签，围栏里的示例也被吃） | 我的测试只喂了 user 消息。改成只在 user 路径剥 |
+| 6 | `attachmentPreview.ts` 里混进一个**字面 NUL 字节**（`cacheKey` 的模板串），git 把整个文件当二进制 → PR 里没有 diff、`git blame` 失效 | 运行时完全正常，任何测试都不会红 |
+
+另外两个静默错判：`isDuplicateAttachmentEcho` 只在「有清单」那一支折叠 3+ 连续换行，
+于是「正文本来就有连续空行 + 带附件」两侧不相等、重复气泡照样出现（改成两侧同一个
+`normalizeForCompare`）；`safeUrlTransform` 放行 `//evil.example/x`（无 scheme 走了「相对
+URL」分支），与「白名单」的说法不符。
+
+**方法论沉淀**：视觉改动的验收断言**不能只断言类名/属性存在**——类存在与效果可见是两回事，
+第 2 条正是这样溜过去的。有渐变/遮挡/层叠的改动要采样像素并留修前修后两份。
 
 ## 风险
 
@@ -336,7 +351,16 @@ commit 划分：
 - [x] [①] `chatRows.ts` 已删除，`ChatList.test.ts` 迁到 `chatTurns`（`chatListRows.test.ts`）
 - [x] [①] 跨包源码断言测试存在，且 `mutation-check` 验过钉得住（1/1 caught）
 - [x] [①] CLI：`onPromptFinalized` 接线测试 + `mutation-check`（3/3 caught）
-- [x] 门禁全绿：wire build+test(31)、web vitest(2314+)/build/tsc 零错误、CLI test(1865)+运行冒烟、server tsc
+- [x] [②] 滚动阴影**像素级**可见（深浅两个主题各采样一次，修前平坦 / 修后有渐变）
+- [x] [②] StrictMode 下流式草稿追到最终长度（真实浏览器，`LEN=9000`）
+- [x] [②] `session.thinking` 翻转不触发重 parse（`onOption` 走 `useCallback`，`mutation-check` 4/4）
+- [x] [②] 段落节奏一致：实测 `P→P 12px`、`P→UL 12px`、`UL→P 12px`（修前 P→P 是 24px）
+- [x] [②] `<br>` 在加粗等嵌套标记内也生效（`<strong>line1<br/>line2</strong>`）
+- [x] [②] `//host` 协议相对 URL 被拦
+- [x] [①] agent 正文里的 `<attached_files>` **不被销毁**（只在 user 路径剥）
+- [x] [①] 回显判重两侧走同一个归一化（正文含 3+ 连续换行时也命中）
+- [x] [①] 源码里没有 NUL 字节（`file` 报 UTF-8 text）
+- [x] 门禁全绿：wire build+test(31)、web vitest(2325)/build/tsc 零错误、CLI test(1865)+运行冒烟、server tsc
 
 ## 留真机验证项
 

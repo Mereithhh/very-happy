@@ -31,3 +31,10 @@ describe('safeUrlTransform', () => {
         expect(safeUrlTransform('intent://x#Intent;end')).toBe('');
     });
 });
+
+describe('safeUrlTransform — protocol-relative', () => {
+    it('blocks //host (no scheme to check, but it still leaves the site)', () => {
+        expect(safeUrlTransform('//evil.example/x')).toBe('');
+        expect(safeUrlTransform(' //evil.example')).toBe('');
+    });
+});
