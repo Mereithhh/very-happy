@@ -43,6 +43,8 @@ export async function claudeRemoteLauncher(
     onPermissionModeChange?: (mode: ClaudeSdkPermissionMode) => void,
     /** SDK-reported effective mode from system/init (B-262 batch 2). */
     onEffectivePermissionMode?: (mode: string) => void,
+    /** Exactly what goes to the SDK this turn — see LoopOptions.onPromptFinalized (B-355). */
+    onPromptFinalized?: (text: string) => void,
 ): Promise<'switch' | 'exit'> {
     logger.debug('[claudeRemoteLauncher] Starting remote launcher');
 
@@ -429,6 +431,7 @@ export async function claudeRemoteLauncher(
                         const parked = modeGate.takeParked();
                         if (parked) {
                             permissionHandler.handleModeChange(parked.mode.permissionMode);
+                            if (typeof parked.message === 'string') onPromptFinalized?.(parked.message);
                             return parked;
                         }
 
@@ -474,12 +477,15 @@ export async function claudeRemoteLauncher(
                                     sessionId: session.client.sessionId,
                                 });
                                 logger.debug(`[remote] Staged ${staged.length} attachment(s) for the coding agent`);
+                                const withAttachments = appendStagedAttachmentsToPrompt(msg.message, staged);
+                                onPromptFinalized?.(withAttachments);
                                 return {
-                                    message: appendStagedAttachmentsToPrompt(msg.message, staged),
+                                    message: withAttachments,
                                     mode: msg.mode,
                                 };
                             }
 
+                            onPromptFinalized?.(msg.message);
                             return {
                                 message: msg.message,
                                 mode: msg.mode
@@ -531,6 +537,7 @@ export async function claudeRemoteLauncher(
                             // touching the live input stream; false falls back
                             // to the ordinary durable queue in runClaude.
                             if (!session.thinking || !modeGate.matches(input.mode)) return false;
+                            if (typeof message === 'string') onPromptFinalized?.(message);
                             q.steer(message, input.mode);
                             return true;
                         });

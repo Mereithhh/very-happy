@@ -205,7 +205,7 @@ export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFul
                         <div className="fsb-viewer-body fsb-viewer-body--md">
                             {truncNotice}
                             <div className="fsb-md">
-                                <Markdown text={state.text} />
+                                <Markdown text={state.text} trustContent />
                             </div>
                         </div>
                     );

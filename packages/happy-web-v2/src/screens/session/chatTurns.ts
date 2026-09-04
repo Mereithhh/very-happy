@@ -1,11 +1,20 @@
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { askUserQuestionDisplayAnswer, type AskQuestion } from './askUserQuestion';
-import { stripHarnessBlocks } from './harness';
+import { parseLocalCommandMessage, parseTaskNotification, stripHarnessBlocks } from './harness';
 import { presentServiceEvent } from './serviceEvent';
+import { parseTickReport } from './supervisorCards';
 import { stripThinkingWrapper } from './thinking';
 
 export type LeafRow =
-    | { type: 'message'; key: string; message: Message; showMeta: boolean; thinkingDurationMs?: number }
+    | {
+        type: 'message';
+        key: string;
+        message: Message;
+        showMeta: boolean;
+        thinkingDurationMs?: number;
+        /** B-355: the `file` events the user sent WITH this message. */
+        attachments?: ToolCallMessage[];
+    }
     | { type: 'toolgroup'; key: string; tools: ToolCallMessage[] };
 
 export type ChatRow = LeafRow | {
@@ -15,6 +24,67 @@ export type ChatRow = LeafRow | {
     live: boolean;
     durationSeconds?: number;
 };
+
+/**
+ * 把「紧邻在一条 user-text 之前的一串 `file` 事件」摘出来挂到那条消息上（B-355）。
+ *
+ * 附件是**用户这一轮输入的一部分**，但 reducer 把 `file` 事件归一化成了名为 `file` 的
+ * tool-call（`sync/typesRaw.ts`），于是它在会话里长得像 agent 跑了个工具——一行带
+ * chevron 的工具卡，浮在用户气泡上面。
+ *
+ * **必须在这里、在分流之前做**：`buildChatRows` 下面有三条分支，`file` 事件实测有三种
+ * 落点（toolgroup 首段 / toolgroup 尾段 / 上一轮没有 final agent text 时**落进 activity
+ * 折叠抽屉**）。只改 toolgroup 那一处的话，第三种落点里的附件会直接从视野里消失。
+ *
+ * **不许改走 `knownTools` 的 hidden 名单**那条捷径：`ChatList` 的 `isHiddenToolCall`
+ * 会把它从 `chronological` 整个滤掉，连带 `agentLiveness.currentTurnMessages` 的切点和
+ * 队列里的「已排队文件」标签一起坏。
+ */
+/**
+ * `UserText` 只有普通文本那条分支会渲染附件条：task-notification、`/command` 包装和
+ * `<local-command-caveat>` 各自早退或走别的形状。把附件挂到那样一条消息上等于让文件
+ * 凭空消失（`file` 行已经被摘走了），所以那几种 owner 一律不摘。
+ */
+function rendersUserBubble(message: Message): boolean {
+    if (message.kind !== 'user-text') return false;
+    const raw = message.displayText ?? message.text;
+    if (parseTaskNotification(raw)) return false;
+    const parsed = parseLocalCommandMessage(raw);
+    if (parsed.kind !== 'text') return false;
+    // B-353 supervisor ticks render as a card, not a bubble.
+    return parseTickReport(parsed.text) === null;
+}
+
+export function extractUserAttachments(messages: Message[]): {
+    messages: Message[];
+    attachments: Map<string, ToolCallMessage[]>;
+} {
+    const attachments = new Map<string, ToolCallMessage[]>();
+    const isFileEvent = (m: Message | undefined) => m?.kind === 'tool-call' && m.tool.name === 'file';
+    if (!messages.some(isFileEvent)) return { messages, attachments };
+
+    const kept: Message[] = [];
+    let i = 0;
+    while (i < messages.length) {
+        if (!isFileEvent(messages[i])) {
+            kept.push(messages[i]);
+            i += 1;
+            continue;
+        }
+        let end = i;
+        while (end < messages.length && isFileEvent(messages[end])) end += 1;
+        const owner = messages[end];
+        if (owner && owner.kind === 'user-text' && rendersUserBubble(owner)) {
+            attachments.set(owner.id, messages.slice(i, end) as ToolCallMessage[]);
+        } else {
+            // orphan run (nothing sent with it) — leave it in the transcript so
+            // the file is still visible somewhere
+            kept.push(...messages.slice(i, end));
+        }
+        i = end;
+    }
+    return { messages: kept, attachments };
+}
 
 export function activityDurationSeconds(messages: Message[]): number {
     if (messages.length === 0) return 0;
@@ -84,6 +154,7 @@ export function buildLeafRows(
     finalAgentId: string | null,
     groupConsecutiveTools = true,
     projectAskAnswers = true,
+    attachments?: Map<string, ToolCallMessage[]>,
 ): LeafRow[] {
     const rows: LeafRow[] = [];
     let i = 0;
@@ -117,6 +188,7 @@ export function buildLeafRows(
             message,
             showMeta: message.id === finalAgentId,
             thinkingDurationMs,
+            ...(attachments?.has(message.id) ? { attachments: attachments.get(message.id) } : {}),
         });
         i++;
     }
@@ -131,7 +203,11 @@ export function buildLeafRows(
  * moves out as the visible answer and the preceding work becomes collapsible.
  * Messages before the first user prompt stay as ordinary transcript rows.
  */
-export function buildChatRows(messages: Message[], sessionLive: boolean): ChatRow[] {
+export function buildChatRows(rawMessages: Message[], sessionLive: boolean): ChatRow[] {
+    // B-355: attachments belong to the user turn, so they leave the stream here —
+    // BEFORE the leaf/activity split below, which has three different landing
+    // places for them (see extractUserAttachments).
+    const { messages, attachments: userAttachments } = extractUserAttachments(rawMessages);
     const rows: ChatRow[] = [];
     const finalAgentId = lastFinalAgentId(messages);
     let i = 0;
@@ -146,7 +222,7 @@ export function buildChatRows(messages: Message[], sessionLive: boolean): ChatRo
             continue;
         }
 
-        rows.push(...buildLeafRows([message], finalAgentId));
+        rows.push(...buildLeafRows([message], finalAgentId, true, true, userAttachments));
         const turnStart = i + 1;
         let turnEnd = turnStart;
         while (turnEnd < messages.length && messages[turnEnd].kind !== 'user-text') turnEnd++;

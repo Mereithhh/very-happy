@@ -1,245 +1,74 @@
 /**
- * Tiny dependency-free markdown renderer → React nodes.
+ * Markdown 渲染（GFM）。
  *
- * Supports the subset agent text actually uses: headings, paragraphs, bold,
- * italic, inline code, fenced code blocks, unordered/ordered lists, blockquotes,
- * links, and horizontal rules. We render to real DOM nodes (no
- * dangerouslySetInnerHTML) so untrusted text can never inject markup.
+ * 引擎是 `react-markdown` + `remark-gfm` + `remark-breaks`，渲染成**真 React 节点**，
+ * 全程没有 `dangerouslySetInnerHTML`——agent 输出是不可信文本，「标记进不了 DOM」必须是
+ * 结构性保证，而不是「sanitizer 配对了」这种可配置的保证。原始 HTML（含 `<script>`）
+ * 被引擎转义成可见文本，与替换前的手写渲染器行为一致。
  *
- * This is intentionally small — not CommonMark-complete — and good enough for
- * the borderless agent-text bubbles. Fenced code blocks reuse CodeView.
+ * 换掉手写渲染器的原因（2026-09-04，15 例探针）：它的段落收集循环 break 列表里没有
+ * table，于是「结论如下：」后面紧跟表格（LLM 最常见写法，中间不空行）时整张表被吞进
+ * 一个 `<p>`；另外转义竖线切错列、数据行少一格就列错位、嵌套列表被拍平、`foo_bar_baz`
+ * 被当斜体、task list / 删除线 / 自动链接 / 引用式链接 / 脚注全不支持。设计取舍、
+ * 被否决的候选（streamdown / markdown-to-jsx / marked+sanitizer）与实测数据见
+ * `specs/2026-09-markdown-engine-and-attachments.md`。
+ *
+ * 三条**不可回退**的接线（每条都有回归测试，见 markdownRender.test.tsx）：
+ *  1. 路径链接（B-145）走 `rehypeTextLeaves` + `vh-text` 叶子组件，**白名单从 context 读、
+ *     不进插件参数**，否则白名单一变就是整条 transcript 重 parse（见 markdownPlugins.ts）。
+ *  2. `<options>` 块**不进引擎**（引擎会把它转义成可见 XML），在 `splitOptionSegments`
+ *     里先切走（见 optionsBlock.ts）。
+ *  3. 代码块交给 `CodeView`（shiki + 折叠 + 复制），通过 `components.pre` 从 hast 节点取原文。
  */
 import React from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
+import { FileText } from 'lucide-react';
 import { CodeView } from './CodeView';
 import './markdown.css';
 import { FilePathLink } from './FilePathLink';
 import { collectSessionFilePaths, findPathHits } from './toolFilePath';
 import { useSessionMessages } from '@/sync/storage';
+import { splitOptionSegments } from './optionsBlock';
+import { rehypeTableCellBreaks, rehypeTextLeaves, safeUrlTransform } from './markdownPlugins';
+import { streamThrottleMs } from './streamThrottle';
 
-type Block =
-    | { type: 'heading'; level: number; text: string }
-    | { type: 'paragraph'; text: string }
-    | { type: 'code'; lang: string | null; code: string }
-    | { type: 'list'; ordered: boolean; items: string[] }
-    | { type: 'quote'; text: string }
-    | { type: 'options'; items: string[] }
-    | { type: 'table'; headers: string[]; rows: string[][] }
-    | { type: 'hr' };
+// Stable identities: react-markdown re-runs the whole unified pipeline on every
+// render, and a fresh array here would also invalidate the memo below.
+const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
+const REHYPE_PLUGINS = [rehypeTableCellBreaks, rehypeTextLeaves];
 
-function parseBlocks(src: string): Block[] {
-    const lines = src.replace(/\r\n/g, '\n').split('\n');
-    const blocks: Block[] = [];
-    let i = 0;
+/* ── path links (B-145) ─────────────────────────────────────────────────── */
 
-    while (i < lines.length) {
-        let line = lines[i];
-
-        // Fenced code block
-        const fence = line.match(/^\s*```(.*)$/);
-        if (fence) {
-            const lang = fence[1].trim() || null;
-            const code: string[] = [];
-            i++;
-            while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) {
-                code.push(lines[i]);
-                i++;
-            }
-            i++; // skip closing fence
-            blocks.push({ type: 'code', lang, code: code.join('\n') });
-            continue;
-        }
-
-        // Blank line
-        if (/^\s*$/.test(line)) {
-            i++;
-            continue;
-        }
-
-        // Horizontal rule
-        if (/^\s*(?:---|\*\*\*|___)\s*$/.test(line)) {
-            blocks.push({ type: 'hr' });
-            i++;
-            continue;
-        }
-
-        // Heading
-        const heading = line.match(/^(#{1,6})\s+(.*)$/);
-        if (heading) {
-            blocks.push({ type: 'heading', level: heading[1].length, text: heading[2].trim() });
-            i++;
-            continue;
-        }
-
-        // Options block: <options><option>..</option>..</options>
-        if (/^\s*<options>/.test(line)) {
-            const items: string[] = [];
-            i++;
-            while (i < lines.length && !/^\s*<\/options>/.test(lines[i])) {
-                const om = lines[i].match(/<option>([\s\S]*?)<\/option>/);
-                if (om) items.push(om[1].trim());
-                i++;
-            }
-            i++; // skip closing tag
-            if (items.length > 0) blocks.push({ type: 'options', items });
-            continue;
-        }
-
-        // Table: a line with '|' followed by a separator row of dashes.
-        if (line.includes('|') && i + 1 < lines.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1])) {
-            const splitRow = (l: string): string[] => {
-                let cells = l.trim().split('|').map((c) => c.trim());
-                if (cells.length && cells[0] === '') cells = cells.slice(1);
-                if (cells.length && cells[cells.length - 1] === '') cells = cells.slice(0, -1);
-                return cells;
-            };
-            const headers = splitRow(line);
-            i += 2; // header + separator
-            const rows: string[][] = [];
-            while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
-                rows.push(splitRow(lines[i]));
-                i++;
-            }
-            blocks.push({ type: 'table', headers, rows });
-            continue;
-        }
-
-        // Blockquote
-        if (/^\s*>\s?/.test(line)) {
-            const quote: string[] = [];
-            while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
-                quote.push(lines[i].replace(/^\s*>\s?/, ''));
-                i++;
-            }
-            blocks.push({ type: 'quote', text: quote.join('\n') });
-            continue;
-        }
-
-        // Lists
-        const ulMatch = line.match(/^\s*[-*+]\s+(.*)$/);
-        const olMatch = line.match(/^\s*\d+[.)]\s+(.*)$/);
-        if (ulMatch || olMatch) {
-            const ordered = !!olMatch;
-            const items: string[] = [];
-            while (i < lines.length) {
-                const ul = lines[i].match(/^\s*[-*+]\s+(.*)$/);
-                const ol = lines[i].match(/^\s*\d+[.)]\s+(.*)$/);
-                if (ordered && ol) {
-                    items.push(ol[1]);
-                    i++;
-                } else if (!ordered && ul) {
-                    items.push(ul[1]);
-                    i++;
-                } else {
-                    break;
-                }
-            }
-            blocks.push({ type: 'list', ordered, items });
-            continue;
-        }
-
-        // Paragraph — gather consecutive non-blank, non-structural lines
-        const para: string[] = [];
-        while (i < lines.length) {
-            const l = lines[i];
-            if (
-                /^\s*$/.test(l) ||
-                /^\s*```/.test(l) ||
-                /^(#{1,6})\s+/.test(l) ||
-                /^\s*>\s?/.test(l) ||
-                /^\s*[-*+]\s+/.test(l) ||
-                /^\s*\d+[.)]\s+/.test(l) ||
-                /^\s*<options>/.test(l) ||
-                /^\s*(?:---|\*\*\*|___)\s*$/.test(l)
-            ) {
-                break;
-            }
-            para.push(l);
-            i++;
-        }
-        if (para.length) {
-            blocks.push({ type: 'paragraph', text: para.join('\n') });
-        }
-    }
-
-    return blocks;
-}
-
-// Inline tokenizer: code spans first (so their contents are not re-parsed),
-// then bold/italic/links over the remaining text.
-let keyCounter = 0;
-function nextKey() {
-    return `md${keyCounter++}`;
-}
-
-function renderInline(text: string): React.ReactNode[] {
-    const nodes: React.ReactNode[] = [];
-    // Split on inline code spans, keep delimiters.
-    const parts = text.split(/(`[^`]+`)/g);
-    for (const part of parts) {
-        if (!part) continue;
-        if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
-            // B-145 finding 1：反引号是 claude 写路径的**默认形式**
-            // （「已写入 `docs/report.md`」），所以代码段内容也必须过 TextLeaf。
-            // 原来这里直接输出原文，导致功能在主场景下完全不生效。
-            nodes.push(
-                <code key={nextKey()} className="md-code-inline">
-                    <TextLeaf text={part.slice(1, -1)} />
-                </code>,
-            );
-        } else {
-            nodes.push(...renderEmphasis(part));
-        }
-    }
-    return nodes;
-}
-
-function renderEmphasis(text: string): React.ReactNode[] {
-    const nodes: React.ReactNode[] = [];
-    // Links: [label](url)
-    const linkRe = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-    let last = 0;
-    let m: RegExpExecArray | null;
-    while ((m = linkRe.exec(text)) !== null) {
-        if (m.index > last) {
-            nodes.push(...renderBoldItalic(text.slice(last, m.index)));
-        }
-        const href = m[2];
-        const safe = /^(https?:|mailto:)/i.test(href) ? href : undefined;
-        nodes.push(
-            <a key={nextKey()} href={safe} target="_blank" rel="noopener noreferrer" className="md-link">
-                {/* B-145 finding 3：label 里禁用路径链接。<button> 嵌 <a> 是非法嵌套，
-                    且 stopPropagation 只挡 React 合成事件、浏览器仍会走 anchor 默认
-                    导航——点一次会同时开预览并把标签页导航走。 */}
-                <NoPathLinks>{renderBoldItalic(m[1])}</NoPathLinks>
-            </a>,
-        );
-        last = linkRe.lastIndex;
-    }
-    if (last < text.length) {
-        nodes.push(...renderBoldItalic(text.slice(last)));
-    }
-    return nodes;
-}
-
-/**
- * B-145: 让正文里的文件路径可点。
- *
- * 只对**本会话工具调用碰过的路径**生效（白名单，见 toolFilePath.ts）——不用正则猜，
- * 因为自由文本里认路径必然假阳性，而点了没反应比没链接更烦。
- *
- * 实现上把切口放在**叶子**：`renderInline` 在本文件里有 11 个调用点，透传参数会把
- * 整个渲染管线搅一遍；而叶子换成组件后自己读 context 即可，改动面 = 两行。
- */
 interface PathLinkCtx { sessionId: string; allowlist: ReadonlySet<string> }
 const PathLinkContext = React.createContext<PathLinkCtx | null>(null);
 
-/** 在这棵子树里关掉路径链接（用于 markdown 链接的 label，见 finding 3；
- *  B-309 的流式草稿也用它——每帧对每个叶子跑一遍 `findPathHits` 纯属浪费，
- *  1.5 秒后落地的持久化消息照样会把路径链上）。 */
+/**
+ * 显式给定白名单的 scope。`MarkdownPathProvider` 是它的会话版包装（从消息里推白名单），
+ * 测试与非会话调用方用这个。
+ */
+export function PathLinksScope({ sessionId, allowlist, children }: {
+    sessionId: string;
+    allowlist: ReadonlySet<string>;
+    children: React.ReactNode;
+}) {
+    const value = React.useMemo(() => ({ sessionId, allowlist }), [sessionId, allowlist]);
+    return <PathLinkContext.Provider value={value}>{children}</PathLinkContext.Provider>;
+}
+
+/** 在这棵子树里关掉路径链接（流式草稿用：1.5 秒后落地的持久化消息照样会把路径链上）。 */
 export function NoPathLinks({ children }: { children: React.ReactNode }) {
     return <PathLinkContext.Provider value={null}>{children}</PathLinkContext.Provider>;
 }
 
+/**
+ * 唯一读 path context 的地方。
+ *
+ * `Markdown` 自己**绝不能**读它：那样白名单一变就会重渲整个 `<ReactMarkdown>`，
+ * 而它没有 parse 缓存。叶子读 context 时，React 会穿透上层 memo 只更新这些叶子
+ * （实测 `parse +0 / leaf +N`）。
+ */
 function TextLeaf({ text }: { text: string }) {
     const ctx = React.useContext(PathLinkContext);
     const hits = React.useMemo(
@@ -260,125 +89,194 @@ function TextLeaf({ text }: { text: string }) {
     return <>{out}</>;
 }
 
-function renderBoldItalic(text: string): React.ReactNode[] {
-    const nodes: React.ReactNode[] = [];
-    // Bold (**x** / __x__) then italic (*x* / _x_)
-    const re = /(\*\*|__)(.+?)\1|(\*|_)(.+?)\3/g;
-    let last = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-        if (m.index > last) nodes.push(<TextLeaf key={nextKey()} text={text.slice(last, m.index)} />);
-        if (m[1]) {
-            nodes.push(<strong key={nextKey()}>{m[2]}</strong>);
-        } else {
-            nodes.push(<em key={nextKey()}>{m[4]}</em>);
-        }
-        last = re.lastIndex;
-    }
-    if (last < text.length) nodes.push(<TextLeaf key={nextKey()} text={text.slice(last)} />);
-    return nodes;
+/* ── table ──────────────────────────────────────────────────────────────── */
+
+/**
+ * 可滚动区必须能用键盘滚（WCAG 2.1.1），但**只有真的溢出时**才给 tab stop——
+ * 长会话里十几张表就是十几次 Tab。同一个信号顺便开关滚动阴影。
+ */
+function useOverflowX<T extends HTMLElement>() {
+    const ref = React.useRef<T>(null);
+    const [overflowing, setOverflowing] = React.useState(false);
+    React.useEffect(() => {
+        const node = ref.current;
+        if (!node || typeof ResizeObserver === 'undefined') return;
+        const measure = () => setOverflowing(node.scrollWidth - node.clientWidth > 1);
+        measure();
+        const observer = new ResizeObserver(measure);
+        observer.observe(node);
+        for (const child of Array.from(node.children)) observer.observe(child);
+        return () => observer.disconnect();
+    }, []);
+    return { ref, overflowing };
 }
 
-export function Markdown({ text, onOption, plainCode = false }: {
+function MarkdownTable({ children }: { children?: React.ReactNode }) {
+    const { ref, overflowing } = useOverflowX<HTMLDivElement>();
+    return (
+        <div
+            ref={ref}
+            className={`md-table-wrap${overflowing ? ' is-scrollable' : ''}`}
+            {...(overflowing ? { tabIndex: 0, role: 'region', 'aria-label': 'table' } : {})}
+        >
+            <table className="md-table">{children}</table>
+        </div>
+    );
+}
+
+/* ── components map ─────────────────────────────────────────────────────── */
+
+function hastText(node: unknown): string {
+    const element = node as { children?: unknown[] } | undefined;
+    let out = '';
+    const walk = (nodes: unknown[] | undefined) => {
+        for (const child of nodes ?? []) {
+            const c = child as { type?: string; value?: string; children?: unknown[] };
+            if (c.type === 'text' || c.type === 'raw') out += c.value ?? '';
+            else if (c.children) walk(c.children);
+        }
+    };
+    walk(element?.children);
+    return out;
+}
+
+function buildComponents(plainCode: boolean, trustContent: boolean): Components {
+    return {
+        // `pre`, not `code`: mapping `code` cannot tell an inline span from a
+        // fenced block without inspecting the parent, and CodeView needs the raw
+        // source anyway (rehypeTextLeaves skips <pre> so the hast is intact).
+        pre({ node }) {
+            const first = (node as { children?: Array<{ properties?: { className?: unknown } }> } | undefined)?.children?.[0];
+            const classes = Array.isArray(first?.properties?.className) ? first.properties.className as string[] : [];
+            const lang = classes.map((c) => /^language-(.+)$/.exec(c)?.[1]).find(Boolean) ?? null;
+            return <CodeView code={hastText(first).replace(/\n$/, '')} lang={lang} plain={plainCode} />;
+        },
+        code({ children, className }) {
+            // Only inline spans reach here now — fenced blocks are consumed by `pre`.
+            return <code className={`md-code-inline${className ? ` ${className}` : ''}`}>{children}</code>;
+        },
+        a({ href, children }) {
+            return (
+                <a href={href} target="_blank" rel="noopener noreferrer" className="md-link">
+                    {children}
+                </a>
+            );
+        },
+        img({ src, alt, title }) {
+            // agent 正文是不可信内容：一个远程图片就是一个追踪像素 + IP/UA 泄漏，而且
+            // react-markdown 除了 <img> 还会注入 <link rel="preload" as="image">。
+            // 只有明确标记 trustContent 的调用方（用户自己的 .md 文件预览）才真出图。
+            if (trustContent) {
+                return <img className="md-img" src={typeof src === 'string' ? src : undefined} alt={alt ?? ''} title={title} />;
+            }
+            const label = alt?.trim() || (typeof src === 'string' ? src : '') || 'image';
+            return (
+                <span className="md-img-chip" title={typeof src === 'string' ? src : undefined}>
+                    <FileText size={12} aria-hidden />
+                    {label}
+                </span>
+            );
+        },
+        table({ children }) {
+            return <MarkdownTable>{children}</MarkdownTable>;
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        'vh-text': ({ node }: any) => <TextLeaf text={hastText(node)} />,
+    } as Components;
+}
+
+/* ── streaming throttle ─────────────────────────────────────────────────── */
+
+/** 草稿重渲节流（取舍与实测数据见 streamThrottle.ts）。短文本不节流。 */
+function useThrottledText(text: string, enabled: boolean): string {
+    const [shown, setShown] = React.useState(text);
+    const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const latest = React.useRef(text);
+    latest.current = text;
+
+    React.useEffect(() => {
+        const interval = enabled ? streamThrottleMs(text.length) : 0;
+        if (interval === 0) {
+            if (timer.current) {
+                clearTimeout(timer.current);
+                timer.current = null;
+            }
+            setShown(text);
+            return;
+        }
+        if (timer.current) return;                  // a tick is already pending
+        timer.current = setTimeout(() => {
+            timer.current = null;
+            setShown(latest.current);
+        }, interval);
+    }, [text, enabled]);
+
+    React.useEffect(() => () => {
+        // `timer.current = null` is NOT optional. StrictMode runs a simulated
+        // unmount/remount while KEEPING the fiber's refs, so clearing the
+        // timeout without clearing the ref leaves a dead id behind — every
+        // later effect then hits `if (timer.current) return` and no further
+        // tick is ever scheduled. Measured in dev: a draft froze at the length
+        // it had when it first crossed the throttle threshold.
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = null;
+    }, []);
+
+    return enabled ? shown : text;
+}
+
+/* ── public component ───────────────────────────────────────────────────── */
+
+export function Markdown({ text, onOption, plainCode = false, streaming = false, trustContent = false }: {
     text: string;
     onOption?: (option: string) => void;
     /** B-309: render fenced code without highlighting (streaming drafts). */
     plainCode?: boolean;
+    /** Live draft: throttle re-parse (react-markdown has no parse cache). */
+    streaming?: boolean;
+    /**
+     * The text is the USER's own content (a local .md file preview), not agent
+     * output — remote images are legitimate there. Default false: everything in
+     * the transcript is untrusted.
+     */
+    trustContent?: boolean;
 }) {
-    const blocks = React.useMemo(() => parseBlocks(text), [text]);
-    const body = (
+    const shownText = useThrottledText(text, streaming);
+    const segments = React.useMemo(() => splitOptionSegments(shownText), [shownText]);
+    const components = React.useMemo(() => buildComponents(plainCode, trustContent), [plainCode, trustContent]);
+
+    // The element identity is what keeps a path-allowlist change (a context
+    // update consumed only by TextLeaf) from re-parsing the whole transcript.
+    return React.useMemo(() => (
         <div className="md">
-            {blocks.map((b, idx) => {
-                switch (b.type) {
-                    case 'heading': {
-                        const Tag = `h${Math.min(b.level, 6)}` as keyof React.JSX.IntrinsicElements;
-                        return (
-                            <Tag key={idx} className={`md-h md-h${b.level}`}>
-                                {renderInline(b.text)}
-                            </Tag>
-                        );
-                    }
-                    case 'paragraph':
-                        return (
-                            <p key={idx} className="md-p">
-                                {renderInline(b.text)}
-                            </p>
-                        );
-                    case 'code':
-                        return <CodeView key={idx} code={b.code} lang={b.lang} plain={plainCode} />;
-                    case 'list':
-                        return b.ordered ? (
-                            <ol key={idx} className="md-ol">
-                                {b.items.map((it, j) => (
-                                    <li key={j}>{renderInline(it)}</li>
-                                ))}
-                            </ol>
-                        ) : (
-                            <ul key={idx} className="md-ul">
-                                {b.items.map((it, j) => (
-                                    <li key={j}>{renderInline(it)}</li>
-                                ))}
-                            </ul>
-                        );
-                    case 'quote':
-                        return (
-                            <blockquote key={idx} className="md-quote">
-                                {renderInline(b.text)}
-                            </blockquote>
-                        );
-                    case 'options':
-                        return (
-                            <div key={idx} className="md-options">
-                                {b.items.map((it, j) =>
-                                    onOption ? (
-                                        <button
-                                            key={j}
-                                            type="button"
-                                            className="md-option md-option--clickable"
-                                            onClick={() => onOption(it)}
-                                        >
-                                            {renderInline(it)}
-                                        </button>
-                                    ) : (
-                                        <div key={j} className="md-option">
-                                            {renderInline(it)}
-                                        </div>
-                                    ),
-                                )}
-                            </div>
-                        );
-                    case 'table':
-                        return (
-                            <div key={idx} className="md-table-wrap">
-                                <table className="md-table">
-                                    <thead>
-                                        <tr>
-                                            {b.headers.map((h, j) => (
-                                                <th key={j}>{renderInline(h)}</th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {b.rows.map((row, ri) => (
-                                            <tr key={ri}>
-                                                {row.map((cell, ci) => (
-                                                    <td key={ci}>{renderInline(cell)}</td>
-                                                ))}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        );
-                    case 'hr':
-                        return <hr key={idx} className="md-hr" />;
-                    default:
-                        return null;
+            {segments.map((segment, index) => {
+                if (segment.kind === 'options') {
+                    return (
+                        <div key={index} className="md-options">
+                            {segment.items.map((item, j) => (onOption ? (
+                                <button key={j} type="button" className="md-option md-option--clickable" onClick={() => onOption(item)}>
+                                    {item}
+                                </button>
+                            ) : (
+                                <div key={j} className="md-option">{item}</div>
+                            )))}
+                        </div>
+                    );
                 }
+                return (
+                    <ReactMarkdown
+                        key={index}
+                        remarkPlugins={REMARK_PLUGINS}
+                        rehypePlugins={REHYPE_PLUGINS}
+                        urlTransform={safeUrlTransform}
+                        components={components}
+                    >
+                        {segment.text}
+                    </ReactMarkdown>
+                );
             })}
         </div>
-    );
-    return body;
+    ), [segments, components, onOption]);
 }
 
 /**
@@ -386,14 +284,12 @@ export function Markdown({ text, onOption, plainCode = false }: {
  *
  * **必须挂在会话根上（ChatList），不是每条消息各挂一个。** 第一版挂在 `Markdown`
  * 里，于是每条消息各自 `useSessionMessages`（订阅整个数组）+ 各扫一遍全量消息 →
- * 长会话 O(N²)；而且 agent 流式追加时数组 identity 变，N 个 provider 全部重算、
- * ctx identity 变又让全 transcript 每个 TextLeaf 的 useMemo 失效。白名单本来就是
- * **会话级**的事实，挂一次就够。
+ * 长会话 O(N²)。白名单本来就是**会话级**的事实，挂一次就够。
  */
 export function MarkdownPathProvider({ sessionId, children }: { sessionId: string; children: React.ReactNode }) {
     const { messages } = useSessionMessages(sessionId);
     // B-311: `messages` gets a new identity on every applyMessages, so the
-    // memo above rebuilt the context value on every incoming message even
+    // memo below rebuilt the context value on every incoming message even
     // though the allowlist almost never changes — and a new context value
     // re-renders EVERY TextLeaf/FilePathLink in the transcript. Keep the
     // previous value whenever the set of paths is unchanged. (Writing the ref
@@ -402,7 +298,7 @@ export function MarkdownPathProvider({ sessionId, children }: { sessionId: strin
     const cache = React.useRef<{ signature: string; value: { sessionId: string; allowlist: Set<string> } } | null>(null);
     const value = React.useMemo(() => {
         const allowlist = collectSessionFilePaths(messages);
-        const signature = `${sessionId}\u0000${[...allowlist].sort().join('\n')}`;
+        const signature = `${sessionId} :: ${[...allowlist].sort().join('\n')}`;
         if (cache.current?.signature === signature) return cache.current.value;
         const next = { sessionId, allowlist };
         cache.current = { signature, value: next };

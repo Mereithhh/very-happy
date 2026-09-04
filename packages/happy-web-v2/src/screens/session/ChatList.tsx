@@ -29,6 +29,7 @@ import {
     shouldSmoothJumpToLatest,
 } from './chatFollow';
 import { isHiddenToolCall } from './toolVisibility';
+import { dropDuplicateAttachmentEchoes } from './attachedFiles';
 import { countRunningSubagentCards, suppressSubagentPills } from './subagentPills';
 import { userAbortedAt } from './subagentAbort';
 import { currentTurnMessages, isAgentWorkLive } from '@/sync/agentLiveness';
@@ -68,9 +69,15 @@ export function ChatList({
         [messages],
     );
     const chronological = useMemo(
-        () => suppressSubagentPills([...messages].reverse().filter((message) =>
+        // B-355: the CLI's JSONL scanner used to forward a second copy of any
+        // message that carried an attachment. It has to be dropped HERE and not
+        // in the renderer: `buildChatRows` splits turns on `kind === 'user-text'`
+        // regardless of what renders, so leaving it in would still open an empty
+        // turn, inflate `rows.length` (unseen badge) and move the liveness
+        // window's start.
+        () => dropDuplicateAttachmentEchoes(suppressSubagentPills([...messages].reverse().filter((message) =>
             message.inputState === undefined &&
-            (message.kind !== 'tool-call' || !isHiddenToolCall(message.tool)))),
+            (message.kind !== 'tool-call' || !isHiddenToolCall(message.tool))))),
         [messages],
     );
     // B-260-P2: a background sub-agent keeps the turn live after the main
@@ -342,6 +349,7 @@ export function ChatList({
                                 showMeta={row.showMeta}
                                 sessionId={sessionId}
                                 thinkingDurationMs={row.thinkingDurationMs}
+                                attachments={row.attachments}
                             />
                         ),
                     )}

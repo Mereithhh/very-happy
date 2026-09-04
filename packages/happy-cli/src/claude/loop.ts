@@ -47,6 +47,13 @@ interface LoopOptions {
     onPermissionModeChange?: (mode: ClaudeSdkPermissionMode) => void
     /** B-262 batch 2: SDK-reported effective mode from system/init. */
     onEffectivePermissionMode?: (mode: string) => void
+    /**
+     * The exact string handed to the SDK for this turn, after batching and
+     * after attachment manifests were appended. The remote-mode JSONL scanner
+     * de-duplicates by content, so it must remember THIS string — not the
+     * per-message text the app sent (B-355).
+     */
+    onPromptFinalized?: (text: string) => void
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -98,7 +105,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
             }
 
             case 'remote': {
-                const reason = await claudeRemoteLauncher(session, opts.onPermissionModeChange, opts.onEffectivePermissionMode);
+                const reason = await claudeRemoteLauncher(session, opts.onPermissionModeChange, opts.onEffectivePermissionMode, opts.onPromptFinalized);
                 switch (reason) {
                     case 'exit':
                         return 0;

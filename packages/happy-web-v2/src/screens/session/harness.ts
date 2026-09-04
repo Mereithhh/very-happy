@@ -17,6 +17,12 @@ const HARNESS_BLOCK_RE =
 
 export function stripHarnessBlocks(text: string): string {
     if (!text || text.indexOf('<') === -1) return text;
+    // NOTE: `<attached_files>` is deliberately NOT stripped here. The CLI only
+    // ever appends it to a USER prompt, while this function also runs over
+    // agent prose — and in this repository agents discuss that very tag (specs,
+    // CLI source, this comment). Stripping it here silently destroyed body
+    // text, fenced examples included. It is removed on the user paths instead:
+    // `UserText`, `assistantView`, and the echo check in attachedFiles.ts.
     return text.replace(HARNESS_BLOCK_RE, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
