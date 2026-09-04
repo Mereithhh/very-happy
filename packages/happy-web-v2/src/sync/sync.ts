@@ -75,7 +75,8 @@ import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta, type MessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { preserveSessionBatchActivityFromStore } from './sessionSnapshot';
-import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
+import { downloadEncryptedAttachment, requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
+import { decryptBlob } from '@/encryption/blob';
 import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
@@ -617,6 +618,34 @@ class Sync {
         await this.notifyMessageSendFailed();
         this.failPendingOutboxMessages('Message failed to send in background after 30s. Please retry.');
         this.backgroundSendStartedAt = null;
+    }
+
+    /**
+     * Download + decrypt one attachment the user sent earlier (B-355).
+     *
+     * The blob key is derived PER SESSION (`getSessionBlobKey`), which is why
+     * callers must cache by `sessionId + ref` and never by `ref` alone.
+     * Returns null instead of throwing: a missing attachment thumbnail degrades
+     * to the plain file row, it never breaks the transcript.
+     */
+    async downloadAttachment(sessionId: string, ref: string): Promise<Uint8Array | null> {
+        if (!this.credentials) return null;
+        const blobKey = this.encryption.getSessionBlobKey(sessionId);
+        if (!blobKey) {
+            console.error(`[attachments] No blob key for session ${sessionId}`);
+            return null;
+        }
+        try {
+            const encrypted = await downloadEncryptedAttachment(this.credentials, sessionId, ref);
+            const decrypted = decryptBlob(encrypted, blobKey);
+            if (!decrypted) console.error(`[attachments] Failed to decrypt ${ref}`);
+            return decrypted;
+        } catch (error) {
+            // keep the reason visible: a 401 and a network failure look the same
+            // from the UI, and both used to be silent.
+            console.error(`[attachments] Download failed for ${ref}:`, error);
+            return null;
+        }
     }
 
     /**

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { appendStagedAttachmentsToPrompt, stageClaudeAttachments } from './attachmentContent';
+import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, stripAttachmentManifest } from './attachmentContent';
 import { MAX_CHAT_ATTACHMENT_SOURCE_BYTES } from '@/utils/attachmentLimits';
 
 const roots: string[] = [];
@@ -46,5 +46,38 @@ describe('Claude opaque attachments', () => {
             mimeType: 'application/octet-stream',
             name: 'large.bin',
         }], { happyHomeDir: root, sessionId: 's1' })).rejects.toThrow('50 MB');
+    });
+});
+
+describe('stripAttachmentManifest', () => {
+    const staged = [{
+        path: '/Users/jojo/.happy/uploads/chat/s1/resume-abc123.pdf',
+        name: 'resume.pdf',
+        mimeType: 'application/pdf',
+        size: 101268,
+    }];
+
+    it('is the exact inverse of appendStagedAttachmentsToPrompt', () => {
+        const original = '帮我看看这个人的简历';
+        const augmented = appendStagedAttachmentsToPrompt(original, staged);
+        expect(augmented).not.toBe(original);
+        expect(stripAttachmentManifest(augmented)).toBe(original);
+    });
+
+    it('leaves an ordinary prompt untouched', () => {
+        expect(stripAttachmentManifest('just a normal message')).toBe('just a normal message');
+    });
+
+    it('handles an attachment-only prompt (no user text)', () => {
+        const augmented = appendStagedAttachmentsToPrompt('', staged);
+        expect(stripAttachmentManifest(augmented)).toBe('');
+    });
+
+    it('closes the dedupe gap that produced the duplicate bubble (B-355)', () => {
+        // The app records the bare text; the SDK writes the augmented prompt to
+        // the JSONL. Both sides must reduce to the same key.
+        const fromApp = 'look at this';
+        const fromJsonl = appendStagedAttachmentsToPrompt(fromApp, staged);
+        expect(stripAttachmentManifest(fromApp)).toBe(stripAttachmentManifest(fromJsonl));
     });
 });

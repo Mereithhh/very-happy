@@ -8,6 +8,7 @@
  * instead of assuming the store's array order.
  */
 
+import { stripAttachedFiles } from '@/screens/session/attachedFiles';
 import type { Message, AgentTextMessage } from '@/sync/typesMessage';
 import type { AgentState } from '@/sync/storageTypes';
 import { compareMessagesNewestFirst } from '@/sync/messageOrder';
@@ -34,7 +35,10 @@ export function deriveAssistantExchange(messages: Message[]): AssistantExchange 
     for (const m of sorted) {
         if (m.inputState !== undefined) continue;
         if (userText === null && m.kind === 'user-text') {
-            const raw = m.displayText ?? m.text;
+            // B-355: this path bypasses stripHarnessBlocks entirely, so without
+            // this the voice assistant reads the <attached_files> manifest and
+            // its English instruction out loud.
+            const raw = stripAttachedFiles(m.displayText ?? m.text);
             // B-260: never surface (or speak) raw <task-notification> XML.
             const notification = parseTaskNotification(raw);
             userText = notification ? (notification.summary ?? '') : raw;
@@ -164,7 +168,7 @@ export function deriveTranscript(messages: Message[]): TranscriptEntry[] {
     for (const m of sorted) {
         if (m.inputState !== undefined) continue;
         if (m.kind === 'user-text') {
-            const raw = (m.displayText ?? m.text).trim();
+            const raw = stripAttachedFiles(m.displayText ?? m.text).trim();   // B-355, see above
             const notification = parseTaskNotification(raw);
             const text = notification ? (notification.summary ?? '') : raw;
             if (text) out.push({ id: m.id, role: 'user', text });

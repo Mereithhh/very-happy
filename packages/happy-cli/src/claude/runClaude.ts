@@ -44,7 +44,7 @@ import { bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { withAssistantDenylist } from '@/assistant/dispatcherTools';
 import { DEFAULT_CLAUDE_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
-import { CLAUDE_ATTACHMENT_KINDS } from './utils/attachmentContent';
+import { CLAUDE_ATTACHMENT_KINDS, stripAttachmentManifest } from './utils/attachmentContent';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -408,9 +408,21 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // with identical text still get through from the terminal side.
     const recentAppPromptsMaxAgeMs = 5 * 60 * 1000;
     const recentAppPrompts: Array<{ text: string; addedAt: number }> = [];
+    /**
+     * The single normalisation both sides of the dedupe go through (B-355).
+     *
+     * Trimming has to happen on BOTH sides or not at all: the manifest branch
+     * used to trim and the plain branch didn't, so a prompt with trailing
+     * whitespace (MCP `sessions_send`, webhooks and the Tanka bridge don't go
+     * through the composer's `text.trim()`) missed the dedupe and produced a
+     * duplicate bubble. Stripping the manifest is belt-and-braces now that
+     * `onPromptFinalized` records the post-augmentation string, but it keeps
+     * the comparison correct if a future path records the pre-augmentation one.
+     */
+    const promptDedupeKey = (text: string): string => stripAttachmentManifest(text).trim();
     const recordAppPrompt = (text: string) => {
         const now = Date.now();
-        recentAppPrompts.push({ text, addedAt: now });
+        recentAppPrompts.push({ text: promptDedupeKey(text), addedAt: now });
         const cutoff = now - recentAppPromptsMaxAgeMs;
         while (recentAppPrompts.length > 0 && recentAppPrompts[0].addedAt < cutoff) {
             recentAppPrompts.shift();
@@ -418,10 +430,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     };
     const consumeAppPrompt = (text: string): boolean => {
         const cutoff = Date.now() - recentAppPromptsMaxAgeMs;
+        const key = promptDedupeKey(text);
         for (let i = 0; i < recentAppPrompts.length; i++) {
             const entry = recentAppPrompts[i];
             if (entry.addedAt < cutoff) continue;
-            if (entry.text === text) {
+            if (entry.text === key) {
                 recentAppPrompts.splice(i, 1);
                 return true;
             }
@@ -678,11 +691,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     session.onUserMessage(async (message) => {
 
-        // Stamp the prompt so the remote-mode JSONL scanner can dedupe
-        // it later — the SDK is about to write this same text to disk
-        // with a real Claude uuid, and we don't want to re-forward it.
+        // NOTE: the JSONL-scanner dedupe is NOT stamped here any more (B-355).
+        // What the SDK writes to disk is the FINALISED prompt: the queue batches
+        // same-mode messages with `join('\n')` (MessageQueue2.collectBatch) and
+        // the remote launcher appends the attachment manifest afterwards, so a
+        // per-message stamp taken here missed the dedupe for every batch of ≥2
+        // and for every message carrying an attachment — each one came back as a
+        // duplicate bubble. `loop({ onPromptFinalized })` stamps the real string.
         if (message?.content?.text) {
-            recordAppPrompt(message.content.text);
             // Remote path (prompt sent from the app/web): attempt auto-title
             // on the first message of a title-less session. Fire-and-forget.
             titleGenerator.maybeGenerate(message.content.text);
@@ -1050,6 +1066,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Store reference for hook server callback
             currentSession = sessionInstance;
         },
+        // B-355: remember exactly what the SDK is about to write to the Claude
+        // transcript, so the JSONL scanner below recognises it as ours.
+        onPromptFinalized: recordAppPrompt,
         onAbort: resetCurrentModeDefaults,
         onPermissionModeChange: (mode) => {
             lastExplicitModeSwitchAt = Date.now();
