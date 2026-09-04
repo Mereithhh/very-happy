@@ -635,6 +635,14 @@ export const zhHans: TranslationStructure = {
             editN: ({ n, total }: { n: number; total: number }) => `第 ${n} / ${total} 处修改`,
             replaceAll: '全部替换',
             expandLines: ({ lines }: { lines: number }) => `展开全部（${lines} 行）`,
+            expandTableRows: ({ rows }: { rows: number }) => `展开全部（${rows} 行）`,
+            collapseTableRows: '收起表格',
+            tableRegion: '表格',
+            mermaidRender: '渲染图表',
+            mermaidLoading: '正在加载图表…',
+            mermaidSource: '源码',
+            mermaidDiagram: '图',
+            mermaidFailed: '这张图没能渲染出来，显示源码。',
             collapseLines: '收起详情',
             expandMessage: '展开全文',
         },
@@ -1647,6 +1655,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep04e: {
+                title: '长表格会折叠了，mermaid 能出图了',
+                summary: '很长的表格不再把回答的其余部分顶到看不见的地方；```mermaid 代码块现在是一张图，不是一段代码。',
+                tables: '超过约十七行的表格会折叠并给一个「展开全部」——常见的四到九行的表完全不受影响。展开之后滚动长表时，表头会吸在对话顶部，随时知道每一列是什么。表头单元格现在也会被屏幕阅读器读成列头。',
+                mermaid: '流程图、时序图等直接在对话里出图，配色跟随主题，可随时切回源码。语法写错的图会安静地显示源码而不是报错图。mermaid 是个很大的库，所以只有真的出现图表时才会下载——在省流量或慢网络下给你一个按钮，而不是替你下载。',
+            },
             sep04d: {
                 title: '「更新」按钮现在真的会换版本',
                 summary: '点了更新会刷新页面，但可能刷完还停在同一个版本：看不到更新说明，而且十分钟内不会再提示你更新。',

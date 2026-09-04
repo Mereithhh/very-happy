@@ -44,6 +44,22 @@ export function shouldCollapseCode(lineCount: number): boolean {
     return shouldCollapse(lineCount, CODE_VISIBLE_LINES, 5);
 }
 
+/**
+ * Table clamp (B-357). The gate is DATA ROWS; the visible height is CSS
+ * (`min(60vh, 480px)`) so a phone and a desktop each get a sensible cap without
+ * a second constant — same two-stage shape as code blocks (23-line gate, 420px cap).
+ *
+ * 12 + slack 4 means collapsing actually starts at **17 rows**. Measured over
+ * 1,726 real tables in local transcripts: p50 4, p90 9, p95 11, p99 18, max 67
+ * — so this leaves 98.7% of tables untouched and only folds the 22 tail cases.
+ * A lower gate would fold tables people want to read whole.
+ */
+export const TABLE_VISIBLE_ROWS = 12;
+
+export function shouldCollapseTable(rowCount: number): boolean {
+    return shouldCollapse(rowCount, TABLE_VISIBLE_ROWS, 4);
+}
+
 /** User bubble clamp: ~10 visible lines (B-102). */
 export const BUBBLE_VISIBLE_LINES = 10;
 

@@ -28,7 +28,7 @@ describe('GFM tables', () => {
     it('renders a table that follows a paragraph with NO blank line (the reported bug)', () => {
         const html = md('结论如下：\n| a | b |\n| --- | --- |\n| 1 | 2 |');
         expect(html).toContain('<table');
-        expect(html).toContain('<th>a</th>');
+        expect(html).toContain('<th scope="col">a</th>');
         expect(html).toContain('<td>1</td>');
         // the old renderer swallowed the whole thing into one <p>
         expect(html).not.toContain('| --- |');
@@ -236,5 +236,34 @@ describe('a <br> inside an inline code span stays literal', () => {
         const html = md('| a |\n| --- |\n| `x<br>y` |');
         expect(html).toContain('&lt;br&gt;');
         expect(html).not.toContain('<code class="md-code-inline">x<br/>y</code>');
+    });
+});
+
+describe('table collapse and header semantics (B-357)', () => {
+    const table = (rows: number) => ['| a | b |', '| --- | --- |', ...Array.from({ length: rows }, (_, i) => `| ${i} | x |`)].join('\n');
+
+    it('adds scope="col" to header cells', () => {
+        expect(md(table(2))).toContain('<th scope="col">a</th>');
+    });
+
+    it('leaves ordinary tables alone — p50 is 4 rows and p90 is 9', () => {
+        for (const rows of [4, 9, 16]) {
+            const html = md(table(rows));
+            expect(html, `${rows} rows must not collapse`).not.toContain('md-tbl-body--collapsed');
+            expect(html).not.toContain('md-tbl-expand');
+        }
+    });
+
+    it('collapses only the tail (starts at 17 rows) and says how many there are', () => {
+        const html = md(table(17));
+        expect(html).toContain('md-tbl-body--collapsed');
+        expect(html).toContain('md-tbl-fade');
+        expect(html).toContain('md-tbl-expand');
+        expect(html).toContain('17');
+    });
+
+    it('counts only body rows, not the header', () => {
+        // 16 body rows + 1 header row: still under the gate
+        expect(md(table(16))).not.toContain('md-tbl-expand');
     });
 });

@@ -1,0 +1,43 @@
+/* mermaid 图（B-358）。图坐在 --bg-1 台阶上，配色由 themeVariables 从 token 读。 */
+.mmd {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.mmd-svg {
+  max-width: 100%;
+  padding: var(--sp-3);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  /* 大图按比例缩到容器宽度，而不是横向滚动 —— 一条 transcript 只有一个滚动方向 */
+  overflow: hidden;
+}
+.mmd-svg svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.mmd-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-13);
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+}
+.mmd-action:hover {
+  color: var(--text);
+  background: var(--bg-2);
+}
+.mmd-note {
+  font-size: var(--fs-13);
+  color: var(--text-faint);
+}
