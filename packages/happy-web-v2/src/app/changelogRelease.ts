@@ -41,6 +41,10 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     id: '2026-09-04-markdown-and-attachments',
     date: '2026-09-04',
     buildVersion: __APP_VERSION__,
+    // The Web half shipped in e38b8602; 0.2.119 carries the CLI half of the same
+    // fix — the JSONL scanner's dedupe key. The Web already hides the duplicate
+    // for every CLI version (iron rule 14), so this only stops it being produced.
+    cliVersion: '0.2.119',
     titleKey: 'changelog.releases.sep04c.title',
     summaryKey: 'changelog.releases.sep04c.summary',
     itemKeys: [
