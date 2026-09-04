@@ -230,3 +230,11 @@ describe('table cell line breaks reach nested marks', () => {
         expect(html).toContain('<strong>line1<br/>line2</strong>');
     });
 });
+
+describe('a <br> inside an inline code span stays literal', () => {
+    it('matches GitHub: code spans are content, not markup', () => {
+        const html = md('| a |\n| --- |\n| `x<br>y` |');
+        expect(html).toContain('&lt;br&gt;');
+        expect(html).not.toContain('<code class="md-code-inline">x<br/>y</code>');
+    });
+});

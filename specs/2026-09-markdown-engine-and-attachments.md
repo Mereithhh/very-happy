@@ -1,6 +1,6 @@
 # Markdown 引擎替换（GFM 表格）与用户附件呈现
 
-> 状态：Final（v4，三轮对抗式 review 后定稿；实现与实证数据已回填）
+> 状态：Final（v5，四轮对抗式 review 后定稿；实现与实证数据已回填）
 > 日期：2026-09-04 ｜ 关联 backlog：B-354（markdown 引擎/表格）、B-355（附件呈现与重复气泡）
 > 触发：Owner 截图报「UI 对话模式（claude sdk、pi）markdown 没办法很好地渲染 table，
 > 并且输入文件的渲染效果也不好」
@@ -264,7 +264,20 @@ a11y：`aria-label` 必填（无名 landmark 是反模式），`tabIndex` **只�
 - 附件链路本身**只在 Claude 会话上存在**（`sync.ts` 的 `supportsAttachments = !flavor || flavor === 'claude'`，
   pi/codex/gemini/openclaw 一律弹窗拒绝）。markdown 渲染则是四种 runner 共用的。
 
-### 一个 PR、两个可独立 revert 的 commit（替代「拆两批」）
+### 回滚粒度（**必须与落地方式一起读**）
+
+> ⚠️ **`scripts/land-pr.sh` 用的是 `gh pr merge --squash`**（`land-pr.sh:106`，main 的历史逐条单亲）。
+> 一旦 squash，下面这四个 commit 在 main 上会变成一个，**「引擎翻车只 revert 引擎」这条恢复
+> 路径就不存在了**——回滚单位重新变回「整个特性」。这正是 review 当初提议「拆两批发布」
+> 想避免的状态，所以落地前必须在两条里**明确选一条**，不能默认：
+>
+> 1. **接受**：回滚单位 = 整个特性（引擎出问题连附件修复一起回退）。什么都不用改，
+>    但 Owner 要知道自己买的是什么。
+> 2. **保住 per-commit revert**：改用 `gh pr merge --rebase` 落地（仍是线性历史）。
+>    代价：commit ① 里那个含 NUL 字节的 `attachmentPreview.ts` blob 会永久留在 main 的
+>    历史里（`git blame`/`bisect` 到那一段失效），所以要先 `git rebase -i` 把它 amend 掉。
+>
+> 本 spec 不替 Owner 做这个取舍；下面的三条约束只在选 2 时才有意义。
 
 review 建议拆成两批发布以隔离风险；这里改用**提交粒度**，并接受三条硬约束把它补成等价：
 
@@ -309,8 +322,22 @@ commit 划分：
 `normalizeForCompare`）；`safeUrlTransform` 放行 `//evil.example/x`（无 scheme 走了「相对
 URL」分支），与「白名单」的说法不符。
 
-**方法论沉淀**：视觉改动的验收断言**不能只断言类名/属性存在**——类存在与效果可见是两回事，
-第 2 条正是这样溜过去的。有渐变/遮挡/层叠的改动要采样像素并留修前修后两份。
+**方法论沉淀（两条，都值得进 `docs/PROCESS.md`）**：
+1. 视觉改动的验收断言**不能只断言类名/属性存在**——类存在与效果可见是两回事，第 2 条正是
+   这样溜过去的。有渐变/遮挡/层叠的改动要采样像素并留修前修后两份。
+2. 源码断言测试有**两类假绿**，`mutation-check` 只抓得到第二类：
+   ① 断言的字符串命中了**同一段里解释这条规则的注释**（本次实测踩到：`toContain('timer.current = null')`
+   命中了紧邻的注释）→ 断言前先剥注释；② 断言太松，被 mangle 后的标识符满足
+   （`toContain('useCallback')` 会被 `useCallbackXX` 满足）或被**同文件另一处**满足
+   （`toContain('retried.current')` 被下一行的 `retried.current = true` 满足）→ 断言要带上定界符。
+
+**已知并接受的两个残余（有意识地接受，不是没看见）**：
+- **表头行的滚动阴影仍被遮住**：删掉 `.md-table` 的背景之后，`th { background: var(--bg-2) }`
+  是同一个遮挡机制往上挪了一层。像素实测：正文行有渐变（浅 `250→191`、深 `23→11`），
+  表头那条带是平的。行数少的表看起来像渐变被啃掉一块。彻底修要把渐变搬到画在内容之上的
+  sticky 伪元素，收益不抵复杂度。
+- **`--bg-1` 面板上的表格没有表面台阶**：`PermissionCard`/`BtwPanel`/`FsFileViewer` 本身就是
+  `--bg-1`，包裹器与它同色，只剩 1px `--line` 区分。这是 token 台阶的既有事实，不是本次引入。
 
 ## 风险
 

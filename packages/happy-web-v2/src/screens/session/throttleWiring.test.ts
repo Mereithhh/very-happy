@@ -53,3 +53,16 @@ describe('streaming throttle + parse memo wiring', () => {
         expect(component.slice(0, component.indexOf('\n}'))).not.toContain('useContext');
     });
 });
+
+describe('MessageView memo comparator covers every prop', () => {
+    it('a new prop must be added to the comparator (TypeScript will not tell you)', () => {
+        const source = read('./MessageView.tsx');
+        const propsBlock = source.slice(source.indexOf('}: {', source.indexOf('export const MessageView')));
+        const props = [...propsBlock.slice(0, propsBlock.indexOf('\n}')).matchAll(/^\s{4}(\w+)\??:/gm)].map((m) => m[1]);
+        expect(props.length).toBeGreaterThan(3);
+        const comparator = source.slice(source.lastIndexOf('}, (prev, next) => ('));
+        for (const prop of props) {
+            expect(comparator, `${prop} is not compared — the row would render stale content`).toContain(`prev.${prop}`);
+        }
+    });
+});

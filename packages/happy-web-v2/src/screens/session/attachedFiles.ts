@@ -94,6 +94,9 @@ export function hasAttachedFilesBlock(text: string): boolean {
  * 已知边界：分页加载时如果「自己那条」还在上一页，条件 3 找不到前驱 → 这条回显会照常
  * 显示（剥掉 XML、带清单渲染出的附件条），于是屏幕上短暂出现**两条**附件条——自己那条
  * 来自 `file` 事件、回显那条来自清单。点「加载更早」之后归位。显示层的软退化，不影响数据。
+ *
+ * 另一个刻意不修的极端 case：用户正文里**逐字包含**那句英文说明时，两侧归一化后不相等，
+ * 回显不会被丢。构造性极强，代价只是多一条气泡。
  */
 export function isDuplicateAttachmentEcho(message: Message, earlier: readonly Message[]): boolean {
     if (message.kind !== 'user-text') return false;

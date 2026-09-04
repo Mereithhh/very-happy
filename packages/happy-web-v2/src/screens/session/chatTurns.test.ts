@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Message } from '@/sync/typesMessage';
 import { buildChatRows, buildLeafRows, extractUserAttachments } from './chatTurns';
@@ -215,5 +216,33 @@ describe('extractUserAttachments (B-355)', () => {
         const messages = [user('u1', 1), tool('t1', 2), agent('a1', 3)];
         const { messages: out } = extractUserAttachments(messages);
         expect(out).toBe(messages);
+    });
+});
+
+describe('attachments are only attached to a message that renders a bubble', () => {
+    const notification: Message = {
+        kind: 'user-text', id: 'n1', localId: null, createdAt: 5,
+        text: '<task-notification><summary>done</summary><status>completed</status></task-notification>',
+    } as Message;
+
+    it('a task-notification owner keeps the file visible as a tool row instead', () => {
+        const { messages: kept, attachments } = extractUserAttachments([fileEvent('f1', 4), notification]);
+        expect(attachments.size).toBe(0);
+        expect(kept.map((m) => m.id)).toEqual(['f1', 'n1']);
+    });
+
+    it('a supervisor tick owner does the same (it renders a card, not a bubble)', () => {
+        const tick: Message = {
+            kind: 'user-text', id: 'k1', localId: null, createdAt: 5,
+            // same shape supervisorCards.test.ts uses for a report with no items
+            text: readFileSync(new URL('./__fixtures__/vh-tick.txt', import.meta.url), 'utf8'),
+        } as Message;
+        const { attachments } = extractUserAttachments([fileEvent('f1', 4), tick]);
+        expect(attachments.size).toBe(0);
+    });
+
+    it('an ordinary user message still gets them', () => {
+        const { attachments } = extractUserAttachments([fileEvent('f1', 4), user('u1', 5)]);
+        expect(attachments.get('u1')?.map((m) => m.id)).toEqual(['f1']);
     });
 });

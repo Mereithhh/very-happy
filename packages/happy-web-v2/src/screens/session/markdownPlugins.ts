@@ -62,7 +62,12 @@ function splitBreaks(node: Element) {
             : (child as { type: string; value?: string }).type === 'raw' ? (child as { value: string }).value
                 : null;
         if (value === null || !BR_RE.test(value)) {
-            if (child.type === 'element') splitBreaks(child);
+            // Same judgement as the fenced-example rule in optionsBlock.ts: text
+            // inside a code span is content, not markup. GitHub keeps `x<br>y`
+            // literal there too.
+            if (child.type === 'element' && child.tagName !== 'code' && child.tagName !== 'pre') {
+                splitBreaks(child);
+            }
             next.push(child);
             continue;
         }
