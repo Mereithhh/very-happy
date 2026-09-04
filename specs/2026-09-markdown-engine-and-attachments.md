@@ -1,6 +1,6 @@
 # Markdown 引擎替换（GFM 表格）与用户附件呈现
 
-> 状态：Final（v5，四轮对抗式 review 后定稿；实现与实证数据已回填）
+> 状态：Shipped（commit `e38b8602`，2026-09-04；五轮对抗式 review，实证数据已回填）
 > 日期：2026-09-04 ｜ 关联 backlog：B-354（markdown 引擎/表格）、B-355（附件呈现与重复气泡）
 > 触发：Owner 截图报「UI 对话模式（claude sdk、pi）markdown 没办法很好地渲染 table，
 > 并且输入文件的渲染效果也不好」
@@ -403,6 +403,19 @@ URL」分支），与「白名单」的说法不符。
 - [x] [①] 源码里没有 NUL 字节（`file` 报 UTF-8 text）
 - [x] 门禁全绿：wire build+test(31)、web vitest(2325)/build/tsc 零错误、CLI test(1865)+运行冒烟、server tsc
 
-## 留真机验证项
+## 上线实证（2026-09-04）
+
+- PR #254 squash 合入 `main@e38b8602`；deploy run 33835860992（`target=all`、`rollout=switch`）
+  `conclusion=success`。无 migration 变更，因此不需要 `VH_RELEASE_MIGRATIONS_REVIEWED`。
+- `check-shipped` 从**线上 entry 读到的 release SHA = e38b8602**，五个 needle
+  （`md-table-wrap` / `is-scrollable` / `ua-thumb` / `md-img-chip` / `attached_files`）全部命中；
+  `/health` 返回 ok。
+- **本次没能做的一项**：登录态下的真实 transcript 目视。本机 Chrome profile 未登录
+  veryhappy.dev，而输入密码不在 agent 的可做范围内——所以这一项转 `docs/verify-queue.md`
+  的 V-142，并写清了「为什么浏览器验不了」。组件层与 CSS 层已用真实 Chromium 渲染真组件验过
+  （390/900px × 深浅主题、控制台零错误、像素级采样滚动阴影）。
+
+## 留真机验证项（→ V-142）
 
 - 触屏上表格横向滚动与页面纵向滚动的手势冲突（桌面浏览器量不出来）。
+- 登录态下真实会话里的表格与附件观感（agent 无法登录）。
