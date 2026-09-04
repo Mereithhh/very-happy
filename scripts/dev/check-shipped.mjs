@@ -13,7 +13,10 @@
  *     回退成 index.html，HTTP 200 + 一份 HTML，grep 自然是 0。所以本地 dist 里的
  *     chunk 名**不能照抄到线上**（`__APP_VERSION__` 参与内容哈希，CI 和本地不同名），
  *     而且任何看起来像 HTML 的响应都必须当作「这个资产不存在」报出来，不能计入未命中。
- *  ③ SHA 必须**从线上 entry 读**，不是填你部署的那个——别的会话在你上面发一版，
+ *  ③ **needle 不能用函数名或变量名**：生产构建会把它们压掉，`shouldDeferMermaid` 这种
+ *     一定 MISSING 而功能其实上线了（2026-09-04 实踩）。能钉住的是 **CSS 类名**与
+ *     **字符串字面量**（i18n key、事件名、storage key、`'slow-2g'` 这类判据常量）。
+ *  ④ SHA 必须**从线上 entry 读**，不是填你部署的那个——别的会话在你上面发一版，
  *     写死的 SHA 就再也匹配不到。不匹配时先查祖先关系
  *     （`git merge-base --is-ancestor <yours> <live>`）再下结论。
  *
