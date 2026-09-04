@@ -103,9 +103,20 @@ pnpm -C packages/happy-server exec vitest run
   （B-293 第一遍就少算了约 40%，把「常态就有按钮点不到」误判成「只有连接期才溢出」）。
   复制真实 CSS 到一次性 harness 量 `scrollWidth - clientWidth` 与每个按钮的越界量，修前修后各留一份。
 - 浏览器判断「发布没生效」前先保留现场：在原标签页记录实际加载的 entry/CSS URL、
-  目标元素 computed style 与关键 CSS variable，并对比服务器当前 entry；再用普通 reload
-  验证版本迁移。只有证据留存后才 hard refresh / unregister 做恢复；强刷后正常不能单独
-  作为发布成功证据。
+  目标元素 computed style 与关键 CSS variable，并对比服务器当前 entry。只有证据留存后才
+  hard refresh / unregister 做恢复；强刷后正常不能单独作为发布成功证据。
+- **前端「版本」由 service worker 决定，不由 reload 决定**（B-356 实测，推翻本条原先「用普通
+  reload 验证版本迁移」的写法）：`index.html` 在 precache 里，workbox 又把所有 navigation 绑到
+  `createHandlerBoundToURL("/index.html")`，于是 `location.reload()` 拿到的是**当时控制页面那个
+  worker** 缓存里的 shell、与服务器无关；而 `registration.update()` 在新 worker install 完成时就
+  resolve，activate/`clients.claim()` 还没发生。换 shell 必须等 `controllerchange`（机制与兜底见
+  `packages/happy-web-v2/src/app/swTakeover.ts`）。两条推论：写更新链路时别信「reload 自己会取到
+  新 shell」（旧注释就是这么断言的，实测停在旧 shell）；验收时普通 reload **不是**「版本已迁移」
+  的证据，要看实际加载的 entry 名与 `navigator.serviceWorker.controller`。
+- 跨两次部署才看得见的改动（更新链路、SW 缓存）用**两个真实构建 + 本地静态 server + 脚本化
+  Chromium**验，别拿生产当实验台：先发构建 A 让 SW 装好，再把目录换成构建 B（保留 A 的 assets，
+  模拟真实部署留着旧 hashed chunk），跑「点更新」的等价序列，读每次 document 实际加载的 entry。
+  B-356 用它在十分钟内同时证伪了旧实现（停在 A）与证实了新实现（到 B）。
 - 发布成功必须闭环核对线上版本身份与行为：运行镜像/静态资源对应目标 SHA、`/health`
   正常，并验证本次改动的关键真实路径；包含 CLI/daemon handover 时再确认 daemon 版本与
   RPC 重注册。workflow 绿或普通页面能打开都不能单独作为发布成功证据。
