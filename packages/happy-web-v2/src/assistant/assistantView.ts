@@ -8,6 +8,7 @@
  * instead of assuming the store's array order.
  */
 
+import { extractOptions } from '@/screens/session/optionsBlock';
 import { stripAttachedFiles } from '@/screens/session/attachedFiles';
 import type { Message, AgentTextMessage } from '@/sync/typesMessage';
 import type { AgentState } from '@/sync/storageTypes';
@@ -56,35 +57,24 @@ export function deriveAssistantExchange(messages: Message[]): AssistantExchange 
 }
 
 /**
- * B-059 follow-up: assistant replies may carry a machine-readable options
- * block (the CLAUDE.md template asks for it when posing a multiple choice):
+ * B-059 follow-up: assistant replies may carry a machine-readable options block
+ * (the CLAUDE.md template asks for it when posing a multiple choice). The UI
+ * renders these as tappable answer buttons; the block must never reach the
+ * visible text or the TTS queue (spoken XML is noise).
  *
- *   <options>
- *   <option>先派 B-051 收尾发布</option>
- *   <option>先做稳定性三件套</option>
- *   </options>
- *
- * The UI renders these as tappable answer buttons; the block must never reach
- * the visible text or the TTS queue (spoken XML is noise).
+ * B-354: the parser moved to `screens/session/optionsBlock.ts` and is now shared
+ * with `<Markdown>`. The local global-regex version had two bugs the shared one
+ * does not: it also stripped `<options>` examples that were inside a fenced code
+ * block (and the system prompt's "Do not wrap it into a codeblock" is evidence
+ * models write exactly that), and it kept only the first `<option>` when several
+ * sat on one line.
  */
 export interface ExtractedOptions {
     text: string;
     options: string[];
 }
 
-export function extractOptions(raw: string): ExtractedOptions {
-    const options: string[] = [];
-    const text = raw
-        .replace(/<options>([\s\S]*?)<\/options>/g, (_all, inner: string) => {
-            for (const m of inner.matchAll(/<option>([\s\S]*?)<\/option>/g)) {
-                const t = m[1].trim();
-                if (t) options.push(t);
-            }
-            return '';
-        })
-        .trim();
-    return { text, options };
-}
+export { extractOptions };
 
 /**
  * Agent replies that arrived AFTER the baseline (the ids present when the

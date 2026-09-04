@@ -59,7 +59,7 @@ export const LiveStreamBlocks = memo(function LiveStreamBlocks({ blocks: allBloc
                                     <span>{t('session.chat.thinkingLabel')}</span>
                                 </div>
                                 <div className="msg-thinking-body">
-                                    <Markdown text={block.text} plainCode />
+                                    <Markdown text={block.text} plainCode streaming />
                                     {streaming && <span className="ls-cursor" aria-hidden />}
                                 </div>
                             </div>
@@ -69,7 +69,7 @@ export const LiveStreamBlocks = memo(function LiveStreamBlocks({ blocks: allBloc
                 return (
                     <div key={block.key} className="msg msg--agent">
                         <div className="msg-agent-text ls-text">
-                            <Markdown text={block.text} plainCode />
+                            <Markdown text={block.text} plainCode streaming />
                             {streaming && <span className="ls-cursor" aria-hidden />}
                         </div>
                     </div>

@@ -2,44 +2,69 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+  /* a table/code block must scroll inside its own container, not push the row */
+  min-width: 0;
 }
 .md > *:first-child {
   margin-top: 0;
 }
-.md-p {
+/* react-markdown emits one fragment per top-level segment; keep the same
+   vertical rhythm the old block list had. */
+.md > p,
+.md > ul,
+.md > ol,
+.md > blockquote,
+.md > table,
+.md > hr {
   margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
-.md-h {
+.md p {
+  margin: 0;
+  /* B-354: single newlines are real <br> now (remark-breaks). `pre-wrap` on top
+     of that double-spaced every soft-wrapped paragraph (measured 45px → 67px in
+     Chromium for the same two lines), so white-space stays `normal` here and in
+     the blockquote below. */
+  overflow-wrap: break-word;
+}
+.md p + p {
+  margin-top: var(--sp-3);
+}
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
   margin: var(--sp-2) 0 0;
   font-weight: 650;
   line-height: 1.3;
 }
-.md-h1 { font-size: var(--fs-20); }
-.md-h2 { font-size: var(--fs-16); }
-.md-h3 { font-size: var(--fs-14); }
-.md-h4, .md-h5, .md-h6 { font-size: var(--fs-13); color: var(--text-dim); }
-.md-ul,
-.md-ol {
+.md h1 { font-size: var(--fs-20); }
+.md h2 { font-size: var(--fs-16); }
+.md h3 { font-size: var(--fs-14); }
+.md h4, .md h5, .md h6 { font-size: var(--fs-13); color: var(--text-dim); }
+.md ul,
+.md ol {
   margin: 0;
   padding-left: var(--sp-5);
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
 }
-.md-ul li,
-.md-ol li {
-  word-break: break-word;
+.md li {
+  overflow-wrap: break-word;
 }
-.md-quote {
+/* nested lists sit tight under their parent item */
+.md li > ul,
+.md li > ol {
+  margin-top: var(--sp-1);
+}
+/* a loose list wraps each item in <p>; don't let that add a second gap */
+.md li > p {
+  margin: 0;
+}
+.md blockquote {
   margin: 0;
   padding: var(--sp-1) var(--sp-3);
   border-left: 3px solid var(--line-2);
   color: var(--text-dim);
-  white-space: pre-wrap;
 }
-.md-hr {
+.md hr {
   border: none;
   border-top: 1px solid var(--line);
   margin: var(--sp-1) 0;
@@ -60,6 +85,68 @@
 }
 .md-link:hover {
   text-decoration: none;
+}
+
+/* GFM task lists */
+.md ul.contains-task-list {
+  padding-left: var(--sp-2);
+  list-style: none;
+}
+.md li.task-list-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+.md li.task-list-item input[type='checkbox'] {
+  accent-color: var(--text-faint);
+  margin: 0;
+  flex: none;
+}
+
+/* GFM footnotes */
+.md .footnotes {
+  border-top: 1px solid var(--line);
+  padding-top: var(--sp-2);
+  font-size: var(--fs-13);
+  color: var(--text-dim);
+}
+.md .footnotes ol {
+  padding-left: var(--sp-4);
+}
+.md .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.md sup a {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+/* images: untrusted agent text renders a chip that fetches nothing (see
+   Markdown.tsx `trustContent`); a trusted .md preview renders the real thing. */
+.md-img {
+  max-width: 100%;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+}
+.md-img-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-13);
+  color: var(--text-dim);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  word-break: break-all;
 }
 
 /* options block (<options><option>..) */
@@ -87,23 +174,71 @@
   background: var(--bg-2);
 }
 
-/* tables — scroll horizontally inside their own container */
+/* ── tables ────────────────────────────────────────────────────────────────
+ * Wrapping beats scrolling: cells wrap, and the wrapper only scrolls when the
+ * columns genuinely do not fit. Measured in headless Chromium at a 390px
+ * viewport (touch context), 3 columns with two prose cells:
+ *   before (`white-space: nowrap`, `width: 100%`): table 699px, overflow 335px
+ *   after  (this rule):                            table 364px, overflow 0px
+ * and at 500px, 225px → 0px. A 12-column table still overflows (379px at 390px)
+ * and scrolls, which is what the container is for. `width: max-content` was the
+ * first attempt and is WRONG here: it sums the max-content widths of the clamped
+ * columns and reintroduces exactly the horizontal scroll this is avoiding.
+ * `min-width: 100%` keeps a narrow table stretched to the column.
+ *
+ * The wrapper carries its OWN surface on purpose: <Markdown> is used on three
+ * different bg steps (transcript --bg-0, permission/btw/file panels --bg-1/2),
+ * and the scroll-shadow gradient needs one known opaque colour to fade from.
+ */
 .md-table-wrap {
   overflow-x: auto;
+  background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
+  max-width: 100%;
+}
+.md-table-wrap:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+/* scroll shadows: the `local` layer scrolls with the content and uncovers the
+   `scroll` layer (pinned to the box) only when there is more content that way. */
+.md-table-wrap.is-scrollable {
+  background-image:
+    linear-gradient(to right, var(--bg-1), color-mix(in srgb, var(--bg-1) 0%, transparent)),
+    linear-gradient(to left, var(--bg-1), color-mix(in srgb, var(--bg-1) 0%, transparent)),
+    linear-gradient(to right, var(--scrim), color-mix(in srgb, var(--scrim) 0%, transparent)),
+    linear-gradient(to left, var(--scrim), color-mix(in srgb, var(--scrim) 0%, transparent));
+  background-position: left center, right center, left center, right center;
+  background-repeat: no-repeat;
+  background-size: 24px 100%, 24px 100%, 10px 100%, 10px 100%;
+  background-attachment: local, local, scroll, scroll;
 }
 .md-table {
+  /* NOT max-content — see the note above. */
+  width: auto;
+  min-width: 100%;
   border-collapse: collapse;
-  width: 100%;
   font-size: var(--fs-13);
+  background: var(--bg-1);
 }
 .md-table th,
 .md-table td {
   text-align: left;
   padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--line);
-  white-space: nowrap;
+  white-space: normal;
+  /* `overflow-wrap`, NOT `word-break: break-word`: the latter is spec'd as
+     `overflow-wrap: anywhere`, which lets a cell's min-content width collapse to
+     ONE CHARACTER. Measured at 390px, a 12-column table then crushed every cell
+     into a vertical letter stack ("c/o/l/1") instead of scrolling. With
+     overflow-wrap the min-content width stays "the longest word", so a table
+     with too many columns overflows and the wrapper scrolls, which is what the
+     scroll container is there for. */
+  word-break: normal;
+  overflow-wrap: break-word;
+  /* one long prose column must wrap instead of widening the table */
+  max-width: min(32ch, 60vw);
 }
 .md-table th {
   background: var(--bg-2);

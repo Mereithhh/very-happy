@@ -187,7 +187,11 @@ describe('extractOptions', () => {
         const raw = 'A?\n<options><option>x</option><option> </option></options>\nB?\n<options><option>y</option></options>';
         const res = extractOptions(raw);
         expect(res.options).toEqual(['x', 'y']);
-        expect(res.text).toBe('A?\n\nB?');
+        // B-354: the shared parser joins the surviving prose segments with a
+        // single newline instead of leaving the blank line the removed block
+        // used to occupy. Spoken output is identical; pinned so the change is
+        // deliberate rather than a silent drift.
+        expect(res.text).toBe('A?\nB?');
     });
 });
 
