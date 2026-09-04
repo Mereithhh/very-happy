@@ -101,7 +101,11 @@ pnpm -C packages/happy-server exec vitest run
   **窄屏量尺寸必须按 `pointer: coarse` 的真实控件尺寸量**（`.sb-icon-btn` 38px、`.vh-back` 40px、
   `.ch-icon` 36px，而不是桌面的 30/32px）：桌面浏览器默认是 fine pointer，直接量会显著低估溢出
   （B-293 第一遍就少算了约 40%，把「常态就有按钮点不到」误判成「只有连接期才溢出」）。
-  复制真实 CSS 到一次性 harness 量 `scrollWidth - clientWidth` 与每个按钮的越界量，修前修后各留一份。
+  量的时候用 `node scripts/dev/css-probe.mjs <scenario.mjs>`（真实 CSS + 真 Chromium + 可采像素），
+  别再现搭 harness；修前修后各跑一份留证。
+  **而且「类名/属性存在」不等于「效果可见」**：B-354 的表格滚动阴影四层渐变被表格自己的不透明
+  背景整个盖住，而当时的验收断言的是 `is-scrollable`/`tabindex`/`aria-label` **存在**——三样都真的
+  生效，效果却是零，像素采样才发现（`css-probe` 的 `pixels`）。有渐变、遮挡或层叠的改动一律采像素。
 - 浏览器判断「发布没生效」前先保留现场：在原标签页记录实际加载的 entry/CSS URL、
   目标元素 computed style 与关键 CSS variable，并对比服务器当前 entry。只有证据留存后才
   hard refresh / unregister 做恢复；强刷后正常不能单独作为发布成功证据。

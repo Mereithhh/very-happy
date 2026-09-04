@@ -38,6 +38,20 @@ node scripts/dev/mutation-check.mjs --pkg happy-web-v2 \
   --mutate "packages/happy-web-v2/src/screens/sessions/Sidebar.tsx:key: 'connect-machine'"
 ```
 
+视觉/CSS 改动要在真实浏览器里量（AGENTS「验收」是硬要求），别现搭 harness：
+
+```bash
+# 真实 CSS + 真 Chromium；scenario 里写 measure()，需要时写 pixels() 采像素
+node scripts/dev/css-probe.mjs path/to/scenario.mjs --out /tmp/shots
+```
+
+「这个功能该不该做」先量语料再决定：
+
+```bash
+node scripts/dev/corpus-stats.mjs                # 本机 transcript 里 agent 输出的 markdown 形态
+node scripts/dev/corpus-stats.mjs --samples math # 看命中样本（数学那一项几乎全是假阳性）
+```
+
 Vitest runs happy-web-v2 in the **node** environment, so a test that renders a
 real component must call `installBrowserTestGlobals()` from
 `@/testing/browserTestGlobals` before importing it (dynamically — static imports

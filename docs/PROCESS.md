@@ -21,6 +21,12 @@
 - **单写者纪律**：backlog.md 只由主 agent（或 Owner）写；Owner 在对话里说的需求，
   主 agent 当场记入（不靠记忆）；实现 agent 只读不写。
 - 产品内 task board 管"会话/任务运行态"，backlog.md 管"产品迭代项"——两者不混。
+- **「这个功能该不该做」先量语料，别拍脑袋**：`node scripts/dev/corpus-stats.mjs`
+  （可选 `--samples math` 看命中样本）统计本机真实 transcript 里 agent 输出的 markdown 形态。
+  2026-09-04 这一批靠它砍掉了 KaTeX（`$…$` 2,079 处命中**全是** `$PODS`/`${tool}`/`$29,612`
+  这类假阳性，装了反而把货币吃成公式）和 GitHub alerts（0 次），也靠它把表格折叠阈值从
+  拍脑袋的「p90=17」纠正成实测的「p90=9」。**统计口径写死在脚本里**（只算 assistant 的
+  text block、表格按分隔行逐张锚定），因为这两条我各错过一次，方向相反。
 - **编号分配（多会话并行）**：`node scripts/dev/check-ids.mjs` 报下一个可用的 B-/V-/changelog key，
   `--claim B-xxx --claim V-xxx --claim <key>` 验号（撞了就非 0 退出）；**每次 rebase 后、开 PR 前都要再验一次**。
   下面是这条纪律的来历与手工做法（脚本挂了或要改它时看）：新开 B-/V- 编号前先 `git fetch origin main`，取 **origin/main** 上的最大号 +1，
@@ -98,6 +104,11 @@ triage（分独立/冲突域）
 - **事故必附回归测试**：修复不带覆盖该机制的测试不许合并。**源码断言型测试
   （`expect(source).toContain(…)`，本仓大量使用）必须用 `node scripts/dev/mutation-check.mjs` 验一遍**——
   被断言的字符串在同一文件里别处也出现时，删掉你真正想钉住的那一处测试照样全绿（B-300 实例）。
+  **源码断言有两类假绿，`mutation-check` 只抓得到第二类**（2026-09-04 一批里三次踩到）：
+  ① 断言命中了**同一段里解释这条规则的注释**（`toContain('timer.current = null')` 命中了紧邻的注释）
+  ——断言前先剥注释；② 断言太松，被 mangle 后的标识符（`toContain('useCallback')` 被 `useCallbackXX` 满足）
+  或**同文件另一处**满足（`toContain('retried.current')` 被下一行的赋值满足）——断言要带定界符，
+  并且 `--mutate` 的字面量要让 mangle 落在你真正关心的那个标识符上（它改的是**最后一个**标识符）。
 - 纯函数优先：新逻辑尽量抽纯函数模块（`termWriteHold`/`termStreamSync`/`boardTaskOps` 模式），
   这是 AI 并行开发下测试稳定性的支柱。
 - 推公开 remote 前 gitleaks（或等价 secret 扫描）；密钥永不进 repo。

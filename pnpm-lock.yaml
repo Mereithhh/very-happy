@@ -565,6 +565,9 @@ importers:
       happy-dom:
         specifier: 15.11.7
         version: 15.11.7
+      playwright-core:
+        specifier: 1.55.0
+        version: 1.55.0
       socket.io:
         specifier: 4.8.3
         version: 4.8.3
@@ -5609,6 +5612,11 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  playwright-core@1.55.0:
+    resolution: {integrity: sha512-GvZs4vU3U5ro2nZpeiwyb0zuFaqb9sUiAJuyrWpcGouD8y9/HLgGbNRjIph7zU9D3hnPaisMl9zG9CgFi/biIg==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   points-on-curve@0.2.0:
     resolution: {integrity: sha512-0mYKnYYe9ZcqMCWhUjItv/oHjvgEsfKvnUTg8sAtnHr3GVy7rGkXCb6d5cSyqrWqL4k81b9CPg3urd+T7aop3A==}
@@ -12203,6 +12211,8 @@ snapshots:
       yaml: 2.8.3
     optionalDependencies:
       typescript: 5.9.3
+
+  playwright-core@1.55.0: {}
 
   points-on-curve@0.2.0: {}
 
