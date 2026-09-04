@@ -210,7 +210,12 @@
 }
 .md-tbl-body--collapsed {
   max-height: min(60vh, 480px);
-  overflow: hidden;
+  /* `clip`, not `hidden`: an `overflow: hidden` box is still scrollable by script,
+     by focus and by find-in-page — measured, `scrollTop = 500` took. Tables contain
+     focusable things (B-145 path buttons, links), so Tab into a clipped row would
+     jump the box with no way for the user to scroll back. `clip` cannot scroll at
+     all, and clips identically. */
+  overflow: clip;
 }
 .md-tbl-body--collapsed .md-table thead th {
   /* nothing to stick to while clipped, and sticky inside the clip box would just

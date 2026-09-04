@@ -66,3 +66,28 @@ describe('MessageView memo comparator covers every prop', () => {
         }
     });
 });
+
+describe('MermaidView state machine wiring (B-357)', () => {
+    const source = read('./MermaidView.tsx');
+
+    it('the slow-network gate is STATE and is in the effect deps', () => {
+        // A ref cannot arm the effect: flipping it does not re-run it, so the
+        // "render diagram" button removed itself and rendered nothing (measured
+        // in a real browser: renderCalls stayed 0 after the click). That branch
+        // only runs behind saveData / 2g-3g, so no desktop check reaches it.
+        expect(source).toContain('const [armed, setArmed] = useState(() => !shouldDeferMermaid())');
+        expect(source).toContain('}, [code, themeKey, id, armed]);');
+        expect(source).toContain('onClick={() => setArmed(true)}');
+        expect(source, 'a ref here is exactly the bug').not.toContain('wanted.current');
+    });
+
+    it('each render attempt gets its own mermaid id (StrictMode mounts twice)', () => {
+        expect(source).toContain('attempt.current += 1;');
+        expect(source).toContain('renderMermaid(`${id}-${attempt.current}`');
+    });
+
+    it('a draft never renders a diagram', () => {
+        const markdown = read('./Markdown.tsx');
+        expect(markdown).toContain("if (lang === 'mermaid' && !plainCode) return <MermaidView code={code} />;");
+    });
+});

@@ -636,6 +636,8 @@ export const zhHans: TranslationStructure = {
             replaceAll: '全部替换',
             expandLines: ({ lines }: { lines: number }) => `展开全部（${lines} 行）`,
             expandTableRows: ({ rows }: { rows: number }) => `展开全部（${rows} 行）`,
+            collapseTableRows: '收起表格',
+            tableRegion: '表格',
             mermaidRender: '渲染图表',
             mermaidSource: '源码',
             mermaidDiagram: '图',

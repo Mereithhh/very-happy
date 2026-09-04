@@ -50,7 +50,6 @@ function useThemeKey(): string {
 
 type State =
     | { kind: 'idle' }
-    | { kind: 'deferred' }
     | { kind: 'ok'; svg: string }
     | { kind: 'failed' };
 
@@ -58,30 +57,39 @@ export function MermaidView({ code }: { code: string }) {
     const { t } = useTranslation();
     const themeKey = useThemeKey();
     const id = sanitizeMermaidId(useId());
-    const [state, setState] = useState<State>(() => (shouldDeferMermaid() ? { kind: 'deferred' } : { kind: 'idle' }));
+    // `armed` is STATE, not a ref, and it is in the effect's deps. A ref cannot
+    // work here: flipping it does not re-run the effect, so the slow-network
+    // button used to arm nothing — it just re-rendered into the fallback branch,
+    // removing itself and leaving the diagram permanently unrendered (measured:
+    // renderCalls stayed 0 after the click). It only ever goes false → true, so
+    // there is no loop.
+    const [armed, setArmed] = useState(() => !shouldDeferMermaid());
+    const [state, setState] = useState<State>({ kind: 'idle' });
     const [showSource, setShowSource] = useState(false);
-    const wanted = useRef(false);
+    const attempt = useRef(0);
 
     useEffect(() => {
-        if (state.kind === 'deferred' && !wanted.current) return;
+        if (!armed) return;
         let cancelled = false;
-        void renderMermaid(id, code, themeKey).then((result) => {
+        // StrictMode mounts the effect twice; without a per-attempt suffix both
+        // runs render into the same mermaid id, and mermaid's temporary
+        // `#d<id>` node is fought over by the two in-flight renders.
+        attempt.current += 1;
+        void renderMermaid(`${id}-${attempt.current}`, code, themeKey).then((result) => {
             if (cancelled) return;
             setState(result.ok ? { kind: 'ok', svg: result.svg } : { kind: 'failed' });
         });
         return () => { cancelled = true; };
-        // `state.kind` intentionally out: re-running on our own setState would loop.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [code, themeKey, id]);
+    }, [code, themeKey, id, armed]);
 
-    if (state.kind === 'deferred') {
+    if (!armed) {
         return (
             <div className="mmd">
                 <CodeView code={code} lang="mermaid" />
                 <button
                     type="button"
                     className="mmd-action"
-                    onClick={() => { wanted.current = true; setState({ kind: 'idle' }); }}
+                    onClick={() => setArmed(true)}
                 >
                     <ImageIcon size={13} aria-hidden />
                     {t('session.chat.mermaidRender')}

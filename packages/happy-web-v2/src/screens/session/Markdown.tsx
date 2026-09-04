@@ -103,9 +103,13 @@ function useOverflowX<T extends HTMLElement>() {
     const [overflowing, setOverflowing] = React.useState(false);
     React.useEffect(() => {
         const node = ref.current;
-        if (!node || typeof ResizeObserver === 'undefined') return;
+        if (!node) return;
         const measure = () => setOverflowing(node.scrollWidth - node.clientWidth > 1);
+        // Measure BEFORE the observer guard: without a ResizeObserver the class
+        // would never be set at all, and under `overflow-x: clip` that means a wide
+        // table is silently cut with no way to scroll it.
         measure();
+        if (typeof ResizeObserver === 'undefined') return;
         const observer = new ResizeObserver(measure);
         observer.observe(node);
         for (const child of Array.from(node.children)) observer.observe(child);
@@ -153,7 +157,7 @@ function MarkdownTable({ children, node }: { children?: React.ReactNode; node?: 
                 <div
                     ref={ref}
                     className={`md-table-wrap${overflowing ? ' is-scrollable' : ''}`}
-                    {...(overflowing ? { tabIndex: 0, role: 'region', 'aria-label': 'table' } : {})}
+                    {...(overflowing ? { tabIndex: 0, role: 'region', 'aria-label': t('session.chat.tableRegion') } : {})}
                 >
                     <table className="md-table">{children}</table>
                 </div>
@@ -169,7 +173,7 @@ function MarkdownTable({ children, node }: { children?: React.ReactNode; node?: 
                 >
                     <span>{collapsed
                         ? t('session.chat.expandTableRows', { rows: rowCount })
-                        : t('session.chat.collapseLines')}</span>
+                        : t('session.chat.collapseTableRows')}</span>
                     <ChevronDown size={13} className={`vh-disclosure-icon${!collapsed ? ' is-open' : ''}`} aria-hidden />
                 </button>
             )}

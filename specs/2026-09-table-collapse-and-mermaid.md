@@ -1,6 +1,6 @@
 # 长表格折叠 / 表头吸顶 与 mermaid 懒加载渲染
 
-> 状态：Final（v2，一轮对抗式 review 后定稿；语料统计已纠错并复核）
+> 状态：Final（v3，两轮对抗式 review 后定稿；语料统计已纠错，CSS 与状态机均经真实浏览器实证）
 > 日期：2026-09-04 ｜ 关联 backlog：B-356（表格）、B-357（mermaid）
 > 前身：`specs/2026-09-markdown-engine-and-attachments.md`（B-354/B-355，已 Shipped `e38b8602`）
 > 触发：Owner「markdown 渲染还有啥可以优化」→ 用本机语料定优先级后确认「支持上」，并追加 mermaid（懒加载，以体验为准）
@@ -105,8 +105,10 @@ mermaid 在本机语料里是 0 次，但 Owner 明确要求支持；因此**唯
 「半张表凭空消失」；`clip` 下最坏只是「表格右缘被切一帧」。`clip` 还顺手让
 `border-radius` 正确裁角（`visible` 会让表格四角戳出圆角边框）。
 
-**ResizeObserver 的回调按规范在 paint 之后**，所以「零帧不外溢」做不到；`useLayoutEffect`
-只能覆盖挂载。验收因此写成「挂载首帧不外溢；resize 后一帧内恢复」。
+`clip` 之后**不再需要 `useLayoutEffect`**：首帧实测 `escapes_scroller_by = -31`、页面横向溢出 0
+——表格被包裹器自己裁住，根本不会逃出滚动容器。`useOverflowX` 保持 `useEffect`，但把
+`measure()` 提到了 ResizeObserver 的 guard **之前**（否则没有 RO 的环境下类永远翻不上去，
+`clip` 会把宽表静默裁掉且无横滚）。
 
 **吸顶的边框**：`border-collapse: collapse` 下边框归表格不归单元格，sticky 的 `th` 一脱离原位
 就把 `border-bottom` 丢在原处——像素实测：吸顶后表头正下方直接是正文底色，没有任何 `--line`。
@@ -215,6 +217,28 @@ components.pre
 | 宽表 | 900px：`overflow: clip`、不滚（放得下）；390px：`is-scrollable` 翻上、`overflow: auto`、**页面横向溢出 0**、越界 -16px（无外溢） |
 | a11y | `th[scope="col"]` ✓ |
 | mermaid | flowchart 与 sequence 各出一张 SVG；**坏语法回落代码块 + 一行说明**，未出现 mermaid 自己的错误图；控制台零错误 |
+| 弱网降级 | 伪造 `saveData:true / effectiveType:'2g'`：首屏 0 张图 + 「渲染图表」按钮；**点击后 1 张图 + 「源码」切换**（第一版这里是死胡同：点了按钮既不出图、按钮也消失，`renderCalls` 恒 0） |
+| 折叠盒可滚性 | `overflow: clip` 下 `scrollTop = 500` 之后仍是 **0**（`hidden` 时会被滚走，而表格里有可聚焦的链接/路径按钮） |
+| 注入 | 5 种恶意形态注入 detached DOM 后：live `<script>` 0、`<img>` 0、`<iframe>` 0、`on*` 属性 0、`javascript:` href 0 |
+
+## 已知并接受的残余
+
+1. **Safari 15 及更早**不认 `overflow-x: clip`，会丢弃这条声明退回 `visible`——也就是本 spec
+   想避开的「宽表在 RO 翻类之前越过滚动容器被裁掉半张」。没有可用的 fallback（写 `hidden`
+   会把另一轴强制成 `auto`、杀掉吸顶），所以这是有意接受的降级。这是个 PWA，老 iPad 上确实
+   还有 Safari 15。
+2. **StrictMode 下同一张图会并发渲染两次**（dev only）。已用「每次 effect 递增的 id 后缀」
+   把互相抢临时节点的问题关掉；生产不双调用。
+3. **happy-dom 只覆盖到 flowchart**：sequenceDiagram 在测试环境会抛
+   `svg element not in render tree`（缺 SVG 排版引擎）。其它图类型只有浏览器验收一处证据，
+   CI 挡不住它坏掉——测试文件里已写明。
+4. **mermaid 加载失败只试一次**（`loadFailed`），与附件缩略图的「重试一次」一致；离线时
+   5 张图不会变成 5 次失败请求。
+5. **手机上的横向问题这批没解决**：>4 列的表占 14.3%，在 390px 下只能横滚。真正的解是
+   「全屏看表」，已记 backlog（B-358），它服务的人群比吸顶（1.3%）大一个数量级。
+6. 另外 6 个 `<Markdown>` 调用方（`BtwPanel` / `ToolView` plan / `PermissionCard` /
+   `SubagentDetail` / `FsFileViewer`）里，表头会吸在**那个面板自己的滚动视口**上——是想要的
+   行为，但只在 transcript 里做过观感确认。
 
 ## 留真机验证项
 

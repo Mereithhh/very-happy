@@ -21,6 +21,7 @@ export type MermaidResult =
 type MermaidModule = typeof import('mermaid')['default'];
 
 let modulePromise: Promise<MermaidModule | null> | null = null;
+let loadFailed = false;
 let initializedTheme: string | null = null;
 
 /** 从 tokens 读色，避免在这里写死颜色（tokens.css 头部：组件里禁止裸色值）。 */
@@ -57,12 +58,17 @@ function themeVariables(): Record<string, string> {
 }
 
 async function loadMermaid(): Promise<MermaidModule | null> {
+    // One attempt per page. Clearing `modulePromise` on failure would make every
+    // remaining diagram fetch the 171 kB chunk again — offline with five diagrams
+    // is five failed requests, and the second one never succeeds where the first
+    // did not. Same "retry once, then fall back" rule as the attachment previews.
+    if (loadFailed) return null;
     if (!modulePromise) {
         modulePromise = import('mermaid')
             .then((m) => m.default)
             .catch((error) => {
                 console.error('[mermaid] failed to load', error);
-                modulePromise = null;   // let a later diagram try again
+                loadFailed = true;
                 return null;
             });
     }
@@ -134,4 +140,5 @@ export function sanitizeMermaidId(id: string): string {
 export function resetMermaidForTest() {
     modulePromise = null;
     initializedTheme = null;
+    loadFailed = false;
 }

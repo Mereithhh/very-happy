@@ -635,6 +635,8 @@ export const en = {
             // B-102 user bubbles)
             expandLines: ({ lines }: { lines: number }) => `Show all (${lines} lines)`,
             expandTableRows: ({ rows }: { rows: number }) => `Show all (${rows} rows)`,
+            collapseTableRows: 'Collapse table',
+            tableRegion: 'table',
             mermaidRender: 'Render diagram',
             mermaidSource: 'Source',
             mermaidDiagram: 'Diagram',
