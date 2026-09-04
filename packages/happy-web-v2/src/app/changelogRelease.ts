@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-04-tables-and-mermaid',
+    date: '2026-09-04',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep04e.title',
+    summaryKey: 'changelog.releases.sep04e.summary',
+    itemKeys: [
+      'changelog.releases.sep04e.tables',
+      'changelog.releases.sep04e.mermaid',
+    ],
+  },
+  {
     id: '2026-09-04-update-actually-updates',
     date: '2026-09-04',
     buildVersion: __APP_VERSION__,

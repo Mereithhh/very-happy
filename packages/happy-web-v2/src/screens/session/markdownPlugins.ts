@@ -82,7 +82,7 @@ function splitBreaks(node: Element) {
 }
 
 /**
- * `thead` 里的 `th` 补 `scope="col"`（B-356）。
+ * `thead` 里的 `th` 补 `scope="col"`（B-357）。
  *
  * `mdast-util-to-hast` 不加它，于是屏幕阅读器读不出「这一格属于哪一列」——GFM 表格
  * 只有列头，一行 rehype 就能修好。

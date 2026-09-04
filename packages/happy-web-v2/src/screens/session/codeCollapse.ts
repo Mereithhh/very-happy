@@ -45,7 +45,7 @@ export function shouldCollapseCode(lineCount: number): boolean {
 }
 
 /**
- * Table clamp (B-356). The gate is DATA ROWS; the visible height is CSS
+ * Table clamp (B-357). The gate is DATA ROWS; the visible height is CSS
  * (`min(60vh, 480px)`) so a phone and a desktop each get a sensible cap without
  * a second constant — same two-stage shape as code blocks (23-line gate, 420px cap).
  *

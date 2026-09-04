@@ -1,5 +1,5 @@
 /**
- * mermaid 的懒加载与渲染（B-357）—— 纯逻辑，不含 React。
+ * mermaid 的懒加载与渲染（B-358）—— 纯逻辑，不含 React。
  *
  * **为什么必须懒加载**：mermaid 11 拖着 d3 / cytoscape / katex / roughjs 等 22 个依赖。
  * 实测把它接进构建：JS chunk 48 → 108、`dist/assets` 7.1M → 11M、全部 JS gzip 合计

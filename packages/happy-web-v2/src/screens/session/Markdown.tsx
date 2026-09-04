@@ -131,7 +131,7 @@ function countBodyRows(node: unknown): number {
 }
 
 /**
- * 表格：横向按需滚动 + 超长时折叠 + 展开后表头吸顶（B-356）。
+ * 表格：横向按需滚动 + 超长时折叠 + 展开后表头吸顶（B-357）。
  *
  * 三条 CSS 事实决定了这个结构（真实 Chromium 实测，见
  * `specs/2026-09-table-collapse-and-mermaid.md` §B）：
@@ -207,7 +207,7 @@ function buildComponents(plainCode: boolean, trustContent: boolean): Components 
             const classes = Array.isArray(first?.properties?.className) ? first.properties.className as string[] : [];
             const lang = classes.map((c) => /^language-(.+)$/.exec(c)?.[1]).find(Boolean) ?? null;
             const code = hastText(first).replace(/\n$/, '');
-            // B-357: a mermaid fence becomes a diagram — but never while streaming.
+            // B-358: a mermaid fence becomes a diagram — but never while streaming.
             // A half-written diagram cannot parse, and the draft re-renders several
             // times a second, so it would be a stream of failed renders.
             if (lang === 'mermaid' && !plainCode) return <MermaidView code={code} />;

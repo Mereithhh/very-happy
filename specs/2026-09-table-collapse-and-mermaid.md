@@ -1,7 +1,7 @@
 # 长表格折叠 / 表头吸顶 与 mermaid 懒加载渲染
 
 > 状态：Final（v3，两轮对抗式 review 后定稿；语料统计已纠错，CSS 与状态机均经真实浏览器实证）
-> 日期：2026-09-04 ｜ 关联 backlog：B-356（表格）、B-357（mermaid）
+> 日期：2026-09-04 ｜ 关联 backlog：B-357（表格）、B-358（mermaid）
 > 前身：`specs/2026-09-markdown-engine-and-attachments.md`（B-354/B-355，已 Shipped `e38b8602`）
 > 触发：Owner「markdown 渲染还有啥可以优化」→ 用本机语料定优先级后确认「支持上」，并追加 mermaid（懒加载，以体验为准）
 
@@ -67,7 +67,7 @@ mermaid 在本机语料里是 0 次，但 Owner 明确要求支持；因此**唯
 
 ## 设计
 
-### A. 长表格折叠（B-356）
+### A. 长表格折叠（B-357）
 
 复用代码块那一套，**不引入嵌套竖向滚动**（铁律：wheel 必须冒泡到 transcript）：
 
@@ -78,7 +78,7 @@ mermaid 在本机语料里是 0 次，但 Owner 明确要求支持；因此**唯
   这和代码块「420px cap + 23 行门」是同一套两段式（行数不依赖字体/缩放，像素才决定观感）。
 - 折叠盒是**外层新元素** `.md-tbl--collapsed`，不是 `.md-table-wrap`（见下）。
 
-### B. 表头吸顶（B-356）
+### B. 表头吸顶（B-357）
 
 **三条实测事实，缺一条方案就不成立**（真实 Chromium + 仓库真 CSS，2026-09-04）：
 
@@ -115,11 +115,11 @@ mermaid 在本机语料里是 0 次，但 Owner 明确要求支持；因此**唯
 改用 `box-shadow: inset 0 -1px 0 var(--line)`（跟着单元格走），实测吸顶时该行像素为 `223`
 （= `--line` 222）✓。**这条必须用像素验收，computed style 看不出来。**
 
-### C. `scope="col"`（B-356）
+### C. `scope="col"`（B-357）
 
 一个 rehype pass：给 `thead` 里的 `th` 加 `scope="col"`。`mdast-util-to-hast` 不加。
 
-### D. mermaid 懒加载（B-357）
+### D. mermaid 懒加载（B-358）
 
 ```
 components.pre
@@ -241,7 +241,7 @@ components.pre
    `online` 监听把标志（连同那个已经 resolve 成 null 的 promise）清掉：这是个常开几小时的
    PWA，「进一次电梯断网」不该让剩下一整个 session 都没有图。
 5. **手机上的横向问题这批没解决**：>4 列的表占 14.3%，在 390px 下只能横滚。真正的解是
-   「全屏看表」，已记 backlog（B-358），它服务的人群比吸顶（1.3%）大一个数量级。
+   「全屏看表」，已记 backlog（B-359），它服务的人群比吸顶（1.3%）大一个数量级。
 6. 另外 6 个 `<Markdown>` 调用方（`BtwPanel` / `ToolView` plan / `PermissionCard` /
    `SubagentDetail` / `FsFileViewer`）里，表头会吸在**那个面板自己的滚动视口**上——是想要的
    行为，但只在 transcript 里做过观感确认。

@@ -239,7 +239,7 @@ describe('a <br> inside an inline code span stays literal', () => {
     });
 });
 
-describe('table collapse and header semantics (B-356)', () => {
+describe('table collapse and header semantics (B-357)', () => {
     const table = (rows: number) => ['| a | b |', '| --- | --- |', ...Array.from({ length: rows }, (_, i) => `| ${i} | x |`)].join('\n');
 
     it('adds scope="col" to header cells', () => {

@@ -1690,6 +1690,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep04e: {
+                title: 'Long tables fold, and mermaid diagrams render',
+                summary: 'A very long table no longer buries the rest of an answer, and a ```mermaid block is now a picture instead of code.',
+                tables: 'Past about seventeen rows a table folds with a “show all” toggle — the common four-to-nine row table is untouched. Once expanded, the header row stays pinned to the top of the conversation while you scroll through it, so you always know what a column is. Header cells are now announced as column headers by screen readers.',
+                mermaid: 'Flowcharts, sequence diagrams and the rest render inline, in your theme, with a toggle back to the source. A diagram whose syntax is wrong quietly shows its code instead of an error. Mermaid is a large library, so it is only downloaded when a diagram actually appears — and on a metered or slow connection you get a button rather than the download.',
+            },
             sep04d: {
                 title: 'The update button now actually changes versions',
                 summary: 'Taking an offered update reloaded the page but could leave you on the very same version — no release notes, and nothing offering the update again for ten minutes.',

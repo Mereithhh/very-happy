@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * mermaid 产物的注入防线（B-357）。
+ * mermaid 产物的注入防线（B-358）。
  *
  * `MermaidView` 用 `dangerouslySetInnerHTML` 注入 mermaid 返回的 SVG——这是本仓第二处
  * （第一处是 shiki）。它之所以可以接受，全靠 `securityLevel: 'strict'`（禁 click 处理器与

@@ -67,7 +67,7 @@ describe('MessageView memo comparator covers every prop', () => {
     });
 });
 
-describe('MermaidView state machine wiring (B-357)', () => {
+describe('MermaidView state machine wiring (B-358)', () => {
     const source = read('./MermaidView.tsx');
 
     it('the slow-network gate is STATE and is in the effect deps', () => {
