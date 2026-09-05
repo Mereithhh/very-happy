@@ -168,7 +168,17 @@ export const useTerminalAgentStates = create<TerminalAgentStates>((set, get) => 
           unread = new Set(unread);
           unread.add(term.id);
         }
-        if (state === 'needs_input' && before && before.state !== 'needs_input') {
+        // B-360: `before.machineId === machineId` here for the same reason the
+        // unread branch above requires it — when two machine rows share a host
+        // (a rotated machine id), the retired row's frozen entry is not a
+        // previous state of THIS owner, and treating it as one replayed an
+        // alert on every load.
+        if (
+          state === 'needs_input' &&
+          before &&
+          before.machineId === machineId &&
+          before.state !== 'needs_input'
+        ) {
           const record = useTerminalSessions
             .getState()
             .terminals.find((x) => x.id === term.id);

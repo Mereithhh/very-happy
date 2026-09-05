@@ -152,12 +152,52 @@ export interface DaemonLocallyPersistedState {
   cliUpdate?: CliUpdateState;
 }
 
-export async function readSettings(): Promise<Settings> {
-  if (!existsSync(configuration.settingsFile)) {
-    return { ...defaultSettings }
-  }
+/**
+ * What a settings read actually found (B-360).
+ *
+ * `readSettings()` collapses "the file is not there" and "the file is there but
+ * I could not read it" into the same defaults object, and that cost a user
+ * their machine identity: `authAndSetupMachineIfNeeded` mints a new
+ * `randomUUID()` whenever the settings it gets back have no `machineId`, so one
+ * unreadable read replaces the id permanently — the server then carries a
+ * second Machine row for the same host, and the web renders that host's
+ * terminals twice, forever (2026-09-04, a 0.2.118→0.2.119 handover).
+ * `updateSettings` had the same shape: it would write defaults + the update
+ * over a file it had just failed to parse, silently resetting every setting.
+ *
+ * So the two cases are separated here, and callers that must not guess use
+ * this instead of the tolerant wrapper.
+ */
+export type SettingsReadOutcome =
+  | { kind: 'absent' }
+  | { kind: 'ok'; settings: Settings }
+  | { kind: 'unreadable'; error: string }
 
+export async function readSettingsOutcome(): Promise<SettingsReadOutcome> {
+  if (!existsSync(configuration.settingsFile)) {
+    return { kind: 'absent' }
+  }
   try {
+    return { kind: 'ok', settings: await parseSettingsFile() }
+  } catch (error: any) {
+    return { kind: 'unreadable', error: error?.message ?? String(error) }
+  }
+}
+
+/** Tolerant read: defaults for both "absent" and "unreadable". Callers that
+ *  cannot tell those apart safely must use `readSettingsOutcome`. */
+export async function readSettings(): Promise<Settings> {
+  const outcome = await readSettingsOutcome()
+  if (outcome.kind === 'ok') return outcome.settings
+  if (outcome.kind === 'unreadable') {
+    logger.warn(`Failed to read settings: ${outcome.error}`)
+  }
+  return { ...defaultSettings }
+}
+
+/** Read + migrate the settings file. Throws when it cannot be read or parsed —
+ *  the caller decides what an unreadable file means. */
+async function parseSettingsFile(): Promise<Settings> {
     // Read raw settings
     const content = await readFile(configuration.settingsFile, 'utf8')
     const raw = JSON.parse(content)
@@ -187,11 +227,6 @@ export async function readSettings(): Promise<Settings> {
 
     // Merge with defaults to ensure all required fields exist
     return { ...defaultSettings, ...migrated };
-  } catch (error: any) {
-    logger.warn(`Failed to read settings: ${error.message}`);
-    // Return defaults on any error
-    return { ...defaultSettings }
-  }
 }
 
 export async function writeSettings(settings: Settings): Promise<void> {
@@ -254,8 +289,19 @@ export async function updateSettings(
   }
 
   try {
-    // Read current settings with defaults
-    const current = await readSettings() || { ...defaultSettings };
+    // Read current settings. B-360: an existing file we cannot parse must NOT
+    // read as defaults here — the write below would replace every setting the
+    // user has (machine identity included) with whatever the updater returns
+    // on top of an empty object. Refuse instead; a corrupt file is a thing a
+    // person can fix or delete, silent data loss is not.
+    const outcome = await readSettingsOutcome();
+    if (outcome.kind === 'unreadable') {
+      throw new Error(
+        `Settings file ${configuration.settingsFile} exists but could not be read (${outcome.error}). ` +
+        'Refusing to overwrite it — fix or remove the file (a removed file is recreated with defaults).'
+      );
+    }
+    const current = outcome.kind === 'ok' ? outcome.settings : { ...defaultSettings };
 
     // Apply update
     const updated = await updater(current);

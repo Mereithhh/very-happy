@@ -4,12 +4,13 @@ import { randomBytes } from "node:crypto";
 import tweetnacl from 'tweetnacl';
 import axios from 'axios';
 import { delay } from "@/utils/time";
-import { writeCredentialsLegacy, readCredentials, updateSettings, Credentials, writeCredentialsDataKey } from "@/persistence";
+import { writeCredentialsLegacy, readCredentials, updateSettings, readSettingsOutcome, Credentials, writeCredentialsDataKey } from "@/persistence";
 import { generateWebAuthUrl } from "@/api/webAuth";
 import { openBrowser } from "@/utils/browser";
 import { randomUUID } from 'node:crypto';
 import { logger } from './logger';
 import { credentialRelayProblem } from './authRelay';
+import { decideMachineId } from './machineIdDecision';
 
 export async function doAuth(): Promise<Credentials | null> {
     console.clear();
@@ -233,19 +234,32 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
         logger.debug('[AUTH] Using existing credentials');
     }
 
-    // Make sure we have a machine ID
-    // Server machine entity will be created either by the daemon or by the CLI
-    const settings = await updateSettings(async s => {
-        if (newAuth || !s.machineId) {
-            return {
-                ...s,
-                machineId: randomUUID()
-            };
-        }
-        return s;
+    // Make sure we have a machine ID.
+    // Server machine entity will be created either by the daemon or by the CLI.
+    //
+    // B-360: the decision is deliberately made against `readSettingsOutcome`,
+    // not `readSettings` — the tolerant read reports an UNREADABLE settings
+    // file as defaults, and minting on that replaces this host's identity for
+    // good (second Machine row on the server, every terminal rendered twice in
+    // the web). Rule and rationale: ui/machineIdDecision.ts.
+    const decision = decideMachineId({
+        read: await readSettingsOutcome(),
+        newAuth,
     });
+    if (decision.action === 'refuse') {
+        throw new Error(`Cannot establish this machine's identity: ${decision.reason}`);
+    }
 
-    logger.debug(`[AUTH] Machine ID: ${settings.machineId}`);
+    let machineId: string;
+    if (decision.action === 'reuse') {
+        machineId = decision.machineId;
+    } else {
+        machineId = randomUUID();
+        logger.warn(`[AUTH] Registering a NEW machine id (${decision.reason})`);
+        await updateSettings(async s => ({ ...s, machineId }));
+    }
 
-    return { credentials, machineId: settings.machineId! };
+    logger.debug(`[AUTH] Machine ID: ${machineId}`);
+
+    return { credentials, machineId };
 }

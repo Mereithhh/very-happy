@@ -65,7 +65,7 @@ function syncPushes(): void {
     appliedPushVersions.set(id, snapshot.updatedAt);
     applied = true;
     const machine = machines.find((m) => m.id === id)!;
-    useTerminalSessions.getState().applyPush(id, machineLabel(machine), snapshot.terminals);
+    useTerminalSessions.getState().applyPush(id, machineLabel(machine), snapshot.terminals, snapshot.updatedAt);
     useTerminalAgentStates.getState().ingest(id, snapshot.terminals);
   }
   for (const id of [...appliedPushVersions.keys()]) {

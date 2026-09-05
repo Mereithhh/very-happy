@@ -218,3 +218,54 @@ describe('B-282 killAttachedSupported', () => {
         expect(killAttachedSupported(undefined)).toBe(false);
     });
 });
+
+/**
+ * B-360 — the archive half of the same-host duplicate. Two machine rows for one
+ * host (a rotated machine id) both carry close records for the same terminals;
+ * keying rows by (machine, terminal) showed the archive twice over.
+ */
+describe('B-360 closed records pushed by two machine rows of one host', () => {
+  const machine = (id: string, closedAt: number, extra: any = {}) => ({
+    id,
+    name: 'ip-10-122-241-147',
+    online: id === 'new-mid',
+    daemonState: {
+      startedAt: 1,
+      closedTerminals: [{ id: 'aaa', closedAt, cwd: '/w', ...extra }],
+    },
+  });
+
+  it('keeps ONE row per terminal id', () => {
+    const rows = buildClosedTerminalRows([machine('old-mid', 100), machine('new-mid', 200)], new Set());
+    expect(rows).toHaveLength(1);
+  });
+
+  it('keeps the record with the newest closedAt (the daemon that saw it die)', () => {
+    const rows = buildClosedTerminalRows(
+      [machine('old-mid', 100, { title: 'stale' }), machine('new-mid', 200, { title: 'observed' })],
+      new Set(),
+    );
+    expect(rows[0]).toMatchObject({ terminalId: 'aaa', machineId: 'new-mid', title: 'observed', closedAt: 200 });
+  });
+
+  it('is order-independent — the newest wins even when it comes first', () => {
+    const rows = buildClosedTerminalRows([machine('new-mid', 200), machine('old-mid', 100)], new Set());
+    expect(rows).toHaveLength(1);
+    expect(rows[0].machineId).toBe('new-mid');
+  });
+
+  it('still drops the id entirely when the terminal is live again', () => {
+    expect(buildClosedTerminalRows([machine('old-mid', 100), machine('new-mid', 200)], new Set(['aaa']))).toEqual([]);
+  });
+
+  it('same id on two DIFFERENT hosts is not a thing, but distinct ids still both render', () => {
+    const rows = buildClosedTerminalRows(
+      [
+        { id: 'm1', name: 'A', online: true, daemonState: { startedAt: 1, closedTerminals: [{ id: 'aaa', closedAt: 100 }] } },
+        { id: 'm2', name: 'B', online: true, daemonState: { startedAt: 1, closedTerminals: [{ id: 'bbb', closedAt: 200 }] } },
+      ],
+      new Set(),
+    );
+    expect(rows.map((r) => r.terminalId)).toEqual(['bbb', 'aaa']);
+  });
+});

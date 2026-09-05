@@ -15,6 +15,21 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-05-terminals-listed-twice',
+    date: '2026-09-05',
+    buildVersion: __APP_VERSION__,
+    // The Web half stops the duplicate being SHOWN on every existing machine
+    // (iron rule 14: a daemon that already lost its id will not get it back).
+    // The CLI half stops a machine losing its identity in the first place.
+    cliVersion: '0.2.120',
+    titleKey: 'changelog.releases.sep05a.title',
+    summaryKey: 'changelog.releases.sep05a.summary',
+    itemKeys: [
+      'changelog.releases.sep05a.duplicates',
+      'changelog.releases.sep05a.identity',
+    ],
+  },
+  {
     id: '2026-09-04-tables-and-mermaid',
     date: '2026-09-04',
     buildVersion: __APP_VERSION__,

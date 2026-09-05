@@ -11,6 +11,10 @@
  *   - offline machines: the server's persisted daemonState still carries the
  *     last list — display works with zero client-side storage.
  *
+ * Ownership rule (B-360): terminal ids are unique per HOST, not per machine
+ * row, and one host can own several rows — so the same id can arrive in two
+ * machines' pushes. The newest snapshot owns it; see `terminalOwnerByMachine`.
+ *
  * This is the ONLY lane since the legacy poll+KV path was retired (2026-08):
  * the web requires a push-capable daemon (>= 0.2.27). A machine whose daemon
  * predates that simply shows no terminals (see the trust rule below).
@@ -72,6 +76,9 @@ export interface PushedSnapshot {
 export interface MachinePush {
   machineName: string;
   terminals: MachineTerminal[];
+  /** `webTerminals.updatedAt` of the snapshot this push came from — the
+   *  tiebreaker when two machine rows claim the same terminal id (B-360). */
+  updatedAt: number;
 }
 
 export interface PushOverlay {
@@ -149,11 +156,47 @@ function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): 
 }
 
 /**
+ * Which machine owns each pushed terminal id (B-360).
+ *
+ * A terminal id is a tmux session name (`vh-<id>`) — unique on its HOST, not
+ * across machine rows. And a host can hold more than one machine row: the id
+ * is a randomUUID in `~/.happy/settings.json`, so anything that loses or
+ * rotates that file (the 0.2.118→0.2.119 auto-update handover did, 2026-09-04)
+ * leaves the old row behind with its last daemonState — which this app renders
+ * on purpose, because that is how OFFLINE machines still show their terminals.
+ * Two rows for one host therefore push the SAME ids, and the composer used to
+ * emit a row per (machine, terminal) pair: every terminal on that host appeared
+ * twice, on every device, with no way for the user to make it stop.
+ *
+ * The invariant this restores: one rendered row per terminal id. The owner is
+ * the machine whose snapshot is NEWEST — the live daemon rewrites
+ * `webTerminals` (its connect write alone is later than anything the retired
+ * daemon ever wrote), while an abandoned row is frozen forever. Ties break on
+ * machine id so the choice is deterministic. Machines that do NOT share a host
+ * never collide (ids are random), so this costs them nothing.
+ */
+export function terminalOwnerByMachine(pushes: Record<string, MachinePush>): Map<string, string> {
+  const owner = new Map<string, string>();
+  const ownerUpdatedAt = new Map<string, number>();
+  for (const machineId of Object.keys(pushes).sort()) {
+    const p = pushes[machineId];
+    const updatedAt = p.updatedAt ?? 0;
+    for (const t of p.terminals) {
+      const held = ownerUpdatedAt.get(t.id);
+      if (held !== undefined && held >= updatedAt) continue;
+      owner.set(t.id, machineId);
+      ownerUpdatedAt.set(t.id, updatedAt);
+    }
+  }
+  return owner;
+}
+
+/**
  * Compose the single list consumers render:
  *   1. optimistic creations (newest, prepended — a just-created terminal shows
  *      immediately even before its machine's first push arrives),
  *   2. pushed rows per machine (created-desc, machines in stable id order),
- *      with rename/remove overlays applied.
+ *      with rename/remove overlays applied, one row per terminal id.
  */
 export function composeTerminalList(
   pushes: Record<string, MachinePush>,
@@ -162,11 +205,15 @@ export function composeTerminalList(
 ): TerminalSession[] {
   const rows: TerminalSession[] = [];
   const pushedIds = new Set<string>();
+  const owner = terminalOwnerByMachine(pushes);
   for (const machineId of Object.keys(pushes).sort()) {
     const p = pushes[machineId];
     const sorted = [...p.terminals].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     for (const t of sorted) {
       pushedIds.add(t.id);
+      // Another machine row claims this id with a fresher snapshot — the
+      // terminal is rendered there, not twice.
+      if (owner.get(t.id) !== machineId) continue;
       const removedAt = overlay.removed[t.id];
       if (removedAt !== undefined && now - removedAt <= REMOVE_OVERLAY_TTL_MS) continue;
       const row = pushRowOf(t, machineId, p.machineName);

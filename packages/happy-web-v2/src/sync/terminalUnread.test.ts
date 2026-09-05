@@ -74,3 +74,70 @@ describe('B-330 terminal 未读红点', () => {
         expect(unread()).toEqual([]);
     });
 });
+
+/**
+ * B-360 — when a host ends up with two machine rows (a rotated machine id), the
+ * retired row's frozen snapshot and the live row's push carry the SAME terminal
+ * ids. `states` is keyed by terminal id, so the retired row's last state would
+ * otherwise read as "the previous state of this terminal" and fake a
+ * transition on every load.
+ */
+describe('B-360 the same terminal id arriving from two machine rows', () => {
+    beforeEach(() => {
+        useTerminalAgentStates.setState({ states: {}, unread: new Set(), viewingTerminalId: null });
+    });
+
+    function pushFrom(machineId: string, id: string, agentState: TerminalAgentState) {
+        useTerminalAgentStates.getState().ingest(machineId, [
+            { id, agentState, title: 'term' } as unknown as MachineTerminal,
+        ]);
+    }
+
+    it('a change of owning machine is a first observation, not a finished run', () => {
+        pushFrom('old-mid', 't1', 'working');   // frozen snapshot of the retired row
+        pushFrom('new-mid', 't1', 'idle');      // live daemon's first push
+        expect(unread()).toEqual([]);
+    });
+
+    it('once the live row owns it, its own transitions still mark unread', () => {
+        pushFrom('old-mid', 't1', 'working');
+        pushFrom('new-mid', 't1', 'working');
+        pushFrom('new-mid', 't1', 'idle');
+        expect(unread()).toEqual(['t1']);
+    });
+
+    it('the entry ends up owned by the machine that pushed last', () => {
+        pushFrom('old-mid', 't1', 'idle');
+        pushFrom('new-mid', 't1', 'working');
+        expect(useTerminalAgentStates.getState().states['t1'].machineId).toBe('new-mid');
+    });
+
+    it('does not replay a needs_input notification when the owner changes', () => {
+        // Same rule as the unread dot: the retired row's frozen state is not a
+        // previous state of the live owner, so the live row's first push is a
+        // first observation — not a transition INTO needs_input.
+        const g = globalThis as Record<string, any>;
+        const raised: string[] = [];
+        const savedNotification = g.Notification;
+        const savedHasFocus = g.document.hasFocus;
+        g.document.hasFocus = () => false;           // unfocused tab, or nothing fires
+        g.Notification = class {
+            static permission = 'granted';
+            onclick: (() => void) | null = null;
+            constructor(title: string) { raised.push(title); }
+            close() {}
+        };
+        try {
+            pushFrom('old-mid', 't1', 'idle');
+            pushFrom('new-mid', 't1', 'needs_input');
+            expect(raised).toEqual([]);
+            // The live owner's OWN transition still notifies.
+            pushFrom('new-mid', 't1', 'idle');
+            pushFrom('new-mid', 't1', 'needs_input');
+            expect(raised).toHaveLength(1);
+        } finally {
+            g.Notification = savedNotification;
+            g.document.hasFocus = savedHasFocus;
+        }
+    });
+});
