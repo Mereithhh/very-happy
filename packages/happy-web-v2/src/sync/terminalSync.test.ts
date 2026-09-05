@@ -16,3 +16,13 @@ describe('terminal push hydration before first workspace paint', () => {
     expect(appSource).toContain('if (!dataReady)');
   });
 });
+
+describe('B-360 the ownership tiebreaker reaches the store', () => {
+  it('applyPush is given the snapshot\'s updatedAt, not just its terminals', () => {
+    // Two machine rows can hold the SAME host (a rotated machine id), and then
+    // both push the same tmux ids. terminalPushOps decides which row owns an id
+    // by comparing snapshot recency — so dropping this argument here silently
+    // restores the duplicate while every pure test stays green.
+    expect(syncSource).toContain('applyPush(id, machineLabel(machine), snapshot.terminals, snapshot.updatedAt)');
+  });
+});

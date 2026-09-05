@@ -1690,6 +1690,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep05a: {
+                title: 'Every terminal on one machine showing up twice',
+                summary: 'A machine that upgraded itself could come back under a new identity, leaving its old entry behind — and both of them listed the same terminals.',
+                duplicates: 'The terminal list now shows each terminal once, from whichever machine entry is actually live. This takes effect as soon as you load the app; you do not need to upgrade anything. If you still have a stale machine listed, Settings → Diagnostics → the machine → Delete removes it, and its terminals stay where they are.',
+                identity: 'The cause was on the machine: a settings file that could not be read for a moment was indistinguishable from a first install, so the CLI issued itself a new identity and registered a second machine. It now refuses to replace an identity it cannot read, and says so, instead of quietly starting over. Settings are no longer overwritten in that state either.',
+            },
             sep04e: {
                 title: 'Long tables fold, and mermaid diagrams render',
                 summary: 'A very long table no longer buries the rest of an answer, and a ```mermaid block is now a picture instead of code.',

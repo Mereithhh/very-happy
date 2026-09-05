@@ -156,20 +156,29 @@ export interface ClosedRowMachine {
 /**
  * Merge every machine's closed records into the rows the archive view
  * renders: parse (tolerantly), drop records whose terminal is LIVE again
- * (a closed row must never coexist with a live row of the same id), sort by
- * closedAt newest-first across machines. Machines are annotated by name on
- * each row rather than grouped — the list is short (≤20 per machine) and
- * usually single-machine.
+ * (a closed row must never coexist with a live row of the same id), keep ONE
+ * row per terminal id (B-360), sort by closedAt newest-first across machines.
+ * Machines are annotated by name on each row rather than grouped — the list is
+ * short (≤20 per machine) and usually single-machine.
+ *
+ * B-360, the same-host duplicate: terminal ids are unique per HOST, and one
+ * host can hold several machine rows (the machine id lives in a file that an
+ * auto-update handover managed to rotate). Both rows then carry close records
+ * for the same terminals, and keying rows by (machine, terminal) showed the
+ * archive twice over. Newest `closedAt` wins — the last daemon to actually
+ * observe the close is the one that saw it die.
  */
 export function buildClosedTerminalRows(
   machines: ClosedRowMachine[],
   liveTerminalIds: ReadonlySet<string>,
 ): ClosedTerminalRow[] {
-  const rows: ClosedTerminalRow[] = [];
+  const byTerminal = new Map<string, ClosedTerminalRow>();
   for (const m of machines) {
     for (const r of closedTerminalsOf(m.daemonState)) {
       if (liveTerminalIds.has(r.id)) continue;
-      rows.push({
+      const held = byTerminal.get(r.id);
+      if (held && held.closedAt >= r.closedAt) continue;
+      byTerminal.set(r.id, {
         key: `ct:${m.id}:${r.id}`,
         terminalId: r.id,
         machineId: m.id,
@@ -187,6 +196,7 @@ export function buildClosedTerminalRows(
       });
     }
   }
+  const rows = [...byTerminal.values()];
   rows.sort((a, b) => b.closedAt - a.closedAt);
   return rows;
 }

@@ -14,6 +14,8 @@ import {
   CREATE_OVERLAY_TTL_MS,
   RENAME_OVERLAY_TTL_MS,
   REMOVE_OVERLAY_TTL_MS,
+  terminalOwnerByMachine,
+  type MachinePush,
   type PushOverlay,
   type TerminalSession,
 } from './terminalPushOps';
@@ -22,6 +24,12 @@ const NOW = 1_800_000_000_000;
 
 function term(over: Partial<MachineTerminal> = {}): MachineTerminal {
   return { id: 'aaa', title: 'Task A', cwd: '/x', createdAt: NOW - 60_000, activityAt: NOW - 1000, agentState: 'idle', ...over };
+}
+
+/** One machine's applied push. `updatedAt` decides ownership when two machine
+ *  rows claim the same terminal id (B-360). */
+function push(machineName: string, terminals: MachineTerminal[], updatedAt = NOW): MachinePush {
+  return { machineName, terminals, updatedAt };
 }
 
 function createdRow(over: Partial<TerminalSession> = {}): TerminalSession {
@@ -93,7 +101,7 @@ describe('pushedMachineSnapshots', () => {
 
 describe('composeTerminalList', () => {
   const pushes = {
-    'push-m': { machineName: 'new-box', terminals: [term({ id: 'aaa' }), term({ id: 'bbb', title: '', createdAt: NOW - 30_000 })] },
+    'push-m': push('new-box', [term({ id: 'aaa' }), term({ id: 'bbb', title: '', createdAt: NOW - 30_000 })]),
   };
 
   it('renders pushed rows newest first, with title fallback and manual semantics', () => {
@@ -111,7 +119,7 @@ describe('composeTerminalList', () => {
 
   it('preserves [] as tag capability while absence identifies an old daemon', () => {
     const rows = composeTerminalList({
-      m: { machineName: 'box', terminals: [term({ id: 'new', tags: [] }), term({ id: 'old', tags: undefined })] },
+      m: push('box', [term({ id: 'new', tags: [] }), term({ id: 'old', tags: undefined })]),
     }, EMPTY_OVERLAY, NOW);
     expect(rows.find((r) => r.id === 'new')?.tags).toEqual([]);
     expect(rows.find((r) => r.id === 'old')?.tags).toBeUndefined();
@@ -128,7 +136,7 @@ describe('composeTerminalList', () => {
     const overlay: PushOverlay = { ...EMPTY_OVERLAY, renames: { aaa: { tags: ['prod'], at: NOW - 1000 } } };
     expect(composeTerminalList(pushes, overlay, NOW).find((r) => r.id === 'aaa')?.tags).toEqual(['prod']);
     expect(pruneOverlay(overlay, pushes, NOW).renames).toEqual(overlay.renames);
-    const confirmed = { 'push-m': { machineName: 'new-box', terminals: [term({ id: 'aaa', tags: ['prod'] })] } };
+    const confirmed = { 'push-m': push('new-box', [term({ id: 'aaa', tags: ['prod'] })]) };
     expect(pruneOverlay(overlay, confirmed, NOW).renames).toEqual({});
   });
 
@@ -149,7 +157,7 @@ describe('composeTerminalList', () => {
     const overlay: PushOverlay = { ...EMPTY_OVERLAY, created: [createdRow()] };
     expect(composeTerminalList(pushes, overlay, NOW).map((r) => r.id)).toEqual(['new1', 'bbb', 'aaa']);
     const confirmed = {
-      'push-m': { machineName: 'new-box', terminals: [...pushes['push-m'].terminals, term({ id: 'new1', createdAt: NOW - 1000 })] },
+      'push-m': push('new-box', [...pushes['push-m'].terminals, term({ id: 'new1', createdAt: NOW - 1000 })]),
     };
     expect(composeTerminalList(confirmed, overlay, NOW).filter((r) => r.id === 'new1')).toHaveLength(1);
   });
@@ -165,12 +173,12 @@ describe('composeTerminalList', () => {
   });
 
   it('an empty pushed list renders no rows for that machine', () => {
-    expect(composeTerminalList({ 'push-m': { machineName: 'new-box', terminals: [] } }, EMPTY_OVERLAY, NOW)).toEqual([]);
+    expect(composeTerminalList({ 'push-m': push('new-box', []) }, EMPTY_OVERLAY, NOW)).toEqual([]);
   });
 });
 
 describe('pruneOverlay', () => {
-  const pushes = { 'push-m': { machineName: 'new-box', terminals: [term({ id: 'aaa', title: 'Task A' })] } };
+  const pushes = { 'push-m': push('new-box', [term({ id: 'aaa', title: 'Task A' })]) };
 
   it('returns the SAME object when nothing changed', () => {
     const overlay: PushOverlay = { ...EMPTY_OVERLAY, renames: { aaa: { title: 'Other', at: NOW - 1000 } } };
@@ -234,7 +242,7 @@ describe('restoredAt (B-150)', () => {
       },
     });
     const rows = composeTerminalList(
-      { m1: { machineName: 'dev-laptop', terminals: snap!.terminals } },
+      { m1: push('dev-laptop', snap!.terminals) },
       EMPTY_OVERLAY,
       2000,
     );
@@ -248,14 +256,93 @@ describe('restoredAt (B-150)', () => {
 describe('B-282 attachTmux mapping', () => {
     it('carries the attached session name through the push row (strings only)', () => {
         const rows = composeTerminalList({
-            m1: { machineName: 'M', terminals: [
+            m1: push('M', [
                 { id: 'a1', attachTmux: 'my dev' },
                 { id: 'a2', attachTmux: 7 as any },
                 { id: 'a3' },
-            ] },
+            ]),
         }, EMPTY_OVERLAY, 20);
         expect(rows.find((r) => r.id === 'a1')?.attachTmux).toBe('my dev');
         expect(rows.find((r) => r.id === 'a2')?.attachTmux).toBeUndefined();
         expect(rows.find((r) => r.id === 'a3')?.attachTmux).toBeUndefined();
     });
+});
+
+/**
+ * B-360 — one host, two machine rows. The machine id is a randomUUID in
+ * `~/.happy/settings.json`; the 0.2.118→0.2.119 auto-update handover rotated it
+ * on a user's box, leaving the retired row behind with its last daemonState
+ * (which this app renders on purpose, so offline machines still show their
+ * terminals). Both rows then push the SAME tmux ids, and the composer emitted a
+ * row per (machine, terminal) pair — every terminal on that host appeared twice,
+ * on every device.
+ */
+describe('B-360 same terminal id pushed by two machine rows', () => {
+  const shared = [term({ id: 'aaa', title: 'resource_moniter' }), term({ id: 'bbb', title: 'en-other' })];
+  // The retired daemon's snapshot is frozen at handover; the live one keeps
+  // rewriting webTerminals, so its updatedAt is always later.
+  const retired = push('ip-10-122-241-147', shared, NOW - 60_000);
+  const live = push('ip-10-122-241-147', shared, NOW);
+
+  it('renders each terminal ONCE, owned by the machine with the newest snapshot', () => {
+    const rows = composeTerminalList({ 'old-mid': retired, 'new-mid': live }, EMPTY_OVERLAY, NOW);
+    expect(rows.map((r) => r.id).sort()).toEqual(['aaa', 'bbb']);
+    expect(rows.every((r) => r.machineId === 'new-mid')).toBe(true);
+  });
+
+  it('picks the newest snapshot regardless of machine-id sort order', () => {
+    // 'a-mid' sorts first but is the stale one — ownership must not fall out of
+    // iteration order.
+    const rows = composeTerminalList({ 'a-mid': retired, 'z-mid': live }, EMPTY_OVERLAY, NOW);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.machineId === 'z-mid')).toBe(true);
+  });
+
+  it('the surviving row carries the live machine\'s title/tags, not the frozen copy', () => {
+    const stale = push('box', [term({ id: 'aaa', title: 'old name', tags: ['old'] })], NOW - 60_000);
+    const fresh = push('box', [term({ id: 'aaa', title: 'new name', tags: ['new'] })], NOW);
+    const rows = composeTerminalList({ m1: stale, m2: fresh }, EMPTY_OVERLAY, NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].title).toBe('new name');
+    expect(rows[0].tags).toEqual(['new']);
+  });
+
+  it('a terminal only the retired row knows about still renders (offline display is deliberate)', () => {
+    const stale = push('box', [term({ id: 'gone' })], NOW - 60_000);
+    const fresh = push('box', [term({ id: 'aaa' })], NOW);
+    expect(composeTerminalList({ m1: stale, m2: fresh }, EMPTY_OVERLAY, NOW).map((r) => r.id).sort())
+      .toEqual(['aaa', 'gone']);
+  });
+
+  it('distinct machines keep their own terminals (ids never collide across hosts)', () => {
+    const a = push('box-a', [term({ id: 'aaa' })], NOW - 60_000);
+    const b = push('box-b', [term({ id: 'bbb' })], NOW);
+    const rows = composeTerminalList({ ma: a, mb: b }, EMPTY_OVERLAY, NOW);
+    expect(rows.map((r) => `${r.machineId}:${r.id}`).sort()).toEqual(['ma:aaa', 'mb:bbb']);
+  });
+
+  it('an optimistic creation is still suppressed once EITHER row pushes the id', () => {
+    const overlay: PushOverlay = { ...EMPTY_OVERLAY, created: [createdRow({ id: 'aaa' })] };
+    const rows = composeTerminalList({ 'old-mid': retired, 'new-mid': live }, overlay, NOW);
+    expect(rows.filter((r) => r.id === 'aaa')).toHaveLength(1);
+  });
+});
+
+describe('terminalOwnerByMachine', () => {
+  it('maps each id to the machine whose snapshot is newest', () => {
+    const owner = terminalOwnerByMachine({
+      m1: push('box', [term({ id: 'aaa' }), term({ id: 'only1' })], 100),
+      m2: push('box', [term({ id: 'aaa' })], 200),
+    });
+    expect(owner.get('aaa')).toBe('m2');
+    expect(owner.get('only1')).toBe('m1');
+  });
+
+  it('breaks an exact tie deterministically by machine id', () => {
+    const owner = terminalOwnerByMachine({
+      z: push('box', [term({ id: 'aaa' })], 100),
+      a: push('box', [term({ id: 'aaa' })], 100),
+    });
+    expect(owner.get('aaa')).toBe('a');
+  });
 });

@@ -78,8 +78,15 @@ interface TerminalSessionsState {
   adopt(id: string, machineId: string, machineName: string, meta?: { title?: string; tags?: string[] }): void;
   update(id: string, changes: { title?: string; tags?: string[] }): void;
   remove(id: string): void;
-  /** Apply one machine's trusted webTerminals snapshot (terminalSync). */
-  applyPush(machineId: string, machineName: string, terminals: MachineTerminal[]): void;
+  /** Apply one machine's trusted webTerminals snapshot (terminalSync).
+   *  `updatedAt` is the snapshot's own stamp — it decides which machine row
+   *  owns a terminal id when two rows claim the same one (B-360). */
+  applyPush(
+    machineId: string,
+    machineName: string,
+    terminals: MachineTerminal[],
+    updatedAt: number,
+  ): void;
   /** The machine's snapshot lost trust (daemon downgrade) → stop rendering it. */
   clearPush(machineId: string): void;
   /** Drop expired overlay entries (timed sweep). */
@@ -186,9 +193,9 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
     set({ overlay: nextOverlay, terminals: composed(pushes, nextOverlay) });
     scheduleOverlaySweep(REMOVE_OVERLAY_TTL_MS);
   },
-  applyPush: (machineId, machineName, terminals) => {
+  applyPush: (machineId, machineName, terminals, updatedAt) => {
     const { pushes, overlay } = get();
-    const nextPushes = { ...pushes, [machineId]: { machineName, terminals } };
+    const nextPushes = { ...pushes, [machineId]: { machineName, terminals, updatedAt } };
     const nextOverlay = pruneOverlay(overlay, nextPushes, Date.now());
     set({
       pushes: nextPushes,
