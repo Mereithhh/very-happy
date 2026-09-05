@@ -161,7 +161,7 @@ function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): 
  * A terminal id is a tmux session name (`vh-<id>`) — unique on its HOST, not
  * across machine rows. And a host can hold more than one machine row: the id
  * is a randomUUID in `~/.happy/settings.json`, so anything that loses or
- * rotates that file (the 0.2.118→0.2.119 auto-update handover did, 2026-09-04)
+ * rotates that file (the 0.2.118→0.2.119 daemon handover did, 2026-09-04)
  * leaves the old row behind with its last daemonState — which this app renders
  * on purpose, because that is how OFFLINE machines still show their terminals.
  * Two rows for one host therefore push the SAME ids, and the composer used to

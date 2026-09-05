@@ -270,7 +270,7 @@ describe('B-282 attachTmux mapping', () => {
 
 /**
  * B-360 — one host, two machine rows. The machine id is a randomUUID in
- * `~/.happy/settings.json`; the 0.2.118→0.2.119 auto-update handover rotated it
+ * `~/.happy/settings.json`; the 0.2.118→0.2.119 daemon handover rotated it
  * on a user's box, leaving the retired row behind with its last daemonState
  * (which this app renders on purpose, so offline machines still show their
  * terminals). Both rows then push the SAME tmux ids, and the composer emitted a

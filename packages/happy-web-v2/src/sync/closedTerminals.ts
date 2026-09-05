@@ -163,7 +163,7 @@ export interface ClosedRowMachine {
  *
  * B-360, the same-host duplicate: terminal ids are unique per HOST, and one
  * host can hold several machine rows (the machine id lives in a file that an
- * auto-update handover managed to rotate). Both rows then carry close records
+ * daemon handover managed to rotate). Both rows then carry close records
  * for the same terminals, and keying rows by (machine, terminal) showed the
  * archive twice over. Newest `closedAt` wins — the last daemon to actually
  * observe the close is the one that saw it die.
