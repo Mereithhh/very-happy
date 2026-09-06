@@ -1522,6 +1522,9 @@ export const en = {
         empty: 'No machines yet — run very-happy on a machine to register it.',
         online: 'online',
         offline: 'offline',
+        // B-361: an abandoned machine id — replaced by a newer registration of
+        // the same install. Hidden everywhere else; shown here so it can be removed.
+        superseded: 'replaced by a newer entry for this machine',
     },
     settingsVoice: {
         // Voice settings page (web v2, B-051 assistant TTS)
@@ -1690,6 +1693,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep06a: {
+                title: 'A machine that replaced itself is no longer listed twice',
+                summary: 'If a machine ever re-registered under a new identity, the abandoned entry stayed in your list — and kept serving terminals that are long gone.',
+                hidden: 'The replaced entry, and the stale terminals it remembered, no longer appear anywhere: not in the sidebar, the pickers, the board, or the update banners. Nothing to install and nothing to clean up — it applies the moment you load the app, whatever version the machine is running.',
+                safety: 'A machine is only ever treated as replaced when it is offline AND another entry reports the exact same host, platform and Happy directory. An online machine is never hidden, and a second machine that is merely asleep still shows its terminals. The replaced entry is still listed in Settings → Machines, marked as such, so you can remove it if you want to.',
+            },
             sep05a: {
                 title: 'Every terminal on one machine showing up twice',
                 summary: 'A machine that upgraded itself could come back under a new identity, leaving its old entry behind — and both of them listed the same terminals.',

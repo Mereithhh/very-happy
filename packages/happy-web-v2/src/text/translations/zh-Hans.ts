@@ -1488,6 +1488,7 @@ export const zhHans: TranslationStructure = {
         empty: '还没有机器——在一台机器上跑 very-happy 即可注册。',
         online: '在线',
         offline: '离线',
+        superseded: '已被这台机器的新记录取代',
     },
     settingsVoice: {
         // Voice settings page (web v2, B-051 assistant TTS)
@@ -1655,6 +1656,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep06a: {
+                title: '自己换过身份的机器，不会再列两条了',
+                summary: '一台机器如果曾经以新身份重新注册，那条被遗弃的记录会一直留在列表里，还在提供早就不存在的终端。',
+                hidden: '被取代的那条记录、以及它记着的过期终端，现在哪儿都不出现了：侧栏、各种选择器、看板、更新横幅都没有。不用装什么也不用清什么——打开网页就生效，机器上跑的是哪个版本都一样。',
+                safety: '只有当一台机器**离线**、且另一条记录的主机名、平台、Happy 目录三者完全相同时，才会被判定为「已被取代」。在线的机器永远不会被隐藏；只是睡着了的第二台机器，终端照常显示。被取代的那条在「设置 → 机器」里仍然列着并标注出来，想删可以自己删。',
+            },
             sep05a: {
                 title: '同一台机器上的终端全部重复了两遍',
                 summary: '机器自动升级后可能以新身份回来，旧的那条记录还留着——两条都在列同一批终端。',

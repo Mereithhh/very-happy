@@ -37,14 +37,20 @@ import { machineLabel } from '@/utils/machineUtils';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { pushedMachineSnapshots } from '@/sync/terminalPushOps';
+import { withoutSupersededMachines } from '@/sync/supersededMachines';
 import { closedTerminalsOf } from '@/sync/closedTerminals';
 import { pruneTerminalViewOverrides } from '@/sync/terminalViewPref';
 import type { Machine } from '@/sync/storageTypes';
 
+/** B-361: a superseded row (an install's abandoned machine id) still carries
+ *  its last daemonState, so feeding it here would keep its frozen terminal
+ *  list alive — ghost terminals the live daemon no longer has. Dropping it at
+ *  the source also makes syncPushes' `clearPush` retire whatever it had
+ *  already contributed. */
 function allMachines(): Machine[] {
   const state = storage.getState();
   if (!state.isDataReady) return [];
-  return Object.values(state.machines);
+  return [...withoutSupersededMachines(Object.values(state.machines))];
 }
 
 /** machineId → updatedAt of the last snapshot fed into the stores. Module
@@ -91,6 +97,10 @@ function syncPushes(): void {
     }
   }
 }
+
+/** One beat of the ingest loop, exported so a test can drive it the way the
+ *  store subscription does. App code mounts `useTerminalSync()` instead. */
+export const syncPushesForTest = syncPushes;
 
 /** One relayed realtime frame. Defensive about the payload: it comes off the
  *  wire from a daemon of unknown version, and `applyRemoteTerminalActivity`

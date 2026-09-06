@@ -18,6 +18,7 @@ import { compareMessagesNewestFirst, sortIncomingBySeq } from "./messageOrder";
 import { claimLiveStreamKeys } from '@/sync/liveStreamStore';
 import { streamKeysOf } from '@/sync/liveStream';
 import { resolvePlanModeFromBatch } from "./planModeBatch";
+import { supersededMachineIds, withoutSupersededMachines } from './supersededMachines';
 import { resolveIncomingPermissionMode, resolveSessionPermissionMode } from './sessionModeSync';
 import { NormalizedMessage } from "./typesRaw";
 import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
@@ -1807,13 +1808,34 @@ export function useLocalSettings(): LocalSettings {
     return storage(useShallow((state) => state.localSettings));
 }
 
-export function useAllMachines(options?: { includeOffline?: boolean }): Machine[] {
+/**
+ * Every machine the account has, newest first.
+ *
+ * B-361: rows a NEWER row of the same install has replaced are dropped by
+ * default — one host can hold several rows once a machine id is lost, and the
+ * abandoned one keeps serving its frozen daemonState (ghost terminals, a
+ * duplicate entry in every picker). Only OFFLINE rows are ever dropped and the
+ * rule needs a full host+platform+happyHomeDir match; see
+ * sync/supersededMachines.ts. `includeSuperseded` is for the machine list in
+ * Settings, which must still be able to show — and delete — the leftover.
+ */
+export function useAllMachines(options?: { includeOffline?: boolean; includeSuperseded?: boolean }): Machine[] {
     const includeOffline = options?.includeOffline ?? false;
+    const includeSuperseded = options?.includeSuperseded ?? false;
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [];
-        const machines = Object.values(state.machines).sort((a, b) => b.createdAt - a.createdAt);
-        return includeOffline ? machines : machines.filter((v) => v.active);
+        const all = Object.values(state.machines).sort((a, b) => b.createdAt - a.createdAt);
+        const machines = includeSuperseded ? all : withoutSupersededMachines(all);
+        return includeOffline ? [...machines] : machines.filter((v) => v.active);
     }));
+}
+
+/** B-361: which of the account's machine rows are superseded leftovers — for
+ *  the one screen that shows them anyway and needs to label them. */
+export function useSupersededMachineIds(): Set<string> {
+    return storage(useShallow((state) => (
+        state.isDataReady ? supersededMachineIds(Object.values(state.machines)) : new Set<string>()
+    )));
 }
 
 export function useMachine(machineId: string): Machine | null {
