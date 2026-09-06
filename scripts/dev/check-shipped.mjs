@@ -16,6 +16,11 @@
  *  ③ **needle 不能用函数名或变量名**：生产构建会把它们压掉，`shouldDeferMermaid` 这种
  *     一定 MISSING 而功能其实上线了（2026-09-04 实踩）。能钉住的是 **CSS 类名**与
  *     **字符串字面量**（i18n key、事件名、storage key、`'slow-2g'` 这类判据常量）。
+ *     **纯逻辑改动（去重规则、比较判据）常常一个字面量都没有**，这时候用**属性名
+ *     指纹**：属性名不会被压掉，所以 `updatedAt??0`、`closedAt>=`、`t.happyHomeDir]`
+ *     这类片段在压缩产物里原样保留（B-360/B-361 两次发布都靠它验的）。挑法是先在
+ *     本地 `packages/happy-web-v2/dist/assets/*.js` 里 grep 候选片段，**确认它在整份
+ *     构建里只出现一次**再拿去当 needle——出现多次就等于没钉住。
  *  ④ SHA 必须**从线上 entry 读**，不是填你部署的那个——别的会话在你上面发一版，
  *     写死的 SHA 就再也匹配不到。不匹配时先查祖先关系
  *     （`git merge-base --is-ancestor <yours> <live>`）再下结论。
