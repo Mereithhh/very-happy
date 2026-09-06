@@ -15,6 +15,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-06-replaced-machine-entries',
+    date: '2026-09-06',
+    buildVersion: __APP_VERSION__,
+    // web-only: no CLI half. The rule reads metadata only the client can
+    // decrypt, so it works for every machine whatever CLI it runs.
+    titleKey: 'changelog.releases.sep06a.title',
+    summaryKey: 'changelog.releases.sep06a.summary',
+    itemKeys: [
+      'changelog.releases.sep06a.hidden',
+      'changelog.releases.sep06a.safety',
+    ],
+  },
+  {
     id: '2026-09-05-terminals-listed-twice',
     date: '2026-09-05',
     buildVersion: __APP_VERSION__,
