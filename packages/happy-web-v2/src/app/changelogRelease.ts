@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-08-idle-cpu-compositor-probe',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // Web half (ui.css pulse) ships with this web build; the CLI half
+    // (keep-alive probe throttle) lands in the next CLI release — the
+    // publish workflow sets cliVersion then, as with other two-part entries.
+    titleKey: 'changelog.releases.sep08c.title',
+    summaryKey: 'changelog.releases.sep08c.summary',
+    itemKeys: ['changelog.releases.sep08c.pulse', 'changelog.releases.sep08c.probe'],
+  },
+  {
     id: '2026-09-08-undefined-css-tokens',
     date: '2026-09-08',
     buildVersion: __APP_VERSION__,

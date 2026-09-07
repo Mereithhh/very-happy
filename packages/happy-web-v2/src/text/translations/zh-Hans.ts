@@ -1656,6 +1656,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep08c: {
+                title: '空闲时更省 CPU：状态点不再每帧重绘，daemon 不再每 20 秒探测一遍 PATH',
+                summary: '对一台空闲的 very-happy 机器做了一次 CPU 巡检，找到两处不大但常驻的开销：每个脉动的状态点（会话头部的已连接点、正在运行的工具、看板卡片）用 box-shadow 画光晕，浏览器每一帧都得重绘；daemon 每 20 秒心跳时都会重新检查装了哪些 agent CLI——一次起 6 个 shell 进程。',
+                pulse: '脉动现在只动透明度和缩放，由合成器直接处理、不再碰页面。用真实样式表实测：12 个点从每 8 秒约 960 次重绘、约 1.1 万个光栅任务降到 0 次重绘；外观不变。',
+                probe: 'daemon 仍然每 20 秒心跳一次，但已安装 CLI 的检查改为每 5 分钟一次（每小时 1080 → 72 个 shell 进程，主线程阻塞从约 3 秒降到 0.2 秒）。新装的 agent CLI 会在 5 分钟内出现在机器卡片上；daemon 重连时会立刻重新检查。',
+            },
             sep08: {
                 title: '文件路径链接、更新按钮和几个小控件的颜色一直没生效',
                 summary: '几处样式引用了并不存在的颜色 token，浏览器只是悄悄忽略：悬停不加深、聚焦不出框、链接图标隐形、「刷新」按钮没有背景。',
