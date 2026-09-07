@@ -342,7 +342,13 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                 : { kind: 'deny', reason: options.reason }
             let result: Awaited<ReturnType<typeof resolvePermissionRequest>>
             try {
-                result = await resolvePermissionRequest(sessionId, requestId, verdict)
+                result = await resolvePermissionRequest(sessionId, requestId, verdict, {
+                    // T-014: a rate refusal waits (bounded) before re-sending;
+                    // say so on stderr so the wait does not look like a hang.
+                    onRateLimited: ({ attempt, waitMs, serverError }) => {
+                        console.error(chalk.yellow('Rate limited:'), `${serverError} — waiting ${Math.ceil(waitMs / 1000)}s before retry ${attempt}`)
+                    },
+                })
             } catch (error) {
                 // Pre-check refusals (no local key / not pending / not found)
                 // throw before any RPC. Like `stop`, a --json caller still gets
@@ -352,7 +358,10 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
             }
             if (result.outcome.status !== 'acknowledged') {
                 if (options.json) console.log(JSON.stringify(result))
-                console.error(chalk.red('Error:'), `${options.action} of ${requestId} on ${sessionId} was not delivered (${result.outcome.status}): ${result.outcome.message}`)
+                const hint = result.outcome.status === 'rate-limited'
+                    ? ` — the request is still pending; re-run in ~${Math.ceil(result.outcome.retryAfterMs / 1000)}s`
+                    : ''
+                console.error(chalk.red('Error:'), `${options.action} of ${requestId} on ${sessionId} was not delivered (${result.outcome.status}): ${result.outcome.message}${hint}`)
                 process.exit(1)
             }
             if (options.json) {

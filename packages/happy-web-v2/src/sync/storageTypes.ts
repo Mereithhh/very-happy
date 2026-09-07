@@ -264,29 +264,3 @@ export interface Machine {
     daemonStateVersion: number;
 }
 
-//
-// Git Status
-//
-
-export interface GitStatus {
-    branch: string | null;
-    isDirty: boolean;
-    modifiedCount: number;
-    untrackedCount: number;
-    stagedCount: number;
-    lastUpdatedAt: number;
-    // Line change statistics - separated by staged vs unstaged
-    stagedLinesAdded: number;
-    stagedLinesRemoved: number;
-    unstagedLinesAdded: number;
-    unstagedLinesRemoved: number;
-    // Computed totals
-    linesAdded: number;      // stagedLinesAdded + unstagedLinesAdded
-    linesRemoved: number;    // stagedLinesRemoved + unstagedLinesRemoved
-    linesChanged: number;    // Total lines that were modified (added + removed)
-    // Branch tracking information (from porcelain v2)
-    upstreamBranch?: string | null; // Name of upstream branch
-    aheadCount?: number; // Commits ahead of upstream
-    behindCount?: number; // Commits behind upstream
-    stashCount?: number; // Number of stash entries
-}

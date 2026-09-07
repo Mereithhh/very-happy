@@ -15,6 +15,22 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-08-rpc-rate-limit-backoff',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // The CLI half is `sessions approve/deny` honouring retryAfterMs; rides
+    // the next CLI tag after 0.2.120. If a sibling branch publishes 0.2.121
+    // first, bump this at landing (AGENTS 铁律 6: published tags are immutable).
+    cliVersion: '0.2.121',
+    titleKey: 'changelog.releases.sep08f.title',
+    summaryKey: 'changelog.releases.sep08f.summary',
+    itemKeys: [
+      'changelog.releases.sep08f.source',
+      'changelog.releases.sep08f.backoff',
+      'changelog.releases.sep08f.server',
+    ],
+  },
+  {
     id: '2026-09-08-undefined-css-tokens',
     date: '2026-09-08',
     buildVersion: __APP_VERSION__,

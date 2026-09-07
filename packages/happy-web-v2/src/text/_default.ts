@@ -792,6 +792,9 @@ export const en = {
     },
 
     // copy_to_clipboard pushes: receive toasts + the history panel
+    rpc: {
+        rateLimited: ({ seconds }: { seconds: number }) => `Too many requests to the server — holding machine calls for ${seconds}s, then resuming.`,
+    },
     clipboard: {
         copiedPreview: ({ preview }: { preview: string }) => `Copied: ${preview}`,
         tapToCopy: ({ preview }: { preview: string }) => `Clipboard received — tap to copy: ${preview}`,
@@ -1698,6 +1701,13 @@ export const en = {
                 summary: 'Several styles referred to colour tokens that do not exist, so the browser silently dropped them: a hover that never darkened, a focus ring that never showed, a link icon that was invisible, a Refresh button with no background.',
                 states: 'Clickable file paths in a conversation now darken their underline on hover, show a focus outline when you tab to them, and their small icon is visible. The Refresh button on the update banner is solid again. Body text colours are unchanged \u2014 they were inheriting correctly by luck.',
                 guard: 'A test now fails if any stylesheet uses a colour token that is not defined, and another checks the text-on-background contrast of both themes against WCAG. The reported "black text in dark theme" and "@ shown as an encoding" did not reproduce; if you still see either, please say where.',
+            },
+            sep08f: {
+                title: '"RPC rate limit reached" with several agents running is fixed at the source',
+                summary: 'Every open tab was quietly running four git commands on every machine each time any agent finished a tool call — 110–170 calls a minute from one idle tab, for a status nobody displayed. With eight agents and a few tabs that tripped the server\'s limiter, and the refused calls then piled onto the fallback path and tripped it again.',
+                source: 'The background git polling is gone. The Files panel still fetches git status when you open or refresh it; nothing else asks the machine unprompted.',
+                backoff: 'If the server does refuse a call for rate, the web now waits exactly as long as the server says (with a little jitter), collapses identical calls made meanwhile into one, releases them gently, and shows one toast — instead of retrying at full speed or failing silently. `very-happy sessions approve/deny` does the same and says so on stderr.',
+                server: 'The server\'s per-connection limit became a token bucket that refills continuously instead of a hard window, refusals are no longer counted against you, every refusal carries a retry-after, and the shared per-account budget was raised from one to three concurrent 8 MiB file handoffs.',
             },
             sep07a: {
                 title: 'The terminal no longer changes width when the phone keyboard opens',

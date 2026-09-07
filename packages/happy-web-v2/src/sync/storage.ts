@@ -9,7 +9,7 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
         return equal(prev.current, next) ? prev.current! : (prev.current = next);
     };
 }
-import { Session, Machine, GitStatus } from "./storageTypes";
+import { Session, Machine } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
@@ -32,7 +32,6 @@ import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
-import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { isHiddenSession, isMirrorSession } from "@/assistant/assistantSession";
 import { FeedItem } from "./feedTypes";
@@ -187,7 +186,6 @@ interface StorageState {
     sessionsData: SessionListItem[] | null;  // Legacy - to be removed
     sessionListViewData: SessionListViewItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
-    pathGitStatus: Record<string, GitStatus | null>;        // keyed by "machineId:path"
     pathGitStatusFiles: Record<string, GitStatusFiles | null>; // keyed by "machineId:path"
     pathProjectFiles: Record<string, ProjectFilesList | null>;  // keyed by "machineId:path"
     sessionFileCache: Record<string, Record<string, { content: string | null; diff: string | null; isBinary: boolean; cachedAt: number }>>;
@@ -223,13 +221,11 @@ interface StorageState {
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     applyPurchases: (customerInfo: CustomerInfo) => void;
     applyProfile: (profile: Profile) => void;
-    applyGitStatus: (pathKey: string, status: GitStatus | null) => void;
     applyGitStatusFiles: (pathKey: string, files: GitStatusFiles | null) => void;
     applyProjectFiles: (pathKey: string, files: ProjectFilesList | null) => void;
     getSessionPathKey: (sessionId: string) => string | null;
     applyFileCache: (sessionId: string, filePath: string, content: string | null, diff: string | null, isBinary: boolean) => void;
     applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
-    isMutableToolCall: (sessionId: string, callId: string) => boolean;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     setRealtimeMode: (mode: 'idle' | 'agent-speaking' | 'user-speaking', immediate?: boolean) => void;
     clearRealtimeModeDebounce: () => void;
@@ -422,7 +418,6 @@ export const storage = create<StorageState>()((set, get) => {
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
-        pathGitStatus: {},
         pathGitStatusFiles: {},
         pathProjectFiles: {},
         sessionFileCache: {},
@@ -437,21 +432,6 @@ export const storage = create<StorageState>()((set, get) => {
         // B-312: seeded from MMKV so a refresh does not erase pending red dots
         unreadSessionIds: new Set<string>(loadUnreadSessionIds()),
         currentViewingSessionId: null,
-        isMutableToolCall: (sessionId: string, callId: string) => {
-            const sessionMessages = get().sessionMessages[sessionId];
-            if (!sessionMessages) {
-                return true;
-            }
-            const toolCall = sessionMessages.reducerState.toolIdToMessageId.get(callId);
-            if (!toolCall) {
-                return true;
-            }
-            const toolCallMessage = sessionMessages.messagesMap[toolCall];
-            if (!toolCallMessage || toolCallMessage.kind !== 'tool-call') {
-                return true;
-            }
-            return toolCallMessage.tool?.name ? isMutableTool(toolCallMessage.tool?.name) : true;
-        },
         getActiveSessions: () => {
             const state = get();
             return Object.values(state.sessions).filter(s => s.active);
@@ -1032,21 +1012,13 @@ export const storage = create<StorageState>()((set, get) => {
                 profile
             };
         }),
-        applyGitStatus: (pathKey: string, status: GitStatus | null) => set((state) => ({
-            ...state,
-            pathGitStatus: {
-                ...state.pathGitStatus,
-                [pathKey]: status
-            }
-        })),
         applyGitStatusFiles: (pathKey: string, files: GitStatusFiles | null) => set((state) => {
-            // Short-circuit on no-op writes. gitStatusSync.invalidate fires on every
-            // mutable-tool message and on every update-session, but most of those
-            // don't actually change the file set. Without this guard, every fetch
-            // produces a fresh object reference, the useSessionGitStatusFiles
-            // subscription fires, and AllFilesDiffView nukes its scroll position
-            // and re-runs every git diff. fast-deep-equal handles arrays + nested
-            // objects so we don't have to enumerate fields.
+            // Short-circuit on no-op writes: a refresh that finds the same file set
+            // must not produce a fresh object reference, or the
+            // useSessionGitStatusFiles subscription fires and AllFilesDiffView
+            // nukes its scroll position and re-runs every git diff.
+            // fast-deep-equal handles arrays + nested objects so we don't have to
+            // enumerate fields.
             if (equal(state.pathGitStatusFiles[pathKey] ?? null, files)) {
                 return state;
             }
@@ -1940,13 +1912,6 @@ export function useSocketStatus() {
         lastConnectedAt: state.socketLastConnectedAt,
         lastDisconnectedAt: state.socketLastDisconnectedAt
     })));
-}
-
-export function useSessionGitStatus(sessionId: string): GitStatus | null {
-    return storage(useShallow((state) => {
-        const pathKey = state.getSessionPathKey(sessionId);
-        return pathKey ? state.pathGitStatus[pathKey] ?? null : null;
-    }));
 }
 
 export function useSessionGitStatusFiles(sessionId: string): GitStatusFiles | null {

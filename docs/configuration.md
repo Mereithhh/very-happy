@@ -62,10 +62,10 @@ state. Never commit production values.
 | `TERMINAL_RELAY_BYTES_PER_SECOND` / `TERMINAL_RELAY_BURST_BYTES` | Per-account terminal relay byte token bucket, per process | `2097152` / `8388608` |
 | `TERMINAL_RELAY_EVENTS_PER_SECOND` / `TERMINAL_RELAY_BURST_EVENTS` | Per-account terminal relay event token bucket, per process | `200` / `400` |
 | `RPC_MAX_PAYLOAD_BYTES` | Maximum RPC call payload | `262144` |
-| `RPC_MAX_CALLS_PER_MINUTE` | Best-effort RPC call cap per socket | `120` |
+| `RPC_MAX_CALLS_PER_MINUTE` | Per-socket RPC token bucket: burst and sustained calls per minute; `0` disables (T-014) | `120` |
 | `RPC_MAX_REGISTERED_METHODS_PER_SOCKET` | Unique RPC rooms a machine socket may register; `0` disables | `256` |
 | `RPC_RELAY_BYTES_PER_SECOND` / `RPC_RELAY_BURST_BYTES` | Shared per-account RPC byte token bucket, per process | `2097152` / `20971520` |
-| `RPC_RELAY_EVENTS_PER_SECOND` / `RPC_RELAY_BURST_EVENTS` | Shared per-account RPC event token bucket, per process | `2` / `120` |
+| `RPC_RELAY_EVENTS_PER_SECOND` / `RPC_RELAY_BURST_EVENTS` | Shared per-account RPC event token bucket, per process (central server and each relay hold their own instance) | `5` / `300` |
 | `VOICE_EXTRA_LIMIT_ACCOUNT_IDS` | Optional comma-separated account IDs that receive the legacy extra voice allowance | Unset/empty; configure only for an operator-managed migration |
 
 `SIGNUP_CLOSED` remains a legacy fallback only. Prefer explicit `SIGNUP_MODE`.
@@ -198,9 +198,13 @@ digits, `_`, or `-`; a malformed or oversized list fails closed to no extra
 allowance. Prefer uniform quotas for a public service.
 
 The four `RPC_RELAY_*` settings form a separate shared per-account allowance for
-RPC calls accepted by one server process. Its default burst fits one complete
-8 MiB terminal file handoff after encoding; `RPC_MAX_PAYLOAD_BYTES` and
-`RPC_MAX_CALLS_PER_MINUTE` remain per-socket hard backstops. Multi-replica
+RPC calls accepted by one server process. Its default event burst fits three
+concurrent 8 MiB terminal file handoffs after encoding (88 RPCs each; the byte
+burst fits one); `RPC_MAX_PAYLOAD_BYTES` and `RPC_MAX_CALLS_PER_MINUTE` remain
+per-socket hard backstops. Every refusal is
+`{ ok:false, error, code: 'rpc_rate_limited' | 'rpc_account_rate_limited', retryAfterMs }`;
+a refused call is not charged, and clients wait `retryAfterMs` before re-sending
+(`docs/operations.md` "RPC 限流" has the measured basis for the numbers). Multi-replica
 operators should divide the sustained allowance when they need a strict
 cluster-wide ceiling.
 

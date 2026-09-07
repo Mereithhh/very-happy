@@ -46,6 +46,7 @@ import { configuration } from '@/configuration'
 import { decodeBase64, decrypt, encodeBase64, encrypt } from '@/api/encryption'
 import { readCredentialsForConfiguredRelay, readPersistedSessions, type PersistedSession } from '@/persistence'
 import { openUserScopedSocket, type RpcCallAck, type UserRpcTransport } from '@/api/userSocket'
+import { isRpcRateLimitAck, RPC_RATE_MAX_RETRIES, rpcRateRetryDelayMs } from '@/api/rpcRateLimit'
 import type { AgentState } from '@/api/types'
 
 /** Client tag on the REST / socket calls these operations make. */
@@ -96,7 +97,13 @@ export type PermissionAckOutcome =
     | { status: 'timeout'; message: string }
     /** The wrapper's handler threw; its message is in `message` (rule 17 envelope). */
     | { status: 'handler-error'; message: string }
-    /** Any other server-side refusal (rate limit, payload, internal). */
+    /**
+     * T-014: the server refused for RATE, still, after RPC_RATE_MAX_RETRIES
+     * waits. Nothing reached the wrapper; the request is still pending and the
+     * command can simply be re-run after `retryAfterMs`.
+     */
+    | { status: 'rate-limited'; message: string; retryAfterMs: number }
+    /** Any other server-side refusal (payload, internal). */
     | { status: 'rejected'; message: string }
 
 /**
@@ -123,6 +130,9 @@ export function interpretPermissionAck(
         }
         if (/timed? ?out/i.test(message)) {
             return { status: 'timeout', message }
+        }
+        if (isRpcRateLimitAck(ack)) {
+            return { status: 'rate-limited', message, retryAfterMs: rpcRateRetryDelayMs(1, ack.retryAfterMs, 0) }
         }
         return { status: 'rejected', message }
     }
@@ -208,6 +218,10 @@ export interface ResolvePermissionDeps {
     bearerToken?: () => Promise<string>
     sleep?: (ms: number) => Promise<void>
     settleTimeoutMs?: number
+    /** T-014: told once per wait so the CLI can print something instead of looking hung. */
+    onRateLimited?: (info: { attempt: number; waitMs: number; serverError: string }) => void
+    /** Injected jitter for tests; must be in [0, 1). */
+    random?: () => number
 }
 
 /**
@@ -246,18 +260,32 @@ export async function resolvePermissionRequest(
     const params = encodeBase64(encrypt(key, persisted.encryptionVariant, payload))
     const transport = await (deps.openTransport ?? openUserScopedSocket)(token)
     const rpcTimeoutMs = deps.rpcTimeoutMs ?? PERMISSION_RPC_TIMEOUT_MS
+    const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
     let ack: RpcCallAck
     try {
-        // socket.io has its own ack timer, but this deadline is OURS: a CLI
-        // invocation must terminate even if the transport never settles
-        // (a one-shot command that hangs is worse than one that fails).
-        ack = await withDeadline(
-            transport.rpcCall({ method: `${sessionId}:permission`, params }, rpcTimeoutMs),
-            rpcTimeoutMs + RPC_DEADLINE_GRACE_MS,
-            `permission RPC did not settle within ${rpcTimeoutMs}ms`,
-        )
-    } catch (error) {
-        ack = { ok: false, error: error instanceof Error ? error.message : 'RPC call failed' }
+        for (let attempt = 1; ; attempt++) {
+            try {
+                // socket.io has its own ack timer, but this deadline is OURS: a CLI
+                // invocation must terminate even if the transport never settles
+                // (a one-shot command that hangs is worse than one that fails).
+                ack = await withDeadline(
+                    transport.rpcCall({ method: `${sessionId}:permission`, params }, rpcTimeoutMs),
+                    rpcTimeoutMs + RPC_DEADLINE_GRACE_MS,
+                    `permission RPC did not settle within ${rpcTimeoutMs}ms`,
+                )
+            } catch (error) {
+                ack = { ok: false, error: error instanceof Error ? error.message : 'RPC call failed' }
+            }
+            // T-014: a rate refusal never reached the wrapper, so re-sending the
+            // identical request is safe. Wait the server's hint (bounded,
+            // jittered) and try again — at most RPC_RATE_MAX_RETRIES times; a
+            // one-shot command must not sit forever on an account someone else
+            // is saturating.
+            if (!isRpcRateLimitAck(ack) || attempt > RPC_RATE_MAX_RETRIES) break
+            const waitMs = rpcRateRetryDelayMs(attempt, ack.retryAfterMs, (deps.random ?? Math.random)())
+            deps.onRateLimited?.({ attempt, waitMs, serverError: ack.error ?? 'RPC rate limit reached' })
+            await sleep(waitMs)
+        }
     } finally {
         transport.close()
     }
@@ -266,7 +294,6 @@ export async function resolvePermissionRequest(
         return { sessionId, requestId, payload, outcome }
     }
 
-    const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
     const deadline = now() + (deps.settleTimeoutMs ?? SETTLE_TIMEOUT_MS)
     let settled = false
     for (;;) {

@@ -42,7 +42,11 @@ describe('interpretPermissionAck — server ack + rule-17 envelope', () => {
         expect(interpretPermissionAck({ ok: false, error: 'operation has timed out' }, identity).status).toBe('timeout')
         // The wrapper dropping mid-call is "nobody there", not "too slow".
         expect(interpretPermissionAck({ ok: false, error: 'RPC target disconnected' }, identity)).toMatchObject({ status: 'offline', message: expect.stringMatching(/disconnected/) })
-        expect(interpretPermissionAck({ ok: false, error: 'RPC rate limit reached' }, identity)).toEqual({ status: 'rejected', message: 'RPC rate limit reached' })
+        // T-014: rate refusals are their own outcome (the request is still pending, nothing reached the wrapper).
+        expect(interpretPermissionAck({ ok: false, error: 'RPC rate limit reached' }, identity)).toEqual({ status: 'rate-limited', message: 'RPC rate limit reached', retryAfterMs: 2_000 })
+        expect(interpretPermissionAck({ ok: false, error: 'RPC account rate limit reached', code: 'rpc_account_rate_limited', retryAfterMs: 700 }, identity))
+            .toEqual({ status: 'rate-limited', message: 'RPC account rate limit reached', retryAfterMs: 700 })
+        expect(interpretPermissionAck({ ok: false, error: 'RPC payload too large' }, identity)).toEqual({ status: 'rejected', message: 'RPC payload too large' })
         expect(interpretPermissionAck({ ok: false }, identity)).toEqual({ status: 'rejected', message: 'RPC call failed' })
     })
 
@@ -175,6 +179,48 @@ describe('resolvePermissionRequest — end to end over a fake transport', () => 
         expect(result.outcome.status).toBe('timeout')
         expect(result.outcome).toMatchObject({ message: expect.stringMatching(/did not settle within 20ms .*timed out/) })
         expect(transport.closed).toBe(true)
+    })
+
+    it('waits the server\'s retryAfterMs and re-sends after a rate refusal; the same encrypted request, bounded retries (T-014)', async () => {
+        let refusals = 0
+        const transport = fakeTransport(() => {
+            refusals++
+            if (refusals <= 2) return { ok: false, error: 'RPC account rate limit reached', code: 'rpc_account_rate_limited', retryAfterMs: 400 }
+            return { ok: true, result: encodeBase64(encrypt(key, 'dataKey', undefined)) }
+        })
+        const waits: number[] = []
+        const notices: Array<{ attempt: number; waitMs: number }> = []
+        const d = { ...deps([pendingState, emptyState], transport), sleep: async (ms: number) => { waits.push(ms) }, random: () => 0, onRateLimited: (i: { attempt: number; waitMs: number }) => notices.push(i) }
+        const result = await resolvePermissionRequest(SID, REQ, { kind: 'approve' }, d)
+        expect(transport.calls).toHaveLength(3)
+        expect(waits).toEqual([400, 400])
+        expect(notices).toEqual([{ attempt: 1, waitMs: 400, serverError: 'RPC account rate limit reached' }, { attempt: 2, waitMs: 400, serverError: 'RPC account rate limit reached' }])
+        expect(result.outcome).toEqual({ status: 'acknowledged' })
+        expect(transport.closed).toBe(true)
+    })
+
+    it('gives up after RPC_RATE_MAX_RETRIES rate refusals with a rate-limited outcome, never spinning', async () => {
+        const transport = fakeTransport(() => ({ ok: false, error: 'RPC rate limit reached', code: 'rpc_rate_limited', retryAfterMs: 250 }))
+        const waits: number[] = []
+        const d = { ...deps([pendingState], transport), sleep: async (ms: number) => { waits.push(ms) }, random: () => 0 }
+        const result = await resolvePermissionRequest(SID, REQ, { kind: 'approve' }, d)
+        expect(transport.calls).toHaveLength(3) // 1 + RPC_RATE_MAX_RETRIES
+        expect(waits).toEqual([250, 250])
+        expect(result.outcome).toEqual({ status: 'rate-limited', message: 'RPC rate limit reached', retryAfterMs: 250 })
+        expect(result.settled).toBeUndefined()
+        expect(transport.closed).toBe(true)
+    })
+
+    it('without a server hint the rate wait is the 2s→60s ladder, never sub-second', async () => {
+        const transport = fakeTransport(() => ({ ok: false, error: 'RPC rate limit reached' }))
+        const waits: number[] = []
+        const d = { ...deps([pendingState], transport), sleep: async (ms: number) => { waits.push(ms) }, random: () => 0.999 }
+        await resolvePermissionRequest(SID, REQ, { kind: 'approve' }, d)
+        expect(waits).toHaveLength(2)
+        expect(waits[0]).toBeGreaterThanOrEqual(2_000)
+        expect(waits[0]).toBeLessThanOrEqual(2_000)
+        expect(waits[1]).toBeGreaterThanOrEqual(2_000)
+        expect(waits[1]).toBeLessThanOrEqual(4_000)
     })
 
     it('surfaces a handler {error} envelope (rule 17) instead of calling it success', async () => {
