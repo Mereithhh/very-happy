@@ -223,6 +223,25 @@ describe('reducer', () => {
             });
         });
 
+        it('carries a B-332 reason from a CLI tombstone so the message stays visible + marked', () => {
+            const state = createReducer();
+            const result = reducer(state, [
+                {
+                    id: 'cfg-queued-cancel', localId: 'local-cli-cancel', createdAt: 2000,
+                    role: 'user', content: { type: 'text', text: 'never ran' }, isSidechain: false,
+                    meta: { queuedAt: 2000 },
+                },
+                {
+                    id: 'cli-cancel-event', localId: 'cli-local', createdAt: 2100,
+                    role: 'event', isSidechain: false,
+                    content: { type: 'queue-cancel', targetLocalKeys: ['local-cli-cancel'], reason: 'restarted' },
+                },
+            ]);
+            expect(result.messages[0]).toMatchObject({
+                kind: 'user-text', localId: 'local-cli-cancel', inputState: 'canceled', cancelReason: 'restarted',
+            });
+        });
+
         it('should process user messages with localId', () => {
             const state = createReducer();
             const messages: NormalizedMessage[] = [

@@ -528,3 +528,45 @@ describe('MessageQueue2 batching with the real Claude mode hash', () => {
         expect(batch?.mode.permissionMode).toBe('bypassPermissions');
     });
 });
+
+describe('MessageQueue2 discard hook (B-332)', () => {
+    it('reports cleared source ids on pushIsolateAndClear, and only for items with a source id', () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        const discarded: Array<{ sourceId: string | undefined; reason: string }> = [];
+        queue.setOnDiscard((entries) => discarded.push(...entries));
+        queue.push('pending-a', 'local', undefined, 'msg-a');
+        queue.push('pending-legacy', 'local'); // no source id → not tombstone-able
+
+        queue.pushIsolateAndClear('/clear', 'local', undefined, 'clear-src');
+        expect(queue.size()).toBe(1);
+
+        expect(discarded).toEqual([
+            { sourceId: 'msg-a', reason: 'cleared' },
+            { sourceId: undefined, reason: 'cleared' },
+        ]);
+    });
+
+    it('reports aborted source ids on reset()', () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        const discarded: Array<{ sourceId: string | undefined; reason: string }> = [];
+        queue.setOnDiscard((entries) => discarded.push(...entries));
+        queue.push('a', 'local', undefined, 'msg-a');
+        queue.push('b', 'local', undefined, 'msg-b');
+
+        queue.reset();
+        expect(queue.size()).toBe(0);
+        expect(discarded).toEqual([
+            { sourceId: 'msg-a', reason: 'aborted' },
+            { sourceId: 'msg-b', reason: 'aborted' },
+        ]);
+    });
+
+    it('does not fire the discard hook when the queue is already empty', () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        let fired = 0;
+        queue.setOnDiscard(() => { fired += 1; });
+        queue.reset();
+        queue.pushIsolateAndClear('x', 'local');
+        expect(fired).toBe(0);
+    });
+});

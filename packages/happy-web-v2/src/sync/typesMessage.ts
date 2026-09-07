@@ -39,6 +39,14 @@ export type MessageOrdering = {
     displayAt?: number;
     /** Persisted input/file item waiting for the preceding turn to finish. */
     inputState?: 'queued' | 'canceled';
+    /**
+     * B-332: why a `canceled` input never ran, as reported by whoever destroyed
+     * it. Undefined when the user cancelled it from this UI. Known values:
+     * `cleared` (/clear, /compact) · `aborted` (stop in local mode / Gemini) ·
+     * `restarted` (wrapper restart or takeover skipped it). Free-form string on
+     * the wire; render unknown values generically.
+     */
+    cancelReason?: string;
 }
 
 // Flattened message types - each message represents a single block

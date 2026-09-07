@@ -24,6 +24,8 @@ import {
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
+import { createEnvelope } from '@slopus/happy-wire';
+import { scanUndeliveredQueuedInputs, type UndeliveredScan } from '@/utils/undeliveredQueuedInputs';
 import { normalizeAgentUsage, usageAgentKey } from './usageReport';
 import { MAX_CHAT_ATTACHMENT_ENCRYPTED_BYTES } from '@/utils/attachmentLimits';
 
@@ -530,6 +532,11 @@ export class ApiSessionClient extends EventEmitter {
         if (skipRouting) {
             this.skipInitialMessages = false;
             logger.debug('[API] Reconnect mode: skipping existing messages, advancing lastSeq');
+            // B-332: the messages we are about to skip are the previous wrapper's
+            // leftover. Anything still queued never ran; tombstone it so the web
+            // does not paint it as delivered. Fire-and-forget (the scan is
+            // best-effort and must not delay the cursor advance).
+            void this.cancelUndeliveredQueuedInputs();
         }
 
         let afterSeq = this.lastSeq;
@@ -763,8 +770,81 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    /** B-332: emit a queue-cancel tombstone, mirroring the web's own signal. */
+    sendQueueCancelReason(localKeys: string[], reason: 'cleared' | 'aborted' | 'restarted'): void {
+        if (localKeys.length === 0) return;
+        const envelope = createEnvelope('user', { t: 'queue-cancel', targetLocalKeys: localKeys, reason });
+        this.sendSessionProtocolMessage(envelope);
+    }
+
     /**
-     * Send message to session
+     * B-332 site ③: find queued user input this wrapper destroyed (it was still
+     * in the previous wrapper's in-memory queue when it died) and tell the web.
+     *
+     * Walks NEWEST → OLDEST via `before_seq`, decrypting each page, and stops at
+     * the first turn-end. Called by a reconnect that did not seed its cursor
+     * (skipExistingMessages) — in the seeded case there is nothing undelivered.
+     * Best-effort: a failed scan must not take a session down. Needs no
+     * socket; directly POSTs through the same session-message channel so the
+     * web receives it identically to a cancel-button tombstone.
+     */
+    async cancelUndeliveredQueuedInputs(): Promise<void> {
+        const MAX_SCAN_PAGES = 10; // bounded; a healthy tail is ≪ 1000 records.
+        // Dedup: tombstones we emit this run and ones the web already made.
+        const canceled = new Set<string>();
+        const undelivered: string[] = [];
+        let beforeSeq = 2_147_483_647; // same sentinel the web uses for "start at end"
+        let reachedBoundary = false;
+        let pages = 0;
+        try {
+            while (!reachedBoundary && pages < MAX_SCAN_PAGES) {
+                pages += 1;
+                const response = await axios.get<V3GetSessionMessagesResponse>(
+                    `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+                    {
+                        params: { before_seq: beforeSeq, limit: 100 },
+                        headers: this.authHeaders(),
+                        timeout: 60000
+                    },
+                );
+                const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+                if (messages.length === 0) break;
+                const records = messages.map((message) => {
+                    let body: unknown = null;
+                    try {
+                        body = message.content?.t === 'encrypted'
+                            ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c))
+                            : null;
+                    } catch (error) {
+                        logger.debug('[API] Failed to decrypt during undelivered scan:', error);
+                    }
+                    return { seq: message.seq, localId: message.localId, body };
+                });
+                const scan: UndeliveredScan & { canceled: Set<string> } = scanUndeliveredQueuedInputs(records, { canceled });
+                for (const key of scan.canceled) canceled.add(key);
+                undelivered.push(...scan.undeliveredLocalKeys);
+                reachedBoundary = scan.reachedBoundary;
+                const oldest = records.at(-1)?.seq;
+                if (oldest === undefined || messages.length < 100) break;
+                beforeSeq = oldest;
+            }
+        } catch (error) {
+            logger.debug('[API] cancelUndeliveredQueuedInputs scan failed:', error);
+            return;
+        }
+        if (!reachedBoundary) {
+            // No turn-end at all (very short / freshly cleared session). Safest
+            // to report nothing — we cannot prove these were not consumed.
+            logger.debug('[API] cancelUndeliveredQueuedInputs found no turn boundary; leaving messages as-is');
+            return;
+        }
+        // Report oldest first for stable logs; the user typed them oldest→newest.
+        undelivered.reverse();
+        this.sendQueueCancelReason(undelivered, 'restarted');
+    }
+
+    /**
+     * Send a message to session
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines, opts?: {

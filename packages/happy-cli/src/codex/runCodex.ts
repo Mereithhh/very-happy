@@ -246,6 +246,12 @@ export async function runCodex(opts: {
     }
 
     const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
+    // B-332: `/clear` (pushIsolateAndClear) destroys whatever was queued — tell
+    // the web, or those messages stay「排队中」and later render as delivered.
+    messageQueue.setOnDiscard((entries) => {
+        const keys = entries.map((entry) => entry.sourceId).filter((key): key is string => typeof key === 'string');
+        if (keys.length > 0) session.sendQueueCancelReason(keys, entries[0].reason);
+    });
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
@@ -348,6 +354,7 @@ export async function runCodex(opts: {
             text: message.content.text,
             mode: enhancedMode,
             queue: messageQueue,
+            sourceId: message.localKey,
         });
         if (enqueueResult === 'clear') {
             logger.debug('[Codex] /clear command pushed to isolated queue');

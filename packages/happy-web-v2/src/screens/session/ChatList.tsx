@@ -35,6 +35,7 @@ import { userAbortedAt } from './subagentAbort';
 import { currentTurnMessages, isAgentWorkLive } from '@/sync/agentLiveness';
 import './chatlist.css';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
+import { isTranscriptVisibleInput } from './discardedInput';
 
 export function ChatList({
     sessionId,
@@ -75,8 +76,12 @@ export function ChatList({
         // regardless of what renders, so leaving it in would still open an empty
         // turn, inflate `rows.length` (unseen badge) and move the liveness
         // window's start.
+        // B-332: a message the CLI discarded (tombstone WITH a reason) stays in
+        // the transcript, marked — the user's text must not vanish because a
+        // restart/clear ate it. A web-side cancel (no reason) is the user's own
+        // removal and stays hidden, as before.
         () => dropDuplicateAttachmentEchoes(suppressSubagentPills([...messages].reverse().filter((message) =>
-            message.inputState === undefined &&
+            isTranscriptVisibleInput(message) &&
             (message.kind !== 'tool-call' || !isHiddenToolCall(message.tool))))),
         [messages],
     );

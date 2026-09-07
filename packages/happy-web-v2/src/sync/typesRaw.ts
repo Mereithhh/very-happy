@@ -67,6 +67,9 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
 }), z.object({
     type: z.literal('queue-cancel'),
     targetLocalKeys: z.array(z.string().min(1)).min(1),
+    // B-332: who destroyed it — absent on web-originated tombstones (the user
+    // pressed cancel). Plain string, never an enum (铁律 14).
+    reason: z.string().min(1).optional(),
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 
@@ -169,6 +172,7 @@ const sessionProgressEventSchema = z.object({
 const sessionQueueCancelEventSchema = z.object({
     t: z.literal('queue-cancel'),
     targetLocalKeys: z.array(z.string().min(1)).min(1),
+    reason: z.string().min(1).optional(),
 });
 
 const sessionEventSchema = z.discriminatedUnion('t', [
@@ -666,6 +670,7 @@ function normalizeSessionEnvelope(
             content: {
                 type: 'queue-cancel',
                 targetLocalKeys: envelope.ev.targetLocalKeys,
+                ...(envelope.ev.reason ? { reason: envelope.ev.reason } : {}),
             },
             meta,
         } satisfies NormalizedMessage;

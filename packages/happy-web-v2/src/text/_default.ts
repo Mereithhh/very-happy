@@ -527,6 +527,13 @@ export const en = {
             queueCancel: 'Remove from queue',
             queueCancelTooLate: 'This message has already started and can no longer be removed.',
             queueCancelFailed: 'Could not remove this queued message. Please try again.',
+            // B-332: the CLI destroyed a queued message before it ran; the bubble stays, marked.
+            discarded: {
+                cleared: 'Not run — dropped by /clear or /compact',
+                aborted: 'Not run — dropped when the turn was stopped',
+                restarted: 'Not run — the session was restarted before it was picked up. Send it again.',
+                unknown: 'Not run — the agent dropped it from its queue',
+            },
             send: 'Send',
             queueSend: 'Queue message',
             stop: 'Stop',

@@ -575,6 +575,20 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Import MessageQueue2 and create message queue
     const messageQueue = new MessageQueue2<EnhancedMode>(claudeModeHash);
+    // B-332: every item the queue destroys on its own (`/clear`/`/compact`
+    // via pushIsolateAndClear, local-mode abort via reset) gets a tombstone, so
+    // the web stops showing it as 「排队中」 and later as delivered. Items
+    // without a sourceId (CLI-internal pushes) have no web counterpart to mark.
+    messageQueue.setOnDiscard((entries) => {
+        const byReason = new Map<'cleared' | 'aborted' | 'restarted', string[]>();
+        for (const entry of entries) {
+            if (!entry.sourceId) continue;
+            const list = byReason.get(entry.reason) ?? [];
+            list.push(entry.sourceId);
+            byReason.set(entry.reason, list);
+        }
+        for (const [reason, keys] of byReason) session.sendQueueCancelReason(keys, reason);
+    });
 
     session.rpcHandlerManager.registerHandler<
         { localKey?: unknown; text?: unknown },

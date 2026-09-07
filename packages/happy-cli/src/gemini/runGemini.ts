@@ -208,6 +208,12 @@ export async function runGemini(opts: {
     permissionMode: mode.permissionMode,
     model: mode.model,
   }));
+  // B-332: Gemini's abort (reset) destroys queued messages — tombstone them so
+  // the web stops painting them as「排队中」/delivered.
+  messageQueue.setOnDiscard((entries) => {
+    const keys = entries.map((entry) => entry.sourceId).filter((key): key is string => typeof key === 'string');
+    if (keys.length > 0) session.sendQueueCancelReason(keys, entries[0].reason);
+  });
 
   // Conversation history for context preservation across model changes
   const conversationHistory = new ConversationHistory({ maxMessages: 20, maxCharacters: 50000 });
@@ -286,7 +292,7 @@ export async function runGemini(opts: {
       model: messageModel,
       originalUserMessage, // Store original message separately
     };
-    messageQueue.push(fullPrompt, mode);
+    messageQueue.push(fullPrompt, mode, undefined, message.localKey);
     
     // Record user message in conversation history for context preservation
     conversationHistory.addUserMessage(originalUserMessage);
