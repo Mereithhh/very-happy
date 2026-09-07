@@ -27,3 +27,26 @@ export function deriveRunningModelSubtitle(input: {
     if (!input.selectedKey || input.selectedKey === 'default') return undefined;
     return compactResolvedModelCode(input.running);
 }
+
+/**
+ * Which option the model selector should show as selected.
+ *
+ * The selector value is client intent (`session.modelMode`), and a fresh session carries
+ * the agent default — `'default'` for Claude and for ACP runners (pi, gemini, opencode)
+ * which inherit the Claude defaults. ACP runners publish their own model list plus the
+ * model actually in effect (`metadata.currentModelCode`, pi-acp reports e.g.
+ * `llm-hub/claude-fable-5-1`), and `'default'` is not in that list. Falling straight back
+ * to `options[0]` showed a pi session as running "nvidia/DeepSeek V4 Flash" while it was on
+ * claude-fable-5-1 (B-362) — the one place on screen that must tell the truth lied. So:
+ * explicit intent first, then the published running model, then the first option.
+ */
+export function selectDisplayedModelKey(input: {
+    selectedKey: string | null | undefined;
+    running: string | null | undefined;
+    optionKeys: readonly string[];
+}): string | undefined {
+    const { selectedKey, running, optionKeys } = input;
+    if (selectedKey && optionKeys.includes(selectedKey)) return selectedKey;
+    if (running && optionKeys.includes(running)) return running;
+    return optionKeys[0];
+}

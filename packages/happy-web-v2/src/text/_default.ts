@@ -1693,7 +1693,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
-            sep06a: {
+                   sep07: {
+     title: 'The model selector on a pi session shows the model that is running',
+    summary: 'A new pi session opens with the generic "default" model intent, which is not one of the models pi reports, so the selector fell back to the first model in pi\u2019s list and showed a DeepSeek model while the session was in fact on claude-fable-5-1.',
+          model: 'The selector now shows your explicit choice if you made one, otherwise the model the session reports it is running, and only then the first list entry. The session was always on the right model; the label was wrong.',
+   },
+     sep06a: {
                 title: 'A machine that replaced itself is no longer listed twice',
                 summary: 'If a machine ever re-registered under a new identity, the abandoned entry stayed in your list — and kept serving terminals that are long gone.',
                 hidden: 'The replaced entry, and the stale terminals it remembered, no longer appear anywhere: not in the sidebar, the pickers, the board, or the update banners. Nothing to install and nothing to clean up — it applies the moment you load the app, whatever version the machine is running.',
