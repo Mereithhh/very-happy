@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-07-acp-model-selector-truth',
+    date: '2026-09-07',
+    buildVersion: __APP_VERSION__,
+    // web-only: the CLI already publishes the running model for ACP sessions.
+    titleKey: 'changelog.releases.sep07.title',
+    summaryKey: 'changelog.releases.sep07.summary',
+    itemKeys: [
+      'changelog.releases.sep07.model',
+    ],
+  },
+  {
     id: '2026-09-06-replaced-machine-entries',
     date: '2026-09-06',
     buildVersion: __APP_VERSION__,

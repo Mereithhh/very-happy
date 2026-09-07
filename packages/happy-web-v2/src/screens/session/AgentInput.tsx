@@ -36,7 +36,7 @@ import {
 import { ModeMenu } from './ModeMenu';
 import { SessionOptionsDialog } from './SessionOptionsDialog';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
-import { deriveRunningModelSubtitle } from './modelDisplay';
+import { deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
     advanceQueueDeliveryPhase,
@@ -216,7 +216,14 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         ? [{ key: EFFORT_DEFAULT_KEY, name: t('session.chat.effortDefault'), description: t('session.chat.effortDefaultDesc') }, ...efforts]
         : efforts;
     const selectedEffortKey = isClaudeFlavor ? (effortKey ?? EFFORT_DEFAULT_KEY) : effortKey;
-    const selectedModel = models.find((option) => option.key === modelKey) ?? models[0];
+    // B-362: intent → running model (ACP runners publish it) → first option; never show
+    // a model the session is not on just because the default key is not in the list.
+    const displayedModelKey = selectDisplayedModelKey({
+        selectedKey: modelKey,
+        running: metadata?.currentModelCode,
+        optionKeys: models.map((option) => option.key),
+    });
+    const selectedModel = models.find((option) => option.key === displayedModelKey) ?? models[0];
     const selectedPermission = permModes.find((option) => option.key === permKey) ?? permModes[0];
     // B-262 A4: honest subtitle — what the CLI has confirmed vs. what we intend.
     const permissionDisplayState = isClaudeFlavor

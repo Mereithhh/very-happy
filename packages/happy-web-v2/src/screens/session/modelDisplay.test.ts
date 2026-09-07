@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveRunningModelSubtitle } from './modelDisplay';
+import { deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
 
 const base = { isClaude: true, selectedKey: 'opus', running: 'claude-opus-5' };
 
@@ -25,5 +25,20 @@ describe('deriveRunningModelSubtitle', () => {
     it('reports a mismatch plainly rather than hiding it', () => {
         // The whole point: intent says sonnet, the agent is still on opus.
         expect(deriveRunningModelSubtitle({ isClaude: true, selectedKey: 'sonnet', running: 'claude-opus-5' })).toBe('opus-5');
+    });
+});
+
+describe('selectDisplayedModelKey (B-362)', () => {
+    const keys = ['nvidia/deepseek-ai/deepseek-v4-flash-0731', 'llm-hub/claude-fable-5-1', 'openai/gpt-5.5'];
+    it('shows the running model when the selector still holds the agent default that is not in the ACP list', () => {
+        expect(selectDisplayedModelKey({ selectedKey: 'default', running: 'llm-hub/claude-fable-5-1', optionKeys: keys })).toBe('llm-hub/claude-fable-5-1');
+    });
+    it('explicit intent wins over the running model (the user just tapped it)', () => {
+        expect(selectDisplayedModelKey({ selectedKey: 'openai/gpt-5.5', running: 'llm-hub/claude-fable-5-1', optionKeys: keys })).toBe('openai/gpt-5.5');
+    });
+    it('falls back to the first option only when neither intent nor running model is listed', () => {
+        expect(selectDisplayedModelKey({ selectedKey: 'default', running: undefined, optionKeys: keys })).toBe(keys[0]);
+        expect(selectDisplayedModelKey({ selectedKey: 'default', running: 'not-listed', optionKeys: keys })).toBe(keys[0]);
+        expect(selectDisplayedModelKey({ selectedKey: undefined, running: undefined, optionKeys: [] })).toBeUndefined();
     });
 });

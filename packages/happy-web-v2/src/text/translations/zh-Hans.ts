@@ -1656,7 +1656,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
-            sep06a: {
+                   sep07: {
+         title: 'pi 会话的模型选择器显示的是真正在跑的模型了',
+   summary: '新开的 pi 会话带着通用的「default」模型意图，而它不在 pi 报告的模型列表里，于是选择器回落到列表第一项，把一个 DeepSeek 模型显示出来——实际会话一直跑在 claude-fable-5-1 上。',
+   model: '现在选择器先显示你明确选过的模型，否则显示会话报告的当前模型，最后才是列表第一项。会话一直用的是对的模型，错的只是标签。',
+            },
+     sep06a: {
                 title: '自己换过身份的机器，不会再列两条了',
                 summary: '一台机器如果曾经以新身份重新注册，那条被遗弃的记录会一直留在列表里，还在提供早就不存在的终端。',
                 hidden: '被取代的那条记录、以及它记着的过期终端，现在哪儿都不出现了：侧栏、各种选择器、看板、更新横幅都没有。不用装什么也不用清什么——打开网页就生效，机器上跑的是哪个版本都一样。',
