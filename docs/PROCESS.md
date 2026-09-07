@@ -158,9 +158,12 @@ triage（分独立/冲突域）
 ### CI 跑在哪 / 托管分钟口径（2026-08-14 起）
 
 私有仓计费倍率 Linux 1× / Windows 2× / macOS 10×，个人账号月度免费额 2000 分钟。
-2026-08-14 前两天实测烧掉 1711 分钟（额度打穿、Actions 被计费拦停），所以**所有 Linux job
-都迁到 fb-us self-hosted runner**（labels `self-hosted, linux, x64, fb-us`），托管分钟只在
-发版那一刻的 macOS/Windows 矩阵上花。
+2026-08-14 前两天实测烧掉 1711 分钟（额度打穿、Actions 被计费拦停），当时把**所有 Linux job
+迁到 fb-us self-hosted runner**（labels `self-hosted, linux, x64, fb-us`），托管分钟只在
+发版那一刻的 macOS/Windows 矩阵上花。**⚠️ 2026-08-25 起已撤回：所有 workflow 又回到托管
+`ubuntu-latest`，仓库现无 self-hosted runner**（`gh api repos/…/actions/runners` 为空）。下表是
+历史设计，保留是因为分钟数的账仍然成立；「CI 跑在哪」以 `.github/workflows/*.yml` 的 `runs-on` 为准。
+这条过时描述让 B-369 的排查多绕了一圈（先去查 fb-us 的出口 IP）。
 
 | workflow | 触发 | 跑在哪 | 计费分钟 |
 |---|---|---|---|
