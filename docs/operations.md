@@ -236,6 +236,16 @@ is the retired Tokyo host, `hw-sg` is the Singapore relay). Neither of the latte
 is a control-server deployment target. The workflow secrets are still named
 `HWSG_*` for historical reasons; they point at vh-sg.
 
+**The deploy workflow runs on GitHub-hosted `ubuntu-latest`, so vh-sg's security
+group must accept SSH from anywhere** (`vh-server-sg` tcp/22 `0.0.0.0/0`, rule
+description `github-actions-deploy`; sshd is key-only with fail2ban). GitHub's
+runner egress ranges are thousands of prefixes and change, so a `/32` allowlist is
+not an option while the job is hosted. After the 2026-09-07 migration the group
+briefly allowed 22 only from the office and three deploys died with
+`ssh: connect to host … Connection timed out` before a single sshd log line
+(B-369). Tightening this again means moving the job to a self-hosted runner with
+a fixed egress IP, or to SSM — not a smaller CIDR.
+
 For the official Google login configuration, also confirm the exact Web origin
 in Google Cloud Console. See [`deployment.md`](deployment.md#environment-variables).
 
