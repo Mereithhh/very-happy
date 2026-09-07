@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-08-queued-message-tombstones',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // Both halves: the CLI now reports queued input it destroyed; the web shows
+    // the message with the reason instead of losing it. cliVersion is filled
+    // in by the release that ships the CLI half (B-332).
+    titleKey: 'changelog.releases.sep08a.title',
+    summaryKey: 'changelog.releases.sep08a.summary',
+    itemKeys: [
+      'changelog.releases.sep08a.tombstone',
+      'changelog.releases.sep08a.restart',
+    ],
+  },
+  {
     id: '2026-09-08-undefined-css-tokens',
     date: '2026-09-08',
     buildVersion: __APP_VERSION__,

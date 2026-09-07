@@ -221,6 +221,9 @@ export async function runCodex(opts: {
     if (reconnectSessionId) {
         session.suppressNextArchiveSignal();
         if (!reconnectSeeded) session.skipExistingMessages();
+        // B-332: see runClaude — the previous wrapper's undelivered queue is
+        // lost either way; tell the web.
+        void session.cancelUndeliveredQueuedInputs();
         session.updateMetadata((meta) => mergeReconnectMetadata(meta, metadata, Date.now()));
     }
 

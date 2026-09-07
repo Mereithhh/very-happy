@@ -21,6 +21,6 @@ describe('discardedInput (B-332)', () => {
         expect(discardedReasonKey({ ...base, inputState: 'canceled', cancelReason: 'restarted' })).toBe('restarted');
         expect(discardedReasonKey({ ...base, inputState: 'canceled', cancelReason: 'future-reason' })).toBe('unknown');
         expect(discardedReasonKey({ ...base, inputState: 'canceled' })).toBe(null);
-        expect(discardedReasonKey({ ...base })).toBe(null);
+        expect(discardedReasonKey({ ...base, inputState: undefined })).toBe(null);
     });
 });

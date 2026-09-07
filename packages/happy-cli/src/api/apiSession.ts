@@ -532,11 +532,6 @@ export class ApiSessionClient extends EventEmitter {
         if (skipRouting) {
             this.skipInitialMessages = false;
             logger.debug('[API] Reconnect mode: skipping existing messages, advancing lastSeq');
-            // B-332: the messages we are about to skip are the previous wrapper's
-            // leftover. Anything still queued never ran; tombstone it so the web
-            // does not paint it as delivered. Fire-and-forget (the scan is
-            // best-effort and must not delay the cursor advance).
-            void this.cancelUndeliveredQueuedInputs();
         }
 
         let afterSeq = this.lastSeq;
@@ -782,11 +777,13 @@ export class ApiSessionClient extends EventEmitter {
      * in the previous wrapper's in-memory queue when it died) and tell the web.
      *
      * Walks NEWEST → OLDEST via `before_seq`, decrypting each page, and stops at
-     * the first turn-end. Called by a reconnect that did not seed its cursor
-     * (skipExistingMessages) — in the seeded case there is nothing undelivered.
-     * Best-effort: a failed scan must not take a session down. Needs no
-     * socket; directly POSTs through the same session-message channel so the
-     * web receives it identically to a cancel-button tombstone.
+     * the first turn-end. The runner calls this on EVERY reconnect (runClaude /
+     * runCodex), seeded or not: a cursor seeded at the server's latest seq skips
+     * the undelivered tail just as thoroughly as skipExistingMessages does —
+     * and the daemon's resume/restart always seeds, so gating on the skip path
+     * would miss the common case. Best-effort: a failed scan must not take a
+     * session down. Needs no socket; POSTs through the same session-message
+     * channel so the web receives it identically to a cancel-button tombstone.
      */
     async cancelUndeliveredQueuedInputs(): Promise<void> {
         const MAX_SCAN_PAGES = 10; // bounded; a healthy tail is ≪ 1000 records.

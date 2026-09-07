@@ -1218,8 +1218,11 @@ describe('B-332 queue-cancel tombstones from the CLI', () => {
             // after_seq (the skip walk) — whatever; this test is about the tail.
             return { data: { messages: [], hasMore: false } };
         });
+        // Same sequence runClaude/runCodex run on reconnect (skip is optional:
+        // a server-seeded cursor loses the tail just the same).
         const client = new ApiSessionClient('fake-token', session);
         client.skipExistingMessages();
+        void client.cancelUndeliveredQueuedInputs();
         await (client as any).fetchMessages();
         await waitForCheck(() => {
             const out = postedMessages();
@@ -1246,9 +1249,24 @@ describe('B-332 queue-cancel tombstones from the CLI', () => {
         expect(postedMessages()).toHaveLength(0);
     });
 
-    it('a normal (non-skip) fetch never runs the tail scan', async () => {
+    it('an ordinary fetch (no reconnect) never runs the tail scan', async () => {
         const client = new ApiSessionClient('fake-token', session);
+        client.skipExistingMessages();
         await (client as any).fetchMessages();
         expect(mockAxiosGet.mock.calls.some((call) => call[1]?.params?.before_seq !== undefined)).toBe(false);
+    });
+
+    it('runClaude and runCodex both run the tail scan on every reconnect, seeded or not', () => {
+        // Source assertion (repo convention): the daemon's resume/restart always
+        // seeds the cursor from the server, so a scan gated on the skip path
+        // would miss the common case. Both runners must call it unconditionally
+        // inside their `if (reconnectSessionId)` block.
+        const { readFileSync } = require('node:fs') as typeof import('node:fs');
+        for (const file of ['../claude/runClaude.ts', '../codex/runCodex.ts']) {
+            const src = readFileSync(new URL(file, import.meta.url), 'utf8');
+            const block = src.slice(src.indexOf('if (reconnectSessionId) {\n        session.suppressNextArchiveSignal();'));
+            const end = block.indexOf('\n    }\n');
+            expect(block.slice(0, end)).toContain('void session.cancelUndeliveredQueuedInputs();');
+        }
     });
 });

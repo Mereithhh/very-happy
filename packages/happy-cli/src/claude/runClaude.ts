@@ -341,6 +341,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     if (reconnectSessionId) {
         session.suppressNextArchiveSignal();
         if (!reconnectSeeded) session.skipExistingMessages();
+        // B-332: whatever the previous wrapper still held in its queue is gone
+        // now — seeded or skipped, this process will never see it. Tombstone
+        // it so the web stops showing it as「排队中」/ delivered. Best-effort.
+        void session.cancelUndeliveredQueuedInputs();
         // First write: server truth (handler arg) + this process's identity
         // (the local `metadata` object) + lifecycle back to running.
         session.updateMetadata((meta) => ({

@@ -8,7 +8,11 @@ const syncSource = readFileSync(new URL('../../sync/sync.ts', import.meta.url), 
 describe('queued input UI wiring', () => {
     it('separates queued user input from transcript rows and renders an explicit queue', () => {
         expect(chatList).toContain("message.inputState === 'queued'");
-        expect(chatList).toContain('message.inputState === undefined');
+        // B-332: the transcript filter is the shared judgement in discardedInput.ts —
+        // a CLI-discarded message (tombstone with reason) stays visible and marked;
+        // a bare `inputState === undefined` check here would hide it again.
+        expect(chatList).toContain('isTranscriptVisibleInput(message)');
+        expect(chatList).not.toContain('message.inputState === undefined');
         expect(chatList).toContain('className="cl-queue"');
         expect(chatList).toContain("t('session.chat.queuedHint')");
         expect(chatList).toContain("message.tool.name === 'file'");

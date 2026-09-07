@@ -1700,6 +1700,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep08a: {
+                title: 'A queued message the agent never ran now says so, instead of pretending it was delivered',
+                summary: 'If you sent a message while the agent was busy and the agent then dropped its queue (/clear, /compact, Stop in terminal mode, or the session was restarted before it got to your message), the message used to sit at "queued" until the next unrelated turn ended, then quietly appear as if it had been handled.',
+                tombstone: 'The agent now reports every queued message it discards. The bubble stays in the conversation with a small "Not run" line under it and the reason, so you can copy it and send it again. Messages you remove from the queue yourself are still just removed.',
+                restart: 'Restarting a session (or another machine taking it over) marks the messages the old process still had waiting as "Not run — the session was restarted". Needs a CLI update on the machine; sessions already running keep the old behaviour until they are restarted.',
+            },
             sep08: {
                 title: 'File-path links, the update button and a few small controls had colours that never resolved',
                 summary: 'Several styles referred to colour tokens that do not exist, so the browser silently dropped them: a hover that never darkened, a focus ring that never showed, a link icon that was invisible, a Refresh button with no background.',
