@@ -15,6 +15,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-08-terminal-stays-on-last-line',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // web-only: the daemon and tmux were fine; xterm in the browser misread a
+    // layout-induced scroll clamp as the user scrolling up (B-374).
+    titleKey: 'changelog.releases.sep08d.title',
+    summaryKey: 'changelog.releases.sep08d.summary',
+    itemKeys: [
+      'changelog.releases.sep08d.follow',
+      'changelog.releases.sep08d.history',
+    ],
+  },
+  {
     id: '2026-09-08-undefined-css-tokens',
     date: '2026-09-08',
     buildVersion: __APP_VERSION__,

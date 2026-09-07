@@ -1693,6 +1693,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep08d: {
+                title: 'The terminal opens on its last line and keeps following output',
+                summary: 'Opening a terminal — new, from the list, after switching tabs or reloading — could land in the middle of the history, and from then on new output no longer scrolled the view. The cause was not the history load: whenever the terminal pane got taller (soft keyboard closing, the browser toolbar collapsing, a window resize) the browser nudged the scroll position and the terminal took that for you scrolling up.',
+                follow: 'A pane that was on its last line stays there through keyboard open/close, browser chrome changes and window resizes, and new output keeps scrolling into view.',
+                history: 'Scrolling up to read history is unchanged: while you are looking at history, new output does not pull you down, and a layout change does not either. Full-screen programs (vim, htop) are unaffected.',
+            },
             sep08: {
                 title: 'File-path links, the update button and a few small controls had colours that never resolved',
                 summary: 'Several styles referred to colour tokens that do not exist, so the browser silently dropped them: a hover that never darkened, a focus ring that never showed, a link icon that was invisible, a Refresh button with no background.',
