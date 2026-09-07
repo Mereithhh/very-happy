@@ -27,8 +27,8 @@ describe('resolveRpcRelayLimit', () => {
         expect(limit).toEqual({
             bytesPerSecond: 2 * 1024 * 1024,
             burstBytes: 20 * 1024 * 1024,
-            eventsPerSecond: 2,
-            burstEvents: 120,
+            eventsPerSecond: 5,
+            burstEvents: 300,
         });
         const limiter = new AccountTerminalRateLimiter(limit);
         const representativeChunk = {
@@ -69,6 +69,34 @@ describe('AccountTerminalRateLimiter', () => {
         expect(limiter.consume('account-a', 40, 1_000)).toBe(true);
         expect(limiter.consume('account-a', 1, 1_000)).toBe(false);
         expect(limiter.consume('account-b', 100, 1_000)).toBe(true);
+    });
+
+    it('reports how long a refusal will last and does not charge the refusal (B-307)', () => {
+        const limiter = new AccountTerminalRateLimiter({
+            bytesPerSecond: 100,
+            burstBytes: 100,
+            eventsPerSecond: 2,
+            burstEvents: 2,
+        });
+        expect(limiter.consume('a', 60, 1_000)).toBe(true);
+        expect(limiter.consume('a', 40, 1_000)).toBe(true);
+        const refused = limiter.tryConsume('a', 1, 1_000);
+        expect(refused.ok).toBe(false);
+        if (refused.ok) throw new Error('unreachable');
+        // Both dimensions are empty: bytes need 10ms (1 B at 100 B/s), events
+        // need 500ms (next token at 2/s). The hint is the slower of the two.
+        expect(refused.retryAfterMs).toBe(500);
+        // The refusal did not consume budget: 500ms later the same request fits.
+        expect(limiter.consume('a', 1, 1_500)).toBe(true);
+        // Byte dimension alone, below the floor: 10ms rounds up to the 100ms minimum.
+        const byteOnly = new AccountTerminalRateLimiter({ bytesPerSecond: 100, burstBytes: 100, eventsPerSecond: 0, burstEvents: 0 });
+        expect(byteOnly.consume('b', 100, 1_000)).toBe(true);
+        expect(byteOnly.tryConsume('b', 1, 1_000)).toEqual({ ok: false, retryAfterMs: 100 });
+        // A request bigger than the whole burst still gets a finite hint, not NaN/Infinity.
+        const huge = limiter.tryConsume('a', Number.MAX_SAFE_INTEGER, 10_000);
+        expect(huge.ok).toBe(false);
+        if (huge.ok) throw new Error('unreachable');
+        expect(Number.isFinite(huge.retryAfterMs)).toBe(true);
     });
 
     it('refills over time without exceeding the burst', () => {
