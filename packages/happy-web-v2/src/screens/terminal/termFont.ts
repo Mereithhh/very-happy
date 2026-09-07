@@ -49,6 +49,37 @@ export const TERM_FONT = TERM_FONT_STACK
     .map((family) => (family === 'ui-monospace' || family === 'monospace' ? family : `'${family}'`))
     .join(', ');
 
+/**
+ * Terminal cell typography — ONE source for every place that sets or restores
+ * the renderer's `fontSize` / `lineHeight` (renderer open, keyboard-state
+ * typography, font re-measure). T-006 (2026-09): these numbers used to live in
+ * three files and drifted twice:
+ *
+ *  - `lineHeight`: the renderer opened at 1.0 (#161 — the only value at which
+ *    the Claude logo's block glyphs tile seamlessly, spec
+ *    2026-09-terminal-font-and-seamless-rendering.md L1) while the mobile
+ *    keyboard restore path wrote 1.3/1.25 back into `term.options`. The first
+ *    keyboard cycle on a phone silently reopened the seam #161 had closed.
+ *  - `fontSize`: the keyboard-open path dropped 12px → 11px to buy 2-3 rows.
+ *    That also changes the CELL WIDTH (Maple Mono CN advance = 0.6em: 7.2px →
+ *    6.6px), i.e. the COLUMN COUNT (57 → 62 on a 430px iPhone). Columns are
+ *    part of the CONTENT on the classic-renderer track the daemon runs claude
+ *    on (`CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1`): every column change makes
+ * claude reprint its header AND makes tmux hard-wrap every history line
+ * that no longer fits — the startup logo row "Opus 5 (1M context) with high
+ *    effort" breaks onto a second line and the logo shows up twice. Verified
+ *    with real claude 2.1.263 in an isolated tmux socket: 62x37 → 57x42
+ *  reproduces it; 62x37 → 62x42 (rows only) does not.
+ *
+ * Rule: the soft keyboard may only ever change ROWS. Cell width (fontSize) is
+ * fixed per pointer class for the life of the mount; lineHeight is fixed at
+ * the seamless value everywhere.
+ */
+export const TERM_FONT_SIZE_FINE = 13;
+export const TERM_FONT_SIZE_COARSE = 12;
+/** Seamless block/box tiling in the DOM renderer requires exactly 1.0 (#161). */
+export const TERM_LINE_HEIGHT = 1.0;
+
 /** The families that are real web fonts, i.e. the ones a measurement can wait
  *  for. The rest of the stack is system-resident and always ready. */
 export const TERMINAL_WEB_FONT_FAMILIES = ['Maple Mono CN', 'IBM Plex Mono'] as const;

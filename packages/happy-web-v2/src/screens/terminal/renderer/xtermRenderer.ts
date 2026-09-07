@@ -10,6 +10,7 @@ import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import { installMouseModeFilter } from '../termMouseModeFilter';
+import { TERM_LINE_HEIGHT } from '../termFont';
 import type { TerminalRenderer, RendererOptions } from './TerminalRenderer';
 
 export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
@@ -24,8 +25,10 @@ export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
         // 1.3 opened a ~30% dark seam through the logo (xterm.js #2572). 1.0 is
         // the standard console density and the only value that closes the seam
         // in the DOM renderer without a WebGL migration. See
-        // specs/2026-09-terminal-render-integrity.md.
-        lineHeight: 1.0,
+        // specs/2026-09-terminal-render-integrity.md. The constant is shared
+        // with every later `term.options.lineHeight` write (termFont.ts) so a
+        // restore path can never drift back to a seamed value (T-006).
+        lineHeight: TERM_LINE_HEIGHT,
         cursorBlink: true,
         theme: opts.theme,
         allowProposedApi: true,

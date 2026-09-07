@@ -9,14 +9,19 @@
  * follows the keyboard outside this module.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
-    COMPACT_VV_HEIGHT_PX,
     MOBILE_TYPO_BASE,
-    MOBILE_TYPO_COMPACT,
     computeKbAvail,
     createViewportStabilizer,
-    pickTermTypography,
+    typographyChangesCols,
 } from './termKbViewport';
+import { TERM_FONT_SIZE_COARSE, TERM_LINE_HEIGHT } from './termFont';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const src = (rel: string) => readFileSync(join(here, rel), 'utf8');
 
 describe('createViewportStabilizer', () => {
     beforeEach(() => vi.useFakeTimers());
@@ -123,10 +128,62 @@ describe('computeKbAvail', () => {
     });
 });
 
-describe('pickTermTypography', () => {
-    it('compact type below the threshold, base at/above it', () => {
-        expect(pickTermTypography(COMPACT_VV_HEIGHT_PX - 1)).toEqual(MOBILE_TYPO_COMPACT);
-        expect(pickTermTypography(COMPACT_VV_HEIGHT_PX)).toEqual(MOBILE_TYPO_BASE);
-        expect(pickTermTypography(800)).toEqual(MOBILE_TYPO_BASE);
+/**
+ * T-006 regression anchor (2026-09): "Claude Code logo wraps / shows twice on
+ * the phone". The daemon runs claude on the classic renderer
+ * (CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1), so its startup header is static
+ * history: any COLUMN change after launch makes claude reprint the header and
+ * tmux hard-wrap every history line wider than the new width (verified with
+ * real claude 2.1.263: 62x37 → 57x42 reproduces, 62x37 → 62x42 does not).
+ * The soft keyboard used to change columns on every open/close because the
+ * keyboard-state typography dropped 12px → 11px (cell 7.2px → 6.6px). It also
+ * wrote lineHeight 1.3 back over the renderer's 1.0 (#161), reopening the
+ * logo seam. The keyboard may only ever change ROWS.
+ */
+describe('keyboard state never changes cell metrics (T-006)', () => {
+    it('the one mobile typography IS the renderer\'s coarse open state', () => {
+        expect(MOBILE_TYPO_BASE).toEqual({ fontSize: TERM_FONT_SIZE_COARSE, lineHeight: TERM_LINE_HEIGHT });
+    });
+
+    it('lineHeight is the seamless value (#161) — 1.3/1.25 must never come back', () => {
+        expect(TERM_LINE_HEIGHT).toBe(1);
+        expect(MOBILE_TYPO_BASE.lineHeight).toBe(1);
+    });
+
+    it('a 12→11px swap would have changed the column count on every real phone width', () => {
+        // .term-host inner width = viewport - 16px padding (<600px); the historical
+        // compact typography was 11px. Every phone from 320 to 430px flips columns.
+        const compact = { fontSize: 11, lineHeight: 1 };
+        for (const vw of [320, 360, 375, 390, 412, 430]) {
+            expect(typographyChangesCols(vw - 16, MOBILE_TYPO_BASE, compact)).toBe(true);
+        }
+        // …and the same typography never does, by construction.
+        for (const vw of [320, 360, 375, 390, 412, 430]) {
+            expect(typographyChangesCols(vw - 16, MOBILE_TYPO_BASE, MOBILE_TYPO_BASE)).toBe(false);
+        }
+    });
+
+    it('the owner\'s phone: 430px → 57 cols at 12px, 62 at 11px (the live pane sat at 62x37)', () => {
+        const cols = (fs: number) => Math.floor((430 - 16) / (fs * 0.6));
+        expect(cols(12)).toBe(57);
+        expect(cols(11)).toBe(62);
+    });
+
+    it('WebTerminalScreen never rewrites term.options.fontSize / lineHeight (keyboard path removed)', () => {
+        const screen = src('WebTerminalScreen.tsx');
+        expect(screen).not.toMatch(/term\.options\.fontSize\s*=/);
+        expect(screen).not.toMatch(/term\.options\.lineHeight\s*=/);
+        expect(screen).not.toContain('applyTypography');
+        expect(screen).not.toContain('pickTermTypography');
+        // and the module no longer offers a second typography to apply
+        const kb = src('termKbViewport.ts');
+        expect(kb).not.toContain('MOBILE_TYPO_COMPACT');
+        expect(kb).not.toContain('COMPACT_VV_HEIGHT_PX');
+    });
+
+    it('the renderer opens with the SAME shared lineHeight constant (no literal to drift)', () => {
+        const renderer = src('renderer/xtermRenderer.ts');
+        expect(renderer).toContain('lineHeight: TERM_LINE_HEIGHT');
+        expect(renderer).not.toMatch(/lineHeight:\s*1\.[0-9]/);
     });
 });

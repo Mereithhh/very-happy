@@ -1699,6 +1699,12 @@ export const en = {
                 states: 'Clickable file paths in a conversation now darken their underline on hover, show a focus outline when you tab to them, and their small icon is visible. The Refresh button on the update banner is solid again. Body text colours are unchanged \u2014 they were inheriting correctly by luck.',
                 guard: 'A test now fails if any stylesheet uses a colour token that is not defined, and another checks the text-on-background contrast of both themes against WCAG. The reported "black text in dark theme" and "@ shown as an encoding" did not reproduce; if you still see either, please say where.',
             },
+            sep07a: {
+                title: 'The terminal no longer changes width when the phone keyboard opens',
+                summary: 'On a phone, opening or closing the soft keyboard used to resize the terminal — the cell got smaller to fit more columns, and the Claude Code startup logo and your history re-wrapped, sometimes printing twice.',
+                columns: 'The keyboard now only changes how many rows fit; the column count stays put. The Claude Code logo and the terminal history stay exactly as they were printed, in every keyboard state.',
+                seam: 'The terminal font also keeps its tight 1.0 line height in every keyboard state, so the logo’s block glyphs tile seamlessly — a keyboard open/close no longer reopens the dark seams between rows.',
+            },
                    sep07: {
      title: 'The model selector on a pi session shows the model that is running',
     summary: 'A new pi session opens with the generic "default" model intent, which is not one of the models pi reports, so the selector fell back to the first model in pi\u2019s list and showed a DeepSeek model while the session was in fact on claude-fable-5-1.',

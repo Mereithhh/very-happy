@@ -214,7 +214,11 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    ② **canvas/WebGL 渲染器已评估并否决**：它把文字画进 canvas、DOM 内无文字节点，会**废掉
    移动端原生长按复制**（`terminal.css` 专门放行 `.xterm-rows` 的 user-select），
    不先解决移动端复制就别再提；③ **终端历史不可重排**（Ink 折行写字面量 `\n`，ink#883；
-   `-J`/emulator 只接自己的软折行），**只能预防不能回溯,别向用户承诺**。
+   `-J`/emulator 只接自己的软折行），**只能预防不能回溯,别向用户承诺**；④ **手机上 logo
+   「换行/打两遍」= 列数变了，不是 CSS 也不是字体**（B-368）：xterm 行是定宽绝对定位 div 不可能
+   CSS 折行；daemon 用 classic renderer 跑 claude，头图是静态历史，**任何列数变化**都让 claude
+   重打头图 + tmux 硬折旧行（只变行数不会）。所以**软键盘只能改行数**，fontSize/lineHeight 终身固定
+   （`termFont.ts` 单一常量；机制见 render-integrity spec「附：T-006」）。
    另：xterm+FitAddon 的 padding / floor 余量坑反复重现，改终端布局前搜历史
    （`bf07e4aa`/`fe5172b6`/`4849fb5e`）。
 10. push 后 ≥20s 再触发 CI，`gh run view --json headSha` 核对构建 sha（踩过构建到

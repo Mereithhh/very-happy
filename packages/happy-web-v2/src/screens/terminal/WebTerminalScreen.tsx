@@ -36,7 +36,7 @@ import {
   type FocusOwnershipWatchdog,
 } from './termFocusOwnership';
 import { installTermDiag } from './termDiag';
-import { awaitTerminalFont, FONT_WAIT_FRESH_MS, FONT_WAIT_ATTACH_MS, TERM_FONT } from './termFont';
+import { awaitTerminalFont, FONT_WAIT_FRESH_MS, FONT_WAIT_ATTACH_MS, TERM_FONT, TERM_FONT_SIZE_COARSE, TERM_FONT_SIZE_FINE } from './termFont';
 import { ensureTerminalCjkFont, TERMINAL_CJK_FONT_FAMILY } from './terminalCjkFont';
 import { shouldReassertGeometry } from './termGeometryReassert';
 import { installTermInput, pickFieldPolicy, resolveInputOwnership } from './termInputHost';
@@ -92,9 +92,6 @@ import {
 import {
   createViewportStabilizer,
   computeKbAvail,
-  pickTermTypography,
-  MOBILE_TYPO_BASE,
-  type TermTypography,
 } from './termKbViewport';
 import {
   createTouchFling,
@@ -144,18 +141,16 @@ const THEME = {
 // Explicit mono stack — NOT the --font-mono CSS var: xterm measures glyph size
 // from this string directly (canvas), where a var() fails to resolve → it falls
 // back to a different font whose metrics don't match what's rendered → clipped
-// glyphs. lineHeight 1.3 gives descenders and CJK vertical room (default 1.0 is
-// cramped). IBM Plex Mono loads async via @fontsource, so we also re-measure
-// once document.fonts is ready (below) — otherwise the cell size is locked to
-// the fallback metrics and text gets clipped after the real font swaps in.
+// glyphs. lineHeight 1.0 (see TERM_LINE_HEIGHT in termFont.ts) makes the
+// Claude startup logo's block glyphs tile seamlessly in the DOM renderer.
 // 'Maple Mono CN' FIRST: dual-width (CJK == 2x ASCII) so Chinese doesn't overlap
 // the grid (叠字), and its block/box glyphs fill the cell so the logo/TUI frames
 // tile seamlessly. Loaded lazily from the CDN by ensureTerminalCjkFont() on
 // mount; IBM Plex Mono stays as the already-bundled Latin fallback until the
 // slices arrive. B-316: the stack now lives in termFont.ts so the face we WAIT
-// for and the face we RENDER with cannot drift apart again.
-const TERM_FONT_SIZE_FINE = 13;
-const TERM_FONT_SIZE_COARSE = 12;
+// for and the face we RENDER with cannot drift apart again. T-006: the SIZES
+// live there too — the keyboard path used to carry its own copies (with a
+// different lineHeight) and wrote them back into the live terminal.
 
 // Touch-first device (phone/tablet). Evaluated once at module load — pointer
 // capability doesn't change at runtime, and all mobile-only behavior below is
@@ -2029,14 +2024,15 @@ export function WebTerminalScreen() {
     // scroll offset behind after the keyboard closes.
     const vv = window.visualViewport;
     let kbLayoutActive = false; // we shrank the host for the keyboard
-    // Keyboard-state typography (coarse only): small viewports drop to compact
-    // type for 2-3 extra rows. Setting term.options re-measures cell metrics,
-    // so only write on an actual change.
-    const applyTypography = (typo: TermTypography): void => {
-      if (term.options.fontSize === typo.fontSize && term.options.lineHeight === typo.lineHeight) return;
-      term.options.fontSize = typo.fontSize;
-      term.options.lineHeight = typo.lineHeight;
-    };
+    // NO typography change with the keyboard (T-006). The previous version
+    // dropped 12px → 11px here to buy 2-3 rows, which also shrank the cell
+    // WIDTH and so changed the COLUMN count on every keyboard open/close
+    // (57 ↔ 62 on a 430px iPhone). Columns are content on the classic-renderer
+    // track the daemon runs claude on: each change made claude reprint its
+    // startup header and tmux hard-wrap the history — the logo wrapped and
+    // showed up twice on phones. It also wrote lineHeight 1.3 back over the
+    // renderer's 1.0 (#161), reopening the logo seam. The keyboard may only
+    // change ROWS: cap the host height, fit, done. See termFont.ts.
     const setKbClass = (on: boolean) => screenRef.current?.classList.toggle('is-kb', on);
     // Per-frame (cheap): follow the keyboard with CSS only. Returns whether the
     // keyboard layout is engaged (avail can be ≤60 mid-animation on tiny
@@ -2054,15 +2050,13 @@ export function WebTerminalScreen() {
         host.style.maxHeight = `${avail}px`;
       }
     };
-    // Once per burst (expensive): final typography + final maxHeight (the
-    // is-kb bar slimming and a typography change both move the numbers), ONE
-    // fit + resize RPC, then pin the view to the bottom — rows just shrank,
-    // and in a normal-buffer shell xterm can be left mid-scrollback with the
-    // prompt (Claude's input line) below the fold. scrollToBottom is a no-op
-    // in the tmux alt buffer (no scrollback there).
+    // Once per burst (expensive): final maxHeight (the is-kb bar slimming moves
+    // the numbers), ONE fit + resize RPC, then pin the view to the bottom —
+    // rows just shrank, and in a normal-buffer shell xterm can be left
+    // mid-scrollback with the prompt (Claude's input line) below the fold.
+    // scrollToBottom is a no-op in the tmux alt buffer (no scrollback there).
     function kbStableFit() {
       if (disposed || !kbLayoutActive || !vv) return;
-      applyTypography(pickTermTypography(vv.height));
       applyKbMaxHeight();
       doFit();
       pinToLatest();
@@ -2073,7 +2067,6 @@ export function WebTerminalScreen() {
       // class without ever engaging maxHeight (avail ≤ 60)
       if (!kbLayoutActive && !host.style.maxHeight) return;
       kbLayoutActive = false;
-      applyTypography(MOBILE_TYPO_BASE);
       host.style.maxHeight = '';
       scheduleFitPinned();
       window.scrollTo({ top: 0 });
