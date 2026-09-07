@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+    ANNOUNCE_INTERVAL_MS,
     isRpcRateLimitAck,
     MAX_RETRIES,
     RATE_RETRY_MAX_DELAY_MS,
@@ -195,16 +196,30 @@ describe('RpcRateGate', () => {
                 expect(fn).toHaveBeenCalledTimes(1);
             });
 
-        it('a second refusal inside an open window extends it silently (one toast per incident)', async () => {
-                const { gate, onLimited } = harness();
-                gate.noteLimited('control', limited(4_000));
-                gate.noteLimited('control', limited(4_000));
-                gate.noteLimited('control', limited(4_000));
-                expect(onLimited).toHaveBeenCalledTimes(1);
-                expect(gate.waitFor('control')).toBe(4_000);
-            });
+        it('announces the first refusal of an incident, then at most every ANNOUNCE_INTERVAL_MS while refused', async () => {
+        const { gate, onLimited, clock } = harness();
+        gate.noteLimited('control', limited(4_000));
+        gate.noteLimited('control', limited(4_000));
+        expect(onLimited).toHaveBeenCalledTimes(1);
+        expect(gate.waitFor('control')).toBe(4_000);
+        // Windows keep expiring and being re-closed (a sustained limit): still silent…
+        clock.advance(5_000);
+        gate.noteLimited('control', limited(1_500));
+        clock.advance(2_000);
+        gate.noteLimited('control', limited(1_500));
+        expect(onLimited).toHaveBeenCalledTimes(1);
+        // …until the re-announce interval has passed.
+        clock.advance(ANNOUNCE_INTERVAL_MS);
+        gate.noteLimited('control', limited(1_500));
+        expect(onLimited).toHaveBeenCalledTimes(2);
+        expect(onLimited.mock.calls[1][0].attempt).toBe(5);
+        // A success ends the incident; the next refusal is a new one and is announced.
+        gate.noteSuccess('control');
+        gate.noteLimited('control', limited(1_000));
+        expect(onLimited).toHaveBeenCalledTimes(3);
+    });
 
-        it('never waits longer than the cap even if the server asks for more', async () => {
+    it('never waits longer than the cap even if the server asks for more', async () => {
                 const { gate, sleeps } = harness();
                 await gate.run('control', 'k', vi.fn().mockResolvedValueOnce(limited(30 * 60_000)).mockResolvedValueOnce({ ok: true }));
                 expect(sleeps).toEqual([RATE_WAIT_CAP_MS]);

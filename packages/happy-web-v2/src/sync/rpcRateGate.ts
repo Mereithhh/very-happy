@@ -28,8 +28,11 @@
  *    refusal. This is safe for rate refusals specifically: both limiters
  *    reject BEFORE the request reaches any daemon, so nothing can have
  *    executed. It is NOT applied to any other error.
- * 5. Every window is announced once (`onLimited`) so the UI can toast; a
- *    second refusal inside the same window extends it silently.
+ * 5. The FIRST refusal of an incident is announced (`onLimited`) so the UI
+ *    can toast; further refusals while still recovering are silent unless
+ *    ANNOUNCE_INTERVAL_MS has passed (a sustained limit re-surfaces every
+ *    30s instead of every window — a 1.5s server hint would otherwise toast
+ *    every two seconds).
  *
  * Pure: time, random and the announce hook are injected. `apiSocket` owns the
  * one instance and wires the toast.
@@ -47,6 +50,8 @@ export const RATE_WAIT_CAP_MS = 60_000;
 export const RECOVERY_SPACING_MS = 250;
 /** Bounded: a call refused this many times in a row fails to its caller. */
 export const MAX_RETRIES = 2;
+/** While a route keeps being refused, re-announce at most this often. */
+export const ANNOUNCE_INTERVAL_MS = 30_000;
 
 export type RpcRateLimitedAck = {
     ok: false;
@@ -125,6 +130,8 @@ type RouteState = {
     /** Release chain: each waiter appends itself so releases are serialized. */
     lastRelease: Promise<void>;
     nextReleaseAt: number;
+    /** When onLimited last fired for this route (0 = never in this incident). */
+    lastAnnouncedAt: number;
 };
 
 export interface RpcRateGateDeps {
@@ -157,7 +164,7 @@ export class RpcRateGate {
     private route(route: string): RouteState {
         let state = this.routes.get(route);
         if (!state) {
-            state = { closedUntil: 0, attempt: 0, recovering: false, lastRelease: Promise.resolve(), nextReleaseAt: 0 };
+            state = { closedUntil: 0, attempt: 0, recovering: false, lastRelease: Promise.resolve(), nextReleaseAt: 0, lastAnnouncedAt: 0 };
             this.routes.set(route, state);
         }
         return state;
@@ -177,19 +184,21 @@ export class RpcRateGate {
 
     /**
      * Record a refusal. Returns the window it closed the route for. Announces
-     * only when this refusal actually opened a NEW window (not while one is
-     * already running) so the UI hears about the incident once.
+     * the first refusal of an incident (attempt 1) and then at most every
+     * ANNOUNCE_INTERVAL_MS while the route keeps being refused, so the UI
+     * hears "we are waiting" without a toast per window.
      */
     noteLimited(route: string, ack: RpcRateLimitedAck): number {
         const state = this.route(route);
         const now = this.now();
-        const alreadyClosed = state.closedUntil > now;
         state.attempt += 1;
         state.recovering = true;
         const waitMs = rateWindowMs(state.attempt, ack.retryAfterMs, this.random());
         const closedUntil = now + waitMs;
         if (closedUntil > state.closedUntil) state.closedUntil = closedUntil;
-        if (!alreadyClosed) {
+        const announce = state.lastAnnouncedAt === 0 || now - state.lastAnnouncedAt >= ANNOUNCE_INTERVAL_MS;
+        if (announce) {
+            state.lastAnnouncedAt = now;
             this.onLimited?.({ route, waitMs: state.closedUntil - now, attempt: state.attempt, serverError: ack.error });
         }
         return state.closedUntil - now;
@@ -202,6 +211,7 @@ export class RpcRateGate {
         state.recovering = false;
         state.closedUntil = 0;
         state.nextReleaseAt = 0;
+        state.lastAnnouncedAt = 0;
     }
 
     /** Wait until the route is open, then take the next paced release slot. */
