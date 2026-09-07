@@ -20,7 +20,7 @@ git worktree list                                   # 派工前看清有哪些�
   别复用它们；清理用 `git worktree remove <path>`。
 - 常规发布不需要 `vh-update`（蓝绿切换）；只有 CLI/daemon 变更才更新 mac-office
   （见 AGENTS.md 铁律 5/7）。旧记忆里的 `happy.mereith.com` / hw-sg web 部署已作废，
-  生产是 `veryhappy.dev` on vh-us，操作手册 `docs/operations.md`。
+  生产是 `veryhappy.dev` on **vh-sg**（AWS 新加坡；2026-09-07 前是东京 VPS vh-us，已退役），操作手册 `docs/operations.md`。
 
 ## 当前状态快照（2026-09-04，会过期；以 backlog/verify-queue 为准）
 
@@ -68,7 +68,7 @@ git worktree list                                   # 派工前看清有哪些�
   `gh api -X PATCH repos/Mereithhh/very-happy/pulls/<n> -f title=… -f body=…`。`gh pr create/merge/checks`、
   `scripts/land-pr.sh` 不受影响。PR 被标 `behind` 时 land-pr 会拒绝：`gh api -X PUT …/pulls/<n>/update-branch` 再 land。
 - 发布前后核对线上 SHA 不用登机器：首页 entry 资产名 `index-<hash>-<sha>.js` 就是生效 release（`check-release.mjs`
-  也这么读）；需要看 slot/探针留档再 `ssh vh-us`（只读 `/opt/happy/release/state.env`、`http-probe.*`）。
+  也这么读）；需要看 slot/探针留档再 `ssh vh-sg`（只读 `/opt/happy/release/state.env`、`http-probe.*`）。
 - 证明「改动真在线上」用 `node scripts/dev/check-shipped.mjs --needle '<只有新代码才有的串>'`，别手搓 curl
   （连着三次搓错，每次都读成相反的结论）。它自己读线上 SHA、**传递**遍历 chunk 图、并把 SPA 回退的 HTML
   当「资产不存在」报出来——**拼出来的 /assets 路径拿到 200 也可能是 index.html**，本地 dist 的 chunk 名

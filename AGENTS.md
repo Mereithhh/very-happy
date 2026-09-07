@@ -4,7 +4,7 @@
 （自有账号密码登录、服务端可信非 e2e、只用 web 不用官方 App）。
 单人 Owner（jojo）+ AI agent 集群开发；唯一主开发/发布源是公开仓库
 `Mereithhh/very-happy`，旧私有仓只读归档，禁止向其推发布 commit/tag 或从中部署。
-生产：veryhappy.dev（server+web 在 vh-us、以同一完整镜像发布；daemon/CLI 跑在 mac-office）。
+生产：veryhappy.dev（server+web 在 **vh-sg**＝AWS 新加坡 EC2，2026-09-07 从东京 VPS vh-us 零停机迁入；DB 是 RDS `vh-pg`、经主机上的 PgBouncer 接入，Redis 是 ElastiCache；以同一完整镜像发布；daemon/CLI 跑在 mac-office/mac-main）。vh-us 已退役、只做回滚保留与 happy.mereith.com 的 301。
 
 ## 第一原则（高于本文件其余一切条目）
 
@@ -33,7 +33,7 @@ AGENTS.md（事实源；CLAUDE.md 导入）── 入口：门禁 / 铁律 / 热
   │    └─ docs/verify-queue.md ── 验收层：留真机验证项登记 / 清账
   ├─ docs/channels.md ─────── 对外契约：webhook 出站 + spawn/send/MCP 入站
   ├─ docs/development.md ──── 本地：Web V2 + standalone server + CLI
-  ├─ docs/operations.md ───── 生产：vh-us/mac-office 发布、恢复与回滚
+  ├─ docs/operations.md ───── 生产：vh-sg/mac-office 发布、恢复与回滚（含 2026-09-07 迁移记录）
   ├─ .agents/skills/ ──────── Codex/Claude 共用的 repo-local dev/release 操作入口
   ├─ docs/*.md ────────────── 架构事实（protocol / backend / cli，多为上游遗留，以代码为准）
   └─ docs/plans/ ──────────── 上游遗留 plan 档案（只读；新设计一律进 specs/）
