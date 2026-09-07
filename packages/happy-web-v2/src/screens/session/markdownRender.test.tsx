@@ -267,3 +267,52 @@ describe('table collapse and header semantics (B-357)', () => {
         expect(md(table(16))).not.toContain('md-tbl-expand');
     });
 });
+
+/**
+ * `@` 在正文里必须是可读的 `@`（T-005）。
+ *
+ * 报告说「@ 符号在消息里显示为编码异常」。存储侧（4 个 ACP 会话的解密原文）与渲染侧都
+ * 没能复现——这组用例把**当前正确的行为**钉死：不管 `@` 出现在句中、邮箱、URL、行内代码、
+ * 表格、粗体还是围栏代码里，输出里都不许出现 `&#64;` / `&#x40;` / `&commat;` / `%40`，
+ * 而作者写成实体的 `&#64;` / `&commat;` 要被解码成 `@`。这样以后不管是换引擎还是加
+ * 插件（rehype 层最容易在这里出问题），一动就红。
+ */
+describe('the @ sign survives rendering (T-005)', () => {
+    const ENCODED_AT = /&#0*64;|&#x0*40;|&commat;|%40/i;
+
+    it.each([
+        ['plain prose', 'ping @claude-code and @T-005 now', 'ping @claude-code and @T-005 now'],
+        ['email autolink label', 'mail jojo@example.com', '>jojo@example.com</a>'],
+        ['URL with an @ path segment', 'see https://x.com/@user', '>https://x.com/@user</a>'],
+        ['inline code', 'run `npm i @scope/pkg`', '<code class="md-code-inline">npm i @scope/pkg</code>'],
+        ['bold', 'ask **@owner**', '<strong>@owner</strong>'],
+        ['table cell', '| who |\n| --- |\n| @cell |', '<td>@cell</td>'],
+        ['CJK prose', '联系 @我 处理', '联系 @我 处理'],
+    ])('%s', (_name, source, expected) => {
+        const html = md(source);
+        expect(html).toContain(expected);
+        expect(html).not.toMatch(ENCODED_AT);
+    });
+
+    it('decodes an authored entity to @ (markdown allows &#64; and &commat;)', () => {
+        const html = md('a &#64;b and c &commat;d');
+        expect(html).toContain('a @b and c @d');
+        expect(html).not.toMatch(ENCODED_AT);
+    });
+
+    it('keeps a double-escaped entity literal — that is what the author wrote', () => {
+        // `&amp;#64;` is the text "&#64;", not an @: decoding it twice would be a bug.
+        expect(md('literal &amp;#64;x')).toContain('literal &amp;#64;x');
+    });
+
+    it('keeps @ inside a fenced block (CodeView receives the raw source)', () => {
+        const html = md('```ts\nconst h = "@foo"; // @bar\n```');
+        expect(html).toContain('@foo');
+        expect(html).toContain('@bar');
+        expect(html).not.toMatch(ENCODED_AT);
+    });
+
+    it('a mailto autolink keeps the @ in the href too', () => {
+        expect(md('jojo@example.com')).toContain('href="mailto:jojo@example.com"');
+    });
+});

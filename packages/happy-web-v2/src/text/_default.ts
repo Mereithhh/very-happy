@@ -1693,6 +1693,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep08: {
+                title: 'File-path links, the update button and a few small controls had colours that never resolved',
+                summary: 'Several styles referred to colour tokens that do not exist, so the browser silently dropped them: a hover that never darkened, a focus ring that never showed, a link icon that was invisible, a Refresh button with no background.',
+                states: 'Clickable file paths in a conversation now darken their underline on hover, show a focus outline when you tab to them, and their small icon is visible. The Refresh button on the update banner is solid again. Body text colours are unchanged \u2014 they were inheriting correctly by luck.',
+                guard: 'A test now fails if any stylesheet uses a colour token that is not defined, and another checks the text-on-background contrast of both themes against WCAG. The reported "black text in dark theme" and "@ shown as an encoding" did not reproduce; if you still see either, please say where.',
+            },
                    sep07: {
      title: 'The model selector on a pi session shows the model that is running',
     summary: 'A new pi session opens with the generic "default" model intent, which is not one of the models pi reports, so the selector fell back to the first model in pi\u2019s list and showed a DeepSeek model while the session was in fact on claude-fable-5-1.',

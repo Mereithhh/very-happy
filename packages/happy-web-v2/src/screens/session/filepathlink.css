@@ -1,6 +1,14 @@
 /* 可点文件路径（B-145）。
    刻意不用 --accent：accent 严格只表示 live（focus/活跃/已连接/agent 在跑），
-   一个可点的路径不是 live 状态。用 text 阶梯 + 下划线表达「可点」。 */
+   一个可点的路径不是 live 状态。用 text 阶梯 + 下划线表达「可点」。
+
+   text 阶梯只有 --text / --text-dim / --text-faint（tokens.css）。这个文件原先写的
+   --text-0 / --text-1 / --text-2 **不存在**，于是 `color: var(--text-1)` 在
+   computed-value time 失效、按 `unset` 处理：color 是继承属性，所以在 Chromium 里
+   碰巧继承了父级颜色而没显成黑色，但 hover / focus / 图标三个状态从上线起就一直是
+   死的（T-005 排查时发现；`styles/cssVariables.test.ts` 现在钉着「用到的 var 必须有定义」）。
+   路径链接的正文色**继承**自所在容器（正文 --text、工具卡 .tv-path 的 --text-dim），
+   与修前 Chromium 的实际观感一致；「可点」靠下划线，hover 只加深下划线。 */
 .fpl {
   display: inline-flex;
   align-items: baseline;
@@ -10,21 +18,21 @@
   background: none;
   font: inherit;
   font-family: var(--font-mono);
-  color: var(--text-1);
+  color: inherit;
   text-decoration: underline;
-  text-decoration-color: var(--line);
+  text-decoration-color: var(--line-2);
   text-underline-offset: 2px;
   cursor: pointer;
   text-align: left;
 }
 
 .fpl:hover {
-  color: var(--text-0);
-  text-decoration-color: var(--text-2);
+  color: var(--text);
+  text-decoration-color: var(--text-faint);
 }
 
 .fpl:focus-visible {
-  outline: 1px solid var(--text-2);
+  outline: 1px solid var(--text-faint);
   outline-offset: 2px;
   border-radius: 2px;
 }
@@ -32,7 +40,7 @@
 .fpl-icon {
   flex: 0 0 auto;
   align-self: center;
-  color: var(--text-2);
+  color: var(--text-faint);
 }
 
 .fpl-text {

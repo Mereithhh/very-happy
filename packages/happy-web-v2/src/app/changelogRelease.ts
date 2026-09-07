@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-08-undefined-css-tokens',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // web-only: CSS tokens, no CLI half.
+    titleKey: 'changelog.releases.sep08.title',
+    summaryKey: 'changelog.releases.sep08.summary',
+    itemKeys: [
+      'changelog.releases.sep08.states',
+      'changelog.releases.sep08.guard',
+    ],
+  },
+  {
     id: '2026-09-07-acp-model-selector-truth',
     date: '2026-09-07',
     buildVersion: __APP_VERSION__,

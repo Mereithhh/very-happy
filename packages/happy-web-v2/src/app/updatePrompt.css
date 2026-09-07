@@ -27,8 +27,8 @@
   padding: 5px 12px;
   border: 0;
   border-radius: 999px;
-  background: var(--ink);
-  color: var(--canvas);
+  background: var(--text);
+  color: var(--bg-0);
   font: inherit;
   font-weight: 560;
   cursor: pointer;
