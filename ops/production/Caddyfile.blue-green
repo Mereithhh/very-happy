@@ -1,12 +1,23 @@
 veryhappy.dev, happy.mereith.com {
+	# Slot-pinned clients (a handover in flight, or a client that kept ?vh_slot=
+	# from a past handover — see B-364) must never be sent to a slot with nothing
+	# listening: list both ports, prefer the pinned one, fall back to the other.
 	@vh_blue query vh_slot=blue
 	handle @vh_blue {
-		reverse_proxy 127.0.0.1:3101
+		reverse_proxy 127.0.0.1:3101 127.0.0.1:3102 {
+			lb_policy first
+			lb_try_duration 2s
+			fail_duration 10s
+		}
 	}
 
 	@vh_green query vh_slot=green
 	handle @vh_green {
-		reverse_proxy 127.0.0.1:3102
+		reverse_proxy 127.0.0.1:3102 127.0.0.1:3101 {
+			lb_policy first
+			lb_try_duration 2s
+			fail_duration 10s
+		}
 	}
 
 	handle {

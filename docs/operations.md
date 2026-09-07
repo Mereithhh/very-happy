@@ -13,27 +13,82 @@ commits or tags to it and do not use it as a deployment source.
 
 | Role | Runtime |
 |---|---|
-| Web + server | `vh-us`; legacy `happy-server:3005` during groundwork, then fixed `happy-server-blue:3101` / `happy-server-green:3102` slots |
-| Public endpoint | `https://veryhappy.dev`; Caddy imports `/opt/happy/release/active-upstream.caddy` and switches it atomically |
-| Production artifact | Complete `ghcr.io/mereithhh/very-happy-server@sha256:<digest>` image, including Web V2 |
-| Database | External PostgreSQL in the colocated `happy-postgres` container |
-| Daemon | published `very-happy-cli` on `mac-office` |
+| Web + server | `vh-sg` (AWS ap-southeast-1, `m6i.xlarge`, EIP `52.74.232.28`); fixed `happy-server-blue:3101` / `happy-server-green:3102` slots |
+| Public endpoint | `https://veryhappy.dev` behind Cloudflare (proxied); Caddy imports `/opt/happy/release/active-upstream.caddy` and switches it atomically. A `?vh_slot=` pin whose slot is down falls back to the other slot (`lb_policy first`) |
+| Production artifact | Complete `ghcr.io/mereithhh/very-happy-server@sha256:<digest>` image (linux/amd64 only — the host must stay x86), including Web V2 |
+| Database | **RDS PostgreSQL 16** `vh-pg` (db.m7g.large, single-AZ, private subnet, 7-day automated backups, deletion protection), reached through **PgBouncer** (`vh-pgbouncer`, transaction pooling, `127.0.0.1:6432`, logical db `happy`). The server never connects to RDS directly |
+| Redis | **ElastiCache** `vh-redis` (cache.t4g.micro, private subnet), socket.io Redis streams adapter |
+| Host base services | `/opt/happy/docker-compose.yml` runs `vh-pgbouncer` only; release slots in `/opt/happy/release/docker-compose.yml` join the same `happy_default` network |
+| Daemon | published `very-happy-cli` on `mac-office` / `mac-main` |
 | Singapore relay | `sg-hw`, `https://relay-sg.veryhappy.dev`, Docker + Caddy on `hw-sg` |
 | US relay | `us-fb`, `https://relay-us.veryhappy.dev`, k3s + Traefik on `fb-us`/`k8sus` |
+| Retired origin | `vh-us` (Tokyo VPS, 69.8.128.238) — server stopped 2026-09-07; keeps a frozen PostgreSQL copy for rollback until ~2026-09-21. Its Caddy now 301-redirects `happy.mereith.com` page loads to `veryhappy.dev` and transparently proxies `/v1|/v2|/v3|/files|/health` (websocket included) to `vh-sg`, so a client still configured with the legacy host keeps working |
 
 The hosted service is server-trusted, not E2E. The server can recover account
 secrets and relay remote execution to a user's connected daemon. Treat access to
-vh-us, its environment, backups and deploy key as high impact.
+vh-sg, its environment, the RDS instance, backups and deploy key as high impact.
 
-Production has completed the explicit groundwork and shadow gates and now uses
-the fixed-slot blue-green topology. `/opt/happy/release/state.env` is the
-authority for the active/rollback slot, image digest and release; never infer
-the current slot from repository support or a historical release note.
+Production uses the fixed-slot blue-green topology. `/opt/happy/release/state.env`
+is the authority for the active/rollback slot, image digest and release; never
+infer the current slot from repository support or a historical release note.
 
-Production secret values live only on vh-us in `/opt/happy/.env`. Documentation and
-Git contain variable names only. Relevant variables include
-`HANDY_MASTER_SECRET`, signup policy/capacity, VAPID credentials, Google Client ID
-and Origin allowlist. Never copy the environment file into an agent transcript.
+Production secret values live only on vh-sg in `/opt/happy/.env` (RDS/Redis
+endpoints and the RDS password are part of it) and in `/opt/pgbouncer/` (mode
+0700). Documentation and Git contain variable names only. Relevant variables
+include `HANDY_MASTER_SECRET`, signup policy/capacity, VAPID credentials, Google
+Client ID and Origin allowlist. Never copy the environment file into an agent
+transcript.
+
+### Host migration 2026-09-07 (Tokyo VPS → AWS Singapore)
+
+Why: the Tokyo VPS (`vh-us`) was hard-stopped by its provider for 3h24m on
+2026-09-06 (no guest-side shutdown/OOM/panic in the journal; users saw a
+Cloudflare host error). Everything — server, PostgreSQL, Redis — was one single
+point of failure on one box.
+
+How it was done with **zero dropped requests and zero data loss**, in order:
+
+1. New host provisioned in the company AWS account (ap-southeast-1; the
+   Org SCP denies ap-northeast-1/us-west-1). Same image digest, same `.env`
+   except `DATABASE_URL`/`REDIS_URL`, same release directory layout, Let's
+   Encrypt certificates copied so Cloudflare could re-origin without a TLS gap.
+2. `vh-sg` first ran **against the Tokyo database** through an SSH tunnel
+   (`autossh` → socat sidecar on the old host) fronted by PgBouncer, sharing
+   Redis-adapter state with nothing (old Redis stayed on `vh-us`; the new
+   server used ElastiCache from the start — the two servers never shared a
+   socket.io cluster, which is why step 3 used the drain protocol rather than
+   relying on adapter fan-out).
+3. Old server received a normal `POST /_vh/release/drain` (`candidateSlot=blue`),
+   the old Caddy's `?vh_slot=blue` route pointed at the new host, then the old
+   default upstream was switched to the new host. Supported clients did the
+   make-before-break handover; the rest reconnected within seconds. Cloudflare's
+   A record was changed only after the old host was already forwarding, so DNS
+ propagation was never on the critical path.
+4. Database cutover through PgBouncer: `PAUSE happy` → `pg_dump | pg_restore`
+   into RDS (~21 s for 330 MB) → row counts compared on four tables → rewrite
+   the `happy` alias to RDS → `RELOAD` → `RESUME happy`. Queries issued during
+   the pause queued inside PgBouncer and completed; nothing errored.
+
+Lessons that are now encoded in the host:
+
+- **PgBouncer config must be a directory bind-mount** (`/opt/pgbouncer:/etc/pgbouncer`),
+  never a file mount: `sed -i` replaces the inode and the container keeps reading
+  the old file, so `RELOAD` silently does nothing. The first cutover attempt hit
+  this and the server briefly talked to an empty RDS schema (Prisma `P2010`/`P2028`,
+  two container restarts) before being pointed back at Tokyo and redone.
+- **Caddy `reverse_proxy https://<ip>` rewrites `Host` to the IP** and sends h2;
+  add `header_up Host {http.request.host}` and `transport http { versions 1.1 }`
+  or websocket upgrades come back as an empty 200 from the far Caddy.
+- **Slot-pinned clients outlive the slot**: after the old host went away, ~8k
+  `?vh_slot=green` connections per hour hit a port with nothing on it. The
+  Caddyfile now lists both slot ports per matcher with `lb_policy first`.
+- A cutover script that runs under `set -e` must not be able to exit between
+  `PAUSE` and `RESUME`; compute row counts with `psql -f` (quoted identifiers
+  through ssh → sh → psql broke twice), and resume unconditionally on mismatch.
+
+Rollback window: until the Tokyo PostgreSQL is deleted, Cloudflare can be
+re-pointed at 69.8.128.238 and `happy-server-green` restarted there; data written
+to RDS after 08:15 UTC 2026-09-07 would have to be re-imported (dump RDS → Tokyo).
 
 ## Supported deployment paths
 
@@ -173,11 +228,13 @@ new env while active remains available.
 
 ```bash
 # Before blue-green groundwork only:
-ssh vh-us 'cd /opt/happy && docker compose up -d --force-recreate happy-server'
+ssh vh-sg 'cd /opt/happy && docker compose up -d --force-recreate happy-server'
 ```
 
-`vh-us` is the operator's local alias for the active production origin. The
-legacy `hw-sg` alias is not a control-server deployment target.
+`vh-sg` is the operator's local alias for the active production origin (`vh-us`
+is the retired Tokyo host, `hw-sg` is the Singapore relay). Neither of the latter
+is a control-server deployment target. The workflow secrets are still named
+`HWSG_*` for historical reasons; they point at vh-sg.
 
 For the official Google login configuration, also confirm the exact Web origin
 in Google Cloud Console. See [`deployment.md`](deployment.md#environment-variables).
@@ -345,7 +402,7 @@ node scripts/ops/resource-budget.mjs --days 45 --warn 70
 脚本因此把「预计还有几天」当成主要信号，`--days` 而不是 `--warn` 才是那个闸。
 
 **② 配额是按账号的，而磁盘是按机器的——这两个数以前没有人放在一起看过。**
-vh-us 是 50G 盘、19.6G 可用；每账号 8 项字节额度加起来 **1.2G**；`SIGNUP_MODE=open`
+vh-sg 是 60G 盘、~51G 可用（vh-us 时代是 50G/19.6G）；每账号 8 项字节额度加起来 **1.2G**；`SIGNUP_MODE=open`
 且 `SIGNUP_MAX_ACCOUNTS=100` → 最坏情况 **121.5G，超售 6.2 倍**。也就是说
 per-account 上限**保护不了这块盘**：少数几个重账号就能在任何一条上限触发之前把它填满。
 当前实际用量离这里很远（库只有 200MB，约 3MB/天），所以这不是今天的火警，
