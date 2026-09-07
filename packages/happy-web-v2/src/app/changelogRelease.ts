@@ -15,6 +15,22 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-08-pi-session-stays-live',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // CLI-only fix (B-376): the web's liveness channel is the two-second
+    // keepAlive, and the ACP runner used to release it mid-turn whenever the
+    // backend's text-gap heuristic reported idle — so the web folded the turn
+    // and dropped the running bar while pi was still working. Ships in the
+    // same CLI release as B-371 below; bump this if it is released separately.
+    cliVersion: '0.2.121',
+    titleKey: 'changelog.releases.sep08e.title',
+    summaryKey: 'changelog.releases.sep08e.summary',
+    itemKeys: [
+      'changelog.releases.sep08e.running',
+    ],
+  },
+  {
     id: '2026-09-08-pi-sessions-stream-live',
     date: '2026-09-08',
     buildVersion: __APP_VERSION__,

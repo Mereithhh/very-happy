@@ -633,7 +633,27 @@ export async function runAcp(opts: {
     verbose,
   });
 
+  // The keepAlive `thinking` lease is TURN-scoped, not backend-status-scoped
+  // (B-376). The web has exactly one liveness signal — this 2s heartbeat
+  // (`sync/agentLiveness.ts`, rule 13) — and it folds the turn's activity view
+  // and removes the running status bar the moment it reads `false`. AcpBackend's
+  // `status` is a text-gap heuristic, not a turn boundary: it emits `idle` 500ms
+  // after the last text chunk and again whenever the last active tool call
+  // completes (sessionUpdateHandlers.ts). A real pi turn probed on 2026-09-07
+  // went running→idle→running→idle→(4.1s of model output)→prompt resolved, so
+  // driving the lease off `status` made the web show "done" twice per turn while
+  // pi was still working. The real turn boundary is `backend.sendPrompt()`
+  // resolving (ACP `prompt` returns its stopReason only when the turn is over),
+  // so the lease is held from `startTurn` to that point — same shape as
+  // claudeRemote's `updateThinking` and runGemini's "set false ONCE in finally".
   let thinking = false;
+  const setThinking = (next: boolean) => {
+    if (thinking === next) {
+      return;
+    }
+    thinking = next;
+    session.keepAlive(thinking, 'remote');
+  };
   let acpSessionId: string | null = null;
   let shouldExit = false;
   let abortController = new AbortController();
@@ -905,11 +925,7 @@ export async function runAcp(opts: {
       const suffix = msg.detail ? `: ${msg.detail}` : '';
       const statusLine = `Status: ${msg.status}${suffix}`;
       logAcp('muted', statusLine);
-      const nextThinking = msg.status === 'running';
-      if (thinking !== nextThinking) {
-        thinking = nextThinking;
-        session.keepAlive(thinking, 'remote');
-      }
+      // Deliberately NOT touching `thinking` here — see setThinking above.
       if (msg.status === 'idle') {
         clearPendingTurn();
       }
@@ -1047,6 +1063,7 @@ export async function runAcp(opts: {
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());
+      setThinking(true);
       const turnEnded = waitForTurnEnd();
       try {
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
@@ -1061,6 +1078,9 @@ export async function runAcp(opts: {
         // Sweep AFTER the turn's envelopes are queued: `turn-end` starts the
         // web's 1.5s countdown for unclaimed drafts.
         streamRelay.endTurn();
+        // Release the lease only after the turn's last envelopes are queued, so
+        // the web folds a turn that already holds its final answer.
+        setThinking(false);
         session.sendSessionEvent({ type: 'ready' });
         if (verbose) {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
@@ -1068,6 +1088,7 @@ export async function runAcp(opts: {
       } catch (error) {
         sendEnvelopes(sessionManager.endTurn('failed'));
         streamRelay.endTurn();
+        setThinking(false);
         session.sendSessionEvent({ type: 'ready' });
         logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
         clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
@@ -1075,6 +1096,9 @@ export async function runAcp(opts: {
       }
     }
   } finally {
+    // A turn cut short by kill/backend death never reached setThinking(false)
+    // above; release the lease before the interval stops re-sending it.
+    setThinking(false);
     clearInterval(keepAliveInterval);
     // A turn cut short (kill, backend death) never reached endTurn above;
     // sweep so the web does not keep a half-answer on screen for 5 minutes.
