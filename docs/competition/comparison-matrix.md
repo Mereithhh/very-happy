@@ -4,6 +4,13 @@ Reviewed on 2026-03-20. Superset added 2026-04-08.
 
 This is the short version of what matters most for Happy.
 
+> **协议层之外还有一份 UX/工作流层的对比**：`2026-09-ux-review/`（2026-09-03 做，
+> 已归档未开工）覆盖 Claude Code desktop/Remote Control、Codex desktop/remote、
+> Paseo、Orca + adjacent（grok bot / Cowork Dispatch / OpenClaw / pi），产出
+> 43 条待 Owner 裁决的优化事项、被判定不做的条目及其理由，以及 very-happy
+> 自身的产品表面地图与痛点取证。本表是协议与控制面的对比，那份是注意力、
+> 评审到交付、编排抽象的对比；两者互不覆盖。
+
 | Vendor | Core transport | Transcript shape | Subagents / tasks | Permissions | Sandbox story | Sync / remote story | Happy takeaway |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | OpenCode | HTTP + SSE | message envelope + typed parts | child sessions via `task` tool | first-class request objects + rules | worktree/workspace isolation, not OS sandbox | strong client/server split with event stream + fetch hydration | best overall product and protocol reference right now |

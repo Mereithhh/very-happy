@@ -84,3 +84,16 @@ input, and dig further into how it syncs state with its server.
 
 The rule of thumb is simple: checkouts stay outside the repo; insights and small
 supporting artifacts go here.
+
+## Dated studies
+
+One-off cross-vendor studies that do not fit the per-vendor layout live in a
+dated folder next to it, with their own `README.md` as the entry point:
+
+- `2026-09-ux-review/` — UX and workflow-abstraction comparison against Claude
+  Code desktop/Remote Control, Codex desktop/remote, Paseo and Orca, plus an
+  adjacent survey (grok bot, Cowork Dispatch, ChatGPT tasks, OpenClaw, pi).
+  Ends in an owner-facing TODO list that is archived, **not started**: its 43
+  decisions are unmade, so do not treat any item in it as approved work.
+  It also carries the only surviving self-audit of very-happy's own surfaces
+  (`self/product-map.md`), which is useful well beyond the competitor question.
