@@ -27,6 +27,19 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     ],
   },
   {
+    id: '2026-09-07-terminal-keyboard-keeps-columns',
+    date: '2026-09-07',
+    buildVersion: __APP_VERSION__,
+    // web-only: the daemon/tmux side was behaving correctly; the phone was
+    // sending it a different column count on every keyboard open/close.
+    titleKey: 'changelog.releases.sep07a.title',
+    summaryKey: 'changelog.releases.sep07a.summary',
+    itemKeys: [
+      'changelog.releases.sep07a.columns',
+      'changelog.releases.sep07a.seam',
+    ],
+  },
+  {
     id: '2026-09-07-acp-model-selector-truth',
     date: '2026-09-07',
     buildVersion: __APP_VERSION__,

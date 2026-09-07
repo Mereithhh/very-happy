@@ -18,29 +18,50 @@
  *    forever). Timer functions are injectable for tests.
  *  - computeKbAvail: the maxHeight arithmetic (visible viewport minus header
  *    offset minus the bottom bars).
- *  - pickTermTypography: small-height adaptive type — when the keyboard
- *    leaves very little room, drop 12px/1.3 → 11px/1.25 to buy 2-3 rows.
+ *  - MOBILE_TYPO_BASE: the ONE mobile typography. There used to be a second,
+ *    "compact" one (11px/1.25) applied while the keyboard was open to buy 2-3
+ *    rows. It was removed in T-006 (2026-09): a font-size change is a CELL WIDTH
+ *    change, i.e. a COLUMN change (57 → 62 cols on a 430px iPhone), and on the
+ *    classic-renderer track the daemon runs claude on, any column change makes
+ *    claude reprint its startup header and tmux hard-wrap every history line
+ *    that no longer fits — the "logo wraps / shows twice on the phone" report.
+ *    The same constants also carried lineHeight 1.3/1.25 while the renderer
+ *    opens at 1.0 (#161), so the first keyboard cycle reopened the logo seam.
+ *    See termFont.ts for the rule: the keyboard may only ever change ROWS.
  */
+
+import { TERM_FONT_SIZE_COARSE, TERM_LINE_HEIGHT } from './termFont';
 
 export interface TermTypography {
     fontSize: number;
     lineHeight: number;
 }
 
-/** Mobile terminal type at full height (matches the renderer's coarse default). */
-export const MOBILE_TYPO_BASE: TermTypography = Object.freeze({ fontSize: 12, lineHeight: 1.3 });
-/** Compact type for keyboard-open small viewports (~14px cells vs ~16px). */
-export const MOBILE_TYPO_COMPACT: TermTypography = Object.freeze({ fontSize: 11, lineHeight: 1.25 });
-/** Keyboard-open visual viewport height below which compact type kicks in. */
-export const COMPACT_VV_HEIGHT_PX = 420;
+/** Mobile terminal type — identical to what the renderer opened with on a coarse
+ *  pointer, in BOTH keyboard states. Derived from the renderer's own constants so
+ *  the two cannot drift apart again. WebTerminalScreen no longer rewrites
+ *  `term.options.fontSize/lineHeight` at all; this constant documents the
+ *  invariant and anchors the tests. */
+export const MOBILE_TYPO_BASE: TermTypography = Object.freeze({
+    fontSize: TERM_FONT_SIZE_COARSE,
+    lineHeight: TERM_LINE_HEIGHT,
+});
 
 /**
- * Type choice for the KEYBOARD-OPEN state (the restore path unconditionally
- * returns to MOBILE_TYPO_BASE — this is never consulted with the keyboard
- * closed, so a short landscape viewport without a keyboard keeps base type).
+ * Would switching from `before` to `after` typography change the column count
+ * of a terminal `hostWidthPx` wide? Pure so the invariant "keyboard state never
+ * changes columns" is directly unit-testable against real cell widths. The
+ * cell advance of the terminal face is 0.6em (Maple Mono CN / IBM Plex Mono /
+ * Menlo all measure 0.60±0.002em, verified in Chromium).
  */
-export function pickTermTypography(vvHeight: number): TermTypography {
-    return vvHeight < COMPACT_VV_HEIGHT_PX ? MOBILE_TYPO_COMPACT : MOBILE_TYPO_BASE;
+export function typographyChangesCols(
+    hostWidthPx: number,
+    before: TermTypography,
+    after: TermTypography,
+    cellAdvanceEm = 0.6,
+): boolean {
+    const cols = (t: TermTypography) => Math.floor(hostWidthPx / (t.fontSize * cellAdvanceEm));
+    return cols(before) !== cols(after);
 }
 
 /**
