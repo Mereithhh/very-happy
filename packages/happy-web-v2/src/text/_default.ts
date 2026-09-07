@@ -1693,6 +1693,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep08a: {
+                title: 'pi gets its own default model and permission settings',
+                summary: 'Settings → Agents treated pi as Claude: it offered Claude model aliases (opus / sonnet / fable) for pi, and picking a model or permission inside a pi conversation silently overwrote your Claude defaults.',
+                settings: 'pi now has its own row under Settings → Agents. Its model list is what your pi sessions have actually published (e.g. llm-hub/claude-fable-5-1), with "default" meaning "use whatever the machine\'s pi is configured with". pi and Claude defaults no longer touch each other.',
+                selectors: 'In a pi conversation the permission menu shows the two modes pi really distinguishes (ask / bypass) instead of its thinking levels, and the model menu keeps showing the model pi is actually running.',
+            },
             sep08: {
                 title: 'File-path links, the update button and a few small controls had colours that never resolved',
                 summary: 'Several styles referred to colour tokens that do not exist, so the browser silently dropped them: a hover that never darkened, a focus ring that never showed, a link icon that was invisible, a Refresh button with no background.',

@@ -70,3 +70,32 @@ describe('resolveMessageModeMeta (B-103)', () => {
         expect(resolveMessageModeMeta(session({ permissionMode: 'yolo' })).permissionMode).toBe('bypassPermissions');
     });
 });
+
+describe('pi sessions (flavor acp) resolve against the pi slot (B-370)', () => {
+    const claudeOverride = { modelMode: 'sonnet', effortLevel: 'low', permissionMode: 'bypassPermissions' };
+
+    it('reads pi overrides, not claude ones, and keeps omit-when-unset for model/effort', () => {
+        const meta = resolveMessageModeMeta(session({ flavor: 'acp' }), {
+            agentDefaultOverrides: { claude: claudeOverride, pi: { modelMode: 'llm-hub/claude-fable-5-1' } },
+        } as any);
+        expect(meta.model).toBe('llm-hub/claude-fable-5-1');
+        expect('effort' in meta).toBe(false);
+        // claude's yolo override is no longer pi's
+        expect('permissionMode' in meta).toBe(false);
+    });
+
+    it('with no pi override nothing is sent — never the code default (B-262 A2)', () => {
+        const bare = resolveMessageModeMeta(session({ flavor: 'acp' }), { agentDefaultOverrides: { claude: claudeOverride } } as any);
+        expect('model' in bare).toBe(false);
+        expect('effort' in bare).toBe(false);
+        expect('permissionMode' in bare).toBe(false);
+    });
+
+    it("speaks Claude's permission vocabulary: yolo → bypassPermissions, dead keys → default, upgrade-only override", () => {
+        expect(resolveMessageModeMeta(session({ flavor: 'acp', permissionMode: 'yolo' })).permissionMode).toBe('bypassPermissions');
+        expect(resolveMessageModeMeta(session({ flavor: 'acp', permissionMode: 'dontAsk' })).permissionMode).toBe('default');
+        const overrides = (mode: string) => ({ agentDefaultOverrides: { pi: { permissionMode: mode } } } as any);
+        expect(resolveMessageModeMeta(session({ flavor: 'acp' }), overrides('bypassPermissions')).permissionMode).toBe('bypassPermissions');
+        expect('permissionMode' in resolveMessageModeMeta(session({ flavor: 'acp' }), overrides('default'))).toBe(false);
+    });
+});

@@ -15,6 +15,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-08-pi-agent-defaults',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // web-only: the pi runner already speaks Claude's permission keys and
+    // publishes its own model list; only the web was filing pi under claude.
+    titleKey: 'changelog.releases.sep08a.title',
+    summaryKey: 'changelog.releases.sep08a.summary',
+    itemKeys: [
+      'changelog.releases.sep08a.settings',
+      'changelog.releases.sep08a.selectors',
+    ],
+  },
+  {
     id: '2026-09-08-undefined-css-tokens',
     date: '2026-09-08',
     buildVersion: __APP_VERSION__,

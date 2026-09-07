@@ -1656,6 +1656,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep08a: {
+                title: 'pi 有了自己的默认模型与权限设置',
+                summary: '「智能体默认设置」此前把 pi 当成 Claude：给 pi 列的是 Claude 的模型别名（opus / sonnet / fable），而在 pi 会话里选模型或权限会悄悄覆盖你的 Claude 默认值。',
+                settings: '设置 → 智能体里现在有单独的 pi 一栏。它的模型列表来自你的 pi 会话实际发布过的模型（如 llm-hub/claude-fable-5-1），「默认」表示沿用机器上 pi 自己的配置。pi 与 Claude 的默认值互不影响。',
+                selectors: 'pi 会话里的权限菜单只显示 pi 真正区分的两种模式（询问 / 放行），不再把思考等级当权限；模型菜单继续显示 pi 实际在跑的模型。',
+            },
             sep08: {
                 title: '文件路径链接、更新按钮和几个小控件的颜色一直没生效',
                 summary: '几处样式引用了并不存在的颜色 token，浏览器只是悄悄忽略：悬停不加深、聚焦不出框、链接图标隐形、「刷新」按钮没有背景。',
