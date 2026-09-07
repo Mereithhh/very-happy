@@ -15,6 +15,21 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-08-pi-sessions-stream-live',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // CLI-only fix (B-371): the web's live-draft receiver shipped with B-309
+    // and needs no change; the ACP runner simply never sent frames. The
+    // version is the CLI release that carries it.
+    cliVersion: '0.2.121',
+    titleKey: 'changelog.releases.sep08a.title',
+    summaryKey: 'changelog.releases.sep08a.summary',
+    itemKeys: [
+      'changelog.releases.sep08a.text',
+      'changelog.releases.sep08a.thinking',
+    ],
+  },
+  {
     id: '2026-09-08-undefined-css-tokens',
     date: '2026-09-08',
     buildVersion: __APP_VERSION__,

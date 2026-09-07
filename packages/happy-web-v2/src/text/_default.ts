@@ -1693,6 +1693,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep08a: {
+                title: 'pi sessions now show the answer as it is written',
+                summary: 'On a pi (and other ACP) session the web showed nothing during a turn until the whole answer had been produced, then all of it at once — while the terminal had been printing it word by word. Only Claude sessions had been given the live stream in September.',
+                text: 'The reply now appears within a moment of the model starting to write and keeps growing, on a pi session exactly as on a Claude one. When the turn finishes the draft is replaced by the final message in place — no flicker, no duplicate. Needs the new CLI on the machine and a session started after the update.',
+                thinking: 'If pi runs with a thinking level enabled, its reasoning streams into an expanded Thinking card as it is written, then collapses into the usual block once the answer starts. (Claude sessions cannot show this — the API withholds the reasoning text — so there the status bar’s token counter remains the signal.)',
+            },
             sep08: {
                 title: 'File-path links, the update button and a few small controls had colours that never resolved',
                 summary: 'Several styles referred to colour tokens that do not exist, so the browser silently dropped them: a hover that never darkened, a focus ring that never showed, a link icon that was invisible, a Refresh button with no background.',

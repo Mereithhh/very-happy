@@ -1,5 +1,6 @@
 /**
- * Live streaming frames for a Claude SDK session (B-309).
+ * Live streaming frames for a running agent session (B-309 Claude SDK,
+ * B-371 ACP runners such as pi).
  *
  * These ride a BYPASS channel (`session-stream`), not the persistent message
  * stream: the CLI encrypts a frame with the session key and the server relays
@@ -33,9 +34,11 @@ export const STREAM_DELTA_MAX_CHARS = 16 * 1024;
 export const sessionStreamBlockKindSchema = z.enum(['text', 'thinking']);
 export type SessionStreamBlockKind = z.infer<typeof sessionStreamBlockKindSchema>;
 
-/** A content block began. `mid` is the API message id (from the SDK's
- *  `message_start`), `idx` the content block index within it — together the
- *  stable identity a persisted envelope's `streamKey` matches against. */
+/** A content block began. `mid` is the producer's message identity — the API
+ *  message id (from the SDK's `message_start`) on the Claude path, the turn id
+ *  on the ACP path, which has no API message id — and `idx` the content block
+ *  index within it. Together they are the stable identity a persisted
+ *  envelope's `streamKey` matches against; the web never interprets `mid`. */
 export const sessionStreamBlockStartSchema = z.object({
   t: z.literal('block-start'),
   mid: z.string().min(1),

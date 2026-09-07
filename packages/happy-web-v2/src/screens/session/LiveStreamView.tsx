@@ -11,6 +11,8 @@
  * Thinking drafts render expanded and unadorned, the way the terminal shows
  * them, because the whole point is watching the reasoning arrive. Once the
  * real message lands it collapses into the usual "Thought for Ns" block.
+ * (Claude sessions never get thinking text — the API redacts it — so this
+ * branch is exercised by pi sessions, whose pi-acp relays real reasoning; B-371.)
  */
 import { memo } from 'react';
 import { Brain } from 'lucide-react';
