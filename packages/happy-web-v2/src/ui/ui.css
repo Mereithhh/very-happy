@@ -169,23 +169,57 @@
 .vh-dot--offline {
   background: var(--text-faint);
 }
+/* Pulse = dot fades + a glow ring expands outward. Both are animated with
+   compositor-only properties (opacity / transform) on purpose: the previous
+   keyframes animated `box-shadow`, which forces a main-thread style recalc +
+   repaint EVERY frame for EVERY visible pulsing dot (measured: 12 dots =
+   1 recalc/frame, ~8% of the main thread at 116Hz; the connected-header dot
+   alone runs for the whole life of a session tab). The ring lives on ::after
+   with a static shadow so only its scale/opacity move. */
 .vh-dot--pulse {
+  position: relative;
   animation: vh-dot-pulse 1.8s ease-in-out infinite;
+}
+.vh-dot--pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--accent-glow);
+  transform: scale(0);
+  opacity: 1;
+  animation: vh-dot-ring 1.8s ease-in-out infinite;
+  /* keep the stagger the element got via inline animation-delay */
+  animation-delay: inherit;
+  pointer-events: none;
 }
 @keyframes vh-dot-pulse {
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 0 0 var(--accent-glow);
   }
   50% {
     opacity: 0.55;
-    box-shadow: 0 0 0 4px transparent;
+  }
+}
+@keyframes vh-dot-ring {
+  0%,
+  100% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .vh-dot--pulse {
+  .vh-dot--pulse,
+  .vh-dot--pulse::after {
     animation: none;
+  }
+  .vh-dot--pulse::after {
+    display: none;
   }
 }
 
