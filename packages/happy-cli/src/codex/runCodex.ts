@@ -135,6 +135,7 @@ export async function runCodex(opts: {
 
     const { state, metadata } = createSessionMetadata({
         flavor: 'codex',
+        ...(process.env.VH_TEAM_OPERATION_ID ? { teamOperationId: process.env.VH_TEAM_OPERATION_ID } : {}),
         machineId,
         startedBy: opts.startedBy,
         sandbox: sandboxConfig,

@@ -476,6 +476,8 @@ export const MessageContentSchema = z.union([UserMessageSchema, AgentMessageSche
 export type MessageContent = z.infer<typeof MessageContentSchema>
 
 export type Metadata = {
+  /** Durable Teams spawn correlation; never contains credentials. */
+  teamOperationId?: string,
   /**
    * ACP session config option value (normalized for UI metadata consumers).
    */

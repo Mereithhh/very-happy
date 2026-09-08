@@ -60,6 +60,7 @@ import { terminateProcess } from './processTermination';
 import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
 import { readSessionLock } from '@/utils/sessionLock';
+import { createTeamWorker } from './teams/worker';
 
 import { shellescape } from '@/utils/shellescape';
 
@@ -266,6 +267,7 @@ export async function startDaemon(): Promise<void> {
     // Retain session data after process exits so resume can still find it.
     // Pre-populate from disk so sessions survive daemon restarts.
     const sessionIdToFinishedSession = new Map<string, TrackedSession>();
+    let teamWorker: ReturnType<typeof createTeamWorker> | undefined;
     const persisted = readPersistedSessions();
     const liveHappyProcesses = await findAllHappyProcesses();
     for (const [id, s] of Object.entries(persisted)) {
@@ -1398,6 +1400,7 @@ export async function startDaemon(): Promise<void> {
     // Handle child process exit — preserve session data for resume
     const onChildExited = (pid: number) => {
       const session = pidToTrackedSession.get(pid);
+      if (session?.happySessionId && session.spawnedBy === 'teams') teamWorker?.report(session.happySessionId, 'exited');
       if (session?.happySessionId && session.encryption) {
         sessionIdToFinishedSession.set(session.happySessionId, session);
         logger.debug(`[DAEMON RUN] Process PID ${pid} exited, preserved session ${session.happySessionId} for resume`);
@@ -1426,6 +1429,10 @@ export async function startDaemon(): Promise<void> {
       }
     };
     const onSessionStateEvent = (sessionId: string, event: AssistantReportEvent, spawnedByFromSession?: string): void => {
+      if (spawnedByFromSession === 'teams' || [...pidToTrackedSession.values()].some(s => s.happySessionId === sessionId && s.spawnedBy === 'teams')) {
+        teamWorker?.report(sessionId, event === 'completed' ? 'idle' : 'blocked');
+        return; // Teams has its own recipient; never route to the legacy assistant singleton.
+      }
       void (async () => {
         try {
           let tracked: TrackedSession | undefined;
@@ -1736,7 +1743,7 @@ export async function startDaemon(): Promise<void> {
           // File temporarily missing (e.g. mid-install) — retry on next heartbeat.
         }
       }
-      if (bundleReplaced && !updateController.isRunning() && pidToTrackedSession.size === 0 && !apiMachine.hasLiveTerminals()) {
+      if (bundleReplaced && !teamWorker?.busy && !updateController.isRunning() && pidToTrackedSession.size === 0 && !apiMachine.hasLiveTerminals()) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
@@ -1757,9 +1764,10 @@ export async function startDaemon(): Promise<void> {
           // still-finishing install is picked up moments later.
           return;
         }
-        if (updateController.isRunning() || pidToTrackedSession.size > 0 || apiMachine.hasLiveTerminals()) return;
+        if (teamWorker?.busy || updateController.isRunning() || pidToTrackedSession.size > 0 || apiMachine.hasLiveTerminals()) return;
         lastHandoverHold = null;
         logger.debug('[DAEMON RUN] Daemon bundle replaced on disk and verified, handing off to new daemon');
+        teamWorker?.stop();
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
         clearInterval(cliUpdateInterval);
@@ -1815,9 +1823,16 @@ export async function startDaemon(): Promise<void> {
       }
     }), heartbeatIntervalMs); // Every 60 seconds in production
 
+    teamWorker = createTeamWorker({
+      machineId, token: credentials.token, spawn: spawnSession, stop: stopSession,
+      live: id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid)),
+      log: message => logger.debug(`[DAEMON RUN] ${message}`),
+    });
+
     // Setup signal handlers
     const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
+      teamWorker?.stop();
 
       // Clear health check interval
       if (restartOnStaleVersionAndHeartbeat) {
