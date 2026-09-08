@@ -40,6 +40,8 @@ export function HelpScreen() {
           </div>
         </section>
 
+        <section className="help-screen__topics"><h2>Agent Teams</h2><p>{lang === 'zh-Hans' ? '普通托管会话也能组织团队。先确认账号已启用、机器支持团队能力，再委派和验收任务。' : 'An ordinary managed session can organize a team. Enable the feature for your account and connect a compatible machine before delegating and reviewing work.'}</p><div className="help-screen__actions"><Button variant="secondary" onClick={() => navigate('/teams')}>{lang === 'zh-Hans' ? '打开团队' : 'Open teams'}</Button><Button variant="secondary" onClick={() => navigate('/docs/agent-teams')}>{lang === 'zh-Hans' ? '入门与迁移教程' : 'Getting started and migration'}</Button></div></section>
+
         <section className="help-screen__topics" aria-labelledby="help-topics-title">
           <div className="help-screen__section-head">
             <div><div className="eyebrow">{t('workspaceGuide.toolkitEyebrow')}</div><h2 id="help-topics-title">{t('workspaceGuide.compactToolkitTitle')}</h2></div>

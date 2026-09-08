@@ -1,6 +1,6 @@
 # Channels — integrating Happy with external tools and chat apps
 
-Happy deliberately keeps integrations *outside* the core: the server and CLI
+Very Happy owns Agent Teams coordination; organization-specific integrations remain *outside* the core: the server and CLI
 expose a small set of stable public surfaces, and external adapters (bots,
 IM bridges, schedulers) compose them. This document is the contract for those
 surfaces. The in-app summary lives at **Settings → Channels**.
@@ -26,7 +26,7 @@ There are two directions:
 | Approve or deny a pending permission request from a script | [`very-happy sessions approve` / `deny`](#sessions-approve--deny--answer-a-permission-request) |
 | Let Very Happy's coordinator dispatch Claude sessions | [Web Assistant / meta-agent](#inbound-web-assistant--meta-agent) |
 | Add clipboard handoff to a plain local Claude | [`very-happy mcp`](#very-happy-mcp--clipboard-tool-for-a-plain-claude) |
-| Give a pi (or other non-Claude) meta agent the session tools | [`very-happy mcp` inside a meta-agent session](#very-happy-mcp-as-the-meta-agent-tool-surface-for-pi-and-other-non-claude-runners) |
+| Organize Claude, Codex, and managed pi as a team | [Agent Teams getting started and migration](agent-teams.md) |
 
 ## MCP capability matrix
 
@@ -37,10 +37,10 @@ has the same tool set:
 |---|---|
 | Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
-| Assistant/meta-agent variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
+| Voice Assistant / legacy assistant variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
 | User-scoped `very-happy mcp` **inside a vh web terminal** (`VH_TERMINAL_ID` set by the daemon's tmux terminal) | + `change_title` (titles that terminal via the daemon's `/terminal-title`) |
-| User-scoped `very-happy mcp` **inside a meta-agent session of a non-Claude runner** (`HAPPY_SESSION_VARIANT=assistant`, e.g. pi started with the new-session dialog's "meta agent" option) | `copy_to_clipboard` + `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive` |
+| User-scoped `very-happy mcp` **inside a meta-agent session of a non-Claude runner** (`HAPPY_SESSION_VARIANT=assistant`, legacy compatibility only) | `copy_to_clipboard` + `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive` |
 
 The first two paths are injected by their managed runners. The assistant-only
 additions can read and mutate sessions, terminals, memory, and journals; treat
@@ -436,101 +436,29 @@ forwarded to the local daemon over its 127.0.0.1 control server
 over the authenticated machine socket, and fanned out to the clipboard of
 every web client the user has open. Payloads over 256KB are truncated.
 
-### `very-happy mcp` as the meta-agent tool surface for pi and other non-Claude runners
+### Legacy assistant variants and managed pi
 
-The Web Assistant above is Claude-only because its session tools are injected
-in-process by the Claude runner. Any other runner that loads its own MCP config
-gets the same six session tools from the standalone server instead, gated by
-one environment variable the daemon already sets:
+The new-session dialog no longer offers **Meta agent**. Ordinary managed
+Claude, Codex, and pi sessions use official `team_*` tools for team work;
+see [Agent Teams](agent-teams.md). The `/assistant` voice interface and
+existing `variant: assistant` sessions remain compatible. The variant is not
+a team identity and does not import historical work into Teams.
 
-1. Register `very-happy mcp` once in the agent's own MCP config. For pi
-   (via [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter)) that is
-   `~/.pi/agent/mcp.json`:
+Legacy `HAPPY_SESSION_VARIANT=assistant` subprocesses may still expose the
+older `sessions_*` tools. Those tools operate on local sessions and lack the
+Teams task/attempt/acceptance model. Keep them for existing voice/history
+compatibility, not as the recommended way to start a new coordinator.
 
-   ```jsonc
-   {
-     "mcpServers": {
-       "very-happy": { "command": "very-happy", "args": ["mcp"] }
-     }
-   }
-   ```
+Managed pi receives the official bridge and permission gate from the CLI
+through `HAPPY_MCP_URL`; a private supervisor wrapper or `.mcp.json` is not
+required for Teams. Use `very-happy pi` for this path. Installing the shared
+skill does not attach a bare pi process or provide its background inbox.
 
-   (`~/.agents/mcp.json` and a project `.mcp.json` are read too; the daemon
-   user's PATH must resolve `very-happy`.)
-
-2. Start the session as a meta agent: in the new-session dialog pick the agent
-   and tick **Meta agent**. The Web sends `variant: 'assistant'`; for a
-   non-Claude agent the daemon turns that into exactly one thing —
-   `HAPPY_SESSION_VARIANT=assistant` in the session's environment — and
-   otherwise treats the spawn normally (your directory is used, there is no
-   per-machine singleton, the /assistant screen is unaffected). The runner
-   passes its environment to the agent process, the agent to the MCP servers
-   it starts, and `very-happy mcp` reads the variable when it comes up.
-
-With the variable the server registers `copy_to_clipboard` plus
-`sessions_list`, `session_read`, `session_send`, `session_spawn`,
-`session_kill` and `session_archive` — the same implementations, same
-this-machine scope and same "dispatch returns immediately" semantics as the
-Claude assistant's tools (`session_spawn` starts Claude workers via the local
-daemon). Two consequences of "same implementations" are worth knowing:
-workers spawned this way carry the `assistant` origin tag, and the daemon
-routes their completion reports to the machine's *Claude* assistant singleton
-(if one is live) rather than back to the pi meta agent — a pi meta agent has
-to poll `sessions_list` / `session_read` for the outcome. Without it — a
-plain pi you started in a terminal, any ordinary
-session — the same registration yields clipboard only, so registering it
-user-wide is safe: a session only gains machine-control tools when it was
-deliberately started as a meta agent. Permission approval is not an MCP tool
-on this surface yet; a meta agent that needs it shells out to
-[`very-happy sessions approve` / `deny`](#sessions-approve--deny--answer-a-permission-request)
-(same this-machine scope).
-
-For a **managed pi session** (`very-happy pi` / `spawn --agent pi`, ACP runner) none
-of this registration is needed: the runner passes the same
-`HAPPY_SESSION_VARIANT=assistant` to its in-process happy MCP server, so the
-`sessions_*` tools reach the session through **`HAPPY_MCP_URL`** (the bridge)
-without any `.mcp.json`; the `very-happy mcp` stdio route above remains for pi
-started in a web terminal.
-
-A Claude session never takes this path: `HAPPY_MANAGED=1` on every
-happy-managed `claude` keeps the standalone server clipboard-only there, since
-the in-process assistant tools already cover it.
-
-#### pi: the two contexts and where its title comes from
-
-pi-acp does not honour the ACP `mcpServers` handoff, so a pi session reaches
-very-happy's tools in one of two ways depending on how it was started:
-
-| Context | How pi is started | Tool path | Title |
-|---|---|---|---|
-| **Managed** | `very-happy pi` / `spawn --agent pi` (ACP runner) | the runner starts the in-process happy MCP server (Streamable HTTP on `127.0.0.1`) and exports **`HAPPY_MCP_URL`** and **`HAPPY_SESSION_ID`** into the pi-acp child env; the CLI ships an official pi extension that connects to that URL and proxies its advertised tools (`change_title`, `copy_to_clipboard`, `open_preview`, `report_progress`, plus the `sessions_*` tools of the assistant variant). The `mcpServers` handoff is still sent for agents that do honour it. | auto-generated from the first user prompt (same `TitleGenerator` as Claude sessions, one `claude -p --model haiku` call); a title the agent sets via `change_title` first is never overwritten. |
-| **Terminal** | you type `pi` inside a very-happy web terminal | no happy server; pi-mcp-adapter loads the user-wide `very-happy` entry above, and because the daemon set **`VH_TERMINAL_ID`** in that terminal, `very-happy mcp` adds **`change_title`**, which posts `{terminalId, title, ifAbsent?}` to the daemon control server's `POST /terminal-title` (control-token auth, same as `/clipboard`; `200 {status:"ok"}`, `409` when tmux refused, `503` while the daemon is starting). | no auto-title; the agent (or an extension) calls `change_title`. There is no mirror session for terminal pi (pi has no hooks). |
-
-The terminal row needs the `very-happy` entry in `~/.pi/agent/mcp.json`
-(pi-mcp-adapter) — without it a hand-run pi sees no very-happy tools at all.
-The two rows overlap in one case: typing `very-happy pi` *inside* a web
-terminal runs the ACP runner in that shell, so the pi-acp child inherits both
-`VH_TERMINAL_ID` and `HAPPY_MCP_URL`. `HAPPY_MCP_URL` wins — `very-happy mcp`
-drops its terminal `change_title` there (`resolveMcpTerminalId`), so only the
-happy server's session `change_title` is registered and a bridge extension
-proxying it never collides with a second tool of the same name.
-
-`very-happy mcp` finds the daemon through `HAPPY_HOME_DIR` (like every other
-`very-happy` command), not the `VH_HAPPY_HOME_DIR` the terminal was created
-with. With two daemons on one machine (e.g. a dev home next to the stable one)
-the `very-happy` on `PATH` inside a dev terminal therefore talks to the stable
-daemon, whose tmux has no such terminal → `409`. Same discovery rule as
-`/clipboard`; export `HAPPY_HOME_DIR` in that terminal if you need it.
-
-The variable is inherited down the process tree. Anything a meta agent starts
-from its own shell (a nested `pi`, a hand-typed `claude`, a script) sees
-`HAPPY_SESSION_VARIANT=assistant` too and, if it loads the same user-wide
-registration and is not a happy-managed Claude, gets the session tools as
-well. Treat a meta-agent session's subprocesses as part of the same
-high-privilege surface. Setting `HAPPY_SESSION_VARIANT=assistant` by hand
-(e.g. in that MCP entry's `env`) opts a manually started agent into the same
-tools deliberately; that is the same high-privilege surface as the Web
-Assistant, so do it knowingly.
+A plain Web-terminal MCP registration remains a separate clipboard/title
+handoff. `VH_TERMINAL_ID` identifies that terminal; when both it and
+`HAPPY_MCP_URL` exist, the managed session endpoint takes precedence to avoid
+duplicate title tools. `very-happy mcp` discovers the daemon using
+`HAPPY_HOME_DIR`; use the correct isolated home when testing a dev daemon.
 
 ---
 

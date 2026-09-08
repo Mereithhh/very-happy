@@ -32,7 +32,18 @@ export function newestTeam(
 /** Presentation preflight only; server rechecks these conditions atomically. */
 export function archiveBlocker(
   team: TeamState,
-): "activeTasks" | "unresolvedOperations" | "cleanupUnfinished" | null {
+):
+  | "activeSchedules"
+  | "activeTasks"
+  | "unresolvedOperations"
+  | "cleanupUnfinished"
+  | null {
+  if (
+    (team.schedules ?? []).some((schedule) =>
+      ["active", "paused"].includes(schedule.status),
+    )
+  )
+    return "activeSchedules";
   if (team.tasks.some((task) => !["done", "cancelled"].includes(task.status)))
     return "activeTasks";
   if (

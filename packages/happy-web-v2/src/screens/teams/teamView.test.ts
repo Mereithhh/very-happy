@@ -103,3 +103,10 @@ describe("team lifecycle action availability", () => {
     expect(canReconcileOperation(team, team.operations[0])).toBe(false);
   });
 });
+
+it('keeps archive blocked for active and paused schedules', () => {
+  const team = {tasks:[],operations:[],schedules:[{status:'active'}]} as unknown as TeamState;
+  expect(archiveBlocker(team)).toBe('activeSchedules');
+  team.schedules![0].status='paused';expect(archiveBlocker(team)).toBe('activeSchedules');
+  team.schedules![0].status='cancelled';expect(archiveBlocker(team)).toBeNull();
+});

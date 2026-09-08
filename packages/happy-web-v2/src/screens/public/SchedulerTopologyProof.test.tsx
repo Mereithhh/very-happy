@@ -25,13 +25,13 @@ describe('SchedulerTopologyProof', () => {
     expect(html).toContain('CLI + daemon');
     expect(html).toContain('API + webhooks');
     expect(html).toContain('MCP tools');
-    expect(html).toContain('Meta Agent');
+    expect(html).toContain('Agent Teams');
     expect(html).toContain('WEB / PHONE CONTROL');
     expect(html).toContain('CLOUD OR SELF-HOSTED RELAY');
     expect(html).toContain('CLI + DAEMON');
     expect(html).toContain('MANUAL DISPATCH');
     expect(html).toContain('YOU CHOOSE THE ROUTE');
-    expect(html).toContain('Claude only');
+    expect(html).toContain('opt-in');
     expect(html).toContain('runner-specific');
   });
 
@@ -43,17 +43,17 @@ describe('SchedulerTopologyProof', () => {
     expect(html).toContain('Your computer → Claude Code');
     expect(html).toContain('CLI + daemon · required machine bridge');
     expect(html).not.toContain('AUTOMATIC ROUTING');
-    expect(html).not.toContain('Meta Agent assistance');
+    expect(html).not.toContain('Agent Teams assistance');
   });
 
   it('updates only explicit route selections while capability cards stay informational', () => {
     const remote = schedulerTopologyReducer(INITIAL_SCHEDULER_TOPOLOGY_STATE, { type: 'select-environment', id: 'server' });
     const codex = schedulerTopologyReducer(remote, { type: 'select-agent', id: 'codex' });
-    const metaInspected = schedulerTopologyReducer(codex, { type: 'inspect-lane', id: 'meta' });
+    const metaInspected = schedulerTopologyReducer(codex, { type: 'inspect-lane', id: 'teams' });
 
     expect(getSchedulerRouteLabel(metaInspected)).toBe('Remote server → Codex');
     expect(getSchedulerActiveWireIds(metaInspected)).toEqual(['environment:server', 'agent:codex']);
-    expect(SCHEDULER_LANE_DESCRIPTIONS[metaInspected.inspectedLane]).toBe('Meta Agent · optional Claude-only coordinator');
+    expect(SCHEDULER_LANE_DESCRIPTIONS[metaInspected.inspectedLane]).toBe('Agent Teams · same-account, single-machine preview');
     expect(SCHEDULER_LANE_DESCRIPTIONS.mcp).toBe('MCP tools · runner-specific surface');
   });
 });

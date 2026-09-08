@@ -5,7 +5,7 @@ import {
   CloudCog,
   Command,
   Laptop,
-  Mic2,
+  Users,
   Network,
   Server,
   Smartphone,
@@ -37,7 +37,7 @@ const AGENTS = [
 const LANES = [
   { id: 'cli' as const, label: 'CLI + daemon', detail: 'required bridge', Icon: CloudCog },
   { id: 'api' as const, label: 'API + webhooks', detail: 'server edge', Icon: Network },
-  { id: 'meta' as const, label: 'Meta Agent', detail: 'Claude only', Icon: Mic2 },
+  { id: 'teams' as const, label: 'Agent Teams', detail: 'opt-in', Icon: Users },
   { id: 'mcp' as const, label: 'MCP tools', detail: 'runner-specific', Icon: Braces },
 ];
 
@@ -58,9 +58,9 @@ export function SchedulerTopologyProof() {
     { ...AGENTS[0], detail: 'SDK + 真实 TTY' }, { ...AGENTS[1], detail: '原生 runner' }, { ...AGENTS[2] }, { ...AGENTS[3], label: '任意文本 TUI', detail: 'tmux 终端' },
   ] : AGENTS;
   const lanes = zh ? [
-    { ...LANES[0], detail: '必需桥接' }, { ...LANES[1], detail: '服务端边缘' }, { ...LANES[2], detail: '仅 Claude' }, { ...LANES[3], detail: '取决于 runner' },
+    { ...LANES[0], detail: '必需桥接' }, { ...LANES[1], detail: '服务端边缘' }, { ...LANES[2], detail: '按账号启用' }, { ...LANES[3], detail: '取决于 runner' },
   ] : LANES;
-  const laneDescriptions = zh ? { cli: 'CLI 与 daemon 机器桥接', api: 'API 与 webhook 服务端入口', meta: 'Claude 协调助手', mcp: 'runner 对应的 MCP 工具' } : SCHEDULER_LANE_DESCRIPTIONS;
+  const laneDescriptions = zh ? { cli: 'CLI 与 daemon 机器桥接', api: 'API 与 webhook 服务端入口', teams: 'Agent Teams · 同账号、单机预览', mcp: 'runner 对应的 MCP 工具' } : SCHEDULER_LANE_DESCRIPTIONS;
 
   return <div className="scheduler-proof" role="group" aria-label={zh ? '可交互的脱敏 Very Happy 调度架构' : 'Interactive sanitized Very Happy scheduler architecture'}>
     <div className="scheduler-proof-grid" aria-hidden="true" />

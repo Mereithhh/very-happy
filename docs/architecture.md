@@ -4,8 +4,11 @@
 
 ![Very Happy system topology: multiple machines and agent runners converge through the trusted relay into one account workspace](../packages/happy-web-v2/public/architecture/system-topology.svg)
 
-The optional voice Meta Agent is currently a Claude coordinator on a selected machine, not a
-provider-neutral automatic router. Cross-provider delegation remains roadmap work.
+Agent Teams adds server-owned task/attempt state and messages, with daemon-owned
+execution and cleanup on one selected machine. Ordinary managed Claude, Codex, and
+pi sessions can participate; the feature is opt-in per deployment/account.
+Cross-machine automatic routing remains future work. The separate voice Assistant
+continues to use Claude and is not the Teams coordinator. See [Teams](agent-teams.md).
 
 - `packages/happy-web-v2`: production React/Vite browser client.
 - `packages/happy-server`: identity, persistence, realtime routing, files,

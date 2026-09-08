@@ -38,6 +38,110 @@ export type PublicDoc = {
 };
 
 const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
+{
+  "slug": "agent-teams",
+  "label": "Agent Teams",
+  "summary": "Organize managed coding agents, review results, and migrate safely.",
+  "sections": [
+    {
+      "heading": "Availability",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Agent Teams is an opt-in preview for one account and one execution machine per team. Your operator must enable it for your account, and that machine must run a compatible online daemon. Older servers or daemons do not silently fall back to a different agent."
+        },
+        {
+          "type": "list",
+          "items": [
+            "Claude and Codex have completed a real mixed-runner task, submission, acceptance, and cleanup test.",
+            "The managed pi adapter and tools are available; its complete model workflow is still part of rollout validation.",
+            "Recursive delegation is implemented and mechanism-tested. Multi-level model recovery, cross-machine automatic routing, and long-term unattended operation are not established guarantees."
+          ]
+        }
+      ]
+    },
+    {
+      "heading": "Start with an ordinary managed session",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Open a normal Claude, Codex, or pi session in Very Happy. There is no Meta agent checkbox. Ask it to read the absolute skill path returned by the installer, inspect existing work, and delegate independent tasks with explicit acceptance criteria. Reading a skill alone does not connect an unmanaged terminal."
+        },
+        {
+          "type": "code",
+          "code": "very-happy teams install --host claude\n# Review the preview before applying:\nvery-happy teams install --host claude --apply\n# Use --host codex or --host pi for another host."
+        },
+        {
+          "type": "note",
+          "text": "The installer writes one shared skill under ~/.local/share/very-happy/skills/very-happy-teams and returns its absolute path. It does not edit host discovery settings or write through your personal skills tree. Preview the destination first. Managed sessions receive team tools from Very Happy. For pi, use the managed very-happy pi entry rather than assuming a plain pi terminal can receive background messages."
+        }
+      ]
+    },
+    {
+      "heading": "Delegate, inspect, and review",
+      "blocks": [
+        {
+          "type": "list",
+          "items": [
+            "Open Teams from the sidebar, create a team on a compatible machine, or ask the connected agent to use team_create/team_join.",
+            "Delegation includes a goal, acceptance criteria, working directory, and agent. A teammate can delegate child tasks within its assignment.",
+            "Open the linked session to inspect its work, send instructions, or handle an approval. Message delivery is not proof that the agent processed it.",
+            "A submitted result still needs acceptance. Accept, return for changes, cancel, or hand off in Teams; cancelling closes the unfinished subtree."
+          ]
+        },
+        {
+          "type": "note",
+          "text": "Linking an existing session in Web registers its identity; the session must still join through the Teams CLI/tools to acquire its connection. Skill installation and a Web link are not substitutes for runtime setup."
+        }
+      ]
+    },
+{
+  "heading": "Schedule a message",
+  "blocks": [
+    {
+      "type": "p",
+      "text": "In Teams, create a one-time or recurring schedule for a specific teammate on the team machine. Enter the first local time and optionally an interval in whole minutes. Schedules persist on the server; the compatible daemon delivers to that recipient."
+    },
+    {
+      "type": "note",
+      "text": "Pause, resume, or cancel from the schedule list. These actions cannot recall a message whose delivery has already started. An offline bot keeps its pending message; it is not rerouted to a recent session. Cancel unfinished schedules before archiving a team."
+    }
+  ]
+},
+    {
+      "heading": "Recovery and resource ownership",
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Acceptance and cleanup are separate. Teams stops only its own managed workers and preserves dirty or unmerged worktrees. Inspect the results, integrate the branch, and verify the old process stopped before recording a manual reconciliation. That action records your verification; it does not stop a process, delete files, or restart work."
+        },
+        {
+          "type": "note",
+          "text": "An unknown execution outcome must be checked before a new attempt. Do not interpret a timeout, idle event, or cancelled ledger entry as proof of process exit. Archive the team only after tasks, operations, and cleanup are resolved; its direct link remains readable."
+        }
+      ]
+    },
+    {
+      "heading": "Migrate from a private supervisor",
+      "blocks": [
+        {
+          "type": "code",
+          "code": "very-happy teams migration-preview --file /absolute/path/to/ledger.json"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Back up the original ledger, schedules, mappings, and worktrees. The preview is offline and never imports, spawns, or completes external tasks.",
+            "Replace scheduled triggers and external Todo mappings before retiring them. Freeze old dispatch and verify in-flight sessions before enabling the new writer.",
+            "Finished legacy rows remain history; review is not accepted, and done/stopped is not evidence of cleanup. Verify live sessions and results one by one.",
+            "The manual task board remains independent. It is not the Teams scheduler, and neither system double-writes its tasks into the other.",
+            "Retain old artifacts read-only until the replacement has been observed. Never run both dispatchers against the same task source."
+          ]
+        }
+      ]
+    }
+  ]
+},
   {
     slug: 'quickstart', label: 'Quick start', summary: 'Connect one machine, then use the Web/PWA as your daily workspace.',
     sections: [
@@ -298,7 +402,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
     sections: [
       { heading: 'MCP handoffs into the Web workspace', blocks: [
         { type: 'p', text: 'Base managed Claude sessions receive change_title, copy_to_clipboard, open_preview, and report_progress. The managed Codex, Gemini, and ACP bridge exposes change_title, copy_to_clipboard, and open_preview. These handoffs let an agent turn local work into visible Web state instead of merely printing another terminal line.' },
-        { type: 'list', items: ['Assistant/meta-agent variant only: sessions_list, session_read, session_send, session_spawn, session_kill, session_archive, terminals_list, terminal_read, terminal_send, memory_update, and journal_append.', 'Those assistant-only tools can mutate local sessions, terminals, memory, and journals. Treat the assistant and its prompt/tool permissions as a high-privilege machine control surface.'] },
+        { type: 'list', items: ['Voice Assistant / legacy assistant variant only: sessions_list, session_read, session_send, session_spawn, session_kill, session_archive, terminals_list, terminal_read, terminal_send, memory_update, and journal_append.', 'Those assistant-only tools can mutate local sessions, terminals, memory, and journals. Treat the assistant and its prompt/tool permissions as a high-privilege machine control surface.'] },
         { type: 'code', code: 'claude mcp add --scope user very-happy-clipboard -- very-happy mcp' },
         { type: 'note', text: 'This --scope user registration gives every Claude session for that OS user copy_to_clipboard; it is not bound to a Very Happy Web terminal. The standalone very-happy mcp command does not add title, preview, progress, spawning, or provider routing, and it needs the local daemon. Tool availability varies by runner and is not a universal MCP promise.' },
       ] },
@@ -315,7 +419,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       ] },
       { heading: 'Dispatch other sessions through Assistant', blocks: [
         { type: 'p', text: 'Open Settings → Voice & Assistant, select a machine that can run Claude, review Skip permission approvals, then open Assistant (/assistant). Ask it to dispatch work in an absolute directory, for example: “Dispatch a Claude session in /srv/project to fix the login tests.”' },
-        { type: 'list', items: ['The coordinator can list, read, send, spawn, stop, and archive sessions on its selected machine.', 'session_spawn returns immediately; use session_read or session_send to follow up.', 'This path currently spawns Claude on one selected machine. Automatic cross-machine or cross-provider routing is not shipped.'] },
+        { type: 'list', items: ['Voice Assistant retains its existing session controls on one selected machine. For official multi-agent tasks and acceptance, use Agent Teams.', 'session_spawn returns immediately; use session_read or session_send to follow up.', 'This path currently spawns Claude on one selected machine. Automatic cross-machine or cross-provider routing is not shipped.'] },
         { type: 'note', text: 'Assistant tools are a high-privilege machine-control surface. Keep approvals enabled unless you intentionally accept unattended local actions.' },
         { type: 'link', href: `${GITHUB_URL}/blob/main/docs/channels.md#inbound-web-assistant--meta-agent`, label: 'Open the Assistant dispatch setup ↗' },
       ] },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { BOOTSTRAP_COMMAND, getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PROVIDER_KEY_COMMAND, PUBLIC_DOCS } from './publicContent';
+import { BOOTSTRAP_COMMAND, getPublicDoc, getPublicDocs, INSTALL_COMMAND, LOGIN_COMMAND, PROVIDER_KEY_COMMAND, PUBLIC_DOCS } from './publicContent';
 import { getProductPreviewIds } from './productPreviewIds';
 
 describe('public documentation registry', () => {
@@ -221,8 +221,8 @@ describe('public documentation registry', () => {
     expect(productPreview).toContain('Optional terminal hooks installed');
     expect(productPreview).not.toContain('Sanitized Codex terminal');
     expect(productPreview).toContain('Task board');
-    expect(featureProofs).toContain('The coordinator is a Claude meta-agent session on one selected machine');
-    expect(featureProofs).toContain('Automatic cross-machine or cross-provider routing is roadmap');
+    expect(featureProofs).toContain('Voice Assistant uses Claude on one selected machine');
+    expect(featureProofs).toContain('Automatic cross-machine routing is roadmap');
     expect(featureProofs).toContain('REQUIRES VOICE CONFIGURATION');
     expect(landingCopy).toContain('You get to be Very Happy.');
     expect(landingCopy).toContain('today you explicitly choose a Web-supported machine and agent');
@@ -424,10 +424,10 @@ describe('public documentation registry', () => {
     expect(scheduler).toContain('CLI + daemon');
     expect(scheduler).toContain('API + webhooks');
     expect(scheduler).toContain('MCP tools');
-    expect(scheduler).toContain('Meta Agent');
+    expect(scheduler).toContain('Agent Teams');
     expect(scheduler).toContain('CLOUD OR SELF-HOSTED RELAY');
     expect(scheduler).toContain('CLI + DAEMON');
-    expect(scheduler).toContain('Claude only');
+    expect(scheduler).toContain('opt-in');
     expect(scheduler).toContain('runner-specific');
     expect(schedulerStyles).toContain('@keyframes scheduler-route-flow');
     expect(schedulerStyles).toContain('@keyframes scheduler-orbit');
@@ -691,4 +691,16 @@ describe('public documentation registry', () => {
     expect(spec).toContain('Fail closed unless both sender and chat are allowlisted');
     expect(spec).not.toMatch(/mac-office|hw-sg|apodex-bot|happy\.mereith\.com\/session/);
   });
+});
+
+it('documents Teams setup and migration in both languages without claiming bare-terminal attachment', () => {
+ const en = getPublicDocs('en').find(doc => doc.slug === 'agent-teams')!;
+ const zh = getPublicDocs('zh-Hans').find(doc => doc.slug === 'agent-teams')!;
+ expect(en.sections.length).toBe(zh.sections.length);
+ expect(zh.sections.map(section => section.heading)).not.toEqual(en.sections.map(section => section.heading));
+ const text=JSON.stringify(en);
+ expect(text).toContain('one account and one execution machine');
+ expect(text).toContain('does not connect an unmanaged terminal');
+ expect(text).toContain('migration-preview');
+ expect(text).toContain('cannot recall a message');
 });

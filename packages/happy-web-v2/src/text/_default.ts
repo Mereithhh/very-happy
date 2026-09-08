@@ -16,6 +16,26 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     teams: {
+        activeSchedules: "Cancel unfinished schedules first.",
+        schedules: "Schedules",
+        scheduleBoundary: "Scheduled messages bind to this team, machine, and teammate. Pausing or cancelling cannot recall a message whose delivery has started; offline recipients do not fall back to another session.",
+        scheduleActive: "Active",
+        schedulePaused: "Paused",
+        scheduleCompleted: "Completed",
+        nextRun: "Next run",
+        schedulePending: "A message is pending for the assigned teammate.",
+        pauseSchedule: "Pause",
+        resumeSchedule: "Resume",
+        cancelSchedule: "Cancel schedule",
+        createSchedule: "Create schedule",
+        scheduleName: "Schedule name",
+        scheduleRecipient: "Recipient",
+        chooseBot: "Choose a teammate",
+        scheduleTime: "First run (local time)",
+        scheduleInterval: "Interval in minutes (blank for once)",
+        scheduleBody: "Instructions for the teammate",
+        invalidSchedule: "Enter a valid time, recipient, and instructions. Recurrence must be 1–527040 whole minutes.",
+
         archive: "Archive team",
         archived: "This team is archived and read-only",
         archiveDescription: "Archive after all tasks, execution operations, and cleanup are resolved. Records remain available at this link.",
@@ -1101,11 +1121,6 @@ export const en = {
         agentUnavailableTitle: ({ agent }: { agent: string }) => `${agent} is not available on this machine`,
         agentInstallHelp: ({ agent, command }: { agent: string; command: string }) => `To use ${agent}, run \`${command}\` on the daemon machine, then restart the daemon — or choose Claude.`,
         openClawSetupHelp: 'To use OpenClaw, configure its local gateway or OPENCLAW_GATEWAY_URL and token/password for the daemon user, then restart the daemon. See Docs → Configuration.',
-        // Meta agent (variant 'assistant') for non-Claude runners: the daemon
-        // sets HAPPY_SESSION_VARIANT=assistant on the session and `very-happy mcp`
-        // exposes the sessions_* tools inside it (docs/channels.md).
-        metaAgent: 'Meta agent',
-        metaAgentHelp: 'Can list, read, message, spawn, stop and archive the sessions on this machine. Needs `very-happy mcp` registered in the agent’s own MCP config — see Docs → Channels.',
         offlineMachine: 'Offline',
         offlineTerminalHelp: 'Terminal unavailable. On that machine, run `very-happy daemon start`, then try again.',
         // B-144: same terminal, but the working directory is chosen first.

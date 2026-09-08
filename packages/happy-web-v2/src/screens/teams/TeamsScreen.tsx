@@ -11,6 +11,7 @@ import {
 import { useAllMachines } from "@/sync/storage";
 import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
+import { TeamSchedules } from "./TeamSchedules";
 import { t as tr } from "@/text";
 import { sync } from "@/sync/sync";
 import {
@@ -491,6 +492,7 @@ function TeamsContent() {
               </article>
             ))}
           </section>
+          <TeamSchedules team={team} disabled={disabled} act={act} />
           <section>
             <h2>{tr("teams.operations")}</h2>
             {team.operations
