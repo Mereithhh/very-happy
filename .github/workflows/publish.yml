@@ -9,8 +9,7 @@ name: Publish very-happy-cli
 # a version whose required platform artifact does not exist yet.
 #
 # 同一个 tag 会并行触发 cli-smoke-test.yml 的完整三系统 GitHub-hosted 矩阵——
-# **刻意不做 needs 硬依赖**：保留紧急发版通道（和 deploy-hwsg 一个口径），但发完
-# 要看一眼那条 run 的结果再对外宣布版本。
+# npm next 发布可并行，latest 推荐必须由 promote 核验同 tag/SHA 六格全部成功。
 # setup-node 的 npm 凭据写在 $RUNNER_TEMP/.npmrc（NPM_CONFIG_USERCONFIG），是 job 级
 # 的，不会写入持久化宿主机。
 
@@ -152,8 +151,8 @@ jobs:
             npm pack ./packages/happy-cli --pack-destination "$RUNNER_TEMP"
             # --tag next, NOT latest (B-348). `latest` is what the relay
             # advertises as `recommendedVersion` once
-            # CLI_VERSION_REGISTRY_LOOKUP is on, and B-327's auto-update
-            # installs exactly that — so `latest` has to mean "the 3-OS smoke
+            # CLI_VERSION_REGISTRY_LOOKUP is on. Automatic installation has
+            # a separate CLI_AUTO_UPDATE_VERSION pin. `latest` means "the 3-OS smoke
             # matrix went green", not "npm accepted the tarball". The `promote`
             # job below moves it. Publishing itself stays unconditional and
             # unblocked: the emergency channel above is untouched, only the
@@ -195,30 +194,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          deadline=$(( $(date +%s) + 35 * 60 ))
-          while :; do
-            runs=$(gh run list --workflow=cli-smoke-test.yml --commit="$SHA"                      --json status,conclusion,databaseId,event --limit 20)
-            # Only push-triggered runs: a manual dispatch may be Linux-only.
-            pending=$(node -e '
-              const rs = JSON.parse(process.argv[1]).filter((r) => r.event === "push");
-              process.stdout.write(String(rs.length === 0 ? 1 : rs.filter((r) => r.status !== "completed").length));
-            ' "$runs")
-            if [ "$pending" = 0 ]; then break; fi
-            if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::smoke runs for $SHA did not finish in time; the dist-tag is left untouched" >&2
-              exit 1
-            fi
-            echo "waiting for smoke ($pending run(s) not finished)"
-            sleep 30
-          done
-          node -e '
-            const rs = JSON.parse(process.argv[1]).filter((r) => r.event === "push");
-            const bad = rs.filter((r) => r.conclusion !== "success");
-            for (const r of rs) console.log(`run ${r.databaseId} ${r.conclusion}`);
-            if (bad.length) { console.error("::error::smoke did not pass; not promoting to latest"); process.exit(1); }
-          ' "$(gh run list --workflow=cli-smoke-test.yml --commit="$SHA" --json status,conclusion,databaseId,event --limit 20)"
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/ci/wait-cli-smoke.mjs
 
       - name: Promote to latest (never backwards, idempotent)
         env:

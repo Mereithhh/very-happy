@@ -1,0 +1,68 @@
+{
+  "run": {
+    "id": 123,
+    "run_attempt": 2,
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "head_branch": "v0.2.123",
+    "event": "push",
+    "path": ".github/workflows/cli-smoke-test.yml",
+    "status": "completed",
+    "conclusion": "success",
+    "repository": {
+      "full_name": "Mereithhh/very-happy"
+    },
+    "head_repository": {
+      "full_name": "Mereithhh/very-happy"
+    }
+  },
+  "jobs": [
+    {
+      "name": "smoke (linux, node 20)",
+      "run_id": 123,
+      "run_attempt": 2,
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "smoke (linux, node 24)",
+      "run_id": 123,
+      "run_attempt": 2,
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "smoke (macos-14, node 20)",
+      "run_id": 123,
+      "run_attempt": 2,
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "smoke (macos-14, node 24)",
+      "run_id": 123,
+      "run_attempt": 2,
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "smoke (windows-latest, node 20)",
+      "run_id": 123,
+      "run_attempt": 2,
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "smoke (windows-latest, node 24)",
+      "run_id": 123,
+      "run_attempt": 2,
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ]
+}
