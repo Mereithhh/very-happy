@@ -1665,6 +1665,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep08j: {
+                title: '连接查询不再无限等待，故障更容易定位',
+                summary: '中继查询超时会退出并尝试中央连接；终端区域新增连接动画、明确的离线提示，以及已有终端的重试入口。',
+                fallback: '中继查询的响应头和响应体共用三秒期限，超时取消并回退；已经发出的操作不会因此重复执行。',
+                diagnostics: '服务端默认保留连接断开原因、传输方式、耗时和 RPC 失败分类，生产启动入口也会按配置开启指标服务。这些诊断不记录终端内容或凭据。',
+            },
             sep08a: {
                 title: 'pi 有了自己的默认模型与权限设置',
                 summary: '「智能体默认设置」此前把 pi 当成 Claude：给 pi 列的是 Claude 的模型别名（opus / sonnet / fable），而在 pi 会话里选模型或权限会悄悄覆盖你的 Claude 默认值。',
@@ -2122,6 +2128,17 @@ export const zhHans: TranslationStructure = {
     },
 
     terminal: {
+        connectionOffline: "机器已离线",
+        connectionChecking: "正在检查连接…",
+        connectionOpening: "正在连接终端…",
+        connectionFailed: "终端连接失败",
+        connectionOfflineHint: "请确认这台机器已启动，且 Very Happy 后台服务在线。旧终端可能属于另一台机器。",
+        connectionCheckingHint: "与服务器的连接暂时不可用，还无法确认机器状态。正在自动重连。",
+        connectionOpeningHint: "正在等待机器响应。",
+        connectionFailedHint: "连接未完成。请检查机器状态，然后重试连接这个已有终端。",
+        connectionCreateUnknown: "无法确认终端是否已创建。请先查看机器的终端列表，避免重复创建。",
+        connectionRetry: "重试连接",
+        connectionMachine: "查看机器",
         // 同时适用 tmux 与 direct PTY 终端。
         closeTitle: '关闭终端？',
         closeMessage: '终端会移入归档，可从归档恢复（同目录、同标题、同标签；有记录的 claude 对话会自动接回）。终端进程现在结束，屏幕内容不保留。',

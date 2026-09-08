@@ -104,10 +104,13 @@ describe.skipIf(!tmuxAvailable)('terminal auto-restore (B-150, real tmux)', () =
         expect(sessionExists(FRESH)).toBe(true);
 
         // Right directory — never a substitute.
-        const cwd = tmux('display-message', '-p', '-t', `=vh-${FRESH}:`, '#{pane_current_path}').stdout.trim();
-        // realpath both sides: on macOS the temp dir is /var/… (a symlink to
-        // /private/var/…) and tmux reports the resolved path.
-        expect(realpathSync(cwd)).toBe(realpathSync(workDir));
+        // has-session can succeed before tmux has forked/chdir'd the shell.
+        // Wait for the actual pane cwd, rather than sampling that startup race.
+        // Resolve macOS /var → /private/var on both sides.
+        await expect.poll(() => {
+            const cwd = tmux('display-message', '-p', '-t', `=vh-${FRESH}:`, '#{pane_current_path}').stdout.trim();
+            return cwd ? realpathSync(cwd) : '';
+        }, { timeout: 6000 }).toBe(realpathSync(workDir));
         // Title carried over so the sidebar row is recognisable immediately.
         const title = tmux('display-message', '-p', '-t', `=vh-${FRESH}:`, '#{@vh_title}').stdout.trim();
         expect(title).toBe('llm-hub postgres');

@@ -1,4 +1,5 @@
 import fastify from 'fastify';
+import { attachSocketDiagnostics } from './utils/socketDiagnostics';
 import { Server, type Socket } from 'socket.io';
 import { AccountTerminalRateLimiter, relayPayloadBytes, resolveRpcRelayLimit, resolveTerminalRelayLimit, rpcRateLimitAck } from './app/api/socket/terminalRateLimit';
 import { verifyRelayToken, type RelayTokenClaims } from './app/relay/relayToken';
@@ -121,6 +122,10 @@ export async function startRelayServer(env: NodeJS.ProcessEnv = process.env) {
     io.on('connection', (socket: RelaySocket) => {
         const claims = socket.data.relayClaims!;
         const { machineId, clientType, sub: accountId } = claims;
+        attachSocketDiagnostics(socket, {
+            module: 'relay', userId: accountId, machineId, sessionId: claims.sessionId,
+            clientType, happyClient: socket.handshake.auth.happyClient,
+        });
         socket.on('relay-ping', (_data: unknown, callback?: (response: { serverAt: number }) => void) => {
             callback?.({ serverAt: Date.now() });
         });

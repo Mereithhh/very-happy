@@ -77,31 +77,57 @@ export function selectStableRelay(
   };
 }
 
+// Shared 8s budget for discovery headers/body, parallel 2s health probes, and claim
+// headers/body. Release relayRefreshInFlight even if an HTTP adapter ignores abort.
+export const RELAY_REFRESH_TIMEOUT_MS = 8_000;
+
+async function withinDeadline<T>(timeoutMs: number, operation: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel!: () => void;
+  const deadline = new Promise<never>((_, reject) => {
+    cancel = () => {
+      reject(new Error('relay request deadline exceeded'));
+      controller.abort();
+    };
+    timer = setTimeout(cancel, timeoutMs);
+    parent?.addEventListener('abort', cancel, { once: true });
+    if (parent?.aborted) cancel();
+  });
+  try {
+    return await Promise.race([Promise.resolve().then(() => {
+      controller.signal.throwIfAborted();
+      return operation(controller.signal);
+    }), deadline]);
+  } finally {
+    clearTimeout(timer);
+    parent?.removeEventListener('abort', cancel);
+  }
+}
+
 export async function probeRelayCandidates(
   candidates: RelayCandidate[],
-  options: { timeoutMs?: number; fetchImpl?: typeof fetch; now?: () => number } = {},
+  options: { timeoutMs?: number; fetchImpl?: typeof fetch; now?: () => number; signal?: AbortSignal } = {},
 ): Promise<RelayProbe[]> {
   const timeoutMs = options.timeoutMs ?? 2_000;
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? (() => performance.now());
   const measured = await Promise.all(candidates.map(async (candidate): Promise<RelayProbe | null> => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const startedAt = now();
     try {
-      const response = await fetchImpl(`${candidate.url}/health`, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-      if (!response.ok) return null;
-      const body = await response.json() as { ok?: unknown; relayId?: unknown };
-      if (body.ok !== true || body.relayId !== candidate.id) return null;
-      return { relayId: candidate.id, rttMs: Math.max(0, now() - startedAt) };
+      return await withinDeadline(timeoutMs, async (signal) => {
+        const response = await fetchImpl(`${candidate.url}/health`, {
+          method: 'GET',
+          cache: 'no-store',
+          signal,
+        });
+        if (!response.ok) return null;
+        const body = await response.json() as { ok?: unknown; relayId?: unknown };
+        if (body.ok !== true || body.relayId !== candidate.id) return null;
+        return { relayId: candidate.id, rttMs: Math.max(0, now() - startedAt) };
+      }, options.signal);
     } catch {
       return null;
-    } finally {
-      clearTimeout(timeout);
     }
   }));
   return measured.filter((probe): probe is RelayProbe => probe !== null);
@@ -117,25 +143,32 @@ export async function discoverAndClaimRelay(input: {
 }): Promise<{ assignment: RelayAssignment; probes: RelayProbe[]; switchTracker: RelaySwitchTracker } | null> {
   const fetchImpl = input.fetchImpl ?? fetch;
   try {
-    const discoveryResponse = await fetchImpl(`${input.controlUrl}/v1/relays`, {
-      headers: { Authorization: `Bearer ${input.token}` },
-      cache: 'no-store',
+    return await withinDeadline(RELAY_REFRESH_TIMEOUT_MS, async (signal) => {
+      const discoveryResponse = await fetchImpl(`${input.controlUrl}/v1/relays`, {
+        headers: { Authorization: `Bearer ${input.token}` },
+        cache: 'no-store',
+        signal,
+      });
+      if (!discoveryResponse.ok) return null;
+      const discovery = RelayCandidatesResponseSchema.parse(await discoveryResponse.json());
+      signal.throwIfAborted();
+      if (!discovery.enabled || discovery.candidates.length === 0) return null;
+      const probes = await probeRelayCandidates(discovery.candidates, { fetchImpl, signal });
+      signal.throwIfAborted();
+      const decision = selectStableRelay(discovery.candidates, probes, input.connectedRelayId, input.switchTracker);
+      const selected = decision.candidate;
+      if (!selected) return null;
+      const claimResponse = await fetchImpl(`${input.controlUrl}/v1/relays/machines/${encodeURIComponent(input.machineId)}/claim`, {
+        method: 'POST',
+        signal,
+        headers: { Authorization: `Bearer ${input.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ relayId: selected.id, probes }),
+      });
+      if (!claimResponse.ok) return null;
+      const claimed = RelayAssignmentResponseSchema.parse(await claimResponse.json());
+      signal.throwIfAborted();
+      return claimed.assignment ? { assignment: claimed.assignment, probes, switchTracker: decision.tracker } : null;
     });
-    if (!discoveryResponse.ok) return null;
-    const discovery = RelayCandidatesResponseSchema.parse(await discoveryResponse.json());
-    if (!discovery.enabled || discovery.candidates.length === 0) return null;
-    const probes = await probeRelayCandidates(discovery.candidates, { fetchImpl });
-    const decision = selectStableRelay(discovery.candidates, probes, input.connectedRelayId, input.switchTracker);
-    const selected = decision.candidate;
-    if (!selected) return null;
-    const claimResponse = await fetchImpl(`${input.controlUrl}/v1/relays/machines/${encodeURIComponent(input.machineId)}/claim`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${input.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ relayId: selected.id, probes }),
-    });
-    if (!claimResponse.ok) return null;
-    const claimed = RelayAssignmentResponseSchema.parse(await claimResponse.json());
-    return claimed.assignment ? { assignment: claimed.assignment, probes, switchTracker: decision.tracker } : null;
   } catch {
     return null;
   }

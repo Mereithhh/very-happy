@@ -76,6 +76,7 @@ describe('ApiSocket regional session fast lane', () => {
 
     afterEach(() => {
         vi.unstubAllGlobals();
+        vi.useRealTimers();
     });
 
     async function load() {
@@ -99,6 +100,19 @@ describe('ApiSocket regional session fast lane', () => {
         } as any);
         return { apiSocket, control, relay };
     }
+
+    it('releases a session RPC to central when discovery never responds', async () => {
+        vi.useFakeTimers();
+        const { apiSocket } = await load();
+        vi.mocked(fetch).mockImplementation(() => new Promise(() => {}));
+        state.centralAck.mockResolvedValue({ ok: true, result: 'central-cipher' });
+        const result = apiSocket.sessionRPC('s1', 'abort', {});
+        await vi.advanceTimersByTimeAsync(3_000);
+        await expect(result).resolves.toBe('plain:central-cipher');
+        expect(state.centralAck).toHaveBeenCalledTimes(1);
+        expect(state.relayAck).not.toHaveBeenCalled();
+        apiSocket.disconnect();
+    });
 
     it('delivers structured input via relay and returns authoritative persistence metadata', async () => {
         const { apiSocket, control } = await load();
@@ -184,6 +198,7 @@ describe('ApiSocket machineRPC relay preflight', () => {
 
     afterEach(() => {
         vi.unstubAllGlobals();
+        vi.useRealTimers();
     });
 
     async function load() {
@@ -199,6 +214,32 @@ describe('ApiSocket machineRPC relay preflight', () => {
         } as any);
         return { apiSocket, control, relay };
     }
+
+    it.each(['headers', 'body'])('falls back once when discovery stalls at %s, and ignores a late response', async (stage) => {
+        vi.useFakeTimers();
+        const { apiSocket } = await load();
+        let finish!: (value: any) => void;
+        const stalled = new Promise<any>((resolve) => { finish = resolve; });
+        vi.mocked(fetch).mockImplementation(() => stage === 'headers'
+            ? stalled
+            : Promise.resolve({ ok: true, json: () => stalled } as Response));
+        state.centralAck.mockResolvedValue({ ok: true, result: 'central-cipher' });
+        const result = apiSocket.machineRPC('m1', 'open-terminal', {});
+        await vi.advanceTimersByTimeAsync(2_999);
+        expect(state.centralAck).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(result).resolves.toBe('plain:central-cipher');
+        expect(state.centralAck).toHaveBeenCalledTimes(1);
+        expect(state.relayAck).not.toHaveBeenCalled();
+        expect(apiSocket.getMachineRelayStatus('m1').state).toBe('fallback');
+        const signal = vi.mocked(fetch).mock.calls[0][1]?.signal;
+        expect(signal?.aborted).toBe(true);
+        finish(stage === 'headers' ? { ok: true, json: async () => ({ assignment: null }) } : { assignment: null });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(state.io).toHaveBeenCalledTimes(1);
+        expect(state.centralAck).toHaveBeenCalledTimes(1);
+        apiSocket.disconnect();
+    });
 
     it('routes machine RPC over the relay when the preflight ping succeeds', async () => {
         const { apiSocket, control } = await load();

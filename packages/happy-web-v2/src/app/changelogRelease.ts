@@ -15,6 +15,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-08-connection-diagnostics',
+        cliVersion: '0.2.122',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep08j.title',
+    summaryKey: 'changelog.releases.sep08j.summary',
+    itemKeys: ['changelog.releases.sep08j.fallback', 'changelog.releases.sep08j.diagnostics'],
+  },
+  {
     id: '2026-09-08-pi-agent-defaults',
     date: '2026-09-08',
     buildVersion: __APP_VERSION__,

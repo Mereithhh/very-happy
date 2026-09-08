@@ -2,6 +2,7 @@ import fastify from 'fastify';
 import { db } from '@/storage/db';
 import { register } from '@/app/monitoring/metrics2';
 import { log } from '@/utils/log';
+import { onShutdown } from '@/utils/shutdown';
 import { resolveMetricsServerConfig } from './metricsConfig';
 
 export async function createMetricsServer() {
@@ -46,6 +47,7 @@ export async function startMetricsServer(): Promise<void> {
 
     try {
         await app.listen({ port: config.port, host: config.host });
+        onShutdown('metrics', async () => { await app.close(); });
         log({ module: 'metrics' }, `Metrics server listening on ${config.host}:${config.port}`);
     } catch (error) {
         // Don't take the whole API down if the metrics port is taken — that's
@@ -58,6 +60,7 @@ export async function startMetricsServer(): Promise<void> {
             try { await app.close(); } catch { /* noop */ }
             return;
         }
+        try { await app.close(); } catch { /* retain the startup error */ }
         log({ module: 'metrics', level: 'error', error }, 'Failed to start metrics server');
         throw error;
     }

@@ -7,6 +7,7 @@ import { loadFiles } from "./storage/files";
 import { auth } from "./app/auth/auth";
 import { activityCache } from "./app/presence/sessionCache";
 import { startApi, StartApiOptions } from "./app/api/api";
+import { startMetricsServer } from "./app/monitoring/metrics";
 import { startDatabaseMetricsUpdater } from "./app/monitoring/metrics2";
 import { startTimeout } from "./app/presence/timeout";
 import { onShutdown } from "./utils/shutdown";
@@ -42,6 +43,7 @@ export async function startServer(opts: StartServerOptions): Promise<{ port: num
             staticDir: opts.staticDir,
             injectHtmlConfig: opts.injectHtmlConfig,
         });
+        await startMetricsServer();
         startDatabaseMetricsUpdater();
         startTimeout();
 

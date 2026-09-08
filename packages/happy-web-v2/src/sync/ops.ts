@@ -440,7 +440,7 @@ export async function machineOpenTerminal(
     },
     /** Transport options. Catch-up opens pass a short timeout so a dead link
      *  fails fast instead of holding the terminal write chain for 60s. */
-    rpc?: { timeoutMs?: number },
+    rpc?: { timeoutMs?: number; diagnosticAttemptId?: string },
 ): Promise<OpenTerminalOk | { success: false; error: string; gone?: boolean }> {
     try {
         // Avoid the cold-load race: don't fire the RPC before the machine's

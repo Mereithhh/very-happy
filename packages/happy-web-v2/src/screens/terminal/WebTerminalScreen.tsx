@@ -1,3 +1,7 @@
+import { startConnectionStage, connectionFailureOutcome } from '@/sync/connectionDiagnostics';
+import { TerminalConnectionNotice } from './TerminalConnectionNotice';
+import { terminalConnectionNotice } from './termConnectionState';
+import { machineLabel } from '@/utils/machineUtils';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
@@ -48,7 +52,7 @@ import { TermWebKeyboard } from './TermWebKeyboard';
 import { TermPresetsMenu } from './TermPresetsMenu';
 import { presetPasteText } from './termPresetPaste';
 import { onInsertToInput } from '@/app/insertToInput';
-import { storage, useMachine, useSettings, useLocalSettingMutable } from '@/sync/storage';
+import { storage, useMachine, useSettings, useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentState } from '@/sync/terminalAgentState';
 import { collectAllTags, saveRowRename } from '@/app/rowActions';
@@ -181,6 +185,7 @@ export function WebTerminalScreen() {
   const { t } = useTranslation();
   const toast = useToast();
   const machine = useMachine(machineId || '');
+  const { status: controlStatus } = useSocketStatus();
   const settings = useSettings();
   const terminals = useTerminalSessions((s) => s.terminals);
   const meta = terminals.find((x) => x.id === tid);
@@ -393,6 +398,15 @@ export function WebTerminalScreen() {
   const surfaceKey = `${tid ?? ''}:${streamRemount}`;
   const [readySurfaceKey, setReadySurfaceKey] = useState<string | null>(null);
   const surfaceReady = readySurfaceKey === surfaceKey;
+  const [failedSurfaceKey, setFailedSurfaceKey] = useState<string | null>(null);
+  const openFailed = failedSurfaceKey === surfaceKey;
+  const connectionNotice = terminalConnectionNotice({
+    controlConnected: controlStatus === 'connected',
+    regionalConnected: relayStatus.state === 'connected',
+    machineActive: machine?.active,
+    opening: !openFailed && (connecting || !surfaceReady),
+    failed: openFailed,
+  });
   // Paste seam, bridged out of the effect (same pattern as sendInputRef): in
   // lines mode a paste is a daemon RPC, not a local xterm bracketed paste.
   const pasteTextRef = useRef<((text: string) => Promise<void>) | null>(null);
@@ -500,6 +514,8 @@ export function WebTerminalScreen() {
 
   useEffect(() => {
     if (!machineId || !hostRef.current || !innerRef.current) return;
+    setConnecting(true);
+    setFailedSurfaceKey(null);
     setHasTmuxSession(false);
     setShowHelp(false);
     ensureImeFix();
@@ -1632,6 +1648,7 @@ export function WebTerminalScreen() {
       return true;
     };
 
+    const openDiagnostic = startConnectionStage('terminal_open', machineId);
     // Open (first subscribe): no fromSeq → the daemon returns a fresh snapshot.
     (async () => {
       // Read the one-shot navigation intent SYNCHRONOUSLY, before any await, so
@@ -1684,9 +1701,10 @@ export function WebTerminalScreen() {
         // with the v1 shape (no `streamMode`), which is exactly the attach
         // fallback below — so it is safe to send unconditionally (铁律 4).
         streamMode: 'lines',
-      });
-      if (disposed) return;
+      }, { diagnosticAttemptId: openDiagnostic.attemptId });
+      if (disposed) { openDiagnostic.finish('cancelled'); return; }
       if (!res.success) {
+        openDiagnostic.finish(connectionFailureOutcome(new Error(res.error)));
         earlyOutput = null; // nothing will ever consume the stash
         if (res.gone) {
           onGone();
@@ -1700,7 +1718,8 @@ export function WebTerminalScreen() {
           navigate('/', { replace: true });
           return;
         } else {
-          term.writeln(`\x1b[38;2;255;107;107m✗ ${res.error}\x1b[0m`);
+          term.writeln(`✗ ${res.error}`);
+          setFailedSurfaceKey(surfaceKey);
         }
         setConnecting(false);
         // Errors are a final first screen too; do not leave the useful
@@ -1708,6 +1727,7 @@ export function WebTerminalScreen() {
         initialPaintGate.snapshotQueued(false);
         return;
       }
+      openDiagnostic.finish('success');
       // The create intent was consumed — strip `fresh` from the URL so a
       // later refresh of this tab re-attaches instead of re-creating.
       if (isFresh) clearFreshRef.current();
@@ -1764,7 +1784,13 @@ export function WebTerminalScreen() {
           catchUp({ forceSnapshot: true });
         }, 800);
       });
-    })();
+    })().catch((error) => {
+      openDiagnostic.finish(connectionFailureOutcome(error));
+      if (disposed) return;
+      setFailedSurfaceKey(surfaceKey);
+      setConnecting(false);
+      initialPaintGate.snapshotQueued(false);
+    });
 
     // On socket reconnect (dropped then back), re-subscribe with fromSeq=lastSeq.
     // The daemon replays just the missed output, or resends a snapshot if the
@@ -2514,7 +2540,7 @@ export function WebTerminalScreen() {
   // ── header composition (see termHeaderLayout.ts for the priority policy) ──
   const statusChips = termHeaderStatusChips({
     compact: !isTablet,
-    connecting: connecting || !surfaceReady,
+    connecting: connectionNotice === 'connecting' || connectionNotice === 'checking',
     fontLoading: cjkFontLoading,
   });
   const headerPlan = planTermHeaderActions({
@@ -2715,7 +2741,7 @@ export function WebTerminalScreen() {
             the direct-SGR/RPC track still needs to own it. */}
         <div
           ref={hostRef}
-          aria-busy={connecting || !surfaceReady}
+          aria-busy={connectionNotice === 'connecting' || connectionNotice === 'checking'}
           className={
             `term-host${selectMode ? ' is-selecting' : ''}`
             + `${linesMode ? ' term-host--lines' : ''}`
@@ -2723,6 +2749,14 @@ export function WebTerminalScreen() {
             + `${surfaceReady ? '' : ' term-host--settling'}`
           }
         >
+          <TerminalConnectionNotice
+            state={connectionNotice}
+            machineName={machine ? machineLabel(machine) : (meta?.machineName || machineId || '')}
+            compact={surfaceReady && !openFailed}
+            canRetry={!!tid && !freshRef.current}
+            onRetry={() => setStreamRemount((generation) => generation + 1)}
+            onMachine={() => navigate(`/machine/${machineId}`)}
+          />
           {selectMode && <div className="term-select-hint mono">{t('terminal.selectModeHint')}</div>}
           {fileUpload && (
             <div className="term-upload-status mono" role="status" aria-live="polite">

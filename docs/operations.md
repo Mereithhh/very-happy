@@ -567,3 +567,30 @@ is self-reported and unvalidated — treat it as a hint, not proof.
 
 Every release report records the deployed SHA/version, verification evidence and
 the rollback point.
+
+
+### Connection incident evidence (B-380)
+
+The server/web and regional relay builds containing B-380 log authenticated socket
+connect/disconnect events by default. Capture `event`, `client`, `clientType`,
+`connectionType` (polling/websocket), `durationMs`, and the bounded disconnect
+`code`; correlate the hashed `userId`, `socketId`, `machineId` and `sessionId`.
+RPC failures add a bounded method and outcome code plus the hashed target
+`roomId`. Success RPCs do not add per-call logs. These fields pass through
+`logSafety`; do not add raw reasons, handshake headers, credentials or payloads.
+Web builds identify themselves with a commit SHA, while CLI versions use semver.
+Older relay clients may have no client identity; `unknown` is expected.
+
+A disconnect count alone does not identify a failed phone connection: tab closure,
+backgrounding, reconnects and user restarts all contribute. Match the reported
+window against machine heartbeats, relay claim responses and RPC outcomes.
+Account ownership and connection success are separate evidence. The SQL `active`
+flag needs a fresh `lastActiveAt`; it is not proof that a browser can reach a relay.
+
+The production entry is `standalone.ts serve` → `index.startServer`, not `main.ts`.
+B-380 adds its missing metrics startup call. Blue/green compose already opts in
+with ports 9101/9102, but configuration and a Docker port mapping alone do not
+prove that a metrics listener exists. After deploying this change, check the
+active slot's loopback `/metrics` endpoint for a nonempty Prometheus response,
+then confirm the scraper targets the current host and slot. Metrics remain opt-in
+and loopback-only by default outside this explicit compose configuration.
