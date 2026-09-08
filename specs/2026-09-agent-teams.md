@@ -16,7 +16,7 @@ Agent Teams 是 Very Happy 官方能力。用户在已接入的 coding agent 中
   ├─ Web Teams
   └─ 共享 skill → team_* MCP / very-happy teams
           ↓ 同一业务协议
-server：Team / Bot / Task / Attempt + request / operation / message
+server：Team / Bot / Task / Attempt + request / operation / message / schedule
   └─ daemon 每 5 秒对账
        ├─ 操作回执 → 私有 worktree → wrapper → 初始消息 → 完成回执
        ├─ 持久协作消息 → 现有 session 消息队列
@@ -41,7 +41,8 @@ server：Team / Bot / Task / Attempt + request / operation / message
 | Task | 父任务、goal、acceptance、直接负责人 ownerBotId、唯一执行 Bot、goalVersion、currentAttemptId |
 | Attempt | 一次执行/提交身份；固定 Bot/generation/goalVersion，保存结果 |
 | Operation | spawn/stop 的持久执行要求；claimId 与本机回执一起约束 OS 副作用 |
-| Message | 指定任务、发送来源、直接收件 Bot；deliveredAt 仅说明进入 session 消息队列 |
+| Message | 指定任务或定时来源、直接收件 Bot；deliveredAt 仅说明进入 session 消息队列 |
+| Schedule | 指定 Bot 的单次/固定周期提醒；到期、离线合并、暂停取消见 [定时 spec](2026-09-team-schedules.md) |
 
 状态：`queued → running → submitted → done`；任何未完成任务可以取消。退回 submitted 时创建新 attempt，上一结果保留；延迟的旧验收不能验收新提交。提交、验收、退回、取消、移交必须携带所见 attemptId/goalVersion，禁止服务端替调用者猜最新值。改目标首批通过取消后新建表达，不提供隐式覆盖 goal 的接口。
 
@@ -77,7 +78,7 @@ Bot 换 session 时递增 generation，旧 token 撤销、旧 attempt 失效；�
 - `GET /v1/teams/:id`、`POST /v1/teams/:id/actions`：用户读取/操作。
 - `GET/POST /v1/teams/:id/agent`：独立 scope 下读取/操作。
 - `GET /v1/teams/operations?machineId=…`：daemon 对账。
-- 公共工具：create / join / inspect / delegate / message / submit / accept / return / cancel / handoff。
+- 公共工具：create / join / inspect / delegate / message / submit / accept / return / cancel / handoff，以及 schedule_create / schedule_pause / schedule_resume / schedule_cancel。
 
 默认关闭：`VH_AGENT_TEAMS_ENABLED=true` 开启；可选 `VH_AGENT_TEAMS_ACCOUNT_IDS` 逗号分隔账号白名单。新 daemon 通过 machine metadata `teamsVersion:1` 声明执行协议能力；宿主可执行性继续使用 cliAvailability。声明工具/二进制可用不等于已经验证模型认证。
 
@@ -88,7 +89,7 @@ Bot 换 session 时递增 generation，旧 token 撤销、旧 attempt 失效；�
 | 新 CLI + 旧/关闭 Teams server | Teams 返回不可用并退避；普通会话继续 |
 | 全新且已启用 | 按机器/宿主能力提供工具、执行和 Web 操作 |
 
-发布顺序：additive migration + 完整 server/Web 镜像（gate 关闭）→ CLI → 核验 → 账号开启。回滚前停止新委派、核对运行操作和资源，不能只关 UI 把进程遗留；旧表不立即删。生产迁移/安装/开启不属于本轮本地开发动作。
+发布顺序：additive migration + 完整 server/Web 镜像（gate 关闭）→ CLI → 核验 → 账号开启。回滚前停止新委派、核对运行操作和资源，不能只关 UI 把进程遗留；旧表不立即删。Owner 已授权按完整切换方案合并、发布和双 Mac 迁移；实际状态仍以生产与机器验收记录为准。
 
 ## 老架构处理
 
@@ -98,7 +99,7 @@ Bot 换 session 时递增 generation，旧 token 撤销、旧 attempt 失效；�
 
 ## 开发和验收状态
 
-已实现：事务状态/权限、attempt fencing、scope 工具、递归委派、daemon 回执恢复、自建 worktree、消息投递、官方共享 skill、pi bridge/gate、结构化 Web 团队页、旧卡片清理。验证明细由本轮开发报告记录，不以编译通过代替真实 runner 测试。
+已实现：事务状态/权限、attempt fencing、scope 工具、递归委派、daemon 回执恢复、自建 worktree、消息投递、官方共享 skill、pi bridge/gate、结构化 Web 团队页、旧卡片清理。官方 skill 物化在 `~/.local/share/very-happy/skills/very-happy-teams`，不写任何宿主共享技能目录；全局 personal root 可指向此文件，读取本身不建立连接。验证明细由本轮开发报告记录，不以编译通过代替真实 runner 测试。
 
 发布前必须：四包门禁、两主题/窄屏浏览器、跨账号/旧代际/丢 ACK/未合并成果回归、至少两个 runner 的真实协作验收。普通 transport probe 只证明工具链，不证明模型完成任务。
 
@@ -109,6 +110,6 @@ Bot 换 session 时递增 generation，旧 token 撤销、旧 attempt 失效；�
 
 隔离 PGlite、全新本地账号、独立 HAPPY_HOME、临时 Git 仓库启动真实 server/daemon。Claude 与 Codex 两个 worker 均完成文件修改、commit、scoped team_submit；核对内容并合并源仓库后 owner accept。最终两任务 done/cleanup=done、四个操作 completed，数据库确认两个 session inactive 且已归档；worktree list 仅剩源仓库。权限请求逐项批准，没有改全局 permission mode。测试 server/daemon 均已关闭。
 
-真实模型另验证 Claude HTTP 与 Codex stdio 调用 Teams 工具；pi 完成原生 RPC 扩展加载，未把加载成功算成完整模型任务闭环。Windows launcher 未做真机验收。任务树、旧代际、取消/消息 ACK 竞态和崩溃恢复由机制测试覆盖；两层递归加父级断线的模型验收仍属于个人试用后续批次。
+真实模型另验证 Claude HTTP 与 Codex stdio 调用 Teams 工具；pi 另在相同隔离条件下完成真实文件 commit、官方权限卡逐项批准、team_submit、合并验收与回收，最终 spawn/stop completed、task done/cleanup done；使用固定 pi-acp 0.0.33 和宿主原生模型认证，未加载私有 wrapper。Windows launcher 未做真机验收。任务树、旧代际、取消/消息 ACK 竞态和崩溃恢复由机制测试覆盖；两层递归加父级断线的模型验收仍属于个人试用后续批次。
 
 Web Chromium 使用真实组件和 fixture API 验证创建、委派、结果、验收、人工对账、归档；390px、两主题、coarse pointer 均无横向溢出或页面错误，按钮至少 48px。fixture UI 验证与上述真实执行链分别记录，不混作同一个全浏览器端到端用例。
