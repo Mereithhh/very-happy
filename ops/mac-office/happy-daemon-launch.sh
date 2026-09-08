@@ -2,10 +2,19 @@
 # Foreground wrapper used by the per-user launchd job.
 set -u
 
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+STABLE_NODE_FILE="$HOME/.local/share/very-happy/ops/node-bin-dir"
+STABLE_NODE_DIR=""
+if [ -f "$STABLE_NODE_FILE" ]; then
+  IFS= read -r STABLE_NODE_DIR < "$STABLE_NODE_FILE"
+  if [ ! -x "$STABLE_NODE_DIR/node" ]; then
+    echo "Configured Node runtime is missing; reinstall launchd support after selecting Node" >&2
+    exit 1
+  fi
+fi
+export PATH="${STABLE_NODE_DIR:+$STABLE_NODE_DIR:}$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 # Optional non-secret environment for the daemon and everything it spawns
-# (e.g. PI_ACP_PI_COMMAND so pi sessions run through a wrapper). Kept outside
+# (e.g. host-specific executable paths). Kept outside
 # this script so a reinstall never loses it. Secrets do not belong here: the
 # daemon's environment is inherited by every session it starts.
 if [ -f "$HOME/.config/very-happy/daemon.env" ]; then

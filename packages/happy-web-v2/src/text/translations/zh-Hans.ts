@@ -1737,6 +1737,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09b: {
+                title: '官方 Agent Teams',
+                summary: '在 Very Happy 中组织 Claude、Codex 和 pi 协作，验收结果并跟进周期任务。',
+                teams: '托管会话可创建团队并逐层派发任务。Teams 页面分别呈现负责人、消息、提交证据与验收状态。',
+                recovery: '持久操作与 daemon 回执避免不确定结果下盲目重复派发；取消和回收保留脏工作区及未合并成果供检查。',
+                schedules: '为指定 Bot 创建单次或周期提醒，离线恢复时合并错过的轮次；支持暂停、恢复、取消及投递记录。',
+                setup: '官方共享 skill 安装在宿主技能目录之外；托管 pi 自动接入工具桥与权限控制，无需私有 supervisor 插件。需要服务端启用 Teams 并更新 daemon。',
+            },
             sep09: {
                 title: '消息操作与更明确的接入引导',
                 summary: '复制、引用与编辑操作移到消息下方，排序和接入入口说明下一步怎么做。',

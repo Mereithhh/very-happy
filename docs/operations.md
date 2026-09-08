@@ -357,7 +357,10 @@ leaving the machine with no daemon at all.
 
 The daemon needs `~/.local/bin` in PATH to find Claude Code. SSH and launchd do
 not source interactive `.zshrc`, so the LaunchAgent wrapper sets PATH explicitly.
-Install or refresh repository-owned launchd support with:
+After explicitly stopping the daemon for a supervision change, install or refresh
+repository-owned launchd support with the intended Node selected. The installer
+copies the wrapper to `~/.local/share/very-happy/ops` and records Node’s real bin
+directory, so neither a worktree nor an ephemeral fnm shell directory is required:
 
 ```bash
 bash ops/mac-office/install-launch-agent.sh

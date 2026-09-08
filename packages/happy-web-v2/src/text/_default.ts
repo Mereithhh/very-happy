@@ -1774,6 +1774,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09b: {
+                title: 'Official Agent Teams',
+                summary: 'Organize Claude, Codex and pi sessions into teams, review results and follow recurring work in Very Happy.',
+                teams: 'Managed sessions can create teams and delegate nested tasks. The Teams page shows ownership, messages, submitted evidence and acceptance separately.',
+                recovery: 'Persistent operations and daemon receipts prevent blind duplicate dispatch. Cancellation and cleanup preserve dirty or unmerged work for review.',
+                schedules: 'Create one-time or recurring reminders for a specific bot. Offline runs coalesce on recovery; pause and cancel controls preserve the delivery history.',
+                setup: 'Official shared skills install outside host skill directories. Managed pi receives its tool bridge and permission gate without a private supervisor plugin. Requires a Teams-enabled server and updated daemon.',
+            },
             sep09: {
                 title: 'Message actions and clearer setup',
                 summary: 'Copy, quote and edit controls sit below messages. Ordering and setup entry points explain what to do next.',
