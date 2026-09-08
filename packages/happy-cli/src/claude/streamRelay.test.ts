@@ -231,3 +231,79 @@ describe('StreamRelay frame size', () => {
         }
     });
 });
+
+/**
+ * B-371: the block-level API is what ACP runners (pi, gemini, opencode) drive
+ * directly — they have no SDK `stream_event`s. `ingest()` is built on the
+ * same methods, so these pin the shared contract rather than a second path.
+ */
+describe('StreamRelay block-level API (ACP producers)', () => {
+    it('coalesces deltas fed through appendDelta exactly like SDK partials', () => {
+        const { relay, sent, advance } = harness();
+        relay.openBlock('turn_1', 0, 'text');
+        for (const chunk of ['Hel', 'lo', ' pi']) relay.appendDelta('turn_1', 0, chunk);
+
+        expect(sent).toEqual([{ t: 'block-start', mid: 'turn_1', idx: 0, kind: 'text' }]);
+        advance(STREAM_FLUSH_MS);
+        expect(sent[1]).toEqual({ t: 'block-delta', mid: 'turn_1', idx: 0, text: 'Hello pi' });
+    });
+
+    it('closeBlock flushes pending text before block-end', () => {
+        const { relay, sent } = harness();
+        relay.openBlock('turn_1', 0, 'thinking');
+        relay.appendDelta('turn_1', 0, 'reasoning');
+        relay.closeBlock('turn_1', 0);
+
+        expect(sent).toEqual([
+            { t: 'block-start', mid: 'turn_1', idx: 0, kind: 'thinking' },
+            { t: 'block-delta', mid: 'turn_1', idx: 0, text: 'reasoning' },
+            { t: 'block-end', mid: 'turn_1', idx: 0 },
+        ]);
+    });
+
+    it('drops deltas for a block that was never opened (tool_use args on the SDK path rely on this)', () => {
+        const { relay, sent, advance } = harness();
+        relay.openBlock('turn_1', 0, 'text');
+        relay.appendDelta('turn_1', 1, 'stray');
+        relay.appendDelta('turn_2', 0, 'other message');
+        advance(STREAM_FLUSH_MS);
+
+        expect(sent).toEqual([{ t: 'block-start', mid: 'turn_1', idx: 0, kind: 'text' }]);
+    });
+
+    it('opening a block under a new mid closes what the previous mid left open', () => {
+        const { relay, sent } = harness();
+        relay.openBlock('turn_1', 0, 'text');
+        relay.appendDelta('turn_1', 0, 'unfinished');
+        relay.openBlock('turn_2', 0, 'text');
+
+        expect(sent).toEqual([
+            { t: 'block-start', mid: 'turn_1', idx: 0, kind: 'text' },
+            { t: 'block-delta', mid: 'turn_1', idx: 0, text: 'unfinished' },
+            { t: 'block-end', mid: 'turn_1', idx: 0 },
+            { t: 'block-start', mid: 'turn_2', idx: 0, kind: 'text' },
+        ]);
+    });
+
+    it('re-opening an open block is a no-op and closing an unknown one sends nothing', () => {
+        const { relay, sent } = harness();
+        relay.openBlock('turn_1', 0, 'text');
+        relay.openBlock('turn_1', 0, 'text');
+        relay.closeBlock('turn_1', 7);
+        relay.closeBlock('turn_9', 0);
+
+        expect(sent).toEqual([{ t: 'block-start', mid: 'turn_1', idx: 0, kind: 'text' }]);
+    });
+
+    it('a turn driven only through the block API still sweeps on endTurn', () => {
+        const { relay, sent, advance } = harness();
+        relay.openBlock('turn_1', 0, 'text');
+        relay.appendDelta('turn_1', 0, 'x');
+        relay.endTurn();
+        // Second endTurn (runner finally) must not sweep again.
+        relay.endTurn();
+        advance(PROGRESS_FLUSH_MS);
+
+        expect(sent.map((f) => f.t)).toEqual(['block-start', 'block-delta', 'block-end', 'turn-end']);
+    });
+});

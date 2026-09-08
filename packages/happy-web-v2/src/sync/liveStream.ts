@@ -1,6 +1,7 @@
 /**
- * liveStream — the DRAFT of what a Claude SDK session is generating right now
- * (B-309).
+ * liveStream — the DRAFT of what a session's agent is generating right now
+ * (B-309 for Claude SDK sessions; B-371 wired the ACP runners — pi, gemini,
+ * opencode — onto the same frames, so nothing here is Claude-specific).
  *
  * Everything here is deliberately outside the message pipeline: drafts never
  * enter `messagesMap`, never reach the reducer, never get a seq, never survive
@@ -16,9 +17,10 @@
  *
  * What actually arrives: assistant TEXT, live. Claude's reasoning is redacted
  * by the API — `thinking_delta` carries an empty string and even the persisted
- * thinking block is empty (measured 2026-09-03) — so a thinking draft shows up
- * only as the token counter in the status bar. The thinking branch here is
- * real and tested; it simply has nothing to render until the API unredacts.
+ * thinking block is empty (measured 2026-09-03) — so on a Claude session a
+ * thinking draft shows up only as the token counter in the status bar. pi-acp
+ * DOES relay real thinking text (`agent_thought_chunk`), so on a pi session the
+ * thinking branch below renders the reasoning as it is written.
  *
  * Frames are lossy by construction (relayed `volatile`, dropped while
  * disconnected, rate-limited on the server), so every transition here must
@@ -48,7 +50,9 @@ export const DRAFT_MAX_AGE_MS = 5 * 60_000;
 export const ORPHAN_BLOCK_MS = 10_000;
 
 export type LiveStreamBlock = {
-    /** `"<api message id>:<content block index>"` — matches the envelope's `streamKey`. */
+    /** `"<producer message id>:<content block index>"` — matches the envelope's
+     *  `streamKey`. Opaque here: the Claude path uses the API message id, the
+     *  ACP path the turn id. */
     key: string;
     kind: 'text' | 'thinking';
     text: string;

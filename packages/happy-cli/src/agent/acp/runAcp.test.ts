@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
     }),
     keepAlive: vi.fn(),
     sendSessionProtocolMessage: vi.fn(),
+    sendStreamFrame: vi.fn(),
     sendSessionEvent: vi.fn(),
     sendAgentUsageSnapshot: vi.fn(),
     updateMetadata: vi.fn(),
@@ -590,6 +591,74 @@ describe('runAcp', () => {
       'Tool: ReadFile completed (callId=tool-1)',
       'Status: idle',
     ]));
+  });
+
+  it('relays streamed text as live-draft frames whose key the persisted envelope carries (B-371)', async () => {
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi',
+      command: 'pi-acp',
+      args: [],
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+    });
+    mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'hi' } });
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toHaveLength(1);
+    });
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    const envelopes = mocks.mockSession.sendSessionProtocolMessage.mock.calls.map(([envelope]) => envelope);
+    const turnStart = envelopes.find((e) => e.ev.t === 'turn-start')!;
+    const text = envelopes.find((e) => e.ev.t === 'text')!;
+    const frames = mocks.mockSession.sendStreamFrame.mock.calls.map(([frame]) => frame);
+
+    // The web sees the draft before the tool card, then swaps it for the real
+    // text via the shared key — the key is `<turn id>:<block index>`.
+    const expectedKey = `${turnStart.turn}:0`;
+    expect(text.streamKey).toBe(expectedKey);
+    expect(frames).toEqual([
+      { t: 'block-start', mid: turnStart.turn, idx: 0, kind: 'text' },
+      { t: 'block-delta', mid: turnStart.turn, idx: 0, text: 'hello' },
+      { t: 'block-end', mid: turnStart.turn, idx: 0 },
+      { t: 'turn-end' },
+    ]);
+    // turn-end (the web's sweep countdown) goes out AFTER the turn's envelopes.
+    const turnEndEnvelopeCall = mocks.mockSession.sendSessionProtocolMessage.mock.invocationCallOrder.at(-1)!;
+    const turnEndFrameCall = mocks.mockSession.sendStreamFrame.mock.invocationCallOrder.at(-1)!;
+    expect(turnEndFrameCall).toBeGreaterThan(turnEndEnvelopeCall);
+  });
+
+  it('honours HAPPY_SESSION_STREAM_DISABLED=1: no frames, no streamKey, envelopes unchanged', async () => {
+    vi.stubEnv('HAPPY_SESSION_STREAM_DISABLED', '1');
+    try {
+      const runPromise = runAcp({
+        credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+        agentName: 'pi',
+        command: 'pi-acp',
+        args: [],
+      });
+      await vi.waitFor(() => {
+        expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+      });
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'hi' } });
+      await vi.waitFor(() => {
+        expect(mocks.backendState.prompts).toHaveLength(1);
+      });
+      await mocks.getKillHandler()!();
+      await runPromise;
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(mocks.mockSession.sendStreamFrame).not.toHaveBeenCalled();
+    const envelopeTypes = mocks.mockSession.sendSessionProtocolMessage.mock.calls.map(([envelope]) => envelope.ev.t);
+    expect(envelopeTypes).toEqual(['turn-start', 'text', 'tool-call-start', 'tool-call-end', 'turn-end']);
+    const text = mocks.mockSession.sendSessionProtocolMessage.mock.calls.map(([e]) => e).find((e) => e.ev.t === 'text')!;
+    expect(text.streamKey).toBeUndefined();
   });
 
   it('stores ACP token-count messages as the selected agent snapshot', async () => {
