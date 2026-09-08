@@ -797,6 +797,9 @@ export const zhHans: TranslationStructure = {
     },
 
     // copy_to_clipboard pushes: receive toasts + the history panel
+    rpc: {
+        rateLimited: ({ seconds }: { seconds: number }) => `请求过于频繁，已暂停对机器的调用 ${seconds} 秒，稍后自动恢复。`,
+    },
     clipboard: {
         copiedPreview: ({ preview }: { preview: string }) => `已复制：${preview}`,
         tapToCopy: ({ preview }: { preview: string }) => `收到剪贴板内容，点击复制：${preview}`,
@@ -1696,6 +1699,13 @@ export const zhHans: TranslationStructure = {
                 summary: '几处样式引用了并不存在的颜色 token，浏览器只是悄悄忽略：悬停不加深、聚焦不出框、链接图标隐形、「刷新」按钮没有背景。',
                 states: '对话里可点的文件路径现在悬停时下划线会加深，Tab 聚焦时有外框，前面的小图标看得见了；更新横幅上的「刷新」按钮重新是实心的。正文颜色没有变——它们此前靠继承碰巧是对的。',
                 guard: '新增一条测试：任何样式表用到未定义的颜色 token 都会让测试变红；另一条按 WCAG 检查明暗两个主题里文字对背景的对比度。至于「深色主题有些字是黑的」和「@ 显示成编码」，本地没有复现出来；如果你还看得到，请告诉我在哪。',
+            },
+            sep08f: {
+                title: '多个 agent 同时跑时弹「RPC rate limit reached」——从源头修掉了',
+                summary: '每个打开的页签，之前会在任意 agent 每完成一次工具调用时，悄悄对机器跑 4 条 git 命令——一个闲置页签每分钟 110–170 次，而这个状态没有任何地方显示。8 个 agent 加几个页签就撞上服务端限流，被拒的调用又涌到备用链路上再撞一次。',
+                source: '后台 git 轮询已删除。「文件」面板在打开/刷新时仍会取 git 状态；除此之外不再有任何东西主动去问机器。',
+                backoff: '如果服务端确实因频率拒绝了调用，网页现在会按服务端给的时间等待（带少量抖动），把等待期间相同的调用合并成一次，慢慢放行，并只提示一次——不再全速重试，也不再静默失败。`very-happy sessions approve/deny` 同样处理并在 stderr 说明。',
+                server: '服务端每个连接的限制改成持续回填的令牌桶而不是硬窗口，被拒的请求不再计入额度，每次拒绝都带 retry-after；账号共享额度从「一次 8 MiB 文件交接」提高到「三次并发」。',
             },
                    sep07a: {
          title: '手机键盘弹出不再改变终端宽度了',

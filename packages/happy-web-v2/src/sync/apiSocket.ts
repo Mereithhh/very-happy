@@ -7,6 +7,7 @@ import { storage } from './storage';
 import { RelayAssignmentResponseSchema, ReleaseDrainNoticeSchema, type RelayAssignment, type ReleaseDrainNotice } from '@slopus/happy-wire';
 import { isMachineRealtimeEvent, shouldIgnoreLegacyRealtime } from './machineRelayRouting';
 import { decideAfterProbe, decideProbe, LIVENESS_PROBE_MS } from './socketLiveness';
+import { rpcDedupKey, RpcRateGate, RpcRateLimitedError } from './rpcRateGate';
 
 /**
  * Bound for the machineRPC relay preflight `relay-ping`. Short on purpose: it
@@ -236,6 +237,21 @@ class ApiSocket {
     static readonly SESSION_RPC_TIMEOUT_MS = 300_000;
 
     /**
+     * T-014: one gate for every RPC emit. A server rate refusal closes the
+     * refused ROUTE (control socket, or one machine's relay) for the server's
+     * `retryAfterMs`; calls arriving meanwhile wait there (identical ones
+     * collapse), get released paced, and the incident is announced once per
+     * window. Policy and reasons in rpcRateGate.ts. The UI notice is wired by
+     * sync.ts (`installRpcRateLimitNotice`): this module must stay free of
+     * `@/text` / `@/ui` imports — their load chain touches localStorage and
+     * breaks every node-side test that imports apiSocket.
+     */
+    readonly rpcGate = new RpcRateGate();
+
+    private static readonly CONTROL_ROUTE = 'control';
+    private static relayRoute(machineId: string): string { return `relay:${machineId}`; }
+
+    /**
      * RPC call for sessions - uses session-specific encryption
      */
     async sessionRPC<R, A>(sessionId: string, method: string, params: A, opts?: { timeoutMs?: number }): Promise<R> {
@@ -254,22 +270,32 @@ class ApiSocket {
         // (`reconnection: false`) until the ack timer fires. Nothing has been
         // sent yet, so routing to control instead cannot double-execute.
         const relaySocket = relayCandidate?.connected ? relayCandidate : null;
-        const callCentral = () => this.socket!
-            .timeout(opts?.timeoutMs ?? ApiSocket.SESSION_RPC_TIMEOUT_MS)
-            .emitWithAck('rpc-call', {
-                method: `${sessionId}:${method}`,
-                params: encryptedParams,
-            });
+        const scopedMethod = `${sessionId}:${method}`;
+        const callCentral = () => this.rpcGate.run(
+            ApiSocket.CONTROL_ROUTE,
+            rpcDedupKey(ApiSocket.CONTROL_ROUTE, scopedMethod, params),
+            () => this.socket!
+                .timeout(opts?.timeoutMs ?? ApiSocket.SESSION_RPC_TIMEOUT_MS)
+                .emitWithAck('rpc-call', {
+                    method: scopedMethod,
+                    params: encryptedParams,
+                }),
+        );
         let result: any;
         if (relaySocket) {
+            const relayRoute = ApiSocket.relayRoute(machineId as string);
             try {
-                result = await relaySocket
-                    .timeout(opts?.timeoutMs ?? ApiSocket.SESSION_RPC_TIMEOUT_MS)
-                    .emitWithAck('session-rpc-call', {
-                        sessionId,
-                        method: `${sessionId}:${method}`,
-                        params: encryptedParams,
-                    });
+                result = await this.rpcGate.run(
+                    relayRoute,
+                    rpcDedupKey(relayRoute, scopedMethod, params),
+                    () => relaySocket
+                        .timeout(opts?.timeoutMs ?? ApiSocket.SESSION_RPC_TIMEOUT_MS)
+                        .emitWithAck('session-rpc-call', {
+                            sessionId,
+                            method: scopedMethod,
+                            params: encryptedParams,
+                        }),
+                );
                 if (!result?.ok && result?.error === 'Session unavailable') {
                     // The relay proved there was no runner to receive the
                     // request, so central fallback cannot double-execute it.
@@ -279,6 +305,13 @@ class ApiSocket {
                     throw new Error(result?.error || 'Regional session RPC failed');
                 }
             } catch (error) {
+                // A rate refusal is the ACCOUNT's budget, not this relay's
+                // health: the request never reached the runner, and the central
+                // socket meters the same account plus its own per-socket bucket.
+                // Moving the traffic there is how the T-014 measurement saw one
+                // refusal cascade into the second limiter. Keep the relay, let
+                // the gate hold the route, surface the error.
+                if (error instanceof RpcRateLimitedError) throw error;
                 // The runner may have completed a mutating RPC even if its ack
                 // was lost. Never replay the same call over control; put only
                 // subsequent explicit calls on the compatibility path.
@@ -297,7 +330,10 @@ class ApiSocket {
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        // Keep the server's reason: 'RPC method not available' vs. a rate
+        // refusal vs. a timeout are different things to a caller, and the old
+        // constant string hid all of them behind one message.
+        throw new Error(typeof result?.error === 'string' && result.error ? result.error : 'RPC call failed');
     }
 
     /**
@@ -361,18 +397,28 @@ class ApiSocket {
         if (relaySocket && !(await this.relayPreflightOk(machineId, relaySocket))) {
             relaySocket = null;
         }
-        const call = (socket: Socket) => socket
-            .timeout(opts?.timeoutMs ?? ApiSocket.MACHINE_RPC_TIMEOUT_MS)
-            .emitWithAck('rpc-call', {
-                method: `${machineId}:${method}`,
-                params: encryptedParams
-            });
+        const scopedMethod = `${machineId}:${method}`;
+        const call = (socket: Socket, route: string) => this.rpcGate.run(
+            route,
+            rpcDedupKey(route, scopedMethod, params),
+            () => socket
+                .timeout(opts?.timeoutMs ?? ApiSocket.MACHINE_RPC_TIMEOUT_MS)
+                .emitWithAck('rpc-call', {
+                    method: scopedMethod,
+                    params: encryptedParams
+                }),
+        );
         let result: any;
         try {
-            result = await call(relaySocket ?? this.socket!);
+            result = relaySocket
+                ? await call(relaySocket, ApiSocket.relayRoute(machineId))
+                : await call(this.socket!, ApiSocket.CONTROL_ROUTE);
             if (relaySocket && !result?.ok) throw new Error(result?.error || 'Regional relay RPC failed');
         } catch (error) {
             if (!relaySocket) throw error;
+            // See sessionRPC: an account rate refusal is not relay ill-health
+            // and must not retire the relay onto the (also metered) central path.
+            if (error instanceof RpcRateLimitedError) throw error;
             // Cooldown + fallback only if this socket is still the current
             // relay. A forced rebuild (resume liveness) deletes the map entry
             // BEFORE closing, and its synchronous `_clearAcks` lands here — it

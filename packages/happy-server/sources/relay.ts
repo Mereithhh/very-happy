@@ -1,6 +1,6 @@
 import fastify from 'fastify';
 import { Server, type Socket } from 'socket.io';
-import { AccountTerminalRateLimiter, relayPayloadBytes, resolveRpcRelayLimit, resolveTerminalRelayLimit } from './app/api/socket/terminalRateLimit';
+import { AccountTerminalRateLimiter, relayPayloadBytes, resolveRpcRelayLimit, resolveTerminalRelayLimit, rpcRateLimitAck } from './app/api/socket/terminalRateLimit';
 import { verifyRelayToken, type RelayTokenClaims } from './app/relay/relayToken';
 
 type RelaySocket = Socket & { data: { relayClaims?: RelayTokenClaims } };
@@ -102,6 +102,11 @@ export async function startRelayServer(env: NodeJS.ProcessEnv = process.env) {
     });
     const terminalLimiter = new AccountTerminalRateLimiter(resolveTerminalRelayLimit(env));
     const sessionLimiter = new AccountTerminalRateLimiter(resolveTerminalRelayLimit(env));
+    // Same limit function, same env variables as the central server's account
+    // RPC bucket (socket.ts `rpcRateLimiter`): the relay is a second entry point
+    // to the same daemon, not a second budget. The two instances do not share
+    // state (different processes), so an account gets up to 2× this in total —
+    // the central side additionally applies its per-socket bucket.
     const rpcLimiter = new AccountTerminalRateLimiter(resolveRpcRelayLimit(env));
 
     io.use((socket: RelaySocket, next) => {
@@ -184,8 +189,9 @@ export async function startRelayServer(env: NodeJS.ProcessEnv = process.env) {
 
         socket.join(webRoom(machineId));
         socket.on('rpc-call', async (data: any, callback?: (response: any) => void) => {
-            if (!rpcLimiter.consume(accountId, relayPayloadBytes(data))) {
-                callback?.({ ok: false, error: 'RPC account rate limit reached' });
+            const verdict = rpcLimiter.tryConsume(accountId, relayPayloadBytes(data));
+            if (!verdict.ok) {
+                callback?.(rpcRateLimitAck('account', verdict.retryAfterMs));
                 return;
             }
             if (!data || !boundedId(data.method) || !data.method.startsWith(`${machineId}:`) || typeof data.params !== 'string') {
@@ -232,8 +238,9 @@ export async function startRelayServer(env: NodeJS.ProcessEnv = process.env) {
         });
 
         socket.on('session-rpc-call', async (data: any, callback?: (response: any) => void) => {
-            if (!rpcLimiter.consume(accountId, relayPayloadBytes(data))) {
-                callback?.({ ok: false, error: 'RPC account rate limit reached' });
+            const verdict = rpcLimiter.tryConsume(accountId, relayPayloadBytes(data));
+            if (!verdict.ok) {
+                callback?.(rpcRateLimitAck('account', verdict.retryAfterMs));
                 return;
             }
             if (!data || !boundedId(data.sessionId) || !boundedId(data.method) ||

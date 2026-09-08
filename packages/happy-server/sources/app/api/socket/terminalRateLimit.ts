@@ -34,11 +34,23 @@ const DEFAULT_LIMIT: TerminalRelayLimit = {
 // chunk base64, encryption, and the outer encoded envelope. Keep this separate
 // from the interactive terminal bucket so a valid handoff neither bypasses an
 // account-wide bound nor starves terminal input/output.
+//
+// Event numbers (T-014, 2026-09-07 — measured on the production web, see
+// docs/backlog.md B-375 and docs/operations.md「RPC 限流」): this bucket is
+// shared by EVERY tab and every CLI process of one account, and the central
+// server's rpcHandler consumes the same instance. A single legitimate user
+// action is a burst of up to ~90 RPCs (8 MiB handoff = 88 `uploadFileChunk`,
+// terminal-history/fs-read paging ≈ 32) finished in a few seconds, and a
+// healthy tab is otherwise ~0 RPC/min at idle. The old 2/s + 120 was one
+// handoff; two tabs doing anything sizeable at once tripped it, and the refusal
+// then cascaded into the central per-socket limiter through the relay
+// fallback. 5/s + 300 is three concurrent handoffs, still far below anything a
+// daemon cannot absorb; both values stay env-tunable (RPC_RELAY_*).
 const DEFAULT_RPC_LIMIT: TerminalRelayLimit = {
     bytesPerSecond: 2 * 1024 * 1024,
     burstBytes: 20 * 1024 * 1024,
-    eventsPerSecond: 2,
-    burstEvents: 120,
+    eventsPerSecond: 5,
+    burstEvents: 300,
 };
 
 function nonNegativeInteger(value: string | undefined, fallback: number): number {
@@ -126,6 +138,19 @@ export function resolveRpcRelayLimit(env: NodeJS.ProcessEnv = process.env): Term
  * allowance by their maximum replica count when they need a strict cluster-wide
  * ceiling.
  */
+export type RateLimitVerdict =
+    | { ok: true }
+    /**
+     * Refused. `retryAfterMs` is when the bucket will next hold enough for
+     * THIS request (both dimensions), assuming nobody else drains it meanwhile
+     * — the client's hint, not a promise. Never 0: a refusal always needs some
+     * refill, and a 0 would invite an immediate retry.
+     */
+    | { ok: false; retryAfterMs: number };
+
+/** Floor for retryAfterMs so a client that obeys it never spins. */
+const MIN_RETRY_AFTER_MS = 100;
+
 export class AccountTerminalRateLimiter {
     private readonly buckets = new Map<string, Bucket>();
     private checks = 0;
@@ -133,8 +158,17 @@ export class AccountTerminalRateLimiter {
     constructor(private readonly limit: TerminalRelayLimit) {}
 
     consume(accountId: string, bytes: number, now = Date.now()): boolean {
-        if (this.limit.bytesPerSecond === 0 && this.limit.eventsPerSecond === 0) return true;
-        if (!Number.isFinite(bytes) || bytes < 0) return false;
+        return this.tryConsume(accountId, bytes, now).ok;
+    }
+
+    /**
+     * Like consume, but a refusal says how long until this same request would
+     * fit. A refused request is NOT charged (B-307: charging refusals is how a
+     * bucket self-locks — the retries themselves keep it empty).
+     */
+    tryConsume(accountId: string, bytes: number, now = Date.now()): RateLimitVerdict {
+        if (this.limit.bytesPerSecond === 0 && this.limit.eventsPerSecond === 0) return { ok: true };
+        if (!Number.isFinite(bytes) || bytes < 0) return { ok: false, retryAfterMs: MIN_RETRY_AFTER_MS };
 
         let bucket = this.buckets.get(accountId);
         if (!bucket) {
@@ -154,7 +188,15 @@ export class AccountTerminalRateLimiter {
         const byteCost = Math.max(0, Math.ceil(bytes));
         const byteAllowed = this.limit.bytesPerSecond === 0 || bucket.bytes >= byteCost;
         const eventAllowed = this.limit.eventsPerSecond === 0 || bucket.events >= 1;
-        if (!byteAllowed || !eventAllowed) return false;
+        if (!byteAllowed || !eventAllowed) {
+            const byteWaitMs = byteAllowed ? 0 : ((byteCost - bucket.bytes) / this.limit.bytesPerSecond) * 1000;
+            const eventWaitMs = eventAllowed ? 0 : ((1 - bucket.events) / this.limit.eventsPerSecond) * 1000;
+            const waitMs = Math.max(byteWaitMs, eventWaitMs);
+            // A request larger than the whole burst never fits; say so with a
+            // finite (one window) hint rather than Infinity/NaN on the wire.
+            const bounded = Number.isFinite(waitMs) ? waitMs : 60_000;
+            return { ok: false, retryAfterMs: Math.max(MIN_RETRY_AFTER_MS, Math.ceil(bounded)) };
+        }
 
         if (this.limit.bytesPerSecond !== 0) bucket.bytes -= byteCost;
         if (this.limit.eventsPerSecond !== 0) bucket.events -= 1;
@@ -168,8 +210,31 @@ export class AccountTerminalRateLimiter {
                 if (candidate.updatedAt < expiry) this.buckets.delete(id);
             }
         }
-        return true;
+        return { ok: true };
     }
+}
+
+/**
+ * The two RPC refusals every RPC entry point (central rpcHandler, regional
+ * relay) sends. The `error` strings are frozen — happy-cli's permissionOps
+ * classifies on them and pre-2026-09 web builds surface them verbatim; the
+ * `code` + `retryAfterMs` fields are the additive, machine-readable part
+ * (old clients ignore unknown fields — AGENTS 铁律 4).
+ */
+export const RPC_RATE_LIMIT_ERROR = 'RPC rate limit reached';
+export const RPC_ACCOUNT_RATE_LIMIT_ERROR = 'RPC account rate limit reached';
+
+export type RpcRateLimitAck = {
+    ok: false;
+    error: typeof RPC_RATE_LIMIT_ERROR | typeof RPC_ACCOUNT_RATE_LIMIT_ERROR;
+    code: 'rpc_rate_limited' | 'rpc_account_rate_limited';
+    retryAfterMs: number;
+};
+
+export function rpcRateLimitAck(scope: 'socket' | 'account', retryAfterMs: number): RpcRateLimitAck {
+    return scope === 'socket'
+        ? { ok: false, error: RPC_RATE_LIMIT_ERROR, code: 'rpc_rate_limited', retryAfterMs }
+        : { ok: false, error: RPC_ACCOUNT_RATE_LIMIT_ERROR, code: 'rpc_account_rate_limited', retryAfterMs };
 }
 
 /**

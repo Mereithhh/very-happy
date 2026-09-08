@@ -3,7 +3,7 @@ import { Server, Socket } from "socket.io";
 import type { RemoteSocket } from "socket.io";
 import type { DefaultEventsMap } from "socket.io/dist/typed-events";
 import { Counter, Histogram, register } from 'prom-client';
-import { AccountTerminalRateLimiter, relayPayloadBytes } from './terminalRateLimit';
+import { AccountTerminalRateLimiter, relayPayloadBytes, rpcRateLimitAck } from './terminalRateLimit';
 
 // RPC routing uses Socket.IO rooms. A daemon registering method M for user U
 // joins room `rpc:U:M`. Callers look the daemon up cross-replica via
@@ -187,8 +187,21 @@ export function rpcHandler(
         ? parsedRegistrationLimit
         : 256;
     const registeredMethods = new Set<string>();
-    let callWindowStartedAt = Date.now();
-    let callCount = 0;
+    // Per-socket call budget as a TOKEN BUCKET: burst = RPC_MAX_CALLS_PER_MINUTE,
+    // refill = the same number spread over a minute. Same env variable, same
+    // sustained rate as the fixed window it replaces (T-014) — but no cliff at
+    // the window edge, and a refusal can say how long until the next token
+    // (`retryAfterMs`) instead of leaving the client to guess. This bucket is
+    // the per-connection fairness guard; the account-wide guard shared with the
+    // regional relay is `accountRateLimiter` below (resolveRpcRelayLimit).
+    const socketCallLimiter = maxCallsPerMinute > 0
+        ? new AccountTerminalRateLimiter({
+            bytesPerSecond: 0,
+            burstBytes: 0,
+            eventsPerSecond: maxCallsPerMinute / 60,
+            burstEvents: maxCallsPerMinute,
+        })
+        : null;
 
     socket.on('rpc-register', (data: any) => {
         try {
@@ -260,15 +273,10 @@ export function rpcHandler(
         };
 
         try {
-            const now = Date.now();
-            if (now - callWindowStartedAt >= 60_000) {
-                callWindowStartedAt = now;
-                callCount = 0;
-            }
-            callCount++;
-            if (maxCallsPerMinute > 0 && callCount > maxCallsPerMinute) {
+            const socketVerdict = socketCallLimiter?.tryConsume(socket.id, 0) ?? { ok: true as const };
+            if (!socketVerdict.ok) {
                 finish('rate_limit');
-                callback?.({ ok: false, error: 'RPC rate limit reached' });
+                callback?.(rpcRateLimitAck('socket', socketVerdict.retryAfterMs));
                 return;
             }
             let payloadBytes = maxPayloadBytes + 1;
@@ -276,9 +284,10 @@ export function rpcHandler(
             // Charge the complete authenticated but untrusted body before any
             // per-call rejection. Otherwise callers can bypass the account
             // bucket by repeatedly sending payloadLimit+1 byte requests.
-            if (accountRateLimiter && !accountRateLimiter.consume(userId, relayPayloadBytes(data))) {
+            const accountVerdict = accountRateLimiter?.tryConsume(userId, relayPayloadBytes(data)) ?? { ok: true as const };
+            if (!accountVerdict.ok) {
                 finish('account_rate_limit');
-                callback?.({ ok: false, error: 'RPC account rate limit reached' });
+                callback?.(rpcRateLimitAck('account', accountVerdict.retryAfterMs));
                 return;
             }
             if (maxPayloadBytes > 0 && payloadBytes > maxPayloadBytes) {

@@ -28,6 +28,10 @@ export interface RpcCallAck {
     /** Encrypted, base64 — the wrapper's `RpcHandlerManager` response. */
     result?: string
     error?: string
+    /** T-014: machine-readable reason for a refusal (`rpc_rate_limited` / `rpc_account_rate_limited`). */
+    code?: string
+    /** T-014: for a rate refusal, when the bucket next holds a token. */
+    retryAfterMs?: number
 }
 
 export interface UserRpcTransport {

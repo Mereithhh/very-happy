@@ -106,6 +106,37 @@ describe('database-free regional relay', () => {
         });
         expect(crossScope).toEqual({ ok: false, error: 'Session unavailable' });
     });
+
+    it('refuses RPC over the account bucket and names the retry-after on the wire (T-014)', async () => {
+        const secret = 'regional-relay-integration-secret';
+        const server = await startRelayServer({
+            RELAY_ID: 'sin', RELAY_REGION: 'Singapore', RELAY_TOKEN_SECRET: secret,
+            HOST: '127.0.0.1', PORT: '0', LOG_LEVEL: 'silent',
+            RPC_RELAY_BYTES_PER_SECOND: '1000000',
+            RPC_RELAY_BURST_BYTES: '1000000',
+            // A non-integer refill gets parseInt-truncated to 0 (which disables
+            // the dimension), so use 1/s with a single-event burst: first call
+            // drains it, the next is refused for exactly ~1s.
+            RPC_RELAY_EVENTS_PER_SECOND: '1',
+            RPC_RELAY_BURST_EVENTS: '1',
+        } as NodeJS.ProcessEnv);
+        servers.push(server);
+        const origin = `http://127.0.0.1:${server.port}`;
+        const machineToken = signRelayToken({ secret, accountId: 'a1', relayId: 'sin', machineId: 'm1', clientType: 'machine' }).token;
+        const webToken = signRelayToken({ secret, accountId: 'a1', relayId: 'sin', machineId: 'm1', clientType: 'web' }).token;
+        const machine = connect(origin, { path: '/v1/relay', transports: ['websocket'], auth: { token: machineToken } });
+        const web = connect(origin, { path: '/v1/relay', transports: ['websocket'], auth: { token: webToken } });
+        clients.push(machine, web);
+        await Promise.all([once(machine, 'connect'), once(web, 'connect')]);
+        machine.on('rpc-request', (data, callback) => callback(`reply:${data.params}`));
+        const first = await web.timeout(2_000).emitWithAck('rpc-call', { method: 'm1:open-terminal', params: 'opaque' });
+        expect(first).toEqual({ ok: true, result: 'reply:opaque' });
+        const refused = await web.timeout(2_000).emitWithAck('rpc-call', { method: 'm1:open-terminal', params: 'opaque' });
+        expect(refused.ok).toBe(false);
+        expect(refused.error).toBe('RPC account rate limit reached');
+        expect(refused.code).toBe('rpc_account_rate_limited');
+        expect(refused.retryAfterMs).toBeGreaterThanOrEqual(1);
+        expect(Number.isFinite(refused.retryAfterMs)).toBe(true);    });
 });
 
 function once(socket: Socket, event: string): Promise<any> {
