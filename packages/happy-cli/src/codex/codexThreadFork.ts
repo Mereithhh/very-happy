@@ -142,3 +142,36 @@ export async function forkCodexThread(
         newCodexThreadId: forked.threadId,
     };
 }
+
+/** Fork and remove the selected turn without replaying its original prompt. */
+export async function forkCodexBeforeUserMessage(
+    client: CodexForkClient & { readThread: (opts: { threadId: string; includeTurns: boolean }) => Promise<{ thread: Thread }> },
+    opts: { threadId: string; cwd: string; cutBeforeItemId: string },
+): Promise<CodexForkResult | { type: 'success'; startFresh: true }> {
+    const { thread: source } = await client.readThread({ threadId: opts.threadId, includeTurns: true });
+    const sourceCut = findCutTurn(source, opts.cutBeforeItemId);
+    if (!sourceCut) throw new CodexForkRewindPointNotFoundError(opts.cutBeforeItemId, opts.threadId);
+    if ((source.turns?.[sourceCut.index].items ?? []).findIndex((item) => item.id === opts.cutBeforeItemId) !== 0) {
+        throw new Error('Cannot safely rewind a user message inside an existing turn');
+    }
+    if (sourceCut.index === 0) return { type: 'success', startFresh: true };
+    const forked = await client.forkThread({ threadId: opts.threadId, cwd: opts.cwd });
+    if (forked.threadId === opts.threadId) throw new Error('Codex did not create an independent fork');
+    const cut = findCutTurn(forked.thread, opts.cutBeforeItemId);
+    if (!cut) throw new CodexForkRewindPointNotFoundError(opts.cutBeforeItemId, opts.threadId);
+    const turns = forked.thread.turns ?? [];
+    const items = turns[cut.index].items ?? [];
+    if (items.findIndex((item) => item.id === opts.cutBeforeItemId) !== 0) {
+        throw new Error('Cannot safely rewind a user message inside an existing turn');
+    }
+    if (cut.index === 0) return { type: 'success', startFresh: true };
+    const expectedTurnIds = turns.slice(0, cut.index).map((turn) => turn.id);
+    const { thread } = await client.rollbackThread({
+        threadId: forked.threadId, numTurns: turns.length - cut.index,
+    });
+    const remaining = thread.turns ?? [];
+    if (remaining.length !== cut.index || remaining.some((turn, index) => turn.id !== expectedTurnIds[index])) {
+        throw new Error('Codex rollback did not preserve the expected history');
+    }
+    return { type: 'success', newCodexThreadId: forked.threadId };
+}

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
 import {
+    forkBeforeUserMessage,
     discardForkedSession,
     forkSession,
     forkAndTruncateSession,
@@ -41,6 +42,23 @@ describe('claudeSessionFork', () => {
                 try { return JSON.parse(l); } catch { return l; }
             });
     }
+
+    it('rewinds before the exact user UUID and leaves original bytes untouched', async () => {
+        const entries = [
+            { type: 'user', uuid: 'u1', message: { content: 'same text' } },
+            { type: 'assistant', uuid: 'a1', message: { content: 'answer' } },
+            { type: 'user', uuid: 'u2', message: { content: 'same text' } },
+            { type: 'assistant', uuid: 'a2', message: { content: 'later' } },
+        ];
+        const source = await writeSource(entries);
+        const original = await readFile(source, 'utf-8');
+        const fork = await forkBeforeUserMessage(projectDir, sourceId, 'u2');
+        expect(await readJsonl(fork!)).toEqual(entries.slice(0, 2));
+        expect(await readFile(source, 'utf-8')).toBe(original);
+        expect(await forkBeforeUserMessage(projectDir, sourceId, 'u1')).toBeNull();
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'missing')).rejects.toBeInstanceOf(ForkTruncateUuidNotFoundError);
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'a1')).rejects.toBeInstanceOf(ForkTruncateUuidNotFoundError);
+    });
 
     describe('forkSession', () => {
         it('produces a byte-identical copy with a fresh session id', async () => {

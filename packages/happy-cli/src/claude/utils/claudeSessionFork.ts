@@ -14,7 +14,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { copyFile, rename, readFile, unlink } from "node:fs/promises";
+import { copyFile, rename, readFile, unlink, writeFile } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -233,4 +233,39 @@ export async function listClaudeRewindPoints(
     }
 
     return points;
+}
+
+/** Fork only history preceding an exact top-level user UUID. Never edit the source. */
+export async function forkBeforeUserMessage(
+    projectDir: string, sourceClaudeSessionId: string, cutBeforeUuid: string,
+): Promise<string | null> {
+    const src = jsonlPath(projectDir, sourceClaudeSessionId);
+    let raw: string;
+    try { raw = await readFile(src, 'utf-8'); } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ForkSourceMissingError(src);
+        throw error;
+    }
+    const lines = raw.split('\n');
+    let previousPrompts = 0;
+    let cut = -1;
+    for (let i = 0; i < lines.length; i++) {
+        let entry: any;
+        try { entry = JSON.parse(lines[i]); } catch { continue; }
+        if (!isUserPrompt(entry)) continue;
+        if (entry.uuid === cutBeforeUuid) { cut = i; break; }
+        previousPrompts++;
+    }
+    if (cut < 0) throw new ForkTruncateUuidNotFoundError(cutBeforeUuid, src);
+    if (previousPrompts === 0) return null;
+    const newId = randomUUID();
+    const destination = jsonlPath(projectDir, newId);
+    const temporary = `${destination}.tmp-${process.pid}`;
+    try {
+        await writeFile(temporary, lines.slice(0, cut).join('\n') + '\n', { encoding: 'utf-8', flag: 'wx' });
+        await rename(temporary, destination);
+    } catch (error) {
+        await unlink(temporary).catch(() => undefined);
+        throw error;
+    }
+    return newId;
 }
