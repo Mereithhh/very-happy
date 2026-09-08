@@ -103,3 +103,20 @@ xterm 的行是绝对定位、定宽的 `.xterm-rows > div`，**物理上不可�
 
 - **`cn-font-split` 写完输出后不退出**（挂住、0% CPU）。**别用 `&&` 串联**，否则永远等不到
   下一步；改成轮询 `result.css` + 分片数稳定后再 kill。
+
+## B-392：终端 `@` 可辨认性（2026-09-09，本地已验证，待发布）
+
+Owner 指定的 test 会话中 `jojo@mac-office` 显示异常。原标签页 entry/CSS 为
+`5739135b8e0c7d688b8a778e46b3902f10cab567`；实际 `.xterm-rows` 文字是 U+0040，
+没有反斜杠或编码损坏。当前 CDN 的 Maple Mono CN 7.900 默认 `@` 是类似卷曲 a 的
+特殊设计，不能以此前结构化消息 Markdown 探针通过否认这个终端问题。
+
+在 `.term-host .xterm` 启用 `font-feature-settings: "cv01" 1`，使用字体自带的标准符号
+变体；[上游定义](https://github.com/subframe7536/maple-font/blob/variable/source/features/README.md)
+同时涵盖 `$ & % Q` 和部分箭头。保留原字体、字号、lineHeight 与 DOM 渲染器。
+不替换消息文本，也不修改 CDN 文件。
+
+用实际 CDN 字体及 createXtermRenderer，桌面13px/手机12px × 明暗主题验证：
+普通/粗体 `jojo@mac-office` 的字符与宽度不变，`@` 像素确实改变；中文行宽、每行
+矩形完全一致，方块行截图逐字节相同，无横向溢出。CSS 回归测试通过 mutation-check
+确认移除标准符号选项会失败。该结论只针对已复现的终端字形，pi 消息黑字仍未复现。
