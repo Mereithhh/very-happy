@@ -916,6 +916,7 @@ class Sync {
 
         this.getSendSync(sessionId).invalidate();
         this.maybeStartBackgroundSendWatchdog();
+        return localId; // Receipt: accepted into the local outbox, not server delivery.
     }
 
     /** Persist an invisible queue-cancel tombstone after the CLI removed it. */

@@ -1702,6 +1702,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09: {
+                title: 'Message actions and clearer setup',
+                summary: 'Copy, quote and edit controls sit below messages. Ordering and setup entry points explain what to do next.',
+                messages: 'Quote without replacing your draft. On supported Claude/Codex daemons, edit a message in a new branch while preserving the original. Legacy messages let you choose an exact history point. File changes are not undone; pi rewind is not connected yet.',
+                ordering: 'New users start with an ungrouped, reorderable list. Grouped views offer an Ungroup action; touch devices explain the move-up/down menu.',
+                setup: 'Todo explains its provider requirement and links to a working example. Settings and Help expose the changelog, machine setup and machine update pages.',
+            },
             sep08k: {
                 title: 'Connection recovery and clearer machine updates',
                 summary: 'Returning to the app avoids stale connection checks. Machine updates show their progress and support an explicit retry after a failed installation.',

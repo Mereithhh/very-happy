@@ -450,7 +450,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Load drafts and permission modes if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
-            const savedDrafts = isInitialLoad ? sessionDrafts : {};
+            const savedDrafts = sessionDrafts; // Branch drafts may precede their first server snapshot.
             // Permission preferences may be recorded immediately after spawn,
             // before the new session snapshot reaches this store. Consult the
             // in-memory persisted map for every newly arriving session, not
@@ -1103,26 +1103,21 @@ export const storage = create<StorageState>()((set, get) => {
             };
         }),
         updateSessionDraft: (sessionId: string, draft: string | null) => set((state) => {
+            if (deletedSessionTombstones.has(sessionId)) return state;
             const session = state.sessions[sessionId];
-            if (!session) return state;
-
-            // Don't store empty strings, convert to null
             const normalizedDraft = draft?.trim() ? draft : null;
-
-            // Collect all drafts for persistence
-            const allDrafts: Record<string, string> = {};
+            // Keep drafts for branches whose spawn succeeded but whose snapshot
+            // has not arrived. Updating a different composer must not erase them.
+            const allDrafts: Record<string, string> = { ...sessionDrafts };
             Object.entries(state.sessions).forEach(([id, sess]) => {
-                if (id === sessionId) {
-                    if (normalizedDraft) {
-                        allDrafts[id] = normalizedDraft;
-                    }
-                } else if (sess.draft) {
-                    allDrafts[id] = sess.draft;
-                }
+                if (sess.draft) allDrafts[id] = sess.draft;
+                else delete allDrafts[id];
             });
-
-            // Persist drafts
+            if (normalizedDraft) allDrafts[sessionId] = normalizedDraft;
+            else delete allDrafts[sessionId];
+            sessionDrafts = allDrafts;
             saveSessionDrafts(allDrafts);
+            if (!session) return state;
 
             const updatedSessions = {
                 ...state.sessions,
@@ -1443,6 +1438,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Clear drafts, permission modes, model modes, effort levels from persistent storage
             const drafts = loadSessionDrafts();
             delete drafts[sessionId];
+            sessionDrafts = drafts;
             saveSessionDrafts(drafts);
 
             const modes = loadSessionPermissionModes();

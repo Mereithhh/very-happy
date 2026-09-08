@@ -1,8 +1,16 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
+import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
 
 const uiCss = readFileSync(new URL('../../ui/ui.css', import.meta.url), 'utf8');
-const messageCss = readFileSync(new URL('./message.css', import.meta.url), 'utf8');
+let MessageView: typeof import('./MessageView').MessageView;
+beforeAll(async () => {
+  installBrowserTestGlobals();
+  ({ MessageView } = await import('./MessageView'));
+});
 
 describe('message copy overlay layout', () => {
   it('keeps overlay buttons square instead of stretching between left and right offsets', () => {
@@ -13,12 +21,13 @@ describe('message copy overlay layout', () => {
     expect(overlay).toMatch(/justify-content:\s*center/);
   });
 
-  it('uses selectors specific enough to override the base overlay position', () => {
-    const userOverlay = messageCss.match(/\.vh-copy--overlay\.msg-copy--user\s*\{([^}]*)\}/)?.[1] ?? '';
-    const agentOverlay = messageCss.match(/\.vh-copy--overlay\.msg-copy--agent\s*\{([^}]*)\}/)?.[1] ?? '';
-
-    expect(userOverlay).toMatch(/right:\s*auto/);
-    expect(userOverlay).toMatch(/left:\s*-34px/);
-    expect(agentOverlay).toMatch(/right:\s*0/);
+  it.each(['user-text', 'agent-text'] as const)('places %s actions after the body without a floating copy overlay', (kind) => {
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(MessageView, {
+      sessionId: 'copy-test', showMeta: false,
+      message: { kind, id: 'message', localId: null, createdAt: 1, seq: 1, text: 'MESSAGE_BODY_SENTINEL' },
+    })));
+    expect(html.indexOf('class="msg-actions"')).toBeGreaterThan(html.indexOf('MESSAGE_BODY_SENTINEL'));
+    expect(html).not.toContain('vh-copy--overlay');
+    expect(html).toContain('role="group"');
   });
 });

@@ -1,3 +1,4 @@
+import { MessageView } from '@/screens/session/MessageView';
 /** DEV-only visual harness for the real structured-chat tool presentation. */
 import { useEffect } from 'react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
@@ -46,6 +47,7 @@ export function MobileChatHarness() {
         machineId: 'dev-machine',
         path: '/repo',
         flavor: 'claude',
+        claudeSessionId: '11111111-1111-4111-8111-111111111111',
         capabilities: ['claude-steer-v1', 'claude-live-permission-v1'],
       },
       metadataVersion: 1,
@@ -81,6 +83,10 @@ export function MobileChatHarness() {
   return (
     <main style={{ minHeight: '100dvh', background: 'var(--bg-0)', color: 'var(--text)', padding: 16 }}>
       <div style={{ width: '100%', maxWidth: 820, margin: '0 auto', display: 'grid', gap: 20 }}>
+        <section data-testid="message-actions" style={{ display: 'grid', gap: 16 }}>
+          <MessageView sessionId="mobile-chat-permission" showMeta={false} message={{ kind: 'user-text', id: 'edit-point', localId: null, createdAt: Date.now(), seq: 1, claudeUuid: '22222222-2222-4222-8222-222222222222', text: '请检查 @example 的实现，然后解释这一处为什么要这样写。' }} />
+          <MessageView sessionId="mobile-chat-permission" showMeta={false} message={{ kind: 'agent-text', id: 'answer', localId: null, createdAt: Date.now(), seq: 2, text: '可以先检查数据流，再验证结果。\n\n这里的 `@example` 应保留原样。' }} />
+        </section>
         <h1 style={{ margin: 0, fontSize: 16 }}>Structured chat · mobile QA</h1>
         <button type="button" onClick={() => toast.show('Copied to clipboard', 'success', { sticky: true })}>Show copy toast</button>
         <section data-testid="live-status" style={{ border: '1px solid var(--line)' }}>
