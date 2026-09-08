@@ -381,8 +381,8 @@
     {
       "id": 10,
       "type": "timeseries",
-      "title": "Metrics scrape health",
-      "description": "Configure the very-happy scrape job as documented. No series means the scrape is not configured, not that the service is healthy.",
+      "title": "Metrics scrape health \u2014 at least one slot",
+      "description": "1 means at least one Very Happy slot is scrapeable. A stopped inactive blue/green slot is expected to be 0; per-slot series are shown for diagnosis. No data means this job is not being scraped.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -396,8 +396,13 @@
       "targets": [
         {
           "refId": "A",
+          "expr": "max(up{job=\"very-happy\"})",
+          "legendFormat": "overall \u00b7 at least one slot"
+        },
+        {
+          "refId": "B",
           "expr": "up{job=\"very-happy\"}",
-          "legendFormat": "{{instance}}"
+          "legendFormat": "slot {{slot}} \u00b7 inactive may be offline"
         }
       ],
       "fieldConfig": {

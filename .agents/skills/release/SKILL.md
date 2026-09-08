@@ -5,7 +5,7 @@ description: Release and deploy very-happy: publish the very-happy-cli npm packa
 
 # very-happy release
 
-Production is `veryhappy.dev`: server + Web V2 on vh-us, published CLI on
+Production is `veryhappy.dev`: server + Web V2 on vh-sg (AWS Singapore), published CLI on
 npm, daemon on mac-office. `docs/operations.md` is the topology/runbook source;
 `docs/PROCESS.md` is the gate/process source.
 
@@ -125,14 +125,14 @@ Environment changes are different: `docker compose restart` does not reread
 `env_file`. Before groundwork only, the legacy command is:
 
 ```bash
-ssh vh-us 'cd /opt/happy && docker compose up -d --force-recreate happy-server'
+ssh vh-sg 'cd /opt/happy && docker compose up -d --force-recreate happy-server'
 ```
 
 After groundwork, never use that command: deploy the active merged `main` with
 `rollout=switch`, so candidate reads the new env while old remains available.
 
 The legacy `hw-sg` SSH alias is not the control origin and must never be used
-for production deployment. If `vh-us` is absent or does not resolve to the
+for production deployment. If `vh-sg` is absent or does not resolve to the
 current `veryhappy.dev` origin, stop and establish the exact target first.
 
 After publishing a CLI that changes handover behavior, run `vh-update` on
@@ -207,7 +207,7 @@ pin always beats the lookup), then deploy so the candidate reads the new env
 (`restart` does not reread `env_file`):
 
 ```sh
-ssh vh-us
+ssh vh-sg
 sed -i 's|^CLI_RECOMMENDED_VERSION=.*|CLI_RECOMMENDED_VERSION=X.Y.Z|' /opt/happy/.env
 gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
 curl -fsS https://veryhappy.dev/v1/version/cli   # must not be source:"unavailable"
@@ -228,7 +228,7 @@ machine while they are away — deliberately lagging `latest` by a release or tw
 is what gives the fleet a staged rollout:
 
 ```sh
-ssh vh-us
+ssh vh-sg
 sed -i 's|^CLI_AUTO_UPDATE_VERSION=.*|CLI_AUTO_UPDATE_VERSION=X.Y.Z|' /opt/happy/.env
 gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
 ```
@@ -282,8 +282,9 @@ regression — another session deploying on top of you is the common case:
 git merge-base --is-ancestor <your-sha> <live-sha> && echo "yours is in"
 ```
 
-For browser acceptance, hard-refresh or unregister the service worker before
-declaring a mixed-version failure. Complete relevant items in
+For browser acceptance, record the loaded entry/CSS and controlling service
+worker before refreshing. Verify takeover via `controllerchange` and the actual
+loaded entry; reload alone does not prove a version migration. Complete relevant items in
 `docs/verify-queue.md`.
 
 ## Rollback
