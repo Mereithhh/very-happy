@@ -66,4 +66,16 @@ describe('team coordination invariants', () => {
         expect(() => f.act({ type: 'session-event', sessionId: 'old-worker', event: 'exited' })).toThrow('session_not_bound');
         expect(root.root).toBe(true);
     });
+    it('fences delayed acceptance after a return and resubmission', () => {
+        const f = fixture(); f.act({ type: 'join', name: 'A', sessionId: 'a' });
+        f.act({ type: 'delegate', goal: 'g', acceptance: ['a'], assigneeBotId: f.state.bots[0].id });
+        const first = f.state.tasks[0];
+        f.act({ type: 'submit', taskId: first.id, attemptId: first.currentAttemptId, goalVersion: 1, result: 'v1' });
+        f.act({ type: 'return', taskId: first.id, attemptId: first.currentAttemptId, goalVersion: 1, reason: 'fix' });
+        const second = f.state.tasks[0];
+        f.act({ type: 'submit', taskId: second.id, attemptId: second.currentAttemptId, goalVersion: 1, result: 'v2' });
+        expect(() => f.act({ type: 'accept', taskId: first.id, attemptId: first.currentAttemptId, goalVersion: 1 })).toThrow('stale_attempt');
+        expect(f.state.tasks[0].status).toBe('submitted');
+    });
+
 });

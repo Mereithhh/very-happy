@@ -57,7 +57,7 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         await expect(store.readTeam(other.id, { token })).rejects.toMatchObject({ code: 'invalid_team_token' });
         await expect(store.actOnTeam(t.id, { token }, { requestId: 'forge', action: { type: 'join', name: 'evil', sessionId } })).rejects.toMatchObject({ code: 'owner_required' });
         await store.actOnTeam(t.id, { accountId }, { requestId: 'rebind', action: { type: 'join', name: 'root', sessionId, botId: joined.credential!.botId } });
-        await expect(store.readTeam(t.id, { token })).rejects.toMatchObject({ code: 'invalid_team_token' });
+        expect((await store.readTeam(t.id, { token })).bots[0].generation).toBe(1);
     });
     it('rejects team credentials at generic account API authentication', async () => {
         const t = await store.createTeam(accountId, { name: 'Route auth', machineId });
@@ -77,6 +77,18 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         process.env.VH_AGENT_TEAMS_ENABLED = 'true'; process.env.VH_AGENT_TEAMS_ACCOUNT_IDS = 'different-account';
         await expect(store.listTeams(accountId)).rejects.toMatchObject({ code: 'teams_disabled' });
         delete process.env.VH_AGENT_TEAMS_ACCOUNT_IDS;
+    });
+
+    it('requires the previous session to stop before rebinding a bot', async () => {
+        const t = await store.createTeam(accountId, { name: 'Rebind', machineId });
+        const joined = await store.actOnTeam(t.id, { accountId }, { requestId: 'join', action: { type: 'join', name: 'Root', sessionId } });
+        const successor = await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } });
+        const request = { requestId: 'rebind', action: { type: 'join' as const, name: 'Root', sessionId: successor.id, botId: joined.credential!.botId } };
+        await expect(store.actOnTeam(t.id, { accountId }, request)).rejects.toMatchObject({ code: 'old_session_still_active' });
+        await db.session.update({ where: { id: sessionId }, data: { active: false } });
+        expect((await store.actOnTeam(t.id, { accountId }, request)).team.bots[0].sessionId).toBe(successor.id);
+        await expect(store.readTeam(t.id, { token: joined.credential!.token })).rejects.toMatchObject({ code: 'invalid_team_token' });
+        await db.session.update({ where: { id: sessionId }, data: { active: true } });
     });
 
 });

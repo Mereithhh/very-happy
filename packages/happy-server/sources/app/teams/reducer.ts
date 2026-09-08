@@ -63,9 +63,10 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
     switch (action.type) {
         case 'join': {
             owner();
-            requireTeam(!s.bots.some(b => b.sessionId === action.sessionId && b.id !== action.botId), 'session_already_bound');
-            let bot = action.botId ? s.bots.find(b => b.id === action.botId) : undefined;
+            if (action.botId) requireTeam(!s.bots.some(b => b.sessionId === action.sessionId && b.id !== action.botId), 'session_already_bound');
+            let bot = action.botId ? s.bots.find(b => b.id === action.botId) : s.bots.find(b => b.sessionId === action.sessionId);
             if (action.botId) requireTeam(bot, 'bot_not_found', 404);
+            if (bot && bot.sessionId === action.sessionId) { bot.name = action.name; credentialBotId = bot.id; break; }
             if (bot) {
                 bot.generation++; bot.sessionId = action.sessionId; bot.name = action.name;
                 for (const task of s.tasks.filter(t => t.assigneeBotId === bot!.id && !['done', 'cancelled'].includes(t.status))) {
@@ -102,6 +103,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             requireTeam(bot.sessionId || bot.managed, 'bot_not_bound');
             requireTeam(!s.operations.some(o => o.botId === bot!.id && o.type === 'stop' && o.status !== 'completed'), 'bot_cleanup_pending');
             requireTeam(!s.tasks.some(t => t.assigneeBotId === bot!.id && !['done', 'cancelled'].includes(t.status)), 'bot_busy');
+            if (action.assigneeBotId && !bot.sessionId) bot.generation++;
             const attemptId = id();
             const t: TeamTask = { id: id(), parentTaskId: parent?.id ?? null, goal: action.goal, acceptance: action.acceptance, goalVersion: 1, ownerBotId: actor.kind === 'agent' ? actor.botId : null, assigneeBotId: bot.id, status: bot.sessionId ? 'running' : 'queued', attempts: [{ id: attemptId, botId: bot.id, generation: bot.generation, goalVersion: 1, status: bot.sessionId ? 'running' : 'pending', result: null }], currentAttemptId: attemptId, cleanup: 'none' };
             s.tasks.push(t);
@@ -132,7 +134,11 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         }
         case 'return': {
             const t = getTask(action.taskId); controls(t); requireTeam(t.currentAttemptId === action.attemptId && t.goalVersion === action.goalVersion, 'stale_attempt'); requireTeam(t.status === 'submitted', 'task_not_submitted');
-            t.status = 'running'; t.attempts.find(a => a.id === t.currentAttemptId)!.status = 'running'; msg(t, t.assigneeBotId, action.reason); break;
+            t.attempts.find(a => a.id === t.currentAttemptId)!.status = 'superseded';
+            const bot = s.bots.find(b => b.id === t.assigneeBotId)!;
+            t.currentAttemptId = id(); t.status = 'running';
+            t.attempts.push({ id: t.currentAttemptId, botId: bot.id, generation: bot.generation, goalVersion: t.goalVersion, status: 'running', result: null });
+            msg(t, t.assigneeBotId, `Revision requested (attempt ${t.currentAttemptId}): ${action.reason}`); break;
         }
         case 'cancel': {
             const t = getTask(action.taskId); controls(t); requireTeam(t.currentAttemptId === action.attemptId && t.goalVersion === action.goalVersion, 'stale_attempt'); requireTeam(!['done', 'cancelled'].includes(t.status), 'task_already_closed');
@@ -150,6 +156,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             requireTeam(!s.tasks.some(other => other.assigneeBotId === bot.id && !['done', 'cancelled'].includes(other.status)), 'bot_busy');
             if (actor.kind === 'agent') requireTeam(currentBot?.root || s.tasks.some(other => actorCanReadTask(s, actor, other) && other.assigneeBotId === bot.id), 'bot_outside_scope', 403);
             cleanup(t); t.attempts.find(a => a.id === t.currentAttemptId)!.status = 'superseded';
+            if (!bot.sessionId) bot.generation++;
             t.assigneeBotId = bot.id; t.currentAttemptId = id(); t.cleanup = 'none';
             t.attempts.push({ id: t.currentAttemptId, botId: bot.id, generation: bot.generation, goalVersion: t.goalVersion, status: bot.sessionId ? 'running' : 'pending', result: null });
             t.status = bot.sessionId ? 'running' : 'queued';
@@ -194,6 +201,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             owner();
             const bot = s.bots.find(b => b.sessionId === action.sessionId);
             requireTeam(bot, 'session_not_bound', 404);
+            bot.lastEvent = action.event; bot.lastEventAt = now;
             for (const task of s.tasks.filter(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status))) {
                 const before = s.messages.length;
                 msg(task, task.ownerBotId, `Agent ${bot.name}: ${action.event}. Task ${task.id} still requires explicit submission and acceptance.`);

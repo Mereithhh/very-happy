@@ -117,6 +117,13 @@ export async function actOnTeam(teamId: string, auth: { accountId: string } | { 
             const sessionId = action.sessionId!;
             requireTeam(await tx.session.findFirst({ where: { id: sessionId, accountId: p.accountId }, select: { id: true } }), 'session_not_found', 404);
         }
+        if (action.type === 'join' && action.botId) {
+            const old = row.state.bots.find(b => b.id === action.botId);
+            if (old?.sessionId && old.sessionId !== action.sessionId) {
+                const oldSession = await tx.session.findFirst({ where: { id: old.sessionId, accountId: p.accountId }, select: { active: true } });
+                requireTeam(!oldSession?.active, 'old_session_still_active');
+            }
+        }
         const reduced = reduceTeam(row.state, p.actor, action, { now: Date.now(), id: randomUUID });
         const state = JSON.stringify({ ...reduced.team, messages: undefined, operations: undefined });
         const updated = await tx.$executeRaw`UPDATE "AgentTeam" SET "version"=${reduced.team.version},"state"=${state}::jsonb,"updatedAt"=now() WHERE "id"=${teamId} AND "accountId"=${p.accountId} AND "version"=${row.version}`;
