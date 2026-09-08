@@ -19,8 +19,8 @@ const op = (): TeamOperation => ({ id: 'op1', teamId: 'team1', machineId: 'machi
 const team = (operations: TeamOperation[]): TeamState => ({ id: 'team1', name: 'Team', machineId: 'machine1', version: 1, bots: [{ id: 'bot1', name: 'Worker', sessionId: 'session1', generation: 1, root: false, managed: true, assistant: 'codex', directory: '/repo' }], tasks: [{ id: 'task1', parentTaskId: null, goal: 'g', acceptance: ['a'], goalVersion: 1, ownerBotId: null, assigneeBotId: 'bot1', status: 'queued', attempts: [], currentAttemptId: 'attempt1', cleanup: 'none' }], messages: [], operations, createdAt: 1 });
 const spawn = vi.fn();
 const stopAndWait = vi.fn();
-function start() {
-    const worker = createTeamWorker({ home, serverUrl: 'http://127.0.0.1:1', machineId: 'machine1', token: 'test', spawn, stopAndWait, live: () => false, log: () => {} });
+function start(live: () => boolean = () => false) {
+    const worker = createTeamWorker({ home, serverUrl: 'http://127.0.0.1:1', machineId: 'machine1', token: 'test', spawn, stopAndWait, live, log: () => {} });
     workers.push(worker);
     return worker;
 }
@@ -31,7 +31,7 @@ async function settled(worker: ReturnType<typeof createTeamWorker>) {
 function setup(operation: TeamOperation) {
     const state = team([operation]);
     mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [operation], teams: [state] } : { team: state } }));
-    mocks.post.mockImplementation(async (_: string, request: { action: { type: string } }) => ({ data: { team: state, operation: { ...operation, status: 'claimed', claimId: 'claim1' }, ...(request.action.type === 'claim-operation' ? { credential: { botId: 'bot1', token: 'scoped-test' } } : {}) } }));
+    mocks.post.mockImplementation(async (path: string, request: { action: { type: string } }) => path.endsWith('/schedules/tick') ? { data: { fired: 0, errors: [] } } : ({ data: { team: state, operation: { ...operation, status: 'claimed', claimId: 'claim1' }, ...(request.action?.type === 'claim-operation' ? { credential: { botId: 'bot1', token: 'scoped-test' } } : {}) } }));
 }
 beforeEach(() => {
     vi.clearAllMocks();
@@ -65,7 +65,7 @@ describe('daemon team effect recovery', () => {
         const original = mocks.post.getMockImplementation()!;
         let failed = false;
         mocks.post.mockImplementation(async (...args) => {
-            if (args[1].action.type === 'complete-operation' && !failed) { failed = true; throw new Error('lost ACK'); }
+            if (args[1].action?.type === 'complete-operation' && !failed) { failed = true; throw new Error('lost ACK'); }
             return original(...args);
         });
         const worker = start(); await settled(worker);
@@ -81,7 +81,7 @@ describe('daemon team effect recovery', () => {
         const worker = start(); await settled(worker);
         expect(spawn).not.toHaveBeenCalled();
         expect(mocks.send).not.toHaveBeenCalled();
-        expect(mocks.post.mock.calls.some(c => c[1].action.unknown === true)).toBe(true);
+        expect(mocks.post.mock.calls.some(c => c[1].action?.unknown === true)).toBe(true);
         mocks.persisted.mockReturnValue({ session1: { metadata: { teamOperationId: 'op1' } } });
         await worker.tick();
         expect(spawn).not.toHaveBeenCalled();
@@ -100,7 +100,7 @@ describe('daemon team effect recovery', () => {
         mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [operation], teams: [state] } : { team: state } }));
         const worker = start(); await settled(worker);
         expect(spawn).not.toHaveBeenCalled();
-        expect(mocks.post.mock.calls.some(c => c[1].action.error === 'task_closed_before_spawn')).toBe(true);
+        expect(mocks.post.mock.calls.some(c => c[1].action?.error === 'task_closed_before_spawn')).toBe(true);
         expect(readReceipt(home, 'op1')?.phase).toBe('completed');
     });
     it('withholds the initial task if cancellation happens while the wrapper starts', async () => {
@@ -139,7 +139,38 @@ describe('daemon team effect recovery', () => {
         mocks.remove.mockRejectedValue(new Error('Unmerged work retained'));
         const worker = start(); await settled(worker);
         expect(mocks.archive).toHaveBeenCalledWith('session1');
-        expect(mocks.post.mock.calls.some(c => c[1].action.type === 'complete-operation')).toBe(false);
-        expect(mocks.post.mock.calls.some(c => c[1].action.type === 'fail-operation')).toBe(true);
+        expect(mocks.post.mock.calls.some(c => c[1].action?.type === 'complete-operation')).toBe(false);
+        expect(mocks.post.mock.calls.some(c => c[1].action?.type === 'fail-operation')).toBe(true);
     });
+    it('advances schedules in the existing poll and refuses a subsequently cancelled message', async () => {
+        setup(op());
+        const state = team([]);
+        state.messages = [{ id: 'scheduled-1', taskId: null, scheduleId: 'scheduled', senderBotId: null, source: 'system', recipientBotId: 'bot1', body: 'Inspect', deliveredAt: null, createdAt: 1 }];
+        const cancelled = structuredClone(state); cancelled.messages[0].cancelledAt = 2;
+        mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [], teams: [state] } : { team: cancelled } }));
+        const worker = start(() => true); await settled(worker);
+        expect(mocks.post).toHaveBeenCalledWith('/v1/teams/schedules/tick', { machineId: 'machine1' });
+        expect(mocks.send).not.toHaveBeenCalled();
+    });
+    it('retries a scheduled message across daemon restart using the same stable localId', async () => {
+        setup(op());
+        const state = team([]);
+        state.messages = [{ id: 'scheduled-1', taskId: null, scheduleId: 'scheduled', senderBotId: null, source: 'system', recipientBotId: 'bot1', body: 'Inspect', deliveredAt: null, createdAt: 1 }];
+        mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [], teams: [state] } : { team: state } }));
+        const original = mocks.post.getMockImplementation()!;
+        mocks.post.mockImplementation(async (...args) => { if (args[1].action?.type === 'message-delivered') throw new Error('ACK lost'); return original(...args); });
+        const first = start(() => true); await settled(first); first.stop();
+        const second = start(() => true); await settled(second);
+        expect(mocks.send).toHaveBeenCalledTimes(2);
+        expect(mocks.send.mock.calls.map(c => c[4].localId)).toEqual(['teams-message-scheduled-1-1', 'teams-message-scheduled-1-1']);
+        expect(spawn).not.toHaveBeenCalled();
+    });
+    it('keeps ordinary Teams working when schedule advancement is unavailable on an old server', async () => {
+        setup(op()); const original = mocks.post.getMockImplementation()!;
+        mocks.post.mockImplementation(async (...args) => { if (args[0].endsWith('/schedules/tick')) throw new Error('404'); return original(...args); });
+        const worker = start(); await settled(worker);
+        expect(spawn).toHaveBeenCalledTimes(1);
+        expect(readReceipt(home, 'op1')?.phase).toBe('completed');
+    });
+
 });

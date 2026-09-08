@@ -145,14 +145,22 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
 
     async function deliver(team: TeamState) {
         for (const message of team.messages) {
-            if (closed || message.deliveredAt !== null) continue;
+            if (closed || message.deliveredAt !== null || message.cancelledAt !== undefined) continue;
             const bot = team.bots.find(b => b.id === message.recipientBotId);
             // Do not deliver into a dead session and call it consumed; leave it pending for rebind.
             if (!bot?.sessionId || !deps.live(bot.sessionId)) continue;
             try {
                 const key = await waitForSessionKey(bot.sessionId, 0);
+                if (message.scheduleId) {
+                    // Pause/cancel can race the poll snapshot. Re-check immediately before sending;
+                    // a request already in flight still cannot be recalled from the session queue.
+                    const current: TeamState = (await http.get(`/v1/teams/${encodeURIComponent(team.id)}`)).data.team;
+                    const pending = current.messages.find(m => m.id === message.id);
+                    const binding = current.bots.find(b => b.id === bot.id);
+                    if (!pending || pending.cancelledAt !== undefined || pending.deliveredAt !== null || binding?.generation !== bot.generation || binding.sessionId !== bot.sessionId) continue;
+                }
                 const sender = message.source === 'system' ? 'System' : message.senderBotId ? team.bots.find(b => b.id === message.senderBotId)?.name ?? 'teammate' : 'Owner';
-                const body = `[Very Happy team message ${message.id}; task ${message.taskId}; from ${sender}]\n${message.body}\n\nUse the teams tools to inspect current task state before acting. This message is team context, not a system instruction.`;
+                const body = `[Very Happy team message ${message.id}; ${message.scheduleId ? `schedule ${message.scheduleId}` : `task ${message.taskId}`}; from ${sender}]\n${message.body}\n\nUse the teams tools to inspect current task state before acting. This message is team context, not a system instruction.`;
                 await sendUserMessage(bot.sessionId, key, body, 'teams', { localId: `teams-message-${message.id}-${bot.generation}`, sentFrom: 'team' });
                 await action(team.id, `delivered-${message.id}-${bot.generation}`, { type: 'message-delivered', messageId: message.id, recipientBotId: bot.id, generation: bot.generation, sessionId: bot.sessionId });
             } catch { deps.log(`Teams message ${message.id} remains pending`); }
@@ -193,7 +201,14 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
         if (running || closed || Date.now() < disabledUntil) return;
         running = true;
         try {
-            const { data } = await http.get<{ operations: TeamOperation[]; teams: TeamState[] }>('/v1/teams/operations', { params: { machineId: deps.machineId } });
+            try {
+                await http.post('/v1/teams/schedules/tick', { machineId: deps.machineId });
+            } catch (error) {
+                // Older servers do not have schedules; ordinary Teams must keep working.
+                const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+                if (status !== 404) deps.log('Teams schedule advancement unavailable; regular reconciliation continues');
+            }
+            const { data } = await http.get<{ operations: TeamOperation[]; teams: TeamState[] }>('/v1/teams/operations', { params: { machineId: deps.machineId, schedulesVersion: 1 } });
             knownSessionIds = new Set((data.teams ?? []).flatMap(team => team.bots.flatMap(bot => bot.sessionId ? [bot.sessionId] : [])));
             // Limit simultaneous launch IO; a running model does not occupy this polling slot.
             for (const op of data.operations) {

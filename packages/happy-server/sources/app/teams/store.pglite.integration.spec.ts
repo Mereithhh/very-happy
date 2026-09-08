@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -111,6 +111,85 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         await expect(store.createTeam(isolated, { name: 'Over quota', machineId: machine })).rejects.toMatchObject({ code: 'team_limit' });
         await store.actOnTeam(teams[0].id, { accountId: isolated }, { requestId: 'archive', action: { type: 'archive' } });
         expect((await store.createTeam(isolated, { name: 'Replacement', machineId: machine })).id).toBeTruthy();
+    });
+
+    it('returns the stable delegated task id after later unrelated changes', async () => {
+        const team = await store.createTeam(accountId, { name: 'Task receipt', machineId });
+        const request = { requestId: 'delegation', action: { type: 'delegate' as const, goal: 'first', acceptance: ['a'] } };
+        const first = await store.actOnTeam(team.id, { accountId }, request);
+        await store.actOnTeam(team.id, { accountId }, { requestId: 'other', action: { type: 'delegate', goal: 'second', acceptance: ['a'] } });
+        const retry = await store.actOnTeam(team.id, { accountId }, request);
+        expect(first.taskId).toBe(first.team.tasks[0].id); expect(retry.taskId).toBe(first.taskId); expect(retry.team.tasks).toHaveLength(2);
+    });
+    it('advances schedules atomically under duplicate polls and keeps machine/account isolation', async () => {
+        const team = await store.createTeam(accountId, { name: 'Schedules', machineId });
+        const joined = await store.actOnTeam(team.id, { accountId }, { requestId: 'join', action: { type: 'join', name: 'Root', sessionId } });
+        const request = { requestId: 'schedule', action: { type: 'schedule-create' as const, botId: joined.credential!.botId, name: 'Once', body: 'Inspect', runAt: Date.now() - 1000 } };
+        const made = await store.actOnTeam(team.id, { token: joined.credential!.token }, request);
+        expect((await store.actOnTeam(team.id, { token: joined.credential!.token }, request)).scheduleId).toBe(made.scheduleId);
+        const polls = await Promise.all([store.tickTeamSchedules(accountId, machineId), store.tickTeamSchedules(accountId, machineId)]);
+        expect(polls.reduce((sum, p) => sum + p.fired, 0)).toBe(1);
+        const saved = await store.readTeam(team.id, { accountId }); expect(saved.messages).toHaveLength(1); expect(saved.schedules![0].fireCount).toBe(1);
+        expect((await store.tickTeamSchedules(accountId, machineId)).fired).toBe(0);
+        await expect(store.tickTeamSchedules('other-account', machineId)).rejects.toMatchObject({ code: 'machine_not_found' });
+        const otherMachine = crypto.randomUUID(); await db.machine.create({ data: { id: otherMachine, accountId, metadata: 'metadata' } });
+        expect((await store.tickTeamSchedules(accountId, otherMachine)).fired).toBe(0);
+    });
+    it('bounds persisted schedule history without pruning ordinary task messages', async () => {
+        const team = await store.createTeam(accountId, { name: 'Retention', machineId });
+        const joined = await store.actOnTeam(team.id, { accountId }, { requestId: 'join', action: { type: 'join', name: 'Root', sessionId } });
+        const botId = joined.credential!.botId;
+        await store.actOnTeam(team.id, { accountId }, { requestId: 'normal', action: { type: 'delegate', goal: 'Normal retained', acceptance: ['a'], assigneeBotId: botId } });
+        const base = Date.now();
+        await store.actOnTeam(team.id, { accountId }, { requestId: 'schedule', action: { type: 'schedule-create', botId, name: 'Repeated', body: 'Inspect', runAt: base, intervalMs: 60000 } });
+        const clock = vi.spyOn(Date, 'now');
+        try {
+            for (let i = 0; i < 70; i++) {
+                clock.mockReturnValue(base + i * 60000);
+                await store.tickTeamSchedules(accountId, machineId);
+                const current = await store.readTeam(team.id, { accountId });
+                const messageId = current.schedules![0].pendingMessageId!;
+                await store.actOnTeam(team.id, { accountId }, { requestId: `ack-${i}`, action: { type: 'message-delivered', messageId, recipientBotId: botId, generation: 1, sessionId } });
+            }
+        } finally { clock.mockRestore(); }
+        const saved = await store.readTeam(team.id, { accountId });
+        expect(saved.schedules![0].fireCount).toBe(70);
+        expect(saved.messages.filter(m => m.scheduleId).length).toBeLessThanOrEqual(64);
+        expect(saved.messages.some(m => !m.scheduleId && m.body.includes('Normal retained'))).toBe(true);
+    });
+
+    it('does not recreate a schedule when its idempotent receipt outlives bounded terminal history', async () => {
+        const team = await store.createTeam(accountId, { name: 'Schedule history', machineId });
+        const joined = await store.actOnTeam(team.id, { accountId }, { requestId: 'join', action: { type: 'join', name: 'Root', sessionId } });
+        const firstRequest = { requestId: 'first-schedule', action: { type: 'schedule-create' as const, botId: joined.credential!.botId, name: 'First', body: 'Inspect', runAt: Date.now() + 60000 } };
+        const base = Date.now(); const clock = vi.spyOn(Date, 'now'); let firstId: string | undefined;
+        try {
+            for (let i = 0; i < 66; i++) {
+                clock.mockReturnValue(base + i);
+                const request = i === 0 ? firstRequest : { requestId: `schedule-${i}`, action: { ...firstRequest.action, name: `Schedule ${i}` } };
+                const made = await store.actOnTeam(team.id, { accountId }, request);
+                firstId ??= made.scheduleId;
+                await store.actOnTeam(team.id, { accountId }, { requestId: `cancel-schedule-${i}`, action: { type: 'schedule-cancel', scheduleId: made.scheduleId!, version: 1 } });
+            }
+        } finally { clock.mockRestore(); }
+        const retry = await store.actOnTeam(team.id, { accountId }, firstRequest);
+        expect(retry.scheduleId).toBe(firstId); expect(retry.scheduleRecordRetained).toBe(false);
+        expect(retry.team.schedules).toHaveLength(64); expect(retry.team.schedules!.every(s => s.status === 'cancelled')).toBe(true);
+    });
+
+    it('withholds schedule messages from daemons without the delivery capability', async () => {
+        const { default: fastify } = await import('fastify');
+        const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');
+        const { teamRoutes } = await import('@/app/api/routes/teamRoutes');
+        const app = fastify(); app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler);
+        app.decorate('authenticate', async (request: any) => { request.userId = accountId; }); teamRoutes(app as any);
+        const legacy = await app.inject({ method: 'GET', url: `/v1/teams/operations?machineId=${machineId}` });
+        expect(legacy.statusCode).toBe(200);
+        expect(legacy.json().teams.flatMap((t: any) => t.messages).every((m: any) => !m.scheduleId)).toBe(true);
+        const current = await app.inject({ method: 'GET', url: `/v1/teams/operations?machineId=${machineId}&schedulesVersion=1` });
+        expect(current.statusCode).toBe(200);
+        expect(current.json().teams.flatMap((t: any) => t.messages).some((m: any) => m.scheduleId)).toBe(true);
+        await app.close();
     });
 
 });

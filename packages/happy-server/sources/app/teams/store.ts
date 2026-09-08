@@ -3,6 +3,7 @@ import type { TeamActionRequest, TeamResponse, TeamState, TeamOperation, TeamMes
 import { db } from '@/storage/db';
 import { inTx, type Tx } from '@/storage/inTx';
 import { encryptString, decryptString } from '@/modules/encrypt';
+import { advanceSchedules } from './schedules';
 import { reduceTeam, requireTeam, teamView, type TeamActor } from './reducer';
 
 type Principal = { accountId: string; actor: TeamActor; credentialId?: string };
@@ -25,6 +26,27 @@ async function load(tx: Tx, teamId: string, accountId?: string): Promise<Row> {
     const msgs = await tx.$queryRaw<{ state: TeamMessage }[]>`SELECT "state" FROM "TeamMessage" WHERE "teamId"=${teamId} ORDER BY "createdAt", "id"`;
     row.state = { ...row.state, version: row.version, operations: ops.map(o => o.state), messages: msgs.map(m => m.state) };
     return row;
+}
+async function persistTransition(tx: Tx, row: Row, team: TeamState): Promise<void> {
+    const state = JSON.stringify({ ...team, messages: undefined, operations: undefined });
+    const updated = await tx.$executeRaw`UPDATE "AgentTeam" SET "version"=${team.version},"state"=${state}::jsonb,"updatedAt"=now() WHERE "id"=${row.id} AND "accountId"=${row.accountId} AND "version"=${row.version}`;
+    requireTeam(updated === 1, 'team_version_conflict');
+    for (const op of team.operations) {
+        if (JSON.stringify(row.state.operations.find(old => old.id === op.id)) === JSON.stringify(op)) continue;
+        const encoded = JSON.stringify(op);
+        await tx.$executeRaw`INSERT INTO "TeamOperation" ("id","teamId","state") VALUES (${op.id},${row.id},${encoded}::jsonb) ON CONFLICT ("id") DO UPDATE SET "state"=EXCLUDED."state"`;
+    }
+    for (const message of team.messages) {
+        if (JSON.stringify(row.state.messages.find(old => old.id === message.id)) === JSON.stringify(message)) continue;
+        const encoded = JSON.stringify(message);
+        await tx.$executeRaw`INSERT INTO "TeamMessage" ("id","teamId","state") VALUES (${message.id},${row.id},${encoded}::jsonb) ON CONFLICT ("id") DO UPDATE SET "state"=EXCLUDED."state"`;
+    }
+    for (const old of row.state.messages) {
+        if (team.messages.some(message => message.id === old.id)) continue;
+        requireTeam(old.scheduleId && (old.deliveredAt !== null || old.cancelledAt !== undefined), 'unsafe_message_prune');
+        const removed = await tx.$executeRaw`DELETE FROM "TeamMessage" WHERE "teamId"=${row.id} AND "id"=${old.id} AND "state"->>'scheduleId' IS NOT NULL AND ("state"->>'deliveredAt' IS NOT NULL OR "state"->>'cancelledAt' IS NOT NULL)`;
+        requireTeam(removed === 1, 'message_prune_conflict');
+    }
 }
 async function principal(tx: Tx, teamId: string, auth: { accountId: string } | { token: string }): Promise<Principal> {
     if ('accountId' in auth) { assertTeamsEnabled(auth.accountId); return { accountId: auth.accountId, actor: { kind: 'owner' } }; }
@@ -97,14 +119,14 @@ export async function actOnTeam(teamId: string, auth: { accountId: string } | { 
         const row = await load(tx, teamId, p.accountId);
         const actorKey = p.actor.kind === 'owner' ? `owner:${p.accountId}` : `agent:${p.actor.botId}:${p.actor.generation}`;
         const requestHash = hash(JSON.stringify(request.action));
-        const prior = await tx.$queryRaw<{ actorKey: string; requestHash: string; response: { credentialBotId?: string; credentialGeneration?: number; operationId?: string } }[]>`SELECT * FROM "TeamRequest" WHERE "teamId"=${teamId} AND "requestId"=${request.requestId}`;
+        const prior = await tx.$queryRaw<{ actorKey: string; requestHash: string; response: { credentialBotId?: string; credentialGeneration?: number; operationId?: string; taskId?: string; scheduleId?: string } }[]>`SELECT * FROM "TeamRequest" WHERE "teamId"=${teamId} AND "requestId"=${request.requestId}`;
         if (p.actor.kind === 'agent') {
             const a = p.actor;
             requireTeam(row.state.bots.some(b => b.id === a.botId && b.generation === a.generation), 'stale_agent', 403);
         }
         if (prior[0]) {
             requireTeam(prior[0].actorKey === actorKey && prior[0].requestHash === requestHash, 'request_id_conflict');
-            const result: TeamResponse = { team: teamView(row.state, p.actor) };
+            const result: TeamResponse = { team: teamView(row.state, p.actor), taskId: prior[0].response.taskId, scheduleId: prior[0].response.scheduleId, ...(prior[0].response.scheduleId ? { scheduleRecordRetained: !!row.state.schedules?.some(s => s.id === prior[0].response.scheduleId) } : {}) };
             if (prior[0].response.operationId) result.operation = row.state.operations.find(o => o.id === prior[0].response.operationId);
             if (prior[0].response.credentialBotId) {
                 requireTeam(row.state.bots.find(b => b.id === prior[0].response.credentialBotId)?.generation === prior[0].response.credentialGeneration, 'stale_credential_request');
@@ -125,22 +147,35 @@ export async function actOnTeam(teamId: string, auth: { accountId: string } | { 
             }
         }
         const reduced = reduceTeam(row.state, p.actor, action, { now: Date.now(), id: randomUUID });
-        const state = JSON.stringify({ ...reduced.team, messages: undefined, operations: undefined });
-        const updated = await tx.$executeRaw`UPDATE "AgentTeam" SET "version"=${reduced.team.version},"state"=${state}::jsonb,"updatedAt"=now() WHERE "id"=${teamId} AND "accountId"=${p.accountId} AND "version"=${row.version}`;
-        requireTeam(updated === 1, 'team_version_conflict');
-        for (const op of reduced.team.operations) {
-            const encoded = JSON.stringify(op);
-            await tx.$executeRaw`INSERT INTO "TeamOperation" ("id","teamId","state") VALUES (${op.id},${teamId},${encoded}::jsonb) ON CONFLICT ("id") DO UPDATE SET "state"=EXCLUDED."state"`;
-        }
-        for (const msg of reduced.team.messages) {
-            const encoded = JSON.stringify(msg);
-            await tx.$executeRaw`INSERT INTO "TeamMessage" ("id","teamId","state") VALUES (${msg.id},${teamId},${encoded}::jsonb) ON CONFLICT ("id") DO UPDATE SET "state"=EXCLUDED."state"`;
-        }
-        const memo = JSON.stringify({ credentialBotId: reduced.credentialBotId, credentialGeneration: reduced.team.bots.find(b => b.id === reduced.credentialBotId)?.generation, operationId: reduced.operationId });
+        await persistTransition(tx, row, reduced.team);
+        const memo = JSON.stringify({ credentialBotId: reduced.credentialBotId, credentialGeneration: reduced.team.bots.find(b => b.id === reduced.credentialBotId)?.generation, operationId: reduced.operationId, taskId: reduced.taskId, scheduleId: reduced.scheduleId });
         await tx.$executeRaw`INSERT INTO "TeamRequest" ("teamId","requestId","actorKey","requestHash","response") VALUES (${teamId},${request.requestId},${actorKey},${requestHash},${memo}::jsonb)`;
-        const response: TeamResponse = { team: teamView(reduced.team, p.actor) };
+        const response: TeamResponse = { team: teamView(reduced.team, p.actor), taskId: reduced.taskId, scheduleId: reduced.scheduleId, ...(reduced.scheduleId ? { scheduleRecordRetained: !!reduced.team.schedules?.some(s => s.id === reduced.scheduleId) } : {}) };
         if (reduced.operationId) response.operation = reduced.team.operations.find(o => o.id === reduced.operationId);
         if (reduced.credentialBotId) response.credential = await credential(tx, reduced.team, reduced.credentialBotId);
         return response;
     });
+}
+
+/** Server clock + per-team transaction: empty polls never grow the idempotency ledger. */
+export async function tickTeamSchedules(accountId: string, machineId: string): Promise<{ fired: number; errors: { teamId: string; error: string }[] }> {
+    assertTeamsEnabled(accountId);
+    requireTeam(await db.machine.findFirst({ where: { id: machineId, accountId }, select: { id: true } }), 'machine_not_found', 404);
+    const rows = await db.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "machineId"=${machineId} AND "state"->>'archivedAt' IS NULL`;
+    let fired = 0;
+    const errors: { teamId: string; error: string }[] = [];
+    for (const { id } of rows) {
+        try {
+            fired += await inTx(async tx => {
+                const row = await load(tx, id, accountId);
+                const next = advanceSchedules(row.state, Date.now());
+                if (next.fired) await persistTransition(tx, row, next.team);
+                return next.fired;
+            });
+        } catch (error) {
+            if (error instanceof Error && 'code' in error && typeof error.code === 'string') errors.push({ teamId: id, error: error.code });
+            else throw error;
+        }
+    }
+    return { fired, errors };
 }

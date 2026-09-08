@@ -1,12 +1,9 @@
 import type { TeamAction, TeamState, TeamBot, TeamTask, TeamOperation } from '@slopus/happy-wire';
 
 export type TeamActor = { kind: 'owner' } | { kind: 'agent'; botId: string; generation: number };
-export class TeamError extends Error {
-    constructor(public code: string, public status = 409) { super(code); }
-}
-export function requireTeam(condition: unknown, code: string, status = 409): asserts condition {
-    if (!condition) throw new TeamError(code, status);
-}
+export { TeamError, requireTeam } from './errors';
+import { requireTeam } from './errors';
+import { applyScheduleAction, acknowledgeScheduleMessage } from './schedules';
 export function inTaskTree(state: TeamState, task: TeamTask, ancestorId: string): boolean {
     const seen = new Set<string>();
     let current: TeamTask | undefined = task;
@@ -27,9 +24,9 @@ export function teamView(state: TeamState, actor: TeamActor): TeamState {
     const tasks = state.tasks.filter(t => actorCanReadTask(state, actor, t));
     const taskIds = new Set(tasks.map(t => t.id));
     const botIds = new Set([actor.botId, ...tasks.flatMap(t => [t.assigneeBotId, t.ownerBotId].filter((x): x is string => !!x))]);
-    return { ...state, tasks, bots: state.bots.filter(b => botIds.has(b.id)), messages: state.messages.filter(m => taskIds.has(m.taskId) && (m.recipientBotId === actor.botId || m.senderBotId === actor.botId)), operations: state.operations.filter(o => taskIds.has(o.taskId)) };
+    return { ...state, tasks, bots: state.bots.filter(b => botIds.has(b.id)), schedules: state.schedules?.filter(s => s.botId === actor.botId), messages: state.messages.filter(m => (m.taskId === null ? m.recipientBotId === actor.botId : taskIds.has(m.taskId) && (m.recipientBotId === actor.botId || m.senderBotId === actor.botId))), operations: state.operations.filter(o => taskIds.has(o.taskId)) };
 }
-export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string }): { team: TeamState; credentialBotId?: string; operationId?: string } {
+export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
     requireTeam(input.archivedAt === undefined, 'team_archived');
     const s = structuredClone(input);
     const { now, id } = ctx;
@@ -61,9 +58,19 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
     };
     let credentialBotId: string | undefined;
     let operationId: string | undefined;
+    let taskId: string | undefined;
+    let scheduleId: string | undefined;
     switch (action.type) {
+        case 'schedule-create':
+        case 'schedule-pause':
+        case 'schedule-resume':
+        case 'schedule-cancel': {
+            scheduleId = applyScheduleAction(s, actor, action, now, id);
+            break;
+        }
         case 'archive': {
             owner();
+            requireTeam(!(s.schedules ?? []).some(schedule => ['active', 'paused'].includes(schedule.status)), 'team_has_active_schedules');
             requireTeam(!s.tasks.some(t => !['done', 'cancelled'].includes(t.status)), 'team_has_active_tasks');
             requireTeam(!s.operations.some(o => ['pending', 'claimed', 'unknown'].includes(o.status) || (o.status === 'failed' && o.error !== 'task_closed_before_spawn')), 'team_has_unresolved_operations');
             requireTeam(!s.tasks.some(t => ['pending', 'failed'].includes(t.cleanup)), 'team_cleanup_unfinished');
@@ -117,7 +124,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             if (action.assigneeBotId && !bot.sessionId) bot.generation++;
             const attemptId = id();
             const t: TeamTask = { id: id(), parentTaskId: parent?.id ?? null, goal: action.goal, acceptance: action.acceptance, goalVersion: 1, ownerBotId: actor.kind === 'agent' ? actor.botId : null, assigneeBotId: bot.id, status: bot.sessionId ? 'running' : 'queued', attempts: [{ id: attemptId, botId: bot.id, generation: bot.generation, goalVersion: 1, status: bot.sessionId ? 'running' : 'pending', result: null }], currentAttemptId: attemptId, cleanup: 'none' };
-            s.tasks.push(t);
+            s.tasks.push(t); taskId = t.id;
             if (bot.sessionId) msg(t, bot.id, `New task ${t.id}: ${t.goal}\nAcceptance:\n${t.acceptance.join('\n')}`);
             else operation(t, bot, 'spawn');
             break;
@@ -241,10 +248,11 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             requireTeam(action.recipientBotId === m.recipientBotId, 'recipient_required', 403);
             const recipient = s.bots.find(b => b.id === m.recipientBotId);
             requireTeam(recipient?.generation === action.generation && recipient.sessionId === action.sessionId, 'stale_delivery');
-            m.deliveredAt ??= now; break;
+            requireTeam(m.cancelledAt === undefined, 'message_cancelled');
+            m.deliveredAt ??= now; acknowledgeScheduleMessage(s, m.id, now); break;
         }
     }
     s.version++;
     requireTeam(JSON.stringify(s).length <= 2_000_000, 'team_size_limit', 429);
-    return { team: s, credentialBotId, operationId };
+    return { team: s, credentialBotId, operationId, taskId, scheduleId };
 }
