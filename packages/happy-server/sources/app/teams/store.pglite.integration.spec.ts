@@ -192,4 +192,22 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         await app.close();
     });
 
+    it('keeps a capacity-blocked Team from stopping other Teams schedule recovery', async () => {
+        const makeScheduled = async (name: string) => {
+            const team = await store.createTeam(accountId, { name, machineId });
+            const joined = await store.actOnTeam(team.id, { accountId }, { requestId: 'join', action: { type: 'join', name: 'Root', sessionId } });
+            await store.actOnTeam(team.id, { accountId }, { requestId: 'schedule', action: { type: 'schedule-create', name: 'Due', botId: joined.credential!.botId, body: 'Inspect', runAt: 1 } });
+            return team;
+        };
+        const full = await makeScheduled('At message capacity');
+        await db.$executeRaw`INSERT INTO "TeamMessage" ("id", "teamId", "state")
+            SELECT ${full.id} || '-' || i, ${full.id}, jsonb_build_object('id', ${full.id} || '-' || i, 'taskId', 'retained-task', 'senderBotId', null, 'recipientBotId', 'unused', 'body', 'retained', 'deliveredAt', null, 'createdAt', 1)
+            FROM generate_series(1, 2000) i`;
+        const healthy = await makeScheduled('Healthy after capacity failure');
+        const outcome = await store.tickTeamSchedules(accountId, machineId);
+        expect(outcome.errors).toContainEqual({ teamId: full.id, error: 'team_message_limit' });
+        expect((await store.readTeam(healthy.id, { accountId })).messages).toHaveLength(1);
+        expect((await store.readTeam(full.id, { accountId })).schedules![0].fireCount).toBe(0);
+    });
+
 });

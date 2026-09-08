@@ -10,7 +10,7 @@ function fixture() {
         get team() { return team; },
         act(action: TeamAction, actor = owner, now = 1000) { const result = reduceTeam(team, actor, action, { now, id: () => `id-${++next}` }); team = result.team; return result; },
         fire(now: number) { const result = advanceSchedules(team, now); team = result.team; return result.fired; },
-        ack() { const message = team.messages.find(m => m.id === team.schedules![0].pendingMessageId)!; this.act({ type: 'message-delivered', messageId: message.id, recipientBotId: 'bot', generation: 1, sessionId: 'session' }); },
+        ack(now = 1000) { const message = team.messages.find(m => m.id === team.schedules![0].pendingMessageId)!; this.act({ type: 'message-delivered', messageId: message.id, recipientBotId: 'bot', generation: 1, sessionId: 'session' }, owner, now); },
     };
 }
 describe('persistent schedule semantics', () => {
@@ -25,8 +25,10 @@ describe('persistent schedule semantics', () => {
         f.act({ type: 'schedule-create', name: 'Periodic', botId: 'bot', body: 'Inspect', runAt: 1000, intervalMs: 60000 });
         expect(f.fire(181000)).toBe(1); expect(f.team.schedules![0].nextRunAt).toBe(241000);
         expect(f.fire(1000000)).toBe(0); expect(f.team.messages).toHaveLength(1);
-        f.team.bots[0].sessionId = 'session'; f.ack();
-        expect(f.fire(1000000)).toBe(1); expect(f.team.schedules![0].nextRunAt).toBeGreaterThan(1000000);
+        f.team.bots[0].sessionId = 'session'; f.ack(1000000);
+        expect(f.team.schedules![0].nextRunAt).toBe(1021000);
+        expect(f.fire(1000000)).toBe(0); expect(f.fire(1020999)).toBe(0);
+        expect(f.fire(1021000)).toBe(1);
     });
     it('pauses pending delivery, rejects stale controls, and resumes from a new interval', () => {
         const f = fixture(); f.act({ type: 'schedule-create', name: 'Periodic', botId: 'bot', body: 'Inspect', runAt: 1000, intervalMs: 60000 }); f.fire(1000);

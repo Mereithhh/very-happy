@@ -174,7 +174,7 @@ export async function tickTeamSchedules(accountId: string, machineId: string): P
             });
         } catch (error) {
             if (error instanceof Error && 'code' in error && typeof error.code === 'string') errors.push({ teamId: id, error: error.code });
-            else throw error;
+            else errors.push({ teamId: id, error: 'schedule_tick_failed' });
         }
     }
     return { fired, errors };

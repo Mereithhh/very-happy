@@ -86,6 +86,11 @@ export function acknowledgeScheduleMessage(team: TeamState, messageId: string, n
     if (!schedule) return;
     delete schedule.pendingMessageId;
     if (!schedule.intervalMs) { schedule.status = 'completed'; schedule.finishedAt = now; }
+    else if (schedule.nextRunAt !== null && schedule.nextRunAt <= now) {
+        // A pending message already represents the missed offline periods. After its
+        // delivery, retain the original phase without immediately sending another catch-up.
+        schedule.nextRunAt += (Math.floor((now - schedule.nextRunAt) / schedule.intervalMs) + 1) * schedule.intervalMs;
+    }
     schedule.version++;
     pruneScheduleMessages(team, messageId);
     pruneScheduleRecords(team);
