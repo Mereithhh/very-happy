@@ -21,7 +21,7 @@
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
 | B-392 | 终端 @ 字形可辨认性；另核 pi 消息黑字 | bug | Owner 2026-09-09 | doing | 已在 test 终端 jojo@mac-office 确认：DOM 为 U+0040，Maple 默认特殊字形导致误认；启用 cv01 标准符号，保持字体/字号/行高。本地真实 xterm 对比及 mutation 回归通过，已随 629bc399 发布，线上 CSS 已核对。pi 黑字属另一路径，仍未复现，不合并宣称修复。 |
-| B-398 | **官方 Agent Teams / Happy Bot**：稳定 Bot 身份、共享 skill 激活、多 coding agent 协作与递归委派，统一任务/消息/恢复/回收并集成 Web | feat | Owner 2026-09-09 | doing | Owner 已批准实现；Final `specs/2026-09-agent-teams.md`。首批同账号同机，server 权威状态、opaque scope、attempt fencing、daemon 回执/worktree、官方 MCP/skill/pi gate 与 Web 已实现，集成验收中；默认关闭，未生产切换。 |
+| B-398 | **官方 Agent Teams / Happy Bot**：稳定 Bot 身份、共享 skill 激活、多 coding agent 协作与递归委派，统一任务/消息/恢复/回收并集成 Web | feat | Owner 2026-09-09 | doing | Owner 已批准实现；Final `specs/2026-09-agent-teams.md`。首批同账号同机，server 权威状态、opaque scope、attempt fencing、daemon 回执/worktree、官方 MCP/skill/pi gate 与 Web 已实现；Claude/Codex 真实本地派发→提交→验收→回收、四包门禁及移动端双主题浏览器验证通过。默认关闭，待 PR review；未生产切换。 |
 | B-388 | **精简项目启动上下文**：AGENTS 保留门禁、关键约束与 owner 入口，CLAUDE 只导入统一指南 | docs | Owner 2026-09-08 | done | 删除重复流程、事故叙事和静态快照，保留原规则编号及机制链接；少量独有工具经验移入 development/PROCESS。仅文档，不调整产品或生产策略。 |
 | B-387 | **部署经验入口校准**：监控托管方式、CLI handover 后系统守护、推荐/自动安装区别和启动文件去过期快照 | docs | Owner 2026-09-08 | done | 修订 metrics-graphana/release skill、AGENTS/CLAUDE；细节只保留在 monitoring/operations，个人系统 skill 只路由。技能 frontmatter、相对链接、diff 与 secret scan 验证；不改变生产配置。 |
 | B-383 | **全球连接架构升级**：美国/新加坡用户连接美国、新加坡、马来西亚、印度机器，Owner授权重大升级，目标稳定性与端到端延迟 | feat/architecture | Owner 2026-09-08 | doing | 方案 `specs/2026-09-global-connection-resilience.md`：浏览器独立端到端选路、daemon多路径待命、执行端幂等与结果查询、先连后切、按订阅转发、控制面容灾。先完成故障恢复与诊断基础；节点选址以两端实测定，生产切换需精确方案与回滚。 |
