@@ -4,18 +4,68 @@ Import `connection-quality.dashboard.json` into Grafana and select the Prometheu
 source that scrapes Very Happy. The import creates a dedicated dashboard; it does
 not modify an existing dashboard. Device and region filters have finite values.
 
-The production server exposes metrics on the active slot's **loopback** port:
-blue 9101, green 9102. Confirm `/opt/happy/release/state.env` and actual HTTP
-response before configuring a scrape. Do not expose these ports publicly.
-A collector on that host can scrape both slots with job name `very-happy`;
-relabelling/target discovery must distinguish inactive slots from an outage. A
-remote collector needs an existing authenticated/private path to the host.
-Repository Kubernetes overlays are local examples, not the production topology.
+## Deployed collection topology
 
-The dashboard includes received terminal success rate, foreground P50/P95,
-stage failures, central compatibility route share, timing sample quality,
-deduplication/coordination drops, sample count, and collector scrape health.
-There is no automatic production Grafana import or collector installation.
+The monitoring stack is the existing **sy / k8s-main** installation. Grafana and
+Prometheus run in `cattle-monitoring-system`; Prometheus retains 30 days. No
+Grafana or Prometheus server was added to the application host.
+
+```text
+Grafana (sy) → existing Prometheus (sy)
+  → monitoring/very-happy-metrics ServiceMonitor, job=very-happy
+  → 100.100.0.2:19101 / :19102 on k8s-main
+  → authenticated SSH to vh-sg
+  → 127.0.0.1:9101 blue / :9102 green on vh-sg
+```
+
+| Component | Deployment identity |
+| --- | --- |
+| Tunnel / ingress guard | `vh-metrics-tunnel.service` / `vh-metrics-firewall.service` on k8s-main |
+| Tunnel account | sy `vh-metrics-tunnel` → vh-sg `vh-metrics` |
+| Services and Endpoints | `monitoring/very-happy-metrics-blue`, `monitoring/very-happy-metrics-green` |
+| ServiceMonitor | `monitoring/very-happy-metrics`, 30s interval, 10s timeout |
+| Metric target labels | `job="very-happy"`, `slot="blue"` or `slot="green"` |
+| Grafana data source | Existing `prometheus` UID, cluster-local `rancher-monitoring-prometheus.cattle-monitoring-system:9090` |
+| Dashboard | UID `very-happy-connections`; [view](https://grafana.mereith.com/d/very-happy-connections) or [Singapore proxy](https://stat.mereith.com/d/very-happy-connections) |
+
+Both slot targets stay configured through releases. A stopped inactive slot is
+**expected to be offline**. Overall scrape health is
+`max(up{job="very-happy"})`: at least one slot must be scrapeable. The same panel
+also shows individual slot series for diagnosis. No series means collection is
+missing, not healthy. Check `/opt/happy/release/state.env` and the actual metrics
+response to identify the active slot; do not alert on every inactive-slot zero.
+
+The application metrics ports remain loopback-only on vh-sg. The tunnel binds
+only sy's private address `100.100.0.2`; the owned `VH_METRICS` iptables chain
+allows the verified sy pod CIDR `10.42.0.0/24` and the host itself to ports
+19101/19102, rejecting other sources. It does not modify Kubernetes-owned
+chains. The firewall unit starts before the tunnel and persists across reboot;
+verify these rules again if the pod CIDR or host address changes.
+
+SSH uses a dedicated on-disk private key under `/var/lib/vh-metrics-tunnel`, with
+restricted file permissions and a pinned host key. Never put keys in this repo.
+Grafana's existing Secret is read into process memory for session login; do not
+persist its password, authorization header or cookie in files/command output.
+Basic and anonymous authentication are disabled. The dashboard import resolves
+`DS_PROMETHEUS` to the existing data source, checks UID collisions, and backs up
+state before writes; it is an explicit operator action, not part of app release.
+
+## Rollback
+
+Before changes, export affected objects/dashboard to a private operator backup.
+Remove only `monitoring/very-happy-metrics` ServiceMonitor and the two explicitly
+named Service/Endpoints pairs after checking their ownership. Then stop and
+disable `vh-metrics-tunnel.service` **before** stopping its firewall unit. The
+owned `/etc/very-happy-metrics/firewall stop` removes only its exact INPUT jump
+and `VH_METRICS` chain; never flush INPUT or Kubernetes chains. Remove the two
+owned unit files and reload systemd only after verifying no tunnel is running.
+Revoke the dedicated vh-sg authorized key after stopping the connection; retain
+private keys securely for investigation or remove them under separate cleanup.
+
+For the dashboard, restore its pre-import backup, or remove a newly created UID
+only if it has not been edited since import. Collection rollback does not need
+an application restart, image rollback, Caddy change or database change. The
+repository's Kubernetes overlays are examples, not this production deployment.
 
 Interpretation:
 
