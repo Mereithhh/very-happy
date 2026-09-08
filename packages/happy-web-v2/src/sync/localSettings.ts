@@ -186,9 +186,8 @@ export const localSettingsDefaults: LocalSettings = {
     boardLayout: 'lifecycle',
     // Existing users keep the current sidebar (manual-order list).
     sidebarView: 'list',
-    // Workspace-first is the useful default; it is purely derived and never
-    // rewrites the user's manual row ordering.
-    sidebarGroupMode: 'workspace',
+    // Start with a flat, reorderable list; saved grouping choices remain intact.
+    sidebarGroupMode: 'none',
     // Flat list by default; tag grouping is an opt-in lens.
     sidebarGroupByTag: false,
     // Default to per-key mode: it's the full-fidelity terminal; users who hit

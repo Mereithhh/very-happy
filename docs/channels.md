@@ -542,6 +542,55 @@ Nothing is stored on the Happy server: the panel reads through the machine at
 view time and writes straight back out. There is no sync, no cache, and no
 second copy of your tasks.
 
+### Quick start: local file provider
+
+There is **no bundled account connector** for Dida365/TickTick, Todoist or
+Linear, and installing the CLI does not connect a task account. The repository
+includes a local JSON-file reference provider; it is a demo task source, not
+an integration with those services.
+
+1. On the machine selected in the Todo panel, save
+   [`todo-provider-jsonfile.mjs`](../packages/happy-cli/examples/todo-provider-jsonfile.mjs)
+   to a permanent location (for example `/Users/you/tools/todo-provider-jsonfile.mjs`).
+   Install Node.js if it is not already available. Run `command -v node` to get
+   its absolute path; use that path so the daemon does not depend on your shell's PATH.
+2. Run the example with a dedicated file. Replace the paths below with your
+   own absolute paths. This creates only a demo task:
+
+   ```sh
+   /absolute/path/to/node /absolute/path/to/todo-provider-jsonfile.mjs --file /absolute/path/to/demo-todos.json create "Try Todo"
+   /absolute/path/to/node /absolute/path/to/todo-provider-jsonfile.mjs --file /absolute/path/to/demo-todos.json list
+   ```
+
+3. **Merge** this property into the existing settings file; do not replace
+   its other fields. Use `~/.happy/settings.json` for the default daemon, or
+   `$HAPPY_HOME_DIR/settings.json` for a daemon started with an isolated home.
+
+   ```json
+   {
+     "todoProvider": {
+       "command": "/absolute/path/to/node",
+       "args": ["/absolute/path/to/todo-provider-jsonfile.mjs", "--file", "/absolute/path/to/demo-todos.json"]
+     }
+   }
+   ```
+
+4. Return to Todo, select the same machine, and choose **Retry** or **Refresh**.
+   Settings are read for each request, so no daemon restart is needed. Confirm
+   the demo task appears, create another task in the panel, and complete it.
+   The next `list` command should reflect both changes.
+
+To connect a real task system, supply an adapter implementing the contract
+below and complete that system's authentication on the daemon machine. Test
+all three operations with a disposable task before changing the provider
+configuration. Keep credentials in the provider's local credential store or
+environment, never in command arguments or provider stdout.
+
+If setup fails, check that the selected machine is online, the absolute paths
+exist for the daemon user, and `list` writes only the expected JSON to stdout
+(send logs to stderr). An empty list means the provider returned no tasks;
+“not configured” means this daemon's settings have no provider.
+
 ### Enabling it
 
 Add a `todoProvider` block to that machine's local `~/.happy/settings.json`:
