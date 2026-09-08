@@ -86,9 +86,8 @@ export class ConnectionDiagnostics {
 export const connectionDiagnostics = new ConnectionDiagnostics();
 export const newConnectionAttempt = () => globalThis.crypto?.randomUUID?.();
 
-export function startConnectionStage(stage: Stage, machineId?: string, attemptId: string | undefined = newConnectionAttempt()) {
+export function startConnectionStage(stage: Stage, machineId?: string, attemptId: string | undefined = newConnectionAttempt(), generation = connectionDiagnostics.epoch()) {
     const started = Date.now();
-    const generation = connectionDiagnostics.epoch();
     const emit = (outcome: Outcome) => {
         if (!attemptId || generation !== connectionDiagnostics.epoch()) return;
         const rawClient = connectionDiagnostics.client();
@@ -101,7 +100,7 @@ export function startConnectionStage(stage: Stage, machineId?: string, attemptId
         });
     };
     emit('started');
-    return { attemptId, finish: emit };
+    return { attemptId, generation, finish: emit };
 }
 
 export function connectionFailureOutcome(error: unknown): 'timeout' | 'error' {

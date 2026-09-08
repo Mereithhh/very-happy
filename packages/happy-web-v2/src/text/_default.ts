@@ -1705,8 +1705,8 @@ export const en = {
             sep08j: {
                 title: 'Bounded connection discovery and better diagnostics',
                 summary: 'Relay lookups have a deadline. Terminal connection states now show a loading indicator, clear offline feedback, and a retry action for existing terminals.',
-                fallback: 'Relay discovery now has a three-second deadline, including the response body, before the request falls back to the central connection. Requests already sent are not replayed.',
-                diagnostics: 'Server connection and RPC failure logs now retain safe diagnostic categories by default. The production startup also honors the configured metrics listener. No terminal content or credentials are logged by these diagnostics.',
+                fallback: 'Web relay discovery has a three-second deadline; CLI discovery, probing and claiming share an eight-second deadline. Stalled lookups release the connection flow without replaying operations already sent.',
+                diagnostics: 'Browser connection stages are now reported automatically, with bounded buffering during network loss. Server and relay lifecycle and RPC failure logs are enabled by default, and the configured metrics listener starts correctly. No terminal content or credentials enter these diagnostics.',
             },
             sep08a: {
                 title: 'pi gets its own default model and permission settings',

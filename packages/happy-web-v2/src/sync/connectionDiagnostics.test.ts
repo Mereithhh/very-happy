@@ -56,7 +56,10 @@ it('discards old asynchronous stage completions after account changes', () => {
     const stage = startConnectionStage('terminal_open', 'old-machine');
     connectionDiagnostics.configure({...config, token:'other-token'});
     const record = vi.spyOn(connectionDiagnostics, 'record');
-    stage.finish('error'); expect(record).not.toHaveBeenCalled();
+    stage.finish('error');
+    const child = startConnectionStage('relay_connect', 'old-machine', stage.attemptId, stage.generation);
+    child.finish('success');
+    expect(record).not.toHaveBeenCalled();
     record.mockRestore(); connectionDiagnostics.configure(null);
 });
 it('drops a deleted-target batch without disabling subsequent diagnostics', async () => {

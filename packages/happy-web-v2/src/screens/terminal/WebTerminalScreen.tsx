@@ -1701,7 +1701,7 @@ export function WebTerminalScreen() {
         // with the v1 shape (no `streamMode`), which is exactly the attach
         // fallback below — so it is safe to send unconditionally (铁律 4).
         streamMode: 'lines',
-      }, { diagnosticAttemptId: openDiagnostic.attemptId });
+      }, { diagnosticAttemptId: openDiagnostic.attemptId, diagnosticEpoch: openDiagnostic.generation });
       if (disposed) { openDiagnostic.finish('cancelled'); return; }
       if (!res.success) {
         openDiagnostic.finish(connectionFailureOutcome(new Error(res.error)));

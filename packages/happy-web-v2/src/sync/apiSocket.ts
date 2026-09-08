@@ -379,15 +379,15 @@ class ApiSocket {
     /**
      * RPC call for machines - uses legacy/global encryption (for now)
      */
-    async machineRPC<R, A>(machineId: string, method: string, params: A, opts?: { timeoutMs?: number; diagnosticAttemptId?: string }): Promise<R> {
+    async machineRPC<R, A>(machineId: string, method: string, params: A, opts?: { timeoutMs?: number; diagnosticAttemptId?: string; diagnosticEpoch?: number }): Promise<R> {
         const machineEncryption = this.encryption!.getMachineEncryption(machineId);
         if (!machineEncryption) {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const diagnostic = opts?.diagnosticAttemptId ? startConnectionStage('machine_rpc', machineId, opts.diagnosticAttemptId) : null;
+        const diagnostic = opts?.diagnosticAttemptId ? startConnectionStage('machine_rpc', machineId, opts.diagnosticAttemptId, opts.diagnosticEpoch) : null;
         try {
-        const relayCandidate = await this.ensureMachineRelay(machineId, { diagnosticAttemptId: opts?.diagnosticAttemptId });
+        const relayCandidate = await this.ensureMachineRelay(machineId, { diagnosticAttemptId: opts?.diagnosticAttemptId, diagnosticEpoch: opts?.diagnosticEpoch });
         const encryptedParams = await machineEncryption.encryptRaw(params);
         // See sessionRPC: re-check after the async encrypt so a relay that died
         // meanwhile doesn't swallow the packet until the ack timer (10–60s).
@@ -401,7 +401,7 @@ class ApiSocket {
         // users see. One short relay-ping proves the round trip first; on
         // failure we retire the relay (cooldown) and take the central path,
         // which cannot double-execute because nothing has been sent yet.
-        if (relaySocket && !(await this.relayPreflightOk(machineId, relaySocket, opts?.diagnosticAttemptId))) {
+        if (relaySocket && !(await this.relayPreflightOk(machineId, relaySocket, opts?.diagnosticAttemptId, opts?.diagnosticEpoch))) {
             relaySocket = null;
         }
         const scopedMethod = `${machineId}:${method}`;
@@ -681,8 +681,8 @@ class ApiSocket {
      * Bounded by RELAY_PREFLIGHT_MS — the whole point is to fail fast instead
      * of waiting out the 60s RPC ack timer.
      */
-    private async relayPreflightOk(machineId: string, socket: Socket, attemptId?: string): Promise<boolean> {
-        const diagnostic = attemptId ? startConnectionStage('relay_probe', machineId, attemptId) : null;
+    private async relayPreflightOk(machineId: string, socket: Socket, attemptId?: string, generation?: number): Promise<boolean> {
+        const diagnostic = attemptId ? startConnectionStage('relay_probe', machineId, attemptId, generation) : null;
         try {
             await socket.timeout(RELAY_PREFLIGHT_MS).emitWithAck('relay-ping', { sentAt: Date.now() });
             diagnostic?.finish('success');
@@ -699,7 +699,7 @@ class ApiSocket {
         }
     }
 
-    private async ensureMachineRelay(machineId: string, opts?: { strictPing?: boolean; diagnosticAttemptId?: string }): Promise<Socket | null> {
+    private async ensureMachineRelay(machineId: string, opts?: { strictPing?: boolean; diagnosticAttemptId?: string; diagnosticEpoch?: number }): Promise<Socket | null> {
         const existing = this.relaySockets.get(machineId);
         if (existing?.connected) return existing;
         if ((this.relayRetryAfter.get(machineId) ?? 0) > Date.now()) return null;
@@ -720,11 +720,11 @@ class ApiSocket {
         ]);
     }
 
-    private async connectMachineRelay(machineId: string, opts?: { strictPing?: boolean; diagnosticAttemptId?: string }): Promise<Socket | null> {
+    private async connectMachineRelay(machineId: string, opts?: { strictPing?: boolean; diagnosticAttemptId?: string; diagnosticEpoch?: number }): Promise<Socket | null> {
         if (!this.config) return null;
         this.updateRelayStatus(machineId, { transport: 'regional', state: 'connecting' });
         let assignment: RelayAssignment | null = null;
-        const discovery = startConnectionStage('relay_discovery', machineId, opts?.diagnosticAttemptId);
+        const discovery = startConnectionStage('relay_discovery', machineId, opts?.diagnosticAttemptId, opts?.diagnosticEpoch);
         try {
             assignment = await discoverRelay(`${this.config.endpoint}/v1/relays/machines/${encodeURIComponent(machineId)}`, {
                 Authorization: `Bearer ${this.config.token}`, 'X-Happy-Client': getHappyClientId(),
@@ -740,7 +740,7 @@ class ApiSocket {
             return null;
         }
 
-        const connection = startConnectionStage('relay_connect', machineId, discovery.attemptId);
+        const connection = startConnectionStage('relay_connect', machineId, discovery.attemptId, discovery.generation);
         const socket = io(assignment.url, {
             path: '/v1/relay',
             auth: { token: assignment.token, happyClient: getHappyClientId() },
