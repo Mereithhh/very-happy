@@ -55,6 +55,10 @@ validate_host_contract() {
         echo 'DATABASE_URL must declare an explicit connection_limit before two slots may run' >&2
         exit 3
     }
+    grep -Eq '^DATABASE_MIGRATION_URL=postgres(ql)?://[^[:space:]]+' "$PRODUCTION_ENV_FILE" || {
+        echo 'DATABASE_MIGRATION_URL must use a verified direct connection or session pool' >&2
+        exit 3
+    }
     [ "$(df -Pk /opt/happy | awk 'NR==2 {print $4}')" -ge 5242880 ] || { echo 'less than 5 GiB free disk' >&2; exit 3; }
     [ "$(awk '/MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)" -ge 1024 ] || { echo 'less than 1 GiB available memory' >&2; exit 3; }
 }

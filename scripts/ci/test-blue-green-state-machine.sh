@@ -56,6 +56,17 @@ ACTIVE_IMAGE=active-image
 IMAGE=candidate-image
 VERSION=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 PRODUCTION_ENV_FILE="$migration_review_file"
+# Runtime transaction pooling cannot carry Prisma's session advisory lock.
+# Exercise the real host preflight; only unrelated host probes are stubbed.
+caddy() { echo v2.10.2; }
+df() { echo unused; }
+awk() { echo 10485760; }
+printf 'REDIS_URL=redis://redis\nDATABASE_URL=postgresql://pool/happy?connection_limit=16\n' > "$migration_review_file"
+if (validate_host_contract) >/dev/null 2>&1; then fail 'production must require a separate migration endpoint'; fi
+printf 'DATABASE_MIGRATION_URL=postgresql://pool/happy_migrations\n' >> "$migration_review_file"
+(validate_host_contract) || fail 'configured migration endpoint must pass preflight'
+unset -f caddy df awk
+: > "$migration_review_file"
 migration_tree_digest() { if [ "$1" = active-image ]; then echo old; else echo new; fi; }
 if verify_migration_contract >/dev/null 2>&1; then fail 'changed migrations require commit-bound review'; fi
 printf 'VH_RELEASE_MIGRATIONS_REVIEWED=%s\n' "$VERSION" > "$migration_review_file"

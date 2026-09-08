@@ -15,6 +15,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-09-migration-session-recovery',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep09c.title',
+    summaryKey: 'changelog.releases.sep09c.summary',
+    itemKeys: ['changelog.releases.sep09c.connection'],
+  },
+  {
     id: '2026-09-09-official-agent-teams',
     date: '2026-09-09',
     cliVersion: '0.2.125',

@@ -170,7 +170,8 @@ that configured origin and never include the GitHub username in the URL.
 ## Storage and scale
 
 - No `DATABASE_URL`: embedded PGlite.
-- `DATABASE_URL`: external Postgres.
+- `DATABASE_URL`: external Postgres runtime connection.
+- `DATABASE_MIGRATION_URL`: optional migration-only PostgreSQL connection. Use a direct connection or a verified session pool when runtime uses transaction pooling. Only the Prisma migration child receives this as `DATABASE_URL`; runtime and migration-only `PGOPTIONS` remain isolated. Explicit empty/invalid values fail startup; omitted values preserve direct-Postgres compatibility. Production blue-green deployment requires it.
 - No `S3_HOST`: local files under `DATA_DIR`.
 - A configured S3 endpoint moves objects to S3-compatible storage.
 - `REDIS_URL`: multi-process event/socket coordination.
