@@ -395,7 +395,7 @@ class ApiSocket {
         // See sessionRPC: re-check after the async encrypt so a relay that died
         // meanwhile doesn't swallow the packet until the ack timer (10–60s).
         let relaySocket = relayCandidate?.connected ? relayCandidate : null;
-        const attemptedRegion = relaySocket ? diagnosticRegion(this.getMachineRelayStatus(machineId).region) : 'central';
+        const attemptedRegion = relaySocket ? diagnosticRegion(this.getMachineRelayStatus(machineId).region) : 'unknown';
         // Preflight the relay before committing the RPC to it. A relay socket
         // can be `connected` at the ws layer yet silently dropped end-to-end
         // (proxy/VPN/half-open link) — and `ensureMachineRelay` returns a CACHED
@@ -406,9 +406,12 @@ class ApiSocket {
         // failure we retire the relay (cooldown) and take the central path,
         // which cannot double-execute because nothing has been sent yet.
         if (relaySocket && !(await this.relayPreflightOk(machineId, relaySocket, opts?.diagnosticAttemptId, opts?.diagnosticEpoch))) {
-            diagnostic?.finish('fallback', attemptedRegion);
             relaySocket = null;
         }
+        // Count every compatibility-path selection, including discovery errors,
+        // no assignment and cooldown. This is route share, not failure rate.
+        // Nothing has been emitted yet; a failed emitted RPC is never replayed.
+        if (!relaySocket) diagnostic?.finish('fallback', attemptedRegion);
         actualRegion = relaySocket ? attemptedRegion : 'central';
         const scopedMethod = `${machineId}:${method}`;
         const call = (socket: Socket, route: string) => this.rpcGate.run(

@@ -31,3 +31,11 @@
 - 原真实集成测试同时覆盖断线 backoff 自动恢复、ping 过期与 recovered 语义；无证据要求改变现有 backoff 参数。
 - relay 后台超时不重建；旧 finally 不清新在途；快速可见性边沿不被去抖吞掉。
 - 仅检验本地机制；不能将其写成 Rock 历史故障根因，也未宣称已真机验证所有休眠模式。
+
+## 同批诊断接入：兼容路径占比
+
+`machine_rpc` 的 fallback 表示该调用选择 central 兼容路径，占所有已观测 machine RPC 的比例，不等同于故障率。
+包括 discovery 异常/超时、relay 连接失败、cooldown、无 assignment（可能禁用/离线）和 preflight 失败；
+在发送 RPC 前的唯一实际选路点记录一次，regional 正常不记。未知候选区域用 unknown，终态实际区域为 central。
+已发送后失败不得重放或虚报本次已回退；失败率应另看 error/timeout。
+七种行为用例覆盖上述六种 central 选择及正常 regional，断言不双计、不双发；relay 测试共 18 项通过。
