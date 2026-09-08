@@ -18,6 +18,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     teams: {
+        machineRequired: "需要在线且支持团队能力的机器，请更新并重新连接 daemon。",
+        rebind: "接管已有队友",
+        newBot: "创建新队友",
+        idle: "空闲",
+        blocked: "阻塞",
+        exited: "已退出",
+
+        transferTo: "接手队友",
+        handoff: "移交任务",
         queued: "等待执行",
         running: "执行中",
         submitted: "等待验收",

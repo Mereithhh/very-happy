@@ -27,6 +27,8 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
       response.status,
       data?.error ?? `http_${response.status}`,
     );
+  if (!data || typeof data !== "object")
+    throw new TeamsApiError(502, "invalid_response");
   return data as T;
 }
 export const listTeams = () => request<{ teams: TeamState[] }>("");

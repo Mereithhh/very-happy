@@ -16,6 +16,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     teams: {
+        machineRequired: "An online machine with Teams support is required. Update and reconnect its daemon.",
+        rebind: "Take over an existing bot",
+        newBot: "Create new bot",
+        idle: "Idle",
+        blocked: "Blocked",
+        exited: "Exited",
+
+        transferTo: "Transfer to",
+        handoff: "Hand off task",
         queued: "Queued",
         running: "Running",
         submitted: "Awaiting review",

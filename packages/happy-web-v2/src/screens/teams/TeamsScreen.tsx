@@ -9,10 +9,12 @@ import {
   TeamsApiError,
 } from "@/sync/teams";
 import { useAllMachines } from "@/sync/storage";
-import { machineLabel } from "@/utils/machineUtils";
+import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { t as tr } from "@/text";
-import { taskRows } from "./teamView";
+import { sync } from "@/sync/sync";
+import { newestTeam, taskRows } from "./teamView";
+import { useTranslation } from "@/i18n/useTranslation";
 const taskStatus = (): Record<string, string> => ({
   queued: tr("teams.queued"),
   running: tr("teams.running"),
@@ -25,6 +27,7 @@ export function TeamsScreen() {
   return <TeamsContent key={teamId ?? "list"} />;
 }
 function TeamsContent() {
+  useTranslation();
   const { teamId } = useParams();
   const navigate = useNavigate();
   const machines = useAllMachines({ includeOffline: true });
@@ -33,11 +36,13 @@ function TeamsContent() {
   const [team, setTeam] = useState<TeamState | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [pending, setPending] = useState<{
     action: TeamAction;
     requestId: string;
   } | null>(null);
   function fail(e: unknown) {
+    if (e instanceof TeamsApiError && e.status === 404) setUnavailable(true);
     setError(
       e instanceof TeamsApiError && e.status === 404
         ? tr("teams.unavailable")
@@ -48,8 +53,11 @@ function TeamsContent() {
   }
   async function load() {
     try {
-      if (teamId) { const next = (await getTeam(teamId)).team; setTeam(previous => previous && previous.version > next.version ? previous : next); }
-      else setTeams((await listTeams()).teams);
+      if (teamId) {
+        const next = (await getTeam(teamId)).team;
+        setTeam((previous) => newestTeam(previous, next));
+      } else setTeams((await listTeams()).teams);
+      setUnavailable(false);
     } catch (e) {
       fail(e);
     }
@@ -61,7 +69,13 @@ function TeamsContent() {
     const timer = window.setInterval(() => {
       if (!document.hidden) void load();
     }, 10000);
-    return () => clearInterval(timer);
+    const unsubscribe = sync.onResume(() => {
+      void load();
+    });
+    return () => {
+      clearInterval(timer);
+      unsubscribe();
+    };
   }, [teamId]);
   async function act(action?: TeamAction) {
     if (!teamId || busy) return;
@@ -71,17 +85,29 @@ function TeamsContent() {
     setPending(p);
     setBusy(true);
     try {
-      setTeam((await actOnTeam(teamId, p.action, p.requestId)).team);
+      const next = (await actOnTeam(teamId, p.action, p.requestId)).team;
+      setTeam((previous) => newestTeam(previous, next));
       setPending(null);
       setError("");
     } catch (e) {
-      if (e instanceof TeamsApiError && e.status < 500) setPending(null);
+      if (e instanceof TeamsApiError && e.status < 500) {
+        setPending(null);
+        if (e.status === 409) void load();
+      }
       fail(e);
     } finally {
       setBusy(false);
     }
   }
-  const disabled = busy || pending !== null;
+  const disabled = busy || pending !== null || unavailable;
+  const supportsTeams = (machine: (typeof machines)[number]) =>
+    (machine.metadata as { teamsVersion?: number } | null)?.teamsVersion ===
+      1 && isMachineOnline(machine);
+  const dispatchReady =
+    !!team &&
+    machines.some(
+      (machine) => machine.id === team.machineId && supportsTeams(machine),
+    );
   return (
     <main className="teams-screen">
       <header>
@@ -110,6 +136,9 @@ function TeamsContent() {
       {!teamId && (
         <>
           <p>{tr("teams.intro")}</p>
+          {!machines.some(supportsTeams) && (
+            <p role="status">{tr("teams.machineRequired")}</p>
+          )}
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -146,13 +175,16 @@ function TeamsContent() {
               <select name="machineId" required>
                 <option value="">{tr("teams.selectMachine")}</option>
                 {machines.map((m) => (
-                  <option key={m.id} value={m.id}>
+                  <option key={m.id} value={m.id} disabled={!supportsTeams(m)}>
                     {machineLabel(m)}
                   </option>
                 ))}
               </select>
             </label>
-            <button className="teams-primary" disabled={disabled}>
+            <button
+              className="teams-primary"
+              disabled={disabled || !machines.some(supportsTeams)}
+            >
               {tr("teams.create")}
             </button>
           </form>
@@ -173,11 +205,19 @@ function TeamsContent() {
         <>
           <section>
             <h2>{tr("teams.bots")}</h2>
-            <p>{tr("teams.joinHint")}</p>
+
             {team.bots.map((b) => (
               <div className="teams-row" key={b.id}>
                 <strong>{b.name}</strong>
                 <span>{b.root ? tr("teams.lead") : b.assistant}</span>
+                {b.lastEvent && (
+                  <span>
+                    {tr(`teams.${b.lastEvent}`)}{" "}
+                    {b.lastEventAt
+                      ? new Date(b.lastEventAt).toLocaleString()
+                      : ""}
+                  </span>
+                )}
                 {b.sessionId ? (
                   <Link to={`/session/${encodeURIComponent(b.sessionId)}`}>
                     {tr("teams.openSession")}
@@ -187,91 +227,115 @@ function TeamsContent() {
                 )}
               </div>
             ))}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                void act({
-                  type: "join",
-                  name: String(f.get("name")),
-                  sessionId: String(f.get("sessionId")),
-                });
-              }}
-            >
-              <label>
-                {tr("teams.leadName")}
-                <input name="name" required />
-              </label>
-              <label>
-                {tr("teams.sessionId")}
-                <input name="sessionId" required />
-              </label>
-              <button disabled={disabled}>{tr("teams.join")}</button>
-            </form>
-          </section>
-          <section>
-            <h2>{tr("teams.delegateTitle")}</h2>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                void act({
-                  type: "delegate",
-                  goal: String(f.get("goal")),
-                  acceptance: String(f.get("acceptance"))
-                    .split("\n")
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                  directory: String(f.get("directory")),
-                  assistant: String(f.get("assistant")) as
-                    | "claude"
-                    | "codex"
-                    | "pi-acp",
-                  parentTaskId: String(f.get("parent")) || undefined,
-                });
-              }}
-            >
-              <label className="teams-wide">
-                {tr("teams.goal")}
-                <textarea name="goal" required />
-              </label>
-              <label className="teams-wide">
-                {tr("teams.acceptance")}
-                <textarea name="acceptance" required />
-              </label>
-              <label>
-                {tr("teams.directory")}
-                <input
-                  name="directory"
-                  required
-                  placeholder="/path/to/project"
-                />
-              </label>
-              <label>
-                Coding agent
-                <select name="assistant">
-                  <option value="claude">Claude Code</option>
-                  <option value="codex">Codex</option>
-                  <option value="pi-acp">pi</option>
-                </select>
-              </label>
-              <label>
-                {tr("teams.parent")}
-                <select name="parent">
-                  <option value="">{tr("teams.independent")}</option>
-                  {team.tasks
-                    .filter((t) => !["done", "cancelled"].includes(t.status))
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.goal}
+            <details>
+              <summary>{tr("teams.join")}</summary>
+              <p>{tr("teams.joinHint")}</p>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const f = new FormData(e.currentTarget);
+                  void act({
+                    type: "join",
+                    name: String(f.get("name")),
+                    sessionId: String(f.get("sessionId")),
+                    botId: String(f.get("botId")) || undefined,
+                  });
+                }}
+              >
+                <label>
+                  {tr("teams.leadName")}
+                  <input name="name" required />
+                </label>
+                <label>
+                  {tr("teams.sessionId")}
+                  <input name="sessionId" required />
+                </label>
+                <label>
+                  {tr("teams.rebind")}
+                  <select name="botId">
+                    <option value="">{tr("teams.newBot")}</option>
+                    {team.bots.map((bot) => (
+                      <option key={bot.id} value={bot.id}>
+                        {bot.name}
                       </option>
                     ))}
-                </select>
-              </label>
-              <button className="teams-primary" disabled={disabled}>
-                {tr("teams.delegate")}
-              </button>
-            </form>
+                  </select>
+                </label>
+                <button disabled={disabled}>{tr("teams.join")}</button>
+              </form>
+            </details>
+          </section>
+          <section>
+            <details>
+              <summary>{tr("teams.delegateTitle")}</summary>
+              {!dispatchReady && (
+                <p role="status">{tr("teams.machineRequired")}</p>
+              )}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const f = new FormData(e.currentTarget);
+                  void act({
+                    type: "delegate",
+                    goal: String(f.get("goal")),
+                    acceptance: String(f.get("acceptance"))
+                      .split("\n")
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                    directory: String(f.get("directory")),
+                    assistant: String(f.get("assistant")) as
+                      | "claude"
+                      | "codex"
+                      | "pi-acp",
+                    parentTaskId: String(f.get("parent")) || undefined,
+                  });
+                }}
+              >
+                <label className="teams-wide">
+                  {tr("teams.goal")}
+                  <textarea name="goal" required />
+                </label>
+                <label className="teams-wide">
+                  {tr("teams.acceptance")}
+                  <textarea name="acceptance" required />
+                </label>
+                <label>
+                  {tr("teams.directory")}
+                  <input
+                    name="directory"
+                    required
+                    placeholder="/path/to/project"
+                  />
+                </label>
+                <label>
+                  Coding agent
+                  <select name="assistant">
+                    <option value="claude">Claude Code</option>
+                    <option value="codex">Codex</option>
+                    <option value="pi-acp">pi</option>
+                  </select>
+                </label>
+                <label>
+                  {tr("teams.parent")}
+                  <select name="parent">
+                    <option value="">{tr("teams.independent")}</option>
+                    {team.tasks
+                      .filter((t) => !["done", "cancelled"].includes(t.status))
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.goal}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <button
+                  className="teams-primary"
+                  disabled={disabled || !dispatchReady}
+                >
+                  {tr("teams.delegate")}
+                </button>
+              </form>
+            </details>
           </section>
           <section>
             <h2>{tr("teams.tasks")}</h2>
@@ -296,8 +360,9 @@ function TeamsContent() {
                 )}
                 <p>
                   {tr("teams.assignee")}：
-                  {team.bots.find((b) => b.id === t.assigneeBotId)?.name} ·{" "}
-                  {tr("teams.cleanup")}：{t.cleanup}
+                  {team.bots.find((b) => b.id === t.assigneeBotId)?.name ??
+                    t.assigneeBotId}{" "}
+                  · {tr("teams.cleanup")}：{t.cleanup}
                 </p>
                 <ul>
                   {t.acceptance.map((a, i) => (
@@ -319,7 +384,14 @@ function TeamsContent() {
                 {t.status === "submitted" && (
                   <button
                     disabled={disabled}
-                    onClick={() => void act({ type: "accept", taskId: t.id, attemptId: t.currentAttemptId, goalVersion:t.goalVersion })}
+                    onClick={() =>
+                      void act({
+                        type: "accept",
+                        taskId: t.id,
+                        attemptId: t.currentAttemptId,
+                        goalVersion: t.goalVersion,
+                      })
+                    }
                   >
                     {tr("teams.accept")}
                   </button>
@@ -338,7 +410,8 @@ function TeamsContent() {
                               type: type as "return" | "cancel",
                               taskId: t.id,
                               reason: body,
- attemptId: t.currentAttemptId, goalVersion:t.goalVersion,
+                              attemptId: t.currentAttemptId,
+                              goalVersion: t.goalVersion,
                             },
                       );
                     }}
@@ -360,6 +433,36 @@ function TeamsContent() {
                     <button disabled={disabled}>{tr("teams.execute")}</button>
                   </form>
                 )}
+                {!["done", "cancelled"].includes(t.status) &&
+                  team.bots.length > 1 && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const form = new FormData(e.currentTarget);
+                        void act({
+                          type: "handoff",
+                          taskId: t.id,
+                          assigneeBotId: String(form.get("assignee")),
+                          attemptId: t.currentAttemptId,
+                          goalVersion: t.goalVersion,
+                        });
+                      }}
+                    >
+                      <label>
+                        {tr("teams.transferTo")}
+                        <select name="assignee" required>
+                          {team.bots
+                            .filter((bot) => bot.id !== t.assigneeBotId)
+                            .map((bot) => (
+                              <option key={bot.id} value={bot.id}>
+                                {bot.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <button disabled={disabled}>{tr("teams.handoff")}</button>
+                    </form>
+                  )}
                 {team.messages
                   .filter((m) => m.taskId === t.id)
                   .slice(-5)

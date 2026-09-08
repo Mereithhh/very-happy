@@ -1,4 +1,4 @@
-import type { TeamTask } from "@slopus/happy-wire";
+import type { TeamTask, TeamState } from "@slopus/happy-wire";
 export function taskRows(
   tasks: TeamTask[],
 ): { task: TeamTask; depth: number }[] {
@@ -17,4 +17,14 @@ export function taskRows(
   // Keep malformed/orphan relationships visible instead of dropping work.
   for (const task of tasks) visit(task, 0);
   return rows;
+}
+
+/** Polls and idempotent action replays may finish out of order. */
+export function newestTeam(
+  current: TeamState | null,
+  next: TeamState,
+): TeamState {
+  return current?.id === next.id && current.version > next.version
+    ? current
+    : next;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { TeamTask } from "@slopus/happy-wire";
-import { taskRows } from "./teamView";
+import type { TeamTask, TeamState } from "@slopus/happy-wire";
+import { newestTeam, taskRows } from "./teamView";
 const task = (id: string, parentTaskId: string | null) =>
   ({ id, parentTaskId }) as TeamTask;
 describe("team task tree", () => {
@@ -24,5 +24,17 @@ describe("team task tree", () => {
       task("orphan", "missing"),
     ]);
     expect(rows.map((r) => r.task.id).sort()).toEqual(["a", "b", "orphan"]);
+  });
+});
+
+describe("team response ordering", () => {
+  it("does not regress after a slow read or old idempotent replay", () => {
+    const current = { id: "one", version: 4 } as TeamState;
+    expect(newestTeam(current, { id: "one", version: 3 } as TeamState)).toBe(
+      current,
+    );
+    expect(
+      newestTeam(current, { id: "one", version: 5 } as TeamState).version,
+    ).toBe(5);
   });
 });
