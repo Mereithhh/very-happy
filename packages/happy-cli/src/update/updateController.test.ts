@@ -36,3 +36,56 @@ describe('update recovery lifecycle', () => {
     expect(deps.install).toHaveBeenCalledTimes(1); expect(deps.publish.mock.lastCall?.[0]).toMatchObject({currentVersion: '0.2.122',autoUpdate:{state:'installed'}});
   });
 });
+
+describe('operation fence', () => {
+  it('does not replace policy while an idle decision is suspended', async () => {
+    const {deps, controller} = setup(); deps.idle.mockReturnValue(false);
+    await controller.refresh();
+    let resume!:()=>void;
+    deps.enabled.mockImplementationOnce(()=>new Promise(resolve=>{resume=()=>resolve(true);}));
+    deps.idle.mockReturnValue(true);
+    const pending=controller.tick();
+    deps.policy.mockResolvedValue({...policy,autoUpdateVersion:null});
+    await controller.refresh(); // skipped while a decision owns the fence
+    expect(deps.policy).toHaveBeenCalledTimes(1);
+    resume(); await pending;
+    await controller.refresh(); // revoked policy is applied only after the operation completes
+    expect(deps.publish.mock.lastCall?.[0].autoUpdate?.state).toBe('unapproved');
+    expect(deps.install).toHaveBeenCalledTimes(1);
+  });
+  it('preflight cannot overlap pending settings or installation',async()=>{
+    const {deps,controller}=setup(); deps.idle.mockReturnValue(false); await controller.refresh();
+    let resume!:()=>void;
+    deps.enabled.mockImplementationOnce(()=>new Promise(resolve=>{resume=()=>resolve(true);}));
+    deps.idle.mockReturnValue(true); const pending=controller.tick(); const preflight=vi.fn(async()=>{});
+    await controller.withHandover(preflight); expect(preflight).not.toHaveBeenCalled();
+    resume(); await pending; await controller.withHandover(preflight); expect(preflight).toHaveBeenCalledTimes(1);
+  });
+  it('holds the fence across preflight and ownership release',async()=>{
+    const {deps,controller}=setup(); deps.idle.mockReturnValue(false); await controller.refresh();
+    let resume!:()=>void;
+    const handover=controller.withHandover(()=>new Promise(resolve=>{resume=resolve;}));
+    deps.idle.mockReturnValue(true); await controller.tick(); await controller.refresh();
+    expect(deps.install).not.toHaveBeenCalled(); resume(); await handover;
+    await controller.tick(); expect(deps.install).toHaveBeenCalledTimes(1);
+  });
+  it('keeps a handover failure visible and permits a verified explicit retry',async()=>{
+    vi.useFakeTimers(); try {
+      const {deps,controller}=setup(); deps.install.mockResolvedValue(0); await controller.refresh();
+      await controller.withHandover(async()=>controller.holdHandover('bundle did not start'));
+      deps.policy.mockResolvedValue({...policy,checkedAt:1001}); await controller.refresh();
+      expect(deps.publish.mock.lastCall?.[0]).toMatchObject({autoUpdate:{state:'failed'},handoverHold:{reason:'bundle did not start'}});
+      expect(await controller.retry('0.2.123')).toEqual({accepted:true});
+      await vi.runAllTimersAsync(); expect(deps.install).toHaveBeenCalledTimes(2);
+      await controller.withHandover(async()=>controller.holdHandover('bundle did not start'));
+      expect(deps.publish.mock.lastCall?.[0].autoUpdate?.state).toBe('failed');
+    } finally { vi.useRealTimers(); }
+  });
+  it('blocks retries and handover after an unconfirmed process-tree termination',async()=>{
+    const {deps,controller}=setup(); deps.install.mockResolvedValue('blocked' as any); await controller.refresh();
+    const preflight=vi.fn(async()=>{}); await controller.withHandover(preflight); await controller.tick();
+    expect(preflight).not.toHaveBeenCalled(); expect(deps.install).toHaveBeenCalledTimes(1);
+    expect(deps.publish.mock.lastCall?.[0]).toMatchObject({retrySupported:false,autoUpdate:{state:'manual_required'}});
+    expect(await controller.retry('0.2.123')).toHaveProperty('error');
+  });
+});

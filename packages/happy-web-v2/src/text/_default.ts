@@ -2429,9 +2429,10 @@ export const en = {
         retryAccepted: 'Retry accepted. Installation waits until the machine is idle.',
         retryFailed: 'Retry was not accepted. Check the connection and approved version, or use the manual command.',
         recovery: {
+            manual_required: 'Automatic processing stopped. Confirm the installer has exited, then recover with the fixed-version command below.',
             waiting_idle: 'Waiting for sessions and terminals to become idle',
-            installing: 'Installing the approved version',
-            installed: 'Installed; waiting for verified daemon handover',
+            installing: 'Installing the update',
+            installed: 'Installed; waiting to switch to the new version',
             failed: 'Installation failed; retry or use the manual command',
             disabled: 'Automatic installation is disabled on this machine',
             current: 'Running version meets the automatic update target',

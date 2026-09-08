@@ -1,6 +1,6 @@
 import { apiSocket } from '@/sync/apiSocket';
 
-const states = new Set(['waiting_idle', 'installing', 'installed', 'failed', 'disabled', 'current', 'unapproved', 'policy_stale']);
+const states = new Set(['waiting_idle', 'installing', 'installed', 'failed', 'disabled', 'current', 'unapproved', 'policy_stale', 'manual_required']);
 export function readUpdateRecovery(value: unknown, online: boolean, now = Date.now()) {
   const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const auto = raw.autoUpdate && typeof raw.autoUpdate === 'object' ? raw.autoUpdate as Record<string, unknown> : {};

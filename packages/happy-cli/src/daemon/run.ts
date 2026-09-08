@@ -133,12 +133,6 @@ async function preflightNewBundle(bundlePath: string): Promise<HandoverPreflight
   }
 }
 
-/** Attach (or clear) a handover hold on the published update policy. */
-function withHandoverHold(state: CliUpdateState | null, reason: string | null): CliUpdateState | null {
-  if (!state) return state;
-  return reason ? { ...state, handoverHold: { reason, at: Date.now() } } : { ...state, handoverHold: null };
-}
-
 const HANDOVER_PREFLIGHT_TIMEOUT_MS = 30_000;
 export async function startDaemon(): Promise<void> {
   // B-276: hoisted so spawnSession (defined below, called later) never hits the TDZ.
@@ -1669,6 +1663,7 @@ export async function startDaemon(): Promise<void> {
         .catch((error) => logger.debug('[DAEMON RUN] could not refresh the recorded host:', error));
     }
 
+    let lastUpdateLog = '';
     const updateController = createUpdateController({
       policy: () => fetchCliUpdateState(configuration.serverUrl, packageJson.version),
       enabled: async () => ((await readSettings()).cliAutoUpdate ?? 'idle') !== 'off',
@@ -1679,7 +1674,11 @@ export async function startDaemon(): Promise<void> {
         fileState = { ...fileState, cliUpdate: state };
         writeDaemonState(fileState);
         apiMachine.setCliUpdateState(state);
-        logger.warn(`[DAEMON RUN] CLI update: ${state.autoUpdate?.state} target=${state.autoUpdate?.version ?? 'none'}`);
+        const logKey = JSON.stringify([state.autoUpdate?.state, state.autoUpdate?.version, state.autoUpdate?.detail]);
+        if (logKey !== lastUpdateLog) {
+          lastUpdateLog = logKey;
+          logger.warn(`[DAEMON RUN] CLI update: ${state.autoUpdate?.state} target=${state.autoUpdate?.version ?? 'none'} detail=${state.autoUpdate?.detail ?? 'none'}`);
+        } else { logger.debug('[DAEMON RUN] CLI update policy refreshed'); }
       },
     });
     apiMachine.setCliUpdateRetryHandler(updateController.retry);
@@ -1722,8 +1721,8 @@ export async function startDaemon(): Promise<void> {
       }
 
       // Reconsider busy waits on the existing heartbeat; never hand over during npm writes.
-      void updateController.tick().catch((error) => logger.debug('[DAEMON RUN] Update tick failed:', error));
-      if (updateController.isRunning()) return;
+      await updateController.tick();
+      await updateController.withHandover(async () => {
 
       // Check if daemon needs update by detecting whether `dist/index.mjs` was
       // replaced on disk since the daemon started (npm install rewrites the file).
@@ -1752,8 +1751,8 @@ export async function startDaemon(): Promise<void> {
           if (lastHandoverHold !== preflight.reason) {
             lastHandoverHold = preflight.reason;
             logger.warn(`[DAEMON RUN] holding handover: ${preflight.reason}`);
-            void apiMachine.setCliUpdateState(withHandoverHold(cliUpdateStateRef, preflight.reason));
           }
+          updateController.holdHandover(preflight.reason);
           // Keep serving on the code we have. The next heartbeat re-checks, so a
           // still-finishing install is picked up moments later.
           return;
@@ -1787,6 +1786,8 @@ export async function startDaemon(): Promise<void> {
 
         process.exit(0);
       }
+
+      });
 
       // Before wrecklessly overriting the daemon state file, we should check if we are the ones who own it
       // Race condition is possible, but thats okay for the time being :D

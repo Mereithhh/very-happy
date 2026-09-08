@@ -70,3 +70,29 @@ strictly allowlisted arguments but does not apply Unix symlink/tree repair.
 Verified locally: 30 CLI update behavior tests (including build/typecheck), Web
 recovery parser/RPC tests, Web typecheck, and 390px coarse-pointer Chromium layout
 in both themes. Integration/full gates are owned by the parent release task.
+
+## Review correction: single operation fence
+
+Policy refresh, explicit retry validation, idle decisions and the complete
+handover preflight/ownership-release sequence share one controller fence.
+This closes two reproduced races: an idle tick resuming against a replaced
+policy could install a revoked target; a preflight for one bundle could finish
+after another install and hand over a different, unverified bundle. Busy RPCs
+return immediately, and accepted retries still return before starting npm.
+Handover preflight failures enter retained failed state with a hold reason and
+can be explicitly retried against a freshly checked approved target.
+
+Npm runs in its own Unix process group; deadlines terminate the whole group.
+Windows uses a validated cmd invocation and taskkill /T for the owned process
+subtree. If exit cannot be confirmed within the termination grace period, the
+controller disables retries and handover, reports manual_required, and performs
+no further package/link writes. This fence lasts for the running daemon process;
+manual recovery must confirm the installer has exited before restarting it.
+State/target/detail transitions are warning logs; unchanged policy refreshes are
+debug logs while the latest state is still republished to keep status fresh.
+
+Real macOS fault injection (temporary probe, no npm): a Node parent spawned a
+grandchild inheriting stdout, both holding the pipe open. The 500ms deadline
+returned in 513ms with terminationConfirmed=true; both PIDs were absent 200ms
+later. Windows process-tree behavior is covered by mocked invocation tests, not
+a local Windows host run.
