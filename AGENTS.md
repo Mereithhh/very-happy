@@ -33,6 +33,7 @@ AGENTS.md（事实源；CLAUDE.md 导入）── 入口：门禁 / 铁律 / 热
   │    └─ docs/verify-queue.md ── 验收层：留真机验证项登记 / 清账
   ├─ docs/channels.md ─────── 对外契约：webhook 出站 + spawn/send/MCP 入站
   ├─ docs/development.md ──── 本地：Web V2 + standalone server + CLI
+  ├─ docs/monitoring/README.md ── 指标采集/托管看板/验证与回滚（metrics-graphana 入口）
   ├─ docs/operations.md ───── 生产：vh-sg/mac-office 发布、恢复与回滚（含 2026-09-07 迁移记录）
   ├─ .agents/skills/ ──────── Codex/Claude 共用的 repo-local dev/release 操作入口
   ├─ docs/*.md ────────────── 架构事实（protocol / backend / cli，多为上游遗留，以代码为准）
@@ -181,6 +182,7 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    `npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@<version> && very-happy daemon start`。
    `daemon start` 是幂等的 version/endpoint-aware handover：不在线则启动，不匹配则优雅接管；
    当前没有 `daemon restart` 子命令，禁止凭名字臆造或改成可能把机器留离线的 `stop && start`。
+   mac-office 的 handover 会让新 daemon 脱离 launchd；按 `docs/operations.md` 的 Re-adopt 流程恢复守护，核验 launchd running + daemon 版本 + RPC，不能只看 `daemon status`。
    handover 只替换 daemon；已经运行的 agent session wrapper / SDK Query 仍是旧进程，CLI 新能力必须用
    升级后新建或明确续接重启的会话验收，不得把 daemon 版本等同于存量会话已热升级。
    **`npm i -g` 自己会失败，且两种形态都出过**（2026-09-03/04 一天内各踩两次）：①它拒绝覆盖
