@@ -464,6 +464,17 @@ duplicate title tools. `very-happy mcp` discovers the daemon using
 
 ## Inbound: todo provider (external task lists in the web UI)
 
+**No setup is required for Todos → My todos.** The built-in list belongs to your
+account and syncs without an online machine. It supports editing, completion,
+reopening, deletion and manual order. The following optional integration appears
+under **Todos → External source**; it does not replace or import the built-in list.
+
+For AI-assisted setup, give your agent the [provider skill](../packages/happy-web-v2/public/skills/very-happy-todo-provider/SKILL.md)
+(published at `/skills/very-happy-todo-provider/SKILL.md`). Official OAuth connectors
+are not included yet. External create/complete actions write to the selected
+provider, and task execution by an agent does not automatically complete a Todo.
+
+
 Happy can show an external todo system in its web **Todo panel** (`/todos`) and
 let you tick items off and add new ones, without Happy knowing anything about
 that system. You supply a command; Happy runs it on the machine its daemon
@@ -506,7 +517,7 @@ an integration with those services.
    }
    ```
 
-4. Return to Todo, select the same machine, and choose **Retry** or **Refresh**.
+4. Return to Todo → External source, select the same machine, and choose **Retry** or **Refresh**.
    Settings are read for each request, so no daemon restart is needed. Confirm
    the demo task appears, create another task in the panel, and complete it.
    The next `list` command should reflect both changes.

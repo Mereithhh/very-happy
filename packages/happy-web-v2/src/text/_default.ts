@@ -962,6 +962,7 @@ export const en = {
     // command configured on EACH machine, so every string here has to keep
     // "which machine" and "your script, not ours" visible.
     todos: {
+        providerSkill: 'AI skill for connecting an external source',
         // B-007 分组维度切换（四象限 = 按优先级分桶）
         groupBy: 'Group by',
         groupByPriorityHint: 'Group by priority',
@@ -1789,6 +1790,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09a: {
+                title: 'Todos work without setup',
+                summary: 'Capture tasks in My todos, with no provider or connected machine required.',
+                builtin: 'Create, edit, complete, reopen, delete and reorder tasks. Your list syncs with your account across devices.',
+                sources: 'Your existing provider is available under External source. External tasks stay in their original service. An AI setup skill helps connect your own integration.',
+                safety: 'Changes are confirmed by the server. Concurrent edits show a conflict and keep your draft; failed requests do not silently mark tasks as complete.',
+            },
             sep09c: {
                 title: 'More reliable server upgrades',
                 summary: 'Database migrations use a dedicated session connection when the runtime uses a transaction pool.',
