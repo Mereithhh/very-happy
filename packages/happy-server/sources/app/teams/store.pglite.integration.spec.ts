@@ -91,4 +91,26 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         await db.session.update({ where: { id: sessionId }, data: { active: true } });
     });
 
+    it('archives inactive teams without losing history or idempotent receipts', async () => {
+        const team = await store.createTeam(accountId, { name: 'Archive', machineId });
+        const archive = { requestId: 'archive', action: { type: 'archive' as const } };
+        const archived = await store.actOnTeam(team.id, { accountId }, archive);
+        expect(archived.team.archivedAt).toBeTypeOf('number');
+        expect((await store.listTeams(accountId)).some(t => t.id === team.id)).toBe(false);
+        expect((await store.listTeams(accountId, machineId)).some(t => t.id === team.id)).toBe(false);
+        expect((await store.readTeam(team.id, { accountId })).archivedAt).toBe(archived.team.archivedAt);
+        expect((await store.actOnTeam(team.id, { accountId }, archive)).team.archivedAt).toBe(archived.team.archivedAt);
+        await expect(store.actOnTeam(team.id, { accountId }, { requestId: 'after-archive', action: { type: 'delegate', goal: 'g', acceptance: ['a'] } })).rejects.toMatchObject({ code: 'team_archived' });
+    });
+    it('counts only active teams toward the creation quota', async () => {
+        const isolated = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
+        const machine = crypto.randomUUID();
+        await db.machine.create({ data: { id: machine, accountId: isolated, metadata: 'metadata' } });
+        const teams = [];
+        for (let i = 0; i < 32; i++) teams.push(await store.createTeam(isolated, { name: `Team ${i}`, machineId: machine }));
+        await expect(store.createTeam(isolated, { name: 'Over quota', machineId: machine })).rejects.toMatchObject({ code: 'team_limit' });
+        await store.actOnTeam(teams[0].id, { accountId: isolated }, { requestId: 'archive', action: { type: 'archive' } });
+        expect((await store.createTeam(isolated, { name: 'Replacement', machineId: machine })).id).toBeTruthy();
+    });
+
 });

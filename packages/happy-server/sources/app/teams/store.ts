@@ -64,7 +64,7 @@ export async function createTeam(accountId: string, input: { name: string; machi
                 return existingTeam;
             }
         }
-        const count = await tx.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "AgentTeam" WHERE "accountId"=${accountId}`;
+        const count = await tx.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL`;
         requireTeam(Number(count[0].count) < 32, 'team_limit', 429);
         const team: TeamState = { id: teamId, name: input.name, machineId: input.machineId, version: 0, bots: [], tasks: [], messages: [], operations: [], createdAt: Date.now() };
         const state = JSON.stringify({ ...team, messages: undefined, operations: undefined });
@@ -76,8 +76,8 @@ export async function listTeams(accountId: string, machineId?: string): Promise<
     assertTeamsEnabled(accountId);
     return inTx(async tx => {
         const rows = machineId
-            ? await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "machineId"=${machineId} ORDER BY "createdAt"`
-            : await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} ORDER BY "createdAt"`;
+            ? await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "machineId"=${machineId} AND "state"->>'archivedAt' IS NULL ORDER BY "createdAt"`
+            : await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL ORDER BY "createdAt"`;
         const teams: TeamState[] = [];
         for (const row of rows) teams.push((await load(tx, row.id, accountId)).state);
         return teams;

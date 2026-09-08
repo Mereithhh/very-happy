@@ -78,4 +78,21 @@ describe('team coordination invariants', () => {
         expect(f.state.tasks[0].status).toBe('submitted');
     });
 
+    it('refuses archival until active work and uncertain execution are resolved', () => {
+        const f = fixture(); f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
+        expect(() => f.act({ type: 'archive' })).toThrow('team_has_active_tasks');
+        const op = f.state.operations[0];
+        f.act({ type: 'claim-operation', operationId: op.id, machineId: 'machine' });
+        const task = f.state.tasks[0];
+        f.act({ type: 'cancel', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, reason: 'stop' });
+        expect(() => f.act({ type: 'archive' })).toThrow('team_has_unresolved_operations');
+    });
+
+    it('cannot bind a spawned bot to another bot existing session', () => {
+        const f = fixture(); f.act({ type: 'join', name: 'Root', sessionId: 'root' });
+        f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
+        const op = f.state.operations[0]; f.act({ type: 'claim-operation', operationId: op.id, machineId: 'machine' });
+        expect(() => f.act({ type: 'complete-operation', operationId: op.id, machineId: 'machine', claimId: f.state.operations[0].claimId!, sessionId: 'root' })).toThrow('session_already_bound');
+    });
+
 });

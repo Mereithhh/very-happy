@@ -30,6 +30,7 @@ export function teamView(state: TeamState, actor: TeamActor): TeamState {
     return { ...state, tasks, bots: state.bots.filter(b => botIds.has(b.id)), messages: state.messages.filter(m => taskIds.has(m.taskId) && (m.recipientBotId === actor.botId || m.senderBotId === actor.botId)), operations: [] };
 }
 export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string }): { team: TeamState; credentialBotId?: string; operationId?: string } {
+    requireTeam(input.archivedAt === undefined, 'team_archived');
     const s = structuredClone(input);
     const { now, id } = ctx;
     const currentBot = actor.kind === 'agent' ? s.bots.find(b => b.id === actor.botId) : undefined;
@@ -61,6 +62,14 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
     let credentialBotId: string | undefined;
     let operationId: string | undefined;
     switch (action.type) {
+        case 'archive': {
+            owner();
+            requireTeam(!s.tasks.some(t => !['done', 'cancelled'].includes(t.status)), 'team_has_active_tasks');
+            requireTeam(!s.operations.some(o => ['pending', 'claimed', 'unknown'].includes(o.status) || (o.status === 'failed' && o.error !== 'task_closed_before_spawn')), 'team_has_unresolved_operations');
+            requireTeam(!s.tasks.some(t => ['pending', 'failed'].includes(t.cleanup)), 'team_cleanup_unfinished');
+            s.archivedAt = now;
+            break;
+        }
         case 'join': {
             owner();
             if (action.botId) requireTeam(!s.bots.some(b => b.sessionId === action.sessionId && b.id !== action.botId), 'session_already_bound');
@@ -185,6 +194,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                 if (op.type === 'spawn') {
                     requireTeam(action.sessionId, 'session_required', 400);
                     requireTeam(bot.generation === op.generation, 'stale_generation');
+                    requireTeam(!s.bots.some(other => other.id !== bot.id && other.sessionId === action.sessionId), 'session_already_bound');
                     requireTeam(!bot.sessionId || bot.sessionId === action.sessionId, 'bot_already_bound');
                     bot.sessionId = action.sessionId; op.sessionId = action.sessionId;
                     if (t.currentAttemptId === op.attemptId && t.status === 'queued') { t.status = 'running'; t.attempts.find(a => a.id === op.attemptId)!.status = 'running'; }
