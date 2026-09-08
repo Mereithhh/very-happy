@@ -1,3 +1,4 @@
+vi.mock('@/teams/piRuntime', () => ({ preparePiTeamsRuntime: async () => ({ PI_ACP_PI_COMMAND: 'official-pi-wrapper' }) }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
@@ -299,6 +300,7 @@ describe('runAcp', () => {
     await runPromise;
 
     expect(mocks.backendState.constructorArgs.env).toEqual({
+      PI_ACP_PI_COMMAND: 'official-pi-wrapper',
       HAPPY_MCP_URL: 'http://127.0.0.1:9876',
       HAPPY_SESSION_ID: 'happy-session-1',
       HAPPY_PERMISSION_MODE: 'default',

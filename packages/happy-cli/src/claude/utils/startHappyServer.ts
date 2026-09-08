@@ -6,6 +6,7 @@
  * This is required by MCP SDK >=1.27 which rejects reuse of an already-connected transport.
  */
 
+import { registerTeamsTools, TEAM_TOOL_NAMES } from '@/teams/tools';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -50,11 +51,13 @@ export interface StartHappyServerOptions {
     assistant?: boolean;
 }
 
-function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions): McpServer {
+function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string): McpServer {
     const mcp = new McpServer({
         name: "Very Happy Tools",
         version: "1.0.0",
     });
+
+    registerTeamsTools(mcp, sessionId);
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -171,7 +174,7 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
         };
     });
 
-    if (options?.assistant) {
+    if (options?.assistant && !process.env.VH_TEAM_SCOPE_FILE) {
         registerAssistantTools(mcp);
     }
 
@@ -258,7 +261,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
     };
 
     const server = createServer(async (req, res) => {
-        const mcp = createMcpServer(handlers, options);
+        const mcp = createMcpServer(handlers, options, client.sessionId);
         try {
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined
@@ -294,7 +297,8 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             CLIPBOARD_TOOL_NAME,
             PREVIEW_TOOL_NAME,
             REPORT_PROGRESS_TOOL_NAME,
-            ...(options?.assistant ? ASSISTANT_TOOL_NAMES : []),
+            ...TEAM_TOOL_NAMES,
+            ...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : []),
         ],
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);

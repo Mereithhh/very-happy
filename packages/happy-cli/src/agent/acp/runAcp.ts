@@ -1,3 +1,4 @@
+import { preparePiTeamsRuntime } from '@/teams/piRuntime';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
@@ -618,12 +619,14 @@ export async function runAcp(opts: {
   // happy MCP server by env: a pi extension (or any agent that reads env) can
   // connect to HAPPY_MCP_URL directly. `mcpServers` stays for agents that do
   // honour the ACP handoff.
+  const teamsPiEnv = opts.agentName === 'pi' ? await preparePiTeamsRuntime() : {};
   const backend = new AcpBackend({
     agentName: opts.agentName,
     cwd: process.cwd(),
     command: opts.command,
     args: opts.args,
     env: {
+      ...teamsPiEnv,
       HAPPY_MCP_URL: happyServer.url,
       HAPPY_SESSION_ID: session.sessionId,
       HAPPY_PERMISSION_MODE: initialPermissionMode,

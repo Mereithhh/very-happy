@@ -25,6 +25,7 @@
  * stdio framing). logger.debug is file-only; errors go to stderr.
  */
 
+import { registerTeamsTools } from '@/teams/tools';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -96,7 +97,7 @@ export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToo
         });
     }
 
-    if (surface === 'assistant') {
+    if (surface === 'assistant' && !process.env.VH_TEAM_SCOPE_FILE) {
         registerAssistantSessionTools(server);
     }
 }
@@ -110,6 +111,7 @@ export async function handleMcpCommand(): Promise<void> {
     const surface = resolveMcpToolSurface(process.env);
     const terminalId = resolveMcpTerminalId(process.env);
     registerMcpTools(server, surface, terminalId);
+    if (process.env.HAPPY_MANAGED !== '1' && !process.env.HAPPY_MCP_URL) registerTeamsTools(server, process.env.HAPPY_SESSION_ID);
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
