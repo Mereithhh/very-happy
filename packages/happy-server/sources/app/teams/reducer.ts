@@ -77,6 +77,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             if (action.botId) requireTeam(bot, 'bot_not_found', 404);
             if (bot && bot.sessionId === action.sessionId) { bot.name = action.name; credentialBotId = bot.id; break; }
             if (bot) {
+                requireTeam(!s.operations.some(o => o.botId === bot!.id && o.status !== 'completed' && !(o.status === 'failed' && o.error === 'task_closed_before_spawn')), 'bot_has_unresolved_operations');
+                requireTeam(!s.tasks.some(t => t.assigneeBotId === bot!.id && ['pending', 'failed'].includes(t.cleanup)), 'bot_cleanup_unfinished');
                 bot.generation++; bot.sessionId = action.sessionId; bot.name = action.name;
                 for (const task of s.tasks.filter(t => t.assigneeBotId === bot!.id && !['done', 'cancelled'].includes(t.status))) {
                     task.attempts.find(a => a.id === task.currentAttemptId)!.status = 'superseded';
@@ -236,6 +238,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         case 'message-delivered': {
             const m = s.messages.find(m => m.id === action.messageId); requireTeam(m, 'message_not_found', 404);
             requireTeam(actor.kind === 'owner' || m.recipientBotId === actor.botId, 'recipient_required', 403);
+            requireTeam(action.recipientBotId === m.recipientBotId, 'recipient_required', 403);
+            const recipient = s.bots.find(b => b.id === m.recipientBotId);
+            requireTeam(recipient?.generation === action.generation && recipient.sessionId === action.sessionId, 'stale_delivery');
             m.deliveredAt ??= now; break;
         }
     }

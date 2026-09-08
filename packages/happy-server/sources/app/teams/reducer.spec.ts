@@ -113,4 +113,27 @@ describe('team coordination invariants', () => {
         expect(f.state.archivedAt).toBe(1000);
     });
 
+    it('blocks rebinding a bot while old cleanup is unresolved', () => {
+        const f = fixture(); f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
+        const op = f.state.operations[0]; f.act({ type: 'claim-operation', operationId: op.id, machineId: 'machine' });
+        f.act({ type: 'complete-operation', operationId: op.id, claimId: f.state.operations[0].claimId!, machineId: 'machine', sessionId: 'old-session' });
+        const task = f.state.tasks[0];
+        f.act({ type: 'cancel', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, reason: 'stop' });
+        expect(() => f.act({ type: 'join', botId: task.assigneeBotId, sessionId: 'new-session', name: 'new' })).toThrow('bot_has_unresolved_operations');
+        // Merely refreshing the same binding remains idempotent.
+        const generation = f.state.bots[0].generation;
+        f.act({ type: 'join', botId: task.assigneeBotId, sessionId: 'old-session', name: 'old' });
+        expect(f.state.bots[0].generation).toBe(generation);
+    });
+    it('rejects an old-session delivery acknowledgement after rebinding', () => {
+        const f = fixture(); f.act({ type: 'join', name: 'worker', sessionId: 'old' }); const bot = f.state.bots[0];
+        f.act({ type: 'delegate', goal: 'g', acceptance: ['a'], assigneeBotId: bot.id });
+        const message = f.state.messages[0];
+        f.act({ type: 'join', botId: bot.id, name: 'worker', sessionId: 'new' });
+        expect(() => f.act({ type: 'message-delivered', messageId: message.id, recipientBotId: bot.id, generation: 1, sessionId: 'old' })).toThrow('stale_delivery');
+        expect(f.state.messages[0].deliveredAt).toBeNull();
+        f.act({ type: 'message-delivered', messageId: message.id, recipientBotId: bot.id, generation: 2, sessionId: 'new' });
+        expect(f.state.messages[0].deliveredAt).toBe(1000);
+    });
+
 });

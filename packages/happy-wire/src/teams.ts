@@ -17,7 +17,7 @@ export const TeamActionSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('complete-operation'), operationId: id, machineId: id, claimId: id, sessionId: id.optional() }),
     z.object({ type: z.literal('fail-operation'), operationId: id, machineId: id, claimId: id, error: text, unknown: z.boolean().optional() }),
     z.object({ type: z.literal('session-event'), sessionId: id, event: z.enum(['idle', 'blocked', 'exited']) }),
-    z.object({ type: z.literal('message-delivered'), messageId: id }),
+    z.object({ type: z.literal('message-delivered'), messageId: id, recipientBotId: id, generation: z.number().int().positive(), sessionId: id }),
 ]);
 export const TeamActionRequestSchema = z.object({ requestId: id, action: TeamActionSchema });
 export const TeamCreateSchema = z.object({ name: id, machineId: id, requestId: id.optional() });
