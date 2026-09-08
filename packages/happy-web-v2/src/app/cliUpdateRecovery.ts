@@ -8,7 +8,9 @@ export function readUpdateRecovery(value: unknown, online: boolean, now = Date.n
   const known = typeof auto.state === 'string' && states.has(auto.state);
   const version = typeof auto.version === 'string' && /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(auto.version) ? auto.version : null;
   return {
-    state: stale ? 'stale' : known ? auto.state as string : 'manual',
+    // A fenced installer cannot refresh its policy. Keep its manual-recovery
+    // instruction visible while online instead of hiding it after 65 minutes.
+    state: online && auto.state === 'manual_required' ? 'manual_required' : stale ? 'stale' : known ? auto.state as string : 'manual',
     version,
     canRetry: !stale && raw.retrySupported === true && auto.state === 'failed' && !!version,
   };

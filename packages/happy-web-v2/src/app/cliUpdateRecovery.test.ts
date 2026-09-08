@@ -11,6 +11,11 @@ describe('machine update recovery',()=>{
   expect(readUpdateRecovery(state,true,4_000_000).state).toBe('stale');
   expect(readUpdateRecovery({checkedAt:1000},true,1000).state).toBe('manual');
  });
+ it('keeps manual recovery visible after policy expiry without enabling retry',()=>{
+  const blocked = {...state,retrySupported:false,autoUpdate:{state:'manual_required',version:'0.2.123'}};
+  expect(readUpdateRecovery(blocked,true,4_000_000)).toMatchObject({state:'manual_required',canRetry:false});
+  expect(readUpdateRecovery(blocked,false,4_000_000)).toMatchObject({state:'stale',canRetry:false});
+ });
  it('rejects both normal-ack errors and malformed success responses',async()=>{
   vi.mocked(apiSocket.machineRPC).mockResolvedValue({error:'denied'});
   await expect(retryMachineUpdate('m','0.2.123')).rejects.toThrow();

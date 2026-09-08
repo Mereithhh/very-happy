@@ -2327,7 +2327,7 @@ export const zhHans: TranslationStructure = {
         retryFailed: '未受理重试，请检查连接和批准版本，或使用手动升级命令。',
         recovery: {
             manual_required: '自动处理已停止。确认安装进程已退出后，使用下方固定版本升级命令手动恢复。',
-            waiting_idle: '等待会话和终端空闲',
+            waiting_idle: '等待运行中的会话和终端结束',
             installing: '正在安装更新',
             installed: '已安装，等待切换到新版本',
             failed: '安装失败，可重试或使用手动升级命令',

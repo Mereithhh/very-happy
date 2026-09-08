@@ -187,8 +187,10 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    **自己建的** bin 符号链（`EEXIST … /opt/homebrew/bin/very-happy`），通常前面还跟着
    `ENOTEMPTY rmdir .../tools`——包自己的 postinstall 写进去的文件 npm 不记账，旧树删不掉；
    ②半写坏的树，重试永远同样失败。`scripts/update-daemon.sh` 两种都已处理（装前 unlink **只**指向
-   自己树的那两个链；失败后删掉那一个包目录重装一次）。**`update/autoUpdate.ts` 与 `update/cliUpdate.ts`
-   还没有这层防御**（B-346），而自动升级对同一版本只试一次——一台机器可能就此静默地永远不升级。
+   自己树的那两个链；失败后删掉那一个包目录重装一次）。自动安装的同类恢复统一在 `update/npmInstall.ts`：
+   先核验 npm prefix/root、包身份和全部 bin 归属，仅针对 EEXIST/ENOTEMPTY 做一次窄路径修复；网络失败
+   不删包。失败状态必须保留到明确重试或批准目标变化，不能因刷新策略而抹掉界面状态却留下内部失败锁
+   （B-385）。安装与接管预检必须互斥，不得把 npm 半写期间的 mtime 或较早 bundle 的预检结果当作接管依据。
 8. **Claude SDK 会话的 Queue / Steer / Stop / permission callback 是不同控制通道**：Queue
    等当前 turn 结束，Steer 注入当前 turn，只有 Stop 才终止；`ExitPlanMode` 的权限回调只完成
    当前审批，不得在响应前嵌套发第二条 SDK control request；内部中断/diagnostic frame 不得

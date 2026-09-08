@@ -96,3 +96,5 @@ grandchild inheriting stdout, both holding the pipe open. The 500ms deadline
 returned in 513ms with terminationConfirmed=true; both PIDs were absent 200ms
 later. Windows process-tree behavior is covered by mocked invocation tests, not
 a local Windows host run.
+
+Online machines retain manual_required instructions even when the approved-version policy expires: the installer fence deliberately stops policy refresh. Offline status still indicates that the displayed state is not live.

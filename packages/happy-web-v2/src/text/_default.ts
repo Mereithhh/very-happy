@@ -2430,7 +2430,7 @@ export const en = {
         retryFailed: 'Retry was not accepted. Check the connection and approved version, or use the manual command.',
         recovery: {
             manual_required: 'Automatic processing stopped. Confirm the installer has exited, then recover with the fixed-version command below.',
-            waiting_idle: 'Waiting for sessions and terminals to become idle',
+            waiting_idle: 'Waiting for running sessions and terminals to close',
             installing: 'Installing the update',
             installed: 'Installed; waiting to switch to the new version',
             failed: 'Installation failed; retry or use the manual command',

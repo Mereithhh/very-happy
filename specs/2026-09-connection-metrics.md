@@ -49,3 +49,5 @@ sum by (stage, timing, device_class, relay_region) (rate(browser_connection_timi
 聚合丢弃另由 `browser_connection_metrics_skipped_total{code}` 呈现：`coordination_unavailable`、`coordination_timeout`与`unclaimed`（重复或本地容量）。诊断endpoint以Promise.all并发聚合32项，Redis200ms是批次并发上限而非逐项累加。
 
 回退定义为machine_rpc尝试regional而最终走central的兼容路径比例，包含discovery失败、连接失败、cooldown、无assignment或preflight失败；不是故障率，无assignment不能推断故障。未知尝试region=unknown，终态actualRegion=central。
+
+可导入看板：`docs/monitoring/connection-quality.dashboard.json`（10个面板），采集接线及口径见同目录 README。提供配置不等于生产Grafana已接入。

@@ -1,0 +1,418 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "title": "Very Happy connection quality",
+  "uid": "very-happy-connections",
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "tags": [
+    "very-happy"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Device",
+        "type": "custom",
+        "query": "mobile,desktop,unknown",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "region",
+        "label": "Executed / attempted region",
+        "type": "custom",
+        "query": "central,sg,us,other,unknown",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Terminal open success rate",
+      "description": "Received terminal outcomes only. Lost uploads and uncompleted attempts are absent; this is not a complete availability SLO. No data does not mean healthy.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (device_class, relay_region) (rate(browser_connection_stage_results_total{stage=\"terminal_open\",device_class=~\"$device\",relay_region=~\"$region\",outcome=\"success\"}[$__rate_interval])) / sum by (device_class, relay_region) (rate(browser_connection_stage_results_total{stage=\"terminal_open\",device_class=~\"$device\",relay_region=~\"$region\"}[$__rate_interval]))",
+          "legendFormat": "{{device_class}} \u00b7 {{relay_region}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Terminal open P50",
+      "description": "Successful, uncensored foreground samples only. Background, unknown and capped timings are excluded.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(.50, sum by (le, device_class, relay_region) (rate(browser_connection_stage_duration_seconds_bucket{stage=\"terminal_open\",device_class=~\"$device\",relay_region=~\"$region\",outcome=\"success\"}[$__rate_interval])))",
+          "legendFormat": "{{device_class}} \u00b7 {{relay_region}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Terminal open P95",
+      "description": "Successful, uncensored foreground samples only. Background, unknown and capped timings are excluded.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(.95, sum by (le, device_class, relay_region) (rate(browser_connection_stage_duration_seconds_bucket{stage=\"terminal_open\",device_class=~\"$device\",relay_region=~\"$region\",outcome=\"success\"}[$__rate_interval])))",
+          "legendFormat": "{{device_class}} \u00b7 {{relay_region}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Stage failures",
+      "description": "Each attempt/stage has one terminal result within the deduplication window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (stage, outcome, device_class, relay_region) (rate(browser_connection_stage_results_total{device_class=~\"$device\",relay_region=~\"$region\",outcome=~\"timeout|error|offline\"}[$__rate_interval]))",
+          "legendFormat": "{{stage}} \u00b7 {{outcome}} \u00b7 {{device_class}} \u00b7 {{relay_region}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Central compatibility route share",
+      "description": "Not an error rate. Includes missing assignments and cooldown. Intentionally ignores region: attempted and executed regions differ. Delayed uploads may distort short windows.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (device_class) (rate(browser_connection_fallback_total{stage=\"machine_rpc\",device_class=~\"$device\"}[$__rate_interval])) / sum by (device_class) (rate(browser_connection_stage_results_total{stage=\"machine_rpc\",device_class=~\"$device\"}[$__rate_interval]))",
+          "legendFormat": "{{device_class}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Fallbacks by attempted region",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (device_class, relay_region) (rate(browser_connection_fallback_total{stage=\"machine_rpc\",device_class=~\"$device\",relay_region=~\"$region\"}[$__rate_interval]))",
+          "legendFormat": "{{device_class}} \u00b7 {{relay_region}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Timing sample quality",
+      "description": "Unknown represents old clients; background and censored samples do not enter the latency histogram.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (timing, device_class, relay_region) (rate(browser_connection_timing_samples_total{stage=\"terminal_open\",device_class=~\"$device\",relay_region=~\"$region\"}[$__rate_interval]))",
+          "legendFormat": "{{timing}} \u00b7 {{device_class}} \u00b7 {{relay_region}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Metric samples not counted",
+      "description": "unclaimed includes duplicate uploads or local capacity limits. Coordination errors indicate missing metrics even when diagnostic logs were accepted. Global, unaffected by device/region filters.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (code) (rate(browser_connection_metrics_skipped_total[$__rate_interval]))",
+          "legendFormat": "{{code}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Received terminal sample count",
+      "description": "Check sample size before interpreting percentiles or success rate.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (device_class, relay_region) (increase(browser_connection_stage_results_total{stage=\"terminal_open\",device_class=~\"$device\",relay_region=~\"$region\"}[$__range]))",
+          "legendFormat": "{{device_class}} \u00b7 {{relay_region}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Metrics scrape health",
+      "description": "Configure the very-happy scrape job as documented. No series means the scrape is not configured, not that the service is healthy.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"very-happy\"}",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      }
+    }
+  ]
+}
