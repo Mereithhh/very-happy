@@ -25,6 +25,7 @@ Grafana (sy) → existing Prometheus (sy)
 | Services and Endpoints | `monitoring/very-happy-metrics-blue`, `monitoring/very-happy-metrics-green` |
 | ServiceMonitor | `monitoring/very-happy-metrics`, 30s interval, 10s timeout |
 | Metric target labels | `job="very-happy"`, `slot="blue"` or `slot="green"` |
+| Dashboard provisioning | `cattle-dashboards/very-happy-connection-quality` ConfigMap, `grafana_dashboard="1"` |
 | Grafana data source | Existing `prometheus` UID, cluster-local `rancher-monitoring-prometheus.cattle-monitoring-system:9090` |
 | Dashboard | UID `very-happy-connections`; [view](https://grafana.mereith.com/d/very-happy-connections) or [Singapore proxy](https://stat.mereith.com/d/very-happy-connections) |
 
@@ -44,11 +45,23 @@ verify these rules again if the pod CIDR or host address changes.
 
 SSH uses a dedicated on-disk private key under `/var/lib/vh-metrics-tunnel`, with
 restricted file permissions and a pinned host key. Never put keys in this repo.
-Grafana's existing Secret is read into process memory for session login; do not
-persist its password, authorization header or cookie in files/command output.
-Basic and anonymous authentication are disabled. The dashboard import resolves
-`DS_PROMETHEUS` to the existing data source, checks UID collisions, and backs up
-state before writes; it is an explicit operator action, not part of app release.
+The existing Grafana Secret does not provide a working login: the tested public
+login returned 403 and the internal login returned 401. No password was reset.
+The dashboard therefore uses the existing ConfigMap provisioning path in
+`cattle-dashboards`, with label `grafana_dashboard="1"`. The existing provider
+scans every 30 seconds and has `allowUiUpdates=false`; changes belong in the
+repository JSON and its managed ConfigMap, not the Grafana UI. Its UID was checked
+for collision in the existing Grafana database before provisioning. Resolve
+`DS_PROMETHEUS` to the existing `prometheus` UID when preparing the ConfigMap.
+This does not change the global provider or create a new data source.
+
+When collection was first added, the Prometheus configuration Secret updated but
+the config-reloader's old watch did not update `config_out`. Restarting only the
+**config-reloader container**, without restarting Prometheus or its TSDB, restored
+configuration delivery; the green target was then verified up. Check both
+rendered configuration and live targets before considering a future collection
+change complete. Do not restart the whole monitoring stack for a stale sidecar
+without first establishing the same evidence.
 
 ## Rollback
 
@@ -62,8 +75,10 @@ owned unit files and reload systemd only after verifying no tunnel is running.
 Revoke the dedicated vh-sg authorized key after stopping the connection; retain
 private keys securely for investigation or remove them under separate cleanup.
 
-For the dashboard, restore its pre-import backup, or remove a newly created UID
-only if it has not been edited since import. Collection rollback does not need
+For the dashboard, restore the prior ConfigMap backup, or delete only the newly
+created `cattle-dashboards/very-happy-connection-quality` ConfigMap after checking
+its ownership. Verify that the sidecar removes the file and the existing provider
+removes the provisioned UID; do not alter the global provider to force deletion. Collection rollback does not need
 an application restart, image rollback, Caddy change or database change. The
 repository's Kubernetes overlays are examples, not this production deployment.
 
