@@ -144,8 +144,9 @@ restart the old coordinator to “repair” a new Teams task.
 
 Claude and Codex have completed real mixed-runner edits, commits, scoped result
 submission, owner acceptance, and clean resource reclamation in an isolated
-stack. Managed pi has adapter/tool loading evidence; its complete model workflow
-is still a rollout acceptance item. Recursive state, fencing, and recovery have
+stack. Managed pi also completed a real model edit, commit, scoped submission,
+individual permission approvals, owner acceptance and cleanup using the official
+bridge and fixed pi-acp 0.0.33, without the private supervisor wrapper. Recursive state, fencing, and recovery have
 mechanism tests, but full multi-level model recovery is not yet an established
 production guarantee. Cross-machine automatic routing, global model budgets, and
 long-term unattended operation remain follow-up work.
