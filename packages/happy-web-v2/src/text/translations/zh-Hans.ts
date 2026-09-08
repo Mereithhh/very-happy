@@ -2321,6 +2321,22 @@ export const zhHans: TranslationStructure = {
     },
 
     cliUpdate: {
+        retry: '重试更新',
+        retryHelp: '机器空闲后，对当前批准版本重试一次。',
+        retryAccepted: '已受理重试，机器空闲后开始安装。',
+        retryFailed: '未受理重试，请检查连接和批准版本，或使用手动升级命令。',
+        recovery: {
+            waiting_idle: '等待会话和终端空闲',
+            installing: '正在安装批准版本',
+            installed: '已安装，等待验证并接管 daemon',
+            failed: '安装失败，可重试或使用手动升级命令',
+            disabled: '此机器已关闭自动安装',
+            current: '运行版本已满足自动更新目标',
+            unapproved: '尚无批准自动安装的版本',
+            policy_stale: '更新策略已过期，等待重新检查',
+            stale: '机器离线或更新状态已过期，暂无实时进度',
+            manual: '无法确认自动更新状态，请使用固定版本手动升级命令',
+        },
         availableEyebrow: 'CLI 可更新',
         requiredEyebrow: 'CLI 必须更新',
         availableTitle: '新的机器端运行时已可用',

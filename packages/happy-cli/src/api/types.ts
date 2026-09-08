@@ -198,6 +198,7 @@ export const CliUpdateStateSchema = z.object({
   /** B-351: the version this machine may install by itself. Pinned separately
    *  from `recommendedVersion`; null means no unattended install. */
   autoUpdateVersion: z.string().nullable().optional(),
+  retrySupported: z.boolean().optional(),
   checkedAt: z.number(),
   /**
    * B-321: a new bundle is on disk but refused to run, so the daemon is still

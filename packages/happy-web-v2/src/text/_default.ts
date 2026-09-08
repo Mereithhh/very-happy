@@ -2424,6 +2424,22 @@ export const en = {
     },
 
     cliUpdate: {
+        retry: 'Retry update',
+        retryHelp: 'Try this approved version once, when the machine is idle.',
+        retryAccepted: 'Retry accepted. Installation waits until the machine is idle.',
+        retryFailed: 'Retry was not accepted. Check the connection and approved version, or use the manual command.',
+        recovery: {
+            waiting_idle: 'Waiting for sessions and terminals to become idle',
+            installing: 'Installing the approved version',
+            installed: 'Installed; waiting for verified daemon handover',
+            failed: 'Installation failed; retry or use the manual command',
+            disabled: 'Automatic installation is disabled on this machine',
+            current: 'Running version meets the automatic update target',
+            unapproved: 'No version is approved for automatic installation',
+            policy_stale: 'Update policy is stale; waiting for a fresh check',
+            stale: 'Machine offline or update status stale; showing no live progress',
+            manual: 'Automatic update status unavailable; use the fixed-version manual command',
+        },
         availableEyebrow: 'CLI UPDATE AVAILABLE',
         requiredEyebrow: 'CLI UPDATE REQUIRED',
         availableTitle: 'A newer machine runtime is ready',

@@ -47,7 +47,9 @@ import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { readSettings, writeSettings } from '@/persistence';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
 import { decideHandover, type HandoverPreflight } from './handoverPreflight';
-import { autoUpdateInstallArgs, decideAutoUpdate } from '@/update/autoUpdate';
+import { serialTask } from '@/update/serialTask';
+import { installCliSafely } from '@/update/npmInstall';
+import { createUpdateController } from '@/update/updateController';
 import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
@@ -138,29 +140,6 @@ function withHandoverHold(state: CliUpdateState | null, reason: string | null): 
 }
 
 const HANDOVER_PREFLIGHT_TIMEOUT_MS = 30_000;
-/** B-327: run npm for the auto-update. Long timeout (a cold install compiles
- *  native addons on some platforms), output discarded — the exit code is the
- *  only thing that decides anything, and the daemon must not buffer megabytes. */
-function runNpmInstall(args: string[]): Promise<number | null> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (code: number | null) => { if (!settled) { settled = true; resolve(code); } };
-    let child: ReturnType<typeof spawn>;
-    try {
-      child = spawn('npm', args, { stdio: 'ignore', env: process.env });
-    } catch {
-      done(null);
-      return;
-    }
-    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } done(null); }, AUTO_UPDATE_INSTALL_TIMEOUT_MS);
-    child.on('error', () => { clearTimeout(timer); done(null); });
-    child.on('close', (code) => { clearTimeout(timer); done(code); });
-  });
-}
-
-const AUTO_UPDATE_INSTALL_TIMEOUT_MS = 10 * 60_000;
-
-
 export async function startDaemon(): Promise<void> {
   // B-276: hoisted so spawnSession (defined below, called later) never hits the TDZ.
   let claudeAuthServiceRef: ClaudeAuthService | null = null;
@@ -1690,80 +1669,23 @@ export async function startDaemon(): Promise<void> {
         .catch((error) => logger.debug('[DAEMON RUN] could not refresh the recorded host:', error));
     }
 
-    // The daemon is the long-lived, relay-aware update checker. It never runs
-    // npm: it only publishes the relay's version policy for Web/CLI UX. A
-    // successful local npm install is already handed over by the bundle-mtime
-    // mechanism below.
-
-    // B-327 — install a newly recommended CLI while nobody is using the machine.
-    // The risky half (the handover) is already fenced by B-321's preflight, so
-    // this only decides whether to run npm at all. Idle means: no session
-    // wrapper alive and no live web terminal, because an upgrade swaps the
-    // process that owns both.
-    let autoUpdateFailedVersion: string | null = null;
-    let autoUpdateRunning = false;
-    const maybeAutoUpdate = async (cliUpdate: CliUpdateState) => {
-      if (autoUpdateRunning) return;
-      const settings = await readSettings();
-      const decision = decideAutoUpdate({
-        enabled: (settings.cliAutoUpdate ?? 'idle') !== 'off',
-        currentVersion: cliUpdate.currentVersion,
-        autoUpdateVersion: cliUpdate.autoUpdateVersion ?? null,
-        idle: pidToTrackedSession.size === 0 && !apiMachine.hasLiveTerminals(),
-        failedVersion: autoUpdateFailedVersion,
-      });
-      if (decision.action === 'skip') {
-        logger.debug(`[DAEMON RUN] auto-update skipped: ${decision.reason}`);
-        return;
-      }
-      autoUpdateRunning = true;
-      const target = decision.version;
-      const report = (state: string, detail?: string) => {
-        cliUpdateStateRef = { ...cliUpdate, autoUpdate: { state, version: target, detail, at: Date.now() } };
-        void apiMachine.setCliUpdateState(cliUpdateStateRef);
-      };
-      logger.warn(`[DAEMON RUN] auto-updating CLI to ${target} (machine idle)`);
-      report('installing');
-      try {
-        const code = await runNpmInstall(autoUpdateInstallArgs(target));
-        if (code === 0) {
-          // npm has rewritten dist/index.mjs; the heartbeat's mtime watcher
-          // picks it up and B-321's preflight decides whether to hand over.
-          logger.warn(`[DAEMON RUN] auto-update installed ${target}; handover follows once it verifies`);
-          report('installed');
-        } else {
-          autoUpdateFailedVersion = target;
-          logger.warn(`[DAEMON RUN] auto-update of ${target} failed with exit ${code}`);
-          report('failed', `npm exited ${code}`);
-        }
-      } catch (error) {
-        autoUpdateFailedVersion = target;
-        logger.warn(`[DAEMON RUN] auto-update of ${target} could not run:`, error);
-        report('failed', String(error).slice(0, 200));
-      } finally {
-        autoUpdateRunning = false;
-      }
-    };
-
-    let cliUpdateCheckRunning = false;
-    const refreshCliUpdate = async () => {
-      if (cliUpdateCheckRunning) return;
-      cliUpdateCheckRunning = true;
-      try {
-        const cliUpdate = await fetchCliUpdateState(configuration.serverUrl, packageJson.version);
-        if (!cliUpdate) return;
-        fileState = { ...fileState, cliUpdate };
+    const updateController = createUpdateController({
+      policy: () => fetchCliUpdateState(configuration.serverUrl, packageJson.version),
+      enabled: async () => ((await readSettings()).cliAutoUpdate ?? 'idle') !== 'off',
+      idle: () => pidToTrackedSession.size === 0 && !apiMachine.hasLiveTerminals(),
+      install: installCliSafely,
+      publish: (state) => {
+        cliUpdateStateRef = state;
+        fileState = { ...fileState, cliUpdate: state };
         writeDaemonState(fileState);
-        cliUpdateStateRef = cliUpdate;
-        apiMachine.setCliUpdateState(cliUpdate);
-        logger.debug(`[DAEMON RUN] CLI update policy checked: ${cliUpdate.status} (recommended=${cliUpdate.recommendedVersion ?? 'none'}, minimum=${cliUpdate.minimumVersion ?? 'none'})`);
-        await maybeAutoUpdate(cliUpdate);
-      } catch (error) {
-        logger.debug('[DAEMON RUN] CLI update policy check failed:', error);
-      } finally {
-        cliUpdateCheckRunning = false;
-      }
-    };
+        apiMachine.setCliUpdateState(state);
+        logger.warn(`[DAEMON RUN] CLI update: ${state.autoUpdate?.state} target=${state.autoUpdate?.version ?? 'none'}`);
+      },
+    });
+    apiMachine.setCliUpdateRetryHandler(updateController.retry);
+    const refreshCliUpdate = () => updateController.refresh().catch((error) => {
+      logger.debug('[DAEMON RUN] CLI update policy check failed:', error);
+    });
     void refreshCliUpdate();
     const cliUpdateIntervalMs = resolveCliUpdateCheckInterval(process.env.HAPPY_CLI_UPDATE_CHECK_INTERVAL);
     if (process.env.HAPPY_CLI_UPDATE_CHECK_INTERVAL && cliUpdateIntervalMs === DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS
@@ -1778,12 +1700,8 @@ export async function startDaemon(): Promise<void> {
     // 3. If outdated, restart with latest version
     // 4. Write heartbeat
     const heartbeatIntervalMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000');
-    let heartbeatRunning = false
-    const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
-      if (heartbeatRunning) {
-        return;
-      }
-      heartbeatRunning = true;
+    const restartOnStaleVersionAndHeartbeat = setInterval(serialTask(async () => {
+      try {
 
       if (process.env.DEBUG) {
         logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
@@ -1803,6 +1721,10 @@ export async function startDaemon(): Promise<void> {
         }
       }
 
+      // Reconsider busy waits on the existing heartbeat; never hand over during npm writes.
+      void updateController.tick().catch((error) => logger.debug('[DAEMON RUN] Update tick failed:', error));
+      if (updateController.isRunning()) return;
+
       // Check if daemon needs update by detecting whether `dist/index.mjs` was
       // replaced on disk since the daemon started (npm install rewrites the file).
       // Skip if we never captured an initial mtime (dev mode).
@@ -1815,7 +1737,7 @@ export async function startDaemon(): Promise<void> {
           // File temporarily missing (e.g. mid-install) — retry on next heartbeat.
         }
       }
-      if (bundleReplaced) {
+      if (bundleReplaced && !updateController.isRunning() && pidToTrackedSession.size === 0 && !apiMachine.hasLiveTerminals()) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
@@ -1836,6 +1758,7 @@ export async function startDaemon(): Promise<void> {
           // still-finishing install is picked up moments later.
           return;
         }
+        if (updateController.isRunning() || pidToTrackedSession.size > 0 || apiMachine.hasLiveTerminals()) return;
         lastHandoverHold = null;
         logger.debug('[DAEMON RUN] Daemon bundle replaced on disk and verified, handing off to new daemon');
 
@@ -1886,8 +1809,10 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Failed to write heartbeat', error);
       }
 
-      heartbeatRunning = false;
-    }, heartbeatIntervalMs); // Every 60 seconds in production
+      } catch (error) {
+        logger.debug('[DAEMON RUN] Heartbeat failed:', error);
+      }
+    }), heartbeatIntervalMs); // Every 60 seconds in production
 
     // Setup signal handlers
     const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
