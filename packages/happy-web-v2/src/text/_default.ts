@@ -1703,6 +1703,10 @@ export const en = {
                 summary: 'On a pi (and other ACP) session the web showed nothing during a turn until the whole answer had been produced, then all of it at once — while the terminal had been printing it word by word. Only Claude sessions had been given the live stream in September.',
                 text: 'The reply now appears within a moment of the model starting to write and keeps growing, on a pi session exactly as on a Claude one. When the turn finishes the draft is replaced by the final message in place — no flicker, no duplicate. Needs the new CLI on the machine and a session started after the update.',
                 thinking: 'If pi runs with a thinking level enabled, its reasoning streams into an expanded Thinking card as it is written, then collapses into the usual block once the answer starts. (Claude sessions cannot show this — the API withholds the reasoning text — so there the status bar’s token counter remains the signal.)',
+                title: 'pi gets its own default model and permission settings',
+                summary: 'Settings → Agents treated pi as Claude: it offered Claude model aliases (opus / sonnet / fable) for pi, and picking a model or permission inside a pi conversation silently overwrote your Claude defaults.',
+                settings: 'pi now has its own row under Settings → Agents. Its model list is what your pi sessions have actually published (e.g. llm-hub/claude-fable-5-1), with "default" meaning "use whatever the machine\'s pi is configured with". pi and Claude defaults no longer touch each other.',
+                selectors: 'In a pi conversation the permission menu shows the two modes pi really distinguishes (ask / bypass) instead of its thinking levels, and the model menu keeps showing the model pi is actually running.',
             },
             sep08: {
                 title: 'File-path links, the update button and a few small controls had colours that never resolved',

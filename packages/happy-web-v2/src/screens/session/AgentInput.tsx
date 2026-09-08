@@ -28,6 +28,7 @@ import {
 import { useImeGuard } from '@/utils/ime';
 import { onInsertToInput } from '@/app/insertToInput';
 import {
+    isPiAgent,
     normalizeAgentKey,
     resolveAgentDefaultConfig,
     setAgentDefaultOverride,
@@ -202,6 +203,12 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const effortKey = session?.effortLevel ?? agentDefaults.effortLevel;
     // claude-ish flavors (incl. no flavor) support the explicit「默认」effort
     const isClaudeFlavor = normalizeAgentKey(flavor) === 'claude';
+    // pi (flavor 'acp') is its own agent key (B-370) but shares two Claude traits: the
+    // CLI publishes the permission mode really in effect (metadata.permissionMode,
+    // B-350) and the model really running (metadata.currentModelCode, B-362), so the
+    // honesty subtitles below apply to both. Steer / live permission RPC / the
+    // explicit 「default」 effort option stay Claude-only.
+    const publishesModeFacts = isClaudeFlavor || isPiAgent(flavor);
     const supportsSteer = isClaudeFlavor
         && metadata?.capabilities?.includes('claude-steer-v1') === true
         && session?.agentState?.controlledByUser === false;
@@ -226,7 +233,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const selectedModel = models.find((option) => option.key === displayedModelKey) ?? models[0];
     const selectedPermission = permModes.find((option) => option.key === permKey) ?? permModes[0];
     // B-262 A4: honest subtitle — what the CLI has confirmed vs. what we intend.
-    const permissionDisplayState = isClaudeFlavor
+    const permissionDisplayState = publishesModeFacts
         ? derivePermissionModeDisplay({
             displayed: permKey,
             published: metadata?.permissionMode,
@@ -253,7 +260,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     // B-292: the selector value is client intent and flips on tap; this is the
     // only thing on screen that reports what the agent is actually running.
     const modelSubtitle = deriveRunningModelSubtitle({
-        isClaude: isClaudeFlavor,
+        isClaude: publishesModeFacts,
         selectedKey: modelKey,
         running: metadata?.currentModelCode,
     });

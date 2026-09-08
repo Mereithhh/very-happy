@@ -1666,6 +1666,10 @@ export const zhHans: TranslationStructure = {
                 summary: 'pi（以及其他 ACP）会话此前在一轮里什么都不显示，直到整段回答生成完才一次性蹦出——而终端一直在逐字打印。九月接的实时流只覆盖了 Claude 会话。',
                 text: '现在模型一开始写，回答就会在会话里出现并持续增长，pi 会话和 Claude 会话表现一致；这一轮结束时草稿原地换成正式消息，不闪、不重复。需要机器上的 CLI 升到新版本，并在升级后新建会话。',
                 thinking: '如果 pi 开着思考等级，思考正文会先在展开的「Thinking」卡片里实时出现，出正文时折叠成常规的思考块。（Claude 会话做不到这一点——API 不给思考正文——那里仍以状态条的 token 计数为信号。）',
+                title: 'pi 有了自己的默认模型与权限设置',
+                summary: '「智能体默认设置」此前把 pi 当成 Claude：给 pi 列的是 Claude 的模型别名（opus / sonnet / fable），而在 pi 会话里选模型或权限会悄悄覆盖你的 Claude 默认值。',
+                settings: '设置 → 智能体里现在有单独的 pi 一栏。它的模型列表来自你的 pi 会话实际发布过的模型（如 llm-hub/claude-fable-5-1），「默认」表示沿用机器上 pi 自己的配置。pi 与 Claude 的默认值互不影响。',
+                selectors: 'pi 会话里的权限菜单只显示 pi 真正区分的两种模式（询问 / 放行），不再把思考等级当权限；模型菜单继续显示 pi 实际在跑的模型。',
             },
             sep08: {
                 title: '文件路径链接、更新按钮和几个小控件的颜色一直没生效',

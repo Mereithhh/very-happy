@@ -43,6 +43,11 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     itemKeys: [
       'changelog.releases.sep08a.text',
       'changelog.releases.sep08a.thinking',
+    id: '2026-09-08-pi-agent-defaults',
+    // web-only: the pi runner already speaks Claude's permission keys and
+    // publishes its own model list; only the web was filing pi under claude.
+      'changelog.releases.sep08a.settings',
+      'changelog.releases.sep08a.selectors',
     ],
   },
   {

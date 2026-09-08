@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { compactResolvedModelCode, getClaudeModelModes, getHardcodedModelModes, relabelDefaultModel } from './modelModeOptions';
+import {
+    compactResolvedModelCode,
+    getAvailableModels,
+    getAvailablePermissionModes,
+    getClaudeModelModes,
+    getDefaultEffortKey,
+    getDefaultModelKey,
+    getDefaultPermissionModeKey,
+    getEffortLevelsForModel,
+    getHardcodedModelModes,
+    getHardcodedPermissionModes,
+    relabelDefaultModel,
+} from './modelModeOptions';
 
 describe('resolved default model labels', () => {
     it('keeps the concrete model value while removing the redundant Claude prefix', () => {
@@ -44,5 +56,56 @@ describe('Claude model picker (Fable 5.1)', () => {
 
     it('is what Settings → Agents shows for claude', () => {
         expect(getHardcodedModelModes('claude', (k) => k)).toEqual(getClaudeModelModes());
+    });
+});
+
+describe('pi pickers (B-370)', () => {
+    const t = (k: string) => k;
+    const piMetadata = {
+        // Real shape published by pi-acp 0.0.33 (probed on 23 sessions 2026-09-07):
+        // models = pi's registry; operatingModes = THINKING levels, not permissions.
+        models: [
+            { code: 'zai/glm-5.3', value: 'zai/GLM-5.3' },
+            { code: 'llm-hub/claude-fable-5-1', value: 'llm-hub/Claude Fable 5.1 (llm-hub)' },
+        ],
+        currentModelCode: 'llm-hub/claude-fable-5-1',
+        operatingModes: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'].map((code) => ({ code, value: `Thinking: ${code}` })),
+        currentOperatingModeCode: 'medium',
+    } as any;
+
+    it("never offers Claude aliases for pi — hardcoded list is just 'default' (follow the machine's pi)", () => {
+        for (const flavor of ['pi', 'acp']) {
+            const modes = getHardcodedModelModes(flavor, t as any);
+            expect(modes.map((m) => m.key)).toEqual(['default']);
+            expect(modes.some((m) => ['opus', 'sonnet', 'fable'].includes(m.key))).toBe(false);
+        }
+        // claude is unchanged
+        expect(getHardcodedModelModes('claude', t as any)).toEqual(getClaudeModelModes());
+    });
+
+    it('in a session the model list is what pi-acp published', () => {
+        expect(getAvailableModels('acp', piMetadata, t as any).map((m) => m.key))
+            .toEqual(['zai/glm-5.3', 'llm-hub/claude-fable-5-1']);
+    });
+
+    it('permission picker is the two modes the pi gate distinguishes, never the thinking levels', () => {
+        for (const flavor of ['pi', 'acp']) {
+            expect(getAvailablePermissionModes(flavor, piMetadata, t as any).map((m) => m.key))
+                .toEqual(['default', 'bypassPermissions']);
+            expect(getHardcodedPermissionModes(flavor, t as any).map((m) => m.key))
+                .toEqual(['default', 'bypassPermissions']);
+        }
+        // gemini (also an ACP runner) still reads its published operating modes
+        expect(getAvailablePermissionModes('gemini', piMetadata, t as any).map((m) => m.key)).toContain('medium');
+        // claude untouched
+        expect(getAvailablePermissionModes('claude', piMetadata, t as any).map((m) => m.key))
+            .toEqual(['default', 'plan', 'acceptEdits', 'bypassPermissions']);
+    });
+
+    it('pi code defaults come from its own slot and it exposes no effort picker', () => {
+        expect(getDefaultModelKey('acp')).toBe('default');
+        expect(getDefaultPermissionModeKey('acp')).toBe('bypassPermissions');
+        expect(getDefaultEffortKey('acp')).toBeNull();
+        expect(getEffortLevelsForModel('acp', 'llm-hub/claude-fable-5-1')).toEqual([]);
     });
 });
