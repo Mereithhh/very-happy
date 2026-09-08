@@ -527,6 +527,12 @@ export const en = {
             queueCancel: 'Remove from queue',
             queueCancelTooLate: 'This message has already started and can no longer be removed.',
             queueCancelFailed: 'Could not remove this queued message. Please try again.',
+            discarded: {
+                cleared: 'Not run — dropped by /clear or /compact',
+                aborted: 'Not run — dropped when the turn was stopped',
+                restarted: 'Not run — the session was restarted before it was picked up. Send it again.',
+                unknown: 'Not run — the agent dropped it from its queue',
+            },
             send: 'Send',
             queueSend: 'Queue message',
             stop: 'Stop',
@@ -792,6 +798,9 @@ export const en = {
     },
 
     // copy_to_clipboard pushes: receive toasts + the history panel
+    rpc: {
+        rateLimited: ({ seconds }: { seconds: number }) => `Too many requests to the server — holding machine calls for ${seconds}s, then resuming.`,
+    },
     clipboard: {
         copiedPreview: ({ preview }: { preview: string }) => `Copied: ${preview}`,
         tapToCopy: ({ preview }: { preview: string }) => `Clipboard received — tap to copy: ${preview}`,
@@ -1693,6 +1702,48 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep08a: {
+                title: 'pi gets its own default model and permission settings',
+                summary: 'Settings → Agents treated pi as Claude: it offered Claude model aliases (opus / sonnet / fable) for pi, and picking a model or permission inside a pi conversation silently overwrote your Claude defaults.',
+                settings: 'pi now has its own row under Settings → Agents. Its model list is what your pi sessions have actually published (e.g. llm-hub/claude-fable-5-1), with "default" meaning "use whatever the machine\'s pi is configured with". pi and Claude defaults no longer touch each other.',
+                selectors: 'In a pi conversation the permission menu shows the two modes pi really distinguishes (ask / bypass) instead of its thinking levels, and the model menu keeps showing the model pi is actually running.',
+            },
+            sep08b: {
+                title: 'pi sessions now show the answer as it is written',
+                summary: 'On a pi (and other ACP) session the web showed nothing during a turn until the whole answer had been produced, then all of it at once — while the terminal had been printing it word by word. Only Claude sessions had been given the live stream in September.',
+                text: 'The reply now appears within a moment of the model starting to write and keeps growing, on a pi session exactly as on a Claude one. When the turn finishes the draft is replaced by the final message in place — no flicker, no duplicate. Needs the new CLI on the machine and a session started after the update.',
+                thinking: 'If pi runs with a thinking level enabled, its reasoning streams into an expanded Thinking card as it is written, then collapses into the usual block once the answer starts. (Claude sessions cannot show this — the API withholds the reasoning text — so there the status bar’s token counter remains the signal.)',
+            },
+            sep08d: {
+                title: 'The terminal opens on its last line and keeps following output',
+                summary: 'Opening a terminal — new, from the list, after switching tabs or reloading — could land in the middle of the history, and from then on new output no longer scrolled the view. The cause was not the history load: whenever the terminal pane got taller (soft keyboard closing, the browser toolbar collapsing, a window resize) the browser nudged the scroll position and the terminal took that for you scrolling up.',
+                follow: 'A pane that was on its last line stays there through keyboard open/close, browser chrome changes and window resizes, and new output keeps scrolling into view.',
+                history: 'Scrolling up to read history is unchanged: while you are looking at history, new output does not pull you down, and a layout change does not either. Full-screen programs (vim, htop) are unaffected.',
+            },
+            sep08g: {
+                title: 'A queued message the agent never ran now says so, instead of pretending it was delivered',
+                summary: 'If you sent a message while the agent was busy and the agent then dropped its queue (/clear, /compact, Stop in terminal mode, or the session was restarted before it got to your message), the message used to sit at "queued" until the next unrelated turn ended, then quietly appear as if it had been handled.',
+                tombstone: 'The agent now reports every queued message it discards. The bubble stays in the conversation with a small "Not run" line under it and the reason, so you can copy it and send it again. Messages you remove from the queue yourself are still just removed.',
+                restart: 'Restarting a session (or another machine taking it over) marks the messages the old process still had waiting as "Not run — the session was restarted". Needs a CLI update on the machine; sessions already running keep the old behaviour until they are restarted.',
+            },
+            sep08c: {
+                title: 'Less idle CPU: status dots no longer repaint every frame, the daemon stops probing your PATH every 20 seconds',
+                summary: 'A CPU audit of an idle very-happy setup found two small but permanent costs: every pulsing status dot (the connected dot in each session header, running tools, board cards) animated its glow via box-shadow, which the browser has to repaint on every frame; and the daemon re-checked which agent CLIs are installed — six shell processes — on every 20-second heartbeat.',
+                pulse: 'The pulse now animates only opacity and scale, which the compositor handles without touching the page. Measured with the real stylesheet: twelve dots went from ~960 repaints and ~11k raster tasks per 8 seconds to zero repaints; the look is unchanged.',
+                probe: 'The daemon still heartbeats every 20 seconds, but re-checks installed CLIs every 5 minutes instead of every tick (1080 → 72 shell spawns per hour, ~3 s → 0.2 s of blocked main thread per hour). Installing a new agent CLI shows up on the machine card within 5 minutes; a daemon reconnect re-checks immediately.',
+            },
+            sep08e: {
+                title: 'A pi session no longer looks finished while it is still working',
+                summary: 'On a pi (and other ACP) session the activity area folded and the running indicator disappeared in the middle of a turn — typically after a tool finished, while the model was still composing — and reappeared when the next tool started. Claude sessions did not do this.',
+                running: 'The "still running" signal is now held for the whole turn, from your message until the final answer lands, exactly as on a Claude session: the activity area stays open, the status bar keeps its animation and elapsed time throughout. Needs the new CLI on the machine and a session started after the update. pi still reports no token counts mid-turn, so that part of the bar stays absent — that is expected.',
+            },
+            sep08f: {
+                title: '"RPC rate limit reached" with several agents running is fixed at the source',
+                summary: 'Every open tab was quietly running four git commands on every machine each time any agent finished a tool call — 110–170 calls a minute from one idle tab, for a status nobody displayed. With eight agents and a few tabs that tripped the server\'s limiter, and the refused calls then piled onto the fallback path and tripped it again.',
+                source: 'The background git polling is gone. The Files panel still fetches git status when you open or refresh it; nothing else asks the machine unprompted.',
+                backoff: 'If the server does refuse a call for rate, the web now waits exactly as long as the server says (with a little jitter), collapses identical calls made meanwhile into one, releases them gently, and shows one toast — instead of retrying at full speed or failing silently. `very-happy sessions approve/deny` does the same and says so on stderr.',
+                server: 'The server\'s per-connection limit became a token bucket that refills continuously instead of a hard window, refusals are no longer counted against you, every refusal carries a retry-after, and the shared per-account budget was raised from one to three concurrent 8 MiB file handoffs.',
+            },
             sep08: {
                 title: 'File-path links, the update button and a few small controls had colours that never resolved',
                 summary: 'Several styles referred to colour tokens that do not exist, so the browser silently dropped them: a hover that never darkened, a focus ring that never showed, a link icon that was invisible, a Refresh button with no background.',
