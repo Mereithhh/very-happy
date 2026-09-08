@@ -1224,7 +1224,7 @@ export const zhHans: TranslationStructure = {
             notesTitle: '临时笔记本',
             notesDescription: '把临时 prompt 和上下文放进笔记侧栏。可从侧边栏、会话顶部、命令面板或 Command/Ctrl J 打开。',
             todosTitle: 'Todo 面板',
-            todosDescription: '从侧边栏或命令面板打开 Todo，读取机器上已配置的 provider，并按列表或优先级分组。',
+            todosDescription: '从侧边栏或命令面板打开待办，直接记录并同步任务；在“外部来源”可使用机器上已配置的 provider。',
             viewsTitle: '终端 ↔ 结构化文本',
             viewsDescription: '安装可选的终端 hooks 后，在网页终端中启动的 Claude 可在原生 TUI 和易读的结构化记录之间切换。',
             fileHandoffTitle: '把文件直接粘贴到终端',

@@ -1242,7 +1242,7 @@ export const en = {
             notesTitle: 'Scratch notes',
             notesDescription: 'Keep temporary prompts and context in the notes dock. Open it from the sidebar, a session header, the command palette, or Command/Ctrl J.',
             todosTitle: 'Todo panel',
-            todosDescription: 'Open Todo from the sidebar or command palette to read the provider configured on a machine, then group items by list or priority.',
+            todosDescription: 'Open Todos from the sidebar or command palette to capture account-synced tasks. External source optionally uses a provider on a machine.',
             viewsTitle: 'Terminal ↔ structured text',
             viewsDescription: 'A Claude process started in a Web terminal can switch between the native TUI and a readable structured transcript after optional terminal hooks are installed.',
             fileHandoffTitle: 'Paste a file into a terminal',
