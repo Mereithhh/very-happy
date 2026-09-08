@@ -1,3 +1,4 @@
+import { registerTeamsTools } from '@/teams/tools';
 /**
  * Happy MCP STDIO Bridge
  *
@@ -147,6 +148,24 @@ async function main() {
       }
     }
   );
+
+  // Share the official schema, but execute in the owning HTTP session process.
+  // The bridge must never bootstrap account authority or read a scope of its own.
+  const forwardTeam = async (name: string, args: Record<string, unknown>) => {
+    const response = await (await ensureHttpClient()).callTool({ name, arguments: args });
+    const content = response.content as Array<{ type: string; text?: string }>;
+    const text = content.filter(block => block.type === 'text').map(block => block.text ?? '').join('\n');
+    if (response.isError) throw new Error(text || 'Teams operation failed');
+    return JSON.parse(text);
+  };
+  registerTeamsTools(server, undefined, {
+    initialize: (input) => forwardTeam(input.teamId ? 'team_join' : 'team_create', input),
+    inspect: () => forwardTeam('team_inspect', {}),
+    action: (action, requestId) => {
+      const { type, ...args } = action;
+      return forwardTeam(`team_${type}`, { ...args, requestId });
+    },
+  });
 
   // Start STDIO transport
   const stdio = new StdioServerTransport();

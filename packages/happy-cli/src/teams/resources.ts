@@ -40,7 +40,7 @@ export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport
     if (mode === 'yolo') mode = 'bypassPermissions';
     if (!['default','plan','acceptEdits','bypassPermissions'].includes(mode)) mode = 'default';
     if (mode === 'bypassPermissions') return;
-    if (['read','ls','find','grep','team_inspect'].includes(event.toolName)) return;
+    if (['read','ls','find','grep','team_inspect','change_title','report_progress'].includes(event.toolName)) return;
     if (mode === 'plan') return {block:true,reason:'Plan mode allows read-only tools'};
     if (mode === 'acceptEdits' && ['write','edit'].includes(event.toolName)) return;
     try {
@@ -52,7 +52,7 @@ export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport
   let nextId = 0;
   async function rpc(method, params) {
     const requestId = ++nextId;
-    const response = await fetch(endpoint, { method: 'POST', headers: {'content-type':'application/json', accept:'application/json, text/event-stream'}, body: JSON.stringify({jsonrpc:'2.0',id:requestId,method,params}), signal: AbortSignal.timeout(30000) });
+    const response = await fetch(endpoint, { method: 'POST', redirect: 'error', headers: {'content-type':'application/json', accept:'application/json, text/event-stream'}, body: JSON.stringify({jsonrpc:'2.0',id:requestId,method,params}), signal: AbortSignal.timeout(30000) });
     if (!response.ok) throw new Error('Very Happy tools unavailable (HTTP ' + response.status + ')');
     const body = await response.text();
     let data;
@@ -68,8 +68,6 @@ export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport
   await rpc('initialize', {protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'very-happy-pi-teams',version:'1'}});
   const available = await rpc('tools/list', {});
   for (const tool of available.tools || []) {
-    if (!tool.name.startsWith('team_')) continue;
-    if (pi.getAllTools?.().some(existing => existing.name === tool.name)) continue;
     pi.registerTool({name:tool.name,label:tool.name,description:tool.description || tool.name,parameters:tool.inputSchema,
       async execute(_id, args) { const result = await rpc('tools/call', {name:tool.name,arguments:args}); return {content:result.content,details:{isError:!!result.isError}}; }
     });

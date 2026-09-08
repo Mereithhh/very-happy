@@ -23,7 +23,7 @@ export async function handleTeamsCommand(args: string[]): Promise<void> {
         const name = value('--name');
         if (!name) throw new Error('--name is required');
         if (command === 'join' && !value('--team-id')) throw new Error('--team-id is required');
-        result = await client.initialize({ name, teamId: command === 'join' ? value('--team-id') : undefined, machineId: value('--machine-id'), requestId: value('--request-id') ?? randomUUID() });
+        result = await client.initialize({ name, teamId: command === 'join' ? value('--team-id') : undefined, machineId: value('--machine-id'), botId: value('--bot-id'), requestId: value('--request-id') ?? randomUUID() });
     } else if (command === 'action') {
         const payload = value('--json');
         const requestId = value('--request-id');

@@ -725,7 +725,7 @@ export async function runCodex(opts: {
     // so it works on Windows, where Windows can't execute shebang scripts directly.
     // codex would otherwise fail to start the MCP server, the change_title tool would
     // not be visible to the model, and the model would improvise with shell echoes.
-    const bridgeEntrypoint = join(projectPath(), 'bin', 'happy-mcp.mjs');
+    const bridgeEntrypoint = join(projectPath(), 'bin', 'very-happy-mcp.mjs');
     const mcpServers = {
         happy: {
             command: process.execPath,

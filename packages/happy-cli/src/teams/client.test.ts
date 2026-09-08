@@ -5,8 +5,8 @@ import { homedir } from 'node:os';
 import { configuration } from '@/configuration';
 import { writeTeamScope, readTeamScope } from './context';
 import { createTeamsClient } from './client';
-import { readCredentialsForConfiguredRelay } from '@/persistence';
-vi.mock('@/persistence', () => ({ readCredentialsForConfiguredRelay: vi.fn() }));
+import { readCredentialsForConfiguredRelay, readSettings, readPersistedSessions } from '@/persistence';
+vi.mock('@/persistence', () => ({ readCredentialsForConfiguredRelay: vi.fn(), readSettings: vi.fn(), readPersistedSessions: vi.fn() }));
 
 describe('team scope transport boundary', () => {
     const previous = process.env.VH_TEAM_SCOPE_FILE;
@@ -32,6 +32,14 @@ describe('team scope transport boundary', () => {
                 await expect(readTeamScope(file)).rejects.toThrow('unsafe');
             }
         } finally { await rm(dir, { recursive: true, force: true }); }
+    });
+    it('rejects a foreign machine before reading account credentials', async () => {
+        delete process.env.VH_TEAM_SCOPE_FILE;
+        vi.mocked(readSettings).mockResolvedValue({ machineId: 'local' } as any);
+        await expect(createTeamsClient('unseen-session').initialize({ name: 'root', machineId: 'foreign', requestId: 'r' })).rejects.toThrow('local machine');
+        expect(readCredentialsForConfiguredRelay).not.toHaveBeenCalled();
+        vi.mocked(readPersistedSessions).mockReturnValue({});
+        await expect(createTeamsClient('unseen-session').initialize({ name: 'root', requestId: 'r' })).rejects.toThrow('persisted session');
     });
     it('does not fall back to account authority when an assigned worker scope is missing', async () => {
         process.env.VH_TEAM_SCOPE_FILE = join(homedir(), 'code/github/skills/tmp/agent-teams-implementation/no-such-scope.json');

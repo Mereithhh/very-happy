@@ -8,7 +8,7 @@ const text = z.string().min(1).max(32000);
 const requestId = id.describe('Unique operation ID. Reuse the same ID and arguments after an uncertain response.');
 export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: string, client = createTeamsClient(sessionId)): void {
     const register = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, execute: (args: any) => Promise<unknown>) => {
-        server.registerTool(name, { description, inputSchema }, async (args) => {
+        server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: name === 'team_inspect', idempotentHint: true, openWorldHint: false, destructiveHint: ['team_cancel', 'team_handoff', 'team_return'].includes(name) } }, async (args) => {
             try { return { content: [{ type: 'text' as const, text: JSON.stringify(await execute(args)) }], isError: false }; }
             catch (error) { return { content: [{ type: 'text' as const, text: error instanceof Error ? error.message : 'Teams operation failed' }], isError: true }; }
         });
@@ -16,7 +16,7 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
     register('team_create', 'Create an official Very Happy team and join this session as its root bot. Does not grant access outside this account.',
         { name: id, machineId: id.optional(), requestId }, (args) => client.initialize(args));
     register('team_join', 'Join an existing team as a root bot using this session owner’s account. Scoped workers cannot elevate their role.',
-        { teamId: id, name: id, requestId }, (args) => client.initialize(args));
+        { teamId: id, name: id, botId: id.optional().describe('Existing root bot to reconnect; preserves its identity'), requestId }, (args) => client.initialize(args));
     register('team_inspect', 'Read your visible team tasks, attempts and messages. Inspect before decisions; submission is not acceptance.', {}, () => client.inspect());
     const action = (name: string, description: string, fields: Record<string, z.ZodTypeAny>) => register(`team_${name}`, description,
         { requestId, ...fields }, ({ requestId: key, ...args }) => client.action({ type: name, ...args }, key));

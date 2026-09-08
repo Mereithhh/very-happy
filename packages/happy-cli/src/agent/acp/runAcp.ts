@@ -610,7 +610,7 @@ export async function runAcp(opts: {
   const happyServer = await startHappyServer(session, { assistant: isAssistantVariant });
   const mcpServers = {
     happy: {
-      command: join(projectPath(), 'bin', 'happy-mcp.mjs'),
+      command: join(projectPath(), 'bin', 'very-happy-mcp.mjs'),
       args: ['--url', happyServer.url],
     },
   };
