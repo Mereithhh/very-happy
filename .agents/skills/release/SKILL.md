@@ -1,6 +1,7 @@
 ---
 name: release
-description: Release and deploy very-happy: publish the very-happy-cli npm package from v* tags, deploy happy-web-v2 and happy-server to the active production host, update the mac-office daemon, verify production, and roll back. Use when asked to release, publish, deploy, ship, roll back, or update production.
+description: >-
+  Release and deploy very-happy: publish the very-happy-cli npm package from v* tags, deploy happy-web-v2 and happy-server to the active production host, update the mac-office daemon, verify production, and roll back. Use when asked to release, publish, deploy, ship, roll back, or update production.
 ---
 
 # very-happy release
@@ -219,31 +220,22 @@ not be offered the release — a pin holding it back, or a `latest` that never
 moved because smoke was red. It does not fail the run, because holding a release
 back is legitimate, but you will not silently forget again.
 
-**Unattended installs are a separate pin, and not part of a normal release**
-(B-351). `CLI_AUTO_UPDATE_VERSION` is what an idle machine may install by
-itself; it is never derived from the registry, and unset means no machine
-auto-installs anything. Promote it deliberately, after a release has been out
-long enough that you would be comfortable with it landing on someone else's
-machine while they are away — deliberately lagging `latest` by a release or two
-is what gives the fleet a staged rollout:
-
-```sh
-ssh vh-sg
-sed -i 's|^CLI_AUTO_UPDATE_VERSION=.*|CLI_AUTO_UPDATE_VERSION=X.Y.Z|' /opt/happy/.env
-gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
-```
-
-Unset, the relay answers `/v1/version/cli` with nulls, `deriveCliUpdateState`
-returns null, and every update surface — the global banner, Diagnostics, the
-machine page — stays silent. That is how the whole fleet drifted 24 versions
-behind while the notice machinery from B-040 sat there working perfectly and
-saying nothing (2026-09-03). `CLI_MINIMUM_VERSION` is separate: it makes the
-banner non-dismissible, so raise it only for a floor below which something is
-actually broken.
+`CLI_MINIMUM_VERSION` is separate: it makes the update banner non-dismissible.
+Raise it only when older clients are actually incompatible. With registry lookup
+working, removing `CLI_RECOMMENDED_VERSION` does not silence recommendations;
+removing `CLI_AUTO_UPDATE_VERSION` disables unattended installation only.
 
 Then update mac-office with `vh-update` (repository fallback:
 `bash scripts/update-daemon.sh`) and confirm the running daemon version,
-not only npm metadata. Never use `npm publish`, bare `npx`, `--ignore-scripts`,
+not only npm metadata. On mac-office, handover starts the replacement outside
+launchd. Complete the existing re-adoption procedure in
+[docs/operations.md](../../../docs/operations.md) (search “Re-adopt”), then verify
+launchd is `running`, the daemon has the expected version, and a read-only RPC
+works. Do not use `kickstart -k` against a live same-version daemon: the launcher
+can yield and leave neither process supervised. This host-specific re-adoption
+is not the generic user update command.
+
+Never use `npm publish`, bare `npx`, `--ignore-scripts`,
 or move/force an existing tag.
 
 `vh-update` replaces the daemon but intentionally leaves already-running agent
@@ -289,8 +281,8 @@ loaded entry; reload alone does not prove a version migration. Complete relevant
 
 ## Rollback
 
-- Web/server: redeploy the prior immutable image/commit, then update the daemon.
-- CLI/daemon: `npm i -g very-happy-cli@<previous>` and restart the daemon.
+- Web/server: use the phase-aware rollback above; do not update daemons for a server-only rollback.
+- CLI/daemon: install the fixed previous version with the reviewed script allowlist, use `daemon start` handover, then re-adopt launchd on mac-office.
 - Database: migrations must be forward-compatible; never improvise a destructive
   down migration during an incident.
 

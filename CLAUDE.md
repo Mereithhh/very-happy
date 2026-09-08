@@ -2,61 +2,35 @@
 
 # Claude 会话补充（AGENTS.md 是事实源，这里只放会话启动与本地克隆事实）
 
-## 每次开工先做（≤1 分钟）
+## 每次开工
 
 ```sh
-git fetch -q origin && git status -sb | head -1     # 必须是 `## main...origin/main`，不能有 ahead/behind
-pnpm install --frozen-lockfile && pnpm -C packages/happy-wire build   # wire dist 被 gitignore
-git worktree list                                   # 派工前看清有哪些并行工作树
+git fetch -q origin
+git status -sb
+git worktree list
+git log -1 --oneline origin/main
 ```
 
-- 唯一主开发/发布源是公开仓 `Mereithhh/very-happy`（origin）。2026-08-25 做过
-  历史净化重发（`docs/history-publication-runbook.md`），**净化前的本地克隆与 origin/main
-  完全分叉**（同一批 commit 不同 SHA）——出现 `ahead N, behind M` 时不要 merge/rebase，
-  直接 `git reset --hard origin/main`。2026-08-30 已对本地 main 做过一次，旧 tip 留在
-  分支 `archive/main-old-history-6591bfbf`（只读，确认无用即删）。
-- 本地 `.claude/worktrees/` 下有十余个 2026-08 中旬的陈旧工作树（term-input-*、
-  voice-assistant、b-127-* 等），全部基于旧历史；开新事项一律新建 worktree，
-  别复用它们；清理用 `git worktree remove <path>`。
+在自己的分支/worktree 工作；记录当前基线及未提交改动。`ahead/behind` 本身不能
+证明旧历史分叉，也不能作为 `reset --hard` 的理由。需要同步时先核对 merge-base、
+具体提交与改动归属；任务分支允许 ahead，不要求每个 worktree 都叫 main。
+构建或测试前按 `dev` skill 安装锁定依赖并构建 happy-wire 的 gitignored dist。
+
+唯一开发/发布源是公开仓 `Mereithhh/very-happy`。旧历史归档只读，迁移判断见
+`docs/history-publication-runbook.md`；不要把某次本地克隆清理动作当成日常启动命令。
+
 - 常规发布不需要 `vh-update`（蓝绿切换）；只有 CLI/daemon 变更才更新 mac-office
   （见 AGENTS.md 铁律 5/7）。旧记忆里的 `happy.mereith.com` / hw-sg web 部署已作废，
   生产是 `veryhappy.dev` on **vh-sg**（AWS 新加坡；2026-09-07 前是东京 VPS vh-us，已退役），操作手册 `docs/operations.md`。
 
-## 当前状态快照（2026-09-04，会过期；以 backlog/verify-queue 为准）
+## 当前状态从事实源读取
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.116**（npm `latest` 已是它）；线上 Web/server = `main@62f24a53`。
-  **发版流程 2026-09-04 变了（B-348，铁律 6）**：主包发到 `next`，publish workflow 的 `promote` job 在同一
-  commit 的三系统 smoke 全绿后才移 `latest`，relay 用 `CLI_VERSION_REGISTRY_LOOKUP=true` 跟着 `latest`（1h 缓存）
-  ——**不用再手动 pin `CLI_RECOMMENDED_VERSION`**（它现在被注释在 `/opt/happy/.env` 里当刹车，pin 永远赢过 lookup）。
-  **但自动升级另有一个必须手动 pin 的 `CLI_AUTO_UPDATE_VERSION`**（B-351，铁律 6）：不设就没有机器会自动装，
-  这个手动步骤是故意的——推荐一个版本和替用户装上它是两个决定。发完并确认无碍后再 pin 它。
-  `next` 领先 `latest` = promote 没跑成，去读那个 job，别手动 `dist-tag add` 绕。0.2.117 是第一个真正跑到 promote 的版本。
-  门禁基线：web 2215+ 测试、cli 1724+ unit、双 tsc 0。**同一天 0.2.108→0.2.115 由多个
-  并行会话依次取号**，发版前务必用 `check-release.mjs --mode cli --version <目标>` 核对，别照 changelog 里写好的
-  cliVersion 想当然。**B-/V-/changelog key 三家同理**：用 `node scripts/dev/check-ids.mjs` 取号，rebase 后和开 PR 前
-  各 `--claim` 验一次——**但 claim 通过不等于安全，窗口就是 CI 时长**：2026-09-03 一个 PR 连着三轮被挤掉
-  （B-321→B-322→B-324，sep03y→sep03z→sep03aa），撞过一次之后重编号要留余量，别再取 next free。
-  `packages/happy-cli/package.json` 里的 version 不是发布版本。
-- 部署报 `HTTP probe observed a release-window failure` 时：判据已是「**连续** 3 发失败」（B-308），所以这条现在基本等于真事故——先看它说的是 `public` 还是 `origin` 路径，`origin`（绕开 Cloudflare）失败才是我们自己的问题；记录在 `/opt/happy/release/http-probe.{public,origin}.*`，含样本号与 curl 错误文本。机制见 `docs/operations.md`。
-- **终端字体自托管在 Cloudflare Pages**（`veryhappy-fonts.pages.dev`，Owner 的 CF 账号）：现用
-  **Maple Mono CN**（`/maple-cn/{regular,bold}`，cn-font-split 按 unicode-range 切片，终端路由懒加载；
-  旧的 Sarasa 仍留在 `/regular,/bold` 作回滚）。**字体不进仓库**；重新发字体用 `wrangler pages deploy`
-  （需 Owner 先 `wrangler login`）。选型与「严丝合缝」定律见
-  `specs/2026-09-terminal-font-and-seamless-rendering.md`（含 WebGL 被否决的理由）。
-- `docs/backlog.md` 活跃区 38 项非 done（`doing` 若干：B-216 终端 tag、B-209 对话降噪、B-208 工作区视图、
-  B-211 统一 Usage、B-192 多地域 relay、B-031 CI gitleaks 等）；改 doing 项前先读对应 `specs/`。
-  **2026-09-02 已发布**：v0.2.93–v0.2.99 一大批——B-269/B-270（用户 tmux.conf 打坏 web 终端：base-index、
-  destroy-unattached 等 + 0x1f 分隔符被 tmux ≤3.5 munge 的存量修复，见 AGENTS 铁律 17）、B-273/280/281/282
-  （接入已有 tmux 会话：能力 + 一等入口 + 直达选择器 + 关闭=仅断开/可选彻底关闭，spec
-  `specs/2026-09-attach-existing-tmux.md`）、B-275/276（Claude 认证预检/修复）、B-272（session 单写者锁）。
-- `docs/verify-queue.md` 有 113 项（V-0xx～V-138）。**别再往里堆等 Owner 验的项**——Owner 明确说过
-  没时间清、「用户没反馈就是修好了」。验收纪律以 AGENTS.md 为准：能用浏览器验的当批自己验完，
-  只有真机专属项（IME、触屏手感、多设备时序）才登记，且要写清为什么浏览器验不了。
-- 门禁基线：web tsc 0 错误、cli 1690+ unit、web 2170+ 测试（本地跑一次门禁约 5-10 分钟，首次 install 更久）。
-  web 测试在 web 终端里跑要 `env -u HAPPY_SERVER_URL`（终端注入的生产 URL 会让 `installScript.test.ts` 失败，
-  CI 不受影响）；happy-cli 的 unit 项目含真实 tmux 测试（CI 也跑，见铁律 17）。
-- 大改动/反复复发的 bug 的方法论先例：先出链路全图（Explore 子代理），再 ≥3 轮对抗 review 子代理
-  逐轮推翻前提后定稿（B-259/B-260/B-262/B-264/B-265/B-273 记录在 `~/code/github/skills/tmp/<slug>/`）。
+不在启动文件复制最新版本、测试数量或 backlog 快照，它们会先于规则过期。
+推荐与自动安装的区别、完整 smoke 门禁见 `AGENTS.md` 铁律 6；实际版本通过
+npm dist-tags、线上 `/v1/version/cli` 与 release state 分别核验。
+生产发布及 mac-office launchd 接管见 `docs/operations.md` 和 `release` skill；
+监控采集与托管看板见 `docs/monitoring/README.md` 和 `metrics-graphana` skill。
+需求、验收和门禁分别只认 `docs/backlog.md`、`docs/verify-queue.md` 与 `AGENTS.md`。
 
 ## 本地工具入口
 
@@ -73,7 +47,7 @@ git worktree list                                   # 派工前看清有哪些�
   （连着三次搓错，每次都读成相反的结论）。它自己读线上 SHA、**传递**遍历 chunk 图、并把 SPA 回退的 HTML
   当「资产不存在」报出来——**拼出来的 /assets 路径拿到 200 也可能是 index.html**，本地 dist 的 chunk 名
   更不能照抄（`__APP_VERSION__` 进内容哈希，CI 和本地不同名）。
-- CLI 实验永远用一次性 home：`HAPPY_HOME_DIR=$(mktemp -d) node packages/happy-cli/dist/index.mjs …`，
+- CLI 实验永远用一次性 home：在任务临时目录下创建独立 home，设置 `HAPPY_HOME_DIR` 后运行 CLI，
   **不要动 `~/.happy`**（那是 mac-office 生产 daemon 的状态）。
 - 终端「慢 / 一行一行地画」先跑 `node scripts/dev/term-burst.mjs '<命令>'`（隔离 socket，报块数、
   中位块大小与按停顿切开的密集段）。**别看首尾跨度**——它把进程启动算进绘制，据此下的结论会把
