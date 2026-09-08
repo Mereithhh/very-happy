@@ -241,6 +241,13 @@ function Overview() {
             onClick={() => navigate('/help')}
           />
           <Item
+            title={t('settings.whatsNew')}
+            subtitle={t('settings.whatsNewSubtitle')}
+            left={<FileText size={18} />}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/changelog')}
+          />
+          <Item
             title={t('settings.about')}
             subtitle={`Very Happy · v${__APP_VERSION__}`}
             left={<Info size={18} />}

@@ -20,6 +20,11 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-389 | 消息操作与编辑重跑：复制、引用、精确回退分支与移动端可发现性 | feat/ux | Owner 2026-09-09 | doing | 实现与本地门禁已完成，待 PR 合入及发布； `specs/2026-09-message-actions-and-rewind.md`；原会话保留，文件副作用不回滚，旧 daemon 不伪成功。 |
+| B-390 | 侧栏默认不分组、拖拽排序与分组限制提示 | ux | Owner 2026-09-09 | doing | 修正 workspace 默认值；保留已有选择，手机说明菜单排序。 |
+| B-391 | Todo 未配置引导与参考 provider 接入教程 | ux/docs | Owner 2026-09-09 | doing | 明确需 provider，补配置与验证步骤。 |
+| B-393 | 帮助与设置补齐新增机器、更新日志及机器更新入口 | ux | Owner 2026-09-09 | doing | 已实现并在手机明暗主题验证导航，未发现需改布局的依据。 |
+| B-392 | 终端 @ 字形可辨认性；另核 pi 消息黑字 | bug | Owner 2026-09-09 | doing | 已在 test 终端 jojo@mac-office 确认：DOM 为 U+0040，Maple 默认特殊字形导致误认；启用 cv01 标准符号，保持字体/字号/行高。本地真实 xterm 对比验收后随本批 PR；尚未发布。pi 黑字属另一路径，仍未复现，不合并宣称修复。 |
 | B-388 | **精简项目启动上下文**：AGENTS 保留门禁、关键约束与 owner 入口，CLAUDE 只导入统一指南 | docs | Owner 2026-09-08 | done | 删除重复流程、事故叙事和静态快照，保留原规则编号及机制链接；少量独有工具经验移入 development/PROCESS。仅文档，不调整产品或生产策略。 |
 | B-387 | **部署经验入口校准**：监控托管方式、CLI handover 后系统守护、推荐/自动安装区别和启动文件去过期快照 | docs | Owner 2026-09-08 | done | 修订 metrics-graphana/release skill、AGENTS/CLAUDE；细节只保留在 monitoring/operations，个人系统 skill 只路由。技能 frontmatter、相对链接、diff 与 secret scan 验证；不改变生产配置。 |
 | B-383 | **全球连接架构升级**：美国/新加坡用户连接美国、新加坡、马来西亚、印度机器，Owner授权重大升级，目标稳定性与端到端延迟 | feat/architecture | Owner 2026-09-08 | doing | 方案 `specs/2026-09-global-connection-resilience.md`：浏览器独立端到端选路、daemon多路径待命、执行端幂等与结果查询、先连后切、按订阅转发、控制面容灾。先完成故障恢复与诊断基础；节点选址以两端实测定，生产切换需精确方案与回滚。 |

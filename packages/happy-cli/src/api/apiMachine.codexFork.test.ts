@@ -36,6 +36,23 @@ describe('ApiMachineClient Codex fork RPCs', () => {
         codexClientMethods.disconnect.mockResolvedValue(undefined);
     });
 
+    it('registers separate before-message RPCs and returns startFresh for the exact first item', async () => {
+        codexClientMethods.readThread.mockResolvedValue({ thread: { id: 'source', turns: [
+            { id: 'turn-1', items: [{ id: 'user-1', type: 'userMessage', content: [{ type: 'text', text: 'old' }] }] },
+        ] } });
+        const { ApiMachineClient } = await import('./apiMachine');
+        const client = new ApiMachineClient('token', machineClient());
+        client.setRPCHandlers({ spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn() });
+        expect(handlersFrom(client).has('machine-1:claude-rewind-before-message')).toBe(true);
+        const result = await handlersFrom(client).get('machine-1:codex-rewind-before-message')!({
+            directory: '/project', codexThreadId: 'source', cutBeforeItemId: 'user-1',
+        });
+        expect(result).toEqual({ type: 'success', startFresh: true });
+        expect(codexClientMethods.forkThread).not.toHaveBeenCalled();
+        expect(codexClientMethods.injectItems).not.toHaveBeenCalled();
+        expect(codexClientMethods.disconnect).toHaveBeenCalledOnce();
+    });
+
     it('registers a full Codex thread fork RPC', async () => {
         codexClientMethods.forkThread.mockResolvedValue({
             threadId: 'thread-forked',

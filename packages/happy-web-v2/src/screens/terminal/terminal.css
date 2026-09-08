@@ -137,6 +137,11 @@
     padding: var(--sp-2) var(--sp-3);
   }
 }
+/* B-392: Maple's default @ resembles a curled a. Use its conventional symbol
+   variants without replacing the dual-width, seamless block/box font. */
+.term-host .xterm {
+  font-feature-settings: "cv01" 1;
+}
 /* Scrollback scrollbar (no-tmux fallback shell) styled to the pane, not the OS. */
 .term-host .xterm-viewport::-webkit-scrollbar { width: 10px; }
 .term-host .xterm-viewport::-webkit-scrollbar-track { background: transparent; }

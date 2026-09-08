@@ -29,6 +29,7 @@ import { getClaudeProjectsRoot, getProjectPath } from '@/claude/utils/path';
 import { readTrackedClaudeSessionIds } from '@/persistence';
 import { listClaudeProjectDirs, listClaudeSessionHistory } from '@/claude/utils/claudeSessionHistory';
 import {
+    forkBeforeUserMessage,
     forkSession as claudeForkSession,
     forkAndTruncateSession as claudeForkAndTruncateSession,
     listClaudeRewindPoints,
@@ -41,6 +42,7 @@ import { discoverAndClaimRelay, type RelaySwitchTracker } from './relaySelection
 import { ReleaseDrainNoticeSchema, type RelayAssignment, type ReleaseDrainNotice } from '@slopus/happy-wire';
 import {
     CodexForkRewindPointNotFoundError,
+    forkCodexBeforeUserMessage,
     forkCodexThread,
     listCodexRewindPoints,
 } from '@/codex/codexThreadFork';
@@ -832,6 +834,28 @@ export class ApiMachineClient {
                 }
                 throw error;
             }
+        });
+
+        this.rpcHandlerManager.registerHandler('claude-rewind-before-message', async (params: any) => {
+            const directory = requireNonEmptyString(params?.directory, 'directory');
+            const claudeSessionId = requireNonEmptyString(params?.claudeSessionId, 'claudeSessionId');
+            const cutBeforeUuid = requireNonEmptyString(params?.cutBeforeUuid, 'cutBeforeUuid');
+            if (!UUID_RE.test(claudeSessionId) || !UUID_RE.test(cutBeforeUuid)) {
+                throw new Error('claudeSessionId and cutBeforeUuid must be valid UUIDs');
+            }
+            const newClaudeSessionId = await forkBeforeUserMessage(getProjectPath(directory), claudeSessionId, cutBeforeUuid);
+            return newClaudeSessionId === null
+                ? { type: 'success', startFresh: true }
+                : { type: 'success', newClaudeSessionId };
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-rewind-before-message', async (params: any) => {
+            const directory = requireNonEmptyString(params?.directory, 'directory');
+            const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
+            const cutBeforeItemId = requireNonEmptyString(params?.cutBeforeItemId, 'cutBeforeItemId');
+            return withCodexAppServerClient((client) => forkCodexBeforeUserMessage(client, {
+                threadId: codexThreadId, cwd: directory, cutBeforeItemId,
+            }));
         });
 
         // Register stop daemon handler

@@ -1,3 +1,5 @@
+import { onMessageQuote } from './messageQuote';
+import { appendMessageQuote } from './messageActionsModel';
 /**
  * AgentInput — the composer. A rounded auto-growing textarea + circular send
  * button, followed by one compact row for controls, context, and input hints.
@@ -320,6 +322,11 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         setExpanded((v) => !v);
         requestAnimationFrame(() => taRef.current?.focus());
     };
+
+    useEffect(() => onMessageQuote(sessionId, (quote) => {
+        setText((current) => appendMessageQuote(current, quote));
+        requestAnimationFrame(() => taRef.current?.focus());
+    }), [sessionId]);
 
     // persist draft (debounced via storage's own normalization)
     useEffect(() => {

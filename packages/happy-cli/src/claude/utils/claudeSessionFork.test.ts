@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
 import {
+    forkBeforeUserMessage,
+    listClaudeRewindPoints,
     discardForkedSession,
     forkSession,
     forkAndTruncateSession,
@@ -41,6 +43,79 @@ describe('claudeSessionFork', () => {
                 try { return JSON.parse(l); } catch { return l; }
             });
     }
+
+    it('rewinds before the exact user UUID and leaves original bytes untouched', async () => {
+        const entries = [
+            { type: 'user', uuid: 'u1', message: { content: 'same text' } },
+            { type: 'assistant', uuid: 'a1', message: { content: 'answer' } },
+            { type: 'user', uuid: 'u2', message: { content: 'same text' } },
+            { type: 'assistant', uuid: 'a2', message: { content: 'later' } },
+        ];
+        const source = await writeSource(entries);
+        const original = await readFile(source, 'utf-8');
+        const fork = await forkBeforeUserMessage(projectDir, sourceId, 'u2');
+        expect(await readJsonl(fork!)).toEqual(entries.slice(0, 2));
+        expect(await readFile(source, 'utf-8')).toBe(original);
+        expect(await forkBeforeUserMessage(projectDir, sourceId, 'u1')).toBeNull();
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'missing')).rejects.toBeInstanceOf(ForkTruncateUuidNotFoundError);
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'a1')).rejects.toBeInstanceOf(ForkTruncateUuidNotFoundError);
+    });
+
+    it('lists and rewinds array text prompts without treating later strings as first messages', async () => {
+        const entries = [
+            { type: 'user', uuid: 'array-1', message: { content: [{ type: 'text', text: 'say lol' }] } },
+            { type: 'assistant', uuid: 'answer-1', message: { content: 'lol' } },
+            { type: 'user', uuid: 'tool', message: { content: [{ type: 'tool_result', content: 'done' }, { type: 'text', text: 'tool context' }] } },
+            { type: 'user', uuid: 'side', isSidechain: true, message: { content: [{ type: 'text', text: 'side prompt' }] } },
+            { type: 'user', uuid: 'meta', isMeta: true, message: { content: [{ type: 'text', text: 'injected' }] } },
+            { type: 'user', uuid: 'array-2', message: { content: [{ type: 'text', text: 'second' }, { type: 'text', text: 'part' }] } },
+            { type: 'user', uuid: 'string-3', message: { content: 'third' } },
+        ];
+        const source = await writeSource(entries);
+        const original = await readFile(source, 'utf-8');
+        expect((await listClaudeRewindPoints(projectDir, sourceId)).map(({ uuid, text }) => ({ uuid, text })))
+            .toEqual([{ uuid: 'array-1', text: 'say lol' }, { uuid: 'array-2', text: 'second\npart' }, { uuid: 'string-3', text: 'third' }]);
+        expect(await forkBeforeUserMessage(projectDir, sourceId, 'array-1')).toBeNull();
+        const arrayFork = await forkBeforeUserMessage(projectDir, sourceId, 'array-2');
+        expect(await readJsonl(arrayFork!)).toEqual(entries.slice(0, 5));
+        const stringFork = await forkBeforeUserMessage(projectDir, sourceId, 'string-3');
+        expect(stringFork).not.toBeNull();
+        expect(await readJsonl(stringFork!)).toEqual(entries.slice(0, 6));
+        for (const id of ['tool', 'side', 'meta']) {
+            await expect(forkBeforeUserMessage(projectDir, sourceId, id)).rejects.toBeInstanceOf(ForkTruncateUuidNotFoundError);
+        }
+        expect(await readFile(source, 'utf-8')).toBe(original);
+    });
+
+    it('preserves earlier image-only history before the first editable text prompt', async () => {
+        const entries = [
+            { type: 'user', uuid: 'image', message: { content: [{ type: 'image', source: { type: 'base64', data: 'test' } }] } },
+            { type: 'user', uuid: 'text', message: { content: 'describe it differently' } },
+        ];
+        await writeSource(entries);
+        const fork = await forkBeforeUserMessage(projectDir, sourceId, 'text');
+        expect(fork).not.toBeNull();
+        expect(await readJsonl(fork!)).toEqual(entries.slice(0, 1));
+    });
+
+    it('marks attachments in rewind points and rejects tool-only prior history', async () => {
+        await writeSource([
+            { type: 'user', uuid: 'tool', message: { content: [{ type: 'tool_result', content: 'orphan' }] } },
+            { type: 'user', uuid: 'target', message: { content: [{ type: 'text', text: 'describe' }, { type: 'image', source: {} }] } },
+        ]);
+        expect(await listClaudeRewindPoints(projectDir, sourceId)).toEqual([
+            expect.objectContaining({ uuid: 'target', text: 'describe', hasAttachments: true }),
+        ]);
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'target')).rejects.toThrow('with attachments');
+        await writeSource([{ type: 'user', uuid: 'manifest', message: { content: 'look\n<attached_files>file</attached_files>' } }]);
+        expect(await listClaudeRewindPoints(projectDir, sourceId)).toEqual([expect.objectContaining({ uuid: 'manifest', hasAttachments: true })]);
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'manifest')).rejects.toThrow('with attachments');
+        await writeSource([
+            { type: 'user', uuid: 'orphan', message: { content: [{ type: 'tool_result', content: 'result' }] } },
+            { type: 'user', uuid: 'plain', message: { content: 'plain' } },
+        ]);
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'plain')).rejects.toThrow('earlier history has no user prompt');
+    });
 
     describe('forkSession', () => {
         it('produces a byte-identical copy with a fresh session id', async () => {

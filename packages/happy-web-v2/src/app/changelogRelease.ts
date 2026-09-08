@@ -15,6 +15,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-09-message-actions-and-discovery',
+    date: '2026-09-09',
+    cliVersion: '0.2.124',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep09.title',
+    summaryKey: 'changelog.releases.sep09.summary',
+    itemKeys: ['changelog.releases.sep09.messages', 'changelog.releases.sep09.ordering', 'changelog.releases.sep09.setup', 'changelog.releases.sep09.symbols'],
+  },
+  {
     id: '2026-09-08-connection-recovery-and-update-status',
     date: '2026-09-08',
     cliVersion: '0.2.123',

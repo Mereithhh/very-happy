@@ -371,3 +371,8 @@
     max-width: 120px;
   }
 }
+.td-setup-steps { padding-left: 20px; }
+.td-setup-steps li + li { margin-top: var(--sp-2); }
+.td-setup-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-3); }
+.td-setup-actions a { color: var(--text); font-size: var(--fs-13); text-underline-offset: 3px; }
+.td-setup-actions a, .td-setup-actions button { min-height: 44px; display: inline-flex; align-items: center; }

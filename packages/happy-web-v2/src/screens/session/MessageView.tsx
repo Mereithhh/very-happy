@@ -24,6 +24,7 @@ import { DecisionCard, TickReportCard } from './SupervisorCardViews';
 import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
 import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
 import { discardedReasonKey } from './discardedInput';
+import { MessageActions } from './MessageActions';
 import './message.css';
 
 function UserText({ message, sessionId, attachments }: { message: UserTextMessage; sessionId: string; attachments?: ToolCallMessage[] }) {
@@ -108,8 +109,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
                         </button>
                     )}
                 </div>
-                {/* copy the raw message text — sits in the empty gutter left of the bubble */}
-                <CopyButton text={text} className="vh-copy--overlay msg-copy--user" label={t('message.copyMessage')} />
+                <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0} />
             </div>}
             {discarded && (
                 <span className="msg-discarded" role="status">
@@ -204,8 +204,7 @@ function AgentText({
             {prose && (
                 <div className="msg-agent-text vh-copyhost">
                     <Markdown text={prose} onOption={onOption} />
-                    {/* copies the markdown SOURCE of the whole message, not the rendered text */}
-                    <CopyButton text={text} className="vh-copy--overlay msg-copy--agent" label={t('message.copyMessage')} />
+                    <MessageActions text={text} sessionId={sessionId} />
                 </div>
             )}
             {decisionBlock && <DecisionCard decisions={decisionBlock.decisions} />}

@@ -53,6 +53,7 @@ import { rowRenameMenuTranslationKeys } from './sidebarRowMenu';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import './sidebar.css';
+import { SidebarOrderHint } from './SidebarOrderHint';
 
 function rowHref(r: Row): string {
   return r.href;
@@ -960,6 +961,8 @@ export function Sidebar() {
         {/* Board lives on the header icon (badge included) — a fourth tab in
             this row read as clutter and was removed. */}
       </div>
+
+      {orderable && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
 
       <div className={`sb-list${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
         {displayRows === null ? (

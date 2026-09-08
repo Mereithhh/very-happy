@@ -1,5 +1,6 @@
+import { messageActionsCopy } from './messageActionsCopy';
 import { useEffect, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSession, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
@@ -28,7 +29,7 @@ import './session.css';
 export function SessionDetailScreen() {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
     const session = useSession(id ?? '');
     const bannerMachine = storage((s) => {
         const mid = session?.metadata?.machineId;
@@ -146,6 +147,7 @@ export function SessionDetailScreen() {
     return (
         <div className={`sd${panelOpen ? ' sd--files-open' : ''}`} ref={sdRef}>
             <div className="sd-main">
+                {session.metadata?.parentSessionId && <Link className="msg-parent-link" to={`/session/${session.metadata.parentSessionId}`}>{messageActionsCopy(lang).parent}</Link>}
                 <ChatHeader
                     sessionId={id}
                     filesOpen={filesOpen}

@@ -14,7 +14,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { copyFile, rename, readFile, unlink } from "node:fs/promises";
+import { copyFile, rename, readFile, unlink, writeFile } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -24,6 +24,7 @@ export type ClaudeRewindPoint = {
     uuid: string;
     text: string;
     timestamp: number;
+    hasAttachments?: boolean;
 };
 
 export class ForkTruncateUuidNotFoundError extends Error {
@@ -54,6 +55,26 @@ function isUserPrompt(parsed: any): boolean {
     if (parsed.isSidechain) return false;
     const content = parsed.message?.content;
     return typeof content === 'string';
+}
+
+function hasPromptAttachments(parsed: any): boolean {
+    const content = parsed.message?.content;
+    return (typeof content === 'string' && content.includes('<attached_files>'))
+        || (Array.isArray(content) && content.some((block: any) => block?.type !== 'text'
+            || (typeof block.text === 'string' && block.text.includes('<attached_files>'))));
+}
+
+/** Text prompts may use SDK content blocks; tool results and metadata are not rewind points. */
+function userPromptText(parsed: any): string | null {
+    if (parsed?.type !== 'user' || parsed.isSidechain || parsed.isMeta || parsed.isSynthetic) return null;
+    const content = parsed.message?.content;
+    if (typeof content === 'string') return content.trim() ? content : null;
+    if (!Array.isArray(content) || content.some((block) => block?.type === 'tool_result')) return null;
+    const text = content
+        .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+        .map((block) => block.text)
+        .join('\n');
+    return text.trim() ? text : null;
 }
 
 /**
@@ -214,13 +235,9 @@ export async function listClaudeRewindPoints(
         if (line.length === 0) continue;
         let parsed: any;
         try { parsed = JSON.parse(line); } catch { continue; }
-        if (parsed?.type !== 'user') continue;
-        if (parsed.isSidechain) continue;
+        const content = userPromptText(parsed);
+        if (content === null) continue;
         if (typeof parsed.uuid !== 'string' || parsed.uuid.length === 0) continue;
-        const content = parsed.message?.content;
-        if (typeof content !== 'string') continue;
-        const trimmed = content.trim();
-        if (trimmed.length === 0) continue;
         const timestampRaw = parsed.timestamp;
         const timestamp = typeof timestampRaw === 'string'
             ? Date.parse(timestampRaw)
@@ -228,9 +245,59 @@ export async function listClaudeRewindPoints(
         points.push({
             uuid: parsed.uuid,
             text: content,
+            ...(hasPromptAttachments(parsed) ? { hasAttachments: true } : {}),
             timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
         });
     }
 
     return points;
+}
+
+/** Fork only history preceding an exact top-level user UUID. Never edit the source. */
+export async function forkBeforeUserMessage(
+    projectDir: string, sourceClaudeSessionId: string, cutBeforeUuid: string,
+): Promise<string | null> {
+    const src = jsonlPath(projectDir, sourceClaudeSessionId);
+    let raw: string;
+    try { raw = await readFile(src, 'utf-8'); } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ForkSourceMissingError(src);
+        throw error;
+    }
+    const lines = raw.split('\n');
+    let hasPreviousConversation = false;
+    let hasPreviousPrompt = false;
+    let cut = -1;
+    for (let i = 0; i < lines.length; i++) {
+        let entry: any;
+        try { entry = JSON.parse(lines[i]); } catch { continue; }
+        if (userPromptText(entry) !== null && entry.uuid === cutBeforeUuid) {
+            if (hasPromptAttachments(entry)) throw new Error('Cannot edit and rerun a message with attachments');
+            cut = i;
+            break;
+        }
+        // Even a prior image-only prompt is history: never silently discard it.
+        if (!entry?.isSidechain && !entry?.isMeta && !entry?.isSynthetic
+            && (entry?.type === 'user' || entry?.type === 'assistant')) {
+            hasPreviousConversation = true;
+            const content = entry.message?.content;
+            if (entry.type === 'user' && (typeof content === 'string'
+                || (Array.isArray(content) && content.length > 0 && !content.some((block: any) => block?.type === 'tool_result')))) {
+                hasPreviousPrompt = true;
+            }
+        }
+    }
+    if (cut < 0) throw new ForkTruncateUuidNotFoundError(cutBeforeUuid, src);
+    if (!hasPreviousConversation) return null;
+    if (!hasPreviousPrompt) throw new Error('Cannot safely rewind: earlier history has no user prompt');
+    const newId = randomUUID();
+    const destination = jsonlPath(projectDir, newId);
+    const temporary = `${destination}.tmp-${process.pid}`;
+    try {
+        await writeFile(temporary, lines.slice(0, cut).join('\n') + '\n', { encoding: 'utf-8', flag: 'wx' });
+        await rename(temporary, destination);
+    } catch (error) {
+        await unlink(temporary).catch(() => undefined);
+        throw error;
+    }
+    return newId;
 }
