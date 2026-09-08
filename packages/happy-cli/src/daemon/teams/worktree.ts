@@ -31,6 +31,10 @@ export async function removeTeamWorktree(resource: { directory?: string; reposit
     const { directory, repository, branch } = resource;
     if (!directory || !repository || !branch) return;
     if (existsSync(directory)) {
+        if (await git(directory, ['symbolic-ref', '--short', 'HEAD']) !== branch) throw new Error('Worktree branch changed; preserve for manual reconciliation');
+        const actualCommon = await git(directory, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+        const expectedCommon = await git(repository, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+        if (resolve(actualCommon) !== resolve(expectedCommon)) throw new Error('Worktree repository changed; preserve for manual reconciliation');
         if (await git(directory, ['status', '--porcelain'])) throw new Error(`Uncommitted work retained at ${directory}`);
         // Only remove a branch whose commits reached the source checkout. Squash merges require explicit owner handling.
         await git(repository, ['merge-base', '--is-ancestor', branch, 'HEAD']).catch(() => { throw new Error(`Unmerged work retained on ${branch} at ${directory}`); });

@@ -84,6 +84,7 @@ export function sanitizeImportTitle(value: unknown): string | null {
 const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
 const startupCliAvailability = detectCLIAvailability();
 export const initialMachineMetadata: MachineMetadata = {
+  teamsVersion: 1,
   host: os.hostname() + hostSuffix,
   platform: os.platform(),
   happyCliVersion: packageJson.version,
@@ -1400,7 +1401,7 @@ export async function startDaemon(): Promise<void> {
     // Handle child process exit — preserve session data for resume
     const onChildExited = (pid: number) => {
       const session = pidToTrackedSession.get(pid);
-      if (session?.happySessionId && session.spawnedBy === 'teams') teamWorker?.report(session.happySessionId, 'exited');
+      if (session?.happySessionId && (session.spawnedBy === 'teams' || teamWorker?.hasSession(session.happySessionId))) teamWorker?.report(session.happySessionId, 'exited');
       if (session?.happySessionId && session.encryption) {
         sessionIdToFinishedSession.set(session.happySessionId, session);
         logger.debug(`[DAEMON RUN] Process PID ${pid} exited, preserved session ${session.happySessionId} for resume`);
@@ -1429,7 +1430,7 @@ export async function startDaemon(): Promise<void> {
       }
     };
     const onSessionStateEvent = (sessionId: string, event: AssistantReportEvent, spawnedByFromSession?: string): void => {
-      if (spawnedByFromSession === 'teams' || [...pidToTrackedSession.values()].some(s => s.happySessionId === sessionId && s.spawnedBy === 'teams')) {
+      if (spawnedByFromSession === 'teams' || teamWorker?.hasSession(sessionId) || [...pidToTrackedSession.values()].some(s => s.happySessionId === sessionId && s.spawnedBy === 'teams')) {
         teamWorker?.report(sessionId, event === 'completed' ? 'idle' : 'blocked');
         return; // Teams has its own recipient; never route to the legacy assistant singleton.
       }
@@ -1824,10 +1825,22 @@ export async function startDaemon(): Promise<void> {
     }), heartbeatIntervalMs); // Every 60 seconds in production
 
     teamWorker = createTeamWorker({
-      machineId, token: credentials.token, spawn: spawnSession, stop: stopSession,
+      machineId, token: credentials.token, spawn: spawnSession,
+      stopAndWait: async id => {
+        await stopSessionAndWait(id);
+        const metadata = findTrackedSessionById(id)?.happySessionMetadataFromLocalWebhook ?? readPersistedSessions()[id]?.metadata;
+        const remaining = findSessionWrapperPids(metadata, await findAllHappyProcesses(), { excludePid: process.pid, lockPid: readSessionLock(id)?.pid });
+        if (remaining.some(isPidAlive)) throw new Error('Worker still running; cleanup retained');
+      },
       live: id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid)),
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
+
+    // Existing machine rows retain their original metadata at registration.
+    // Publish the executing daemon's capability after the worker is installed.
+    void apiMachine.updateMachineMetadata(current => ({
+      ...(current ?? initialMachineMetadata), teamsVersion: 1,
+    })).catch(() => logger.debug('[DAEMON RUN] Teams capability publication will retry on reconnect'));
 
     // Setup signal handlers
     const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {

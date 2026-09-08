@@ -218,6 +218,7 @@ export interface DecryptedMessage {
 //
 
 export const MachineMetadataSchema = z.object({
+  teamsVersion: z.number().int().positive().optional(),
     host: z.string(),
     platform: z.string(),
     happyCliVersion: z.string(),

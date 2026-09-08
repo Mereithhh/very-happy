@@ -502,7 +502,7 @@ export async function runAcp(opts: {
 
   const { state, metadata } = createSessionMetadata({
     flavor: resolveSessionFlavor(opts.agentName),
-        ...(process.env.VH_TEAM_OPERATION_ID ? { teamOperationId: process.env.VH_TEAM_OPERATION_ID } : {}),
+    ...(process.env.VH_TEAM_OPERATION_ID ? { teamOperationId: process.env.VH_TEAM_OPERATION_ID } : {}),
     machineId: settings.machineId,
     startedBy: opts.startedBy,
     sandbox: settings.sandboxConfig,

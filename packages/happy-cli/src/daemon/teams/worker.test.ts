@@ -16,11 +16,11 @@ import { readReceipt, writeReceipt } from './journal';
 let home: string;
 let workers: ReturnType<typeof createTeamWorker>[] = [];
 const op = (): TeamOperation => ({ id: 'op1', teamId: 'team1', machineId: 'machine1', taskId: 'task1', botId: 'bot1', attemptId: 'attempt1', generation: 1, type: 'spawn', status: 'pending', claimId: null, claimedAt: null, error: null, sessionId: null, directory: '/repo', assistant: 'codex', prompt: 'A bounded task', createdAt: 1 });
-const team = (operations: TeamOperation[]): TeamState => ({ id: 'team1', name: 'Team', machineId: 'machine1', version: 1, bots: [], tasks: [], messages: [], operations, createdAt: 1 });
+const team = (operations: TeamOperation[]): TeamState => ({ id: 'team1', name: 'Team', machineId: 'machine1', version: 1, bots: [{ id: 'bot1', name: 'Worker', sessionId: 'session1', generation: 1, root: false, managed: true, assistant: 'codex', directory: '/repo' }], tasks: [{ id: 'task1', parentTaskId: null, goal: 'g', acceptance: ['a'], goalVersion: 1, ownerBotId: null, assigneeBotId: 'bot1', status: 'queued', attempts: [], currentAttemptId: 'attempt1', cleanup: 'none' }], messages: [], operations, createdAt: 1 });
 const spawn = vi.fn();
-const stop = vi.fn();
+const stopAndWait = vi.fn();
 function start() {
-    const worker = createTeamWorker({ home, serverUrl: 'http://127.0.0.1:1', machineId: 'machine1', token: 'test', spawn, stop, live: () => false, log: () => {} });
+    const worker = createTeamWorker({ home, serverUrl: 'http://127.0.0.1:1', machineId: 'machine1', token: 'test', spawn, stopAndWait, live: () => false, log: () => {} });
     workers.push(worker);
     return worker;
 }
@@ -39,6 +39,7 @@ beforeEach(() => {
     mkdirSync(root, { recursive: true });
     home = mkdtempSync(join(root, 'worker-'));
     mocks.persisted.mockReturnValue({});
+    stopAndWait.mockReset().mockResolvedValue(undefined);
     mocks.prepare.mockResolvedValue({ directory: '/isolated', repository: '/repo', branch: 'codex/team-op1' });
     mocks.key.mockResolvedValue(new Uint8Array(32));
     mocks.send.mockResolvedValue(undefined);
@@ -90,11 +91,46 @@ describe('daemon team effect recovery', () => {
     it('never claims a previously claimed operation when its local effect receipt is absent', async () => {
         setup({ ...op(), status: 'claimed', claimId: 'claim1' });
         const worker = start(); await settled(worker);
-        expect(mocks.post).not.toHaveBeenCalled();
+        expect(mocks.post).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ action: expect.objectContaining({ type: 'fail-operation', unknown: true }) }));
         expect(spawn).not.toHaveBeenCalled();
     });
+    it('does not start a task cancelled between claim and execution', async () => {
+        const operation = op(); setup(operation);
+        const state = team([operation]); state.tasks[0].status = 'cancelled';
+        mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [operation], teams: [state] } : { team: state } }));
+        const worker = start(); await settled(worker);
+        expect(spawn).not.toHaveBeenCalled();
+        expect(mocks.post.mock.calls.some(c => c[1].action.error === 'task_closed_before_spawn')).toBe(true);
+        expect(readReceipt(home, 'op1')?.phase).toBe('completed');
+    });
+    it('withholds the initial task if cancellation happens while the wrapper starts', async () => {
+        const operation = op(); setup(operation); const state = team([operation]);
+        mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [operation], teams: [state] } : { team: state } }));
+        spawn.mockImplementationOnce(async () => { state.tasks[0].status = 'cancelled'; return { type: 'success', sessionId: 'session1' }; });
+        const worker = start(); await settled(worker);
+        expect(mocks.send).not.toHaveBeenCalled();
+        expect(stopAndWait).toHaveBeenCalledWith('session1');
+    });
+    it('does not archive or remove resources without proof the wrapper stopped', async () => {
+        setup({ ...op(), id: 'stop1', type: 'stop', sessionId: 'session1' });
+        stopAndWait.mockRejectedValueOnce(new Error('Orphan wrapper still running'));
+        const worker = start(); await settled(worker);
+        expect(mocks.archive).not.toHaveBeenCalled();
+        expect(mocks.remove).not.toHaveBeenCalled();
+        expect(readReceipt(home, 'stop1')?.phase).not.toBe('completed');
+    });
+    it('cleans the original worktree after return created a newer attempt on the same wrapper', async () => {
+        const origin = { ...op(), status: 'completed' as const, sessionId: 'session1' };
+        const cleanup = { ...op(), id: 'stop2', type: 'stop' as const, sessionId: 'session1', attemptId: 'attempt2' };
+        setup(cleanup); const state = team([origin, cleanup]);
+        mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [cleanup], teams: [state] } : { team: state } }));
+        writeReceipt(home, { operationId: 'op1', teamId: 'team1', claimId: 'claim0', phase: 'completed', sessionId: 'session1', directory: '/isolated', repository: '/repo', branch: 'codex/team-op1' });
+        const worker = start(); await settled(worker);
+        expect(mocks.remove).toHaveBeenCalledWith(expect.objectContaining({ operationId: 'op1', directory: '/isolated' }));
+        expect(readReceipt(home, 'stop2')?.phase).toBe('completed');
+    });
     it('preserves failed cleanup for another pass and never marks it completed', async () => {
-        const spawnOperation = { ...op(), status: 'completed' as const };
+        const spawnOperation = { ...op(), status: 'completed' as const, sessionId: 'session1' };
         const cleanup = { ...op(), id: 'stop1', type: 'stop' as const, sessionId: 'session1' };
         setup(cleanup);
         const state = team([spawnOperation, cleanup]);

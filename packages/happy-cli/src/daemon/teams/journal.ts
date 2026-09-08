@@ -1,4 +1,4 @@
-import { readFileSync, renameSync } from 'node:fs';
+import { readFileSync, renameSync, openSync, fsyncSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
 
@@ -33,5 +33,12 @@ export function writeReceipt(home: string, receipt: TeamEffectReceipt): void {
     const target = receiptPath(home, receipt.operationId);
     const tmp = `${target}.${process.pid}.tmp`;
     writePrivateFileSync(tmp, JSON.stringify(receipt));
+    const file = openSync(tmp, 'r');
+    try { fsyncSync(file); } finally { closeSync(file); }
     renameSync(tmp, target);
+    // Persist the rename before a process launch can make the effect irreversible.
+    if (process.platform !== 'win32') {
+        const directory = openSync(join(home, 'teams', 'effects'), 'r');
+        try { fsyncSync(directory); } finally { closeSync(directory); }
+    }
 }

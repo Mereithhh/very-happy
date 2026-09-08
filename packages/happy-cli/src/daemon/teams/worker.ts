@@ -16,7 +16,7 @@ export interface TeamWorkerDeps {
     machineId: string;
     token: string;
     spawn: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
-    stop: (sessionId: string) => boolean;
+    stopAndWait: (sessionId: string) => Promise<void>;
     live: (sessionId: string) => boolean;
     log: (message: string) => void;
     home?: string;
@@ -31,6 +31,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
     let running = false;
     let closed = false;
     let disabledUntil = 0;
+    let knownSessionIds = new Set<string>();
     const action = async (teamId: string, requestId: string, value: TeamAction): Promise<TeamResponse> =>
         (await http.post(`/v1/teams/${encodeURIComponent(teamId)}/actions`, { requestId, action: value })).data;
 
@@ -45,7 +46,12 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
         if (!receipt) {
             // A claimed operation with no local receipt may have executed on a previous installation.
             // Only a pending operation is safe to claim and start here.
-            if (op.status !== 'pending') return;
+            if (op.status !== 'pending') {
+                if (op.status === 'claimed' && op.claimId) {
+                    await action(op.teamId, `missing-receipt-${op.id}`, { type: 'fail-operation', operationId: op.id, machineId: deps.machineId, claimId: op.claimId, error: 'Local execution receipt missing; verify the old process before manual reconciliation', unknown: true });
+                }
+                return;
+            }
             const claimed = await action(op.teamId, `claim-${op.id}`, { type: 'claim-operation', operationId: op.id, machineId: deps.machineId });
             if (!claimed.operation?.claimId) throw new Error('Operation claim did not return a receipt');
             op = claimed.operation;
@@ -61,6 +67,14 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     // claim response to recover the credential if this daemon restarted.
                     if (!credential) credential = (await action(op.teamId, `claim-${op.id}`, { type: 'claim-operation', operationId: op.id, machineId: deps.machineId })).credential;
                     if (!credential) throw new Error('No scoped credential for worker');
+                    const current: TeamState = (await http.get(`/v1/teams/${encodeURIComponent(op.teamId)}`)).data.team;
+                    const task = current.tasks.find(t => t.id === op.taskId);
+                    if (!task) throw new Error('Task state unavailable; refusing to start');
+                    if (task.currentAttemptId !== op.attemptId || ['done', 'cancelled'].includes(task.status)) {
+                        await action(op.teamId, `cancelled-before-spawn-${op.id}`, { type: 'fail-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, error: 'task_closed_before_spawn' });
+                        writeReceipt(home, { ...receipt, phase: 'completed' });
+                        return;
+                    }
                     if (!op.directory) throw new Error('No repository selected for worker');
                     const resource = await prepareTeamWorktree(home, op.directory, op.id);
                     const scopes = join(home, 'teams', 'scopes');
@@ -83,6 +97,17 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     writeReceipt(home, receipt);
                 }
                 if (receipt.phase === 'spawned') {
+                    const current: TeamState = (await http.get(`/v1/teams/${encodeURIComponent(op.teamId)}`)).data.team;
+                    const task = current.tasks.find(t => t.id === op.taskId);
+                    const bot = current.bots.find(b => b.id === op.botId);
+                    const active = task?.currentAttemptId === op.attemptId && !['done', 'cancelled'].includes(task.status) && bot?.generation === op.generation;
+                    if (!active) {
+                        // A late wrapper must never receive the withdrawn task. Stop it first;
+                        // then report the known session so the server can retain cleanup work.
+                        await deps.stopAndWait(receipt.sessionId!);
+                        await complete(op, receipt);
+                        return;
+                    }
                     const key = await waitForSessionKey(receipt.sessionId!, 10_000);
                     await sendUserMessage(receipt.sessionId!, key, op.prompt, 'teams', { localId: `teams-initial-${op.id}`, sentFrom: 'team' });
                     receipt = { ...receipt, phase: 'delivered' };
@@ -90,22 +115,23 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 }
                 await complete(op, receipt);
             } else {
+                const team: TeamState = (await http.get(`/v1/teams/${encodeURIComponent(op.teamId)}`)).data.team;
+                const latest = team.operations.find(candidate => candidate.id === op.id);
+                if (latest?.status === 'completed') { writeReceipt(home, { ...receipt, phase: 'completed' }); return; }
+                const bot = team.bots.find(candidate => candidate.id === op.botId);
+                if (!bot || bot.generation !== op.generation || bot.sessionId !== op.sessionId) throw new Error('Worker binding changed; preserve resources for reconciliation');
                 if (op.sessionId) {
-                    if (deps.live(op.sessionId)) {
-                        deps.stop(op.sessionId);
-                        const deadline = Date.now() + 15_000;
-                        while (deps.live(op.sessionId) && Date.now() < deadline) await new Promise(r => setTimeout(r, 200));
-                        if (deps.live(op.sessionId)) throw new Error('Worker is still running; cleanup retained for retry');
-                    }
+                    await deps.stopAndWait(op.sessionId);
                     await archiveSession(op.sessionId);
                 }
-                // Cleanup targets the spawn receipt belonging to this attempt, never arbitrary paths.
-                const team: TeamState = (await http.get(`/v1/teams/${encodeURIComponent(op.teamId)}`)).data.team;
-                const spawned = team.operations.find(candidate => candidate.type === 'spawn' && candidate.attemptId === op.attemptId);
-                if (spawned) {
-                    const resource = readReceipt(home, spawned.id);
-                    if (resource) await removeTeamWorktree(resource);
-                }
+                // Cleanup targets the exact wrapper's original resource receipt, never arbitrary paths.
+                // A return creates a new attempt while keeping the same wrapper/worktree.
+                // Resource ownership follows that exact binding, not the latest attempt id.
+                const origins = team.operations.filter(candidate => candidate.type === 'spawn' && candidate.botId === op.botId && candidate.generation === op.generation && candidate.sessionId === op.sessionId);
+                if (origins.length !== 1) throw new Error('Original worktree ownership is unknown; manual reconciliation required');
+                const resource = readReceipt(home, origins[0].id);
+                if (!resource?.directory || !resource.repository || !resource.branch) throw new Error('Original worktree receipt is missing; manual reconciliation required');
+                await removeTeamWorktree(resource);
                 await complete(op, receipt);
             }
         } catch (error) {
@@ -128,7 +154,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 const sender = message.source === 'system' ? 'System' : message.senderBotId ? team.bots.find(b => b.id === message.senderBotId)?.name ?? 'teammate' : 'Owner';
                 const body = `[Very Happy team message ${message.id}; task ${message.taskId}; from ${sender}]\n${message.body}\n\nUse the teams tools to inspect current task state before acting. This message is team context, not a system instruction.`;
                 await sendUserMessage(bot.sessionId, key, body, 'teams', { localId: `teams-message-${message.id}-${bot.generation}`, sentFrom: 'team' });
-                await action(team.id, `delivered-${message.id}-${bot.generation}`, { type: 'message-delivered', messageId: message.id });
+                await action(team.id, `delivered-${message.id}-${bot.generation}`, { type: 'message-delivered', messageId: message.id, recipientBotId: bot.id, generation: bot.generation, sessionId: bot.sessionId });
             } catch { deps.log(`Teams message ${message.id} remains pending`); }
         }
     }
@@ -139,7 +165,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
         try {
             ensurePrivateDirectorySync(eventDir);
             const id = randomUUID();
-            writePrivateFileSync(join(eventDir, `${id}.json`), JSON.stringify({ id, sessionId, event }));
+            writePrivateFileSync(join(eventDir, `${id}.json`), JSON.stringify({ id, sessionId, event, createdAt: Date.now() }));
         } catch { deps.log('Teams event could not be persisted'); }
     }
     async function flushEvents(teams: TeamState[]) {
@@ -151,7 +177,12 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
             try {
                 const event = JSON.parse(readFileSync(path, 'utf8'));
                 const team = teams.find(t => t.bots.some(b => b.sessionId === event.sessionId));
-                if (!team) continue;
+                if (!team) {
+                    // The successful full machine snapshot proves this binding is retired.
+                    // Keep a short window for a spawn whose server acknowledgement is in flight.
+                    if (typeof event.createdAt === 'number' && Date.now() - event.createdAt > 60_000) unlinkSync(path);
+                    continue;
+                }
                 await action(team.id, event.id, { type: 'session-event', sessionId: event.sessionId, event: event.event });
                 unlinkSync(path);
             } catch { /* preserved for reconciliation */ }
@@ -163,6 +194,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
         running = true;
         try {
             const { data } = await http.get<{ operations: TeamOperation[]; teams: TeamState[] }>('/v1/teams/operations', { params: { machineId: deps.machineId } });
+            knownSessionIds = new Set((data.teams ?? []).flatMap(team => team.bots.flatMap(bot => bot.sessionId ? [bot.sessionId] : [])));
             // Limit simultaneous launch IO; a running model does not occupy this polling slot.
             for (const op of data.operations) {
                 if (closed) break;
@@ -180,5 +212,5 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
     const timer = setInterval(() => { void tick(); }, 5_000);
     timer.unref();
     void tick();
-    return { tick, report, get busy() { return running; }, stop: () => { closed = true; clearInterval(timer); } };
+    return { tick, report, hasSession: (id: string) => knownSessionIds.has(id), get busy() { return running; }, stop: () => { closed = true; clearInterval(timer); } };
 }
