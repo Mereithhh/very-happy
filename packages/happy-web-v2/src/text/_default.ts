@@ -1707,6 +1707,11 @@ export const en = {
                 summary: 'Settings → Agents treated pi as Claude: it offered Claude model aliases (opus / sonnet / fable) for pi, and picking a model or permission inside a pi conversation silently overwrote your Claude defaults.',
                 settings: 'pi now has its own row under Settings → Agents. Its model list is what your pi sessions have actually published (e.g. llm-hub/claude-fable-5-1), with "default" meaning "use whatever the machine\'s pi is configured with". pi and Claude defaults no longer touch each other.',
                 selectors: 'In a pi conversation the permission menu shows the two modes pi really distinguishes (ask / bypass) instead of its thinking levels, and the model menu keeps showing the model pi is actually running.',
+            sep08d: {
+                title: 'The terminal opens on its last line and keeps following output',
+                summary: 'Opening a terminal — new, from the list, after switching tabs or reloading — could land in the middle of the history, and from then on new output no longer scrolled the view. The cause was not the history load: whenever the terminal pane got taller (soft keyboard closing, the browser toolbar collapsing, a window resize) the browser nudged the scroll position and the terminal took that for you scrolling up.',
+                follow: 'A pane that was on its last line stays there through keyboard open/close, browser chrome changes and window resizes, and new output keeps scrolling into view.',
+                history: 'Scrolling up to read history is unchanged: while you are looking at history, new output does not pull you down, and a layout change does not either. Full-screen programs (vim, htop) are unaffected.',
             },
             sep08: {
                 title: 'File-path links, the update button and a few small controls had colours that never resolved',

@@ -48,6 +48,13 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     // publishes its own model list; only the web was filing pi under claude.
       'changelog.releases.sep08a.settings',
       'changelog.releases.sep08a.selectors',
+    id: '2026-09-08-terminal-stays-on-last-line',
+    // web-only: the daemon and tmux were fine; xterm in the browser misread a
+    // layout-induced scroll clamp as the user scrolling up (B-374).
+    titleKey: 'changelog.releases.sep08d.title',
+    summaryKey: 'changelog.releases.sep08d.summary',
+      'changelog.releases.sep08d.follow',
+      'changelog.releases.sep08d.history',
     ],
   },
   {

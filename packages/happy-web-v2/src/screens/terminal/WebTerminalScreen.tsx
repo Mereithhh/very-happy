@@ -39,6 +39,7 @@ import { installTermDiag } from './termDiag';
 import { awaitTerminalFont, FONT_WAIT_FRESH_MS, FONT_WAIT_ATTACH_MS, TERM_FONT, TERM_FONT_SIZE_COARSE, TERM_FONT_SIZE_FINE } from './termFont';
 import { ensureTerminalCjkFont, TERMINAL_CJK_FONT_FAMILY } from './terminalCjkFont';
 import { shouldReassertGeometry } from './termGeometryReassert';
+import { createTailFollowGuard, isXtermViewport } from './termEnterScroll';
 import { installTermInput, pickFieldPolicy, resolveInputOwnership } from './termInputHost';
 import { installTermInputDiag } from './termInputDiag';
 import { isTerminalInputElement } from './termInputElement';
@@ -533,7 +534,13 @@ export function WebTerminalScreen() {
       // queue barrier: reveal only after reset + snapshot/history + raced live
       // chunks have actually reached the renderer, not merely been enqueued.
       drainWrites: (done) => term.write('', done),
-      onReveal: () => setReadySurfaceKey(surfaceKey),
+      // The first visible frame is the LAST line, by construction: every write
+      // behind this reveal has drained, so this is the one moment where
+      // "bottom" is both cheap and certainly right (termEnterScroll.ts).
+      onReveal: () => {
+        term.scrollToBottom();
+        setReadySurfaceKey(surfaceKey);
+      },
       onTimeout: () => {
         // Deep history is optional; a bounded stable first paint is not. The
         // small snapshot remains fully usable, and aborting prevents a late
@@ -763,6 +770,35 @@ export function WebTerminalScreen() {
     };
     const dataDisp = term.onData(sendInput);
     sendInputRef.current = sendInput;
+
+    // ── Tail-follow guard (T-009, see termEnterScroll.ts) ────────────────────
+    // A container that GROWS (keyboard closes, browser chrome collapses, bottom
+    // bar shrinks, window/DevTools resize, tab re-laid-out while hidden) makes
+    // the browser clamp `.xterm-viewport.scrollTop` and fire a `scroll` event;
+    // xterm reads that clamp as a wheel-up, sets isUserScrolling and stops
+    // following output — measured: 300px growth = 20 rows off, permanently.
+    // Capture phase on the MOUNT runs before xterm's own listener on the
+    // viewport, so the sample is taken with the buffer state xterm is about to
+    // misjudge. A viewport the user scrolled up in is never touched.
+    const tailGuard = createTailFollowGuard({
+      isBehindTail: () => term.buffer.active.viewportY < term.buffer.active.baseY,
+      pin: () => term.scrollToBottom(),
+      schedule: (cb) => { requestAnimationFrame(cb); },
+    });
+    const onViewportScrollCapture = (ev: Event) => {
+      if (disposed || !isXtermViewport(ev.target)) return;
+      const vp = ev.target;
+      const buf = term.buffer.active;
+      tailGuard.onViewportScroll({
+        viewportY: buf.viewportY,
+        baseY: buf.baseY,
+        scrollTop: vp.scrollTop,
+        scrollHeight: vp.scrollHeight,
+        clientHeight: vp.clientHeight,
+      });
+    };
+    mount.addEventListener('scroll', onViewportScrollCapture, { capture: true, passive: true });
+
     const pinToLatest = () => {
       term.scrollToBottom();
       const control = latestTuiInput(
@@ -1335,7 +1371,12 @@ export function WebTerminalScreen() {
       for (const b of plan.pages) term.write(b);
       for (const b of plan.copies) term.write(b);
       flushAssembly(assembly.finishRebuild());
-      term.scrollToBottom();
+      // Pin AFTER the pages have actually been parsed, not when they were
+      // queued: xterm writes asynchronously, and a `scrollToBottom()` issued
+      // here would run against the still-empty post-reset buffer (a no-op).
+      // The rebuild only ever runs while the user is at the tail (atBottom()
+      // gate above), so re-pinning cannot yank anyone out of history.
+      term.write('', () => { if (!disposed) term.scrollToBottom(); });
       initialPaintGate.historySettled();
     };
 
@@ -2287,6 +2328,8 @@ export function WebTerminalScreen() {
       assembly.abort('disposed');
       initialPaintGate.dispose();
       bufferDisp.dispose();
+      tailGuard.dispose();
+      mount.removeEventListener('scroll', onViewportScrollCapture, { capture: true } as EventListenerOptions);
       if (IS_COARSE_POINTER) {
         host.removeEventListener('touchstart', onTouchStart, { capture: true } as EventListenerOptions);
         host.removeEventListener('touchend', onTouchEnd, { capture: true } as EventListenerOptions);
