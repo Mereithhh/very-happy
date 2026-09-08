@@ -1723,6 +1723,11 @@ export const en = {
                 summary: 'If you sent a message while the agent was busy and the agent then dropped its queue (/clear, /compact, Stop in terminal mode, or the session was restarted before it got to your message), the message used to sit at "queued" until the next unrelated turn ended, then quietly appear as if it had been handled.',
                 tombstone: 'The agent now reports every queued message it discards. The bubble stays in the conversation with a small "Not run" line under it and the reason, so you can copy it and send it again. Messages you remove from the queue yourself are still just removed.',
                 restart: 'Restarting a session (or another machine taking it over) marks the messages the old process still had waiting as "Not run — the session was restarted". Needs a CLI update on the machine; sessions already running keep the old behaviour until they are restarted.',
+            sep08c: {
+                title: 'Less idle CPU: status dots no longer repaint every frame, the daemon stops probing your PATH every 20 seconds',
+                summary: 'A CPU audit of an idle very-happy setup found two small but permanent costs: every pulsing status dot (the connected dot in each session header, running tools, board cards) animated its glow via box-shadow, which the browser has to repaint on every frame; and the daemon re-checked which agent CLIs are installed — six shell processes — on every 20-second heartbeat.',
+                pulse: 'The pulse now animates only opacity and scale, which the compositor handles without touching the page. Measured with the real stylesheet: twelve dots went from ~960 repaints and ~11k raster tasks per 8 seconds to zero repaints; the look is unchanged.',
+                probe: 'The daemon still heartbeats every 20 seconds, but re-checks installed CLIs every 5 minutes instead of every tick (1080 → 72 shell spawns per hour, ~3 s → 0.2 s of blocked main thread per hour). Installing a new agent CLI shows up on the machine card within 5 minutes; a daemon reconnect re-checks immediately.',
             },
             sep08: {
                 title: 'File-path links, the update button and a few small controls had colours that never resolved',

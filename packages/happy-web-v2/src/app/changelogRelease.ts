@@ -62,6 +62,13 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       'changelog.releases.sep08a.tombstone',
       'changelog.releases.sep08a.restart',
     ],
+    id: '2026-09-08-idle-cpu-compositor-probe',
+    // Web half (ui.css pulse) ships with this web build; the CLI half
+    // (keep-alive probe throttle) lands in the next CLI release — the
+    // publish workflow sets cliVersion then, as with other two-part entries.
+    titleKey: 'changelog.releases.sep08c.title',
+    summaryKey: 'changelog.releases.sep08c.summary',
+    itemKeys: ['changelog.releases.sep08c.pulse', 'changelog.releases.sep08c.probe'],
   },
   {
     id: '2026-09-08-undefined-css-tokens',
