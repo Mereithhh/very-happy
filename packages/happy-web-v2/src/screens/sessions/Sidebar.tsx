@@ -849,6 +849,7 @@ export function Sidebar() {
           >
             <AudioLines size={17} />
           </button>
+          <button className="sb-icon-btn" title="Agent teams" aria-label="Agent teams" onClick={() => navigate('/teams')}><MessagesSquare size={17} /></button>
           <button
             className="sb-icon-btn sb-board-btn"
             title={t('board.title')}
