@@ -10,6 +10,8 @@ export const ConnectionDiagnosticEventSchema = z.object({
     durationMs: z.number().int().min(0).max(300_000),
     deviceClass: z.enum(['mobile', 'desktop', 'unknown']),
     visibility: z.enum(['visible', 'hidden']),
+    relayRegion: z.enum(['central', 'sg', 'us', 'other', 'unknown']).optional(),
+    timing: z.enum(['active', 'background', 'censored', 'unknown']).optional(),
     client: z.string().regex(/^web\/(?:[a-f0-9]{7,40}|unknown)$/),
 }).strict();
 

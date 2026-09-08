@@ -1,6 +1,7 @@
 import { ConnectionDiagnosticBatchSchema } from '@slopus/happy-wire';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
 import { db } from '@/storage/db';
+import { connectionMetrics } from '@/app/monitoring/connectionMetrics';
 import { log } from '@/utils/log';
 import { Fastify } from '../types';
 
@@ -33,9 +34,11 @@ export function connectionDiagnosticsRoutes(app: Fastify) {
                 userId: request.userId, machineId: event.machineId, tag: event.attemptId,
                 operation: event.stage, status: event.outcome, durationMs: event.durationMs,
                 platform: event.deviceClass, mode: event.visibility, client: event.client,
-                at: event.at,
+                at: event.at, source: event.relayRegion ?? 'unknown', kind: event.timing ?? 'unknown',
             });
         }
+        // Shared deduplication is bounded to 200ms; telemetry never blocks business sockets.
+        await Promise.all(events.map(event => connectionMetrics.observe(request.userId, event)));
         return reply.send({ accepted: events.length });
     });
 }
