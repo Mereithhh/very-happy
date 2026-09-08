@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Message } from '@/sync/typesMessage';
 import { buildChatRows, buildLeafRows, extractUserAttachments } from './chatTurns';
@@ -231,14 +230,13 @@ describe('attachments are only attached to a message that renders a bubble', () 
         expect(kept.map((m) => m.id)).toEqual(['f1', 'n1']);
     });
 
-    it('a supervisor tick owner does the same (it renders a card, not a bubble)', () => {
+    it('legacy supervisor text is an ordinary message and retains attachments', () => {
         const tick: Message = {
             kind: 'user-text', id: 'k1', localId: null, createdAt: 5,
-            // same shape supervisorCards.test.ts uses for a report with no items
-            text: readFileSync(new URL('./__fixtures__/vh-tick.txt', import.meta.url), 'utf8'),
+            text: '[vh-tick 2026-09-04T10:00:00Z] legacy report',
         } as Message;
         const { attachments } = extractUserAttachments([fileEvent('f1', 4), tick]);
-        expect(attachments.size).toBe(0);
+        expect(attachments.get('k1')?.map(m => m.id)).toEqual(['f1']);
     });
 
     it('an ordinary user message still gets them', () => {

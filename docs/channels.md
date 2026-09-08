@@ -229,13 +229,12 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   switches through the same file whether the session is idle (message `meta`)
   or working (`set-permission-mode` RPC). What is written there is also
   published as `metadata.permissionMode`, so the Web shows the effective value.
-  Enforcement is entirely the pi-side gate extension's job (vh-supervisor's
-  `permission-gate`, which re-reads the file on every tool call):
-  `bypassPermissions` turns its `ask` rules into `allow`; its `deny` rules are
-  never lifted by any mode. Without such an extension the mode is inert.
-  `metadata.permissionMode` is the value very-happy handed to the gate, not the
-  gate's verdict: an in-session override inside the gate (e.g. `/vh-yolo`) is
-  not reported back and is not visible in the Web.
+  Enforcement is provided by the CLI's official pi runtime extension, which
+  re-reads the mode file before each tool call. `default` asks for non-read-only
+  tools; `plan` blocks writes; `acceptEdits` permits edit/write but still asks for
+  shell and other mutations; `bypassPermissions` is honored only when explicitly
+  selected. User-installed extensions may enforce additional rules. The runtime
+  does not remove them or require a private supervisor wrapper.
   pi's approvals surface as ACP `request_permission` cards in the
   Web UI (a pi extension calling `ctx.ui.confirm()` produces one), and
   `PI_ACP_PI_COMMAND` in the daemon's environment lets you point the adapter
@@ -500,7 +499,7 @@ very-happy's tools in one of two ways depending on how it was started:
 
 | Context | How pi is started | Tool path | Title |
 |---|---|---|---|
-| **Managed** | `very-happy pi` / `spawn --agent pi` (ACP runner) | the runner starts the in-process happy MCP server (Streamable HTTP on `127.0.0.1`) and exports **`HAPPY_MCP_URL`** and **`HAPPY_SESSION_ID`** into the pi-acp child env; a pi extension (e.g. vh-supervisor's `very-happy-bridge`) connects to that URL and proxies its tools (`change_title`, `copy_to_clipboard`, `open_preview`, `report_progress`, plus the `sessions_*` tools of the assistant variant). The `mcpServers` handoff is still sent for agents that do honour it. | auto-generated from the first user prompt (same `TitleGenerator` as Claude sessions, one `claude -p --model haiku` call); a title the agent sets via `change_title` first is never overwritten. |
+| **Managed** | `very-happy pi` / `spawn --agent pi` (ACP runner) | the runner starts the in-process happy MCP server (Streamable HTTP on `127.0.0.1`) and exports **`HAPPY_MCP_URL`** and **`HAPPY_SESSION_ID`** into the pi-acp child env; the CLI ships an official pi extension that connects to that URL and proxies its advertised tools (`change_title`, `copy_to_clipboard`, `open_preview`, `report_progress`, plus the `sessions_*` tools of the assistant variant). The `mcpServers` handoff is still sent for agents that do honour it. | auto-generated from the first user prompt (same `TitleGenerator` as Claude sessions, one `claude -p --model haiku` call); a title the agent sets via `change_title` first is never overwritten. |
 | **Terminal** | you type `pi` inside a very-happy web terminal | no happy server; pi-mcp-adapter loads the user-wide `very-happy` entry above, and because the daemon set **`VH_TERMINAL_ID`** in that terminal, `very-happy mcp` adds **`change_title`**, which posts `{terminalId, title, ifAbsent?}` to the daemon control server's `POST /terminal-title` (control-token auth, same as `/clipboard`; `200 {status:"ok"}`, `409` when tmux refused, `503` while the daemon is starting). | no auto-title; the agent (or an extension) calls `change_title`. There is no mirror session for terminal pi (pi has no hooks). |
 
 The terminal row needs the `very-happy` entry in `~/.pi/agent/mcp.json`
@@ -737,3 +736,25 @@ Design notes:
 - Run the adapter with the least-privileged OS user that can reach those
   workspaces. Never expose the daemon's loopback control server to a network.
 - Webhook delivery is best-effort; treat notifications as hints, not a queue.
+
+
+## Agent Teams (local development; feature gated)
+
+Teams use the same `team_*` tools in managed Claude HTTP MCP, Codex stdio MCP,
+and the official pi runtime bridge. No assistant session variant is required.
+The server must enable `VH_AGENT_TEAMS_ENABLED=true`; optionally restrict it via
+`VH_AGENT_TEAMS_ACCOUNT_IDS`. A new daemon advertises `teamsVersion:1`; the Web
+Teams page disables dispatch when that capability or a live machine is absent.
+
+`very-happy teams install --host claude|codex|pi` previews the shared skill; add
+`--apply` to install only that owned skill. `uninstall` uses the same ownership
+check and preserves user edits. A standalone terminal still needs a managed
+Very Happy session identity; skill installation is not a transport or auth grant.
+
+The server owns tasks, attempts, credentials and persistent operations. The
+daemon starts isolated worktrees and delivers messages through existing session
+queues. Acceptance is separate from process activity and resource cleanup.
+Unknown launch outcomes require verification, not blind retry. See the
+[Teams contract](../specs/2026-09-agent-teams.md) for scope, limits, rollback and
+legacy ledger migration preview. This feature has not been deployed by the
+implementation task.

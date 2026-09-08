@@ -58,7 +58,7 @@
   cursor: default;
 }
 .teams-screen :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 .teams-screen .teams-primary {
@@ -100,7 +100,7 @@
   color: inherit;
 }
 .teams-screen small {
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 @media (max-width: 600px) {
   .teams-screen {

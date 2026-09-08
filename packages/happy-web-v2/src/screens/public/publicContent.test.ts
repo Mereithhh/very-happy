@@ -306,14 +306,14 @@ describe('public documentation registry', () => {
     expect(codexBridge.match(/registerTool\(/g)).toHaveLength(3);
     expect(codexBridge).not.toContain('REPORT_PROGRESS_TOOL_NAME');
     expect(codexBridge).not.toContain("'report_progress'");
-    expect(acpRunner).toContain("join(projectPath(), 'bin', 'happy-mcp.mjs')");
-    expect(geminiRunner).toContain("join(projectPath(), 'bin', 'happy-mcp.mjs')");
+    expect(acpRunner).toContain("join(projectPath(), 'bin', 'very-happy-mcp.mjs')");
+    expect(geminiRunner).toContain("join(projectPath(), 'bin', 'very-happy-mcp.mjs')");
     for (const tool of ['sessions_list', 'session_read', 'session_send', 'session_spawn', 'session_kill', 'session_archive', 'terminals_list', 'terminal_read', 'terminal_send', 'memory_update', 'journal_append']) {
       expect(assistantTools).toContain(`'${tool}'`);
       expect(text).toContain(tool);
       expect(channels).toContain(tool);
     }
-    expect(managedClaude).toContain('...(options?.assistant ? ASSISTANT_TOOL_NAMES : [])');
+    expect(managedClaude).toContain('...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : [])');
     // The standalone server inlines exactly two tools: clipboard (always) and
     // the terminal-title tool, which exists only inside a Very Happy web
     // terminal (`resolveMcpTerminalId`: VH_TERMINAL_ID set and no HAPPY_MCP_URL,
@@ -323,7 +323,7 @@ describe('public documentation registry', () => {
     expect(standaloneMcp.match(/registerTool\(/g)).toHaveLength(2);
     expect(standaloneMcp).toContain('CLIPBOARD_TOOL_NAME');
     expect(standaloneMcp).toContain("if (terminalId) {\n        server.registerTool(TERMINAL_TITLE_TOOL_NAME, {");
-    expect(standaloneMcp).toContain("if (surface === 'assistant') {\n        registerAssistantSessionTools(server);");
+    expect(standaloneMcp).toContain("if (surface === 'assistant' && !process.env.VH_TEAM_SCOPE_FILE) {\n        registerAssistantSessionTools(server);");
     expect(standaloneMcp).not.toContain('registerAssistantTools(');
     // The env read lives in mcpToolSurface (pure, tested), never inline here.
     expect(standaloneMcp).not.toContain('process.env.VH_TERMINAL_ID');

@@ -21,7 +21,7 @@ export function registerTeamsTools(server: AssistantToolRegistrar, sessionId?: s
     const action = (name: string, description: string, fields: Record<string, z.ZodTypeAny>) => register(`team_${name}`, description,
         { requestId, ...fields }, ({ requestId: key, ...args }) => client.action({ type: name, ...args }, key));
     action('delegate', 'Delegate a goal with acceptance criteria. Use parentTaskId for subdelegation. Existing assigneeBotId or a managed worker may execute it.', {
-        goal: text, acceptance: z.array(text).max(32), parentTaskId: id.optional(), assigneeBotId: id.optional(), botName: id.optional(), directory: z.string().min(1).optional(), assistant: z.enum(['claude', 'codex', 'pi-acp']).optional(),
+        goal: text, acceptance: z.array(text).min(1).max(32), parentTaskId: id.optional(), assigneeBotId: id.optional(), botName: id.optional(), directory: z.string().min(1).optional(), assistant: z.enum(['claude', 'codex', 'pi-acp']).optional(),
     });
     action('message', 'Send a persistent task-related message. Delivery does not mean the model has read or acted on it.', { taskId: id, body: text, recipientBotId: id.optional() });
     action('submit', 'Submit evidence for your current attempt and goal version. The owner still has to accept it.', { taskId: id, attemptId: id, goalVersion: z.number().int().positive(), result: text });

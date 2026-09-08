@@ -1,4 +1,6 @@
 import { homedir } from 'node:os';
+import { readFile } from 'node:fs/promises';
+import { previewLegacyTeamsMigration } from '@/teams/migration';
 import { randomUUID } from 'node:crypto';
 import { createTeamsClient } from '@/teams/client';
 import { installTeamSkill, type TeamSkillHost } from '@/teams/install';
@@ -7,13 +9,19 @@ export async function handleTeamsCommand(args: string[]): Promise<void> {
     const command = args[0];
     const value = (flag: string) => { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; };
     if (!command || command === '--help') {
-        console.log('very-happy teams install|uninstall --host claude|codex|pi [--home PATH] [--apply]\nvery-happy teams inspect\nvery-happy teams create|join --name NAME [--machine-id ID | --team-id ID] [--session-id ID] [--request-id ID]\nvery-happy teams action --json ACTION_JSON --request-id ID\nInstallation previews changes unless --apply is supplied. Managed sessions receive tools automatically.');
+        console.log('very-happy teams install|uninstall --host claude|codex|pi [--home PATH] [--apply]\nvery-happy teams migration-preview --file LEDGER_JSON\nvery-happy teams inspect\nvery-happy teams create|join --name NAME [--machine-id ID | --team-id ID] [--session-id ID] [--request-id ID]\nvery-happy teams action --json ACTION_JSON --request-id ID\nInstallation previews changes unless --apply is supplied. Managed sessions receive tools automatically.');
         return;
     }
     if (command === 'install' || command === 'uninstall') {
         const host = value('--host');
         if (!host || !['claude', 'codex', 'pi'].includes(host)) throw new Error('--host must be claude, codex, or pi');
         console.log(JSON.stringify(await installTeamSkill({ host: host as TeamSkillHost, home: value('--home') ?? homedir(), apply: args.includes('--apply'), uninstall: command === 'uninstall' })));
+        return;
+    }
+    if (command === 'migration-preview') {
+        const file = value('--file');
+        if (!file) throw new Error('--file is required');
+        console.log(JSON.stringify(previewLegacyTeamsMigration(JSON.parse(await readFile(file, 'utf8'))), null, 2));
         return;
     }
     const client = createTeamsClient(value('--session-id'));
