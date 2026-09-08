@@ -166,10 +166,10 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    改动影响 handover/daemon，或初次 groundwork 明确要求时才更新 mac-office。
 6. **CLI 的 npm 包与 tag 是不可变外部发布**：平台包先于主包；任一步失败都不移动或复用
    已推 tag，修复后递增版本；**npm 上可见 ≠ 该版本被推荐**——主包发布落在 `next`，
-   `latest` 只由 publish workflow 的 `promote` job 在**同一 commit 的三系统 smoke 全绿后**
+   `latest` 只由 publish workflow 的 `promote` job 在**同一仓库、tag、SHA 的 push smoke run 内六个 Linux/macOS/Windows × Node 20/24 job 全部 completed+success 后**
    移动（B-348），而 relay 的 `recommendedVersion` 跟着 `latest` 走（1h 缓存）。所以**发版不再
    需要手动 pin 推荐版本**，而 `next` 领先 `latest` 就是「smoke 没过 / promote 没跑」的信号：
-   去读那个 job，别手动 `npm dist-tag add` 绕过去。要按住或回滚机队用 `CLI_RECOMMENDED_VERSION`
+   去读那个 job，别手动 `npm dist-tag add` 绕过去。tag 会跑三系统；workflow success 不足以放行（skipped/缺格也可绿），promote 用 `scripts/ci/cli-smoke-evidence.mjs` 校验当前 attempt 的六个具体 job，不接受 main-only、手动、fork 或跨 run 拼凑的结果。要按住或回滚机队用 `CLI_RECOMMENDED_VERSION`
    （pin 永远赢过 lookup）。
    **但「推荐」与「替用户装」是两个问题，用两个变量（B-351）**：`recommendedVersion` 可以跟着
    registry 走——告诉一个人有新版，事后发现它坏了也没有代价；而 B-327 的空闲自动升级装的是

@@ -168,9 +168,14 @@ gh run list --workflow=cli-smoke-test.yml --commit=<tag-sha>
 
 The relay's recommended version **advances by itself** (B-348): `publish.yml`
 publishes the main package under `next` and its `promote` job moves the `latest`
-dist-tag only after the smoke matrix for that commit is green; the relay follows
+dist-tag only after the same repository/tag/SHA push smoke run has all six
+Linux/macOS/Windows × Node 20/24 jobs completed successfully in its current
+attempt. A green workflow with skipped or missing jobs is rejected; tag pushes
+run Windows as well as macOS. The relay follows
 `latest` via `CLI_VERSION_REGISTRY_LOOKUP=true`, cached one hour. So there is no
-per-release env edit — just confirm it landed:
+per-release env edit. `CLI_RECOMMENDED_VERSION` must be unset for the registry
+to drive recommendations; reserve that pin for an explicit hold or rollback.
+The independent `CLI_AUTO_UPDATE_VERSION` remains unchanged by CI. Confirm it landed:
 
 ```sh
 curl -fsS https://veryhappy.dev/v1/version/cli   # source:"registry", recommendedVersion = X.Y.Z
@@ -191,7 +196,7 @@ That manual step is deliberate — following the dist-tag here would make
 between. Advance it once the release has actually been used:
 
 ```sh
-ssh vh-us
+ssh vh-sg
 sed -i 's|^#* *CLI_AUTO_UPDATE_VERSION=.*|CLI_AUTO_UPDATE_VERSION=X.Y.Z|' /opt/happy/.env
 gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
 curl -fsS https://veryhappy.dev/v1/version/cli   # autoUpdateVersion = X.Y.Z

@@ -6,8 +6,8 @@ name: CLI Smoke Test
 # catch a broken package selection/install on Linux/macOS/Windows before publish.
 #
 # 公开仓库不把 CI 连接到生产宿主机：三个平台均使用 GitHub 托管的临时 runner。
-# Linux 在每个相关 main push/PR 上运行；macOS 在 tag 或手动完整冒烟时运行；
-# Windows 保留为手动完整冒烟，避免普通 PR 的额外时延。
+# Linux 在每个相关 main push/PR 上运行；macOS/Windows 在 tag 或手动完整冒烟时运行。
+# tag 的六格任一缺失或跳过，都不得 promote npm latest。
 #
 # 注：`paths` 过滤器对 **tag push 不生效**（GitHub 文档明文："Path filters are not
 # evaluated for pushes of tags."），所以打 tag 一定会触发本 workflow，不会被 paths 吃掉。
@@ -216,18 +216,10 @@ jobs:
           TOOLS_NAME=$(node -e "process.stdout.write(require('./packages/happy-cli/scripts/unpack-tools.cjs').getPlatformPackageName())")
           npm uninstall -g very-happy-cli "$TOOLS_NAME" || true
 
-  # ── Windows：**只在手动勾 cross_platform 时跑**，托管 runner（会计费）──────
-  # B-148 起不再挂在 tag 上。理由不是「Windows 不重要」，而是它挂在 tag 上时
-  # 从 v0.2.44 起就没真跑过（hosted job 2 秒失败），只是稳定产出一个所有人都
-  # 学会忽略的红叉。要恢复常态覆盖，二选一：给仓库开够 hosted 额度，或者接一台
-  # Windows self-hosted runner。在那之前请如实认账：**Windows 没有常态覆盖**。
-  # postinstall 确实有 win32 分支（unpack-tools.cjs 的 x64-win32/arm64-win32、
-  # ripgrep_launcher 的 where/rg、difft.exe、query_engine-windows.dll.node），
-  # 所以改动碰到这些文件时，务必手动跑一次：
-  #   gh workflow run cli-smoke-test.yml -f cross_platform=true
+  # ── 发版档 Windows：与 macOS 一样，tag / 手动完整冒烟使用托管 runner ──
   smoke-windows:
     name: smoke (windows-latest, node ${{ matrix.node-version }})
-    if: ${{ inputs.cross_platform && vars.SKIP_HOSTED_SMOKE != '1' }}
+    if: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.cross_platform) && vars.SKIP_HOSTED_SMOKE != '1' }}
     strategy:
       fail-fast: false
       matrix:
