@@ -1,6 +1,6 @@
 # CLI update recovery (B-385)
 
-Status: Final
+Status: Shipped — implementation in PR #279; production deployment is separate.
 
 ## Evidence and scope
 
