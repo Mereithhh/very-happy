@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -136,25 +136,34 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         expect((await store.tickTeamSchedules(accountId, otherMachine)).fired).toBe(0);
     });
     it('bounds persisted schedule history without pruning ordinary task messages', async () => {
-        const team = await store.createTeam(accountId, { name: 'Retention', machineId });
-        const joined = await store.actOnTeam(team.id, { accountId }, { requestId: 'join', action: { type: 'join', name: 'Root', sessionId } });
+        // Seed the retention boundary, then exercise the real tick/ACK transaction.
+        // Replaying 70 periods here tested the same branch repeatedly and scanned every
+        // earlier fixture Team; under full-suite load it timed out and leaked a clock spy.
+        const retentionAccountId = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
+        const retentionMachineId = crypto.randomUUID();
+        await db.machine.create({ data: { id: retentionMachineId, accountId: retentionAccountId, metadata: 'metadata' } });
+        const retentionSessionId = (await db.session.create({ data: { accountId: retentionAccountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+        const owner = { accountId: retentionAccountId };
+        const team = await store.createTeam(retentionAccountId, { name: 'Retention', machineId: retentionMachineId });
+        const joined = await store.actOnTeam(team.id, owner, { requestId: 'join', action: { type: 'join', name: 'Root', sessionId: retentionSessionId } });
         const botId = joined.credential!.botId;
-        await store.actOnTeam(team.id, { accountId }, { requestId: 'normal', action: { type: 'delegate', goal: 'Normal retained', acceptance: ['a'], assigneeBotId: botId } });
-        const base = Date.now();
-        await store.actOnTeam(team.id, { accountId }, { requestId: 'schedule', action: { type: 'schedule-create', botId, name: 'Repeated', body: 'Inspect', runAt: base, intervalMs: 60000 } });
-        const clock = vi.spyOn(Date, 'now');
-        try {
-            for (let i = 0; i < 70; i++) {
-                clock.mockReturnValue(base + i * 60000);
-                await store.tickTeamSchedules(accountId, machineId);
-                const current = await store.readTeam(team.id, { accountId });
-                const messageId = current.schedules![0].pendingMessageId!;
-                await store.actOnTeam(team.id, { accountId }, { requestId: `ack-${i}`, action: { type: 'message-delivered', messageId, recipientBotId: botId, generation: 1, sessionId } });
-            }
-        } finally { clock.mockRestore(); }
-        const saved = await store.readTeam(team.id, { accountId });
-        expect(saved.schedules![0].fireCount).toBe(70);
-        expect(saved.messages.filter(m => m.scheduleId).length).toBeLessThanOrEqual(64);
+        await store.actOnTeam(team.id, owner, { requestId: 'normal', action: { type: 'delegate', goal: 'Normal retained', acceptance: ['a'], assigneeBotId: botId } });
+        const made = await store.actOnTeam(team.id, owner, { requestId: 'schedule', action: { type: 'schedule-create', botId, name: 'Repeated', body: 'Inspect', runAt: 1, intervalMs: 60000 } });
+        const scheduleId = made.scheduleId!;
+        const schedules = JSON.stringify([{ ...made.team.schedules![0], fireCount: 64 }]);
+        await db.$executeRaw`UPDATE "AgentTeam" SET "state"=jsonb_set("state", '{schedules}', ${schedules}::jsonb) WHERE "id"=${team.id}`;
+        await db.$executeRaw`INSERT INTO "TeamMessage" ("id", "teamId", "state")
+            SELECT ${scheduleId} || '-' || i, ${team.id}, jsonb_build_object('id', ${scheduleId} || '-' || i, 'taskId', null, 'scheduleId', ${scheduleId}::text, 'senderBotId', null, 'recipientBotId', ${botId}::text, 'body', 'historical reminder', 'deliveredAt', i, 'createdAt', i)
+            FROM generate_series(1, 64) i`;
+        expect((await store.tickTeamSchedules(retentionAccountId, retentionMachineId)).fired).toBe(1);
+        const current = await store.readTeam(team.id, owner);
+        const messageId = current.schedules![0].pendingMessageId!;
+        expect(messageId).toBe(`${scheduleId}-65`);
+        await store.actOnTeam(team.id, owner, { requestId: 'ack-boundary', action: { type: 'message-delivered', messageId, recipientBotId: botId, generation: 1, sessionId: retentionSessionId } });
+        const saved = await store.readTeam(team.id, owner);
+        expect(saved.schedules![0].fireCount).toBe(65);
+        expect(saved.messages.filter(m => m.scheduleId)).toHaveLength(64);
+        expect(saved.messages.some(m => m.id === `${scheduleId}-1`)).toBe(false);
         expect(saved.messages.some(m => !m.scheduleId && m.body.includes('Normal retained'))).toBe(true);
     });
 
@@ -162,16 +171,15 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         const team = await store.createTeam(accountId, { name: 'Schedule history', machineId });
         const joined = await store.actOnTeam(team.id, { accountId }, { requestId: 'join', action: { type: 'join', name: 'Root', sessionId } });
         const firstRequest = { requestId: 'first-schedule', action: { type: 'schedule-create' as const, botId: joined.credential!.botId, name: 'First', body: 'Inspect', runAt: Date.now() + 60000 } };
-        const base = Date.now(); const clock = vi.spyOn(Date, 'now'); let firstId: string | undefined;
-        try {
-            for (let i = 0; i < 66; i++) {
-                clock.mockReturnValue(base + i);
-                const request = i === 0 ? firstRequest : { requestId: `schedule-${i}`, action: { ...firstRequest.action, name: `Schedule ${i}` } };
-                const made = await store.actOnTeam(team.id, { accountId }, request);
-                firstId ??= made.scheduleId;
-                await store.actOnTeam(team.id, { accountId }, { requestId: `cancel-schedule-${i}`, action: { type: 'schedule-cancel', scheduleId: made.scheduleId!, version: 1 } });
-            }
-        } finally { clock.mockRestore(); }
+        const made = await store.actOnTeam(team.id, { accountId }, firstRequest);
+        const firstId = made.scheduleId!;
+        const cancelled = await store.actOnTeam(team.id, { accountId }, { requestId: 'cancel-first', action: { type: 'schedule-cancel', scheduleId: firstId, version: 1 } });
+        const first = { ...cancelled.team.schedules![0], finishedAt: 1 };
+        const historical = [first, ...Array.from({ length: 63 }, (_, index) => ({ ...first, id: crypto.randomUUID(), name: `Historical ${index}`, finishedAt: index + 2 }))];
+        const state = JSON.stringify(historical);
+        await db.$executeRaw`UPDATE "AgentTeam" SET "state"=jsonb_set("state", '{schedules}', ${state}::jsonb) WHERE "id"=${team.id}`;
+        const newest = await store.actOnTeam(team.id, { accountId }, { requestId: 'newest', action: { ...firstRequest.action, name: 'Newest' } });
+        await store.actOnTeam(team.id, { accountId }, { requestId: 'cancel-newest', action: { type: 'schedule-cancel', scheduleId: newest.scheduleId!, version: 1 } });
         const retry = await store.actOnTeam(team.id, { accountId }, firstRequest);
         expect(retry.scheduleId).toBe(firstId); expect(retry.scheduleRecordRetained).toBe(false);
         expect(retry.team.schedules).toHaveLength(64); expect(retry.team.schedules!.every(s => s.status === 'cancelled')).toBe(true);
