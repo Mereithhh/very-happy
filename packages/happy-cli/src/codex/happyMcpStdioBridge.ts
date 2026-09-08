@@ -163,7 +163,7 @@ async function main() {
     inspect: () => forwardTeam('team_inspect', {}),
     action: (action, requestId) => {
       const { type, ...args } = action;
-      return forwardTeam(`team_${type}`, { ...args, requestId });
+      return forwardTeam(`team_${String(type).replaceAll('-', '_')}`, { ...args, requestId });
     },
   });
 

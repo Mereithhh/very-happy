@@ -110,6 +110,6 @@ Bot 换 session 时递增 generation，旧 token 撤销、旧 attempt 失效；�
 
 隔离 PGlite、全新本地账号、独立 HAPPY_HOME、临时 Git 仓库启动真实 server/daemon。Claude 与 Codex 两个 worker 均完成文件修改、commit、scoped team_submit；核对内容并合并源仓库后 owner accept。最终两任务 done/cleanup=done、四个操作 completed，数据库确认两个 session inactive 且已归档；worktree list 仅剩源仓库。权限请求逐项批准，没有改全局 permission mode。测试 server/daemon 均已关闭。
 
-真实模型另验证 Claude HTTP 与 Codex stdio 调用 Teams 工具；pi 另在相同隔离条件下完成真实文件 commit、官方权限卡逐项批准、team_submit、合并验收与回收，最终 spawn/stop completed、task done/cleanup done；使用固定 pi-acp 0.0.33 和宿主原生模型认证，未加载私有 wrapper。Windows launcher 未做真机验收。任务树、旧代际、取消/消息 ACK 竞态和崩溃恢复由机制测试覆盖；两层递归加父级断线的模型验收仍属于个人试用后续批次。
+真实模型另验证 Claude HTTP 与 Codex stdio 调用 Teams 工具；pi 另在相同隔离条件下完成真实文件 commit、官方权限卡逐项批准、team_submit、合并验收与回收，最终 spawn/stop completed、task done/cleanup done；使用固定 pi-acp 0.0.33 和宿主原生模型认证，未加载私有 wrapper。Windows launcher 未做真机验收。另完成真实二层 pi 父级→Claude 子级委派、双向消息、子级提交/父级合并验收、父级提交/最终集成验收；两层全部 done/cleanup done。子级因尚未合入最终源仓库而暂时保留的资源，在最终合并后自动重试回收成功。任务树、旧代际、取消/消息 ACK 竞态和崩溃恢复另有机制测试；父级断线重接的完整模型路径仍需个人试用验收。
 
 Web Chromium 使用真实组件和 fixture API 验证创建、委派、结果、验收、人工对账、归档；390px、两主题、coarse pointer 均无横向溢出或页面错误，按钮至少 48px。fixture UI 验证与上述真实执行链分别记录，不混作同一个全浏览器端到端用例。

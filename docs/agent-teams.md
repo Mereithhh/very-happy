@@ -146,7 +146,9 @@ Claude and Codex have completed real mixed-runner edits, commits, scoped result
 submission, owner acceptance, and clean resource reclamation in an isolated
 stack. Managed pi also completed a real model edit, commit, scoped submission,
 individual permission approvals, owner acceptance and cleanup using the official
-bridge and fixed pi-acp 0.0.33, without the private supervisor wrapper. Recursive state, fencing, and recovery have
-mechanism tests, but full multi-level model recovery is not yet an established
-production guarantee. Cross-machine automatic routing, global model budgets, and
+bridge and fixed pi-acp 0.0.33, without the private supervisor wrapper. A real pi parent also delegated to a Claude child, exchanged messages, reviewed
+and merged its result, and submitted to the owner; both levels were accepted and
+reclaimed. Cleanup preserved unmerged work and recovered after final integration.
+Recursive state and crash fencing have mechanism tests; parent disconnection and
+long-term multi-level recovery are not yet established production guarantees. Cross-machine automatic routing, global model budgets, and
 long-term unattended operation remain follow-up work.

@@ -30,7 +30,11 @@ describe('managed Teams MCP transport', () => {
     for (const kind of ['claude-http', 'codex-stdio'] as const) {
         it(`${kind} lists and executes ordinary-session team tools with scope authority`, async () => {
             const requests: Array<{ path?: string; authorization?: string; scope?: string }> = [];
-            server = createServer((request, response) => {
+            const actions: any[] = [];
+            server = createServer(async (request, response) => {
+                let body = '';
+                for await (const chunk of request) body += chunk;
+                if (body) actions.push(JSON.parse(body).action);
                 requests.push({ path: request.url, authorization: request.headers.authorization, scope: request.headers['x-happy-team-token'] as string });
                 response.writeHead(200, { 'content-type': 'application/json' });
                 response.end(JSON.stringify({ team: { id: 'team-probe', name: 'NATIVE_TEAMS_PROBE', tasks: [] }, credential: { token: 'never-display' } }));
@@ -55,6 +59,15 @@ describe('managed Teams MCP transport', () => {
             expect(result.isError).toBe(false);
             expect(JSON.stringify(result)).not.toContain('never-display');
             expect(requests).toEqual([{ path: '/v1/teams/team-probe/agent', scope: 'probe-only-token', authorization: undefined }]);
+            for (const operation of ['create', 'pause', 'resume', 'cancel']) {
+                const arguments_ = operation === 'create'
+                    ? { name: 'Reminder', botId: 'root', body: 'Inspect tasks', runAt: 123, intervalMs: 60000, requestId: `schedule-${operation}-${kind}` }
+                    : { scheduleId: 'schedule', version: 1, requestId: `schedule-${operation}-${kind}` };
+                const scheduled = await client.callTool({ name: `team_schedule_${operation}`, arguments: arguments_ });
+                expect(scheduled.isError).toBe(false);
+                expect(actions.at(-1)?.type).toBe(`schedule-${operation}`);
+            }
+            const priorRequests = requests.length;
             if (process.env.VH_TEAMS_NATIVE_PROBE === '1') {
                 const prompt = 'Call the happy team_inspect tool exactly once. Return only the team name you receive. Do not use any other tools.';
                 const args = kind === 'claude-http'
@@ -71,8 +84,8 @@ describe('managed Teams MCP transport', () => {
                 });
                 expect(output.code, output.stderr.slice(-1500)).toBe(0);
                 expect(output.stdout, output.stderr.slice(-7000)).toContain('NATIVE_TEAMS_PROBE');
-                expect(requests).toHaveLength(2);
-                expect(requests[1]).toEqual({ path: '/v1/teams/team-probe/agent', scope: 'probe-only-token', authorization: undefined });
+                expect(requests).toHaveLength(priorRequests + 1);
+                expect(requests[priorRequests]).toEqual({ path: '/v1/teams/team-probe/agent', scope: 'probe-only-token', authorization: undefined });
             }
 
         }, 90_000);
