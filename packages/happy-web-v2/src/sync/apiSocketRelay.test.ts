@@ -275,6 +275,40 @@ describe('ApiSocket machineRPC relay preflight', () => {
         apiSocket.disconnect();
     });
 
+    it.each(['discovery-error', 'discovery-timeout', 'connect-error', 'cooldown', 'no-assignment', 'preflight', 'regional'])('counts compatibility routing once: %s', async (mode) => {
+        vi.useFakeTimers();
+        const { apiSocket, relay } = await load();
+        const { connectionDiagnostics } = await import('./connectionDiagnostics');
+        const records = vi.spyOn(connectionDiagnostics, 'record');
+        const attemptId = 'd992afaa-af5f-4fb4-a76f-e9c861c4463a';
+        state.centralAck.mockResolvedValue({ ok: true, result: 'central-cipher' });
+        state.relayAck.mockImplementation(async (event: string) => {
+            if (event === 'relay-ping') {
+                if (mode === 'preflight') throw new Error('ping timed out');
+                return {};
+            }
+            return { ok: true, result: 'relay-cipher' };
+        });
+        if (mode === 'discovery-error') vi.mocked(fetch).mockRejectedValue(new Error('network unavailable'));
+        if (mode === 'discovery-timeout') vi.mocked(fetch).mockImplementation(() => new Promise(() => {}));
+        if (mode === 'no-assignment') vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ assignment: null }) } as Response);
+        if (mode === 'cooldown') (apiSocket as any).relayRetryAfter.set('m1', Date.now() + 30_000);
+        if (mode === 'connect-error') relay.once.mockImplementation((event: string, handler: (error: Error) => void) => {
+            if (event === 'connect_error') queueMicrotask(() => handler(new Error('connect failed')));
+            return relay;
+        });
+        const pending = apiSocket.machineRPC('m1', 'open-terminal', {}, { diagnosticAttemptId: attemptId });
+        await vi.advanceTimersByTimeAsync(mode === 'discovery-timeout' ? 3_000 : 0);
+        await expect(pending).resolves.toBe(mode === 'regional' ? 'plain:relay-cipher' : 'plain:central-cipher');
+        const events = records.mock.calls.map(([event]) => event).filter((event) => event.attemptId === attemptId && event.stage === 'machine_rpc');
+        expect(events.filter((event) => event.outcome === 'fallback')).toHaveLength(mode === 'regional' ? 0 : 1);
+        expect(events.at(-1)).toMatchObject({ outcome: 'success', relayRegion: mode === 'regional' ? 'sg' : 'central' });
+        expect(state.centralAck).toHaveBeenCalledTimes(mode === 'regional' ? 0 : 1);
+        if (mode !== 'regional') expect(state.relayAck).not.toHaveBeenCalledWith('rpc-call', expect.anything());
+        records.mockRestore();
+        apiSocket.disconnect();
+    });
+
     it('does not retire a relay or double-load central when the refusal is for RATE (T-014)', async () => {
         const { apiSocket, relay } = await load();
         // Every RPC the relay accepts is refused for the account bucket. This is

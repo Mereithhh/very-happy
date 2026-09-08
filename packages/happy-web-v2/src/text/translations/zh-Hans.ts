@@ -1665,6 +1665,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep08k: {
+                title: '连接恢复与机器升级状态更清楚',
+                summary: '回到页面时避免旧探活干扰新连接；机器升级显示进度，安装失败后可明确重试。',
+                resume: '前一次回到前台发起的探活，不会在页面再次切换后误断开连接或中断正常的机器请求。',
+                updates: '机器明确显示等待空闲、正在安装、等待切换和安装失败。支持的新 daemon 可重试仍获批准的失败版本，旧版本保留固定版本的手动升级命令。',
+                metrics: '连接诊断按设备和中继区域汇总，重复补传不重复计数，后台暂停不混入前台延迟统计；不记录终端内容和凭据。',
+            },
             sep08j: {
                 title: '连接查询不再无限等待，故障更容易定位',
                 summary: '中继查询超时会退出并尝试中央连接；终端区域新增连接动画、明确的离线提示，以及已有终端的重试入口。',
@@ -2314,6 +2321,23 @@ export const zhHans: TranslationStructure = {
     },
 
     cliUpdate: {
+        retry: '重试更新',
+        retryHelp: '机器空闲后，对当前批准版本重试一次。',
+        retryAccepted: '已受理重试，机器空闲后开始安装。',
+        retryFailed: '未受理重试，请检查连接和批准版本，或使用手动升级命令。',
+        recovery: {
+            manual_required: '自动处理已停止。确认安装进程已退出后，使用下方固定版本升级命令手动恢复。',
+            waiting_idle: '等待运行中的会话和终端结束',
+            installing: '正在安装更新',
+            installed: '已安装，等待切换到新版本',
+            failed: '安装失败，可重试或使用手动升级命令',
+            disabled: '此机器已关闭自动安装',
+            current: '运行版本已满足自动更新目标',
+            unapproved: '尚无批准自动安装的版本',
+            policy_stale: '更新策略已过期，等待重新检查',
+            stale: '机器离线或更新状态已过期，暂无实时进度',
+            manual: '无法确认自动更新状态，请使用固定版本手动升级命令',
+        },
         availableEyebrow: 'CLI 可更新',
         requiredEyebrow: 'CLI 必须更新',
         availableTitle: '新的机器端运行时已可用',

@@ -164,3 +164,9 @@ ping + 60s 的僵尸连接在回前台的第一次 emit 就会被关掉并自动
 - iOS Safari 与 PWA：锁屏 1min / 5min 回来，终端画面与 Claude 会话 ≤10s 内追平，不刷新页面。
 - Android Chrome：切后台 1min / 10min 同上。
 - Safari 远程调试抓一次回前台事件顺序（`visibilitychange` / `pageshow` / `focus` 与 `hasFocus()` 值）留档。
+
+## 2026-09-08 补充（B-384）
+
+探活结算还必须属于同一可见性代次且页面仍可见；快速 hidden→visible 不共享旧代次的在途探活。
+这是防止后台计时导致主动断线、旧探活干扰新前台的必要条件。唯一入口不变；细节与实测见
+`specs/2026-09-resume-recovery-followup.md`。

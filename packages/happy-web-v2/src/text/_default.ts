@@ -1702,6 +1702,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep08k: {
+                title: 'Connection recovery and clearer machine updates',
+                summary: 'Returning to the app avoids stale connection checks. Machine updates show their progress and support an explicit retry after a failed installation.',
+                resume: 'A connection check from an earlier foreground visit cannot disconnect a newer connection attempt or interrupt a healthy RPC after you return.',
+                updates: 'Machines report when updates are waiting for idle, installing, awaiting handover, or failed. Supported daemons can retry a failed approved version; older daemons retain a pinned manual update command.',
+                metrics: 'Connection diagnostics now separate device and relay regions, deduplicate uploaded results, and exclude background pauses from foreground latency statistics. Terminal content and credentials remain excluded.',
+            },
             sep08j: {
                 title: 'Bounded connection discovery and better diagnostics',
                 summary: 'Relay lookups have a deadline. Terminal connection states now show a loading indicator, clear offline feedback, and a retry action for existing terminals.',
@@ -2417,6 +2424,23 @@ export const en = {
     },
 
     cliUpdate: {
+        retry: 'Retry update',
+        retryHelp: 'Try this approved version once, when the machine is idle.',
+        retryAccepted: 'Retry accepted. Installation waits until the machine is idle.',
+        retryFailed: 'Retry was not accepted. Check the connection and approved version, or use the manual command.',
+        recovery: {
+            manual_required: 'Automatic processing stopped. Confirm the installer has exited, then recover with the fixed-version command below.',
+            waiting_idle: 'Waiting for running sessions and terminals to close',
+            installing: 'Installing the update',
+            installed: 'Installed; waiting to switch to the new version',
+            failed: 'Installation failed; retry or use the manual command',
+            disabled: 'Automatic installation is disabled on this machine',
+            current: 'Running version meets the automatic update target',
+            unapproved: 'No version is approved for automatic installation',
+            policy_stale: 'Update policy is stale; waiting for a fresh check',
+            stale: 'Machine offline or update status stale; showing no live progress',
+            manual: 'Automatic update status unavailable; use the fixed-version manual command',
+        },
         availableEyebrow: 'CLI UPDATE AVAILABLE',
         requiredEyebrow: 'CLI UPDATE REQUIRED',
         availableTitle: 'A newer machine runtime is ready',

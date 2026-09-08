@@ -8,13 +8,14 @@ const event = {
 describe('connection diagnostic wire boundary', () => {
     it('accepts bounded batches and a control event without a machine', () => {
         expect(ConnectionDiagnosticBatchSchema.safeParse({ events: [event] }).success).toBe(true);
+        expect(ConnectionDiagnosticBatchSchema.safeParse({events:[{...event,relayRegion:'sg',timing:'active'}]}).success).toBe(true);
         expect(ConnectionDiagnosticBatchSchema.safeParse({ events: [{ ...event, machineId: undefined, stage: 'control', client: 'web/unknown' }] }).success).toBe(true);
     });
     it.each([
         { ...event, message: 'private terminal content' }, { ...event, stage: 'arbitrary-text' },
         { ...event, client: 'web/private@example.com' }, { ...event, attemptId: 'not-a-uuid' },
         { ...event, machineId: 'private@example.com' }, { ...event, durationMs: 300001 },
-        { ...event, at: Infinity },
+        { ...event, at: Infinity }, { ...event, relayRegion: 'private-region' }, { ...event, timing: 'private-value' },
     ])('rejects unbounded or noncategorical records %#', (invalid) => {
         expect(ConnectionDiagnosticBatchSchema.safeParse({ events: [invalid] }).success).toBe(false);
     });

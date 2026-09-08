@@ -317,6 +317,11 @@ export class ApiMachineClient {
         this.wireAutoRestoreReport();
     }
 
+    setCliUpdateRetryHandler(handler: (version: unknown) => Promise<{ accepted: true } | { error: string }>): void {
+        this.rpcHandlerManager.registerHandler('cli-update-retry', (params: unknown) =>
+            handler(params && typeof params === 'object' ? (params as { version?: unknown }).version : undefined));
+    }
+
     /** Cache the latest relay policy locally and publish it now or on the next
      * socket connect. This makes startup/offline races harmless. */
     setCliUpdateState(state: CliUpdateState | null): void {

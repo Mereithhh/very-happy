@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { readUpdateRecovery, retryMachineUpdate } from '@/app/cliUpdateRecovery';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Pencil, Play, Terminal, ChevronRight, History } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
@@ -42,6 +43,12 @@ export function MachineScreen() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const toast = useToast();
+  const [updateRetryBusy, setUpdateRetryBusy] = useState(false);
+  const [updateStatusNow, setUpdateStatusNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setUpdateStatusNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const machine = useMachine(id ?? '');
   const allSessions = useAllSessions();
   const defaultAgent = normalizeAgentKey(useSetting('newSessionAgent'));
@@ -226,10 +233,16 @@ export function MachineScreen() {
   // read it defensively rather than trusting the shape.
   // B-327: what the machine's auto-update last did. daemonState is untyped on
   // the web, so read defensively rather than trusting the shape.
-  const rawAuto = (cliUpdateState as { autoUpdate?: unknown } | undefined)?.autoUpdate;
-  const autoUpdate = rawAuto && typeof rawAuto === 'object' && typeof (rawAuto as { state?: unknown }).state === 'string'
-    ? (rawAuto as { state: string; version?: string | null; detail?: string })
-    : null;
+  const updateRecovery = readUpdateRecovery(cliUpdateState, online, updateStatusNow);
+  async function retryUpdate() {
+    if (!machine || !updateRecovery.canRetry || !updateRecovery.version || updateRetryBusy) return;
+    setUpdateRetryBusy(true);
+    try {
+      await retryMachineUpdate(machine.id, updateRecovery.version);
+      toast.success(t('cliUpdate.retryAccepted'));
+    } catch { toast.error(t('cliUpdate.retryFailed')); }
+    finally { setUpdateRetryBusy(false); }
+  }
   const rawHold = (cliUpdateState as { handoverHold?: unknown } | undefined)?.handoverHold;
   const handoverHold = rawHold && typeof rawHold === 'object' && typeof (rawHold as { reason?: unknown }).reason === 'string'
     ? (rawHold as { reason: string })
@@ -365,11 +378,14 @@ export function MachineScreen() {
                 }
               />
             )}
-            {autoUpdate && (
-              <Item
-                title={t('cliUpdate.autoUpdate')}
-                detail={`${String(autoUpdate.state)}${autoUpdate.version ? ` · ${String(autoUpdate.version)}` : ''}${autoUpdate.detail ? ` · ${String(autoUpdate.detail)}` : ''}`}
-              />
+            <Item
+              title={t('cliUpdate.autoUpdate')}
+              detail={`${t(`cliUpdate.recovery.${updateRecovery.state}` as 'cliUpdate.recovery.manual')}${updateRecovery.version ? ` · ${updateRecovery.version}` : ''}`}
+              right={['installing', 'installed'].includes(updateRecovery.state) ? <Spinner size={16} /> : undefined}
+            />
+            {updateRecovery.canRetry && (
+              <Item title={t('cliUpdate.retry')} subtitle={t('cliUpdate.retryHelp')}
+                onClick={() => void retryUpdate()} loading={updateRetryBusy} right={<ChevronRight size={16} />} />
             )}
             {handoverHold && (
               <Item

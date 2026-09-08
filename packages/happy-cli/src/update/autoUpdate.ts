@@ -11,12 +11,12 @@
  *   swaps the daemon; wrappers already running keep the code they started with
  *   (iron rule 14), and a terminal's owner process is replaced underneath it.
  *   Waiting for idle means neither is ever true at the moment we act.
- * - **To the relay's recommended version, never `latest`.** The operator pins
+ * - **To the explicitly approved auto-update version, never `latest`.** The operator pins
  *   that after validating a release, so nothing reaches a user's machine that
  *   has not been deliberately promoted — the blast radius is a decision, not a
  *   publish.
  * - **One attempt per version.** A version that fails to install is not retried
- *   in a loop; the next attempt needs a newer recommendation or a restart. npm
+ *   in a loop; the next attempt needs an explicit retry, a newer approved target, or a restart. npm
  *   has already left a half-written tree in production once, and hammering it is
  *   how a bad state becomes a permanent one.
  */

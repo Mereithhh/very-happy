@@ -1,3 +1,5 @@
+import { noteConnectionVisibility } from './connectionDiagnostics';
+
 /**
  * Web「回前台」边沿检测 —— 纯函数（spec `specs/2026-08-web-resume-sync.md` §A）。
  *
@@ -8,9 +10,14 @@
  *  - `pageshow` 且 `persisted === true`（bfcache 恢复没有 hidden 边沿）；
  *  - `online`（hidden 时也会发，必须以 visible 门控）；
  *  - Chromium Page Lifecycle `resume`（Safari 无此事件，只是额外边沿）。
- * 多个事件常同时到达（visible + pageshow + focus），1s 内合并为一次。
+ * 多个伴随事件常同时到达，1s 内合并；真正再次 hidden→visible 则必须开启新的前台探活。
  * 首次加载没有边沿，不触发（初始 fetch 走既有路径）。
  */
+
+// Updated only by the single DOM listener below. SSR/unattached consumers use
+// epoch zero and apiSocket still checks document.visibilityState directly.
+let visibilityEpoch = 0;
+export function getResumeVisibilityEpoch(): number { return visibilityEpoch; }
 
 export const RESUME_DEBOUNCE_MS = 1_000;
 
@@ -51,7 +58,7 @@ export function decideResume(
     }
     const next: ResumeState = { ...state, visible: event.visible };
     if (!edge) return { state: next, resume: false };
-    if (state.lastResumeAt !== null && now - state.lastResumeAt < RESUME_DEBOUNCE_MS) {
+    if (event.type !== 'visibilitychange' && state.lastResumeAt !== null && now - state.lastResumeAt < RESUME_DEBOUNCE_MS) {
         return { state: next, resume: false };
     }
     return { state: { ...next, lastResumeAt: now }, resume: true };
@@ -73,7 +80,10 @@ export function attachResumeListeners(
     const { doc, win } = targets;
     const isVisible = () => doc.visibilityState === 'visible';
     let state = initialResumeState(isVisible());
+    noteConnectionVisibility(state.visible);
     const feed = (event: ResumeEvent) => {
+        if (state.visible !== event.visible) visibilityEpoch += 1;
+        noteConnectionVisibility(event.visible);
         const result = decideResume(state, event, now());
         state = result.state;
         if (result.resume) onResume();

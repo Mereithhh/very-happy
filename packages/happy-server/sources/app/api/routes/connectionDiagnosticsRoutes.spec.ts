@@ -3,7 +3,8 @@ import { validatorCompiler } from 'fastify-type-provider-zod';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectionDiagnosticsRoutes } from './connectionDiagnosticsRoutes';
 import { sanitizeLogValue } from '@/utils/logSafety';
-const { findMany, allow, log } = vi.hoisted(() => ({ findMany: vi.fn(), allow: vi.fn(), log: vi.fn() }));
+const { findMany, allow, log, observe } = vi.hoisted(() => ({ findMany: vi.fn(), allow: vi.fn(), log: vi.fn(), observe: vi.fn() }));
+vi.mock('@/app/monitoring/connectionMetrics', () => ({ connectionMetrics: {observe} }));
 vi.mock('@/storage/db', () => ({ db: { machine: { findMany } } }));
 vi.mock('@/app/auth/authRateLimiter', () => ({ allowAuthRequest: allow }));
 vi.mock('@/utils/log', () => ({ log }));
@@ -34,11 +35,12 @@ beforeEach(() => { vi.clearAllMocks(); allow.mockResolvedValue(true); findMany.m
 describe('connection diagnostics route', () => {
     it('requires authentication before rate limiting or reading ownership', async () => {
         expect((await post([event], { auth: false })).statusCode).toBe(401);
-        expect(allow).not.toHaveBeenCalled(); expect(findMany).not.toHaveBeenCalled(); expect(log).not.toHaveBeenCalled();
+        expect(allow).not.toHaveBeenCalled(); expect(findMany).not.toHaveBeenCalled(); expect(log).not.toHaveBeenCalled(); expect(observe).not.toHaveBeenCalled();
     });
     it('checks distinct machines once and charges per event', async () => {
         const response = await post([event, event]);
         expect(response.statusCode).toBe(200); expect(response.json()).toEqual({ accepted: 2 });
+        expect(observe).toHaveBeenCalledTimes(2); expect(observe).toHaveBeenCalledWith('account-1',event);
         expect(allow).toHaveBeenCalledWith('connection-diagnostics:account-1', { max: 120, windowMs: 60000, cost: 2 });
         expect(findMany).toHaveBeenCalledOnce();
         expect(findMany).toHaveBeenCalledWith({ where: { accountId: 'account-1', id: { in: ['machine-1'] } }, select: { id: true } });
@@ -51,12 +53,12 @@ describe('connection diagnostics route', () => {
     });
     it('rejects the entire batch when any machine is not owned', async () => {
         expect((await post([event, { ...event, machineId: 'other' }])).statusCode).toBe(422);
-        expect(log).not.toHaveBeenCalled();
+        expect(log).not.toHaveBeenCalled(); expect(observe).not.toHaveBeenCalled();
     });
     it('rate limits before ownership queries and logging', async () => {
         allow.mockResolvedValue(false);
         expect((await post([event])).statusCode).toBe(429);
-        expect(findMany).not.toHaveBeenCalled(); expect(log).not.toHaveBeenCalled();
+        expect(findMany).not.toHaveBeenCalled(); expect(log).not.toHaveBeenCalled(); expect(observe).not.toHaveBeenCalled();
     });
     it('accepts control failures without a target machine', async () => {
         expect((await post([{ ...event, machineId: undefined, stage: 'control' }])).statusCode).toBe(200);
@@ -66,6 +68,6 @@ describe('connection diagnostics route', () => {
         expect((await post([{ ...event, message: 'secret' }])).statusCode).toBe(400);
         expect((await post(Array(33).fill(event))).statusCode).toBe(400);
         expect((await post([event], { extra: { content: 'x'.repeat(25000) } })).statusCode).toBe(413);
-        expect(log).not.toHaveBeenCalled();
+        expect(log).not.toHaveBeenCalled(); expect(observe).not.toHaveBeenCalled();
     });
 });
