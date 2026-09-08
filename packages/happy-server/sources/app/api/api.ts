@@ -1,3 +1,4 @@
+import { teamRoutes } from './routes/teamRoutes';
 import fastify from "fastify";
 import { log, logger } from "@/utils/log";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
@@ -114,6 +115,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     authRoutes(typed);
     pushRoutes(typed);
     sessionRoutes(typed);
+    teamRoutes(typed);
     accountRoutes(typed);
     connectRoutes(typed);
     machinesRoutes(typed);
