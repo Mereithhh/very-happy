@@ -265,11 +265,20 @@ export function rpcHandler(
         const startTime = Date.now();
         const { method, params } = data ?? {};
 
-        const finish = (result: string) => {
+        const finish = (result: 'success' | 'rate_limit' | 'account_rate_limit' | 'payload_limit' | 'invalid_params' | 'not_available' | 'self_call' | 'target_disconnected' | 'timeout' | 'internal_error') => {
             const durationSec = (Date.now() - startTime) / 1000;
             const m = rpcMetricMethod(method);
             rpcCallCounter.inc({ method: m, result });
             rpcCallDuration.observe({ method: m, result }, durationSec);
+            if (result !== 'success') {
+                // The room is a stable hashed correlation target, not a claimed
+                // machine/session identity. Never log the raw method or params.
+                log({
+                    module: 'websocket', event: 'rpc-failed', userId, socketId: socket.id,
+                    roomId: typeof method === 'string' && method.length <= 128 ? rpcRoom(userId, method) : undefined,
+                    method: m, code: result, durationMs: Math.max(0, Math.round(durationSec * 1000)),
+                }, 'RPC failed');
+            }
         };
 
         try {

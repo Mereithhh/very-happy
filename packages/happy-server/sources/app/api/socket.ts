@@ -5,6 +5,7 @@ import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { Redis } from "ioredis";
 import { log } from "@/utils/log";
+import { attachSocketDiagnostics } from "@/utils/socketDiagnostics";
 import { auth } from "@/app/auth/auth";
 import { getMetricsLabelsFromSocket, redisStreamLagMsGauge, releaseHandoverCounter, releaseHandoverDuration, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
 import { usageHandler } from "./socket/usageHandler";
@@ -242,15 +243,11 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
             : null;
         limiterRefresh?.unref?.();
 
-        log({
-            module: 'websocket',
-            userId,
+        attachSocketDiagnostics(socket, {
+            module: 'websocket', userId, sessionId, machineId,
             clientType: clientType || 'user-scoped',
-            client: labels.client,
-            sessionId,
-            machineId,
-            socketId: socket.id,
-        }, 'Socket token verified');
+            happyClient: socket.data.happyClient,
+        });
 
         // Store connection based on type
         const metadata = { clientType: clientType || 'user-scoped', sessionId, machineId };
@@ -341,7 +338,6 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
             eventRouter.removeConnection(userId, connection);
             websocketConnectionsGauge.dec({ type: connection.connectionType, ...labels });
 
-            log({ module: 'websocket', userId, clientType: connection.connectionType }, 'Socket disconnected');
 
             // Broadcast daemon offline status
             if (connection.connectionType === 'machine-scoped') {
@@ -392,8 +388,6 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         sessionStreamHandler(userId, socket, io, connection, sessionStreamRateLimiter);
         filePreviewHandler(userId, socket, io, connection, terminalRateLimiter);
 
-        // Ready
-        log({ module: 'websocket', userId, clientType: connection.connectionType }, 'Socket connected');
     });
 
     onShutdown('api', async () => {

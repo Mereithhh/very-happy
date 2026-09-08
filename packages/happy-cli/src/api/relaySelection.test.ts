@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import {
+  discoverAndClaimRelay,
+  RELAY_REFRESH_TIMEOUT_MS,
   probeRelayCandidates,
   RELAY_SWITCH_WIN_ROUNDS,
   selectLowestLatencyRelay,
@@ -105,5 +107,72 @@ describe('relay selection', () => {
       slow.close();
       fast.close();
     }
+  });
+});
+
+
+describe('relay refresh deadlines', () => {
+  afterEach(() => vi.useRealTimers());
+  const input = { controlUrl: 'https://control.test', token: 'test', machineId: 'm1' };
+  const assignment = { relayId: 'sin', url: candidates[0].url, region: 'Singapore', token: 'relay-token', expiresAt: 100_000 };
+  const response = (body: unknown) => new Response(JSON.stringify(body));
+
+  it.each(['discovery-headers', 'discovery-body', 'claim-headers', 'claim-body'])('bounds %s even when abort is ignored, and discards late results', async (stage) => {
+    vi.useFakeTimers();
+    let finish!: (value: any) => void;
+    const stalled = new Promise<any>((resolve) => { finish = resolve; });
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const claim = String(url).endsWith('/claim');
+      const discovery = String(url).endsWith('/v1/relays');
+      if ((claim && stage.startsWith('claim')) || (discovery && stage.startsWith('discovery'))) {
+        return stage.endsWith('headers') ? stalled : { ok: true, json: () => stalled };
+      }
+      if (discovery) return response({ enabled: true, assignmentTtlMs: 75_000, candidates: [candidates[0]] });
+      if (claim) return response({ assignment });
+      return response({ ok: true, relayId: 'sin' });
+    }) as unknown as ReturnType<typeof vi.fn<typeof fetch>>;
+    const result = discoverAndClaimRelay({ ...input, fetchImpl });
+    await vi.advanceTimersByTimeAsync(RELAY_REFRESH_TIMEOUT_MS);
+    await expect(result).resolves.toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+    const lastSignal = fetchImpl.mock.calls.at(-1)?.[1]?.signal;
+    expect(lastSignal?.aborted).toBe(true);
+    const count = fetchImpl.mock.calls.length;
+    const lateBody = stage.startsWith('claim') ? { assignment } : { enabled: true, assignmentTtlMs: 75_000, candidates: [candidates[0]] };
+    finish(stage.endsWith('headers') ? response(lateBody) : lateBody);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(result).resolves.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(count);
+  });
+
+  it.each(['headers', 'body'])('bounds candidate %s without abort support and still claims the connected relay', async (stage) => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith('/v1/relays')) return response({ enabled: true, assignmentTtlMs: 75_000, candidates: [candidates[0]] });
+      if (String(url).endsWith('/claim')) return response({ assignment });
+      const stalled = new Promise<Response>(() => {});
+      return stage === 'headers' ? stalled : { ok: true, json: () => stalled } as unknown as Response;
+    });
+    const result = discoverAndClaimRelay({ ...input, connectedRelayId: 'sin', fetchImpl });
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(result).resolves.toEqual({ assignment, probes: [], switchTracker: null });
+    expect(fetchImpl.mock.calls).toHaveLength(3);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('uses one overall budget, including discovery time and unfinished probes', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith('/v1/relays')) {
+        await new Promise((resolve) => setTimeout(resolve, 7_000));
+        return response({ enabled: true, assignmentTtlMs: 75_000, candidates: [candidates[0]] });
+      }
+      return new Promise<Response>(() => {});
+    });
+    const result = discoverAndClaimRelay({ ...input, connectedRelayId: 'sin', fetchImpl });
+    await vi.advanceTimersByTimeAsync(RELAY_REFRESH_TIMEOUT_MS);
+    await expect(result).resolves.toBeNull();
+    expect(fetchImpl.mock.calls).toHaveLength(2);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

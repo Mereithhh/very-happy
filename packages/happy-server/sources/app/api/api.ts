@@ -32,6 +32,7 @@ import * as fs from "fs";
 import { resolveTrustProxy, type TrustedProxyConfig } from './trustProxy';
 import { configuredResourceLimit } from './resourceLimits';
 import { relayRoutes } from './routes/relayRoutes';
+import { connectionDiagnosticsRoutes } from './routes/connectionDiagnosticsRoutes';
 import { relayFeatureConfig } from '@/app/relay/relayConfig';
 
 export interface StartApiOptions {
@@ -129,6 +130,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     v3SessionRoutes(typed);
     attachmentRoutes(typed);
     relayRoutes(typed);
+    connectionDiagnosticsRoutes(typed);
 
     // Static webapp (self-host mode)
     if (opts.staticDir) {

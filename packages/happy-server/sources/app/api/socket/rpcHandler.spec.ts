@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { rpcHandler, rpcMetricMethod } from './rpcHandler';
 import { AccountTerminalRateLimiter, relayPayloadBytes } from './terminalRateLimit';
+import { log } from '@/utils/log';
+import { sanitizeLogValue, stableLogRef } from '@/utils/logSafety';
+
+vi.mock('@/utils/log', () => ({ log: vi.fn() }));
 
 function fakeSocket(id = 'socket-1') {
     const handlers = new Map<string, (...args: any[]) => any>();
@@ -19,9 +23,43 @@ function fakeSocket(id = 'socket-1') {
 
 describe('RPC socket boundaries', () => {
     beforeEach(() => {
+        vi.mocked(log).mockClear();
         delete process.env.RPC_MAX_PAYLOAD_BYTES;
         delete process.env.RPC_MAX_CALLS_PER_MINUTE;
         delete process.env.RPC_MAX_REGISTERED_METHODS_PER_SOCKET;
+    });
+
+    it('logs failed RPCs with sanitized correlation and finite method/result categories', async () => {
+        process.env.RPC_MAX_PAYLOAD_BYTES = '64';
+        const { socket, handlers } = fakeSocket('private-socket');
+        rpcHandler('private-user', socket, {} as any);
+        const callback = vi.fn();
+        await handlers.get('rpc-call')!({ method: 'private-machine:open-terminal', params: 'secret-command'.repeat(10) }, callback);
+        const metadata = vi.mocked(log).mock.calls.find(([entry]: any[]) => entry.event === 'rpc-failed')![0];
+        const safe = sanitizeLogValue(metadata);
+        expect(safe).toEqual({
+            module: 'websocket', event: 'rpc-failed', userId: stableLogRef('userId', 'private-user'),
+            socketId: stableLogRef('socketId', 'private-socket'),
+            roomId: stableLogRef('roomId', 'rpc:private-user:private-machine:open-terminal'),
+            method: 'open-terminal', code: 'payload_limit', durationMs: expect.any(Number),
+        });
+        for (const value of ['private-user', 'private-machine', 'private-socket', 'secret-command']) {
+            expect(JSON.stringify(safe)).not.toContain(value);
+        }
+        vi.mocked(log).mockClear();
+        await handlers.get('rpc-call')!({ method: 'private-machine:secret-command', params: 'x'.repeat(100) }, callback);
+        expect(sanitizeLogValue(vi.mocked(log).mock.calls[0][0])).toMatchObject({ method: 'other', code: 'payload_limit' });
+    });
+
+    it('does not log successful RPC calls', async () => {
+        const { socket, handlers } = fakeSocket();
+        const target = { id: 'daemon-socket', timeout: () => ({ emitWithAck: async () => 'private-response' }) };
+        const io = { in: () => ({ timeout: () => ({ fetchSockets: async () => [target] }) }) };
+        rpcHandler('account-1', socket, io as any);
+        const callback = vi.fn();
+        await handlers.get('rpc-call')!({ method: 'machine:open-terminal', params: 'private-command' }, callback);
+        expect(callback).toHaveBeenCalledWith({ ok: true, result: 'private-response' });
+        expect(log).not.toHaveBeenCalled();
     });
 
     it('rejects registration from user sockets', () => {

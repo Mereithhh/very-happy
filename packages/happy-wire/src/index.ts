@@ -5,3 +5,4 @@ export * from './streamProtocol';
 export * from './voice';
 export * from './relayProtocol';
 export * from './releaseProtocol';
+export * from './connectionDiagnostics';

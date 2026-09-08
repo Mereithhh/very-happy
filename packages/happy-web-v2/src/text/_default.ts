@@ -1702,6 +1702,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep08j: {
+                title: 'Bounded connection discovery and better diagnostics',
+                summary: 'Relay lookups have a deadline. Terminal connection states now show a loading indicator, clear offline feedback, and a retry action for existing terminals.',
+                fallback: 'Web relay discovery has a three-second deadline; CLI discovery, probing and claiming share an eight-second deadline. Stalled lookups release the connection flow without replaying operations already sent.',
+                diagnostics: 'Browser connection stages are now reported automatically, with bounded buffering during network loss. Server and relay lifecycle and RPC failure logs are enabled by default, and the configured metrics listener starts correctly. No terminal content or credentials enter these diagnostics.',
+            },
             sep08a: {
                 title: 'pi gets its own default model and permission settings',
                 summary: 'Settings → Agents treated pi as Claude: it offered Claude model aliases (opus / sonnet / fable) for pi, and picking a model or permission inside a pi conversation silently overwrote your Claude defaults.',
@@ -2159,6 +2165,17 @@ export const en = {
     },
 
     terminal: {
+        connectionOffline: "Machine is offline",
+        connectionChecking: "Checking connection…",
+        connectionOpening: "Connecting to terminal…",
+        connectionFailed: "Could not connect to terminal",
+        connectionOfflineHint: "Check that this machine is running and its Very Happy daemon is online. An old terminal may belong to a different machine.",
+        connectionCheckingHint: "The server connection is unavailable. The machine’s status cannot be confirmed yet. Reconnecting automatically.",
+        connectionOpeningHint: "Waiting for the machine to respond.",
+        connectionFailedHint: "The connection did not complete. Check the machine, then retry connecting to this existing terminal.",
+        connectionCreateUnknown: "The creation result could not be confirmed. Check the machine’s terminal list before creating another terminal.",
+        connectionRetry: "Retry connection",
+        connectionMachine: "View machine",
         // Runtime-neutral because Web terminals may use tmux or direct PTY.
         closeTitle: 'Close terminal?',
         closeMessage: 'The terminal moves to the archive and can be restored from there (same directory, title and tags; a recorded claude conversation is resumed automatically). The terminal process ends now and the screen contents are not kept.',
