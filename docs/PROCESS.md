@@ -269,3 +269,8 @@ curl -s -o /dev/null -w '%{content_type}\n' "https://veryhappy.dev$M"   # 必须
   紧急 bug 走单事项快速批（一样过全部门禁，只是批小）。
 - 每 4-6 批做一次**架构层评审**（对全库，不对 diff），滚动更新技术债判定
   （现在修 / 等触发条件 / 永远不修 三档）。
+
+### GitHub CLI 环境差异
+
+如果 mac-office 上 `gh pr edit` 因 token 缺 `read:org` 失败，可用 `gh api -X PATCH repos/Mereithhh/very-happy/pulls/<n>` 更新标题/正文（多行正文用文件或结构化输入）。
+PR 合并仍走 `scripts/land-pr.sh`；它已处理 behind 更新，不必重复手工调用 update-branch。

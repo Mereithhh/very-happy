@@ -103,3 +103,8 @@ runtime.
 manager. Its Web launcher and authenticated URL seeding still target upstream
 Expo assumptions, so it is not currently a production Web V2 acceptance path.
 Use the explicit two-terminal loop above until B-150 is resolved.
+
+### 终端输出节奏诊断
+
+用 `node scripts/dev/term-burst.mjs '<命令>'` 在隔离 socket 下观察块数、中位块大小和停顿分段。
+不要用首尾总跨度判断传输速度，它包含进程启动时间。
