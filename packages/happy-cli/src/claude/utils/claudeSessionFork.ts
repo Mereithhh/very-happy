@@ -24,6 +24,7 @@ export type ClaudeRewindPoint = {
     uuid: string;
     text: string;
     timestamp: number;
+    hasAttachments?: boolean;
 };
 
 export class ForkTruncateUuidNotFoundError extends Error {
@@ -237,6 +238,9 @@ export async function listClaudeRewindPoints(
         points.push({
             uuid: parsed.uuid,
             text: content,
+            ...(content.includes('<attached_files>')
+                || (Array.isArray(parsed.message?.content) && parsed.message.content.some((block: any) => block?.type !== 'text'))
+                ? { hasAttachments: true } : {}),
             timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
         });
     }
@@ -255,17 +259,27 @@ export async function forkBeforeUserMessage(
         throw error;
     }
     const lines = raw.split('\n');
-    let previousPrompts = 0;
+    let hasPreviousConversation = false;
+    let hasPreviousPrompt = false;
     let cut = -1;
     for (let i = 0; i < lines.length; i++) {
         let entry: any;
         try { entry = JSON.parse(lines[i]); } catch { continue; }
-        if (userPromptText(entry) === null) continue;
-        if (entry.uuid === cutBeforeUuid) { cut = i; break; }
-        previousPrompts++;
+        if (userPromptText(entry) !== null && entry.uuid === cutBeforeUuid) { cut = i; break; }
+        // Even a prior image-only prompt is history: never silently discard it.
+        if (!entry?.isSidechain && !entry?.isMeta && !entry?.isSynthetic
+            && (entry?.type === 'user' || entry?.type === 'assistant')) {
+            hasPreviousConversation = true;
+            const content = entry.message?.content;
+            if (entry.type === 'user' && (typeof content === 'string'
+                || (Array.isArray(content) && content.length > 0 && !content.some((block: any) => block?.type === 'tool_result')))) {
+                hasPreviousPrompt = true;
+            }
+        }
     }
     if (cut < 0) throw new ForkTruncateUuidNotFoundError(cutBeforeUuid, src);
-    if (previousPrompts === 0) return null;
+    if (!hasPreviousConversation) return null;
+    if (!hasPreviousPrompt) throw new Error('Cannot safely rewind: earlier history has no user prompt');
     const newId = randomUUID();
     const destination = jsonlPath(projectDir, newId);
     const temporary = `${destination}.tmp-${process.pid}`;

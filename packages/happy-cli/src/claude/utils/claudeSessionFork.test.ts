@@ -87,6 +87,30 @@ describe('claudeSessionFork', () => {
         expect(await readFile(source, 'utf-8')).toBe(original);
     });
 
+    it('preserves earlier image-only history before the first editable text prompt', async () => {
+        const entries = [
+            { type: 'user', uuid: 'image', message: { content: [{ type: 'image', source: { type: 'base64', data: 'test' } }] } },
+            { type: 'user', uuid: 'text', message: { content: 'describe it differently' } },
+        ];
+        await writeSource(entries);
+        const fork = await forkBeforeUserMessage(projectDir, sourceId, 'text');
+        expect(fork).not.toBeNull();
+        expect(await readJsonl(fork!)).toEqual(entries.slice(0, 1));
+    });
+
+    it('marks attachments in rewind points and rejects tool-only prior history', async () => {
+        await writeSource([
+            { type: 'user', uuid: 'tool', message: { content: [{ type: 'tool_result', content: 'orphan' }] } },
+            { type: 'user', uuid: 'target', message: { content: [{ type: 'text', text: 'describe' }, { type: 'image', source: {} }] } },
+        ]);
+        expect(await listClaudeRewindPoints(projectDir, sourceId)).toEqual([
+            expect.objectContaining({ uuid: 'target', text: 'describe', hasAttachments: true }),
+        ]);
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'target')).rejects.toThrow('earlier history has no user prompt');
+        await writeSource([{ type: 'user', uuid: 'manifest', message: { content: 'look\n<attached_files>file</attached_files>' } }]);
+        expect(await listClaudeRewindPoints(projectDir, sourceId)).toEqual([expect.objectContaining({ uuid: 'manifest', hasAttachments: true })]);
+    });
+
     describe('forkSession', () => {
         it('produces a byte-identical copy with a fresh session id', async () => {
             await writeSource([
