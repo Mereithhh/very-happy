@@ -16,6 +16,21 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     teams: {
+        archive: "Archive team",
+        archived: "This team is archived and read-only",
+        archiveDescription: "Archive after all tasks, execution operations, and cleanup are resolved. Records remain available at this link.",
+        activeTasks: "Complete or cancel the remaining tasks first.",
+        unresolvedOperations: "Resolve the outstanding execution operations first.",
+        cleanupUnfinished: "Resource cleanup is still unfinished.",
+        operations: "Execution operations",
+        reconciled: "Manually reconciled",
+        operationPending: "The execution outcome is not yet confirmed.",
+        reconcileConfirmation: "I verified that the old process stopped and that results and resources have been preserved or handled.",
+        reconcileNote: "Verification note",
+        reconcile: "Record manual reconciliation",
+        closedBeforeSpawn: "The task closed before spawning; no manual reconciliation is needed.",
+        reconcileBlocked: "Manual reconciliation requires a closed task or superseded attempt. Cancel or hand off active work first, then verify the old process.",
+
         machineRequired: "An online machine with Teams support is required. Update and reconnect its daemon.",
         rebind: "Take over an existing bot",
         newBot: "Create new bot",

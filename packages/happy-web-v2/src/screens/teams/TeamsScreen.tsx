@@ -13,7 +13,12 @@ import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { t as tr } from "@/text";
 import { sync } from "@/sync/sync";
-import { newestTeam, taskRows } from "./teamView";
+import {
+  archiveBlocker,
+  canReconcileOperation,
+  newestTeam,
+  taskRows,
+} from "./teamView";
 import { useTranslation } from "@/i18n/useTranslation";
 const taskStatus = (): Record<string, string> => ({
   queued: tr("teams.queued"),
@@ -99,7 +104,8 @@ function TeamsContent() {
       setBusy(false);
     }
   }
-  const disabled = busy || pending !== null || unavailable;
+  const disabled =
+    busy || pending !== null || unavailable || team?.archivedAt !== undefined;
   const supportsTeams = (machine: (typeof machines)[number]) =>
     (machine.metadata as { teamsVersion?: number } | null)?.teamsVersion ===
       1 && isMachineOnline(machine);
@@ -114,6 +120,12 @@ function TeamsContent() {
         <Link to="/">{tr("teams.sessions")}</Link> /{" "}
         <Link to="/teams">{tr("teams.teams")}</Link>
         <h1>{team?.name ?? "Agent teams"}</h1>
+        {team?.archivedAt !== undefined && (
+          <p role="status">
+            {tr("teams.archived")} ·{" "}
+            {new Date(team.archivedAt).toLocaleString()}
+          </p>
+        )}
         <button
           onClick={() => {
             setError("");
@@ -479,15 +491,133 @@ function TeamsContent() {
               </article>
             ))}
           </section>
-          {team.operations
-            .filter((o) => ["failed", "unknown"].includes(o.status))
-            .map((o) => (
-              <p role="alert" className="teams-error" key={o.id}>
-                {o.type} · {o.status}：{o.error ?? tr("teams.unknown")}
-              </p>
-            ))}
+          <section>
+            <h2>{tr("teams.operations")}</h2>
+            {team.operations
+              .filter(
+                (operation) =>
+                  ["failed", "unknown", "claimed"].includes(operation.status) ||
+                  operation.manualResolution,
+              )
+              .map((operation) => (
+                <OperationResolution
+                  key={`${operation.id}:${operation.claimId ?? "unclaimed"}`}
+                  team={team}
+                  operation={operation}
+                  disabled={disabled}
+                  act={act}
+                />
+              ))}
+          </section>
+          {team.archivedAt === undefined && (
+            <section>
+              <h2>{tr("teams.archive")}</h2>
+              <p>{tr("teams.archiveDescription")}</p>
+              {archiveBlocker(team) && (
+                <p role="status">{tr(`teams.${archiveBlocker(team)!}`)}</p>
+              )}
+              <button
+                disabled={disabled || archiveBlocker(team) !== null}
+                onClick={() => void act({ type: "archive" })}
+              >
+                {tr("teams.archive")}
+              </button>
+            </section>
+          )}
         </>
       )}
     </main>
+  );
+}
+
+function OperationResolution({
+  team,
+  operation,
+  disabled,
+  act,
+}: {
+  team: TeamState;
+  operation: TeamState["operations"][number];
+  disabled: boolean;
+  act: (action: TeamAction) => Promise<void>;
+}) {
+  const [confirmed, setConfirmed] = useState(false);
+  const [note, setNote] = useState("");
+  const eligible = canReconcileOperation(team, operation);
+  return (
+    <article className="teams-task">
+      <p>
+        {operation.type} · {operation.status} ·{" "}
+        {operation.sessionId ? (
+          <Link to={`/session/${encodeURIComponent(operation.sessionId)}`}>
+            {tr("teams.openSession")}
+          </Link>
+        ) : (
+          operation.id
+        )}
+      </p>
+      {operation.manualResolution ? (
+        <p>
+          {tr("teams.reconciled")} ·{" "}
+          {new Date(operation.manualResolution.at).toLocaleString()}
+          <br />
+          {operation.manualResolution.note}
+        </p>
+      ) : (
+        <>
+          <p
+            className={
+              ["failed", "unknown"].includes(operation.status)
+                ? "teams-error"
+                : undefined
+            }
+          >
+            {operation.error ?? tr("teams.operationPending")}
+          </p>
+          {eligible ? (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (confirmed && note.trim() && operation.claimId)
+                  void act({
+                    type: "reconcile-operation",
+                    operationId: operation.id,
+                    claimId: operation.claimId,
+                    note: note.trim(),
+                  });
+              }}
+            >
+              <label className="teams-wide teams-confirm">
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={(event) => setConfirmed(event.target.checked)}
+                  required
+                />
+                {tr("teams.reconcileConfirmation")}
+              </label>
+              <label className="teams-wide">
+                {tr("teams.reconcileNote")}
+                <textarea
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  required
+                  maxLength={32000}
+                />
+              </label>
+              <button disabled={disabled || !confirmed || !note.trim()}>
+                {tr("teams.reconcile")}
+              </button>
+            </form>
+          ) : (
+            <p>
+              {operation.error === "task_closed_before_spawn"
+                ? tr("teams.closedBeforeSpawn")
+                : tr("teams.reconcileBlocked")}
+            </p>
+          )}
+        </>
+      )}
+    </article>
   );
 }

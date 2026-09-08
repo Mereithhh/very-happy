@@ -18,6 +18,21 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     teams: {
+        archive: "归档团队",
+        archived: "团队已归档，仅可查看",
+        archiveDescription: "全部任务关闭且执行操作、资源回收处理完毕后，可以归档。记录仍可通过当前链接查看。",
+        activeTasks: "请先完成或取消仍在进行的任务。",
+        unresolvedOperations: "仍有未完成的执行操作，请先核验并处理。",
+        cleanupUnfinished: "仍有未完成的资源回收。",
+        operations: "执行操作",
+        reconciled: "已人工对账",
+        operationPending: "执行结果尚未确认。",
+        reconcileConfirmation: "已核验旧进程停止，成果和资源已保留或处理。",
+        reconcileNote: "核验说明",
+        reconcile: "提交人工对账",
+        closedBeforeSpawn: "任务已在启动前关闭，无需人工对账。",
+        reconcileBlocked: "仅任务关闭或旧尝试已被替代后可人工对账。仍在执行的任务请先取消或移交，再核验旧进程。",
+
         machineRequired: "需要在线且支持团队能力的机器，请更新并重新连接 daemon。",
         rebind: "接管已有队友",
         newBot: "创建新队友",

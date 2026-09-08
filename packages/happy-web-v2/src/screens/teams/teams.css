@@ -129,3 +129,12 @@
 .teams-screen h1 {
   overflow-wrap: anywhere;
 }
+.teams-screen .teams-confirm {
+  flex-direction: row;
+  align-items: center;
+}
+.teams-screen .teams-confirm input {
+  flex-shrink: 0;
+  width: 24px;
+  min-height: 44px;
+}
