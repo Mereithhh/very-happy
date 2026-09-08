@@ -57,6 +57,13 @@ function isUserPrompt(parsed: any): boolean {
     return typeof content === 'string';
 }
 
+function hasPromptAttachments(parsed: any): boolean {
+    const content = parsed.message?.content;
+    return (typeof content === 'string' && content.includes('<attached_files>'))
+        || (Array.isArray(content) && content.some((block: any) => block?.type !== 'text'
+            || (typeof block.text === 'string' && block.text.includes('<attached_files>'))));
+}
+
 /** Text prompts may use SDK content blocks; tool results and metadata are not rewind points. */
 function userPromptText(parsed: any): string | null {
     if (parsed?.type !== 'user' || parsed.isSidechain || parsed.isMeta || parsed.isSynthetic) return null;
@@ -238,9 +245,7 @@ export async function listClaudeRewindPoints(
         points.push({
             uuid: parsed.uuid,
             text: content,
-            ...(content.includes('<attached_files>')
-                || (Array.isArray(parsed.message?.content) && parsed.message.content.some((block: any) => block?.type !== 'text'))
-                ? { hasAttachments: true } : {}),
+            ...(hasPromptAttachments(parsed) ? { hasAttachments: true } : {}),
             timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
         });
     }
@@ -265,7 +270,11 @@ export async function forkBeforeUserMessage(
     for (let i = 0; i < lines.length; i++) {
         let entry: any;
         try { entry = JSON.parse(lines[i]); } catch { continue; }
-        if (userPromptText(entry) !== null && entry.uuid === cutBeforeUuid) { cut = i; break; }
+        if (userPromptText(entry) !== null && entry.uuid === cutBeforeUuid) {
+            if (hasPromptAttachments(entry)) throw new Error('Cannot edit and rerun a message with attachments');
+            cut = i;
+            break;
+        }
         // Even a prior image-only prompt is history: never silently discard it.
         if (!entry?.isSidechain && !entry?.isMeta && !entry?.isSynthetic
             && (entry?.type === 'user' || entry?.type === 'assistant')) {

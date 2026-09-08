@@ -4,6 +4,7 @@ export type CodexRewindPoint = {
     itemId: string;
     text: string;
     timestamp: number;
+    hasAttachments?: boolean;
 };
 
 export type CodexForkResult = {
@@ -29,6 +30,17 @@ export class CodexForkRewindPointNotFoundError extends Error {
         super(`Codex rewind point ${itemId} not found in thread ${threadId}`);
         this.name = 'CodexForkRewindPointNotFoundError';
     }
+}
+
+function hasUserAttachments(item: ThreadItem): boolean {
+    const content = (item as { content?: unknown }).content;
+    return Array.isArray(content) && content.some((part) => !part || typeof part !== 'object'
+        || part.type !== 'text' || (typeof part.text === 'string' && part.text.includes('<attached_files>')));
+}
+
+function rejectAttachedTarget(thread: Thread, itemId: string): void {
+    const item = thread.turns?.flatMap((turn) => turn.items ?? []).find((item) => item.id === itemId);
+    if (item && hasUserAttachments(item)) throw new Error('Cannot edit and rerun a message with attachments');
 }
 
 function textFromUserItem(item: ThreadItem): string | null {
@@ -70,6 +82,7 @@ export function listCodexRewindPoints(thread: Pick<Thread, 'turns'>): CodexRewin
             points.push({
                 itemId: item.id,
                 text,
+                ...(hasUserAttachments(item) ? { hasAttachments: true } : {}),
                 timestamp: timestampFromTurn(turn),
             });
         }
@@ -149,6 +162,7 @@ export async function forkCodexBeforeUserMessage(
     opts: { threadId: string; cwd: string; cutBeforeItemId: string },
 ): Promise<CodexForkResult | { type: 'success'; startFresh: true }> {
     const { thread: source } = await client.readThread({ threadId: opts.threadId, includeTurns: true });
+    rejectAttachedTarget(source, opts.cutBeforeItemId);
     const sourceCut = findCutTurn(source, opts.cutBeforeItemId);
     if (!sourceCut) throw new CodexForkRewindPointNotFoundError(opts.cutBeforeItemId, opts.threadId);
     if ((source.turns?.[sourceCut.index].items ?? []).findIndex((item) => item.id === opts.cutBeforeItemId) !== 0) {
@@ -157,6 +171,7 @@ export async function forkCodexBeforeUserMessage(
     if (sourceCut.index === 0) return { type: 'success', startFresh: true };
     const forked = await client.forkThread({ threadId: opts.threadId, cwd: opts.cwd });
     if (forked.threadId === opts.threadId) throw new Error('Codex did not create an independent fork');
+    rejectAttachedTarget(forked.thread, opts.cutBeforeItemId);
     const cut = findCutTurn(forked.thread, opts.cutBeforeItemId);
     if (!cut) throw new CodexForkRewindPointNotFoundError(opts.cutBeforeItemId, opts.threadId);
     const turns = forked.thread.turns ?? [];

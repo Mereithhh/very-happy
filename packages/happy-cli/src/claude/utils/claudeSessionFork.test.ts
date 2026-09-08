@@ -106,9 +106,15 @@ describe('claudeSessionFork', () => {
         expect(await listClaudeRewindPoints(projectDir, sourceId)).toEqual([
             expect.objectContaining({ uuid: 'target', text: 'describe', hasAttachments: true }),
         ]);
-        await expect(forkBeforeUserMessage(projectDir, sourceId, 'target')).rejects.toThrow('earlier history has no user prompt');
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'target')).rejects.toThrow('with attachments');
         await writeSource([{ type: 'user', uuid: 'manifest', message: { content: 'look\n<attached_files>file</attached_files>' } }]);
         expect(await listClaudeRewindPoints(projectDir, sourceId)).toEqual([expect.objectContaining({ uuid: 'manifest', hasAttachments: true })]);
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'manifest')).rejects.toThrow('with attachments');
+        await writeSource([
+            { type: 'user', uuid: 'orphan', message: { content: [{ type: 'tool_result', content: 'result' }] } },
+            { type: 'user', uuid: 'plain', message: { content: 'plain' } },
+        ]);
+        await expect(forkBeforeUserMessage(projectDir, sourceId, 'plain')).rejects.toThrow('earlier history has no user prompt');
     });
 
     describe('forkSession', () => {

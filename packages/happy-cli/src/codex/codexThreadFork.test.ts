@@ -155,3 +155,16 @@ it('rejects within-turn targets and verifies actual rollback output', async () =
     await expect(forkCodexBeforeUserMessage(client, { threadId: 'source', cwd: '/project', cutBeforeItemId: 'user-2' }))
         .rejects.toThrow('did not preserve');
 });
+
+it('marks attached Codex points and rejects editing them before any fork', async () => {
+    const thread = { id: 'source', turns: [{ id: 'turn', items: [
+        { type: 'userMessage', id: 'user', content: [{ type: 'text', text: 'describe' }, { type: 'image', url: 'image' }] },
+    ] }] };
+    expect(listCodexRewindPoints(thread)).toEqual([expect.objectContaining({ itemId: 'user', hasAttachments: true })]);
+    const client = {
+        readThread: vi.fn().mockResolvedValue({ thread }), forkThread: vi.fn(), rollbackThread: vi.fn(), injectItems: vi.fn(),
+    };
+    await expect(forkCodexBeforeUserMessage(client, { threadId: 'source', cwd: '/project', cutBeforeItemId: 'user' }))
+        .rejects.toThrow('with attachments');
+    expect(client.forkThread).not.toHaveBeenCalled();
+});
