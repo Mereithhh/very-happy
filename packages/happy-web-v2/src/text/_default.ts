@@ -1702,6 +1702,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep08k: {
+                title: 'Connection recovery and clearer machine updates',
+                summary: 'Returning to the app avoids stale connection checks. Machine updates show their progress and support an explicit retry after a failed installation.',
+                resume: 'A connection check from an earlier foreground visit cannot disconnect a newer connection attempt or interrupt a healthy RPC after you return.',
+                updates: 'Machines report when updates are waiting for idle, installing, awaiting handover, or failed. Supported daemons can retry a failed approved version; older daemons retain a pinned manual update command.',
+                metrics: 'Connection diagnostics now separate device and relay regions, deduplicate uploaded results, and exclude background pauses from foreground latency statistics. Terminal content and credentials remain excluded.',
+            },
             sep08j: {
                 title: 'Bounded connection discovery and better diagnostics',
                 summary: 'Relay lookups have a deadline. Terminal connection states now show a loading indicator, clear offline feedback, and a retry action for existing terminals.',
