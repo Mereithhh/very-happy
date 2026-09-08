@@ -1,6 +1,6 @@
 # 消息操作与编辑重跑
 
-状态：Final · 2026-09-09 · B-389
+状态：Shipped · 2026-09-09 · B-389 · 629bc399 / CLI 0.2.124
 
 ## 目标与边界
 
@@ -8,7 +8,7 @@
 
 编辑重跑创建独立会话分支，只保留目标用户消息之前的历史，再发送编辑后的消息；原会话保留且新分支可返回原会话。文件和命令的既成副作用不回滚，提交前明确告知。首条消息使用全新上下文。运行中的源会话先要求用户停止，避免两个分支同时修改工作目录。
 
-## 现状事实（代码已确认）
+## 改动前事实（代码已确认）
 
 - `screens/session/MessageView.tsx` 当前只提供 hover copy overlay；用户正文有 attachment manifest。
 - `utils/sessionFork.ts` 提供 Claude/Codex 源信息；pi 不能借用遗留 claudeSessionId。
@@ -39,9 +39,27 @@ Web 在 RPC resolve 后先检查 error 与 type，再读新 id；失败不 spawn
 
 精确截断与原数据不变的 CLI 机制回归；Web 覆盖 unsupported/ID缺失/附件/运行中/响应error/首条/发送失败/双击；真实 Chromium 390px粗指针与桌面、明暗主题，验证操作行不盖正文，引用保留草稿、编辑取消不写、分支返回入口。跑全包门禁和 review。
 
-## 本地验证（未发布）
+## 验证记录
 
 - CLI 211 文件 / 1953 测试通过（包括真实工具解包/PTY装配后重跑），生成产物可执行。
 - Web 真实 Chromium 1200px 与 390px coarse × 明暗：引用保留草稿、编辑弹层、失败后关闭重开恢复、单次创建检查通过；手机操作命中区44px，页面无横向溢出。
 - draft/store 回归覆盖延迟 session hydration 与 Codex 父只读/全局 yolo 时首条出站仍只读。
-- 尚未将新版 CLI 部署到生产；浏览器创建/发送失败验证采用隔离 RPC stub，底层截断通过文件/协议机制测试，不能代替发布后真实 runner 的模型续接验收。
+- 浏览器创建/发送失败验证采用隔离 RPC stub；另用真实 Claude/Codex runner 验证 A/B/C 从 B 前分叉，发送编辑 D 后仅见 A+D，源历史不变，首条采用全新上下文。Claude 购物清单场景返回苹果/枣，Codex marker 场景只返回 A/D；Claude marker 场景曾被上游拒答，不将该失败样例计为通过。
+- Web 275 文件 / 2592 测试、类型检查和构建通过；终端 @ 的真实 xterm 字形/宽度验收见字体 spec。
+
+## 发布验收
+
+PR #284 合入 `629bc39925852e24f618ef5f31fe59f1e29738dc`；main 门禁全绿。
+CLI 0.2.124 的六平台组合在同 tag/SHA 的 push run 当前 attempt 全部成功后 promote
+为 npm latest。Web/server 完整镜像部署成功，线上 entry 与本次消息操作/rewind/CSS 一致；
+`/v1/version/cli` 返回 recommendedVersion 0.2.124、source registry。
+mac-office 已安装并运行 0.2.124，launchd running；list-terminals 成功，新 rewind RPC
+均通过参数校验响应证明已注册。已有三终端保留。
+
+生产浏览器从 5739135b 的旧 entry 捕获 controllerchange，再加载 629bc399 新 entry，
+最终 controller activated。回退点：Web/server 5739135b，CLI 0.2.123。
+
+CI 证据：[main 门禁](https://github.com/Mereithhh/very-happy/actions/runs/34264034848)、
+[六平台冒烟](https://github.com/Mereithhh/very-happy/actions/runs/34264522173)、
+[npm 发布](https://github.com/Mereithhh/very-happy/actions/runs/34264522170)、
+[完整镜像部署](https://github.com/Mereithhh/very-happy/actions/runs/34265478917)。
