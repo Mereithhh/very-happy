@@ -238,7 +238,11 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   pi's approvals surface as ACP `request_permission` cards in the
   Web UI (a pi extension calling `ctx.ui.confirm()` produces one), and
   `PI_ACP_PI_COMMAND` in the daemon's environment lets you point the adapter
-  at a wrapper that loads such extensions. pi-acp prints pi's startup banner
+  at a user wrapper. The official launcher preserves this override, so private
+  wrappers and user-configured extensions can still impose extra permissions or
+  models. Run `very-happy teams doctor --host pi` in the daemon environment to
+  inspect the command source before migration. Remove obsolete private bindings
+  deliberately after auditing their settings; the installer never removes them. pi-acp prints pi's startup banner
   (version, skills, extensions) as the first assistant message of every
   session; set `quietStartup: true` in `~/.pi/agent/settings.json` on the
   daemon machine to silence it.
@@ -746,8 +750,13 @@ The server must enable `VH_AGENT_TEAMS_ENABLED=true`; optionally restrict it via
 `VH_AGENT_TEAMS_ACCOUNT_IDS`. A new daemon advertises `teamsVersion:1`; the Web
 Teams page disables dispatch when that capability or a live machine is absent.
 
-`very-happy teams install --host claude|codex|pi` previews the shared skill; add
-`--apply` to install only that owned skill. `uninstall` uses the same ownership
+`very-happy teams install --host claude|codex|pi` previews the official skill at
+`~/.local/share/very-happy/skills/very-happy-teams/SKILL.md`; add `--apply` to
+materialize it there. All hosts use this same Very Happy-owned copy. The installer
+never writes host discovery directories (`.claude/skills`, `.agents/skills`, or
+`.pi/agent/skills`), which may point to shared repositories. It rejects symlinks
+in the destination ancestry. Ask the managed agent to read the returned absolute
+path; installation does not imply host auto-discovery. `uninstall` uses the same ownership
 check and preserves user edits. A standalone terminal still needs a managed
 Very Happy session identity; skill installation is not a transport or auth grant.
 

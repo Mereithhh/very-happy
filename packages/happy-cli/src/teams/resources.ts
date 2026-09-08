@@ -12,11 +12,15 @@ Start with team_inspect if already assigned. Otherwise team_create or team_join 
 
 Work yourself when delegation would add needless overhead. Delegate independent work with a clear goal and acceptance criteria. When delegating within your assignment, pass its parentTaskId. Members may delegate further within their existing authority.
 
+Name exactly one integrator for each team. Workers edit only their assigned worktrees; they must not merge main, publish releases, change global daemon or npm installations, or allocate shared backlog IDs. The integrator serializes these operations. Across teams, the owner coordinates shared resources: a worktree is not a global lock.
+
 Use a unique requestId for each action and reuse it with identical arguments when the outcome is unknown. Inspect state before retrying; a timeout does not prove no action occurred. A delivered message is not proof its recipient processed it.
 
 Inspect the current attemptId and goalVersion before team_submit. Include artifact locations and verification evidence. The owner reviews and accepts or returns the result. All children completing does not automatically satisfy the parent goal.
 
 Acceptance and cleanup are separate. Never delete dirty worktrees, stop user-owned sessions, or bypass permissions to finish cleanup. Use team_cancel or team_handoff and inspect the resulting status. Keep summaries concise; do not repeatedly forward full descendant transcripts.
+
+A root member may create a persistent schedule for itself with the schedule tools; team_inspect shows schedules. Timely delivery requires an online daemon. A scheduled delivery does not prove the model completed the work. Pause or cancel schedules explicitly when they are no longer needed.
 
 On restart inspect authoritative state and messages before taking new actions. Do not invent completed work from a previous context. Scope credentials are runtime-owned; never read, print, or copy them into prompts.
 `;
