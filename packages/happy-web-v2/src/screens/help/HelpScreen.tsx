@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, ChevronDown, Clipboard, FileUp, FolderOpen, Keyboard,
+  ArrowRight, ChevronDown, Clipboard, FileUp, FolderOpen, Keyboard, PlusCircle,
   Layers3, ListChecks, MessageSquarePlus, Settings, StickyNote, TerminalSquare, Text,
 } from 'lucide-react';
 import { Button } from '@/ui';
@@ -20,7 +20,7 @@ const GROUPS = [
 
 export function HelpScreen() {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [showNewChat, setShowNewChat] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
@@ -35,6 +35,7 @@ export function HelpScreen() {
           <div className="help-screen__actions" aria-label={t('workspaceGuide.stepsLabel')}>
             <Button variant="primary" onClick={() => void createChatOrConfigure(navigate, () => setShowNewChat(true))} leftIcon={<MessageSquarePlus size={16} />}>{t('workspaceGuide.createChat')}</Button>
             <Button variant="secondary" onClick={() => createTerminalOrPick(navigate)} leftIcon={<TerminalSquare size={16} />}>{t('workspaceGuide.createTerminal')}</Button>
+            <Button variant="secondary" onClick={() => navigate('/machine/connect')} leftIcon={<PlusCircle size={16} />}>{t('connectMachine.title')}</Button>
             <button className="help-screen__settings" type="button" onClick={() => navigate('/settings')}><Settings size={16} /> {t('workspaceGuide.openSettings')} <ArrowRight size={14} /></button>
           </div>
         </section>
@@ -74,6 +75,8 @@ export function HelpScreen() {
 
         <nav className="help-screen__docs" aria-label={t('workspaceGuide.learnMore')}>
           <span>{t('workspaceGuide.learnMore')}</span>
+          <button type="button" onClick={() => navigate('/changelog')}>{t('settings.whatsNew')} <ArrowRight size={13} /></button>
+          <button type="button" onClick={() => navigate('/settings/machines')}>{lang.startsWith('zh') ? '机器与 CLI 更新' : 'Machines and CLI updates'} <ArrowRight size={13} /></button>
           <button type="button" onClick={() => navigate('/docs/quickstart')}>{t('workspaceGuide.quickStart')} <ArrowRight size={13} /></button>
           <button type="button" onClick={() => navigate('/docs/keyboard')}>{t('workspaceGuide.keyboardGuide')} <ArrowRight size={13} /></button>
         </nav>
