@@ -56,6 +56,19 @@ function isUserPrompt(parsed: any): boolean {
     return typeof content === 'string';
 }
 
+/** Text prompts may use SDK content blocks; tool results and metadata are not rewind points. */
+function userPromptText(parsed: any): string | null {
+    if (parsed?.type !== 'user' || parsed.isSidechain || parsed.isMeta || parsed.isSynthetic) return null;
+    const content = parsed.message?.content;
+    if (typeof content === 'string') return content.trim() ? content : null;
+    if (!Array.isArray(content) || content.some((block) => block?.type === 'tool_result')) return null;
+    const text = content
+        .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+        .map((block) => block.text)
+        .join('\n');
+    return text.trim() ? text : null;
+}
+
 /**
  * Delete a fork that was created for a session that never started (B-290:
  * import forks the transcript before spawning; a failed spawn would otherwise
@@ -214,13 +227,9 @@ export async function listClaudeRewindPoints(
         if (line.length === 0) continue;
         let parsed: any;
         try { parsed = JSON.parse(line); } catch { continue; }
-        if (parsed?.type !== 'user') continue;
-        if (parsed.isSidechain) continue;
+        const content = userPromptText(parsed);
+        if (content === null) continue;
         if (typeof parsed.uuid !== 'string' || parsed.uuid.length === 0) continue;
-        const content = parsed.message?.content;
-        if (typeof content !== 'string') continue;
-        const trimmed = content.trim();
-        if (trimmed.length === 0) continue;
         const timestampRaw = parsed.timestamp;
         const timestamp = typeof timestampRaw === 'string'
             ? Date.parse(timestampRaw)
@@ -251,7 +260,7 @@ export async function forkBeforeUserMessage(
     for (let i = 0; i < lines.length; i++) {
         let entry: any;
         try { entry = JSON.parse(lines[i]); } catch { continue; }
-        if (!isUserPrompt(entry)) continue;
+        if (userPromptText(entry) === null) continue;
         if (entry.uuid === cutBeforeUuid) { cut = i; break; }
         previousPrompts++;
     }

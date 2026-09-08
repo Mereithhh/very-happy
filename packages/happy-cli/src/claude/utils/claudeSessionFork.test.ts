@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
 import {
     forkBeforeUserMessage,
+    listClaudeRewindPoints,
     discardForkedSession,
     forkSession,
     forkAndTruncateSession,
@@ -58,6 +59,32 @@ describe('claudeSessionFork', () => {
         expect(await forkBeforeUserMessage(projectDir, sourceId, 'u1')).toBeNull();
         await expect(forkBeforeUserMessage(projectDir, sourceId, 'missing')).rejects.toBeInstanceOf(ForkTruncateUuidNotFoundError);
         await expect(forkBeforeUserMessage(projectDir, sourceId, 'a1')).rejects.toBeInstanceOf(ForkTruncateUuidNotFoundError);
+    });
+
+    it('lists and rewinds array text prompts without treating later strings as first messages', async () => {
+        const entries = [
+            { type: 'user', uuid: 'array-1', message: { content: [{ type: 'text', text: 'say lol' }] } },
+            { type: 'assistant', uuid: 'answer-1', message: { content: 'lol' } },
+            { type: 'user', uuid: 'tool', message: { content: [{ type: 'tool_result', content: 'done' }, { type: 'text', text: 'tool context' }] } },
+            { type: 'user', uuid: 'side', isSidechain: true, message: { content: [{ type: 'text', text: 'side prompt' }] } },
+            { type: 'user', uuid: 'meta', isMeta: true, message: { content: [{ type: 'text', text: 'injected' }] } },
+            { type: 'user', uuid: 'array-2', message: { content: [{ type: 'text', text: 'second' }, { type: 'text', text: 'part' }] } },
+            { type: 'user', uuid: 'string-3', message: { content: 'third' } },
+        ];
+        const source = await writeSource(entries);
+        const original = await readFile(source, 'utf-8');
+        expect((await listClaudeRewindPoints(projectDir, sourceId)).map(({ uuid, text }) => ({ uuid, text })))
+            .toEqual([{ uuid: 'array-1', text: 'say lol' }, { uuid: 'array-2', text: 'second\npart' }, { uuid: 'string-3', text: 'third' }]);
+        expect(await forkBeforeUserMessage(projectDir, sourceId, 'array-1')).toBeNull();
+        const arrayFork = await forkBeforeUserMessage(projectDir, sourceId, 'array-2');
+        expect(await readJsonl(arrayFork!)).toEqual(entries.slice(0, 5));
+        const stringFork = await forkBeforeUserMessage(projectDir, sourceId, 'string-3');
+        expect(stringFork).not.toBeNull();
+        expect(await readJsonl(stringFork!)).toEqual(entries.slice(0, 6));
+        for (const id of ['tool', 'side', 'meta']) {
+            await expect(forkBeforeUserMessage(projectDir, sourceId, id)).rejects.toBeInstanceOf(ForkTruncateUuidNotFoundError);
+        }
+        expect(await readFile(source, 'utf-8')).toBe(original);
     });
 
     describe('forkSession', () => {
