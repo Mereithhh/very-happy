@@ -147,6 +147,8 @@ type ReducerMessage = {
     role: 'user' | 'agent';
     localId?: string | null;
     inputState?: 'queued' | 'canceled';
+    /** B-332: reason from a CLI-originated queue-cancel tombstone (typesMessage.ts). */
+    cancelReason?: string;
     displaySeq?: number | null;
     displayAt?: number;
     text: string | null;
@@ -215,6 +217,8 @@ export type ReducerState = {
     turnEnds: TurnEndBoundary[];
     /** Durable queue-cancel tombstones; independent of history page order. */
     canceledQueuedLocalKeys: Set<string>;
+    /** B-332: tombstone reasons by localKey. Only CLI-originated tombstones carry one. */
+    canceledQueuedReasons: Map<string, string>;
     latestTodos?: {
         todos: TodoItem[];
         timestamp: number;
@@ -246,6 +250,7 @@ export function createReducer(): ReducerState {
         nextSortOrder: 0,
         turnEnds: [],
         canceledQueuedLocalKeys: new Set(),
+        canceledQueuedReasons: new Map(),
     }
 };
 
@@ -476,12 +481,19 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
 
         if (msg.role === 'event' && msg.content.type === 'queue-cancel') {
             state.messageIds.set(msg.id, msg.id);
+            const reason = msg.content.reason;
             for (const localKey of msg.content.targetLocalKeys) {
                 state.canceledQueuedLocalKeys.add(localKey);
+                // B-332: a web cancel (no reason) hides the message; a CLI
+                // discard (with reason) must stay VISIBLE with the reason, or
+                // the user's text vanishes without a word. Never downgrade a
+                // known reason to undefined if both kinds of tombstone exist.
+                if (reason) state.canceledQueuedReasons.set(localKey, reason);
                 const targetId = state.localIds.get(localKey);
                 const target = targetId ? state.messages.get(targetId) : undefined;
-                if (target && target.inputState !== 'canceled') {
+                if (target && (target.inputState !== 'canceled' || (reason && target.cancelReason !== reason))) {
                     target.inputState = 'canceled';
+                    if (reason) target.cancelReason = reason;
                     changed.add(target.id);
                 }
             }
@@ -1426,14 +1438,19 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
         const nextInputState = message.localId && state.canceledQueuedLocalKeys.has(message.localId)
             ? 'canceled'
             : boundary ? undefined : 'queued';
+        const nextCancelReason = nextInputState === 'canceled' && message.localId
+            ? state.canceledQueuedReasons.get(message.localId)
+            : undefined;
         const nextDisplaySeq = boundary?.seq;
         const nextDisplayAt = boundary?.createdAt;
         if (
             message.inputState !== nextInputState
+            || message.cancelReason !== nextCancelReason
             || message.displaySeq !== nextDisplaySeq
             || message.displayAt !== nextDisplayAt
         ) {
             message.inputState = nextInputState;
+            message.cancelReason = nextCancelReason;
             message.displaySeq = nextDisplaySeq;
             message.displayAt = nextDisplayAt;
             changed.add(message.id);
@@ -1517,6 +1534,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             text: reducerMsg.text,
             ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
             ...(reducerMsg.inputState ? { inputState: reducerMsg.inputState } : {}),
+            ...(reducerMsg.cancelReason ? { cancelReason: reducerMsg.cancelReason } : {}),
             ...(reducerMsg.claudeUuid && { claudeUuid: reducerMsg.claudeUuid }),
             ...(reducerMsg.codexItemId && { codexItemId: reducerMsg.codexItemId }),
             meta: reducerMsg.meta
@@ -1562,6 +1580,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             ...(subagentLifecycleFor(state, reducerMsg.tool) ? { subagent: subagentLifecycleFor(state, reducerMsg.tool) } : {}),
             meta: reducerMsg.meta,
             ...(reducerMsg.inputState ? { inputState: reducerMsg.inputState } : {}),
+            ...(reducerMsg.cancelReason ? { cancelReason: reducerMsg.cancelReason } : {}),
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.event !== null) {
         return {

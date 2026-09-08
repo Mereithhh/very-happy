@@ -233,4 +233,22 @@ describe('ApiSocket machineRPC relay preflight', () => {
         expect(state.relayAck).not.toHaveBeenCalledWith('rpc-call', expect.anything());
         apiSocket.disconnect();
     });
+
+    it('does not retire a relay or double-load central when the refusal is for RATE (T-014)', async () => {
+        const { apiSocket, relay } = await load();
+        // Every RPC the relay accepts is refused for the account bucket. This is
+        // not relay ill-health: the relay socket must NOT be retired onto the
+        // (also metered) central path, and the gate must hold the route.
+        state.relayAck.mockImplementation(async (event: string) => {
+            if (event === 'relay-ping') return { serverAt: Date.now() };
+            return { ok: false, error: 'RPC account rate limit reached', code: 'rpc_account_rate_limited', retryAfterMs: 100 };
+        });
+        await expect(apiSocket.machineRPC('m1', 'open-terminal', {})).rejects.toThrow('RPC account rate limit reached');
+        expect(state.centralAck).not.toHaveBeenCalled();
+        expect(relay.close).not.toHaveBeenCalled();
+        expect(apiSocket.rpcGate.isRecovering('relay:m1')).toBe(true);
+        // The route is closed for the server's hint: waiting callers are held.
+        expect(apiSocket.rpcGate.waitFor('relay:m1')).toBeGreaterThanOrEqual(100);
+        apiSocket.disconnect();
+    });
 });

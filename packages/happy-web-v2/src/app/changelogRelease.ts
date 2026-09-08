@@ -15,6 +15,104 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-08-pi-agent-defaults',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // web-only: the pi runner already speaks Claude's permission keys and
+    // publishes its own model list; only the web was filing pi under claude.
+    titleKey: 'changelog.releases.sep08a.title',
+    summaryKey: 'changelog.releases.sep08a.summary',
+    itemKeys: [
+      'changelog.releases.sep08a.settings',
+      'changelog.releases.sep08a.selectors',
+    ],
+  },
+  {
+    id: '2026-09-08-pi-sessions-stream-live',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // CLI-only fix (B-371): the web's live-draft receiver shipped with B-309
+    // and needs no change; the ACP runner simply never sent frames. The
+    // version is the CLI release that carries it.
+    cliVersion: '0.2.121',
+    titleKey: 'changelog.releases.sep08b.title',
+    summaryKey: 'changelog.releases.sep08b.summary',
+    itemKeys: [
+      'changelog.releases.sep08b.text',
+      'changelog.releases.sep08b.thinking',
+    ],
+  },
+  {
+    id: '2026-09-08-terminal-stays-on-last-line',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // web-only: the daemon and tmux were fine; xterm in the browser misread a
+    // layout-induced scroll clamp as the user scrolling up (B-374).
+    titleKey: 'changelog.releases.sep08d.title',
+    summaryKey: 'changelog.releases.sep08d.summary',
+    itemKeys: [
+      'changelog.releases.sep08d.follow',
+      'changelog.releases.sep08d.history',
+    ],
+  },
+  {
+    id: '2026-09-08-queued-message-tombstones',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // Both halves: the CLI now reports queued input it destroyed; the web shows
+    // the message with the reason instead of losing it. cliVersion is filled
+    // in by the release that ships the CLI half (B-332).
+    titleKey: 'changelog.releases.sep08g.title',
+    summaryKey: 'changelog.releases.sep08g.summary',
+    itemKeys: [
+      'changelog.releases.sep08g.tombstone',
+      'changelog.releases.sep08g.restart',
+    ],
+  },
+  {
+    id: '2026-09-08-idle-cpu-compositor-probe',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // Web half (ui.css pulse) ships with this web build; the CLI half
+    // (keep-alive probe throttle) lands in the next CLI release — the
+    // publish workflow sets cliVersion then, as with other two-part entries.
+    titleKey: 'changelog.releases.sep08c.title',
+    summaryKey: 'changelog.releases.sep08c.summary',
+    itemKeys: ['changelog.releases.sep08c.pulse', 'changelog.releases.sep08c.probe'],
+  },
+  {
+    id: '2026-09-08-pi-session-stays-live',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // CLI-only fix (B-376): the web's liveness channel is the two-second
+    // keepAlive, and the ACP runner used to release it mid-turn whenever the
+    // backend's text-gap heuristic reported idle — so the web folded the turn
+    // and dropped the running bar while pi was still working. Ships in the
+    // same CLI release as B-371 below; bump this if it is released separately.
+    cliVersion: '0.2.121',
+    titleKey: 'changelog.releases.sep08e.title',
+    summaryKey: 'changelog.releases.sep08e.summary',
+    itemKeys: [
+      'changelog.releases.sep08e.running',
+    ],
+  },
+  {
+    id: '2026-09-08-rpc-rate-limit-backoff',
+    date: '2026-09-08',
+    buildVersion: __APP_VERSION__,
+    // The CLI half is `sessions approve/deny` honouring retryAfterMs; rides
+    // the next CLI tag after 0.2.120. If a sibling branch publishes 0.2.121
+    // first, bump this at landing (AGENTS 铁律 6: published tags are immutable).
+    cliVersion: '0.2.121',
+    titleKey: 'changelog.releases.sep08f.title',
+    summaryKey: 'changelog.releases.sep08f.summary',
+    itemKeys: [
+      'changelog.releases.sep08f.source',
+      'changelog.releases.sep08f.backoff',
+      'changelog.releases.sep08f.server',
+    ],
+  },
+  {
     id: '2026-09-08-undefined-css-tokens',
     date: '2026-09-08',
     buildVersion: __APP_VERSION__,

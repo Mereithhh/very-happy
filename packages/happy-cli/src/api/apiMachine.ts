@@ -162,6 +162,17 @@ async function withCodexAppServerClient<T>(handler: (client: CodexAppServerClien
     }
 }
 
+/**
+ * How often the keep-alive re-probes CLI availability / resume support.
+ * The probe forks a shell per CLI on the daemon's main thread (see
+ * startKeepAlive); a machine gains or loses `claude`/`codex`/`pi` on the
+ * order of installs, not seconds, so 5 min keeps the machine card honest
+ * while removing ~93% of the forks. The first keep-alive tick always probes
+ * (lastCliProbeAt is initialised already-stale) so a reconnect re-advertises
+ * promptly; subsequent ticks go 5 min between probes.
+ */
+export const CLI_AVAILABILITY_RECHECK_MS = 5 * 60 * 1000;
+
 export class ApiMachineClient {
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
     private relaySocket: Socket | null = null;
@@ -171,6 +182,10 @@ export class ApiMachineClient {
     private keepAliveInterval: NodeJS.Timeout | null = null;
     private lastKnownCLIAvailability: CLIAvailability | null = null;
     private lastKnownResumeSupport: ResumeSupport | null = null;
+    /** Wall-clock of the last CLI availability probe. Initialised as "already
+     *  stale" so the FIRST keep-alive tick always probes and populates the
+     *  machine metadata that a connecting/reconnecting web client reads. */
+    private lastCliProbeAt = Date.now() - CLI_AVAILABILITY_RECHECK_MS;
     private cliUpdateState: CliUpdateState | null = null;
     private cliUpdatePushChain: Promise<void> = Promise.resolve();
     private claudeAuthState: ClaudeAuthState | null = null;
@@ -1298,7 +1313,16 @@ export class ApiMachineClient {
             this.socket.emit('machine-alive', payload);
             void this.refreshRelayConnection();
 
-            // Re-detect CLI availability and push metadata update if changed
+            // Re-detect CLI availability and push metadata update if changed.
+            // detectCLIAvailability() is a BLOCKING probe (6x execSync `/bin/sh
+            // -c "command -v …"` = 6 forks + ~19ms of main-thread stall). Re-probing
+            // every 20s did ~9700 of these in 2 days with no change, while the
+            // blocking stall was visible in cpu-profile samples (SyncProcessRunner
+            // on the keep-alive timer). Throttle to CLI_AVAILABILITY_RECHECK_MS.
+            if (Date.now() - this.lastCliProbeAt < CLI_AVAILABILITY_RECHECK_MS) {
+                return;
+            }
+            this.lastCliProbeAt = Date.now();
             const newAvailability = detectCLIAvailability();
             const prev = this.lastKnownCLIAvailability;
             const newResumeSupport = detectResumeSupport();

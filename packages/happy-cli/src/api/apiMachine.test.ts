@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiMachineClient } from './apiMachine';
+import { ApiMachineClient, CLI_AVAILABILITY_RECHECK_MS } from './apiMachine';
 import type { Machine } from './types';
+import { detectCLIAvailability } from '@/utils/detectCLI';
+import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 
 const {
     mockIo,
@@ -44,7 +46,8 @@ vi.mock('@/api/rpc/RpcHandlerManager', () => ({
     }
 }));
 
-vi.mock('@/utils/detectCLI', () => ({
+vi.mock('@/utils/detectCLI', async () => ({
+    ...(await vi.importActual('@/utils/detectCLI')),
     detectCLIAvailability: vi.fn(() => ({
         claude: false,
         codex: false,
@@ -189,6 +192,51 @@ describe('ApiMachineClient socket reconnection', () => {
             }),
         );
         expect(stopSession).toHaveBeenCalledWith('session-2');
+    });
+
+    // T-013 (CPU audit): the keep-alive used to call detectCLIAvailability()
+    // — six blocking `sh -c command -v` forks — on EVERY 20s tick. A 10s
+    // cpu sample of the production daemon showed those forks as the largest
+    // non-idle bucket on the main thread. The heartbeat itself must stay at
+    // 20s (server presence); only the probe is throttled.
+    it('keeps the 20s machine-alive heartbeat but re-probes CLI availability only every CLI_AVAILABILITY_RECHECK_MS', async () => {
+        vi.useFakeTimers();
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status: 503, json: async () => ({}) } as Response);
+        const probe = vi.mocked(detectCLIAvailability);
+        const resumeProbe = vi.mocked(detectResumeSupport);
+        probe.mockClear();
+        resumeProbe.mockClear();
+
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        mockSocket.connected = true;
+        (client as any).socket = mockSocket;
+        (client as any).startKeepAlive();
+
+        // First tick probes (nothing advertised yet) and heartbeats.
+        await vi.advanceTimersByTimeAsync(20_000);
+        expect(mockSocket.emit).toHaveBeenCalledWith('machine-alive', expect.objectContaining({ machineId: 'test-machine-id' }));
+        expect(probe).toHaveBeenCalledTimes(1);
+        expect(resumeProbe).toHaveBeenCalledTimes(1);
+
+        // The next 4 minutes of ticks heartbeat without forking a probe.
+        await vi.advanceTimersByTimeAsync(4 * 60_000);
+        const alive = mockSocket.emit.mock.calls.filter((c: unknown[]) => c[0] === 'machine-alive').length;
+        expect(alive).toBe(13);
+        expect(probe).toHaveBeenCalledTimes(1);
+        expect(resumeProbe).toHaveBeenCalledTimes(1);
+
+        // Once the window elapses the probe runs again.
+        await vi.advanceTimersByTimeAsync(CLI_AVAILABILITY_RECHECK_MS - 4 * 60_000);
+        expect(probe).toHaveBeenCalledTimes(2);
+        expect(resumeProbe).toHaveBeenCalledTimes(2);
+
+        // Over an hour: 180 heartbeats, but only 12 probes (was 180).
+        await vi.advanceTimersByTimeAsync(60 * 60_000 - CLI_AVAILABILITY_RECHECK_MS - 20_000);
+        const aliveHour = mockSocket.emit.mock.calls.filter((c: unknown[]) => c[0] === 'machine-alive').length;
+        expect(aliveHour).toBe(180);
+        expect(probe).toHaveBeenCalledTimes(12);
+
+        client.shutdown();
     });
 
     it('hands terminal command ownership to the candidate without double-consuming input', async () => {

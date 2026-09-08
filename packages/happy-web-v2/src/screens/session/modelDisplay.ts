@@ -17,6 +17,7 @@ import { compactResolvedModelCode } from '@/components/modelModeOptions';
  * option's own label is already the resolved default model.
  */
 export function deriveRunningModelSubtitle(input: {
+    /** Flavor publishes the running model: Claude (system/init) and pi/ACP (pi-acp currentModelId, B-362/B-370). */
     isClaude: boolean;
     selectedKey: string | null | undefined;
     /** metadata.currentModelCode — absent here until CLI 0.2.105, which is what first publishes it for Claude sessions. */

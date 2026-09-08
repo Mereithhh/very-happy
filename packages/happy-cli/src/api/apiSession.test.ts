@@ -1137,3 +1137,136 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 });
+
+describe('B-332 queue-cancel tombstones from the CLI', () => {
+    let socketHandlers: SocketHandlers;
+    let mockSocket: any;
+    let session: ReturnType<typeof makeSession>;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockAxiosGet.mockResolvedValue({ data: { messages: [], hasMore: false } });
+        // The outbox flushes through POST; echo a committed seq so it drains.
+        mockAxiosPost.mockImplementation(async (_url: string, body: { messages: Array<{ localId: string }> }) => ({
+            data: { messages: body.messages.map((m, i) => ({ id: `s-${i}`, seq: 100 + i, localId: m.localId, createdAt: 1, updatedAt: 1 })) },
+        }));
+        socketHandlers = {};
+        session = makeSession();
+        mockSocket = {
+            connected: true,
+            connect: vi.fn(),
+            on: vi.fn((event: string, handler: SocketHandler) => {
+                (socketHandlers[event] ??= []).push(handler);
+            }),
+            off: vi.fn(),
+            emit: vi.fn(),
+            emitWithAck: vi.fn(async () => ({ result: 'error' })),
+            volatile: { emit: vi.fn() },
+            close: vi.fn()
+        };
+        mockIo.mockReturnValue(mockSocket);
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    function stored(seq: number, localId: string | null, body: unknown) {
+        return {
+            id: `msg-${seq}`, seq, localId,
+            content: { t: 'encrypted', c: encryptContent(session, body) },
+            createdAt: seq, updatedAt: seq,
+        };
+    }
+    const queuedUser = (text: string) => ({ role: 'user', content: { type: 'text', text }, meta: { queuedAt: 1 } });
+    const turnEnd = { role: 'session', content: { id: 'te', time: 1, role: 'agent', turn: 't1', ev: { t: 'turn-end', status: 'completed' } } };
+
+    /** Everything this client POSTed to the messages endpoint, decrypted, in order. */
+    function postedMessages(): unknown[] {
+        return mockAxiosPost.mock.calls
+            .filter((call) => String(call[0]).endsWith('/v3/sessions/test-session-id/messages'))
+            .flatMap((call) => (call[1] as { messages: Array<{ content: string }> }).messages)
+            .map((m) => decrypt(session.encryptionKey, session.encryptionVariant, decodeBase64(m.content)));
+    }
+
+    it('sendQueueCancelReason writes a user-role queue-cancel envelope with the reason', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        client.sendQueueCancelReason(['web-local-1', 'web-local-2'], 'cleared');
+        await waitForCheck(() => expect(postedMessages()).toHaveLength(1));
+        const out = postedMessages();
+        expect(out[0]).toMatchObject({
+            role: 'session',
+            content: { role: 'user', ev: { t: 'queue-cancel', targetLocalKeys: ['web-local-1', 'web-local-2'], reason: 'cleared' } },
+            meta: { sentFrom: 'cli' },
+        });
+    });
+
+    it('a restarted wrapper that skips history tombstones the undelivered tail (the users\' "stuck" message)', async () => {
+        // Newest-first page, as before_seq paging returns it: seq 6,5 were sent
+        // while the previous wrapper was mid-turn (queuedAt) and it died with
+        // them in its in-memory queue; seq 4 is the turn-end of the turn BEFORE;
+        // seq 3 was consumed by that turn (below the boundary) and is not ours.
+        mockAxiosGet.mockImplementation(async (_url: string, opts: { params: Record<string, number> }) => {
+            if (opts.params.before_seq !== undefined) {
+                return { data: { messages: [
+                    stored(6, 'web-b', queuedUser('second')),
+                    stored(5, 'web-a', queuedUser('first')),
+                    stored(4, null, turnEnd),
+                    stored(3, 'web-old', queuedUser('consumed earlier')),
+                ], hasMore: false } };
+            }
+            // after_seq (the skip walk) — whatever; this test is about the tail.
+            return { data: { messages: [], hasMore: false } };
+        });
+        // Same sequence runClaude/runCodex run on reconnect (skip is optional:
+        // a server-seeded cursor loses the tail just the same).
+        const client = new ApiSessionClient('fake-token', session);
+        client.skipExistingMessages();
+        void client.cancelUndeliveredQueuedInputs();
+        await (client as any).fetchMessages();
+        await waitForCheck(() => {
+            const out = postedMessages();
+            expect(out).toHaveLength(1);
+            expect(out[0]).toMatchObject({
+                role: 'session',
+                content: { role: 'user', ev: { t: 'queue-cancel', targetLocalKeys: ['web-a', 'web-b'], reason: 'restarted' } },
+            });
+        });
+        const beforeCall = mockAxiosGet.mock.calls.find((call) => call[1]?.params?.before_seq !== undefined);
+        expect(beforeCall?.[0]).toBe('https://server.test/v3/sessions/test-session-id/messages');
+    });
+
+    it('does not tombstone anything when no turn boundary is found (cannot prove they never ran)', async () => {
+        mockAxiosGet.mockImplementation(async (_url: string, opts: { params: Record<string, number> }) => {
+            if (opts.params.before_seq !== undefined) {
+                return { data: { messages: [stored(2, 'web-a', queuedUser('x'))], hasMore: false } };
+            }
+            return { data: { messages: [], hasMore: false } };
+        });
+        const client = new ApiSessionClient('fake-token', session);
+        await client.cancelUndeliveredQueuedInputs();
+        await new Promise((r) => setTimeout(r, 20));
+        expect(postedMessages()).toHaveLength(0);
+    });
+
+    it('an ordinary fetch (no reconnect) never runs the tail scan', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        client.skipExistingMessages();
+        await (client as any).fetchMessages();
+        expect(mockAxiosGet.mock.calls.some((call) => call[1]?.params?.before_seq !== undefined)).toBe(false);
+    });
+
+    it('runClaude and runCodex both run the tail scan on every reconnect, seeded or not', () => {
+        // Source assertion (repo convention): the daemon's resume/restart always
+        // seeds the cursor from the server, so a scan gated on the skip path
+        // would miss the common case. Both runners must call it unconditionally
+        // inside their `if (reconnectSessionId)` block.
+        const { readFileSync } = require('node:fs') as typeof import('node:fs');
+        for (const file of ['../claude/runClaude.ts', '../codex/runCodex.ts']) {
+            const src = readFileSync(new URL(file, import.meta.url), 'utf8');
+            const block = src.slice(src.indexOf('if (reconnectSessionId) {\n        session.suppressNextArchiveSignal();'));
+            const end = block.indexOf('\n    }\n');
+            expect(block.slice(0, end)).toContain('void session.cancelUndeliveredQueuedInputs();');
+        }
+    });
+});

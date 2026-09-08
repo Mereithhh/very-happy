@@ -41,6 +41,17 @@
  * Ordering guarantee: a block's `block-start` is emitted before any of its
  * deltas, and `block-end` after the last one, because pending text is always
  * flushed before a lifecycle frame goes out.
+ *
+ * Two entry points share one coalescer:
+ *
+ *  - `ingest()` is the Claude SDK adapter — it reads `stream_event` /
+ *    `system` frames and translates them into the block-level calls below.
+ *  - `openBlock()` / `appendDelta()` / `closeBlock()` / `setProgress()` are
+ *    the block-level API itself. Runners whose agent does not speak the SDK
+ *    shape (ACP: pi, gemini, opencode — B-371) drive these directly with their
+ *    own block identity (the turn id stands in for the API message id); the
+ *    web never knew what a `mid` stood for beyond "the string the persisted
+ *    envelope's `streamKey` starts with", so nothing changes on that side.
  */
 
 import type { SessionStreamFrame } from '@slopus/happy-wire';
@@ -78,7 +89,7 @@ type PendingBlock = {
     bytes: number;
 };
 
-type Progress = {
+export type StreamRelayProgress = {
     thinkingTokens?: number;
     outputTokens?: number;
     status?: 'requesting' | 'compacting';
@@ -104,7 +115,7 @@ export class StreamRelay {
     private pending: PendingBlock | null = null;
     private flushHandle: unknown = null;
 
-    private progress: Progress = {};
+    private progress: StreamRelayProgress = {};
     private progressDirty = false;
     private progressHandle: unknown = null;
 
@@ -212,9 +223,7 @@ export class StreamRelay {
             // tool_use blocks stream their JSON args; those already show up as
             // real tool cards on the persisted path, so they are not drafted.
             if (!kind || !this.currentMid || typeof e.index !== 'number') return;
-            this.flushPending();
-            this.openBlocks.add(e.index);
-            this.send({ t: 'block-start', mid: this.currentMid, idx: e.index, kind });
+            this.openBlock(this.currentMid, e.index, kind);
             return;
         }
 
@@ -227,17 +236,13 @@ export class StreamRelay {
                     : null;
             if (typeof text !== 'string' || text.length === 0) return;
             if (!this.currentMid || typeof e.index !== 'number') return;
-            if (!this.openBlocks.has(e.index)) return;
             this.appendDelta(this.currentMid, e.index, text);
             return;
         }
 
         if (e.type === 'content_block_stop') {
             if (!this.currentMid || typeof e.index !== 'number') return;
-            if (!this.openBlocks.has(e.index)) return;
-            this.flushPending();
-            this.openBlocks.delete(e.index);
-            this.send({ t: 'block-end', mid: this.currentMid, idx: e.index });
+            this.closeBlock(this.currentMid, e.index);
             return;
         }
 
@@ -250,7 +255,31 @@ export class StreamRelay {
         }
     }
 
-    private appendDelta(mid: string, idx: number, text: string): void {
+    // ---- Block-level API (see module comment) --------------------------------
+
+    /** Open a draft block. A different `mid` than the one currently open closes
+     *  whatever the previous message left open, exactly like the SDK's
+     *  `message_start` does. Re-opening an already open block is a no-op. */
+    openBlock(mid: string, idx: number, kind: 'text' | 'thinking'): void {
+        this.idleSinceTurnEnd = false;
+        if (this.currentMid !== mid) {
+            this.flushPending();
+            this.closeOpenBlocks();
+            this.currentMid = mid;
+        }
+        if (this.openBlocks.has(idx)) return;
+        this.flushPending();
+        this.openBlocks.add(idx);
+        this.send({ t: 'block-start', mid, idx, kind });
+    }
+
+    /** Append text to an OPEN block; deltas for a block that was never opened
+     *  (or belongs to another message) are dropped — the SDK path relies on
+     *  this to ignore `input_json_delta` for tool_use blocks. */
+    appendDelta(mid: string, idx: number, text: string): void {
+        this.idleSinceTurnEnd = false;
+        if (text.length === 0) return;
+        if (this.currentMid !== mid || !this.openBlocks.has(idx)) return;
         if (this.pending && (this.pending.mid !== mid || this.pending.idx !== idx)) {
             this.flushPending();
         }
@@ -274,6 +303,25 @@ export class StreamRelay {
         }
     }
 
+    /** Close an open block: pending text goes out first, then `block-end`. */
+    closeBlock(mid: string, idx: number): void {
+        this.idleSinceTurnEnd = false;
+        if (this.currentMid !== mid || !this.openBlocks.has(idx)) return;
+        this.flushPending();
+        this.openBlocks.delete(idx);
+        this.send({ t: 'block-end', mid, idx });
+    }
+
+    /** Merge quantified progress; flushed on the progress cadence. */
+    setProgress(patch: StreamRelayProgress): void {
+        this.idleSinceTurnEnd = false;
+        this.progress = { ...this.progress, ...patch };
+        this.progressDirty = true;
+        this.scheduleProgress();
+    }
+
+    // -------------------------------------------------------------------------
+
     private flushPending(): void {
         if (this.flushHandle !== null) {
             this.clearTimer(this.flushHandle);
@@ -296,12 +344,6 @@ export class StreamRelay {
             this.send({ t: 'block-end', mid: this.currentMid, idx });
         }
         this.openBlocks.clear();
-    }
-
-    private setProgress(patch: Progress): void {
-        this.progress = { ...this.progress, ...patch };
-        this.progressDirty = true;
-        this.scheduleProgress();
     }
 
     private scheduleProgress(): void {

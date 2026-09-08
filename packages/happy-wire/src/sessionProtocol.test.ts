@@ -36,6 +36,8 @@ describe('session protocol schemas', () => {
       { t: 'turn-end', status: 'completed' },
       { t: 'turn-end', status: 'failed', error: 'model request failed' },
       { t: 'stop' },
+      { t: 'queue-cancel', targetLocalKeys: ['local-1'] },
+      { t: 'queue-cancel', targetLocalKeys: ['local-1', 'local-2'], reason: 'cleared' },
     ];
 
     for (const event of events) {
@@ -52,6 +54,10 @@ describe('session protocol schemas', () => {
     expect(sessionEventSchema.safeParse({ t: 'start', title: 1 }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'service' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'not-real' }).success).toBe(false);
+    // B-332: a queue-cancel needs at least one key; an unknown reason must NOT
+    // reject the whole envelope (it travels to a client that may be older).
+    expect(sessionEventSchema.safeParse({ t: 'queue-cancel', targetLocalKeys: [] }).success).toBe(false);
+    expect(sessionEventSchema.safeParse({ t: 'queue-cancel', targetLocalKeys: ['k'], reason: 'anything-new' }).success).toBe(true);
   });
 
   it('validates envelopes that include turn/subagent', () => {
@@ -169,5 +175,13 @@ describe('B-260-P2 sub-agent lifecycle payloads', () => {
         const end = createEnvelope('agent', { t: 'tool-call-end', call: 'c1', result: { text: 'r', stats: { toolUses: 3, toolStats: { readCount: 1 } } } });
         expect(end.ev).toMatchObject({ t: 'tool-call-end', result: { text: 'r' } });
         expect(createEnvelope('agent', { t: 'start', title: 't', description: 'd', subagentType: 'Explore' }, { subagent: sub }).ev).toMatchObject({ subagentType: 'Explore' });
+    });
+});
+
+describe('B-332 queue-cancel tombstone', () => {
+    it('emits with role user (an agent envelope without a turn is dropped by the web)', () => {
+        const env = createEnvelope('user', { t: 'queue-cancel', targetLocalKeys: ['a'], reason: 'cleared' });
+        expect(env.role).toBe('user');
+        expect(env.ev).toEqual({ t: 'queue-cancel', targetLocalKeys: ['a'], reason: 'cleared' });
     });
 });

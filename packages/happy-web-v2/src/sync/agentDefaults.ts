@@ -1,6 +1,10 @@
 import * as z from 'zod';
 
-export const agentKeys = ['claude', 'codex', 'gemini', 'openclaw'] as const;
+// Every agent the launcher can spawn, each with its own defaults slot. `pi` is
+// first-class (B-370): before it was folded into `claude`, so the settings page
+// offered Claude aliases (opus/sonnet/fable) as pi's model list and a model
+// picked inside a pi session was written into agentDefaultOverrides.claude.
+export const agentKeys = ['claude', 'codex', 'gemini', 'openclaw', 'pi'] as const;
 export type AgentKey = typeof agentKeys[number];
 
 export const AgentDefaultOverrideSchema = z.object({
@@ -14,6 +18,9 @@ export const AgentDefaultOverridesSchema = z.object({
     codex: AgentDefaultOverrideSchema.optional(),
     gemini: AgentDefaultOverrideSchema.optional(),
     openclaw: AgentDefaultOverrideSchema.optional(),
+    // `.optional()`, never `.default()` (rule 1). Old web bundles don't know the
+    // key but `.passthrough()` keeps it when they re-POST the object.
+    pi: AgentDefaultOverrideSchema.optional(),
 }).passthrough().default({});
 
 export type AgentDefaultOverride = z.infer<typeof AgentDefaultOverrideSchema>;
@@ -36,13 +43,36 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     codex: { permissionMode: 'yolo', modelMode: 'gpt-5.5', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
+    // pi: the runner keeps Claude's permission vocabulary (B-350 — HAPPY_PERMISSION_MODE +
+    // session-modes file, enforced by the pi-side gate; `bypassPermissions` = auto-allow every
+    // ask rule), so yolo is the same key as for Claude. Model 'default' = don't send a model:
+    // the session runs on whatever the machine's pi is configured with (pi-acp publishes
+    // its own registry in metadata.models plus the model really in effect in
+    // metadata.currentModelCode, B-362). pi has no effort channel from the web (its
+    // thinking level is a separate ACP config option the web does not drive yet).
+    pi: { permissionMode: 'bypassPermissions', modelMode: 'default', effortLevel: null },
 };
 
+/**
+ * Launcher agent key ↔ session flavor. The launcher spawns `agent: 'pi'`, but the
+ * CLI records a pi session as `metadata.flavor === 'acp'` (runAcp's
+ * resolveSessionFlavor: gemini → 'gemini', opencode → 'opencode', anything else
+ * → 'acp'). pi is the only ACP agent the web offers, so both spellings resolve
+ * to the same defaults slot — otherwise a running pi session would read and
+ * WRITE Claude's defaults while the launcher used pi's.
+ */
 export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
-    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw') {
+    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'pi') {
         return flavor;
     }
+    if (flavor === 'acp') {
+        return 'pi';
+    }
     return 'claude';
+}
+
+export function isPiAgent(flavor: string | null | undefined): boolean {
+    return normalizeAgentKey(flavor) === 'pi';
 }
 
 export function getCodeAgentDefaults(flavor: string | null | undefined): AgentDefaultConfig {
@@ -58,6 +88,9 @@ const reviewFirstPermissionModes: Record<AgentKey, string> = {
     codex: 'read-only',
     gemini: 'plan',
     openclaw: 'default',
+    // The pi-side gate treats `plan`/`acceptEdits` as `default` ("ask becomes a
+    // permission card"); `default` is the honest key for review-first.
+    pi: 'default',
 };
 
 export function getReviewFirstPermissionMode(flavor: string | null | undefined): string {
@@ -69,14 +102,14 @@ export function resolveNewSessionPermissionMode(
     flavor: string | null | undefined,
     reviewFirst: boolean,
 ): string {
-    // pi follows the Claude keys on purpose: since the pi runner keeps
-    // --permission-mode (HAPPY_PERMISSION_MODE + session-modes file, B-350) the
+    // pi uses the Claude permission KEYS (B-350: the pi runner keeps
+    // --permission-mode → HAPPY_PERMISSION_MODE + session-modes file; the
     // vh-supervisor permission gate enforces `bypassPermissions` as "auto-allow
     // every ask rule" and `default` as "ask becomes a permission card"; hard deny
-    // rules are never lifted. `plan`/`acceptEdits` are treated as `default` by
-    // the gate. The CLI publishes the value really in effect in
-    // metadata.permissionMode (rule 14), so what the launcher records is the
-    // intent and the session row shows the fact.
+    // rules are never lifted) but its OWN defaults slot — see codeAgentDefaults.
+    // The CLI publishes the value really in effect in metadata.permissionMode
+    // (rule 14), so what the launcher records is the intent and the session row
+    // shows the fact.
     const explicitDefault = getAgentDefaultOverride(overrides, flavor).permissionMode;
     if (explicitDefault !== undefined) {
         return explicitDefault;

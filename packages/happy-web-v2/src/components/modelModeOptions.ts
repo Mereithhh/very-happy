@@ -1,7 +1,7 @@
 import type { Metadata } from '@/sync/storageTypes';
 import type { SimpleTranslationKey } from '@/text';
 import { hackModes } from '@/sync/modeHacks';
-import { getCodeAgentDefaults } from '@/sync/agentDefaults';
+import { getCodeAgentDefaults, isPiAgent } from '@/sync/agentDefaults';
 
 export type ModeOption = {
     key: string;
@@ -134,6 +134,20 @@ export function getOpenClawPermissionModes(translate: Translate): PermissionMode
     ];
 }
 
+/**
+ * pi permission picker (B-370). The pi runner keeps Claude's vocabulary
+ * (B-350), but the pi-side gate only distinguishes two behaviours: `default`
+ * (ask → permission card) and `bypassPermissions` (auto-allow every ask rule);
+ * `plan`/`acceptEdits` are treated as `default` there, so offering them would
+ * promise a plan mode / auto-accepted edits that do not exist.
+ */
+export function getPiPermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
+        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+    ];
+}
+
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
@@ -144,10 +158,27 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'openclaw') {
         return getOpenClawPermissionModes(translate);
     }
+    if (isPiAgent(flavor)) {
+        return getPiPermissionModes(translate);
+    }
     return getClaudePermissionModes(translate);
 }
 
 export function getOpenClawModelModes(): ModelMode[] {
+    return [
+        { key: 'default', name: 'default model', description: null },
+    ];
+}
+
+/**
+ * pi has no hardcodable model list: its registry is whatever providers the
+ * machine's pi is configured with (pi-acp publishes it per session in
+ * `metadata.models`, e.g. `llm-hub/claude-fable-5-1`). Without a session the
+ * only honest option is `default` = don't send a model. Settings → Agents
+ * widens this with the models pi sessions on the account have published
+ * (sync/piModelOptions.ts).
+ */
+export function getPiModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
     ];
@@ -162,6 +193,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     }
     if (flavor === 'openclaw') {
         return getOpenClawModelModes();
+    }
+    if (isPiAgent(flavor)) {
+        return getPiModelModes();
     }
     return getClaudeModelModes();
 }
@@ -187,6 +221,13 @@ export function getAvailablePermissionModes(
     translate: Translate,
 ): PermissionMode[] {
     if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw') {
+        return hackModes(getHardcodedPermissionModes(flavor, translate));
+    }
+    // pi: `metadata.operatingModes` is pi-acp's legacy `modes` field, which
+    // carries the THINKING level ("Thinking: off/minimal/…/xhigh"; probed on 23
+    // sessions 2026-09-07), not a permission mode. Its permission layer is the
+    // pi-side gate (B-350) with the fixed vocabulary above.
+    if (isPiAgent(flavor)) {
         return hackModes(getHardcodedPermissionModes(flavor, translate));
     }
 

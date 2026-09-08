@@ -115,7 +115,7 @@ export const SettingsSchema = z.object({
     lastUsedModelMode: z.string().nullable().describe('Legacy; unused. New sessions use agentDefaultOverrides'),
     // Quick new-chat flow. Synced; NO zod .default() (ghost-pending footgun
     // above) — defaults live in settingsDefaults.
-    newSessionAgent: z.string().describe('Agent used by quick new-chat creation (claude/codex/gemini/openclaw)'),
+    newSessionAgent: z.string().describe('Agent used by quick new-chat creation (claude/codex/gemini/openclaw/pi)'),
     newSessionAlwaysAsk: z.boolean().describe('Always open the full options dialog on new chat instead of quick-creating'),
     agentDefaultOverrides: AgentDefaultOverridesSchema.describe('User-selected agent defaults. Missing values use code defaults and are not sent as agent metadata.'),
     // Legacy sidebar pinned rows (superseded by sidebarOrder). Kept in the

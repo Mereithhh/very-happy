@@ -64,6 +64,7 @@ import {
   getAgentDefaultOverrideValue,
   setAgentDefaultOverride,
 } from '@/sync/agentDefaults';
+import { collectPiModelOptions } from '@/sync/piModelOptions';
 import {
   getHardcodedPermissionModes,
   getHardcodedModelModes,
@@ -1080,6 +1081,14 @@ function Agents() {
   const [alwaysAsk, setAlwaysAsk] = useSettingMutable('newSessionAlwaysAsk');
   const [reviewFirst, setReviewFirst] = useLocalSettingMutable('newSessionReviewFirst');
   const quickAgent = normalizeAgentKey(newSessionAgent);
+  // B-370: pi's model list is whatever its sessions have published (no
+  // hardcodable registry) — see sync/piModelOptions.ts.
+  const allSessions = useAllSessions();
+  const piModelOverride = getAgentDefaultOverrideValue(overrides, 'pi', 'modelMode');
+  const piModelOptions = useMemo(
+    () => collectPiModelOptions(allSessions, [piModelOverride]),
+    [allSessions, piModelOverride],
+  );
 
   const translate = useCallback((k: SimpleTranslationKey) => t(k), []);
 
@@ -1142,7 +1151,7 @@ function Agents() {
           const resolved = resolveAgentDefaultConfig(overrides, agent);
           const codeDefaults = resolveAgentDefaultConfig({}, agent);
           const permOptions = getHardcodedPermissionModes(agent, translate);
-          const modelOptions = getHardcodedModelModes(agent, translate);
+          const modelOptions = agent === 'pi' ? piModelOptions : getHardcodedModelModes(agent, translate);
           const effortOptions = getEffortLevelsForModel(agent, resolved.modelMode);
           return (
             <ItemGroup key={agent} title={agent}>

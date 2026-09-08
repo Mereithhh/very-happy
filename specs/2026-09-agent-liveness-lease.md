@@ -1,6 +1,6 @@
 # 活性租约与队列出边（B-320 / B-322）
 
-状态：**已实现并合入 main**（#225、#228），CLI 侧两项延后（B-332 / B-333）。
+状态：**已实现并合入 main**（#225、#228）；B-332 已在 `vh/t-010` 实现（见文末「B-332 实现记录」），B-333 仍延后。
 起因：两位用户在「Coding Agent 接入交流群」实报，同一天。
 
 > Simon DU：「好像有 bash command 在运行我的新发的就会 queue，但我再开一个新的 chrome tab 就好了」
@@ -109,6 +109,27 @@ ref 回 `idle`，持久化的队列立刻冲出去。**这就是用户那句「�
   写者，两套共存会让消息在 transcript 里闪现／消失。
   **必须写进实现：「不在集合里」只表示「不在排队」，不表示「已被处理」；销毁必须有自己的
   tombstone。** 否则下一个人会把它当投递回执用。
+
+## B-332 实现记录（T-010，2026-09-08）
+
+三处销毁点都发 tombstone，`reason` 区分：`cleared`（`pushIsolateAndClear`：/clear、/compact）、
+`aborted`（`reset()`：local 模式 abort、Gemini abort）、`restarted`（重启/接管的 wrapper 跳过历史）。
+
+- **第三处的判据与 web 完全同源**：`ApiSessionClient.cancelUndeliveredQueuedInputs` 用 `before_seq`
+  从最新往回翻页、解密，停在第一个 `turn-end`；其上所有 `role:user` + `meta.queuedAt` 的消息就是前一个
+  wrapper 死时还扣在 `MessageQueue2` 里的（web 的 `firstTurnEndForQueuedInput` 判「排队中」用的正是
+  「没有 seq ≥ 它的 turn-end」）。**扫不到任何 turn-end 就什么都不发**——证明不了它们没被消费。
+  已经有 tombstone 的（web 取消按钮、上一次扫描）跳过。上限 10 页。**runClaude / runCodex 的 reconnect
+  分支无条件调一次**，不挂在 `skipExistingMessages` 上：seeded 路径（`initialSeq = server seq`）同样吃掉
+  未投递尾巴，而 daemon 的 resume/restart 都传 `HAPPY_RECONNECT_SEQ`、快照成功即 seeded——第一版挂在 skip
+  分支上，在生产最常见的路径上根本不会跑（源码断言测试钉住，mutation 已验红）。
+- **协议**：happy-wire `sessionEventSchema` 补 `queue-cancel`（web 早就有），`reason` 是 `z.string()`
+  不是 enum（铁律 14）。envelope **role 必须是 `user`**：web `normalizeSessionEnvelope` 丢掉没有 turn 的
+  agent envelope。兼容矩阵：旧 web × 新 CLI → `reason` 被 zod 剥掉，消息按旧行为从 transcript 隐藏；
+  新 web × 旧 CLI → 不发 tombstone，行为同今天；铁律 14——升级前开着的会话永远是旧 wrapper。
+- **web 渲染**：「旧 web 已经会渲染 canceled」其实是**把消息藏掉**。对用户自己按取消这是对的；对 CLI 销毁的
+  消息等于让文字凭空消失。所以带 reason 的 tombstone 让气泡留在原位、下面标「未执行 · 原因」
+  （`screens/session/discardedInput.ts` 是 ChatList 与 MessageView 共用的唯一判据）。
 
 ## 顺带记下的既存缺陷（未修）
 

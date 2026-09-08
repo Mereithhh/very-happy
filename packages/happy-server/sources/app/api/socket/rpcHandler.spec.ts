@@ -120,6 +120,57 @@ describe('RPC socket boundaries', () => {
         expect(labels).toEqual(new Set(['other']));
     });
 
+    it('meters per-socket calls as a token bucket: burst, then refill at the per-minute rate, with retryAfterMs (T-014)', async () => {
+        // The limiter reads Date.now(); a spy avoids fake timers (the rpc-call
+        // handler awaits real setTimeout-based helpers on other paths).
+        const now = vi.spyOn(Date, 'now');
+        try {
+            now.mockReturnValue(100_000);
+            process.env.RPC_MAX_CALLS_PER_MINUTE = '60'; // 1 token/second, burst 60
+            const { socket, handlers } = fakeSocket();
+            rpcHandler('account-1', socket, {} as any);
+            // `method: 123` passes the limiter first, then fails validation
+            // synchronously without touching io — a cheap way to count tokens.
+            const call = async () => {
+                const callback = vi.fn();
+                await handlers.get('rpc-call')!({ method: 123, params: {} }, callback);
+                return callback.mock.calls[0][0];
+            };
+            for (let i = 0; i < 60; i++) {
+                expect((await call()).error).toBe('Invalid parameters: method is required');
+            }
+            const refused = await call();
+            expect(refused).toEqual({
+                ok: false,
+                error: 'RPC rate limit reached',
+                code: 'rpc_rate_limited',
+                retryAfterMs: 1_000,
+            });
+            // A refusal is not charged: the hint is honest, one token later a call passes.
+            now.mockReturnValue(101_000);
+            expect((await call()).error).toBe('Invalid parameters: method is required');
+            // No fixed-window cliff: 30s later exactly 30 tokens have refilled, not 0 and not 60.
+            now.mockReturnValue(131_000);
+            for (let i = 0; i < 30; i++) {
+                expect((await call()).error).toBe('Invalid parameters: method is required');
+            }
+            expect((await call()).code).toBe('rpc_rate_limited');
+        } finally {
+            now.mockRestore();
+        }
+    });
+
+    it('disables per-socket metering when RPC_MAX_CALLS_PER_MINUTE is 0', async () => {
+        process.env.RPC_MAX_CALLS_PER_MINUTE = '0';
+        const { socket, handlers } = fakeSocket();
+        rpcHandler('account-1', socket, {} as any);
+        for (let i = 0; i < 500; i++) {
+            const callback = vi.fn();
+            await handlers.get('rpc-call')!({ method: 123, params: {} }, callback);
+            expect(callback.mock.calls[0][0].error).toBe('Invalid parameters: method is required');
+        }
+    });
+
     it('shares the RPC byte/event allowance across sockets for one account', async () => {
         const request = { method: '', params: { value: 'charged-before-validation' } };
         const cost = relayPayloadBytes(request);
@@ -144,7 +195,11 @@ describe('RPC socket boundaries', () => {
         await otherAccount.handlers.get('rpc-call')!(request, otherCallback);
 
         expect(firstCallback).toHaveBeenCalledWith({ ok: false, error: 'Invalid parameters: method is required' });
-        expect(secondCallback).toHaveBeenCalledWith({ ok: false, error: 'RPC account rate limit reached' });
+        expect(secondCallback).toHaveBeenCalledWith(expect.objectContaining({
+            ok: false,
+            error: 'RPC account rate limit reached',
+            code: 'rpc_account_rate_limited',
+        }));
         expect(otherCallback).toHaveBeenCalledWith({ ok: false, error: 'Invalid parameters: method is required' });
     });
 
@@ -168,6 +223,10 @@ describe('RPC socket boundaries', () => {
         await second.handlers.get('rpc-call')!(request, secondCallback);
 
         expect(firstCallback).toHaveBeenCalledWith({ ok: false, error: 'RPC payload too large' });
-        expect(secondCallback).toHaveBeenCalledWith({ ok: false, error: 'RPC account rate limit reached' });
+        expect(secondCallback).toHaveBeenCalledWith(expect.objectContaining({
+            ok: false,
+            error: 'RPC account rate limit reached',
+            code: 'rpc_account_rate_limited',
+        }));
     });
 });

@@ -1,6 +1,6 @@
 # Claude SDK 会话的流式增量与运行态 UI
 
-> 状态：Shipped（`main@249a0639` + CLI v0.2.112，2026-09-03）
+> 状态：Shipped（`main@249a0639` + CLI v0.2.112，2026-09-03）；ACP 路径补齐见文末「附：B-371」（2026-09-08，CLI 待发布）
 > 日期：2026-09-03 ｜ 关联 backlog：B-309 / B-310 / B-311 ｜ 真机验收：V-133 / V-134 / V-135 ｜ 前身：B-250 / B-252 / B-253（turn 活动流与 loading 的三次迭代，均在「只有完成态」的前提下做的）
 
 ## 背景
@@ -52,7 +52,7 @@ token 计数**。这两样我们现在都拿得到，而且正是本次要补的
 - 不改 reducer 的消息模型（草稿不进 `messagesMap`、不进 reducer、不进历史）。
 - 不做终端历史重排、不碰 xterm（与铁律 9 无关）。
 - 不重做整个会话 UI 布局；只改运行态表面与流式草稿的呈现。
-- 不给 Codex / Gemini / OpenClaw runner 接流式（本次只做 Claude SDK remote 路径）。
+- 不给 Codex / Gemini / OpenClaw runner 接流式（本次只做 Claude SDK remote 路径）。**2026-09-08 修正**：ACP runner（pi / gemini / opencode 共用 `runAcp`）已接同一通道，见文末「附：B-371」；Codex / OpenClaw 仍未接。
 
 ## 现状事实（代码已确认）
 
@@ -245,3 +245,26 @@ liveStream[sessionId] = {
 - 手机窄屏下流式草稿的滚动跟随（自动贴底与 `ResizeObserver` 的交互）。
 - 长时间（>5min）单 turn 的草稿内存占用观感。
 - 弱网/断连重连期间草稿丢失后的恢复观感（`volatile` 丢帧是预期行为）。
+
+
+## 附：B-371 —— ACP 路径（pi）补齐（2026-09-08，T-011 复核）
+
+上面的「非目标」把 ACP runner 排除在外，结果 Wenqing ZHANG 09-02 报的「终端能看到中间过程 thinking，
+会话端基本看不到」在 pi 会话上**原样存在**——B-309 标 done 时只验了 Claude SDK 路径。复核事实：
+
+| 事实 | 位置 / 证据 |
+|---|---|
+| `AcpSessionManager.mapMessage` 把 `model-output` 与 streaming `thinking` 的每个 delta 攒进 `pendingText`，只在类型切换 / `tool-call` / `endTurn` 时 flush 成持久化 `text` 信封 | `packages/happy-cli/src/agent/acp/AcpSessionManager.ts` |
+| `runAcp` 从未构造 `StreamRelay`、从未调 `sendStreamFrame` | 2026-09-08 前的 `runAcp.ts` 全文无 `session-stream` 引用 |
+| pi-acp **有真文本的思考流**：`message_update.assistantMessageEvent.thinking_delta` → `agent_thought_chunk`（与被 API redact 的 Claude 不同） | `pi-acp@0.0.33 dist/index.js:958` |
+| 真机 probe（实跑 pi-acp，`~/code/github/skills/tmp/vh-t011/e2e-frames.json`）：thinking 块 8.3s 开始流、正文 8.6s 开始流，持久化信封 11.5s 才产生——旧行为下 web 在 11.5s 前一个字都没有 | 一次 60 词回答的样本，n=1 |
+| pi-acp 在 turn 内**不**上报 usage（`PromptResponse.usage` 为空、无 `usage_update`）→ 状态条 token 段在 pi 上省略 | probe 两次 `res.usage === undefined` |
+
+修法（web / server / wire **零改动**，只改 CLI）：
+
+1. `StreamRelay` 暴露块级 API `openBlock / appendDelta / closeBlock / setProgress`，SDK 适配器 `ingest()` 建在其上——同一个 80ms 合批、同一套帧、同一个 `HAPPY_SESSION_STREAM_DISABLED` 开关。
+2. `AcpSessionManager` 接一个可选 `AcpStreamSink`（`StreamRelay` 结构满足）：每个 delta **立即**转发；`mid` 用 turn id（ACP 没有 API message id，web 从不解释 `mid`），`idx` 用 turn 内块序号；flush 出的信封带同一 `streamKey`，web 现有的 claim 逻辑原样零闪烁替换。
+3. `startTurn()` 先 flush turn 前挂起的文本（pi 启动 banner）：否则它会粘进第一段回答，**并且**让第一段回答进不了草稿通道（pending 块在没有 turn id 时就开了）。
+4. `runAcp`：`turn-end` 帧在 `endTurn` 信封出队**之后**发（与 launcher 同序）；finally 里 `endTurn()+dispose()`，被杀的 turn 不会把半截草稿留在 web 上 5 分钟。
+
+残余（已知、接受）：pi 无 token 进度（要 pi-acp 转发 usage 才行）；gemini / opencode 走同一 mapper 顺带受益但未实测；Codex / OpenClaw runner 仍未接。

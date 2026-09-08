@@ -134,6 +134,29 @@ export const sessionProgressEventSchema = z.object({
   summary: z.string().optional(),
 });
 
+/**
+ * B-332: tombstone for queued user input that will never run. The web has
+ * emitted (and rendered) this since the queue-cancel button shipped; the CLI
+ * emits it too now, for the three ways it destroys its own queue without any
+ * other signal reaching the web — `/clear`/`/compact` (pushIsolateAndClear),
+ * local-mode abort (reset), and a restarted/taken-over wrapper skipping the
+ * undelivered tail. Without it the message sits at 「排队中」 until the next
+ * unrelated turn-end and is then painted as delivered.
+ *
+ * `reason` is a plain string, not an enum (AGENTS 铁律 14): a reader must never
+ * drop the whole tombstone over a word it does not know. Absent on web-
+ * originated tombstones (the user pressed cancel themselves). Known values:
+ * `cleared` | `aborted` | `restarted`.
+ *
+ * Envelope role must be `user`: the web drops `agent` envelopes without a turn
+ * id (typesRaw normalizeSessionEnvelope), and a tombstone has no turn.
+ */
+export const sessionQueueCancelEventSchema = z.object({
+  t: z.literal('queue-cancel'),
+  targetLocalKeys: z.array(z.string().min(1)).min(1),
+  reason: z.string().min(1).optional(),
+});
+
 export const sessionEventSchema = z.discriminatedUnion('t', [
   sessionTextEventSchema,
   sessionServiceMessageEventSchema,
@@ -145,6 +168,7 @@ export const sessionEventSchema = z.discriminatedUnion('t', [
   sessionTurnEndEventSchema,
   sessionStopEventSchema,
   sessionProgressEventSchema,
+  sessionQueueCancelEventSchema,
 ]);
 
 export type SessionEvent = z.infer<typeof sessionEventSchema>;

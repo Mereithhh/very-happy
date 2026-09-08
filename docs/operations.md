@@ -453,6 +453,32 @@ per-account 上限**保护不了这块盘**：少数几个重账号就能在任�
   再用 `rollout=switch` 部署当前 `main` 让 candidate 读到它。`docker compose restart`
   不会重读 `env_file`。**每次改都在这里写下理由**，否则下一个人只会看到一个没来由的数字。
 
+### RPC 限流：两层桶、推荐值与它们的依据（2026-09-07，T-014 / B-375）
+
+web→daemon 的 RPC（`rpc-call` / `session-rpc-call`）在服务端有**两层**限流，中央 server 和区域 relay
+都是同一套代码（`app/api/socket/terminalRateLimit.ts`），refusal 都带 `code` + `retryAfterMs`：
+
+| 层 | 作用域 | env | 默认 | 语义 |
+|---|---|---|---|---|
+| per-socket | 每个 web 标签页 / CLI 进程一个 | `RPC_MAX_CALLS_PER_MINUTE` | `120` | **令牌桶**：burst = 120，持续 = 120/分（2/s）。`0` 关闭。只在中央 server 上有。 |
+| 账号 | 一个账号的**全部**标签页 + CLI 进程共享 | `RPC_RELAY_EVENTS_PER_SECOND` / `RPC_RELAY_BURST_EVENTS` | `5` / `300` | 令牌桶；中央和 relay 各持一份实例（不同进程），一个账号实际上限是 2 份 |
+| 账号（字节） | 同上 | `RPC_RELAY_BYTES_PER_SECOND` / `RPC_RELAY_BURST_BYTES` | `2 MiB/s` / `20 MiB` | 一次 8 MiB 终端文件交接经 base64+加密约 15 MiB |
+
+**推荐：生产不设、用代码默认。** 依据是 2026-09-07 对生产 web 的实测
+（`~/code/github/skills/tmp/vh-rpc-limit/report.md`，方法与原始 timeline 都在）：
+
+- 一个健康标签页闲置时 **≈0 RPC/分**。此前测到的 110–172 次/分全部是 `gitStatusSync` 的死扇出
+  （产物无 UI 消费者），已在 B-375 删除。**看到 `RPC rate limit reached` 先怀疑有新的自动轮询，
+  不要先调数字**——per-socket 120 的 burst 容量本来就够，出问题的是固定窗口语义 + 那个扇出。
+- 单个用户动作的合法 burst 上限 ≈ **88 条**（8 MiB 交接 = 88 个 `uploadFileChunk`；
+  `terminal-history` / `fs-read` 分页 ≈ 32），几秒内完成。账号桶旧值 2/s + 120 只够**一次**交接，
+  两个标签页同时做点大动作就贴线，然后被拒的 relay 调用又退到中央去撞 per-socket——这就是
+  Owner 看到的级联。5/s + 300 = 三次并发交接，daemon 侧毫无压力。
+- 客户端（web `sync/rpcRateGate.ts`、CLI `api/rpcRateLimit.ts`）会按 `retryAfterMs` 等、合并同调用、
+  一次窗口只 toast 一次；所以**服务端的拒绝不再放大**（B-307 的自锁模式），调高数字只会掩盖新的轮询源。
+- 想临时松绑（例如排查）：`RPC_MAX_CALLS_PER_MINUTE=0` 关掉 per-socket，账号桶留着当滥用护栏。
+  改法同其它 env：改 `/opt/happy/.env` 留备份，`rollout=switch` 发当前 `main`。
+
 ## Diagnosis
 
 **会话内容在库里是加密的，服务端取证做不了。** `SessionMessage.content` 全部是

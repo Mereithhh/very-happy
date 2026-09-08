@@ -29,10 +29,13 @@ describe('new-session permission resolution', () => {
         expect(resolveNewSessionPermissionMode({ codex: { permissionMode: 'safe-yolo' } }, 'codex', false)).toBe('safe-yolo');
     });
 
-    it('pi follows the Claude permission-mode keys now that the pi runner keeps them (B-350)', () => {
+    it('pi uses the Claude permission-mode KEYS (B-350) but its own defaults slot (B-370)', () => {
         expect(resolveNewSessionPermissionMode({}, 'pi', false)).toBe('bypassPermissions');
-        expect(resolveNewSessionPermissionMode({}, 'pi', true)).toBe('plan');
-        expect(resolveNewSessionPermissionMode({ claude: { permissionMode: 'default' } }, 'pi', false)).toBe('default');
+        // review-first: the pi-side gate treats plan/acceptEdits as default, so `default` is the honest key
+        expect(resolveNewSessionPermissionMode({}, 'pi', true)).toBe('default');
+        // a Claude override is Claude's business now
+        expect(resolveNewSessionPermissionMode({ claude: { permissionMode: 'default' } }, 'pi', false)).toBe('bypassPermissions');
+        expect(resolveNewSessionPermissionMode({ pi: { permissionMode: 'default' } }, 'pi', false)).toBe('default');
     });
 
     it('lets an explicit persisted default win over the review-first fallback', () => {

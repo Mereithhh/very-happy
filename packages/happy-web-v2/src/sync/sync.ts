@@ -53,7 +53,7 @@ import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { log } from '@/log';
-import { gitStatusSync } from './gitStatusSync';
+import { installRpcRateLimitNotice } from './rpcRateLimitNotice';
 import { AsyncLock } from '@/utils/lock';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
@@ -369,9 +369,12 @@ class Sync {
     onSessionVisible = (sessionId: string) => {
         this.getMessagesSync(sessionId).invalidate();
         this.alignPermissionModeIfNeeded(sessionId);
-
-        // Also invalidate git status sync for this session
-        gitStatusSync.getSync(sessionId).invalidate();
+        // T-014: there is deliberately NO git-status refresh here. This method
+        // is called for EVERY incoming message of ANY session (the "Ping
+        // session" below), so a refresh here fanned 4 `bash` RPCs out to every
+        // running agent — 110–170 RPC/min from one idle tab, 100% of the
+        // measured load — for a `pathGitStatus` nobody rendered. The Files
+        // panel fetches its own git state on open (useSessionFiles).
 
         // Notify voice assistant about session visibility
         const session = storage.getState().sessions[sessionId];
@@ -1281,8 +1284,6 @@ class Sync {
         // Remove encryption keys from memory
         this.encryption.removeSessionEncryption(sessionId);
 
-        // Clear any cached git status
-        gitStatusSync.clearForSession(sessionId);
         this.messagesSync.delete(sessionId);
         this.sendSync.delete(sessionId);
         this.pendingOutbox.delete(sessionId);
@@ -2610,13 +2611,6 @@ class Sync {
                     if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
                         this.enqueueMessages(updateData.body.sid, [lastMessage]);
                         this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
-                        let hasMutableTool = false;
-                        if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
-                            hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
-                        }
-                        if (hasMutableTool) {
-                            gitStatusSync.invalidate(updateData.body.sid);
-                        }
                     } else if (currentLastSeq !== undefined && incomingSeq <= currentLastSeq) {
                         // The regional session relay can deliver this same
                         // authoritative id/seq before the central update
@@ -2688,10 +2682,7 @@ class Sync {
                     seq: updateData.seq
                 }]);
 
-                // Invalidate git status when agent state changes (files may have been modified)
                 if (updateData.body.agentState) {
-                    gitStatusSync.invalidate(updateData.body.id);
-
                     // Check for new permission requests and notify voice assistant
                     if (agentState?.requests && Object.keys(agentState.requests).length > 0) {
                         const requestIds = Object.keys(agentState.requests);
@@ -3282,6 +3273,7 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
     // Initialize socket connection
     const API_ENDPOINT = getServerUrl();
     apiSocket.initialize({ endpoint: API_ENDPOINT, token: credentials.token }, encryption);
+    installRpcRateLimitNotice();
 
     // Wire socket status to storage
     apiSocket.onStatusChange((status) => {

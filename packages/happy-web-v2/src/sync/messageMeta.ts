@@ -1,6 +1,6 @@
 import type { Session } from './storageTypes';
 import type { Settings } from './settings';
-import { getAgentDefaultOverride, normalizeAgentKey } from './agentDefaults';
+import { getAgentDefaultOverride, isPiAgent, normalizeAgentKey } from './agentDefaults';
 import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 
@@ -17,6 +17,12 @@ export function resolveMessageModeMeta(
     const agentOverrides = getAgentDefaultOverride(settings?.agentDefaultOverrides, session.metadata?.flavor);
     const meta: MessageModeMeta = {};
     const isClaude = normalizeAgentKey(session.metadata?.flavor) === 'claude';
+    // pi (flavor 'acp') has its own defaults slot (B-370) but speaks Claude's
+    // permission vocabulary (B-350: the runner allowlists default | acceptEdits |
+    // plan | bypassPermissions, `yolo` aliased) and honors meta.permissionMode in
+    // both directions too — so the clean-up and the upgrade-only fallback below
+    // apply to it as well. Model/effort keep the non-Claude omit-when-unset rule.
+    const claudeModeVocab = isClaude || isPiAgent(session.metadata?.flavor);
 
     // B-262 A2 (asymmetric): a resolved session value is always sent; when the
     // session has no value, fall back to the synced per-agent override ONLY —
@@ -27,10 +33,10 @@ export function resolveMessageModeMeta(
     // normalized so a dead selector key (dontAsk) can never make the CLI
     // drop the whole message (its MessageMetaSchema enum would reject it).
     if (session.permissionMode !== null && session.permissionMode !== undefined) {
-        const normalized = isClaude ? normalizeClaudeOutboundMode(session.permissionMode) : session.permissionMode;
+        const normalized = claudeModeVocab ? normalizeClaudeOutboundMode(session.permissionMode) : session.permissionMode;
         if (normalized) meta.permissionMode = normalized as PermissionModeKey;
     } else if (agentOverrides.permissionMode !== undefined) {
-        if (isClaude) {
+        if (claudeModeVocab) {
             // Upgrade-only fallback: a synced override of `plan`/`acceptEdits`
             // must not pull a session another device just put in yolo back down.
             const normalized = normalizeClaudeOutboundMode(agentOverrides.permissionMode);
