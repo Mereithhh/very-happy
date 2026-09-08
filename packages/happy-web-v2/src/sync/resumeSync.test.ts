@@ -44,12 +44,12 @@ describe('decideResume', () => {
         expect(r.resume).toBe(true);
     });
 
-    it('keeps tracking visibility while debounced so the next edge is detected', () => {
+    it('does not debounce a genuine new foreground edge', () => {
         let s = initialResumeState(false);
         let r = decideResume(s, { type: 'visibilitychange', visible: true }, 100);
         r = decideResume(r.state, { type: 'visibilitychange', visible: false }, 200);
         r = decideResume(r.state, { type: 'visibilitychange', visible: true }, 300);
-        expect(r.resume).toBe(false); // within debounce
+        expect(r.resume).toBe(true); // a distinct foreground must not inherit the old probe
         expect(r.state.visible).toBe(true);
         r = decideResume(r.state, { type: 'visibilitychange', visible: false }, 2000);
         r = decideResume(r.state, { type: 'visibilitychange', visible: true }, 2100);

@@ -1,4 +1,4 @@
-import { connectionDiagnostics, startConnectionStage, connectionFailureOutcome } from './connectionDiagnostics';
+import { connectionDiagnostics, startConnectionStage, connectionFailureOutcome, diagnosticRegion, type DiagnosticRegion } from './connectionDiagnostics';
 import { io, Socket } from 'socket.io-client';
 import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -9,6 +9,7 @@ import { ReleaseDrainNoticeSchema, type RelayAssignment, type ReleaseDrainNotice
 import { discoverRelay } from './relayDiscovery';
 import { isMachineRealtimeEvent, shouldIgnoreLegacyRealtime } from './machineRelayRouting';
 import { decideAfterProbe, decideProbe, LIVENESS_PROBE_MS } from './socketLiveness';
+import { getResumeVisibilityEpoch } from './resumeSync';
 import { rpcDedupKey, RpcRateGate, RpcRateLimitedError } from './rpcRateGate';
 
 /**
@@ -98,6 +99,7 @@ class ApiSocket {
     private reconnectedListeners: Set<() => void | Promise<void>> = new Set();
     private recoveredListeners: Set<() => void> = new Set();
     private livenessInFlight: Promise<LivenessResult> | null = null;
+    private livenessEpoch = -1;
     private livenessAfterHandover = false;
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
     private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
@@ -386,12 +388,14 @@ class ApiSocket {
         }
 
         const diagnostic = opts?.diagnosticAttemptId ? startConnectionStage('machine_rpc', machineId, opts.diagnosticAttemptId, opts.diagnosticEpoch) : null;
+        let actualRegion: DiagnosticRegion = 'unknown';
         try {
         const relayCandidate = await this.ensureMachineRelay(machineId, { diagnosticAttemptId: opts?.diagnosticAttemptId, diagnosticEpoch: opts?.diagnosticEpoch });
         const encryptedParams = await machineEncryption.encryptRaw(params);
         // See sessionRPC: re-check after the async encrypt so a relay that died
         // meanwhile doesn't swallow the packet until the ack timer (10–60s).
         let relaySocket = relayCandidate?.connected ? relayCandidate : null;
+        const attemptedRegion = relaySocket ? diagnosticRegion(this.getMachineRelayStatus(machineId).region) : 'central';
         // Preflight the relay before committing the RPC to it. A relay socket
         // can be `connected` at the ws layer yet silently dropped end-to-end
         // (proxy/VPN/half-open link) — and `ensureMachineRelay` returns a CACHED
@@ -402,8 +406,10 @@ class ApiSocket {
         // failure we retire the relay (cooldown) and take the central path,
         // which cannot double-execute because nothing has been sent yet.
         if (relaySocket && !(await this.relayPreflightOk(machineId, relaySocket, opts?.diagnosticAttemptId, opts?.diagnosticEpoch))) {
+            diagnostic?.finish('fallback', attemptedRegion);
             relaySocket = null;
         }
+        actualRegion = relaySocket ? attemptedRegion : 'central';
         const scopedMethod = `${machineId}:${method}`;
         const call = (socket: Socket, route: string) => this.rpcGate.run(
             route,
@@ -447,12 +453,12 @@ class ApiSocket {
 
         if (result.ok) {
             const decoded = await machineEncryption.decryptRaw(result.result) as R;
-            diagnostic?.finish('success');
+            diagnostic?.finish('success', actualRegion);
             return decoded;
         }
         throw new Error(result.error || 'RPC call failed');
         } catch (error) {
-            diagnostic?.finish(connectionFailureOutcome(error));
+            diagnostic?.finish(connectionFailureOutcome(error), actualRegion);
             throw error;
         }
     }
@@ -474,12 +480,23 @@ class ApiSocket {
      * share the in-flight run (one action per resume).
      */
     checkLiveness(): Promise<LivenessResult> {
-        if (this.livenessInFlight) return this.livenessInFlight;
-        this.livenessInFlight = this.runLiveness().finally(() => { this.livenessInFlight = null; });
-        return this.livenessInFlight;
+        const epoch = getResumeVisibilityEpoch();
+        if (this.livenessInFlight && this.livenessEpoch === epoch) return this.livenessInFlight;
+        this.livenessEpoch = epoch;
+        const run = this.runLiveness(epoch).finally(() => {
+            if (this.livenessInFlight === run) this.livenessInFlight = null;
+        });
+        this.livenessInFlight = run;
+        return run;
     }
 
-    private async runLiveness(): Promise<LivenessResult> {
+    private isCurrentForeground(epoch: number): boolean {
+        return epoch === getResumeVisibilityEpoch()
+            && (typeof document === 'undefined' || document.visibilityState === 'visible');
+    }
+
+    private async runLiveness(epoch: number): Promise<LivenessResult> {
+        if (!this.isCurrentForeground(epoch)) return 'skipped';
         const socket = this.socket;
         if (!socket) return 'skipped';
         // Step 1: one emit. If the engine's ping deadline already passed while
@@ -491,7 +508,7 @@ class ApiSocket {
         const probe = decideProbe({ connectedAfterEmit: socket.connected, handoverInFlight: this.handoverInFlight !== null });
         // Relays are probed in parallel with the control socket; they don't
         // depend on its verdict (terminal output rides the relay when connected).
-        const relays = this.probeRelays();
+        const relays = this.probeRelays(epoch);
         if (probe === 'skip') {
             if (this.handoverInFlight) this.livenessAfterHandover = true;
             await relays;
@@ -518,7 +535,7 @@ class ApiSocket {
         let result: LivenessResult = 'skipped';
         if (decision === 'alive') {
             result = 'alive';
-        } else if (decision === 'reconnect') {
+        } else if (decision === 'reconnect' && this.isCurrentForeground(epoch)) {
             if (this.isVerboseLogging()) console.log('🔌 SyncSocket: liveness probe failed — forcing reconnect');
             // `disconnect()` clears the manager's backoff state and rejects
             // in-flight acks (never replayed: a daemon may have executed the
@@ -538,16 +555,16 @@ class ApiSocket {
      * (the cooldown exists for relays that refuse us, not for links the OS
      * silently dropped). Order inside forceRelayRebuild is load-bearing.
      */
-    private async probeRelays(): Promise<void> {
+    private async probeRelays(epoch: number): Promise<void> {
         const probes: Promise<void>[] = [];
         for (const [machineId, socket] of this.relaySockets) {
             if (!socket.connected) continue;
-            probes.push(this.probeRelay(machineId, socket));
+            probes.push(this.probeRelay(machineId, socket, epoch));
         }
         await Promise.allSettled(probes);
     }
 
-    private async probeRelay(machineId: string, socket: Socket): Promise<void> {
+    private async probeRelay(machineId: string, socket: Socket, epoch: number): Promise<void> {
         // Same emit → microtask → connected dance as the control socket: on a
         // relay whose ping deadline passed, this emit closes it and the buffered
         // ack is NOT rejected by _clearAcks — without the check we'd wait the
@@ -557,14 +574,14 @@ class ApiSocket {
         if (!socket.connected) {
             // The ordinary disconnect handler already ran (map entry gone, 30s
             // cooldown armed). Resume is not a refusal: clear it and reconnect.
-            if (this.relaySockets.get(machineId) !== socket) {
+            if (this.isCurrentForeground(epoch) && this.relaySockets.get(machineId) !== socket) {
                 this.relayRetryAfter.delete(machineId);
                 void this.ensureMachineRelay(machineId, { strictPing: true });
             }
             return;
         }
         const acked = await ack;
-        if (acked) return;
+        if (acked || !this.isCurrentForeground(epoch)) return;
         if (this.relaySockets.get(machineId) !== socket || !socket.connected) return;
         this.forceRelayRebuild(machineId, socket);
     }
@@ -682,7 +699,7 @@ class ApiSocket {
      * of waiting out the 60s RPC ack timer.
      */
     private async relayPreflightOk(machineId: string, socket: Socket, attemptId?: string, generation?: number): Promise<boolean> {
-        const diagnostic = attemptId ? startConnectionStage('relay_probe', machineId, attemptId, generation) : null;
+        const diagnostic = attemptId ? startConnectionStage('relay_probe', machineId, attemptId, generation, diagnosticRegion(this.getMachineRelayStatus(machineId).region)) : null;
         try {
             await socket.timeout(RELAY_PREFLIGHT_MS).emitWithAck('relay-ping', { sentAt: Date.now() });
             diagnostic?.finish('success');
@@ -729,7 +746,7 @@ class ApiSocket {
             assignment = await discoverRelay(`${this.config.endpoint}/v1/relays/machines/${encodeURIComponent(machineId)}`, {
                 Authorization: `Bearer ${this.config.token}`, 'X-Happy-Client': getHappyClientId(),
             });
-            discovery.finish(assignment ? 'success' : 'fallback');
+            discovery.finish(assignment ? 'success' : 'fallback', assignment ? diagnosticRegion(assignment.region) : 'central');
         } catch (error) {
             discovery.finish(connectionFailureOutcome(error));
             this.updateRelayStatus(machineId, { transport: 'legacy', state: 'fallback' });
@@ -740,7 +757,7 @@ class ApiSocket {
             return null;
         }
 
-        const connection = startConnectionStage('relay_connect', machineId, discovery.attemptId, discovery.generation);
+        const connection = startConnectionStage('relay_connect', machineId, discovery.attemptId, discovery.generation, diagnosticRegion(assignment.region));
         const socket = io(assignment.url, {
             path: '/v1/relay',
             auth: { token: assignment.token, happyClient: getHappyClientId() },
@@ -806,7 +823,7 @@ class ApiSocket {
     }
 
     private setupEventHandlers(socket: Socket) {
-        let diagnostic = startConnectionStage('control');
+        let diagnostic = startConnectionStage('control', undefined, undefined, undefined, 'central');
 
         // Connection events
         socket.on('connect', () => {
@@ -830,7 +847,7 @@ class ApiSocket {
             if (this.isVerboseLogging()) {
                 console.log('🔌 SyncSocket: Disconnected', reason);
             }
-            diagnostic = startConnectionStage('control');
+            diagnostic = startConnectionStage('control', undefined, undefined, undefined, 'central');
             this.updateStatus('disconnected');
         });
 
@@ -841,6 +858,8 @@ class ApiSocket {
                 console.error('🔌 SyncSocket: Connection error', error);
             }
             diagnostic.finish(connectionFailureOutcome(error));
+            // Each retry needs a fresh attempt after the previous terminal result.
+            diagnostic = startConnectionStage('control', undefined, undefined, undefined, 'central');
             this.updateStatus('error');
         });
 

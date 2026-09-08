@@ -113,6 +113,90 @@ describe('ApiSocket resume liveness', () => {
         return { apiSocket, control };
     }
 
+    async function visibilityHarness() {
+        const { attachResumeListeners } = await import('./resumeSync');
+        const doc = Object.assign(new EventTarget(), { visibilityState: 'visible', hasFocus: () => false });
+        const win = new EventTarget();
+        vi.stubGlobal('document', doc);
+        const detach = attachResumeListeners({ doc: doc as any, win: win as any }, () => {});
+        return { detach, set(value: string) { doc.visibilityState = value; doc.dispatchEvent(new Event('visibilitychange')); } };
+    }
+
+    it('does not force a control reconnect when the page hid during the probe', async () => {
+        const { apiSocket, control } = await load();
+        const visibility = await visibilityHarness();
+        let reject!: (error: Error) => void;
+        state.centralAck.mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
+        const probe = apiSocket.checkLiveness();
+        await Promise.resolve();
+        visibility.set('hidden');
+        reject(new Error('operation has timed out'));
+        await expect(probe).resolves.toBe('skipped');
+        expect(control.disconnect).not.toHaveBeenCalled();
+        visibility.detach();
+        apiSocket.disconnect();
+    });
+
+    it('a new foreground starts its own probe and an old finally cannot clear the new in-flight probe', async () => {
+        const { apiSocket, control } = await load();
+        const visibility = await visibilityHarness();
+        const completions: Array<(value: unknown) => void> = [];
+        state.centralAck.mockImplementation(() => new Promise((resolve) => completions.push(resolve)));
+        const old = apiSocket.checkLiveness();
+        await Promise.resolve();
+        visibility.set('hidden');
+        visibility.set('visible');
+        const fresh = apiSocket.checkLiveness();
+        expect(fresh).not.toBe(old);
+        await Promise.resolve();
+        completions[0]({});
+        await old;
+        expect(apiSocket.checkLiveness()).toBe(fresh);
+        completions[1]({});
+        await fresh;
+        expect(control.disconnect).not.toHaveBeenCalled();
+        visibility.detach();
+        apiSocket.disconnect();
+    });
+
+    it('real socket.io: an expired previous-foreground probe does not reject a live RPC after returning', async () => {
+        const { createServer } = await import('node:http');
+        const { Server } = await import('socket.io');
+        const { io } = await vi.importActual<typeof import('socket.io-client')>('socket.io-client');
+        const http = createServer();
+        const server = new Server(http, { transports: ['websocket'] });
+        let pings = 0;
+        server.on('connection', (socket) => {
+            socket.on('ping', (ack) => { if (++pings > 1) ack({}); });
+            socket.on('live-rpc', (ack) => { setTimeout(() => ack('completed'), 5_300); });
+        });
+        await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve));
+        const address = http.address() as { port: number };
+        const real = io(`http://127.0.0.1:${address.port}`, { transports: ['websocket'] });
+        const { apiSocket } = await load();
+        const visibility = await visibilityHarness();
+        try {
+            if (!real.connected) await new Promise<void>((resolve) => real.once('connect', resolve));
+            (apiSocket as any).socket = real;
+            const identity = real.id;
+            const old = apiSocket.checkLiveness();
+            await vi.waitFor(() => expect(pings).toBe(1));
+            visibility.set('hidden');
+            visibility.set('visible');
+            const liveRpc = real.timeout(7_000).emitWithAck('live-rpc');
+            await expect(apiSocket.checkLiveness()).resolves.toBe('alive');
+            await expect(old).resolves.toBe('skipped');
+            await expect(liveRpc).resolves.toBe('completed');
+            expect(real.id).toBe(identity);
+        } finally {
+            visibility.detach();
+            apiSocket.disconnect();
+            real.disconnect();
+            await server.close();
+            http.close();
+        }
+    }, 10_000);
+
     it('emits app-state first, then probes with a payload-less ping; an ack means alive and nothing is reconnected', async () => {
         const { apiSocket, control } = await load();
         await expect(apiSocket.checkLiveness()).resolves.toBe('alive');
@@ -192,6 +276,24 @@ describe('ApiSocket resume liveness', () => {
         apiSocket.disconnect();
     });
 
+    it('keeps a relay when its resume probe times out after the page becomes hidden', async () => {
+        const relay = relaySocket();
+        const { apiSocket } = await load([relay]);
+        await apiSocket.machineRPC('m1', 'noop', {});
+        const visibility = await visibilityHarness();
+        let reject!: (error: Error) => void;
+        state.relayAck.mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
+        const probe = apiSocket.checkLiveness();
+        await Promise.resolve();
+        visibility.set('hidden');
+        reject(new Error('operation has timed out'));
+        await probe;
+        expect(relay.close).not.toHaveBeenCalled();
+        expect(apiSocket.getMachineRelayStatus('m1').state).toBe('connected');
+        visibility.detach();
+        apiSocket.disconnect();
+    });
+
     it('does not rebuild the same relay twice per resume when even the fresh socket ignores relay-ping (30s cooldown caps the loop)', async () => {
         const relay1 = relaySocket();
         const relay2 = relaySocket();
@@ -229,6 +331,23 @@ describe('ApiSocket resume liveness', () => {
         await expect(apiSocket.machineRPC('m1', 'noop', {})).resolves.toBe('plain:central-result');
         expect(state.relayAck).not.toHaveBeenCalledWith(relay1, 'rpc-call', expect.anything());
         expect(state.centralAck).toHaveBeenCalledWith('rpc-call', expect.anything());
+        apiSocket.disconnect();
+    });
+
+    it('records a successful retry as a fresh central attempt after connect_error', async () => {
+        const { apiSocket, control } = await load();
+        const { connectionDiagnostics } = await import('./connectionDiagnostics');
+        const records = vi.spyOn(connectionDiagnostics, 'record');
+        const error = control.on.mock.calls.find((c: any[]) => c[0] === 'connect_error')![1];
+        const connect = control.on.mock.calls.find((c: any[]) => c[0] === 'connect')![1];
+        error(new Error('connect timeout'));
+        connect();
+        const events = records.mock.calls.map(([event]) => event).filter((event) => event.stage === 'control');
+        expect(events.map((event) => event.outcome)).toEqual(['timeout', 'started', 'success']);
+        expect(events[0].attemptId).not.toBe(events[2].attemptId);
+        expect(events[1].attemptId).toBe(events[2].attemptId);
+        expect(events.every((event) => event.relayRegion === 'central')).toBe(true);
+        records.mockRestore();
         apiSocket.disconnect();
     });
 
