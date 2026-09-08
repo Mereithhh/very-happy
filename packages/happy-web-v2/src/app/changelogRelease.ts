@@ -17,6 +17,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
     id: '2026-09-09-message-actions-and-discovery',
     date: '2026-09-09',
+    cliVersion: '0.2.124',
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.sep09.title',
     summaryKey: 'changelog.releases.sep09.summary',
