@@ -1656,6 +1656,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep08e: {
+                title: 'pi 会话不再在还没跑完时装作已经结束',
+                summary: 'pi（以及其他 ACP）会话此前会在一轮进行到一半时把活动区收起、运行中的状态条也消失——通常出现在一个工具跑完、模型还在组织下一步的那几秒——等下一个工具开始才又亮起来。Claude 会话没有这个问题。',
+                running: '现在「还在跑」的信号会撑满整轮：从你发出消息到最终回答落地，和 Claude 会话完全一致——活动区始终展开、状态条一直保持动画和已用时。需要机器上的 CLI 升到新版本，并在升级后新建会话。pi 在一轮中途仍不上报 token 数，状态条里没有那一段是预期的。',
+            },
             sep08a: {
                 title: 'pi 会话也能边写边出了',
                 summary: 'pi（以及其他 ACP）会话此前在一轮里什么都不显示，直到整段回答生成完才一次性蹦出——而终端一直在逐字打印。九月接的实时流只覆盖了 Claude 会话。',

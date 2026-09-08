@@ -41,6 +41,8 @@ const mocks = vi.hoisted(() => {
     cancelCalls: [] as string[],
     disposeCalls: 0,
     constructorArgs: null as any,
+    /** Per-test override of the backend's sendPrompt emission sequence (null = default script). */
+    sendPromptScript: null as null | ((emit: (message: any) => void) => Promise<void>),
   };
 
   return {
@@ -62,6 +64,10 @@ const mocks = vi.hoisted(() => {
     getUserMessageHandler: () => userMessageHandler,
     setUserMessageHandler: (handler: ((message: any) => void) | null) => {
       userMessageHandler = handler;
+    },
+    /** Replace the default sendPrompt emission script (see `sendPromptScript`). */
+    setSendPromptScript: (script: null | ((emit: (message: any) => void) => Promise<void>)) => {
+      mocks.backendState.sendPromptScript = script;
     },
     getKillHandler: () => killHandler,
     setKillHandler: (handler: (() => Promise<void>) | null) => {
@@ -188,13 +194,20 @@ vi.mock('./AcpBackend', () => ({
 
     async sendPrompt(sessionId: string, prompt: string) {
       mocks.backendState.prompts.push({ sessionId, prompt });
-      for (const listener of mocks.backendState.listeners) {
-        listener({ type: 'status', status: 'running' });
-        listener({ type: 'model-output', textDelta: 'hello' });
-        listener({ type: 'tool-call', toolName: 'ReadFile', args: { path: 'README.md' }, callId: 'tool-1' });
-        listener({ type: 'tool-result', toolName: 'ReadFile', result: { ok: true }, callId: 'tool-1' });
-        listener({ type: 'status', status: 'idle' });
+      const emit = (message: any) => {
+        for (const listener of mocks.backendState.listeners) {
+          listener(message);
+        }
+      };
+      if (mocks.backendState.sendPromptScript) {
+        await mocks.backendState.sendPromptScript(emit);
+        return;
       }
+      emit({ type: 'status', status: 'running' });
+      emit({ type: 'model-output', textDelta: 'hello' });
+      emit({ type: 'tool-call', toolName: 'ReadFile', args: { path: 'README.md' }, callId: 'tool-1' });
+      emit({ type: 'tool-result', toolName: 'ReadFile', result: { ok: true }, callId: 'tool-1' });
+      emit({ type: 'status', status: 'idle' });
     }
 
     async setSessionConfigOption(configId: string, value: string) {
@@ -254,6 +267,7 @@ describe('runAcp', () => {
     mocks.modeFileState.failWrites = false;
     mocks.backendState.disposeCalls = 0;
     mocks.backendState.constructorArgs = null;
+    mocks.backendState.sendPromptScript = null;
 
     mocks.mockApiCreate.mockResolvedValue({
       getOrCreateMachine: mocks.mockGetOrCreateMachine,
@@ -676,6 +690,75 @@ describe('runAcp', () => {
     expect(mocks.mockSession.sendAgentUsageSnapshot).toHaveBeenCalledWith('opencode', usage);
     await mocks.getKillHandler()!();
     await runPromise;
+  });
+
+  it('holds the keepAlive thinking lease for the whole turn even though the backend flips idle/running mid-turn (B-376)', async () => {
+    // Ordered log of what the web would see, in emission order: keepAlive
+    // lease values and session-protocol envelope types.
+    const wire: string[] = [];
+    mocks.mockSession.keepAlive.mockImplementation((thinking: boolean) => {
+      wire.push(`keepAlive:${thinking}`);
+    });
+    mocks.mockSession.sendSessionProtocolMessage.mockImplementation((envelope: any) => {
+      wire.push(`ev:${envelope.ev.t}`);
+    });
+    // Replays the status sequence AcpBackend produced for one real pi turn
+    // (2026-09-07 probe, ~/code/github/skills/tmp/vh-t015/timeline.json):
+    // text → [500ms gap] idle → tool_call running → tool done idle →
+    // [4.1s model output] → prompt resolves. Awaits between steps make each
+    // status observable by the runner before the next one lands.
+    const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 5));
+    mocks.backendState.sendPromptScript = async (emit) => {
+      emit({ type: 'status', status: 'running' });
+      emit({ type: 'model-output', textDelta: "I'll run it." });
+      await tick();
+      emit({ type: 'status', status: 'idle' });
+      await tick();
+      emit({ type: 'status', status: 'running' });
+      emit({ type: 'tool-call', toolName: 'execute', args: { command: 'sleep 8' }, callId: 'tool-1' });
+      await tick();
+      emit({ type: 'tool-result', toolName: 'execute', result: { ok: true }, callId: 'tool-1' });
+      emit({ type: 'status', status: 'idle' });
+      await tick();
+      emit({ type: 'model-output', textDelta: 'Done.' });
+      await tick();
+    };
+
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi',
+      command: 'pi-acp',
+      args: [],
+    });
+    try {
+      await vi.waitFor(() => {
+        expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+      });
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'run sleep' } });
+      await vi.waitFor(() => {
+        expect(wire).toContain('ev:turn-end');
+      });
+
+      const turnStart = wire.indexOf('ev:turn-start');
+      const turnEnd = wire.indexOf('ev:turn-end');
+      const inTurn = wire.slice(turnStart, turnEnd + 1);
+      // The lease goes up right at turn start …
+      expect(inTurn[1]).toBe('keepAlive:true');
+      // … and is never released inside the turn: two backend `idle`s were
+      // observed in there and neither may reach the web as `thinking:false`.
+      const leaseInTurn = inTurn.filter((entry) => entry.startsWith('keepAlive:'));
+      expect(leaseInTurn.length).toBeGreaterThan(0);
+      expect(leaseInTurn.every((entry) => entry === 'keepAlive:true')).toBe(true);
+      expect(inTurn).toEqual(expect.arrayContaining(['ev:text', 'ev:tool-call-start', 'ev:tool-call-end']));
+      // Released exactly once, after the turn's final envelopes are on the wire.
+      const after = wire.slice(turnEnd + 1);
+      expect(after[0]).toBe('keepAlive:false');
+    } finally {
+      mocks.mockSession.keepAlive.mockReset();
+      mocks.mockSession.sendSessionProtocolMessage.mockReset();
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
   });
 
   it('registers abort handler that cancels the ACP backend session', async () => {

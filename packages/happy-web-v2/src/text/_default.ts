@@ -1693,6 +1693,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep08e: {
+                title: 'A pi session no longer looks finished while it is still working',
+                summary: 'On a pi (and other ACP) session the activity area folded and the running indicator disappeared in the middle of a turn — typically after a tool finished, while the model was still composing — and reappeared when the next tool started. Claude sessions did not do this.',
+                running: 'The "still running" signal is now held for the whole turn, from your message until the final answer lands, exactly as on a Claude session: the activity area stays open, the status bar keeps its animation and elapsed time throughout. Needs the new CLI on the machine and a session started after the update. pi still reports no token counts mid-turn, so that part of the bar stays absent — that is expected.',
+            },
             sep08a: {
                 title: 'pi sessions now show the answer as it is written',
                 summary: 'On a pi (and other ACP) session the web showed nothing during a turn until the whole answer had been produced, then all of it at once — while the terminal had been printing it word by word. Only Claude sessions had been given the live stream in September.',
