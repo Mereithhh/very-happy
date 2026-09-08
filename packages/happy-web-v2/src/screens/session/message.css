@@ -127,6 +127,19 @@
   text-align: center;
   word-break: break-word;
 }
+/* B-332: a queued message the CLI destroyed before it ran. Sits under the
+ * bubble, right-aligned like the bubble, mono = machine-layer fact. No colour
+ * beyond --text-faint: this is information, not an alarm (design-language.md). */
+.msg-discarded {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+
 /* subtle inline system note (title change, plan mode, compaction, …) */
 .msg-event-line--subtle {
   border: none;

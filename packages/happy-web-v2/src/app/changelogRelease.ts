@@ -55,6 +55,12 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     summaryKey: 'changelog.releases.sep08d.summary',
       'changelog.releases.sep08d.follow',
       'changelog.releases.sep08d.history',
+    id: '2026-09-08-queued-message-tombstones',
+    // Both halves: the CLI now reports queued input it destroyed; the web shows
+    // the message with the reason instead of losing it. cliVersion is filled
+    // in by the release that ships the CLI half (B-332).
+      'changelog.releases.sep08a.tombstone',
+      'changelog.releases.sep08a.restart',
     ],
   },
   {

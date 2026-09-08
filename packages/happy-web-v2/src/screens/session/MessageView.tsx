@@ -5,7 +5,7 @@
  */
 import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Bot, Brain, Check, ChevronDown, ChevronRight, Square, Terminal } from 'lucide-react';
+import { AlertTriangle, Ban, Bot, Brain, Check, ChevronDown, ChevronRight, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage, ToolCallMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { useSession, useSessionThinking, useMachine } from '@/sync/storage';
@@ -23,6 +23,7 @@ import { parseDecisionBlock, parseTickReport } from './supervisorCards';
 import { DecisionCard, TickReportCard } from './SupervisorCardViews';
 import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
 import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
+import { discardedReasonKey } from './discardedInput';
 import './message.css';
 
 function UserText({ message, sessionId, attachments }: { message: UserTextMessage; sessionId: string; attachments?: ToolCallMessage[] }) {
@@ -82,6 +83,9 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     if (!text && attachmentItems.length === 0) return null;
     const canCollapse = shouldCollapseBubble(estimateWrappedLines(text));
     const clamped = canCollapse && !expanded;
+    // B-332: the CLI destroyed this queued message before it ever ran. Say so
+    // under the bubble instead of letting it pass for a delivered prompt.
+    const discarded = discardedReasonKey(message);
     return (
         <div className="msg msg--user">
             <UserAttachments sessionId={sessionId} items={attachmentItems} />
@@ -107,6 +111,12 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
                 {/* copy the raw message text — sits in the empty gutter left of the bubble */}
                 <CopyButton text={text} className="vh-copy--overlay msg-copy--user" label={t('message.copyMessage')} />
             </div>}
+            {discarded && (
+                <span className="msg-discarded" role="status">
+                    <Ban size={12} aria-hidden />
+                    {t(`session.chat.discarded.${discarded}`)}
+                </span>
+            )}
         </div>
     );
 }

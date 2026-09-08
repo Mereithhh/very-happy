@@ -527,6 +527,13 @@ export const en = {
             queueCancel: 'Remove from queue',
             queueCancelTooLate: 'This message has already started and can no longer be removed.',
             queueCancelFailed: 'Could not remove this queued message. Please try again.',
+            // B-332: the CLI destroyed a queued message before it ran; the bubble stays, marked.
+            discarded: {
+                cleared: 'Not run — dropped by /clear or /compact',
+                aborted: 'Not run — dropped when the turn was stopped',
+                restarted: 'Not run — the session was restarted before it was picked up. Send it again.',
+                unknown: 'Not run — the agent dropped it from its queue',
+            },
             send: 'Send',
             queueSend: 'Queue message',
             stop: 'Stop',
@@ -1712,6 +1719,10 @@ export const en = {
                 summary: 'Opening a terminal — new, from the list, after switching tabs or reloading — could land in the middle of the history, and from then on new output no longer scrolled the view. The cause was not the history load: whenever the terminal pane got taller (soft keyboard closing, the browser toolbar collapsing, a window resize) the browser nudged the scroll position and the terminal took that for you scrolling up.',
                 follow: 'A pane that was on its last line stays there through keyboard open/close, browser chrome changes and window resizes, and new output keeps scrolling into view.',
                 history: 'Scrolling up to read history is unchanged: while you are looking at history, new output does not pull you down, and a layout change does not either. Full-screen programs (vim, htop) are unaffected.',
+                title: 'A queued message the agent never ran now says so, instead of pretending it was delivered',
+                summary: 'If you sent a message while the agent was busy and the agent then dropped its queue (/clear, /compact, Stop in terminal mode, or the session was restarted before it got to your message), the message used to sit at "queued" until the next unrelated turn ended, then quietly appear as if it had been handled.',
+                tombstone: 'The agent now reports every queued message it discards. The bubble stays in the conversation with a small "Not run" line under it and the reason, so you can copy it and send it again. Messages you remove from the queue yourself are still just removed.',
+                restart: 'Restarting a session (or another machine taking it over) marks the messages the old process still had waiting as "Not run — the session was restarted". Needs a CLI update on the machine; sessions already running keep the old behaviour until they are restarted.',
             },
             sep08: {
                 title: 'File-path links, the update button and a few small controls had colours that never resolved',

@@ -13,6 +13,10 @@ interface QueueItem<T> {
     sourceId?: string;
 }
 
+export type QueueDiscardReason = 'cleared' | 'aborted' | 'restarted';
+
+export type QueueDiscardEntry = { sourceId: string | undefined; reason: QueueDiscardReason };
+
 /**
  * A mode-aware message queue that stores messages with their modes.
  * Returns consistent batches of messages with the same mode.
@@ -22,14 +26,22 @@ export class MessageQueue2<T> {
     private waiter: ((hasMessages: boolean) => void) | null = null;
     private closed = false;
     private onMessageHandler: ((message: string, mode: T) => void) | null = null;
+    /**
+     * B-332: fired for every item the queue itself destroys before it was ever
+     * handed to the runner. The runner wires this to a queue-cancel tombstone
+     * so the web stops painting a silently-lost message as "queued".
+     */
+    private onDiscardHandler: ((entries: QueueDiscardEntry[]) => void) | null = null;
     modeHasher: (mode: T) => string;
 
     constructor(
         modeHasher: (mode: T) => string,
-        onMessageHandler: ((message: string, mode: T) => void) | null = null
+        onMessageHandler: ((message: string, mode: T) => void) | null = null,
+        onDiscardHandler: ((entries: QueueDiscardEntry[]) => void) | null = null
     ) {
         this.modeHasher = modeHasher;
         this.onMessageHandler = onMessageHandler;
+        this.onDiscardHandler = onDiscardHandler;
         logger.debug(`[MessageQueue2] Initialized`);
     }
 
@@ -38,6 +50,21 @@ export class MessageQueue2<T> {
      */
     setOnMessage(handler: ((message: string, mode: T) => void) | null): void {
         this.onMessageHandler = handler;
+    }
+
+    /**
+     * Set a handler that will be called when messages are discarded without ever
+     * being processed (B-332).
+     */
+    setOnDiscard(handler: ((entries: QueueDiscardEntry[]) => void) | null): void {
+        this.onDiscardHandler = handler;
+    }
+
+    /** Report the current items as destroyed for `reason` (caller clears next). */
+    private notifyDiscard(reason: QueueDiscardReason): void {
+        if (this.queue.length === 0) return;
+        const entries: QueueDiscardEntry[] = this.queue.map((item) => ({ sourceId: item.sourceId, reason }));
+        this.onDiscardHandler?.(entries);
     }
 
     /**
@@ -126,6 +153,7 @@ export class MessageQueue2<T> {
         logger.debug(`[MessageQueue2] pushIsolateAndClear() called with mode hash: ${modeHash} - clearing ${this.queue.length} pending messages`);
 
         // Clear any pending messages to ensure this message is processed in complete isolation
+        this.notifyDiscard('cleared');
         this.queue = [];
 
         this.queue.push({
@@ -192,6 +220,7 @@ export class MessageQueue2<T> {
      */
     reset(): void {
         logger.debug(`[MessageQueue2] reset() called. Clearing ${this.queue.length} messages`);
+        this.notifyDiscard('aborted');
         this.queue = [];
         this.closed = false;
 
