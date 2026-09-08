@@ -27,7 +27,7 @@ export function teamView(state: TeamState, actor: TeamActor): TeamState {
     const tasks = state.tasks.filter(t => actorCanReadTask(state, actor, t));
     const taskIds = new Set(tasks.map(t => t.id));
     const botIds = new Set([actor.botId, ...tasks.flatMap(t => [t.assigneeBotId, t.ownerBotId].filter((x): x is string => !!x))]);
-    return { ...state, tasks, bots: state.bots.filter(b => botIds.has(b.id)), messages: state.messages.filter(m => taskIds.has(m.taskId) && (m.recipientBotId === actor.botId || m.senderBotId === actor.botId)), operations: [] };
+    return { ...state, tasks, bots: state.bots.filter(b => botIds.has(b.id)), messages: state.messages.filter(m => taskIds.has(m.taskId) && (m.recipientBotId === actor.botId || m.senderBotId === actor.botId)), operations: state.operations.filter(o => taskIds.has(o.taskId)) };
 }
 export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string }): { team: TeamState; credentialBotId?: string; operationId?: string } {
     requireTeam(input.archivedAt === undefined, 'team_archived');

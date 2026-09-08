@@ -19,6 +19,8 @@ describe('team coordination invariants', () => {
         const f = fixture(); f.act({ type: 'delegate', goal: 'secret-a', acceptance: ['a'] }); f.act({ type: 'delegate', goal: 'secret-b', acceptance: ['b'] });
         const actor: TeamActor = { kind: 'agent', botId: f.state.bots[0].id, generation: 1 };
         expect(teamView(f.state, actor).tasks.map(t => t.goal)).toEqual(['secret-a']);
+        expect(teamView(f.state, actor).operations.map(o => o.taskId)).toEqual([f.state.tasks[0].id]);
+        expect(teamView(f.state, actor).operations[0].status).toBe('pending');
         expect(() => f.act({ type: 'cancel', taskId: f.state.tasks[1].id, attemptId: f.state.tasks[1].currentAttemptId, goalVersion: 1, reason: 'x' }, actor)).toThrow('task_not_found');
     });
     it('blocks parent submission until children are explicitly accepted', () => {
