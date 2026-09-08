@@ -95,4 +95,22 @@ describe('team coordination invariants', () => {
         expect(() => f.act({ type: 'complete-operation', operationId: op.id, machineId: 'machine', claimId: f.state.operations[0].claimId!, sessionId: 'root' })).toThrow('session_already_bound');
     });
 
+    it('allows only explicit owner reconciliation after work ends and preserves its audit note', () => {
+        const f = fixture(); f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
+        const pending = f.state.operations[0];
+        expect(() => f.act({ type: 'reconcile-operation', operationId: pending.id, claimId: 'none', note: 'Checked stopped' })).toThrow('stale_claim');
+        f.act({ type: 'claim-operation', operationId: pending.id, machineId: 'machine' });
+        const op = f.state.operations[0];
+        const reconcile: TeamAction = { type: 'reconcile-operation', operationId: op.id, claimId: op.claimId!, note: 'Verified process stopped; worktree preserved manually.' };
+        expect(() => f.act(reconcile)).toThrow('operation_task_still_active');
+        expect(() => f.act(reconcile, { kind: 'agent', botId: op.botId, generation: 1 })).toThrow('owner_required');
+        const task = f.state.tasks[0];
+        f.act({ type: 'cancel', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, reason: 'stop' });
+        f.act(reconcile);
+        expect(f.state.operations[0]).toMatchObject({ status: 'completed', manualResolution: { note: reconcile.note, at: 1000 } });
+        expect(f.state.tasks[0].cleanup).toBe('done');
+        f.act({ type: 'archive' });
+        expect(f.state.archivedAt).toBe(1000);
+    });
+
 });

@@ -172,6 +172,20 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             if (bot.sessionId) msg(t, bot.id, `Task handed off: ${t.goal}`); else operation(t, bot, 'spawn');
             break;
         }
+        case 'reconcile-operation': {
+            owner();
+            const op = s.operations.find(o => o.id === action.operationId); requireTeam(op, 'operation_not_found', 404);
+            requireTeam(op.claimId === action.claimId && ['claimed', 'unknown', 'failed'].includes(op.status), 'stale_claim');
+            const task = s.tasks.find(t => t.id === op.taskId)!;
+            const attempt = task.attempts.find(a => a.id === op.attemptId);
+            requireTeam(['done', 'cancelled'].includes(task.status) || attempt?.status === 'superseded', 'operation_task_still_active');
+            op.status = 'completed'; op.manualResolution = { note: action.note, at: now };
+            if (task.currentAttemptId === op.attemptId) task.cleanup = 'done';
+            const bot = s.bots.find(b => b.id === op.botId);
+            if (bot && bot.generation === op.generation && bot.sessionId === op.sessionId && !s.tasks.some(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status))) bot.sessionId = null;
+            operationId = op.id;
+            break;
+        }
         case 'claim-operation': {
             owner(); requireTeam(action.machineId === s.machineId, 'machine_mismatch', 403);
             const op = s.operations.find(o => o.id === action.operationId); requireTeam(op, 'operation_not_found', 404);
