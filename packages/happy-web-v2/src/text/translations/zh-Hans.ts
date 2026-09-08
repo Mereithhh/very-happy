@@ -1755,6 +1755,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09c: {
+                title: '更可靠的服务升级',
+                summary: '运行时使用事务连接池时，数据库迁移改用独立的会话连接。',
+                connection: '部署前检查迁移连接配置；迁移失败时保留原服务继续提供访问。',
+            },
             sep09b: {
                 title: '官方 Agent Teams',
                 summary: '在 Very Happy 中组织 Claude、Codex 和 pi 协作，验收结果并跟进周期任务。',

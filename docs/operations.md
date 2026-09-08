@@ -16,7 +16,7 @@ commits or tags to it and do not use it as a deployment source.
 | Web + server | `vh-sg` (AWS ap-southeast-1, `m6i.xlarge`, EIP `52.74.232.28`); fixed `happy-server-blue:3101` / `happy-server-green:3102` slots |
 | Public endpoint | `https://veryhappy.dev` behind Cloudflare (proxied); Caddy imports `/opt/happy/release/active-upstream.caddy` and switches it atomically. A `?vh_slot=` pin whose slot is down falls back to the other slot (`lb_policy first`) |
 | Production artifact | Complete `ghcr.io/mereithhh/very-happy-server@sha256:<digest>` image (linux/amd64 only — the host must stay x86), including Web V2 |
-| Database | **RDS PostgreSQL 16** `vh-pg` (db.m7g.large, single-AZ, private subnet, 7-day automated backups, deletion protection), reached through **PgBouncer** (`vh-pgbouncer`, transaction pooling, `127.0.0.1:6432`, logical db `happy`). The server never connects to RDS directly |
+| Database | **RDS PostgreSQL 16** `vh-pg` (db.m7g.large, single-AZ, private subnet, 7-day automated backups, deletion protection), reached through **PgBouncer** (`vh-pgbouncer`, transaction pooling, `127.0.0.1:6432`, logical db `happy`). Runtime uses transaction pooling; Prisma migrations use the separate `happy_migrations` alias with session pooling. Neither connects to RDS directly |
 | Redis | **ElastiCache** `vh-redis` (cache.t4g.micro, private subnet), socket.io Redis streams adapter |
 | Host base services | `/opt/happy/docker-compose.yml` runs `vh-pgbouncer` only; release slots in `/opt/happy/release/docker-compose.yml` join the same `happy_default` network |
 | Daemon | published `very-happy-cli` on `mac-office` / `mac-main` |
@@ -70,6 +70,8 @@ How it was done with **zero dropped requests and zero data loss**, in order:
    the pause queued inside PgBouncer and completed; nothing errored.
 
 Lessons that are now encoded in the host:
+
+- **Prisma migrations need session affinity**: `DATABASE_MIGRATION_URL` points to the `happy_migrations` PgBouncer alias (`pool_mode=session`, same physical database/role, small separate pool). Runtime `DATABASE_URL` remains the `happy` transaction pool. Session advisory locks must not pass through transaction pooling. On a legacy lock incident, stop the failed candidate, inspect the exact Prisma lock `72707369` and PgBouncer backend mapping, cancel only confirmed abandoned migration waiters, then gracefully retire affected pool connections; never disable advisory locking. Verify two consecutive migrations and no retained lock before deployment. Configuration changes require a full candidate deployment; see [migration connection spec](../specs/2026-09-postgres-migration-session.md).
 
 - **PgBouncer config must be a directory bind-mount** (`/opt/pgbouncer:/etc/pgbouncer`),
   never a file mount: `sed -i` replaces the inode and the container keeps reading

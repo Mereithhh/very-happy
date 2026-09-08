@@ -19,7 +19,7 @@ crypto.subtle.importKey = function (format: any, keyData: any, algorithm: any, e
 
 import * as fs from "fs";
 import * as path from "path";
-import { spawn } from "child_process";
+import { runPostgresMigrations } from './storage/postgresMigrations';
 import { createPGlite } from "./storage/pgliteLoader";
 import { safeErrorMetadata } from './utils/logSafety';
 
@@ -52,34 +52,6 @@ export function resolveBindHost(env: NodeJS.ProcessEnv = process.env): string {
     // mounted at /webapp and the Docker port is published only on loopback.
     if (env.HAPPY_STATIC_DIR === "/webapp") return "0.0.0.0";
     return "127.0.0.1";
-}
-
-async function runPostgresMigrations(): Promise<void> {
-    const schemaCandidates = [
-        path.join(process.cwd(), "prisma", "schema.prisma"),
-        path.join(process.cwd(), "packages", "happy-server", "prisma", "schema.prisma"),
-    ];
-    const cliCandidates = [
-        path.join(process.cwd(), "node_modules", "prisma", "build", "index.js"),
-        path.join(process.cwd(), "..", "..", "node_modules", "prisma", "build", "index.js"),
-    ];
-    const schema = schemaCandidates.find(fs.existsSync);
-    const cli = cliCandidates.find(fs.existsSync);
-    if (!schema || !cli) {
-        throw new Error(`Could not locate Prisma migration runtime (schema=${schema ?? "missing"}, cli=${cli ?? "missing"})`);
-    }
-    console.log("Migrating external PostgreSQL database...");
-    await new Promise<void>((resolve, reject) => {
-        const child = spawn(process.execPath, [cli, "migrate", "deploy", "--schema", schema], {
-            stdio: "inherit",
-            env: process.env,
-        });
-        child.once("error", reject);
-        child.once("exit", (code, signal) => {
-            if (code === 0) resolve();
-            else reject(new Error(`Prisma migrate deploy failed (${signal ?? `exit ${code}`})`));
-        });
-    });
 }
 
 export async function runMigrations(opts: { pgliteDir: string; migrationsDir?: string } = { pgliteDir }) {
@@ -287,6 +259,7 @@ Environment variables:
   DATA_DIR          Base data directory (default: ./data)
   PGLITE_DIR        PGlite database directory (default: DATA_DIR/pglite)
   DATABASE_URL      PostgreSQL URL (if set, uses external Postgres instead of PGlite)
+  DATABASE_MIGRATION_URL  Optional direct/session-pool PostgreSQL URL for migrations only
   REDIS_URL         Redis URL (optional, not required for standalone)
   PORT              Server port (default: 3005)
   HANDY_MASTER_SECRET  Required: master secret for auth/encryption

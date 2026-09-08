@@ -1789,6 +1789,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09c: {
+                title: 'More reliable server upgrades',
+                summary: 'Database migrations use a dedicated session connection when the runtime uses a transaction pool.',
+                connection: 'Deployment checks require the migration endpoint, and a failed migration keeps the previous server serving traffic.',
+            },
             sep09b: {
                 title: 'Official Agent Teams',
                 summary: 'Organize Claude, Codex and pi sessions into teams, review results and follow recurring work in Very Happy.',
