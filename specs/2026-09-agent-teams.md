@@ -103,7 +103,7 @@ Bot 换 session 时递增 generation，旧 token 撤销、旧 attempt 失效；�
 
 发布前必须：四包门禁、两主题/窄屏浏览器、跨账号/旧代际/丢 ACK/未合并成果回归、至少两个 runner 的真实协作验收。普通 transport probe 只证明工具链，不证明模型完成任务。
 
-后续独立批次：跨机自动恢复、模型/进程资源预算、自动归档分页、自动消费 ACK、私有旧 ledger 的实际切换、个人连续多批试用。个人试用通过后再对外宣称长期无人值守能力；首批不把这些未验能力包装成已完成。
+后续独立批次：跨机自动恢复、模型/进程资源预算、自动归档分页、自动消费 ACK、旧个人路由最终退役、个人连续多批试用。个人试用通过后再对外宣称长期无人值守能力；首批不把这些未验能力包装成已完成。
 
 
 ## 本批实测（2026-09-09）
@@ -113,3 +113,18 @@ Bot 换 session 时递增 generation，旧 token 撤销、旧 attempt 失效；�
 真实模型另验证 Claude HTTP 与 Codex stdio 调用 Teams 工具；pi 另在相同隔离条件下完成真实文件 commit、官方权限卡逐项批准、team_submit、合并验收与回收，最终 spawn/stop completed、task done/cleanup done；使用固定 pi-acp 0.0.33 和宿主原生模型认证，未加载私有 wrapper。Windows launcher 未做真机验收。另完成真实二层 pi 父级→Claude 子级委派、双向消息、子级提交/父级合并验收、父级提交/最终集成验收；两层全部 done/cleanup done。子级因尚未合入最终源仓库而暂时保留的资源，在最终合并后自动重试回收成功。任务树、旧代际、取消/消息 ACK 竞态和崩溃恢复另有机制测试；父级断线重接的完整模型路径仍需个人试用验收。
 
 Web Chromium 使用真实组件和 fixture API 验证创建、委派、结果、验收、人工对账、归档；390px、两主题、coarse pointer 均无横向溢出或页面错误，按钮至少 48px。fixture UI 验证与上述真实执行链分别记录，不混作同一个全浏览器端到端用例。
+
+
+## 首次生产切换（2026-09-09）
+
+PR #285 合入官方能力，PR #288 修复 Prisma 迁移通过 transaction pool 遗留 advisory lock 的问题。完整 Server/Web 镜像部署到 `70eb18e9f5cb84f3a7b767a3bf96efb3569f7be7`，digest `sha256:0965b44d6406d14b4b6e653b3f5ec588abda86512ab010fbd90ccc8497dcdfe2`；发布运行 34275680799 attempt 2 成功，attempt 1 在拉取镜像时网络超时、未切流量。CLI `0.2.125` 的发布与六个平台/Node 组合 smoke 全绿，latest/next 已更新。功能通过账号 allowlist 启用，未全量开启。
+
+迁移连接使用同一物理数据库的独立 session pool，业务连接保留 transaction pool。两次真实 Prisma migrate 均成功且未遗留 advisory lock。备份、切换前版本和完整镜像保留；回滚必须先处理 Teams 存量任务，不执行破坏性 down migration。迁移恢复机制以 PostgreSQL migration spec 和 operations 为准。
+
+两台 Mac daemon 均已核验运行 `0.2.125`、Teams capability 和 daemon 上下文认证；不能拿遗留 machine metadata 版本代替实际 daemon 版本。官方 skill 安装到外部独立目录，办公室的旧调度器、两个私有 pi 扩展及旧启动覆盖停用，原生模型偏好、其他插件、历史账本与备份保留。个人 skills 已同步兼容版本，未复制认证或 machineId。
+
+真实生产验收：主机 pi、Claude、Codex 和办公室 pi 均在隔离 Git 仓库完成文件修改、commit、submit、验证后合并、accept，最终 task done / cleanup done；测试团队已归档。临时滴答任务通过官方适配器派发，真实 worker 提交后由唯一集成者合并验收，再回写并确认 provider status=2；两条历史待验收/未排期待办保持原样。普通权限请求逐项批准，不等同于已支持无需审批的无人值守。
+
+办公室官方 Happy Bot 会话已建立，10 分钟状态对账与 30 分钟滴答消化 schedules 首次触发并送达。送达 ACK 与模型完成分开验证。生产浏览器加载上述精确 SHA 的 entry，窄屏无溢出/页面错误；旧→新 SW 接管另以两个实际生产构建验证。
+
+48 小时连续运行观察尚未结束：须核对至少两个 30 分钟周期、daemon 重启恢复、无重复派发/旧调度写入和待审批处理。通过后才清理个人系统中旧生产路由描述；历史原件至少保留七天。跨机自动接管、Windows 真机与长期无人值守不包含在本次已验收范围。
