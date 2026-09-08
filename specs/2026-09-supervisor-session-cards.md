@@ -1,5 +1,7 @@
 # 角色感知的会话卡片：supervisor / pi 会话里的 tick、决策、账本与代理工具
 
+> Part B（supervisor tick/decision/ledger 文本卡片）由 [Agent Teams](2026-09-agent-teams.md) 取代；新实现移除文本推断，历史内容按普通消息展示。Part A 的 pi 结构化工具渲染继续有效。下文保留历史设计，不再作为 Teams 实现入口。
+
 > 状态：Final（2026-09-04 Owner「按计划继续」即定稿；实现见 B-353 PR）
 > 日期：2026-09-04 ｜ 关联 backlog：B-353 ｜ 出处：Owner 2026-09-04「对于不同角色的 veryhappy session 是不是可以针对性渲染一些卡片视图，我看有一些 toolcall 或者 user input 还是文本或者 json」
 

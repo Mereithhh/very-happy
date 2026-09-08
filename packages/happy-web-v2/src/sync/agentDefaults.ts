@@ -88,8 +88,7 @@ const reviewFirstPermissionModes: Record<AgentKey, string> = {
     codex: 'read-only',
     gemini: 'plan',
     openclaw: 'default',
-    // The pi-side gate treats `plan`/`acceptEdits` as `default` ("ask becomes a
-    // permission card"); `default` is the honest key for review-first.
+    // The official pi gate asks before write operations in default mode.
     pi: 'default',
 };
 
@@ -102,14 +101,8 @@ export function resolveNewSessionPermissionMode(
     flavor: string | null | undefined,
     reviewFirst: boolean,
 ): string {
-    // pi uses the Claude permission KEYS (B-350: the pi runner keeps
-    // --permission-mode → HAPPY_PERMISSION_MODE + session-modes file; the
-    // vh-supervisor permission gate enforces `bypassPermissions` as "auto-allow
-    // every ask rule" and `default` as "ask becomes a permission card"; hard deny
-    // rules are never lifted) but its OWN defaults slot — see codeAgentDefaults.
-    // The CLI publishes the value really in effect in metadata.permissionMode
-    // (rule 14), so what the launcher records is the intent and the session row
-    // shows the fact.
+    // pi uses the shared permission keys and an official runtime gate, with
+    // its own defaults slot. The session reports the selected effective mode.
     const explicitDefault = getAgentDefaultOverride(overrides, flavor).permissionMode;
     if (explicitDefault !== undefined) {
         return explicitDefault;

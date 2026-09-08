@@ -187,6 +187,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
         flavor: 'claude',
+        ...(process.env.VH_TEAM_OPERATION_ID ? { teamOperationId: process.env.VH_TEAM_OPERATION_ID } : {}),
         // Advertise composer support before the first SDK response. Otherwise
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],

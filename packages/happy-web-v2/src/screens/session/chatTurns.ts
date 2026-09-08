@@ -2,7 +2,6 @@ import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { askUserQuestionDisplayAnswer, type AskQuestion } from './askUserQuestion';
 import { parseLocalCommandMessage, parseTaskNotification, stripHarnessBlocks } from './harness';
 import { presentServiceEvent } from './serviceEvent';
-import { parseTickReport } from './supervisorCards';
 import { stripThinkingWrapper } from './thinking';
 
 export type LeafRow =
@@ -51,8 +50,7 @@ function rendersUserBubble(message: Message): boolean {
     if (parseTaskNotification(raw)) return false;
     const parsed = parseLocalCommandMessage(raw);
     if (parsed.kind !== 'text') return false;
-    // B-353 supervisor ticks render as a card, not a bubble.
-    return parseTickReport(parsed.text) === null;
+    return true;
 }
 
 export function extractUserAttachments(messages: Message[]): {

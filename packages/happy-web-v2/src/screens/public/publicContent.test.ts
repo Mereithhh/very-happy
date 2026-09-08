@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { BOOTSTRAP_COMMAND, getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PROVIDER_KEY_COMMAND, PUBLIC_DOCS } from './publicContent';
+import { BOOTSTRAP_COMMAND, getPublicDoc, getPublicDocs, INSTALL_COMMAND, LOGIN_COMMAND, PROVIDER_KEY_COMMAND, PUBLIC_DOCS } from './publicContent';
 import { getProductPreviewIds } from './productPreviewIds';
 
 describe('public documentation registry', () => {
@@ -221,8 +221,8 @@ describe('public documentation registry', () => {
     expect(productPreview).toContain('Optional terminal hooks installed');
     expect(productPreview).not.toContain('Sanitized Codex terminal');
     expect(productPreview).toContain('Task board');
-    expect(featureProofs).toContain('The coordinator is a Claude meta-agent session on one selected machine');
-    expect(featureProofs).toContain('Automatic cross-machine or cross-provider routing is roadmap');
+    expect(featureProofs).toContain('Voice Assistant uses Claude on one selected machine');
+    expect(featureProofs).toContain('Automatic cross-machine routing is roadmap');
     expect(featureProofs).toContain('REQUIRES VOICE CONFIGURATION');
     expect(landingCopy).toContain('You get to be Very Happy.');
     expect(landingCopy).toContain('today you explicitly choose a Web-supported machine and agent');
@@ -306,14 +306,14 @@ describe('public documentation registry', () => {
     expect(codexBridge.match(/registerTool\(/g)).toHaveLength(3);
     expect(codexBridge).not.toContain('REPORT_PROGRESS_TOOL_NAME');
     expect(codexBridge).not.toContain("'report_progress'");
-    expect(acpRunner).toContain("join(projectPath(), 'bin', 'happy-mcp.mjs')");
-    expect(geminiRunner).toContain("join(projectPath(), 'bin', 'happy-mcp.mjs')");
+    expect(acpRunner).toContain("join(projectPath(), 'bin', 'very-happy-mcp.mjs')");
+    expect(geminiRunner).toContain("join(projectPath(), 'bin', 'very-happy-mcp.mjs')");
     for (const tool of ['sessions_list', 'session_read', 'session_send', 'session_spawn', 'session_kill', 'session_archive', 'terminals_list', 'terminal_read', 'terminal_send', 'memory_update', 'journal_append']) {
       expect(assistantTools).toContain(`'${tool}'`);
       expect(text).toContain(tool);
       expect(channels).toContain(tool);
     }
-    expect(managedClaude).toContain('...(options?.assistant ? ASSISTANT_TOOL_NAMES : [])');
+    expect(managedClaude).toContain('...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : [])');
     // The standalone server inlines exactly two tools: clipboard (always) and
     // the terminal-title tool, which exists only inside a Very Happy web
     // terminal (`resolveMcpTerminalId`: VH_TERMINAL_ID set and no HAPPY_MCP_URL,
@@ -323,7 +323,7 @@ describe('public documentation registry', () => {
     expect(standaloneMcp.match(/registerTool\(/g)).toHaveLength(2);
     expect(standaloneMcp).toContain('CLIPBOARD_TOOL_NAME');
     expect(standaloneMcp).toContain("if (terminalId) {\n        server.registerTool(TERMINAL_TITLE_TOOL_NAME, {");
-    expect(standaloneMcp).toContain("if (surface === 'assistant') {\n        registerAssistantSessionTools(server);");
+    expect(standaloneMcp).toContain("if (surface === 'assistant' && !process.env.VH_TEAM_SCOPE_FILE) {\n        registerAssistantSessionTools(server);");
     expect(standaloneMcp).not.toContain('registerAssistantTools(');
     // The env read lives in mcpToolSurface (pure, tested), never inline here.
     expect(standaloneMcp).not.toContain('process.env.VH_TERMINAL_ID');
@@ -424,10 +424,10 @@ describe('public documentation registry', () => {
     expect(scheduler).toContain('CLI + daemon');
     expect(scheduler).toContain('API + webhooks');
     expect(scheduler).toContain('MCP tools');
-    expect(scheduler).toContain('Meta Agent');
+    expect(scheduler).toContain('Agent Teams');
     expect(scheduler).toContain('CLOUD OR SELF-HOSTED RELAY');
     expect(scheduler).toContain('CLI + DAEMON');
-    expect(scheduler).toContain('Claude only');
+    expect(scheduler).toContain('opt-in');
     expect(scheduler).toContain('runner-specific');
     expect(schedulerStyles).toContain('@keyframes scheduler-route-flow');
     expect(schedulerStyles).toContain('@keyframes scheduler-orbit');
@@ -691,4 +691,16 @@ describe('public documentation registry', () => {
     expect(spec).toContain('Fail closed unless both sender and chat are allowlisted');
     expect(spec).not.toMatch(/mac-office|hw-sg|apodex-bot|happy\.mereith\.com\/session/);
   });
+});
+
+it('documents Teams setup and migration in both languages without claiming bare-terminal attachment', () => {
+ const en = getPublicDocs('en').find(doc => doc.slug === 'agent-teams')!;
+ const zh = getPublicDocs('zh-Hans').find(doc => doc.slug === 'agent-teams')!;
+ expect(en.sections.length).toBe(zh.sections.length);
+ expect(zh.sections.map(section => section.heading)).not.toEqual(en.sections.map(section => section.heading));
+ const text=JSON.stringify(en);
+ expect(text).toContain('one account and one execution machine');
+ expect(text).toContain('does not connect an unmanaged terminal');
+ expect(text).toContain('migration-preview');
+ expect(text).toContain('cannot recall a message');
 });

@@ -6,3 +6,5 @@ export * from './voice';
 export * from './relayProtocol';
 export * from './releaseProtocol';
 export * from './connectionDiagnostics';
+
+export * from "./teams";

@@ -35,9 +35,8 @@ import { useEdgeSwipeBack } from '@/app/edgeSwipeBack';
 // pure semantics (unit-tested; no DOM, no router)
 // ---------------------------------------------------------------------------
 
-/** Which hub the user came through. Only ever `/` or `/board` — those are the
- *  two list surfaces a detail view can be opened from. */
-export type BackOrigin = 'home' | 'board';
+/** List/team surface the user opened a session from, retained across reload. */
+export type BackOrigin = 'home' | 'board' | '/teams' | `/teams/${string}`;
 
 export type BackTarget =
   | { kind: 'history' }
@@ -64,6 +63,7 @@ export function navHubFor(pathname: string): BackOrigin | null {
   const p = normalizePath(pathname);
   if (p === '/') return 'home';
   if (p === '/board') return 'board';
+  if (p === '/teams' || /^\/teams\/[^/]+$/.test(p)) return p as BackOrigin;
   return null;
 }
 
@@ -84,7 +84,9 @@ export function backParentPath(
   // Root and the auth screens are terminal points — no back affordance.
   if (p === '/' || p === '/login' || p === '/signup') return null;
   // Detail views opened from a list go back to THAT list.
-  const hub = origin === 'board' ? '/board' : '/';
+  const hub = origin === 'board' ? '/board' : origin?.startsWith('/teams') ? origin : '/';
+  if (p === '/teams') return '/';
+  if (p.startsWith('/teams/')) return '/teams';
   if (p === '/board') return '/';
   if (p === '/assistant') return '/';
   if (p.startsWith('/session/')) return hub;
@@ -151,7 +153,7 @@ export function __setNavDepth(n: number): void {
 export function getNavOrigin(): BackOrigin | null {
   try {
     const v = sessionStorage.getItem(ORIGIN_KEY);
-    return v === 'board' || v === 'home' ? v : null;
+    return v === 'board' || v === 'home' ? v : v === '/teams' || (v && /^\/teams\/[^/]+$/.test(v)) ? v as BackOrigin : null;
   } catch {
     return null;
   }

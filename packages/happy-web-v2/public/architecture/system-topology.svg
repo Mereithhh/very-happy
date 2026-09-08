@@ -19,7 +19,7 @@
   <ellipse cx="805" cy="474" rx="480" ry="390" fill="url(#halo)"/>
   <text x="72" y="72" class="eyebrow">ARCHITECTURE / ACCOUNT-LEVEL FLEET</text>
   <text x="72" y="116" class="title">One control plane. Every machine. Every agent.</text>
-  <text x="72" y="148" class="small">Explicit machine + runner selection today · provider-neutral automatic routing remains roadmap</text>
+  <text x="72" y="148" class="small">Explicit machine + runner selection · Agent Teams: same-account, single-machine preview</text>
 
   <rect x="52" y="190" width="460" height="650" rx="22" fill="#0c1a21" stroke="#274049"/>
   <text x="78" y="222" class="zone">EXECUTION ZONE · USER-OWNED</text>

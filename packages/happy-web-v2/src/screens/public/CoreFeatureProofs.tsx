@@ -131,7 +131,7 @@ function VoiceCoordinatorProof({ titleId }: { titleId: string }) {
         </div>
         <h3 id={titleId}>{zh ? '在你选择的机器上，直接与工作对话' : 'Talk to the work, on the machine you chose.'}</h3>
         <p>
-          {zh ? '协调器是选定机器上的 Claude meta-agent 会话。按住说话或直接输入；配置语音服务后可增加 STT/TTS。跨机器或跨 provider 自动路由仍在路线图中。' : 'The coordinator is a Claude meta-agent session on one selected machine. Hold to talk or type; configured speech services add STT/TTS. Automatic cross-machine or cross-provider routing is roadmap.'}
+          {zh ? '语音助手使用选定机器上的 Claude 会话。按住说话或直接输入；配置语音服务后可增加 STT/TTS。Agent Teams 是独立的团队协作入口，跨机器自动路由仍在路线图中。' : 'Voice Assistant uses Claude on one selected machine. Hold to talk or type; configured speech services add STT/TTS. Agent Teams is the separate collaboration surface. Automatic cross-machine routing is roadmap.'}
         </p>
       </div>
 

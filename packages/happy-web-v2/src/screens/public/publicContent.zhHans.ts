@@ -8,6 +8,70 @@ export type PublicDocTranslation = {
 };
 
 export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
+  "agent-teams": {
+  "label": "Agent Teams 团队协作",
+  "summary": "组织托管 coding agent、验收成果，并安全迁移旧调度。",
+  "sections": [
+    {
+      "heading": "可用范围",
+      "blocks": [
+        "Agent Teams 是按账号启用的预览功能，每个团队使用同一账号下的一台执行机器。运营方需为账号启用功能，机器需运行兼容且在线的 daemon。旧服务器或 daemon 不会静默回退到其他 Agent。",
+        [
+          "Claude 与 Codex 已完成真实混合任务、提交、验收和回收测试。",
+          "托管 pi 适配器和工具已提供；完整模型工作流仍属于发布验收。",
+          "递归委派已实现并有机制测试；多层模型恢复、跨机自动路由和长期无人值守尚非已验证承诺。"
+        ]
+      ]
+    },
+    {
+      "heading": "从普通托管会话开始",
+      "blocks": [
+        "在 Very Happy 中打开普通 Claude、Codex 或 pi 会话，不需要 Meta agent 复选框。要求它读取安装器返回的 skill 绝对路径、查看已有工作，并按明确验收要求委派独立任务。仅仅读取 skill 不会连接未托管的终端。",
+        null,
+        "安装器将唯一共享 skill 写入 ~/.local/share/very-happy/skills/very-happy-teams，并返回绝对路径。不修改宿主自动发现设置，也不写穿个人 skills 树；先预览落点。托管会话由 Very Happy 注入团队工具；pi 使用 very-happy pi 托管入口，不应假定裸 pi 终端具备后台收信能力。"
+      ]
+    },
+    {
+      "heading": "委派、查看与验收",
+      "blocks": [
+        [
+          "从侧栏打开团队，在兼容机器上创建团队；也可要求已连接的 Agent 调用 team_create/team_join。",
+          "委派时提供目标、验收要求、工作目录和 Agent。队友可以在自己的任务范围内继续委派子任务。",
+          "打开关联会话查看工作、发送补充要求或处理审批。消息已投递不表示 Agent 已处理。",
+          "提交结果仍需验收。在团队页通过、退回修改、取消或移交；取消会关闭未完成子树。"
+        ],
+        "Web 关联已有会话只登记身份；会话仍需通过 Teams CLI/工具加入，建立实际连接。安装 skill 或关联 Web 链接不能替代运行时接入。"
+      ]
+    },
+{
+  "heading": "定时发送指令",
+  "blocks": [
+    "在团队页为团队机器上的指定队友创建单次或重复定时任务。填写首次触发的本地时间，可选填写整数分钟的间隔。定时状态持久化在服务器，由兼容 daemon 向该接收者投递。",
+    "可以在定时列表暂停、恢复或取消；已开始投递的消息不能撤回。队友离线时保留待投递消息，不会改投最近活跃会话。归档团队前先取消未结束的定时任务。"
+  ]
+},
+    {
+      "heading": "恢复与资源归属",
+      "blocks": [
+        "验收与回收分别记状态。Teams 只停止自己创建的托管 worker，并保留脏 worktree 或未合并分支。先检查成果、整合分支、核验旧进程停止，再提交人工对账。该操作只记录核验结果，不会停止进程、删除文件或重新派发。",
+        "结果未知时应先核验，再开启新尝试。超时、空闲事件或账本取消记录都不能证明进程退出。全部任务、执行操作和回收处理完毕后才能归档团队；原链接仍可查看。"
+      ]
+    },
+    {
+      "heading": "从旧 supervisor 迁移",
+      "blocks": [
+        null,
+        [
+          "备份原 ledger、schedule、映射和 worktree。预览完全离线，不导入、不派发，也不完成外部任务。",
+          "退役旧入口前先替代定时触发和外部 Todo 映射。冻结旧派发，核验在途会话后再启用新写者。",
+          "旧终态行保留历史；review 不等于已验收，done/stopped 不证明回收。逐项核验活会话与成果。",
+          "人工任务看板保持独立，不是 Teams 调度数据库，两者不互相双写任务。",
+          "替代系统观察通过前保留旧产物只读归档；同一任务源不能同时运行两套派发器。"
+        ]
+      ]
+    }
+  ]
+},
   quickstart: {
     label: '快速开始', summary: '连接一台机器，然后把 Web/PWA 作为日常工作区。',
     sections: [
@@ -105,7 +169,7 @@ export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
   integrations: {
     label: '集成与自动化', summary: '连接 IM、调度器与任务系统，同时避免把私有策略写进核心。',
     sections: [
-      { heading: '交接到 Web 工作区的 MCP', blocks: ['基础托管 Claude 会话提供 change_title、copy_to_clipboard、open_preview 与 report_progress。托管 Codex、Gemini 与 ACP bridge 提供 change_title、copy_to_clipboard 与 open_preview。这些交接让 Agent 把本地工作变成可见 Web 状态，而不只是再打印一行终端文本。', ['仅 Assistant/meta-agent 变体提供：会话列表/读取/发送/派生/停止/归档、终端列表/读取/发送，以及 memory_update 和 journal_append。', '这些 Assistant 专属工具可以修改本地会话、终端、记忆与日志。应把 Assistant 及其 prompt/tool 权限视为高权限机器控制面。'], null, '这个 --scope user 注册会让该 OS 用户的每个 Claude 会话都获得 copy_to_clipboard；它不绑定 Very Happy Web 终端。独立 very-happy mcp 命令不会添加标题、预览、进度、派生或 provider 路由，并且需要本地 daemon。工具可用性因 runner 而异，不是通用 MCP 承诺。'] },
+      { heading: '交接到 Web 工作区的 MCP', blocks: ['基础托管 Claude 会话提供 change_title、copy_to_clipboard、open_preview 与 report_progress。托管 Codex、Gemini 与 ACP bridge 提供 change_title、copy_to_clipboard 与 open_preview。这些交接让 Agent 把本地工作变成可见 Web 状态，而不只是再打印一行终端文本。', ['仅语音助手 / 历史 assistant 变体提供：会话列表/读取/发送/派生/停止/归档、终端列表/读取/发送，以及 memory_update 和 journal_append。', '这些 Assistant 专属工具可以修改本地会话、终端、记忆与日志。应把 Assistant 及其 prompt/tool 权限视为高权限机器控制面。'], null, '这个 --scope user 注册会让该 OS 用户的每个 Claude 会话都获得 copy_to_clipboard；它不绑定 Very Happy Web 终端。独立 very-happy mcp 命令不会添加标题、预览、进度、派生或 provider 路由，并且需要本地 daemon。工具可用性因 runner 而异，不是通用 MCP 承诺。'] },
       { heading: '配置外部 Todo provider', blocks: ['Todo 面板读取机器本地的 provider 命令。请在实际运行该命令的 daemon 机器上，把 todoProvider 加到 ~/.happy/settings.json。由于该设置授予本地代码执行能力，Web 端不能修改。', null, '命令会收到 list、complete <id> 或 create <title>。list 输出 JSON；complete/create 以退出码表示成功。仓库在 packages/happy-cli/examples/todo-provider-jsonfile.mjs 提供零依赖示例。', '打开 Todo provider 契约与示例 ↗'] },
       { heading: '配置账户 Webhook', blocks: ['打开“设置 → 通道”，输入一个 HTTPS endpoint，选择完成和/或权限事件，然后保存。保存会替换账户之前的 webhook。投递是 best-effort；私网、loopback、link-local 和重定向目标会被拒绝。', 'Webhook 适合通知，不应当作保证投递的任务队列。完整契约记录了 payload、session trailer、事件过滤、HTTPS/SSRF 规则、超时和管理 API。', '打开 Webhook 契约 ↗'] },
       { heading: '通过 Assistant 派发其他会话', blocks: ['打开“设置 → 语音与 Assistant”，选择一台能运行 Claude 的机器，审查“跳过权限审批”，然后打开 Assistant（/assistant）。请用绝对目录派活，例如：“在 /srv/project 派一个 Claude 会话修复登录测试。”', ['协调器可以在所选机器上列出、读取、发送、派生、停止和归档会话。', 'session_spawn 会立即返回；之后用 session_read 或 session_send 跟进。', '当前只会在一台所选机器上派生 Claude；尚未交付自动跨机器或跨 provider 路由。'], 'Assistant 工具是高权限机器控制面。除非明确接受无人值守的本地操作，否则请保留审批。', '打开 Assistant 派发配置 ↗'] },

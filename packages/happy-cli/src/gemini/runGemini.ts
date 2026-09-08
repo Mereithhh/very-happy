@@ -510,7 +510,7 @@ export async function runGemini(opts: {
   //
 
   const happyServer = await startHappyServer(session);
-  const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
+  const bridgeCommand = join(projectPath(), 'bin', 'very-happy-mcp.mjs');
   const mcpServers = {
     happy: {
       command: bridgeCommand,

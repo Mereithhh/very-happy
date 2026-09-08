@@ -58,6 +58,7 @@ export async function sendUserMessage(
     persisted: PersistedSession,
     text: string,
     client: string,
+    options: { localId?: string; sentFrom?: string } = {},
 ): Promise<void> {
     const credentials = await readCredentialsForConfiguredRelay()
     if (!credentials) {
@@ -71,7 +72,7 @@ export async function sendUserMessage(
             text
         },
         meta: {
-            sentFrom: 'cli'
+            sentFrom: options.sentFrom ?? 'cli'
         }
     }
 
@@ -83,7 +84,7 @@ export async function sendUserMessage(
 
     await axios.post(
         `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(sessionId)}/messages`,
-        { messages: [{ content: encrypted, localId: randomUUID() }] },
+        { messages: [{ content: encrypted, localId: options.localId ?? randomUUID() }] },
         {
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,

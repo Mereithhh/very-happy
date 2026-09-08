@@ -1,6 +1,6 @@
 export type SchedulerEnvironmentId = 'computer' | 'server' | 'runtime';
 export type SchedulerAgentId = 'claude' | 'codex' | 'gemini' | 'terminal';
-export type SchedulerLaneId = 'cli' | 'api' | 'mcp' | 'meta';
+export type SchedulerLaneId = 'cli' | 'api' | 'mcp' | 'teams';
 
 export type SchedulerTopologyState = {
   environment: SchedulerEnvironmentId;
@@ -36,7 +36,7 @@ export const SCHEDULER_LANE_DESCRIPTIONS: Record<SchedulerLaneId, string> = {
   cli: 'CLI + daemon · required machine bridge',
   api: 'API + webhooks · trusted server edge',
   mcp: 'MCP tools · runner-specific surface',
-  meta: 'Meta Agent · optional Claude-only coordinator',
+  teams: 'Agent Teams · same-account, single-machine preview',
 };
 
 export function schedulerTopologyReducer(

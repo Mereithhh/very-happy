@@ -60,6 +60,7 @@ model Account {
     AccountSecret       AccountSecret?
     AccountIdentity     AccountIdentity[]
     AccountLoginSession AccountLoginSession[]
+    AgentTeams AgentTeam[]
 }
 
 model AccountCredential {
@@ -489,4 +490,63 @@ model VoiceConversation {
     createdAt                  DateTime @default(now())
 
     @@index([accountId, createdAt(sort: Desc)])
+}
+
+model AgentTeam {
+    id String @id
+    account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    credentials TeamAgentCredential[]
+    requests TeamRequest[]
+    operations TeamOperation[]
+    messages TeamMessage[]
+    accountId String
+    machineId String
+    version Int @default(0)
+    state Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @default(now())
+    @@index([accountId, machineId])
+}
+
+model TeamAgentCredential {
+    id String @id
+    teamId String
+    team AgentTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+    botId String
+    generation Int
+    tokenHash String @unique
+    tokenEnc String
+    expiresAt DateTime
+    revokedAt DateTime?
+    createdAt DateTime @default(now())
+    @@index([teamId, botId])
+}
+
+model TeamRequest {
+    teamId String
+    team AgentTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+    requestId String
+    actorKey String
+    requestHash String
+    response Json
+    createdAt DateTime @default(now())
+    @@id([teamId, requestId])
+}
+
+model TeamOperation {
+    id String @id
+    teamId String
+    team AgentTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+    state Json
+    createdAt DateTime @default(now())
+    @@index([teamId])
+}
+
+model TeamMessage {
+    id String @id
+    teamId String
+    team AgentTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+    state Json
+    createdAt DateTime @default(now())
+    @@index([teamId])
 }

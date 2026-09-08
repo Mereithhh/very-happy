@@ -19,6 +19,9 @@ describe('backParentPath', () => {
     ['/login', '', null, null],
     ['/signup', '', null, null],
     ['/board', '', null, '/'],
+    ['/teams', '', '/teams', '/'],
+    ['/teams/demo', '', '/teams/demo', '/teams'],
+    ['/session/abc', '', '/teams/demo', '/teams/demo'],
     ['/board', '', 'board', '/'], // never points at itself
     ['/session/abc', '', null, '/'],
     ['/session/abc', '', 'home', '/'],
@@ -47,6 +50,9 @@ describe('backParentPath', () => {
 describe('navHubFor', () => {
   it('recognises the two list surfaces and nothing else', () => {
     expect(navHubFor('/')).toBe('home');
+    expect(navHubFor('/teams')).toBe('/teams');
+    expect(navHubFor('/teams/demo')).toBe('/teams/demo');
+    expect(navHubFor('/teams/demo/nested')).toBe(null);
     expect(navHubFor('/board')).toBe('board');
     expect(navHubFor('/board/')).toBe('board');
     expect(navHubFor('/session/a')).toBe(null);

@@ -34,9 +34,11 @@ release date. “Long-term concept” is product exploration.
   parity is not implied.
 - An OpenClaw adapter that connects through a configured local gateway using
   OpenClaw's own protocol, not ACP.
-- A Claude-powered text meta-agent with session awareness and dispatch on its
-  selected machine. Voice entry is available when a compatible voice service is
-  configured; both meta-agent modes currently require Claude Code.
+- Opt-in Agent Teams for same-account, single-machine collaboration: ordinary
+  managed sessions delegate, exchange messages, submit, review, and recover tasks.
+  Claude/Codex have real mixed-runner acceptance evidence; managed pi and deeper
+  recovery workflows remain subject to rollout validation. See [Teams](agent-teams.md).
+- A separate Claude-powered voice Assistant when a compatible voice service is configured.
 - Provider-style inbound commands and outgoing HTTPS webhooks for connecting
   external task and notification systems. The CLI's automation commands cover
   the full loop an external coordinator needs — spawn work with an origin tag,
@@ -55,12 +57,12 @@ release date. “Long-term concept” is product exploration.
 
 ### A provider-aware coordination layer
 
-- Make the meta-agent a dependable dispatcher across supported agents,
-  providers, machines, and future checkouts.
+- Extend Agent Teams beyond the current single-machine boundary, with explicit
+  resource budgets and measured cross-machine recovery.
 - Preserve subtask progress and return decisions, blockers, and results instead
   of making the user watch activity.
-- Add adapters only where they improve real workflows. Pi is a candidate, not a
-  supported integration until it is implemented and tested.
+- Complete real-model acceptance for managed pi and multi-level delegation;
+  adapter availability alone is not proof of complete workflow parity.
 - Deepen task-provider and development-provider integrations without making any
   one vendor the center of the product.
 

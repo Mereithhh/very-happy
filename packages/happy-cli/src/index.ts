@@ -562,6 +562,15 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'teams') {
+    try {
+      const { handleTeamsCommand } = await import('./commands/teams');
+      await handleTeamsCommand(args.slice(1));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : 'Teams command failed');
+      process.exitCode = 1;
+    }
+    return;
   } else if (subcommand === 'mcp' && args.length === 1) {
     // Standalone stdio MCP server for the real claude CLI (web terminal path).
     // Register once with: claude mcp add --scope user very-happy-clipboard -- very-happy mcp
