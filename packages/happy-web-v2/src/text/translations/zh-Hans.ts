@@ -1764,6 +1764,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09u: {
+                title: '团队启动恢复更可靠',
+                summary: 'pi 和 Codex 成员会保留原始团队启动关联。',
+                recovery: '启动过程意外中断后，daemon 能将已有对话准确关联到任务，减少启动结果不确定的情况。',
+            },
             sep09t: {
                 title: '从一个目标或已有对话开始组队',
                 summary: 'Happy Bot 按需使用，普通聊天和终端保持熟悉的操作方式。',

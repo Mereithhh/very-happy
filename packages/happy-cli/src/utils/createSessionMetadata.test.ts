@@ -1,4 +1,8 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { configuration } from '@/configuration';
+import { persistSession, readPersistedSessions } from '@/persistence';
 import { describe, expect, it } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
 import { isValidSpawnOrigin, spawnOriginTags, createSessionMetadata } from './createSessionMetadata';
@@ -21,6 +25,32 @@ function createSandboxConfig(overrides: Partial<SandboxConfig> = {}): SandboxCon
 }
 
 describe('createSessionMetadata', () => {
+    it.each(['codex', 'acp', 'claude'] as const)('retains %s spawn correlation through the actual daemon session store', (flavor) => {
+        const parent = join(homedir(), 'code/github/skills/tmp/team-metadata-recovery');
+        mkdirSync(parent, { recursive: true });
+        const home = mkdtempSync(join(parent, 'session-'));
+        const previous = Object.getOwnPropertyDescriptor(configuration, 'sessionsFile')!;
+        // Redirect only this module-local configuration instance. Never write to
+        // the user's sessions.json when the regression runs in a normal suite.
+        Object.defineProperty(configuration, 'sessionsFile', { ...previous, value: join(home, 'sessions.json') });
+        try {
+            const { metadata } = createSessionMetadata({ flavor, machineId: 'machine', startedBy: 'daemon', teamOperationId: 'spawn-operation-1' });
+            persistSession('managed-session', { metadata, encryptionKey: 'test-only', encryptionVariant: 'legacy', seq: 0, metadataVersion: 0, agentStateVersion: 0, savedAt: Date.now() });
+            const persisted = readPersistedSessions();
+            expect(persisted['managed-session'].metadata.teamOperationId).toBe('spawn-operation-1');
+            // The worker's spawning-receipt recovery must find exactly one wrapper.
+            expect(Object.entries(persisted).filter(([, entry]) => entry.metadata.teamOperationId === 'spawn-operation-1').map(([id]) => id)).toEqual(['managed-session']);
+            expect(Object.entries(persisted).filter(([, entry]) => entry.metadata.teamOperationId === 'different-operation')).toHaveLength(0);
+        } finally {
+            Object.defineProperty(configuration, 'sessionsFile', previous);
+            rmSync(home, { recursive: true, force: true });
+        }
+    });
+
+    it('does not stamp ordinary sessions with a team operation', () => {
+        expect(createSessionMetadata({ flavor: 'codex', machineId: 'ordinary' }).metadata).not.toHaveProperty('teamOperationId');
+    });
+
     it('sets metadata.sandbox to the config when enabled', () => {
         const sandbox = createSandboxConfig();
         const { metadata } = createSessionMetadata({

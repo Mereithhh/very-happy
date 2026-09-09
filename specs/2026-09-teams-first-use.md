@@ -1,6 +1,6 @@
 # 可选团队的首次使用与统一导航
 
-> 状态：Final
+> 状态：Shipped（首次发布：`abb5484f61cd029b9f6c7db2729922a4bef0374e`，CLI `0.2.127`）
 > 日期：2026-09-09 ｜ 关联 backlog：B-420 ｜ 前身：[Agent Teams](2026-09-agent-teams.md)、[团队工作区](2026-09-happy-bot-workspace.md)
 
 ## 背景
@@ -156,4 +156,13 @@ maxParallel 由 server claim-operation 限制同时推进的非 root 叶子任�
 - 新建、目录选择、503 后关闭再重试、已有会话接入失败后重开、历史结果卡均经真实 Chromium 在 390px coarse / 1280px、明暗主题验证。账号隔离与不确定请求保留有机制测试。
 - 导航保留普通列表排序与入口；已回收成员通过持久 spawn receipt 打开历史，不触发重启；隐藏 Happy Bot 仅隐藏入口。CSS probe 窄屏无横向溢出。
 - 隔离 PGlite server、独立 HAPPY_HOME、临时 git repo 实跑：pi 负责人自动委派 Codex；子任务提交、负责人验收、根目标提交；停止及 worktree 回收完成，无手工安装 skill。该探针明确选择了 bypass 权限，不代表默认权限自动免审批。
-- 临时证据位于 skills/tmp/teams-first-use；生产验收与发布 SHA 待上线后补记。
+- 生产 server/Web `abb5484f61cd029b9f6c7db2729922a4bef0374e` 已发布（run `34319208007`），完整镜像 digest `sha256:3a412413851be3966b0cc65f05a998acf214883d26fa2bc6c60c1cc7e62d8efb`。真实页面普通 reload 后 entry 已切换、新 controllerchange 已记录、无横向溢出。
+- CLI `0.2.127` 六组 smoke 全成功（`34319673194`）后 promote（`34319673066`）；两台 Mac 实际 daemon 版本均已核对，办公 Mac launchd running，两机真实 `fs-list` RPC 与 `teamLaunchVersion:1` 通过。推荐版本允许 registry 缓存；未修改全局自动升级目标。
+- 生产临时团队已由 pi 提交只读目标，经验收达到 done、cleanup done，再归档。期间仅批准了该探针已经挂起的 `team_submit` 请求，不能把验收说成默认免审批。
+- 临时证据位于 skills/tmp/teams-first-use；探针团队与 worktree 已回收，未修改现有业务团队。
+
+## B-421：启动关联恢复补丁
+
+生产验收确认 Codex/ACP 调用方虽把 teamOperationId 传入 createSessionMetadata，factory 未声明或拷贝该字段，对象 spread 又避开了多余属性检查。正常启动能完成，但 daemon 在 spawning receipt 中断恢复时无法凭会话 metadata 找到原操作。
+
+补丁将可选关联字段显式透传；普通会话不增加字段，不改变协议或权限。回归将各 flavor 的 factory 结果真实写入独立 sessions.json，再读回并按操作 ID 唯一匹配。该补丁计划随 CLI 0.2.128 发布，新 wrapper 才携带字段；旧会话不能被宣称已经补齐。旧 receipt 的不确定结果仍遵守保守恢复原则，不能通过无证据重新 spawn 补救。
