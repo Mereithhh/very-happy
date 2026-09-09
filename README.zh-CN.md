@@ -4,12 +4,12 @@
 
 <div align="center">
   <a href="https://veryhappy.dev/welcome">
-    <img src=".github/readme-hero.svg" width="100%" alt="Very Happy——连接每台机器与每个 Agent 的统一指挥面板">
+    <img src=".github/readme-hero.svg" width="100%" alt="Very Happy Teams——一个目标，一支 coding agent 团队">
   </a>
 </div>
 
 <p align="center">
-  <strong>一个面板。每台机器。每个 Agent。让你真正 Very Happy。</strong>
+  <strong>一个目标，一支 Agent 团队，尽在你的工作区。</strong>
 </p>
 
 <p align="center">
@@ -30,23 +30,27 @@
   <a href="docs/deployment.md">自托管</a>
 </p>
 
-Very Happy 是一个面向你所掌控的计算机与 Agent 的开放式指挥面板。响应式 Web
-界面汇集所有已连接机器上的会话，显示哪些任务正在运行、哪些正在等待；你可以为新任务
-选择机器和 Agent，并从电脑、手机、平板或已安装的 PWA 打开对应的结构化对话、真实终端、
-文件、任务、笔记与通知。
+Very Happy 是一个开源 coding agent 工作区。**Very Happy Teams** 让你围绕一个目标组织
+Claude Code、Codex 和 pi：负责人拆分任务，成员并行推进，再把成果汇总回来供你验收。
+电脑与手机共享同一份进展，你可以随时进入任何成员的对话、终端和文件。
 
-它不是某一家 CLI 的浏览器换皮，也不只是远程 Shell。Very Happy 会保留任务周围的完整
-上下文：什么正在运行、Agent 改了什么、工作属于哪台机器、哪些事项需要你决策，以及中断后
-如何继续。
+## 从一个目标，到一支团队
 
-```text
-构建服务器 ─┐
-工作站     ─┼─>  统一 Web / PWA 面板  ─> 选择机器 + Agent
-外出笔记本 ─┘      会话 · 状态 · 任务 · 文件 · 终端
-```
+> “看看这个项目，找出值得改进的地方，组建团队并行推进，最后给我可验收的成果。”
 
-目前调度是显式的：每次创建会话时，由你选择目标机器和 Agent。与提供商无关的自动路由仍在
-路线图中，并非已经交付的功能。
+1. **说清目标。** 打开「团队 → 新建团队」，选择执行电脑、Git 项目和 Agent。
+2. **让负责人组织工作。** 系统启动负责人并提供官方协作指引；负责人可把独立任务委派给成员，成员也可继续拆分自己的任务。
+3. **并行推进，随时查看。** 从团队概览进入成员对话，查看任务进展、提交的结果与代码变化。
+4. **验收成果。** 检查结果，接受或退回修改；回收会保留未合并代码，不把进程退出当成任务完成。
+
+![Very Happy Teams：目标交给负责人，成员并行工作，结果汇总后验收](packages/happy-web-v2/public/architecture/agent-teams.svg)
+
+团队功能需要账号已获启用，并连接兼容且在线的 daemon。
+网页创建团队无需手动安装 skill；已有托管对话也可从「更多」中组建团队。
+每个团队当前在同一账号的一台执行电脑上运行，可配置默认 Agent、模型和并发工作数。
+普通对话和终端照常使用，团队协作按需开启。跨机器自动路由尚未提供。
+
+**[开始使用 Teams](docs/agent-teams.md)** · [了解协作架构](docs/architecture.md) · [连接第一台机器](#一条命令连接第一台机器)
 
 > [!TIP]
 > **把 Web/PWA 当作日常工作区。** CLI 只需安装一次，用来配对机器并启动后台 daemon。
@@ -57,23 +61,7 @@ Very Happy 是一个面向你所掌控的计算机与 Agent 的开放式指挥�
 > **选择适合你的部署方式。** Very Happy Cloud 提供最快的多设备接入；自托管则让你掌控
 > 运营方、访问策略、存储与备份。敏感环境请先阅读[隐私与安全模型](docs/security.md)。
 
-## 一个工作区，三个职责不同的层次
-
-<a href="docs/architecture.md">
-  <img src="packages/happy-web-v2/public/architecture/system-topology.svg" width="100%" alt="Very Happy 账号级架构：多台机器和多种 Agent runner 汇聚到同一个 Web/PWA 工作区">
-</a>
-
-<p align="center"><sub>账号级机器集群 · 显式选择机器与 RUNNER · 一个统一控制界面</sub></p>
-
-<a href="docs/architecture.md#regional-realtime-relay-plane">
-  <img src="packages/happy-web-v2/public/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy 区域实时架构：美国机器和新加坡机器分别连接最近的区域 Relay，持久控制与账号状态保持集中">
-</a>
-
-<p align="center"><sub>美国 + 新加坡机器边缘 · 中央持久状态 · 实测 RELAY RTT · 最小权限 TOKEN</sub></p>
-
-控制与数据服务器仍是持久状态的唯一事实源。延迟敏感的终端字节流、machine/session RPC 和
-已提交的结构化消息交付可以使用按 daemon 实测 RTT 选择的 operator 配置区域 Relay，兼容客户端
-仍保留中央回退路径。
+## 团队协作背后的日常工作区
 
 <table>
   <tr>
@@ -94,12 +82,6 @@ Very Happy 是一个面向你所掌控的计算机与 Agent 的开放式指挥�
     </td>
   </tr>
 </table>
-
-<a href="docs/architecture.md#structured-agent-path-and-universal-terminal-path">
-  <img src="packages/happy-web-v2/public/architecture/dual-path-runtime.svg" width="100%" alt="Very Happy 双运行路径架构：Claude Agent SDK 结构化事件与 tmux 托管的通用终端路径">
-</a>
-
-<p align="center"><sub>结构化语义 · 真实 PTY 字节流 · 可选 CLAUDE 镜像 · 有界文件交接</sub></p>
 
 终端是兼容层。它转发真实 TTY，并不关心另一端是什么品牌、甚至是什么类别的程序。某个工具能在
 终端运行，并不意味着它会自动暴露 Claude 风格的结构化事件。持久终端需要 `tmux`；可选的

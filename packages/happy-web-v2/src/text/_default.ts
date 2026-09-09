@@ -1798,6 +1798,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09v: {
+                title: 'Meet Very Happy Teams',
+                summary: 'A clearer name and guide for coding agents working together.',
+                story: 'Explore the interactive team diagram on the homepage and follow the new Teams-first documentation.',
+                naming: 'Happy Bot is now Teams. Your existing teams, conversations, and preferences stay in place.',
+            },
             sep09u: {
                 title: 'More reliable team startup recovery',
                 summary: 'pi and Codex members keep their original team launch identity.',

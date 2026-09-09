@@ -20,6 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-422 | Teams 品牌与官网核心叙事：目标驱动的 agent 团队、交互协作图、双语文档与 README | ux | Owner 2026-09-09 | done | 对外 Very Happy Teams，界面 Teams／团队；保留旧设置键与搜索别名。新协作图与 README 主视觉、Teams 优先文档，移除旧语音宣传；Web 2642、明暗中英文 390/1280 浏览器与图像解码通过；不改变执行逻辑。 |
 | B-421 | 团队 pi/Codex 启动关联 ID 持久化缺失 | bug | B-420 生产验收 | done | metadata 工厂丢弃调用方传入的 teamOperationId，影响异常启动后的准确关联；已补字段透传及真实 sessions.json 落盘回归；独立review通过，CLI2059测试及产物通过，计划CLI128。 |
 | B-420 | **可选团队协作首次使用与统一导航**：原子启动负责人、自动加载协作指引、团队成员历史层级与工作语义卡；普通会话不变 | ux | Owner 2026-09-09 | done | 见 `specs/2026-09-teams-first-use.md`；真实 pi→Codex 分派/提交/验收与 390/1280 明暗主题浏览器通过，Web 2669 / CLI 2006 / server 641 / wire 43 测试通过；abb5484f/CLI127上线、双Mac/RPC/生产验收回收通过，异常启动关联补丁见B-421。 |
 | B-410 | 最终 server 镜像依赖与锁文件一致性 | debt | 生产代理配置验收 | todo | 29e63c63 的实际模块 /repo/node_modules/fastify=5.12.3，锁文件与本地为5.8.5；新版拒绝数字trustProxy，已用精确代理白名单修复代理配置。Dockerfile.server 的 pnpm deploy --prod --legacy 阶段需追查并补最终runtime版本门禁，尚未证明漂移发生环节。 |
