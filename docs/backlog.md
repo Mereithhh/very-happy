@@ -20,7 +20,6 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-400 | PWA 下 Todo skill 链接被首页回退拦截而报404 | bug | Owner 2026-09-09 | doing | HTTP文件200不代表浏览器导航可用；SW排除skills文档，补双构建真实导航/接管回归。见 specs/2026-09-builtin-todos.md。 |
 | B-399 | PostgreSQL 迁移使用独立会话连接 | bug | Agent Teams 发布实测 | done | Prisma advisory lock 不得经过 transaction pool；迁移 child env 隔离、生产入口门禁与失败阻断回归。 |
 | B-392 | 终端 @ 字形可辨认性；另核 pi 消息黑字 | bug | Owner 2026-09-09 | doing | 已在 test 终端 jojo@mac-office 确认：DOM 为 U+0040，Maple 默认特殊字形导致误认；启用 cv01 标准符号，保持字体/字号/行高。本地真实 xterm 对比及 mutation 回归通过，已随 629bc399 发布，线上 CSS 已核对。pi 黑字属另一路径，仍未复现，不合并宣称修复。 |
 | B-398 | **官方 Agent Teams / Happy Bot**：稳定 Bot 身份、共享 skill 激活、多 coding agent 协作与递归委派，统一任务/消息/恢复/回收并集成 Web | feat | Owner 2026-09-09 | doing | PR #285 / #288 已合入；Server/Web 70eb18e9、CLI 0.2.125 已发布，个人账号已启用，两台 Mac 已切换。生产 pi/Claude/Codex 与办公室 pi 的提交→合并→验收→回收通过，滴答真实闭环通过。官方 10/30 分钟 schedules 已运行；剩余 48 小时观察和旧个人路由最终退役，见 spec 上线记录。 |
@@ -166,6 +165,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-400 | PWA 下 Todo skill 链接被首页回退拦截而报404 | bug | Owner 2026-09-09 | done | PR #291 / 65e795ce 已发布；SW排除skills文档。双构建及真实生产旧→新controller接管、新标签页文档导航均通过，已补中英文Changelog及事故记录。 |
 | B-394 | 内置 Todo 开箱即用与可选外部来源 | feat/ux | Owner 2026-09-09 | done | PR #287 / 6ebc080c 已发布；账号KV/CAS，真实生产CRUD/冲突/排序、页面编辑/完成/恢复与外部来源验收通过，临时任务已清理。公开AI接入skill可用，私人provider已适配；见 specs/2026-09-builtin-todos.md 发布证据。 |
 | B-389 | 消息操作与编辑重跑：复制、引用、精确回退分支与移动端可发现性 | feat/ux | Owner 2026-09-09 | done | 已随 PR #284 / 629bc399 / CLI 0.2.124 发布，Claude/Codex 真实续接及源历史不变验收通过； `specs/2026-09-message-actions-and-rewind.md`；原会话保留，文件副作用不回滚，旧 daemon 不伪成功。 |
 | B-390 | 侧栏默认不分组、拖拽排序与分组限制提示 | ux | Owner 2026-09-09 | done | 修正 workspace 默认值；保留已有选择，手机说明菜单排序。 已随 629bc399 发布。 |
