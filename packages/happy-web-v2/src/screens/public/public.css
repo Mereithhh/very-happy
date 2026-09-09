@@ -428,3 +428,12 @@
   .pub-hero-product { transform: none; transition: none; }
   .pub-page main > section:not(.pub-hero) { animation: none; }
 }
+
+/* The hub leads the product story; Teams follows as the next section. */
+.hub-hero .pub-hero-copy h1.pub-fleet-title { font-size: clamp(46px, 5.05vw, 72px); letter-spacing: -.035em; line-height: 1.04; }
+.hub-hero .pub-hero-copy h1.pub-fleet-title.is-zh { line-height: 1.2; }
+.hub-hero .pub-hero-copy h1 span { background: none; color: var(--text-dim); animation: none; }
+
+/* clip + auto computes to hidden + auto, which lets focus scroll the decorative
+   overflow horizontally. The landing page scrolls with the document instead. */
+.pub-page.pub-landing { overflow: clip visible; }

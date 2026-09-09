@@ -57,7 +57,7 @@ export function DocsScreen() {
     return <div className="pub-page"><PublicHeader /><main id="main-content" className="docs-missing"><div className="eyebrow">{copy.docs.missingEyebrow}</div><h1>{copy.docs.missingTitle}</h1><p>{copy.docs.missingBody}</p><Link className="pub-button" to="/docs"><ArrowLeft size={15} /> {copy.docs.home}</Link></main><PublicFooter /></div>;
   }
 
-  if (!slug) return <Navigate replace to="/docs/agent-teams" />;
+  if (!slug) return <Navigate replace to="/docs/architecture" />;
 
   return (
     <div className="pub-page docs-page">

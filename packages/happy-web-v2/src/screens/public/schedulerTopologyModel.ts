@@ -36,7 +36,7 @@ export const SCHEDULER_LANE_DESCRIPTIONS: Record<SchedulerLaneId, string> = {
   cli: 'CLI + daemon · required machine bridge',
   api: 'API + webhooks · trusted server edge',
   mcp: 'MCP tools · runner-specific surface',
-  teams: 'Agent Teams · same-account, single-machine preview',
+  teams: 'Agent Teams · same-account, single-machine collaboration',
 };
 
 export function schedulerTopologyReducer(
