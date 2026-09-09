@@ -1,7 +1,9 @@
+import { businessAuditEnabled } from '@/app/audit/producer';
+import { auditStoredMessages } from '@/app/audit/sessionAudit';
 import { enforceAccountWriteRate, lockAccountResources, reserveAccountMessages } from '@/app/api/resourceLimits';
 import { utf8StringSchema } from '@/app/api/resourceSchemas';
 import { db } from '@/storage/db';
-import { inTx } from '@/storage/inTx';
+import { inTx, afterTx } from '@/storage/inTx';
 import { allocateSessionSeqBatch } from '@/storage/seq';
 import { z } from 'zod';
 
@@ -45,6 +47,7 @@ export async function storeSessionMessages(options: {
     createdMessages: StoredSessionMessageWithUpdate[];
 }> {
     const parsedMessages = sessionMessageWritesSchema.parse(options.messages);
+    const auditEnabled = businessAuditEnabled();
     const firstByLocalId = new Map<string, SessionMessageWrite>();
     const messagesWithoutLocalId: SessionMessageWrite[] = [];
     for (const message of parsedMessages) {
@@ -58,8 +61,10 @@ export async function storeSessionMessages(options: {
         // lock is O(1): quota reads counters maintained by a database trigger,
         // never an aggregate scan of the account's message history.
         await lockAccountResources(tx, options.accountId);
-        await tx.$queryRawUnsafe(
-            `SELECT "id" FROM "Session"
+        // The disabled path retains the original lightweight lock query.
+        const columns = auditEnabled ? '"id", "metadata", "dataEncryptionKey"' : '"id"';
+        const auditSnapshots = await tx.$queryRawUnsafe<Array<{ metadata: string; dataEncryptionKey: Uint8Array | null }>>(
+            `SELECT ${columns} FROM "Session"
              WHERE "id" = $1 AND "accountId" = $2
              FOR UPDATE`,
             options.sessionId,
@@ -118,6 +123,10 @@ export async function storeSessionMessages(options: {
             updateSeq: updateSeqs[index],
         }));
 
+        if (auditEnabled && auditSnapshots[0] && createdMessages.length > 0) {
+            const snapshot = auditSnapshots[0];
+            afterTx(tx, () => auditStoredMessages(options.accountId, options.sessionId, snapshot, createdMessages));
+        }
         return {
             messages: [...existing, ...createdMessages].sort((left, right) => left.seq - right.seq) as StoredSessionMessage[],
             createdMessages,

@@ -1,3 +1,4 @@
+import { auditLogin } from '@/app/audit/requestAudit';
 import { z } from 'zod';
 import { type Fastify } from '../types';
 import * as privacyKit from 'privacy-kit';
@@ -101,7 +102,9 @@ export function authRoutes(app: Fastify) {
         } else {
             await db.account.update({ where: { id: user.id }, data: { updatedAt: new Date() } });
         }
-        return reply.send({ success: true, token: await auth.createToken(user.id) });
+        const token = await auth.createToken(user.id);
+        auditLogin(request, user.id, 'public-key');
+        return reply.send({ success: true, token });
     });
 
     app.post('/v1/auth/request', {
@@ -165,9 +168,11 @@ async function handlePairingRequest(kind: PairingKind, request: any, reply: any)
     if (existing.response && existing.responseAccountId) {
         const claimed = await authorizePairing(kind, publicKeyHex, request.body.claimSecret);
         if (!claimed || typeof claimed === 'string') return pairingError(reply, claimed === 'expired' ? 410 : 404, claimed || 'not-found');
+        const token = await auth.createToken(claimed.accountId, kind === 'terminal' ? { session: claimed.id } : undefined);
+        auditLogin(request, claimed.accountId, `pairing-${kind}`);
         return reply.send({
             state: 'authorized', protocolVersion: 3, claimSecretRequired: true,
-            token: await auth.createToken(claimed.accountId, kind === 'terminal' ? { session: claimed.id } : undefined),
+            token,
             response: claimed.response,
         });
     }

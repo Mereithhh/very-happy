@@ -15,6 +15,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-09-business-audit',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep09m.title',
+    summaryKey: 'changelog.releases.sep09m.summary',
+    itemKeys: ['changelog.releases.sep09m.events', 'changelog.releases.sep09m.isolation'],
+  },
+  {
     id: '2026-09-09-cli-auto-update-notice',
     date: '2026-09-09',
     buildVersion: __APP_VERSION__,

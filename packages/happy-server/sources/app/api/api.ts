@@ -1,3 +1,5 @@
+import { startBusinessAudit, stopBusinessAudit } from '@/app/audit/producer';
+import { auditLoginFailure } from '@/app/audit/requestAudit';
 import { teamRoutes } from './routes/teamRoutes';
 import fastify from "fastify";
 import { log, logger } from "@/utils/log";
@@ -60,6 +62,9 @@ export async function startApi(opts: StartApiOptions = {}) {
         bodyLimit: configuredBodyLimit === 0 ? Number.MAX_SAFE_INTEGER : configuredBodyLimit,
         trustProxy: opts.trustProxy ?? resolveTrustProxy(process.env.TRUST_PROXY),
     });
+    startBusinessAudit();
+    app.addHook('onResponse', async (request, reply) => { auditLoginFailure(request, reply.statusCode); });
+    app.addHook('onClose', async () => { stopBusinessAudit(); });
     app.register(import('@fastify/cors'), {
         origin: '*',
         allowedHeaders: '*',

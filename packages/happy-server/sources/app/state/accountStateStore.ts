@@ -1,3 +1,5 @@
+import { businessAuditEnabled, publishAudit } from '@/app/audit/producer';
+import { sessionAuditPayload } from '@/app/audit/sessionAudit';
 import type { Machine, Prisma, Session } from '@prisma/client';
 import {
     assertAccountResourceQuota,
@@ -6,7 +8,7 @@ import {
     lockAccountResources,
 } from '@/app/api/resourceLimits';
 import { base64BytesSchema, utf8StringSchema } from '@/app/api/resourceSchemas';
-import { inTx } from '@/storage/inTx';
+import { inTx, afterTx } from '@/storage/inTx';
 import { decodePrismaBytes } from '@/storage/prismaBytes';
 import { allocateUserSeq } from '@/storage/seq';
 import { z } from 'zod';
@@ -153,6 +155,9 @@ export async function createSessionWithQuota(options: {
                 dataEncryptionKey: parsed.dataEncryptionKey ? decodePrismaBytes(parsed.dataEncryptionKey) : undefined,
             },
         });
+        if (businessAuditEnabled()) afterTx(tx, () => publishAudit({
+            kind: 'session.created', accountId: options.accountId, sessionId: session.id, payload: sessionAuditPayload(session),
+        }));
         return { kind: 'success' as const, session, updateSeq, created: true };
     });
 }
