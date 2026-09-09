@@ -150,7 +150,7 @@
 .teams-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 12px 0; color: var(--text-dim); }
 .teams-tabs button[aria-current] { color: var(--text); border-bottom-color: var(--text); }
 .teams-work-actions { margin-top: 20px; justify-content: flex-end; }
-.teams-talk { box-sizing: border-box; padding: 10px 16px; min-height: 32px; border-radius: 6px; text-decoration: none; font-size: 14px; }
+.teams-talk { box-sizing: border-box; padding: 5px 10px; min-height: 32px; border-radius: var(--r-sm); text-decoration: none; font-size: var(--fs-13); }
 .teams-screen .teams-members { margin-top: 20px; border-top: 0; padding-top: 0; }
 .teams-screen h2 { font-size: var(--fs-15); font-weight: 600; margin: 10px 0 12px; }
 .teams-screen h2 small { font-size: 13px; font-weight: 400; margin-left: 8px; }

@@ -318,3 +318,25 @@
 .fsb--full > .fsb-viewer-head {
   padding-top: max(var(--sp-1), env(safe-area-inset-top));
 }
+
+/* The directory stays beside a preview when the actual pane has room. */
+.fsb-shell { display:flex; flex:1; min-width:0; min-height:0; container-type:inline-size; }
+.fsb-split { display:flex; flex:1; min-width:0; min-height:0; width:100%; }
+.fsb-split > .fsb { min-width:0; }
+.fsb-split > .fsb-viewer { min-width:0; flex:1; }
+.fsb-shell.has-preview .fsb-split > .fsb { flex:0 0 240px; border-right:1px solid var(--line); }
+.fsb-tree { display:flex; flex-direction:column; min-height:0; height:100%; }
+.fsb-tree-list { flex:1; min-height:0; overflow:auto; }
+.fsb-filter { flex:none; display:flex; align-items:center; gap:var(--sp-2); margin:var(--sp-2); padding:var(--sp-1) var(--sp-2); border:1px solid var(--line); border-radius:var(--r-sm); color:var(--text-faint); }
+.fsb-filter input { min-width:0; width:100%; background:transparent; border:0; color:var(--text); font:inherit; }
+.fsb-tree-row { gap:var(--sp-2); text-align:left; }
+.fsb-tree-row > svg, .fsb-tree-spacer { flex:none; }
+.fsb-tree-spacer { width:13px; }
+.fsb-tree-row.is-selected { background:var(--bg-2); color:var(--text); }
+@container (max-width:619px) { .fsb-shell.has-preview .fsb-split > .fsb { display:none; } }
+@media (pointer:coarse), (max-width:600px) { .fsb-filter input { font-size:17px; min-height:36px; } }
+
+.fsb-shell.fsb--full > .fsb-split > .fsb > .fsb-bar,
+.fsb-shell.fsb--full > .fsb-split > .fsb-viewer > .fsb-viewer-head { padding-top:max(var(--sp-1),env(safe-area-inset-top)); }
+
+.fsb-viewer-body > .cv { border:0; border-radius:0; background:transparent; }

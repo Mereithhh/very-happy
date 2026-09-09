@@ -584,6 +584,7 @@ export type Metadata = {
 };
 
 export type AgentState = {
+  contextUsage?: import('@slopus/happy-wire').ContextUsage | null
   controlledByUser?: boolean | null | undefined
   requests?: {
     [id: string]: {

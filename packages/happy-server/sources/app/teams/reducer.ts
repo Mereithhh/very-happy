@@ -44,7 +44,7 @@ export function occupiedTeamWorkSlots(state: TeamState, includePending = false):
 }
 
 export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
-    requireTeam(input.archivedAt === undefined, 'team_archived');
+    requireTeam(input.archivedAt === undefined || ['archive', 'claim-operation', 'complete-operation', 'fail-operation', 'reconcile-operation', 'session-event'].includes(action.type), 'team_archived');
     const s = structuredClone(input);
     const { now, id } = ctx;
     const currentBot = actor.kind === 'agent' ? s.bots.find(b => b.id === actor.botId) : undefined;
@@ -107,10 +107,24 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
         }
         case 'archive': {
             owner();
-            requireTeam(!(s.schedules ?? []).some(schedule => ['active', 'paused'].includes(schedule.status)), 'team_has_active_schedules');
-            requireTeam(!s.tasks.some(t => !['done', 'cancelled'].includes(t.status)), 'team_has_active_tasks');
-            requireTeam(!s.operations.some(o => ['pending', 'claimed', 'unknown'].includes(o.status) || (o.status === 'failed' && o.error !== 'task_closed_before_spawn')), 'team_has_unresolved_operations');
-            requireTeam(!s.tasks.some(t => ['pending', 'failed'].includes(t.cleanup)), 'team_cleanup_unfinished');
+            if (s.archivedAt !== undefined) break;
+            for (const schedule of [...(s.schedules ?? [])]) {
+                if (['active', 'paused'].includes(schedule.status)) applyScheduleAction(s, actor, { type: 'schedule-cancel', scheduleId: schedule.id, version: schedule.version }, now, id);
+            }
+            // Close every task before cleanup so shared bots have no remaining work.
+            for (const task of s.tasks) {
+                if (!['done', 'cancelled'].includes(task.status)) {
+                    task.status = 'cancelled';
+                    const attempt = task.attempts.find(a => a.id === task.currentAttemptId);
+                    if (attempt) attempt.status = 'cancelled';
+                }
+            }
+            for (const message of s.messages) if (message.deliveredAt === null) message.cancelledAt ??= now;
+            for (const task of s.tasks) {
+                const bot = s.bots.find(b => b.id === task.assigneeBotId);
+                const existingStop = s.operations.some(o => o.type === 'stop' && o.botId === bot?.id && o.generation === bot?.generation && o.status !== 'completed');
+                if (!existingStop) cleanup(task);
+            }
             s.archivedAt = now;
             break;
         }

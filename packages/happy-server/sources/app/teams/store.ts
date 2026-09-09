@@ -104,11 +104,11 @@ export async function listTeams(accountId: string, machineId?: string): Promise<
     assertTeamsEnabled(accountId);
     return inTx(async tx => {
         const rows = machineId
-            ? await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "machineId"=${machineId} AND "state"->>'archivedAt' IS NULL ORDER BY "createdAt"`
+            ? await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "machineId"=${machineId} ORDER BY "createdAt"`
             : await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL ORDER BY "createdAt"`;
         const teams: TeamState[] = [];
         for (const row of rows) teams.push((await load(tx, row.id, accountId)).state);
-        return teams;
+        return teams.filter(team => team.archivedAt === undefined || (machineId && team.operations.some(op => ['pending', 'claimed', 'unknown', 'failed'].includes(op.status) && op.error !== 'task_closed_before_spawn')));
     });
 }
 export async function readTeam(teamId: string, auth: { accountId: string } | { token: string }): Promise<TeamState> {

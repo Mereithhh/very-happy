@@ -36,3 +36,28 @@ describe('official pi bridge', () => {
         } finally { if (priorMode === undefined) delete process.env.HAPPY_PERMISSION_MODE; else process.env.HAPPY_PERMISSION_MODE = priorMode; if (priorSession === undefined) delete process.env.HAPPY_SESSION_ID; else process.env.HAPPY_SESSION_ID = priorSession; vi.unstubAllGlobals(); if (previous === undefined) delete process.env.HAPPY_MCP_URL; else process.env.HAPPY_MCP_URL = previous; }
     });
 });
+
+it('reports current context on runtime events, including unknown after compaction', async () => {
+    const before = {mcp:process.env.HAPPY_MCP_URL,context:process.env.HAPPY_CONTEXT_USAGE_URL};
+    process.env.HAPPY_MCP_URL = 'http://127.0.0.1:12345';
+    process.env.HAPPY_CONTEXT_USAGE_URL = 'http://127.0.0.1:12345/runtime-context/test';
+    const handlers: Record<string, any> = {};
+    const reports: any[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+        const request = JSON.parse(options.body);
+        if (String(url).includes('/runtime-context/')) { reports.push(request); return new Response(null,{status:204}); }
+        return new Response(JSON.stringify({id:request.id,result:request.method === 'tools/list' ? {tools:[]} : {}}),{headers:{'content-type':'application/json'}});
+    }));
+    try {
+        const factory = new Function('loadModule', PI_TEAMS_EXTENSION.replace('export default ', 'return ').replaceAll('import(', 'loadModule('))((specifier:string)=>import(specifier));
+        await factory({on:(name:string,handler:any)=>{handlers[name]=handler;},registerTool:vi.fn()});
+        await handlers.turn_end({}, {getContextUsage:()=>({tokens:32768,contextWindow:131072})});
+        await handlers.session_compact({}, {getContextUsage:()=>({tokens:null,contextWindow:131072})});
+        await handlers.model_select({}, {getContextUsage:()=>undefined,model:{contextWindow:1000000}});
+        expect(reports).toEqual([{source:'pi',tokens:32768,contextWindow:131072},{source:'pi',tokens:null,contextWindow:131072},{source:'pi',tokens:null,contextWindow:1000000}]);
+    } finally {
+        vi.unstubAllGlobals();
+        if(before.mcp===undefined)delete process.env.HAPPY_MCP_URL;else process.env.HAPPY_MCP_URL=before.mcp;
+        if(before.context===undefined)delete process.env.HAPPY_CONTEXT_USAGE_URL;else process.env.HAPPY_CONTEXT_USAGE_URL=before.context;
+    }
+});

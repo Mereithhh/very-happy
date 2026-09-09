@@ -49,6 +49,22 @@ beforeEach(() => {
 afterEach(() => { workers.forEach(w => w.stop()); workers = []; rmSync(home, { recursive: true, force: true }); });
 
 describe('daemon team effect recovery', () => {
+    it('settles archived teams without deleting retained worktrees', async () => {
+        const operation = {...op(), type:'stop' as const, sessionId:'session1'};
+        setup(operation);
+        const original = mocks.get.getMockImplementation()!;
+        mocks.get.mockImplementation(async (...args) => {
+            const result = await original(...args);
+            if (result.data.team) result.data.team.archivedAt = 10;
+            return result;
+        });
+        const worker = start(); await settled(worker);
+        expect(stopAndWait).toHaveBeenCalledWith('session1');
+        expect(mocks.archive).toHaveBeenCalledWith('session1');
+        expect(mocks.remove).not.toHaveBeenCalled();
+        expect(readReceipt(home, 'op1')?.phase).toBe('completed');
+        expect(mocks.get).toHaveBeenCalledWith('/v1/teams/operations', expect.objectContaining({params:expect.objectContaining({teamArchiveVersion:1})}));
+    });
     it('injects the official skill and selected model into the first managed task message', async () => {
         setup({ ...op(), model: 'provider/model', teamLaunchVersion: 1 });
         const worker = start(); await settled(worker);

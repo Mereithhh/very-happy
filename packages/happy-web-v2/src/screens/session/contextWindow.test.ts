@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    composerContextUsage,
     DEFAULT_CONTEXT_WINDOW,
     LONG_CONTEXT_WINDOW,
     contextPercentOf,
@@ -35,6 +36,7 @@ describe('contextWindowFor', () => {
     });
 
     it('模型未知时返回 null 而不是猜一个分母', () => {
+        for (const model of ['gpt-5-codex', 'custom-model', 'qwen-code']) expect(contextWindowFor(model)).toBeNull();
         expect(contextWindowFor(null)).toBeNull();
         expect(contextWindowFor(undefined)).toBeNull();
         expect(contextWindowFor('')).toBeNull();
@@ -65,4 +67,12 @@ describe('contextPercentOf', () => {
         expect(contextPercentOf(1000, 0)).toBeNull();
         expect(contextPercentOf(1000, -1)).toBeNull();
     });
+});
+
+it('uses pi runtime occupancy, including unknown after compaction, without falling back to cumulative messages', () => {
+    const stale = {contextSize:999999,model:'claude-opus-5'};
+    expect(composerContextUsage(true, undefined, stale)).toMatchObject({tokens:null,window:null});
+    expect(composerContextUsage(true,{source:'pi',tokens:null,contextWindow:131072,updatedAt:1},stale)).toMatchObject({tokens:null,window:131072});
+    expect(composerContextUsage(true,{source:'pi',tokens:32768,contextWindow:131072,updatedAt:2},stale)).toMatchObject({tokens:32768,window:131072,estimated:true});
+    expect(composerContextUsage(false, undefined, {contextSize:1234,model:'claude-opus-5[1m]'})).toMatchObject({tokens:1234,window:1000000,estimated:false});
 });

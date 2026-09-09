@@ -28,7 +28,7 @@ export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAll
   const agentTitle = subagentMessage?.kind === 'tool-call' ? buildSubagentSummary(subagentMessage).title : null;
   const identity = JSON.stringify(['session-tools', sessionId, session?.metadata?.machineId, session?.metadata?.path]);
   const [tools, updateTools] = useWorkspaceView(identity);
-  const filesTab = useRef<SessionFilesTab>('changed');
+  const filesTab = useRef<SessionFilesTab>('browse');
   const notes = useNotesWorkspace(visible && panel === 'notes');
   const filesActive = visible && panel !== 'btw' && panel !== 'subagent' && panel !== 'notes' && panel !== 'web';
   if (filesActive) filesTab.current = panel;

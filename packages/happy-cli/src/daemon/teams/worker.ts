@@ -125,6 +125,8 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     await deps.stopAndWait(op.sessionId);
                     await archiveSession(op.sessionId);
                 }
+                // Archiving hides a team, it never authorizes deleting its worktrees.
+                if (team.archivedAt !== undefined) { await complete(op, receipt); return; }
                 // Cleanup targets the exact wrapper's original resource receipt, never arbitrary paths.
                 // A return creates a new attempt while keeping the same wrapper/worktree.
                 // Resource ownership follows that exact binding, not the latest attempt id.
@@ -209,7 +211,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 const status = axios.isAxiosError(error) ? error.response?.status : undefined;
                 if (status !== 404) deps.log('Teams schedule advancement unavailable; regular reconciliation continues');
             }
-            const { data } = await http.get<{ operations: TeamOperation[]; teams: TeamState[] }>('/v1/teams/operations', { params: { machineId: deps.machineId, schedulesVersion: 1, teamLaunchVersion: 1 } });
+            const { data } = await http.get<{ operations: TeamOperation[]; teams: TeamState[] }>('/v1/teams/operations', { params: { machineId: deps.machineId, schedulesVersion: 1, teamLaunchVersion: 1, teamArchiveVersion: 1 } });
             knownSessionIds = new Set((data.teams ?? []).flatMap(team => team.bots.flatMap(bot => bot.sessionId ? [bot.sessionId] : [])));
             // Limit simultaneous launch IO; a running model does not occupy this polling slot.
             for (const op of data.operations) {

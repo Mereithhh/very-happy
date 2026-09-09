@@ -29,7 +29,9 @@ export function contextWindowFor(model: string | null | undefined): number | nul
     if (!model || typeof model !== 'string') return null;
     const id = model.trim().toLowerCase();
     if (!id) return null;
-    return /(\[1m\]|[-_:]1m\b|[-_:]1m$)/.test(id) ? LONG_CONTEXT_WINDOW : DEFAULT_CONTEXT_WINDOW;
+    if (/(\[1m\]|[-_:]1m\b|[-_:]1m$)/.test(id)) return LONG_CONTEXT_WINDOW;
+    // A non-Claude model ID does not imply a 200k window. Pi uses runtime capacity.
+    return /^(claude[-_:]|(?:opus|sonnet|haiku)[-_:])/.test(id) ? DEFAULT_CONTEXT_WINDOW : null;
 }
 
 /**
@@ -40,4 +42,10 @@ export function contextPercentOf(contextSize: number, window: number | null): nu
     if (window === null || !(window > 0)) return null;
     if (!(contextSize > 0)) return 0;
     return Math.max(0, Math.min(100, Math.round((contextSize / window) * 100)));
+}
+
+/** Pi reports current occupancy through its runtime; message/billing totals are not a fallback. */
+export function composerContextUsage(isPi: boolean, runtime: import('@slopus/happy-wire').ContextUsage | null | undefined, message: {contextSize: number; model?: string | null} | null | undefined) {
+    if (isPi) return { tokens: runtime?.tokens ?? null, window: runtime?.contextWindow ?? null, estimated: true };
+    return { tokens: message?.contextSize ?? null, window: contextWindowFor(message?.model), estimated: false };
 }

@@ -72,7 +72,7 @@ import {
 import { Modal } from '@/modal';
 import { Spinner, useToast } from '@/ui';
 import { abortOutcomeForError, type AbortOutcome } from './abortOutcome';
-import { contextPercentOf, contextWindowFor } from './contextWindow';
+import { contextPercentOf, composerContextUsage } from './contextWindow';
 import { formatTokens } from './format';
 import { getAllCommands } from '@/sync/suggestionCommands';
 import { filterSlashSuggestions, slashCommandText } from './slashSuggestions';
@@ -279,12 +279,12 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         running: metadata?.currentModelCode,
     });
     // context meter — always visible when we have a usage snapshot.
-    const contextSize = usage?.contextSize ?? 0;
-    // 分母按 assistant 消息回传的**真实**模型定（B-135）。拿不到模型就不显示百分比
-    // ——宁可只给 token 绝对数，也不给一个看着正常却是错的百分比。
-    const contextWindow = contextWindowFor(usage?.model);
-    const percentUsed = contextPercentOf(contextSize, contextWindow);
-    const contextTokens = formatTokens(contextSize);
+    const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage);
+    const contextKnown = context.tokens !== null;
+    const contextSize = context.tokens ?? 0;
+    const contextWindow = context.window;
+    const percentUsed = contextKnown ? contextPercentOf(contextSize, contextWindow) : null;
+    const contextTokens = contextKnown ? `${isPiAgent(flavor) ? '≈' : ''}${formatTokens(contextSize)}` : '—';
     const contextTotal = contextWindow === null ? null : formatTokens(contextWindow);
     const meterTone = percentUsed === null ? 'ok' : percentUsed >= 95 ? 'crit' : percentUsed >= 90 ? 'warn' : 'ok';
     const meterTitle = `${contextWindow === null ? contextSize.toLocaleString() : `${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`} tokens`;
@@ -928,7 +928,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             </div>
 
             <div className="ci-status">
-                <div className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={meterTitle}>
+                <div className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={contextKnown ? meterTitle : undefined}>
                     <Gauge size={14} aria-hidden />
                     <span>{percentUsed === null ? t('session.chat.contextUsage') : t('session.chat.contextMeter', { percent: Math.round(percentUsed) })}</span>
                     <span className="ci-meter-tokens">{contextTotal === null ? contextTokens : `${contextTokens} / ${contextTotal}`} tokens</span>

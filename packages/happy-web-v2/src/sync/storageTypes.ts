@@ -1,3 +1,4 @@
+import { ContextUsageSchema } from '@slopus/happy-wire';
 import { z } from "zod";
 
 //
@@ -127,6 +128,7 @@ export const MetadataSchema = z.object({
 export type Metadata = z.infer<typeof MetadataSchema>;
 
 export const AgentStateSchema = z.object({
+    contextUsage: ContextUsageSchema.nullish(),
     controlledByUser: z.boolean().nullish(),
     requests: z.record(z.string(), z.object({
         tool: z.string(),

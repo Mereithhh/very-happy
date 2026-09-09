@@ -58,7 +58,7 @@ export const en = {
 
         archive: "Archive team",
         archived: "This team is archived and read-only",
-        archiveDescription: "Archive after all tasks, execution operations, and cleanup are resolved. Records remain available at this link.",
+        archiveDescription: "Archiving cancels unfinished tasks and schedules and stops team-managed sessions. Attached sessions, working directories and history are retained. Offline machines finish cleanup when they reconnect.",
         activeTasks: "Complete or cancel the remaining tasks first.",
         unresolvedOperations: "Resolve the outstanding execution operations first.",
         cleanupUnfinished: "Resource cleanup is still unfinished.",
@@ -1827,6 +1827,15 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10a: {
+                title: "A tidier workspace, clearer context usage",
+                summary: "Refinements to the new workspace based on everyday use.",
+                layout: "Processing status aligns with the composer. Search moves to the sidebar header; the new-session menu opens directly below its button.",
+                files: "Files now opens the directory browser, with expandable folders, filtering of loaded files and a side-by-side preview when space allows.",
+                teams: "Archive directly from the team header: unfinished tasks and schedules are cancelled, managed sessions stop and working directories are retained. Archival cleanup requires the updated CLI. The lead-chat action is more compact.",
+                context: "Pi context usage uses the runtime's current estimate and actual model capacity. Unreported or post-compaction usage shows —. Other unknown models no longer assume a 200k window. Start a new pi session after updating the CLI to enable reporting.",
+            },
+
             sep10: {
                 title: 'A new workspace, inspired by Codex',
                 summary: 'More room for your work, with the Very Happy identity.',
