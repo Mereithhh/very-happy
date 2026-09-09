@@ -89,7 +89,7 @@ export async function createTeam(accountId: string, input: { name: string; machi
         }
         const count = await tx.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL`;
         requireTeam(Number(count[0].count) < 32, 'team_limit', 429);
-        const team: TeamState = { id: teamId, name: input.name, machineId: input.machineId, version: 0, bots: [], tasks: [], messages: [], operations: [], createdAt: Date.now(), ...(input.launch ? { creationLaunch: input.launch } : {}) };
+        const team: TeamState = { permissionMode: 'bypassPermissions', id: teamId, name: input.name, machineId: input.machineId, version: 0, bots: [], tasks: [], messages: [], operations: [], createdAt: Date.now(), ...(input.launch ? { creationLaunch: input.launch } : {}) };
         const state = JSON.stringify({ ...team, messages: undefined, operations: undefined });
         await tx.$executeRaw`INSERT INTO "AgentTeam" ("id","accountId","machineId","state") VALUES (${team.id},${accountId},${team.machineId},${state}::jsonb)`;
         if (input.launch) {

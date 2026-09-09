@@ -20,6 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-440 | 新建团队默认免审批执行 | ux | Owner 2026-09-10 | doing | 创建时显式保存 bypassPermissions，负责人和后续分派继承；保留历史默认、用户选择与操作快照，创建前说明。见 specs/2026-09-team-execution-preferences.md。 |
 | B-437 | 排查发布切换叠加网络恢复后的中央 RPC 多连接超时 | bug | B-436 发布验收 | open | 一次事件：mac-office 心跳正常、机器返回响应，中央通道连续 2 次超时且日志提示多个 RPC sockets；网页优先使用的区域通道成功。按 launchd 流程重新注册 daemon 后中央/区域均成功，未改 CLI。尚未定位多连接与回执丢失根因，不能将重连视为永久修复；证据见 specs/2026-09-onboarding-feedback.md 发布验收。 |
 | B-435 | 修复新版 loading 对齐、团队归档与操作密度、侧栏菜单、pi 用量和默认文件浏览器 | bug | Owner 2026-09-10 | done | PR #322；Web/server 0839dfd5a、CLI 0.2.131 已发布。完整门禁与六项跨平台冒烟通过；生产 18 项页面检查、mac-office launchd/版本/文件 RPC 通过。Pi 当前上下文需新版 CLI 新会话；归档保留工作目录与用户接入会话。见 specs/2026-09-workspace-followup.md。 |
 | B-430 | 对话阅读、命令高亮、输入框、统一 relay 详情与权限模式文案 | ux | Owner 2026-09-09 | done | Web 展示与说明；正文 16px/1.7、命令 Shiki 高亮、双行 composer、共用 relay 弹层与自动执行文案。2673 测试、tsc/build、明暗 390/1280 真实浏览器与 CSS 测量通过，3/3 mutation 捕获。PR #315。 |

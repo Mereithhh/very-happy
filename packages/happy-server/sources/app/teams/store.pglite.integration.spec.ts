@@ -29,6 +29,7 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         const input = { name: 'T', machineId, requestId: 'create-1' };
         const t = await store.createTeam(accountId, input);
         expect((await store.createTeam(accountId, input)).id).toBe(t.id);
+        expect((await store.readTeam(t.id, { accountId })).permissionMode).toBe('bypassPermissions');
         await expect(store.readTeam(t.id, { accountId: 'someone-else' })).rejects.toMatchObject({ code: 'team_not_found' });
     });
     it('atomically creates one lead, goal, and operation and compares the full launch on retry', async () => {
@@ -39,6 +40,21 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         expect((await store.readTeam(first.id, { accountId })).operations[0].id).toBe(first.operations[0].id);
         await expect(store.createTeam(accountId, { ...input, launch: { ...input.launch, directory: '/different' } })).rejects.toMatchObject({ code: 'request_id_conflict' });
         await expect(store.createTeam(accountId, { ...input, launch: undefined })).rejects.toMatchObject({ code: 'request_id_conflict' });
+    });
+    it.each(['claude', 'codex', 'pi-acp'] as const)('persists no-approval startup for %s and preserves explicit choices on retries', async assistant => {
+        const input = { name: `Default ${assistant}`, machineId, requestId: `default-${assistant}`, launch: { goal: 'Check the project', directory: '/repo', assistant } };
+        const team = await store.createTeam(accountId, input);
+        const stored = await store.readTeam(team.id, { accountId });
+        expect(stored.permissionMode).toBe('bypassPermissions');
+        expect(stored.operations[0]).toMatchObject({ assistant, permissionMode: 'bypassPermissions' });
+        await store.actOnTeam(team.id, { accountId }, { requestId: 'delegate-auto', action: { type: 'delegate', goal: 'Check tests', acceptance: ['Tests checked'], directory: '/repo' } });
+        expect((await store.readTeam(team.id, { accountId })).operations.at(-1)?.permissionMode).toBe('bypassPermissions');
+        await store.actOnTeam(team.id, { accountId }, { requestId: 'choose-approval', action: { type: 'set-permission-mode', permissionMode: 'default' } });
+        const retry = await store.createTeam(accountId, input);
+        expect(retry.permissionMode).toBe('default');
+        expect(retry.operations.every(op => op.permissionMode === 'bypassPermissions')).toBe(true);
+        await store.actOnTeam(team.id, { accountId }, { requestId: 'delegate-confirmed', action: { type: 'delegate', goal: 'Review results', acceptance: ['Results reviewed'], directory: '/repo' } });
+        expect((await store.readTeam(team.id, { accountId })).operations.at(-1)?.permissionMode).toBe('default');
     });
     it('does not memoize a full member queue and permits the exact claim once capacity increases', async () => {
         const team = await store.createTeam(accountId, { name: 'Queue', machineId });

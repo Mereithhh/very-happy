@@ -1827,6 +1827,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10e: {
+                title: 'Teams start without approval interruptions',
+                summary: 'New teams use no-approval mode by default.',
+                default: 'The lead and newly delegated members inherit the team’s no-approval execution mode.',
+                control: 'Change the mode in team settings. Existing teams, running sessions and queued work retain their selected permissions.',
+            },
             sep10d: {
                 title: 'Lighter conversation bubbles',
                 summary: 'Cleaner user messages, with more comfortable reading and mobile controls.',

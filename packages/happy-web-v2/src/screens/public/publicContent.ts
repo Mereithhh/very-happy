@@ -91,7 +91,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
           "items": [
             "Teams and ordinary conversations share your history. Select a team for its progress or expand it and select a member to open that conversation. Hide the Teams entry in Appearance settings if you do not use it.",
             "Delegation includes a goal, acceptance criteria, working directory, and agent. A teammate can delegate child tasks within its assignment.",
-            "Choose No approvals in team execution settings for new agents to run without routine prompts, or Ask when needed to retain normal approvals. Existing sessions and queued operations keep their current mode. Open the linked session to inspect work; team messages use expandable cards. Delivery is not proof that the agent processed a message.",
+            "New teams default to No approvals for the lead and newly delegated members. Choose Ask when needed in team settings to enable routine approvals. Existing teams, sessions and queued operations keep their current mode. Open the linked session to inspect work; team messages use expandable cards. Delivery is not proof that the agent processed a message.",
             "A submitted result still needs acceptance. Accept, return for changes, cancel, or hand off in Teams; cancelling closes the unfinished subtree."
           ]
         },

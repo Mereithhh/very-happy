@@ -7,7 +7,7 @@
 
 Agent Teams 是 Very Happy 官方能力。用户在已接入的 coding agent 中提出目标，agent 可以自己执行，也可以组织队员、继续委派、讨论和验收。Happy Bot 是面向用户的长期队友名称，meta 是 Bot 的协作角色，不是另一种专用执行器。共享 skill 说明工作方法；权限和执行能力来自实际工具与 wrapper，不由读取文档产生。
 
-首批实现同账号、同机器的 Claude / Codex / pi-acp 托管路径。允许多个负责人、任务树及负责人继续委派；不建设通用插件市场或工作流 DSL。现有模型认证、会话权限、单写者锁继续生效，默认 worker permissionMode 为 default。直接运行宿主 CLI 的终端必须先具有 Very Happy 托管 session；安装 skill 本身不会把任意终端变成可唤醒的后台服务。
+首批实现同账号、同机器的 Claude / Codex / pi-acp 托管路径。允许多个负责人、任务树及负责人继续委派；不建设通用插件市场或工作流 DSL。现有模型认证、会话权限、单写者锁继续生效，新建团队默认免审批，历史缺省 worker permissionMode 仍为 default（见团队执行偏好 spec）。直接运行宿主 CLI 的终端必须先具有 Very Happy 托管 session；安装 skill 本身不会把任意终端变成可唤醒的后台服务。
 
 ## 核心与依据
 
