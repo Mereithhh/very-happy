@@ -113,6 +113,7 @@ for (const variant of scenario.variants ?? [{ name: 'default', width: 900 }]) {
         viewport: { width: variant.width ?? 900, height: variant.height ?? 800 },
         deviceScaleFactor: variant.dpr ?? 2,
         colorScheme: variant.theme ?? 'dark',
+        reducedMotion: variant.reducedMotion ?? 'no-preference',
         hasTouch: (variant.width ?? 900) < 500,   // AGENTS: 窄屏必须按 coarse pointer 量
     });
     const page = await context.newPage();

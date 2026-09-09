@@ -1,55 +1,31 @@
-/**
- * SessionLiveStatusBar — the live activity indicator at the tail of the
- * transcript. Permission requests have their own actionable PermissionCard.
- *
- * B-310: this used to be a pulsing dot plus "Thinking 12s" — the only thing
- * the web could say during a turn, because the only signal it received was a
- * 2s boolean heartbeat. With the live stream channel (B-309) the CLI now
- * reports quantified progress, so the bar reads like the terminal's:
- *
- *     ✳ Cerebrating…  14s · ↑ 1.2k tokens
- *
- * Every piece degrades independently. A session driven by a CLI without the
- * streaming relay reports no tokens, and the bar falls back to exactly the
- * old elapsed-only line rather than claiming zero.
- */
-import { memo, useEffect, useState } from 'react';
+import { memo } from 'react';
+import { ArrowUp, ArrowDown, Brain, Zap } from 'lucide-react';
 import { useSession, useSessionRunningTool } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
-import { StatusDot } from '@/ui';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { useLiveStreamProgress } from '@/sync/liveStreamStore';
 import { useElapsedSeconds } from './useElapsed';
 import { formatElapsed } from './format';
-import { liveStatusDetail, sparkFrameAt, SPARK_FRAMES, SPARK_FRAME_MS, vibingVerbAt } from './liveStatus';
+import { liveTokenMetrics } from './liveStatus';
 import './statusbar.css';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 
-function prefersReducedMotion(): boolean {
-    if (typeof window === 'undefined' || !window.matchMedia) return false;
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** CSS-only activity: orbit + breathing core; never a completion percentage. */
+export function LiveActivityMark() {
+    return <span className="lsb-mark" aria-hidden="true">
+        <svg className="lsb-orbit" viewBox="0 0 28 28" fill="none">
+            <circle className="lsb-track" cx="14" cy="14" r="11" />
+            <circle className="lsb-sweep" cx="14" cy="14" r="11" />
+        </svg>
+        <svg className="lsb-orbit lsb-orbit--inner" viewBox="0 0 28 28" fill="none">
+            <circle className="lsb-sweep" cx="14" cy="14" r="7" />
+        </svg>
+        <span className="lsb-core" />
+    </span>;
 }
-
-/**
- * The cycling glyph. Its own component so the 120ms tick re-renders eight
- * characters and nothing else — the surrounding bar re-renders once a second
- * at most.
- */
-const SparkGlyph = memo(function SparkGlyph() {
-    const reduced = prefersReducedMotion();
-    const [frame, setFrame] = useState(() => (reduced ? SPARK_FRAMES[2] : sparkFrameAt(0)));
-    useEffect(() => {
-        if (reduced) return;
-        const started = Date.now();
-        const id = setInterval(() => setFrame(sparkFrameAt(Date.now() - started)), SPARK_FRAME_MS);
-        return () => clearInterval(id);
-    }, [reduced]);
-    return <span className="lsb-spark" aria-hidden>{frame}</span>;
-});
 
 export const SessionLiveStatusBar = memo(function SessionLiveStatusBar({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
-    const reducedMotion = prefersReducedMotion();
     const session = useSession(sessionId);
     const runningTool = useSessionRunningTool(sessionId);
     // Only the progress: its identity survives delta frames, so the bar
@@ -82,38 +58,49 @@ export const SessionLiveStatusBar = memo(function SessionLiveStatusBar({ session
 
     if (!kind) return null;
 
-    const detail = liveStatusDetail(
-        {
-            thinkingTokens: progress.thinkingTokens,
-            outputTokens: progress.outputTokens,
-        },
-        formatElapsed(elapsed),
-    ).join(' · ');
-
-    // Compaction is worth naming: it is the one phase where a long silence is
-    // expected rather than a symptom.
-    const verb = progress.status === 'compacting'
-        ? t('session.chat.liveCompacting')
-        // The verb steps once per window off the same elapsed clock, so it
-        // never changes on an unrelated re-render. Rotation is motion: a
-        // reduced-motion user gets one stable word (spec B-310).
-        : reducedMotion
-            ? t('session.chat.thinkingLabel')
-            : vibingVerbAt(sessionId, elapsed * 1000);
-
-    const label =
-        kind === 'tool'
-            ? t('session.chat.liveRunningTool', { name: runningTool!.name, detail })
-            : t('session.chat.liveWorking', { verb, detail });
+    const metrics = liveTokenMetrics({
+        inputTokens: progress.inputTokens,
+        outputTokens: progress.outputTokens,
+        cacheTokens: progress.cacheTokens,
+        thinkingTokens: progress.thinkingTokens,
+    });
+    const phase = progress.status === 'compacting' ? 'compacting'
+        : kind === 'tool' ? 'tool'
+        : progress.status === 'requesting' ? 'requesting'
+        : 'working';
+    const label = phase === 'compacting' ? t('session.chat.liveCompacting')
+        : phase === 'tool' ? runningTool!.name
+        : phase === 'requesting' ? t('session.chat.liveRequesting')
+        : t('session.chat.liveProcessing');
+    const names = {
+        input: t('session.chat.liveInputTokens'),
+        output: t('session.chat.liveOutputTokens'),
+        cache: t('session.chat.liveCacheTokens'),
+        thinking: t('session.chat.liveThinkingTokens'),
+    };
+    const icons = { input: ArrowUp, output: ArrowDown, cache: Zap, thinking: Brain };
 
     return (
-        <div className="lsb" role="status" aria-live="polite">
-            <span className="lsb-content">
-                {kind === 'thinking'
-                    ? <SparkGlyph />
-                    : <StatusDot status="thinking" size={8} pulse />}
-                <span className="lsb-label">{label}</span>
-            </span>
+        <div className="lsb" data-phase={phase}>
+            <div className="lsb-content">
+                <LiveActivityMark />
+                <div className="lsb-body">
+                    <div className="lsb-heading">
+                        <span className="lsb-label" role="status" aria-live="polite" title={label}>{label}</span>
+                        <span className="lsb-elapsed">{formatElapsed(elapsed)}</span>
+                    </div>
+                    {metrics.length > 0 && <div className="lsb-metrics">
+                        {metrics.map(({ kind: metric, value }) => {
+                            const Icon = icons[metric];
+                            return <span className="lsb-metric" key={metric} title={names[metric]} aria-label={`${names[metric]}: ${value}`}>
+                                <Icon size={12} aria-hidden="true" />
+                                <span className="lsb-metric-name">{metric === 'thinking' ? t('session.chat.liveThinkingShort') : names[metric]}</span>
+                                <span>{value}</span>
+                            </span>;
+                        })}
+                    </div>}
+                </div>
+            </div>
         </div>
     );
 });

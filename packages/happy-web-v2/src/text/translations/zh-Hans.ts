@@ -687,6 +687,13 @@ export const zhHans: TranslationStructure = {
             thinking: ({ seconds }: { seconds: string }) => `思考 ${seconds}`,
             working: ({ seconds }: { seconds: string }) => `运行 ${seconds}`,
             runningTool: ({ name, seconds }: { name: string; seconds: string }) => `${name} · ${seconds}`,
+            liveThinkingShort: '思考',
+            liveRequesting: '请求中',
+            liveProcessing: '处理中',
+            liveInputTokens: '输入',
+            liveOutputTokens: '输出',
+            liveCacheTokens: '缓存',
+            liveThinkingTokens: '思考 token（估算）',
             liveCompacting: '压缩上下文中',
             liveWorking: ({ verb, detail }: { verb: string; detail: string }) => `${verb}…  ${detail}`,
             liveRunningTool: ({ name, detail }: { name: string; detail: string }) => `${name} · ${detail}`,
@@ -1780,6 +1787,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09j: {
+                title: '看清会话的实时进展',
+                summary: '运行状态、耗时与 token 统计各有位置，等待时更清楚。',
+                usage: '输出统一使用向下箭头，思考量单独标注为估算。支持的新 CLI 还会报告输入和缓存统计；没有数据就省略，下一次模型请求会清除上一条计数。',
+                motion: '小型双轨迹与呼吸核心提示任务仍在运行。窄屏自动换行，尊重减少动态效果的设置；读屏只播报状态变化，不再逐秒念计时。',
+            },
             sep09i: {
                 title: "更舒服的对话阅读与输入",
                 summary: "调整正文留白、命令展示和输入框，让内容与操作更清楚。",

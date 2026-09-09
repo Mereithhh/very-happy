@@ -235,3 +235,14 @@ describe('orphaned blocks from an SDK retry', () => {
         expect(next.blocks.map((b) => b.key)).toEqual(['m1:0', 'm1:1']);
     });
 });
+
+
+describe('live usage counters', () => {
+    it('merges input/cache updates and honours explicit message resets', () => {
+        let state = applyStreamFrame(EMPTY_LIVE_STREAM, { t: 'progress', inputTokens: 1200, cacheTokens: 4000, outputTokens: 50 }, 1000);
+        state = applyStreamFrame(state, { t: 'progress', thinkingTokens: 500 }, 1200);
+        expect(state.progress).toMatchObject({ inputTokens: 1200, cacheTokens: 4000, outputTokens: 50, thinkingTokens: 500 });
+        state = applyStreamFrame(state, { t: 'progress', inputTokens: 0, cacheTokens: 0, outputTokens: 0, thinkingTokens: 0 }, 1400);
+        expect(state.progress).toMatchObject({ inputTokens: 0, cacheTokens: 0, outputTokens: 0, thinkingTokens: 0 });
+    });
+});

@@ -19,7 +19,6 @@ describe('inline live status wiring', () => {
     expect(status).not.toContain('onActivate');
     expect(status).toContain('role="status"');
     expect(status).toContain('aria-live="polite"');
-    expect(status).toContain('<StatusDot status="thinking" size={8} pulse />');
     expect(css).toContain('cursor: default');
     expect(css).toMatch(/@media \(pointer: coarse\)[\s\S]*min-height: 40px/);
     expect(css).not.toContain('var(--accent-dim)');

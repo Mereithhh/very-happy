@@ -681,6 +681,13 @@ export const en = {
             thinking: ({ seconds }: { seconds: string }) => `Thinking ${seconds}`,
             working: ({ seconds }: { seconds: string }) => `Working ${seconds}`,
             runningTool: ({ name, seconds }: { name: string; seconds: string }) => `${name} · ${seconds}`,
+            liveThinkingShort: 'Thinking',
+            liveRequesting: 'Requesting',
+            liveProcessing: 'Working',
+            liveInputTokens: 'Input',
+            liveOutputTokens: 'Output',
+            liveCacheTokens: 'Cache',
+            liveThinkingTokens: 'Thinking tokens (estimated)',
             liveCompacting: 'Compacting',
             liveWorking: ({ verb, detail }: { verb: string; detail: string }) => `${verb}…  ${detail}`,
             liveRunningTool: ({ name, detail }: { name: string; detail: string }) => `${name} · ${detail}`,
@@ -1815,6 +1822,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09j: {
+                title: 'Clearer live progress',
+                summary: 'Activity, elapsed time and token counts now have their own space.',
+                usage: 'Output uses the down arrow; thinking is shown separately as an estimate. Compatible CLI versions also report input and cache usage. Missing counts stay hidden, and a new model request clears the previous request’s counters.',
+                motion: 'A small orbit and breathing core show ongoing work. Counts wrap on narrow screens, reduced motion is respected, and the screen reader announces status changes without reading every timer tick.',
+            },
             sep09i: {
                 title: "More comfortable conversations",
                 summary: "Clearer spacing, highlighted commands and a roomier composer.",

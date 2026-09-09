@@ -20,6 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-431 | 会话 loading 统一输入/输出/思考 token 语义，补输入与缓存实时转发；重做状态动效、窄屏计量与无障碍播报，并系统检查现有 UI | bug | Owner 2026-09-09 | doing | 本地实现完成、待合并/发布。输入/输出/缓存/思考分列，跨模型请求清除计量，双轨迹动效与 reduced-motion；Web 2673 / CLI 2079 / wire 81 / server 641（1 skipped）通过，tsc/build及SDK单轮探针通过；390/1280真实组件与320/390/1280明暗CSS探针通过，2/2变异捕获。见 specs/2026-09-live-status-usage.md |
 | B-430 | 对话阅读、命令高亮、输入框、统一 relay 详情与权限模式文案 | ux | Owner 2026-09-09 | done | Web 展示与说明；正文 16px/1.7、命令 Shiki 高亮、双行 composer、共用 relay 弹层与自动执行文案。2673 测试、tsc/build、明暗 390/1280 真实浏览器与 CSS 测量通过，3/3 mutation 捕获。PR #315。 |
 | B-423 | 官网恢复 coding agent hub 整体定位：机器／agent 图首屏，Teams 协作图第二屏 | ux | Owner 2026-09-09 | done | README、文档入口与分享文案同步；修复旧图按钮聚焦使页面横移，回归及 mutation 通过。独立 review 无阻塞；中英文、明暗、390/1280 浏览器 8 组合通过，Web 2642 / CLI 2059 / server 641 / wire 80 测试通过。 |
 | B-422 | Teams 品牌与官网核心叙事：目标驱动的 agent 团队、交互协作图、双语文档与 README | ux | Owner 2026-09-09 | done | 对外 Very Happy Teams，界面 Teams／团队；保留旧设置键与搜索别名。新协作图与 README 主视觉、Teams 优先文档，移除旧语音宣传；Web 2642、明暗中英文 390/1280 浏览器与图像解码通过；不改变执行逻辑。 |

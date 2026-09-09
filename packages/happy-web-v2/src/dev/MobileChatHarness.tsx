@@ -8,6 +8,7 @@ import type { ToolCallMessage } from '@/sync/typesMessage';
 import type { NormalizedMessage } from '@/sync/typesRaw';
 import type { Session } from '@/sync/storageTypes';
 import { storage } from '@/sync/storage';
+import { useLiveStreamStore } from '@/sync/liveStreamStore';
 import { SessionLiveStatusBar } from '@/screens/session/SessionLiveStatusBar';
 import { ToolGroupView } from '@/screens/session/ToolGroupView';
 import { AgentInput } from '@/screens/session/AgentInput';
@@ -38,6 +39,9 @@ function message(id: string, name: string, state: ToolCallMessage['tool']['state
 export function MobileChatHarness() {
   const toast = useToast();
   const [theme, setTheme] = useState('light');
+  const showProgress = (status?: 'requesting' | 'compacting') => {
+    useLiveStreamStore.getState().ingest('mobile-chat-live', { t: 'progress', inputTokens: 1200, outputTokens: 864, cacheTokens: 72000, thinkingTokens: 2400, status });
+  };
   useEffect(() => {
     const previous = document.documentElement.dataset.theme;
     document.documentElement.dataset.theme = theme;
@@ -48,6 +52,7 @@ export function MobileChatHarness() {
   }, [theme]);
   useEffect(() => {
     const now = Date.now();
+    showProgress();
     storage.getState().applySessions([{
       id: 'mobile-chat-permission',
       seq: 1,
@@ -69,9 +74,12 @@ export function MobileChatHarness() {
       },
       agentStateVersion: 1,
       thinking: true,
-      thinkingAt: 0,
+      thinkingAt: now,
+      thinkingStartedAt: now - 14000,
       presence: 'online',
     } as unknown as Session]);
+    const liveSession = storage.getState().sessions['mobile-chat-permission'];
+    storage.getState().applySessions([{ ...liveSession, id: 'mobile-chat-live', agentState: { controlledByUser: false, requests: {} } }]);
     storage.getState().applyMessages('mobile-chat-permission', [{
       role: 'agent',
       content: [{ type: 'text', text: 'Working fixture', uuid: 'dev-usage', parentUUID: null }],
@@ -108,7 +116,13 @@ export function MobileChatHarness() {
         <h1 style={{ margin: 0, fontSize: 16 }}>Structured chat · mobile QA</h1>
         <button type="button" onClick={() => toast.show('Copied to clipboard', 'success', { sticky: true })}>Show copy toast</button>
         <section data-testid="live-status" style={{ border: '1px solid var(--line)' }}>
-          <SessionLiveStatusBar sessionId="mobile-chat-permission" />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: 8 }}>
+            <button onClick={() => showProgress()}>Output usage</button>
+            <button onClick={() => showProgress('requesting')}>Requesting</button>
+            <button onClick={() => showProgress('compacting')}>Compacting</button>
+            <button onClick={() => useLiveStreamStore.getState().clear('mobile-chat-live')}>No usage</button>
+          </div>
+          <SessionLiveStatusBar sessionId="mobile-chat-live" />
           <output data-testid="live-status-result" style={{ display: 'block', padding: 8, fontSize: 12 }}>
             inline transcript status
           </output>
