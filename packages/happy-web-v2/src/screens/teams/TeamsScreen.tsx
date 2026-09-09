@@ -120,6 +120,8 @@ function TeamsContent() {
   const supportsTeams = (machine: (typeof machines)[number]) =>
     (machine.metadata as { teamsVersion?: number } | null)?.teamsVersion ===
       1 && isMachineOnline(machine);
+  const executionMachine = machines.find(machine => machine.id === team?.machineId);
+  const machineOnline = !!executionMachine && isMachineOnline(executionMachine);
   const dispatchReady =
     !!team &&
     machines.some(
@@ -130,7 +132,7 @@ function TeamsContent() {
       <header className="teams-heading">
         <div><Link className="teams-back" to={teamId ? "/teams" : "/"}><ArrowLeft size={16} />{teamId ? c.title : tr("teams.sessions")}</Link>
           <h1><Bot size={28} />{team?.name ?? c.title}</h1>
-          <p>{team ? <><span data-live={dispatchReady}>{dispatchReady ? c.online : c.offline}</span> · {machines.find(m => m.id === team.machineId) ? machineLabel(machines.find(m => m.id === team.machineId)!) : c.unnamedMachine}</> : c.intro}</p>
+          <p>{team ? <><span data-live={machineOnline}>{machineOnline ? c.online : c.offline}</span> · {executionMachine ? machineLabel(executionMachine) : c.unnamedMachine}</> : c.intro}</p>
           {team?.archivedAt !== undefined && <p role="status">{tr("teams.archived")} · {new Date(team.archivedAt).toLocaleString()}</p>}
         </div>
         <div className="teams-heading-actions">
@@ -217,6 +219,7 @@ function TeamsContent() {
             {([{id: "overview", label: c.overview, Icon: LayoutDashboard}, {id: "schedules", label: c.schedules, Icon: Clock3}, {id: "settings", label: c.settings, Icon: Settings2}] as const).map(({id, label, Icon}) => <button key={id} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}><Icon size={16} />{label}</button>)}
           </nav>
           {view === "overview" && <>
+            {!dispatchReady && <p role="status">{tr("teams.machineRequired")}</p>}
             <div className="teams-work-actions">
               {team.bots.find(b => b.root && b.sessionId)?.sessionId && <Link className="teams-primary teams-talk" to={`/session/${encodeURIComponent(team.bots.find(b => b.root && b.sessionId)!.sessionId!)}`}><Bot size={18} />{c.talk}</Link>}
               <button disabled={disabled || !dispatchReady} onClick={() => setDelegating(true)}><Plus size={16} />{c.newTask}</button>
