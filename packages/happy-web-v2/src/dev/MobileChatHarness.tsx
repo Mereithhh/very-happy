@@ -80,6 +80,7 @@ export function MobileChatHarness() {
     } as unknown as Session]);
     const liveSession = storage.getState().sessions['mobile-chat-permission'];
     storage.getState().applySessions([{ ...liveSession, id: 'mobile-chat-live', agentState: { controlledByUser: false, requests: {} } }]);
+    storage.getState().applySessions([{ ...liveSession, id: 'mobile-chat-edit', thinking: false, thinkingStartedAt: null, agentState: { controlledByUser: false, requests: {} } }]);
     storage.getState().applyMessages('mobile-chat-permission', [{
       role: 'agent',
       content: [{ type: 'text', text: 'Working fixture', uuid: 'dev-usage', parentUUID: null }],
@@ -110,7 +111,7 @@ export function MobileChatHarness() {
           <CommandView command={'NODE_ENV=test pnpm test --filter "chat" && echo "完成"'} stdout={'Tests  48 passed\nDuration  1.2s'} />
         </section>
         <section data-testid="message-actions" style={{ display: 'grid', gap: 16 }}>
-          <MessageView sessionId="mobile-chat-permission" showMeta={false} message={{ kind: 'user-text', id: 'edit-point', localId: null, createdAt: Date.now(), seq: 1, claudeUuid: '22222222-2222-4222-8222-222222222222', text: '请检查 @example 的实现，然后解释这一处为什么要这样写。' }} />
+          <MessageView sessionId="mobile-chat-edit" showMeta={false} message={{ kind: 'user-text', id: 'edit-point', localId: null, createdAt: Date.now(), seq: 1, claudeUuid: '22222222-2222-4222-8222-222222222222', text: '请检查 @example 的实现，然后解释这一处为什么要这样写。' }} />
           <MessageView sessionId="mobile-chat-permission" showMeta={false} message={{ kind: 'agent-text', id: 'answer', localId: null, createdAt: Date.now(), seq: 2, text: '可以先检查数据流，再验证结果。\n\n这里的 `@example` 应保留原样。' }} />
         </section>
         <h1 style={{ margin: 0, fontSize: 16 }}>Structured chat · mobile QA</h1>

@@ -1,7 +1,7 @@
 import { messageActionsCopy } from './messageActionsCopy';
 import { useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useSession, storage } from '@/sync/storage';
+import { useSession, useMessage, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { useMediaQuery } from '@/app/useMediaQuery';
@@ -32,6 +32,7 @@ export function SessionDetailScreen() {
     const navigate = useNavigate();
     const { t, lang } = useTranslation();
     const session = useSession(id ?? '');
+    const branchOrigin = useMessage(session?.metadata?.parentSessionId ?? '', session?.metadata?.forkedFromMessageId ?? '');
     const bannerMachine = storage((s) => {
         const mid = session?.metadata?.machineId;
         return mid ? s.machines[mid] : undefined;
@@ -148,7 +149,7 @@ export function SessionDetailScreen() {
     return (
         <div className={`sd${panelOpen ? ' sd--files-open' : ''}`} ref={sdRef}>
             <div className="sd-main">
-                {session.metadata?.parentSessionId && <Link className="msg-parent-link" to={`/session/${session.metadata.parentSessionId}`}>{messageActionsCopy(lang).parent}</Link>}
+                {session.metadata?.parentSessionId && <div className="msg-branch-context"><span>{messageActionsCopy(lang).branchContext}</span>{branchOrigin?.kind === 'user-text' && <q className="msg-branch-preview" title={branchOrigin.text}>{branchOrigin.text}</q>}<Link className="msg-parent-link" to={`/session/${session.metadata.parentSessionId}`}>{messageActionsCopy(lang).parent}</Link></div>}
                 <ChatHeader
                     sessionId={id}
                     filesOpen={filesOpen}

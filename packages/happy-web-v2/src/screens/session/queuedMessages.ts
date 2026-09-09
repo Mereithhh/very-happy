@@ -10,7 +10,7 @@ export type QueuedMessage = {
 };
 
 export type PersistedQueuedMessage = Omit<QueuedMessage, 'attachments'>;
-export type QueueDeliveryPhase = 'idle' | 'waiting-start' | 'waiting-finish' | 'intervening';
+export type QueueDeliveryPhase = 'idle' | 'waiting-start' | 'waiting-finish' | 'intervening' | 'failed';
 
 /**
  * B-322: how long `waiting-start` may wait for a turn that may never begin.
@@ -55,8 +55,9 @@ export function canReleaseQueuedMessage(
     phase: QueueDeliveryPhase,
     isWorking: boolean,
     gate: 'send' | 'restore-first' = 'send',
+    editing = false,
 ): boolean {
-    return gate === 'send' && phase === 'idle' && !isWorking;
+    return gate === 'send' && phase === 'idle' && !isWorking && !editing;
 }
 
 export function updateQueuedMessage(
@@ -99,4 +100,12 @@ export function parsePersistedQueuedMessages(value: unknown): PersistedQueuedMes
             modeMeta: candidate.modeMeta as MessageModeMeta,
         }];
     });
+}
+
+/** A resolved send can still mean no session/key was available. Only release
+ * attachment resources after the outbox returns its acceptance receipt. */
+export async function deliverQueuedMessage(send: () => Promise<unknown>, release: () => void): Promise<void> {
+    const receipt = await send();
+    if (!receipt) throw new Error('Message was not queued');
+    release();
 }

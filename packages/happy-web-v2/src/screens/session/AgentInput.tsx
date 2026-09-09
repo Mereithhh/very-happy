@@ -5,13 +5,15 @@ import { onMessageQuote } from './messageQuote';
 import { appendMessageQuote } from './messageActionsModel';
 /**
  * AgentInput — the composer. A rounded auto-growing textarea + circular send
- * button, followed by one compact row for controls, context, and input hints.
+ * button, with permissions, model, and context inside the same surface.
  *
  * Sending: Enter sends (configurable via agentInputEnterToSend), Shift+Enter
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, CornerDownRight, FileText, Maximize2, Minimize2, Paperclip, Pencil, ArrowUp, Square, Trash2, X } from 'lucide-react';
+import { Check, CornerDownRight, FileText, Pencil, ArrowUp, Square, Trash2, X, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import * as Popover from '@radix-ui/react-popover';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
 import { sessionAbort, sessionSetPermissionMode } from '@/sync/ops';
@@ -45,6 +47,7 @@ import { deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisp
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
     advanceQueueDeliveryPhase,
+    deliverQueuedMessage,
     QUEUE_START_TIMEOUT_MS,
     canReleaseQueuedMessage,
     parsePersistedQueuedMessages,
@@ -375,13 +378,12 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             releaseQueuedAttachments(item);
             return;
         }
-        await sync.sendMessage(sessionId, item.text, {
+        await deliverQueuedMessage(() => sync.sendMessage(sessionId, item.text, {
             source: 'chat',
             delivery,
             attachments: item.attachments,
             modeMeta: item.modeMeta,
-        });
-        releaseQueuedAttachments(item);
+        }), () => releaseQueuedAttachments(item));
     };
 
     const doAbort = async (): Promise<AbortOutcome> => {
@@ -470,7 +472,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     };
 
     const interveneQueued = async (id: string) => {
-        if (!supportsSteer || deliveryPhaseRef.current === 'intervening' || sending) return;
+        if (!supportsSteer || !isWorking || editingId === id || deliveryPhaseRef.current === 'intervening' || sending) return;
         const index = queuedRef.current.findIndex((item) => item.id === id);
         if (index < 0) return;
         const item = queuedRef.current[index];
@@ -482,8 +484,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             deliveryPhaseRef.current = 'waiting-start';
             waitingStartSinceRef.current = Date.now();
         } catch {
+            deliveryPhaseRef.current = 'failed';
             setQueued((current) => [...current.slice(0, index), item, ...current.slice(index)]);
-            deliveryPhaseRef.current = 'idle';
+            toast.error(t('session.chat.queueDeliveryFailed'));
         } finally {
             setInterveningId(null);
         }
@@ -492,6 +495,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const deleteQueued = (id: string) => {
         const item = queuedRef.current.find((candidate) => candidate.id === id);
         if (item) releaseQueuedAttachments(item);
+        if (deliveryPhaseRef.current === 'failed' && queuedRef.current[0]?.id === id) deliveryPhaseRef.current = 'idle';
         setQueued((current) => removeQueuedMessage(current, id));
         if (editingId === id) setEditingId(null);
     };
@@ -509,17 +513,18 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         // B-265: hold while archived AND while a restore is still settling
         // (the store entry is dropped once presence held 'online' for 2 s).
         const releaseGate = gate === 'restore-first' || (restoreState && restoreState.phase !== 'failed') ? 'restore-first' : 'send';
-        if (!canReleaseQueuedMessage(deliveryPhaseRef.current, isWorking, releaseGate) || queued.length === 0) return;
+        if (!canReleaseQueuedMessage(deliveryPhaseRef.current, isWorking, releaseGate, editingId !== null) || queued.length === 0) return;
 
         const item = queued[0];
         deliveryPhaseRef.current = 'waiting-start';
         waitingStartSinceRef.current = Date.now();
         setQueued((current) => current.slice(1));
         void sendQueuedItem(item).catch(() => {
+            deliveryPhaseRef.current = 'failed';
             setQueued((current) => [item, ...current]);
-            deliveryPhaseRef.current = 'idle';
+            toast.error(t('session.chat.queueDeliveryFailed'));
         });
-    }, [isWorking, queued, sessionId, gate, restoreState, stuckTick]);
+    }, [isWorking, queued, sessionId, gate, restoreState, stuckTick, editingId]);
 
     // B-322: the timeout above needs a clock of its own. Being stuck in
     // `waiting-start` is by definition the case where nothing changes, so
@@ -714,24 +719,30 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
             {queued.length > 0 && (
                 <section className="ci-queue" aria-label={t('session.chat.queueTitle')}>
-                    <div className="ci-queue-head">
+                    <div className="ci-queue-head sr-only">
                         <span>{t('session.chat.queueTitle')}</span>
                         <span className="ci-queue-count">{queued.length}</span>
                         <span className="ci-queue-device">{t('session.chat.queueDeviceHint')}</span>
                     </div>
+                    {deliveryPhaseRef.current === 'failed' && <div className="ci-queue-failure" role="status">
+                        <span>{t('session.chat.queueDeliveryFailed')}</span>
+                        <button type="button" className="ci-queue-action ci-queue-action--retry" onClick={() => { deliveryPhaseRef.current = 'idle'; setStuckTick(value => value + 1); }}>{t('common.retry')}</button>
+                    </div>}
                     <div className="ci-queue-list">
-                        {queued.map((item, index) => (
+                        {queued.map((item) => (
                             <div className="ci-queue-item" key={item.id}>
-                                <span className="ci-queue-index">{String(index + 1).padStart(2, '0')}</span>
+                                <ListEnd className="ci-queue-index" size={17} aria-hidden />
                                 {editingId === item.id ? (
                                     <textarea
                                         className="ci-queue-edit"
                                         value={editingText}
                                         rows={2}
                                         autoFocus
+                                        aria-label={t('session.chat.queueEdit')}
                                         placeholder={t('session.chat.queueEditingPlaceholder')}
                                         onChange={(event) => setEditingText(event.target.value)}
                                         onKeyDown={(event) => {
+                                            if (event.nativeEvent.isComposing || event.keyCode === 229) return;
                                             if (event.key === 'Escape') setEditingId(null);
                                             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && editingText.trim()) {
                                                 setQueued((current) => updateQueuedMessage(current, item.id, editingText));
@@ -756,13 +767,17 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                             title={t('session.chat.queueSave')}
                                         ><Check size={15} /></button>
                                     ) : (
-                                        <button
-                                            type="button"
-                                            className="ci-queue-action"
-                                            onClick={() => { setEditingId(item.id); setEditingText(item.text); }}
-                                            aria-label={t('session.chat.queueEdit')}
-                                            title={t('session.chat.queueEdit')}
-                                        ><Pencil size={14} /></button>
+                                        <DropdownMenu.Root>
+                                            <DropdownMenu.Trigger asChild>
+                                                <button type="button" className="ci-queue-action" aria-label={t('session.chat.queueMore')} title={t('session.chat.queueMore')}><MoreHorizontal size={16} /></button>
+                                            </DropdownMenu.Trigger>
+                                            <DropdownMenu.Portal>
+                                                <DropdownMenu.Content className="pm-content" side="top" align="end" sideOffset={8}>
+                                                    <DropdownMenu.Item className="pm-item" onSelect={() => { setEditingId(item.id); setEditingText(item.text); }}><Pencil size={14} />{t('session.chat.queueEdit')}</DropdownMenu.Item>
+                                                    <DropdownMenu.Label className="pm-head">{t('session.chat.queueDeviceHint')}</DropdownMenu.Label>
+                                                </DropdownMenu.Content>
+                                            </DropdownMenu.Portal>
+                                        </DropdownMenu.Root>
                                     )}
                                     <button
                                         type="button"
@@ -771,7 +786,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                         aria-label={t('session.chat.queueDelete')}
                                         title={t('session.chat.queueDelete')}
                                     ><Trash2 size={15} /></button>
-                                    {supportsSteer && isWorking && (
+                                    {editingId === item.id && <button type="button" className="ci-queue-action" aria-label={t('common.cancel')} title={t('common.cancel')} onClick={() => setEditingId(null)}><X size={16} /></button>}
+                                    {supportsSteer && isWorking && editingId !== item.id && (
                                         <button
                                             type="button"
                                             className="ci-queue-action ci-queue-action--intervene"
@@ -780,7 +796,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                             aria-busy={interveningId === item.id}
                                             aria-label={t('session.chat.queueIntervene')}
                                             title={t('session.chat.queueIntervene')}
-                                        >{interveningId === item.id ? <Spinner size={14} /> : <CornerDownRight size={16} />}</button>
+                                        >{interveningId === item.id ? <Spinner size={14} /> : <CornerDownRight size={16} />}<span>{t('session.chat.queueIntervene')}</span></button>
                                     )}
                                 </div>
                             </div>
@@ -850,30 +866,45 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     onCompositionEnd={ime.onCompositionEnd}
                     aria-label={t('common.message')}
                 />
-                <div className="ci-composer-toolbar">
+                <div className="ci-composer-toolbar" data-working={isWorking && canSend}>
                     <div className="ci-composer-tools">
-                        {supportsAttachments && (
-                            <button
-                                type="button"
-                                className="ci-icon-btn"
-                                onClick={onPickFiles}
-                                aria-label={t('session.chat.attach')}
-                                title={t('session.chat.attach')}
-                            >
-                                <Paperclip size={18} />
-                            </button>
-                        )}
-                        <PresetsMenu onPick={insertPreset} onCancel={() => taRef.current?.focus()} />
-                        <button
-                            type="button"
-                            className="ci-icon-btn"
-                            onClick={toggleExpanded}
-                            aria-pressed={expanded}
-                            aria-label={expanded ? t('session.input.collapse') : t('session.input.expand')}
-                            title={expanded ? t('session.input.collapse') : t('session.input.expand')}
-                        >
-                            {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-                        </button>
+                        <PresetsMenu onPick={insertPreset} onCancel={() => taRef.current?.focus()}
+                            onAttach={supportsAttachments ? onPickFiles : undefined}
+                            onExpand={expanded || text.length > 200 || text.includes('\n') ? toggleExpanded : undefined}
+                            expanded={expanded} />
+                        <ModeMenu
+                            label={t('session.chat.permissionLabel')}
+                            options={permModes}
+                            value={permKey}
+                            onChange={(key) => { void setPermissionMode(key); }}
+                            busy={permissionModeBusy}
+                            subtitle={permissionSubtitle}
+                        />
+                        <Popover.Root>
+                            <Popover.Trigger asChild>
+                                <button type="button" className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={meterTitle}>
+                                    <Gauge size={14} aria-hidden />
+                                    <span>{percentUsed === null ? '—' : `${Math.round(percentUsed)}%`}</span>
+                                </button>
+                            </Popover.Trigger>
+                            <Popover.Portal>
+                                <Popover.Content className="ci-context-detail" side="top" sideOffset={8} collisionPadding={12}>
+                                    <strong>{t('session.chat.contextUsage')}</strong>
+                                    <p>{contextWindow === null ? contextSize.toLocaleString() : `${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`} tokens</p>
+                                    {percentUsed !== null && <p>{t('session.chat.contextMeter', { percent: percentUsed })}</p>}
+                                </Popover.Content>
+                            </Popover.Portal>
+                        </Popover.Root>
+                    </div>
+                    <div className="ci-model-controls">
+                    <ModelEffortMenu
+                        label={t('session.chat.modelLabel')}
+                        options={models}
+                        value={displayedModelKey ?? null}
+                        onChange={(key) => setMode('updateSessionModelMode', 'modelMode', key)}
+                        subtitle={modelSubtitle}
+                        effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
+                    />
                     </div>
                     <div className="ci-composer-actions">
                         {isWorking && (
@@ -897,9 +928,12 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                 {aborting ? <Spinner size={14} /> : <Square size={16} fill="currentColor" />}
                             </button>
                         )}
-                        <button
+                        {isWorking && canSend && supportsSteer && <button type="button" className="ci-steer" disabled={!canSend || aborting} onClick={() => void doSend('steer')}>
+                            <CornerDownRight size={15} aria-hidden />{t('session.chat.steerNow')}
+                        </button>}
+                        {(!isWorking || canSend) && <button
                             type="button"
-                            className="ci-send"
+                            className={`ci-send${isWorking ? ' ci-send--queue' : ''}`}
                             onClick={() => void doSend('queue')}
                             disabled={!canSend}
                             aria-busy={sending || processingAttachments}
@@ -907,45 +941,13 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             title={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
                         >
                             {sending || processingAttachments ? <Spinner size={16} /> : <ArrowUp size={18} />}
-                        </button>
+                            {isWorking && <span>{t('session.chat.queueSend')}</span>}
+                        </button>}
                     </div>
                 </div>
             </div>
 
-            {/* Model and effort share a popup; permission remains a separate control on every screen. */}
             <div className="ci-status">
-                <div className="ci-modes">
-                    <ModelEffortMenu
-                        label={t('session.chat.modelLabel')}
-                        options={models}
-                        value={displayedModelKey ?? null}
-                        onChange={(key) => setMode('updateSessionModelMode', 'modelMode', key)}
-                        subtitle={modelSubtitle}
-                        effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
-                    />
-                    <ModeMenu
-                        label={t('session.chat.permissionLabel')}
-                        options={permModes}
-                        value={permKey}
-                        onChange={(key) => { void setPermissionMode(key); }}
-                        busy={permissionModeBusy}
-                        subtitle={permissionSubtitle}
-                    />
-
-                </div>
-                <span className="ci-spacer" />
-                <span className={`ci-meter ci-meter--${meterTone}`} title={meterTitle}>
-                    {percentUsed !== null && (
-                        <span className="ci-meter-track">
-                            <span className="ci-meter-fill" style={{ width: `${percentUsed}%` }} />
-                        </span>
-                    )}
-                    <span className="ci-meter-label">
-                        {percentUsed === null
-                            ? contextTokens
-                            : `${contextTokens} / ${contextTotal}`}
-                    </span>
-                </span>
                 <span className="ci-hint">
                     {isWorking
                         ? supportsSteer ? t('session.chat.queueSteerHint') : t('session.chat.queueHint')

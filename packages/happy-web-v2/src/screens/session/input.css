@@ -8,18 +8,6 @@
   width: 100%;
 }
 
-/* desktop selectors share the compact metadata row below the composer */
-.ci-modes {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: var(--sp-2);
-  min-width: 0;
-  max-width: 100%;
-  align-items: center;
-}
-.ci-modes > .mm-trigger { min-height: 32px; }
-.ci-modes > .mm-trigger:last-child { flex: none; }
-
 /* attachment previews */
 .ci-attachments {
   display: flex;
@@ -338,9 +326,6 @@
   color: var(--text-faint);
   flex-wrap: wrap;
 }
-.ci-spacer {
-  flex: 1;
-}
 /* always-visible context meter */
 .ci-meter {
   display: inline-flex;
@@ -349,34 +334,6 @@
   font-family: var(--font-mono);
   margin-inline-start: auto;
   white-space: nowrap;
-}
-.ci-meter-track {
-  width: 64px;
-  height: 5px;
-  border-radius: var(--r-pill);
-  background: var(--bg-3);
-  overflow: hidden;
-}
-.ci-meter-fill {
-  display: block;
-  height: 100%;
-  background: var(--text-dim);
-  transition: width var(--motion-fast);
-}
-.ci-meter--ok .ci-meter-fill {
-  background: var(--text-dim);
-}
-.ci-meter--warn .ci-meter-fill {
-  background: var(--warn);
-}
-.ci-meter--crit .ci-meter-fill {
-  background: var(--danger);
-}
-.ci-meter--warn .ci-meter-label {
-  color: var(--warn);
-}
-.ci-meter--crit .ci-meter-label {
-  color: var(--danger);
 }
 .ci-hint {
   font-family: var(--font-mono);
@@ -418,12 +375,6 @@
     gap: 6px;
     padding: var(--sp-2) var(--sp-3);
   }
-  .ci-modes {
-    display: flex;
-    width: 100%;
-  }
-  .ci-modes > .mm-trigger { min-height: 44px; }
-  .ci-modes .me-trigger { flex: 1; }
   .ci-composer {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
@@ -478,3 +429,48 @@
 }
 
 .ci-attachment-hint { margin: 0 0 var(--sp-2); font-size: 12px; line-height: 1.4; color: var(--text-dim); }
+
+/* One composer surface owns text, configuration and delivery. */
+.ci { container-type: inline-size; container-name: composer; }
+.ci-composer { border-radius: 22px; padding: var(--sp-3); gap: var(--sp-2); }
+.ci-composer-toolbar { display: grid; grid-template-columns: auto minmax(100px, 1fr) auto; gap: var(--sp-2); }
+.ci-composer-tools { min-width: 0; }
+.ci-composer .mm-trigger { border: 0; background: transparent; font-family: var(--font-sans); min-height: 36px; }
+.ci-composer .mm-k { display: none; }
+.ci-composer .mm-sub { max-width: 8ch; }
+.ci-model-controls { min-width: 0; display: flex; justify-content: flex-end; }
+.ci-model-controls .me-trigger { min-width: 0; }
+.ci-model-controls .mm-v { max-width: 24ch; }
+.ci-meter { border: 0; background: transparent; min-height: 36px; gap: 4px; padding: 4px; color: var(--text-dim); margin-inline-start: 0; font-size: var(--fs-11); }
+.ci-meter--warn { color: var(--warn); }
+.ci-meter--crit { color: var(--danger); }
+.ci-context-detail { z-index: 60; max-width: min(300px, calc(100vw - 24px)); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-1); color: var(--text); box-shadow: var(--shadow-lift); font-size: var(--fs-13); }
+.ci-context-detail p { margin: var(--sp-2) 0 0; font-family: var(--font-mono); }
+.ci-steer { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; padding: 0 var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-pill); color: var(--text); font: var(--fs-12)/1.4 var(--font-sans); white-space: nowrap; }
+.ci-steer:disabled { opacity: .4; }
+.ci-composer-actions .ci-send--queue { width: auto; gap: 4px; padding: 0 var(--sp-3); white-space: nowrap; font: var(--fs-12)/1.4 var(--font-sans); }
+.ci-status { justify-content: flex-end; }
+.ci-status .ci-hint { font-family: var(--font-sans); }
+@container composer (max-width: 650px) {
+  .ci-composer-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .ci-composer-tools { grid-column: 1 / -1; grid-row: 1; }
+  .ci-model-controls { grid-column: 1; grid-row: 2; justify-content: flex-start; }
+  .ci-composer-actions { grid-column: 2; grid-row: 2; justify-content: flex-end; }
+  .ci-composer-toolbar[data-working='true'] .ci-model-controls { grid-column: 1 / -1; }
+  .ci-composer-toolbar[data-working='true'] .ci-composer-actions { grid-column: 1 / -1; grid-row: 3; }
+  .ci-meter { margin-left: auto; }
+}
+@media (pointer: coarse) {
+  .ci-icon-btn, .ci-meter, .ci-composer .mm-trigger, .ci-steer { min-width: 44px; min-height: 44px; }
+}
+
+/* Queued drafts sit against the composer, and retain independent actions. */
+.ci-queue { margin: 0 var(--sp-2) calc(-1 * var(--sp-2) - 1px); padding-bottom: var(--sp-2); border-radius: 20px 20px 0 0; }
+.ci-queue-head { position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ci-queue-index { align-self: center; padding: 0; }
+.ci-queue-action--intervene { order: -1; width: auto; padding-inline: var(--sp-2); gap: 5px; color: var(--text-dim); white-space: nowrap; font: var(--fs-12)/1.4 var(--font-sans); }
+.ci-queue-action--intervene:hover:not(:disabled) { background: var(--bg-3); color: var(--text); }
+@media (pointer: coarse) { .ci-queue-action { min-width: 44px; min-height: 44px; } }
+
+.ci-queue-failure { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); color: var(--danger); font-size: var(--fs-12); }
+.ci-queue-action--retry { width: auto; min-width: 44px; min-height: 44px; margin-left: auto; flex: none; color: var(--text); }

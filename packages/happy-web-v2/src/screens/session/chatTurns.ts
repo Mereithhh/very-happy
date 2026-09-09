@@ -10,6 +10,7 @@ export type LeafRow =
         key: string;
         message: Message;
         showMeta: boolean;
+        showActions?: boolean;
         thinkingDurationMs?: number;
         /** B-355: the `file` events the user sent WITH this message. */
         attachments?: ToolCallMessage[];
@@ -155,6 +156,14 @@ export function buildLeafRows(
     attachments?: Map<string, ToolCallMessage[]>,
 ): LeafRow[] {
     const rows: LeafRow[] = [];
+    const intermediate = new Set<string>();
+    let toolFollows = false;
+    for (let j = messages.length - 1; j >= 0; j--) {
+        const candidate = messages[j];
+        if (candidate.kind === 'user-text') toolFollows = false;
+        else if (candidate.kind === 'tool-call') toolFollows = true;
+        else if (candidate.kind === 'agent-text' && toolFollows) intermediate.add(candidate.id);
+    }
     let i = 0;
     while (i < messages.length) {
         const message = messages[i];
@@ -185,6 +194,7 @@ export function buildLeafRows(
             key: message.id,
             message,
             showMeta: message.id === finalAgentId,
+            ...(intermediate.has(message.id) ? { showActions: false } : {}),
             thinkingDurationMs,
             ...(attachments?.has(message.id) ? { attachments: attachments.get(message.id) } : {}),
         });

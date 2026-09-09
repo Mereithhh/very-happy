@@ -86,6 +86,7 @@ function TurnActivityViewImpl({
                                 key={row.key}
                                 message={row.message}
                                 showMeta={false}
+                                showActions={false}
                                 sessionId={sessionId}
                                 thinkingDurationMs={row.thinkingDurationMs}
                             />

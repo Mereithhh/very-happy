@@ -12,7 +12,7 @@
  */
 import { useRef } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { BookMarked } from 'lucide-react';
+import { Plus, Paperclip, Maximize2, Minimize2 } from 'lucide-react';
 import { useSettings } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import {
@@ -26,11 +26,15 @@ import './presets.css';
 export function PresetsMenu({
     onPick,
     onCancel,
+    onAttach, onExpand, expanded,
 }: {
     onPick: (text: string) => void;
     /** Keyboard cancel (Esc / ⌘. while open) — refocus the composer textarea
      *  so the keyboard-only flow never strands focus on the trigger button. */
     onCancel?: () => void;
+    onAttach?: () => void;
+    onExpand?: () => void;
+    expanded?: boolean;
 }) {
     const { t } = useTranslation();
     const settings = useSettings();
@@ -42,7 +46,7 @@ export function PresetsMenu({
     const [open, setOpen] = usePresetsMenuShortcut(presets.length > 0, () => {
         kbCancelRef.current = true;
     });
-    if (presets.length === 0) return null;
+    if (presets.length === 0 && !onAttach && !onExpand) return null;
 
     const pick = (text: string) => onPick(text);
 
@@ -60,8 +64,8 @@ export function PresetsMenu({
     };
 
     const label = PRESETS_SHORTCUT_ACTIVE
-        ? `${t('session.chat.presets')} (${PRESETS_SHORTCUT_HINT})`
-        : t('session.chat.presets');
+        ? `${t('session.chat.composerTools')} (${PRESETS_SHORTCUT_HINT})`
+        : t('session.chat.composerTools');
 
     return (
         <DropdownMenu.Root open={open} onOpenChange={setOpen}>
@@ -69,10 +73,10 @@ export function PresetsMenu({
                 <button
                     type="button"
                     className="ci-icon-btn"
-                    aria-label={t('session.chat.presets')}
+                    aria-label={t('session.chat.composerTools')}
                     title={label}
                 >
-                    <BookMarked size={18} />
+                    <Plus size={20} />
                 </button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
@@ -94,12 +98,14 @@ export function PresetsMenu({
                         }
                     }}
                 >
-                    <div className="pm-head">
+                    {onAttach && <DropdownMenu.Item className="pm-item" onSelect={onAttach}><Paperclip size={16} aria-hidden /><span>{t('session.chat.attach')}</span></DropdownMenu.Item>}
+                    {onExpand && <DropdownMenu.Item className="pm-item" onSelect={onExpand}>{expanded ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}<span>{expanded ? t('session.input.collapse') : t('session.input.expand')}</span></DropdownMenu.Item>}
+                    {presets.length > 0 && <div className="pm-head">
                         {t('session.chat.presetsTitle')}
                         {PRESETS_SHORTCUT_ACTIVE && (
                             <span className="pm-head-hint">{t('session.chat.presetsDigitHint')}</span>
                         )}
-                    </div>
+                    </div>}
                     {presets.map((p, i) => (
                         <DropdownMenu.Item key={p.id} className="pm-item" onSelect={() => pick(p.text)}>
                             <span className="pm-item-title">
