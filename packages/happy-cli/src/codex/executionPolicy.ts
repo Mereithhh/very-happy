@@ -16,7 +16,7 @@ export function resolveCodexExecutionPolicy(
             // Codex native modes
             case 'default': return 'untrusted';                    // Ask for non-trusted commands
             case 'read-only': return 'never';                      // Never ask, read-only enforced by sandbox
-            case 'safe-yolo': return 'on-failure';                 // Auto-run, ask only on failure
+            case 'safe-yolo': return 'on-request';                 // Workspace auto-run; request approval for escalation (0.153 removed on-failure)
             case 'yolo': return 'never';                           // Full YOLO: never interrupt for approvals
             // Defensive fallback for Claude-specific modes (backward compatibility)
             case 'bypassPermissions': return 'never';              // Full access: map to yolo behavior

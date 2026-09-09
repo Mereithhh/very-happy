@@ -1,4 +1,7 @@
 import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
+import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
+import { configuration } from '@/configuration';
+import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
 import { preparePiTeamsRuntime } from '@/teams/piRuntime';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -279,6 +282,7 @@ function formatEnvelopeForServerLog(agentName: string, envelope: SessionEnvelope
 type AcpSwitchMode = {
   permissionMode?: string;
   model?: string | null;
+  effort?: string | null;
 };
 
 type AcpSelectableOption = {
@@ -331,7 +335,7 @@ function flattenSelectOptions(options: unknown): AcpSelectableOption[] {
 
 export function extractConfigSelector(
   configOptions: SessionConfigOption[],
-  category: 'mode' | 'model',
+  category: 'mode' | 'model' | 'thought_level',
 ): AcpConfigSelector | null {
   const optionMatchesCategory = (option: SessionConfigOption): boolean => {
     if (option.category === category) {
@@ -349,6 +353,7 @@ export function extractConfigSelector(
     // Some ACP providers omit category; fallback to id/name heuristics.
     const id = normalizeComparable(option.id);
     const name = normalizeComparable(option.name);
+    if (category === 'thought_level') return id.includes('thinking') || id.includes('thought') || name.includes('thinking');
     if (category === 'model') {
       return id.includes('model') || name.includes('model');
     }
@@ -467,6 +472,7 @@ function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' 
 }
 
 export async function runAcp(opts: {
+  model?: string;
   credentials: Credentials;
   agentName: string;
   command: string;
@@ -508,6 +514,7 @@ export async function runAcp(opts: {
     startedBy: opts.startedBy,
     sandbox: settings.sandboxConfig,
   });
+  metadata.attachmentKinds = [];
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   if (response) {
     logAcp('muted', `Happy Session ID: ${response.id}`);
@@ -565,6 +572,8 @@ export async function runAcp(opts: {
   let currentModel: string | null | undefined;
   let modeSelector: AcpConfigSelector | null = null;
   let modelSelector: AcpConfigSelector | null = null;
+  let thoughtSelector: AcpConfigSelector | null = null;
+  let currentEffort: string | null | undefined;
   let legacyModes: SessionModeState | null = null;
   let legacyModels: SessionModelState | null = null;
   let sawSlashCommands = false;
@@ -764,38 +773,75 @@ export async function runAcp(opts: {
     }
   };
 
-  const switchModelIfRequested = async (requestedModel: string): Promise<void> => {
-    if (!requestedModel) {
+  const switchEffortIfRequested = async (requested: string, modelChanged: boolean): Promise<void> => {
+    const discardStaleEffort = (): void => {
+      if (currentEffort === requested) currentEffort = null;
+      session.sendSessionEvent({ type: 'message', message: `The new model does not support thinking level "${requested}"; using its current thinking level.` });
+    };
+    if (thoughtSelector) {
+      const resolved = thoughtSelector.options.find((option) => option.code === requested)?.code;
+      if (!resolved) {
+        if (modelChanged) { discardStaleEffort(); return; }
+        throw new Error(`Unsupported thinking level: ${requested}`);
+      }
+      if (resolved === thoughtSelector.currentCode) return;
+      if (!await backend.setSessionConfigOption(thoughtSelector.configId, resolved)) {
+        throw new Error(`Failed to switch thinking level to ${resolved}`);
+      }
+      thoughtSelector.currentCode = resolved;
+      session.updateMetadata((metadata) => ({ ...metadata, currentThoughtLevelCode: resolved }));
       return;
+    }
+    // pi-acp's legacy modes are thinking levels. Permissions still go solely
+    // through the file-backed gate above, never through this selector.
+    if (permissionModeIsFileBacked() && legacyModes) {
+      const resolved = legacyModes.availableModes.find((mode) => mode.id === requested)?.id;
+      if (!resolved) {
+        if (modelChanged) { discardStaleEffort(); return; }
+        throw new Error(`Unsupported thinking level: ${requested}`);
+      }
+      if (resolved === legacyModes.currentModeId) return;
+      if (!await backend.setSessionMode(resolved)) throw new Error(`Failed to switch thinking level to ${resolved}`);
+      legacyModes = { ...legacyModes, currentModeId: resolved };
+      session.updateMetadata((metadata) => ({ ...metadata, currentOperatingModeCode: resolved, currentThoughtLevelCode: resolved }));
+      return;
+    }
+    if (modelChanged) { discardStaleEffort(); return; }
+    throw new Error(`This agent does not advertise thinking levels`);
+  };
+
+  const switchModelIfRequested = async (requestedModel: string): Promise<boolean> => {
+    if (!requestedModel) {
+      return false;
     }
 
     if (modelSelector) {
       const resolved = resolveRequestedCode(modelSelector.options, requestedModel);
       if (!resolved) {
         logger.debug(`[${opts.agentName}] Ignoring unknown ACP model request: ${requestedModel}`);
-        return;
+        return false;
       }
       if (resolved === modelSelector.currentCode) {
-        return;
+        return false;
       }
       const switched = await backend.setSessionConfigOption(modelSelector.configId, resolved);
       if (switched) {
         modelSelector.currentCode = resolved;
-        return;
+        return true;
       }
     }
 
     if (!legacyModels) {
-      return;
+      return false;
     }
 
     const resolvedLegacyModel = resolveRequestedLegacyModelCode(legacyModels, requestedModel);
     if (!resolvedLegacyModel) {
       logger.debug(`[${opts.agentName}] Ignoring unknown ACP legacy model request: ${requestedModel}`);
-      return;
+      return false;
     }
     if (resolvedLegacyModel === legacyModels.currentModelId) {
-      return;
+      return false;
     }
 
     const switched = await backend.setSessionModel(resolvedLegacyModel);
@@ -804,7 +850,14 @@ export async function runAcp(opts: {
         ...legacyModels,
         currentModelId: resolvedLegacyModel,
       };
+      return true;
     }
+    return false;
+  };
+
+  const isCurrentRequestedModel = (requested: string): boolean => {
+    if (modelSelector) return resolveRequestedCode(modelSelector.options, requested) === modelSelector.currentCode;
+    return !!legacyModels && resolveRequestedLegacyModelCode(legacyModels, requested) === legacyModels.currentModelId;
   };
 
   const onBackendMessage = (msg: AgentMessage) => {
@@ -845,6 +898,7 @@ export async function runAcp(opts: {
 
         modeSelector = extractConfigSelector(configOptions, 'mode');
         modelSelector = extractConfigSelector(configOptions, 'model');
+        thoughtSelector = extractConfigSelector(configOptions, 'thought_level');
         if (verbose) {
           if (modeSelector) {
             sawModes = true;
@@ -960,25 +1014,40 @@ export async function runAcp(opts: {
   // writing), and it never sees assistant output — so pi-acp's startup banner
   // cannot become a title.
   const titleGenerator = new TitleGenerator(session);
+  registerAgentAttachmentDownloads(session);
+  let userMessageDelivery = Promise.resolve();
   session.onUserMessage((message) => {
-    if (!message.content.text) {
-      return;
-    }
-    titleGenerator.maybeGenerate(message.content.text);
+    // Claim synchronously, then preserve message order while downloads finish.
+    const downloads = session.drainAttachmentsForUserMessage();
+    userMessageDelivery = userMessageDelivery.then(async () => {
+      const attachments = await downloads;
+      if (!message.content.text && !attachments?.length) {
+        return;
+      }
+      titleGenerator.maybeGenerate(message.content.text);
 
-    if (typeof message.meta?.permissionMode === 'string') {
-      currentPermissionMode = message.meta.permissionMode;
-      logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
-    }
+      if (typeof message.meta?.permissionMode === 'string') {
+        currentPermissionMode = message.meta.permissionMode;
+        logger.debug(`[${opts.agentName}] Requested ACP permission mode: ${currentPermissionMode}`);
+      }
 
-    if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
-      currentModel = message.meta.model ?? null;
-      logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
-    }
+      if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'model')) {
+        currentModel = message.meta.model ?? null;
+        logger.debug(`[${opts.agentName}] Requested ACP model: ${currentModel ?? 'null'}`);
+      }
 
-    messageQueue.push(message.content.text, {
-      permissionMode: currentPermissionMode,
-      model: currentModel,
+      if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'effort')) {
+        currentEffort = message.meta.effort ?? null;
+      }
+
+      messageQueue.push(message.content.text, {
+        permissionMode: currentPermissionMode,
+        model: currentModel,
+        effort: currentEffort,
+      }, attachments, message.localKey);
+    }).catch(() => {
+      logger.warn('[ACP] Failed to prepare user attachments');
+      session.sendSessionEvent({ type: 'message', message: 'Could not prepare this message. Please send it again.' });
     });
   });
   session.keepAlive(thinking, 'remote');
@@ -1033,6 +1102,16 @@ export async function runAcp(opts: {
   try {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
+    if (opts.model) {
+      await switchModelIfRequested(opts.model);
+      const applied = isCurrentRequestedModel(opts.model);
+      if (!applied) session.sendSessionEvent({ type: 'message', message: 'The saved model is unavailable for this agent; using its current model.' });
+    }
+    session.updateMetadata((current) => ({
+      ...current,
+      attachmentKinds: opts.agentName === 'pi' && backend.supportsImageAttachments
+        ? [...CLAUDE_ATTACHMENT_KINDS] : [],
+    }));
     if (permissionModeIsFileBacked()) {
       fileBackedModeActive = true;
       publishFileBackedPermissionMode(initialPermissionMode);
@@ -1075,11 +1154,17 @@ export async function runAcp(opts: {
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
           await switchPermissionModeIfRequested(batch.mode.permissionMode);
         }
-        if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
-          await switchModelIfRequested(batch.mode.model);
+        const modelChanged = typeof batch.mode.model === 'string' && batch.mode.model.length > 0
+          ? await switchModelIfRequested(batch.mode.model) : false;
+        if (typeof batch.mode.effort === 'string') {
+          await switchEffortIfRequested(batch.mode.effort, modelChanged);
         }
         const prompt = todoDiscoverySent ? batch.message : `${batch.message}\n\n${BUILTIN_TODO_DISCOVERY}`;
-        await backend.sendPrompt(acpSessionId, prompt);
+        const attachments = batch.attachments ?? [];
+        const staged = attachments.length ? await stageClaudeAttachments(attachments, {
+          happyHomeDir: configuration.happyHomeDir, sessionId: session.sessionId,
+        }) : [];
+        await backend.sendPrompt(acpSessionId, appendStagedAttachmentsToPrompt(prompt, staged), attachments);
         todoDiscoverySent = true;
         await turnEnded;
         sendEnvelopes(sessionManager.endTurn('completed'));
@@ -1094,6 +1179,7 @@ export async function runAcp(opts: {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
       } catch (error) {
+        session.sendSessionEvent({ type: 'message', message: 'The agent could not process this message or its attachments. Please check the agent and try again.' });
         sendEnvelopes(sessionManager.endTurn('failed'));
         streamRelay.endTurn();
         setThinking(false);

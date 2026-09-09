@@ -1,4 +1,5 @@
 import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
+import { EffortSlider } from '@/components/EffortSlider';
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import * as Switch from '@radix-ui/react-switch';
@@ -1186,13 +1187,14 @@ function Agents() {
                 />
               )}
               {effortOptions.length > 0 && (
-                <AgentField
-                  label={t('settingsAgents.effort')}
-                  options={effortOptions}
-                  resolvedValue={resolved.effortLevel}
-                  override={getAgentDefaultOverrideValue(overrides, agent, 'effortLevel')}
-                  codeDefault={codeDefaults.effortLevel}
-                  onPick={(v) => pick(agent, 'effortLevel', v)}
+                <Item
+                  title={t('settingsAgents.effort')}
+                  right={<EffortSlider
+                    label={t('settingsAgents.effort')}
+                    options={[{ key: '__code_default__', name: t('settingsAgents.useCodeDefault') }, ...effortOptions]}
+                    value={getAgentDefaultOverrideValue(overrides, agent, 'effortLevel') ?? '__code_default__'}
+                    onChange={(v) => pick(agent, 'effortLevel', v === '__code_default__' ? null : v)}
+                  />}
                 />
               )}
             </ItemGroup>

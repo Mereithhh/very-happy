@@ -19,6 +19,7 @@ import { createInterface, type Interface as ReadlineInterface } from 'node:readl
 import { logger } from '@/ui/logger';
 import { contentLogMetadata, errorLogMetadata } from '@/utils/contentLogMetadata';
 import type {
+    CodexModel,
     InitializeParams,
     NewConversationParams,
     NewConversationResponse,
@@ -892,6 +893,7 @@ export class CodexAppServerClient {
      * Returns when task_complete or turn_aborted is received.
      */
     async sendTurn(prompt: string, opts?: {
+        images?: string[];
         model?: string;
         cwd?: string;
         approvalPolicy?: ApprovalPolicy;
@@ -904,6 +906,7 @@ export class CodexAppServerClient {
 
         const input: InputItem[] = [
             { type: 'text', text: prompt },
+            ...(opts?.images ?? []).map((path): InputItem => ({ type: 'localImage', path })),
         ];
 
         // Build params — only include optional fields when set (server uses thread defaults otherwise)
@@ -952,6 +955,7 @@ export class CodexAppServerClient {
      * Returns { aborted: true } if the turn was aborted (user cancel, permission reject, etc.).
      */
     async sendTurnAndWait(prompt: string, opts?: {
+        images?: string[];
         model?: string;
         cwd?: string;
         approvalPolicy?: ApprovalPolicy;
@@ -1046,6 +1050,22 @@ export class CodexAppServerClient {
 
     /** Default timeout for RPC requests (ms). */
     private static readonly REQUEST_TIMEOUT_MS = 30_000;
+
+    async listModels(): Promise<CodexModel[]> {
+        const models: CodexModel[] = [];
+        let cursor: string | null = null;
+        const seenCursors = new Set<string>();
+        do {
+            const response = await this.request('model/list', { limit: 100, cursor, includeHidden: false }) as {
+                data: CodexModel[]; nextCursor?: string | null;
+            };
+            models.push(...response.data.filter((model) => !model.hidden));
+            cursor = response.nextCursor ?? null;
+            if (cursor && seenCursors.has(cursor)) throw new Error('Repeated model/list cursor');
+            if (cursor) seenCursors.add(cursor);
+        } while (cursor);
+        return models;
+    }
 
     private request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {
         const timeout = timeoutMs ?? CodexAppServerClient.REQUEST_TIMEOUT_MS;

@@ -30,3 +30,10 @@ describe('enqueueCodexUserText', () => {
         expect(queue.push).toHaveBeenCalledWith('hello', mode, undefined, 'web-local-2');
     });
 });
+
+it('keeps attachment ownership and source id on the queued message', () => {
+    const attachments = [{ data: new Uint8Array([1, 2]), mimeType: 'image/png', name: 'a.png' }];
+    const queue = { push: vi.fn(), pushIsolateAndClear: vi.fn() };
+    enqueueCodexUserText({ text: '', mode: 'default', queue, attachments, sourceId: 'image-only' });
+    expect(queue.push).toHaveBeenCalledWith('', 'default', attachments, 'image-only');
+});

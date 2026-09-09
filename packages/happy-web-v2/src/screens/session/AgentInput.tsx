@@ -1,3 +1,6 @@
+import { selectDisplayedEffortKey } from './effortSelection';
+import { supportsSessionAttachments } from '@/sync/attachmentCapabilities';
+import { EffortSlider } from '@/components/EffortSlider';
 import { onMessageQuote } from './messageQuote';
 import { appendMessageQuote } from './messageActionsModel';
 /**
@@ -138,8 +141,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     }, []);
 
-    const flavorForAttach = session?.metadata?.flavor;
-    const supportsAttachments = !flavorForAttach || flavorForAttach === 'claude';
+    const supportsAttachments = supportsSessionAttachments(session?.metadata);
 
     const flavor = session?.metadata?.flavor as any;
     const metadata = session?.metadata ?? null;
@@ -200,7 +202,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         defaultModelLabel,
     );
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
-    const efforts = getEffortLevelsForModel(flavor, modelKey ?? 'default');
+    const efforts = getEffortLevelsForModel(flavor, modelKey ?? 'default', metadata);
     const permKey = session?.permissionMode ?? agentDefaults.permissionMode;
     const effortKey = session?.effortLevel ?? agentDefaults.effortLevel;
     // claude-ish flavors (incl. no flavor) support the explicit「默认」effort
@@ -221,10 +223,22 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         isOnline: session?.presence === 'online',
         capabilities: metadata?.capabilities,
     });
-    const effortOptions = isClaudeFlavor
+    const effortOptions = efforts.length === 0 ? [] : isClaudeFlavor
         ? [{ key: EFFORT_DEFAULT_KEY, name: t('session.chat.effortDefault'), description: t('session.chat.effortDefaultDesc') }, ...efforts]
         : efforts;
-    const selectedEffortKey = isClaudeFlavor ? (effortKey ?? EFFORT_DEFAULT_KEY) : effortKey;
+    const effectiveModelCode = modelKey === 'default'
+        ? metadata?.defaultModelCode ?? metadata?.currentModelCode
+        : modelKey;
+    const backendDefaultEffort = metadata?.models?.find((model) => model.code === effectiveModelCode)?.defaultReasoningEffort;
+    const selectedEffortKey = isClaudeFlavor
+        ? selectDisplayedEffortKey(effortOptions, [effortKey, metadata?.currentThoughtLevelCode, backendDefaultEffort, EFFORT_DEFAULT_KEY])
+        : selectDisplayedEffortKey(efforts, [
+            session?.effortLevel,
+            getAgentDefaultOverride(agentDefaultOverrides, flavor).effortLevel,
+            metadata?.currentThoughtLevelCode,
+            isPiAgent(flavor) ? metadata?.currentOperatingModeCode : undefined,
+            backendDefaultEffort,
+        ]);
     // B-362: intent → running model (ACP runners publish it) → first option; never show
     // a model the session is not on just because the default key is not in the list.
     const displayedModelKey = selectDisplayedModelKey({
@@ -735,6 +749,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 </div>
             )}
 
+            {isPiAgent(flavor) && attachments.some((attachment) => attachment.mimeType.startsWith('image/')) && (
+                <p className="ci-attachment-hint">{t('imageUpload.visionModelHint')}</p>
+            )}
+
             {queued.length > 0 && (
                 <section className="ci-queue" aria-label={t('session.chat.queueTitle')}>
                     <div className="ci-queue-head">
@@ -955,7 +973,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         subtitle={permissionSubtitle}
                     />
                     {efforts.length > 0 && (
-                        <ModeMenu
+                        <EffortSlider
                             label={t('session.chat.effortLabel')}
                             options={effortOptions}
                             value={selectedEffortKey}

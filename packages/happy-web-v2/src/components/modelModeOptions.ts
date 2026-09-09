@@ -113,6 +113,10 @@ export function getClaudeModelModes(): ModelMode[] {
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+        { key: 'gpt-6-astra', name: 'gpt-6-astra', description: null },
+        { key: 'gpt-5.6-sol', name: 'gpt-5.6-sol', description: null },
+        { key: 'gpt-5.6-terra', name: 'gpt-5.6-terra', description: null },
+        { key: 'gpt-5.6-luna', name: 'gpt-5.6-luna', description: null },
         { key: 'gpt-5.5', name: 'gpt-5.5', description: null },
         { key: 'gpt-5.4', name: 'gpt-5.4', description: null },
         { key: 'gpt-5.3-codex', name: 'gpt-5.3-codex', description: null },
@@ -207,7 +211,7 @@ export function getAvailableModels(
 ): ModelMode[] {
     const metadataModels = mapMetadataOptions(metadata?.models);
     if (metadataModels.length > 0) {
-        if (flavor === 'codex' && !metadataModels.some((model) => model.key === 'default')) {
+        if ((flavor === 'codex' || flavor === 'claude') && !metadataModels.some((model) => model.key === 'default')) {
             return [{ key: 'default', name: 'default model', description: null }, ...metadataModels];
         }
         return metadataModels;
@@ -299,17 +303,36 @@ export function getDefaultEffortKey(flavor: AgentFlavor): string | null {
 }
 
 // Per-model effort: returns effort levels for a specific model, or empty if the model has no effort
-export function getEffortLevelsForModel(flavor: AgentFlavor, _modelKey: string): EffortLevel[] {
-    // Claude and Codex expose effort/thought levels regardless of which
-    // specific model is picked — the same low/medium/high/max scale applies
-    // to the whole flavor (mirrors how Codex already worked, which the user
-    // asked Claude to match).
-    if (flavor === 'claude') {
-        return getClaudeEffortLevels();
+export function getEffortLevelsForModel(
+    flavor: AgentFlavor, modelKey: string, metadata?: Metadata | null,
+): EffortLevel[] {
+    if (flavor === 'codex' || flavor === 'claude') {
+        const resolvedKey = modelKey === 'default' ? metadata?.defaultModelCode ?? 'default' : modelKey;
+        const model = metadata?.models?.find((option) => option.code === resolvedKey || option.resolvedModel === resolvedKey);
+        if (model?.reasoningEfforts) {
+            return model.reasoningEfforts.map((key) => ({ key, name: key }));
+        }
+        if (flavor === 'claude') {
+            return /haiku/i.test(resolvedKey ?? modelKey) ? [] : getClaudeEffortLevels();
+        }
+        const levels = getCodexEffortLevels();
+        // Old wrappers silently ignore newer levels. Only advertise expanded
+        // session ranges when that wrapper published its model capabilities.
+        if (metadata) return levels;
+        // Codex 0.153.4 app-server fallback, verified via model/list.
+        // A connected machine's advertised catalog always takes precedence.
+        if (/^gpt-(6-astra|5\.6-(sol|terra|luna))$/.test(resolvedKey ?? modelKey)) {
+            const higher = [...levels, { key: 'max', name: 'max' }];
+            return (resolvedKey ?? modelKey) === 'gpt-5.6-luna' ? higher : [...higher, { key: 'ultra', name: 'ultra' }];
+        }
+        return levels;
     }
-    if (flavor === 'codex') {
-        return getCodexEffortLevels();
-    }
+    // ACP advertises the current model's selector, not a per-model catalog.
+    // Hide it while a different model is only a local selection.
+    if (modelKey !== 'default' && metadata?.currentModelCode && modelKey !== metadata.currentModelCode) return [];
+    if (metadata?.thoughtLevels) return mapMetadataOptions(metadata.thoughtLevels);
+    if (isPiAgent(flavor)) return mapMetadataOptions(metadata?.operatingModes);
+    if (flavor === 'claude') return getClaudeEffortLevels();
     return [];
 }
 

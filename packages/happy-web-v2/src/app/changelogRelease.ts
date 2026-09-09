@@ -15,6 +15,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-09-agent-chat-inputs',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.129',
+    titleKey: 'changelog.releases.sep09x.title',
+    summaryKey: 'changelog.releases.sep09x.summary',
+    itemKeys: ['changelog.releases.sep09x.attachments', 'changelog.releases.sep09x.reasoning', 'changelog.releases.sep09x.defaults'],
+  },
+  {
     id: '2026-09-09-hub-and-teams',
     date: '2026-09-09',
     buildVersion: __APP_VERSION__,

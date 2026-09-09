@@ -109,3 +109,39 @@ describe('pi pickers (B-370)', () => {
         expect(getEffortLevelsForModel('acp', 'llm-hub/claude-fable-5-1')).toEqual([]);
     });
 });
+
+
+describe('model-specific reasoning catalogs', () => {
+    it('uses each app-server model exact levels, including ultra only when advertised', () => {
+        const metadata = { defaultModelCode: 'gpt-5.6-sol', models: [
+            { code: 'gpt-5.6-sol', value: 'Sol', reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+            { code: 'gpt-5.6-luna', value: 'Luna', reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+            { code: 'no-reasoning', value: 'Plain', reasoningEfforts: [] },
+        ] } as any;
+        expect(getEffortLevelsForModel('codex', 'default', metadata).map(x => x.key)).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+        expect(getEffortLevelsForModel('codex', 'gpt-5.6-luna', metadata).map(x => x.key)).not.toContain('ultra');
+        expect(getEffortLevelsForModel('codex', 'no-reasoning', metadata)).toEqual([]);
+        expect(getEffortLevelsForModel('codex', 'gpt-6-astra').map(x => x.key)).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+    });
+    it('uses ACP thought levels independently of permissions, including legacy pi levels', () => {
+        const thoughtLevels = [{ code: 'off', value: 'Off' }, { code: 'custom', value: 'Deep' }];
+        expect(getEffortLevelsForModel('opencode', 'default', { thoughtLevels } as any).map(x => x.key)).toEqual(['off', 'custom']);
+        expect(getEffortLevelsForModel('acp', 'default', { operatingModes: thoughtLevels } as any).map(x => x.key)).toEqual(['off', 'custom']);
+    });
+});
+
+
+it('keeps older Codex wrappers on their supported four levels', () => {
+    expect(getEffortLevelsForModel('codex', 'gpt-6-astra', {} as any).map(x => x.key)).toEqual(['low', 'medium', 'high', 'xhigh']);
+});
+it('honors Claude per-model SDK capabilities and does not invent Haiku effort', () => {
+    expect(getEffortLevelsForModel('claude', 'haiku')).toEqual([]);
+    expect(getEffortLevelsForModel('claude', 'sonnet', { models: [{ code: 'sonnet', value: 'Sonnet', reasoningEfforts: ['low', 'high'] }] } as any).map(x => x.key)).toEqual(['low', 'high']);
+});
+
+
+it('hides the previous ACP model thinking catalog while a new model is selected', () => {
+    const metadata = { currentModelCode: 'deep', thoughtLevels: [{ code: 'xhigh', value: 'Extra high' }] } as any;
+    expect(getEffortLevelsForModel('acp', 'small', metadata)).toEqual([]);
+    expect(getEffortLevelsForModel('acp', 'deep', metadata).map(x => x.key)).toEqual(['xhigh']);
+});

@@ -43,7 +43,7 @@ describe('parsePiRunnerArgs', () => {
   });
 
   it('rejects unknown options rather than silently eating them', () => {
-    expect(() => parsePiRunnerArgs(['--model', 'x'])).toThrow(/Unknown option for very-happy pi: --model/);
+    expect(() => parsePiRunnerArgs(['--unknown', 'x'])).toThrow(/Unknown option for very-happy pi: --unknown/);
   });
 
   it('ignores a malformed --started-by value', () => {
@@ -63,4 +63,9 @@ describe('piAdapterMissingHint', () => {
     expect(piAdapterMissingHint(undefined)).toBeNull();
     expect(piAdapterMissingHint('')).toBeNull();
   });
+});
+
+it('accepts provider-qualified initial model without passing it to the adapter argv', () => {
+  expect(parsePiRunnerArgs(['--model', 'llm-hub/claude-fable-5-1'])).toEqual({ verbose: false, passthrough: [], model: 'llm-hub/claude-fable-5-1' });
+  expect(() => parsePiRunnerArgs(['--model', '--evil'])).toThrow('Invalid --model');
 });

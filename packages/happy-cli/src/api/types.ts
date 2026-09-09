@@ -484,7 +484,7 @@ export type Metadata = {
    * ACP session config option value (normalized for UI metadata consumers).
    */
   // `code` = protocol value ID, `value` = human label
-  models?: Array<{ code: string; value: string; description?: string | null }>,
+  models?: Array<{ code: string; value: string; description?: string | null; resolvedModel?: string; reasoningEfforts?: string[]; defaultReasoningEffort?: string }>,
   currentModelCode?: string,
   /** Resolved SDK model when no per-message model override was supplied. */
   defaultModelCode?: string,

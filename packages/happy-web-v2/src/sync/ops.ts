@@ -1,3 +1,4 @@
+import { resolveSpawnModel } from './spawnModel';
 /**
  * Session operations for remote procedure calls
  * Provides strictly typed functions for all session-related RPC operations
@@ -144,6 +145,8 @@ export type SpawnSessionResult =
 
 // Options for spawning a session
 export interface SpawnSessionOptions {
+    /** Initial agent model; older daemons ignore this optional field. */
+    model?: string;
     machineId: string;
     directory: string;
     approvedNewDirectoryCreation?: boolean;
@@ -296,6 +299,8 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
 
     const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode } = options;
 
+    const model = resolveSpawnModel(options, storage.getState().settings.agentDefaultOverrides);
+
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
             type: 'spawn-in-directory'
@@ -311,10 +316,11 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             variant?: string,
             forceNew?: boolean,
             permissionMode?: string,
+            model?: string,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode, model }
         );
         return result;
     } catch (error) {
