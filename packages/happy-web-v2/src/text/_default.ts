@@ -700,7 +700,7 @@ export const en = {
                 return remainder === 0 ? `Elapsed ${minutes}m` : `Elapsed ${minutes}m ${remainder}s`;
             },
             modelLabel: 'model',
-            permissionLabel: 'mode',
+            permissionLabel: 'permissions',
             permissionModeState: {
                 pending: '· switching',
                 conflict: ({ mode }: { mode: string }) => `· CLI: ${mode}`,
@@ -1799,6 +1799,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09y: {
+                title: 'A simpler composer',
+                summary: 'Model and reasoning controls now share one compact menu.',
+                controls: 'Choose a model and adjust its effort slider in one popup. Permissions stay separate, with the same two controls on desktop and mobile.',
+            },
             sep09x: {
                 title: 'More capable agent conversations',
                 summary: 'Files, model choices and thinking controls work together across Codex and pi.',

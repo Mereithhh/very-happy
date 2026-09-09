@@ -36,6 +36,7 @@ const EXTERNAL = new Set([
     '--shiki-light',
     '--shiki-dark',
     '--radix-dropdown-menu-content-transform-origin',
+    '--radix-popover-content-available-height',
 ]);
 
 /**

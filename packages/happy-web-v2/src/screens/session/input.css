@@ -11,11 +11,14 @@
 /* desktop selectors share the compact metadata row below the composer */
 .ci-modes {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--sp-2);
   min-width: 0;
+  max-width: 100%;
+  align-items: center;
 }
-.ci-mobile-options { display: none; }
+.ci-modes > .mm-trigger { min-height: 32px; }
+.ci-modes > .mm-trigger:last-child { flex: none; }
 
 /* attachment previews */
 .ci-attachments {
@@ -409,12 +412,11 @@
     padding: var(--sp-2) var(--sp-3);
   }
   .ci-modes {
-    display: none;
-  }
-  .ci-mobile-options {
     display: flex;
-    min-width: 0;
+    width: 100%;
   }
+  .ci-modes > .mm-trigger { min-height: 44px; }
+  .ci-modes .me-trigger { flex: 1; }
   .ci-composer {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;

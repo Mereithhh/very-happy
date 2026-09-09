@@ -50,3 +50,9 @@ Native Codex fixture smoke returned the file verification code and correct red/b
 - The same real browser page captured `controllerchange` and loaded the new entry and CSS before manual reload; reload preserved the new version, with no page errors or overflow.
 - In a new pi conversation, choosing the advertised Fable 5.1 model persisted to account defaults. A second conversation created through the Web UI reported that exact `currentModelCode` before its first prompt. This verifies UI selection → settings → spawn RPC → daemon → ACP startup, not merely a selected label.
 - A fresh Codex wrapper advertised Astra with exactly low/medium/high/xhigh/max/ultra (default low) and file/image attachments. Both production Codex and pi vision models consumed encrypted text attachments and images through the real upload/message path, returning the expected fixture token and colour. Codex additionally exercised a real one-time read-only approval card before completing.
+
+## Composer refinement (B-429)
+
+Owner screenshot feedback supersedes the exposed slider row: desktop and mobile show exactly two entries, model/effort and permissions. The model popup contains model selection and the same backend-driven slider with its maximum animation. Unsupported models hide effort; exact value/default persistence and permission enforcement remain unchanged. This UI-only follow-up ships with the complete server/Web image and requires no new CLI version.
+
+Refinement validation: Web 2670 tests, build and typecheck passed. Real Chromium at 900/390px in both themes verified two closed-state entries, model switching, exact effort keys, empty/unknown effort states, independent permissions, keyboard navigation, popup bounds and 44px touch targets. Maximum animation was pixel-verified and reduced-motion suppresses it; the composer integration mutation was caught.

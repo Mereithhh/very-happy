@@ -1,0 +1,48 @@
+.me-trigger { min-height: 32px; max-width: 100%; }
+.me-trigger .mm-v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-trigger > svg { flex: none; }
+.me-strength { color: var(--text-dim); flex: none; font-size: var(--fs-11); }
+.me-strength::before { content: '·'; margin-inline-end: 5px; color: var(--text-faint); }
+.me-panel {
+  width: min(320px, calc(100vw - 24px));
+  max-height: var(--radix-popover-content-available-height);
+  overflow-y: auto;
+  padding: var(--sp-4);
+  background: var(--bg-1);
+  color: var(--text);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lift);
+  z-index: 60;
+}
+.me-model-label { display: block; font-size: var(--fs-11); color: var(--text-dim); margin-bottom: var(--sp-1); }
+.me-model-select { position: relative; }
+.me-model-select select {
+  appearance: none;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--sp-2) 28px var(--sp-2) var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-16);
+  text-overflow: ellipsis;
+}
+.me-model-select > svg { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-dim); }
+.me-note { font-size: var(--fs-11); color: var(--text-dim); overflow-wrap: anywhere; margin: var(--sp-2) 0 0; }
+.me-panel .effort-slider { width: 100%; min-width: 0; margin-top: var(--sp-4); }
+.me-panel .effort-slider-control { height: 44px; }
+@media (max-width: 600px), (pointer: coarse) {
+  .me-trigger { min-height: 44px; }
+}
+.me-panel .effort-slider-heading { font-size: var(--fs-13); }
+.me-panel .effort-slider input { height: 44px; }
+.me-panel .effort-slider-rail { top: 18px; height: 8px; border-radius: var(--r-pill); }
+.me-panel .effort-slider-rail > span { border-radius: inherit; }
+.me-panel .effort-slider-ticks { top: 20px; }
+.me-panel .effort-slider-ticks i { width: 4px; height: 4px; border-radius: 50%; background: var(--text-faint); }
+.me-panel .effort-slider-burst { top: 22px; }
+.me-panel .effort-slider input::-webkit-slider-thumb { width: 22px; height: 22px; }
+.me-panel .effort-slider input::-moz-range-thumb { width: 16px; height: 16px; }

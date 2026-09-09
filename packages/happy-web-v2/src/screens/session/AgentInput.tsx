@@ -1,6 +1,6 @@
 import { selectDisplayedEffortKey } from './effortSelection';
 import { supportsSessionAttachments } from '@/sync/attachmentCapabilities';
-import { EffortSlider } from '@/components/EffortSlider';
+import { ModelEffortMenu } from './ModelEffortMenu';
 import { onMessageQuote } from './messageQuote';
 import { appendMessageQuote } from './messageActionsModel';
 /**
@@ -40,7 +40,6 @@ import {
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
 import { ModeMenu } from './ModeMenu';
-import { SessionOptionsDialog } from './SessionOptionsDialog';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
 import { deriveRunningModelSubtitle, selectDisplayedModelKey } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
@@ -121,7 +120,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const [slashIndex, setSlashIndex] = useState(0);
     const [dismissedSlashText, setDismissedSlashText] = useState<string | null>(null);
     const [dragOver, setDragOver] = useState(false);
-    const [sessionOptionsOpen, setSessionOptionsOpen] = useState(false);
     const [permissionModeBusy, setPermissionModeBusy] = useState(false);
     // B-098 手动展开态：上限 200px ↔ ~60% 视口高。会话内状态，刻意不持久化。
     const [expanded, setExpanded] = useState(false);
@@ -246,8 +244,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         running: metadata?.currentModelCode,
         optionKeys: models.map((option) => option.key),
     });
-    const selectedModel = models.find((option) => option.key === displayedModelKey) ?? models[0];
-    const selectedPermission = permModes.find((option) => option.key === permKey) ?? permModes[0];
     // B-262 A4: honest subtitle — what the CLI has confirmed vs. what we intend.
     const permissionDisplayState = publishesModeFacts
         ? derivePermissionModeDisplay({
@@ -280,10 +276,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         selectedKey: modelKey,
         running: metadata?.currentModelCode,
     });
-    const sessionOptionsSummary = [selectedModel?.name, selectedPermission?.name]
-        .filter(Boolean)
-        .join(' · ');
-
     // context meter — always visible when we have a usage snapshot.
     const contextSize = usage?.contextSize ?? 0;
     // 分母按 assistant 消息回传的**真实**模型定（B-135）。拿不到模型就不显示百分比
@@ -690,39 +682,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     return (
         <div className="ci" style={{ paddingBottom: 'max(var(--sp-3), env(safe-area-inset-bottom))' }}>
-            <div className="ci-mobile-options">
-                <SessionOptionsDialog
-                    open={sessionOptionsOpen}
-                    onOpenChange={setSessionOptionsOpen}
-                    triggerLabel={t('session.chat.sessionSettings')}
-                    triggerSummary={sessionOptionsSummary}
-                    title={t('session.chat.sessionSettingsTitle')}
-                    description={t('session.chat.sessionSettingsDescription')}
-                    closeLabel={t('common.close')}
-                    model={{
-                        label: t('session.chat.modelLabel'),
-                        options: models,
-                        value: modelKey,
-                        onChange: (key) => setMode('updateSessionModelMode', 'modelMode', key),
-                        hint: modelSubtitle,
-                    }}
-                    permission={{
-                        label: t('session.chat.permissionLabel'),
-                        options: permModes,
-                        value: permKey,
-                        onChange: (key) => { void setPermissionMode(key); },
-                        busy: permissionModeBusy,
-                        hint: permissionSubtitle,
-                    }}
-                    effort={{
-                        label: t('session.chat.effortLabel'),
-                        options: effortOptions,
-                        value: selectedEffortKey,
-                        onChange: setEffort,
-                    }}
-                />
-            </div>
-
             {/* attachment previews */}
             {attachments.length > 0 && (
                 <div className="ci-attachments">
@@ -953,16 +912,16 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 </div>
             </div>
 
-            {/* Desktop controls share one compact row with context and hints.
-                Mobile keeps the touch-friendly SessionOptionsDialog above. */}
+            {/* Model and effort share a popup; permission remains a separate control on every screen. */}
             <div className="ci-status">
                 <div className="ci-modes">
-                    <ModeMenu
+                    <ModelEffortMenu
                         label={t('session.chat.modelLabel')}
                         options={models}
-                        value={modelKey}
+                        value={displayedModelKey ?? null}
                         onChange={(key) => setMode('updateSessionModelMode', 'modelMode', key)}
                         subtitle={modelSubtitle}
+                        effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
                     />
                     <ModeMenu
                         label={t('session.chat.permissionLabel')}
@@ -972,14 +931,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         busy={permissionModeBusy}
                         subtitle={permissionSubtitle}
                     />
-                    {efforts.length > 0 && (
-                        <EffortSlider
-                            label={t('session.chat.effortLabel')}
-                            options={effortOptions}
-                            value={selectedEffortKey}
-                            onChange={setEffort}
-                        />
-                    )}
+
                 </div>
                 <span className="ci-spacer" />
                 <span className={`ci-meter ci-meter--${meterTone}`} title={meterTitle}>
