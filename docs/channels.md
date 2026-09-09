@@ -490,6 +490,20 @@ hint. Resumed existing Codex threads do not receive a new first-turn hint; run
 Scoped Teams sessions cannot use account-wide Todo commands. Task text is data,
 not authorization to execute its contents or complete tasks automatically.
 
+For maintainers, edit `packages/happy-wire/src/builtinTodoSkill.ts` as the text
+source; Web clipboard and CLI output import it. Update the public Markdown copy
+together and run `pnpm -C packages/happy-wire exec vitest run src/builtinTodoSkill.test.ts`
+to verify exact equality. Compare installed `todo skill` output while allowing
+only its extra printing newline, not arbitrary whitespace normalization.
+
+Verify three separate paths: the deployed Markdown body equals the source (an
+HTTP 200 alone can be an SPA fallback); the page copies the complete instructions
+and exposes manual copy on failure; the installed CLI reads the intended account
+on the expected server. Do not infer that an installer makes a skill discoverable
+in every runner: verify prompt injection at each runner's actual first/resume
+boundary. Creation retry tests must cross client/process boundaries, since an
+in-memory retry map alone cannot protect separate CLI invocations.
+
 ## Inbound: todo provider (external task lists in the web UI)
 
 **No setup is required for Todos → My todos.** The built-in list belongs to your
