@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+<title id="title">Very Happy Teams — from one goal to reviewed results</title>
+<desc id="desc">You describe a goal. A lead delegates to Claude Code, Codex and pi members, which can delegate further. Members submit results to their parent for review. The server keeps durable team state; a daemon on the selected computer manages sessions, worktrees and cleanup.</desc>
+<style>text{font-family:'IBM Plex Sans',sans-serif;fill:#ecede8}.muted{fill:#92958d}.small{font-size:15px}.label{font-size:18px;font-weight:600}.wire{fill:none;stroke:#555852;stroke-width:1.5}.live{fill:#56b8a7}</style>
+<rect width="1200" height="760" rx="20" fill="#111210"/>
+<text x="48" y="61" font-size="29" font-weight="600">Very Happy Teams</text>
+<text x="1152" y="58" text-anchor="end" class="muted small">COLLABORATION ARCHITECTURE</text>
+<path d="M48 84H1152" class="wire"/>
+<text x="48" y="135" font-size="37" font-weight="600">One goal. Parallel work. Reviewed results.</text>
+<text x="48" y="168" class="muted small">Your agents work on your computer. The whole team stays within reach.</text>
+<rect x="48" y="210" width="230" height="110" rx="10" fill="#20221e"/>
+<text x="70" y="244" class="muted small">YOU · WEB / PHONE</text>
+<text x="70" y="277" class="label">Describe the goal</text>
+<text x="70" y="301" class="muted small">Follow any conversation</text>
+<path d="M278 265H340 M332 258L340 265 332 272" class="wire"/>
+<rect x="342" y="210" width="248" height="110" rx="10" fill="#20221e" stroke="#92958d"/>
+<text x="365" y="244" class="label">Team lead</text>
+<text x="365" y="274" class="muted small">Plan · delegate · review</text>
+<circle cx="370" cy="299" r="4" fill="#56b8a7"/>
+<text x="383" y="304" class="small live">Coordinates the work</text>
+<path d="M590 265H636V466H677 M636 265V218H677 M636 342H677" class="wire"/>
+<rect x="680" y="194" width="276" height="98" rx="8" fill="#20221e"/>
+<text x="702" y="225" class="label">Build the interface</text>
+<text x="702" y="252" class="muted small">Claude Code · member</text>
+<path d="M704 271H930" class="wire"/>
+<rect x="680" y="318" width="276" height="98" rx="8" fill="#20221e"/>
+<text x="702" y="349" class="label">Implement the API</text>
+<text x="702" y="376" class="muted small">Codex · member</text>
+<path d="M704 395H930" class="wire"/>
+<rect x="680" y="442" width="276" height="98" rx="8" fill="#20221e"/>
+<text x="702" y="473" class="label">Review &amp; verify</text>
+<text x="702" y="500" class="muted small">pi · member</text>
+<path d="M704 519H930" class="wire"/>
+<path d="M956 490H996V442H1036 M996 490V522H1036" class="wire"/>
+<rect x="1038" y="419" width="114" height="47" rx="6" fill="#20221e"/>
+<text x="1095" y="448" text-anchor="middle" class="small">Subtask</text>
+<rect x="1038" y="499" width="114" height="47" rx="6" fill="#20221e"/>
+<text x="1095" y="528" text-anchor="middle" class="small">Subtask</text>
+<text x="998" y="392" class="muted small">Delegate further</text>
+<path d="M815 550V581H466V340 M459 348L466 340 473 348" class="wire" stroke-dasharray="5 5"/>
+<text x="491" y="567" class="muted small">Submit evidence → parent reviews → accept / revise</text>
+<text x="48" y="412" class="label">Every task has an owner.</text>
+<text x="48" y="441" class="muted small">Open the team, then any member.</text>
+<text x="48" y="466" class="muted small">Inspect progress, changes and results.</text>
+<text x="48" y="513" class="small">Ordinary chats and terminals</text>
+<text x="48" y="538" class="muted small">remain available alongside Teams.</text>
+<path d="M48 613H1152" class="wire"/>
+<text x="48" y="650" class="label">Durable coordination</text>
+<text x="48" y="676" class="muted small">Server · tasks, messages, operations</text>
+<text x="474" y="650" class="label">Managed execution</text>
+<text x="474" y="676" class="muted small">Daemon · sessions, worktrees, cleanup</text>
+<text x="1152" y="650" text-anchor="end" class="label">Your configured agents</text>
+<text x="1152" y="676" text-anchor="end" class="muted small">Local tools, models and permissions</text>
+<text x="48" y="725" class="muted small">Example roles · Each team currently runs on one selected computer in one account.</text>
+</svg>

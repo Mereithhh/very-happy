@@ -18,7 +18,7 @@ describe('public documentation registry', () => {
       'quickstart', 'keyboard', 'cli', 'cloud', 'self-hosting', 'configuration', 'architecture',
       'integrations', 'security', 'accounts-and-quotas', 'upgrades', 'troubleshooting', 'contributing',
     ]));
-    expect(PUBLIC_DOCS.slice(0, 2).map((doc) => doc.slug)).toEqual(['architecture', 'quickstart']);
+    expect(PUBLIC_DOCS.slice(0, 2).map((doc) => doc.slug)).toEqual(['agent-teams', 'quickstart']);
   });
 
   it('keeps onboarding commands and trust disclosure in the published content', () => {
@@ -107,8 +107,8 @@ describe('public documentation registry', () => {
     const docsScreen = readFileSync(new URL('./DocsScreen.tsx', import.meta.url), 'utf8');
     const images = architecture?.sections.flatMap((section) => section.blocks).filter((block) => block.type === 'image') ?? [];
 
-    expect(images).toHaveLength(4);
-    expect(docsScreen).toContain('<Navigate replace to="/docs/architecture" />');
+    expect(images).toHaveLength(5);
+    expect(docsScreen).toContain('<Navigate replace to="/docs/agent-teams" />');
     expect(docsScreen).toContain('navigator.clipboard.writeText(code)');
     expect(docsScreen).toContain('<CopyableCode');
     expect(images.map((block) => block.type === 'image' ? block.src : '')).toEqual(expect.arrayContaining([
@@ -192,27 +192,19 @@ describe('public documentation registry', () => {
     const publicI18n = readFileSync(new URL('../../i18n/publicI18n.ts', import.meta.url), 'utf8');
     const landingCopy = `${landing}\n${publicI18n}`;
     const productPreview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
-    const featureProofs = readFileSync(new URL('./CoreFeatureProofs.tsx', import.meta.url), 'utf8');
     const continuityProof = readFileSync(new URL('./MobileContinuityProof.tsx', import.meta.url), 'utf8');
     const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
-    expect(landingCopy).toContain('One panel.');
-    expect(landingCopy).toContain('Every machine.');
-    expect(landingCopy).toContain('Every agent.');
     expect(landingCopy).toContain('Claude Code');
     expect(landingCopy).toContain('Codex');
     expect(landingCopy).toContain('Gemini available from Web through a compatible ACP stdio endpoint');
     expect(landingCopy).toContain('OpenCode through the CLI ACP beta');
     expect(landingCopy).not.toContain('ACP extensible');
-    expect(landingCopy).toContain('Pi + provider gateway');
     expect(landingCopy).toContain('REAL PRODUCT // SANITIZED DATA');
-    expect(landingCopy).toContain('MULTI-MACHINE COMMAND PANEL');
     expect(landingCopy).toContain('FIRST CONNECTION // THREE MOVES');
     expect(landingCopy).toContain('Prepare the machine');
     expect(landingCopy).toContain('Connect and keep it online');
     expect(landingCopy).toContain('Node 20.19+ within 20.x, 22.13+ within 22.x, or 24+ is required');
     expect(landingCopy).toContain('tmux is recommended for durable terminals');
-    expect(landingCopy).toContain('SEE THE FLEET.');
-    expect(landingCopy).toContain('DISPATCH THE WORK. STEP IN ANYWHERE.');
     expect(continuityProof).toContain('STRUCTURED WHEN YOU WANT IT // NATIVE WHEN YOU NEED IT');
     expect(continuityProof).toContain('REAL TUI · TMUX-BACKED');
     expect(continuityProof).toContain("'STRUCTURED MIRROR'");
@@ -221,19 +213,13 @@ describe('public documentation registry', () => {
     expect(productPreview).toContain('Optional terminal hooks installed');
     expect(productPreview).not.toContain('Sanitized Codex terminal');
     expect(productPreview).toContain('Task board');
-    expect(featureProofs).toContain('Voice Assistant uses Claude on one selected machine');
-    expect(featureProofs).toContain('Automatic cross-machine routing is roadmap');
-    expect(featureProofs).toContain('REQUIRES VOICE CONFIGURATION');
     expect(landingCopy).toContain('You get to be Very Happy.');
-    expect(landingCopy).toContain('today you explicitly choose a Web-supported machine and agent');
     expect(productPreview).toContain('Example multi-machine session command panel');
     expect(productPreview).toContain('office · codex');
-    expect(html).toContain('One Web command panel for every connected machine');
     expect(landingCopy).not.toContain('private Tanka deployment');
     expect(landingCopy).toContain('ROADMAP');
     expect(landingCopy).not.toContain('not end-to-end encrypted');
     expect(landingCopy).toContain('Cloud convenience or your own infrastructure.');
-    expect(html).toContain('One panel. Every machine. Every agent.');
     expect(html).not.toContain('Claude Code, from any browser.');
   });
 
@@ -367,12 +353,8 @@ describe('public documentation registry', () => {
     const mobileStyles = readFileSync(new URL('./mobileContinuityProof.css', import.meta.url), 'utf8');
     const scheduler = readFileSync(new URL('./SchedulerTopologyProof.tsx', import.meta.url), 'utf8');
     const schedulerStyles = readFileSync(new URL('./schedulerTopologyProof.css', import.meta.url), 'utf8');
-    expect(landing).toContain('pub-hero-product');
-    expect(landing).toContain('<SchedulerTopologyProof />');
     expect(landing).toContain('pub-product-frame');
     expect(landing).toContain('pub-product-facts');
-    expect(landing).toContain('INTERACTIVE SYSTEM MAP · CURRENT PATHS');
-    expect(landing).toContain('PHONE / WEB CONTROL PLANE');
     expect(landing).toContain('ACCOUNT WORKSPACE · PRODUCTION UI CONTRACTS');
     expect(landing).toContain('PASTE FILE → SELECTED MACHINE');
     expect(landing).not.toContain('CONNECTED · 42 MS');
@@ -385,7 +367,6 @@ describe('public documentation registry', () => {
     expect(styles).toContain('@keyframes pub-stage-float');
     expect(styles).toContain('@keyframes pub-stage-orbit');
     expect(styles).toContain('@keyframes pub-stage-packet');
-    expect(landing).toContain('onPointerMove={tiltStage}');
     expect(landing).not.toContain('pub-stage-node');
     expect(landing).not.toContain('EDGE-RELAY');
     expect(landing).not.toContain('STUDIO-MAC');
@@ -450,13 +431,14 @@ describe('public documentation registry', () => {
     const pageOrder = landing.slice(landing.indexOf('return <div className="pub-page"'));
     const readmeWhy = readme.slice(readme.indexOf('## Why choose Very Happy?'), readme.indexOf('## One command to your first machine'));
 
+    expect(pageOrder).toContain('<TeamsStory />');
     expect(pageOrder).toContain('<ProductShowcase />');
     expect(pageOrder).toContain('<WhyVeryHappy />');
     expect(pageOrder).toContain('<StartAndTrust />');
     expect(pageOrder).toContain('<MobileContinuityProof />');
     expect(pageOrder).toContain('<CoreFeatureProofs />');
-    expect(pageOrder.indexOf('<RegionalRelayProof />')).toBeLessThan(pageOrder.indexOf('<RuntimeArchitectureProof />'));
-    expect(pageOrder.indexOf('<RuntimeArchitectureProof />')).toBeLessThan(pageOrder.indexOf('<ProductShowcase />'));
+    expect(pageOrder.indexOf('<TeamsStory />')).toBeLessThan(pageOrder.indexOf('<ProductShowcase />'));
+    expect(pageOrder.indexOf('<ProductShowcase />')).toBeLessThan(pageOrder.indexOf('<RuntimeArchitectureProof />'));
     expect(pageOrder.indexOf('<ProductShowcase />')).toBeLessThan(pageOrder.indexOf('<WhyVeryHappy />'));
     expect(pageOrder.indexOf('<WhyVeryHappy />')).toBeLessThan(pageOrder.indexOf('<StartAndTrust />'));
     expect(pageOrder.indexOf('<StartAndTrust />')).toBeLessThan(pageOrder.indexOf('<MobileContinuityProof />'));
@@ -468,7 +450,7 @@ describe('public documentation registry', () => {
     expect(why).toContain('Choose the operator—not another silo.');
     expect(whyStyles).toContain('@keyframes why-vh-packet');
     expect(whyStyles).toContain('@media (prefers-reduced-motion: reduce)');
-    expect(readmeWhy.match(/^\| “/gm)).toHaveLength(4);
+    expect(readmeWhy.match(/^\| “/gm)).toHaveLength(5);
     expect(readmeWhy).toContain('My agents and terminals are scattered across several machines.');
     expect(readmeWhy).toContain('Remote control must fit my operating model.');
   });
@@ -503,7 +485,6 @@ describe('public documentation registry', () => {
 
   it('makes every narrow product surface usable instead of shrinking desktop mockups', () => {
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
-    const publicI18n = readFileSync(new URL('../../i18n/publicI18n.ts', import.meta.url), 'utf8');
     const preview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./productWorkspacePreview.css', import.meta.url), 'utf8');
     const publicStyles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
@@ -532,7 +513,6 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.product-preview \.bd-cols \{ display: block; overflow-y: auto; \}/);
     expect(styles).toContain('@container product-preview (max-width: 480px)');
     expect(publicStyles).toMatch(/\.pub-start code \{[^}]*white-space: pre-line/);
-    expect(`${landing}\n${publicI18n}`).toContain('Then open Web → New session and choose the machine plus agent.');
     expect(landing).not.toContain('One thread. Three ways');
   });
 
@@ -583,16 +563,13 @@ describe('public documentation registry', () => {
     expect(styles).toContain('.product-app--nav-open .product-detail { visibility: hidden; }');
   });
 
-  it('renders interactive voice and launcher proofs without public-route app state', () => {
+  it('renders the ordinary session launcher without public-route app state', () => {
     const proof = readFileSync(new URL('./CoreFeatureProofs.tsx', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./coreFeatureProofs.css', import.meta.url), 'utf8');
-    expect(proof).toContain("import { AssistantLogo");
-    expect(proof).toContain("import '../assistant/assistant.css'");
     expect(proof).toContain("import '../sessions/newsession.css'");
-    expect(proof).toContain("['claude', 'codex', 'gemini', 'openclaw']");
+    expect(proof).toContain("['claude', 'codex', 'gemini', 'openclaw', 'pi']");
     expect(proof).toContain("status: 'ACP · BETA'");
     expect(proof).toContain('OpenClaw gateway over its own protocol—not ACP');
-    expect(proof).toContain('LOCAL INTERACTION · NO AUDIO CAPTURE');
     expect(proof).toContain('SANITIZED DEMO · NO CONNECTION');
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
     const product = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
@@ -600,16 +577,11 @@ describe('public documentation registry', () => {
     expect(product).toContain('Local file handoff preview: paste or drop a file here');
     expect(product).toContain('Uploaded to the selected machine · path pasted, not executed');
     expect(product).toContain('Preview screenshot handoff');
-    expect(proof).toContain("onClick={() => { if (voiceState === 'idle') finishVoicePreview(); }}");
-    expect(proof).toContain('setSpeakingTurn((turn) => turn + 1)');
-    expect(proof).toContain('[speakingTurn, voiceState]');
-    expect(proof).toContain("aria-pressed={voiceState === 'listening'}");
     expect(proof).toContain('aria-labelledby={sectionTitleId}');
     expect(proof).not.toContain('id="cfp-voice-title"');
     expect(proof).not.toMatch(/@\/sync\//);
     expect(proof).not.toMatch(/@\/auth\//);
     expect(styles).toContain('font-size: var(--fs-16)');
-    expect(styles).toMatch(/\.cfp-voice \.as-logo \{[^}]*margin-bottom: var\(--sp-5\)/);
     expect(styles).toMatch(/\.cfp-surface-bar i \{[^}]*background: var\(--text-faint\)/);
     expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });

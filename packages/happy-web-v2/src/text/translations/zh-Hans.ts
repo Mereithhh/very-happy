@@ -1764,6 +1764,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09v: {
+                title: '认识 Very Happy Teams',
+                summary: '用更直接的名称和指南，了解 coding agent 如何组成团队。',
+                story: '首页新增可交互团队协作图，文档优先介绍 Teams 的分工、执行和结果验收。',
+                naming: 'Happy Bot 入口更名为“团队”，已有团队、对话与偏好设置保持不变。',
+            },
             sep09u: {
                 title: '团队启动恢复更可靠',
                 summary: 'pi 和 Codex 成员会保留原始团队启动关联。',
