@@ -6,10 +6,10 @@ const session = readFileSync(new URL('./session.css', import.meta.url), 'utf8');
 const component = readFileSync(new URL('./AgentInput.tsx', import.meta.url), 'utf8');
 
 describe('mobile composer layout contract', () => {
-    it('replaces wrapping mode controls with one compact settings trigger', () => {
-        expect(input).toMatch(/@media \(max-width: 600px\), \(pointer: coarse\)[\s\S]*\.ci-modes \{[\s\S]*display: none;/);
-        expect(input).toMatch(/@media \(max-width: 600px\), \(pointer: coarse\)[\s\S]*\.ci-mobile-options \{[\s\S]*display: flex;/);
-        expect(component).toContain('<SessionOptionsDialog');
+    it('keeps the same two controls visible with touch-sized targets', () => {
+        expect(input).toMatch(/\.ci-modes > \.mm-trigger \{ min-height: 44px; \}/);
+        expect(component).toContain('<ModelEffortMenu');
+        expect(component).not.toContain('<SessionOptionsDialog');
     });
 
     it('gives the text its own row and keeps controls in a fixed toolbar below it', () => {

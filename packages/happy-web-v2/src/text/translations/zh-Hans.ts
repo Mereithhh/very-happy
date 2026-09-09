@@ -706,7 +706,7 @@ export const zhHans: TranslationStructure = {
                 return remainder === 0 ? `耗时 ${minutes} 分钟` : `耗时 ${minutes} 分钟 ${remainder} 秒`;
             },
             modelLabel: '模型',
-            permissionLabel: '模式',
+            permissionLabel: '权限',
             permissionModeState: {
                 pending: '· 切换中',
                 conflict: ({ mode }: { mode: string }) => `· CLI: ${mode}`,
@@ -1764,6 +1764,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09y: {
+                title: '更简洁的输入框',
+                summary: '模型与思考强度收进同一个菜单。',
+                controls: '展开模型入口即可选择模型、拖动强度滑块；权限独立显示，桌面和手机都只保留两个入口。',
+            },
             sep09x: {
                 title: '更完整的 Agent 对话',
                 summary: 'Codex 和 pi 的附件、模型选择与思考控制连起来了。',
