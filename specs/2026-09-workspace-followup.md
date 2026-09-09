@@ -1,6 +1,6 @@
 # 工作台反馈修复：归档与上下文读数
 
-状态：Final · 2026-09-10 · B-435
+状态：Shipped · 2026-09-10 · B-435
 
 ## 已核实现状
 
@@ -34,3 +34,11 @@ pi extension 在 session/model/turn/compaction 事件读取 getContextUsage，�
 ## 回滚边界
 
 Web/server 可切回上一完整镜像，CLI 可重新安装上一固定版本；不回写团队记录、不撤销已完成的取消/停止。若新归档尚有待清理操作，旧 server 的归档门禁不会继续派发它们：保留记录，恢复支持本协议的镜像后继续清理；不能以解除 archivedAt 或删除 operation 代替恢复。已经在归档前开始的旧清理仍按原有授权执行，保留工作树约定针对本次归档新发起的停止操作。
+
+## 发布验收
+
+- PR #322 合并为 `0839dfd5a9c1d5bdb04953032ece8ced95f3a057`；PR 与该 main SHA 的质量门禁成功。生产部署 run `34398834181` 成功，active green 镜像 digest `sha256:f4c826877596063114b5907a523a5ae320c21a18c94acea98427c2dc6b75db86`；保留 blue `6d337987d65c14f8bf8501263f797d6b88881f60` 供回滚。
+- `check-shipped` 读取 52 个实际资源，确认入口 SHA、`.fsb-shell` 与 `2026-09-10-workspace-polish`。生产 health 正常；Chromium 桌面/390/320、明暗主题共 18 项公开页面检查通过，记录加载 entry/CSS/controller，无横向溢出。此次未改 SW 机制，也未把普通刷新当成旧客户端 takeover 证据。
+- CLI `v0.2.131` 标签位于同一 SHA；发布 run `34399503786` 成功，tag push 冒烟 run `34399503796` 的 Linux/macOS/Windows × Node 20/24 六项全部成功，npm latest 已确认为 0.2.131。Relay 验收时仍缓存推荐 0.2.130（正常一小时缓存），独立自动安装 pin 未改。
+- mac-office 安装与运行 daemon 均为 0.2.131；launchd re-adopt 后 running，新 daemon 的只读 `fs-list` RPC 成功。未中断旧业务 wrapper；Pi 原生上下文上报需升级后新建会话，不能宣称存量会话热加载。
+- 截图、CSS probe、浏览器报告及 RPC 探针保留在临时验收目录 `~/code/github/skills/tmp/vh-workspace-followup/`，不提交用户凭据或运行数据。
