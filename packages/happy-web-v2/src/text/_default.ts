@@ -1798,6 +1798,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09g: {
+                title: 'CLI updates without the extra work',
+                summary: 'Update notices now explain what happens automatically.',
+                automatic: 'Confirmed automatic updates ask you to wait until sessions finish, with no manual command to run.',
+                recovery: 'Rollout status stays accurate; retry and manual recovery remain available on the machine page when needed.',
+            },
             sep09f: {
                 title: 'Happy Bot, at a glance',
                 summary: 'See team work immediately, with clearer navigation and a practical getting-started guide.',
@@ -2572,25 +2578,29 @@ export const en = {
         retryFailed: 'Retry was not accepted. Check the connection and approved version, or use the manual command.',
         recovery: {
             manual_required: 'Automatic processing stopped. Confirm the installer has exited, then recover with the fixed-version command below.',
-            waiting_idle: 'Waiting for running sessions and terminals to close',
-            installing: 'Installing the update',
-            installed: 'Installed; waiting to switch to the new version',
+            waiting_idle: 'Will update automatically once sessions and terminals close; no manual action needed',
+            installing: 'Updating automatically; please wait, no manual action needed',
+            installed: 'Installed; switching automatically, no manual action needed',
             failed: 'Installation failed; retry or use the manual command',
             disabled: 'Automatic installation is disabled on this machine',
             current: 'Running version meets the automatic update target',
             unapproved: 'No version is approved for automatic installation',
             policy_stale: 'Update policy is stale; waiting for a fresh check',
             stale: 'Machine offline or update status stale; showing no live progress',
-            manual: 'Automatic update status unavailable; use the fixed-version manual command',
+            manual: 'Automatic update status is unavailable; check again later',
         },
+        automaticTitle: 'Your CLI will update automatically',
+        pendingTitle: 'A new CLI is awaiting rollout',
+        automaticSummary: ({ machine, target }: { machine: string; current: string; target: string; count: number }) => `${machine} will update to ${target} automatically once running sessions and terminals close. No manual action needed.`,
+        pendingSummary: ({ machine, target }: { machine: string; current: string; target: string; count: number }) => `${target} is available for ${machine}, but automatic rollout has not started for this version. No action needed for now.`,
         availableEyebrow: 'CLI UPDATE AVAILABLE',
         requiredEyebrow: 'CLI UPDATE REQUIRED',
         availableTitle: 'A newer machine runtime is ready',
         requiredTitle: 'This daemon is below the relay minimum',
         summary: ({ machine, current, target, count }: { machine: string; current: string; target: string; count: number }) =>
             count > 1
-                ? `${machine} is on ${current}; update to ${target}. ${count} machines need attention.`
-                : `${machine} is on ${current}; update to ${target}.`,
+                ? `${machine} is on ${current}; ${target} is available. View its update status. ${count - 1} other machines have updates.`
+                : `${machine} is on ${current}; ${target} is available. View the machine’s update status.`,
         copyCommand: 'Copy update command',
         handoverHeld: 'Update installed but not running',
         autoUpdate: 'Automatic update',

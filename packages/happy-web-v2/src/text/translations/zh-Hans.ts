@@ -1764,6 +1764,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09g: {
+                title: 'CLI 更新，少一点操心',
+                summary: '更新提示说明自动进度，不再默认要求复制命令。',
+                automatic: '已开始自动推送时，提示会话结束后自动完成，无需手动操作。',
+                recovery: '区分等待推送与更新异常，需要时仍可到机器页重试或恢复。',
+            },
             sep09f: {
                 title: 'Happy Bot，工作一目了然',
                 summary: '团队进展直接可见，导航更明确，入门指南告诉你从哪里开始。',
@@ -2472,25 +2478,29 @@ export const zhHans: TranslationStructure = {
         retryFailed: '未受理重试，请检查连接和批准版本，或使用手动升级命令。',
         recovery: {
             manual_required: '自动处理已停止。确认安装进程已退出后，使用下方固定版本升级命令手动恢复。',
-            waiting_idle: '等待运行中的会话和终端结束',
-            installing: '正在安装更新',
-            installed: '已安装，等待切换到新版本',
+            waiting_idle: '会话和终端结束后会自动更新，无需手动操作',
+            installing: '正在自动更新，请稍等，无需手动操作',
+            installed: '已安装，即将自动切换到新版本，无需手动操作',
             failed: '安装失败，可重试或使用手动升级命令',
             disabled: '此机器已关闭自动安装',
             current: '运行版本已满足自动更新目标',
             unapproved: '尚无批准自动安装的版本',
             policy_stale: '更新策略已过期，等待重新检查',
             stale: '机器离线或更新状态已过期，暂无实时进度',
-            manual: '无法确认自动更新状态，请使用固定版本手动升级命令',
+            manual: '暂时无法确认自动更新状态，可稍后查看',
         },
+        automaticTitle: '稍等，CLI 会自动更新',
+        pendingTitle: '新版 CLI 等待推送',
+        automaticSummary: ({ machine, target }: { machine: string; current: string; target: string; count: number }) => `${machine} 将自动更新到 ${target}。运行中的会话和终端结束后完成更新，无需手动操作。`,
+        pendingSummary: ({ machine, target }: { machine: string; current: string; target: string; count: number }) => `${machine} 可更新到 ${target}，此版本尚未开始自动推送。暂时无需操作。`,
         availableEyebrow: 'CLI 可更新',
         requiredEyebrow: 'CLI 必须更新',
         availableTitle: '新的机器端运行时已可用',
         requiredTitle: '当前 daemon 低于 relay 最低兼容版本',
         summary: ({ machine, current, target, count }: { machine: string; current: string; target: string; count: number }) =>
             count > 1
-                ? `${machine} 当前为 ${current}，请升级到 ${target}。共有 ${count} 台机器需要处理。`
-                : `${machine} 当前为 ${current}，请升级到 ${target}。`,
+                ? `${machine} 当前为 ${current}，可更新到 ${target}。可查看这台机器的更新状态，另有 ${count - 1} 台机器可更新。`
+                : `${machine} 当前为 ${current}，可更新到 ${target}，请查看机器更新状态。`,
         copyCommand: '复制升级命令',
         handoverHeld: '新版本已安装但没有启用',
         autoUpdate: '自动更新',
