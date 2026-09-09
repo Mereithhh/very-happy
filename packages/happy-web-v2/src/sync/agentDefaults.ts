@@ -48,8 +48,8 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     // ask rule), so yolo is the same key as for Claude. Model 'default' = don't send a model:
     // the session runs on whatever the machine's pi is configured with (pi-acp publishes
     // its own registry in metadata.models plus the model really in effect in
-    // metadata.currentModelCode, B-362). pi has no effort channel from the web (its
-    // thinking level is a separate ACP config option the web does not drive yet).
+    // metadata.currentModelCode, B-362). Thinking levels follow the session
+    // catalog and travel through ACP config options, independently of permissions.
     pi: { permissionMode: 'bypassPermissions', modelMode: 'default', effortLevel: null },
 };
 

@@ -1,4 +1,8 @@
 import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
+vi.mock('@/claude/utils/attachmentContent', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/claude/utils/attachmentContent')>(),
+  stageClaudeAttachments: async (files: any[]) => files.map((file) => ({ path: `/test/uploads/${file.name}`, name: file.name, mimeType: file.mimeType, size: file.data.length })),
+}));
 vi.mock('@/teams/piRuntime', () => ({ preparePiTeamsRuntime: async () => ({ PI_ACP_PI_COMMAND: 'official-pi-wrapper' }) }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,7 +13,11 @@ const mocks = vi.hoisted(() => {
 
   const mockSession = {
     sessionId: 'happy-session-1',
+    onFileEvent: vi.fn(),
+    downloadAndDecryptAttachment: vi.fn(async () => new Uint8Array([1, 2, 3])),
+    trackAttachmentDownload: vi.fn(),
     getMetadata: vi.fn(() => ({})),
+    drainAttachmentsForUserMessage: vi.fn(async (): Promise<any[]> => []),
     onUserMessage: vi.fn((handler: (message: any) => void) => {
       userMessageHandler = handler;
     }),
@@ -34,11 +42,12 @@ const mocks = vi.hoisted(() => {
 
   const backendState = {
     listeners: [] as Array<(message: any) => void>,
-    prompts: [] as Array<{ sessionId: string; prompt: string }>,
+    prompts: [] as Array<{ sessionId: string; prompt: string; attachments?: any[] }>,
     setConfigOptionCalls: [] as Array<{ configId: string; value: string }>,
     setModeCalls: [] as string[],
     setModelCalls: [] as string[],
     startSessionMessages: [] as any[],
+    modelSwitchMessages: [] as any[],
     startSessionCalls: 0,
     cancelCalls: [] as string[],
     disposeCalls: 0,
@@ -194,8 +203,8 @@ vi.mock('./AcpBackend', () => ({
       return { sessionId: 'acp-session-1' };
     }
 
-    async sendPrompt(sessionId: string, prompt: string) {
-      mocks.backendState.prompts.push({ sessionId, prompt });
+    async sendPrompt(sessionId: string, prompt: string, attachments?: any[]) {
+      mocks.backendState.prompts.push({ sessionId, prompt, ...(attachments?.length ? { attachments } : {}) });
       const emit = (message: any) => {
         for (const listener of mocks.backendState.listeners) {
           listener(message);
@@ -214,6 +223,9 @@ vi.mock('./AcpBackend', () => ({
 
     async setSessionConfigOption(configId: string, value: string) {
       mocks.backendState.setConfigOptionCalls.push({ configId, value });
+      if (configId === 'model') for (const message of mocks.backendState.modelSwitchMessages) {
+        for (const listener of mocks.backendState.listeners) listener(message);
+      }
       return true;
     }
 
@@ -224,6 +236,9 @@ vi.mock('./AcpBackend', () => ({
 
     async setSessionModel(modelId: string) {
       mocks.backendState.setModelCalls.push(modelId);
+      for (const message of mocks.backendState.modelSwitchMessages) {
+        for (const listener of mocks.backendState.listeners) listener(message);
+      }
       return true;
     }
 
@@ -260,6 +275,7 @@ describe('runAcp', () => {
     mocks.backendState.setModeCalls = [];
     mocks.backendState.setModelCalls = [];
     mocks.backendState.startSessionMessages = [];
+    mocks.backendState.modelSwitchMessages = [];
     mocks.backendState.startSessionCalls = 0;
     mocks.backendState.cancelCalls = [];
     mocks.titleGeneratorState.sessions = [];
@@ -528,6 +544,45 @@ describe('runAcp', () => {
       expect(mocks.mockStartHappyServer).toHaveBeenCalledTimes(1);
       expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: false });
     });
+  });
+
+  it('delivers a file event followed by attachment-only text to the ACP prompt', async () => {
+    const running = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi', command: 'pi-acp', args: [],
+    });
+    await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+    const fileHandler = mocks.mockSession.onFileEvent.mock.calls[0][0] as (event: any) => void;
+    fileHandler({ content: { data: { ev: { ref: 'image-ref', name: 'sample.png', mimeType: 'image/png' } } } });
+    const tracked = mocks.mockSession.trackAttachmentDownload.mock.calls[0][0] as Promise<any>;
+    mocks.mockSession.drainAttachmentsForUserMessage.mockImplementationOnce(async () => [await tracked]);
+    mocks.getUserMessageHandler()!({ content: { text: '' }, localKey: 'attachment-only' });
+    await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+    expect(mocks.mockSession.downloadAndDecryptAttachment).toHaveBeenCalledWith('image-ref');
+    expect(mocks.backendState.prompts[0].attachments).toEqual([{ data: new Uint8Array([1, 2, 3]), name: 'sample.png', mimeType: 'image/png' }]);
+    expect(mocks.backendState.prompts[0].prompt).toContain('/test/uploads/sample.png');
+    await mocks.getKillHandler()!();
+    await running;
+  });
+
+  it('preserves arrival order while the first message waits for attachment downloads', async () => {
+    let finishDownload!: (value: []) => void;
+    mocks.mockSession.drainAttachmentsForUserMessage.mockReturnValueOnce(new Promise<[]>((resolve) => { finishDownload = resolve; }));
+    const running = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi', command: 'pi-acp', args: [],
+    });
+    await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+    mocks.getUserMessageHandler()!({ content: { text: 'first-download' } });
+    mocks.getUserMessageHandler()!({ content: { text: 'second-text' } });
+    await Promise.resolve();
+    expect(mocks.backendState.prompts).toEqual([]);
+    finishDownload([]);
+    await vi.waitFor(() => expect(mocks.backendState.prompts.map((entry) => entry.prompt).join('\n')).toContain('second-text'));
+    const delivered = mocks.backendState.prompts.map((entry) => entry.prompt).join('\n');
+    expect(delivered.indexOf('first-download')).toBeLessThan(delivered.indexOf('second-text'));
+    await mocks.getKillHandler()!();
+    await running;
   });
 
   it('seeds the auto-title from the first user prompt only, never from assistant output such as the pi banner', async () => {
@@ -1035,6 +1090,93 @@ describe('runAcp', () => {
         }),
       ]),
     );
+  });
+
+  it('reports an unavailable saved model instead of silently reverting to the backend default', async () => {
+    mocks.backendState.startSessionMessages = [{ type: 'event', name: 'config_options_update', payload: {
+      configOptions: [{ type: 'select', id: 'model', category: 'model', name: 'Model', currentValue: 'zai/glm-5.3', options: [
+        { value: 'zai/glm-5.3', name: 'GLM' },
+      ] }],
+    } }];
+    const running = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi', command: 'pi-acp', args: [], model: 'llm-hub/claude-fable-5-1',
+    });
+    await vi.waitFor(() => expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({
+      type: 'message', message: 'The saved model is unavailable for this agent; using its current model.',
+    }));
+    expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
+    await mocks.getKillHandler()!();
+    await running;
+  });
+
+  it('applies the saved initial model after the agent advertises models and before any prompt', async () => {
+    mocks.backendState.startSessionMessages = [{ type: 'event', name: 'config_options_update', payload: {
+      configOptions: [{ type: 'select', id: 'model', category: 'model', name: 'Model', currentValue: 'zai/glm-5.3', options: [
+        { value: 'zai/glm-5.3', name: 'GLM' }, { value: 'llm-hub/claude-fable-5-1', name: 'Fable 5.1' },
+      ] }],
+    } }];
+    const running = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi', command: 'pi-acp', args: [], model: 'llm-hub/claude-fable-5-1',
+    });
+    await vi.waitFor(() => expect(mocks.backendState.setConfigOptionCalls).toContainEqual({ configId: 'model', value: 'llm-hub/claude-fable-5-1' }));
+    expect(mocks.backendState.prompts).toEqual([]);
+    await mocks.getKillHandler()!();
+    await running;
+  });
+
+  it('keeps the prompt and runner alive when switching to a model with fewer thinking levels', async () => {
+    const config = (model: string, levels: string[]) => ({
+      type: 'event', name: 'config_options_update', payload: { configOptions: [
+        { type: 'select', id: 'model', name: 'Model', category: 'model', currentValue: model,
+          options: ['deep', 'small'].map(value => ({ value, name: value })) },
+        { type: 'select', id: 'thinking', name: 'Thinking', category: 'thought_level', currentValue: 'medium',
+          options: levels.map(value => ({ value, name: value })) },
+      ] },
+    });
+    mocks.backendState.startSessionMessages = [config('deep', ['medium', 'xhigh'])];
+    mocks.backendState.modelSwitchMessages = [config('small', ['medium'])];
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi', command: 'pi-acp', args: [],
+    });
+    await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+    mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'Switch model and answer' },
+      meta: { model: 'small', effort: 'xhigh' } });
+    await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+    expect(mocks.backendState.setConfigOptionCalls).toEqual([{ configId: 'model', value: 'small' }]);
+    mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'Continue' }, meta: {} });
+    await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(2));
+    expect(mocks.backendState.disposeCalls).toBe(0);
+    await mocks.getKillHandler()!();
+    await runPromise;
+  });
+
+  it.each([true, false])('routes pi effort independently from yolo (config=%s)', async (useConfig) => {
+    mocks.backendState.startSessionMessages = [useConfig ? {
+      type: 'event', name: 'config_options_update', payload: { configOptions: [{
+        type: 'select', id: 'thinking', name: 'Thinking', category: 'thought_level',
+        currentValue: 'medium', options: [{ value: 'medium', name: 'Medium' }, { value: 'xhigh', name: 'Extra high' }],
+      }] },
+    } : {
+      type: 'event', name: 'modes_update', payload: { currentModeId: 'medium', availableModes: [
+        { id: 'medium', name: 'Thinking: medium' }, { id: 'xhigh', name: 'Thinking: xhigh' },
+      ] },
+    }];
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi', command: 'pi-acp', args: [],
+    });
+    await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+    mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'Reason deeply' },
+      meta: { permissionMode: 'bypassPermissions', effort: 'xhigh' } });
+    await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+    await mocks.getKillHandler()!();
+    await runPromise;
+    expect(mocks.modeFileState.writes).toContainEqual({ sessionId: 'happy-session-1', mode: 'bypassPermissions' });
+    expect(mocks.backendState.setConfigOptionCalls).toEqual(useConfig ? [{ configId: 'thinking', value: 'xhigh' }] : []);
+    expect(mocks.backendState.setModeCalls).toEqual(useConfig ? [] : ['xhigh']);
   });
 
   it('switches ACP model and permission mode when requested values match config options', async () => {

@@ -1,3 +1,5 @@
+import { acpImageBlocks } from './promptAttachments';
+import type { PendingAttachment } from '@/utils/MessageQueue2';
 /**
  * AcpBackend - Agent Client Protocol backend using official SDK
  *
@@ -744,6 +746,7 @@ export class AcpBackend implements AgentBackend {
                   clearTimeout(timeoutHandle);
                   timeoutHandle = null;
                 }
+                this.supportsImagePrompt = res.agentCapabilities?.promptCapabilities?.image === true;
                 return res;
               }),
               new Promise<never>((_, reject) => {
@@ -1036,7 +1039,11 @@ export class AcpBackend implements AgentBackend {
   private idleResolver: (() => void) | null = null;
   private waitingForResponse = false;
 
-  async sendPrompt(sessionId: SessionId, prompt: string): Promise<void> {
+  private supportsImagePrompt = false;
+
+  get supportsImageAttachments(): boolean { return this.supportsImagePrompt; }
+
+  async sendPrompt(sessionId: SessionId, prompt: string, attachments: PendingAttachment[] = []): Promise<void> {
     // Check if prompt contains change_title instruction (via optional callback)
     const promptHasChangeTitle = this.options.hasChangeTitleInstruction?.(prompt) ?? false;
 
@@ -1071,7 +1078,7 @@ export class AcpBackend implements AgentBackend {
 
       const promptRequest: PromptRequest = {
         sessionId: this.acpSessionId,
-        prompt: [contentBlock],
+        prompt: [contentBlock, ...acpImageBlocks(attachments, this.supportsImagePrompt)],
       };
 
       logger.debug('[AcpBackend] Prompt request prepared:', {

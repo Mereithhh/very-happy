@@ -394,7 +394,7 @@ export class ApiMachineClient {
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode, model } = params || {};
             logger.debug('[API MACHINE] Spawning session:', summarizeSpawnSessionForLog(params));
 
             // The assistant variant supplies its own directory (assistant home)
@@ -403,7 +403,7 @@ export class ApiMachineClient {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory: directory || '', sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId: typeof importedFromClaudeSessionId === 'string' ? importedFromClaudeSessionId : undefined, variant: variant === 'assistant' ? 'assistant' : undefined, forceNew: forceNew === true, permissionMode: typeof permissionMode === 'string' ? permissionMode : undefined });
+            const result = await spawnSession({ directory: directory || '', sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId: typeof importedFromClaudeSessionId === 'string' ? importedFromClaudeSessionId : undefined, variant: variant === 'assistant' ? 'assistant' : undefined, forceNew: forceNew === true, model: typeof model === 'string' ? model : undefined, permissionMode: typeof permissionMode === 'string' ? permissionMode : undefined });
 
             switch (result.type) {
                 case 'success':

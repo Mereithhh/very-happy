@@ -2,6 +2,7 @@ import type { Metadata } from '@/api/types';
 import { CLAUDE_ATTACHMENT_KINDS } from './utils/attachmentContent';
 
 export type ClaudeSdkMetadata = {
+    models?: Metadata['models'];
     tools?: string[];
     slashCommands?: string[];
     mcpServers?: { name: string; status: string }[];
@@ -15,6 +16,7 @@ export type ClaudeSdkMetadata = {
 export function applyClaudeSdkMetadata(current: Metadata, update: ClaudeSdkMetadata): Metadata {
     return {
         ...current,
+        ...(update.models ? { models: update.models } : {}),
         tools: update.tools,
         slashCommands: update.slashCommands,
         mcpServers: update.mcpServers,

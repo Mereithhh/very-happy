@@ -108,6 +108,17 @@ describe('ApiMachineClient Codex fork RPCs', () => {
         }));
     });
 
+    it('forwards a saved pi model through the spawn RPC', async () => {
+        const spawnSession = vi.fn().mockResolvedValue({ type: 'success', sessionId: 'pi-new' });
+        const { ApiMachineClient } = await import('./apiMachine');
+        const client = new ApiMachineClient('token', machineClient());
+        client.setRPCHandlers({ spawnSession, stopSession: vi.fn(), requestShutdown: vi.fn() });
+        await handlersFrom(client).get('machine-1:spawn-happy-session')?.({
+            directory: '/work', agent: 'pi', model: 'llm-hub/claude-fable-5-1',
+        });
+        expect(spawnSession).toHaveBeenCalledWith(expect.objectContaining({ agent: 'pi', model: 'llm-hub/claude-fable-5-1' }));
+    });
+
     it('lists Codex rewind points from thread/read', async () => {
         codexClientMethods.readThread.mockResolvedValue({
             thread: {

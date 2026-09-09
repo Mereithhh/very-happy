@@ -2,6 +2,7 @@ import type { Session } from './storageTypes';
 import type { Settings } from './settings';
 import { getAgentDefaultOverride, isPiAgent, normalizeAgentKey } from './agentDefaults';
 import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
+import { getEffortLevelsForModel } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 
 export type MessageModeMeta = {
@@ -61,7 +62,21 @@ export function resolveMessageModeMeta(
 
     const effort = session.effortLevel ?? agentOverrides.effortLevel;
     if (effort !== undefined) {
-        meta.effort = effort;
+        const flavor = session.metadata?.flavor ?? 'claude';
+        const modelKey = modelMode ?? session.metadata?.currentModelCode ?? 'default';
+        const levels = getEffortLevelsForModel(flavor, modelKey, session.metadata);
+        if (effort === null || levels.some((level) => level.key === effort)) {
+            meta.effort = effort;
+        } else {
+            const resolvedModel = modelKey === 'default' ? session.metadata?.defaultModelCode : modelKey;
+            const model = session.metadata?.models?.find((item) => item.code === resolvedModel || item.resolvedModel === resolvedModel);
+            const candidates = [session.metadata?.currentThoughtLevelCode,
+                isPiAgent(flavor) ? session.metadata?.currentOperatingModeCode : undefined,
+                model?.defaultReasoningEffort];
+            // Explicit null clears Codex/Claude sticky overrides when changing
+            // to a model that cannot honor the previous level.
+            meta.effort = candidates.find((candidate) => levels.some((level) => level.key === candidate)) ?? null;
+        }
     } else if (isClaude) {
         meta.effort = null;
     }

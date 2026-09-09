@@ -316,6 +316,10 @@ describe('claudeRemote', () => {
         { selectedModel: 'haiku', expectedDefault: false },
     ])('reports whether the resolved SDK model came from machine defaults', async ({ selectedModel, expectedDefault }) => {
         vi.mocked(query).mockReturnValue({
+            supportedModels: vi.fn(async () => [
+                { value: 'sonnet', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet', description: '', supportsEffort: true, supportedEffortLevels: ['low', 'max'] },
+                { value: 'haiku', displayName: 'Haiku', description: '', supportsEffort: false },
+            ]),
             setPermissionMode: vi.fn(),
             async *[Symbol.asyncIterator]() {
                 yield {
@@ -352,6 +356,10 @@ describe('claudeRemote', () => {
         expect(onSDKMetadata).toHaveBeenCalledWith(expect.objectContaining({
             model: 'claude-opus-5[1m]',
             modelIsDefault: expectedDefault,
+            models: [
+                { code: 'sonnet', resolvedModel: 'claude-sonnet-5', value: 'Sonnet', description: '', reasoningEfforts: ['low', 'max'] },
+                { code: 'haiku', resolvedModel: undefined, value: 'Haiku', description: '', reasoningEfforts: [] },
+            ],
         }));
     });
 

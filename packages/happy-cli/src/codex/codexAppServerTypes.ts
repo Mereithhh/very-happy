@@ -205,7 +205,7 @@ export type ReviewDecision =
 
 export type ApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
 export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
-export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ReasoningEffort = string; // Codex 0.147: validated against model/list at runtime.
 export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
 export type TurnAbortReason = "interrupted" | "replaced" | "review_ended";
 
@@ -251,4 +251,10 @@ export type JsonRpcResponse = {
     id: number;
     result?: unknown;
     error?: { code: number; message: string; data?: unknown };
+};
+
+export type CodexModel = {
+    id: string; model: string; displayName: string; description: string; hidden: boolean;
+    supportedReasoningEfforts: Array<{ reasoningEffort: string; description: string }>;
+    defaultReasoningEffort: string; inputModalities?: string[]; isDefault: boolean;
 };

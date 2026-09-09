@@ -1764,6 +1764,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09x: {
+                title: '更完整的 Agent 对话',
+                summary: 'Codex 和 pi 的附件、模型选择与思考控制连起来了。',
+                attachments: 'Codex 和 pi 对话支持文件与图片附件；图片识别需要视觉模型，并需更新 CLI。',
+                reasoning: '思考强度统一为滑块，最高档带动画，档位以实际后端能力为准；新版 Codex 可读取包含 GPT-6 Astra 的可用模型列表。',
+                defaults: '在 pi 对话里选择模型，也会成为下次新建对话的启动模型；切模型时兼容旧思考档位，Safe YOLO 适配新版 Codex。',
+            },
             sep09w: {
                 title: '一个 Hub，也能组织团队',
                 summary: '首页恢复跨机器、随时随地接续工作的整体定位。',
@@ -2796,6 +2803,7 @@ export const zhHans: TranslationStructure = {
     },
 
     imageUpload: {
+        visionModelHint: '图片识别需要支持视觉的模型。',
         permissionTitle: '访问照片库',
         permissionMessage: '允许访问您的照片库以在消息中附加图片。',
         limitTitle: '已达到图片限制',

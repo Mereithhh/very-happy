@@ -130,6 +130,19 @@ describe('CodexAppServerClient sandbox integration', () => {
         process.env.RUST_LOG = originalRustLog;
     });
 
+    it('paginates model/list and preserves per-model reasoning capabilities', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const astra = { model: 'gpt-6-astra', supportedReasoningEfforts: [{ reasoningEffort: 'ultra', description: 'Delegation' }] };
+        const luna = { model: 'gpt-5.6-luna', supportedReasoningEfforts: [{ reasoningEffort: 'max', description: 'Maximum' }] };
+        const request = vi.spyOn(client as any, 'request')
+            .mockResolvedValueOnce({ data: [astra, { model: 'hidden', hidden: true }], nextCursor: 'page2' })
+            .mockResolvedValueOnce({ data: [luna], nextCursor: null });
+        expect(await client.listModels()).toEqual([astra, luna]);
+        expect(request).toHaveBeenNthCalledWith(1, 'model/list', { limit: 100, cursor: null, includeHidden: false });
+        expect(request).toHaveBeenNthCalledWith(2, 'model/list', { limit: 100, cursor: 'page2', includeHidden: false });
+    });
+
     it('wraps transport when sandbox is enabled', async () => {
         // Dynamic import to ensure mocks are applied
         const { CodexAppServerClient } = await import('./codexAppServerClient');
@@ -1140,5 +1153,18 @@ describe('CodexAppServerClient sandbox integration', () => {
             total: expect.objectContaining({ totalTokens: 140, inputTokens: 100, outputTokens: 40 }),
             last: expect.objectContaining({ totalTokens: 20 }),
         })]);
+    });
+});
+
+it('passes native local images alongside the text manifest without expanding sandbox permissions', async () => {
+    const { CodexAppServerClient } = await import('./codexAppServerClient');
+    const client = new CodexAppServerClient();
+    (client as any)._threadId = 'image-thread';
+    const request = vi.spyOn(client as any, 'request').mockResolvedValue({ turn: { id: 'image-turn' } });
+    await client.sendTurn('Inspect attached file', { images: ['/private/chat/photo.png'], sandbox: 'read-only' });
+    expect(request).toHaveBeenCalledWith('turn/start', {
+        threadId: 'image-thread',
+        input: [{ type: 'text', text: 'Inspect attached file' }, { type: 'localImage', path: '/private/chat/photo.png' }],
+        sandboxPolicy: { type: 'readOnly' },
     });
 });
