@@ -1764,6 +1764,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09h: {
+                title: '让 AI 使用我的待办',
+                summary: '在我的待办中复制官方 skill，粘贴给 coding agent 完成接入。',
+                copy: '一键复制完整接入说明；剪贴板不可用时可以手动复制。',
+                commands: '官方 todo CLI 支持读取、新增、编辑、完成和删除待办，需要使用支持 todo 命令的 CLI。',
+            },
             sep09g: {
                 title: 'CLI 更新，少一点操心',
                 summary: '更新提示说明自动进度，不再默认要求复制命令。',

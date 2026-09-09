@@ -1,3 +1,4 @@
+import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
 import { describe, expect, it } from 'vitest';
 
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
@@ -21,7 +22,7 @@ describe('buildCodexTurnPrompt', () => {
         expect(prompt).toBe(
             '<options><option>Yes</option></options>\n\n' +
             'pick an option\n\n' +
-            CHANGE_TITLE_INSTRUCTION,
+            CHANGE_TITLE_INSTRUCTION + '\n\n' + BUILTIN_TODO_DISCOVERY,
         );
     });
 
@@ -33,7 +34,7 @@ describe('buildCodexTurnPrompt', () => {
             includeTitleInstruction: true,
         });
 
-        expect(prompt).toBe(`hello\n\n${CHANGE_TITLE_INSTRUCTION}`);
+        expect(prompt).toBe(`hello\n\n${CHANGE_TITLE_INSTRUCTION}\n\n${BUILTIN_TODO_DISCOVERY}`);
     });
 
     it('does not inject Happy preamble on normal follow-up turns', () => {

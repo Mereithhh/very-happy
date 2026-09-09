@@ -1,3 +1,4 @@
+import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
 vi.mock('@/teams/piRuntime', () => ({ preparePiTeamsRuntime: async () => ({ PI_ACP_PI_COMMAND: 'official-pi-wrapper' }) }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -563,6 +564,26 @@ describe('runAcp', () => {
     expect(mocks.titleGeneratorState.seeds).toEqual(['Summarise the repo', 'second prompt']);
   });
 
+  it('injects Todo skill discovery only into the first backend prompt, preserving title and logs', async () => {
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi', command: 'pi-acp', args: [],
+    });
+    await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+    mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'List my todos' } });
+    await vi.waitFor(() => expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'ready' }));
+    mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'Continue' } });
+    await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(2));
+    await mocks.getKillHandler()!();
+    await runPromise;
+    expect(mocks.backendState.prompts.map(entry => entry.prompt)).toEqual([
+      `List my todos\n\n${BUILTIN_TODO_DISCOVERY}`, 'Continue',
+    ]);
+    expect(mocks.titleGeneratorState.seeds).toEqual(['List my todos', 'Continue']);
+    expect(consoleLines()).toContain('Incoming prompt: List my todos');
+    expect(consoleLines().some(line => line.includes(BUILTIN_TODO_DISCOVERY))).toBe(false);
+  });
+
   it('wires backend messages through mapper into session envelopes', async () => {
     const runPromise = runAcp({
       credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
@@ -591,7 +612,7 @@ describe('runAcp', () => {
     expect(mocks.backendState.constructorArgs.args).toEqual(['--acp']);
     expect(mocks.backendState.prompts[0]).toEqual({
       sessionId: 'acp-session-1',
-      prompt: 'Build a test plan',
+      prompt: `Build a test plan\n\n${BUILTIN_TODO_DISCOVERY}`,
     });
 
     const envelopeTypes = mocks.mockSession.sendSessionProtocolMessage.mock.calls.map(([envelope]) => envelope.ev.t);

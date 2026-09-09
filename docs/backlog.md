@@ -169,6 +169,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-411 | 内置待办官方skill、CLI与复制接入入口 | feat | Owner 2026-09-09 | done | 完整skill复制及手动回退；共享KV/CAS与稳定ID、显式version；三runner发现。全包门禁、实际CLI隔离流程及390触屏/明暗浏览器通过。实现完成，待发布；见 specs/2026-09-todo-agent-skill.md。 |
 | B-400 | PWA 下 Todo skill 链接被首页回退拦截而报404 | bug | Owner 2026-09-09 | done | PR #291 / 65e795ce 已发布；SW排除skills文档。双构建及真实生产旧→新controller接管、新标签页文档导航均通过，已补中英文Changelog及事故记录。 |
 | B-394 | 内置 Todo 开箱即用与可选外部来源 | feat/ux | Owner 2026-09-09 | done | PR #287 / 6ebc080c 已发布；账号KV/CAS，真实生产CRUD/冲突/排序、页面编辑/完成/恢复与外部来源验收通过，临时任务已清理。公开AI接入skill可用，私人provider已适配；见 specs/2026-09-builtin-todos.md 发布证据。 |
 | B-389 | 消息操作与编辑重跑：复制、引用、精确回退分支与移动端可发现性 | feat/ux | Owner 2026-09-09 | done | 已随 PR #284 / 629bc399 / CLI 0.2.124 发布，Claude/Codex 真实续接及源历史不变验收通过； `specs/2026-09-message-actions-and-rewind.md`；原会话保留，文件副作用不回滚，旧 daemon 不伪成功。 |

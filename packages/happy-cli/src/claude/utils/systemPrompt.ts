@@ -1,3 +1,4 @@
+import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
 import { trimIdent } from "@/utils/trimIdent";
 import { shouldIncludeCoAuthoredBy } from "./claudeSettings";
 import { AGENT_GUIDANCE } from "./agentGuidance";
@@ -10,7 +11,7 @@ const BASE_SYSTEM_PROMPT = (() => trimIdent(`
 `))()
     // B-130: 工具面行为边界。这一处同时覆盖 SDK 与 local CLI 两种模式
     // （`loop.ts` 允许用户在 web 端切换），文案与上限见 agentGuidance.ts。
-    + '\n\n' + AGENT_GUIDANCE;
+    + '\n\n' + AGENT_GUIDANCE + '\n\n' + BUILTIN_TODO_DISCOVERY;
 
 /**
  * Co-authored-by credits to append when enabled

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { TodoAgentSetup } from './TodoAgentSetup';
 import type { AuthCredentials } from '@/auth/tokenStorage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { apiSocket } from '@/sync/apiSocket';
@@ -98,6 +99,7 @@ export function BuiltinTodosPanel({ credentials }: { credentials: AuthCredential
             <p>{words('随手记下，跟随账号同步。不需要连接电脑。', 'Capture a task. Sync with your account. No connected computer needed.')}</p>
             <button className="td-action" type="button" aria-label={words('刷新待办', 'Refresh todos')} disabled={busy || loading} onClick={() => { setError(''); void refresh(); }}><RefreshCw size={16} /></button>
         </div>
+        <TodoAgentSetup />
         {error && <div className="td-failure" role="alert"><span>{error}</span></div>}
         {(limited || invalid > 0) && <div className="td-omission" role="status">{words('部分任务无法完整读取，已暂停新增和排序。请检查数据或更新客户端。', 'Some tasks could not be fully read. Adding and reordering are paused; check your data or update the client.')}</div>}
         <form className="td-compose" onSubmit={e => { e.preventDefault(); if (draft.trim()) void run(() => client.create(draft.trim()), () => setDraft('')); }}>

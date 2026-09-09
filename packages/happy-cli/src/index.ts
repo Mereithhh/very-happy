@@ -562,6 +562,15 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'todo') {
+    try {
+      const { handleTodoCommand } = await import('./commands/todo');
+      await handleTodoCommand(args.slice(1));
+    } catch (error) {
+      console.error(JSON.stringify({ error: error instanceof Error ? error.message : 'Todo command failed' }));
+      process.exitCode = 1;
+    }
+    return;
   } else if (subcommand === 'teams') {
     try {
       const { handleTeamsCommand } = await import('./commands/teams');
@@ -840,6 +849,7 @@ ${chalk.bold('Usage:')}
                             Install optional Claude terminal mirror hooks
                             (add --remove to uninstall them)
   very-happy connect           Connect AI vendor API keys
+  very-happy todo              Built-in Todos and official agent skill (todo --help)
   very-happy sandbox           Configure and manage OS-level sandboxing
   very-happy notify            Send push notification
   very-happy mcp               Stdio MCP server exposing copy_to_clipboard for a
