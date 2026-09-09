@@ -1,6 +1,6 @@
 import {
   ArrowLeft,
-  Bot,
+  UsersRound,
   Check,
   ChevronRight,
   Clock,
@@ -162,7 +162,7 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
           </div>
         </header>
         <nav className="sb-products" aria-label={zh ? '工作区' : 'Workspace'}>
-          <button type="button" disabled><Bot size={18} /><span>Happy Bot</span></button>
+          <button type="button" disabled><UsersRound size={18} /><span>{zh ? '团队' : 'Teams'}</span></button>
           <button type="button" disabled><ListChecks size={18} /><span>{zh ? '待办' : 'Todo'}</span></button>
         </nav>
         <div className="sb-filter" role="presentation"><button className="sb-filter-btn is-on" type="button" disabled>{zh ? '列表' : 'LIST'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '状态' : 'STATUS'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '归档' : 'ARCHIVED'}</button></div>

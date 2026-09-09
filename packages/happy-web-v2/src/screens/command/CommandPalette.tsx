@@ -11,7 +11,7 @@ import {
   Archive,
   ClipboardList,
   StickyNote,
-  Bot,
+  UsersRound,
   ListChecks,
   FolderOpen,
   RotateCcw,
@@ -76,7 +76,7 @@ function matchScore(haystack: string, q: string): number {
 }
 
 export function CommandPalette() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -287,8 +287,8 @@ export function CommandPalette() {
     if (happyBotEntryVisible) out.push({
       key: 'action:teams',
       group: 'actions',
-      title: 'Happy Bot',
-      icon: <Bot size={16} />,
+      title: lang === 'zh-Hans' ? '团队' : 'Teams',
+      icon: <UsersRound size={16} />,
       haystack: 'happy bot teams 团队 机器人',
       run: () => navigate('/teams'),
     });
@@ -375,6 +375,7 @@ export function CommandPalette() {
   }, [
     sessions,
     happyBotEntryVisible,
+    lang,
     machines,
     terminals,
     currentSessionId,

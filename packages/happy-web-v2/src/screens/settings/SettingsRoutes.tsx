@@ -416,7 +416,7 @@ function Appearance() {
           ))}
         </ItemGroup>
 
-        <ItemGroup title="Happy Bot"><Item title={teamCopy.show} subtitle={teamCopy.hint} right={<Toggle checked={happyBotEntryVisible} onChange={setHappyBotEntryVisible} />} /></ItemGroup>
+        <ItemGroup title={teamCopy.title}><Item title={teamCopy.show} subtitle={teamCopy.hint} right={<Toggle checked={happyBotEntryVisible} onChange={setHappyBotEntryVisible} />} /></ItemGroup>
 
         <ItemGroup
           title={t('settingsAppearance.homeView')}

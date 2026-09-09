@@ -1,7 +1,7 @@
 import { useTranslation } from '@/i18n/useTranslation';
 const en = {
-  lastEvent: 'Last event', title: 'Happy Bot', overview: 'Workspace', schedules: 'Schedules', settings: 'Settings',
-  intro: 'Give your bot a goal. Follow the team’s work here.', create: 'New team',
+  lastEvent: 'Last event', title: 'Teams', overview: 'Workspace', schedules: 'Schedules', settings: 'Settings',
+  intro: 'Give your team a goal. Follow its work here.', create: 'New team',
   talk: 'Talk to lead', newTask: 'New task', guide: 'Getting started & skills',
   noTeams: 'Your first team starts with a conversation', noTeamsHint: 'Choose a project and describe your goal. We will prepare the lead and connect the team.',
   noTasks: 'Ready for a goal', noTasksHint: 'Ask the lead to inspect a project or build a feature. Tasks appear here as work is delegated.',
@@ -16,8 +16,8 @@ const en = {
   cancelled: 'Cancelled', unnamedMachine: 'Team machine',
 };
 const zh: typeof en = {
-  lastEvent: '最近事件', title: 'Happy Bot', overview: '工作台', schedules: '定时安排', settings: '团队设置',
-  intro: '告诉 Bot 你的目标，在这里看团队如何推进。', create: '新建团队',
+  lastEvent: '最近事件', title: '团队', overview: '工作台', schedules: '定时安排', settings: '团队设置',
+  intro: '告诉团队你的目标，在这里看成员如何分工推进。', create: '新建团队',
   talk: '找负责人聊聊', newTask: '新建任务', guide: '使用与安装指南',
   noTeams: '从一句需求，开始第一个团队', noTeamsHint: '选择项目，说清目标，系统会准备负责人并连接团队。',
   noTasks: '准备好接收目标', noTasksHint: '让负责人检查一个项目，或开发一个功能。派出的任务会直接展示在这里。',

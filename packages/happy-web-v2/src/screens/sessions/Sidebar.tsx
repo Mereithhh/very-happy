@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, Bot, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -967,7 +967,7 @@ export function Sidebar() {
       </header>
 
       <nav className="sb-products" aria-label="Workspace">
-        {happyBotEntryVisible && <button onClick={() => navigate('/teams')}><Bot size={18} /><span>Happy Bot</span></button>}
+        {happyBotEntryVisible && <button onClick={() => navigate('/teams')}><UsersRound size={18} /><span>{teamCopy.title}</span></button>}
         <button onClick={() => navigate('/todos')}><ListChecks size={18} /><span>{t('todos.title')}</span></button>
       </nav>
 
@@ -1054,7 +1054,7 @@ export function Sidebar() {
                       return <div key={r.key} className={`sb-team-row${selected ? ' is-selected' : ''}`}>
                         <button type="button" className="sb-team-toggle" aria-expanded={open} aria-label={`${open ? teamCopy.collapse : teamCopy.expand}: ${team.name}`} onClick={() => setExpandedTeams((current) => { const next = new Set(current); if (open) next.delete(team.id); else next.add(team.id); return next; })}><ChevronRight size={15} className={open ? 'is-open' : ''} /></button>
                         <button type="button" className="sb-team-main" data-href={r.href} aria-current={selected ? 'page' : undefined} onClick={() => navigate(r.href)}>
-                          <Bot size={17} /><span><strong>{team.name}</strong><small>{team.bots.length ? `${team.bots.length} ${teamCopy.members}` : teamCopy.preparing}</small></span>
+                          <UsersRound size={17} /><span><strong>{team.name}</strong><small>{team.bots.length ? `${team.bots.length} ${teamCopy.members}` : teamCopy.preparing}</small></span>
                           {cmdHeld && i < 9 && <kbd className="sb-row-badge mono">⌘{i + 1}</kbd>}
                         </button>
                       </div>;
