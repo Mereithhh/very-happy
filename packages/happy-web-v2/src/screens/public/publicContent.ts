@@ -1,5 +1,6 @@
 import { PUBLIC_DOCS_ZH_HANS } from './publicContent.zhHans';
 
+const agentTeamsDiagram = '/architecture/agent-teams.svg';
 const dualPathRuntimeDiagram = '/architecture/dual-path-runtime.svg';
 const regionalRealtimeDiagram = '/architecture/regional-realtime-plane.svg';
 const sessionDataFlowDiagram = '/architecture/session-data-flow.svg';
@@ -40,22 +41,27 @@ export type PublicDoc = {
 const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
 {
   "slug": "agent-teams",
-  "label": "Agent Teams",
-  "summary": "Organize managed coding agents, review results, and migrate safely.",
+  "label": "Very Happy Teams",
+  "summary": "One goal, parallel coding agents, and results you can review.",
   "sections": [
+    { heading: 'One goal. A team of coding agents.', blocks: [
+      { type: 'p', text: 'Give a goal to a lead, let it delegate independent work to Claude Code, Codex, or pi teammates, and follow the results in one workspace. Members can organize child tasks within their own assignments. Open any member conversation when you want the detail.' },
+      { type: 'image', src: agentTeamsDiagram, alt: 'Very Happy Teams: a goal reaches the lead, teammates work in parallel, and submitted results return for review', caption: 'SET A GOAL · DELEGATE · WORK IN PARALLEL · REVIEW RESULTS' },
+      { type: 'list', items: ['Set the goal and choose a computer and Git project. The app prepares the lead with official collaboration instructions.', 'The lead can delegate independent assignments; the team view keeps tasks, member conversations, and results together.', 'Inspect the submitted work, accept it or return it for changes. Cleanup preserves unmerged code.'] },
+    ] },
     {
       "heading": "Availability",
       "blocks": [
         {
           "type": "p",
-          "text": "Agent Teams is optional. Ordinary conversations, terminals, and history work without it. Each team uses one account and one execution machine. Your operator must enable it for your account, and that machine must run a compatible online daemon. Older servers or daemons do not silently fall back to a different agent."
+          "text": "Teams is optional. Ordinary conversations, terminals, and history work without it. Each team uses one account and one execution machine. Your operator must enable it for your account, and that machine must run a compatible online daemon. Older servers or daemons do not silently fall back to a different agent."
         },
         {
           "type": "list",
           "items": [
-            "Claude and Codex have completed a real mixed-runner task, submission, acceptance, and cleanup test.",
-            "Managed pi has also completed a real task, submission, acceptance, and cleanup test.",
-            "Recursive delegation is implemented and mechanism-tested. Multi-level model recovery, cross-machine automatic routing, and long-term unattended operation are not established guarantees."
+            "Use managed Claude Code, Codex, or pi sessions with each agent’s normal credentials. Teams does not include provider access.",
+            "Choose the default agent, model, and concurrent work limit for new assignments. Existing members retain their current configuration.",
+            "A teammate can delegate within its assignment. Automatic cross-machine routing and a guarantee of long-term unattended completion are not provided."
           ]
         }
       ]
@@ -65,7 +71,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       "blocks": [
         {
           "type": "p",
-          "text": "Choose Happy Bot → New team, select a project folder and computer, and describe your goal. Very Happy starts the lead, provides the official collaboration instructions, and opens its conversation. No manual skill installation is needed in the app. To lead from an existing conversation, choose Start a team from this conversation in its More menu. The command below is only for terminal setup. Reading a skill alone does not connect an unmanaged terminal."
+          "text": "Choose Teams → New team, select a project folder and computer, and describe your goal. Very Happy starts the lead, provides the official collaboration instructions, and opens its conversation. No manual skill installation is needed in the app. To lead from an existing conversation, choose Start a team from this conversation in its More menu. The command below is only for terminal setup. Reading a skill alone does not connect an unmanaged terminal."
         },
         {
           "type": "code",
@@ -83,7 +89,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         {
           "type": "list",
           "items": [
-            "Teams and ordinary conversations share your history. Select a team for its progress or expand it and select a member to open that conversation. Hide the Happy Bot entry in Appearance settings if you do not use it.",
+            "Teams and ordinary conversations share your history. Select a team for its progress or expand it and select a member to open that conversation. Hide the Teams entry in Appearance settings if you do not use it.",
             "Delegation includes a goal, acceptance criteria, working directory, and agent. A teammate can delegate child tasks within its assignment.",
             "Choose No approvals in team execution settings for new agents to run without routine prompts, or Ask when needed to retain normal approvals. Existing sessions and queued operations keep their current mode. Open the linked session to inspect work; team messages use expandable cards. Delivery is not proof that the agent processed a message.",
             "A submitted result still needs acceptance. Accept, return for changes, cancel, or hand off in Teams; cancelling closes the unfinished subtree."
@@ -191,8 +197,8 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'p', text: 'Already have conversations from the claude CLI, the Claude Code desktop app, or claude.ai on that machine? Choose Import a Claude Code conversation from the + menu to continue one of them here; the Claude conversations guide explains what is copied.' },
       ] },
       { heading: '8. Learn the workspace', blocks: [
-        { type: 'p', text: 'After the first machine connects, an account with no conversation or terminal opens the compact Help & getting started page automatically, including on mobile. Return any time from the top-left Very Happy mark or Settings. Start both a structured AI conversation and a real Web terminal; The guide shows Happy Bot collaboration, My todos, and the official Teams skill installation command without expanding a topic. Other workspace tools remain in the detailed tour.' },
-        { type: 'list', items: ['Command/Ctrl K searches actions, chats, and terminals; Command/Ctrl . opens saved prompts; Command/Ctrl J toggles scratch notes.', 'Files opens from conversation and terminal headers. File paths emitted by structured agent tools are clickable previews.', 'Happy Bot: ask a managed Claude, Codex, or pi session to read the official Teams skill and organize parallel work. Help & getting started includes the installer; the Agent Teams guide explains account enablement, execution machines, and result acceptance.', 'My todos works immediately and syncs tasks with your account. External source optionally reads a provider configured on a machine. Saving a todo does not automatically delegate it to a team.', 'With optional Claude terminal hooks, a Claude process started in a Web terminal can switch between its native TUI and structured text transcript. This is Claude-specific.', 'Paste a clipboard image/file or drag a file onto a terminal to upload it to the selected machine and insert a safely quoted path without executing it.', 'Ask a managed agent to use copy_to_clipboard to send text to the browser. Settings → Channels controls automatic copy and clipboard history.'] },
+        { type: 'p', text: 'After the first machine connects, an account with no conversation or terminal opens the compact Help & getting started page automatically, including on mobile. Return any time from the top-left Very Happy mark or Settings. Start both a structured AI conversation and a real Web terminal; The guide shows Teams collaboration, My todos, and the official Teams skill installation command without expanding a topic. Other workspace tools remain in the detailed tour.' },
+        { type: 'list', items: ['Command/Ctrl K searches actions, chats, and terminals; Command/Ctrl . opens saved prompts; Command/Ctrl J toggles scratch notes.', 'Files opens from conversation and terminal headers. File paths emitted by structured agent tools are clickable previews.', 'Teams is optional: create a team to prepare its lead and collaboration instructions automatically, or start from an existing managed conversation. Ordinary conversations remain unchanged. The Teams guide includes optional terminal skill setup.', 'My todos works immediately and syncs tasks with your account. External source optionally reads a provider configured on a machine. Saving a todo does not automatically delegate it to a team.', 'With optional Claude terminal hooks, a Claude process started in a Web terminal can switch between its native TUI and structured text transcript. This is Claude-specific.', 'Paste a clipboard image/file or drag a file onto a terminal to upload it to the selected machine and insert a safely quoted path without executing it.', 'Ask a managed agent to use copy_to_clipboard to send text to the browser. Settings → Channels controls automatic copy and clipboard history.'] },
         { type: 'note', text: 'Every keyboard path in this tour has a visible touch entry in the sidebar or session header. The full Keyboard & touch guide documents browser-reserved shortcut boundaries.' },
       ] },
       { heading: 'Optional: mirror a hand-started Claude terminal', blocks: [
@@ -368,6 +374,11 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
   {
     slug: 'architecture', label: 'Architecture & data flow', summary: 'See which component owns identity, state, relay traffic, and execution.',
     sections: [
+      { heading: 'Teams: from a goal to reviewed results', blocks: [
+        { type: 'image', src: agentTeamsDiagram, alt: 'Very Happy Teams coordination across a lead, parallel members, server-owned state, and machine execution', caption: 'AGENTS ORGANIZE · SERVER REMEMBERS · DAEMON EXECUTES · YOU REVIEW' },
+        { type: 'p', text: 'A managed Claude Code, Codex, or pi lead uses the official skill and scoped team tools to delegate work and review child results. Members can coordinate children within their assignments. The server persists tasks, attempts, messages, and decisions; the daemon launches sessions and worktrees and reconciles cleanup. The Web/PWA brings goals, progress, conversations, and results together.' },
+        { type: 'note', text: 'One account and one selected computer per team. Acceptance is separate from cleanup, and unmerged work is preserved. Ordinary sessions remain available without Teams. Automatic cross-machine routing is not shipped.' },
+      ] },
       { heading: 'Components', blocks: [
         { type: 'image', src: systemTopologyDiagram, alt: 'Very Happy system topology with multiple machines, local daemons, the control and data plane, and one account workspace', caption: 'ACCOUNT-LEVEL FLEET · CONTROL / DATA · ONE WEB WORKSPACE' },
         { type: 'p', text: 'The browser is the unified command surface for every machine connected to the account. Its sidebar and board aggregate sessions and attention state across those machines; creating work explicitly targets a machine and agent. The control/data server authenticates accounts and stores synchronized state. A database-free regional relay carries latency-sensitive machine/session RPC, committed structured-message delivery, and terminal traffic; each daemon probes configured candidates and anchors to the lowest measured healthy RTT, then the browser follows that machine assignment.' },
@@ -419,7 +430,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       ] },
       { heading: 'Dispatch other sessions through Assistant', blocks: [
         { type: 'p', text: 'Open Settings → Voice & Assistant, select a machine that can run Claude, review Skip permission approvals, then open Assistant (/assistant). Ask it to dispatch work in an absolute directory, for example: “Dispatch a Claude session in /srv/project to fix the login tests.”' },
-        { type: 'list', items: ['Voice Assistant retains its existing session controls on one selected machine. For official multi-agent tasks and acceptance, use Agent Teams.', 'session_spawn returns immediately; use session_read or session_send to follow up.', 'This path currently spawns Claude on one selected machine. Automatic cross-machine or cross-provider routing is not shipped.'] },
+        { type: 'list', items: ['Voice Assistant retains its existing session controls on one selected machine. For official multi-agent tasks and acceptance, use Teams.', 'session_spawn returns immediately; use session_read or session_send to follow up.', 'This path currently spawns Claude on one selected machine. Automatic cross-machine or cross-provider routing is not shipped.'] },
         { type: 'note', text: 'Assistant tools are a high-privilege machine-control surface. Keep approvals enabled unless you intentionally accept unattended local actions.' },
         { type: 'link', href: `${GITHUB_URL}/blob/main/docs/channels.md#inbound-web-assistant--meta-agent`, label: 'Open the Assistant dispatch setup ↗' },
       ] },
@@ -520,10 +531,10 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
   },
 ];
 
-const DOC_PRIORITY: Record<string, number> = { architecture: 0, quickstart: 1 };
+const DOC_PRIORITY: Record<string, number> = { 'agent-teams': 0, quickstart: 1, architecture: 2 };
 
 export const PUBLIC_DOCS: PublicDoc[] = [...PUBLIC_DOCS_SOURCE].sort(
-  (left, right) => (DOC_PRIORITY[left.slug] ?? 2) - (DOC_PRIORITY[right.slug] ?? 2),
+  (left, right) => (DOC_PRIORITY[left.slug] ?? 3) - (DOC_PRIORITY[right.slug] ?? 3),
 );
 
 export function getPublicDoc(slug: string | undefined): PublicDoc | undefined {

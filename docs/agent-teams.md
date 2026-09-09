@@ -1,13 +1,15 @@
-# Agent Teams: getting started and migration
+# Very Happy Teams
 
-Agent Teams is an opt-in collaboration feature. Ordinary managed sessions can
-organize work; there is no special **Meta agent** checkbox. A bot can implement
-its own assignment and delegate independent child tasks within that assignment.
+Give a coding agent a goal and let it organize a team. A lead can delegate
+independent tasks to Claude Code, Codex, or pi teammates, follow their progress,
+and bring their results back for review. Teammates can delegate child tasks within
+their own assignments. You can inspect any member conversation along the way.
 
-The current boundary is one account and one execution machine per team. The
-server owns task state, attempts, messages, and decisions. The daemon runs the
-coding agents and reconciles execution/cleanup. The manual task board stays
-independent and is not a second scheduling database.
+![Very Happy Teams: goal, lead, parallel teammates, and reviewed results](../packages/happy-web-v2/public/architecture/agent-teams.svg)
+
+Teams is optional. Ordinary conversations, terminals, and history keep working as
+before. Each team currently uses one account and one execution computer; automatic
+cross-machine routing is not available.
 
 ## Prerequisites
 
@@ -26,7 +28,34 @@ independent and is not a second scheduling database.
 An unavailable/disabled server reports that state. An old daemon cannot receive a
 Teams delegation; it does not fall back to Claude or the legacy assistant.
 
-## Install the shared method
+## Start a team in the app
+
+Choose **Teams → New team**, select the project folder and execution computer,
+and describe the goal. A compatible daemon starts a managed lead in an isolated
+worktree, supplies the official skill, and opens the lead conversation. App users
+do not install skills manually. The lead lives for this goal; after acceptance its
+session can be cleaned up, while unmerged changes remain preserved.
+
+Team names appear alongside ordinary conversations in history. Expand a team to
+open a member conversation, or select its name for goal, progress, and results.
+Ordinary conversations are never automatically turned into teams. Appearance
+settings can hide the Teams entry without stopping or deleting existing work.
+
+For an existing managed conversation, use **More → Start a team from this
+conversation**. Its wrapper establishes the scoped connection and delivers the
+collaboration instructions in the background. No session ID entry or additional
+join step is required. Old wrappers without the capability need a new session.
+
+Team options choose the default agent/model for new assignments and the maximum
+number of concurrently progressing leaf tasks. A parent waiting for unfinished
+children yields its slot; this is a work limit, not an OS-process limit. Running
+members keep their original model configuration. The current team still uses one
+execution computer.
+
+Use a distinct request ID per action and reuse it with identical arguments after
+an unknown outcome. Never copy scope tokens into prompts or personal settings.
+
+## Optional: start from a terminal
 
 ```sh
 very-happy teams install --host claude
@@ -52,36 +81,6 @@ Doctor describes static setup and relevant environment overrides; it is not a
 live model/daemon connectivity test. Reading a skill alone does not attach an
 unmanaged process. In particular, use `very-happy pi` for the managed pi path;
 a bare `pi` terminal does not gain a background inbox from installation.
-
-## Start a team in the app
-
-Choose **Happy Bot → New team**, select the project folder and execution computer,
-and describe the goal. A compatible daemon starts a managed lead in an isolated
-worktree, supplies the official skill, and opens the lead conversation. App users
-do not install skills manually. The lead lives for this goal; after acceptance its
-session can be cleaned up, while unmerged changes remain preserved.
-
-Team names appear alongside ordinary conversations in history. Expand a team to
-open a member conversation, or select its name for goal, progress, and results.
-Ordinary conversations are never automatically turned into teams. Appearance
-settings can hide the Happy Bot entry without stopping or deleting existing work.
-
-For an existing managed conversation, use **More → Start a team from this
-conversation**. Its wrapper establishes the scoped connection and delivers the
-collaboration instructions in the background. No session ID entry or additional
-join step is required. Old wrappers without the capability need a new session.
-
-Team options choose the default agent/model for new assignments and the maximum
-number of concurrently progressing leaf tasks. A parent waiting for unfinished
-children yields its slot; this is a work limit, not an OS-process limit. Running
-members keep their original model configuration. The current team still uses one
-execution computer.
-
-The installation commands above are for terminal entry only. Installing does not
-modify personal agent discovery roots or attach a bare agent process.
-
-Use a distinct request ID per action and reuse it with identical arguments after
-an unknown outcome. Never copy scope tokens into prompts or personal settings.
 
 ## Choose execution mode
 

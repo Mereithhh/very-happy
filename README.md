@@ -4,12 +4,12 @@
 
 <div align="center">
   <a href="https://veryhappy.dev/welcome">
-    <img src=".github/readme-hero.svg" width="100%" alt="Very Happy — one command panel for every connected machine and agent">
+    <img src=".github/readme-hero.svg" width="100%" alt="Very Happy Teams — one goal, a team of coding agents">
   </a>
 </div>
 
 <p align="center">
-  <strong>One panel. Every machine. Every agent. You get to be Very Happy.</strong>
+  <strong>One goal. A team of coding agents. Your workspace.</strong>
 </p>
 
 <p align="center">
@@ -30,25 +30,31 @@
   <a href="docs/deployment.md">Self-host</a>
 </p>
 
-Very Happy is one open command panel for the computers and agents you control.
-Its responsive Web UI gathers sessions from every connected machine, shows what
-is running or waiting, lets you choose the machine and agent for new work, and
-opens the corresponding structured conversation, real terminal, files, tasks,
-notes, or notifications from a laptop, phone, tablet, or installed PWA.
+Very Happy is an open-source workspace for coding agents. **Very Happy Teams**
+turns a goal into coordinated work with Claude Code, Codex, and pi: a lead breaks
+it down, teammates work in parallel, and results come back for review. Follow the
+same progress from a computer or phone, then open any member's conversation,
+terminal, or files when you need the detail.
 
-It is not a browser repaint of one vendor's CLI and it is not merely a remote
-shell. Very Happy preserves the surrounding thread: what is running, what the
-agent changed, which machine owns the work, what needs your decision, and how to
-continue after an interruption.
+## From one goal to a team
 
-```text
-build server  ─┐
-workstation   ─┼─>  ONE WEB / PWA PANEL  ─> choose machine + agent
-field laptop  ─┘      sessions · status · tasks · files · terminals
-```
+> “Review this project, find worthwhile improvements, form a team to work on them in parallel, and bring back results I can review.”
 
-Today, dispatch is explicit: you select the target machine and agent for each
-new session. Provider-neutral automatic routing is roadmap, not a shipped claim.
+1. **Set the goal.** Open **Teams → New team**, choose a computer, Git project, and agent.
+2. **Let the lead organize.** Very Happy starts the lead with official collaboration instructions. It can delegate independent tasks; teammates can further divide their own assignments.
+3. **Follow parallel work.** Open member conversations from the team overview and inspect progress, submitted results, and code changes.
+4. **Review the result.** Accept or return work for changes. Cleanup preserves unmerged code; a stopped process does not count as completed work.
+
+![Very Happy Teams: a goal reaches the lead, teammates work in parallel, and results return for review](packages/happy-web-v2/public/architecture/agent-teams.svg)
+
+Teams requires an enabled account and a compatible online daemon. No manual
+skill installation is needed when creating a team in the app. An
+existing managed conversation can also become a team from its **More** menu.
+Each team currently runs on one computer within one account, with configurable
+agent, model, and concurrent work defaults. Ordinary chats and terminals keep
+working as before. Automatic cross-machine routing is not available.
+
+**[Start using Teams](docs/agent-teams.md)** · [Explore the architecture](docs/architecture.md) · [Connect your first machine](#one-command-to-your-first-machine)
 
 > [!TIP]
 > **Use the Web/PWA as your daily workspace.** Install the CLI once to pair a
@@ -63,24 +69,7 @@ new session. Provider-neutral automatic routing is roadmap, not a shipped claim.
 > access policy, storage, and backups. See the [privacy and security
 > model](docs/security.md) for sensitive environments.
 
-## One workspace. Three layers that do different jobs.
-
-<a href="docs/architecture.md">
-  <img src="packages/happy-web-v2/public/architecture/system-topology.svg" width="100%" alt="Very Happy account-level architecture: multiple machines and agent runners converge into one Web and PWA workspace">
-</a>
-
-<p align="center"><sub>ACCOUNT-LEVEL FLEET · EXPLICIT MACHINE + RUNNER TARGETING · ONE CONTROL SURFACE</sub></p>
-
-<a href="docs/architecture.md#regional-realtime-relay-plane">
-  <img src="packages/happy-web-v2/public/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy regional realtime architecture: a US machine and a Singapore machine use their nearest configured relays while durable control and account state remain central">
-</a>
-
-<p align="center"><sub>US + SINGAPORE MACHINE EDGES · CENTRAL DURABLE STATE · MEASURED RELAY RTT · SCOPED TOKENS</sub></p>
-
-The control and data server remains the durable source of truth. Latency-sensitive
-terminal bytes, machine/session RPC, and committed structured-message delivery
-can use operator-configured regional relays chosen by measured daemon RTT, while
-compatible clients retain the central fallback.
+## The everyday workspace behind your team
 
 <table>
   <tr>
@@ -105,12 +94,6 @@ compatible clients retain the central fallback.
     </td>
   </tr>
 </table>
-
-<a href="docs/architecture.md#structured-agent-path-and-universal-terminal-path">
-  <img src="packages/happy-web-v2/public/architecture/dual-path-runtime.svg" width="100%" alt="Very Happy dual runtime architecture: structured Claude Agent SDK events and a universal tmux-backed terminal path">
-</a>
-
-<p align="center"><sub>STRUCTURED SEMANTICS · REAL PTY BYTES · OPTIONAL CLAUDE MIRROR · BOUNDED FILE HANDOFF</sub></p>
 
 The terminal is the compatibility layer. It forwards a real TTY and does not
 care which brand—or category—of process is on the other side. A tool working in
@@ -163,6 +146,7 @@ according to your environment.
 
 | The friction | What carries it for you |
 |---|---|
+| “This goal has several independent pieces of work.” | A lead can delegate to Claude Code, Codex, and pi teammates, with progress and submitted results in one team view. |
 | “My agents and terminals are scattered across several machines.” | One account sidebar and task board aggregate their sessions and attention state; start new work on the machine and agent you choose. |
 | “Structured chat is pleasant, but sometimes I need the actual tool.” | Keep SDK-backed Claude and drop into a durable, unmodified agent TTY/TUI when necessary. |
 | “I left my desk, so the work stopped being legible.” | A responsive Web/PWA workspace keeps conversations, terminals, files, tasks, notifications, and decisions within reach. |

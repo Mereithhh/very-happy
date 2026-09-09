@@ -1,14 +1,30 @@
 # Architecture and data flow
 
+## Teams: from a goal to reviewed results
+
+![Very Happy Teams: one goal, a coordinating lead, parallel members, and result review](../packages/happy-web-v2/public/architecture/agent-teams.svg)
+
+A managed Claude Code, Codex, or pi session acts as the lead. It uses the official
+Teams skill and scoped tools to delegate independent assignments, exchange
+messages, and review child results. A member can coordinate children within its
+own assignment; there is no separate Meta agent runtime to install.
+
+The **server** persists goals, tasks, attempts, messages, and decisions. The
+**machine daemon** claims execution operations, starts managed sessions and
+isolated Git worktrees, and reconciles cleanup. The **Web/PWA** shows the team,
+member conversations, and submitted results. Acceptance and resource cleanup
+have separate states, so a stopped process cannot silently become a successful
+task, and unmerged work is preserved.
+
+Each team runs on one selected computer within one account. Agent/model defaults
+and a concurrent leaf-work limit govern new assignments; a parent waiting for
+children yields its slot. Teams is optional, and ordinary sessions retain their
+existing paths. Automatic cross-machine routing is not shipped. Start with the
+[Teams guide](agent-teams.md) for the user flow and terminal skill setup.
+
 ## Components
 
 ![Very Happy system topology: multiple machines and agent runners converge through the trusted relay into one account workspace](../packages/happy-web-v2/public/architecture/system-topology.svg)
-
-Agent Teams adds server-owned task/attempt state and messages, with daemon-owned
-execution and cleanup on one selected machine. Ordinary managed Claude, Codex, and
-pi sessions can participate; the feature is opt-in per deployment/account.
-Cross-machine automatic routing remains future work. The separate voice Assistant
-continues to use Claude and is not the Teams coordinator. See [Teams](agent-teams.md).
 
 - `packages/happy-web-v2`: production React/Vite browser client.
 - `packages/happy-server`: identity, persistence, realtime routing, files,

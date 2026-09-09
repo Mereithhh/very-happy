@@ -1,8 +1,13 @@
 # Very Happy documentation
 
-Start with the path that matches what you are doing.
+**Very Happy Teams** brings Claude Code, Codex, and pi together around a goal.
+Start a team, follow parallel work, and review the results in one workspace.
+Ordinary chats and terminals remain available without Teams.
 
 ## Use the product
+
+- [Very Happy Teams](agent-teams.md): give a goal to a lead, delegate parallel
+  tasks, inspect member conversations, and review results.
 
 - [Getting started](getting-started.md): install, sign in, connect a machine, and
   create the first session.
