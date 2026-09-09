@@ -1,6 +1,6 @@
 # 原消息编辑与统一输入框
 
-状态：Final · B-432 · 2026-09-09
+状态：Shipped · B-432 · 2026-09-09
 
 ## 现状事实
 
@@ -22,3 +22,9 @@
 ## 验收
 
 组件测试覆盖原位编辑、取消、精确历史核验、缺映射、运行状态变化、发送失败与防重复；真实浏览器覆盖明暗390/1280、输入/菜单/键盘/消息操作，CSS probe修前修后测量。更新changelog，并连同B-431通过完整门禁后合并发布；CLI新输入统计另按实际tag版本发布。
+
+## 发布验收（2026-09-09）
+
+PR #317/#318 合并后以 `a5b01fc90f60fb3bf4daeab39536e112559d54a6` 发布；main 门禁 run 34368549558、生产部署 34369293700 均成功。`check-shipped` 核对新增 UI 样式及两条 changelog 的稳定 ID/中文标题，Chrome `/changelog` 实际渲染同一 SHA。完整镜像 active green，回滚点 `47835715fa324fa0cd97295d339726451a60e342`。
+
+CLI `v0.2.130` 与 Web 同 SHA，publish 34370172575 成功；同仓/tag/SHA、attempt 1 的 smoke 34370172621 六项全绿，npm latest/next 均为 0.2.130。mac-office 安装与运行版本均为 0.2.130，launchd running，真实 `list-terminals` RPC 成功（7 个终端）。既有会话 wrapper 未重启，新输入字段需新 wrapper；推荐版本仍可能受一小时 registry 缓存影响，自动更新 pin 未改。原生 IME/文件选择器验收保留 V-150。
