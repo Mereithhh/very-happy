@@ -1,3 +1,4 @@
+import { ContextUsageSchema, type ContextUsage } from '@slopus/happy-wire';
 /**
  * Happy MCP server
  * Provides Happy CLI specific tools including chat session title management
@@ -38,6 +39,7 @@ interface HappyMcpHandlers {
 }
 
 export interface StartHappyServerOptions {
+    onContextUsage?: (usage: ContextUsage) => void;
     /**
      * B-132: 自报水位，由调用方（runClaude）创建并同时交给 BoardAnalyzer——
      * 两者在同一个 session 进程里，所以是共享的内存对象，不需要落文件。
@@ -261,7 +263,24 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         },
     };
 
+    const contextPath = '/runtime-context/' + randomUUID();
     const server = createServer(async (req, res) => {
+        if (req.url?.startsWith('/runtime-context/')) {
+            if (!options?.onContextUsage || req.url !== contextPath || req.method !== 'POST' || req.headers.origin) {
+                res.writeHead(403).end(); return;
+            }
+            try {
+                let body = '';
+                for await (const chunk of req) {
+                    body += chunk.toString();
+                    if (Buffer.byteLength(body) > 2048) { res.writeHead(413).end(); return; }
+                }
+                const usage = ContextUsageSchema.parse({ ...JSON.parse(body), updatedAt: Date.now() });
+                options.onContextUsage(usage);
+                res.writeHead(204).end();
+            } catch { if (!res.headersSent) res.writeHead(400).end(); }
+            return;
+        }
         const mcp = createMcpServer(handlers, options, client.sessionId);
         try {
             const transport = new StreamableHTTPServerTransport({
@@ -299,6 +318,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
 
     return {
         url: baseUrl.toString(),
+        contextUsageUrl: options?.onContextUsage ? new URL(contextPath, baseUrl).toString() : undefined,
         toolNames: [
             'change_title',
             CLIPBOARD_TOOL_NAME,

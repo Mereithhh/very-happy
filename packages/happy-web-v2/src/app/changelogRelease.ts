@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-workspace-polish',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.131',
+    titleKey: 'changelog.releases.sep10a.title',
+    summaryKey: 'changelog.releases.sep10a.summary',
+    itemKeys: ['changelog.releases.sep10a.layout', 'changelog.releases.sep10a.files', 'changelog.releases.sep10a.teams', 'changelog.releases.sep10a.context'],
+  },
+  {
     id: '2026-09-10-compact-workspace',
     featured: true,
     date: '2026-09-10',

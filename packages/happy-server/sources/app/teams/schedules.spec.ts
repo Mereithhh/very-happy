@@ -66,7 +66,8 @@ describe('persistent schedule semantics', () => {
     });
     it('requires schedules to be stopped before Team archival', () => {
         const f = fixture(); f.act({ type: 'schedule-create', name: 'Once', botId: 'bot', body: 'Inspect', runAt: 1000 });
-        expect(() => f.act({ type: 'archive' })).toThrow('team_has_active_schedules');
+        f.act({ type: 'archive' });
+        expect(f.team.schedules?.every(s => s.status === 'cancelled')).toBe(true);
     });
     it('releases active quota on cancellation while bounding terminal schedule records', () => {
         const f = fixture();

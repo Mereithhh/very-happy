@@ -617,7 +617,13 @@ export async function runAcp(opts: {
   // meta-agent spawn (env-only, no .mcp.json); only the in-process MCP server
   // reached via HAPPY_MCP_URL can expose the sessions_* tools to a pi session.
   const isAssistantVariant = process.env.HAPPY_SESSION_VARIANT === 'assistant';
-  const happyServer = await startHappyServer(session, { assistant: isAssistantVariant });
+  const happyServer = await startHappyServer(session, {
+    assistant: isAssistantVariant,
+    ...(opts.agentName === 'pi' ? { onContextUsage: (contextUsage: import('@slopus/happy-wire').ContextUsage) => {
+      session.updateAgentState(state => ({ ...state, contextUsage }));
+    } } : {}),
+  });
+  if (opts.agentName === 'pi') session.updateAgentState(state => ({ ...state, contextUsage: null }));
   const mcpServers = {
     happy: {
       command: join(projectPath(), 'bin', 'very-happy-mcp.mjs'),
@@ -638,6 +644,7 @@ export async function runAcp(opts: {
     env: {
       ...teamsPiEnv,
       HAPPY_MCP_URL: happyServer.url,
+      ...(happyServer.contextUsageUrl ? { HAPPY_CONTEXT_USAGE_URL: happyServer.contextUsageUrl } : {}),
       HAPPY_SESSION_ID: session.sessionId,
       HAPPY_PERMISSION_MODE: initialPermissionMode,
     },

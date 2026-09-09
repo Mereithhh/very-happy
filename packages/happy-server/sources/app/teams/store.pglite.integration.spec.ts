@@ -124,6 +124,15 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         expect((await store.actOnTeam(team.id, { accountId }, archive)).team.archivedAt).toBe(archived.team.archivedAt);
         await expect(store.actOnTeam(team.id, { accountId }, { requestId: 'after-archive', action: { type: 'delegate', goal: 'g', acceptance: ['a'] } })).rejects.toMatchObject({ code: 'team_archived' });
     });
+    it('keeps archived in-flight operations visible to the owning daemon', async () => {
+        const team = await store.createTeam(accountId, {name:'Archive in flight', machineId});
+        const delegated = await store.actOnTeam(team.id,{accountId},{requestId:'delegate',action:{type:'delegate',goal:'g',acceptance:['a']}});
+        const operationId = delegated.team.operations[0].id;
+        await store.actOnTeam(team.id,{accountId},{requestId:'claim',action:{type:'claim-operation',operationId,machineId,teamLaunchVersion:1}});
+        await store.actOnTeam(team.id,{accountId},{requestId:'archive',action:{type:'archive'}});
+        expect((await store.listTeams(accountId)).some(t => t.id === team.id)).toBe(false);
+        expect((await store.listTeams(accountId,machineId)).some(t => t.id === team.id)).toBe(true);
+    });
     it('counts only active teams toward the creation quota', async () => {
         const isolated = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
         const machine = crypto.randomUUID();

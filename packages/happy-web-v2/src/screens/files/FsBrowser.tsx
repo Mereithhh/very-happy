@@ -18,6 +18,7 @@ import { machineFsList, type FsEntry, type FsFailure } from '@/sync/fsOps';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
 import { FsFileViewer } from './FsFileViewer';
+import { FsTree } from './FsTree';
 import { fsFailureText } from './fsFailureText';
 import {
     formatFsSize,
@@ -77,6 +78,7 @@ function FsBrowserContent({
     const initialView = useRef(identity ? browserViews.get(identity) : undefined).current;
     const [path, setPath] = useState(initialView?.path ?? initialPath);
     const [entries, setEntries] = useState<FsEntry[] | null>(null);
+    const [treeRevision, setTreeRevision] = useState(0);
     const [truncated, setTruncated] = useState(false);
     const [loading, setLoading] = useState(true);
     const [failure, setFailure] = useState<FsFailure | null>(null);
@@ -119,6 +121,7 @@ function FsBrowserContent({
         setFailure(null);
         setPath(res.path);
         setEntries(res.entries);
+        setTreeRevision(v => v + 1);
         setTruncated(res.truncated);
     }, [machineId, picking]);
 
@@ -153,23 +156,13 @@ function FsBrowserContent({
         return () => window.removeEventListener('keydown', onKey, true);
     }, [fullscreen, active]);
 
-    if (file) {
-        return (
-            <FsFileViewer
-                machineId={machineId}
-                path={file}
-                onClose={() => setFile(null)}
-                fullscreen={fullscreen}
-                onToggleFullscreen={() => setFullscreen((v) => !v)}
-            />
-        );
-    }
-
     const rows = entries ? visibleFsEntries(sortFsEntries(entries, sortMode), showHidden) : null;
     const crumbs = fsBreadcrumbs(path);
 
     return (
-        <div className={`fsb${fullscreen ? ' fsb--full' : ''}`}>
+        <div className={`fsb-shell${file ? ' has-preview' : ''}${fullscreen ? ' fsb--full' : ''}`}>
+        <div className="fsb-split">
+        <div className="fsb">
             <div className="fsb-bar">
                 <nav className="fsb-crumbs mono" aria-label={t('fsBrowser.breadcrumbs')}>
                     {crumbs.map((c, i) => (
@@ -242,7 +235,7 @@ function FsBrowserContent({
                     <div className="fsb-center">{t('fsBrowser.empty')}</div>
                 ) : (
                     <>
-                        {rows.map((entry) => (
+                        {!picking ? <FsTree key={`${path}:${treeRevision}`} machineId={machineId} path={path} entries={entries!} showHidden={showHidden} sortMode={sortMode} selected={file} onFile={setFile} onDirectory={target => void load(target)} /> : rows.map((entry) => (
                             <button
                                 key={entry.name}
                                 type="button"
@@ -279,6 +272,9 @@ function FsBrowserContent({
                     </button>
                 </div>
             )}
+        </div>
+        {file && <FsFileViewer machineId={machineId} path={file} onClose={() => setFile(null)} fullscreen={fullscreen} contained onToggleFullscreen={() => setFullscreen(v => !v)} />}
+        </div>
         </div>
     );
 }

@@ -58,8 +58,8 @@
  * hit areas; the palette search icon appears (no ⌘K on a touch keyboard). */
 @media (pointer: coarse) {
   .sb-icon-btn {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
   }
   .sb-filter-btn {
     padding: 8px 0;
@@ -637,3 +637,6 @@
  .sb-list-controls { flex-wrap:wrap; }
  .sb-list-tools { margin-left:auto; }
 }
+
+.sb-new-chevron { margin-left:auto; flex:none; }
+.sb-nav-btn[data-state="open"] { background:var(--bg-2); }

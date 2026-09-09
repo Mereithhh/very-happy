@@ -60,7 +60,7 @@ export const zhHans: TranslationStructure = {
 
         archive: "归档团队",
         archived: "团队已归档，仅可查看",
-        archiveDescription: "全部任务关闭且执行操作、资源回收处理完毕后，可以归档。记录仍可通过当前链接查看。",
+        archiveDescription: "归档会取消未完成的任务和定时安排，并停止团队托管的会话。自行接入的会话、工作目录和历史记录会保留；离线机器上线后继续清理。",
         activeTasks: "请先完成或取消仍在进行的任务。",
         unresolvedOperations: "仍有未完成的执行操作，请先核验并处理。",
         cleanupUnfinished: "仍有未完成的资源回收。",
@@ -1792,6 +1792,15 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10a: {
+                title: "工作台更利落，上下文读数更清楚",
+                summary: "根据新版界面的实际使用反馈，继续打磨日常操作。",
+                layout: "处理中状态与输入框对齐；搜索收进侧栏顶部，新建会话菜单紧贴按钮下方展开。",
+                files: "文件入口默认打开目录浏览器，支持展开文件夹、筛选已加载文件；空间足够时目录与文件预览并排显示。",
+                teams: "团队顶部可直接归档：取消未完成任务与定时安排，停止托管会话并保留工作目录。归档清理需要新版 CLI；找负责人聊聊按钮也更紧凑。",
+                context: "Pi 上下文用量采用运行时的当前估算值和真实模型容量，未上报或压缩后未知时显示 —。更新 CLI 后，新建 pi 会话即可启用上报。",
+            },
+
             sep10: {
                 title: '工作台大升级：直接抄一手 Codex UI',
                 summary: '更紧凑、更能装下工作，也保留 Very Happy 自己的样子。',

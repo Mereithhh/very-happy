@@ -29,37 +29,6 @@ export function newestTeam(
     : next;
 }
 
-/** Presentation preflight only; server rechecks these conditions atomically. */
-export function archiveBlocker(
-  team: TeamState,
-):
-  | "activeSchedules"
-  | "activeTasks"
-  | "unresolvedOperations"
-  | "cleanupUnfinished"
-  | null {
-  if (
-    (team.schedules ?? []).some((schedule) =>
-      ["active", "paused"].includes(schedule.status),
-    )
-  )
-    return "activeSchedules";
-  if (team.tasks.some((task) => !["done", "cancelled"].includes(task.status)))
-    return "activeTasks";
-  if (
-    team.operations.some(
-      (operation) =>
-        ["pending", "claimed", "unknown"].includes(operation.status) ||
-        (operation.status === "failed" &&
-          operation.error !== "task_closed_before_spawn"),
-    )
-  )
-    return "unresolvedOperations";
-  if (team.tasks.some((task) => ["pending", "failed"].includes(task.cleanup)))
-    return "cleanupUnfinished";
-  return null;
-}
-
 export function canReconcileOperation(
   team: TeamState,
   operation: TeamState["operations"][number],

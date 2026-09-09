@@ -41,3 +41,9 @@ export function contextPercentOf(contextSize: number, window: number | null): nu
     if (!(contextSize > 0)) return 0;
     return Math.max(0, Math.min(100, Math.round((contextSize / window) * 100)));
 }
+
+/** Pi reports current occupancy through its runtime; message/billing totals are not a fallback. */
+export function composerContextUsage(isPi: boolean, runtime: import('@slopus/happy-wire').ContextUsage | null | undefined, message: {contextSize: number; model?: string | null} | null | undefined) {
+    if (isPi) return { tokens: runtime?.tokens ?? null, window: runtime?.contextWindow ?? null, estimated: true };
+    return { tokens: message?.contextSize ?? null, window: contextWindowFor(message?.model), estimated: false };
+}

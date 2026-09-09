@@ -13,7 +13,7 @@ import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { TeamSchedules } from "./TeamSchedules";
 import { t as tr } from "@/text";
-import { Bot, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus, RefreshCw } from "lucide-react";
+import { Bot, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus, RefreshCw, Archive } from "lucide-react";
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
@@ -25,7 +25,6 @@ import { TeamOptions } from "./TeamOptions";
 import { useWorkspaceCopy } from "./workspaceCopy";
 import { sync } from "@/sync/sync";
 import {
-  archiveBlocker,
   canReconcileOperation,
   newestTeam,
 } from "./teamView";
@@ -45,6 +44,7 @@ function TeamsContent() {
   useTranslation();
   const c = useWorkspaceCopy();
   const first = useFirstUseCopy();
+  const [archiving, setArchiving] = useState(false);
   const [startingExisting, setStartingExisting] = useState(false);
   const [view, setView] = useState<"overview" | "schedules" | "settings">("overview");
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
@@ -157,9 +157,14 @@ function TeamsContent() {
         </div>
         <div className="teams-heading-actions">
           <Link to="/help">{c.guide}</Link>
+          {team && team.archivedAt === undefined && <button disabled={disabled} onClick={() => setArchiving(true)}><Archive size={16}/>{tr('teams.archive')}</button>}
           {teamId ? <button aria-label={tr("teams.refresh")} title={tr("teams.refresh")} onClick={() => { setError(""); void load(); }}><RefreshCw size={17} /></button> : <button className="teams-primary" disabled={unavailable} onClick={() => setCreating(true)}><Plus size={16} />{c.create}</button>}
         </div>
       </header>
+      {archiving && team && <TeamDialog title={tr('teams.archive')} onClose={() => setArchiving(false)}>
+        <p>{tr('teams.archiveDescription')}</p>
+        <button disabled={disabled} onClick={async () => { await act({type:'archive'}); setArchiving(false); }}>{tr('teams.archive')}</button>
+      </TeamDialog>}
       {error && (
         <p role="alert" className="teams-error">
           {error}
@@ -447,7 +452,7 @@ function TeamsContent() {
                   key={`${operation.id}:${operation.claimId ?? "unclaimed"}`}
                   team={team}
                   operation={operation}
-                  disabled={disabled}
+                  disabled={busy || pending !== null || unavailable}
                   act={act}
                 />
               ))}
@@ -456,12 +461,9 @@ function TeamsContent() {
             <section>
               <h2>{tr("teams.archive")}</h2>
               <p>{tr("teams.archiveDescription")}</p>
-              {archiveBlocker(team) && (
-                <p role="status">{tr(`teams.${archiveBlocker(team)!}`)}</p>
-              )}
               <button
-                disabled={disabled || archiveBlocker(team) !== null}
-                onClick={() => void act({ type: "archive" })}
+                disabled={disabled}
+                onClick={() => setArchiving(true)}
               >
                 {tr("teams.archive")}
               </button>

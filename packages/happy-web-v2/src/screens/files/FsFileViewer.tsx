@@ -52,7 +52,8 @@ function decodeUtf8(b64: string): string {
     return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
 }
 
-export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFullscreen }: {
+export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFullscreen, contained = false }: {
+    contained?: boolean;
     machineId: string;
     path: string;
     onClose: () => void;
@@ -214,7 +215,7 @@ export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFul
                     <div className="fsb-viewer-body">
                         {truncNotice}
                         {/* file viewer has its own scroll surface — never collapse */}
-                        <CodeView code={state.text} lang={langForPath(path)} collapsible={false} />
+                        <CodeView code={state.text} lang={langForPath(path)} showLineNumbers collapsible={false} />
                     </div>
                 );
             }
@@ -222,7 +223,7 @@ export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFul
     };
 
     return (
-        <div className={`fsb-viewer${fullscreen ? ' fsb--full' : ''}`}>
+        <div className={`fsb-viewer${fullscreen && !contained ? ' fsb--full' : ''}`}>
             <div className="fsb-viewer-head">
                 <span className="fsb-viewer-path" title={path}>{path}</span>
                 {kind === 'markdown' && state.phase === 'text' && (

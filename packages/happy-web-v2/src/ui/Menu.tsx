@@ -93,11 +93,13 @@ export function ActionDropdownMenu({
   children,
   align = 'end',
   sideOffset = 4,
+  matchTriggerWidth = false,
 }: {
   items: MenuItemDef[];
   children: React.ReactElement;
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
+  matchTriggerWidth?: boolean;
 }) {
   return (
     <DropdownMenu.Root>
@@ -105,6 +107,7 @@ export function ActionDropdownMenu({
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           className="vh-menu"
+          style={matchTriggerWidth ? { minWidth: 'var(--radix-dropdown-menu-trigger-width, 0px)' } : undefined}
           align={align}
           sideOffset={sideOffset}
           onCloseAutoFocus={giveFocusBackToTerminal}

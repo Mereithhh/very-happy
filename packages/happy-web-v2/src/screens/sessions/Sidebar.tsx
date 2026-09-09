@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -832,6 +832,7 @@ export function Sidebar() {
           <img src="/icon-192.png" alt="" width={24} height={24}/><span>Very Happy</span>
         </button>
         <div className="sb-header-right">
+          <button className="sb-icon-btn" aria-label={t("sidebar.openSearch")} title={`${t("sidebar.openSearch")} · ⌘K`} onClick={openCommandPalette}><Search size={17}/></button>
           <StatusDot status={socketToStatus(socket)} pulse={socket === 'connecting'} title={socket} />
           {/* Collapse only exists in the two-pane desktop layout. On mobile
               (single pane) AppLayout ignores `collapsed` entirely, so this
@@ -853,8 +854,9 @@ export function Sidebar() {
               directory and the settings defaults; falls back to the full
               dialog only when it can't decide (or always-ask is on). */}
           <ActionDropdownMenu
-            align="end"
-            sideOffset={6}
+            align="start"
+            sideOffset={4}
+            matchTriggerWidth
             items={[
               {
                 key: 'chat',
@@ -912,10 +914,9 @@ export function Sidebar() {
             ]}
           >
             <button className="sb-nav-btn" title={t('sidebar.newSession')}>
-              <Plus size={17} /><span>{t('sidebar.newSession')}</span>
+              <Plus size={17} /><span>{t('sidebar.newSession')}</span><ChevronDown size={14} className="sb-new-chevron"/>
             </button>
           </ActionDropdownMenu>
-        <button className="sb-nav-btn" onClick={openCommandPalette}><Search size={17}/><span>{t('sidebar.openSearch')}</span><kbd>⌘K</kbd></button>
         {happyBotEntryVisible && <button onClick={() => navigate('/teams')}><UsersRound size={18} /><span>{teamCopy.title}</span></button>}
         <button onClick={() => navigate('/todos')}><ListChecks size={18} /><span>{t('todos.title')}</span></button>
         <button onClick={() => navigate('/help')}><CircleHelp size={17}/><span>{t('sidebar.openHelp')}</span></button>

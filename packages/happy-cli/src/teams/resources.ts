@@ -34,6 +34,24 @@ export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport
   const {readFile} = await import('node:fs/promises');
   const {join} = await import('node:path');
   const {homedir} = await import('node:os');
+  const contextEndpoint = process.env.HAPPY_CONTEXT_USAGE_URL;
+  if (contextEndpoint) {
+    const target = new URL(contextEndpoint);
+    if (target.origin !== url.origin || !target.pathname.startsWith('/runtime-context/')) throw new Error('Very Happy context must be local');
+    let reporting = Promise.resolve();
+    for (const name of ['session_start', 'session_switch', 'session_compact', 'model_select', 'turn_end', 'agent_end']) {
+      pi.on(name, async (_event, ctx) => {
+        const usage = ctx.getContextUsage?.();
+        const contextWindow = usage?.contextWindow ?? ctx.model?.contextWindow;
+        if (!(contextWindow > 0)) return;
+        const snapshot = {source:'pi', tokens:usage?.tokens ?? null, contextWindow};
+        reporting = reporting.catch(() => {}).then(async () => {
+          try { await fetch(contextEndpoint, {method:'POST', redirect:'error', headers:{'content-type':'application/json'}, body:JSON.stringify(snapshot), signal:AbortSignal.timeout(2000)}); } catch {}
+        });
+        await reporting;
+      });
+    }
+  }
   pi.on('tool_call', async (event, ctx) => {
     let mode = process.env.HAPPY_PERMISSION_MODE || 'default';
     const sid = process.env.HAPPY_SESSION_ID;

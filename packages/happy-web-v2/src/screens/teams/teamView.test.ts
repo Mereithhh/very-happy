@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TeamTask, TeamState } from "@slopus/happy-wire";
 import {
-  archiveBlocker,
   canReconcileOperation,
   newestTeam,
   taskRows,
@@ -82,31 +81,11 @@ describe("team lifecycle action availability", () => {
     operation.status = "pending";
     expect(canReconcileOperation(team, operation)).toBe(false);
   });
-  it("keeps archive blocked until operations and cleanup resolve", () => {
-    const team = state();
-    expect(archiveBlocker(team)).toBe("unresolvedOperations");
-    team.operations[0].status = "completed";
-    team.tasks[0].cleanup = "pending";
-    expect(archiveBlocker(team)).toBe("cleanupUnfinished");
-    team.tasks[0].cleanup = "done";
-    team.tasks[0].status = "running";
-    expect(archiveBlocker(team)).toBe("activeTasks");
-    team.tasks[0].status = "done";
-    expect(archiveBlocker(team)).toBeNull();
-  });
-  it("allows archive after cancellation prevented spawning without a claim", () => {
+  it("does not reconcile a launch cancelled before claiming", () => {
     const team = state();
     team.operations[0].status = "failed";
     team.operations[0].error = "task_closed_before_spawn";
     team.operations[0].claimId = null;
-    expect(archiveBlocker(team)).toBeNull();
     expect(canReconcileOperation(team, team.operations[0])).toBe(false);
   });
-});
-
-it('keeps archive blocked for active and paused schedules', () => {
-  const team = {tasks:[],operations:[],schedules:[{status:'active'}]} as unknown as TeamState;
-  expect(archiveBlocker(team)).toBe('activeSchedules');
-  team.schedules![0].status='paused';expect(archiveBlocker(team)).toBe('activeSchedules');
-  team.schedules![0].status='cancelled';expect(archiveBlocker(team)).toBeNull();
 });

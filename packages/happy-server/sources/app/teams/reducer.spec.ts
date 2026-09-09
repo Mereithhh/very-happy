@@ -96,14 +96,35 @@ describe('team coordination invariants', () => {
         expect(f.state.tasks[0].status).toBe('submitted');
     });
 
-    it('refuses archival until active work and uncertain execution are resolved', () => {
-        const f = fixture(); f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
-        expect(() => f.act({ type: 'archive' })).toThrow('team_has_active_tasks');
+    it('archives active work and settles a late spawn without stranding its process', () => {
+        const f = fixture();
+        f.act({ type: 'join', name: 'Attached', sessionId: 'user-session' });
+        f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
         const op = f.state.operations[0];
         f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: op.id, machineId: 'machine' });
-        const task = f.state.tasks[0];
-        f.act({ type: 'cancel', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, reason: 'stop' });
-        expect(() => f.act({ type: 'archive' })).toThrow('team_has_unresolved_operations');
+        const claimId = f.state.operations[0].claimId!;
+        f.act({ type: 'archive' });
+        expect(f.state.tasks[0].status).toBe('cancelled');
+        expect(f.state.tasks[0].cleanup).toBe('pending');
+        expect(f.state.bots[0].sessionId).toBe('user-session');
+        expect(() => f.act({type:'delegate', goal:'hidden work', acceptance:['a']})).toThrow('team_archived');
+        f.act({type:'complete-operation', operationId:op.id, claimId, machineId:'machine', sessionId:'late-session'});
+        const stop = f.state.operations.find(o => o.type === 'stop')!;
+        expect(stop.sessionId).toBe('late-session');
+        f.act({type:'claim-operation', operationId:stop.id, machineId:'machine'});
+        f.act({type:'complete-operation', operationId:stop.id, claimId:f.state.operations.at(-1)!.claimId!, machineId:'machine'});
+        expect(f.state.tasks[0].cleanup).toBe('done');
+        expect(f.state.bots.find(b => b.id === op.botId)?.sessionId).toBeNull();
+        expect(f.state.bots[0].sessionId).toBe('user-session');
+    });
+
+    it('cancels queued launches and deduplicates stops when archiving', () => {
+        const f = fixture(); f.act({type:'delegate', goal:'g', acceptance:['a']});
+        f.act({type:'archive'});
+        expect(f.state.operations[0]).toMatchObject({status:'failed',error:'task_closed_before_spawn'});
+        const count = f.state.operations.length;
+        f.act({type:'archive'});
+        expect(f.state.operations).toHaveLength(count);
     });
 
     it('cannot bind a spawned bot to another bot existing session', () => {
