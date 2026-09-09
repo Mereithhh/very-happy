@@ -20,6 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-410 | 最终 server 镜像依赖与锁文件一致性 | debt | B-409 生产 IP 验收 | todo | 29e63c63 的实际模块 /repo/node_modules/fastify=5.12.3，锁文件与本地为5.8.5；新版拒绝数字trustProxy，已用精确代理白名单修复本次IP配置。Dockerfile.server 的 pnpm deploy --prod --legacy 阶段需追查并补最终runtime版本门禁，尚未证明漂移发生环节。 |
 | B-409 | 业务审计：登录 IP、会话与指令/工具事件，独立存储和后台查询 | feat | Owner 2026-09-09 | done | 见 specs/2026-09-business-audit.md；异步有界采集，不阻塞业务，明确历史与终端覆盖缺口。 |
 | B-399 | PostgreSQL 迁移使用独立会话连接 | bug | Agent Teams 发布实测 | done | Prisma advisory lock 不得经过 transaction pool；迁移 child env 隔离、生产入口门禁与失败阻断回归。 |
 | B-392 | 终端 @ 字形可辨认性；另核 pi 消息黑字 | bug | Owner 2026-09-09 | doing | 已在 test 终端 jojo@mac-office 确认：DOM 为 U+0040，Maple 默认特殊字形导致误认；启用 cv01 标准符号，保持字体/字号/行高。本地真实 xterm 对比及 mutation 回归通过，已随 629bc399 发布，线上 CSS 已核对。pi 黑字属另一路径，仍未复现，不合并宣称修复。 |
