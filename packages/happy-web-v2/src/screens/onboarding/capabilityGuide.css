@@ -1,0 +1,11 @@
+.cap-guide { margin-block: var(--sp-5); min-width: 0; }
+.cap-guide h2 { font-size: var(--fs-18); line-height: 1.4; margin: 0 0 var(--sp-3); }
+.cap-guide h3 { font-size: var(--fs-14); margin: var(--sp-2) 0; }
+.cap-guide p { color: var(--text-dim); font-size: var(--fs-13); line-height: 1.65; }
+.cap-guide__steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4); }
+.cap-guide article { min-width: 0; padding-block: var(--sp-3); border-top: 1px solid var(--line); }
+.cap-guide a { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 44px; color: var(--text); font-size: var(--fs-13); }
+.cap-guide a:hover { text-decoration: underline; }
+.cap-guide__note { border-top: 1px solid var(--line); padding-top: var(--sp-3); }
+.cap-guide__skills { display: grid; gap: var(--sp-2); }
+@media (max-width: 699px) { .cap-guide__steps { grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); } }

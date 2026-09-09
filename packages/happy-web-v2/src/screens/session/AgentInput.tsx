@@ -892,7 +892,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     />
                     </div>
                     <div className="ci-composer-actions">
-                        {isWorking && (!hasDraft || aborting) ? (
+                        {isWorking && !sending && !processingAttachments && (!hasDraft || aborting) ? (
                             <button
                                 type="button"
                                 className="ci-send ci-send--abort"
@@ -918,7 +918,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             onClick={() => void doSend('queue')}
                             disabled={!canSend}
                             aria-busy={sending || processingAttachments}
-                            aria-label={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
+                            aria-label={sending ? t('session.chat.sending') : gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
                             title={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
                         >
                             {sending || processingAttachments ? <Spinner size={16} /> : <ArrowUp size={18} />}

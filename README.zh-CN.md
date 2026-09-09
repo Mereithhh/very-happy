@@ -390,3 +390,7 @@ Very Happy 是 [slopus/happy](https://github.com/slopus/happy) 的友好型深�
 上游版权与 MIT 条款。详见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。Claude Code、Codex、
 Gemini、OpenCode、OpenClaw 及其他具名 Agent 均是各自所有者的产品或项目；Very Happy 与
 它们相互独立，不存在关联关系。
+
+### 新手引导与 Agent skills
+
+在工作台打开 **帮助与新手入门**，可以连接另一台电脑、选择对话或终端，并找到团队、文件与待办能力。教程提供官方团队安装器、**待办 → 我的待办 → 让 AI 使用我的待办** 和外部 provider skill 的入口。网页创建团队会自动准备协作指引；终端安装 skill 不会接管未托管终端，也不会自动获得账号权限。

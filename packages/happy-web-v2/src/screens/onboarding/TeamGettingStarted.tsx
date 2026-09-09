@@ -30,7 +30,7 @@ export function TeamGettingStarted() {
         <Link to="/todos">{copy.openTodos}<ArrowRight size={15} /></Link>
       </article>
     </div>
-    <details className="team-start__install">
+    <details id="team-skill-install" className="team-start__install">
       <summary>{copy.install}</summary>
       <p>{copy.instruction}</p>
       <label>{copy.host}<select value={host} onChange={event => setHost(event.target.value as TeamSkillHost)}>

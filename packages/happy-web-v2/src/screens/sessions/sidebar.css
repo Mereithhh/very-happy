@@ -640,3 +640,6 @@
 
 .sb-new-chevron { margin-left:auto; flex:none; }
 .sb-nav-btn[data-state="open"] { background:var(--bg-2); }
+
+.sb-row-running { display: inline-flex; align-items: center; flex: 0 0 16px; color: var(--text-dim); }
+.sb-nav-btn[aria-busy="true"] { cursor: progress; }

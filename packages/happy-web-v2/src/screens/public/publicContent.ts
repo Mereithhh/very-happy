@@ -411,6 +411,11 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
   {
     slug: 'integrations', label: 'Integrations & automation', summary: 'Connect IM, schedulers, and task systems without putting private policy in the core.',
     sections: [
+      { heading: 'Official skills: start in the workspace', blocks: [
+        { type: 'p', text: 'Help & getting started links the team installer and official todo skills. Teams created in the app receive collaboration instructions automatically. For terminal setup, select your agent in the guide, install the shared skill and ask the managed conversation to read the returned path; installation does not change host discovery settings.' },
+        { type: 'p', text: 'In Todos → My todos, choose Let AI use my todos to copy the complete instructions and current server address. You can also run very-happy todo skill on the connected computer. Reading instructions grants no account access; verify the CLI login and server before reading existing todos.' },
+        { type: 'link', href: '/skills/very-happy-todo-provider/SKILL.md', label: 'External todo-provider skill ↗' },
+      ] },
       { heading: 'MCP handoffs into the Web workspace', blocks: [
         { type: 'p', text: 'Base managed Claude sessions receive change_title, copy_to_clipboard, open_preview, and report_progress. The managed Codex, Gemini, and ACP bridge exposes change_title, copy_to_clipboard, and open_preview. These handoffs let an agent turn local work into visible Web state instead of merely printing another terminal line.' },
         { type: 'list', items: ['Voice Assistant / legacy assistant variant only: sessions_list, session_read, session_send, session_spawn, session_kill, session_archive, terminals_list, terminal_read, terminal_send, memory_update, and journal_append.', 'Those assistant-only tools can mutate local sessions, terminals, memory, and journals. Treat the assistant and its prompt/tool permissions as a high-privilege machine control surface.'] },

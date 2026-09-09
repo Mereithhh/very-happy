@@ -61,7 +61,7 @@
 
 /* mobile (< the AppLayout two-pane breakpoint): fullscreen panel.
    B-112: inverse of the desktop-shell query (useMediaQuery.DESKTOP_SHELL_MQ) */
-@media (max-width: 799px), (max-width: 979px) and (max-height: 599px) {
+@media (max-width: 799px), (max-width: 979px) and (max-height: 599px), (max-device-width: 599px) {
   .fpo-panel {
     inset: 0;
     top: 0;

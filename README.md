@@ -474,3 +474,7 @@ and MIT terms. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Claude Code, Codex,
 Gemini, OpenCode, OpenClaw, and other named agents are products or projects of
 their respective owners. Very Happy is independent and is not affiliated with
 them.
+
+### Getting started and agent skills
+
+Open **Help & getting started** in the workspace to connect another computer, choose chat or a terminal, and find Teams, files and todos. The guide also links the official team installer, **Todos → My todos → Let AI use my todos**, and the external todo-provider skill. App-created teams receive their instructions automatically; terminal skill installation does not attach an unmanaged terminal or grant account access.

@@ -19,9 +19,11 @@ export function useMediaQuery(query: string): boolean {
  * (Galaxy Fold open ≈ 800-910px CSS) — the height arm keeps landscape PHONES
  * out (e.g. iPhone Pro Max landscape is 932×430). Keep in sync with the CSS
  * mobile inverse used by the fullscreen panels:
- *   @media (max-width: 799px), (max-width: 979px) and (max-height: 599px)
+ *   @media (max-width: 799px), (max-width: 979px) and (max-height: 599px), (max-device-width: 599px)
  */
-export const DESKTOP_SHELL_MQ = '(min-width: 980px), (min-width: 800px) and (min-height: 600px)';
+// A folded phone may report a tablet-sized layout viewport. Require a
+// non-phone screen as well, so a wide virtual viewport cannot open two panes.
+export const DESKTOP_SHELL_MQ = '(min-width: 980px) and (min-device-width: 600px), (min-width: 800px) and (min-height: 600px) and (min-device-width: 600px)';
 
 export function useIsDesktop() {
   return useMediaQuery(DESKTOP_SHELL_MQ);
