@@ -4,7 +4,7 @@ import { Bot, Circle, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch
 import { useWorkspaceCopy } from './workspaceCopy';
 import { t as tr } from '@/text';
 import { useFirstUseCopy } from './firstUseCopy';
-import { memberTitle, teamRootTask } from './teamPresentation';
+import { memberTitle, teamRootTask, taskLaunchIssue } from './teamPresentation';
 import { Markdown } from '@/screens/session/Markdown';
 import { taskRows } from './teamView';
 import { botHistorySessionId } from '@/screens/sessions/teamNavigation';
@@ -28,7 +28,7 @@ export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: 
     { key: 'finished', label: c.finished, Icon: CircleCheck },
   ];
   return <>
-    {rootTask && <section className="team-goal"><div className="teams-section-heading"><h2>{f.goalTitle}</h2><span>{tr(`teams.${rootTask.status}`)}</span></div><p>{rootTask.goal}</p><button onClick={() => onTask(rootTask.id)}>{f.inspect} →</button></section>}
+    {rootTask && <section className="team-goal"><div className="teams-section-heading"><h2>{f.goalTitle}</h2><span>{taskLaunchIssue(team, rootTask) ? f.launchFailed : tr(`teams.${rootTask.status}`)}</span></div><p>{rootTask.goal}</p><button onClick={() => onTask(rootTask.id)}>{f.inspect} →</button></section>}
     {rootResult && <section className="team-delivery"><h2><CircleCheck size={20} />{f.result}</h2><Markdown text={rootResult} /><button onClick={() => onTask(rootTask!.id)}>{f.inspect} →</button></section>}
     <section className="teams-members"><h2>{f.membersTitle} <small>{team.bots.length}</small></h2>
       {team.bots.length === 0 && <p>{c.noMembers}</p>}
@@ -48,6 +48,7 @@ export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: 
           return <button className="teams-task-preview" id={`team-task-${task.id}`} key={task.id} onClick={() => onTask(task.id)}>
             {depth > 0 && <small className="teams-parent-label"><GitBranch size={12} />{team.tasks.find(t => t.id === task.parentTaskId)?.goal.split('\n')[0]}</small>}
             <strong>{task.goal}</strong><span className="teams-task-owner"><Bot size={14} />{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
+            {taskLaunchIssue(team, task) && <span className="teams-error">{f.launchFailed} · {taskLaunchIssue(team, task)?.error}</span>}
             {result && <span className="teams-result-preview">{result}</span>}
             {['pending', 'failed'].includes(task.cleanup) && <small className={task.cleanup === 'failed' ? 'teams-error' : ''}>{task.cleanup === 'failed' ? c.cleanupFailed : c.cleanupPending}</small>}
           </button>;

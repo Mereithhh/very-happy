@@ -244,3 +244,9 @@
 @media (pointer: coarse) {
  .teams-screen button, .teams-screen input, .teams-screen select, .teams-talk, .teams-back, .teams-screen summary { min-height:44px; }
 }
+
+.team-chat-intro { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); }
+.team-start-context { display: block; font-size: var(--fs-12); color: var(--text-dim); overflow-wrap: anywhere; font-weight: 400; }
+.team-start-form .team-start-send { align-self: flex-end; display: inline-flex; align-items: center; gap: var(--sp-2); }
+.team-start-options { margin-top: var(--sp-3); }
+.teams-task .teams-error { overflow-wrap: anywhere; }

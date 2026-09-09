@@ -54,7 +54,7 @@ import { rowRenameMenuTranslationKeys } from './sidebarRowMenu';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import { useTeamNavigation } from './useTeamNavigation';
-import { groupTeamNavigation, missingTeamSessionIds, teamSessionMembership } from './teamNavigation';
+import { groupTeamNavigation, missingTeamSessionIds, teamSessionMembership, unstartedTeamMembers } from './teamNavigation';
 import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
@@ -474,11 +474,13 @@ export function Sidebar() {
       const { bot } = membership.get(sessionId)!;
       return { key: sessionId, sessionId, kind: 'session', href: `/session/${encodeURIComponent(sessionId)}`, title: bot.name, subtitle: teamCopy.history, ts: 0, createdAt: 0, teamHistoryLink: true };
     });
-    return groupTeamNavigation([...plainDisplayRows, ...historicalRows], visibleTeams, expandedTeams).map((entry): Row => {
-      if (entry.kind === 'row') return entry.team ? { ...entry.row, teamChild: true, href: `/session/${encodeURIComponent(entry.row.sessionId!)}`, teamLabel: entry.bot?.root ? teamCopy.lead : entry.bot?.name || teamCopy.member } : entry.row;
-      return { key: `team:${entry.team.id}`, kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: entry.team.name, subtitle: '', ts: entry.team.createdAt, createdAt: entry.team.createdAt, team: entry.team };
+    return groupTeamNavigation([...plainDisplayRows, ...historicalRows], visibleTeams, expandedTeams).flatMap((entry): Row[] => {
+      if (entry.kind === 'row') return [entry.team ? { ...entry.row, teamChild: true, href: `/session/${encodeURIComponent(entry.row.sessionId!)}`, teamLabel: entry.bot?.root ? teamCopy.lead : entry.bot?.name || teamCopy.member } : entry.row];
+      const header: Row = { key: `team:${entry.team.id}`, kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: entry.team.name, subtitle: '', ts: entry.team.createdAt, createdAt: entry.team.createdAt, team: entry.team };
+      const pending: Row[] = expandedTeams.has(entry.team.id) ? unstartedTeamMembers(entry.team).map(({bot, task, failed, href}) => ({ key: `member:${entry.team.id}:${bot.id}`, kind: 'session', href, title: bot.root ? teamCopy.lead : bot.name, subtitle: failed ? teamCopy.failed : task ? teamCopy.preparing : teamCopy.noSession, ts: entry.team.createdAt, createdAt: entry.team.createdAt, teamHistoryLink: true })) : [];
+      return [header, ...pending];
     });
-  }, [plainDisplayRows, teamHistory, teams, expandedTeams, teamCopy.lead, teamCopy.member, teamCopy.history]);
+  }, [plainDisplayRows, teamHistory, teams, expandedTeams, teamCopy.lead, teamCopy.member, teamCopy.history, teamCopy.failed, teamCopy.preparing, teamCopy.noSession]);
   // Feeds the hold's arming snapshot (assigned during render, read by the
   // pointer listeners) — always the sequence actually on screen.
   displayedKeysRef.current = displayRows?.map((r) => r.key) ?? [];
@@ -1045,7 +1047,7 @@ export function Sidebar() {
                     }
                     if (r.teamHistoryLink) return <div key={r.key} className="sb-team-child"><div className={`sb-row${location.pathname === r.href ? ' is-selected' : ''}`}>
                       <button type="button" className="sb-row-main" data-href={r.href} aria-current={location.pathname === r.href ? 'page' : undefined} onClick={() => navigate(r.href)}>
-                        <span className="sb-row-icon"><History size={16} /></span><span className="sb-row-text"><span className="sb-row-title">{r.teamLabel || r.title}</span><span className="sb-row-sub">{r.subtitle}</span></span>
+                        <span className="sb-row-icon">{r.sessionId ? <History size={16} /> : <UsersRound size={16} />}</span><span className="sb-row-text"><span className="sb-row-title" title={r.subtitle}>{r.teamLabel || r.title}{!r.sessionId && <span className="sb-team-member-status"> · {r.subtitle}</span>}</span>{r.sessionId && <span className="sb-row-sub">{r.subtitle}</span>}</span>
                         {cmdHeld && i < 9 && <kbd className="sb-row-badge mono">⌘{i + 1}</kbd>}
                       </button>
                     </div></div>;

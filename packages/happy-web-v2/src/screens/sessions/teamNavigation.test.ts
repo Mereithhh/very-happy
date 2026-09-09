@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TeamState } from '@slopus/happy-wire';
-import { groupTeamNavigation, teamSessionMembership, botHistorySessionId, missingTeamSessionIds } from './teamNavigation';
+import { groupTeamNavigation, teamSessionMembership, botHistorySessionId, missingTeamSessionIds, unstartedTeamMembers } from './teamNavigation';
 const team = (id: string, sessionIds: string[]): TeamState => ({ id, name: id, machineId: 'm', version: 1, createdAt: 1, bots: sessionIds.map((sessionId, i) => ({ id: `${id}-${i}`, sessionId, name: `Member ${i}`, generation: 1, root: i === 0, managed: true, assistant: 'claude', directory: null })), tasks: [], operations: [], messages: [] });
 describe('team history', () => {
   const rows = ['ordinary-a', 'lead', 'ordinary-b', 'member', 'ordinary-c'].map((sessionId) => ({ sessionId }));
@@ -54,4 +54,12 @@ describe('retired member history', () => {
     expect(botHistorySessionId(t, t.bots[0])).toBeNull();
     expect(missingTeamSessionIds(new Set(), [t])).toEqual([]);
   });
+});
+
+it('shows a failed sessionless member with its task link and stops duplicating it once connected', () => {
+ const t=team('t',['']); t.bots[0].sessionId=null;
+ t.tasks=[{id:'task',parentTaskId:null,goal:'goal',acceptance:[],goalVersion:1,ownerBotId:null,assigneeBotId:t.bots[0].id,status:'queued',attempts:[],currentAttemptId:'attempt',cleanup:'none'}];
+ t.operations=[{id:'op',teamId:t.id,machineId:'m',taskId:'task',botId:t.bots[0].id,attemptId:'attempt',generation:1,type:'spawn',status:'failed',claimId:'claim',claimedAt:1,error:'invalid path',sessionId:null,directory:'~/repo',assistant:'claude',prompt:'',createdAt:1}];
+ expect(unstartedTeamMembers(t).map(m=>[m.bot.id,m.failed,m.href])).toEqual([['t-0',true,'/teams/t?task=task']]);
+ t.bots[0].sessionId='started'; expect(unstartedTeamMembers(t)).toEqual([]);
 });

@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10c: {
+                title: '团队启动更可靠', summary: '启动状态更清楚，描述目标即可开始协作。',
+                start: 'CLI 0.2.132 会在执行电脑解析主目录路径，让保留的团队启动请求继续安全执行。',
+                members: '尚未建立会话的成员也会显示在侧栏，任务详情直接展示启动失败原因。',
+                chat: '以目标消息开始，复用最近的电脑和项目，发送前仍可展开修改配置。',
+            },
             sep10b: {
                 title: '更容易开始，更清楚的操作反馈',
                 summary: '从连接电脑到使用 Agent，新手路径更完整。',

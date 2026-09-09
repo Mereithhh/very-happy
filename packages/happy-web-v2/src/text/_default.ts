@@ -1827,6 +1827,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10c: {
+                title: 'Teams start more reliably', summary: 'Clear startup feedback and a simpler way to describe your goal.',
+                start: 'CLI 0.2.132 expands home-directory paths on the execution computer, allowing retained team launches to continue safely.',
+                members: 'Members without a conversation remain visible in the sidebar. Startup failures show their cause in task details.',
+                chat: 'Start with a goal message; recent computer and project choices are reused and remain editable before sending.',
+            },
             sep10b: {
                 title: 'An easier start, clearer feedback',
                 summary: 'Find your way from connecting a computer to working with your agents.',

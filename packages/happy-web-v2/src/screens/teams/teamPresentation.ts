@@ -30,3 +30,9 @@ export function teamForMessage(teams: TeamState[], sessionId: string | undefined
   return teams.find(team => team.bots.some(b => b.sessionId === sessionId))
     ?? teams.find(team => team.operations.some(o => o.sessionId === sessionId) && !!teamMessageTask(team, localId));
 }
+
+/** Only a current, unfinished attempt can explain a startup failure. */
+export function taskLaunchIssue(team: TeamState, task: TeamTask) {
+  if (task.status !== 'queued') return undefined;
+  return team.operations.find(op => op.type === 'spawn' && op.taskId === task.id && op.attemptId === task.currentAttemptId && ['failed', 'unknown'].includes(op.status));
+}
