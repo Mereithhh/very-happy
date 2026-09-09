@@ -1,6 +1,6 @@
 /*
  * Public capability proofs. The interior controls deliberately reuse the
- * production Assistant and NewSession class contracts; this file only supplies
+ * production NewSession class contracts; this file only supplies
  * the editorial frame and embedded-layout overrides. Console tokens are the
  * complete color vocabulary.
  */
@@ -28,7 +28,6 @@
 .cfp-proof-line,
 .cfp-surface-bar,
 .cfp-ui-kicker,
-.cfp-config-chip,
 .cfp-agent-fact > span {
   font-family: var(--font-mono);
   letter-spacing: 0.085em;
@@ -56,7 +55,6 @@
 
 .cfp-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   border: 1px solid var(--line-2);
   border-radius: var(--r-lg);
   overflow: hidden;
@@ -66,17 +64,14 @@
 
 .cfp-card {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  align-items: start;
+  gap: clamp(var(--sp-5), 4vw, var(--sp-10));
   padding: clamp(var(--sp-4), 3vw, var(--sp-6));
 }
 
-.cfp-card + .cfp-card {
-  border-left: 1px solid var(--line);
-}
-
 .cfp-copy {
-  min-height: 218px;
   padding: var(--sp-2) var(--sp-1) var(--sp-6);
 }
 
@@ -114,8 +109,8 @@
 }
 
 .cfp-surface {
+  min-width: 0;
   position: relative;
-  min-height: 650px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -168,76 +163,6 @@
   border-radius: var(--r-pill);
   background: var(--text-faint);
   box-shadow: 0 0 0 4px var(--bg-3);
-}
-
-/* Embedded form of the actual Assistant screen. */
-.cfp-voice.as-root {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  height: auto;
-  min-height: 0;
-  background: color-mix(in srgb, var(--bg-0) 80%, transparent);
-}
-
-.cfp-voice .as-col {
-  max-width: none;
-  padding: var(--sp-2) var(--sp-4) var(--sp-4);
-}
-
-.cfp-voice .as-header {
-  min-height: 42px;
-  padding: var(--sp-2) 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.cfp-voice .as-stage {
-  gap: var(--sp-3);
-  padding: var(--sp-3) 0 0;
-}
-
-.cfp-voice .as-logo {
-  margin-bottom: var(--sp-5);
-}
-
-.cfp-voice .as-convo {
-  max-height: 118px;
-  min-height: 92px;
-  padding: 0 var(--sp-2);
-}
-
-.cfp-voice .as-convo-assistant {
-  font-size: var(--fs-14);
-  line-height: 1.55;
-}
-
-.cfp-voice .as-controls {
-  gap: var(--sp-2);
-  padding-top: var(--sp-2);
-}
-
-.cfp-voice .as-ptt {
-  width: 62px;
-  height: 62px;
-}
-
-.cfp-voice .as-input,
-.cfp-voice .as-send-btn {
-  font-size: var(--fs-16);
-}
-
-.cfp-voice .as-send-btn {
-  width: 44px;
-  padding: 0;
-}
-
-.cfp-config-chip {
-  flex: none;
-  padding: 3px 7px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  color: var(--text-faint);
-  font-size: var(--fs-10);
 }
 
 /* Embedded form of the actual NewSession dialog. */
@@ -407,22 +332,10 @@
     flex-direction: column;
   }
 
-  .cfp-grid {
+  .cfp-card {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .cfp-card + .cfp-card {
-    border-top: 1px solid var(--line);
-    border-left: 0;
-  }
-
-  .cfp-copy {
-    min-height: 0;
-  }
-
-  .cfp-surface {
-    min-height: 650px;
-  }
 }
 
 @container core-feature-proofs (max-width: 560px) {
@@ -434,33 +347,8 @@
     padding: var(--sp-2) var(--sp-1) var(--sp-5);
   }
 
-  .cfp-surface {
-    min-height: 710px;
-  }
-
   .cfp-surface-bar span:last-child {
     display: none;
-  }
-
-  .cfp-voice .as-col {
-    padding-inline: var(--sp-3);
-  }
-
-  .cfp-voice .as-header-machine {
-    max-width: 42vw;
-  }
-
-  .cfp-config-chip {
-    display: none;
-  }
-
-  .cfp-voice .as-stage {
-    justify-content: flex-start;
-    padding-top: var(--sp-4);
-  }
-
-  .cfp-voice .as-convo {
-    max-height: 150px;
   }
 
   .cfp-launcher.ns-card {
@@ -475,7 +363,7 @@
   }
 
   .cfp-launcher .ns-agent {
-    min-height: 40px;
+    min-height: 44px;
   }
 
   .cfp-launcher .ns-actions {
