@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     advanceQueueDeliveryPhase,
+    deliverQueuedMessage,
     QUEUE_START_TIMEOUT_MS,
     canReleaseQueuedMessage,
     parsePersistedQueuedMessages,
@@ -19,6 +20,11 @@ const item = (id: string, text = id): QueuedMessage => ({
 });
 
 describe('queuedMessages', () => {
+    it('holds the queue while its draft is being edited and resumes after save or cancel', () => {
+        expect(canReleaseQueuedMessage('idle', false, 'send', true)).toBe(false);
+        expect(canReleaseQueuedMessage('idle', false, 'send', false)).toBe(true);
+        expect(canReleaseQueuedMessage('waiting-start', false, 'send', false)).toBe(false);
+    });
     it('edits one item without changing order or siblings', () => {
         const queue = [item('a'), item('b')];
         expect(updateQueuedMessage(queue, 'a', ' revised ')).toEqual([
@@ -75,5 +81,26 @@ describe('B-322: waiting-start is no longer a dead end', () => {
         // The normal path must not be affected: an agent that picked the
         // message up moves to waiting-finish even past the deadline.
         expect(advanceQueueDeliveryPhase('waiting-start', true, 10 * QUEUE_START_TIMEOUT_MS)).toBe('waiting-finish');
+    });
+});
+
+
+describe('queue delivery acceptance', () => {
+    it.each([null, undefined, false])('keeps attachment resources when send resolves without receipt %s', async receipt => {
+        const release = vi.fn();
+        await expect(deliverQueuedMessage(async () => receipt, release)).rejects.toThrow('not queued');
+        expect(release).not.toHaveBeenCalled();
+    });
+    it('releases attachments only after an accepted outbox write', async () => {
+        const release = vi.fn();
+        await deliverQueuedMessage(async () => ({ localId: 'receipt' }), release);
+        expect(release).toHaveBeenCalledTimes(1);
+    });
+    it('preserves attachments on rejected writes and requires explicit retry after failure', async () => {
+        const release = vi.fn();
+        await expect(deliverQueuedMessage(async () => { throw new Error('offline'); }, release)).rejects.toThrow('offline');
+        expect(release).not.toHaveBeenCalled();
+        expect(advanceQueueDeliveryPhase('failed', false, 60_000)).toBe('failed');
+        expect(canReleaseQueuedMessage('failed', false)).toBe(false);
     });
 });

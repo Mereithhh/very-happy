@@ -64,6 +64,8 @@ export const sessionStreamBlockEndSchema = z.object({
  *  while extended thinking runs, output tokens only once the model emits). */
 export const sessionStreamProgressSchema = z.object({
   t: z.literal('progress'),
+  inputTokens: z.number().int().min(0).optional(),
+  cacheTokens: z.number().int().min(0).optional(),
   thinkingTokens: z.number().int().min(0).optional(),
   outputTokens: z.number().int().min(0).optional(),
   status: z.enum(['requesting', 'compacting']).optional(),

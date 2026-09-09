@@ -1,6 +1,7 @@
 export const messageActionsCopy = (lang: string) => lang.startsWith('zh') ? {
+    sourceChanged: '原会话已变化，请关闭后重新编辑。', branchContext: '从历史消息创建的分支',
     choose: '选择要编辑的原消息', chooseHint: '这条消息尚未关联可靠的回退标识。请从机器上的实际历史中选择原消息，不会自动按文字猜测。', loading: '正在读取历史…', empty: '未找到可编辑的历史消息。',
-    actions: '消息操作', quote: '引用', edit: '编辑并重跑', cancel: '取消', submit: '创建分支并重跑',
+    actions: '消息操作', quote: '引用', edit: '编辑', cancel: '取消', submit: '在新分支中发送',
     title: '编辑这条消息', text: '新的消息', busy: '正在创建分支…', open: '打开新分支', parent: '返回原会话',
     description: '从这条消息之前的历史创建新分支，原会话保留。已执行的命令和文件修改不会撤销。',
     unsupported: '此会话暂不支持精确回退。可以引用消息继续讨论。',
@@ -13,8 +14,9 @@ export const messageActionsCopy = (lang: string) => lang.startsWith('zh') ? {
     queued: '已创建分支并加入发送队列',
     sendFailed: '新分支已创建，消息尚未加入发送队列。打开新分支继续编辑并发送。',
 } : {
+    sourceChanged: 'The original session changed. Close and reopen the editor.', branchContext: 'Branched from an earlier message',
     choose: 'Choose the original message', chooseHint: 'This message has no reliable rewind mapping. Select the original from the machine’s actual history; no text matching is used.', loading: 'Reading history…', empty: 'No editable history found.',
-    actions: 'Message actions', quote: 'Quote', edit: 'Edit and rerun', cancel: 'Cancel', submit: 'Branch and rerun',
+    actions: 'Message actions', quote: 'Quote', edit: 'Edit', cancel: 'Cancel', submit: 'Send in new branch',
     title: 'Edit this message', text: 'New message', busy: 'Creating branch…', open: 'Open new branch', parent: 'Back to original session',
     description: 'Start a new branch from before this message. The original conversation is kept. Commands and file changes are not undone.',
     unsupported: 'This session does not support exact rewind yet. Quote the message to continue discussing it.',

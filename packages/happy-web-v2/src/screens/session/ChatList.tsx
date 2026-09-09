@@ -352,6 +352,7 @@ export function ChatList({
                                 key={row.key}
                                 message={row.message}
                                 showMeta={row.showMeta}
+                                showActions={row.showActions}
                                 sessionId={sessionId}
                                 thinkingDurationMs={row.thinkingDurationMs}
                                 attachments={row.attachments}

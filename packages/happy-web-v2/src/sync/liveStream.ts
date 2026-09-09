@@ -63,6 +63,8 @@ export type LiveStreamBlock = {
 };
 
 export type LiveStreamProgress = {
+    inputTokens?: number;
+    cacheTokens?: number;
     thinkingTokens?: number;
     outputTokens?: number;
     /** A phase worth naming while it lasts (the status bar shows it). */
@@ -179,6 +181,8 @@ export function applyStreamFrame(
                     // learned this window, and a frame without `thinkingTokens`
                     // means "no news", not "back to zero".
                     ...base.progress,
+                    ...(frame.inputTokens !== undefined ? { inputTokens: frame.inputTokens } : {}),
+                    ...(frame.cacheTokens !== undefined ? { cacheTokens: frame.cacheTokens } : {}),
                     ...(frame.thinkingTokens !== undefined ? { thinkingTokens: frame.thinkingTokens } : {}),
                     ...(frame.outputTokens !== undefined ? { outputTokens: frame.outputTokens } : {}),
                     // `status` replaces unconditionally (unlike the token

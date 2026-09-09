@@ -90,6 +90,8 @@ type PendingBlock = {
 };
 
 export type StreamRelayProgress = {
+    inputTokens?: number;
+    cacheTokens?: number;
     thinkingTokens?: number;
     outputTokens?: number;
     status?: 'requesting' | 'compacting';
@@ -211,6 +213,20 @@ export class StreamRelay {
             this.flushPending();
             this.closeOpenBlocks();
             this.currentMid = typeof mid === 'string' && mid.length > 0 ? mid : null;
+            // Progress is scoped to one API message, not the whole tool loop.
+            // Send explicit zeroes to clear merged counters on old and new Webs.
+            const usage = e.message?.usage;
+            if (usage || ['inputTokens', 'cacheTokens', 'outputTokens', 'thinkingTokens']
+                .some((key) => key in this.progress)) {
+                const count = (value: unknown): number =>
+                    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+                this.setProgress({
+                    inputTokens: count(usage?.input_tokens),
+                    cacheTokens: count(usage?.cache_creation_input_tokens) + count(usage?.cache_read_input_tokens),
+                    outputTokens: count(usage?.output_tokens),
+                    thinkingTokens: 0,
+                });
+            }
             return;
         }
 

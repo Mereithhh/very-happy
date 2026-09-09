@@ -15,6 +15,23 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-09-inline-edit-composer',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep09k.title',
+    summaryKey: 'changelog.releases.sep09k.summary',
+    itemKeys: ['changelog.releases.sep09k.composer', 'changelog.releases.sep09k.queue', 'changelog.releases.sep09k.edit', 'changelog.releases.sep09k.actions'],
+  },
+  {
+    id: '2026-09-09-live-status-usage',
+    cliVersion: '0.2.130',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep09j.title',
+    summaryKey: 'changelog.releases.sep09j.summary',
+    itemKeys: ['changelog.releases.sep09j.usage', 'changelog.releases.sep09j.motion'],
+  },
+  {
     id: '2026-09-09-chat-reading-polish',
     date: '2026-09-09',
     buildVersion: __APP_VERSION__,

@@ -21,6 +21,17 @@ describe('session stream frames', () => {
     }
   });
 
+  it('preserves optional input/cache counts and rejects invalid numbers', () => {
+    const frame = { t: 'progress', inputTokens: 1200, cacheTokens: 4000, outputTokens: 40 };
+    expect(parseSessionStreamFrame(frame)).toEqual(frame);
+    expect(parseSessionStreamFrame({ t: 'progress', outputTokens: 40 })).toEqual({ t: 'progress', outputTokens: 40 });
+    for (const key of ['inputTokens', 'cacheTokens']) {
+      for (const value of [-1, 1.5, Infinity, '40']) {
+        expect(parseSessionStreamFrame({ ...frame, [key]: value })).toBeNull();
+      }
+    }
+  });
+
   it('returns null rather than throwing on a malformed frame', () => {
     expect(parseSessionStreamFrame({ t: 'nope' })).toBeNull();
     expect(parseSessionStreamFrame({ t: 'block-delta', mid: 'm', idx: -1, text: 'x' })).toBeNull();

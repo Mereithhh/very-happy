@@ -2,50 +2,49 @@
   width: fit-content;
   max-width: calc(100% - (2 * var(--sp-4)));
   align-self: center;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  margin: var(--sp-2) auto 0;
-  padding: var(--sp-1) var(--sp-3);
-  font-family: var(--font-mono);
-  font-size: var(--fs-12);
-  text-align: left;
-  cursor: default;
-  color: var(--text-dim);
+  margin: var(--sp-3) auto var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--text);
   background: var(--bg-1);
   border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  box-shadow: var(--shadow-lift);
+  border-radius: var(--r-lg);
+  text-align: left;
+  cursor: default;
 }
-.lsb-content {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
+.lsb-content { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.lsb-body { min-width: 0; }
+.lsb-heading { display: flex; align-items: baseline; gap: var(--sp-4); }
 .lsb-label {
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (pointer: coarse) {
-  .lsb {
-    min-height: 40px;
-  }
-}
-
-/* B-310: the cycling glyph stands in for the pulse dot while the model
-   thinks. `--accent` is correct here and only here — this IS the live signal
-   (see tokens.css: phosphor teal means live, never decoration). */
-.lsb-spark {
-  flex: none;
-  width: 1ch;
-  color: var(--accent);
-  font-family: var(--font-mono);
+  min-width: 0;
+  font-family: var(--font-sans);
   font-size: var(--fs-13);
-  line-height: 1;
-  text-align: center;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.lsb-elapsed { margin-left: auto; flex: none; color: var(--text-dim); }
+.lsb-elapsed, .lsb-metric { font-family: var(--font-mono); font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
+.lsb-metrics { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); margin-top: var(--sp-1); }
+.lsb-metric { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; line-height: 1.6; }
+.lsb-metric svg { flex: none; color: var(--text-dim); }
+.lsb-metric-name { font-family: var(--font-sans); color: var(--text-dim); }
+.lsb-mark { position: relative; display: grid; place-items: center; width: 28px; height: 28px; flex: none; color: var(--accent); }
+.lsb-orbit { position: absolute; inset: 0; width: 100%; height: 100%; animation: lsb-orbit 2.4s linear infinite; }
+.lsb-track { stroke: currentColor; stroke-width: 1; opacity: .18; }
+.lsb-sweep { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 17 52.12; }
+.lsb-core { width: 6px; height: 6px; background: currentColor; border-radius: 50%; animation: lsb-breathe 1.8s ease-in-out infinite; }
+.lsb[data-phase="tool"] .lsb-orbit { animation-duration: 1.4s; }
+.lsb[data-phase="compacting"] .lsb-orbit { animation-direction: reverse; animation-duration: 3.6s; }
+.lsb[data-phase="requesting"] .lsb-orbit { animation-duration: 3.6s; }
+.lsb .lsb-orbit--inner { animation-duration: 3.2s; animation-direction: reverse; }
+.lsb-orbit--inner .lsb-sweep { stroke-dasharray: 9 35; opacity: .55; stroke-width: 1; }
+@keyframes lsb-orbit { to { transform: rotate(360deg); } }
+@keyframes lsb-breathe { 0%, 100% { opacity: .55; transform: scale(.75); } 50% { opacity: 1; transform: scale(1); } }
+@media (pointer: coarse) { .lsb { min-height: 40px; } }
+@media (max-width: 480px) {
+  .lsb-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 360px) { .lsb-metrics { display: flex; } }
+@media (prefers-reduced-motion: reduce) {
+  .lsb-orbit, .lsb-core { animation: none; }
 }

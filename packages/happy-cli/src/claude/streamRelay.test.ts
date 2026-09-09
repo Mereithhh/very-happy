@@ -135,6 +135,35 @@ describe('StreamRelay', () => {
         expect(sent).toEqual([{ t: 'progress', thinkingTokens: 128, status: 'requesting', outputTokens: 42 }]);
     });
 
+    it('relays message-start usage and clears all counts for the next API message', () => {
+        const { relay, sent, advance } = harness();
+        relay.ingest({ type: 'stream_event', event: { type: 'message_start', message: {
+            id: 'first', usage: { input_tokens: 1200, output_tokens: 1, cache_creation_input_tokens: 200, cache_read_input_tokens: 4000 },
+        } } });
+        advance(PROGRESS_FLUSH_MS);
+        expect(sent.at(-1)).toEqual({ t: 'progress', inputTokens: 1200, outputTokens: 1, cacheTokens: 4200, thinkingTokens: 0 });
+        relay.ingest({ type: 'system', subtype: 'thinking_tokens', estimated_tokens: 500 });
+        relay.ingest({ type: 'stream_event', event: { type: 'message_delta', usage: { output_tokens: 600 } } });
+        advance(PROGRESS_FLUSH_MS);
+        expect(sent.at(-1)).toMatchObject({ inputTokens: 1200, outputTokens: 600, thinkingTokens: 500 });
+        relay.ingest(messageStart('second-without-usage'));
+        advance(PROGRESS_FLUSH_MS);
+        expect(sent.at(-1)).toEqual({ t: 'progress', inputTokens: 0, outputTokens: 0, cacheTokens: 0, thinkingTokens: 0 });
+        // A later snapshot still contains reset counters if that frame was lost.
+        relay.ingest({ type: 'system', subtype: 'thinking_tokens', estimated_tokens: 20 });
+        advance(PROGRESS_FLUSH_MS);
+        expect(sent.at(-1)).toMatchObject({ inputTokens: 0, outputTokens: 0, cacheTokens: 0, thinkingTokens: 20 });
+    });
+
+    it('does not forward malformed message-start counters or include cache in input', () => {
+        const { relay, sent, advance } = harness();
+        relay.ingest({ type: 'stream_event', event: { type: 'message_start', message: {
+            id: 'first', usage: { input_tokens: -1, output_tokens: NaN, cache_creation_input_tokens: '4', cache_read_input_tokens: 300 },
+        } } });
+        advance(PROGRESS_FLUSH_MS);
+        expect(sent.at(-1)).toEqual({ t: 'progress', inputTokens: 0, outputTokens: 0, cacheTokens: 300, thinkingTokens: 0 });
+    });
+
     it('clears a phase when the SDK reports status null instead of leaving it stuck', () => {
         const { relay, sent, advance } = harness();
         relay.ingest({ type: 'system', subtype: 'status', status: 'compacting' });

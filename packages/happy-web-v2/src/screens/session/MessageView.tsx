@@ -88,6 +88,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
         <div className="msg msg--user">
             <UserAttachments sessionId={sessionId} items={attachmentItems} />
             {text && <div className="msg-bubble-wrap vh-copyhost">
+                <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0}>
                 <div className="msg-bubble">
                     <div id={contentId} className={`msg-bubble-text${clamped ? ' msg-bubble-text--clamped' : ''}`}>
                         {text}
@@ -106,7 +107,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
                         </button>
                     )}
                 </div>
-                <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0} />
+                </MessageActions>
             </div>}
             {discarded && (
                 <span className="msg-discarded" role="status">
@@ -121,11 +122,13 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
 function AgentText({
     message,
     showMeta,
+    showActions = true,
     sessionId,
     thinkingDurationMs,
 }: {
     message: AgentTextMessage;
     showMeta: boolean;
+    showActions?: boolean;
     sessionId: string;
     thinkingDurationMs?: number;
 }) {
@@ -199,7 +202,7 @@ function AgentText({
             {prose && (
                 <div className="msg-agent-text vh-copyhost">
                     <Markdown text={prose} onOption={onOption} />
-                    <MessageActions text={text} sessionId={sessionId} />
+                    {showActions && <MessageActions text={text} sessionId={sessionId} />}
                 </div>
             )}
             {showMeta && (
@@ -370,12 +373,14 @@ function sameTools(a?: ToolCallMessage[], b?: ToolCallMessage[]): boolean {
 export const MessageView = memo(function MessageView({
     message,
     showMeta,
+    showActions = true,
     sessionId,
     thinkingDurationMs,
     attachments,
 }: {
     message: Message;
     showMeta: boolean;
+    showActions?: boolean;
     sessionId: string;
     thinkingDurationMs?: number;
     /** B-355: `file` events the user sent with this message. */
@@ -389,6 +394,7 @@ export const MessageView = memo(function MessageView({
                 <AgentText
                     message={message}
                     showMeta={showMeta}
+                    showActions={showActions}
                     sessionId={sessionId}
                     thinkingDurationMs={thinkingDurationMs}
                 />
@@ -407,6 +413,7 @@ export const MessageView = memo(function MessageView({
     }
 }, (prev, next) => (
     prev.message === next.message
+    && prev.showActions === next.showActions
     && prev.showMeta === next.showMeta
     && prev.sessionId === next.sessionId
     && prev.thinkingDurationMs === next.thinkingDurationMs

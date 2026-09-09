@@ -115,6 +115,12 @@ describe('TurnActivityView live turn', () => {
         expect(html).toMatch(/<button type="button" class="ta-head[^"]*" aria-expanded="false"/);
     });
 
+    it('intermediate prose between tools has no copy or quote action region', () => {
+        const html = render(<TurnActivityView sessionId="session-s1" live messages={[completedTool('first', 'Read', 1, 2), assistantText('progress', 'Checking the next file', 3), runningTool('second', 'Read', 4)]} />);
+        expect(html).toContain('Checking the next file');
+        expect(html).not.toContain('msg-actions');
+    });
+
     it('a completed-only turn is folded from the start (nothing running)', () => {
         const doneOnly = [completedTool('tool-done', 'Read', 2_000, 3_000), assistantText('ans', 'answer', 4_000)];
         const html = render(

@@ -14,7 +14,7 @@ describe('/btw wiring (B-283)', () => {
         // queued items (auto-release / edit / intervene / persisted reload) all exit through sendQueuedItem
         const queuedSend = source.indexOf('const sendQueuedItem = async');
         expect(source.indexOf('if (routeBtw(item.text))')).toBeGreaterThan(queuedSend);
-        expect(source.indexOf('if (routeBtw(item.text))')).toBeLessThan(source.indexOf('await sync.sendMessage(sessionId, item.text'));
+        expect(source.indexOf('if (routeBtw(item.text))')).toBeLessThan(source.indexOf('await deliverQueuedMessage(() => sync.sendMessage(sessionId, item.text'));
         expect(source).toContain('if (!canOfferBtw(session)) return false;');
         expect(source).toContain("command: BTW_COMMAND, description: t('session.btw.commandDescription')");
     });

@@ -244,3 +244,19 @@ describe('attachments are only attached to a message that renders a bubble', () 
         expect(attachments.get('u1')?.map((m) => m.id)).toEqual(['f1']);
     });
 });
+
+
+describe('assistant action boundaries', () => {
+    it('hides actions between tools but preserves final replies across historical turns', () => {
+        const rows = buildLeafRows([
+            user('u1', 1), tool('read', 2), agent('progress', 3), tool('edit', 4), agent('final1', 5),
+            user('u2', 6), agent('final2', 7),
+        ], null);
+        const actions = Object.fromEntries(rows.flatMap(row => row.type === 'message' ? [[row.message.id, row.showActions !== false]] : []));
+        expect(actions).toMatchObject({ u1: true, progress: false, final1: true, u2: true, final2: true });
+    });
+    it('does not let the next user turn hide an earlier final reply', () => {
+        const rows = buildLeafRows([user('u1', 1), agent('final', 2), user('u2', 3), tool('read', 4)], null);
+        expect(rows.find(row => row.type === 'message' && row.message.id === 'final')).not.toHaveProperty('showActions', false);
+    });
+});
