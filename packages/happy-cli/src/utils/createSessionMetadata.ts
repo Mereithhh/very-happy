@@ -29,6 +29,8 @@ export interface CreateSessionMetadataOptions {
     flavor: BackendFlavor;
     /** Machine ID for server identification */
     machineId: string;
+    /** Exact daemon Team spawn operation used to recover an uncertain spawn. */
+    teamOperationId?: string;
     /** How the session was started */
     startedBy?: 'daemon' | 'terminal';
     /** Active sandbox config for the session, or undefined when not used */
@@ -135,6 +137,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         version: packageJson.version,
         os: os.platform(),
         machineId: opts.machineId,
+        ...(opts.teamOperationId ? { teamOperationId: opts.teamOperationId } : {}),
         homeDir: os.homedir(),
         happyHomeDir: configuration.happyHomeDir,
         happyLibDir: projectPath(),
