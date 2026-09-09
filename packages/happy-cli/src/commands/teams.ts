@@ -3,13 +3,14 @@ import { readFile } from 'node:fs/promises';
 import { previewLegacyTeamsMigration } from '@/teams/migration';
 import { randomUUID } from 'node:crypto';
 import { createTeamsClient } from '@/teams/client';
+import { setTeamPermissionMode } from '@/teams/permissions';
 import { installTeamSkill, type TeamSkillHost } from '@/teams/install';
 
 export async function handleTeamsCommand(args: string[]): Promise<void> {
     const command = args[0];
     const value = (flag: string) => { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; };
     if (!command || command === '--help') {
-        console.log('very-happy teams install|uninstall --host claude|codex|pi [--home PATH] [--apply]\nvery-happy teams doctor --host pi\nvery-happy teams migration-preview --file LEDGER_JSON\nvery-happy teams inspect\nvery-happy teams create|join --name NAME [--machine-id ID | --team-id ID] [--session-id ID] [--request-id ID]\nvery-happy teams action --json ACTION_JSON --request-id ID\nInstallation previews changes unless --apply is supplied. Managed sessions receive tools automatically.');
+        console.log('very-happy teams install|uninstall --host claude|codex|pi [--home PATH] [--apply]\nvery-happy teams doctor --host pi\nvery-happy teams migration-preview --file LEDGER_JSON\nvery-happy teams inspect\nvery-happy teams permissions --team-id ID --mode default|bypassPermissions --request-id ID\nvery-happy teams create|join --name NAME [--machine-id ID | --team-id ID] [--session-id ID] [--request-id ID]\nvery-happy teams action --json ACTION_JSON --request-id ID\nInstallation previews changes unless --apply is supplied. Managed sessions receive tools automatically.');
         return;
     }
     if (command === 'install' || command === 'uninstall') {
@@ -35,6 +36,12 @@ export async function handleTeamsCommand(args: string[]): Promise<void> {
         const file = value('--file');
         if (!file) throw new Error('--file is required');
         console.log(JSON.stringify(previewLegacyTeamsMigration(JSON.parse(await readFile(file, 'utf8'))), null, 2));
+        return;
+    }
+    if (command === 'permissions') {
+        const teamId = value('--team-id'), mode = value('--mode'), requestId = value('--request-id');
+        if (!teamId || !mode || !requestId) throw new Error('--team-id, --mode and --request-id are required');
+        console.log(JSON.stringify(await setTeamPermissionMode(teamId, mode, requestId)));
         return;
     }
     const client = createTeamsClient(value('--session-id'));

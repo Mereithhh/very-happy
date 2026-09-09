@@ -54,7 +54,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
           "type": "list",
           "items": [
             "Claude and Codex have completed a real mixed-runner task, submission, acceptance, and cleanup test.",
-            "The managed pi adapter and tools are available; its complete model workflow is still part of rollout validation.",
+            "Managed pi has also completed a real task, submission, acceptance, and cleanup test.",
             "Recursive delegation is implemented and mechanism-tested. Multi-level model recovery, cross-machine automatic routing, and long-term unattended operation are not established guarantees."
           ]
         }
@@ -85,7 +85,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
           "items": [
             "Open Teams from the sidebar, create a team on a compatible machine, or ask the connected agent to use team_create/team_join.",
             "Delegation includes a goal, acceptance criteria, working directory, and agent. A teammate can delegate child tasks within its assignment.",
-            "Open the linked session to inspect its work, send instructions, or handle an approval. Message delivery is not proof that the agent processed it.",
+            "Choose No approvals in team execution settings for new agents to run without routine prompts, or Ask when needed to retain normal approvals. Existing sessions and queued operations keep their current mode. Open the linked session to inspect work; team messages use expandable cards. Delivery is not proof that the agent processed a message.",
             "A submitted result still needs acceptance. Accept, return for changes, cancel, or hand off in Teams; cancelling closes the unfinished subtree."
           ]
         },
