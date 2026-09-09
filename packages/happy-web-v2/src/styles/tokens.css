@@ -42,6 +42,9 @@
   --bg-1: #171815;
   --bg-2: #20211e;
   --bg-3: #292a26;
+  /* User-authored content, independent of the live accent. */
+  --message-user-bg: #242c31;
+  --message-user-text: #e2eaf0;
   --line: #30322d;
   --line-2: #41433d;
 
@@ -86,6 +89,8 @@
    pass WCAG AA (4.5:1) on every surface bg-0..bg-3; accent as a non-text
    indicator passes 3:1. */
 :root[data-theme='light'] {
+  --message-user-bg: #e6edf3;
+  --message-user-text: #263d50;
   --bg-0: #f4f4f1;
   --bg-1: #fafaf7;
   --bg-2: #fffefa;

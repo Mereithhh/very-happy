@@ -13,35 +13,35 @@
   align-items: stretch;
 }
 
-/* user bubble — raised */
+/* User messages: a quiet, rounded surface, without card chrome. */
 /* Keep the bubble and its action row aligned without covering message text. */
 .msg-bubble-wrap {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  max-width: min(85%, 640px);
+  min-width: 0;
+  max-width: min(90%, 680px);
 }
 .msg-bubble-wrap > .msg-bubble {
   max-width: 100%;
 }
 .msg-bubble {
-  max-width: min(85%, 640px);
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  border-bottom-right-radius: var(--r-sm);
-  padding: var(--sp-2) var(--sp-3);
+  min-width: 0;
+  max-width: min(90%, 680px);
+  background: var(--message-user-bg);
+  border: 0;
+  border-radius: 20px;
+  padding: 12px 18px;
   font-size: var(--fs-14);
   line-height: 1.55;
-  color: var(--text);
-  box-shadow: var(--shadow-lift);
+  color: var(--message-user-text);
 }
 /* Long user queries (B-102): clamp + fade + explicit expand toggle. No nested
  * scroll area — the wheel always bubbles to the transcript. */
 .msg-bubble-text {
   position: relative;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .msg-bubble-text--clamped {
   /* ~10 visible lines at the bubble's 1.55 line-height; the JS threshold
@@ -56,8 +56,8 @@
   bottom: 0;
   height: 2.5em;
   pointer-events: none;
-  /* bubble surface is --bg-2 — fade into exactly that in both themes */
-  background: linear-gradient(to bottom, transparent, var(--bg-2));
+  /* Match the bubble surface in both themes, including the fade endpoint. */
+  background: linear-gradient(to bottom, transparent, var(--message-user-bg));
 }
 .msg-bubble-expand {
   display: inline-flex;
@@ -66,9 +66,9 @@
   margin-top: var(--sp-1);
   min-height: 30px;
   padding: 3px var(--sp-1);
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
-  color: var(--text-dim);
+  font-family: var(--font-sans);
+  font-size: var(--fs-12);
+  color: inherit;
 }
 .msg-bubble-expand:hover {
   color: var(--text);
@@ -232,4 +232,12 @@
   margin-top: var(--sp-2);
   color: var(--text-dim);
   font-size: var(--fs-13);
+}
+
+@media (max-width: 600px) {
+  .msg-bubble-wrap, .msg-bubble { max-width: 94%; }
+  .msg-bubble { padding: 10px 14px; border-radius: 18px; }
+}
+@media (pointer: coarse) {
+  .msg-bubble-expand { min-height: 44px; }
 }

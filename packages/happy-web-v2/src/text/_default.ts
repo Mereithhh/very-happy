@@ -1827,6 +1827,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10d: {
+                title: 'Lighter conversation bubbles',
+                summary: 'Cleaner user messages, with more comfortable reading and mobile controls.',
+                bubbles: 'Soft surfaces and rounded corners replace borders, shadows and tails. Copy, quote and edit remain below each message.',
+                mobile: 'Long text wraps naturally and fades into the correct theme surface. Mobile expand controls are easier to tap, with comfortable editing text.',
+            },
             sep10c: {
                 title: 'Teams start more reliably', summary: 'Clear startup feedback and a simpler way to describe your goal.',
                 start: 'CLI 0.2.132 expands home-directory paths on the execution computer, allowing retained team launches to continue safely.',

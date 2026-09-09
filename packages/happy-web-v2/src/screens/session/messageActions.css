@@ -18,6 +18,7 @@
 .msg-edit-points label { display: grid; gap: var(--sp-2); font-size: var(--fs-13); }
 .msg-edit-points select { width: 100%; min-width: 0; min-height: 44px; font-size: 16px; background: var(--bg-0); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--sp-2); }
 
+.msg--user .msg-actions { justify-content: flex-end; }
 .msg-actions-items { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
 .msg-actions-more { display: none; }
 .msg-edit-inline { width: min(620px, 100%); min-width: 0; padding: var(--sp-3); background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-lg); }
@@ -40,3 +41,7 @@
 .msg-edit-label > .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .msg-branch-preview { min-width: 0; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (pointer: coarse), (max-width: 600px) {
+  .msg-edit-label textarea, .msg-edit-points select { font-size: 17px; }
+}
