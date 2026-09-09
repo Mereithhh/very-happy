@@ -18,6 +18,14 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     teams: {
+        executionMode: "执行模式",
+        approvalDefault: "按需审批",
+        approvalBypass: "免审批",
+        executionModeHint: "仅新派发的 agent 采用此模式；现有会话和已排队启动的任务继续原模式。",
+        collaborationMessage: "团队协作",
+        messageSource: "原文",
+        genericMessage: "团队消息",
+
         activeSchedules: "请先取消未结束的定时任务。",
         schedules: "定时任务",
         scheduleBoundary: "定时消息绑定当前团队、机器和指定队友。暂停或取消不会撤回已开始投递的消息；队友离线时不会改投其他会话。",
@@ -1756,6 +1764,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09e: {
+                title: '团队协作少打断，消息更清晰',
+                summary: '选择新 agent 的执行方式，团队消息用简洁卡片展示。',
+                permissions: '负责人可选择按需审批或免审批，新派发 agent 自动采用；现有会话保留当前模式。',
+                messages: '团队消息支持折叠展开，路由编号和协议提示收进详情，不再铺满对话。',
+            },
             sep09d: {
                 title: '修复外部待办的 AI 接入链接',
                 summary: '安装 PWA 后，AI 接入 skill 链接也能正常打开。',
