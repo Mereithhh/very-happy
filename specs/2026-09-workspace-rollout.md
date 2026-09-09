@@ -1,6 +1,6 @@
 # 统一工作台：实施与功能保留台账
 
-状态：本地实现与验收完成，Owner 已于 2026-09-10 授权发布；正在执行合并与生产验收。
+状态：Shipped · 2026-09-10 · PR #320 · 6d337987d65c14f8bf8501263f797d6b88881f60。
 唯一视觉标准：`docs/design-language.md`。本台账记录实现/验证，不复制视觉标准。
 
 ## 完成标准
@@ -29,7 +29,7 @@ AGENTS/CLAUDE/项目 skill 共用设计入口。文档站、Landing、README 截
 | 登录/注册/连接 | 移动居中、品牌、OTP/密码/Google/邀请码/容量/重认证/二维码 | 登录/注册手机表面已统一；真实配对和公开认证状态复验已覆盖 | 第 25/27 批；OTP 错误/更换邮箱浏览器验证；真机 V-080 |
 | Landing/文档/README | 抓眼球品牌与新 UI 截图、导航、教程、无旧图误导 | 共用产品预览和 README 两张截图已更新；文档章节/目录、Landing/认证/法律公开页布局已全覆盖 | 第 12/23/27 批：真实组件截图、示例标注、文档 192 组与公开页 108 组检查；手机触屏截图以第 27 批为准 |
 | 清理/性能 | 删除被替代原型/组件/资产；检查 imports/动态 routes；入口与 lazy chunks 对比 | 已删除废弃 App 展示页和旧 loading CSS；最终构建依赖图对比完成 | 第 21/31 批：匿名首页不引入 AppRoot；生产 manifest 无 DEV harness，无新增依赖 |
-| 用户通知/发布 | changelog、全门禁、功能 review、真实上线验收 | sep10 中英文说明已完成；本地 review/门禁通过，按 Owner 最新要求暂不推送 | 第 23/36/37 批；上线验收仅在获准发布后执行，不以本地结果替代 |
+| 用户通知/发布 | changelog、全门禁、功能 review、真实上线验收 | sep10 中英文重大更新提示已上线；PR #320 / 6d337987 发布成功 | 第 23/36/37 批与文末生产验收；精确 SHA、镜像、健康、资源和 18 组生产页面检查通过 |
 
 ## 执行顺序
 
@@ -377,3 +377,13 @@ NotesDock 保留唯一快捷键/认证 bootstrap/删除标签清理职责；提�
 Owner 已确认预览并授权发布。重大界面更新使用品牌头部、更宽的桌面弹窗和突出标题；多条未读版本时仍突出最新重大更新，同时保留历史内容与原有已读机制。手机保留全宽底部面板、44px 操作区和可滚动正文。验证结果随发布验收记录追加。
 
 容器发布门禁补充：首轮 CI 镜像构建发现 Dockerfile 的源码白名单遗漏新 build/startupSplash.ts，本地 Vite 成功不能覆盖此路径。仅增加该脚本的精确 COPY，不扩成整包复制；重新执行完整容器门禁后才能合并。生产尚未切换。
+
+
+### 生产发布验收（2026-09-10）
+
+- Owner 确认预览并授权发布。PR #320 必需检查（四包、完整容器、密钥检查）全绿，经 land-pr.sh 合并为 `6d337987d65c14f8bf8501263f797d6b88881f60`；该精确 main SHA 的 Quality Gates run 34393412886 成功。首轮容器白名单遗漏已在合并前修复并完整复验，未绕过失败门禁。
+- 发布 run [34393860441](https://github.com/Mereithhh/very-happy/actions/runs/34393860441) 成功，target=all / rollout=switch，仅 server/Web 完整不可变镜像，不更新 CLI 或 daemon。实际生产 vh-sg active blue:3101，release generation 107，镜像 `ghcr.io/mereithhh/very-happy-server@sha256:a76980d7e6c6c09eb68359d3babb2ab987dac6075d31c5fed763fc2b7e536320`。
+- 保留回滚 green:3102，版本 `a5b01fc90f60fb3bf4daeab39536e112559d54a6`，镜像 digest `sha256:173d5ac5c6e60bdc0af36b10969a21a892330675849d32c78410946d66811d40`。遵循 operations 的阶段式回退，不删除可能持有连接的实例。
+- `/health` 为 ok。check-shipped 遍历 52 个实际资源，SHA 与目标一致，`.wn-brand`、`workspace-tab-close`、`2026-09-10-compact-workspace` 全部命中，无 HTML fallback 或缺项。
+- 生产 `/welcome`、`/login`、`/changelog` × 1280/390/320 × 明暗共 18 组真实 Chromium 检查通过，手机 native coarse=true、页面横向溢出 0、无 pageerror；记录实际 entry/CSS/controller，未以刷新返回冒充 SW 接管。更新接管机制的两个真实构建验证见前述批次，真机 IME/键盘仍在 V-080。
+- 用户前台检测到新版本后可点击更新按钮；后台遵循既有自动更新策略。新版本 ChangelogNotice 突出本次品牌头部与重大更新标题，确认后写入原已读凭证；多版本未读仍保留完整列表。未向用户发送额外邮件或通知渠道消息。
