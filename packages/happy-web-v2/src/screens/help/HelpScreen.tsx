@@ -11,6 +11,7 @@ import { createTerminalOrPick } from '@/app/newTerminal';
 import { BackButton } from '@/app/BackButton';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import './helpScreen.css';
+import { TeamGettingStarted } from '@/screens/onboarding/TeamGettingStarted';
 
 const GROUPS = [
   { key: 'navigate', icon: Keyboard, capabilities: [{ key: 'shortcuts', icon: Keyboard, badge: '⌘ / Ctrl K' }, { key: 'files', icon: FolderOpen }] },
@@ -35,12 +36,10 @@ export function HelpScreen() {
           <div className="help-screen__actions" aria-label={t('workspaceGuide.stepsLabel')}>
             <Button variant="primary" onClick={() => void createChatOrConfigure(navigate, () => setShowNewChat(true))} leftIcon={<MessageSquarePlus size={16} />}>{t('workspaceGuide.createChat')}</Button>
             <Button variant="secondary" onClick={() => createTerminalOrPick(navigate)} leftIcon={<TerminalSquare size={16} />}>{t('workspaceGuide.createTerminal')}</Button>
-            <Button variant="secondary" onClick={() => navigate('/machine/connect')} leftIcon={<PlusCircle size={16} />}>{t('connectMachine.title')}</Button>
-            <button className="help-screen__settings" type="button" onClick={() => navigate('/settings')}><Settings size={16} /> {t('workspaceGuide.openSettings')} <ArrowRight size={14} /></button>
           </div>
         </section>
 
-        <section className="help-screen__topics"><h2>Agent Teams</h2><p>{lang === 'zh-Hans' ? '普通托管会话也能组织团队。先确认账号已启用、机器支持团队能力，再委派和验收任务。' : 'An ordinary managed session can organize a team. Enable the feature for your account and connect a compatible machine before delegating and reviewing work.'}</p><div className="help-screen__actions"><Button variant="secondary" onClick={() => navigate('/teams')}>{lang === 'zh-Hans' ? '打开团队' : 'Open teams'}</Button><Button variant="secondary" onClick={() => navigate('/docs/agent-teams')}>{lang === 'zh-Hans' ? '入门与迁移教程' : 'Getting started and migration'}</Button></div></section>
+        <TeamGettingStarted />
 
         <section className="help-screen__topics" aria-labelledby="help-topics-title">
           <div className="help-screen__section-head">
@@ -77,6 +76,8 @@ export function HelpScreen() {
 
         <nav className="help-screen__docs" aria-label={t('workspaceGuide.learnMore')}>
           <span>{t('workspaceGuide.learnMore')}</span>
+          <button type="button" onClick={() => navigate('/machine/connect')}><PlusCircle size={14} />{t('connectMachine.title')}</button>
+          <button type="button" onClick={() => navigate('/settings')}><Settings size={14} />{t('workspaceGuide.openSettings')}</button>
           <button type="button" onClick={() => navigate('/changelog')}>{t('settings.whatsNew')} <ArrowRight size={13} /></button>
           <button type="button" onClick={() => navigate('/settings/machines')}>{lang.startsWith('zh') ? '机器与 CLI 更新' : 'Machines and CLI updates'} <ArrowRight size={13} /></button>
           <button type="button" onClick={() => navigate('/docs/quickstart')}>{t('workspaceGuide.quickStart')} <ArrowRight size={13} /></button>

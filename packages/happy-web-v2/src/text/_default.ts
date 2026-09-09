@@ -1798,6 +1798,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09f: {
+                title: 'Happy Bot, at a glance',
+                summary: 'See team work immediately, with clearer navigation and a practical getting-started guide.',
+                workspace: 'The team workspace opens on a task board with visible members and results, instead of hiding the work behind collapsed details.',
+                navigation: 'Happy Bot and Todo have named sidebar entries. The unused voice entry no longer occupies the main navigation.',
+                onboarding: 'Getting started introduces Happy Bot and Todo, with copyable official skill installation commands for Claude Code, Codex, and pi.',
+            },
             sep09e: {
                 title: 'Less friction for agent teams',
                 summary: 'Choose how new agents run and keep team messages readable.',

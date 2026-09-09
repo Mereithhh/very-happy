@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, Bot, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -840,16 +840,6 @@ export function Sidebar() {
               </button>
             </ActionDropdownMenu>
           )}
-          {/* form switch: the Siri-like voice assistant (B-051). The assistant
-              screen carries the mirror button in the same top-left slot. */}
-          <button
-            className="sb-icon-btn"
-            title={t('assistant.title')}
-            onClick={() => navigate('/assistant')}
-          >
-            <AudioLines size={17} />
-          </button>
-          <button className="sb-icon-btn" title="Agent teams" aria-label="Agent teams" onClick={() => navigate('/teams')}><MessagesSquare size={17} /></button>
           <button
             className="sb-icon-btn sb-board-btn"
             title={t('board.title')}
@@ -939,6 +929,11 @@ export function Sidebar() {
           </ActionDropdownMenu>
         </div>
       </header>
+
+      <nav className="sb-products" aria-label="Workspace">
+        <button onClick={() => navigate('/teams')}><Bot size={18} /><span>Happy Bot</span></button>
+        <button onClick={() => navigate('/todos')}><ListChecks size={18} /><span>{t('todos.title')}</span></button>
+      </nav>
 
       {/* The search box is gone — ⌘K (mobile: the header icon) covers search,
           #tag grammar included. Its row folded into the view switch below, so
@@ -1158,15 +1153,6 @@ export function Sidebar() {
           title={`${t('notes.title')} (⌘J)`}
         >
           <StickyNote size={16} />
-        </button>
-        {/* external todo panel (B-007) — same "app chrome" row as notes */}
-        <button
-          className="sb-footer-btn sb-footer-icon"
-          onClick={() => navigate('/todos')}
-          aria-label={t('todos.title')}
-          title={t('todos.title')}
-        >
-          <ListChecks size={16} />
         </button>
         <QuickThemeToggle className="sb-footer-btn sb-footer-icon sb-theme-toggle" />
         {/* Notification center: bell + unread badge + panel (self-contained;

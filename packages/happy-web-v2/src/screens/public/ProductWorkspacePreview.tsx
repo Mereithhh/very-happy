@@ -1,6 +1,6 @@
 import {
-  AudioLines,
   ArrowLeft,
+  Bot,
   Check,
   ChevronRight,
   Clock,
@@ -11,6 +11,7 @@ import {
   Folder,
   HelpCircle,
   LayoutGrid,
+  ListChecks,
   Maximize2,
   MessageSquare,
   MessagesSquare,
@@ -155,12 +156,15 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
           <div className="sb-brand"><strong>Very Happy</strong></div>
           <div className="sb-header-right">
             <button className="sb-icon-btn" type="button" aria-label={zh ? '搜索操作、对话和终端' : 'Search actions, chats, and terminals'} onClick={onSearch}><Search size={16} /></button>
-            <button className="sb-icon-btn" type="button" aria-label={zh ? '语音助手' : 'Voice assistant'} disabled><AudioLines size={16} /></button>
             <button className="sb-icon-btn sb-board-btn" type="button" aria-label={zh ? '打开任务看板' : 'Open task board'} aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button>
             <button className="sb-icon-btn product-nav-close" type="button" aria-label={zh ? '关闭会话列表' : 'Close session list'} onClick={onCloseNav}><PanelLeftClose size={16} /></button>
             <button className="sb-icon-btn" type="button" aria-label={zh ? '新建会话' : 'New session'} disabled><Plus size={17} /></button>
           </div>
         </header>
+        <nav className="sb-products" aria-label={zh ? '工作区' : 'Workspace'}>
+          <button type="button" disabled><Bot size={18} /><span>Happy Bot</span></button>
+          <button type="button" disabled><ListChecks size={18} /><span>{zh ? '待办' : 'Todo'}</span></button>
+        </nav>
         <div className="sb-filter" role="presentation"><button className="sb-filter-btn is-on" type="button" disabled>{zh ? '列表' : 'LIST'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '状态' : 'STATUS'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '归档' : 'ARCHIVED'}</button></div>
         <div className="sb-list">
           <div className="sb-section">
