@@ -1,3 +1,5 @@
+import { businessAuditEnabled, publishAudit } from '@/app/audit/producer';
+import { sessionAuditPayload } from '@/app/audit/sessionAudit';
 import { Context } from "@/context";
 import { inTx, afterTx } from "@/storage/inTx";
 import { eventRouter, buildDeleteSessionUpdate } from "@/app/events/eventRouter";
@@ -88,6 +90,11 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
             userId: ctx.uid, 
             sessionId 
         }, `Session deleted successfully`);
+
+        if (businessAuditEnabled()) afterTx(tx, () => publishAudit({
+            kind: 'session.deleted', accountId: ctx.uid, sessionId,
+            payload: { ...sessionAuditPayload(session), deletedMessages: deletedMessages.count },
+        }));
 
         // Send notification and clean up storage after transaction commits
         afterTx(tx, async () => {

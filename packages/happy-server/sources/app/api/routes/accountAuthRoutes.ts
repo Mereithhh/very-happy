@@ -1,3 +1,4 @@
+import { auditLogin } from '@/app/audit/requestAudit';
 import { z } from 'zod';
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
@@ -410,6 +411,7 @@ export function accountAuthRoutes(app: Fastify) {
                 onRejected: (reason, provider) => signupRejectionsCounter.inc({ reason, provider }),
             });
             const session = result.value.session;
+            auditLogin(request, result.value.accountId, 'password-signup');
             return reply.send({
                 token: session.token,
                 secret: request.body.secret,
@@ -553,6 +555,7 @@ export function accountAuthRoutes(app: Fastify) {
                 return auth.createLoginToken(accountId, tx, { cache: false });
             });
             auth.invalidateUserTokens(accountId);
+            auditLogin(request, accountId, 'credential-change');
             return reply.send({
                 success: true as const,
                 token: session.token,
@@ -623,6 +626,7 @@ export function accountAuthRoutes(app: Fastify) {
             );
             return auth.createLoginToken(accountId, tx, { cache: false });
         });
+        auditLogin(request, accountId, 'refresh');
         return reply.send({
             token: session.token,
             secret: request.body.secret,
@@ -802,6 +806,7 @@ export function accountAuthRoutes(app: Fastify) {
         });
         if (!secret) return reply.code(401).send({ error: 'invalid_credentials' as const });
         const session = await auth.createLoginToken(row.accountId);
+        auditLogin(request, row.accountId, 'password');
         return reply.send({ token: session.token, secret, expiresAt: session.expiresAt.toISOString() });
     });
 
@@ -872,6 +877,7 @@ export function accountAuthRoutes(app: Fastify) {
             throw error;
         }
         const session = result.value.session;
+        auditLogin(request, result.value.accountId, 'email');
         return reply.send({
             token: session.token,
             secret: result.value.secret,
@@ -971,6 +977,7 @@ export function accountAuthRoutes(app: Fastify) {
         }
 
         const session = result.value.session;
+        auditLogin(request, result.value.accountId, 'google');
         return reply.send({
             token: session.token,
             secret: result.value.secret,
