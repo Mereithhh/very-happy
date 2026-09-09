@@ -1792,6 +1792,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10b: {
+                title: '更容易开始，更清楚的操作反馈',
+                summary: '从连接电脑到使用 Agent，新手路径更完整。',
+                guide: '帮助与首次使用说明连接机器、对话和终端、文件、团队，以及团队和待办的官方 skills，并提供对应配置入口。',
+                mobile: '窄手机屏幕即使收到较宽的虚拟视口，也保持单栏布局。侧栏使用透明底、随主题变化的 Very Happy Logo。',
+                feedback: '快速新建会话显示创建中并防止重复请求；Agent 开始运行时仍保留发送中反馈，历史列表中的运行会话显示紧凑转圈状态。',
+            },
             sep10a: {
                 title: "工作台更利落，上下文读数更清楚",
                 summary: "根据新版界面的实际使用反馈，继续打磨日常操作。",

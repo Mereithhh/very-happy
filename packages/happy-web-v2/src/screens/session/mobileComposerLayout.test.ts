@@ -26,7 +26,7 @@ describe('mobile composer layout contract', () => {
 
     it('shows a single primary action, switching stop to queue when a draft exists', () => {
         const actions = component.slice(component.indexOf('<div className="ci-composer-actions">'), component.indexOf('<div className="ci-status">'));
-        expect(actions).toContain('{isWorking && (!hasDraft || aborting) ? (');
+        expect(actions).toContain('{isWorking && !sending && !processingAttachments && (!hasDraft || aborting) ? (');
         expect(actions).toContain(') : <button');
         expect(actions).not.toContain('ci-steer');
         expect(actions).not.toContain('<span>');

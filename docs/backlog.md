@@ -20,6 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-436 | 完善连接机器与 skills 新手引导、折叠屏布局、透明品牌和会话异步反馈 | ux/bug | Owner 2026-09-10 | doing | 保留完整入口；桌面/折叠屏/手机真浏览器验证后直接发布。 |
 | B-435 | 修复新版 loading 对齐、团队归档与操作密度、侧栏菜单、pi 用量和默认文件浏览器 | bug | Owner 2026-09-10 | done | PR #322；Web/server 0839dfd5a、CLI 0.2.131 已发布。完整门禁与六项跨平台冒烟通过；生产 18 项页面检查、mac-office launchd/版本/文件 RPC 通过。Pi 当前上下文需新版 CLI 新会话；归档保留工作目录与用户接入会话。见 specs/2026-09-workspace-followup.md。 |
 | B-430 | 对话阅读、命令高亮、输入框、统一 relay 详情与权限模式文案 | ux | Owner 2026-09-09 | done | Web 展示与说明；正文 16px/1.7、命令 Shiki 高亮、双行 composer、共用 relay 弹层与自动执行文案。2673 测试、tsc/build、明暗 390/1280 真实浏览器与 CSS 测量通过，3/3 mutation 捕获。PR #315。 |
 | B-423 | 官网恢复 coding agent hub 整体定位：机器／agent 图首屏，Teams 协作图第二屏 | ux | Owner 2026-09-09 | done | README、文档入口与分享文案同步；修复旧图按钮聚焦使页面横移，回归及 mutation 通过。独立 review 无阻塞；中英文、明暗、390/1280 浏览器 8 组合通过，Web 2642 / CLI 2059 / server 641 / wire 80 测试通过。 |

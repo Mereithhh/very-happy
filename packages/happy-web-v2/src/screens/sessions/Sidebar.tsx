@@ -1,3 +1,4 @@
+import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -5,7 +6,7 @@ import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHori
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
-import { createChatOrConfigure } from '@/app/newChat';
+import { createChatOrConfigure, useNewChatPending } from '@/app/newChat';
 import { getSessionName, getSessionSidebarSubtitle, formatLastSeen } from '@/utils/sessionUtils';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { buildClosedTerminalRows, closedTerminalsOf, killAttachedSupported } from '@/sync/closedTerminals';
@@ -142,7 +143,7 @@ export function Sidebar() {
     if (currentTeamId) setExpandedTeams((current) => current.has(currentTeamId) ? current : new Set([...current, currentTeamId]));
   }, [currentTeamId]);
   const socket = useSocketStatus();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   // Three segments, ONE state: 列表/状态 are display modes over the active
   // set, 归档 is a filter over a different set — but three parallel segments
   // is the simplest surface. Only the display modes persist
@@ -363,6 +364,8 @@ export function Sidebar() {
   // WITHIN each group is the sidebar's own: most recently active first, the
   // same model as the 列表 view's recent sort.
   const boardItems = useBoardItems();
+  const creatingChat = useNewChatPending();
+  const runningKeys = useMemo(() => new Set(boardItems.filter(item => item.lifecycle === 'running').map(item => item.key)), [boardItems]);
 
   // ----- two-level row signal (B-085) -----
   // 待处理 (accent) = the board's urgent waiting band — permission request /
@@ -829,7 +832,7 @@ export function Sidebar() {
       <header className="sb-header">
 
         <button className="sb-brand sb-brand--button" type="button" onClick={() => navigate('/help')} title={t('sidebar.openHelp')} aria-label={t('sidebar.openHelp')}>
-          <img src="/icon-192.png" alt="" width={24} height={24}/><span>Very Happy</span>
+          <CyberMark size={24} /><span>Very Happy</span>
         </button>
         <div className="sb-header-right">
           <button className="sb-icon-btn" aria-label={t("sidebar.openSearch")} title={`${t("sidebar.openSearch")} · ⌘K`} onClick={openCommandPalette}><Search size={17}/></button>
@@ -860,6 +863,7 @@ export function Sidebar() {
             items={[
               {
                 key: 'chat',
+                disabled: creatingChat,
                 label: t('newSessionModal.chatTitle'),
                 icon: MessageSquare,
                 onSelect: () => void createChatOrConfigure(navigate, () => setShowNew(true)),
@@ -913,8 +917,8 @@ export function Sidebar() {
               },
             ]}
           >
-            <button className="sb-nav-btn" title={t('sidebar.newSession')}>
-              <Plus size={17} /><span>{t('sidebar.newSession')}</span><ChevronDown size={14} className="sb-new-chevron"/>
+            <button className="sb-nav-btn" disabled={creatingChat} aria-busy={creatingChat} title={t('sidebar.newSession')}>
+              {creatingChat ? <Spinner size={17} /> : <Plus size={17} />}<span>{creatingChat ? (lang.startsWith('zh') ? '正在创建…' : 'Creating…') : t('sidebar.newSession')}</span><ChevronDown size={14} className="sb-new-chevron"/>
             </button>
           </ActionDropdownMenu>
         {happyBotEntryVisible && <button onClick={() => navigate('/teams')}><UsersRound size={18} /><span>{teamCopy.title}</span></button>}
@@ -1054,6 +1058,7 @@ export function Sidebar() {
                       >
                         <SidebarRow
                           row={r}
+                          running={runningKeys.has(r.key)}
                           signal={rowSignalOf({
                             attention: attentionKeys.has(r.key),
                             // Sessions: the flag stays out of the archived view
@@ -1322,6 +1327,7 @@ function rowMenuItems(opts: {
 
 function SidebarRow({
   row,
+  running,
   signal,
   badge,
   canMoveUp,
@@ -1330,6 +1336,7 @@ function SidebarRow({
   onRenameRequest,
 }: {
   row: Row;
+  running: boolean;
   /** two-level marker (B-085): 'attention' = agent waiting on the user
    *  (accent rail + badge dot), 'unread' = finished-while-away (text-stage
    *  dot). Decided in the parent via rowSignalOf. */
@@ -1500,7 +1507,7 @@ function SidebarRow({
                       reduced-motion users get the static dot (ui.css). */}
                   <StatusDot
                     status={agentDot}
-                    pulse={agentDot === 'thinking' || signal === 'attention'}
+                    pulse={!running && (agentDot === 'thinking' || signal === 'attention')}
                     size={7}
                     title={agentDotTitle}
                   />
@@ -1509,7 +1516,7 @@ function SidebarRow({
             </span>
           ) : (
             // 待处理 rows pulse too (permission dot); reduced-motion → static
-            <StatusDot status={dot} pulse={dot === 'thinking' || signal === 'attention'} size={9} />
+            <StatusDot status={dot} pulse={!running && (dot === 'thinking' || signal === 'attention')} size={9} />
           )}
         </span>
         <span className="sb-row-text">
@@ -1537,6 +1544,7 @@ function SidebarRow({
         {/* right-edge signal dot: accent+glow = 待处理, text-stage = 未读.
             Sits INSIDE .sb-row-main (before the kebab column), so the
             hover-revealed kebab never covers it. */}
+        {running && <span className="sb-row-running" title={t('sidebar.groupRunning')} aria-label={t('sidebar.groupRunning')}><Spinner size={14} /></span>}
         {signal && (
           <span
             className={`sb-row-signal sb-row-signal--${signal}`}

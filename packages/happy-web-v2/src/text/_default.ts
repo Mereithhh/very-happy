@@ -1827,6 +1827,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10b: {
+                title: 'An easier start, clearer feedback',
+                summary: 'Find your way from connecting a computer to working with your agents.',
+                guide: 'Help and first-run now explain machine connections, chat and terminal choices, files, Teams, and official skills for teams and todos, with clear setup links.',
+                mobile: 'Narrow phone screens keep the single-pane layout even with a wider virtual viewport. The sidebar uses a transparent, theme-aware Very Happy mark.',
+                feedback: 'Quick chat creation shows pending feedback and prevents duplicate requests. Sending feedback stays visible while the agent starts; running sessions show a compact spinner in the history list.',
+            },
             sep10a: {
                 title: "A tidier workspace, clearer context usage",
                 summary: "Refinements to the new workspace based on everyday use.",

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ConnectMachineGuide } from './ConnectMachineGuide';
 import './firstRun.css';
+import { MachineWorkflowGuide, AgentSkillsGuide } from './CapabilityGuide';
 import { TeamGettingStarted } from './TeamGettingStarted';
 
 export function FirstRunScreen() {
@@ -20,7 +21,9 @@ export function FirstRunScreen() {
       {/* B-296: the copyable command sequence lives in ConnectMachineGuide so
           this screen and /machine/connect cannot drift apart. */}
       <ConnectMachineGuide />
+      <MachineWorkflowGuide />
       <TeamGettingStarted />
+      <AgentSkillsGuide />
 
       <div className="fr-note">
         {t('onboarding.trustNote')}

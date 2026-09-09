@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -25,6 +26,18 @@ import { t } from '@/text';
  */
 
 let inFlight = false;
+const pendingListeners = new Set<() => void>();
+function setPending(value: boolean) {
+    inFlight = value;
+    pendingListeners.forEach(listener => listener());
+}
+export function useNewChatPending() {
+    return useSyncExternalStore(
+        listener => { pendingListeners.add(listener); return () => { pendingListeners.delete(listener); }; },
+        () => inFlight,
+        () => false,
+    );
+}
 
 /** Remember a successful machine+directory so the next quick create reuses it. */
 export function recordRecentMachinePath(machineId: string, path: string): void {
@@ -47,7 +60,7 @@ export async function createChatOrConfigure(
         openConfigure();
         return;
     }
-    inFlight = true;
+    setPending(true);
     try {
         const agent = normalizeAgentKey(state.settings.newSessionAgent);
         const permissionMode = resolveNewSessionPermissionMode(
@@ -77,6 +90,6 @@ export async function createChatOrConfigure(
     } catch (e) {
         Modal.alert(t('common.error'), e instanceof Error ? e.message : t('errors.networkError'));
     } finally {
-        inFlight = false;
+        setPending(false);
     }
 }

@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-onboarding-feedback',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10b.title',
+    summaryKey: 'changelog.releases.sep10b.summary',
+    itemKeys: ['changelog.releases.sep10b.guide', 'changelog.releases.sep10b.mobile', 'changelog.releases.sep10b.feedback'],
+  },
+  {
     id: '2026-09-10-workspace-polish',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,

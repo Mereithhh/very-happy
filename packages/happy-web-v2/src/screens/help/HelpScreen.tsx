@@ -6,11 +6,12 @@ import {
 } from 'lucide-react';
 import { Button } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
-import { createChatOrConfigure } from '@/app/newChat';
+import { createChatOrConfigure, useNewChatPending } from '@/app/newChat';
 import { createTerminalOrPick } from '@/app/newTerminal';
 import { BackButton } from '@/app/BackButton';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import './helpScreen.css';
+import { MachineWorkflowGuide, AgentSkillsGuide } from '@/screens/onboarding/CapabilityGuide';
 import { TeamGettingStarted } from '@/screens/onboarding/TeamGettingStarted';
 
 const GROUPS = [
@@ -21,6 +22,7 @@ const GROUPS = [
 
 export function HelpScreen() {
   const navigate = useNavigate();
+  const creatingChat = useNewChatPending();
   const { t, lang } = useTranslation();
   const [showNewChat, setShowNewChat] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
@@ -34,12 +36,15 @@ export function HelpScreen() {
           <h1 id="help-screen-title">{t('workspaceGuide.title')}</h1>
           <p>{t('workspaceGuide.compactIntro')}</p>
           <div className="help-screen__actions" aria-label={t('workspaceGuide.stepsLabel')}>
-            <Button variant="primary" onClick={() => void createChatOrConfigure(navigate, () => setShowNewChat(true))} leftIcon={<MessageSquarePlus size={16} />}>{t('workspaceGuide.createChat')}</Button>
+            <Button variant="primary" onClick={() => navigate('/machine/connect')} leftIcon={<PlusCircle size={16} />}>{t('connectMachine.title')}</Button>
+            <Button variant="secondary" loading={creatingChat} onClick={() => void createChatOrConfigure(navigate, () => setShowNewChat(true))} leftIcon={<MessageSquarePlus size={16} />}>{t('workspaceGuide.createChat')}</Button>
             <Button variant="secondary" onClick={() => createTerminalOrPick(navigate)} leftIcon={<TerminalSquare size={16} />}>{t('workspaceGuide.createTerminal')}</Button>
           </div>
         </section>
 
+        <MachineWorkflowGuide />
         <TeamGettingStarted />
+        <AgentSkillsGuide />
 
         <section className="help-screen__topics" aria-labelledby="help-topics-title">
           <div className="help-screen__section-head">
