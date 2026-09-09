@@ -18,7 +18,7 @@ import {
   History,
   HardDrive,
 } from 'lucide-react';
-import { useSessions, storage } from '@/sync/storage';
+import { useSessions, storage, useLocalSetting } from '@/sync/storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
@@ -175,6 +175,7 @@ export function CommandPalette() {
   }, [currentSessionId, navigate, sessions, t]);
 
   // ── build the full item index (unfiltered) ──
+  const happyBotEntryVisible = useLocalSetting('happyBotEntryVisible');
   const items = useMemo<CommandItem[]>(() => {
     const out: CommandItem[] = [];
 
@@ -283,7 +284,7 @@ export function CommandPalette() {
         });
       }
     }
-    out.push({
+    if (happyBotEntryVisible) out.push({
       key: 'action:teams',
       group: 'actions',
       title: 'Happy Bot',
@@ -373,6 +374,7 @@ export function CommandPalette() {
     return out;
   }, [
     sessions,
+    happyBotEntryVisible,
     machines,
     terminals,
     currentSessionId,

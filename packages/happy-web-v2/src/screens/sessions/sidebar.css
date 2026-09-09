@@ -687,3 +687,14 @@
 .sb-products button:hover { background: var(--bg-2); }
 .sb-products button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 @media (pointer: coarse) { .sb-products button { min-height: 48px; } }
+
+.sb-team-row { display: flex; align-items: center; min-width: 0; border-radius: 6px; }
+.sb-team-row.is-selected { background: var(--bg-2); }
+.sb-team-toggle { display: grid; place-items: center; width: 30px; min-height: 44px; flex-shrink: 0; color: var(--text-dim); }
+.sb-team-toggle .is-open { transform: rotate(90deg); }
+.sb-team-main { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; text-align: left; min-height: 52px; padding: 5px 8px 5px 0; }
+.sb-team-main > svg { flex-shrink: 0; }
+.sb-team-main > span { display: grid; min-width: 0; flex: 1; }
+.sb-team-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.sb-team-main small { color: var(--text-dim); font-size: 12px; }
+.sb-team-child { margin-left: 20px; border-left: 1px solid var(--line); }

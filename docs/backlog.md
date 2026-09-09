@@ -20,6 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-420 | **可选团队协作首次使用与统一导航**：原子启动负责人、自动加载协作指引、团队成员历史层级与工作语义卡；普通会话不变 | ux | Owner 2026-09-09 | done | 见 `specs/2026-09-teams-first-use.md`；真实 pi→Codex 分派/提交/验收与 390/1280 明暗主题浏览器通过，Web 2669 / CLI 2006 / server 641 / wire 43 测试通过。 |
 | B-410 | 最终 server 镜像依赖与锁文件一致性 | debt | 生产代理配置验收 | todo | 29e63c63 的实际模块 /repo/node_modules/fastify=5.12.3，锁文件与本地为5.8.5；新版拒绝数字trustProxy，已用精确代理白名单修复代理配置。Dockerfile.server 的 pnpm deploy --prod --legacy 阶段需追查并补最终runtime版本门禁，尚未证明漂移发生环节。 |
 | B-399 | PostgreSQL 迁移使用独立会话连接 | bug | Agent Teams 发布实测 | done | Prisma advisory lock 不得经过 transaction pool；迁移 child env 隔离、生产入口门禁与失败阻断回归。 |
 | B-392 | 终端 @ 字形可辨认性；另核 pi 消息黑字 | bug | Owner 2026-09-09 | doing | 已在 test 终端 jojo@mac-office 确认：DOM 为 U+0040，Maple 默认特殊字形导致误认；启用 cv01 标准符号，保持字体/字号/行高。本地真实 xterm 对比及 mutation 回归通过，已随 629bc399 发布，线上 CSS 已核对。pi 黑字属另一路径，仍未复现，不合并宣称修复。 |

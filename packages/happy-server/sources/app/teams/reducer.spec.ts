@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TeamAction, TeamState } from '@slopus/happy-wire';
-import { reduceTeam, teamView, type TeamActor } from './reducer';
+import { reduceTeam, teamView, occupiedTeamWorkSlots, type TeamActor } from './reducer';
 
 const owner: TeamActor = { kind: 'owner' };
 const empty = (): TeamState => ({ id: 'team', name: 'Team', machineId: 'machine', version: 0, bots: [], tasks: [], messages: [], operations: [], createdAt: 1 });
@@ -55,15 +55,15 @@ describe('team coordination invariants', () => {
     });
     it('does not reclaim an uncertain spawn but accepts same-claim reconciliation', () => {
         const f = fixture(); f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] }); const op = f.state.operations[0];
-        f.act({ type: 'claim-operation', operationId: op.id, machineId: 'machine' }); const claimId = f.state.operations[0].claimId!;
+        f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: op.id, machineId: 'machine' }); const claimId = f.state.operations[0].claimId!;
         f.act({ type: 'fail-operation', operationId: op.id, machineId: 'machine', claimId, error: 'lost', unknown: true });
-        expect(() => f.act({ type: 'claim-operation', operationId: op.id, machineId: 'machine' })).toThrow('operation_not_pending');
+        expect(() => f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: op.id, machineId: 'machine' })).toThrow('operation_not_pending');
         f.act({ type: 'complete-operation', operationId: op.id, machineId: 'machine', claimId, sessionId: 's' });
         expect(f.state.tasks[0].status).toBe('running');
     });
     it('schedules cleanup for a spawn that returns after cancellation', () => {
         const f = fixture(); f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] }); const op = f.state.operations[0];
-        f.act({ type: 'claim-operation', operationId: op.id, machineId: 'machine' }); const claimId = f.state.operations[0].claimId!;
+        f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: op.id, machineId: 'machine' }); const claimId = f.state.operations[0].claimId!;
         f.act({ type: 'cancel', taskId: f.state.tasks[0].id, attemptId: f.state.tasks[0].currentAttemptId, goalVersion: 1, reason: 'stop' });
         f.act({ type: 'complete-operation', operationId: op.id, machineId: 'machine', claimId, sessionId: 's' });
         expect(f.state.tasks[0].status).toBe('cancelled'); expect(f.state.operations[1].type).toBe('stop');
@@ -100,7 +100,7 @@ describe('team coordination invariants', () => {
         const f = fixture(); f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
         expect(() => f.act({ type: 'archive' })).toThrow('team_has_active_tasks');
         const op = f.state.operations[0];
-        f.act({ type: 'claim-operation', operationId: op.id, machineId: 'machine' });
+        f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: op.id, machineId: 'machine' });
         const task = f.state.tasks[0];
         f.act({ type: 'cancel', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, reason: 'stop' });
         expect(() => f.act({ type: 'archive' })).toThrow('team_has_unresolved_operations');
@@ -109,7 +109,7 @@ describe('team coordination invariants', () => {
     it('cannot bind a spawned bot to another bot existing session', () => {
         const f = fixture(); f.act({ type: 'join', name: 'Root', sessionId: 'root' });
         f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
-        const op = f.state.operations[0]; f.act({ type: 'claim-operation', operationId: op.id, machineId: 'machine' });
+        const op = f.state.operations[0]; f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: op.id, machineId: 'machine' });
         expect(() => f.act({ type: 'complete-operation', operationId: op.id, machineId: 'machine', claimId: f.state.operations[0].claimId!, sessionId: 'root' })).toThrow('session_already_bound');
     });
 
@@ -117,7 +117,7 @@ describe('team coordination invariants', () => {
         const f = fixture(); f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
         const pending = f.state.operations[0];
         expect(() => f.act({ type: 'reconcile-operation', operationId: pending.id, claimId: 'none', note: 'Checked stopped' })).toThrow('stale_claim');
-        f.act({ type: 'claim-operation', operationId: pending.id, machineId: 'machine' });
+        f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: pending.id, machineId: 'machine' });
         const op = f.state.operations[0];
         const reconcile: TeamAction = { type: 'reconcile-operation', operationId: op.id, claimId: op.claimId!, note: 'Verified process stopped; worktree preserved manually.' };
         expect(() => f.act(reconcile)).toThrow('operation_task_still_active');
@@ -133,7 +133,7 @@ describe('team coordination invariants', () => {
 
     it('blocks rebinding a bot while old cleanup is unresolved', () => {
         const f = fixture(); f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
-        const op = f.state.operations[0]; f.act({ type: 'claim-operation', operationId: op.id, machineId: 'machine' });
+        const op = f.state.operations[0]; f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: op.id, machineId: 'machine' });
         f.act({ type: 'complete-operation', operationId: op.id, claimId: f.state.operations[0].claimId!, machineId: 'machine', sessionId: 'old-session' });
         const task = f.state.tasks[0];
         f.act({ type: 'cancel', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, reason: 'stop' });
@@ -154,4 +154,122 @@ describe('team coordination invariants', () => {
         expect(f.state.messages[0].deliveredAt).toBe(1000);
     });
 
+});
+
+describe('first team launch and member configuration', () => {
+    it('starts a managed lead with a durable goal and rejects a second launch', () => {
+        const f = fixture();
+        const launch = { goal: 'Ship the requested feature', directory: '/repo', assistant: 'codex' as const, model: 'gpt-5' };
+        f.act({ type: 'start', launch });
+        expect(f.state.bots[0]).toMatchObject({ root: true, managed: true, directory: '/repo', model: 'gpt-5' });
+        expect(f.state.tasks[0]).toMatchObject({ goal: launch.goal, ownerBotId: null, status: 'queued' });
+        expect(f.state.operations[0]).toMatchObject({ teamLaunchVersion: 1, model: 'gpt-5', type: 'spawn' });
+        expect(() => f.act({ type: 'start', launch })).toThrow('team_already_started');
+        expect(() => f.act({ type: 'claim-operation', operationId: f.state.operations[0].id, machineId: 'machine' })).toThrow('team_launch_upgrade_required');
+    });
+    it('inherits defaults for new members, clears cross-agent model, and freezes existing operations', () => {
+        const f = fixture();
+        f.act({ type: 'start', launch: { goal: 'g', directory: '/repo', assistant: 'codex', model: 'gpt-5' } });
+        f.act({ type: 'delegate', goal: 'child', acceptance: ['a'] });
+        expect(f.state.bots[1]).toMatchObject({ assistant: 'codex', model: 'gpt-5', directory: '/repo' });
+        f.act({ type: 'delegate', goal: 'other', acceptance: ['a'], assistant: 'claude' });
+        expect(f.state.bots[2].model).toBeUndefined();
+        f.act({ type: 'set-defaults', defaults: { assistant: 'pi-acp', model: 'provider/model', maxParallel: 2 } });
+        expect(f.state.operations[1]).toMatchObject({ assistant: 'codex', model: 'gpt-5' });
+    });
+    it('counts claimed members but excludes the lead and leaves capacity-blocked work unchanged', () => {
+        const f = fixture();
+        f.act({ type: 'start', launch: { goal: 'g', directory: '/repo', assistant: 'codex' } });
+        f.act({ type: 'set-defaults', defaults: { maxParallel: 1 } });
+        for (const goal of ['a', 'b']) f.act({ type: 'delegate', goal, acceptance: ['a'] });
+        const claim = (operationId: string) => f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId, machineId: 'machine' });
+        claim(f.state.operations[0].id); claim(f.state.operations[1].id);
+        expect(f.state.messages.some(m => m.source === 'system' && m.body.includes('queued for a member slot'))).toBe(true);
+        const occupied = f.state.operations[1];
+        f.act({ type: 'fail-operation', operationId: occupied.id, machineId: 'machine', claimId: occupied.claimId!, error: 'message delivery failed after spawn' });
+        const before = structuredClone(f.state);
+        expect(() => claim(f.state.operations[2].id)).toThrow('team_parallel_limit');
+        expect(f.state).toEqual(before);
+        f.act({ type: 'set-defaults', defaults: { maxParallel: 2 } });
+        claim(f.state.operations[2].id);
+        expect(f.state.operations[2].status).toBe('claimed');
+    });
+});
+
+
+describe('leaf task work slots', () => {
+    function startTask(f: ReturnType<typeof fixture>, taskId: string, directory?: string) {
+        const operation = f.state.operations.find(op => op.taskId === taskId && op.type === 'spawn')!;
+        f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: operation.id, machineId: 'machine' });
+        f.act({ type: 'complete-operation', operationId: operation.id, machineId: 'machine', claimId: f.state.operations.find(op => op.id === operation.id)!.claimId!, sessionId: `session-${taskId}`, ...(directory ? { workingDirectory: directory } : {}) });
+    }
+    it('lets three parents delegate three children at the full limit, then counts parents again after acceptance', () => {
+        const f = fixture();
+        f.act({ type: 'set-defaults', defaults: { maxParallel: 3 } });
+        const parents = Array.from({ length: 3 }, (_, i) => {
+            const result = f.act({ type: 'delegate', goal: `parent-${i}`, acceptance: ['done'] });
+            startTask(f, result.taskId!);
+            return f.state.tasks.find(task => task.id === result.taskId)!;
+        });
+        expect(occupiedTeamWorkSlots(f.state).size).toBe(3);
+        const children = parents.map(parent => {
+            const result = f.act({ type: 'delegate', parentTaskId: parent.id, goal: 'child', acceptance: ['done'] }, { kind: 'agent', botId: parent.assigneeBotId, generation: 1 });
+            startTask(f, result.taskId!);
+            return f.state.tasks.find(task => task.id === result.taskId)!;
+        });
+        expect([...occupiedTeamWorkSlots(f.state)].sort()).toEqual(children.map(task => task.assigneeBotId).sort());
+        for (const child of children) {
+            f.act({ type: 'submit', taskId: child.id, attemptId: child.currentAttemptId, goalVersion: 1, result: 'done' });
+            f.act({ type: 'accept', taskId: child.id, attemptId: child.currentAttemptId, goalVersion: 1 });
+        }
+        expect([...occupiedTeamWorkSlots(f.state)].sort()).toEqual(parents.map(task => task.assigneeBotId).sort());
+        expect(f.state.tasks.filter(task => children.some(child => child.id === task.id)).every(task => task.cleanup === 'pending')).toBe(true);
+    });
+    it('supports deep delegation at limit one without releasing uncertain effects', () => {
+        const f = fixture();
+        f.act({ type: 'set-defaults', defaults: { maxParallel: 1 } });
+        let result = f.act({ type: 'delegate', goal: 'parent', acceptance: ['done'] });
+        startTask(f, result.taskId!);
+        for (let depth = 0; depth < 6; depth++) {
+            const parent = f.state.tasks.find(task => task.id === result.taskId)!;
+            result = f.act({ type: 'delegate', parentTaskId: parent.id, goal: 'deeper', acceptance: ['done'] }, { kind: 'agent', botId: parent.assigneeBotId, generation: 1 });
+            startTask(f, result.taskId!);
+            expect(occupiedTeamWorkSlots(f.state).size).toBe(1);
+        }
+        const leaf = f.state.tasks.find(task => task.id === result.taskId)!;
+        const deeper = f.act({ type: 'delegate', parentTaskId: leaf.id, goal: 'uncertain', acceptance: ['done'] }, { kind: 'agent', botId: leaf.assigneeBotId, generation: 1 });
+        const operation = f.state.operations.find(op => op.taskId === deeper.taskId)!;
+        f.act({ type: 'claim-operation', operationId: operation.id, teamLaunchVersion: 1, machineId: 'machine' });
+        f.act({ type: 'fail-operation', operationId: operation.id, claimId: f.state.operations.find(op => op.id === operation.id)!.claimId!, machineId: 'machine', error: 'unknown wrapper outcome', unknown: true });
+        const other = f.act({ type: 'delegate', goal: 'other', acceptance: ['done'] });
+        expect(() => startTask(f, other.taskId!)).toThrow('team_parallel_limit');
+        expect(occupiedTeamWorkSlots(f.state).size).toBe(1);
+    });
+    it('releases accepted work slots while safely preserving unmerged resources', () => {
+        const f = fixture();
+        f.act({ type: 'set-defaults', defaults: { maxParallel: 1 } });
+        const first = f.act({ type: 'delegate', goal: 'first', acceptance: ['done'] });
+        startTask(f, first.taskId!);
+        const task = f.state.tasks.find(task => task.id === first.taskId)!;
+        f.act({ type: 'submit', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, result: 'done' });
+        f.act({ type: 'accept', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1 });
+        const stop = f.state.operations.find(op => op.type === 'stop')!;
+        f.act({ type: 'claim-operation', operationId: stop.id, machineId: 'machine' });
+        f.act({ type: 'fail-operation', operationId: stop.id, machineId: 'machine', claimId: f.state.operations.find(op => op.id === stop.id)!.claimId!, error: 'Unmerged work retained' });
+        expect(occupiedTeamWorkSlots(f.state).size).toBe(0);
+        const second = f.act({ type: 'delegate', goal: 'second', acceptance: ['done'] });
+        startTask(f, second.taskId!);
+        expect(f.state.bots.find(bot => bot.id === task.assigneeBotId)?.sessionId).toBeTruthy();
+        expect(f.state.tasks.find(candidate => candidate.id === task.id)?.cleanup).toBe('failed');
+    });
+    it('inherits the actual parent worktree without rewriting the original spawn base', () => {
+        const f = fixture();
+        const result = f.act({ type: 'start', launch: { goal: 'goal', assistant: 'codex', directory: '/source' } });
+        startTask(f, result.taskId!, '/isolated/lead');
+        const lead = f.state.bots[0];
+        f.act({ type: 'delegate', goal: 'child', acceptance: ['done'], parentTaskId: result.taskId }, { kind: 'agent', botId: lead.id, generation: 1 });
+        expect(f.state.bots[0].directory).toBe('/isolated/lead');
+        expect(f.state.operations[0].directory).toBe('/source');
+        expect(f.state.operations[1].directory).toBe('/isolated/lead');
+    });
 });

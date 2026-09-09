@@ -1,3 +1,4 @@
+import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import * as Switch from '@radix-ui/react-switch';
@@ -357,6 +358,8 @@ function Appearance() {
   const [preferredLanguage, setPreferredLanguage] = useSettingMutable('preferredLanguage');
   // device-local: what `/` shows when nothing is open (empty detail vs board)
   const [homeView, setHomeView] = useLocalSettingMutable('homeView');
+  const [happyBotEntryVisible, setHappyBotEntryVisible] = useLocalSettingMutable('happyBotEntryVisible');
+  const teamCopy = useTeamNavigationCopy();
   // device-local: the two ⌘W close guards (in-app confirm / browser leave-site
   // dialog). Separate switches — different mechanisms, different annoyance.
   const [closeViewConfirm, setCloseViewConfirm] = useLocalSettingMutable('closeViewConfirm');
@@ -412,6 +415,8 @@ function Appearance() {
             />
           ))}
         </ItemGroup>
+
+        <ItemGroup title="Happy Bot"><Item title={teamCopy.show} subtitle={teamCopy.hint} right={<Toggle checked={happyBotEntryVisible} onChange={setHappyBotEntryVisible} />} /></ItemGroup>
 
         <ItemGroup
           title={t('settingsAppearance.homeView')}

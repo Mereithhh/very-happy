@@ -9,6 +9,7 @@ export const LocalSettingsSchema = z.object({
     debugMode: z.boolean().describe('Enable debug logging'),
     devModeEnabled: z.boolean().describe('Enable developer menu in settings'),
     voiceUpsellOverride: z.enum(['control', 'show-paywall-before-first-voice-chat', 'voice-onboarding-and-upsell']).nullable().describe('Developer-only local override for the voice-upsell PostHog flag'),
+    happyBotEntryVisible: z.boolean().describe('Show the optional Happy Bot navigation entry on this device'),
     commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
     themePreference: z.enum(['light', 'dark', 'adaptive']).describe('Theme preference: light, dark, or adaptive (follows system)'),
     markdownCopyV2: z.boolean().describe('Replace native paragraph selection with long-press modal for full markdown copy'),
@@ -160,6 +161,7 @@ export const localSettingsDefaults: LocalSettings = {
     devModeEnabled: false,
     voiceUpsellOverride: null,
     // very-happy: CMD+K command palette on by default (web product feature).
+    happyBotEntryVisible: true,
     commandPaletteEnabled: true,
     // very-happy: dark is the Console brand default (deck v2). Users can still
     // pick light/adaptive in Settings → Appearance.

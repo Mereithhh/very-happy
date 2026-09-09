@@ -1,5 +1,6 @@
+import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import type { TeamActionRequest, TeamResponse, TeamState, TeamOperation, TeamMessage } from '@slopus/happy-wire';
+import type { TeamActionRequest, TeamResponse, TeamState, TeamOperation, TeamMessage, TeamLaunch } from '@slopus/happy-wire';
 import { db } from '@/storage/db';
 import { inTx, type Tx } from '@/storage/inTx';
 import { encryptString, decryptString } from '@/modules/encrypt';
@@ -73,7 +74,7 @@ async function credential(tx: Tx, team: TeamState, botId: string): Promise<{ bot
     await tx.$executeRaw`INSERT INTO "TeamAgentCredential" ("id","teamId","botId","generation","tokenHash","tokenEnc","expiresAt") VALUES (${credentialId},${team.id},${botId},${bot.generation},${tokenHash},${tokenEnc},${expiresAt})`;
     return { botId, token };
 }
-export async function createTeam(accountId: string, input: { name: string; machineId: string; requestId?: string }): Promise<TeamState> {
+export async function createTeam(accountId: string, input: { name: string; machineId: string; requestId?: string; launch?: TeamLaunch }): Promise<TeamState> {
     assertTeamsEnabled(accountId);
     return inTx(async tx => {
         requireTeam(await tx.machine.findFirst({ where: { id: input.machineId, accountId }, select: { id: true } }), 'machine_not_found', 404);
@@ -82,15 +83,20 @@ export async function createTeam(accountId: string, input: { name: string; machi
             const existing = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "AgentTeam" WHERE "id"=${teamId} AND "accountId"=${accountId}`;
             if (existing[0]) {
                 const existingTeam = (await load(tx, teamId, accountId)).state;
-                requireTeam(existingTeam.name === input.name && existingTeam.machineId === input.machineId, 'request_id_conflict');
+                requireTeam(existingTeam.name === input.name && existingTeam.machineId === input.machineId && isDeepStrictEqual(existingTeam.creationLaunch, input.launch), 'request_id_conflict');
                 return existingTeam;
             }
         }
         const count = await tx.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL`;
         requireTeam(Number(count[0].count) < 32, 'team_limit', 429);
-        const team: TeamState = { id: teamId, name: input.name, machineId: input.machineId, version: 0, bots: [], tasks: [], messages: [], operations: [], createdAt: Date.now() };
+        const team: TeamState = { id: teamId, name: input.name, machineId: input.machineId, version: 0, bots: [], tasks: [], messages: [], operations: [], createdAt: Date.now(), ...(input.launch ? { creationLaunch: input.launch } : {}) };
         const state = JSON.stringify({ ...team, messages: undefined, operations: undefined });
         await tx.$executeRaw`INSERT INTO "AgentTeam" ("id","accountId","machineId","state") VALUES (${team.id},${accountId},${team.machineId},${state}::jsonb)`;
+        if (input.launch) {
+            const started = reduceTeam(team, { kind: 'owner' }, { type: 'start', launch: input.launch }, { now: Date.now(), id: randomUUID }).team;
+            await persistTransition(tx, { id: team.id, accountId, version: 0, state: team }, started);
+            return started;
+        }
         return team;
     });
 }

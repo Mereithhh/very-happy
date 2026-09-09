@@ -53,29 +53,32 @@ live model/daemon connectivity test. Reading a skill alone does not attach an
 unmanaged process. In particular, use `very-happy pi` for the managed pi path;
 a bare `pi` terminal does not gain a background inbox from installation.
 
-## Start a team
+## Start a team in the app
 
-1. Open a normal managed Claude, Codex, or pi session on the selected machine.
-2. Ask it to read the installed skill and inspect its connection. `team_inspect`
-   reads an existing assignment; `team_create` or `team_join` connects a root
-   session. Keep the returned team ID.
-3. Give a bounded goal, for example: “Inspect this repository, propose independent
-   work, and delegate the approved changes with acceptance criteria. Integrate
-   and verify the results before asking me to accept.”
-4. Open **Happy Bot** in the Web sidebar. The workspace shows members, progress,
-   task lanes and result previews immediately. Select a task for full evidence and
-   review actions; use **Schedules** and **Settings** for less frequent controls.
-   **Talk to lead** opens the lead conversation. The help page and first-run guide
-   contain the official skill installation commands alongside native Todo guidance.
+Choose **Happy Bot → New team**, select the project folder and execution computer,
+and describe the goal. A compatible daemon starts a managed lead in an isolated
+worktree, supplies the official skill, and opens the lead conversation. App users
+do not install skills manually. The lead lives for this goal; after acceptance its
+session can be cleaned up, while unmerged changes remain preserved.
 
-Creating a team in Web records it on the selected machine. **Link lead** records
-an existing session identity; that session must still call the Teams join tool or
-CLI to establish its scoped connection. It is not connected merely because a
-link appears in the UI. For an existing managed session, the CLI form is:
+Team names appear alongside ordinary conversations in history. Expand a team to
+open a member conversation, or select its name for goal, progress, and results.
+Ordinary conversations are never automatically turned into teams. Appearance
+settings can hide the Happy Bot entry without stopping or deleting existing work.
 
-```sh
-very-happy teams join --name lead --team-id TEAM_ID --session-id SESSION_ID
-```
+For an existing managed conversation, use **More → Start a team from this
+conversation**. Its wrapper establishes the scoped connection and delivers the
+collaboration instructions in the background. No session ID entry or additional
+join step is required. Old wrappers without the capability need a new session.
+
+Team options choose the default agent/model for new assignments and the maximum
+number of concurrently progressing leaf tasks. A parent waiting for unfinished
+children yields its slot; this is a work limit, not an OS-process limit. Running
+members keep their original model configuration. The current team still uses one
+execution computer.
+
+The installation commands above are for terminal entry only. Installing does not
+modify personal agent discovery roots or attach a bare agent process.
 
 Use a distinct request ID per action and reuse it with identical arguments after
 an unknown outcome. Never copy scope tokens into prompts or personal settings.

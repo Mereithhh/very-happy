@@ -149,6 +149,7 @@ export type Session = {
  */
 export const MachineMetadataSchema = z.object({
   teamsVersion: z.number().int().positive().optional(),
+  teamLaunchVersion: z.number().int().positive().optional(),
   host: z.string(),
   platform: z.string(),
   happyCliVersion: z.string(),

@@ -8,6 +8,7 @@ import { useMediaQuery } from '@/app/useMediaQuery';
 import { useFilesPanelWidth } from '@/screens/files/useFilesPanelWidth';
 import { useTranslation } from '@/i18n/useTranslation';
 import { EmptyState, Button, OrbitLoader } from '@/ui';
+import { SessionTeamContext } from './SessionTeamContext';
 import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
 import { AgentInput } from './AgentInput';
@@ -157,6 +158,7 @@ export function SessionDetailScreen() {
                         ? () => (btwOpen ? setPanel(null, true) : setPanel('btw'))
                         : undefined}
                 />
+                <SessionTeamContext sessionId={id} />
                 {mirror && <MirrorBanner sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}
                 {!mirror && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}

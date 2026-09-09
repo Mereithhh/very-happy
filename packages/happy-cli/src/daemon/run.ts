@@ -84,7 +84,7 @@ export function sanitizeImportTitle(value: unknown): string | null {
 const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
 const startupCliAvailability = detectCLIAvailability();
 export const initialMachineMetadata: MachineMetadata = {
-  teamsVersion: 1,
+  teamsVersion: 1, teamLaunchVersion: 1,
   host: os.hostname() + hostSuffix,
   platform: os.platform(),
   happyCliVersion: packageJson.version,
@@ -1839,7 +1839,7 @@ export async function startDaemon(): Promise<void> {
     // Existing machine rows retain their original metadata at registration.
     // Publish the executing daemon's capability after the worker is installed.
     void apiMachine.updateMachineMetadata(current => ({
-      ...(current ?? initialMachineMetadata), teamsVersion: 1,
+      ...(current ?? initialMachineMetadata), teamsVersion: 1, teamLaunchVersion: 1,
     })).catch(() => logger.debug('[DAEMON RUN] Teams capability publication will retry on reconnect'));
 
     // Setup signal handlers

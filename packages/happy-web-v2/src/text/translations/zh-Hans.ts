@@ -1764,6 +1764,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09t: {
+                title: '从一个目标或已有对话开始组队',
+                summary: 'Happy Bot 按需使用，普通聊天和终端保持熟悉的操作方式。',
+                start: '选择项目、描述目标，即可启动带官方协作说明的负责人；也可以主动将支持此能力的已有对话组建为团队。',
+                history: '从历史打开团队看进展，再打开成员看对话；可在外观设置隐藏 Happy Bot 入口，不影响正在进行的工作。',
+                results: '通过卡片查看分工和提交结果，并为新成员设置 agent、模型及同时推进的任务数。',
+            },
             sep09h: {
                 title: '让 AI 使用我的待办',
                 summary: '在我的待办中复制官方 skill，粘贴给 coding agent 完成接入。',

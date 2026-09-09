@@ -38,7 +38,8 @@ export const createTeam = (
   name: string,
   machineId: string,
   requestId: string,
-) => request<{ team: TeamState }>("", { name, machineId, requestId });
+  launch?: { goal: string; directory: string; assistant: "claude" | "codex" | "pi-acp"; model?: string },
+) => request<{ team: TeamState }>("", { name, machineId, requestId, ...(launch ? { launch } : {}) });
 /** Caller retains requestId on ambiguous failures; retrying cannot duplicate delegation. */
 export const actOnTeam = (id: string, action: TeamAction, requestId: string) =>
   request<TeamResponse>(`/${encodeURIComponent(id)}/actions`, {
