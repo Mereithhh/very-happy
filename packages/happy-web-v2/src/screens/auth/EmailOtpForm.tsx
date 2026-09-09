@@ -91,7 +91,7 @@ export function EmailOtpForm({ busy = false, inviteCode, onBusyChange, onCredent
     {!challengeId ? <Input
       label={t('emailAuth.email')}
       type="email"
-      autoFocus
+      autoFocus={!window.matchMedia('(pointer: coarse)').matches}
       autoComplete="email"
       inputMode="email"
       value={email}

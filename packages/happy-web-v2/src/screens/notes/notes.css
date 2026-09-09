@@ -1,13 +1,13 @@
 /* notes.css — prompt-notes dock + /notes screen (B-094).
  * Console discipline: bg token steps only, mono for machine-layer identity
- * (ages, counts, editor body — prompts are terminal-bound text), accent never
+ * (ages and counts), accent never
  * decorative (active tab uses text emphasis + top border on --line). */
 
 /* ── dock (right column inside .app-main-row) ─────────────────────────── */
 
 .notes-dock {
     flex: none;
-    width: 380px;
+    width: max(320px, 36vw);
     max-width: 50vw;
     display: flex;
     flex-direction: column;
@@ -30,10 +30,8 @@
     display: none;
 }
 
-/* below the desktop shell breakpoint (useIsDesktop = 980px) the dock is a
-   fixed full-screen overlay — the mobile shell has no main row to squeeze */
-/* B-112: inverse of the desktop-shell query (useMediaQuery.DESKTOP_SHELL_MQ) */
-@media (max-width: 799px), (max-width: 979px) and (max-height: 599px) {
+/* Match the shared workspace breakpoint: narrow screens use a full overlay. */
+@media (max-width: 1099px) {
     .notes-dock {
         position: fixed;
         inset: 0;
@@ -54,91 +52,10 @@
     }
 }
 
-/* ── tab strip ────────────────────────────────────────────────────────── */
-
-.notes-dock-tabs {
-    flex: none;
-    display: flex;
-    align-items: stretch;
-    gap: 2px;
-    padding: var(--sp-1) var(--sp-1) 0;
-    border-bottom: 1px solid var(--line);
-    background: var(--bg-0);
-}
-
-.notes-dock-tabstrip {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    gap: 2px;
-    overflow-x: auto;
-    scrollbar-width: none;
-}
-.notes-dock-tabstrip::-webkit-scrollbar {
-    display: none;
-}
-
-.notes-tab {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    max-width: 104px; /* B-117: auto titles are long — fit more pinned tabs */
-    padding: 0 var(--sp-1);
-    border: none;
-    border-top: 2px solid transparent;
-    border-radius: var(--r-sm) var(--r-sm) 0 0;
-    background: transparent;
-    color: var(--text-dim);
-    font-size: var(--fs-12);
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.notes-tab:hover {
-    background: var(--bg-2);
-    color: var(--text);
-}
-
-.notes-tab.is-active {
-    background: var(--bg-1);
-    border-top-color: var(--line);
-    color: var(--text);
-}
-
-.notes-tab--list,
-.notes-tab--icon {
-    padding: var(--sp-1);
-}
-
-.notes-tab-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    border: none;
-    background: transparent;
-    color: inherit;
-    font-size: var(--fs-12);
-    padding: var(--sp-1) 0 var(--sp-1) var(--sp-1);
-    cursor: pointer;
-}
-
-.notes-tab-close {
-    flex: none;
-    display: flex;
-    align-items: center;
-    border: none;
-    background: transparent;
-    color: var(--text-faint);
-    padding: 2px;
-    border-radius: var(--r-sm);
-    cursor: pointer;
-}
-.notes-tab-close:hover {
-    color: var(--text);
-    background: var(--bg-3);
-}
+/* Shared WorkspaceTabs owns tab chrome; only dock action icons remain here. */
+.notes-tab--icon { display:grid; place-items:center; flex:none; width:28px; height:32px; color:var(--text-dim); border-radius:var(--r-sm); }
+.notes-tab--icon:hover { background:var(--bg-2); color:var(--text); }
+@media (pointer:coarse) { .notes-tab--icon { width:44px; height:44px; } }
 
 .notes-dock-body {
     flex: 1;
@@ -233,9 +150,9 @@
     border: none;
     outline: none;
     padding: var(--sp-3);
-    background: var(--bg-1);
+    background: var(--bg-0);
     color: var(--text);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: var(--fs-13);
     line-height: 1.55;
 }
@@ -379,7 +296,7 @@
 
 .notes-screen-list {
     flex: none;
-    width: 300px;
+    width: 260px;
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -387,7 +304,7 @@
     background: var(--bg-1);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1099px) {
     .notes-screen-list {
         flex: 1;
         width: 100%;
@@ -415,7 +332,7 @@
     outline: none;
 }
 .notes-screen-filter:focus {
-    border-color: var(--accent);
+    border-color: var(--text-faint);
 }
 
 .notes-screen-new {
@@ -528,4 +445,12 @@
     .notes-list-pin {
         display: inline-flex;
     }
+}
+
+.notes-screen-new, .notes-meta-btn, .notes-insert-btn, .notes-screen-back { min-height:32px; }
+@media (pointer:coarse) {
+ .notes-screen-new, .notes-meta-btn, .notes-insert-btn, .notes-screen-back, .notes-bind-chip, .notes-list-pin { min-height:44px; }
+ .notes-screen-new, .notes-meta-btn, .notes-list-pin { min-width:44px; }
+ .notes-editor-ta, .notes-screen-filter { font-size:var(--fs-17); }
+ .notes-list-item:has(.notes-list-pin) .notes-list-row { padding-right:56px; min-height:56px; }
 }

@@ -9,7 +9,7 @@
 .runtime-selector { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); margin-top: var(--sp-5); }
 .runtime-selector button { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--text-faint); background: var(--bg-1); font-size: var(--fs-12); transition: border-color var(--motion-fast), color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast); }
 .runtime-selector button:hover { color: var(--text-dim); border-color: var(--line-2); transform: translateY(-1px); }
-.runtime-selector button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.runtime-selector button:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
 .runtime-selector button.is-active { color: var(--text); border-color: var(--accent-2); background: color-mix(in srgb, var(--accent-dim) 46%, var(--bg-1)); box-shadow: inset 0 0 0 1px var(--accent-dim); }
 .runtime-selector button.is-active svg { color: var(--accent-2); }
 

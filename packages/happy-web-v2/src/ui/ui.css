@@ -103,8 +103,8 @@
     box-shadow var(--motion-fast);
 }
 .vh-input-wrap:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  border-color: var(--text-dim);
+  box-shadow: none;
 }
 .vh-input-wrap.is-error {
   border-color: var(--danger);

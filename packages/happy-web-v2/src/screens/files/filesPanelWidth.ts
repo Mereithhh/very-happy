@@ -6,18 +6,17 @@
  *
  * Contract mirrors the AppLayout sidebar precedent (useSidebarPrefs):
  * - null / non-finite stored value = responsive default (the pre-B-088 CSS
- *   default: 380px capped at 42vw), NOT a hard pixel count.
+ *   default: 36vw, at least 320px), NOT a hard pixel count.
  * - user-dragged widths clamp to [MIN, 60vw] against the CURRENT viewport;
- *   the hosts additionally keep a CSS `max-width: 60vw` belt so a width
- *   stored on a large monitor can't crush the main pane on a small one.
+ *   the hosts additionally cap against their available container width,
+ *   reserving 320px for the main pane when the sidebar is present.
  */
 
-export const FILES_PANEL_MIN = 280;
-export const FILES_PANEL_DEFAULT = 380;
+export const FILES_PANEL_MIN = 320;
 /** Dragging may take at most this fraction of the viewport. */
 export const FILES_PANEL_MAX_FRACTION = 0.6;
-/** The responsive DEFAULT (null) caps lower — the historical 42vw. */
-export const FILES_PANEL_DEFAULT_FRACTION = 0.42;
+/** The responsive default reserves room for the conversation and sidebar. */
+export const FILES_PANEL_DEFAULT_FRACTION = 0.36;
 
 /** Largest width a drag may produce on this viewport (never below MIN). */
 export function filesPanelMaxWidth(viewportWidth: number): number {
@@ -30,9 +29,9 @@ export function clampFilesPanelWidth(px: number, viewportWidth: number): number 
     return Math.min(filesPanelMaxWidth(viewportWidth), Math.max(FILES_PANEL_MIN, Math.round(px)));
 }
 
-/** Responsive default: 380px, capped at 42vw (the pre-drag CSS behavior). */
+/** Responsive default: 36vw, with a readable 320px minimum. */
 export function filesPanelDefaultWidth(viewportWidth: number): number {
-    const capped = Math.min(FILES_PANEL_DEFAULT, Math.floor(viewportWidth * FILES_PANEL_DEFAULT_FRACTION));
+    const capped = Math.floor(viewportWidth * FILES_PANEL_DEFAULT_FRACTION);
     return Math.max(FILES_PANEL_MIN, capped);
 }
 

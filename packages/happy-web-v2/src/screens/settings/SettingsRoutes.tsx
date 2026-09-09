@@ -1,6 +1,6 @@
 import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
 import { EffortSlider } from '@/components/EffortSlider';
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import * as Switch from '@radix-ui/react-switch';
 import {
@@ -44,7 +44,6 @@ import { Modal } from '@/modal';
 import { useAuth } from '@/auth/AuthContext';
 import { checkForUpdateNow } from '@/app/staleBundleReload';
 import { machineCliUpdateNotice } from '@/app/cliUpdatePolicy';
-import { BackButton } from '@/app/BackButton';
 import { useTranslation, type SupportedLanguage } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
 import { SUPPORTED_LANGUAGES } from '@/text/_all';
@@ -128,42 +127,11 @@ import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel'
 import { VoiceSettings } from './VoiceSettings';
 import { MachinesSettings } from './MachinesSettings';
 import { CodeView } from '@/screens/session/CodeView';
-import './settings.css';
+import { SettingsPage as Page, SettingsHeader as Header, SettingsWorkspace } from './SettingsLayout';
 
 const MIN_PASSWORD = 8;
 
 // ----- shared layout shells -----
-
-function Page({ children }: { children: ReactNode }) {
-  return (
-    <div className="set-scroll" style={{ height: '100dvh' }}>
-      <div className="set-page">{children}</div>
-    </div>
-  );
-}
-
-function Header({
-  title,
-  subtitle,
-  right,
-}: {
-  title: string;
-  subtitle?: string;
-  right?: ReactNode;
-}) {
-  return (
-    <div className="set-header">
-      {/* global back: /settings/* → /settings → /, or real history when there
-          is any (see app/appBack.ts). No per-page onBack any more. */}
-      <BackButton />
-      <div className="set-header__titles">
-        <h1 className="set-header__title">{title}</h1>
-        {subtitle && <span className="set-header__subtitle">{subtitle}</span>}
-      </div>
-      {right && <div className="set-header__right">{right}</div>}
-    </div>
-  );
-}
 
 function Toggle({
   checked,
@@ -2561,9 +2529,9 @@ function Password() {
 // Routes
 // ===================================================================
 
-export function SettingsRoutes() {
+export function SettingsRoutes({ basePath }: { basePath?: string } = {}) {
   return (
-    <Routes>
+    <SettingsWorkspace basePath={basePath}><Routes>
       <Route index element={<Overview />} />
       <Route path="appearance" element={<Appearance />} />
       <Route path="account" element={<Account />} />
@@ -2578,6 +2546,6 @@ export function SettingsRoutes() {
       <Route path="password" element={<Password />} />
       <Route path="email" element={<EmailIdentity />} />
       <Route path="google" element={<GoogleIdentity />} />
-    </Routes>
+    </Routes></SettingsWorkspace>
   );
 }

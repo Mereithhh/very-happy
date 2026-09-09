@@ -60,6 +60,7 @@ CLI 改动也会影响 Web `src/screens/public` 的契约测试，不能只跑 C
 - 刷新前保留当前 entry/CSS、computed style 与关键变量。SW 更新必须核对 `controllerchange`、实际 controller 与加载 entry；reload 或 `registration.update()` 返回都不能证明已换版本。
   更新链路用两个真实构建 + 本地静态 server + Chromium 验证，保留旧 hashed assets 模拟部署；机制见 `src/app/swTakeover.ts`。
 - 发布必须核对目标 SHA、完整镜像/静态资源、health 和本次真实路径；用 `scripts/dev/check-shipped.mjs` 查已发布代码。daemon 更新另验版本、RPC 重注册与 mac-office launchd 守护。
+- 所有 UI 工作先读 [design skill](.agents/skills/design/SKILL.md) 和 [设计契约](docs/design-language.md)：已确认的紧凑工作台风格是统一基线，保留 Very Happy 品牌；Landing/docs/login 保留鲜明品牌展示。重构按真实功能矩阵验收，不能照原型删能力；截图、README 与用户更新说明随正式实现同步。
 - UI 改前读设计契约；颜色只用 `tokens.css` 定义的 token，`--accent` 仅表示 live，主 CTA 用 ink/canvas 高反差；终端 pane 两种主题都保持深色。
 
 ## 冲突热区

@@ -186,7 +186,7 @@
 }
 .ch-row-textarea:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--text-faint);
 }
 .ch-row-editor-actions {
   display: flex;
@@ -207,6 +207,13 @@
 }
 .ch-row-delete:hover {
   background: var(--danger-dim);
+}
+
+@media (pointer: coarse) {
+  .ch-head-btn, .ch-row-btn, .ch-row-delete, .ch-row-editor .vh-copy { min-height: 44px; }
+  .ch-head-btn--icon, .ch-row-btn { width: 44px; }
+  .ch-head-title { min-width: 0; }
+  .ch-head-actions { flex: none; }
 }
 
 /* mobile (< AppLayout's 980px two-pane breakpoint): fullscreen panel */

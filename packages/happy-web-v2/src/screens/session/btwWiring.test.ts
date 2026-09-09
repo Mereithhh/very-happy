@@ -23,7 +23,8 @@ describe('/btw wiring (B-283)', () => {
         const source = read('./SessionDetailScreen.tsx');
         expect(source).toContain("const btwOpen = panelTab === 'btw' && btwAllowed");
         expect(source).toContain("setPanelRef.current('btw', btwOpenRef.current)");
-        expect(source).toContain('<BtwPanel sessionId={id} onClose={() => setPanel(null, true)} />');
+        expect(source).toContain('btwAllowed={btwAllowed} onPanel={tab=>setPanel(tab,true)}');
+        expect(read('./SessionWorkspacePanel.tsx')).toContain('<BtwPanel sessionId={sessionId} embedded active={visible && activeTool===tab.id}');
         expect(source).toContain('onToggleBtw={btwAllowed');
         expect(source).toContain('const btwAllowed = !!session && !isMirrorSession(session) && canOfferBtw(session);');
         expect(read('./ChatHeader.tsx')).toContain('ch-btw-toggle');

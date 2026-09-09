@@ -20,7 +20,7 @@ export function EmptyState({
 }) {
   return (
     <div className={`vh-empty${compact ? ' vh-empty--compact' : ''}`}>
-      <div className="vh-empty__icon">{icon ?? <CyberMark size={compact ? 32 : 44} glow />}</div>
+      <div className="vh-empty__icon">{icon ?? <CyberMark size={compact ? 32 : 44} />}</div>
       <div className="vh-empty__title">{title}</div>
       {description && <div className="vh-empty__desc">{description}</div>}
       {actions && <div className="vh-empty__actions">{actions}</div>}

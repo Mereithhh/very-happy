@@ -2,16 +2,13 @@
  * Settings → Voice (B-051): assistant TTS voice, read-aloud policy, and the
  * assistant host machine.
  *
- * Deliberately a SEPARATE file: SettingsRoutes.tsx is a declared conflict
- * hot-zone — it only gains an import, one <Route> line and one overview
- * <Item>. The Page/Header shells are re-implemented here on the same set-*
- * CSS classes rather than exported from the hot file.
+ * Uses the shared SettingsLayout shell; voice data and persistence stay here.
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Switch from '@radix-ui/react-switch';
 import { Play, Check, Server } from 'lucide-react';
-import { BackButton } from '@/app/BackButton';
+import { SettingsPage as Page, SettingsHeader as Header } from './SettingsLayout';
 import { ItemList, ItemGroup, Item, Spinner, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useAuth } from '@/auth/AuthContext';
@@ -25,24 +22,7 @@ import {
 } from '@/sync/apiVoice';
 import { machineLabel } from '@/utils/machineUtils';
 
-function Page({ children }: { children: ReactNode }) {
-    return (
-        <div className="set-scroll" style={{ height: '100dvh' }}>
-            <div className="set-page">{children}</div>
-        </div>
-    );
-}
 
-function Header({ title }: { title: string }) {
-    return (
-        <div className="set-header">
-            <BackButton />
-            <div className="set-header__titles">
-                <span className="set-header__title">{title}</span>
-            </div>
-        </div>
-    );
-}
 
 type VoicesState =
     | { kind: 'loading' }

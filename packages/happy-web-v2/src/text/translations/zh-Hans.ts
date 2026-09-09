@@ -1792,6 +1792,15 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10: {
+                title: '工作台大升级：直接抄一手 Codex UI',
+                summary: '更紧凑、更能装下工作，也保留 Very Happy 自己的样子。',
+                workspace: '侧栏、字体与设置页面统一为紧凑布局，同屏展示更多信息。团队、待办、笔记、快捷指令和帮助仍有各自入口。',
+                tabs: '对话和终端的文件、笔记、网页预览共用标签栏，拖动即可排序，只保留常驻关闭按钮，悬停不再挤动标签。网页不能嵌入时，可直接在外部浏览器打开。',
+                progress: '运行进展固定为单行，直接显示当前阶段和可用的输入/输出 token 统计；点击展开详情，不再随输出上下跳动。',
+                mobile: '手机登录居中展示，输入文字与触控区域更舒适，通知中心正确全屏展开；焦点效果更克制，明暗主题都有新的 Very Happy 启动画面。',
+                stability: '调整窗口尺寸或折叠侧栏时，保留当前页面和未保存的输入；首页不再加载后自动跳到中部；修复已支持团队启动的 daemon 被误报为需要升级的问题。',
+            },
             sep09k: {
                 title: '更自然的对话操作',
                 summary: '统一输入框、贴合式排队消息，以及原位编辑。',

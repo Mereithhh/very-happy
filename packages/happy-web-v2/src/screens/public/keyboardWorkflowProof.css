@@ -50,7 +50,7 @@
   transition: border-color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast);
 }
 .kwp-trigger:hover { border-color: var(--text-faint); background: var(--bg-2); transform: translateY(-2px); }
-.kwp-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.kwp-trigger:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
 .kwp-trigger > span { display: inline-flex; align-items: center; gap: var(--sp-3); font-weight: 500; }
 .kwp-trigger kbd, .kwp-shortcuts kbd { font: var(--fs-11) var(--font-mono); letter-spacing: .04em; }
 .kwp-trigger kbd { padding: 6px 9px; border: 1px solid var(--line-2); border-bottom-width: 3px; border-radius: var(--r-sm); background: var(--bg-2); color: var(--text-dim); }

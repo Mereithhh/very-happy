@@ -4,9 +4,8 @@
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   padding-top: max(var(--sp-2), env(safe-area-inset-top));
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-1);
-  min-height: 48px;
+  background: var(--bg-0);
+  min-height: 44px;
 }
 /* the back arrow is now the shared .vh-back control (styles/base.css) */
 .ch-main {
@@ -24,7 +23,7 @@
   color: var(--text);
 }
 .ch-title {
-  font-size: var(--fs-14);
+  font-size: var(--fs-13);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -45,26 +44,6 @@
   .ch-title-btn:hover .ch-title-pencil {
     opacity: 1;
   }
-}
-.ch-crumb {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.ch-crumb-host {
-  color: var(--text-dim);
-  flex: none;
-}
-.ch-crumb-cwd {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  direction: rtl;
-  text-align: left;
 }
 /* Renaming takes the whole bar (ChatHeader drops the status pill and the icon
    cluster while editing). Before that, the input measured 4px wide at 360px:
@@ -89,8 +68,8 @@
 }
 .ch-rename-input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  border-color: var(--text-dim);
+  box-shadow: none;
 }
 .ch-icon {
   display: inline-flex;
@@ -137,7 +116,28 @@
     font-size: var(--fs-16);
   }
   .ch-icon {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
   }
+}
+
+.ch-identity { position:relative; flex:none; font-size:var(--fs-11); min-width:0; z-index:4; }
+.ch-identity-trigger { display:flex; align-items:center; gap:var(--sp-2); list-style:none; cursor:pointer; border-radius:var(--r-sm); padding:4px 6px; }
+.ch-identity-trigger:hover, .ch-identity-trigger:focus-visible { outline:none; box-shadow:none; background:var(--bg-2); }
+.ch-agent, .ch-host { max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ch-agent { color:var(--text-dim); }
+.ch-host { font:var(--fs-10) var(--font-mono); color:var(--text-faint); }
+.ch-identity-details { z-index:60; width:min(320px,calc(100vw - 32px)); padding:var(--sp-3); background:var(--bg-1); border:1px solid var(--line); border-radius:var(--r-md); box-shadow:var(--shadow-pop); }
+.ch-identity-details dl { display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--sp-2); margin:0; }
+.ch-identity-details dt { color:var(--text-faint); }
+.ch-identity-details dd { margin:0; overflow-wrap:anywhere; }
+@media (max-width:600px) {
+ .ch { gap:2px; padding-inline:8px; }
+ .ch .vh-back { width:44px; height:44px; }
+ .ch-identity-trigger { flex-direction:column; justify-content:center; gap:2px; padding:2px; min-height:44px; }
+ .ch-agent, .ch-host { max-width:42px; font-size:var(--fs-10); }
+ .ch .relay-badge { max-width:44px; padding-inline:4px; }
+ .ch-status { gap:2px; padding-right:0; }
+ .ch-title-pencil { display:none; }
+ .ch-title-btn { min-height:44px; }
 }

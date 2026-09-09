@@ -32,8 +32,8 @@
 }
 
 .fpl:focus-visible {
-  outline: 1px solid var(--text-faint);
-  outline-offset: 2px;
+  outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);
+
   border-radius: 2px;
 }
 

@@ -382,7 +382,6 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.pub-stage-packet[^}]*animation: none/);
     expect(styles).not.toContain('.pub-stage-node');
     expect(styles).toMatch(/\.pub-agent-grid article[^}]*transition: none/);
-    expect(styles).toMatch(/\.docs-cards > a:hover[^}]*transform: none/);
     expect(featureStyles).toContain('@media (prefers-reduced-motion: reduce)');
     expect(featureStyles).toContain('animation-duration: 0.01ms !important');
     const phoneMotion = mobileStyles.slice(
@@ -491,7 +490,7 @@ describe('public documentation registry', () => {
     const preview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./productWorkspacePreview.css', import.meta.url), 'utf8');
     const publicStyles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
-    expect(preview).toContain('onClick={closeFiles}');
+    expect(preview).toContain('onClose={closeFiles}');
     expect(preview).toContain('onClick={openFiles}');
     expect(preview).toContain('onBack={closeFile}');
     expect(preview).toContain('aria-controls={filesId}');

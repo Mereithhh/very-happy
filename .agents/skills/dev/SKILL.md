@@ -18,6 +18,8 @@ pnpm -C packages/happy-wire build
 `happy-wire/dist` is gitignored but consumed through the package entrypoint, so a
 clean checkout must build it before packages that import wire.
 
+UI 工作同时读取 `.agents/skills/design/SKILL.md`，遵循项目统一设计契约并验证真实功能完整性。
+
 ## Fast package loops
 
 Web V2 (defaults to port 8082 and proxies API/socket traffic):
@@ -42,8 +44,10 @@ node scripts/dev/mutation-check.mjs --pkg happy-web-v2 \
 
 ```bash
 # 真实 CSS + 真 Chromium；scenario 里写 measure()，需要时写 pixels() 采像素
-node scripts/dev/css-probe.mjs path/to/scenario.mjs --out /tmp/shots
+node scripts/dev/css-probe.mjs path/to/scenario.mjs --out ~/code/github/skills/tmp/ui-review/shots
 ```
+
+手机验证必须读取实际 `matchMedia('(pointer: coarse)').matches`，不能仅凭 `hasTouch`/窗口宽度认定触屏生效。当前锁定 Playwright 与缓存 Chromium 的长页截图会重置触屏模拟；`css-probe.mjs` 已在 page 创建后显式启用原生触屏，手机通过 CDP 只截真实视口，并核验截图后仍为 coarse。长内容另验滚动和可达性，不能把手机视口截图当全页截图。自定义浏览器脚本也要在导航/截图后核验媒体查询，截图与交互必须采用同一指针模式。
 
 「这个功能该不该做」先量语料再决定：
 

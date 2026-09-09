@@ -49,7 +49,7 @@ export function TerminalConnectScreen() {
   return (
     <main className="tc-page">
       <section className="tc-card" aria-labelledby="terminal-connect-title">
-        <div className="tc-brand"><CyberMark size={36} glow /><span>very happy</span></div>
+        <div className="tc-brand"><CyberMark size={36} /><span>very happy</span></div>
         {state === 'done' ? (
           <>
             <CheckCircle2 className="tc-status tc-status--live" size={42} />

@@ -154,6 +154,15 @@ const SidebarHarness = import.meta.env.DEV
 const OrbitLoaderHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/OrbitLoaderHarness').then((m) => ({ default: m.OrbitLoaderHarness })))
   : null;
+const WorkspaceDesignHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/WorkspaceDesignHarness').then((m) => ({ default: m.WorkspaceDesignHarness })))
+  : null;
+const WorkspaceNotesHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/WorkspaceFilesHarness').then((m) => ({ default: m.WorkspaceNotesHarness })))
+  : null;
+const WorkspaceFilesHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/WorkspaceFilesHarness').then((m) => ({ default: m.WorkspaceFilesHarness })))
+  : null;
 const MobileChatHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/MobileChatHarness').then((m) => ({ default: m.MobileChatHarness })))
   : null;
@@ -172,6 +181,7 @@ const router = createBrowserRouter(
     ...(SidebarHarness
       ? [
           { path: '/dev/sidebar', element: <Lazy><SidebarHarness /></Lazy> },
+          { path: '/dev/settings/*', element: <Lazy><SettingsRoutes basePath="/dev/settings" /></Lazy> },
           // Real post-connect home content without auth/store seeding. This is
           // DEV-only like the sidebar harness and is stripped from prod builds.
           { path: '/dev/workspace-guide', element: <HelpScreen /> },
@@ -180,6 +190,11 @@ const router = createBrowserRouter(
     ...(OrbitLoaderHarness
       ? [{ path: '/dev/orbit-loader', element: <Lazy><OrbitLoaderHarness /></Lazy> }]
       : []),
+    ...(WorkspaceDesignHarness
+      ? [{ path: '/dev/workspace-design', element: <Lazy><WorkspaceDesignHarness /></Lazy> }]
+      : []),
+    ...(WorkspaceNotesHarness ? [{ path: '/dev/workspace-notes', element: <Lazy><WorkspaceNotesHarness /></Lazy> }] : []),
+    ...(WorkspaceFilesHarness ? [{ path: '/dev/workspace-files', element: <Lazy><WorkspaceFilesHarness /></Lazy> }] : []),
     ...(MobileChatHarness
       ? [{ path: '/dev/mobile-chat', element: <Lazy><MobileChatHarness /></Lazy> }]
       : []),

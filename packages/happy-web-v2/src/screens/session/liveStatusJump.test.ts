@@ -5,22 +5,21 @@ const chat = readFileSync(new URL('./ChatList.tsx', import.meta.url), 'utf8');
 const status = readFileSync(new URL('./SessionLiveStatusBar.tsx', import.meta.url), 'utf8');
 const css = readFileSync(new URL('./statusbar.css', import.meta.url), 'utf8');
 
-describe('inline live status wiring', () => {
-  it('keeps live activity inside the transcript after turn rows for the whole running turn', () => {
-    const statusIndex = chat.indexOf('{showLiveStatus && <SessionLiveStatusBar');
-    expect(statusIndex).toBeGreaterThan(chat.indexOf('{rows.map((row) =>'));
-    expect(statusIndex).toBeLessThan(chat.indexOf('<PermissionCard sessionId={sessionId} />', statusIndex));
-    expect(statusIndex).toBeGreaterThan(chat.indexOf('className="cl-inner"'));
+describe('fixed live status wiring', () => {
+  it('keeps the status slot outside scrollback without dropping permission requests', () => {
+    const rows = chat.indexOf('{rows.map((row) =>');
+    const permission = chat.indexOf('<PermissionCard sessionId={sessionId} />', rows);
+    const statusIndex = chat.indexOf('{showLiveStatus && <div className="cl-live-slot">', rows);
+    expect(statusIndex).toBeGreaterThan(permission);
+    expect(chat.slice(permission, statusIndex)).toContain('</div>');
+    expect(chat.slice(rows, permission)).not.toContain('<SessionLiveStatusBar');
     expect(chat).not.toContain('!hasLiveActivity');
   });
-
-  it('renders persistent live activity as animated status content, not a fixed jump action', () => {
-    expect(status).not.toContain('<button');
-    expect(status).not.toContain('onActivate');
+  it('keeps status accessible and details separate from the fixed row', () => {
+    expect(status).toContain('<summary className="lsb-content">');
     expect(status).toContain('role="status"');
     expect(status).toContain('aria-live="polite"');
-    expect(css).toContain('cursor: default');
-    expect(css).toMatch(/@media \(pointer: coarse\)[\s\S]*min-height: 40px/);
-    expect(css).not.toContain('var(--accent-dim)');
+    expect(css).toMatch(/\.lsb-details \{[^}]*position:absolute/);
+    expect(css).toMatch(/@media \(pointer: coarse\)[^}]*min-height:44px/);
   });
 });

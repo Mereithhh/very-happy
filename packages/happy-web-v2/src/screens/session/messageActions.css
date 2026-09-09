@@ -1,13 +1,13 @@
 .msg-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; margin-top: var(--sp-1); color: var(--text-dim); }
 .msg-action, .msg-actions .vh-copy { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 4px 7px; border-radius: var(--r-sm); color: var(--text-dim); background: transparent; font: var(--fs-12)/1.4 var(--font-sans); }
 .msg-action:hover, .msg-actions .vh-copy:hover { background: var(--bg-2); color: var(--text); }
-.msg-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.msg-action:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
 .msg-edit-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
 .msg-edit-head h2 { margin: 0; font-size: var(--fs-16); }
 .msg-edit-description { color: var(--text-dim); font-size: var(--fs-13); line-height: 1.6; }
 .msg-edit-label { display: grid; gap: var(--sp-2); font-size: var(--fs-13); }
 .msg-edit-label textarea { resize: vertical; width: 100%; min-height: 160px; max-height: 40dvh; padding: var(--sp-3); font: 16px/1.55 var(--font-sans); background: var(--bg-0); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-md); }
-.msg-edit-label textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.msg-edit-label textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
 .msg-edit-error { color: var(--danger); overflow-wrap: anywhere; font-size: var(--fs-13); }
 .msg-edit-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
 .msg-parent-link { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--text-dim); font-size: var(--fs-12); padding: var(--sp-2) var(--sp-4); }

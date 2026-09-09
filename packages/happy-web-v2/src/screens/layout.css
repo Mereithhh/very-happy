@@ -1,6 +1,6 @@
 .app-shell {
   display: grid;
-  grid-template-columns: 320px 6px 1fr;
+  grid-template-columns: 260px 6px 1fr;
   height: 100dvh;
   background: var(--bg-0);
 }
@@ -98,7 +98,4 @@ body.vh-col-resizing iframe {
   height: 100%;
   min-height: 0;
   background: var(--bg-0);
-}
-.app-detail--full {
-  height: 100dvh;
 }

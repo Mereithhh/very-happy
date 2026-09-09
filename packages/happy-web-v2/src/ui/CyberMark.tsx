@@ -4,7 +4,7 @@
  * same geometry family as public/icon-512.png (master in skills tmp/vh-logo).
  * This static identity mark uses text ink; --accent is reserved for live state.
  */
-export function CyberMark({ size = 28, glow = false }: { size?: number; glow?: boolean }) {
+export function CyberMark({ size = 28 }: { size?: number }) {
   return (
     <svg
       width={size}
@@ -12,7 +12,6 @@ export function CyberMark({ size = 28, glow = false }: { size?: number; glow?: b
       viewBox="0 0 32 32"
       fill="none"
       aria-hidden
-      style={glow ? { filter: 'drop-shadow(0 0 6px var(--text-faint))' } : undefined}
     >
       <rect x="1.5" y="1.5" width="29" height="29" rx="7" stroke="var(--text)" strokeWidth="2" />
       <path

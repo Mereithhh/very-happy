@@ -198,8 +198,12 @@
   --fs-12: 12px;
   --fs-13: 13px;
   --fs-14: 14px;
+  --fs-15: 15px;
   --fs-16: 16px;
+  --fs-17: 17px;
+  --fs-18: 18px;
   --fs-20: 20px;
+  --fs-24: 24px;
   --fs-28: 28px;
   --fs-32: 32px;
   --fs-40: 40px;
@@ -224,6 +228,8 @@
 
   /* motion (prefers-reduced-motion disables all) */
   --motion-fast: 120ms ease;
+  --motion-med: 200ms ease;
+  --motion-slow: 320ms ease;
   --caret-blink: 1.1s;
   --progress-dur: 1.3s;
 
@@ -235,5 +241,7 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-fast: 0ms;
+    --motion-med: 0ms;
+    --motion-slow: 0ms;
   }
 }

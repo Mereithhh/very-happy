@@ -6,42 +6,6 @@
   height: 100%;
   background: var(--bg-1);
 }
-.fp-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--line);
-  padding-top: max(var(--sp-2), env(safe-area-inset-top));
-}
-.fp-tabs {
-  flex: 1;
-  display: flex;
-  gap: var(--sp-1);
-  min-width: 0;
-}
-.fp-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  font-size: var(--fs-12);
-  color: var(--text-dim);
-  padding: 4px var(--sp-2);
-  border-radius: var(--r-sm);
-}
-.fp-tab.is-active {
-  color: var(--text);
-  background: var(--bg-2);
-}
-.fp-tab-count {
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
-  color: var(--accent-2);
-  background: var(--accent-dim);
-  border-radius: var(--r-pill);
-  padding: 0 5px;
-}
 .fp-icon {
   flex: none;
   display: inline-flex;
@@ -59,11 +23,8 @@
 /* touch: 28px icon buttons and 26px list rows are under-sized for fingers */
 @media (pointer: coarse) {
   .fp-icon {
-    width: 36px;
-    height: 36px;
-  }
-  .fp-tab {
-    padding: 8px var(--sp-2);
+    width: 44px;
+    height: 44px;
   }
   .fp-row {
     padding-top: 9px;
@@ -213,3 +174,6 @@
   color: var(--text-faint);
   font-size: var(--fs-12);
 }
+
+.fp-body[hidden], .fp-viewer[hidden] { display:none; }
+.fp-body > .fp-list { flex:1; max-height:none; }

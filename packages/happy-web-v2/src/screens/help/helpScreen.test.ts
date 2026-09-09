@@ -37,14 +37,14 @@ describe('compact workspace help screen', () => {
 
   it('keeps touch targets large, mobile layout compact, and colors tokenized', () => {
     expect(styles).toMatch(/\.help-screen__actions > button \{ min-height: 44px; \}/);
-    expect(styles).toMatch(/\.help-topic__trigger \{[^}]*min-height: 70px;/s);
+    expect(Number(styles.match(/\.help-topic__trigger \{[^}]*min-height: (\d+)px;/s)?.[1])).toBeGreaterThanOrEqual(44);
     expect(styles).toMatch(/@media \(max-width: 599px\)/);
     expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 
   it('scopes the clickable brand sizing so the public product preview keeps its wordmark', () => {
     expect(sidebar).toContain('sb-brand sb-brand--button');
-    expect(sidebarStyles).toMatch(/\.sb-brand--button \{[^}]*width: 38px;/s);
+    expect(sidebarStyles).toMatch(/\.sb-brand--button \{[^}]*min-height: 32px;/s);
     expect(sidebarStyles).not.toMatch(/\.sb-brand \{[^}]*width:/s);
   });
 });

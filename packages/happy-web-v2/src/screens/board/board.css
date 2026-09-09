@@ -171,8 +171,8 @@
 /* the card root is a div[role=button] (the ✓ inside forbids a real <button>
  * root) — give it the keyboard focus ring a button would have had */
 .bd-card:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
+  outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);
+
 }
 
 /* ---- one-click mark-done (✓) ---- */

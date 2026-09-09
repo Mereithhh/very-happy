@@ -94,7 +94,7 @@
   color: var(--accent-2);
 }
 
-/* ── logo shell (state animations live here, glyph is a slot) ── */
+/* ── static brand mark with independent activity layers ── */
 .as-logo {
   position: relative;
   display: flex;
@@ -110,30 +110,7 @@
   justify-content: center;
   width: 58%;
   height: 58%;
-  border-radius: 50%;
-  background: var(--bg-1);
-  border: 1px solid var(--line);
-  color: var(--text-dim);
-  transition: color 200ms ease, border-color 200ms ease;
-}
-.as-logo[data-state='listening'] .as-logo-glyph,
-.as-logo[data-state='speaking'] .as-logo-glyph {
-  color: var(--accent-2);
-  border-color: var(--accent-dim);
-}
-
-/* idle: breathing glow */
-.as-logo-halo {
-  position: absolute;
-  inset: 12%;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
-  opacity: 0;
-  pointer-events: none;
-}
-.as-logo[data-state='idle'] .as-logo-halo {
-  opacity: 0.5;
-  animation: as-breathe 4.2s ease-in-out infinite;
+  color: var(--text);
 }
 
 /* listening: accent rings scaled by mic level */
@@ -215,17 +192,6 @@
   animation-delay: 480ms;
 }
 
-@keyframes as-breathe {
-  0%,
-  100% {
-    opacity: 0.3;
-    transform: scale(0.96);
-  }
-  50% {
-    opacity: 0.7;
-    transform: scale(1.04);
-  }
-}
 @keyframes as-rotate {
   to {
     transform: rotate(360deg);
@@ -242,7 +208,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .as-logo[data-state='idle'] .as-logo-halo,
   .as-logo[data-state='thinking'] .as-logo-arc,
   .as-logo[data-state='speaking'] .as-logo-bars span {
     animation: none;
@@ -533,7 +498,7 @@
   outline: none;
 }
 .as-input:focus {
-  border-color: var(--accent);
+  border-color: var(--text-faint);
 }
 .as-input::placeholder {
   color: var(--text-faint);
@@ -681,7 +646,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: var(--fs-12, 12px);
   color: var(--text-faint);
 }
@@ -689,7 +654,7 @@
   color: var(--text-faint);
 }
 .as-transcript-tool-body {
-  font-family: var(--mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: var(--fs-12, 12px);
 }
 .as-icon-btn[data-active='true'] {
@@ -767,71 +732,7 @@
   padding: 4px 10px;
 }
 
-/* ── B-060: state-transition polish (still token-only, motion-safe) ── */
-.as-logo {
-  transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.as-logo[data-state='listening'] {
-  transform: scale(1.06);
-}
-.as-logo[data-state='speaking'] {
-  transform: scale(1.03);
-}
-.as-logo-glyph {
-  transition:
-    color 200ms ease,
-    border-color 200ms ease,
-    box-shadow 320ms ease,
-    transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.as-logo[data-state='listening'] .as-logo-glyph,
-.as-logo[data-state='speaking'] .as-logo-glyph {
-  box-shadow:
-    0 0 0 1px var(--accent-dim),
-    0 0 36px -6px var(--accent-glow),
-    0 0 80px -18px var(--accent-glow);
-}
-.as-logo[data-state='thinking'] .as-logo-glyph {
-  animation: as-think-pulse 1.8s ease-in-out infinite;
-}
-@keyframes as-think-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(0.97); }
-}
-/* stage backdrop glow keyed to live states */
-.as-stage {
-  position: relative;
-}
-.as-stage::before {
-  content: '';
-  position: absolute;
-  top: 8%;
-  left: 50%;
-  width: min(420px, 90%);
-  aspect-ratio: 1;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 62%);
-  opacity: 0;
-  transition: opacity 500ms ease;
-  pointer-events: none;
-}
-.as-root:has(.as-logo[data-state='listening']) .as-stage::before,
-.as-root:has(.as-logo[data-state='speaking']) .as-stage::before {
-  opacity: 0.9;
-}
-.as-root:has(.as-logo[data-state='thinking']) .as-stage::before {
-  opacity: 0.35;
-}
 @media (prefers-reduced-motion: reduce) {
-  .as-logo,
-  .as-logo-glyph {
-    transition: none;
-    transform: none;
-  }
-  .as-logo[data-state='thinking'] .as-logo-glyph {
-    animation: none;
-  }
   .as-caption {
     animation: none;
   }
@@ -849,4 +750,12 @@
   .as-ptt-level span {
     transition: none;
   }
+}
+
+/* Touch controls stay easy to reach without enlarging the voice stage. */
+@media (pointer: coarse) {
+  .as-icon-btn { width: 44px; height: 44px; flex: none; }
+  .as-input, .as-send-btn, .as-reset-btn { min-height: 44px; }
+  .as-header-machine { min-width: 0; }
+  .as-header-title { flex: none; }
 }

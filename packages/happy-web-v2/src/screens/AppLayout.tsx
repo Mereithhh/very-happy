@@ -17,6 +17,7 @@ import { useSeenTracker } from '@/app/useSeenTracker';
 import { useAllMachines, useIsDataReady, useSessions } from '@/sync/storage';
 import { shouldShowFirstRun, shouldShowWorkspaceGuide } from '@/screens/onboarding/firstRun';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { AppShell, type AppShellMode } from './AppShell';
 import './layout.css';
 
 export function AppLayout() {
@@ -78,79 +79,25 @@ export function AppLayout() {
     };
   }, [setWidth]);
 
-  let shell: React.ReactNode;
-  if (isDesktop) {
-    if (collapsed) {
-      shell = (
-        <div className="app-shell app-shell--collapsed" style={{ gridTemplateColumns: '46px 1fr' }}>
-          <div className="app-rail">
-            <button
-              className="app-rail-btn"
-              onClick={() => setCollapsed(false)}
-              aria-label="expand sidebar"
-              title="Show sidebar"
-            >
-              <PanelLeft size={18} />
-            </button>
-            {/* collapsed rail keeps the notification entry point visible —
-                pinned to the BOTTOM (CSS margin-top:auto) so it lines up with
-                the expanded sidebar's footer row instead of moving on collapse */}
-            <NotificationBell />
-          </div>
-          {/* main row: detail + notes dock share the cell so the dock
-              squeezes the active screen (B-094) */}
-          <div className="app-main-row">
-            <main className="app-detail">
-              <Outlet />
-            </main>
-            <NotesDock />
-          </div>
-        </div>
-      );
-    } else {
-    shell = (
-      <div className="app-shell" style={{ gridTemplateColumns: `${width}px 6px 1fr` }}>
-        <aside className="app-sidebar">
-          <Sidebar />
-        </aside>
-        <div
-          className="app-resize-handle"
-          onMouseDown={onDragStart}
-          role="separator"
-          aria-orientation="vertical"
-        />
-        <div className="app-main-row">
-          <main className="app-detail">
-            <Outlet />
-          </main>
-          <NotesDock />
-        </div>
-      </div>
-    );
-    }
-  } else {
-  // mobile: single pane — sidebar at root, detail otherwise (detail has its own back nav)
-  shell = (
-    <div className="app-shell app-shell--mobile">
-      {atRoot && !firstRun && !workspaceGuide ? (
-        <aside className="app-sidebar app-sidebar--full">
-          <Sidebar />
-        </aside>
-      ) : (
-        <main className="app-detail app-detail--full">
-          <Outlet />
-        </main>
-      )}
-      {/* mobile dock is a fixed full-screen overlay (CSS) — mounts fine as a
-          sibling; still one instance total across the branches above */}
-      <NotesDock />
-    </div>
-  );
-  }
+  const settings = location.pathname === '/settings' || location.pathname.startsWith('/settings/');
+  const mode: AppShellMode = settings ? 'single'
+    : isDesktop ? (collapsed ? 'collapsed' : 'expanded')
+    : atRoot && !firstRun && !workspaceGuide ? 'list' : 'single';
 
   return (
     <>
-      {shell}
+      <AppShell mode={mode} width={width} onResizeStart={onDragStart}
+        sidebar={<Sidebar />}
+        rail={<>
+          <button className="app-rail-btn" onClick={() => setCollapsed(false)} aria-label="expand sidebar" title="Show sidebar">
+            <PanelLeft size={18} />
+          </button>
+          <NotificationBell />
+        </>}
+        notes={<NotesDock />}
+      >
+        <Outlet />
+      </AppShell>
       <CommandPalette />
       {/* clipboard-push history — singleton like the palette (⌘K / settings open it) */}
       <ClipboardHistoryPanel />

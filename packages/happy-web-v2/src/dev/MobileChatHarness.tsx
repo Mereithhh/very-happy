@@ -9,7 +9,8 @@ import type { NormalizedMessage } from '@/sync/typesRaw';
 import type { Session } from '@/sync/storageTypes';
 import { storage } from '@/sync/storage';
 import { useLiveStreamStore } from '@/sync/liveStreamStore';
-import { SessionLiveStatusBar } from '@/screens/session/SessionLiveStatusBar';
+import { ChatHeader } from '@/screens/session/ChatHeader';
+import { ChatList } from '@/screens/session/ChatList';
 import { ToolGroupView } from '@/screens/session/ToolGroupView';
 import { AgentInput } from '@/screens/session/AgentInput';
 import { useToast } from '@/ui/Toast';
@@ -63,6 +64,7 @@ export function MobileChatHarness() {
       metadata: {
         machineId: 'dev-machine',
         path: '/repo',
+        host: 'mac-office',
         flavor: 'claude',
         claudeSessionId: '11111111-1111-4111-8111-111111111111',
         capabilities: ['claude-steer-v1', 'claude-live-permission-v1'],
@@ -81,6 +83,10 @@ export function MobileChatHarness() {
     const liveSession = storage.getState().sessions['mobile-chat-permission'];
     storage.getState().applySessions([{ ...liveSession, id: 'mobile-chat-live', agentState: { controlledByUser: false, requests: {} } }]);
     storage.getState().applySessions([{ ...liveSession, id: 'mobile-chat-edit', thinking: false, thinkingStartedAt: null, agentState: { controlledByUser: false, requests: {} } }]);
+    storage.getState().applyMessages('mobile-chat-live', [{ role:'agent', content:[{type:'text',text:'真实 ChatList 流式布局示例',uuid:'live-seed',parentUUID:null}], id:'live-seed',localId:null,createdAt:now,isSidechain:false } satisfies NormalizedMessage]);
+    storage.getState().applyMessagesLoaded('mobile-chat-live');
+    useLiveStreamStore.getState().ingest('mobile-chat-live',{t:'block-start',mid:'visual-stream',idx:0,kind:'text'});
+
     storage.getState().applyMessages('mobile-chat-permission', [{
       role: 'agent',
       content: [{ type: 'text', text: 'Working fixture', uuid: 'dev-usage', parentUUID: null }],
@@ -103,7 +109,7 @@ export function MobileChatHarness() {
   ];
   return (
     <main style={{ minHeight: '100dvh', background: 'var(--bg-0)', color: 'var(--text)', padding: 16 }}>
-      <div style={{ width: '100%', maxWidth: 820, margin: '0 auto', display: 'grid', gap: 20 }}>
+      <div style={{ width: '100%', maxWidth: 820, margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 20 }}>
         <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>Theme: {theme}</button>
         <section data-testid="reading-polish" style={{ display: 'grid', gap: 24 }}>
           <div style={{ display: 'flex', gap: 8 }}><RelayBadge status={{ transport: 'regional', state: 'connected', region: 'US West', relayId: 'example-us-west', rttMs: 128 }} /><RelayBadge status={{ transport: 'legacy', state: 'fallback' }} /></div>
@@ -123,9 +129,13 @@ export function MobileChatHarness() {
             <button onClick={() => showProgress('compacting')}>Compacting</button>
             <button onClick={() => useLiveStreamStore.getState().clear('mobile-chat-live')}>No usage</button>
           </div>
-          <SessionLiveStatusBar sessionId="mobile-chat-live" />
+          <button onClick={() => {
+            useLiveStreamStore.getState().ingest('mobile-chat-live',{t:'block-start',mid:'visual-stream',idx:0,kind:'text'});
+            useLiveStreamStore.getState().ingest('mobile-chat-live',{t:'block-delta',mid:'visual-stream',idx:0,text:('持续输出，检查自动跟随与状态固定位置。\n\n').repeat(12)});
+          }}>Grow transcript</button>
+          <ChatHeader sessionId="mobile-chat-live" onToggleFiles={() => toast.show('Files action · fixture', 'success')}/><div style={{height:320,display:'flex',flexDirection:'column'}}><ChatList sessionId="mobile-chat-live"/></div>
           <output data-testid="live-status-result" style={{ display: 'block', padding: 8, fontSize: 12 }}>
-            inline transcript status
+            fixed live status · real ChatList
           </output>
         </section>
         <section data-testid="completed-tool"><ToolGroupView tools={completed} /></section>
@@ -133,7 +143,7 @@ export function MobileChatHarness() {
         <section data-testid="tool-run"><ToolGroupView tools={run} /></section>
         <section
           data-testid="mobile-composer-shell"
-          style={{ height: 560, minHeight: 0, border: '1px solid var(--line)', overflow: 'hidden' }}
+          style={{ height: 560, minHeight: 0, overflow: 'hidden' }}
         >
           <div className="sd">
             <div className="sd-main">

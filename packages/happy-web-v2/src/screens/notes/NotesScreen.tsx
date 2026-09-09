@@ -20,7 +20,7 @@ export function NotesScreen() {
     const { t } = useTranslation();
     const navigate = useNavigate();
     const { credentials } = useAuth();
-    const wide = useMediaQuery('(min-width: 861px)');
+    const wide = useMediaQuery('(min-width: 1100px)');
     const notesMap = useNotes((s) => s.notes);
     const [selected, setSelected] = useState<string | null>(null);
     const [filter, setFilter] = useState('');

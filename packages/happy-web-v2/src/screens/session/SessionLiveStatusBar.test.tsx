@@ -29,7 +29,8 @@ describe('SessionLiveStatusBar', () => {
         expect(announcement).toBe('liveProcessing');
         expect(html).toContain('14s');
         expect(html).toContain('class="lsb-orbit"');
-        expect(html).not.toContain('<button');
+        expect(html).toContain('<summary');
+        expect(html).toContain('class="lsb-details"');
     });
     it('degrades to status/time and prioritises compaction over a tool', () => {
         state.progress = {};

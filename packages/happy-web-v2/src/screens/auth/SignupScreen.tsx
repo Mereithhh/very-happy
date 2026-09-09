@@ -159,7 +159,7 @@ export function SignupScreen() {
       <CyberBackdrop />
       <div className="auth-card">
         <div className="auth-brand">
-          <CyberMark size={40} glow />
+          <CyberMark size={40} />
           <div className="auth-wordmark">very happy</div>
         </div>
         <LanguageSwitcher className="auth-language-switcher" />
@@ -205,7 +205,7 @@ export function SignupScreen() {
           {passwordExpanded && <form className="auth-password-form" onSubmit={onSubmit}>
             <Input
               label={t('signup.username')}
-              autoFocus={!emailEnabled}
+              autoFocus={!emailEnabled && !window.matchMedia('(pointer: coarse)').matches}
               autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value.toLowerCase())}

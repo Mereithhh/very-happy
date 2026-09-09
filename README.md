@@ -118,7 +118,7 @@ xterm.js. Common text TUIs are the compatibility target; sixel/Kitty graphics
 and other terminal-specific extensions are not guaranteed.
 
 <a href="https://veryhappy.dev/welcome">
-  <img src="docs/screenshots/workspace.png" width="100%" alt="Very Happy production UI with a session sidebar, real running terminal, and file preview using sanitized data">
+  <img src="docs/screenshots/workspace.png" width="100%" alt="Very Happy compact workspace preview with a session sidebar, terminal transcript, and file preview using sanitized example data">
 </a>
 
 <p align="center"><sub>AUTHENTIC PRODUCT UI CONTRACTS · SANITIZED DATA · SIDEBAR + TERMINAL + FILE PREVIEW</sub></p>

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { startupSplash } from './build/startupSplash';
 import react from '@vitejs/plugin-react';
 import { navigationFallbackDenylist } from './src/app/swNavigation';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -16,6 +17,7 @@ export default defineConfig({
   base: BASE,
   plugins: [
     react(),
+    startupSplash(),
     VitePWA({
       registerType: 'autoUpdate',
       // main.tsx imports virtual:pwa-register explicitly. The generated
@@ -28,8 +30,8 @@ export default defineConfig({
         name: 'Very Happy',
         short_name: 'Very Happy',
         description: 'An open agent workspace for your machines. Work anywhere and keep the thread.',
-        theme_color: '#06080c',
-        background_color: '#06080c',
+        theme_color: '#111210',
+        background_color: '#111210',
         display: 'standalone',
         scope: BASE,
         start_url: BASE,

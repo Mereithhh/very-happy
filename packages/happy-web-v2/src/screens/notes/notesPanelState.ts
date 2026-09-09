@@ -49,3 +49,14 @@ export function showNotesList(): void {
 export function setNotesSplitNote(id: string | null): void {
     storage.getState().applyLocalSettings({ notesSplitNote: id });
 }
+
+
+/** Reorder pinned views only; note content, binding and active editor stay unchanged. */
+export function moveNoteTab(id: string, target: string): void {
+    const state = storage.getState();
+    const tabs = [...state.localSettings.notesOpenTabs];
+    const from = tabs.indexOf(id), to = tabs.indexOf(target);
+    if (from < 0 || to < 0 || from === to) return;
+    tabs.splice(to, 0, tabs.splice(from, 1)[0]);
+    state.applyLocalSettings({ notesOpenTabs: tabs });
+}

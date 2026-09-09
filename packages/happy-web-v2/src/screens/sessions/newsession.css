@@ -64,8 +64,8 @@
 .ns-input:focus,
 .ns-initial:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  border-color: var(--text-faint);
+  box-shadow: inset 0 0 0 1px var(--text-faint);
 }
 .ns-agents {
   display: flex;
@@ -318,8 +318,8 @@
   cursor: pointer;
 }
 .ns-session:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);
+
 }
 .ns-session.is-on {
   color: var(--accent-2);

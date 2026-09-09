@@ -11,33 +11,15 @@
  * <Item> (the VoiceSettings precedent).
  */
 
-import { type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, HardDrive, PlusCircle } from 'lucide-react';
-import { BackButton } from '@/app/BackButton';
+import { SettingsPage as Page, SettingsHeader as Header } from './SettingsLayout';
 import { ItemList, ItemGroup, Item, StatusDot } from '@/ui';
 import { useAllMachines, useSupersededMachineIds } from '@/sync/storage';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { useTranslation } from '@/i18n/useTranslation';
 
-function Page({ children }: { children: ReactNode }) {
-    return (
-        <div className="set-scroll" style={{ height: '100dvh' }}>
-            <div className="set-page">{children}</div>
-        </div>
-    );
-}
 
-function Header({ title }: { title: string }) {
-    return (
-        <div className="set-header">
-            <BackButton />
-            <div className="set-header__titles">
-                <span className="set-header__title">{title}</span>
-            </div>
-        </div>
-    );
-}
 
 export function MachinesSettings() {
     const navigate = useNavigate();

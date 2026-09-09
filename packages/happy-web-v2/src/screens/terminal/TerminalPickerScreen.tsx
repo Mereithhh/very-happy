@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { TerminalSquare, Plus } from 'lucide-react';
-import { BackButton } from '@/app/BackButton';
+import { SettingsPage, SettingsHeader } from '@/screens/settings/SettingsLayout';
 import { useAllMachines } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { terminalMachineState } from '@/utils/machineUtils';
@@ -26,14 +26,8 @@ export function TerminalPickerScreen() {
   };
 
   return (
-    <div className="picker">
-      {/* header is just the back row now — shown on every width, like every
-          other screen's back control (it hides itself at the root anyway) */}
-      <header className="term-header">
-        <BackButton />
-      </header>
-      <div style={{ padding: 'var(--sp-6)', overflowY: 'auto', flex: 1 }}>
-        <h2 style={{ marginTop: 0 }}>{t('newSessionModal.terminalTitle')}</h2>
+    <SettingsPage>
+      <SettingsHeader title={t('newSessionModal.terminalTitle')} />
         {machines.length === 0 ? (
           <EmptyState
             compact
@@ -82,7 +76,6 @@ export function TerminalPickerScreen() {
             )}
           </ItemList>
         )}
-      </div>
-    </div>
+    </SettingsPage>
   );
 }
