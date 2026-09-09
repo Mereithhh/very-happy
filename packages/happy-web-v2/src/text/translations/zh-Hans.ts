@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10d: {
+                title: '更轻盈的对话气泡',
+                summary: '用户消息更清爽，长内容与手机操作更自然。',
+                bubbles: '柔和底色与完整圆角替代气泡的边框、阴影和尖角；复制、引用与编辑仍在消息下方。',
+                mobile: '长文本自动断行，展开渐隐适配明暗主题；手机展开按钮更好点按，编辑输入保持舒适字号。',
+            },
             sep10c: {
                 title: '团队启动更可靠', summary: '启动状态更清楚，描述目标即可开始协作。',
                 start: 'CLI 0.2.132 会在执行电脑解析主目录路径，让保留的团队启动请求继续安全执行。',

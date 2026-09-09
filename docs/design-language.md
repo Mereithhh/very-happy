@@ -31,6 +31,7 @@
 - 主 CTA、提交与发送使用 `--text` 填充和 `--bg-0` 前景；hover 只改变中性色阶。
 - `--accent*` 只用于 connected、running、thinking、active/selected、focus 和实时拖放落点。
 - 最大思考强度为 Owner 明确指定的彩色进度条例外：仅最高有效档的轨道填充使用 `--effort-max-gradient`，档位文字保持高反差，不把 off/default 显示成最大；不复用 live accent、不增加持续动画。
+- 用户消息使用独立 `--message-user-bg/text`：亮色为低饱和灰蓝、暗色为深灰蓝，表达作者身份而非实时状态。气泡右对齐、四角一致（桌面 20px / 窄屏 18px），无描边与阴影；宽度随内容收缩，长文本断行，展开渐隐匹配同一底色。操作留在气泡下方，触屏展开按钮至少 44px。
 - warn 只表达对应状态；组件 CSS/TSX 禁止裸色值。
 - `--danger` = 错误与破坏性操作，**外加一处经审的扩展**：侧边栏「未读」徽点
   （`.sb-row-signal--unread`）。理由是 accent 已被 live 占死、warn 已被
