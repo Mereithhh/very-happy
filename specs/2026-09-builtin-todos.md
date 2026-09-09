@@ -61,3 +61,11 @@ Owner 在上线后点击“让 AI 帮我接入外部来源”遇到应用404。H
 修复：按部署BASE将skills文档路径加入navigateFallbackDenylist，交给服务器正常提供文档，保留普通SPA路由和既有API排除。三项规则回归覆盖默认/自定义base、query与普通路由；`scripts/dev/check-skill-navigation.mjs <before-dist> <after-dist> <evidence.json>` 使用两个真实构建、保留旧hashed assets，验证旧SW拦截、新controllerchange/activated/entry，以及新标签页点击实际获取Markdown。发布前后验收必须测试受控浏览器导航，不能再以HTTP200替代。
 
 本地验收：Web 278文件/2630测试、tsc零错误、Vite构建通过。双构建Chromium确认旧导航receivedShell=true，新控制器接管后receivedShell=false、receivedSkill=true，entry从skillbefore切到skillafter；脚本先结清旧页面自身的update，避免测试更新请求复用旧构建的在途检查。
+
+
+### B-400 发布验收（2026-09-09）
+
+- [PR #291](https://github.com/Mereithhh/very-happy/pull/291) / `65e795cecf0fd5a1d19ad7de0e03e5b90cefed56`；PR全部门禁与同SHA的[main Quality Gates](https://github.com/Mereithhh/very-happy/actions/runs/34302156744)通过。[部署34302487523](https://github.com/Mereithhh/very-happy/actions/runs/34302487523)成功。
+- 最终state.env：blue / generation 93，完整镜像`sha256:688a2a46daef2496bf545dd3f14a7ed209246c985f83cb646db475648dfe672c`。回滚green / `6ebc080c02617f3e22a0c76a237778cb2773da43` / `sha256:092a917fc645ed7af82c3a41b9e42748103e9007cd783de2aec342bb5efd1c93`；后续操作仍读取实时state，不使用历史槽位快照。
+- 生产Chromium保留6ebc080c已安装SW，原生target=_blank点击skill路径复现shell=true、skill=false；同一browser context跨发布观察到controllerchange，实际entry/CSS切换65e795ce、controller为activated，再点击得到shell=false、skill=true。此证据验证真正的navigate请求，不以curl的200代替。另在用户登录Chrome中实际点击Todo入口复现过原404；其发布后补验因浏览器调试连接断开未完成，不冒充通过，发布后导航结论以完整生产Chromium探针为据。
+- health正常，check-shipped遍历44份资产并命中新Changelog id，无缺失；公开skill文件保持原内容。CLI、DB和私人provider均无需更新，无任务数据操作。
