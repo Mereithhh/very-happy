@@ -42,7 +42,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
     };
     const operation = (t: TeamTask, bot: TeamBot, type: 'spawn' | 'stop', attemptId = t.currentAttemptId) => {
         requireTeam(s.operations.length < 1000, 'team_operation_limit', 429);
-        const op: TeamOperation = { id: id(), teamId: s.id, machineId: s.machineId, taskId: t.id, botId: bot.id, attemptId, generation: bot.generation, type, status: 'pending', claimId: null, claimedAt: null, error: null, sessionId: bot.sessionId, directory: bot.directory, assistant: bot.assistant, prompt: type === 'spawn' ? `Task ${t.id}\n${t.goal}\nAcceptance:\n${t.acceptance.join('\n')}` : '', createdAt: now };
+        const op: TeamOperation = { permissionMode: s.permissionMode === 'bypassPermissions' ? 'bypassPermissions' : 'default', id: id(), teamId: s.id, machineId: s.machineId, taskId: t.id, botId: bot.id, attemptId, generation: bot.generation, type, status: 'pending', claimId: null, claimedAt: null, error: null, sessionId: bot.sessionId, directory: bot.directory, assistant: bot.assistant, prompt: type === 'spawn' ? `Task ${t.id}\n${t.goal}\nAcceptance:\n${t.acceptance.join('\n')}` : '', createdAt: now };
         s.operations.push(op);
         return op;
     };
@@ -61,6 +61,11 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
     let taskId: string | undefined;
     let scheduleId: string | undefined;
     switch (action.type) {
+        case 'set-permission-mode': {
+            owner();
+            s.permissionMode = action.permissionMode;
+            break;
+        }
         case 'schedule-create':
         case 'schedule-pause':
         case 'schedule-resume':

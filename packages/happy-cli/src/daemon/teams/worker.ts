@@ -83,7 +83,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     writePrivateFileSync(scopeFile, JSON.stringify({ serverUrl: server, scopeToken: credential.token, teamId: op.teamId, botId: op.botId, taskId: op.taskId, attemptId: op.attemptId }));
                     receipt = { ...receipt, ...resource, scopeFile, phase: 'spawning' };
                     writeReceipt(home, receipt); // BEFORE spawn; uncertainty never authorizes a second spawn
-                    const spawned = await deps.spawn({ directory: resource.directory, agent: op.assistant === 'pi-acp' ? 'pi' : op.assistant, permissionMode: 'default', spawnedBy: 'teams', environmentVariables: { VH_TEAM_SCOPE_FILE: scopeFile, VH_TEAM_OPERATION_ID: op.id } });
+                    const spawned = await deps.spawn({ directory: resource.directory, agent: op.assistant === 'pi-acp' ? 'pi' : op.assistant, permissionMode: op.permissionMode === 'bypassPermissions' ? 'bypassPermissions' : 'default', spawnedBy: 'teams', environmentVariables: { VH_TEAM_SCOPE_FILE: scopeFile, VH_TEAM_OPERATION_ID: op.id } });
                     if (spawned.type !== 'success') throw new Error(spawned.type === 'error' ? spawned.errorMessage : 'Directory approval required');
                     receipt = { ...receipt, sessionId: spawned.sessionId, phase: 'spawned' };
                     writeReceipt(home, receipt);
