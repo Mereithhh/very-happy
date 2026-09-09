@@ -12,7 +12,7 @@ describe('conversation disclosure presentation (B-209)', () => {
 
     expect(disclosureRule).toContain('box-shadow: inset 0 -2px 0 var(--accent)');
     expect(disclosureRule.slice(0, disclosureRule.indexOf('}'))).not.toContain('accent-glow');
-    expect(composerRule).toContain('box-shadow: inset 0 -2px 0 var(--accent)');
+    expect(composerRule.slice(0, composerRule.indexOf('}'))).toContain('outline: 1px solid var(--line-2)');
     expect(composerRule.slice(0, composerRule.indexOf('}'))).not.toContain('accent-glow');
   });
 

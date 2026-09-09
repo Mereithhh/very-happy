@@ -17,6 +17,18 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    relayBadge: {
+        route: "数据通道",
+        state: "连接状态",
+        regional: "区域中继",
+        control: "主服务通道",
+        connected: "已连接",
+        connecting: "正在连接区域中继",
+        fallback: "使用主服务通道",
+        region: "区域",
+        latency: "浏览器往返延迟",
+        latencyHint: "延迟仅反映浏览器到区域中继，不代表模型响应速度。",
+    },
     teams: {
         executionMode: "执行模式",
         approvalDefault: "按需审批",
@@ -1295,14 +1307,18 @@ export const zhHans: TranslationStructure = {
             effort: '强度',
         },
         permissionMode: {
+            autoRunDescription: "自动执行工具，不逐次请求审批；仍受宿主策略限制。",
+            sandboxDescription: "在工作区沙箱内自动执行；需要越界访问时请求审批。",
+            fullAccessDescription: "跳过工具审批并关闭 Codex 沙箱，可读写工作区外的文件。",
+
             title: '权限模式',
             default: '默认',
             acceptEdits: '接受编辑',
             plan: '计划模式',
             dontAsk: '不再询问',
-            bypassPermissions: 'Yolo 模式',
+            bypassPermissions: '自动执行',
             badgeAcceptAllEdits: '接受所有编辑',
-            badgeBypassAllPermissions: '绕过所有权限',
+            badgeBypassAllPermissions: '自动执行',
             badgePlanMode: '计划模式',
         },
         agent: {
@@ -1321,12 +1337,12 @@ export const zhHans: TranslationStructure = {
         codexPermissionMode: {
             title: 'CODEX 权限模式',
             default: 'CLI 设置',
-            readOnly: 'Read Only Mode',
-            safeYolo: 'Safe YOLO',
-            yolo: 'YOLO',
-            badgeReadOnly: 'Read Only Mode',
-            badgeSafeYolo: 'Safe YOLO',
-            badgeYolo: 'YOLO',
+            readOnly: '只读',
+            safeYolo: '沙箱内自动执行',
+            yolo: '自动执行',
+            badgeReadOnly: '只读',
+            badgeSafeYolo: '沙箱内自动执行',
+            badgeYolo: '自动执行',
         },
         codexModel: {
             title: 'CODEX MODEL',
@@ -1342,10 +1358,10 @@ export const zhHans: TranslationStructure = {
             title: 'GEMINI 权限模式',
             default: '默认',
             autoEdit: '自动编辑',
-            yolo: 'YOLO',
+            yolo: '自动执行',
             plan: '计划',
             badgeAutoEdit: '自动编辑',
-            badgeYolo: 'YOLO',
+            badgeYolo: '自动执行',
             badgePlan: '计划',
         },
         context: {
@@ -1764,6 +1780,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09i: {
+                title: "更舒服的对话阅读与输入",
+                summary: "调整正文留白、命令展示和输入框，让内容与操作更清楚。",
+                reading: "正文与列表间距更舒展，命令工具调用支持语法高亮，输入框使用独立底部工具栏。",
+                controls: "普通对话与终端共用 relay 标签，悬停、聚焦或点击查看详情；YOLO 改称自动执行，并解释审批和沙箱的区别。",
+            },
             sep09y: {
                 title: '更简洁的输入框',
                 summary: '模型与思考强度收进同一个菜单。',

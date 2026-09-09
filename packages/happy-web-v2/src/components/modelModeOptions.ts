@@ -64,7 +64,7 @@ export function getClaudePermissionModes(translate: Translate): PermissionMode[]
         // `dontAsk` deliberately absent (B-262): no released CLI accepts it —
         // its MessageMetaSchema enum rejects the whole message silently.
         { key: 'acceptEdits', name: translate('agentInput.permissionMode.acceptEdits'), description: null },
-        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: translate('agentInput.permissionMode.autoRunDescription') },
     ];
 }
 
@@ -72,8 +72,8 @@ export function getCodexPermissionModes(translate: Translate): PermissionMode[] 
     return [
         { key: 'default', name: translate('agentInput.codexPermissionMode.default'), description: null },
         { key: 'read-only', name: translate('agentInput.codexPermissionMode.readOnly'), description: null },
-        { key: 'safe-yolo', name: translate('agentInput.codexPermissionMode.safeYolo'), description: null },
-        { key: 'yolo', name: translate('agentInput.codexPermissionMode.yolo'), description: null },
+        { key: 'safe-yolo', name: translate('agentInput.codexPermissionMode.safeYolo'), description: translate('agentInput.permissionMode.sandboxDescription') },
+        { key: 'yolo', name: translate('agentInput.codexPermissionMode.yolo'), description: translate('agentInput.permissionMode.fullAccessDescription') },
     ];
 }
 
@@ -81,7 +81,7 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
     return [
         { key: 'default', name: translate('agentInput.geminiPermissionMode.default'), description: null },
         { key: 'auto_edit', name: translate('agentInput.geminiPermissionMode.autoEdit'), description: null },
-        { key: 'yolo', name: translate('agentInput.geminiPermissionMode.yolo'), description: null },
+        { key: 'yolo', name: translate('agentInput.geminiPermissionMode.yolo'), description: translate('agentInput.permissionMode.autoRunDescription') },
         { key: 'plan', name: translate('agentInput.geminiPermissionMode.plan'), description: null },
     ];
 }
@@ -134,7 +134,7 @@ export function getGeminiModelModes(): ModelMode[] {
 export function getOpenClawPermissionModes(translate: Translate): PermissionMode[] {
     return [
         { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
-        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: translate('agentInput.permissionMode.autoRunDescription') },
     ];
 }
 
@@ -148,7 +148,7 @@ export function getOpenClawPermissionModes(translate: Translate): PermissionMode
 export function getPiPermissionModes(translate: Translate): PermissionMode[] {
     return [
         { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
-        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: translate('agentInput.permissionMode.autoRunDescription') },
     ];
 }
 
@@ -237,7 +237,11 @@ export function getAvailablePermissionModes(
 
     const metadataModes = mapMetadataOptions(metadata?.operatingModes);
     if (metadataModes.length > 0) {
-        return hackModes(metadataModes);
+        const labels = flavor === 'gemini' ? getGeminiPermissionModes(translate) : [];
+        return hackModes(metadataModes.map((option) => {
+            const known = labels.find((label) => label.key === option.key);
+            return known ? { ...option, name: known.name, description: known.description ?? option.description } : option;
+        }));
     }
 
     return hackModes(getHardcodedPermissionModes(flavor, translate));

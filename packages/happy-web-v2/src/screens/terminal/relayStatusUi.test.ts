@@ -7,10 +7,9 @@ describe('terminal relay status UI', () => {
     const socket = readFileSync(new URL('../../sync/apiSocket.ts', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./terminal.css', import.meta.url), 'utf8');
     expect(screen).toContain('apiSocket.onMachineRelayStatus');
-    expect(screen).toContain('browser RTT');
-    expect(screen).toContain('formatRelayRegion(relayStatus.region)');
-    expect(screen).not.toContain('`${relayStatus.relayId}');
-    expect(screen).toContain("'CONTROL'");
+    const chat = readFileSync(new URL('../session/ChatHeader.tsx', import.meta.url), 'utf8');
+    expect(screen).toContain('<RelayBadge status={relayStatus} />');
+    expect(chat).toContain('<RelayBadge status={relayStatus} />');
     expect(socket).toContain("transport: 'regional'");
     expect(socket).toContain("transport: 'legacy'");
     expect(styles).toContain('.term-relay.is-connected');

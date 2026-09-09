@@ -1,7 +1,7 @@
 .cmd {
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
-  line-height: 1.5;
+  font-size: var(--fs-13);
+  line-height: 1.65;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-0);
@@ -11,14 +11,14 @@
 .cmd-line {
   display: flex;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) 44px var(--sp-3) var(--sp-4);
   background: var(--bg-1);
   border-bottom: 1px solid var(--line);
   overflow-x: auto;
   overscroll-behavior-x: contain;
 }
 .cmd-prompt {
-  color: var(--accent-2);
+  color: var(--text-faint);
   flex: none;
   user-select: none;
   position: sticky;
@@ -38,7 +38,7 @@
 }
 .cmd-stream {
   margin: 0;
-  padding: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) 44px var(--sp-3) var(--sp-4);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--text-dim);
@@ -46,4 +46,13 @@
 }
 .cmd-stream--err {
   color: var(--danger);
+}
+
+/* Shiki escapes command text; syntax colors follow the existing code theme. */
+.cmd-highlight pre.shiki { margin: 0; padding: 0; background: transparent !important; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmd-highlight code { font: inherit; }
+.cmd-highlight span { color: var(--shiki-dark); }
+:root[data-theme='light'] .cmd-highlight span { color: var(--shiki-light); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .cmd-highlight span { color: var(--shiki-light); }
 }

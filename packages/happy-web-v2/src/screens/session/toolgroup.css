@@ -7,13 +7,13 @@
 }
 .tg-spine {
   flex: none;
-  width: 2px;
+  width: 1px;
   border-radius: var(--r-pill);
   background: var(--line-2);
 }
 .tg--running .tg-spine {
   background: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow);
+
 }
 .tg--error .tg-spine {
   background: var(--danger);
@@ -161,6 +161,8 @@
   flex: 1;
 }
 .tg-tool-label {
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
   flex: none;
   color: var(--text);
   font-weight: 600;

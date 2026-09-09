@@ -15,6 +15,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-09-chat-reading-polish',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep09i.title',
+    summaryKey: 'changelog.releases.sep09i.summary',
+    itemKeys: ['changelog.releases.sep09i.reading', 'changelog.releases.sep09i.controls'],
+  },
+  {
     id: '2026-09-09-compact-model-effort',
     date: '2026-09-09',
     buildVersion: __APP_VERSION__,

@@ -94,8 +94,8 @@
 
 /* agent text — borderless */
 .msg-agent-text {
-  font-size: var(--fs-14);
-  line-height: 1.6;
+  font-size: var(--fs-16);
+  line-height: 1.7;
   color: var(--text);
   max-width: 100%;
   min-width: 0;

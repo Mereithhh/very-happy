@@ -1,6 +1,9 @@
+import { RelayBadge } from '@/components/RelayBadge';
+import { CommandView } from '@/screens/session/CommandView';
+import { Markdown } from '@/screens/session/Markdown';
 import { MessageView } from '@/screens/session/MessageView';
 /** DEV-only visual harness for the real structured-chat tool presentation. */
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import type { NormalizedMessage } from '@/sync/typesRaw';
 import type { Session } from '@/sync/storageTypes';
@@ -34,6 +37,15 @@ function message(id: string, name: string, state: ToolCallMessage['tool']['state
 
 export function MobileChatHarness() {
   const toast = useToast();
+  const [theme, setTheme] = useState('light');
+  useEffect(() => {
+    const previous = document.documentElement.dataset.theme;
+    document.documentElement.dataset.theme = theme;
+    return () => {
+      if (previous) document.documentElement.dataset.theme = previous;
+      else delete document.documentElement.dataset.theme;
+    };
+  }, [theme]);
   useEffect(() => {
     const now = Date.now();
     storage.getState().applySessions([{
@@ -83,6 +95,12 @@ export function MobileChatHarness() {
   return (
     <main style={{ minHeight: '100dvh', background: 'var(--bg-0)', color: 'var(--text)', padding: 16 }}>
       <div style={{ width: '100%', maxWidth: 820, margin: '0 auto', display: 'grid', gap: 20 }}>
+        <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>Theme: {theme}</button>
+        <section data-testid="reading-polish" style={{ display: 'grid', gap: 24 }}>
+          <div style={{ display: 'flex', gap: 8 }}><RelayBadge status={{ transport: 'regional', state: 'connected', region: 'US West', relayId: 'example-us-west', rttMs: 128 }} /><RelayBadge status={{ transport: 'legacy', state: 'fallback' }} /></div>
+          <div className="msg-agent-text"><Markdown text={'这次更新让对话更容易阅读，也让工具执行过程更清楚。\n\n## 清楚的信息层级\n\n段落之间留出呼吸空间，`pnpm test` 保留代码的辨识度。\n\n- 统一正文与列表的阅读节奏。\n- 保留长命令和复杂内容的完整性。\n  - 嵌套列表有自己的间距。\n\n### 下一步\n\n检查两种主题以及手机上的输入体验。'} /></div>
+          <CommandView command={'NODE_ENV=test pnpm test --filter "chat" && echo "完成"'} stdout={'Tests  48 passed\nDuration  1.2s'} />
+        </section>
         <section data-testid="message-actions" style={{ display: 'grid', gap: 16 }}>
           <MessageView sessionId="mobile-chat-permission" showMeta={false} message={{ kind: 'user-text', id: 'edit-point', localId: null, createdAt: Date.now(), seq: 1, claudeUuid: '22222222-2222-4222-8222-222222222222', text: '请检查 @example 的实现，然后解释这一处为什么要这样写。' }} />
           <MessageView sessionId="mobile-chat-permission" showMeta={false} message={{ kind: 'agent-text', id: 'answer', localId: null, createdAt: Date.now(), seq: 2, text: '可以先检查数据流，再验证结果。\n\n这里的 `@example` 应保留原样。' }} />

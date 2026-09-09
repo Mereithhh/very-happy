@@ -67,7 +67,7 @@ describe('Settings → Agents (B-370)', () => {
         const groups = [...html.matchAll(/<div class="vh-itemgroup__title eyebrow">([^<]+)<\/div>/g)].map((m) => m[1]);
         expect(groups).toEqual(['New chat creation', 'claude', 'codex', 'gemini', 'openclaw', 'pi']);
         const piGroup = html.slice(html.indexOf('eyebrow">pi<'));
-        expect(piGroup).toContain('<span class="vh-item__title">Permission</span></span><span class="vh-item__right"><span class="set-value">yolo (default)</span>');
+        expect(piGroup).toContain('<span class="vh-item__title">Permission</span></span><span class="vh-item__right"><span class="set-value">Auto-run (default)</span>');
         expect(piGroup).toContain('<span class="vh-item__title">Model</span></span><span class="vh-item__right"><span class="set-value">default model (default)</span>');
         expect(piGroup).not.toContain('<span class="vh-item__title">Effort</span>');
     });
