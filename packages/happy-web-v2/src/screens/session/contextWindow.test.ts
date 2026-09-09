@@ -36,6 +36,7 @@ describe('contextWindowFor', () => {
     });
 
     it('模型未知时返回 null 而不是猜一个分母', () => {
+        for (const model of ['gpt-5-codex', 'custom-model', 'qwen-code']) expect(contextWindowFor(model)).toBeNull();
         expect(contextWindowFor(null)).toBeNull();
         expect(contextWindowFor(undefined)).toBeNull();
         expect(contextWindowFor('')).toBeNull();

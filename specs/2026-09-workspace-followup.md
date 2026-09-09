@@ -10,7 +10,7 @@
 
 ## 实现约定
 
-pi extension 在 session/model/turn/compaction 事件读取 getContextUsage，通过本会话独立随机凭据的 loopback telemetry URL 上报。非模型工具，不注册为 MCP tool；限制 JSON 大小、数值、来源。CLI 写 agentState.contextUsage（source、tokens nullable、contextWindow、updatedAt）；Web 对 pi 只用此字段，不借用累计计费或旧消息用量；缺失/压缩未知显示 —，估算显示 ≈。旧 CLI 没有字段时诚实缺省。其他 backend 不改计费语义。
+pi extension 在 session/model/turn/compaction 事件读取 getContextUsage，通过本会话独立随机凭据的 loopback telemetry URL 上报。非模型工具，不注册为 MCP tool；限制 JSON 大小、数值、来源。CLI 写 agentState.contextUsage（source、tokens nullable、contextWindow、updatedAt）；Web 对 pi 只用此字段，不借用累计计费或旧消息用量；缺失/压缩未知显示 —，估算显示 ≈。旧 CLI 没有字段时诚实缺省。其他 backend 不改计费语义；非 Claude 且没有明确容量标记的模型不再猜 200k 分母，只展示已知 token 数。
 
 归档是 owner 显式操作：取消未完成任务及未来调度，阻止新任务，按既有 managed 标记安排停止；不停止用户自己接入的 session，不删除工作目录。已认领 spawn 的晚到完成仍可入库并生成 stop。归档团队从普通列表隐藏，但 daemon 仍能读取、认领/完成/失败/人工解决原有操作并回报 session-event。详情保留清理状态和恢复操作，归档不等于清理成功。
 

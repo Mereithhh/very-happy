@@ -29,7 +29,9 @@ export function contextWindowFor(model: string | null | undefined): number | nul
     if (!model || typeof model !== 'string') return null;
     const id = model.trim().toLowerCase();
     if (!id) return null;
-    return /(\[1m\]|[-_:]1m\b|[-_:]1m$)/.test(id) ? LONG_CONTEXT_WINDOW : DEFAULT_CONTEXT_WINDOW;
+    if (/(\[1m\]|[-_:]1m\b|[-_:]1m$)/.test(id)) return LONG_CONTEXT_WINDOW;
+    // A non-Claude model ID does not imply a 200k window. Pi uses runtime capacity.
+    return /^(claude[-_:]|(?:opus|sonnet|haiku)[-_:])/.test(id) ? DEFAULT_CONTEXT_WINDOW : null;
 }
 
 /**

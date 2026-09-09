@@ -1833,7 +1833,7 @@ export const en = {
                 layout: "Processing status aligns with the composer. Search moves to the sidebar header; the new-session menu opens directly below its button.",
                 files: "Files now opens the directory browser, with expandable folders, filtering of loaded files and a side-by-side preview when space allows.",
                 teams: "Archive directly from the team header: unfinished tasks and schedules are cancelled, managed sessions stop and working directories are retained. Archival cleanup requires the updated CLI. The lead-chat action is more compact.",
-                context: "Pi context usage uses the runtime's current estimate and actual model capacity. Unreported or post-compaction usage shows —. Start a new pi session after updating the CLI to enable reporting.",
+                context: "Pi context usage uses the runtime's current estimate and actual model capacity. Unreported or post-compaction usage shows —. Other unknown models no longer assume a 200k window. Start a new pi session after updating the CLI to enable reporting.",
             },
 
             sep10: {
