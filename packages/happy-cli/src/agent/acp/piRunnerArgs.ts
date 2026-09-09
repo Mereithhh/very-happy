@@ -1,3 +1,4 @@
+import { sanitizeSpawnModel } from '@/daemon/spawnModel';
 /**
  * Argument parsing for `very-happy pi` (the pi runner).
  *
@@ -18,6 +19,7 @@
 import { normalizeAcpPermissionMode, type AcpPermissionMode } from './sessionModeFile';
 
 export type PiRunnerArgs = {
+  model?: string;
   startedBy?: 'daemon' | 'terminal';
   verbose: boolean;
   /** Sanitized `--permission-mode`; absent when not given or not in the allowlist. */
@@ -57,6 +59,12 @@ export function parsePiRunnerArgs(args: readonly string[]): PiRunnerArgs {
     }
     if (arg === '--verbose') {
       parsed.verbose = true;
+      continue;
+    }
+    if (arg === '--model') {
+      const model = sanitizeSpawnModel(args[++i]);
+      if (!model) throw new Error('Invalid --model identifier');
+      parsed.model = model;
       continue;
     }
     if (arg === '--permission-mode') {

@@ -201,6 +201,22 @@ export async function claudeRemote(opts: {
         options: sdkOptions,
     });
 
+    // Discover once before handing the Query to approval callbacks. Never issue
+    // nested control requests from inside a permission callback.
+    let models: ClaudeSdkMetadata['models'];
+    if (typeof response.supportedModels === 'function') {
+        try {
+            models = (await response.supportedModels()).map((model) => ({
+                code: model.value, value: model.displayName, description: model.description,
+                resolvedModel: model.resolvedModel,
+                ...(model.supportsEffort === false ? { reasoningEfforts: [] }
+                    : model.supportedEffortLevels ? { reasoningEfforts: model.supportedEffortLevels } : {}),
+            }));
+        } catch (error) {
+            logger.debug('[claudeRemote] Model capability discovery unavailable');
+        }
+    }
+
     // Expose query control methods to permission handler
     if (opts.onQueryReady) {
         opts.onQueryReady({
@@ -295,6 +311,7 @@ export async function claudeRemote(opts: {
                 // Emit SDK metadata (tools, slash commands) from init message
                 if (opts.onSDKMetadata) {
                     opts.onSDKMetadata({
+                        models,
                         tools: systemInit.tools,
                         slashCommands: systemInit.slash_commands,
                         mcpServers: systemInit.mcp_servers?.map(s => ({ name: s.name, status: s.status })),

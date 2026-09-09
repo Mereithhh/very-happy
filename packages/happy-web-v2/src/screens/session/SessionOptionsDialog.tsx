@@ -1,3 +1,4 @@
+import { EffortSlider } from '@/components/EffortSlider';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import type { ModeOption } from '@/components/modelModeOptions';
@@ -92,7 +93,7 @@ export function SessionOptionsDialog({
                     <div className="so-fields">
                         <OptionField {...model} />
                         <OptionField {...permission} />
-                        <OptionField {...effort} />
+                        <EffortSlider {...effort} />
                     </div>
                 </Dialog.Content>
             </Dialog.Portal>

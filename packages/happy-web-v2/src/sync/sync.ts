@@ -1,3 +1,4 @@
+import { supportsSessionAttachments } from './attachmentCapabilities';
 import Constants from 'expo-constants';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
 import { attachResumeListeners } from '@/sync/resumeSync';
@@ -768,12 +769,8 @@ class Sync {
             ? undefined
             : queuedAtForSend(agentLive, source);
 
-        // File attachments are wired into the Claude pipeline only; Codex /
-        // Gemini / OpenClaw runners read message.content.text and ignore
-        // file events, so dropping attachments silently would leave the user
-        // wondering why the image was skipped. Warn and send text only.
-        const flavor = session.metadata?.flavor;
-        const supportsAttachments = !flavor || flavor === 'claude';
+        // New runners advertise attachment consumption; old wrappers remain gated.
+        const supportsAttachments = supportsSessionAttachments(session.metadata);
         const effectiveAttachments = supportsAttachments ? attachments : undefined;
 
         if (attachments && attachments.length > 0 && !supportsAttachments) {

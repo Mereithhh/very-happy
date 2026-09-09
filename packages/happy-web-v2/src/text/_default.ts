@@ -444,6 +444,7 @@ export const en = {
     },
 
     imageUpload: {
+        visionModelHint: 'Image understanding requires a model that supports images.',
         permissionTitle: 'Photo Library Access',
         permissionMessage: 'Allow access to your photo library to attach images to messages.',
         limitTitle: 'Image Limit Reached',

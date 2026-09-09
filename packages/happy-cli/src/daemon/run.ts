@@ -1,3 +1,4 @@
+import { sanitizeSpawnModel } from './spawnModel';
 import fs from 'fs/promises';
 import os from 'os';
 import * as tmp from 'tmp';
@@ -416,6 +417,7 @@ export async function startDaemon(): Promise<void> {
       // all three spawn paths (assistant re-attach, tmux, plain) agree; an
       // invalid value is ignored (spawn proceeds without the flag) — old webs
       // never send the field, so behavior is unchanged for them.
+      const spawnModel = options.agent === 'pi' ? sanitizeSpawnModel(options.model) : null;
       const spawnPermissionMode = sanitizeSpawnPermissionMode(options.permissionMode);
       if (options.permissionMode !== undefined && spawnPermissionMode === null) {
         logger.warn('[DAEMON RUN] Ignoring invalid permissionMode in spawn request');
@@ -755,7 +757,8 @@ export async function startDaemon(): Promise<void> {
           const permissionModeFragment = spawnPermissionMode
             ? ` --permission-mode ${shellescape(spawnPermissionMode)}`
             : '';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}${permissionModeFragment}`;
+          const modelFragment = spawnModel ? ` --model ${shellescape(spawnModel)}` : '';
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}${permissionModeFragment}${modelFragment}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -880,6 +883,7 @@ export async function startDaemon(): Promise<void> {
             args.push('--resume', options.resumeCodexThreadId);
           }
 
+          if (spawnModel) args.push('--model', spawnModel);
           if (spawnPermissionMode) {
             args.push('--permission-mode', spawnPermissionMode);
           }

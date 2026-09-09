@@ -15,7 +15,7 @@ describe('mobile composer session options', () => {
         expect(dialogSource).toContain('<Dialog.Root');
         expect(dialogSource).toContain('<OptionField {...model} />');
         expect(dialogSource).toContain('<OptionField {...permission} />');
-        expect(dialogSource).toContain('<OptionField {...effort} />');
+        expect(dialogSource).toContain('<EffortSlider {...effort} />');
         expect(dialogStyles).toMatch(/@media \(max-width: 600px\)[\s\S]*\.so-dialog\s*{[^}]*bottom:\s*0;/);
     });
 });

@@ -1,3 +1,6 @@
+import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
+import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
+import type { PendingAttachment } from '@/utils/MessageQueue2';
 import { render } from "ink";
 import { claimSessionOrExit } from '@/utils/sessionLock';
 import React from "react";
@@ -144,6 +147,8 @@ export async function runCodex(opts: {
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     });
 
+    metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
+
     // Check for session reconnection env vars (set by daemon for resume-in-place)
     const reconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID;
     const reconnectKeyBase64 = process.env.HAPPY_RECONNECT_ENCRYPTION_KEY;
@@ -288,81 +293,93 @@ export async function runCodex(opts: {
         'yolo',
     ];
 
+    let discoveredModels: Awaited<ReturnType<CodexAppServerClient['listModels']>> = [];
     const VALID_REMOTE_EFFORTS: readonly ReasoningEffort[] = [
-        'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
+        'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max',
     ];
 
+    registerAgentAttachmentDownloads(session);
+    let userMessageDelivery = Promise.resolve();
     session.onUserMessage((message) => {
-        // Resolve permission mode (validate against Codex-native modes)
-        let messagePermissionMode = currentPermissionMode;
-        if (message.meta?.permissionMode) {
-            const incoming = message.meta.permissionMode as PermissionMode;
-            if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
-                messagePermissionMode = incoming;
-                currentPermissionMode = messagePermissionMode;
-                logger.debug('[Codex] Valid permission mode override applied');
+        // Claim synchronously, then preserve message order while downloads finish.
+        const downloads = session.drainAttachmentsForUserMessage();
+        userMessageDelivery = userMessageDelivery.then(async () => {
+            const attachments = await downloads;
+            // Resolve permission mode (validate against Codex-native modes)
+            let messagePermissionMode = currentPermissionMode;
+            if (message.meta?.permissionMode) {
+                const incoming = message.meta.permissionMode as PermissionMode;
+                if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
+                    messagePermissionMode = incoming;
+                    currentPermissionMode = messagePermissionMode;
+                    logger.debug('[Codex] Valid permission mode override applied');
+                } else {
+                    logger.debug('[Codex] Ignoring invalid permission mode override', logValueMetadata(message.meta.permissionMode));
+                }
             } else {
-                logger.debug('[Codex] Ignoring invalid permission mode override', logValueMetadata(message.meta.permissionMode));
+                logger.debug('[Codex] User message received without a permission mode override');
             }
-        } else {
-            logger.debug('[Codex] User message received without a permission mode override');
-        }
 
-        // Resolve model; explicit null resets to default (undefined)
-        let messageModel = currentModel;
-        if (message.meta?.hasOwnProperty('model')) {
-            messageModel = message.meta.model || undefined;
-            currentModel = messageModel;
-            logger.debug('[Codex] Model override updated', logValueMetadata(message.meta.model));
-        } else {
-            logger.debug('[Codex] User message received without a model override');
-        }
-
-        // Resolve effort — passed straight to sendTurnAndWait. Validate the
-        // incoming value against ReasoningEffort so a stale/garbage entry on
-        // the wire doesn't poison the per-turn options.
-        let messageEffort = currentEffort;
-        if (message.meta?.hasOwnProperty('effort')) {
-            const incoming = (message.meta as Record<string, unknown>).effort;
-            if (incoming === null || incoming === undefined) {
-                messageEffort = undefined;
-                currentEffort = undefined;
-                logger.debug(`[Codex] Effort reset to default`);
-            } else if (typeof incoming === 'string' && (VALID_REMOTE_EFFORTS as readonly string[]).includes(incoming)) {
-                messageEffort = incoming as ReasoningEffort;
-                currentEffort = messageEffort;
-                logger.debug('[Codex] Valid effort override applied');
+            // Resolve model; explicit null resets to default (undefined)
+            let messageModel = currentModel;
+            if (message.meta?.hasOwnProperty('model')) {
+                messageModel = message.meta.model || undefined;
+                currentModel = messageModel;
+                logger.debug('[Codex] Model override updated', logValueMetadata(message.meta.model));
             } else {
-                logger.debug('[Codex] Ignoring invalid effort override', logValueMetadata(incoming));
+                logger.debug('[Codex] User message received without a model override');
             }
-        } else {
-            logger.debug('[Codex] User message received without an effort override');
-        }
 
-        let messageAppendSystemPrompt = currentAppendSystemPrompt;
-        if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
-            messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined;
-            currentAppendSystemPrompt = messageAppendSystemPrompt;
-            logger.debug('[Codex] Append system prompt override updated', logValueMetadata(message.meta.appendSystemPrompt));
-        } else {
-            logger.debug('[Codex] User message received without an append system prompt override');
-        }
+            // Resolve effort — passed straight to sendTurnAndWait. Validate the
+            // incoming value against ReasoningEffort so a stale/garbage entry on
+            // the wire doesn't poison the per-turn options.
+            let messageEffort = currentEffort;
+            if (message.meta?.hasOwnProperty('effort')) {
+                const incoming = (message.meta as Record<string, unknown>).effort;
+                if (incoming === null || incoming === undefined) {
+                    messageEffort = undefined;
+                    currentEffort = undefined;
+                    logger.debug(`[Codex] Effort reset to default`);
+                } else if (typeof incoming === 'string') {
+                    messageEffort = incoming as ReasoningEffort;
+                    currentEffort = messageEffort;
+                    logger.debug('[Codex] Valid effort override applied');
+                } else {
+                    logger.debug('[Codex] Ignoring invalid effort override', logValueMetadata(incoming));
+                }
+            } else {
+                logger.debug('[Codex] User message received without an effort override');
+            }
 
-        const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
-            appendSystemPrompt: messageAppendSystemPrompt,
-            effort: messageEffort,
-        };
-        const enqueueResult = enqueueCodexUserText({
-            text: message.content.text,
-            mode: enhancedMode,
-            queue: messageQueue,
-            sourceId: message.localKey,
+            let messageAppendSystemPrompt = currentAppendSystemPrompt;
+            if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
+                messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined;
+                currentAppendSystemPrompt = messageAppendSystemPrompt;
+                logger.debug('[Codex] Append system prompt override updated', logValueMetadata(message.meta.appendSystemPrompt));
+            } else {
+                logger.debug('[Codex] User message received without an append system prompt override');
+            }
+
+            const enhancedMode: EnhancedMode = {
+                permissionMode: messagePermissionMode || 'default',
+                model: messageModel,
+                appendSystemPrompt: messageAppendSystemPrompt,
+                effort: messageEffort,
+            };
+            const enqueueResult = enqueueCodexUserText({
+                text: message.content.text,
+                mode: enhancedMode,
+                queue: messageQueue,
+                attachments,
+                sourceId: message.localKey,
+            });
+            if (enqueueResult === 'clear') {
+                logger.debug('[Codex] /clear command pushed to isolated queue');
+            }
+        }).catch((error) => {
+            logger.warn('[Codex] Failed to prepare user attachments', safeCodexErrorMetadata(error));
+            session.sendSessionEvent({ type: 'message', message: 'Could not prepare this message. Please send it again.' });
         });
-        if (enqueueResult === 'clear') {
-            logger.debug('[Codex] /clear command pushed to isolated queue');
-        }
     });
     let thinking = false;
     let currentTurnId: string | null = null;
@@ -739,6 +756,22 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect begin');
         await client.connect();
         logger.debug('[codex]: client.connect done');
+        try {
+            discoveredModels = await client.listModels();
+            if (discoveredModels.length > 0) {
+                session.updateMetadata((metadata) => ({
+                    ...metadata,
+                    models: discoveredModels.map((model) => ({
+                        code: model.model, value: model.displayName, description: model.description,
+                        reasoningEfforts: model.supportedReasoningEfforts.map((option) => option.reasoningEffort),
+                        defaultReasoningEffort: model.defaultReasoningEffort,
+                    })),
+                    defaultModelCode: discoveredModels.find((model) => model.isDefault)?.model,
+                }));
+            }
+        } catch (error) {
+            logger.debug('[Codex] Model discovery unavailable; using compatibility fallback', safeCodexErrorMetadata(error));
+        }
 
         if (opts.resumeThreadId) {
             await resumeExistingThread({
@@ -774,11 +807,11 @@ export async function runCodex(opts: {
             }
         }
 
-        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
+        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = null;
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
-            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
+            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = pending;
             pending = null;
             if (!message) {
                 // Capture the current signal to distinguish idle-abort from queue close
@@ -842,6 +875,14 @@ export async function runCodex(opts: {
                     sandboxManagedByHappy,
                 );
 
+                const selectedModel = discoveredModels.find((model) => message.mode.model
+                    ? model.model === message.mode.model : model.isDefault);
+                const supportedEfforts = selectedModel?.supportedReasoningEfforts.map((option) => option.reasoningEffort)
+                    ?? VALID_REMOTE_EFFORTS;
+                if (message.mode.effort && !supportedEfforts.includes(message.mode.effort)) {
+                    throw new Error(`Reasoning effort "${message.mode.effort}" is not supported by ${message.mode.model ?? 'the default model'}. Choose a supported level.`);
+                }
+
                 // Start thread on first turn (thread persists across mode changes)
                 if (!client.hasActiveThread()) {
                     const startedThread = await client.startThread({
@@ -867,7 +908,11 @@ export async function runCodex(opts: {
                     includeTitleInstruction: first,
                 });
 
-                const result = await client.sendTurnAndWait(turnPrompt, {
+                const staged = message.attachments?.length ? await stageClaudeAttachments(message.attachments, {
+                    happyHomeDir: configuration.happyHomeDir, sessionId: session.sessionId,
+                }) : [];
+                const result = await client.sendTurnAndWait(appendStagedAttachmentsToPrompt(turnPrompt, staged), {
+                    images: staged.filter((file) => ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.mimeType)).map((file) => file.path),
                     model: message.mode.model,
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,

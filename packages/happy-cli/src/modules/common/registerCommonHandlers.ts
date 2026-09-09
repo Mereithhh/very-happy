@@ -124,6 +124,8 @@ interface DifftasticResponse {
 */
 
 export interface SpawnSessionOptions {
+    /** Optional initial model; absent preserves the runner default. */
+    model?: string;
     machineId?: string;
     directory: string;
     sessionId?: string;

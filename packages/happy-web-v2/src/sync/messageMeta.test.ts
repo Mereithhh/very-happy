@@ -99,3 +99,18 @@ describe('pi sessions (flavor acp) resolve against the pi slot (B-370)', () => {
         expect('permissionMode' in resolveMessageModeMeta(session({ flavor: 'acp' }), overrides('default'))).toBe(false);
     });
 });
+
+
+it('clears stale ultra when switching to a model whose catalog does not support it', () => {
+    const meta = resolveMessageModeMeta({ modelMode: 'gpt-5.6-luna', effortLevel: 'ultra', metadata: {
+        flavor: 'codex', models: [{ code: 'gpt-5.6-luna', value: 'Luna', reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultReasoningEffort: 'medium' }],
+    } } as any);
+    expect(meta.effort).toBe('medium');
+});
+
+
+it('does not send the previous pi model thinking level along with a new model', () => {
+    expect(resolveMessageModeMeta({ modelMode: 'small', effortLevel: 'xhigh', metadata: {
+        flavor: 'acp', currentModelCode: 'deep', thoughtLevels: [{ code: 'xhigh', value: 'Extra high' }],
+    } } as any)).toMatchObject({ model: 'small', effort: null });
+});
