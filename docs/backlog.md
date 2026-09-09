@@ -25,7 +25,6 @@
 | B-421 | 团队 pi/Codex 启动关联 ID 持久化缺失 | bug | B-420 生产验收 | done | metadata 工厂丢弃调用方传入的 teamOperationId，影响异常启动后的准确关联；已补字段透传及真实 sessions.json 落盘回归；独立review通过，CLI2059测试及产物通过，计划CLI128。 |
 | B-420 | **可选团队协作首次使用与统一导航**：原子启动负责人、自动加载协作指引、团队成员历史层级与工作语义卡；普通会话不变 | ux | Owner 2026-09-09 | done | 见 `specs/2026-09-teams-first-use.md`；真实 pi→Codex 分派/提交/验收与 390/1280 明暗主题浏览器通过，Web 2669 / CLI 2006 / server 641 / wire 43 测试通过；abb5484f/CLI127上线、双Mac/RPC/生产验收回收通过，异常启动关联补丁见B-421。 |
 | B-410 | 最终 server 镜像依赖与锁文件一致性 | debt | 生产代理配置验收 | todo | 29e63c63 的实际模块 /repo/node_modules/fastify=5.12.3，锁文件与本地为5.8.5；新版拒绝数字trustProxy，已用精确代理白名单修复代理配置。Dockerfile.server 的 pnpm deploy --prod --legacy 阶段需追查并补最终runtime版本门禁，尚未证明漂移发生环节。 |
-| B-428 | Codex/pi UI 附件、模型与精确思考档位，统一强度滑块和最高档动画 | feat | Owner 2026-09-09 | doing | specs/2026-09-agent-input-capabilities.md；核验权限与 yolo，pi 会话选择模型同步为下次启动默认值。 |
 | B-399 | PostgreSQL 迁移使用独立会话连接 | bug | Agent Teams 发布实测 | done | Prisma advisory lock 不得经过 transaction pool；迁移 child env 隔离、生产入口门禁与失败阻断回归。 |
 | B-392 | 终端 @ 字形可辨认性；另核 pi 消息黑字 | bug | Owner 2026-09-09 | doing | 已在 test 终端 jojo@mac-office 确认：DOM 为 U+0040，Maple 默认特殊字形导致误认；启用 cv01 标准符号，保持字体/字号/行高。本地真实 xterm 对比及 mutation 回归通过，已随 629bc399 发布，线上 CSS 已核对。pi 黑字属另一路径，仍未复现，不合并宣称修复。 |
 | B-403 | **CLI 自动更新提示**：正常更新提示空闲后自动完成，隐藏手动命令；区分待推送、未知状态和失败恢复 | ux | Owner 2026-09-09 | done | 依据机器实时自动更新目标，不把推荐版本当作自动推送承诺；失败不受关闭记录影响。Web 2652 测试、tsc/build 与双主题 390/1280 浏览器通过。 |
@@ -174,6 +173,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-428 | Codex/pi UI 附件、模型与精确思考档位，统一强度滑块和最高档动画 | feat | Owner 2026-09-09 | done | PR #308 / 6a5f73dc / CLI 0.2.129 已发布；全包门禁与三平台六格 smoke、生产 SW/资源、两机 daemon/RPC、pi 对话选择→新建默认模型及文件/视觉验收通过。见 specs/2026-09-agent-input-capabilities.md。 |
 | B-411 | 内置待办官方skill、CLI与复制接入入口 | feat | Owner 2026-09-09 | done | 完整skill复制及手动回退；共享KV/CAS与稳定ID、显式version；三runner发现。全包门禁、实际CLI隔离流程及390触屏/明暗浏览器通过。已随abb5484f6 / CLI0.2.127发布，六格smoke全绿，生产资源/完整skill与公开文档核验通过；见 specs/2026-09-todo-agent-skill.md。 |
 | B-400 | PWA 下 Todo skill 链接被首页回退拦截而报404 | bug | Owner 2026-09-09 | done | PR #291 / 65e795ce 已发布；SW排除skills文档。双构建及真实生产旧→新controller接管、新标签页文档导航均通过，已补中英文Changelog及事故记录。 |
 | B-394 | 内置 Todo 开箱即用与可选外部来源 | feat/ux | Owner 2026-09-09 | done | PR #287 / 6ebc080c 已发布；账号KV/CAS，真实生产CRUD/冲突/排序、页面编辑/完成/恢复与外部来源验收通过，临时任务已清理。公开AI接入skill可用，私人provider已适配；见 specs/2026-09-builtin-todos.md 发布证据。 |
