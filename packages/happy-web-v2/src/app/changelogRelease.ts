@@ -15,9 +15,12 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
-    id: '2026-09-09-teams-execution-and-messages', date: '2026-09-09',
-    buildVersion: __APP_VERSION__, cliVersion: '0.2.126',
-    titleKey: 'changelog.releases.sep09e.title', summaryKey: 'changelog.releases.sep09e.summary',
+    id: '2026-09-09-teams-execution-and-messages',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.126',
+    titleKey: 'changelog.releases.sep09e.title',
+    summaryKey: 'changelog.releases.sep09e.summary',
     itemKeys: ['changelog.releases.sep09e.permissions', 'changelog.releases.sep09e.messages'],
   },
   {
