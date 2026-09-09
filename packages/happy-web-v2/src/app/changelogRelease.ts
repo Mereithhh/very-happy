@@ -16,7 +16,10 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
-    id: '2026-09-10-team-start-recovery', date: '2026-09-10', buildVersion: __APP_VERSION__, cliVersion: '0.2.132',
+    id: '2026-09-10-team-start-recovery',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.132',
     titleKey: 'changelog.releases.sep10c.title', summaryKey: 'changelog.releases.sep10c.summary',
     itemKeys: ['changelog.releases.sep10c.start', 'changelog.releases.sep10c.members', 'changelog.releases.sep10c.chat'],
   },
