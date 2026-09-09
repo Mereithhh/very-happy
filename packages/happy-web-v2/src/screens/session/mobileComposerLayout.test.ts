@@ -12,22 +12,26 @@ describe('mobile composer layout contract', () => {
         expect(component).toContain("await deliverQueuedMessage(() => sync.sendMessage(sessionId, item.text, {");
     });
     it('keeps the same two controls visible with touch-sized targets', () => {
-        expect(input).toMatch(/\.ci-composer \.mm-trigger, \.ci-steer \{ min-width: 44px; min-height: 44px; \}/);
+        expect(input).toMatch(/\.ci-composer \.mm-trigger \{ min-width: 44px; min-height: 44px; \}/);
         expect(component).toContain('<ModelEffortMenu');
         expect(component).not.toContain('<SessionOptionsDialog');
     });
 
     it('gives the text its own row and keeps controls in a fixed toolbar below it', () => {
-        expect(component).toContain('<div className="ci-composer-toolbar" data-working={isWorking && canSend}>');
+        expect(component).toContain('<div className="ci-composer-toolbar">');
         expect(component).toContain('<div className="ci-composer-tools">');
         expect(input).toMatch(/\.ci-textarea \{[\s\S]*grid-row: 1;[\s\S]*min-height: 72px;/);
         expect(input).toMatch(/\.ci-composer-toolbar \{[\s\S]*grid-row: 2;[\s\S]*justify-content: space-between;/);
     });
 
-    it('keeps send available beside stop while an agent is working', () => {
-        expect(component).toContain('<div className="ci-composer-actions">');
-        expect(component).toMatch(/\{isWorking && \([\s\S]*ci-send--abort[\s\S]*\)\}[\s\S]*aria-label=\{gate === 'restore-first' \? t\('restore\.restoreAndSend'\) : isWorking \? t\('session\.chat\.queueSend'\) : t\('session\.chat\.send'\)\}/);
-        expect(input).toMatch(/\.ci-composer-actions \{[\s\S]*display: inline-flex;/);
+    it('shows a single primary action, switching stop to queue when a draft exists', () => {
+        const actions = component.slice(component.indexOf('<div className="ci-composer-actions">'));
+        expect(actions).toContain('{isWorking && (!hasDraft || aborting) ? (');
+        expect(actions).toContain(') : <button');
+        expect(actions).not.toContain('ci-steer');
+        expect(actions).not.toContain('<span>');
+        expect(component).toContain('|| processingAttachments;');
+        expect(input).not.toContain("[data-working='true']");
     });
 
     it('makes exact context usage available in a popover', () => {

@@ -683,7 +683,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         setMode('updateSessionPermissionMode', 'permissionMode', appliedKey);
     };
 
-    const canSend = (text.trim().length > 0 || attachments.length > 0) && !sending && !processingAttachments;
+    const hasDraft = text.trim().length > 0 || attachments.length > 0 || processingAttachments;
+    const canSend = hasDraft && !sending && !processingAttachments;
 
     return (
         <div className="ci" style={{ paddingBottom: 'max(var(--sp-3), env(safe-area-inset-bottom))' }}>
@@ -866,7 +867,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     onCompositionEnd={ime.onCompositionEnd}
                     aria-label={t('common.message')}
                 />
-                <div className="ci-composer-toolbar" data-working={isWorking && canSend}>
+                <div className="ci-composer-toolbar">
                     <div className="ci-composer-tools">
                         <PresetsMenu onPick={insertPreset} onCancel={() => taRef.current?.focus()}
                             onAttach={supportsAttachments ? onPickFiles : undefined}
@@ -907,7 +908,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     />
                     </div>
                     <div className="ci-composer-actions">
-                        {isWorking && (
+                        {isWorking && (!hasDraft || aborting) ? (
                             <button
                                 type="button"
                                 className="ci-send ci-send--abort"
@@ -927,13 +928,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             >
                                 {aborting ? <Spinner size={14} /> : <Square size={16} fill="currentColor" />}
                             </button>
-                        )}
-                        {isWorking && canSend && supportsSteer && <button type="button" className="ci-steer" disabled={!canSend || aborting} onClick={() => void doSend('steer')}>
-                            <CornerDownRight size={15} aria-hidden />{t('session.chat.steerNow')}
-                        </button>}
-                        {(!isWorking || canSend) && <button
+                        ) : <button
                             type="button"
-                            className={`ci-send${isWorking ? ' ci-send--queue' : ''}`}
+                            className="ci-send"
                             onClick={() => void doSend('queue')}
                             disabled={!canSend}
                             aria-busy={sending || processingAttachments}
@@ -941,7 +938,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             title={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
                         >
                             {sending || processingAttachments ? <Spinner size={16} /> : <ArrowUp size={18} />}
-                            {isWorking && <span>{t('session.chat.queueSend')}</span>}
                         </button>}
                     </div>
                 </div>

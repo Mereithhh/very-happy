@@ -446,9 +446,6 @@
 .ci-meter--crit { color: var(--danger); }
 .ci-context-detail { z-index: 60; max-width: min(300px, calc(100vw - 24px)); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-1); color: var(--text); box-shadow: var(--shadow-lift); font-size: var(--fs-13); }
 .ci-context-detail p { margin: var(--sp-2) 0 0; font-family: var(--font-mono); }
-.ci-steer { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; padding: 0 var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-pill); color: var(--text); font: var(--fs-12)/1.4 var(--font-sans); white-space: nowrap; }
-.ci-steer:disabled { opacity: .4; }
-.ci-composer-actions .ci-send--queue { width: auto; gap: 4px; padding: 0 var(--sp-3); white-space: nowrap; font: var(--fs-12)/1.4 var(--font-sans); }
 .ci-status { justify-content: flex-end; }
 .ci-status .ci-hint { font-family: var(--font-sans); }
 @container composer (max-width: 650px) {
@@ -456,12 +453,10 @@
   .ci-composer-tools { grid-column: 1 / -1; grid-row: 1; }
   .ci-model-controls { grid-column: 1; grid-row: 2; justify-content: flex-start; }
   .ci-composer-actions { grid-column: 2; grid-row: 2; justify-content: flex-end; }
-  .ci-composer-toolbar[data-working='true'] .ci-model-controls { grid-column: 1 / -1; }
-  .ci-composer-toolbar[data-working='true'] .ci-composer-actions { grid-column: 1 / -1; grid-row: 3; }
   .ci-meter { margin-left: auto; }
 }
 @media (pointer: coarse) {
-  .ci-icon-btn, .ci-meter, .ci-composer .mm-trigger, .ci-steer { min-width: 44px; min-height: 44px; }
+  .ci-icon-btn, .ci-meter, .ci-composer .mm-trigger { min-width: 44px; min-height: 44px; }
 }
 
 /* Queued drafts sit against the composer, and retain independent actions. */
