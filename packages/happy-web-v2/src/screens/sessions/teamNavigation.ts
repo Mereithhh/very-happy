@@ -59,3 +59,12 @@ export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[],
   for (const team of teams) emit(team);
   return output;
 }
+
+/** A registered member is visible even before its first session exists. */
+export function unstartedTeamMembers(team: TeamState) {
+  return team.bots.filter(bot => !botHistorySessionId(team, bot)).map(bot => {
+    const task = team.tasks.find(task => task.assigneeBotId === bot.id && !['done', 'cancelled'].includes(task.status));
+    const operation = task && team.operations.find(op => op.type === 'spawn' && op.botId === bot.id && op.attemptId === task.currentAttemptId);
+    return { bot, task, failed: !!operation && ['failed', 'unknown'].includes(operation.status), href: `/teams/${encodeURIComponent(team.id)}${task ? `?task=${encodeURIComponent(task.id)}` : ''}` };
+  });
+}

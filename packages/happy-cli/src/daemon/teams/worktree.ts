@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, isAbsolute, resolve } from 'node:path';
 import { ensurePrivateDirectorySync } from '@/utils/secureFiles';
 const exec = promisify(execFile);
@@ -8,6 +9,9 @@ const git = async (directory: string, args: string[]) => (await exec('git', ['-C
 
 /** Worktrees isolate repository edits; no branch force/reset and no uncommitted input copying. */
 export async function prepareTeamWorktree(home: string, repository: string, id: string): Promise<{ directory: string; repository: string; branch: string }> {
+    // Resolve on the execution machine, never relative to the daemon's private home.
+    if (repository === '~') repository = homedir();
+    else if (repository.startsWith('~/') || (process.platform === 'win32' && repository.startsWith('~\\'))) repository = join(homedir(), repository.slice(2));
     if (!isAbsolute(repository) || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)) throw new Error('A team task requires an absolute repository path and valid operation id');
     await git(repository, ['rev-parse', '--show-toplevel']);
     const root = join(home, 'teams', 'worktrees');

@@ -1,6 +1,6 @@
 import { useTranslation } from '@/i18n/useTranslation';
 const en = {
-  title: 'Start a team', start: 'Start working', goal: 'What would you like done?', goalHint: 'For example: review this project, fix the most important issues in parallel, and test the changes.',
+  launchFailed: 'Startup needs attention', retryHint: 'The computer will retry this same launch after the cause is fixed. Sending a message does not restart the agent.', configure: 'Computer, project and agent', chatIntro: 'Describe the goal. Your lead will organize the work and continue in chat.', title: 'Start a team', start: 'Start working', goal: 'What would you like done?', goalHint: 'For example: review this project, fix the most important issues in parallel, and test the changes.',
   project: 'Project folder', browse: 'Choose folder', machine: 'Computer', lead: 'Team lead', automatic: 'We prepare the collaboration instructions and open your lead’s conversation automatically. No skill installation needed here.',
   options: 'Team options', name: 'Team name (optional)', model: 'Model (optional)', modelHint: 'Leave blank to use this agent’s default.', members: 'New members', parallel: 'Tasks progressing at once', settingsHint: 'Applies to new assignments. Running members keep their current configuration. Parents waiting for children do not occupy a work slot.',
   preparing: 'Preparing your team', preparingHint: 'Starting the lead and connecting its conversation. You can leave this page and return from your history.',
@@ -14,7 +14,7 @@ const en = {
   history: 'Team progress', raw: 'Original message', message: 'Team update', error: 'Something went wrong. Your request is kept so retrying will not create a duplicate.',
 };
 const zh: typeof en = {
-  title: '新建团队', start: '开始协作', goal: '你想完成什么？', goalHint: '例如：检查这个项目，组队并行修复最重要的问题，并测试修改结果。',
+  launchFailed: '启动需处理', retryHint: '修复原因后，电脑会继续重试同一次启动。发送消息不会重新启动 agent。', configure: '电脑、项目与 Agent', chatIntro: '说说你想完成什么，负责人会组织工作，并在对话中继续。', title: '新建团队', start: '开始协作', goal: '你想完成什么？', goalHint: '例如：检查这个项目，组队并行修复最重要的问题，并测试修改结果。',
   project: '项目文件夹', browse: '选择文件夹', machine: '执行电脑', lead: '负责人使用', automatic: '系统会自动准备协作指引，并打开负责人的对话。在这里使用无需安装 skill。',
   options: '团队选项', name: '团队名称（选填）', model: '模型（选填）', modelHint: '留空使用该 agent 的默认模型。', members: '新成员默认使用', parallel: '同时推进的任务数', settingsHint: '对新分派的工作生效，运行中的成员保留当前配置。等待子任务的父任务不占推进名额。',
   preparing: '正在准备团队', preparingHint: '正在启动负责人并连接对话。可以离开此页，稍后从历史列表回来。',

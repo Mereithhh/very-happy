@@ -17,7 +17,7 @@ import { Bot, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus, RefreshCw,
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
-import { teamLaunchPhase } from "./teamPresentation";
+import { teamLaunchPhase, taskLaunchIssue } from "./teamPresentation";
 import { AdoptTeamForm } from "./AdoptTeamForm";
 import { TeamStartForm } from "./TeamStartForm";
 import { useFirstUseCopy } from "./firstUseCopy";
@@ -312,9 +312,10 @@ function TeamsContent() {
                 <div className="teams-row">
                   <strong>{t.goal}</strong>
                   <span data-live={t.status === "running"}>
-                    {taskStatus()[t.status]}
+                    {taskLaunchIssue(team, t) ? first.launchFailed : taskStatus()[t.status]}
                   </span>
                 </div>
+                {taskLaunchIssue(team, t) && <div className="teams-error" role="alert"><strong>{first.launchFailed}</strong><p>{taskLaunchIssue(team, t)?.error}</p><p>{first.retryHint}</p></div>}
                 {t.parentTaskId && (
                   <p>
                     {tr("teams.parent")}：

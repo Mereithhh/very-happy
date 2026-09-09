@@ -643,3 +643,5 @@
 
 .sb-row-running { display: inline-flex; align-items: center; flex: 0 0 16px; color: var(--text-dim); }
 .sb-nav-btn[aria-busy="true"] { cursor: progress; }
+
+.sb-team-member-status { color: var(--text-dim); font-weight: 400; }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { prepareTeamWorktree, removeTeamWorktree } from './worktree';
 
 describe('team owned worktrees', () => {
@@ -14,7 +14,11 @@ describe('team owned worktrees', () => {
         const git = (cwd: string, args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Teams test', '-c', 'user.email=teams@example.invalid', ...args], { stdio: 'pipe' });
         try {
             git(repo, ['init']); git(repo, ['commit', '--allow-empty', '-m', 'initial']);
-            const work = await prepareTeamWorktree(home, repo, 'op1');
+            const shorthand = '~/'+relative(homedir(), repo).split('\\').join('/');
+            const work = await prepareTeamWorktree(home, shorthand, 'op1');
+            expect(work.repository).toBe(repo);
+            await expect(prepareTeamWorktree(home, 'relative/repo', 'relative')).rejects.toThrow('absolute');
+            await expect(prepareTeamWorktree(home, '~someone/repo', 'other')).rejects.toThrow('absolute');
             expect((await prepareTeamWorktree(home, repo, 'op1')).directory).toBe(work.directory);
             writeFileSync(join(work.directory, 'result.txt'), 'result');
             await expect(removeTeamWorktree(work)).rejects.toThrow('Uncommitted');
