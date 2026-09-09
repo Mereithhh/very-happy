@@ -52,3 +52,12 @@
 - 真实登录浏览器默认进入“我的待办”，无需配置机器即可读取两条隔离验收任务；编辑备注、完成、恢复通过。切换外部来源并选mac-office，正常读取67条任务；该数量是本次读取快照，先前provider替换核验的66条并非固定配额。两条内置验收任务已删除并经API及页面确认待处理/已完成均为0，未修改外部任务。
 - 发布前记录了70eb18e9的entry、CSS及activated SW；跨发布探针通过controllerchange断言，随后测试主动reload与应用更新导航竞争，出现ERR_ABORTED，故未把该探针算作完整通过。补验新浏览器的activated controller和6ebc080c资源，并在真实登录浏览器核对6ebc080c entry/Todo CSS及上述交互。初次打开时曾命中更旧629bc399的已移除chunk，刷新后恢复；不将此既有旧资源窗口宣称为本批修复。
 - 本批无需新CLI、推荐版本调整、DB迁移或daemon重启。私人provider改动保留在私有owner，不随公开镜像包含凭据或配置。上线未新增必须留待真机的验收项。
+
+
+## B-400：PWA skill 文档导航修复
+
+Owner 在上线后点击“让 AI 帮我接入外部来源”遇到应用404。HTTP返回Markdown的检查只验证了普通fetch，遗漏了受Service Worker控制的navigate请求。Workbox的SPA fallback把`/skills/…/SKILL.md`返回成index.html，前端路由因此404；两个原生target=_blank入口都会受影响。
+
+修复：按部署BASE将skills文档路径加入navigateFallbackDenylist，交给服务器正常提供文档，保留普通SPA路由和既有API排除。三项规则回归覆盖默认/自定义base、query与普通路由；`scripts/dev/check-skill-navigation.mjs <before-dist> <after-dist> <evidence.json>` 使用两个真实构建、保留旧hashed assets，验证旧SW拦截、新controllerchange/activated/entry，以及新标签页点击实际获取Markdown。发布前后验收必须测试受控浏览器导航，不能再以HTTP200替代。
+
+本地验收：Web 278文件/2630测试、tsc零错误、Vite构建通过。双构建Chromium确认旧导航receivedShell=true，新控制器接管后receivedShell=false、receivedSkill=true，entry从skillbefore切到skillafter；脚本先结清旧页面自身的update，避免测试更新请求复用旧构建的在途检查。

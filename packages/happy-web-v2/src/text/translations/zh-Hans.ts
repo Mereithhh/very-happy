@@ -1756,6 +1756,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09d: {
+                title: '修复外部待办的 AI 接入链接',
+                summary: '安装 PWA 后，AI 接入 skill 链接也能正常打开。',
+                document: '点击 skill 链接直接读取文档，不再错误进入应用页面并显示 404。',
+            },
             sep09a: {
                 title: '待办开箱即用，不用先接 provider',
                 summary: '在“我的待办”直接记事，不需要在线机器或额外配置。',

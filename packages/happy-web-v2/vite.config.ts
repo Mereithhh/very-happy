@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { navigationFallbackDenylist } from './src/app/swNavigation';
 import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath, URL } from 'node:url';
 
@@ -51,7 +52,7 @@ export default defineConfig({
         importScripts: ['push-sw.js'],
         // SPA: serve index.html for navigations; never precache the API/socket.
         navigateFallback: `${BASE}index.html`,
-        navigateFallbackDenylist: [/^\/v1\//, /^\/health/],
+        navigateFallbackDenylist: navigationFallbackDenylist(BASE),
         // Keep install tiny. Pre-caching every authenticated chunk made a fresh
         // anonymous landing silently download ~6 MB in the background. Hashed
         // assets are cached on first use instead, so public visitors fetch only
