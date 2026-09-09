@@ -27,6 +27,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     id: '2026-09-09-todo-agent-skill',
     date: '2026-09-09',
     buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.127',
     titleKey: 'changelog.releases.sep09h.title',
     summaryKey: 'changelog.releases.sep09h.summary',
     itemKeys: ['changelog.releases.sep09h.copy', 'changelog.releases.sep09h.commands'],
