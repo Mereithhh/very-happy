@@ -6,6 +6,9 @@ export interface CliUpdateStateLike {
   minimumVersion?: unknown;
   status?: unknown;
   checkedAt?: unknown;
+  autoUpdateVersion?: unknown;
+  autoUpdate?: unknown;
+  handoverHold?: unknown;
 }
 
 export interface CliUpdateMachineLike {
@@ -21,7 +24,9 @@ export interface CliUpdateMachineNotice {
   currentVersion: string;
   targetVersion: string;
   minimumVersion: string | null;
+  automaticVersion: string | null;
   severity: CliUpdateSeverity;
+  delivery: 'automatic' | 'pending' | 'attention' | 'unknown';
 }
 
 type Version = { exact: string; core: [number, number, number]; pre: Array<number | string> | null };
@@ -74,7 +79,7 @@ export function cliUpdateInstallCommand(targetVersion: string): string | null {
     : null;
 }
 
-export function machineCliUpdateNotice(machine: CliUpdateMachineLike): CliUpdateMachineNotice | null {
+export function machineCliUpdateNotice(machine: CliUpdateMachineLike, now = Date.now()): CliUpdateMachineNotice | null {
   const update = machine.daemonState?.cliUpdate;
   const current = version(update?.currentVersion ?? machine.metadata?.happyCliVersion);
   const recommended = version(update?.recommendedVersion);
@@ -83,9 +88,25 @@ export function machineCliUpdateNotice(machine: CliUpdateMachineLike): CliUpdate
   const required = minimum ? below(current, minimum) : false;
   const available = recommended ? below(current, recommended) : false;
   if (!required && !available) return null;
-  const target = recommended ?? minimum;
+  const target = minimum && (!recommended || below(recommended, minimum)) ? minimum : recommended;
   if (!target) return null;
+  const auto = update?.autoUpdate && typeof update.autoUpdate === 'object'
+    ? update.autoUpdate as Record<string, unknown> : {};
+  const fresh = machine.active === true && typeof update?.checkedAt === 'number'
+    && now - update.checkedAt <= 65 * 60_000 && update.checkedAt <= now + 60_000;
+  const autoTarget = version(update?.autoUpdateVersion);
+  const reportedTarget = version(auto.version);
+  const coversTarget = autoTarget && reportedTarget && autoTarget.exact === reportedTarget.exact && !below(autoTarget, target);
+  const delivery: CliUpdateMachineNotice['delivery'] =
+    machine.active === true && (auto.state === 'manual_required' || update?.handoverHold) ? 'attention'
+    : !fresh ? 'unknown'
+    : ['failed', 'disabled'].includes(String(auto.state)) ? 'attention'
+    : coversTarget && ['waiting_idle', 'installing', 'installed'].includes(String(auto.state)) ? 'automatic'
+    : !required && (auto.state === 'unapproved' || (autoTarget && reportedTarget && autoTarget.exact === reportedTarget.exact && below(autoTarget, target) && ['current', 'waiting_idle', 'installing', 'installed'].includes(String(auto.state)))) ? 'pending'
+    : 'unknown';
   return {
+    delivery,
+    automaticVersion: delivery === 'automatic' ? autoTarget!.exact : null,
     machineId: machine.id,
     machineName: machine.metadata?.displayName || machine.metadata?.host || machine.id.slice(0, 8),
     currentVersion: current.exact,
@@ -104,14 +125,19 @@ export function hasValidCliUpdatePolicy(machine: CliUpdateMachineLike): boolean 
 export function visibleCliUpdateNotices(
   machines: readonly CliUpdateMachineLike[],
   acknowledged: Readonly<Record<string, string>>,
+  now = Date.now(),
 ): CliUpdateMachineNotice[] {
   return machines
     .filter((machine) => machine.active === true)
-    .map(machineCliUpdateNotice)
+    .map((machine) => machineCliUpdateNotice(machine, now))
     .filter((notice): notice is CliUpdateMachineNotice => Boolean(notice))
-    .filter((notice) => notice.severity === 'required' || acknowledged[notice.machineId] !== notice.targetVersion)
+    .filter((notice) => notice.severity === 'required' || notice.delivery === 'attention' || acknowledged[notice.machineId] !== notice.targetVersion)
     .sort((left, right) => {
       if (left.severity !== right.severity) return left.severity === 'required' ? -1 : 1;
+      if (left.delivery !== right.delivery) {
+        const rank = { attention: 0, unknown: 1, automatic: 2, pending: 3 };
+        return rank[left.delivery] - rank[right.delivery];
+      }
       return left.machineName.localeCompare(right.machineName);
     });
 }

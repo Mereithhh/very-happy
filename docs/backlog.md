@@ -22,6 +22,7 @@
 |---|---|---|---|---|---|
 | B-399 | PostgreSQL 迁移使用独立会话连接 | bug | Agent Teams 发布实测 | done | Prisma advisory lock 不得经过 transaction pool；迁移 child env 隔离、生产入口门禁与失败阻断回归。 |
 | B-392 | 终端 @ 字形可辨认性；另核 pi 消息黑字 | bug | Owner 2026-09-09 | doing | 已在 test 终端 jojo@mac-office 确认：DOM 为 U+0040，Maple 默认特殊字形导致误认；启用 cv01 标准符号，保持字体/字号/行高。本地真实 xterm 对比及 mutation 回归通过，已随 629bc399 发布，线上 CSS 已核对。pi 黑字属另一路径，仍未复现，不合并宣称修复。 |
+| B-403 | **CLI 自动更新提示**：正常更新提示空闲后自动完成，隐藏手动命令；区分待推送、未知状态和失败恢复 | ux | Owner 2026-09-09 | done | 依据机器实时自动更新目标，不把推荐版本当作自动推送承诺；失败不受关闭记录影响。Web 2652 测试、tsc/build 与双主题 390/1280 浏览器通过。 |
 | B-402 | **Happy Bot 工作台与产品入口**：默认任务看板、成员与进度可见，低频操作集中；移除主导航语音入口，补 Happy Bot/Todo 引导和官方 skill 安装说明 | ux | Owner 2026-09-09 | done | 见 `specs/2026-09-happy-bot-workspace.md`；默认任务看板、成员和结果摘要，原生详情弹窗；主导航 Happy Bot/Todo、引导与安装说明已实现，Web 2641 测试及双主题浏览器验收通过。不改 Teams 协议与授权语义。 |
 | B-401 | **团队减少审批与消息降噪**：Owner 选择免审批后新 worker 沿用，官方调度/协作消息折叠卡片 | feat | Owner 2026-09-09 | done | PR #293 / #294 已合入并上线，CLI 0.2.126；Happy Bot 及团队已免审批，生产任务执行与回收通过，移动端双主题卡片验收通过。 |
 | B-398 | **官方 Agent Teams / Happy Bot**：稳定 Bot 身份、共享 skill 激活、多 coding agent 协作与递归委派，统一任务/消息/恢复/回收并集成 Web | feat | Owner 2026-09-09 | done | 官方功能与两台 Mac 迁移已上线，Server/Web 5106e8e9、CLI 0.2.126；生产任务及滴答闭环通过。Owner 明确取消 48 小时等待，旧个人路由直接退役、观察任务删除，历史保留为恢复备份；不宣称长期无人值守已验收。见 spec 上线记录。 |

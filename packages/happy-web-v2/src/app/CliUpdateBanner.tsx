@@ -1,47 +1,43 @@
-import { ArrowRight, Copy, PackageOpen, X } from 'lucide-react';
+import { ArrowRight, PackageOpen, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAllMachines, useLocalSettingMutable } from '@/sync/storage';
-import { useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
-import { cliUpdateInstallCommand, visibleCliUpdateNotices } from './cliUpdatePolicy';
+import { visibleCliUpdateNotices } from './cliUpdatePolicy';
 import './cliUpdateBanner.css';
 
 export function CliUpdateBanner() {
   const machines = useAllMachines({ includeOffline: false });
   const [acknowledged, setAcknowledged] = useLocalSettingMutable('acknowledgedCliVersions');
-  const notices = useMemo(() => visibleCliUpdateNotices(machines, acknowledged), [machines, acknowledged]);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const notices = useMemo(() => visibleCliUpdateNotices(machines, acknowledged, now), [machines, acknowledged, now]);
   const navigate = useNavigate();
-  const toast = useToast();
   const { t } = useTranslation();
   const lead = notices[0];
   if (!lead) return null;
 
   const required = lead.severity === 'required';
-  const command = cliUpdateInstallCommand(lead.targetVersion);
+  const dismissible = !required && lead.delivery !== 'attention';
+  const automatic = lead.delivery === 'automatic';
+  const pending = lead.delivery === 'pending';
   const dismiss = () => {
-    if (required) return;
+    if (!dismissible) return;
     const next = { ...acknowledged };
     for (const notice of notices) {
-      if (notice.severity === 'available' && notice.targetVersion === lead.targetVersion) {
+      if (notice.severity === 'available' && notice.delivery !== 'attention' && notice.targetVersion === lead.targetVersion) {
         next[notice.machineId] = notice.targetVersion;
       }
     }
     setAcknowledged(next);
   };
-  const copy = async () => {
-    if (!command) return;
-    try {
-      await navigator.clipboard.writeText(command);
-      toast.success(t('cliUpdate.copied'));
-    } catch {
-      toast.error(t('cliUpdate.copyFailed'));
-    }
-  };
 
   return (
-    <aside className="cli-update" data-severity={lead.severity} role="region" aria-live="polite" aria-labelledby="cli-update-title" aria-describedby="cli-update-summary">
-      {!required && (
+    <aside className="cli-update" data-severity={lead.severity} data-delivery={lead.delivery} role="region" aria-live="polite" aria-labelledby="cli-update-title" aria-describedby="cli-update-summary">
+      {dismissible && (
         <button className="cli-update__close" type="button" onClick={dismiss} aria-label={t('cliUpdate.later')}>
           <X size={17} />
         </button>
@@ -49,12 +45,10 @@ export function CliUpdateBanner() {
       <PackageOpen className="cli-update__icon" size={22} aria-hidden="true" />
       <div className="cli-update__body">
         <div className="cli-update__eyebrow mono">{required ? t('cliUpdate.requiredEyebrow') : t('cliUpdate.availableEyebrow')}</div>
-        <strong id="cli-update-title">{required ? t('cliUpdate.requiredTitle') : t('cliUpdate.availableTitle')}</strong>
-        <p id="cli-update-summary">{t('cliUpdate.summary', { machine: lead.machineName, current: lead.currentVersion, target: lead.targetVersion, count: notices.length })}</p>
+        <strong id="cli-update-title">{automatic ? t('cliUpdate.automaticTitle') : pending ? t('cliUpdate.pendingTitle') : required ? t('cliUpdate.requiredTitle') : t('cliUpdate.availableTitle')}</strong>
+        <p id="cli-update-summary">{t(automatic ? 'cliUpdate.automaticSummary' : pending ? 'cliUpdate.pendingSummary' : 'cliUpdate.summary', { machine: lead.machineName, current: lead.currentVersion, target: lead.automaticVersion ?? lead.targetVersion, count: notices.length })}</p>
         <div className="cli-update__actions">
-          <button type="button" onClick={() => void copy()}><Copy size={15} />{t('cliUpdate.copyCommand')}</button>
-          <button type="button" onClick={() => navigate('/settings/diagnostics')}>{t('cliUpdate.details')}<ArrowRight size={15} /></button>
-          {!required && <button type="button" onClick={dismiss}>{t('cliUpdate.later')}</button>}
+          <button type="button" onClick={() => navigate(`/machine/${encodeURIComponent(lead.machineId)}`)}>{t('cliUpdate.details')}<ArrowRight size={15} /></button>
         </div>
       </div>
     </aside>

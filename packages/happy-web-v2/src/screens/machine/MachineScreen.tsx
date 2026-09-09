@@ -224,7 +224,7 @@ export function MachineScreen() {
     setClaudeAuthBusy('store');
     try { applyClaudeAuthResult(await machineClaudeAuthSetStore(claudeAuthMachineId, store), 'machine.claudeAuth.storeSaved'); } finally { setClaudeAuthBusy(null); }
   }
-  const cliUpdate = machineCliUpdateNotice(machine);
+  const cliUpdate = machineCliUpdateNotice(machine, updateStatusNow);
   const cliUpdateState = daemon?.cliUpdate;
   const cliUpdatePolicyKnown = hasValidCliUpdatePolicy(machine);
   // B-321: a new CLI is installed but refused to run, so the daemon is still on
@@ -394,7 +394,7 @@ export function MachineScreen() {
                 right={<Badge tone="err">{t('cliUpdate.handoverHeldBadge')}</Badge>}
               />
             )}
-            {cliUpdate && (
+            {cliUpdate && !['automatic', 'pending'].includes(cliUpdate.delivery) && (
               <Item
                 title={t('cliUpdate.copyCommand')}
                 subtitle={cliUpdateInstallCommand(cliUpdate.targetVersion) ?? undefined}
