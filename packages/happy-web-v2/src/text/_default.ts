@@ -1798,6 +1798,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09u: {
+                title: 'More reliable team startup recovery',
+                summary: 'pi and Codex members keep their original team launch identity.',
+                recovery: 'After an interrupted launch, the daemon can match the existing conversation to its task instead of leaving the startup result uncertain.',
+            },
             sep09t: {
                 title: 'Start a team from a goal or an existing chat',
                 summary: 'Happy Bot is optional. Ordinary chats and terminals keep their familiar workflow.',
