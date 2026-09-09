@@ -42,6 +42,7 @@ COPY packages/happy-server/scripts packages/happy-server/scripts
 COPY packages/happy-web-v2/index.html packages/happy-web-v2/tsconfig.json packages/happy-web-v2/vite.config.ts packages/happy-web-v2/
 COPY packages/happy-web-v2/public packages/happy-web-v2/public
 COPY packages/happy-web-v2/src packages/happy-web-v2/src
+COPY packages/happy-web-v2/build/startupSplash.ts packages/happy-web-v2/build/startupSplash.ts
 
 RUN pnpm --filter @slopus/happy-wire build
 RUN VH_VERSION="$VH_VERSION" pnpm --filter @slopus/happy-web-v2 exec vite build
