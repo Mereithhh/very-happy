@@ -1764,12 +1764,6 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
-            sep09m: {
-                title: '管理后台新增业务审计',
-                summary: '管理员可按账号、会话与时间查看启用后的业务事件。',
-                events: '记录登录来源 IP、会话创建与删除，以及已保存的用户指令和工具调用；缺失结果明确标注。',
-                isolation: '审计独立留存并异步采集，异常不会阻塞正常使用；不包含历史回填或终端逐键记录。',
-            },
             sep09g: {
                 title: 'CLI 更新，少一点操心',
                 summary: '更新提示说明自动进度，不再默认要求复制命令。',
