@@ -1,6 +1,6 @@
 # 会话实时状态与 token 语义
 
-状态：Final · 2026-09-09 · B-431
+状态：Shipped · 2026-09-09 · B-431
 
 ## 现状事实
 
@@ -39,3 +39,9 @@
 Web 2673、CLI 2079、wire 81、server 641 passed（server 1 skipped）；Web/server/CLI 类型检查与构建成功，CLI 产物可执行。输入接线和动画调用 2/2 变异被行为测试捕获。
 真实组件检查工作/工具/请求/压缩、usage缺失与恢复、390/1280明暗；CSS probe另覆盖320px和coarse/reduced-motion，未发现横向溢出，reduce下全部动画停止。
 对照了侧栏列表/状态视图、工具卡、OrbitLoader与更新弹层；未扩大为全站改版。审查记录与截图/测量目录：`~/code/github/skills/tmp/vh-live-status/`。
+
+## 发布验收（2026-09-09）
+
+PR #317/#318 合并后以 `a5b01fc90f60fb3bf4daeab39536e112559d54a6` 发布；main 门禁 run 34368549558、生产部署 34369293700 均成功。`check-shipped` 核对新增 UI 样式及两条 changelog 的稳定 ID/中文标题，Chrome `/changelog` 实际渲染同一 SHA。完整镜像 active green，回滚点 `47835715fa324fa0cd97295d339726451a60e342`。
+
+CLI `v0.2.130` 与 Web 同 SHA，publish 34370172575 成功；同仓/tag/SHA、attempt 1 的 smoke 34370172621 六项全绿，npm latest/next 均为 0.2.130。mac-office 安装与运行版本均为 0.2.130，launchd running，真实 `list-terminals` RPC 成功（7 个终端）。既有会话 wrapper 未重启，新输入字段需新 wrapper；推荐版本仍可能受一小时 registry 缓存影响，自动更新 pin 未改。原生 IME/文件选择器验收保留 V-150。
