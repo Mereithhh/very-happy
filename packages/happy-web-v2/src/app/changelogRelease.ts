@@ -15,6 +15,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-09-happy-bot-workspace',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep09f.title',
+    summaryKey: 'changelog.releases.sep09f.summary',
+    itemKeys: ['changelog.releases.sep09f.workspace', 'changelog.releases.sep09f.navigation', 'changelog.releases.sep09f.onboarding'],
+  },
+  {
     id: '2026-09-09-teams-execution-and-messages',
     date: '2026-09-09',
     buildVersion: __APP_VERSION__,

@@ -11,7 +11,7 @@ import {
   Archive,
   ClipboardList,
   StickyNote,
-  AudioLines,
+  Bot,
   ListChecks,
   FolderOpen,
   RotateCcw,
@@ -284,12 +284,12 @@ export function CommandPalette() {
       }
     }
     out.push({
-      key: 'action:assistant',
+      key: 'action:teams',
       group: 'actions',
-      title: t('commandPalette.actionAssistant'),
-      icon: <AudioLines size={16} />,
-      haystack: (t('commandPalette.actionAssistant') as string).toLowerCase(),
-      run: () => navigate('/assistant'),
+      title: 'Happy Bot',
+      icon: <Bot size={16} />,
+      haystack: 'happy bot teams 团队 机器人',
+      run: () => navigate('/teams'),
     });
     out.push({
       key: 'action:clipboard-history',

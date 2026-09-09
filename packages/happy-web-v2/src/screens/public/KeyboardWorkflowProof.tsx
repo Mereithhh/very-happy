@@ -1,6 +1,6 @@
 import {
   ArrowLeft,
-  AudioLines,
+  Bot,
   Check,
   Command,
   FileClock,
@@ -32,7 +32,7 @@ type DemoItem = {
 const DEMO_ITEMS: DemoItem[] = [
   { key: 'new-terminal', group: 'actions', title: 'New terminal', hint: IS_MAC ? '⌘N · ⌥N' : 'Ctrl+N · Alt+N', icon: TerminalSquare },
   { key: 'new-chat', group: 'actions', title: 'New chat', icon: MessageSquare },
-  { key: 'voice', group: 'actions', title: 'Voice assistant', icon: AudioLines },
+  { key: 'teams', group: 'actions', title: 'Happy Bot', icon: Bot },
   { key: 'notes', group: 'actions', title: 'Notes panel', hint: IS_MAC ? '⌘J' : 'Ctrl+J', icon: StickyNote },
   { key: 'todos', group: 'actions', title: 'Todo list', icon: ListChecks },
   { key: 'settings', group: 'actions', title: 'Open settings', icon: Settings },
@@ -48,7 +48,7 @@ const GROUP_LABELS: Record<DemoGroup, string> = {
 };
 
 const ZH_ITEM_LABELS: Record<string, { title: string; subtitle?: string }> = {
-  'new-terminal': { title: '新建终端' }, 'new-chat': { title: '新建对话' }, voice: { title: '语音助手' },
+  'new-terminal': { title: '新建终端' }, 'new-chat': { title: '新建对话' }, teams: { title: 'Happy Bot' },
   notes: { title: '备忘录面板' }, todos: { title: '待办清单' }, settings: { title: '打开设置' },
   release: { title: '发布候选版', subtitle: 'workstation · ~/code/very-happy' },
   onboarding: { title: '打磨新手流程', subtitle: 'laptop · 待审核' },

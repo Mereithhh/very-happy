@@ -1764,6 +1764,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09f: {
+                title: 'Happy Bot，工作一目了然',
+                summary: '团队进展直接可见，导航更明确，入门指南告诉你从哪里开始。',
+                workspace: '团队页默认展示任务看板、成员和成果，不再需要先展开详情才能了解工作。',
+                navigation: 'Happy Bot 和 Todo 改为侧栏文字入口，旧语音入口退出主导航。',
+                onboarding: '新人引导介绍 Happy Bot 与 Todo，并提供 Claude Code、Codex 和 pi 的官方 skill 安装命令。',
+            },
             sep09e: {
                 title: '团队协作少打断，消息更清晰',
                 summary: '选择新 agent 的执行方式，团队消息用简洁卡片展示。',

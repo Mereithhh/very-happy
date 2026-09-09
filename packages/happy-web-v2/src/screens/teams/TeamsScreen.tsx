@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { TeamAction, TeamState } from "@slopus/happy-wire";
 import {
@@ -13,12 +13,15 @@ import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { TeamSchedules } from "./TeamSchedules";
 import { t as tr } from "@/text";
+import { Bot, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus, RefreshCw } from "lucide-react";
+import { Markdown } from "@/screens/session/Markdown";
+import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
+import { useWorkspaceCopy } from "./workspaceCopy";
 import { sync } from "@/sync/sync";
 import {
   archiveBlocker,
   canReconcileOperation,
   newestTeam,
-  taskRows,
 } from "./teamView";
 import { useTranslation } from "@/i18n/useTranslation";
 const taskStatus = (): Record<string, string> => ({
@@ -34,10 +37,16 @@ export function TeamsScreen() {
 }
 function TeamsContent() {
   useTranslation();
+  const c = useWorkspaceCopy();
+  const [view, setView] = useState<"overview" | "schedules" | "settings">("overview");
+  const [selectedTask, setSelectedTask] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [delegating, setDelegating] = useState(false);
   const { teamId } = useParams();
   const navigate = useNavigate();
   const machines = useAllMachines({ includeOffline: true });
   const createRequest = useRef({ signature: "", id: "" });
+  const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<TeamState[]>([]);
   const [team, setTeam] = useState<TeamState | null>(null);
   const [error, setError] = useState("");
@@ -66,7 +75,7 @@ function TeamsContent() {
       setUnavailable(false);
     } catch (e) {
       fail(e);
-    }
+    } finally { setLoading(false); }
   }
   useEffect(() => {
     setTeam(null);
@@ -95,6 +104,7 @@ function TeamsContent() {
       setTeam((previous) => newestTeam(previous, next));
       setPending(null);
       setError("");
+      if (p.action.type === "delegate") setDelegating(false);
     } catch (e) {
       if (e instanceof TeamsApiError && e.status < 500) {
         setPending(null);
@@ -110,6 +120,8 @@ function TeamsContent() {
   const supportsTeams = (machine: (typeof machines)[number]) =>
     (machine.metadata as { teamsVersion?: number } | null)?.teamsVersion ===
       1 && isMachineOnline(machine);
+  const executionMachine = machines.find(machine => machine.id === team?.machineId);
+  const machineOnline = !!executionMachine && isMachineOnline(executionMachine);
   const dispatchReady =
     !!team &&
     machines.some(
@@ -117,24 +129,16 @@ function TeamsContent() {
     );
   return (
     <main className="teams-screen">
-      <header>
-        <Link to="/">{tr("teams.sessions")}</Link> /{" "}
-        <Link to="/teams">{tr("teams.teams")}</Link>
-        <h1>{team?.name ?? "Agent teams"}</h1>
-        {team?.archivedAt !== undefined && (
-          <p role="status">
-            {tr("teams.archived")} ·{" "}
-            {new Date(team.archivedAt).toLocaleString()}
-          </p>
-        )}
-        <button
-          onClick={() => {
-            setError("");
-            void load();
-          }}
-        >
-          {tr("teams.refresh")}
-        </button>
+      <header className="teams-heading">
+        <div><Link className="teams-back" to={teamId ? "/teams" : "/"}><ArrowLeft size={16} />{teamId ? c.title : tr("teams.sessions")}</Link>
+          <h1><Bot size={28} />{team?.name ?? c.title}</h1>
+          <p>{team ? <><span data-live={machineOnline}>{machineOnline ? c.online : c.offline}</span> · {executionMachine ? machineLabel(executionMachine) : c.unnamedMachine}</> : c.intro}</p>
+          {team?.archivedAt !== undefined && <p role="status">{tr("teams.archived")} · {new Date(team.archivedAt).toLocaleString()}</p>}
+        </div>
+        <div className="teams-heading-actions">
+          <Link to="/help">{c.guide}</Link>
+          {teamId ? <button aria-label={tr("teams.refresh")} title={tr("teams.refresh")} onClick={() => { setError(""); void load(); }}><RefreshCw size={17} /></button> : <button className="teams-primary" disabled={unavailable} onClick={() => setCreating(true)}><Plus size={16} />{c.create}</button>}
+        </div>
       </header>
       {error && (
         <p role="alert" className="teams-error">
@@ -146,12 +150,15 @@ function TeamsContent() {
           )}
         </p>
       )}
-      {!teamId && (
+      {loading && <p role="status">{tr("common.loading")}</p>}
+      {!teamId && !loading && (
         <>
-          <p>{tr("teams.intro")}</p>
+
           {!machines.some(supportsTeams) && (
             <p role="status">{tr("teams.machineRequired")}</p>
           )}
+          {creating && <TeamDialog title={c.create} onClose={() => setCreating(false)}>
+            {error && <p role="alert" className="teams-error">{error}</p>}
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -201,22 +208,25 @@ function TeamsContent() {
               {tr("teams.create")}
             </button>
           </form>
-          {teams.map((item) => (
-            <Link className="teams-row" key={item.id} to={`/teams/${item.id}`}>
-              {item.name}
-              <span>
-                {tr("teams.counts", {
-                  bots: item.bots.length,
-                  tasks: item.tasks.length,
-                })}
-              </span>
-            </Link>
-          ))}
+          </TeamDialog>}
+          {!teams.length && !unavailable && <div className="teams-empty"><Bot size={36} /><h2>{c.noTeams}</h2><p>{c.noTeamsHint}</p><Link to="/help">{c.guide} →</Link></div>}
+          <div className="teams-list">{teams.map(item => <TeamListCard key={item.id} team={item} machine={machines.find(m => m.id === item.machineId) ? machineLabel(machines.find(m => m.id === item.machineId)!) : c.unnamedMachine} />)}</div>
         </>
       )}
       {team && (
         <>
-          <section>
+          <nav className="teams-tabs" aria-label={c.title}>
+            {([{id: "overview", label: c.overview, Icon: LayoutDashboard}, {id: "schedules", label: c.schedules, Icon: Clock3}, {id: "settings", label: c.settings, Icon: Settings2}] as const).map(({id, label, Icon}) => <button key={id} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}><Icon size={16} />{label}</button>)}
+          </nav>
+          {view === "overview" && <>
+            {!dispatchReady && <p role="status">{tr("teams.machineRequired")}</p>}
+            <div className="teams-work-actions">
+              {team.bots.find(b => b.root && b.sessionId)?.sessionId && <Link className="teams-primary teams-talk" to={`/session/${encodeURIComponent(team.bots.find(b => b.root && b.sessionId)!.sessionId!)}`}><Bot size={18} />{c.talk}</Link>}
+              <button disabled={disabled || !dispatchReady} onClick={() => setDelegating(true)}><Plus size={16} />{c.newTask}</button>
+            </div>
+            <TeamWorkspace team={team} onTask={setSelectedTask} />
+          </>}
+          {view === "settings" && <>          <section>
             <label>{tr("teams.executionMode")}
               <select disabled={disabled} value={team.permissionMode ?? "default"}
                 onChange={(event) => void act({ type: "set-permission-mode", permissionMode: event.target.value === "bypassPermissions" ? "bypassPermissions" : "default" })}>
@@ -225,33 +235,8 @@ function TeamsContent() {
               </select>
             </label>
             <p>{tr("teams.executionModeHint")}</p>
-          </section>
-          <section>
-            <h2>{tr("teams.bots")}</h2>
-
-            {team.bots.map((b) => (
-              <div className="teams-row" key={b.id}>
-                <strong>{b.name}</strong>
-                <span>{b.root ? tr("teams.lead") : b.assistant}</span>
-                {b.lastEvent && (
-                  <span>
-                    {tr(`teams.${b.lastEvent}`)}{" "}
-                    {b.lastEventAt
-                      ? new Date(b.lastEventAt).toLocaleString()
-                      : ""}
-                  </span>
-                )}
-                {b.sessionId ? (
-                  <Link to={`/session/${encodeURIComponent(b.sessionId)}`}>
-                    {tr("teams.openSession")}
-                  </Link>
-                ) : (
-                  <span>{tr("teams.starting")}</span>
-                )}
-              </div>
-            ))}
-            <details>
-              <summary>{tr("teams.join")}</summary>
+          </section><section>            <div>
+              <h2>{tr("teams.join")}</h2>
               <p>{tr("teams.joinHint")}</p>
               <form
                 onSubmit={(e) => {
@@ -286,11 +271,9 @@ function TeamsContent() {
                 </label>
                 <button disabled={disabled}>{tr("teams.join")}</button>
               </form>
-            </details>
-          </section>
-          <section>
-            <details>
-              <summary>{tr("teams.delegateTitle")}</summary>
+            </div></section></>}
+          {delegating && <TeamDialog title={c.newTask} onClose={() => setDelegating(false)}>
+            {error && <p role="alert" className="teams-error">{error}</p>}{pending && <button disabled={busy} onClick={() => void act()}>{tr("teams.retry")}</button>}
               {!dispatchReady && (
                 <p role="status">{tr("teams.machineRequired")}</p>
               )}
@@ -358,14 +341,12 @@ function TeamsContent() {
                   {tr("teams.delegate")}
                 </button>
               </form>
-            </details>
-          </section>
-          <section>
-            <h2>{tr("teams.tasks")}</h2>
-            {taskRows(team.tasks).map(({ task: t, depth }) => (
+          </TeamDialog>}
+          {team.tasks.filter(task => task.id === selectedTask).map((t) => (
+            <TeamDialog key={t.id} title={c.details} onClose={() => { setSelectedTask(null); requestAnimationFrame(() => document.getElementById(`team-task-${t.id}`)?.focus()); }}>
+              {error && <p role="alert" className="teams-error">{error}</p>}{pending && <button disabled={busy} onClick={() => void act()}>{tr("teams.retry")}</button>}
               <article
                 className="teams-task"
-                style={{ paddingInlineStart: Math.min(depth, 3) * 12 }}
                 key={t.id}
               >
                 <div className="teams-row">
@@ -385,7 +366,7 @@ function TeamsContent() {
                   {tr("teams.assignee")}：
                   {team.bots.find((b) => b.id === t.assigneeBotId)?.name ??
                     t.assigneeBotId}{" "}
-                  · {tr("teams.cleanup")}：{t.cleanup}
+                  · {tr("teams.cleanup")}：{t.cleanup === "done" ? c.cleanupDone : t.cleanup === "failed" ? c.cleanupFailed : t.cleanup === "pending" ? c.cleanupPending : c.cleanupNone}
                 </p>
                 <ul>
                   {t.acceptance.map((a, i) => (
@@ -394,15 +375,10 @@ function TeamsContent() {
                 </ul>
                 {t.attempts.find((a) => a.id === t.currentAttemptId)
                   ?.result && (
-                  <details>
-                    <summary>{tr("teams.result")}</summary>
-                    <pre>
-                      {
-                        t.attempts.find((a) => a.id === t.currentAttemptId)
-                          ?.result
-                      }
-                    </pre>
-                  </details>
+                  <div className="teams-full-result">
+                    <h3>{tr("teams.result")}</h3>
+                    <Markdown text={t.attempts.find(a => a.id === t.currentAttemptId)?.result ?? ""} />
+                  </div>
                 )}
                 {t.status === "submitted" && (
                   <button
@@ -500,11 +476,11 @@ function TeamsContent() {
                     </p>
                   ))}
               </article>
-            ))}
-          </section>
-          <TeamSchedules team={team} disabled={disabled} act={act} />
-          <section>
-            <h2>{tr("teams.operations")}</h2>
+            </TeamDialog>
+          ))}
+          {view === "schedules" && <TeamSchedules team={team} disabled={disabled} act={act} />}
+          {team.operations.some(o => ["failed", "unknown", "claimed"].includes(o.status) || o.manualResolution) && <section>
+            <h2>{c.attention}</h2>
             {team.operations
               .filter(
                 (operation) =>
@@ -520,8 +496,8 @@ function TeamsContent() {
                   act={act}
                 />
               ))}
-          </section>
-          {team.archivedAt === undefined && (
+          </section>}
+          {view === "settings" && team.archivedAt === undefined && (
             <section>
               <h2>{tr("teams.archive")}</h2>
               <p>{tr("teams.archiveDescription")}</p>
@@ -632,4 +608,18 @@ function OperationResolution({
       )}
     </article>
   );
+}
+
+function TeamDialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const c = useWorkspaceCopy();
+  useEffect(() => {
+    const node = ref.current;
+    node?.showModal();
+    return () => node?.close();
+  }, []);
+  return <dialog ref={ref} className="teams-dialog" aria-label={title} onCancel={onClose}>
+    <div className="teams-dialog-heading"><h2>{title}</h2><button autoFocus aria-label={c.close} onClick={onClose}><X size={20} /></button></div>
+    {children}
+  </dialog>;
 }

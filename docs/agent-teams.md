@@ -62,8 +62,11 @@ a bare `pi` terminal does not gain a background inbox from installation.
 3. Give a bounded goal, for example: “Inspect this repository, propose independent
    work, and delegate the approved changes with acceptance criteria. Integrate
    and verify the results before asking me to accept.”
-4. Open **Teams** in the Web sidebar to follow bots, tasks, execution attempts,
-   results, and cleanup. Session links open the actual conversation.
+4. Open **Happy Bot** in the Web sidebar. The workspace shows members, progress,
+   task lanes and result previews immediately. Select a task for full evidence and
+   review actions; use **Schedules** and **Settings** for less frequent controls.
+   **Talk to lead** opens the lead conversation. The help page and first-run guide
+   contain the official skill installation commands alongside native Todo guidance.
 
 Creating a team in Web records it on the selected machine. **Link lead** records
 an existing session identity; that session must still call the Teams join tool or
