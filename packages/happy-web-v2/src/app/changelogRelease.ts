@@ -15,6 +15,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-09-todo-skill-navigation',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep09d.title',
+    summaryKey: 'changelog.releases.sep09d.summary',
+    itemKeys: ['changelog.releases.sep09d.document'],
+  },
+  {
     id: '2026-09-09-builtin-todos',
     date: '2026-09-09',
     buildVersion: __APP_VERSION__,

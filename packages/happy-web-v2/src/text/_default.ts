@@ -1790,6 +1790,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09d: {
+                title: 'External Todo setup link fixed',
+                summary: 'The AI setup skill opens correctly after the app has been installed as a PWA.',
+                document: 'Skill links load the document instead of entering an application page that shows a 404 error.',
+            },
             sep09a: {
                 title: 'Todos work without setup',
                 summary: 'Capture tasks in My todos, with no provider or connected machine required.',
