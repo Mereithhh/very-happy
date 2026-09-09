@@ -25,7 +25,6 @@ import {
   Settings,
   StickyNote,
   TerminalSquare,
-  X,
 } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react';
 
@@ -48,6 +47,7 @@ import '../../ui/ui.css';
 import { useImeGuard } from '../../utils/ime';
 import { usePublicI18n } from '../../i18n/publicI18n';
 import './productWorkspacePreview.css';
+import { WorkspaceTabsView } from '@/screens/workspace/WorkspaceTabsView';
 import { getProductPreviewIds, type ProductPreviewView } from './productPreviewIds';
 import { PUBLIC_COMMAND_PROOF_EVENT } from './publicContent';
 
@@ -93,7 +93,7 @@ export function ProductWorkspacePreview({
     setWorkspaceNavOpen(false);
     setView('terminal');
     setFilesOpen(openFiles);
-    focusInsideProduct(openFiles ? '.term-files-head button' : '.term-header-right button');
+    focusInsideProduct(openFiles ? '.workspace-tab-close' : '.term-header-right button');
   };
   const openStructured = () => {
     setWorkspaceNavOpen(false);
@@ -153,19 +153,18 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
     <aside className="product-sidebar" aria-label={zh ? '多机器会话指挥面板示例' : 'Example multi-machine session command panel'}>
       <div className="sb">
         <header className="sb-header">
-          <div className="sb-brand"><strong>Very Happy</strong></div>
+          <div className="sb-brand"><img src="/icon-192.png" alt="" width={24} height={24}/><span>Very Happy</span></div>
           <div className="sb-header-right">
-            <button className="sb-icon-btn" type="button" aria-label={zh ? '搜索操作、对话和终端' : 'Search actions, chats, and terminals'} onClick={onSearch}><Search size={16} /></button>
-            <button className="sb-icon-btn sb-board-btn" type="button" aria-label={zh ? '打开任务看板' : 'Open task board'} aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button>
             <button className="sb-icon-btn product-nav-close" type="button" aria-label={zh ? '关闭会话列表' : 'Close session list'} onClick={onCloseNav}><PanelLeftClose size={16} /></button>
-            <button className="sb-icon-btn" type="button" aria-label={zh ? '新建会话' : 'New session'} disabled><Plus size={17} /></button>
           </div>
         </header>
         <nav className="sb-products" aria-label={zh ? '工作区' : 'Workspace'}>
+          <button className="sb-nav-btn" type="button" disabled><Plus size={17}/><span>{zh?'新对话':'New conversation'}</span></button>
+          <button className="sb-nav-btn" type="button" aria-label={zh?'搜索操作、对话和终端':'Search actions, chats, and terminals'} onClick={onSearch}><Search size={17}/><span>{zh?'搜索':'Search'}</span><kbd>⌘K</kbd></button>
           <button type="button" disabled><UsersRound size={18} /><span>{zh ? '团队' : 'Teams'}</span></button>
           <button type="button" disabled><ListChecks size={18} /><span>{zh ? '待办' : 'Todo'}</span></button>
         </nav>
-        <div className="sb-filter" role="presentation"><button className="sb-filter-btn is-on" type="button" disabled>{zh ? '列表' : 'LIST'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '状态' : 'STATUS'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '归档' : 'ARCHIVED'}</button></div>
+        <div className="sb-filter" role="presentation"><button className="sb-filter-btn is-on" type="button" disabled>{zh ? '列表' : 'LIST'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '状态' : 'STATUS'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '归档' : 'ARCHIVED'}</button><button className="sb-icon-btn sb-board-btn" type="button" aria-label={zh ? '打开任务看板' : 'Open task board'} aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button></div>
         <div className="sb-list">
           <div className="sb-section">
             {rows.map(({ icon: Icon, title, meta, selected, attention, live, actionable }) => (
@@ -180,7 +179,7 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
             ))}
           </div>
         </div>
-        <footer className="sb-footer"><button className="sb-footer-btn" type="button" disabled><Settings size={15} /> {zh ? '设置' : 'Settings'}</button></footer>
+        <footer className="sb-footer"><button className="sb-footer-btn" type="button" disabled><Settings size={15} /> {zh ? '设置' : 'Settings'}</button><button className="sb-footer-btn sb-footer-icon" type="button" disabled aria-label={zh?'笔记':'Notes'}><StickyNote size={15}/></button></footer>
       </div>
     </aside>
   );
@@ -277,8 +276,9 @@ function TerminalAndFiles({ filesId, filesOpen, onBack, onCloseFiles, onOpenFile
           </div>
           {fileTransferDemo && <button type="button" className="product-transfer-trigger mono" onClick={() => previewTransfer()}>{transfer?.phase === 'ready' ? (zh ? '重播本地预览' : 'Replay local preview') : (zh ? '预览截图交接' : 'Preview screenshot handoff')}</button>}
         </div>
-        {filesOpen && <aside id={filesId} className="term-files product-term-files" onKeyDown={keepOverlayFocus}>
-          <div className="term-files-head"><span className="term-files-title">{zh ? '文件' : 'Files'}</span><button ref={closeButtonRef} type="button" className="sb-icon-btn" aria-label={zh ? '关闭文件并返回终端' : 'Close files and return to terminal'} onClick={closeFiles}><X size={16} /></button></div>
+        {filesOpen && <aside ref={node=>{closeButtonRef.current=node?.querySelector<HTMLButtonElement>('.workspace-tab-close')??null;}} id={filesId} className="term-files product-term-files" onKeyDown={keepOverlayFocus}>
+          <WorkspaceTabsView zh={zh} tabs={[{id:'files',title:zh?'文件':'Files',movable:false}]} active="files" onSelect={()=>{}} onMove={()=>{}} onClose={closeFiles}/>
+
           <FileWorkspace />
         </aside>}
       </div>

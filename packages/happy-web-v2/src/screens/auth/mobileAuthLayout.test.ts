@@ -7,6 +7,12 @@ const signup = readFileSync(new URL('./SignupScreen.tsx', import.meta.url), 'utf
 const viewportPin = readFileSync(new URL('../../app/useKeyboardViewportPin.ts', import.meta.url), 'utf8');
 
 describe('mobile auth layout', () => {
+  it('does not focus initial password fields on touch devices', () => {
+    for (const screen of [login, signup]) {
+      expect(screen).toContain("autoFocus={!emailEnabled && !window.matchMedia('(pointer: coarse)').matches}");
+    }
+  });
+
   it('keeps the full card scrollable inside the dynamic iOS viewport', () => {
     expect(styles).toMatch(/\.auth-page \{[\s\S]*height: 100dvh;/);
     expect(styles).toMatch(/\.auth-page \{[\s\S]*min-height: 100dvh;/);
@@ -20,12 +26,14 @@ describe('mobile auth layout', () => {
     expect(compact).toContain('env(safe-area-inset-right)');
     expect(compact).toContain('env(safe-area-inset-bottom)');
     expect(compact).toContain('env(safe-area-inset-left)');
-    expect(compact).toContain('.auth-card { margin: 0;');
+    expect(compact).toContain('.auth-card { margin-block: auto;');
   });
 
-  it('top-aligns short viewports and the iOS keyboard state', () => {
+  it('centers fitting cards and top-aligns the iOS keyboard state', () => {
     expect(styles).toContain('@media (max-width: 720px), (max-height: 700px)');
-    expect(styles).toContain(".auth-page[data-keyboard-open='true'] { align-items: flex-start; }");
+    expect(styles).toContain(".auth-page[data-keyboard-open='true'] { align-items: flex-start; min-height: 0; }");
+    expect(styles).toContain(".auth-page[data-keyboard-open='true'] .auth-card { margin-block: 0; }");
+    expect(styles).toMatch(/\.auth-card \{[^}]*margin-block: auto;[^}]*flex-shrink: 0;/);
     expect(viewportPin).toContain("el.dataset.keyboardOpen = 'true'");
     expect(viewportPin).toContain('delete el.dataset.keyboardOpen');
     for (const screen of [login, signup]) {
@@ -40,9 +48,9 @@ describe('mobile auth layout', () => {
   });
 
   it('prioritizes the auth form by removing the decorative brand section on phones', () => {
-    expect(styles).toMatch(/@media \(max-width: 720px\) \{[\s\S]*\.auth-brand-panel \{ display: none; \}/);
-    expect(styles).toMatch(/@media \(max-width: 720px\) \{[\s\S]*\.auth-form-panel \{[\s\S]*gap: var\(--sp-3\);[\s\S]*padding: var\(--sp-4\);/);
-    expect(styles).toMatch(/@media \(max-width: 720px\) \{[\s\S]*\.auth-language-switcher \{[\s\S]*position: absolute;/);
+    expect(styles).toMatch(/@media \(max-width: 720px\), \(max-height: 500px\) \{[\s\S]*\.auth-brand-panel \{ display: none; \}/);
+    expect(styles).toMatch(/@media \(max-width: 720px\), \(max-height: 500px\) \{[\s\S]*\.auth-form-panel \{[\s\S]*gap: var\(--sp-3\);[\s\S]*padding: var\(--sp-4\);/);
+    expect(styles).toMatch(/@media \(max-width: 720px\), \(max-height: 500px\) \{[\s\S]*\.auth-language-switcher \{[\s\S]*position: absolute;/);
     expect(login).toContain('<section className="auth-brand-panel"');
   });
 });

@@ -16,7 +16,7 @@
 }
 .relay-badge:hover, .relay-badge[data-state='open'] { background: var(--bg-2); color: var(--text); }
 .relay-badge.is-connected > svg { color: var(--accent); }
-.relay-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.relay-badge:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-dim); }
 .relay-detail {
   z-index: 100;
   width: min(300px, calc(100vw - 24px));

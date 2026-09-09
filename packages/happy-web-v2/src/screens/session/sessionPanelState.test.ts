@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel } from './sessionPanelState';
 
 describe('session panel URL state (B-208)', () => {
-  it('accepts only the three public panel names', () => {
+  it('accepts the public panel names', () => {
     expect(readSessionPanel('changes')).toBe('changed');
     expect(readSessionPanel('files')).toBe('all');
     expect(readSessionPanel('browse')).toBe('browse');
     expect(readSessionPanel('btw')).toBe('btw');
     expect(readSessionPanel('agent')).toBe('subagent');
+    expect(readSessionPanel('notes')).toBe('notes');
+    expect(readSessionPanel('web')).toBe('web');
     expect(readSessionPanel('changed')).toBeNull();
     expect(readSessionPanel(null)).toBeNull();
   });
@@ -28,6 +30,8 @@ describe('session panel URL state (B-208)', () => {
     // opens, so every other tab clears it.
     expect(withSessionPanel(opened, null).toString()).toBe('foo=1');
     expect(withSessionPanel(opened, 'changed').toString()).toBe('foo=1&panel=changes');
+    expect(withSessionPanel(opened, 'notes').toString()).toBe('foo=1&panel=notes');
+    expect(withSessionPanel(opened, 'web').toString()).toBe('foo=1&panel=web');
     expect(readSubagentTarget(new URLSearchParams('panel=agent'))).toBeNull();
   });
 });

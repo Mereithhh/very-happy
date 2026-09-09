@@ -98,6 +98,8 @@ maxParallel 由 server claim-operation 限制同时推进的非 root 叶子任�
 
 新增 `teamLaunchVersion:1` 能力位，保留 `teamsVersion:1`。launch/model/default约束使用前检查真实运行daemon能力；新CLI在团队初始prompt注入TEAM_SKILL及root角色，普通session不变。server对操作领取继续门控，旧daemon不能绕过Web直接执行新语义。
 
+Web 的 MachineMetadataSchema 必须显式保留可选正整数 teamLaunchVersion，与 CLI 上报 schema 一致；仅 `1` 启用当前启动语义，缺失和未来未知版本不放行。不能只在 UI 用类型断言读取，否则解密后的 zod 解析会先剥离字段。工作台迁移真实 daemon 验收发现并修复这一遗漏；不改变 wire/服务端存储或旧端兼容性，无新增发布顺序要求。
+
 终端指南按 Claude Code/Codex/pi 显示 `very-happy teams install --host <host> --apply`，说明 skill 提供协作方法，Very Happy 托管会话提供工具连接；安装完成后让 agent 读取命令返回的 skill 路径并在托管会话开始。裸 pi 只安装 skill 不等于工具可用，不能承诺自动发现。App 内创建不依赖该指南。
 
 ### 专用展示

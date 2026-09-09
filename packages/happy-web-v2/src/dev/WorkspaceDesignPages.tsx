@@ -1,0 +1,40 @@
+/** Local-only review pages. Controls demonstrate layout and never persist settings. */
+import { CyberMark } from '@/ui/CyberMark';
+import { useState } from 'react';
+import { ArrowLeft, Check, ChevronRight, HelpCircle, ListChecks, Plus, Search, Settings, Shield, SlidersHorizontal, Terminal, Users, Zap } from 'lucide-react';
+
+const categories = ['常规', '外观', '会话与输入', '模型与权限', '快捷指令', '通知', '机器与连接', '账户'];
+const groups: Record<string, { title: string; rows: { name: string; description: string; options?: string[]; enabled?: boolean }[] }[]> = {
+  常规: [{ title: '工作区', rows: [{ name: '界面语言', description: '选择应用界面使用的语言。', options: ['简体中文', 'English'] }, { name: '启动页面', description: '打开应用时先看到的内容。', options: ['最近的会话', '帮助与工作台', '任务看板'] }] }, { title: '操作习惯', rows: [{ name: '显示快捷键提示', description: '在常用操作旁显示键盘快捷键。', enabled: true }, { name: '保留侧边栏分组', description: '继续上次的项目分组与展开状态。', enabled: true }] }],
+  外观: [{ title: '显示', rows: [{ name: '主题', description: '亮色与深色使用同一套信息层级。', options: ['浅色', '深色'] }, { name: '紧凑界面', description: '减少重复留白，保留可读的正文和触摸目标。', enabled: true }] }],
+  '会话与输入': [{ title: '输入', rows: [{ name: '发送方式', description: '中文输入法候选确认不会触发发送。', options: ['Enter 发送', '⌘ Enter 发送'] }, { name: '运行中发送', description: '追加消息先排队，队列中可以调整方向。', options: ['排队'] }, { name: '显示上下文用量', description: '在输入框下显示占比与已用 / 总容量。', enabled: true }] }],
+  '模型与权限': [{ title: '默认值', rows: [{ name: '默认权限', description: '自动执行仍受宿主策略约束；以会话回报的实际模式为准。', options: ['自动执行', '逐次确认'] }, { name: '默认思考强度', description: '会话内可以单独调整；可用档位取决于模型。', options: ['高', '中', '低', '最大'] }] }],
+  快捷指令: [{ title: '常用指令', rows: [{ name: '检查改动', description: '请检查本次改动，重点看边界和回归。', enabled: true }, { name: '先看方案', description: '先解释方案，再开始实现。', enabled: true }, { name: '验证结果', description: '运行测试并总结结果。', enabled: true }] }],
+  通知: [{ title: '提醒', rows: [{ name: '任务完成', description: '任务完成时提醒我。', enabled: true }, { name: '等待确认', description: '需要批准或补充信息时提醒我。', enabled: true }] }],
+  '机器与连接': [{ title: '连接', rows: [{ name: '连接状态', description: '在会话中保留机器与连接状态。', enabled: true }, { name: '终端默认视图', description: '为新打开的终端选择展示方式。', options: ['结构化会话', '终端'] }] }],
+  账户: [{ title: '账户', rows: [{ name: '本地设计预览', description: '这里不读取账户信息，也不会修改真实设置。', options: ['示例账户'] }] }],
+};
+
+export function WorkspaceDesignPages({ page, onBack, onPage, theme, onTheme }: { page: string; onBack: () => void; onPage: (p: string) => void; theme: string; onTheme: (v: string) => void }) {
+  const [category, setCategory] = useState('常规');
+  const [query, setQuery] = useState('');
+  const [values, setValues] = useState<Record<string, string | boolean>>({});
+  const [todo, setTodo] = useState('');
+  const [todos, setTodos] = useState([{ text: '检查手机输入体验', done: false }, { text: '核对明暗主题', done: true }, { text: '评审新的设置页面', done: false }]);
+  const [team, setTeam] = useState(false);
+  const filtered = (query ? Object.values(groups).flat() : groups[category]).map(group => ({ ...group, rows: group.rows.filter(row => !query || `${row.name}${row.description}`.includes(query)) })).filter(group => group.rows.length);
+  return <div className="wd wd-pages">
+    <aside className="wd-sidebar"><button className="wd-page-back" onClick={onBack}><ArrowLeft size={16}/>返回应用</button>
+      {page === '设置' ? <><label className="wd-search"><Search size={14}/><input aria-label="搜索设置" placeholder="搜索设置…" value={query} onChange={e => setQuery(e.target.value)}/></label><div className="wd-section-label">偏好设置</div><nav className="wd-nav">{categories.map(name => <button key={name} aria-current={category === name && !query ? 'page' : undefined} onClick={() => { setCategory(name); setQuery(''); }}><SlidersHorizontal/>{name}</button>)}</nav></> : <><div className="wd-section-label">工作区</div><nav className="wd-nav">{[{ name: '帮助', icon: HelpCircle }, { name: '团队', icon: Users }, { name: '待办', icon: ListChecks }, { name: '设置', icon: Settings }].map(({ name, icon: Icon }) => <button key={name} aria-current={page === name ? 'page' : undefined} onClick={() => onPage(name)}><Icon/>{name}</button>)}</nav></>}
+      <div className="wd-page-note"><div className="wd-brand-home"><CyberMark size={22}/><strong>Very Happy</strong></div>设计预览 · 本地示例<br/>不会修改真实设置</div>
+    </aside>
+    <main className="wd-settings-main"><header className="wd-settings-mobile"><button className="wd-icon" aria-label="返回应用" onClick={onBack}><ArrowLeft size={18}/></button><strong>{page}</strong></header>
+      <div className="wd-settings-content"><h1>{page === '设置' ? query ? '搜索结果' : category : page === '帮助' ? '你的工作，从这里继续' : page}</h1>
+        {page === '设置' ? <><div className="wd-settings-tabs">{categories.map(name => <button key={name} aria-pressed={category === name} onClick={() => { setCategory(name); setQuery(''); }}>{name}</button>)}</div><label className="wd-settings-mobile-search wd-search"><Search size={14}/><input aria-label="手机搜索设置" placeholder="搜索设置…" value={query} onChange={e => setQuery(e.target.value)}/></label>{filtered.map((group, i) => <section className="wd-settings-group" key={`${group.title}-${i}`}><h2>{group.title}</h2><div className="wd-settings-rows">{group.rows.map(row => <div className="wd-settings-row" key={row.name}><div><label htmlFor={`setting-${row.name}`}>{row.name}</label><p>{row.description}</p></div>{row.options ? <select id={`setting-${row.name}`} value={row.name === '主题' ? theme === 'light' ? '浅色' : '深色' : String(values[row.name] ?? row.options[0])} onChange={e => { setValues({ ...values, [row.name]: e.target.value }); if (row.name === '主题') onTheme(e.target.value === '浅色' ? 'light' : 'dark'); }}>{row.options.map(option => <option key={option}>{option}</option>)}</select> : <button id={`setting-${row.name}`} className="wd-switch" role="switch" aria-label={row.name} aria-checked={Boolean(values[row.name] ?? row.enabled)} onClick={() => setValues({ ...values, [row.name]: !Boolean(values[row.name] ?? row.enabled) })}><span/></button>}</div>)}</div></section>)}{!filtered.length && <p className="wd-muted">没有匹配的设置。</p>}</>
+        : page === '帮助' ? <><p className="wd-page-intro">连接机器，接续会话，组织团队。常用能力保留独立入口。</p><div className="wd-help-links">{[{ title: '继续对话', desc: '回到当前项目，查看执行过程并补充任务。', icon: Zap, action: onBack }, { title: '团队', desc: '围绕一个目标组织多个 agent，查看分工与进展。', icon: Users, action: () => onPage('团队') }, { title: '待办', desc: '收集下一步，把想法变成可以跟进的任务。', icon: ListChecks, action: () => onPage('待办') }, { title: '快捷指令', desc: '在输入框的 + 菜单使用，在设置里管理。', icon: Terminal, action: () => { setCategory('快捷指令'); onPage('设置'); } }, { title: '权限与连接', desc: '查看默认权限和连接相关偏好。', icon: Shield, action: () => { setCategory('模型与权限'); onPage('设置'); } }].map(({title,desc,icon:Icon,action}) => <button key={title} onClick={action}><Icon size={20}/><span><strong>{title}</strong><p>{desc}</p></span><ChevronRight size={16}/></button>)}</div></>
+        : page === '待办' ? <><p className="wd-page-intro">集中记录下一步。以下为可操作的本地示例。</p><form className="wd-todo-form" onSubmit={e => { e.preventDefault(); if (todo.trim()) { setTodos([...todos, {text:todo.trim(), done:false}]); setTodo(''); } }}><input aria-label="新待办" placeholder="添加一项待办…" value={todo} onChange={e => setTodo(e.target.value)}/><button className="wd-icon" aria-label="添加待办" disabled={!todo.trim()}><Plus size={18}/></button></form><div className="wd-settings-rows">{todos.map((item,i) => <button className="wd-todo-row" key={i} aria-pressed={item.done} onClick={() => setTodos(todos.map((t,j) => j === i ? {...t,done:!t.done}:t))}><span className="wd-todo-check">{item.done && <Check size={13}/>}</span><span>{item.text}</span></button>)}</div></>
+        : <><p className="wd-page-intro">围绕目标协作，保留 Very Happy 的团队工作方式。</p><button className="wd-team-summary" aria-expanded={team} onClick={() => setTeam(!team)}><Users size={20}/><span><strong>工作台体验改版</strong><p>示例团队 · 3 个角色 · 进行中</p></span><ChevronRight size={16}/></button>{team && <div className="wd-settings-rows">{['负责人：设计标准与最终整合', '实现：侧栏、会话与输入区', '验证：移动端、主题与回归'].map(role => <div className="wd-settings-row" key={role}><span>{role}</span><span className="wd-muted">示例</span></div>)}</div>}</>}
+      </div>
+    </main>
+  </div>;
+}

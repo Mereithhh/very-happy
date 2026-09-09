@@ -95,3 +95,9 @@
 .perm-elicitation a {
   color: var(--text-dim);
 }
+
+@media (pointer: coarse) {
+  .perm-actions .vh-btn,
+  .perm-batch .vh-btn,
+  .perm-elicitation .vh-btn { min-height: 44px; }
+}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { readUpdateRecovery, retryMachineUpdate } from '@/app/cliUpdateRecovery';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Pencil, Play, Terminal, ChevronRight, History } from 'lucide-react';
-import { BackButton } from '@/app/BackButton';
+import { SettingsPage, SettingsHeader } from '@/screens/settings/SettingsLayout';
 import {
   EmptyState,
   Button,
@@ -33,7 +33,6 @@ import { claudeHistorySupported } from '@/sync/closedTerminals';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { getSessionName, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
-import '@/screens/settings/settings.css';
 import { cliUpdateInstallCommand, hasValidCliUpdatePolicy, machineCliUpdateNotice } from '@/app/cliUpdatePolicy';
 import { claudeAuthTone, isClaudeAuthStale, isKnownClaudeAuthDiagnosis, readClaudeAuth } from '@/sync/claudeAuth';
 import { machineClaudeAuthProbe, machineClaudeAuthRepair, machineClaudeAuthSetStore, type ClaudeAuthRpcResult } from '@/sync/ops';
@@ -260,15 +259,8 @@ export function MachineScreen() {
   }
 
   return (
-    <div className="set-scroll" style={{ height: '100dvh' }}>
-      <div className="set-page">
-        <div className="set-header">
-          <BackButton />
-          <div className="set-header__titles">
-            <span className="set-header__title">{name}</span>
-            <span className="set-header__subtitle">{machine.metadata?.host}</span>
-          </div>
-          <div className="set-header__right">
+    <SettingsPage>
+        <SettingsHeader title={name} subtitle={machine.metadata?.host} right={<>
             {claudeAuth && (
               <Badge tone={claudeAuthTone(claudeAuth)}>
                 {claudeAuth.status === 'ok'
@@ -282,8 +274,7 @@ export function MachineScreen() {
             <button type="button" className="set-header__back" onClick={rename} disabled={renaming} aria-busy={renaming} aria-label={t('common.rename')}>
               {renaming ? <Spinner size={14} /> : <Pencil size={16} />}
             </button>
-          </div>
-        </div>
+        </>} />
 
         <ItemList>
           {online ? (
@@ -296,7 +287,7 @@ export function MachineScreen() {
               }
             >
               <div style={{ display: 'flex', gap: 'var(--sp-2)', padding: 'var(--sp-3) var(--sp-3)' }}>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <Input
                     placeholder="~/code/project"
                     value={pathInput}
@@ -516,8 +507,7 @@ export function MachineScreen() {
             <Item title={t('machine.delete')} destructive onClick={del} loading={deleting} />
           </ItemGroup>
         </ItemList>
-      </div>
       {showImportClaude && <ImportClaudeHistoryModal initialMachineId={machine.id} onClose={() => setShowImportClaude(false)} />}
-    </div>
+    </SettingsPage>
   );
 }

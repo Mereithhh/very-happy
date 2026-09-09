@@ -45,19 +45,7 @@ const EXTERNAL = new Set([
  * but none of them carries a colour, so they are not a legibility bug. Listed by
  * variable → files, so fixing one means deleting its line here.
  */
-const KNOWN_DEBT: Record<string, string[]> = {
-    '--dur-fast': ['src/screens/terminal/terminal.css'],
-    '--ease-out': ['src/screens/terminal/terminal.css'],
-    '--fs-15': ['src/screens/assistant/assistant.css'],
-    '--fs-18': ['src/screens/help/helpScreen.css'],
-    '--fs-24': ['src/screens/public/whyVeryHappy.css', 'src/screens/sessions/emptyDetail.css'],
-    '--fs-36': ['src/screens/help/helpScreen.css'],
-    '--fs-9': ['src/screens/public/schedulerTopologyProof.css'],
-    '--mono': ['src/screens/assistant/assistant.css'],
-    '--motion-med': ['src/screens/public/mobileContinuityProof.css', 'src/screens/public/whyVeryHappy.css'],
-    '--motion-slow': ['src/screens/public/public.css'],
-    '--sp-9': ['src/screens/help/helpScreen.css'],
-};
+const KNOWN_DEBT: Record<string, string[]> = {};
 
 /** Properties whose invalid fallback makes text unreadable or controls vanish. */
 const COLOUR_PROPS = /(^|[^-])(color|background|background-color|border|border-color|outline|outline-color|fill|stroke|text-decoration-color|box-shadow)\s*:/;

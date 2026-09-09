@@ -222,6 +222,7 @@ export interface DecryptedMessage {
 
 export const MachineMetadataSchema = z.object({
   teamsVersion: z.number().int().positive().optional(),
+  teamLaunchVersion: z.number().int().positive().optional(),
     host: z.string(),
     platform: z.string(),
     happyCliVersion: z.string(),
@@ -267,4 +268,3 @@ export interface Machine {
     daemonState: any | null;  // Dynamic daemon state (runtime info)
     daemonStateVersion: number;
 }
-

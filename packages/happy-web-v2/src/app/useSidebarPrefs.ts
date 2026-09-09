@@ -4,7 +4,7 @@ const WIDTH_KEY = 'vh.sidebar.width';
 const COLLAPSED_KEY = 'vh.sidebar.collapsed';
 export const SIDEBAR_MIN = 240;
 export const SIDEBAR_MAX = 560;
-const DEFAULT_WIDTH = 320;
+const DEFAULT_WIDTH = 260;
 
 function loadWidth(): number {
   const n = Number(localStorage.getItem(WIDTH_KEY));

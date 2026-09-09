@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
-import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, X, RefreshCw, MoreHorizontal } from 'lucide-react';
+import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, RefreshCw, MoreHorizontal } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { sync as appSync } from '@/sync/sync';
@@ -68,7 +68,8 @@ import { useFilesPanelWidth } from '../files/useFilesPanelWidth';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ensureImeFix } from './imeFix';
 import { TmuxHelpModal } from './TmuxHelpModal';
-import { FsBrowser } from '../files/FsBrowser';
+import { TerminalWorkspacePanel, type TerminalWorkspaceKind } from './TerminalWorkspacePanel';
+import { useRetainedWorkspace } from '../workspace/useRetainedWorkspace';
 import {
   reduceTermFocus,
   initialTermFocusState,
@@ -84,7 +85,7 @@ import {
   resolveTerminalView,
   withTerminalViewOverride,
 } from '@/sync/terminalViewPref';
-import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
+import { toggleNotesPanel, setNotesPanelOpen } from '@/screens/notes/notesPanelState';
 import { createTermWriteHold } from './termWriteHold';
 import { createTermStreamSync } from './termStreamSync';
 import { quoteTerminalUploadPath, terminalUploadName, uploadTerminalFile } from './terminalFileUpload';
@@ -332,7 +333,7 @@ export function WebTerminalScreen() {
   const [cjkFontLoading, setCjkFontLoading] = useState(false);
   const [hasTmuxSession, setHasTmuxSession] = useState(false);
   // File browser drawer (fs-list / fs-read RPCs). Desktop (fine pointer,
-  // >860px): an inline SPLIT — the terminal yields width instead of being
+  // >=1100px): an inline SPLIT — the terminal yields width instead of being
   // covered (B-088; the old always-overlay is kept on touch/narrow where the
   // drawer is a full/floating overlay anyway). Opening/closing/drag-resizing
   // the split changes the terminal container's width, so it rides the existing
@@ -340,12 +341,23 @@ export function WebTerminalScreen() {
   // HANDLE DRAG that chain is suppressed (filesDragHoldRef) and exactly one
   // fit runs on release — per-frame refits re-ran the whole fit → resize-RPC →
   // tmux-reflow chain every mousemove (the historical first-open judder).
-  // Mounted only while open, so FsBrowser picks up the freshest pushed cwd.
+  // Hide the workspace without discarding browser/scroll state. Identity includes cwd.
   const [filesOpen, setFilesOpen] = useState(false);
+  const [workspaceKind,setWorkspaceKind] = useState<TerminalWorkspaceKind>('files');
+  const workspaceIdentity = JSON.stringify([tid, machineId, meta?.cwd]);
+  const retainedWorkspace = useRetainedWorkspace(workspaceIdentity, filesOpen ? workspaceKind : null);
+  const [notesOpen] = useLocalSettingMutable('notesPanelOpen');
+  useEffect(()=>{
+    if(notesOpen){setWorkspaceKind('notes');setFilesOpen(true);}
+    else if(workspaceKind==='notes')setFilesOpen(false);
+  },[notesOpen]);
+  const selectWorkspace=(kind:TerminalWorkspaceKind)=>{setWorkspaceKind(kind);setFilesOpen(true);setNotesPanelOpen(kind==='notes');};
+  const closeWorkspace=()=>{setFilesOpen(false);setNotesPanelOpen(false);};
+  const toggleFiles=()=>{if(filesOpen&&workspaceKind==='files')closeWorkspace();else selectWorkspace('files');};
   const [fileUpload, setFileUpload] = useState<{ name: string; sent: number; total: number } | null>(null);
-  // Split mode matches the CSS: fine pointer AND >860px (see terminal.css
+  // Split mode matches the CSS: fine pointer AND >=1100px (see terminal.css
   // .term-mid / .term-files media rules — coarse or narrow keep the overlay).
-  const filesSplit = useMediaQuery('(min-width: 861px) and (pointer: fine)');
+  const filesSplit = useMediaQuery('(min-width: 1100px) and (pointer: fine)');
   const filesDragHoldRef = useRef(false);
   // Bridge the effect-local scheduleFit out to the drag-release handler (same
   // pattern as sendInputRef).
@@ -2563,7 +2575,7 @@ export function WebTerminalScreen() {
       case 'select':
         return { key, label: t('terminal.selectMode'), icon: TextSelect, checked: selectMode, onSelect: toggleSelectMode };
       case 'files':
-        return { key, label: t('session.chat.files'), icon: FolderOpen, checked: filesOpen, onSelect: () => setFilesOpen((v) => !v) };
+        return { key, label: t('session.chat.files'), icon: FolderOpen, checked: filesOpen, onSelect: toggleFiles };
       case 'refit':
         return { key, label: t('terminal.refitWidth'), icon: RefreshCw, onSelect: () => refitWidthRef.current?.(true) };
       case 'tmuxHelp':
@@ -2643,7 +2655,7 @@ export function WebTerminalScreen() {
             className={`sb-icon-btn${filesOpen ? ' is-active' : ''}`}
             title={t('session.chat.files')}
             aria-pressed={filesOpen}
-            onClick={() => setFilesOpen((v) => !v)}
+            onClick={toggleFiles}
           >
             <FolderOpen size={18} />
           </button>
@@ -2759,12 +2771,12 @@ export function WebTerminalScreen() {
           )}
           <div ref={innerRef} className="term-host-inner" />
         </div>
-        {filesOpen && machineId && (
+        {retainedWorkspace && machineId && (
           <>
             {/* Scrim only materializes on narrow viewports (CSS) — desktop keeps
                 the terminal interactive next to the browser, like sd-files. */}
-            <div className="term-files-scrim" onClick={() => setFilesOpen(false)} aria-hidden />
-            {filesSplit && (
+            {filesOpen && <div className="term-files-scrim" onClick={closeWorkspace} aria-hidden />}
+            {filesOpen && filesSplit && (
               <div
                 className="app-resize-handle term-files-handle"
                 onMouseDown={onFilesHandleDown}
@@ -2772,22 +2784,9 @@ export function WebTerminalScreen() {
                 aria-orientation="vertical"
               />
             )}
-            <aside className="term-files" style={filesSplit ? { width: filesWidth } : undefined}>
-              <div className="term-files-head">
-                <span className="term-files-title">{t('session.chat.files')}</span>
-                <button
-                  type="button"
-                  className="sb-icon-btn"
-                  onClick={() => setFilesOpen(false)}
-                  aria-label={t('session.chat.closeFiles')}
-                  title={t('session.chat.closeFiles')}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              {/* Start where the terminal lives: the pushed tmux pane cwd; a
-                  terminal without one (old daemon push) starts at home. */}
-              <FsBrowser machineId={machineId} initialPath={meta?.cwd || '~'} />
+            <aside className="term-files" hidden={!filesOpen} style={{ ...(filesSplit ? { width: filesWidth } : {}), ...(!filesOpen ? { display: 'none' } : {}) }}>
+              <TerminalWorkspacePanel key={workspaceIdentity} identity={workspaceIdentity} machineId={machineId} path={meta?.cwd||'~'} visible={filesOpen} active={retainedWorkspace} onSelect={selectWorkspace} onClose={closeWorkspace}/>
+
             </aside>
           </>
         )}

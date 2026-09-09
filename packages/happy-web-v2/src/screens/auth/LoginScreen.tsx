@@ -135,6 +135,7 @@ export function LoginScreen() {
 
         <section className="auth-form-panel" aria-labelledby="login-form-title">
           <LanguageSwitcher className="auth-language-switcher" />
+          <div className="auth-mobile-brand"><CyberMark size={28}/><span>Very Happy</span></div>
           <header className="auth-form-header">
             <span>{t('login.accountStep')}</span>
             <h2 id="login-form-title">{t('settings.connectAccount')}</h2>
@@ -160,7 +161,7 @@ export function LoginScreen() {
             {passwordExpanded && <form className="auth-password-form" onSubmit={onSubmit}>
               <Input
                 label={t('common.name')}
-                autoFocus={!emailEnabled}
+                autoFocus={!emailEnabled && !window.matchMedia('(pointer: coarse)').matches}
                 autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}

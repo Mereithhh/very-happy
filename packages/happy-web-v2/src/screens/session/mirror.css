@@ -98,7 +98,7 @@
 }
 .mri-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--text-faint);
 }
 .mri-input::placeholder {
   color: var(--text-faint);
@@ -128,4 +128,8 @@
  * the reason in the attention color (still no accent). */
 .mrb-note--failed {
   color: var(--warn);
+}
+
+@media (pointer: coarse) {
+  .mrb-term-btn, .mrb-needs { min-height: 44px; }
 }

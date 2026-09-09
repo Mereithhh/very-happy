@@ -1,7 +1,7 @@
 /** Files panel tabs, the `/btw` side-question panel (B-283), and the sub-agent
  *  drawer (B-317). One aside, several tenants — the tab lives in `?panel=`. */
-export type SessionPanelTab = 'changed' | 'all' | 'browse' | 'btw' | 'subagent';
-export type SessionFilesTab = Exclude<SessionPanelTab, 'btw' | 'subagent'>;
+export type SessionPanelTab = 'changed' | 'all' | 'browse' | 'btw' | 'subagent' | 'notes' | 'web';
+export type SessionFilesTab = Exclude<SessionPanelTab, 'btw' | 'subagent' | 'notes' | 'web'>;
 
 const QUERY_TO_TAB: Record<string, SessionPanelTab> = {
   changes: 'changed',
@@ -9,6 +9,8 @@ const QUERY_TO_TAB: Record<string, SessionPanelTab> = {
   browse: 'browse',
   btw: 'btw',
   agent: 'subagent',
+  notes: 'notes',
+  web: 'web',
 };
 
 const TAB_TO_QUERY: Record<SessionPanelTab, string> = {
@@ -17,6 +19,8 @@ const TAB_TO_QUERY: Record<SessionPanelTab, string> = {
   browse: 'browse',
   btw: 'btw',
   subagent: 'agent',
+  notes: 'notes',
+  web: 'web',
 };
 
 /** Which tool-call message the sub-agent drawer is pointed at. */

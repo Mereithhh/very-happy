@@ -8,13 +8,14 @@
 }
 
 .set-page {
-  max-width: 720px;
+  width: 100%;
+  max-width: 860px;
   margin: 0 auto;
   padding: var(--sp-6) var(--sp-5);
   padding-bottom: max(var(--sp-8), env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  gap: var(--sp-6);
+  gap: var(--sp-5);
 }
 
 .set-header {
@@ -44,11 +45,14 @@
   flex: 1;
 }
 .set-header__title {
+  margin: 0;
+  overflow-wrap: anywhere;
   font-size: var(--fs-20);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 .set-header__subtitle {
+  overflow-wrap: anywhere;
   font-size: var(--fs-13);
   color: var(--text-dim);
 }
@@ -103,7 +107,7 @@
 }
 .set-switch[data-state='checked'] {
   background: var(--accent);
-  border-color: var(--accent);
+  border-color: var(--text-dim);
 }
 .set-switch:disabled {
   opacity: 0.4;
@@ -141,8 +145,8 @@ input.set-value {
 }
 input.set-value:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  border-color: var(--text-dim);
+  box-shadow: none;
 }
 
 /* inline editor card (snippets) */
@@ -169,8 +173,8 @@ input.set-value:focus {
   outline: none;
 }
 .set-editor__textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  border-color: var(--text-dim);
+  box-shadow: none;
 }
 /* touch: 16px floor stops iOS focus auto-zoom (snippet editor + the
  * <input type="time"> quiet-hours fields that reuse .set-value). */
@@ -528,3 +532,38 @@ input.set-value:focus {
   line-height: 1.6;
   text-align: center;
 }
+
+/* Shared settings shell: one category sidebar, all real route contents. */
+.settings-workspace { height:100%; min-height:0; width:100%; container-type:inline-size; }
+.settings-layout { display:grid; grid-template-columns:240px minmax(0,1fr); height:100%; min-height:0; }
+.settings-navigation { flex:none; width:240px; background:var(--bg-1); padding:var(--sp-3); overflow-y:auto; }
+.settings-navigation-top { display:flex; align-items:center; justify-content:space-between; }
+.settings-search-toggle { display:none; }
+.settings-return { display:flex; gap:var(--sp-2); align-items:center; min-height:36px; color:var(--text); font-size:var(--fs-13); padding:0 var(--sp-2); }
+.settings-search { display:flex; align-items:center; gap:var(--sp-2); background:var(--bg-2); border-radius:var(--r-sm); padding:6px var(--sp-2); margin:var(--sp-3) 0; color:var(--text-faint); }
+.settings-search input { min-width:0; width:100%; border:0; background:transparent; font-size:var(--fs-12); }
+.settings-search input:focus { outline:none; box-shadow:none; }
+.settings-navigation nav { display:grid; gap:2px; }
+.settings-navigation nav a { display:flex; align-items:center; gap:var(--sp-2); padding:6px var(--sp-2); border-radius:var(--r-sm); color:var(--text-dim); font-size:var(--fs-13); }
+.settings-navigation nav a:hover, .settings-navigation nav a[aria-current='page'] { background:var(--bg-2); color:var(--text); }
+.settings-navigation nav a[aria-current='page'] { font-weight:500; }
+.settings-content { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; background:var(--bg-0); }
+.settings-content .vh-item { padding:10px var(--sp-4); font-size:var(--fs-13); }
+.settings-content .vh-item__subtitle { font-size:var(--fs-12); }
+.settings-content .set-header__title { margin:0; font-size:var(--fs-20); }
+.settings-mobile-select { display:none; }
+@container (max-width:700px) {
+ .settings-layout { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); }
+ .settings-navigation { width:100%; padding:var(--sp-2); overflow:visible; }
+ .settings-navigation nav, .settings-search { display:none; }
+ .settings-return { min-height:44px; }
+ .settings-search-toggle { display:grid; place-items:center; width:44px; height:44px; flex:none; border-radius:var(--r-sm); }
+ .settings-navigation[data-search-open="true"] .settings-search { display:flex; }
+ .settings-navigation[data-searching="true"] nav { display:grid; max-height:30dvh; overflow-y:auto; }
+ .settings-mobile-select { display:block; width:100%; min-height:44px; background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-sm); padding:6px var(--sp-2); }
+ .settings-content .set-page { padding:var(--sp-4); }
+}
+@media (pointer:coarse) { .settings-navigation nav a { min-height:44px; } }
+
+.settings-content .vh-item__title { white-space:normal; overflow:visible; overflow-wrap:anywhere; }
+.settings-content .vh-item.is-selected { box-shadow:none; background:var(--bg-2); }

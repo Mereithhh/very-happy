@@ -17,7 +17,7 @@ import {
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
-import { CyberMark, Spinner, useToast } from '@/ui';
+import { Spinner, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
 import { useImeGuard } from '@/utils/ime';
@@ -621,7 +621,7 @@ export function AssistantScreen() {
                 {gate ?? (
                     <>
                         <div className="as-stage">
-                            <AssistantLogo state={logoState} glyph={<CyberMark size={44} />} />
+                            <AssistantLogo state={logoState} />
                             <div
                                 className="as-state-label"
                                 data-live={logoState === 'listening' || logoState === 'speaking'}

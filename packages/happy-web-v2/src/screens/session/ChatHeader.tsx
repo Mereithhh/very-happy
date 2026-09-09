@@ -2,6 +2,7 @@ import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { useLocalSetting } from '@/sync/storage';
 import { useNavigate } from 'react-router-dom';
 import { Bot } from 'lucide-react';
+import * as Popover from '@radix-ui/react-popover';
 /**
  * ChatHeader — title (editable rename), machine·cwd breadcrumb, connection dot,
  * and the global back button.
@@ -20,6 +21,7 @@ import { planChatHeaderActions, type ChatHeaderActionKey } from './chatHeaderLay
 import { useImeGuard } from '@/utils/ime';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { RelayBadge } from '@/components/RelayBadge';
+import { sessionAgentLabel } from './sessionAgentLabel';
 import './header.css';
 
 // Session is "connected" when its agent is online AND our relay socket is up.
@@ -59,6 +61,7 @@ export function ChatHeader({
 
     const meta = session?.metadata;
     const title = meta?.summary?.text?.trim() || t('session.newChat');
+    const agent = sessionAgentLabel(meta?.flavor, t('status.unknown'));
     const host = meta?.host;
     const cwd = meta?.path;
     const status = connectionStatus(session?.presence, socketStatus);
@@ -202,14 +205,17 @@ export function ChatHeader({
                         <Pencil size={13} className="ch-title-pencil" />
                     </button>
                 )}
-                {(host || cwd) && (
-                    <div className="ch-crumb">
-                        {host && <span className="ch-crumb-host">{host}</span>}
-                        {host && cwd && <span className="ch-crumb-sep">·</span>}
-                        {cwd && <span className="ch-crumb-cwd">{cwd}</span>}
-                    </div>
-                )}
+
             </div>
+            {!editing && <div className="ch-identity"><Popover.Root>
+                <Popover.Trigger asChild><button type="button" className="ch-identity-trigger" title={[agent, host, cwd].filter(Boolean).join(' · ')}>
+                    <span className="ch-agent">{agent}</span>
+                    {host && <span className="ch-host">{host}</span>}
+                </button></Popover.Trigger>
+                <Popover.Portal><Popover.Content className="ch-identity-details" align="end" sideOffset={6} collisionPadding={12}>
+                    <dl><dt>Agent</dt><dd>{agent}</dd><dt>Host</dt><dd>{host || t('status.unknown')}</dd><dt>Path</dt><dd>{cwd || t('status.unknown')}</dd></dl>
+                </Popover.Content></Popover.Portal>
+            </Popover.Root></div>}
             {/* Rename takes the whole bar: with the status pill and icons in
                 place the input measured 4px wide at 360px — unusable. */}
             {!editing && (

@@ -80,27 +80,31 @@ export const SessionLiveStatusBar = memo(function SessionLiveStatusBar({ session
     };
     const icons = { input: ArrowUp, output: ArrowDown, cache: Zap, thinking: Brain };
 
+    const metricNode = ({ kind: metric, value }: (typeof metrics)[number]) => {
+        const Icon = icons[metric];
+        return <span className="lsb-metric" key={metric} title={names[metric]} aria-label={`${names[metric]}: ${value}`}>
+            <Icon size={12} aria-hidden="true" />
+            <span>{value}</span>
+        </span>;
+    };
+
     return (
-        <div className="lsb" data-phase={phase}>
-            <div className="lsb-content">
+        <details className="lsb" data-phase={phase}>
+            <summary className="lsb-content">
                 <LiveActivityMark />
-                <div className="lsb-body">
-                    <div className="lsb-heading">
-                        <span className="lsb-label" role="status" aria-live="polite" title={label}>{label}</span>
-                        <span className="lsb-elapsed">{formatElapsed(elapsed)}</span>
-                    </div>
-                    {metrics.length > 0 && <div className="lsb-metrics">
-                        {metrics.map(({ kind: metric, value }) => {
-                            const Icon = icons[metric];
-                            return <span className="lsb-metric" key={metric} title={names[metric]} aria-label={`${names[metric]}: ${value}`}>
-                                <Icon size={12} aria-hidden="true" />
-                                <span className="lsb-metric-name">{metric === 'thinking' ? t('session.chat.liveThinkingShort') : names[metric]}</span>
-                                <span>{value}</span>
-                            </span>;
-                        })}
-                    </div>}
-                </div>
+                <span className="lsb-label" role="status" aria-live="polite" title={label}>{label}</span>
+                <span className="lsb-elapsed">{formatElapsed(elapsed)}</span>
+                <span className="lsb-counts">{metrics.filter(m => m.kind === 'input' || m.kind === 'output').map(metricNode)}</span>
+            </summary>
+            <div className="lsb-details">
+                <strong>{label}</strong>
+                <span className="lsb-elapsed">{formatElapsed(elapsed)}</span>
+                {metrics.length > 0 && <div className="lsb-metrics">
+                    {metrics.map(metric => <div className="lsb-detail-row" key={metric.kind}>
+                        <span>{names[metric.kind]}</span>{metricNode(metric)}
+                    </div>)}
+                </div>}
             </div>
-        </div>
+        </details>
     );
 });

@@ -11,42 +11,28 @@
  */
 import { useEffect, useRef } from 'react';
 import { isAppChord } from '@/app/appChord';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { List, Maximize2, Plus, X } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useAuth } from '@/auth/AuthContext';
-import { DESKTOP_SHELL_MQ, useMediaQuery } from '@/app/useMediaQuery';
+import { useMediaQuery } from '@/app/useMediaQuery';
 import { useLocalSetting } from '@/sync/storage';
 import { useNotes, setNotesCredentials } from '@/sync/notesStore';
-import { noteDisplayTitle, pruneNoteTabs } from '@/sync/notes';
+import { pruneNoteTabs } from '@/sync/notes';
 import { isImeGuardedEvent } from '@/utils/ime';
-import { toast } from '@/ui/Toast';
 import { useNotesPanelWidth } from './useNotesPanelWidth';
-import { useCurrentBindTarget } from './useCurrentBindTarget';
-import { NoteEditor } from './NoteEditor';
-import { NotesList } from './NotesList';
-import { closeNoteTab, openNoteTab, setNotesPanelOpen, setNotesSplitNote, showNotesList, toggleNotesPanel } from './notesPanelState';
+import { closeNoteTab, setNotesPanelOpen, toggleNotesPanel } from './notesPanelState';
+import { WorkspaceTabs } from '../workspace/WorkspaceTabs';
+import { useNotesWorkspace } from './useNotesWorkspace';
 import './notes.css';
 
 export function NotesDock() {
-    const { t } = useTranslation();
-    const navigate = useNavigate();
     const location = useLocation();
     const { credentials } = useAuth();
     const open = useLocalSetting('notesPanelOpen');
     const tabs = useLocalSetting('notesOpenTabs');
-    const activeTab = useLocalSetting('notesActiveTab');
-    const splitNote = useLocalSetting('notesSplitNote');
     const notesMap = useNotes((s) => s.notes);
     const loaded = useNotes((s) => s.loaded);
-    // Breakpoints follow useIsDesktop (980px): below it AppLayout renders the
-    // single-pane mobile shell, where the dock must be the fixed overlay.
-    const resizable = useMediaQuery('(min-width: 980px) and (pointer: fine), (min-width: 800px) and (min-height: 600px) and (pointer: fine)');
-    const wide = useMediaQuery(DESKTOP_SHELL_MQ);
-    const { width, onHandleMouseDown } = useNotesPanelWidth();
-    const bindTarget = useCurrentBindTarget();
-    const bindTargetRef = useRef(bindTarget);
-    bindTargetRef.current = bindTarget;
     const onNotesRoute = location.pathname.startsWith('/notes');
     const onNotesRouteRef = useRef(onNotesRoute);
     onNotesRouteRef.current = onNotesRoute;
@@ -87,117 +73,23 @@ export function NotesDock() {
         }
     }, [loaded, notesMap, tabs]);
 
-    if (!open || onNotesRoute) return null;
+    if (!open || onNotesRoute || /^\/(session|terminal)\/[^/]+/.test(location.pathname)) return null;
 
-    const createNote = () => {
-        const id = useNotes.getState().createNote({ boundTo: bindTargetRef.current });
-        if (id === null) {
-            toast.error(t('notes.capReached'));
-            return;
-        }
-        // B-117: new notes open in the split editor (browse-and-edit lane),
-        // not as a pinned tab.
-        showNotesList();
-        setNotesSplitNote(id);
-    };
+    return <NotesDockView/>;
+}
 
-    const activeNote = activeTab ? notesMap[activeTab] : undefined;
-    // Split selection tolerates a note deleted elsewhere (renders list-only).
-    const splitNoteRecord = splitNote ? notesMap[splitNote] : undefined;
-
-    return (
-        <>
-            <div className="notes-dock-scrim" onClick={() => setNotesPanelOpen(false)} aria-hidden />
-            {resizable && (
-                <div
-                    className="app-resize-handle notes-dock-handle"
-                    onMouseDown={onHandleMouseDown}
-                    role="separator"
-                    aria-orientation="vertical"
-                />
-            )}
-            <aside className="notes-dock" style={wide ? { width } : undefined} aria-label={t('notes.title')}>
-                <div className="notes-dock-tabs">
-                    <button
-                        type="button"
-                        className={`notes-tab notes-tab--list${activeTab === null ? ' is-active' : ''}`}
-                        onClick={showNotesList}
-                        aria-label={t('notes.allNotes')}
-                        title={t('notes.allNotes')}
-                    >
-                        <List size={14} />
-                    </button>
-                    <div className="notes-dock-tabstrip">
-                        {tabs.map((id) => {
-                            const note = notesMap[id];
-                            const title = note ? noteDisplayTitle(note) || t('notes.untitled') : t('notes.untitled');
-                            return (
-                                <div key={id} className={`notes-tab${id === activeTab ? ' is-active' : ''}`}>
-                                    <button type="button" className="notes-tab-label" onClick={() => openNoteTab(id)} title={title}>
-                                        {title}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="notes-tab-close"
-                                        onClick={() => closeNoteTab(id)}
-                                        aria-label={t('notes.closeTab')}
-                                    >
-                                        <X size={11} />
-                                    </button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <button type="button" className="notes-tab notes-tab--icon" onClick={createNote} aria-label={t('notes.new')} title={t('notes.new')}>
-                        <Plus size={14} />
-                    </button>
-                    <button
-                        type="button"
-                        className="notes-tab notes-tab--icon"
-                        onClick={() => navigate('/notes')}
-                        aria-label={t('notes.fullscreen')}
-                        title={t('notes.fullscreen')}
-                    >
-                        <Maximize2 size={13} />
-                    </button>
-                    <button
-                        type="button"
-                        className="notes-tab notes-tab--icon"
-                        onClick={() => setNotesPanelOpen(false)}
-                        aria-label={t('notes.close')}
-                        title={t('notes.close')}
-                    >
-                        <X size={14} />
-                    </button>
-                </div>
-                <div className="notes-dock-body">
-                    {activeNote ? (
-                        <NoteEditor noteId={activeNote.id} autoFocus />
-                    ) : (
-                        /* B-117 split view: list stays on top, tapping a row
-                           edits it in place below (tabs are the PINNED lane —
-                           the pin affordance on each row). */
-                        <div className="notes-split">
-                            <div className="notes-split-list">
-                                <NotesList
-                                    activeId={splitNote}
-                                    onOpen={(id) => setNotesSplitNote(id === splitNote ? null : id)}
-                                    onPin={openNoteTab}
-                                    pinLabel={t('notes.pinTab')}
-                                />
-                            </div>
-                            {splitNoteRecord && (
-                                <div className="notes-split-editor">
-                                    <NoteEditor
-                                        noteId={splitNoteRecord.id}
-                                        onDeleted={() => setNotesSplitNote(null)}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </aside>
-        </>
-    );
+function NotesDockView() {
+    const {t} = useTranslation();
+    const {tabProps,actions,content} = useNotesWorkspace();
+    const resizable = useMediaQuery('(min-width: 1100px) and (pointer: fine)');
+    const wide = useMediaQuery('(min-width: 1100px)');
+    const {width,onHandleMouseDown} = useNotesPanelWidth();
+    return <>
+      <div className="notes-dock-scrim" onClick={()=>setNotesPanelOpen(false)} aria-hidden/>
+      {resizable && <div className="app-resize-handle notes-dock-handle" onMouseDown={onHandleMouseDown} role="separator" aria-orientation="vertical"/>}
+      <aside className="notes-dock" style={wide?{width}:undefined} aria-label={t('notes.title')}>
+        <WorkspaceTabs {...tabProps} actions={<>{actions}<button type="button" className="notes-tab--icon" onClick={()=>setNotesPanelOpen(false)} aria-label={t('notes.close')} title={t('notes.close')}><X size={14}/></button></>}/>
+        {content}
+      </aside>
+    </>;
 }

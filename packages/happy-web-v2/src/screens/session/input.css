@@ -72,8 +72,8 @@
  * second transcript or nested card stack. */
 .ci-queue {
   overflow: hidden;
-  background: var(--bg-1);
-  border: 1px solid var(--line);
+  background: transparent;
+  border: 0;
   border-radius: var(--r-md);
 }
 .ci-queue-head {
@@ -201,8 +201,8 @@
   grid-template-columns: minmax(0, 1fr);
   align-items: flex-end;
   gap: var(--sp-1);
-  background: var(--bg-2);
-  border: 1px solid var(--line);
+  background: var(--bg-1);
+  border: 1px solid transparent;
   border-radius: var(--r-lg);
   padding: var(--sp-2);
   transition: border-color var(--motion-fast), background var(--motion-fast), box-shadow var(--motion-fast);
@@ -234,9 +234,8 @@
   gap: var(--sp-1);
 }
 .ci-composer:focus-within {
-  border-color: var(--line-2);
-  background: var(--bg-1);
-  outline: 1px solid var(--line-2);
+  border-color: var(--line);
+  outline: none;
 }
 .ci-composer--drag {
   border-color: var(--accent);

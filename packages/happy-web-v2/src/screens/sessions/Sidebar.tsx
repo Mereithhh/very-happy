@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -20,7 +20,7 @@ import { groupRowsByWorkspace, resolveSidebarGroupMode, type SidebarGroupMode, t
 import type { Session } from '@/sync/storageTypes';
 // aliased: `Settings` is already taken by the lucide gear icon above
 import type { Settings as SyncedSettings } from '@/sync/settings';
-import { StatusDot, CyberMark, QuickThemeToggle, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
+import { StatusDot, QuickThemeToggle, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
 import { useSocketStatus, socketToStatus } from '@/app/useConnection';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useIsDesktop } from '@/app/useMediaQuery';
@@ -827,65 +827,12 @@ export function Sidebar() {
   return (
     <div className="sb">
       <header className="sb-header">
-        {/* Mark only — the "very happy" wordmark was dropped to keep the
-            header from overflowing as header-right icons accumulated. */}
+
         <button className="sb-brand sb-brand--button" type="button" onClick={() => navigate('/help')} title={t('sidebar.openHelp')} aria-label={t('sidebar.openHelp')}>
-          <CyberMark size={22} />
+          <img src="/icon-192.png" alt="" width={24} height={24}/><span>Very Happy</span>
         </button>
         <div className="sb-header-right">
           <StatusDot status={socketToStatus(socket)} pulse={socket === 'connecting'} title={socket} />
-          {/* Coarse pointers can't press ⌘K — this icon opens the command
-              palette (which replaced the sidebar search box; #tag included).
-              CSS shows it on coarse pointers only: desktop learned ⌘K from
-              the palette itself. */}
-          <button className="sb-icon-btn sb-search-btn" title={t('sidebar.openSearch')} onClick={openCommandPalette}>
-            <Search size={17} />
-          </button>
-          {/* Sort-mode switch — 列表 view only (状态 orders by lifecycle, 归档
-              is a plain activity list, so the toggle would be a lie there).
-              Visible on every pointer class: it's one existing-size icon in a
-              row that already flexes, so it costs no extra space on mobile.
-              Flipping to 'manual' does NOT rebuild sidebarOrder — the old
-              arrangement is still there and comes straight back. */}
-          {orderable && SIDEBAR_RECENT_SORT_ENABLED && (
-            <button
-              className="sb-icon-btn"
-              title={t(sortMode === 'recent' ? 'sidebar.sortByRecent' : 'sidebar.sortManual')}
-              aria-label={t(sortMode === 'recent' ? 'sidebar.sortByRecent' : 'sidebar.sortManual')}
-              onClick={() =>
-                sync.applySettings({ sidebarSort: sortMode === 'recent' ? 'manual' : 'recent' })
-              }
-            >
-              {sortMode === 'recent' ? <ArrowDownWideNarrow size={17} /> : <ListOrdered size={17} />}
-            </button>
-          )}
-          {/* B-208: one grouping menu instead of another permanent header icon.
-              Workspace is the default lens; tag and flat remain one tap away. */}
-          {orderable && (
-            <ActionDropdownMenu
-              align="end"
-              sideOffset={6}
-              items={[
-                { key: 'workspace', label: `${groupMode === 'workspace' ? '✓ ' : ''}${t('sidebar.groupWorkspace')}`, icon: FolderTree, onSelect: () => selectGroupMode('workspace') },
-                { key: 'tag', label: `${groupMode === 'tag' ? '✓ ' : ''}${t('sidebar.groupTags')}`, icon: Tags, onSelect: () => selectGroupMode('tag') },
-                { key: 'none', label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Rows3, onSelect: () => selectGroupMode('none') },
-              ]}
-            >
-              <button className={`sb-icon-btn${groupMode !== 'none' ? ' is-on' : ''}`} title={t('sidebar.groupMenu')} aria-label={t('sidebar.groupMenu')}>
-                {groupMode === 'workspace' ? <FolderTree size={17} /> : groupMode === 'tag' ? <Tags size={17} /> : <Rows3 size={17} />}
-              </button>
-            </ActionDropdownMenu>
-          )}
-          <button
-            className="sb-icon-btn sb-board-btn"
-            title={t('board.title')}
-            onClick={() => navigate('/board')}
-          >
-            <LayoutGrid size={17} />
-            {attentionCount > 0 && (
-              <span className="sb-board-badge mono">{attentionCount > 9 ? '9+' : attentionCount}</span>
-            )}
-          </button>
           {/* Collapse only exists in the two-pane desktop layout. On mobile
               (single pane) AppLayout ignores `collapsed` entirely, so this
               button did nothing visible — worse, it silently wrote
@@ -897,6 +844,11 @@ export function Sidebar() {
               <PanelLeftClose size={17} />
             </button>
           )}
+
+        </div>
+      </header>
+
+      <nav className="sb-products" aria-label="Workspace">
           {/* Quick create: spawns directly with the remembered machine/
               directory and the settings defaults; falls back to the full
               dialog only when it can't decide (or always-ask is on). */}
@@ -959,21 +911,17 @@ export function Sidebar() {
               },
             ]}
           >
-            <button className="sb-icon-btn" title={t('sidebar.newSession')}>
-              <Plus size={18} />
+            <button className="sb-nav-btn" title={t('sidebar.newSession')}>
+              <Plus size={17} /><span>{t('sidebar.newSession')}</span>
             </button>
           </ActionDropdownMenu>
-        </div>
-      </header>
-
-      <nav className="sb-products" aria-label="Workspace">
+        <button className="sb-nav-btn" onClick={openCommandPalette}><Search size={17}/><span>{t('sidebar.openSearch')}</span><kbd>⌘K</kbd></button>
         {happyBotEntryVisible && <button onClick={() => navigate('/teams')}><UsersRound size={18} /><span>{teamCopy.title}</span></button>}
         <button onClick={() => navigate('/todos')}><ListChecks size={18} /><span>{t('todos.title')}</span></button>
+        <button onClick={() => navigate('/help')}><CircleHelp size={17}/><span>{t('sidebar.openHelp')}</span></button>
       </nav>
 
-      {/* The search box is gone — ⌘K (mobile: the header icon) covers search,
-          #tag grammar included. Its row folded into the view switch below, so
-          the net chrome above the list SHRANK by one row. */}
+      <div className="sb-list-controls">
       <div className="sb-filter" role="tablist">
         {(['list', 'status', 'archived'] as View[]).map((v) => (
           <button
@@ -990,10 +938,41 @@ export function Sidebar() {
             )}
           </button>
         ))}
-        {/* Board lives on the header icon (badge included) — a fourth tab in
-            this row read as clutter and was removed. */}
+
       </div>
 
+      <div className="sb-list-tools">          {orderable && SIDEBAR_RECENT_SORT_ENABLED && (
+            <button
+              className="sb-icon-btn"
+              title={t(sortMode === 'recent' ? 'sidebar.sortByRecent' : 'sidebar.sortManual')}
+              aria-label={t(sortMode === 'recent' ? 'sidebar.sortByRecent' : 'sidebar.sortManual')}
+              onClick={() =>
+                sync.applySettings({ sidebarSort: sortMode === 'recent' ? 'manual' : 'recent' })
+              }
+            >
+              {sortMode === 'recent' ? <ArrowDownWideNarrow size={17} /> : <ListOrdered size={17} />}
+            </button>
+          )}
+          {/* B-208: one grouping menu instead of another permanent header icon.
+              Workspace is the default lens; tag and flat remain one tap away. */}
+          {(
+            <ActionDropdownMenu
+              align="end"
+              sideOffset={6}
+              items={[
+                { key: 'workspace', disabled: !orderable, label: `${groupMode === 'workspace' ? '✓ ' : ''}${t('sidebar.groupWorkspace')}`, icon: FolderTree, onSelect: () => selectGroupMode('workspace') },
+                { key: 'tag', disabled: !orderable, label: `${groupMode === 'tag' ? '✓ ' : ''}${t('sidebar.groupTags')}`, icon: Tags, onSelect: () => selectGroupMode('tag') },
+                { key: 'none', disabled: !orderable, label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Rows3, onSelect: () => selectGroupMode('none') },
+                { key: 'overview', label: `${t('board.title')}${attentionCount ? ` · ${attentionCount}` : ''}`, icon: LayoutGrid, separatorBefore: true, onSelect: () => navigate('/board') },
+              ]}
+            >
+              <button className={`sb-icon-btn${groupMode !== 'none' ? ' is-on' : ''}`} title={t('sidebar.groupMenu')} aria-label={t('sidebar.groupMenu')}>
+                {groupMode === 'workspace' ? <FolderTree size={17} /> : groupMode === 'tag' ? <Tags size={17} /> : <Rows3 size={17} />}
+              </button>
+            </ActionDropdownMenu>
+          )}
+
+</div></div>
       {orderable && !teamHistory && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
 
       <div className={`sb-list${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
@@ -1504,6 +1483,8 @@ function SidebarRow({
           announce the selected row the same way the rail highlight shows it. */}
       <button
         className="sb-row-main"
+        title={`${row.title} · ${row.subtitle}`}
+        aria-label={`${row.title} · ${row.subtitle}`}
         data-href={row.href}
         onClick={open}
         aria-current={selected ? 'page' : undefined}

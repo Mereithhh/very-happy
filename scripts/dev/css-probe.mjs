@@ -31,7 +31,7 @@
  * 每个 variant 打印 measure 的结果、可选的像素行（R 通道），并把截图写进 --out。
  * **修前修后各跑一次、把两份都留下**——这是验收要的证据，不是「我看了一眼」。
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -108,6 +108,7 @@ const css = ['styles/tokens.css', ...(scenario.css ?? [])]
 if (outDir) mkdirSync(outDir, { recursive: true });
 
 const browser = await chromium.launch({ executablePath: exe });
+try {
 for (const variant of scenario.variants ?? [{ name: 'default', width: 900 }]) {
     const context = await browser.newContext({
         viewport: { width: variant.width ?? 900, height: variant.height ?? 800 },
@@ -115,14 +116,40 @@ for (const variant of scenario.variants ?? [{ name: 'default', width: 900 }]) {
         colorScheme: variant.theme ?? 'dark',
         reducedMotion: variant.reducedMotion ?? 'no-preference',
         hasTouch: (variant.width ?? 900) < 500,   // AGENTS: 窄屏必须按 coarse pointer 量
+        isMobile: (variant.width ?? 900) < 500,
     });
     const page = await context.newPage();
+    let touchClient;
+    if ((variant.width ?? 900) < 500) {
+        // Reapply after target creation: some cached Chromium builds lose the
+        // initial context emulation. Assert the native media query, not options.
+        touchClient = await context.newCDPSession(page);
+        await touchClient.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+        if (!await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+            throw new Error(`css-probe: ${variant.name} did not enable a coarse pointer`);
+        }
+    }
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message.slice(0, 160)));
     const html = typeof scenario.html === 'function' ? scenario.html(variant) : scenario.html;
     await page.setContent(`<!doctype html><meta name="viewport" content="width=device-width">
 <style>${css}\nhtml,body{margin:0;background:var(--bg-0)}</style>${html}`);
     await page.waitForTimeout(variant.settleMs ?? 200);
+
+    const capture = async (clip) => {
+        if (!touchClient) return page.screenshot(clip ? { clip } : { fullPage: true });
+        // Full-page/beyond-viewport capture resets touch with this Chromium.
+        // Keep mobile screenshots at the real viewport; measure scroll overflow
+        // separately. Desktop screenshots can still include the full document.
+        const { data } = await touchClient.send('Page.captureScreenshot', {
+            format: 'png', captureBeyondViewport: false, fromSurface: true,
+            ...(clip ? { clip: { ...clip, scale: 1 } } : {}),
+        });
+        if (!await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+            throw new Error(`css-probe: screenshot reset the pointer in ${variant.name}`);
+        }
+        return Buffer.from(data, 'base64');
+    };
 
     const measured = scenario.measure ? await page.evaluate(scenario.measure) : null;
     console.log(`\n── ${variant.name} (${variant.width ?? 900}px, ${variant.theme ?? 'dark'})`);
@@ -132,11 +159,15 @@ for (const variant of scenario.variants ?? [{ name: 'default', width: 900 }]) {
     if (scenario.pixels) {
         const clip = await page.evaluate(scenario.pixels);
         if (clip) {
-            const shot = await page.screenshot({ clip });
+            const shot = await capture(clip);
             console.log(`pixels @ ${JSON.stringify(clip)} → ${pngColumn(shot).join(' ')}`);
         }
     }
-    if (outDir) await page.screenshot({ path: join(outDir, `${variant.name}.png`), fullPage: true });
+    if (outDir) {
+        writeFileSync(join(outDir, `${variant.name}.png`), await capture());
+    }
     await context.close();
 }
-await browser.close();
+} finally {
+    await browser.close();
+}

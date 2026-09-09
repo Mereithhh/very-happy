@@ -286,12 +286,14 @@ export function ChatList({
     if (isLoaded && messages.length === 0) {
         return (
             <div className="cl cl--empty">
+                <div className="cl-scroll">
                 <EmptyState
                     title={t('session.chat.emptyTitle')}
                     description={t('session.chat.emptyDescription')}
                 />
-                <SessionLiveStatusBar sessionId={sessionId} />
                 <PermissionCard sessionId={sessionId} />
+                </div>
+                {showLiveStatus && <div className="cl-live-slot"><SessionLiveStatusBar sessionId={sessionId} /></div>}
             </div>
         );
     }
@@ -302,7 +304,7 @@ export function ChatList({
                 <div className="cl-scroll">
                     <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
                 </div>
-                <SessionLiveStatusBar sessionId={sessionId} />
+                {showLiveStatus && <div className="cl-live-slot"><SessionLiveStatusBar sessionId={sessionId} /></div>}
             </div>
         );
     }
@@ -365,14 +367,11 @@ export function ChatList({
                         storage claims it away the instant the real message
                         lands. */}
                     <LiveStreamView sessionId={sessionId} />
-                    {/* Keep a dedicated running pulse at the end of the transcript for
-                        the whole turn. Activity rows can contain streamed assistant text
-                        and tools, but they are content rather than a persistent liveness
-                        signal and may be visually quiet between SDK events. */}
-                    {showLiveStatus && <SessionLiveStatusBar sessionId={sessionId} />}
                     <PermissionCard sessionId={sessionId} />
                 </div>
             </div>
+            {/* Fixed slot stays outside scrollback, even between live turns. */}
+            {showLiveStatus && <div className="cl-live-slot"><SessionLiveStatusBar sessionId={sessionId} /></div>}
             {queuedMessages.length > 0 && (
                 <section className="cl-queue" aria-label={t('session.chat.queuedTitle', { count: queuedMessages.length })}>
                     <div className="cl-queue-head">

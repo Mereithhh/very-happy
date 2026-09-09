@@ -61,7 +61,7 @@ function ExchangeView({ exchange }: { exchange: BtwExchange }) {
     );
 }
 
-export function BtwPanel({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+export function BtwPanel({ sessionId, onClose, embedded = false, active = true }: { sessionId: string; onClose: () => void; embedded?: boolean; active?: boolean }) {
     const { t } = useTranslation();
     const session = useSession(sessionId);
     const { exchanges, draft } = useBtwSession(sessionId);
@@ -85,8 +85,8 @@ export function BtwPanel({ sessionId, onClose }: { sessionId: string; onClose: (
     }, [draft]);
     useEffect(() => () => { btwStore.getState().setDraft(sessionId, draftLocalRef.current); }, [sessionId]);
     useEffect(() => {
-        if (supported) requestAnimationFrame(() => taRef.current?.focus());
-    }, [supported, sessionId]);
+        if (supported && active) requestAnimationFrame(() => taRef.current?.focus());
+    }, [supported, sessionId, active]);
     // Follow the newest text (progressive answers grow the last item).
     const lastAnswerLength = exchanges.length ? exchanges[exchanges.length - 1].answer.length : 0;
     useEffect(() => {
@@ -120,9 +120,9 @@ export function BtwPanel({ sessionId, onClose }: { sessionId: string; onClose: (
 
     return (
         <div className="btw">
-            <div className="btw-head">
-                <MessageCircleQuestion size={15} className="btw-head-icon" />
-                <span className="btw-title">{t('session.btw.title')}</span>
+            <div className={`btw-head${embedded ? ' btw-head--embedded' : ''}`}>
+                {!embedded && <MessageCircleQuestion size={15} className="btw-head-icon" />}
+                {!embedded && <span className="btw-title">{t('session.btw.title')}</span>}
                 <span className="btw-head-hint">{t('session.btw.subtitle')}</span>
                 {exchanges.length > 0 && !running && (
                     <button
@@ -135,9 +135,9 @@ export function BtwPanel({ sessionId, onClose }: { sessionId: string; onClose: (
                         <Trash2 size={14} />
                     </button>
                 )}
-                <button type="button" className="btw-icon" onClick={onClose} aria-label={t('session.btw.close')} title={t('session.btw.close')}>
+                {!embedded && <button type="button" className="btw-icon" onClick={onClose} aria-label={t('session.btw.close')} title={t('session.btw.close')}>
                     <X size={16} />
-                </button>
+                </button>}
             </div>
 
             <div className="btw-body" ref={bodyRef}>

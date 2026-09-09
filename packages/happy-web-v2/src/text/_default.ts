@@ -1827,6 +1827,15 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10: {
+                title: 'A new workspace, inspired by Codex',
+                summary: 'More room for your work, with the Very Happy identity.',
+                workspace: 'Compact navigation, typography and settings put more information on screen. Teams, to-dos, notes, shortcuts and help keep their own entry points.',
+                tabs: 'Files, notes and web previews share a tab bar in chat and terminal workspaces. Drag tabs to reorder; a permanent close button keeps their width stable on hover. Web previews also offer an external browser link when a site cannot be embedded.',
+                progress: 'A fixed, single-line activity strip shows the current stage and available input/output token counts. Expand it for details without shifting the conversation.',
+                mobile: 'Centered mobile sign-in, larger editable text and touch targets, a properly fullscreen mobile notification center, quieter focus states, and a new Very Happy startup animation in both themes.',
+                stability: 'Resizing the window or collapsing the sidebar keeps the current view and unsaved inputs. The home page no longer jumps to its embedded workspace on load. Compatible daemons are now correctly recognized when starting a team.',
+            },
             sep09k: {
                 title: 'A more natural conversation workspace',
                 summary: 'A unified composer, attached queue, and editing in place.',

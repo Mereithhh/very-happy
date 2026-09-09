@@ -554,8 +554,8 @@
   touch-action: none;
 }
 .term-webkbd-key:focus-visible {
-  outline: 2px solid var(--term-accent);
-  outline-offset: 1px;
+  outline: none; box-shadow: inset 0 0 0 1px var(--term-chrome-fg);
+
 }
 .term-webkbd-key.is-armed {
   background: var(--term-accent);
@@ -636,11 +636,11 @@
   width: var(--term-upload-progress);
   background: var(--term-accent);
   content: '';
-  transition: width var(--dur-fast) var(--ease-out);
+  transition: width var(--motion-fast);
 }
 
 /* ── File browser (fs-list / fs-read) ────────────────────────────────────────
-   Desktop (fine pointer, >860px): an inline SPLIT inside .term-mid — the
+   Desktop (fine pointer, >=1100px): an inline SPLIT inside .term-mid — the
    terminal yields width instead of being covered (B-088), and the divider is
    draggable (width persisted in localSettings.filesPanelWidth, shared with the
    session FilesPanel). The width change rides the existing ResizeObserver →
@@ -669,8 +669,8 @@
 }
 .term-files {
   flex: none;
-  width: 380px; /* fallback; the dragged width rides in as an inline style */
-  max-width: 60vw; /* belt: a width stored on a big monitor can't crush the terminal */
+  width: max(320px, 36vw); /* fallback; the dragged width rides in as an inline style */
+  max-width: min(60vw, calc(100% - 320px)); /* belt: a width stored on a big monitor can't crush the terminal */
   border-left: 1px solid var(--line);
   background: var(--bg-1);
   display: flex;
@@ -691,33 +691,17 @@
     top: 0;
     right: 0;
     bottom: 0;
-    width: 380px;
+    width: max(320px, 36vw);
     max-width: 42vw;
     z-index: 60;
   }
-}
-.term-files-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
-  padding-top: max(var(--sp-2), env(safe-area-inset-top));
-  border-bottom: 1px solid var(--line);
-}
-.term-files-title {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--fs-13);
-  font-weight: 500;
-  color: var(--text);
 }
 .term-files-scrim {
   display: none;
 }
 /* Mobile / narrow: full-screen overlay + scrim (matches .sd-files). Comes
    AFTER the coarse block so narrow touch devices get the full overlay. */
-@media (max-width: 860px) {
+@media (max-width: 1099px) {
   .term-mid {
     display: contents;
   }
@@ -772,7 +756,7 @@
   font: inherit;
   cursor: pointer;
 }
-.term-connection-actions button:focus-visible { outline: 2px solid var(--term-accent); outline-offset: 2px; }
+.term-connection-actions button:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--term-chrome-fg);  }
 .term-connection-notice.is-compact {
   bottom: auto;
   max-height: 60%;

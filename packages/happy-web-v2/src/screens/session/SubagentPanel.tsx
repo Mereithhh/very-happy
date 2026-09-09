@@ -23,10 +23,12 @@ export function SubagentPanel({
     sessionId,
     messageId,
     onClose,
+    embedded = false,
 }: {
     sessionId: string;
     messageId: string;
     onClose: () => void;
+    embedded?: boolean;
 }) {
     const { t } = useTranslation();
     const message = useMessage(sessionId, messageId);
@@ -43,13 +45,13 @@ export function SubagentPanel({
 
     return (
         <div className="sap">
-            <div className="sap-head">
+            {!embedded && <div className="sap-head">
                 <Bot size={14} className="sap-head-icon" aria-hidden />
                 <span className="sap-title">{title ?? t('session.chat.subagentPanelTitle')}</span>
                 <button type="button" className="sap-icon" onClick={onClose} aria-label={t('common.close')}>
                     <X size={16} />
                 </button>
-            </div>
+            </div>}
             <div className="sap-body">
                 {card
                     ? <SubagentDetail message={card} abortedAt={abortedAt} />

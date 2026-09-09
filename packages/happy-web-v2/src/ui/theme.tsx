@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from 'react';
 
-export type ThemePreference = 'system' | 'dark' | 'light';
+import { readThemePreference, type ThemePreference } from './themePreference';
+export type { ThemePreference } from './themePreference';
 const STORAGE_KEY = 'vh-theme-preference';
 
 interface ThemeContextValue {
@@ -34,10 +35,7 @@ function apply(pref: ThemePreference) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [preference, setPref] = useState<ThemePreference>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as ThemePreference | null;
-    return stored ?? 'system';
-  });
+  const [preference, setPref] = useState<ThemePreference>(readThemePreference);
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
 
   useEffect(() => {

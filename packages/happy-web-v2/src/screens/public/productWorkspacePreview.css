@@ -1,7 +1,7 @@
 /* Public proof layout only. Every visible product surface inside this frame
    is styled by the production component stylesheets imported beside it. */
 .product-preview { width: 100%; container: product-preview / inline-size; }
-.product-app { position: relative; display: grid; grid-template-columns: 280px minmax(0, 1fr); height: 620px; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--bg-0); box-shadow: var(--shadow-pop); }
+.product-app { position: relative; display: grid; grid-template-columns: 260px minmax(0, 1fr); height: 620px; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--bg-0); box-shadow: var(--shadow-pop); }
 .product-sidebar { min-width: 0; border-right: 1px solid var(--line); background: var(--bg-1); }
 .product-sidebar .product-nav-close { display: none; }
 .product-sidebar button:disabled { cursor: default; }
@@ -18,7 +18,7 @@
 .product-xterm-cursor { animation: pub-blink 1.1s steps(2, jump-none) infinite; }
 .product-transfer-trigger { position: absolute; z-index: 3; right: var(--sp-4); bottom: var(--sp-4); min-height: 44px; padding: 0 var(--sp-3); border: 1px solid var(--term-chrome-line); border-radius: var(--r-md); background: color-mix(in srgb, var(--term-accent) 10%, var(--term-chrome-panel)); color: var(--term-accent); font-size: var(--fs-11); cursor: pointer; box-shadow: var(--shadow-pop); }
 .product-transfer-trigger:hover, .product-transfer-trigger:focus-visible { border-color: var(--term-accent); outline: none; }
-.product-preview .term-host[tabindex]:focus-visible { outline: 1px solid var(--term-accent); outline-offset: -3px; }
+.product-preview .term-host[tabindex]:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
 .product-file-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .product-file-preview .fsb-viewer-body { color: var(--text-dim); font: var(--fs-11)/1.65 var(--font-mono); }
 .product-file-preview .fsb-viewer-body pre { position: static; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; line-height: inherit; white-space: pre-wrap; }
@@ -35,9 +35,7 @@
 .product-status-dot.is-live { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
 .product-status-dot.is-attention { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-dim); }
 .product-preview--compact .product-app { height: 480px; grid-template-columns: 250px minmax(0, 1fr); }
-.product-preview--compact .sb-header-right .sb-icon-btn:nth-child(1),
-.product-preview--compact .sb-header-right .sb-icon-btn:nth-child(2),
-.product-preview--compact .sb-header-right .sb-icon-btn:last-child { display: none; }
+
 .product-preview--compact .bd-header { padding-block: var(--sp-2); }
 .product-preview--compact .bd-col-head { padding: var(--sp-2) var(--sp-4); }
 .product-preview--compact .bd-col-list { gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
@@ -49,9 +47,7 @@
 @container product-preview (max-width: 920px) {
   .product-preview .product-app { grid-template-columns: 220px minmax(0, 1fr); height: 560px; }
   .product-preview .product-app--no-sidebar { grid-template-columns: minmax(0, 1fr); }
-  .product-preview .product-sidebar .sb-header-right .sb-icon-btn:nth-child(1),
-  .product-preview .product-sidebar .sb-header-right .sb-icon-btn:nth-child(2),
-  .product-preview .product-sidebar .sb-header-right .sb-icon-btn:last-child { display: none; }
+
   .product-term-files { width: 310px; }
   .product-term-files .fsb-meta--time { display: none; }
 }
@@ -79,7 +75,7 @@
   .product-preview .mrb-note { flex-wrap: wrap; }
   .product-preview .mrb-note-text { flex-basis: calc(100% - 90px); }
   .product-preview .mrb-term-btn { order: 3; }
-  .product-preview .mri-input { font-size: 16px; }
+  .product-preview .mri-input { font-size: var(--fs-17); }
 }
 
 @media (prefers-reduced-motion: reduce) {

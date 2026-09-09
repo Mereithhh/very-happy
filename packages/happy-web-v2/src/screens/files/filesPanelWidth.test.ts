@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
     FILES_PANEL_MIN,
-    FILES_PANEL_DEFAULT,
     filesPanelMaxWidth,
     clampFilesPanelWidth,
     filesPanelDefaultWidth,
@@ -39,11 +38,11 @@ describe('clampFilesPanelWidth', () => {
 });
 
 describe('filesPanelDefaultWidth', () => {
-    it('is 380px on roomy viewports', () => {
-        expect(filesPanelDefaultWidth(1440)).toBe(FILES_PANEL_DEFAULT);
+    it('uses 36vw on roomy viewports', () => {
+        expect(filesPanelDefaultWidth(1440)).toBe(518);
     });
-    it('caps at 42vw on narrow viewports (pre-B-088 CSS behavior)', () => {
-        expect(filesPanelDefaultWidth(880)).toBe(Math.floor(880 * 0.42));
+    it('keeps a readable minimum on narrow viewports', () => {
+        expect(filesPanelDefaultWidth(880)).toBe(320);
     });
     it('never drops below MIN', () => {
         expect(filesPanelDefaultWidth(400)).toBe(FILES_PANEL_MIN);
@@ -52,11 +51,11 @@ describe('filesPanelDefaultWidth', () => {
 
 describe('resolveFilesPanelWidth', () => {
     it('null / undefined = responsive default', () => {
-        expect(resolveFilesPanelWidth(null, 1440)).toBe(FILES_PANEL_DEFAULT);
-        expect(resolveFilesPanelWidth(undefined, 1440)).toBe(FILES_PANEL_DEFAULT);
+        expect(resolveFilesPanelWidth(null, 1440)).toBe(518);
+        expect(resolveFilesPanelWidth(undefined, 1440)).toBe(518);
     });
     it('garbage stored values = responsive default (corrupted blob safety)', () => {
-        expect(resolveFilesPanelWidth(NaN, 1440)).toBe(FILES_PANEL_DEFAULT);
+        expect(resolveFilesPanelWidth(NaN, 1440)).toBe(518);
     });
     it('stored width clamps against the CURRENT viewport (big-monitor value on a laptop)', () => {
         expect(resolveFilesPanelWidth(1500, 1280)).toBe(768); // floor(1280*0.6)

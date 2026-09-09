@@ -8,12 +8,22 @@ export interface ChangelogRelease {
   date: string;
   buildVersion?: string;
   cliVersion?: string;
+  featured?: boolean;
   titleKey: SimpleTranslationKey;
   summaryKey: SimpleTranslationKey;
   itemKeys: readonly SimpleTranslationKey[];
 }
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
+  {
+    id: '2026-09-10-compact-workspace',
+    featured: true,
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10.title',
+    summaryKey: 'changelog.releases.sep10.summary',
+    itemKeys: ['changelog.releases.sep10.workspace', 'changelog.releases.sep10.tabs', 'changelog.releases.sep10.progress', 'changelog.releases.sep10.mobile', 'changelog.releases.sep10.stability'],
+  },
   {
     id: '2026-09-09-inline-edit-composer',
     date: '2026-09-09',

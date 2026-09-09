@@ -1,7 +1,7 @@
 import { messageActionsCopy } from './messageActionsCopy';
 import { useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useSession, useMessage, storage } from '@/sync/storage';
+import { useSession, useMessage, useLocalSetting, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { useMediaQuery } from '@/app/useMediaQuery';
@@ -12,10 +12,11 @@ import { SessionTeamContext } from './SessionTeamContext';
 import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
 import { AgentInput } from './AgentInput';
-import { FilesPanel } from './FilesPanel';
-import { BtwPanel } from './BtwPanel';
+import { notesPanelTransition, type NotesPanelSnapshot } from './notesPanelTransition';
+import { setNotesPanelOpen } from '../notes/notesPanelState';
+import { SessionWorkspacePanel } from './SessionWorkspacePanel';
+import { useRetainedWorkspace } from '../workspace/useRetainedWorkspace';
 import { onBtwOpen } from './btwPanelState';
-import { SubagentPanel } from './SubagentPanel';
 import { onSubagentOpen } from './subagentPanelState';
 import { canOfferBtw, supportsBtw } from './btwCommand';
 import { btwStore } from '@/sync/btwStore';
@@ -24,7 +25,7 @@ import { MirrorInputBar } from './MirrorInputBar';
 import { SessionArchivedBanner } from './SessionArchivedBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { isMirrorSession } from '@/assistant/assistantSession';
-import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel, type SessionFilesTab, type SessionPanelTab } from './sessionPanelState';
+import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -39,6 +40,8 @@ export function SessionDetailScreen() {
     });
     const [searchParams, setSearchParams] = useSearchParams();
     const panelTab = readSessionPanel(searchParams.get('panel'));
+    const notesOpen = useLocalSetting('notesPanelOpen');
+    const notesTransition = useRef<NotesPanelSnapshot|null>(null);
     // One aside, two tenants: the files panel (three tabs) or the `/btw`
     // side-question panel (B-283). `filesOpen` drives the files toggle only.
     // `?panel=btw` on a session that cannot host it (codex/gemini, terminal
@@ -49,8 +52,9 @@ export function SessionDetailScreen() {
     // clicking a card, so a `?panel=agent` without a target is not a panel.
     const subagentTarget = panelTab === 'subagent' ? readSubagentTarget(searchParams) : null;
     const subagentOpen = subagentTarget !== null;
-    const filesOpen = panelTab !== null && panelTab !== 'btw' && panelTab !== 'subagent';
-    const panelOpen = btwOpen || filesOpen || subagentOpen;
+    const filesOpen = panelTab !== null && panelTab !== 'btw' && panelTab !== 'subagent' && panelTab !== 'notes';
+    const panelOpen = btwOpen || filesOpen || subagentOpen || panelTab === 'notes';
+    const retainedPanel = useRetainedWorkspace(id ?? '', panelOpen ? { tab: panelTab!, subagentTarget } : null);
     const setPanel = (tab: SessionPanelTab | null, replace = false) => {
         setSearchParams(withSessionPanel(searchParams, tab), { replace });
     };
@@ -65,6 +69,14 @@ export function SessionDetailScreen() {
     setPanelRef.current = setPanel;
     const btwOpenRef = useRef(btwOpen);
     btwOpenRef.current = btwOpen;
+    // URL owns the visible pane; notesPanelOpen remains the global shortcut signal.
+    useEffect(() => {
+        const current = {id,panel:panelTab,open:notesOpen};
+        const action = notesPanelTransition(notesTransition.current,current);
+        notesTransition.current = current;
+        if (action.open !== undefined) setNotesPanelOpen(action.open);
+        if ('panel' in action) setPanelRef.current(action.panel ?? null,true);
+    }, [id,panelTab,notesOpen]);
     // Composer `/btw [question]` → open this session's panel (replace, not
     // push, when it is already open) and ask when the wrapper supports it and
     // nothing is running; otherwise park the text as the panel draft so it is
@@ -92,14 +104,14 @@ export function SessionDetailScreen() {
             openSubagentRef.current(detail.messageId, subagentOpenRef.current);
         });
     }, [id]);
-    // Desktop (>860px, matching session.css): the files panel is an inline
+    // Desktop (>=1100px, matching session.css): the files panel is an inline
     // right sidebar — draggable width, persisted in localSettings.filesPanelWidth
     // (shared with the terminal's file browser, B-088). Narrow viewports keep
     // the full overlay: no handle, no inline width.
-    const filesWide = useMediaQuery('(min-width: 861px)');
+    const filesWide = useMediaQuery('(min-width: 1100px)');
     // The drag handle needs a mouse — touch devices (wide iPad) keep the plain
     // sidebar without it.
-    const filesResizable = useMediaQuery('(min-width: 861px) and (pointer: fine)');
+    const filesResizable = useMediaQuery('(min-width: 1100px) and (pointer: fine)');
     const { width: filesWidth, onHandleMouseDown: onFilesHandleDown } = useFilesPanelWidth();
     // iOS: while the soft keyboard is up, pin this screen to the visual
     // viewport so the composer sits above the keyboard and the message list's
@@ -180,10 +192,10 @@ export function SessionDetailScreen() {
                     self-hides when the terminal is gone or claude exited. */}
                 {mirror && <MirrorInputBar sessionId={id} />}
             </div>
-            {panelOpen && (
+            {retainedPanel && (
                 <>
-                    <div className="sd-files-scrim" onClick={() => setPanel(null, true)} aria-hidden />
-                    {filesResizable && (
+                    {panelOpen && <div className="sd-files-scrim" onClick={() => setPanel(null, true)} aria-hidden />}
+                    {panelOpen && filesResizable && (
                         <div
                             className="app-resize-handle sd-files-handle"
                             onMouseDown={onFilesHandleDown}
@@ -191,23 +203,11 @@ export function SessionDetailScreen() {
                             aria-orientation="vertical"
                         />
                     )}
-                    <aside className="sd-files" style={filesWide ? { width: filesWidth } : undefined}>
-                        {subagentOpen ? (
-                            <SubagentPanel
-                                sessionId={id}
-                                messageId={subagentTarget}
-                                onClose={() => setPanel(null, true)}
-                            />
-                        ) : btwOpen ? (
-                            <BtwPanel sessionId={id} onClose={() => setPanel(null, true)} />
-                        ) : (
-                            <FilesPanel
-                                sessionId={id}
-                                tab={panelTab as SessionFilesTab}
-                                onTabChange={(tab) => setPanel(tab, true)}
-                                onClose={() => setPanel(null, true)}
-                            />
-                        )}
+                    <aside className="sd-files" hidden={!panelOpen} style={{ ...(filesWide ? { width: filesWidth } : {}), ...(!panelOpen ? { display: 'none' } : {}) }}>
+                        <SessionWorkspacePanel key={id} sessionId={id} visible={panelOpen} panel={retainedPanel.tab} subagentTarget={retainedPanel.subagentTarget}
+                            btwAllowed={btwAllowed} onPanel={tab=>setPanel(tab,true)}
+                            onSubagent={messageId=>openSubagent(messageId,true)} onClose={()=>setPanel(null,true)}/>
+
                     </aside>
                 </>
             )}

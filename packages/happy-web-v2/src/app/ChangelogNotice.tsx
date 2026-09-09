@@ -78,16 +78,17 @@ export function ChangelogNotice() {
     <Dialog.Root open={open} onOpenChange={(next) => next ? setOpen(true) : closeWithoutReading()}>
       <Dialog.Portal>
         <Dialog.Overlay className="wn-backdrop" />
-        <Dialog.Content className="wn-card" aria-describedby="wn-description" data-multiple={multiple || undefined}>
+        <Dialog.Content className="wn-card" aria-describedby="wn-description" data-multiple={multiple || undefined} data-featured={head?.featured || undefined}>
           <button type="button" className="wn-close" aria-label={t('common.close')} onClick={acknowledge}>
             <X size={18} />
           </button>
+          {head?.featured && <div className="wn-brand"><img src="/icon-192.png" width={44} height={44} alt=""/><span>Very Happy<span>{lang.startsWith('zh') ? '全新工作台 · 重大界面更新' : 'A new workspace · Major UI update'}</span></span></div>}
           <div className="wn-eyebrow"><Sparkles size={14} />{t('changelog.eyebrow')}</div>
           {head && (multiple ? (
             <>
-              <Dialog.Title>{t('changelog.pendingTitle', { count: releases.length })}</Dialog.Title>
+              <Dialog.Title>{head.featured ? t(head.titleKey) : t('changelog.pendingTitle', { count: releases.length })}</Dialog.Title>
               <Dialog.Description id="wn-description" className="wn-intro">
-                {releases[releases.length - 1].date === head.date
+                {head.featured ? t(head.summaryKey) : releases[releases.length - 1].date === head.date
                   ? t('changelog.pendingSummarySameDay', { date: formatDate(head.date) })
                   : t('changelog.pendingSummary', { from: formatDate(releases[releases.length - 1].date), to: formatDate(head.date) })}
               </Dialog.Description>

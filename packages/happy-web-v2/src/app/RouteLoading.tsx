@@ -1,4 +1,4 @@
-import { OrbitLoader } from '@/ui/OrbitLoader';
+import { StartupLoader } from '@/ui/StartupLoader';
 
 export function RouteLoading({
   fullViewport = false,
@@ -9,6 +9,7 @@ export function RouteLoading({
 }) {
   return (
     <div
+      className="vh-route-loading"
       aria-busy="true"
       data-vh-route-loading="true"
       style={{
@@ -23,7 +24,10 @@ export function RouteLoading({
         justifyContent: 'center',
       }}
     >
-      <OrbitLoader size="medium" label={label} showWordmark />
+      {fullViewport ? <StartupLoader label={label}/> : <div className="vh-route-skeleton">
+        <div className="vh-startup-caption" role="status" aria-label={label}><span className="vh-startup-dot" aria-hidden="true"/>{label}</div>
+        {[0,1,2,3].map(line=><div key={line} className="vh-route-skeleton-line" aria-hidden="true"/>)}
+      </div>}
     </div>
   );
 }

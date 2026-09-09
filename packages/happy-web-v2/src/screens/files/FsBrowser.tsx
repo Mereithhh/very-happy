@@ -43,11 +43,23 @@ function entryIcon(type: FsEntry['type']) {
     return <FileText size={13} className="fsb-icon" />;
 }
 
-export function FsBrowser({
+type BrowserView = { path: string; file: string | null; showHidden: boolean };
+// View identities only; file contents and RPC results stay with their original owners.
+const browserViews = new Map<string, BrowserView>();
+type BrowserProps = { active?: boolean; machineId: string; initialPath: string; viewKey?: string; onPickDir?: (path: string) => void };
+export function FsBrowser(props: BrowserProps) {
+    const identity = props.viewKey && !props.onPickDir ? JSON.stringify([props.viewKey, props.machineId, props.initialPath]) : undefined;
+    return <FsBrowserContent key={identity ?? JSON.stringify([props.machineId, props.initialPath])} {...props} identity={identity}/>;
+}
+function FsBrowserContent({
     machineId,
     initialPath,
     onPickDir,
+    identity,
+    active = true,
 }: {
+    active?: boolean;
+    identity?: string;
     machineId: string;
     initialPath: string;
     /**
@@ -62,16 +74,23 @@ export function FsBrowser({
     const picking = !!onPickDir;
     // `path` is the last successfully listed directory (normalized by the
     // daemon — so a '~' initialPath becomes the real home path once loaded).
-    const [path, setPath] = useState(initialPath);
+    const initialView = useRef(identity ? browserViews.get(identity) : undefined).current;
+    const [path, setPath] = useState(initialView?.path ?? initialPath);
     const [entries, setEntries] = useState<FsEntry[] | null>(null);
     const [truncated, setTruncated] = useState(false);
     const [loading, setLoading] = useState(true);
     const [failure, setFailure] = useState<FsFailure | null>(null);
-    const [showHidden, setShowHidden] = useState(false);
+    const [showHidden, setShowHidden] = useState(initialView?.showHidden ?? false);
     // B-110: display order, remembered per device (default: newest first).
     const [sortRaw, setSortSetting] = useLocalSettingMutable('fsBrowserSort');
     const sortMode = resolveFsSortMode(sortRaw);
-    const [file, setFile] = useState<string | null>(null);
+    const [file, setFile] = useState<string | null>(initialView?.file ?? null);
+    useEffect(() => {
+        if (!identity) return;
+        browserViews.delete(identity);
+        browserViews.set(identity, { path, file, showHidden });
+        if (browserViews.size > 100) browserViews.delete(browserViews.keys().next().value!);
+    }, [identity, path, file, showHidden]);
     const [fullscreen, setFullscreen] = useState(false);
     // Monotonic request id: only the LATEST navigation may apply its result
     // (rapid clicking must not let a slow older response overwrite a newer one).
@@ -104,9 +123,8 @@ export function FsBrowser({
     }, [machineId, picking]);
 
     useEffect(() => {
-        void load(initialPath);
-        // initialPath is only the STARTING point — later prop changes don't
-        // reset an in-progress navigation (the component remounts per open).
+        void load(initialView?.path ?? initialPath);
+        // The keyed host restores view identity; RPC contents are always refreshed.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [load]);
 
@@ -123,7 +141,7 @@ export function FsBrowser({
 
     // Esc exits fullscreen (capture, so a host's own Esc handling stays quiet).
     useEffect(() => {
-        if (!fullscreen) return;
+        if (!fullscreen || !active) return;
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
@@ -133,7 +151,7 @@ export function FsBrowser({
         };
         window.addEventListener('keydown', onKey, true);
         return () => window.removeEventListener('keydown', onKey, true);
-    }, [fullscreen]);
+    }, [fullscreen, active]);
 
     if (file) {
         return (

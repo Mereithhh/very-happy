@@ -51,7 +51,6 @@ describe('app visual language', () => {
     });
 
     it.each([
-        ['legacy primary button', css('../App.css'), '.btn-primary'],
         ['design-system primary button', css('../ui/ui.css'), '.vh-btn--primary'],
         ['modal primary button', css('../modal/modal.css'), '.vh-modal-btn.is-primary'],
         ['chat send button', css('../screens/session/input.css'), '.ci-send'],

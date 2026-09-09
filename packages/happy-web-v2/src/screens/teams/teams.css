@@ -1,23 +1,25 @@
 .teams-screen {
-  padding: 24px;
+  padding: 20px 24px;
+  font-size: var(--fs-13);
+  line-height: 1.5;
   overflow: auto;
   min-width: 0;
-  max-width: 1100px;
+  max-width: 1440px;
   width: 100%;
   margin: 0 auto;
   color: var(--text);
   box-sizing: border-box;
 }
 .teams-screen h1 {
-  font-size: 28px;
+  font-size: var(--fs-20);
   letter-spacing: -0.025em;
 }
 .teams-screen h2 {
-  font-size: 20px;
+  font-size: var(--fs-15);
 }
 .teams-screen section {
   border-top: 1px solid var(--line);
-  margin-top: 28px;
+  margin-top: 20px;
   padding-top: 12px;
 }
 .teams-screen form {
@@ -40,8 +42,8 @@
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 10px;
-  min-height: 44px;
+  padding: 6px 10px;
+  min-height: 32px;
   box-sizing: border-box;
   max-width: 100%;
 }
@@ -58,8 +60,8 @@
   cursor: default;
 }
 .teams-screen :focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--text-faint);
 }
 .teams-screen .teams-primary {
   background: var(--text);
@@ -112,17 +114,13 @@
   .teams-screen input,
   .teams-screen textarea,
   .teams-screen select {
-    font-size: 16px;
+    font-size: var(--fs-17);
   }
 }
-@media (pointer: coarse) {
-  .teams-screen button {
-    min-height: 48px;
-  }
-}
+
 .teams-screen summary {
   cursor: pointer;
-  min-height: 44px;
+  min-height: 32px;
   padding: 12px 0;
   box-sizing: border-box;
 }
@@ -136,32 +134,32 @@
 .teams-screen .teams-confirm input {
   flex-shrink: 0;
   width: 24px;
-  min-height: 44px;
+  min-height: 32px;
 }
 
 /* Workspace: content and state first; forms live in a focused dialog/settings. */
-.teams-screen { max-width: 1440px; padding: 28px 32px; }
-.teams-heading { display: flex; align-items: start; justify-content: space-between; gap: 24px; }
-.teams-heading h1 { display: flex; align-items: center; gap: 12px; margin: 18px 0 8px; }
+
+.teams-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.teams-heading h1 { display: flex; align-items: center; gap: 12px; margin: 0 0 6px; }
 .teams-heading p { margin: 0; color: var(--text-dim); font-size: 13px; }
 .teams-back { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; min-height: 32px; font-size: 13px; }
 .teams-heading-actions, .teams-work-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .teams-heading-actions a { font-size: 13px; color: var(--text-dim); }
 .teams-screen button, .teams-talk { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.teams-tabs { display: flex; gap: 24px; margin-top: 28px; border-bottom: 1px solid var(--line); }
+.teams-tabs { display: flex; gap: 16px; margin-top: 20px; border-bottom: 1px solid var(--line); }
 .teams-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 12px 0; color: var(--text-dim); }
 .teams-tabs button[aria-current] { color: var(--text); border-bottom-color: var(--text); }
 .teams-work-actions { margin-top: 20px; justify-content: flex-end; }
-.teams-talk { box-sizing: border-box; padding: 10px 16px; min-height: 44px; border-radius: 6px; text-decoration: none; font-size: 14px; }
+.teams-talk { box-sizing: border-box; padding: 10px 16px; min-height: 32px; border-radius: 6px; text-decoration: none; font-size: 14px; }
 .teams-screen .teams-members { margin-top: 20px; border-top: 0; padding-top: 0; }
-.teams-screen h2 { font-size: 18px; font-weight: 600; margin: 12px 0 16px; }
+.teams-screen h2 { font-size: var(--fs-15); font-weight: 600; margin: 10px 0 12px; }
 .teams-screen h2 small { font-size: 13px; font-weight: 400; margin-left: 8px; }
 .teams-members-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 24px; }
-.teams-member { display: flex; align-items: flex-start; gap: 12px; padding: 16px 0; border-top: 1px solid var(--line); text-decoration: none; min-width: 0; }
+.teams-member { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); text-decoration: none; min-width: 0; }
 .teams-member:hover .teams-member-info strong { text-decoration: underline; }
-.teams-avatar { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--bg-2); flex: none; }
+.teams-avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--bg-2); flex: none; }
 .teams-member-info { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
-.teams-member-info strong { font-size: 15px; }
+.teams-member-info strong { font-size: var(--fs-13); }
 .teams-member-info > span { color: var(--text-dim); }
 .teams-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .teams-progress { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
@@ -174,7 +172,7 @@
 .teams-lane > h3 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .teams-lane > h3 small { margin-left: auto; }
 .teams-lane:nth-child(2) > h3 svg { color: var(--accent); }
-.teams-screen .teams-task-preview { display: flex; flex-direction: column; align-items: stretch; gap: 12px; text-align: left; width: 100%; min-width: 0; margin: 0 0 12px; padding: 16px; border-radius: 4px; background: var(--bg-1); font-size: 13px; }
+.teams-screen .teams-task-preview { display: flex; flex-direction: column; align-items: stretch; gap: 12px; text-align: left; width: 100%; min-width: 0; margin: 0 0 8px; padding: 12px; border-radius: 4px; background: var(--bg-1); font-size: 13px; }
 .teams-task-preview:hover { border-color: var(--text-dim); }
 .teams-task-preview strong { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .teams-task-owner { display: flex; align-items: center; gap: 6px; color: var(--text-dim); flex-wrap: wrap; }
@@ -185,8 +183,8 @@
 .teams-empty { padding: 44px 24px; text-align: center; max-width: 600px; margin: 20px auto; }
 .teams-empty h3 { font-size: 20px; font-weight: 500; }
 .teams-empty p { color: var(--text-dim); line-height: 1.6; }
-.teams-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 24px; margin-top: 32px; }
-.teams-list-card { display: block; padding: 24px; border: 1px solid var(--line); border-radius: 6px; text-decoration: none; min-width: 0; }
+.teams-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; margin-top: 32px; }
+.teams-list-card { display: block; padding: 16px; border: 1px solid var(--line); border-radius: 6px; text-decoration: none; min-width: 0; }
 .teams-list-card:hover { border-color: var(--text-dim); }
 .teams-list-card h2 { display: flex; align-items: center; gap: 10px; }
 .teams-list-card p { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
@@ -207,7 +205,7 @@
   .teams-screen { padding: 16px; }
   .teams-heading { flex-direction: column; gap: 16px; }
   .teams-heading-actions { width: 100%; justify-content: space-between; }
-  .teams-heading h1 { font-size: 24px; }
+  .teams-heading h1 { font-size: var(--fs-20); }
   .teams-tabs { gap: 18px; }
   .teams-tabs button { font-size: 13px; }
   .teams-board { grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -219,13 +217,13 @@
 /* First use follows the ordinary conversation visual language. */
 .teams-screen .team-start-form { display: flex; flex-direction: column; gap: var(--sp-3); }
 .team-start-form fieldset { display: flex; flex-direction: column; gap: var(--sp-4); border: 0; padding: 0; margin: 0; min-width: 0; }
-.team-start-form input, .team-start-form select, .team-start-form textarea { font-size: 16px; width: 100%; }
+.team-start-form input, .team-start-form select, .team-start-form textarea { font-size: var(--fs-17); width: 100%; }
 .team-start-form textarea { min-height: 112px; }
 .team-folder-input { display: flex; align-items: stretch; gap: var(--sp-2); }
 .team-folder-input input { min-width: 0; flex: 1; }
 .team-folder-input button { display: inline-flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
 .team-folder-browser { height: 300px; min-height: 180px; overflow: auto; border: 1px solid var(--line); }
-.team-start-form details summary { min-height: 44px; cursor: pointer; padding-block: var(--sp-3); }
+.team-start-form details summary { min-height: 32px; cursor: pointer; padding-block: var(--sp-3); }
 .team-start-form details label + label { margin-top: var(--sp-3); }
 .team-start-assurance { color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
 .team-launch-state { border: 1px solid var(--line); padding: var(--sp-4); margin-top: var(--sp-4); }
@@ -239,4 +237,10 @@
   .team-folder-input { flex-wrap: wrap; }
   .team-folder-input input { flex-basis: 100%; }
   .team-folder-input button { width: 100%; justify-content: center; }
+}
+
+@media (pointer: coarse) { .teams-screen input, .teams-screen select, .teams-screen textarea { font-size: var(--fs-17); } }
+
+@media (pointer: coarse) {
+ .teams-screen button, .teams-screen input, .teams-screen select, .teams-talk, .teams-back, .teams-screen summary { min-height:44px; }
 }

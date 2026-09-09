@@ -10,13 +10,19 @@
  * chain every frame (the historical judder), so the terminal suppresses
  * refits during the drag and runs exactly one on release.
  */
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocalSettingMutable } from '@/sync/storage';
 import { resolveFilesPanelWidth, filesPanelWidthFromPointer } from './filesPanelWidth';
 
 export function useFilesPanelWidth(opts?: { onDragStart?: () => void; onDragEnd?: () => void }) {
     const [stored, setStored] = useLocalSettingMutable('filesPanelWidth');
-    const width = resolveFilesPanelWidth(stored, typeof window !== 'undefined' ? window.innerWidth : 0);
+    const [viewportWidth, setViewportWidth] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 0);
+    useEffect(() => {
+        const resize = () => setViewportWidth(window.innerWidth);
+        window.addEventListener('resize', resize);
+        return () => window.removeEventListener('resize', resize);
+    }, []);
+    const width = resolveFilesPanelWidth(stored, viewportWidth);
 
     const draggingRef = useRef(false);
     // The panel's right edge, captured once at drag start (it's anchored right,

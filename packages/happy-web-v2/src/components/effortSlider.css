@@ -10,7 +10,7 @@
 .effort-slider input { appearance: none; position: absolute; inset: 0 -8px; width: calc(100% + 16px); height: 28px; margin: 0; background: transparent; cursor: pointer; }
 .effort-slider input::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--text); border: 3px solid var(--bg-0); box-shadow: 0 0 0 1px var(--text); }
 .effort-slider input::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: var(--text); border: 3px solid var(--bg-0); box-shadow: 0 0 0 1px var(--text); }
-.effort-slider input:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 4px; }
+.effort-slider input:focus-visible { outline: none; box-shadow: inset 0 -2px 0 var(--text-dim); border-radius: 4px; }
 .effort-slider input:disabled { cursor: default; opacity: .5; }
 .effort-slider-burst { position: absolute; right: 0; top: 14px; pointer-events: none; }
 .effort-slider-burst i { position: absolute; border: 1px solid var(--text); border-radius: 50%; width: 14px; height: 14px; margin: -7px; animation: effort-shockwave 650ms cubic-bezier(.16, 1, .3, 1) both; }
