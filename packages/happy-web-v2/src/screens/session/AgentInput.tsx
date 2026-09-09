@@ -11,7 +11,7 @@ import { appendMessageQuote } from './messageActionsModel';
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, CornerDownRight, FileText, Maximize2, Minimize2, Paperclip, Pencil, Send, Square, Trash2, X } from 'lucide-react';
+import { Check, CornerDownRight, FileText, Maximize2, Minimize2, Paperclip, Pencil, ArrowUp, Square, Trash2, X } from 'lucide-react';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
 import { sessionAbort, sessionSetPermissionMode } from '@/sync/ops';
@@ -906,7 +906,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             aria-label={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
                             title={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
                         >
-                            {sending || processingAttachments ? <Spinner size={16} /> : <Send size={16} />}
+                            {sending || processingAttachments ? <Spinner size={16} /> : <ArrowUp size={18} />}
                         </button>
                     </div>
                 </div>

@@ -19,8 +19,7 @@ import { useIsTablet } from '@/app/useMediaQuery';
 import { planChatHeaderActions, type ChatHeaderActionKey } from './chatHeaderLayout';
 import { useImeGuard } from '@/utils/ime';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
-import { getServerUrl } from '@/sync/serverConfig';
-import { relayRegionLabel } from './relayLabel';
+import { RelayBadge } from '@/components/RelayBadge';
 import './header.css';
 
 // Session is "connected" when its agent is online AND our relay socket is up.
@@ -73,7 +72,6 @@ export function ChatHeader({
             if (changedMachineId === machineId) setRelayStatus(next);
         });
     }, [machineId]);
-    const relayLabel = relayRegionLabel(relayStatus, getServerUrl());
 
     const startEdit = () => {
         setDraft(meta?.summary?.text ?? '');
@@ -216,7 +214,7 @@ export function ChatHeader({
                 place the input measured 4px wide at 360px — unusable. */}
             {!editing && (
                 <div className="ch-status">
-                    <span className="ch-relay" title={t('session.chat.relayRegion')}>{relayLabel}</span>
+                    <RelayBadge status={relayStatus} />
                     <StatusDot status={status} size={9} pulse={status === 'connected'} />
                 </div>
             )}

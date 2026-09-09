@@ -145,3 +145,20 @@ it('hides the previous ACP model thinking catalog while a new model is selected'
     expect(getEffortLevelsForModel('acp', 'small', metadata)).toEqual([]);
     expect(getEffortLevelsForModel('acp', 'deep', metadata).map(x => x.key)).toEqual(['xhigh']);
 });
+
+
+describe('permission display vocabulary', () => {
+    it('relabels known Gemini CLI modes without adding capabilities or changing keys', () => {
+        const metadata = { operatingModes: [
+            { code: 'auto_edit', value: 'Auto edit' },
+            { code: 'yolo', value: 'YOLO' },
+            { code: 'custom-policy', value: 'Company policy', description: 'Managed by host' },
+        ] } as any;
+        const modes = getAvailablePermissionModes('gemini', metadata, (key) => key);
+        expect(modes.map((mode) => mode.key)).toEqual(['auto_edit', 'yolo', 'custom-policy']);
+        expect(modes[0].name).toBe('agentInput.geminiPermissionMode.autoEdit');
+        expect(modes[1].name).toBe('agentInput.geminiPermissionMode.yolo');
+        expect(modes[1].description).toBe('agentInput.permissionMode.autoRunDescription');
+        expect(modes[2]).toEqual({ key: 'custom-policy', name: 'Company policy', description: 'Managed by host' });
+    });
+});

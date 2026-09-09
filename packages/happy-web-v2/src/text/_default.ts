@@ -15,6 +15,18 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    relayBadge: {
+        route: "Data route",
+        state: "Connection",
+        regional: "Regional relay",
+        control: "Control server",
+        connected: "Connected",
+        connecting: "Connecting to regional relay",
+        fallback: "Using control server",
+        region: "Region",
+        latency: "Browser round-trip",
+        latencyHint: "Latency measures the browser-to-relay connection, not model response time.",
+    },
     teams: {
         executionMode: "Execution mode",
         approvalDefault: "Approve as needed",
@@ -1314,14 +1326,18 @@ export const en = {
             effort: 'effort',
         },
         permissionMode: {
+            autoRunDescription: "Run tools without individual approvals; host policies still apply.",
+            sandboxDescription: "Run automatically in the workspace sandbox; request approval for access outside it.",
+            fullAccessDescription: "Skip tool approvals and disable the Codex sandbox, allowing access outside the workspace.",
+
             title: 'PERMISSION MODE',
             default: 'default permissions',
             acceptEdits: 'accept edits',
             plan: 'plan',
             dontAsk: "don't ask",
-            bypassPermissions: 'yolo',
+            bypassPermissions: 'Auto-run',
             badgeAcceptAllEdits: 'accept all edits',
-            badgeBypassAllPermissions: 'yolo',
+            badgeBypassAllPermissions: 'Auto-run',
             badgePlanMode: 'plan mode',
         },
         agent: {
@@ -1340,12 +1356,12 @@ export const en = {
         codexPermissionMode: {
             title: 'CODEX PERMISSION MODE',
             default: 'default permissions',
-            readOnly: 'read-only',
-            safeYolo: 'safe yolo',
-            yolo: 'yolo',
-            badgeReadOnly: 'read-only',
-            badgeSafeYolo: 'safe yolo',
-            badgeYolo: 'yolo',
+            readOnly: 'Read only',
+            safeYolo: 'Auto-run in sandbox',
+            yolo: 'Auto-run',
+            badgeReadOnly: 'Read only',
+            badgeSafeYolo: 'Auto-run in sandbox',
+            badgeYolo: 'Auto-run',
         },
         codexModel: {
             title: 'CODEX MODEL',
@@ -1361,10 +1377,10 @@ export const en = {
             title: 'GEMINI PERMISSION MODE',
             default: 'default permissions',
             autoEdit: 'auto edit',
-            yolo: 'yolo',
+            yolo: 'Auto-run',
             plan: 'plan',
             badgeAutoEdit: 'auto edit',
-            badgeYolo: 'yolo',
+            badgeYolo: 'Auto-run',
             badgePlan: 'plan',
         },
         context: {
@@ -1799,6 +1815,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09i: {
+                title: "More comfortable conversations",
+                summary: "Clearer spacing, highlighted commands and a roomier composer.",
+                reading: "Improved paragraph and list spacing, shell syntax highlighting in tool calls, and a separate composer toolbar.",
+                controls: "Chat and terminal share a relay badge with hover, focus and tap details. YOLO is now Auto-run, with approval and sandbox behavior explained.",
+            },
             sep09y: {
                 title: 'A simpler composer',
                 summary: 'Model and reasoning controls now share one compact menu.',

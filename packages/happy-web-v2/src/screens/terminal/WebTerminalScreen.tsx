@@ -104,7 +104,7 @@ import {
   stopSyntheticScrollForBufferChange,
 } from './termTouchFling';
 import { encodeSgrWheelBurst, latestTuiInput } from './termTuiScroll';
-import { formatRelayRegion } from './relayRegionLabel';
+import { RelayBadge } from '@/components/RelayBadge';
 import { createTermInitialPaintGate } from './termInitialPaint';
 import './terminal.css';
 
@@ -196,7 +196,6 @@ export function WebTerminalScreen() {
   const [showRename, setShowRename] = useState(false);
   const [relayStatus, setRelayStatus] = useState<MachineRelayStatus>(() =>
     machineId ? apiSocket.getMachineRelayStatus(machineId) : { transport: 'legacy', state: 'fallback' });
-  const relayLatency = relayStatus.rttMs === undefined ? '-- ms' : `${Math.round(relayStatus.rttMs)} ms`;
   useEffect(() => apiSocket.onMachineRelayStatus((changedMachineId, status) => {
     if (changedMachineId === machineId) setRelayStatus(status);
   }), [machineId]);
@@ -2696,18 +2695,7 @@ export function WebTerminalScreen() {
             <Pencil size={13} className="term-title-edit" />
           </button>
           {statusChips.includes('relay') && (
-            <span
-              className={`term-relay mono is-${relayStatus.state}`}
-              title={relayStatus.transport === 'regional'
-                ? `${formatRelayRegion(relayStatus.region)} · browser RTT ${relayLatency}`
-                : 'Control relay fallback'}
-            >
-              {relayStatus.state === 'connecting'
-                ? 'RELAY…'
-                : relayStatus.transport === 'regional'
-                  ? `${formatRelayRegion(relayStatus.region)} · ${relayLatency}`
-                  : 'CONTROL'}
-            </span>
+            <RelayBadge status={relayStatus} />
           )}
           {statusChips.includes('connecting') && <span className="term-connecting mono">{t('common.loading')}</span>}
           {statusChips.includes('font') && <span className="term-connecting mono">{t('terminal.fontLoading')}</span>}
