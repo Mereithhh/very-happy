@@ -5,15 +5,14 @@ import { onMessageQuote } from './messageQuote';
 import { appendMessageQuote } from './messageActionsModel';
 /**
  * AgentInput — the composer. A rounded auto-growing textarea + circular send
- * button, with permissions, model, and context inside the same surface.
+ * button, with permissions and model in one row; context sits below.
  *
  * Sending: Enter sends (configurable via agentInputEnterToSend), Shift+Enter
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, CornerDownRight, FileText, Pencil, ArrowUp, Square, Trash2, X, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
+import { Check, CornerDownRight, FileText, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import * as Popover from '@radix-ui/react-popover';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
 import { sessionAbort, sessionSetPermissionMode } from '@/sync/ops';
@@ -288,9 +287,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const contextTokens = formatTokens(contextSize);
     const contextTotal = contextWindow === null ? null : formatTokens(contextWindow);
     const meterTone = percentUsed === null ? 'ok' : percentUsed >= 95 ? 'crit' : percentUsed >= 90 ? 'warn' : 'ok';
-    const meterTitle = percentUsed === null
-        ? contextTokens
-        : `${contextTokens} / ${contextTotal} · ${t('session.chat.contextMeter', { percent: percentUsed })}`;
+    const meterTitle = `${contextWindow === null ? contextSize.toLocaleString() : `${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`} tokens`;
 
     // grow textarea — 收起时按内容自适应，展开时直接占满 ~60% 视口；不能只
     // 提高 max-height，否则空/短输入点击展开后没有任何视觉反馈（B-217）。
@@ -683,7 +680,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         setMode('updateSessionPermissionMode', 'permissionMode', appliedKey);
     };
 
-    const canSend = (text.trim().length > 0 || attachments.length > 0) && !sending && !processingAttachments;
+    const hasDraft = text.trim().length > 0 || attachments.length > 0 || processingAttachments;
+    const canSend = hasDraft && !sending && !processingAttachments;
 
     return (
         <div className="ci" style={{ paddingBottom: 'max(var(--sp-3), env(safe-area-inset-bottom))' }}>
@@ -866,7 +864,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     onCompositionEnd={ime.onCompositionEnd}
                     aria-label={t('common.message')}
                 />
-                <div className="ci-composer-toolbar" data-working={isWorking && canSend}>
+                <div className="ci-composer-toolbar">
                     <div className="ci-composer-tools">
                         <PresetsMenu onPick={insertPreset} onCancel={() => taRef.current?.focus()}
                             onAttach={supportsAttachments ? onPickFiles : undefined}
@@ -874,27 +872,14 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             expanded={expanded} />
                         <ModeMenu
                             label={t('session.chat.permissionLabel')}
+                            icon={<Shield size={18} aria-hidden />}
                             options={permModes}
                             value={permKey}
                             onChange={(key) => { void setPermissionMode(key); }}
                             busy={permissionModeBusy}
                             subtitle={permissionSubtitle}
                         />
-                        <Popover.Root>
-                            <Popover.Trigger asChild>
-                                <button type="button" className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={meterTitle}>
-                                    <Gauge size={14} aria-hidden />
-                                    <span>{percentUsed === null ? '—' : `${Math.round(percentUsed)}%`}</span>
-                                </button>
-                            </Popover.Trigger>
-                            <Popover.Portal>
-                                <Popover.Content className="ci-context-detail" side="top" sideOffset={8} collisionPadding={12}>
-                                    <strong>{t('session.chat.contextUsage')}</strong>
-                                    <p>{contextWindow === null ? contextSize.toLocaleString() : `${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`} tokens</p>
-                                    {percentUsed !== null && <p>{t('session.chat.contextMeter', { percent: percentUsed })}</p>}
-                                </Popover.Content>
-                            </Popover.Portal>
-                        </Popover.Root>
+
                     </div>
                     <div className="ci-model-controls">
                     <ModelEffortMenu
@@ -907,7 +892,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     />
                     </div>
                     <div className="ci-composer-actions">
-                        {isWorking && (
+                        {isWorking && (!hasDraft || aborting) ? (
                             <button
                                 type="button"
                                 className="ci-send ci-send--abort"
@@ -927,13 +912,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             >
                                 {aborting ? <Spinner size={14} /> : <Square size={16} fill="currentColor" />}
                             </button>
-                        )}
-                        {isWorking && canSend && supportsSteer && <button type="button" className="ci-steer" disabled={!canSend || aborting} onClick={() => void doSend('steer')}>
-                            <CornerDownRight size={15} aria-hidden />{t('session.chat.steerNow')}
-                        </button>}
-                        {(!isWorking || canSend) && <button
+                        ) : <button
                             type="button"
-                            className={`ci-send${isWorking ? ' ci-send--queue' : ''}`}
+                            className="ci-send"
                             onClick={() => void doSend('queue')}
                             disabled={!canSend}
                             aria-busy={sending || processingAttachments}
@@ -941,13 +922,17 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             title={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
                         >
                             {sending || processingAttachments ? <Spinner size={16} /> : <ArrowUp size={18} />}
-                            {isWorking && <span>{t('session.chat.queueSend')}</span>}
                         </button>}
                     </div>
                 </div>
             </div>
 
             <div className="ci-status">
+                <div className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={meterTitle}>
+                    <Gauge size={14} aria-hidden />
+                    <span>{percentUsed === null ? t('session.chat.contextUsage') : t('session.chat.contextMeter', { percent: Math.round(percentUsed) })}</span>
+                    <span className="ci-meter-tokens">{contextTotal === null ? contextTokens : `${contextTokens} / ${contextTotal}`} tokens</span>
+                </div>
                 <span className="ci-hint">
                     {isWorking
                         ? supportsSteer ? t('session.chat.queueSteerHint') : t('session.chat.queueHint')

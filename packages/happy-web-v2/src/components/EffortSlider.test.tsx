@@ -65,6 +65,15 @@ describe('EffortSlider', () => {
         expect(host.querySelector('input')).toBeNull();
     });
 
+    it('marks only the highest positive supported level as maximum', () => {
+        const render = (value: string) => act(() => root.render(<EffortSlider label="Thinking" options={options} value={value} onChange={vi.fn()} />));
+        render('xhigh'); expect(host.querySelector('.effort-slider--max')).not.toBeNull();
+        render('medium'); expect(host.querySelector('.effort-slider--max')).toBeNull();
+        const noReasoning = [{ key: 'default', name: 'Default' }, { key: 'off', name: 'Off' }];
+        act(() => root.render(<EffortSlider label="Thinking" options={noReasoning} value="off" onChange={vi.fn()} />));
+        expect(host.querySelector('.effort-slider--max')).toBeNull();
+    });
+
     it('disables updates while busy', () => {
         const onChange = vi.fn();
         act(() => root.render(<EffortSlider label="Thinking" options={options} value="low" onChange={onChange} busy />));

@@ -108,3 +108,6 @@
     padding: 10px var(--sp-2);
   }
 }
+
+.mm-icon { display: none; flex: none; }
+.mm-note { padding: var(--sp-2); font-size: var(--fs-11); color: var(--text-dim); }
