@@ -1799,6 +1799,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09x: {
+                title: 'More capable agent conversations',
+                summary: 'Files, model choices and thinking controls work together across Codex and pi.',
+                attachments: 'Attach files and images in Codex and pi conversations. Image understanding requires a vision-capable model and an updated CLI.',
+                reasoning: 'Thinking uses a slider with an animated highest level and the backend’s actual supported levels. Codex lists available models, including GPT-6 Astra on updated installations.',
+                defaults: 'Selecting a pi model also sets the next conversation’s startup model. Switching models handles outdated thinking levels, and Codex Safe YOLO works with current CLI versions.',
+            },
             sep09w: {
                 title: 'One hub, with Teams built in',
                 summary: 'The homepage brings connected machines and working anywhere back to the front.',
