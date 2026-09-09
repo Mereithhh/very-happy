@@ -15,6 +15,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-09-todo-agent-skill',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep09h.title',
+    summaryKey: 'changelog.releases.sep09h.summary',
+    itemKeys: ['changelog.releases.sep09h.copy', 'changelog.releases.sep09h.commands'],
+  },
+  {
     id: '2026-09-09-cli-auto-update-notice',
     date: '2026-09-09',
     buildVersion: __APP_VERSION__,

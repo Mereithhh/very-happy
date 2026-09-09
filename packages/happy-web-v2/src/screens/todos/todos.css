@@ -422,3 +422,15 @@
 }
 .td-source-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
 .td-source-panel[hidden] { display: none; }
+
+/* Official skill handoff: account todo access, independent of machines. */
+.td-agent-setup { min-width: 0; border-bottom: 1px solid var(--line); padding-bottom: var(--sp-3); }
+.td-agent-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.td-agent-actions .td-action { max-width: 100%; font-size: var(--fs-13); }
+.td-agent-preview-toggle { border-color: transparent; background: none; }
+.td-agent-hint, .td-agent-feedback, .td-agent-error { margin: var(--sp-2) 0 0; font-size: var(--fs-13); line-height: 1.5; overflow-wrap: anywhere; }
+.td-agent-hint { color: var(--text-dim); }
+.td-agent-feedback { color: var(--text); }
+.td-agent-feedback:empty { display: none; }
+.td-agent-error { color: var(--danger); }
+.td-agent-preview { display: block; width: 100%; margin-top: var(--sp-3); resize: vertical; box-sizing: border-box; }

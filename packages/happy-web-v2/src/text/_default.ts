@@ -1798,6 +1798,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09h: {
+                title: 'Let your agent use My todos',
+                summary: 'Copy the official skill from My todos and give it to your coding agent.',
+                copy: 'Copy complete setup instructions, with manual copy available if clipboard access fails.',
+                commands: 'The official todo CLI supports reading, creating, editing, completing and deleting tasks. A CLI with todo command support is required.',
+            },
             sep09g: {
                 title: 'CLI updates without the extra work',
                 summary: 'Update notices now explain what happens automatically.',

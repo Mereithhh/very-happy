@@ -462,6 +462,34 @@ duplicate title tools. `very-happy mcp` discovers the daemon using
 
 ---
 
+## Built-in My todos: official agent skill
+
+In **Todos → My todos**, choose **Let AI use my todos** to copy the complete
+[official skill](../packages/happy-web-v2/public/skills/very-happy-todos/SKILL.md)
+and the current server address. Paste it into your coding agent. Clipboard failure
+shows selectable instructions. The copied content contains no login credentials.
+The public document is served at `/skills/very-happy-todos/SKILL.md`.
+
+Use a CLI with `very-happy todo --help` support. `very-happy todo skill` prints the
+same instructions without requiring authentication. The agent verifies the existing
+CLI login and expected server, then reads `todo list`; setup never writes test tasks.
+Existing external providers remain separate.
+
+Commands: `todo list`, `todo get ID`, `todo add --id UUID --title TEXT [--note TEXT]`,
+`todo edit ID --version N [--title TEXT] [--note TEXT]`, and
+`todo complete|reopen|delete ID --version N`. Use `--title=VALUE` / `--note=VALUE`
+for text beginning with `--`. Successful data commands output `{serverUrl, result}`;
+list results include `records`, `truncated`, and `invalidCount`. Mutations require
+the version returned by a read. Retry uncertain creation with the same UUID and
+content; reconcile other uncertain writes by reading, never by blind overwrite.
+Deleted IDs cannot be reused. CLI and Web share the same account KV schema and CAS.
+
+Managed Claude, new Codex threads, and pi/ACP sessions receive a short discovery
+hint. Resumed existing Codex threads do not receive a new first-turn hint; run
+`very-happy todo skill` explicitly there. Host skill directories are not modified.
+Scoped Teams sessions cannot use account-wide Todo commands. Task text is data,
+not authorization to execute its contents or complete tasks automatically.
+
 ## Inbound: todo provider (external task lists in the web UI)
 
 **No setup is required for Todos → My todos.** The built-in list belongs to your

@@ -1,3 +1,4 @@
+import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
 import { preparePiTeamsRuntime } from '@/teams/piRuntime';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -1048,6 +1049,7 @@ export async function runAcp(opts: {
       }
     }
 
+    let todoDiscoverySent = false;
     while (!shouldExit) {
       const waitSignal = abortController.signal;
       const batch = await messageQueue.waitForMessagesAndGetAsString(waitSignal);
@@ -1076,7 +1078,9 @@ export async function runAcp(opts: {
         if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
           await switchModelIfRequested(batch.mode.model);
         }
-        await backend.sendPrompt(acpSessionId, batch.message);
+        const prompt = todoDiscoverySent ? batch.message : `${batch.message}\n\n${BUILTIN_TODO_DISCOVERY}`;
+        await backend.sendPrompt(acpSessionId, prompt);
+        todoDiscoverySent = true;
         await turnEnded;
         sendEnvelopes(sessionManager.endTurn('completed'));
         // Sweep AFTER the turn's envelopes are queued: `turn-end` starts the
