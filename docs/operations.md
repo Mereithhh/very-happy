@@ -238,6 +238,14 @@ is the retired Tokyo host, `hw-sg` is the Singapore relay). Neither of the latte
 is a control-server deployment target. The workflow secrets are still named
 `HWSG_*` for historical reasons; they point at vh-sg.
 
+If this workstation lacks the `vh-sg` alias, use the existing mac-office SSH
+configuration rather than copying a private key or substituting a relay. First
+check `ssh mac-office 'ssh -G vh-sg'` against the origin inventory above; then
+read release state with
+`ssh mac-office 'ssh vh-sg "hostname; cat /opt/happy/release/state.env"'`.
+This route was verified on 2026-09-09. A missing local alias alone does not mean
+the production host is unreachable; a target mismatch still blocks deployment.
+
 **The deploy workflow runs on GitHub-hosted `ubuntu-latest`, so vh-sg's security
 group must accept SSH from anywhere** (`vh-server-sg` tcp/22 `0.0.0.0/0`, rule
 description `github-actions-deploy`; sshd is key-only with fail2ban). GitHub's
