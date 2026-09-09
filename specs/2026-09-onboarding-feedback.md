@@ -1,6 +1,6 @@
 # 新手引导与异步反馈
 
-状态：Final · 2026-09-10 · B-436
+状态：Shipped · 2026-09-10 · B-436
 
 ## 范围与依据
 
@@ -28,3 +28,13 @@
 保留上一完整生产镜像 `0839dfd5a`，按 operations 蓝绿状态机回切。无迁移，无需更新 daemon，已有 CLI 0.2.131 继续兼容。
 
 完整本地门禁：wire 82、Web 2,741、CLI 2,082、server 644 项通过（server 原有条件跳过 1 项）；各包要求的构建/类型检查及 CLI 生成产物 --version 成功。
+
+## 发布验收
+
+PR #324 合并为 `82c12b9d54b65fcb18cd67e7a4494c848f603cfe`，PR 与 main 精确 SHA 的门禁成功。部署 run `34403204482` 成功，active blue 镜像 `sha256:a72ef4980e879290604723e6b877abc8415d216ce21845017d114e7448315815`；保留 green `0839dfd5a` 镜像供回退。
+
+`check-shipped` 读取 52 个资源，入口 SHA 与 `cap-skills-title`、`.sb-row-running`、屏幕宽度条件、更新条目均命中；生产 health 正常。Chromium 18 项公开页面明暗/尺寸检查通过，无横向溢出，更新日志显示本批。加载 entry/CSS/controller 已记录；此次没有改 SW 机制，不把刷新本身当成旧客户端 takeover 证明。
+
+本次连接验收出现 **1 次事件**（B-437）：中央 `fs-list` 连续两次 15s 探针超时，服务端随后记录 30s RPC 超时与多个 RPC sockets；机器日志显示已收到并发送加密响应，且附近有网络恢复记录。按网页真实区域 relay 路径请求成功。mac-office 按 operations 的 `daemon stop` → launchd `kickstart` 重新注册后，中央与区域两条请求均成功，launchd running，daemon/已安装 CLI 仍为 0.2.131。未定位重复连接根因或证明与本批 UI 代码存在因果，恢复不等于永久修复。
+
+临时浏览器、像素与 RPC 证据在 `~/code/github/skills/tmp/vh-onboarding-feedback/`；探针只输出成功状态与条目数，不提交账号凭据。
