@@ -1,5 +1,30 @@
 # Architecture and data flow
 
+## One workspace across connected machines
+
+![Very Happy system topology: multiple machines and agent runners converge through the trusted relay into one account workspace](../packages/happy-web-v2/public/architecture/system-topology.svg)
+
+Every daemon connected to the same account feeds one Web/PWA workspace. The
+sidebar and task board aggregate sessions and attention state across those
+machines, so the user can monitor Claude, Codex, terminal, and other supported
+runner sessions without opening a separate control plane per host. Creating a
+session explicitly selects its target machine and agent; automatic
+provider-neutral routing remains roadmap.
+
+The browser and installed PWA expose the same workspace on desktop and mobile.
+Agent processes and terminal tools run on their selected machines; the server
+keeps account and synchronized state, while the client provides conversations,
+terminals, files, and progress. Structured capabilities depend on each runner.
+
+### Components
+
+- `packages/happy-web-v2`: production React/Vite browser client.
+- `packages/happy-server`: identity, persistence, realtime routing, files,
+  notifications, and static Web hosting.
+- `packages/happy-cli`: local daemon, agent launcher, terminal bridge, and RPC
+  implementation.
+- `packages/happy-wire`: shared compatibility schemas.
+
 ## Teams: from a goal to reviewed results
 
 ![Very Happy Teams: one goal, a coordinating lead, parallel members, and result review](../packages/happy-web-v2/public/architecture/agent-teams.svg)
@@ -22,18 +47,7 @@ children yields its slot. Teams is optional, and ordinary sessions retain their
 existing paths. Automatic cross-machine routing is not shipped. Start with the
 [Teams guide](agent-teams.md) for the user flow and terminal skill setup.
 
-## Components
-
-![Very Happy system topology: multiple machines and agent runners converge through the trusted relay into one account workspace](../packages/happy-web-v2/public/architecture/system-topology.svg)
-
-- `packages/happy-web-v2`: production React/Vite browser client.
-- `packages/happy-server`: identity, persistence, realtime routing, files,
-  notifications, and static Web hosting.
-- `packages/happy-cli`: local daemon, agent launcher, terminal bridge, and RPC
-  implementation.
-- `packages/happy-wire`: shared compatibility schemas.
-
-### Regional realtime relay plane
+## Regional realtime relay plane
 
 Latency-sensitive terminal bytes, machine/session RPC, and committed structured
 message delivery can leave the central control/data path without moving account
@@ -66,15 +80,6 @@ occupy the same realtime seam, with regional relay as fallback.
 The legacy Expo/Tauri `packages/happy-app` is retained as an experimental seed
 for a possible future desktop client. It is not a supported production client in
 this release.
-
-### One account, multiple machines
-
-Every daemon connected to the same account feeds one Web/PWA workspace. The
-sidebar and task board aggregate sessions and attention state across those
-machines, so the user can monitor Claude, Codex, terminal, and other supported
-runner sessions without opening a separate control plane per host. Creating a
-session explicitly selects its target machine and agent; automatic
-provider-neutral routing remains roadmap.
 
 ## Identity and connection
 
