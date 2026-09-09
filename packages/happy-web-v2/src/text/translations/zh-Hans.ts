@@ -958,6 +958,7 @@ export const zhHans: TranslationStructure = {
     // 外部待办面板 —— /todos（B-007）。provider 是用户自己写的命令、按机器各配一份，
     // 所以文案里必须始终点明「哪台机器」和「是你的脚本在报错，不是我们」。
     todos: {
+        providerSkill: '让 AI 帮我接入外部来源',
         groupBy: '分组方式',
         groupByPriorityHint: '按优先级分组（四象限）',
         groupByGroupHint: '按清单分组',
@@ -1223,7 +1224,7 @@ export const zhHans: TranslationStructure = {
             notesTitle: '临时笔记本',
             notesDescription: '把临时 prompt 和上下文放进笔记侧栏。可从侧边栏、会话顶部、命令面板或 Command/Ctrl J 打开。',
             todosTitle: 'Todo 面板',
-            todosDescription: '从侧边栏或命令面板打开 Todo，读取机器上已配置的 provider，并按列表或优先级分组。',
+            todosDescription: '从侧边栏或命令面板打开待办，直接记录并同步任务；在“外部来源”可使用机器上已配置的 provider。',
             viewsTitle: '终端 ↔ 结构化文本',
             viewsDescription: '安装可选的终端 hooks 后，在网页终端中启动的 Claude 可在原生 TUI 和易读的结构化记录之间切换。',
             fileHandoffTitle: '把文件直接粘贴到终端',
@@ -1755,6 +1756,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09a: {
+                title: '待办开箱即用，不用先接 provider',
+                summary: '在“我的待办”直接记事，不需要在线机器或额外配置。',
+                builtin: '支持新增、编辑、完成、恢复、删除和调整顺序，跟随账号在多设备同步。',
+                sources: '原来的 provider 放在“外部来源”，任务仍保留在原系统；提供 AI 接入 skill，帮助配置自己的集成。',
+                safety: '操作以服务端确认结果为准；同时编辑会提示冲突并保留输入，失败时不会悄悄把任务标成完成。',
+            },
             sep09c: {
                 title: '更可靠的服务升级',
                 summary: '运行时使用事务连接池时，数据库迁移改用独立的会话连接。',

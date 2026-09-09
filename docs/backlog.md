@@ -21,6 +21,7 @@
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
 | B-399 | PostgreSQL 迁移使用独立会话连接 | bug | Agent Teams 发布实测 | done | Prisma advisory lock 不得经过 transaction pool；迁移 child env 隔离、生产入口门禁与失败阻断回归。 |
+| B-394 | **内置 Todo 开箱即用与可选外部来源**：账号级任务CRUD/恢复/排序，保留机器provider，提供AI接入指导并适配Owner私人provider | feat/ux | Owner 2026-09-09 | doing | 已实现；38项机制测试、真实Chromium四种尺寸/主题组合通过，待PR合并发布。设计 specs/2026-09-builtin-todos.md；账号KV/CAS，外部来源不迁移；Owner私人provider已适配并确认66个原ID不变。 |
 | B-392 | 终端 @ 字形可辨认性；另核 pi 消息黑字 | bug | Owner 2026-09-09 | doing | 已在 test 终端 jojo@mac-office 确认：DOM 为 U+0040，Maple 默认特殊字形导致误认；启用 cv01 标准符号，保持字体/字号/行高。本地真实 xterm 对比及 mutation 回归通过，已随 629bc399 发布，线上 CSS 已核对。pi 黑字属另一路径，仍未复现，不合并宣称修复。 |
 | B-398 | **官方 Agent Teams / Happy Bot**：稳定 Bot 身份、共享 skill 激活、多 coding agent 协作与递归委派，统一任务/消息/恢复/回收并集成 Web | feat | Owner 2026-09-09 | doing | PR #285 / #288 已合入；Server/Web 70eb18e9、CLI 0.2.125 已发布，个人账号已启用，两台 Mac 已切换。生产 pi/Claude/Codex 与办公室 pi 的提交→合并→验收→回收通过，滴答真实闭环通过。官方 10/30 分钟 schedules 已运行；剩余 48 小时观察和旧个人路由最终退役，见 spec 上线记录。 |
 | B-388 | **精简项目启动上下文**：AGENTS 保留门禁、关键约束与 owner 入口，CLAUDE 只导入统一指南 | docs | Owner 2026-09-08 | done | 删除重复流程、事故叙事和静态快照，保留原规则编号及机制链接；少量独有工具经验移入 development/PROCESS。仅文档，不调整产品或生产策略。 |

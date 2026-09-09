@@ -962,6 +962,7 @@ export const en = {
     // command configured on EACH machine, so every string here has to keep
     // "which machine" and "your script, not ours" visible.
     todos: {
+        providerSkill: 'AI skill for connecting an external source',
         // B-007 分组维度切换（四象限 = 按优先级分桶）
         groupBy: 'Group by',
         groupByPriorityHint: 'Group by priority',
@@ -1241,7 +1242,7 @@ export const en = {
             notesTitle: 'Scratch notes',
             notesDescription: 'Keep temporary prompts and context in the notes dock. Open it from the sidebar, a session header, the command palette, or Command/Ctrl J.',
             todosTitle: 'Todo panel',
-            todosDescription: 'Open Todo from the sidebar or command palette to read the provider configured on a machine, then group items by list or priority.',
+            todosDescription: 'Open Todos from the sidebar or command palette to capture account-synced tasks. External source optionally uses a provider on a machine.',
             viewsTitle: 'Terminal ↔ structured text',
             viewsDescription: 'A Claude process started in a Web terminal can switch between the native TUI and a readable structured transcript after optional terminal hooks are installed.',
             fileHandoffTitle: 'Paste a file into a terminal',
@@ -1789,6 +1790,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09a: {
+                title: 'Todos work without setup',
+                summary: 'Capture tasks in My todos, with no provider or connected machine required.',
+                builtin: 'Create, edit, complete, reopen, delete and reorder tasks. Your list syncs with your account across devices.',
+                sources: 'Your existing provider is available under External source. External tasks stay in their original service. An AI setup skill helps connect your own integration.',
+                safety: 'Changes are confirmed by the server. Concurrent edits show a conflict and keep your draft; failed requests do not silently mark tasks as complete.',
+            },
             sep09c: {
                 title: 'More reliable server upgrades',
                 summary: 'Database migrations use a dedicated session connection when the runtime uses a transaction pool.',

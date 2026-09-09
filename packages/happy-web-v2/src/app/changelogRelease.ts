@@ -15,6 +15,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-09-builtin-todos',
+    date: '2026-09-09',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep09a.title',
+    summaryKey: 'changelog.releases.sep09a.summary',
+    itemKeys: ['changelog.releases.sep09a.builtin', 'changelog.releases.sep09a.sources', 'changelog.releases.sep09a.safety'],
+  },
+  {
     id: '2026-09-09-migration-session-recovery',
     date: '2026-09-09',
     buildVersion: __APP_VERSION__,
