@@ -441,11 +441,9 @@
 .ci-model-controls { grid-column: 2; grid-row: 1; min-width: 0; display: flex; justify-content: flex-end; }
 .ci-model-controls .me-trigger { min-width: 0; }
 .ci-model-controls .mm-v { max-width: 24ch; }
-.ci-meter { border: 0; background: transparent; min-height: 36px; gap: 4px; padding: 4px; color: var(--text-dim); margin-inline-start: 0; font-size: var(--fs-11); }
+.ci-meter { border: 0; background: transparent; min-height: 24px; gap: var(--sp-2); padding: 0; color: var(--text-dim); margin-inline-start: 0; font-size: var(--fs-11); }
 .ci-meter--warn { color: var(--warn); }
 .ci-meter--crit { color: var(--danger); }
-.ci-context-detail { z-index: 60; max-width: min(300px, calc(100vw - 24px)); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-1); color: var(--text); box-shadow: var(--shadow-lift); font-size: var(--fs-13); }
-.ci-context-detail p { margin: var(--sp-2) 0 0; font-family: var(--font-mono); }
 .ci-status { justify-content: space-between; gap: var(--sp-2); }
 .ci-status .ci-meter { margin-inline-start: 0; }
 .ci-status .ci-hint { font-family: var(--font-sans); }
@@ -460,7 +458,7 @@
   .ci-model-controls .me-strength { display: none; }
 }
 @media (pointer: coarse) {
-  .ci-icon-btn, .ci-meter, .ci-composer .mm-trigger { min-width: 44px; min-height: 44px; }
+  .ci-icon-btn, .ci-composer .mm-trigger { min-width: 44px; min-height: 44px; }
 }
 
 /* Queued drafts sit against the composer, and retain independent actions. */
@@ -473,3 +471,7 @@
 
 .ci-queue-failure { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); color: var(--danger); font-size: var(--fs-12); }
 .ci-queue-action--retry { width: auto; min-width: 44px; min-height: 44px; margin-left: auto; flex: none; color: var(--text); }
+
+.ci-meter-tokens { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.ci-meter > svg { flex: none; }
+.ci-status .ci-meter { flex-wrap: wrap; row-gap: 2px; }

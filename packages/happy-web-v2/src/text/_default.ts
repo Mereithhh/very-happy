@@ -1830,7 +1830,7 @@ export const en = {
             sep09k: {
                 title: 'A more natural conversation workspace',
                 summary: 'A unified composer, attached queue, and editing in place.',
-                composer: 'Permissions and model controls align with the primary button in a single row; context usage sits below the composer. The plus menu has an explicit Shortcuts entry; tap the context meter for exact usage. The highest reasoning level has a colored progress bar. A single primary button switches between send, queue and stop; steer stays on queued messages.',
+                composer: 'Permissions and model controls align with the primary button in a single row; context usage sits below the composer. The plus menu has an explicit Shortcuts entry; context percentage and used/total tokens are visible below the input. The highest reasoning level has a colored progress bar. A single primary button switches between send, queue and stop; steer stays on queued messages.',
                 queue: 'Queued drafts sit above the composer with Steer, Delete and editing options. The queue waits while you edit; save or cancel to resume. Empty input keeps Stop available.',
                 edit: 'Edit a message in its original position, then send in a new branch. Exact history is verified before creating it; the original conversation and file changes are kept.',
                 actions: 'Intermediate replies between tool calls no longer show copy and quote controls. Final replies retain actions, revealed on hover or focus on desktop and through More on touch screens.',

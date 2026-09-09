@@ -13,7 +13,6 @@ import { appendMessageQuote } from './messageActionsModel';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, CornerDownRight, FileText, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import * as Popover from '@radix-ui/react-popover';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
 import { sessionAbort, sessionSetPermissionMode } from '@/sync/ops';
@@ -288,9 +287,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const contextTokens = formatTokens(contextSize);
     const contextTotal = contextWindow === null ? null : formatTokens(contextWindow);
     const meterTone = percentUsed === null ? 'ok' : percentUsed >= 95 ? 'crit' : percentUsed >= 90 ? 'warn' : 'ok';
-    const meterTitle = percentUsed === null
-        ? contextTokens
-        : `${contextTokens} / ${contextTotal} · ${t('session.chat.contextMeter', { percent: percentUsed })}`;
+    const meterTitle = `${contextWindow === null ? contextSize.toLocaleString() : `${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`} tokens`;
 
     // grow textarea — 收起时按内容自适应，展开时直接占满 ~60% 视口；不能只
     // 提高 max-height，否则空/短输入点击展开后没有任何视觉反馈（B-217）。
@@ -931,21 +928,11 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             </div>
 
             <div className="ci-status">
-                <Popover.Root>
-                    <Popover.Trigger asChild>
-                        <button type="button" className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={meterTitle}>
-                            <Gauge size={14} aria-hidden />
-                            <span>{percentUsed === null ? '—' : `${Math.round(percentUsed)}%`}</span>
-                        </button>
-                    </Popover.Trigger>
-                    <Popover.Portal>
-                        <Popover.Content className="ci-context-detail" side="top" sideOffset={8} collisionPadding={12}>
-                            <strong>{t('session.chat.contextUsage')}</strong>
-                            <p>{contextWindow === null ? contextSize.toLocaleString() : `${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`} tokens</p>
-                            {percentUsed !== null && <p>{t('session.chat.contextMeter', { percent: percentUsed })}</p>}
-                        </Popover.Content>
-                    </Popover.Portal>
-                </Popover.Root>
+                <div className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={meterTitle}>
+                    <Gauge size={14} aria-hidden />
+                    <span>{percentUsed === null ? t('session.chat.contextUsage') : t('session.chat.contextMeter', { percent: Math.round(percentUsed) })}</span>
+                    <span className="ci-meter-tokens">{contextTotal === null ? contextTokens : `${contextTokens} / ${contextTotal}`} tokens</span>
+                </div>
                 <span className="ci-hint">
                     {isWorking
                         ? supportsSteer ? t('session.chat.queueSteerHint') : t('session.chat.queueHint')

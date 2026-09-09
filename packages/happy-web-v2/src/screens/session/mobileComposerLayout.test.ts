@@ -34,12 +34,14 @@ describe('mobile composer layout contract', () => {
         expect(input).not.toContain("[data-working='true']");
     });
 
-    it('makes exact context usage available in a popover', () => {
-        expect(component).toContain('`${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`');
-        expect(component.indexOf('<div className="ci-status">')).toBeLessThan(component.indexOf('<Popover.Root>', component.indexOf('<div className="ci-composer-toolbar">')));
+    it('shows context percentage and token usage below the composer without a click', () => {
+        const footer = component.slice(component.indexOf('<div className="ci-status">'));
+        expect(footer).toContain('className="ci-meter-tokens"');
+        expect(footer).toContain('`${contextTokens} / ${contextTotal}`');
+        expect(footer).toContain("t('session.chat.contextMeter', { percent: Math.round(percentUsed) })");
+        expect(footer).not.toContain('<Popover');
         expect(input).toContain('grid-template-columns: auto minmax(0, 1fr) auto;');
         expect(input).not.toContain('grid-column: 1 / -1;');
-        expect(input).toMatch(/\.ci-meter \{[\s\S]*margin-inline-start: auto;[\s\S]*white-space: nowrap;/);
     });
 
     it('clips transcript painting at the in-flow footer boundary during keyboard resize', () => {
