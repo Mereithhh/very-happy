@@ -4,12 +4,12 @@
 
 <div align="center">
   <a href="https://veryhappy.dev/welcome">
-    <img src=".github/readme-hero.svg" width="100%" alt="Very Happy Teams——一个目标，一支 coding agent 团队">
+    <img src=".github/readme-hero.svg" width="100%" alt="Very Happy——连接你的机器与 coding agent 的统一工作区">
   </a>
 </div>
 
 <p align="center">
-  <strong>一个目标，一支 Agent 团队，尽在你的工作区。</strong>
+  <strong>你的 coding agent 中心。连接多台机器，随时随地继续工作。</strong>
 </p>
 
 <p align="center">
@@ -30,11 +30,19 @@
   <a href="docs/deployment.md">自托管</a>
 </p>
 
-Very Happy 是一个开源 coding agent 工作区。**Very Happy Teams** 让你围绕一个目标组织
-Claude Code、Codex 和 pi：负责人拆分任务，成员并行推进，再把成果汇总回来供你验收。
-电脑与手机共享同一份进展，你可以随时进入任何成员的对话、终端和文件。
+Very Happy 是一个开源 coding agent 中心，把工作站、笔记本和服务器上的会话汇集到
+同一个 Web/PWA 工作区。选择机器和 Agent 开始工作，再从电脑、手机或平板查看对话、
+操作终端、浏览文件、跟进进展。工作在你的机器上运行，你在哪里都能接着处理。
 
-## 从一个目标，到一支团队
+支持的 Agent 可使用结构化对话，其他本地工具可通过真实终端操作；不同集成提供各自的能力，
+终端可运行某个 Agent 不代表它具备同样的结构化支持。每台机器连接一次、保持 daemon 在线，
+就能在同一个工作区处理单个对话，也能组织团队协作。
+
+## Teams：从一个目标，到并行推进
+
+**Very Happy Teams** 让 Claude Code、Codex 和 pi 围绕一个目标协作：负责人拆分任务，
+成员并行推进，再把成果汇总回来供你验收。它沿用已有的对话和机器控制能力，
+增加集中展示分工与成果的团队视图。
 
 > “看看这个项目，找出值得改进的地方，组建团队并行推进，最后给我可验收的成果。”
 
@@ -61,7 +69,7 @@ Claude Code、Codex 和 pi：负责人拆分任务，成员并行推进，再把
 > **选择适合你的部署方式。** Very Happy Cloud 提供最快的多设备接入；自托管则让你掌控
 > 运营方、访问策略、存储与备份。敏感环境请先阅读[隐私与安全模型](docs/security.md)。
 
-## 团队协作背后的日常工作区
+## 你的日常工作区
 
 <table>
   <tr>

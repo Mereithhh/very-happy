@@ -18,7 +18,7 @@ describe('public documentation registry', () => {
       'quickstart', 'keyboard', 'cli', 'cloud', 'self-hosting', 'configuration', 'architecture',
       'integrations', 'security', 'accounts-and-quotas', 'upgrades', 'troubleshooting', 'contributing',
     ]));
-    expect(PUBLIC_DOCS.slice(0, 2).map((doc) => doc.slug)).toEqual(['agent-teams', 'quickstart']);
+    expect(PUBLIC_DOCS.slice(0, 2).map((doc) => doc.slug)).toEqual(['architecture', 'quickstart']);
   });
 
   it('keeps onboarding commands and trust disclosure in the published content', () => {
@@ -108,7 +108,7 @@ describe('public documentation registry', () => {
     const images = architecture?.sections.flatMap((section) => section.blocks).filter((block) => block.type === 'image') ?? [];
 
     expect(images).toHaveLength(5);
-    expect(docsScreen).toContain('<Navigate replace to="/docs/agent-teams" />');
+    expect(docsScreen).toContain('<Navigate replace to="/docs/architecture" />');
     expect(docsScreen).toContain('navigator.clipboard.writeText(code)');
     expect(docsScreen).toContain('<CopyableCode');
     expect(images.map((block) => block.type === 'image' ? block.src : '')).toEqual(expect.arrayContaining([
@@ -428,9 +428,12 @@ describe('public documentation registry', () => {
     const why = readFileSync(new URL('./WhyVeryHappy.tsx', import.meta.url), 'utf8');
     const whyStyles = readFileSync(new URL('./whyVeryHappy.css', import.meta.url), 'utf8');
     const readme = readFileSync(new URL('../../../../../README.md', import.meta.url), 'utf8');
-    const pageOrder = landing.slice(landing.indexOf('return <div className="pub-page"'));
+    const pageOrder = landing.slice(landing.indexOf('return <div className="pub-page pub-landing"'));
     const readmeWhy = readme.slice(readme.indexOf('## Why choose Very Happy?'), readme.indexOf('## One command to your first machine'));
 
+    expect(pageOrder).toContain('<HeroProductStage /></section>\n    <TeamsStory />');
+    const teamsStory = readFileSync(new URL('./TeamsStory.tsx', import.meta.url), 'utf8');
+    expect(teamsStory).toContain('<TeamsDiagram />');
     expect(pageOrder).toContain('<TeamsStory />');
     expect(pageOrder).toContain('<ProductShowcase />');
     expect(pageOrder).toContain('<WhyVeryHappy />');
@@ -512,6 +515,7 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.term-screen:has\(\.product-term-files\)[^}]*\.term-header,[\s\S]*\.term-mid:has\(\.product-term-files\)[^}]*\.term-host \{ visibility: hidden; \}/);
     expect(styles).toMatch(/\.product-preview \.bd-cols \{ display: block; overflow-y: auto; \}/);
     expect(styles).toContain('@container product-preview (max-width: 480px)');
+    expect(publicStyles).toContain('.pub-page.pub-landing { overflow: clip visible; }');
     expect(publicStyles).toMatch(/\.pub-start code \{[^}]*white-space: pre-line/);
     expect(landing).not.toContain('One thread. Three ways');
   });

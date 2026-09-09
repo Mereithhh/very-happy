@@ -1,16 +1,15 @@
 # Very Happy documentation
 
-**Very Happy Teams** brings Claude Code, Codex, and pi together around a goal.
-Start a team, follow parallel work, and review the results in one workspace.
-Ordinary chats and terminals remain available without Teams.
+Very Happy brings your connected machines, coding agent sessions, terminals, and
+files into one Web/PWA workspace. Choose where work runs and continue from your
+computer, phone, or tablet. Teams adds coordinated parallel work to that same hub.
 
 ## Use the product
 
-- [Very Happy Teams](agent-teams.md): give a goal to a lead, delegate parallel
-  tasks, inspect member conversations, and review results.
-
 - [Getting started](getting-started.md): install, sign in, connect a machine, and
   create the first session.
+- [Very Happy Teams](agent-teams.md): give a goal to a lead, delegate parallel
+  tasks, inspect member conversations, and review results.
 - [Keyboard and touch](keyboard-shortcuts.md): command palette, fast navigation,
   PWA/browser shortcut boundaries, and mobile equivalents.
 - [Public Cloud](public-server.md): hosted-instance trust, registration, capacity,

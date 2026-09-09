@@ -53,7 +53,7 @@ describe('SchedulerTopologyProof', () => {
 
     expect(getSchedulerRouteLabel(metaInspected)).toBe('Remote server → Codex');
     expect(getSchedulerActiveWireIds(metaInspected)).toEqual(['environment:server', 'agent:codex']);
-    expect(SCHEDULER_LANE_DESCRIPTIONS[metaInspected.inspectedLane]).toBe('Agent Teams · same-account, single-machine preview');
+    expect(SCHEDULER_LANE_DESCRIPTIONS[metaInspected.inspectedLane]).toBe('Agent Teams · same-account, single-machine collaboration');
     expect(SCHEDULER_LANE_DESCRIPTIONS.mcp).toBe('MCP tools · runner-specific surface');
   });
 });

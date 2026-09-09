@@ -4,12 +4,12 @@
 
 <div align="center">
   <a href="https://veryhappy.dev/welcome">
-    <img src=".github/readme-hero.svg" width="100%" alt="Very Happy Teams — one goal, a team of coding agents">
+    <img src=".github/readme-hero.svg" width="100%" alt="Very Happy — one workspace for your connected machines and coding agents">
   </a>
 </div>
 
 <p align="center">
-  <strong>One goal. A team of coding agents. Your workspace.</strong>
+  <strong>Your coding agent hub. Across your machines. Within reach anywhere.</strong>
 </p>
 
 <p align="center">
@@ -30,13 +30,24 @@
   <a href="docs/deployment.md">Self-host</a>
 </p>
 
-Very Happy is an open-source workspace for coding agents. **Very Happy Teams**
-turns a goal into coordinated work with Claude Code, Codex, and pi: a lead breaks
-it down, teammates work in parallel, and results come back for review. Follow the
-same progress from a computer or phone, then open any member's conversation,
-terminal, or files when you need the detail.
+Very Happy is an open-source hub for your coding agents and connected machines.
+Bring sessions from your workstation, laptop, and servers into one Web/PWA
+workspace. Start work on the machine and agent you choose, then follow its
+conversation, terminal, files, and progress from a computer, phone, or tablet.
+Your machines do the work; you stay connected wherever you are.
 
-## From one goal to a team
+Use structured conversations with supported agent integrations, or open a real
+terminal for your local tools. Each integration exposes its own capabilities;
+ordinary terminal access does not imply identical structured support for every
+agent. Connect each machine once, keep its daemon online, and use the same
+workspace for a single conversation or a coordinated team.
+
+## Teams: from one goal to parallel work
+
+**Very Happy Teams** brings Claude Code, Codex, and pi together around a goal.
+A lead breaks it down, teammates work in parallel, and results come back for
+review. Teams builds on the same conversations and machine controls you already
+use, with a shared view of assignments and results.
 
 > “Review this project, find worthwhile improvements, form a team to work on them in parallel, and bring back results I can review.”
 
@@ -69,7 +80,7 @@ working as before. Automatic cross-machine routing is not available.
 > access policy, storage, and backups. See the [privacy and security
 > model](docs/security.md) for sensitive environments.
 
-## The everyday workspace behind your team
+## Your everyday workspace
 
 <table>
   <tr>

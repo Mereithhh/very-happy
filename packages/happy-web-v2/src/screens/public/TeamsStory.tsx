@@ -35,12 +35,14 @@ export function TeamsStory() {
   const { language } = usePublicI18n();
   const zh = language === 'zh-Hans';
   return <section className="teams-story" id="teams" aria-labelledby="teams-story-title">
-    <header><h2 id="teams-story-title">{zh ? '你定目标，团队分头推进' : 'Set the goal. Let the team take it on.'}</h2><p>{zh ? '从一个对话开始，把适合并行的工作交给多个 coding agent。每项任务有负责人，每份结果有去处。' : 'Start with a conversation. Give parallel work to multiple coding agents, with an owner for every task and a place for every result.'}</p></header>
+    <div className="teams-story-intro">
+      <header><span className="teams-story-name">Very Happy Teams</span><h2 id="teams-story-title">{zh ? '连接起来之后，让它们一起工作' : 'Connected agents. Now, a coordinated team.'}</h2><p>{zh ? '你的 coding agent hub，也是一支团队的工作区。给出目标，让负责人组织分工：独立任务并行推进，结果回到同一处验收。' : 'Your coding agent hub is also a home for coordinated work. Give a lead the goal, let members work in parallel, and bring the results back for review.'}</p><Link className="pub-button is-primary" to="/docs/agent-teams">{zh ? '开始使用 Teams' : 'Get started with Teams'} <ArrowRight size={16} /></Link><p className="teams-story-scope">{zh ? '团队当前在所选的一台电脑上执行，使用同一账号。普通对话和终端保持原样。' : 'Each team currently runs on one selected computer within your account. Regular chats and terminals stay available.'}</p></header>
+      <TeamsDiagram />
+    </div>
     <ol>
       <li><span>01</span><h3>{zh ? '说清要做什么' : 'Describe the work'}</h3><p>{zh ? '选择电脑和项目，创建团队；也可以让已有对话担任负责人。App 自动提供官方协作指引。' : 'Choose a computer and project, or make an existing conversation the lead. The app supplies the official collaboration instructions.'}</p></li>
       <li><span>02</span><h3>{zh ? '让任务并行起来' : 'Put agents to work'}</h3><p>{zh ? '负责人拆解目标，成员独立执行；复杂任务还可继续委派。Claude Code、Codex 和 pi 可以协作。' : 'The lead delegates, members work independently, and complex tasks can branch further. Claude Code, Codex, and pi can collaborate.'}</p></li>
       <li><span>03</span><h3>{zh ? '看进展，验结果' : 'Follow the results'}</h3><p>{zh ? '从团队打开成员对话，查看任务、提交和验收。随时用手机跟进，普通对话与终端也照常使用。' : 'Open any member conversation from the team. Follow tasks, submissions, and reviews from your phone. Regular chats and terminals stay available.'}</p></li>
     </ol>
-    <footer><Link className="pub-button is-primary" to="/docs/agent-teams">{zh ? '开始使用 Teams' : 'Get started with Teams'} <ArrowRight size={16} /></Link><p>{zh ? '当前团队在所选的一台电脑上执行，使用同一账号。成员使用你配置的本地 agent 与权限。' : 'Each team currently runs on one selected computer within your account, using your configured local agents and permissions.'}</p></footer>
   </section>;
 }

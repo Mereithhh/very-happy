@@ -1798,6 +1798,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09w: {
+                title: 'One hub, with Teams built in',
+                summary: 'The homepage brings connected machines and working anywhere back to the front.',
+                hub: 'Explore the machine and agent map first, with conversations, terminals and files in one workspace.',
+                teams: 'The next section shows how Teams turns connected agents into coordinated work. README and docs follow the same product story.',
+            },
             sep09v: {
                 title: 'Meet Very Happy Teams',
                 summary: 'A clearer name and guide for coding agents working together.',

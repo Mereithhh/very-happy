@@ -374,14 +374,14 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
   {
     slug: 'architecture', label: 'Architecture & data flow', summary: 'See which component owns identity, state, relay traffic, and execution.',
     sections: [
+      { heading: 'Components', blocks: [
+        { type: 'image', src: systemTopologyDiagram, alt: 'Very Happy system topology with multiple machines, local daemons, the control and data plane, and one account workspace', caption: 'ACCOUNT-LEVEL FLEET · CONTROL / DATA · ONE WEB WORKSPACE' },
+        { type: 'p', text: 'The browser is the unified command surface for every machine connected to the account. Its sidebar and board aggregate sessions and attention state across those machines; creating work explicitly targets a machine and agent. The control/data server authenticates accounts and stores synchronized state. A database-free regional relay carries latency-sensitive machine/session RPC, committed structured-message delivery, and terminal traffic; each daemon probes configured candidates and anchors to the lowest measured healthy RTT, then the browser follows that machine assignment.' },
+      ] },
       { heading: 'Teams: from a goal to reviewed results', blocks: [
         { type: 'image', src: agentTeamsDiagram, alt: 'Very Happy Teams coordination across a lead, parallel members, server-owned state, and machine execution', caption: 'AGENTS ORGANIZE · SERVER REMEMBERS · DAEMON EXECUTES · YOU REVIEW' },
         { type: 'p', text: 'A managed Claude Code, Codex, or pi lead uses the official skill and scoped team tools to delegate work and review child results. Members can coordinate children within their assignments. The server persists tasks, attempts, messages, and decisions; the daemon launches sessions and worktrees and reconciles cleanup. The Web/PWA brings goals, progress, conversations, and results together.' },
         { type: 'note', text: 'One account and one selected computer per team. Acceptance is separate from cleanup, and unmerged work is preserved. Ordinary sessions remain available without Teams. Automatic cross-machine routing is not shipped.' },
-      ] },
-      { heading: 'Components', blocks: [
-        { type: 'image', src: systemTopologyDiagram, alt: 'Very Happy system topology with multiple machines, local daemons, the control and data plane, and one account workspace', caption: 'ACCOUNT-LEVEL FLEET · CONTROL / DATA · ONE WEB WORKSPACE' },
-        { type: 'p', text: 'The browser is the unified command surface for every machine connected to the account. Its sidebar and board aggregate sessions and attention state across those machines; creating work explicitly targets a machine and agent. The control/data server authenticates accounts and stores synchronized state. A database-free regional relay carries latency-sensitive machine/session RPC, committed structured-message delivery, and terminal traffic; each daemon probes configured candidates and anchors to the lowest measured healthy RTT, then the browser follows that machine assignment.' },
       ] },
       { heading: 'Regional relay selection', blocks: [
         { type: 'image', src: regionalRealtimeDiagram, alt: 'Regional realtime relay architecture separating central durable state from latency-sensitive machine RPC and terminal traffic', caption: 'CENTRAL DURABLE STATE · MEASURED RELAY RTT · SCOPED TOKENS · FALLBACK' },
@@ -531,7 +531,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
   },
 ];
 
-const DOC_PRIORITY: Record<string, number> = { 'agent-teams': 0, quickstart: 1, architecture: 2 };
+const DOC_PRIORITY: Record<string, number> = { architecture: 0, quickstart: 1, 'agent-teams': 2 };
 
 export const PUBLIC_DOCS: PublicDoc[] = [...PUBLIC_DOCS_SOURCE].sort(
   (left, right) => (DOC_PRIORITY[left.slug] ?? 3) - (DOC_PRIORITY[right.slug] ?? 3),

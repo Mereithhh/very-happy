@@ -1764,6 +1764,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep09w: {
+                title: '一个 Hub，也能组织团队',
+                summary: '首页恢复跨机器、随时随地接续工作的整体定位。',
+                hub: '首屏展示机器与 Agent 汇聚图，统一呈现对话、终端与文件。',
+                teams: '第二屏通过交互图介绍 Teams 的分工与协作，README 和文档同步采用这一层次。',
+            },
             sep09v: {
                 title: '认识 Very Happy Teams',
                 summary: '用更直接的名称和指南，了解 coding agent 如何组成团队。',
