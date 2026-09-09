@@ -20,7 +20,6 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-429 | 模型与思考强度合并弹层，输入框仅保留模型/权限两个入口 | ux | Owner 2026-09-09 截图反馈 | doing | 延续 B-428；桌面和手机共用模型弹层，强度滑块及最高档动画移入弹层，模式文案改为权限。 |
 | B-423 | 官网恢复 coding agent hub 整体定位：机器／agent 图首屏，Teams 协作图第二屏 | ux | Owner 2026-09-09 | done | README、文档入口与分享文案同步；修复旧图按钮聚焦使页面横移，回归及 mutation 通过。独立 review 无阻塞；中英文、明暗、390/1280 浏览器 8 组合通过，Web 2642 / CLI 2059 / server 641 / wire 80 测试通过。 |
 | B-422 | Teams 品牌与官网核心叙事：目标驱动的 agent 团队、交互协作图、双语文档与 README | ux | Owner 2026-09-09 | done | 对外 Very Happy Teams，界面 Teams／团队；保留旧设置键与搜索别名。新协作图与 README 主视觉、Teams 优先文档，移除旧语音宣传；Web 2642、明暗中英文 390/1280 浏览器与图像解码通过；不改变执行逻辑。 |
 | B-421 | 团队 pi/Codex 启动关联 ID 持久化缺失 | bug | B-420 生产验收 | done | metadata 工厂丢弃调用方传入的 teamOperationId，影响异常启动后的准确关联；已补字段透传及真实 sessions.json 落盘回归；独立review通过，CLI2059测试及产物通过，计划CLI128。 |
@@ -174,6 +173,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-429 | 模型与思考强度合并弹层，输入框仅保留模型/权限两个入口 | ux | Owner 2026-09-09 截图反馈 | done | 延续 B-428；桌面和手机共用模型弹层，强度滑块及最高档动画移入弹层，模式文案改为权限。PR #312 / 328135d5 已发布（run 34333884309）；全包 CI、双主题桌面/390px 浏览器、动画像素、生产 SW 接管及真实会话弹层验收通过，CLI 保持 0.2.129。 |
 | B-428 | Codex/pi UI 附件、模型与精确思考档位，统一强度滑块和最高档动画 | feat | Owner 2026-09-09 | done | PR #308 / 6a5f73dc / CLI 0.2.129 已发布；全包门禁与三平台六格 smoke、生产 SW/资源、两机 daemon/RPC、pi 对话选择→新建默认模型及文件/视觉验收通过。见 specs/2026-09-agent-input-capabilities.md。 |
 | B-411 | 内置待办官方skill、CLI与复制接入入口 | feat | Owner 2026-09-09 | done | 完整skill复制及手动回退；共享KV/CAS与稳定ID、显式version；三runner发现。全包门禁、实际CLI隔离流程及390触屏/明暗浏览器通过。已随abb5484f6 / CLI0.2.127发布，六格smoke全绿，生产资源/完整skill与公开文档核验通过；见 specs/2026-09-todo-agent-skill.md。 |
 | B-400 | PWA 下 Todo skill 链接被首页回退拦截而报404 | bug | Owner 2026-09-09 | done | PR #291 / 65e795ce 已发布；SW排除skills文档。双构建及真实生产旧→新controller接管、新标签页文档导航均通过，已补中英文Changelog及事故记录。 |
