@@ -16,6 +16,14 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     teams: {
+        executionMode: "Execution mode",
+        approvalDefault: "Approve as needed",
+        approvalBypass: "No approvals",
+        executionModeHint: "Applies only to newly dispatched agents. Existing sessions and queued launches keep their current mode.",
+        collaborationMessage: "Team collaboration",
+        messageSource: "Source",
+        genericMessage: "Team message",
+
         activeSchedules: "Cancel unfinished schedules first.",
         schedules: "Schedules",
         scheduleBoundary: "Scheduled messages bind to this team, machine, and teammate. Pausing or cancelling cannot recall a message whose delivery has started; offline recipients do not fall back to another session.",
@@ -1790,6 +1798,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09e: {
+                title: 'Less friction for agent teams',
+                summary: 'Choose how new agents run and keep team messages readable.',
+                permissions: 'Owners can select approval on demand or no approvals for newly dispatched agents. Existing sessions retain their current mode.',
+                messages: 'Team messages use compact expandable cards, keeping routing IDs and protocol instructions out of the main conversation.',
+            },
             sep09d: {
                 title: 'External Todo setup link fixed',
                 summary: 'The AI setup skill opens correctly after the app has been installed as a PWA.',

@@ -18,8 +18,8 @@ independent and is not a second scheduling database.
   capability. Update the CLI and hand over with `very-happy daemon start`; start
   a new managed session to use the new runner tools. Existing wrappers are not
   upgraded in place.
-- Configure each coding agent's normal credentials and approve its normal
-  permission requests. Teams does not grant provider access or default to yolo.
+- Configure each coding agent's normal credentials. Teams does not grant provider access.
+  Owners choose approval behavior in the team execution settings.
 - Use a Git checkout for automatic isolated worktrees. Preserve and integrate
   changes before cleanup; a dirty or unmerged worktree is intentionally retained.
 
@@ -76,6 +76,23 @@ very-happy teams join --name lead --team-id TEAM_ID --session-id SESSION_ID
 
 Use a distinct request ID per action and reuse it with identical arguments after
 an unknown outcome. Never copy scope tokens into prompts or personal settings.
+
+## Choose execution mode
+
+In the team page, choose **No approvals** to let newly dispatched agents work without
+routine tool prompts. **Ask when needed** keeps the runner's normal approval behavior.
+The choice takes effect directly, without a second confirmation. Existing sessions
+and already queued operations retain their prior mode; change a live lead's session
+mode separately. This does not change global agent settings or provide credentials.
+
+An independent owner terminal can make the same choice:
+
+```sh
+very-happy teams permissions --team-id TEAM_ID --mode bypassPermissions --request-id UNIQUE_REQUEST_ID
+```
+
+Reuse the request ID on retries. Scoped agent tools cannot change this owner setting.
+Team messages appear as compact cards; expand one to inspect the original instructions.
 
 ## Scheduled instructions
 

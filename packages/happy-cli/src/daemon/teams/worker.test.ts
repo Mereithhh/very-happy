@@ -174,3 +174,18 @@ describe('daemon team effect recovery', () => {
     });
 
 });
+
+describe('frozen team execution policy', () => {
+    it.each(['claude', 'codex', 'pi-acp'] as const)('passes owner-approved bypass to %s', async assistant => {
+        setup({ ...op(), assistant, permissionMode: 'bypassPermissions' });
+        const worker = start(); await settled(worker);
+        expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ agent: assistant === 'pi-acp' ? 'pi' : assistant, permissionMode: 'bypassPermissions' }));
+    });
+    it('old operations remain default even when the team policy changes', async () => {
+        const operation = op(); setup(operation);
+        const state = { ...team([operation]), permissionMode: 'bypassPermissions' };
+        mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [operation], teams: [state] } : { team: state } }));
+        const worker = start(); await settled(worker);
+        expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: 'default' }));
+    });
+});

@@ -217,6 +217,16 @@ function TeamsContent() {
       {team && (
         <>
           <section>
+            <label>{tr("teams.executionMode")}
+              <select disabled={disabled} value={team.permissionMode ?? "default"}
+                onChange={(event) => void act({ type: "set-permission-mode", permissionMode: event.target.value === "bypassPermissions" ? "bypassPermissions" : "default" })}>
+                <option value="default">{tr("teams.approvalDefault")}</option>
+                <option value="bypassPermissions">{tr("teams.approvalBypass")}</option>
+              </select>
+            </label>
+            <p>{tr("teams.executionModeHint")}</p>
+          </section>
+          <section>
             <h2>{tr("teams.bots")}</h2>
 
             {team.bots.map((b) => (

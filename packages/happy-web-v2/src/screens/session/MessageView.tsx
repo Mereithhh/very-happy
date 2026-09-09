@@ -24,6 +24,8 @@ import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, ty
 import { discardedReasonKey } from './discardedInput';
 import { MessageActions } from './MessageActions';
 import './message.css';
+import { presentTeamMessage } from './teamMessage';
+import { TeamMessageCard } from './TeamMessageCard';
 
 function UserText({ message, sessionId, attachments }: { message: UserTextMessage; sessionId: string; attachments?: ToolCallMessage[] }) {
     const { t } = useTranslation();
@@ -31,6 +33,8 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     // the old 40dvh nested scroll area (wheel must bubble to the transcript).
     const [expanded, setExpanded] = useState(false);
     const contentId = useId();
+    const teamContent = presentTeamMessage(message);
+    if (teamContent) return <TeamMessageCard content={teamContent} />;
     const raw = message.displayText ?? message.text;
     // B-260: a background-task notification is a machine-facing user message.
     // Stripping used to leave an invisible empty bubble; render the one useful

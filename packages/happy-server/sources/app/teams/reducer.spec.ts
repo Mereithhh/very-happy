@@ -10,6 +10,22 @@ function fixture() {
     return { act, get state() { return state; } };
 }
 describe('team coordination invariants', () => {
+    it('only account owner changes policy; operation snapshots survive later policy changes', () => {
+        const f = fixture();
+        f.act({ type: 'join', name: 'Root', sessionId: 'root-session' });
+        const root = f.state.bots[0];
+        expect(() => f.act({ type: 'set-permission-mode', permissionMode: 'bypassPermissions' }, { kind: 'agent', botId: root.id, generation: 1 })).toThrow('owner_required');
+        f.act({ type: 'delegate', goal: 'legacy', acceptance: ['done'] });
+        expect(f.state.operations[0].permissionMode).toBe('default');
+        f.act({ type: 'set-permission-mode', permissionMode: 'bypassPermissions' });
+        for (const assistant of ['claude', 'codex', 'pi-acp'] as const) f.act({ type: 'delegate', assistant, goal: assistant, acceptance: ['done'] });
+        expect(f.state.operations.slice(1).map(o => o.permissionMode)).toEqual(['bypassPermissions', 'bypassPermissions', 'bypassPermissions']);
+        f.act({ type: 'set-permission-mode', permissionMode: 'default' });
+        expect(f.state.operations.slice(1).every(o => o.permissionMode === 'bypassPermissions')).toBe(true);
+        f.act({ type: 'delegate', goal: 'new-default', acceptance: ['done'] });
+        expect(f.state.operations.at(-1)?.permissionMode).toBe('default');
+    });
+
     it('fences old bot credentials after rebind', () => {
         const f = fixture(); f.act({ type: 'join', name: 'Root', sessionId: 's1' }); const bot = f.state.bots[0];
         f.act({ type: 'join', name: 'Root', sessionId: 's2', botId: bot.id });
