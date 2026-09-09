@@ -1,9 +1,9 @@
 # UI agent inputs and reasoning controls
 
-Status: Final
+Status: Shipped — PR #308, 6a5f73dc1ea96bc9ee908477151d19021de9b0a1, CLI 0.2.129
 Backlog: B-428
 
-## Verified current behavior
+## Baseline before implementation
 
 - Codex uses stdio app-server (`packages/happy-cli/src/codex/codexAppServerClient.ts`).
 - Web blocks non-Claude attachments in AgentInput.tsx and sync.ts despite session attachmentKinds metadata.
@@ -20,7 +20,7 @@ All conversation effort controls use a discrete accessible slider, with explicit
 
 ## Compatibility and delivery
 
-New optional metadata fields must remain optional and tolerate unknown future strings. New Web + old runner hides unsupported attachments and uses conservative effort fallback. Old Web + new runner retains existing behavior. Build wire before dependents. Deploy server/Web before CLI; new capabilities become available on newly started/upgraded wrappers. No production deployment is implied by this implementation task.
+New optional metadata fields must remain optional and tolerate unknown future strings. New Web + old runner hides unsupported attachments and uses conservative effort fallback. Old Web + new runner retains existing behavior. Build wire before dependents. Deploy server/Web before CLI; new capabilities become available on newly started/upgraded wrappers. Production deployment was separately authorized by the Owner and completed on 2026-09-09.
 
 ## Validation
 
@@ -41,3 +41,12 @@ Owner clarified that selecting a model in any pi conversation must become the ne
 Real Chromium component/dialog tests passed at desktop and 390px coarse pointer in light/dark themes, including keyboard, controlled-value updates, explicit unknown stop, repeated maximum animation and reduced motion. Animation pixel differences were measured, not inferred from classes. Source assertion mutation check caught removal of the mobile slider.
 
 Native Codex fixture smoke returned the file verification code and correct red/blue halves. pi ACP image blocks retain exact bytes in regression tests; its probed default GLM model successfully read a file but explicitly lacks vision. Image interpretation therefore requires a vision-capable model, noted in the composer.
+
+## Production release evidence (2026-09-09)
+
+- Web/server: deploy run 34330453692 succeeded for `6a5f73dc1ea96bc9ee908477151d19021de9b0a1`; active image digest `sha256:afa3b3c1654883e02149d9ac2e6beb49cb340653432bc418849b0b54e3457f8a`. Health and shipped slider/model/attachment assets passed. Retained rollback release: `17f45b52e5fa132c1506977a446289f143be52c7`.
+- CLI: immutable `v0.2.129` tags the same SHA. Publish run 34330948005 and all six current-attempt Linux/macOS/Windows × Node 20/24 smoke jobs in run 34330947837 passed; npm `latest` and `next` both became 0.2.129.
+- mac-office and the local Mac run daemon 0.2.129 under launchd; fresh machine RPCs passed on both. Existing session wrappers were retained. Codex CLI is 0.153.4 on both hosts. The relay recommendation may lag npm by its one-hour cache; the independent fleet auto-update pin was not advanced.
+- The same real browser page captured `controllerchange` and loaded the new entry and CSS before manual reload; reload preserved the new version, with no page errors or overflow.
+- In a new pi conversation, choosing the advertised Fable 5.1 model persisted to account defaults. A second conversation created through the Web UI reported that exact `currentModelCode` before its first prompt. This verifies UI selection → settings → spawn RPC → daemon → ACP startup, not merely a selected label.
+- A fresh Codex wrapper advertised Astra with exactly low/medium/high/xhigh/max/ultra (default low) and file/image attachments. Both production Codex and pi vision models consumed encrypted text attachments and images through the real upload/message path, returning the expected fixture token and colour. Codex additionally exercised a real one-time read-only approval card before completing.
