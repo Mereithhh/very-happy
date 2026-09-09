@@ -1798,12 +1798,6 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
-            sep09m: {
-                title: 'Business audit in the admin console',
-                summary: 'Administrators can filter newly collected events by account, session, and time.',
-                events: 'Records login source IPs, session creation and deletion, and persisted user instructions and tool calls, with missing results explicitly marked.',
-                isolation: 'Audit records are stored independently and collected asynchronously without blocking normal use. Historical backfill and terminal keystrokes are not included.',
-            },
             sep09g: {
                 title: 'CLI updates without the extra work',
                 summary: 'Update notices now explain what happens automatically.',

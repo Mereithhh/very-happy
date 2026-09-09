@@ -344,11 +344,3 @@ without tmux, authentication, structured sessions, daemon control, and plain Web
 terminals still work. A direct shell may survive a brief browser reconnect while
 the same daemon holds its PTY, but it is not durable/discoverable like tmux and
 ends on daemon restart or idle cleanup.
-
-## 业务审计采集
-
-`BUSINESS_AUDIT_URL` 指向独立 collector 的 `/ingest`，`BUSINESS_AUDIT_TOKEN` 为专用写入凭据；两者缺一则关闭。控制端仅在事务提交后向有界内存队列写入，单 worker 异步投递，故障不阻塞登录或消息存储。队列为256条/8MiB，单事件2MiB、批次3MiB，3秒超时、最多3次尝试；状态心跳提供累计丢弃与队列大小。进程崩溃可能丢失未投递记录。
-
-仅在确认 Caddy 等入口覆盖不可信 X-Forwarded-For、控制端端口不对公网开放后，设置 `BUSINESS_AUDIT_TRUST_CLOUDFLARE=1`。生产使用经 Docker 网络核验的精确 Caddy peer IP/CIDR 白名单作为 `TRUST_PROXY`，不使用数字跳数：实测运行时 Fastify 会对数字型配置 fail closed。此时仍要求 Fastify 解析的入口 peer 属于 Cloudflare 官方网段才采用单值合法 `CF-Connecting-IP`。否则记录实际 peer，并标明来源，不把任意请求头当作用户 IP。官方网段快照位于 `app/audit/cloudflareOrigin.ts`。
-
-不改变客户端协议或业务数据库结构。先部署 collector/admin，再蓝绿发布完整控制端镜像；部署与覆盖边界见 `specs/2026-09-business-audit.md`。
