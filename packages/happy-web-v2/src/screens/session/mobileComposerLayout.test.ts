@@ -25,7 +25,7 @@ describe('mobile composer layout contract', () => {
     });
 
     it('shows a single primary action, switching stop to queue when a draft exists', () => {
-        const actions = component.slice(component.indexOf('<div className="ci-composer-actions">'));
+        const actions = component.slice(component.indexOf('<div className="ci-composer-actions">'), component.indexOf('<div className="ci-status">'));
         expect(actions).toContain('{isWorking && (!hasDraft || aborting) ? (');
         expect(actions).toContain(') : <button');
         expect(actions).not.toContain('ci-steer');
@@ -36,6 +36,9 @@ describe('mobile composer layout contract', () => {
 
     it('makes exact context usage available in a popover', () => {
         expect(component).toContain('`${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`');
+        expect(component.indexOf('<div className="ci-status">')).toBeLessThan(component.indexOf('<Popover.Root>', component.indexOf('<div className="ci-composer-toolbar">')));
+        expect(input).toContain('grid-template-columns: auto minmax(0, 1fr) auto;');
+        expect(input).not.toContain('grid-column: 1 / -1;');
         expect(input).toMatch(/\.ci-meter \{[\s\S]*margin-inline-start: auto;[\s\S]*white-space: nowrap;/);
     });
 

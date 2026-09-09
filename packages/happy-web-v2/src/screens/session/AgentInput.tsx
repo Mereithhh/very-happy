@@ -5,13 +5,13 @@ import { onMessageQuote } from './messageQuote';
 import { appendMessageQuote } from './messageActionsModel';
 /**
  * AgentInput — the composer. A rounded auto-growing textarea + circular send
- * button, with permissions, model, and context inside the same surface.
+ * button, with permissions and model in one row; context sits below.
  *
  * Sending: Enter sends (configurable via agentInputEnterToSend), Shift+Enter
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, CornerDownRight, FileText, Pencil, ArrowUp, Square, Trash2, X, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
+import { Check, CornerDownRight, FileText, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Popover from '@radix-ui/react-popover';
 import { randomUUID } from 'expo-crypto';
@@ -875,27 +875,14 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             expanded={expanded} />
                         <ModeMenu
                             label={t('session.chat.permissionLabel')}
+                            icon={<Shield size={18} aria-hidden />}
                             options={permModes}
                             value={permKey}
                             onChange={(key) => { void setPermissionMode(key); }}
                             busy={permissionModeBusy}
                             subtitle={permissionSubtitle}
                         />
-                        <Popover.Root>
-                            <Popover.Trigger asChild>
-                                <button type="button" className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={meterTitle}>
-                                    <Gauge size={14} aria-hidden />
-                                    <span>{percentUsed === null ? '—' : `${Math.round(percentUsed)}%`}</span>
-                                </button>
-                            </Popover.Trigger>
-                            <Popover.Portal>
-                                <Popover.Content className="ci-context-detail" side="top" sideOffset={8} collisionPadding={12}>
-                                    <strong>{t('session.chat.contextUsage')}</strong>
-                                    <p>{contextWindow === null ? contextSize.toLocaleString() : `${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`} tokens</p>
-                                    {percentUsed !== null && <p>{t('session.chat.contextMeter', { percent: percentUsed })}</p>}
-                                </Popover.Content>
-                            </Popover.Portal>
-                        </Popover.Root>
+
                     </div>
                     <div className="ci-model-controls">
                     <ModelEffortMenu
@@ -944,6 +931,21 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             </div>
 
             <div className="ci-status">
+                <Popover.Root>
+                    <Popover.Trigger asChild>
+                        <button type="button" className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={meterTitle}>
+                            <Gauge size={14} aria-hidden />
+                            <span>{percentUsed === null ? '—' : `${Math.round(percentUsed)}%`}</span>
+                        </button>
+                    </Popover.Trigger>
+                    <Popover.Portal>
+                        <Popover.Content className="ci-context-detail" side="top" sideOffset={8} collisionPadding={12}>
+                            <strong>{t('session.chat.contextUsage')}</strong>
+                            <p>{contextWindow === null ? contextSize.toLocaleString() : `${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`} tokens</p>
+                            {percentUsed !== null && <p>{t('session.chat.contextMeter', { percent: percentUsed })}</p>}
+                        </Popover.Content>
+                    </Popover.Portal>
+                </Popover.Root>
                 <span className="ci-hint">
                     {isWorking
                         ? supportsSteer ? t('session.chat.queueSteerHint') : t('session.chat.queueHint')

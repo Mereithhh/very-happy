@@ -2,6 +2,7 @@
  * ModeMenu — a small labelled dropdown (Radix) used for model / permission /
  * effort selection in the composer status row.
  */
+import type { ReactNode } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronDown } from 'lucide-react';
 import type { ModeOption } from '@/components/modelModeOptions';
@@ -15,7 +16,9 @@ export function ModeMenu({
     onChange,
     busy = false,
     subtitle,
+    icon,
 }: {
+    icon?: ReactNode;
     label: string;
     options: ModeOption[];
     value: string | null;
@@ -30,7 +33,8 @@ export function ModeMenu({
     return (
         <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-                <button type="button" className="mm-trigger" aria-label={label} disabled={busy} aria-busy={busy}>
+                <button type="button" className="mm-trigger" aria-label={label} title={`${current?.name ?? value}${subtitle ? ` ${subtitle}` : ''}`} disabled={busy} aria-busy={busy}>
+                    {icon && <span className="mm-icon">{icon}</span>}
                     <span className="mm-k">{label}</span>
                     <span className="mm-v">{current?.name ?? value}</span>
                     {subtitle && <span className="mm-sub" title={subtitle}>{subtitle}</span>}
@@ -39,6 +43,7 @@ export function ModeMenu({
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
                 <DropdownMenu.Content className="mm-content" sideOffset={6} align="start">
+                    {subtitle && <DropdownMenu.Label className="mm-note">{current?.name} {subtitle}</DropdownMenu.Label>}
                     {options.map((o) => (
                         <DropdownMenu.Item
                             key={o.key}
