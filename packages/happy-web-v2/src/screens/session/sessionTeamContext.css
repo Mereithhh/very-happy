@@ -1,0 +1,5 @@
+.session-team-context { display: flex; align-items: center; gap: 8px; padding: 8px 14px; min-width: 0; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-dim); }
+.session-team-context a { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text); }
+.session-team-context a > span, .session-team-context > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-team-context svg { flex-shrink: 0; }
+.session-team-context-progress { margin-left: auto; flex-shrink: 0; }

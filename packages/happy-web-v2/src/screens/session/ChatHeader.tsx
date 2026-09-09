@@ -1,3 +1,7 @@
+import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
+import { useLocalSetting } from '@/sync/storage';
+import { useNavigate } from 'react-router-dom';
+import { Bot } from 'lucide-react';
 /**
  * ChatHeader — title (editable rename), machine·cwd breadcrumb, connection dot,
  * and the global back button.
@@ -42,7 +46,10 @@ export function ChatHeader({
     btwOpen?: boolean;
     onToggleBtw?: () => void;
 }) {
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
+    const navigateTeam = useNavigate();
+    const showTeams = useLocalSetting('happyBotEntryVisible');
+    const teams = useTeamNavigation();
     const session = useSession(sessionId);
     const socketStatus = useSocketStatus();
     const [editing, setEditing] = useState(false);
@@ -104,6 +111,7 @@ export function ChatHeader({
         hasBtw: !!onToggleBtw,
         hasFiles: !!onToggleFiles,
     });
+    const canStartTeam = showTeams && session?.metadata?.capabilities?.includes('teams-adopt-v1') && session.archivedAt == null && !teams.some(t => t.bots.some(b => b.sessionId === sessionId));
     const overflowHasActive = plan.overflow.some(
         (key) => (key === 'btw' && btwOpen) || (key === 'files' && filesOpen),
     );
@@ -213,8 +221,8 @@ export function ChatHeader({
                 </div>
             )}
             {!editing && plan.inline.map(renderAction)}
-            {!editing && plan.overflow.length > 0 && (
-                <ActionDropdownMenu items={plan.overflow.map(menuItem)}>
+            {!editing && (plan.overflow.length > 0 || canStartTeam) && (
+                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : [])]}>
                     <button
                         type="button"
                         className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}

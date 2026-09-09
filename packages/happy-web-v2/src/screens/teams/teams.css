@@ -216,3 +216,27 @@
   .teams-dialog { padding: 16px; max-height: calc(100dvh - 24px); }
   .teams-list-card { padding: 18px; }
 }
+/* First use follows the ordinary conversation visual language. */
+.teams-screen .team-start-form { display: flex; flex-direction: column; gap: var(--sp-3); }
+.team-start-form fieldset { display: flex; flex-direction: column; gap: var(--sp-4); border: 0; padding: 0; margin: 0; min-width: 0; }
+.team-start-form input, .team-start-form select, .team-start-form textarea { font-size: 16px; width: 100%; }
+.team-start-form textarea { min-height: 112px; }
+.team-folder-input { display: flex; align-items: stretch; gap: var(--sp-2); }
+.team-folder-input input { min-width: 0; flex: 1; }
+.team-folder-input button { display: inline-flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
+.team-folder-browser { height: 300px; min-height: 180px; overflow: auto; border: 1px solid var(--line); }
+.team-start-form details summary { min-height: 44px; cursor: pointer; padding-block: var(--sp-3); }
+.team-start-form details label + label { margin-top: var(--sp-3); }
+.team-start-assurance { color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
+.team-launch-state { border: 1px solid var(--line); padding: var(--sp-4); margin-top: var(--sp-4); }
+.team-goal p { font-size: var(--fs-16); white-space: pre-wrap; }
+.team-delivery h2 { display: flex; gap: var(--sp-2); align-items: center; }
+.team-delivery { overflow-wrap: anywhere; min-width: 0; }
+.team-delivery .md { max-height: 360px; overflow: auto; }
+.teams-member-info > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.teams-avatar[data-live=true] { color: var(--accent); }
+@media (max-width: 520px) {
+  .team-folder-input { flex-wrap: wrap; }
+  .team-folder-input input { flex-basis: 100%; }
+  .team-folder-input button { width: 100%; justify-content: center; }
+}

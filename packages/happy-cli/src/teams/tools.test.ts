@@ -9,8 +9,10 @@ describe('public scoped team tools', () => {
         expect([...calls.keys()]).toEqual(TEAM_TOOL_NAMES);
         expect(calls.has('session_spawn')).toBe(false);
         const result = await calls.get('team_delegate')!({ requestId: 'r', goal: 'g', acceptance: ['test'], parentTaskId: 'p' });
-        expect(client.action).toHaveBeenCalledWith({ type: 'delegate', goal: 'g', acceptance: ['test'], parentTaskId: 'p' }, 'r');
+        expect(client.action).toHaveBeenCalledWith({ type: 'delegate', goal: 'g', acceptance: ['test'], parentTaskId: 'p', directory: process.cwd() }, 'r');
         expect(result.isError).toBe(false);
+        await calls.get('team_delegate')!({ requestId: 'explicit', goal: 'g', acceptance: ['test'], directory: '/explicit/repo' });
+        expect(client.action).toHaveBeenLastCalledWith({ type: 'delegate', goal: 'g', acceptance: ['test'], directory: '/explicit/repo' }, 'explicit');
         await calls.get('team_schedule_create')!({ requestId: 'schedule-r', name: 'Review', botId: 'root', body: 'Inspect tasks', runAt: 123, intervalMs: 600000 });
         expect(client.action).toHaveBeenLastCalledWith({ type: 'schedule-create', name: 'Review', botId: 'root', body: 'Inspect tasks', runAt: 123, intervalMs: 600000 }, 'schedule-r');
         await calls.get('team_schedule_pause')!({ requestId: 'pause-r', scheduleId: 'schedule', version: 2 });

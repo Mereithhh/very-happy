@@ -52,6 +52,10 @@ import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention
 import { rowRenameMenuTranslationKeys } from './sidebarRowMenu';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
+import { useTeamNavigation } from './useTeamNavigation';
+import { groupTeamNavigation, missingTeamSessionIds, teamSessionMembership } from './teamNavigation';
+import { useTeamNavigationCopy } from './teamNavigationCopy';
+import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
 
@@ -63,6 +67,10 @@ function rowHref(r: Row): string {
 type View = 'list' | 'status' | 'archived';
 
 interface Row {
+  team?: TeamState;
+  teamChild?: boolean;
+  teamHistoryLink?: boolean;
+  teamLabel?: string;
   key: string;
   kind: 'terminal' | 'session';
   /** Resolved before click so a mirrored terminal never paints xterm first. */
@@ -123,6 +131,16 @@ function sessionRow(s: Session): Row {
 export function Sidebar() {
   const navigate = useNavigate();
   const sessions = useSessions();
+  const teams = useTeamNavigation();
+  const teamCopy = useTeamNavigationCopy();
+  const happyBotEntryVisible = useLocalSetting('happyBotEntryVisible');
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(() => new Set());
+  const location = useLocation();
+  const currentSessionId = /^\/session\/([^/]+)/.exec(location.pathname)?.[1];
+  const currentTeamId = currentSessionId ? teamSessionMembership(teams).get(decodeURIComponent(currentSessionId))?.team.id : undefined;
+  useEffect(() => {
+    if (currentTeamId) setExpandedTeams((current) => current.has(currentTeamId) ? current : new Set([...current, currentTeamId]));
+  }, [currentTeamId]);
   const socket = useSocketStatus();
   const { t } = useTranslation();
   // Three segments, ONE state: 列表/状态 are display modes over the active
@@ -256,6 +274,7 @@ export function Sidebar() {
             ts: tm.updatedAt ?? tm.createdAt,
             createdAt: tm.createdAt,
             terminalId: tm.id,
+            sessionId: tm.mirrorSessionId ?? undefined,
             machineId: tm.machineId,
             machineName: tm.machineName,
             workspacePath: tm.cwd,
@@ -432,7 +451,7 @@ export function Sidebar() {
     () => (orderable && groupMode === 'workspace' && orderedRows ? groupRowsByWorkspace(orderedRows) : null),
     [orderable, groupMode, orderedRows],
   );
-  const displayRows = useMemo<Row[] | null>(
+  const plainDisplayRows = useMemo<Row[] | null>(
     () => workspaceGroups
       ? workspaceGroups.flatMap((g) => g.rows)
       : tagGroups
@@ -440,6 +459,23 @@ export function Sidebar() {
         : orderedRows,
     [workspaceGroups, tagGroups, orderedRows],
   );
+  // Group only the normal flat history. Explicit status/workspace/tag lenses
+  // and archive retain their existing behavior and ordering.
+  const teamHistory = view === 'list' && !grouped && teams.some((team) => !team.archivedAt);
+  const displayRows = useMemo<Row[] | null>(() => {
+    if (!plainDisplayRows || !teamHistory) return plainDisplayRows;
+    const visibleTeams = teams.filter(team => !team.archivedAt);
+    const membership = teamSessionMembership(visibleTeams);
+    const existingIds = new Set(plainDisplayRows.flatMap(row => row.sessionId ? [row.sessionId] : []));
+    const historicalRows = missingTeamSessionIds(existingIds, visibleTeams).map((sessionId): Row => {
+      const { bot } = membership.get(sessionId)!;
+      return { key: sessionId, sessionId, kind: 'session', href: `/session/${encodeURIComponent(sessionId)}`, title: bot.name, subtitle: teamCopy.history, ts: 0, createdAt: 0, teamHistoryLink: true };
+    });
+    return groupTeamNavigation([...plainDisplayRows, ...historicalRows], visibleTeams, expandedTeams).map((entry): Row => {
+      if (entry.kind === 'row') return entry.team ? { ...entry.row, teamChild: true, href: `/session/${encodeURIComponent(entry.row.sessionId!)}`, teamLabel: entry.bot?.root ? teamCopy.lead : entry.bot?.name || teamCopy.member } : entry.row;
+      return { key: `team:${entry.team.id}`, kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: entry.team.name, subtitle: '', ts: entry.team.createdAt, createdAt: entry.team.createdAt, team: entry.team };
+    });
+  }, [plainDisplayRows, teamHistory, teams, expandedTeams, teamCopy.lead, teamCopy.member, teamCopy.history]);
   // Feeds the hold's arming snapshot (assigned during render, read by the
   // pointer listeners) — always the sequence actually on screen.
   displayedKeysRef.current = displayRows?.map((r) => r.key) ?? [];
@@ -500,7 +536,7 @@ export function Sidebar() {
     // archived is a plain activity list. Dragging works in BOTH sort modes —
     // in recent mode the drop switches the mode (see commitSeq). Grouped-by-
     // tag disables dragging: the sequence is derived from tags (B-091).
-    if (!orderable || grouped) return;
+    if (!orderable || grouped || teamHistory) return;
     if (typeof window.matchMedia === 'function' && !window.matchMedia('(pointer: fine)').matches) return;
     if ((e.target as HTMLElement).closest('.sb-row-menu')) return;
     const list = listRef.current;
@@ -689,7 +725,7 @@ export function Sidebar() {
       // isAppChord：macOS 上 Ctrl+R 是终端 readline 的 reverse-search-history。
       if (isAppChord(e) && !e.altKey && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
         const cur = `${window.location.pathname}${window.location.search}`;
-        const target = rowsRef.current?.find((r) => rowHref(r) === cur);
+        const target = rowsRef.current?.find((r) => !r.team && !r.teamHistoryLink && rowHref(r) === cur);
         if (target) {
           e.preventDefault();
           e.stopPropagation();
@@ -931,7 +967,7 @@ export function Sidebar() {
       </header>
 
       <nav className="sb-products" aria-label="Workspace">
-        <button onClick={() => navigate('/teams')}><Bot size={18} /><span>Happy Bot</span></button>
+        {happyBotEntryVisible && <button onClick={() => navigate('/teams')}><Bot size={18} /><span>Happy Bot</span></button>}
         <button onClick={() => navigate('/todos')}><ListChecks size={18} /><span>{t('todos.title')}</span></button>
       </nav>
 
@@ -958,7 +994,7 @@ export function Sidebar() {
             this row read as clutter and was removed. */}
       </div>
 
-      {orderable && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
+      {orderable && !teamHistory && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
 
       <div className={`sb-list${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
         {displayRows === null ? (
@@ -1011,11 +1047,29 @@ export function Sidebar() {
                     ))}
                   {sec.rows.map((r) => {
                     const i = flat++;
+                    if (r.team) {
+                      const team = r.team;
+                      const open = expandedTeams.has(team.id);
+                      const selected = location.pathname === r.href;
+                      return <div key={r.key} className={`sb-team-row${selected ? ' is-selected' : ''}`}>
+                        <button type="button" className="sb-team-toggle" aria-expanded={open} aria-label={`${open ? teamCopy.collapse : teamCopy.expand}: ${team.name}`} onClick={() => setExpandedTeams((current) => { const next = new Set(current); if (open) next.delete(team.id); else next.add(team.id); return next; })}><ChevronRight size={15} className={open ? 'is-open' : ''} /></button>
+                        <button type="button" className="sb-team-main" data-href={r.href} aria-current={selected ? 'page' : undefined} onClick={() => navigate(r.href)}>
+                          <Bot size={17} /><span><strong>{team.name}</strong><small>{team.bots.length ? `${team.bots.length} ${teamCopy.members}` : teamCopy.preparing}</small></span>
+                          {cmdHeld && i < 9 && <kbd className="sb-row-badge mono">⌘{i + 1}</kbd>}
+                        </button>
+                      </div>;
+                    }
+                    if (r.teamHistoryLink) return <div key={r.key} className="sb-team-child"><div className={`sb-row${location.pathname === r.href ? ' is-selected' : ''}`}>
+                      <button type="button" className="sb-row-main" data-href={r.href} aria-current={location.pathname === r.href ? 'page' : undefined} onClick={() => navigate(r.href)}>
+                        <span className="sb-row-icon"><History size={16} /></span><span className="sb-row-text"><span className="sb-row-title">{r.teamLabel || r.title}</span><span className="sb-row-sub">{r.subtitle}</span></span>
+                        {cmdHeld && i < 9 && <kbd className="sb-row-badge mono">⌘{i + 1}</kbd>}
+                      </button>
+                    </div></div>;
                     return (
                       <div
                         key={r.key}
                         data-dragkey={r.key}
-                        className={`sb-drag-item${dragKey === r.key ? ' is-drag' : ''}`}
+                        className={`sb-drag-item${r.teamChild ? ' sb-team-child' : ''}${dragKey === r.key ? ' is-drag' : ''}`}
                         onPointerDown={(e) => onRowPointerDown(e, r.key)}
                       >
                         <SidebarRow
@@ -1037,7 +1091,7 @@ export function Sidebar() {
                           badge={cmdHeld && i < 9 ? i + 1 : undefined}
                           canMoveUp={i > 0}
                           canMoveDown={i < displayRows.length - 1}
-                          onMove={orderable && !grouped ? (dir) => moveRow(r.key, i, dir) : undefined}
+                          onMove={orderable && !grouped && !teamHistory ? (dir) => moveRow(r.key, i, dir) : undefined}
                           onRenameRequest={() => setRenameTarget(r)}
                         />
                       </div>
@@ -1478,7 +1532,7 @@ function SidebarRow({
         </span>
         <span className="sb-row-text">
           <span className="sb-row-title-line">
-            <span className="sb-row-title">{row.title}</span>
+            <span className="sb-row-title">{row.teamLabel ? `${row.teamLabel} · ` : ''}{row.title}</span>
             {/* B-150: this tmux session and its processes are NEW — only the
                 directory and the claude conversation carried over. Worth saying
                 once, so a fresh scrollback isn't read as lost work. */}

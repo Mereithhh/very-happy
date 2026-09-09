@@ -3,7 +3,11 @@ import { Link } from 'react-router-dom';
 import { Bot, Circle, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor } from 'lucide-react';
 import { useWorkspaceCopy } from './workspaceCopy';
 import { t as tr } from '@/text';
+import { useFirstUseCopy } from './firstUseCopy';
+import { memberTitle, teamRootTask } from './teamPresentation';
+import { Markdown } from '@/screens/session/Markdown';
 import { taskRows } from './teamView';
+import { botHistorySessionId } from '@/screens/sessions/teamNavigation';
 
 export function TeamProgress({ team }: { team: TeamState }) {
   const c = useWorkspaceCopy();
@@ -13,7 +17,10 @@ export function TeamProgress({ team }: { team: TeamState }) {
 
 export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: string) => void }) {
   const c = useWorkspaceCopy();
+  const f = useFirstUseCopy();
+  const rootTask = teamRootTask(team);
   const rows = taskRows(team.tasks);
+  const rootResult = rootTask?.attempts.find(a => a.id === rootTask.currentAttemptId)?.result;
   const lanes = [
     { key: 'queued', label: c.queued, Icon: CircleDashed },
     { key: 'running', label: c.running, Icon: Clock3 },
@@ -21,12 +28,15 @@ export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: 
     { key: 'finished', label: c.finished, Icon: CircleCheck },
   ];
   return <>
-    <section className="teams-members"><h2>{c.members} <small>{team.bots.length}</small></h2>
+    {rootTask && <section className="team-goal"><div className="teams-section-heading"><h2>{f.goalTitle}</h2><span>{tr(`teams.${rootTask.status}`)}</span></div><p>{rootTask.goal}</p><button onClick={() => onTask(rootTask.id)}>{f.inspect} →</button></section>}
+    {rootResult && <section className="team-delivery"><h2><CircleCheck size={20} />{f.result}</h2><Markdown text={rootResult} /><button onClick={() => onTask(rootTask!.id)}>{f.inspect} →</button></section>}
+    <section className="teams-members"><h2>{f.membersTitle} <small>{team.bots.length}</small></h2>
       {team.bots.length === 0 && <p>{c.noMembers}</p>}
       <div className="teams-members-grid">{team.bots.map(bot => {
+        const historySessionId = botHistorySessionId(team, bot);
         const active = team.tasks.filter(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status));
-        const content = <><span className="teams-avatar"><Bot size={22} /></span><span className="teams-member-info"><strong>{bot.name}</strong><small>{bot.root ? c.lead : bot.assistant === 'pi-acp' ? 'pi' : bot.assistant}</small><span>{!bot.sessionId ? tr('teams.starting') : active.length ? `${c.assigned} · ${active.length}` : c.idle}</span>{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{bot.sessionId && <ArrowUpRight size={16} aria-hidden />}</>;
-        return bot.sessionId ? <Link key={bot.id} className="teams-member" to={`/session/${encodeURIComponent(bot.sessionId)}`}>{content}</Link> : <div key={bot.id} className="teams-member">{content}</div>;
+        const content = <><span className="teams-avatar" data-live={!!bot.sessionId && active.some(t => t.status === "running")}><Bot size={22} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{bot.root ? c.lead : bot.assistant === 'pi-acp' ? 'pi' : bot.assistant}</small><span>{active[0]?.goal ?? c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? f.starting : f.stopped}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
+        return historySessionId ? <Link key={bot.id} className="teams-member" to={`/session/${encodeURIComponent(historySessionId)}`}>{content}</Link> : <div key={bot.id} className="teams-member">{content}</div>;
       })}</div>
     </section>
     <section className="teams-work"><div className="teams-section-heading"><h2>{c.overview}</h2><TeamProgress team={team} /></div>
@@ -37,7 +47,7 @@ export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: 
           const assignee = team.bots.find(b => b.id === task.assigneeBotId);
           return <button className="teams-task-preview" id={`team-task-${task.id}`} key={task.id} onClick={() => onTask(task.id)}>
             {depth > 0 && <small className="teams-parent-label"><GitBranch size={12} />{team.tasks.find(t => t.id === task.parentTaskId)?.goal.split('\n')[0]}</small>}
-            <strong>{task.goal}</strong><span className="teams-task-owner"><Bot size={14} />{assignee?.name ?? '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
+            <strong>{task.goal}</strong><span className="teams-task-owner"><Bot size={14} />{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
             {result && <span className="teams-result-preview">{result}</span>}
             {['pending', 'failed'].includes(task.cleanup) && <small className={task.cleanup === 'failed' ? 'teams-error' : ''}>{task.cleanup === 'failed' ? c.cleanupFailed : c.cleanupPending}</small>}
           </button>;

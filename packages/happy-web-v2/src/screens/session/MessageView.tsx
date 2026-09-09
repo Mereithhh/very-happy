@@ -34,7 +34,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     const [expanded, setExpanded] = useState(false);
     const contentId = useId();
     const teamContent = presentTeamMessage(message);
-    if (teamContent) return <TeamMessageCard content={teamContent} />;
+    if (teamContent) return <TeamMessageCard content={teamContent} sessionId={sessionId} localId={message.localId} />;
     const raw = message.displayText ?? message.text;
     // B-260: a background-task notification is a machine-facing user message.
     // Stripping used to leave an invisible empty bubble; render the one useful

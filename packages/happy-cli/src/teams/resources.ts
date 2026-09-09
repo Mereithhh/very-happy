@@ -10,7 +10,7 @@ Use the team_* tools in a managed Very Happy session. If absent, explain that th
 
 Start with team_inspect if already assigned. Otherwise team_create or team_join connects the current session. A scoped worker cannot create another root identity or use account-wide tools to bypass its scope.
 
-Work yourself when delegation would add needless overhead. Delegate independent work with a clear goal and acceptance criteria. When delegating within your assignment, pass its parentTaskId. Members may delegate further within their existing authority.
+Work yourself when delegation would add needless overhead. Delegate independent work with a clear goal and acceptance criteria. When delegating within your assignment, pass its parentTaskId. Members may delegate further within their existing authority. After delegating child work, wait for those results instead of continuing parallel edits yourself. Waiting parents yield their execution slot to their children; the team limit counts progressing leaf assignments, not OS processes.
 
 Name exactly one integrator for each team. Workers edit only their assigned worktrees; they must not merge main, publish releases, change global daemon or npm installations, or allocate shared backlog IDs. The integrator serializes these operations. Across teams, the owner coordinates shared resources: a worktree is not a global lock.
 

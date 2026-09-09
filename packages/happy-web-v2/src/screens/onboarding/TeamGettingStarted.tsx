@@ -22,7 +22,7 @@ export function TeamGettingStarted() {
         })}</ol>
         <blockquote>{copy.example}</blockquote>
         <p>{copy.botNote}</p>
-        <Link to="/teams">{copy.teams}<ArrowRight size={15} /></Link>
+        <Link to="/teams?new=1">{copy.teams}<ArrowRight size={15} /></Link>
       </article>
       <article>
         <h3><ListChecks size={22} aria-hidden="true" />{copy.todos}</h3>
@@ -30,8 +30,8 @@ export function TeamGettingStarted() {
         <Link to="/todos">{copy.openTodos}<ArrowRight size={15} /></Link>
       </article>
     </div>
-    <div className="team-start__install">
-      <h3>{copy.install}</h3>
+    <details className="team-start__install">
+      <summary>{copy.install}</summary>
       <p>{copy.instruction}</p>
       <label>{copy.host}<select value={host} onChange={event => setHost(event.target.value as TeamSkillHost)}>
         <option value="claude">Claude Code</option><option value="codex">Codex</option><option value="pi">pi</option>
@@ -39,6 +39,6 @@ export function TeamGettingStarted() {
       <Command value={teamSkillInstallCommand(host)} />
       <p className="team-start__limit">{copy.limit}</p>
       <Link to="/docs/agent-teams">{copy.docs}<ArrowRight size={15} /></Link>
-    </div>
+    </details>
   </section>;
 }

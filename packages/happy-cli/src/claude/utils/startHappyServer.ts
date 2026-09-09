@@ -6,6 +6,7 @@
  * This is required by MCP SDK >=1.27 which rejects reuse of an already-connected transport.
  */
 
+import { createTeamAdoption, TEAMS_ADOPT_CAPABILITY } from '@/teams/adopt';
 import { registerTeamsTools, TEAM_TOOL_NAMES } from '@/teams/tools';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer } from "node:http";
@@ -288,6 +289,12 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         });
     });
 
+    const adoptionEnabled = !process.env.VH_TEAM_SCOPE_FILE;
+    if (adoptionEnabled) {
+        client.rpcHandlerManager.registerHandler('teams-adopt', createTeamAdoption(client.sessionId));
+        client.updateMetadata(metadata => ({ ...metadata, capabilities: [...new Set([...(metadata.capabilities ?? []), TEAMS_ADOPT_CAPABILITY])] }));
+    }
+
     logger.debug(`[happyMCP] server:ready sessionId=${client.sessionId} url=${baseUrl.toString()}`);
 
     return {
@@ -302,6 +309,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         ],
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
+            if (adoptionEnabled) client.rpcHandlerManager.unregisterHandler('teams-adopt');
             server.close();
         }
     }

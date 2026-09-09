@@ -15,7 +15,7 @@ export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
     {
       "heading": "可用范围",
       "blocks": [
-        "Agent Teams 是按账号启用的预览功能，每个团队使用同一账号下的一台执行机器。运营方需为账号启用功能，机器需运行兼容且在线的 daemon。旧服务器或 daemon 不会静默回退到其他 Agent。",
+        "团队协作是可选能力，不使用它也能照常聊天、使用终端和查看历史。每个团队使用同一账号下的一台执行机器。运营方需为账号启用功能，机器需运行兼容且在线的 daemon。旧服务器或 daemon 不会静默回退到其他 Agent。",
         [
           "Claude 与 Codex 已完成真实混合任务、提交、验收和回收测试。",
           "托管 pi 也已完成真实任务、提交、验收和回收测试。",
@@ -24,9 +24,9 @@ export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
       ]
     },
     {
-      "heading": "从普通托管会话开始",
+      "heading": "在网页中创建团队",
       "blocks": [
-        "在 Very Happy 中打开普通 Claude、Codex 或 pi 会话，不需要 Meta agent 复选框。要求它读取安装器返回的 skill 绝对路径、查看已有工作，并按明确验收要求委派独立任务。仅仅读取 skill 不会连接未托管的终端。",
+        "点击 Happy Bot → 新建团队，选择项目文件夹和执行电脑，说清目标即可。系统会启动负责人、提供官方协作指引并打开对话，无需手动安装 skill。已有对话也可从“更多”菜单选择“用这个对话组建团队”。下方命令仅用于终端接入。",
         null,
         "安装器将唯一共享 skill 写入 ~/.local/share/very-happy/skills/very-happy-teams，并返回绝对路径。不修改宿主自动发现设置，也不写穿个人 skills 树；先预览落点。托管会话由 Very Happy 注入团队工具；pi 使用 very-happy pi 托管入口，不应假定裸 pi 终端具备后台收信能力。"
       ]
@@ -35,12 +35,12 @@ export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
       "heading": "委派、查看与验收",
       "blocks": [
         [
-          "从侧栏打开团队，在兼容机器上创建团队；也可要求已连接的 Agent 调用 team_create/team_join。",
+          "团队和普通对话共同出现在历史列表中。点击团队查看进展，展开后点击成员进入其对话。不使用时，可在外观设置中隐藏 Happy Bot 入口。",
           "委派时提供目标、验收要求、工作目录和 Agent。队友可以在自己的任务范围内继续委派子任务。",
           "在团队执行方式中选择“免审批”，新 agent 不再反复请求工具许可；“按需审批”保留原有行为。现有会话和已排队操作保留当前模式。关联会话中的团队消息使用可展开卡片，消息已投递不表示 Agent 已处理。",
           "提交结果仍需验收。在团队页通过、退回修改、取消或移交；取消会关闭未完成子树。"
         ],
-        "Web 关联已有会话只登记身份；会话仍需通过 Teams CLI/工具加入，建立实际连接。安装 skill 或关联 Web 链接不能替代运行时接入。"
+        "已有对话的接入和协作指引投递在后台完成，离开页面不取消接入。团队选项可配置新成员使用的 agent、模型和并发工作数；等待子任务的父任务让出名额。未合并成果会保留，不会因回收而删除。"
       ]
     },
 {
@@ -84,7 +84,7 @@ export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
       { heading: '5. 连接机器', blocks: [null, 'CLI 会打开一次性浏览器授权页。只有当你刚刚在眼前这台机器上启动了命令时才确认。公共或非 loopback 部署应使用 HTTPS。'] },
       { heading: '6. 启动机器 daemon', blocks: [null, '这会启动脱离终端的后台进程。daemon 在线时，机器会出现在 Web 中。除非服务管理器自动启动，否则重启机器后需要再次运行。用 very-happy daemon status 查看 daemon 启动时捕获的非敏感 Claude 凭据来源。持久 Web 终端需要 tmux；可选 Claude 镜像需要 tmux 3.2+。没有 tmux 时，Web 终端使用不持久的直接 shell。'] },
       { heading: '7. 开始工作', blocks: ['回到 Web，在已连接机器上选择“新建会话”。这是推荐的日常路径。你可以通过内置 Agent SDK 启动结构化 Claude，也可以打开 Web 终端运行真实 shell 或普通 xterm-256color 文本 TUI，例如 vim、lazygit、ssh 或数据库控制台。原始终端路径不绑定某一种编程 Agent。', 'Web 终端是 TERM=xterm-256color 的 xterm.js 界面。大多数常见文本 TUI 都能使用，但 sixel、Kitty graphics 等终端专属图形或扩展不在兼容承诺内。', null, '本地 CLI 模式需要对应命令或 gateway。beta Agent Client Protocol 后端包含 Gemini、OpenCode 预设与通用 runner；自定义命令必须通过 stdio 暴露兼容 ACP 端点。OpenClaw 使用自己的本地 gateway 协议，不是 ACP。机器持续离线时请运行 very-happy daemon status。', '在 Web 终端中粘贴剪贴板图片/文件或拖入文件，即可交给选中的机器。单文件上限 8 MB，暂存于 ~/.happy/uploads/terminal/，客户端只会把按 daemon 默认 shell 正确引用的路径放到光标处，不会按 Enter。更大文件与原生 Windows 路径插入需要当前版本 daemon。', '那台机器上已经有来自 claude CLI、Claude Code 桌面版或 claude.ai 的对话？在 + 菜单选择“导入 Claude Code 对话”即可在这里继续其中一段；“Claude 对话”指南说明了复制的内容。'] },
-      { heading: '8. 了解工作区', blocks: ['第一台机器连接后，首页会显示可随时回看的导览。Happy Bot 的团队流程、Todo 和官方 Teams skill 安装命令直接可见，无需展开。其他工作区工具可在详细导览查看。', ['Command/Ctrl K 搜索操作、对话和终端；Command/Ctrl . 打开快捷指令；Command/Ctrl J 切换临时笔记。', '从对话或终端顶部打开“文件”；结构化 Agent 工具产生的文件路径可直接点击预览。', 'Happy Bot：让托管 Claude、Codex 或 pi 会话读取官方 Teams skill，组织并行工作。入门页提供安装命令；团队教程说明账号启用、执行机器和成果验收。', '“我的待办”直接记录任务并跟随账号同步；“外部来源”可选接入机器上的 provider。记录待办不会自动委派给团队。', '安装可选 Claude 终端 hooks 后，在 Web 终端中启动的 Claude 可在原生 TUI 与结构化文本记录间切换；该能力仅适用于 Claude。', '粘贴剪贴板图片/文件或拖入文件，可上传到当前机器并插入安全引用的路径，不会自动执行。', '可要求托管 Agent 使用 copy_to_clipboard 把文本发送到浏览器。“设置 → 通道”控制自动复制与剪贴板历史。'], '本导览中的每条键盘路径在侧边栏或会话顶部都有对应的触控入口。完整的“键盘与触控”指南会说明浏览器保留快捷键的边界。'] },
+      { heading: '8. 了解工作区', blocks: ['第一台机器连接后，首页会显示可随时回看的导览。Happy Bot 的团队流程、Todo 和官方 Teams skill 安装命令直接可见，无需展开。其他工作区工具可在详细导览查看。', ['Command/Ctrl K 搜索操作、对话和终端；Command/Ctrl . 打开快捷指令；Command/Ctrl J 切换临时笔记。', '从对话或终端顶部打开“文件”；结构化 Agent 工具产生的文件路径可直接点击预览。', 'Happy Bot 是可选团队协作：新建团队后自动准备负责人和协作指引；普通对话保持原样。从终端发起时，可展开安装说明。', '“我的待办”直接记录任务并跟随账号同步；“外部来源”可选接入机器上的 provider。记录待办不会自动委派给团队。', '安装可选 Claude 终端 hooks 后，在 Web 终端中启动的 Claude 可在原生 TUI 与结构化文本记录间切换；该能力仅适用于 Claude。', '粘贴剪贴板图片/文件或拖入文件，可上传到当前机器并插入安全引用的路径，不会自动执行。', '可要求托管 Agent 使用 copy_to_clipboard 把文本发送到浏览器。“设置 → 通道”控制自动复制与剪贴板历史。'], '本导览中的每条键盘路径在侧边栏或会话顶部都有对应的触控入口。完整的“键盘与触控”指南会说明浏览器保留快捷键的边界。'] },
       { heading: '可选：镜像手动启动的 Claude 终端', blocks: [null, 'SDK 驱动的 Claude 对话无需此功能。安装命令只会把 Very Happy 的 SessionStart/SessionEnd 项合并到 ~/.claude/settings.json（或 $CLAUDE_CONFIG_DIR/settings.json），不会移除其他 hooks。daemon 运行时，它只镜像在 Very Happy Web 终端内手动启动的 Claude。'] },
     ],
   },

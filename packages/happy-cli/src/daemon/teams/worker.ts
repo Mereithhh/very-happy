@@ -6,6 +6,7 @@ import type { TeamOperation, TeamState, TeamResponse, TeamAction } from '@slopus
 import { configuration } from '@/configuration';
 import { readPersistedSessions } from '@/persistence';
 import { sendUserMessage, waitForSessionKey } from '@/commands/sessionMessage';
+import { teamInitialPrompt } from './initialPrompt';
 import { archiveSession } from '@/sessions/sessionOps';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
@@ -36,7 +37,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
         (await http.post(`/v1/teams/${encodeURIComponent(teamId)}/actions`, { requestId, action: value })).data;
 
     async function complete(op: TeamOperation, receipt: TeamEffectReceipt) {
-        await action(op.teamId, `complete-${op.id}`, { type: 'complete-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, ...(receipt.sessionId ? { sessionId: receipt.sessionId } : {}) });
+        await action(op.teamId, `complete-${op.id}`, { type: 'complete-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, ...(receipt.sessionId ? { sessionId: receipt.sessionId } : {}), ...(op.type === 'spawn' && receipt.directory ? { workingDirectory: receipt.directory } : {}) });
         writeReceipt(home, { ...receipt, phase: 'completed' });
     }
 
@@ -52,7 +53,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 }
                 return;
             }
-            const claimed = await action(op.teamId, `claim-${op.id}`, { type: 'claim-operation', operationId: op.id, machineId: deps.machineId });
+            const claimed = await action(op.teamId, `claim-${op.id}`, { type: 'claim-operation', operationId: op.id, machineId: deps.machineId, ...(op.teamLaunchVersion === 1 ? { teamLaunchVersion: 1 as const } : {}) });
             if (!claimed.operation?.claimId) throw new Error('Operation claim did not return a receipt');
             op = claimed.operation;
             credential = claimed.credential;
@@ -65,7 +66,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 if (receipt.phase === 'prepared') {
                     // Retrying a prepared receipt is safe: spawning has not begun. Re-read the same
                     // claim response to recover the credential if this daemon restarted.
-                    if (!credential) credential = (await action(op.teamId, `claim-${op.id}`, { type: 'claim-operation', operationId: op.id, machineId: deps.machineId })).credential;
+                    if (!credential) credential = (await action(op.teamId, `claim-${op.id}`, { type: 'claim-operation', operationId: op.id, machineId: deps.machineId, ...(op.teamLaunchVersion === 1 ? { teamLaunchVersion: 1 as const } : {}) })).credential;
                     if (!credential) throw new Error('No scoped credential for worker');
                     const current: TeamState = (await http.get(`/v1/teams/${encodeURIComponent(op.teamId)}`)).data.team;
                     const task = current.tasks.find(t => t.id === op.taskId);
@@ -109,7 +110,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                         return;
                     }
                     const key = await waitForSessionKey(receipt.sessionId!, 10_000);
-                    await sendUserMessage(receipt.sessionId!, key, op.prompt, 'teams', { localId: `teams-initial-${op.id}`, sentFrom: 'team' });
+                    await sendUserMessage(receipt.sessionId!, key, teamInitialPrompt(op.prompt, bot?.root === true, receipt.directory), 'teams', { localId: `teams-initial-${op.id}`, sentFrom: 'team', ...(op.model ? { model: op.model } : {}) });
                     receipt = { ...receipt, phase: 'delivered' };
                     writeReceipt(home, receipt);
                 }
@@ -208,7 +209,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 const status = axios.isAxiosError(error) ? error.response?.status : undefined;
                 if (status !== 404) deps.log('Teams schedule advancement unavailable; regular reconciliation continues');
             }
-            const { data } = await http.get<{ operations: TeamOperation[]; teams: TeamState[] }>('/v1/teams/operations', { params: { machineId: deps.machineId, schedulesVersion: 1 } });
+            const { data } = await http.get<{ operations: TeamOperation[]; teams: TeamState[] }>('/v1/teams/operations', { params: { machineId: deps.machineId, schedulesVersion: 1, teamLaunchVersion: 1 } });
             knownSessionIds = new Set((data.teams ?? []).flatMap(team => team.bots.flatMap(bot => bot.sessionId ? [bot.sessionId] : [])));
             // Limit simultaneous launch IO; a running model does not occupy this polling slot.
             for (const op of data.operations) {

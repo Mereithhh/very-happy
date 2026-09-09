@@ -48,7 +48,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       "blocks": [
         {
           "type": "p",
-          "text": "Agent Teams is an opt-in preview for one account and one execution machine per team. Your operator must enable it for your account, and that machine must run a compatible online daemon. Older servers or daemons do not silently fall back to a different agent."
+          "text": "Agent Teams is optional. Ordinary conversations, terminals, and history work without it. Each team uses one account and one execution machine. Your operator must enable it for your account, and that machine must run a compatible online daemon. Older servers or daemons do not silently fall back to a different agent."
         },
         {
           "type": "list",
@@ -61,11 +61,11 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       ]
     },
     {
-      "heading": "Start with an ordinary managed session",
+      "heading": "Start a team in the app",
       "blocks": [
         {
           "type": "p",
-          "text": "Open a normal Claude, Codex, or pi session in Very Happy. There is no Meta agent checkbox. Ask it to read the absolute skill path returned by the installer, inspect existing work, and delegate independent tasks with explicit acceptance criteria. Reading a skill alone does not connect an unmanaged terminal."
+          "text": "Choose Happy Bot → New team, select a project folder and computer, and describe your goal. Very Happy starts the lead, provides the official collaboration instructions, and opens its conversation. No manual skill installation is needed in the app. To lead from an existing conversation, choose Start a team from this conversation in its More menu. The command below is only for terminal setup. Reading a skill alone does not connect an unmanaged terminal."
         },
         {
           "type": "code",
@@ -83,7 +83,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         {
           "type": "list",
           "items": [
-            "Open Teams from the sidebar, create a team on a compatible machine, or ask the connected agent to use team_create/team_join.",
+            "Teams and ordinary conversations share your history. Select a team for its progress or expand it and select a member to open that conversation. Hide the Happy Bot entry in Appearance settings if you do not use it.",
             "Delegation includes a goal, acceptance criteria, working directory, and agent. A teammate can delegate child tasks within its assignment.",
             "Choose No approvals in team execution settings for new agents to run without routine prompts, or Ask when needed to retain normal approvals. Existing sessions and queued operations keep their current mode. Open the linked session to inspect work; team messages use expandable cards. Delivery is not proof that the agent processed a message.",
             "A submitted result still needs acceptance. Accept, return for changes, cancel, or hand off in Teams; cancelling closes the unfinished subtree."
@@ -91,7 +91,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         },
         {
           "type": "note",
-          "text": "Linking an existing session in Web registers its identity; the session must still join through the Teams CLI/tools to acquire its connection. Skill installation and a Web link are not substitutes for runtime setup."
+          "text": "Connecting an existing conversation establishes its scope and delivers the official instructions in the background. Team options choose the default agent/model and concurrent leaf work limit. Waiting parents yield to children; unmerged results remain preserved."
         }
       ]
     },

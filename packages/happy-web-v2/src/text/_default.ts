@@ -1798,6 +1798,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep09t: {
+                title: 'Start a team from a goal or an existing chat',
+                summary: 'Happy Bot is optional. Ordinary chats and terminals keep their familiar workflow.',
+                start: 'Choose a project and describe the goal to start a lead with official collaboration instructions, or explicitly turn a supported chat into a team.',
+                history: 'Open a team from history to see progress, then open a member to read its conversation. Hide the Happy Bot shortcut in Appearance without stopping any work.',
+                results: 'See assignments and submitted results as cards, and configure the agent, model and simultaneous tasks for new members.',
+            },
             sep09h: {
                 title: 'Let your agent use My todos',
                 summary: 'Copy the official skill from My todos and give it to your coding agent.',

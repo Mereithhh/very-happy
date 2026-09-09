@@ -45,3 +45,13 @@ describe('new-session permission resolution', () => {
             .toBe('yolo');
     });
 });
+
+describe('optional Happy Bot entry', () => {
+    it('preserves an explicit hidden entry without changing other device preferences', () => {
+        const settings = localSettingsParse({ happyBotEntryVisible: false, sidebarView: 'status', sidebarGroupMode: 'workspace' });
+        expect(settings.happyBotEntryVisible).toBe(false);
+        expect(settings.sidebarView).toBe('status');
+        expect(settings.sidebarGroupMode).toBe('workspace');
+        expect(localSettingsParse({ sidebarView: 'list' }).happyBotEntryVisible).toBe(true);
+    });
+});

@@ -31,6 +31,28 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         expect((await store.createTeam(accountId, input)).id).toBe(t.id);
         await expect(store.readTeam(t.id, { accountId: 'someone-else' })).rejects.toMatchObject({ code: 'team_not_found' });
     });
+    it('atomically creates one lead, goal, and operation and compares the full launch on retry', async () => {
+        const input = { name: 'Launch', machineId, requestId: 'launch-atomic', launch: { goal: 'Build a page', directory: '/repo', assistant: 'codex' as const, model: 'gpt-5' } };
+        const [first, retry] = await Promise.all([store.createTeam(accountId, input), store.createTeam(accountId, input)]);
+        expect(retry).toEqual(first);
+        expect(first.bots).toHaveLength(1); expect(first.tasks).toHaveLength(1); expect(first.operations).toHaveLength(1);
+        expect((await store.readTeam(first.id, { accountId })).operations[0].id).toBe(first.operations[0].id);
+        await expect(store.createTeam(accountId, { ...input, launch: { ...input.launch, directory: '/different' } })).rejects.toMatchObject({ code: 'request_id_conflict' });
+        await expect(store.createTeam(accountId, { ...input, launch: undefined })).rejects.toMatchObject({ code: 'request_id_conflict' });
+    });
+    it('does not memoize a full member queue and permits the exact claim once capacity increases', async () => {
+        const team = await store.createTeam(accountId, { name: 'Queue', machineId });
+        await store.actOnTeam(team.id, { accountId }, { requestId: 'limit', action: { type: 'set-defaults', defaults: { maxParallel: 1 } } });
+        for (const goal of ['first', 'second']) await store.actOnTeam(team.id, { accountId }, { requestId: goal, action: { type: 'delegate', goal, acceptance: ['a'] } });
+        const state = await store.readTeam(team.id, { accountId });
+        const claim = (i: number) => ({ requestId: `claim-${i}`, action: { type: 'claim-operation' as const, teamLaunchVersion: 1 as const, operationId: state.operations.find(op => op.taskId === state.tasks[i].id)!.id, machineId } });
+        await store.actOnTeam(team.id, { accountId }, claim(0));
+        await expect(store.actOnTeam(team.id, { accountId }, claim(1))).rejects.toMatchObject({ code: 'team_parallel_limit' });
+        const memo = await db.$queryRaw<Array<{ count: bigint }>>`SELECT count(*) AS count FROM "TeamRequest" WHERE "teamId"=${team.id} AND "requestId"='claim-1'`;
+        expect(Number(memo[0].count)).toBe(0);
+        await store.actOnTeam(team.id, { accountId }, { requestId: 'increase', action: { type: 'set-defaults', defaults: { maxParallel: 2 } } });
+        expect((await store.actOnTeam(team.id, { accountId }, claim(1))).operation?.status).toBe('claimed');
+    });
     it('persists one dispatch under concurrent retries and rejects payload replacement', async () => {
         const t = await store.createTeam(accountId, { name: 'Concurrent', machineId });
         const req = { requestId: 'dispatch', action: { type: 'delegate' as const, goal: 'g', acceptance: ['a'] } };
@@ -193,10 +215,13 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         app.decorate('authenticate', async (request: any) => { request.userId = accountId; }); teamRoutes(app as any);
         const legacy = await app.inject({ method: 'GET', url: `/v1/teams/operations?machineId=${machineId}` });
         expect(legacy.statusCode).toBe(200);
+        expect(legacy.json().operations.every((op: any) => !op.teamLaunchVersion)).toBe(true);
         expect(legacy.json().teams.flatMap((t: any) => t.messages).every((m: any) => !m.scheduleId)).toBe(true);
         const current = await app.inject({ method: 'GET', url: `/v1/teams/operations?machineId=${machineId}&schedulesVersion=1` });
         expect(current.statusCode).toBe(200);
         expect(current.json().teams.flatMap((t: any) => t.messages).some((m: any) => m.scheduleId)).toBe(true);
+        const launchCapable = await app.inject({ method: 'GET', url: `/v1/teams/operations?machineId=${machineId}&teamLaunchVersion=1` });
+        expect(launchCapable.json().operations.some((op: any) => op.teamLaunchVersion === 1)).toBe(true);
         await app.close();
     });
 

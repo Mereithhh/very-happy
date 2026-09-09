@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { TeamAction, TeamState } from "@slopus/happy-wire";
 import {
   actOnTeam,
@@ -16,6 +16,12 @@ import { t as tr } from "@/text";
 import { Bot, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus, RefreshCw } from "lucide-react";
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
+import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
+import { teamLaunchPhase } from "./teamPresentation";
+import { AdoptTeamForm } from "./AdoptTeamForm";
+import { TeamStartForm } from "./TeamStartForm";
+import { useFirstUseCopy } from "./firstUseCopy";
+import { TeamOptions } from "./TeamOptions";
 import { useWorkspaceCopy } from "./workspaceCopy";
 import { sync } from "@/sync/sync";
 import {
@@ -38,29 +44,37 @@ export function TeamsScreen() {
 function TeamsContent() {
   useTranslation();
   const c = useWorkspaceCopy();
+  const first = useFirstUseCopy();
+  const [startingExisting, setStartingExisting] = useState(false);
   const [view, setView] = useState<"overview" | "schedules" | "settings">("overview");
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [delegating, setDelegating] = useState(false);
   const { teamId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("new") === "1") setCreating(true);
+    const task = searchParams.get("task");
+    if (task) setSelectedTask(task);
+  }, [searchParams]);
   const machines = useAllMachines({ includeOffline: true });
-  const createRequest = useRef({ signature: "", id: "" });
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<TeamState[]>([]);
   const [team, setTeam] = useState<TeamState | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
+  const [followLead, setFollowLead] = useState(searchParams.get("starting") === "1");
   const [pending, setPending] = useState<{
     action: TeamAction;
     requestId: string;
   } | null>(null);
   function fail(e: unknown) {
-    if (e instanceof TeamsApiError && e.status === 404) setUnavailable(true);
+    if (e instanceof TeamsApiError && [403, 404].includes(e.status)) setUnavailable(true);
     setError(
-      e instanceof TeamsApiError && e.status === 404
-        ? tr("teams.unavailable")
+      e instanceof TeamsApiError && [403, 404].includes(e.status)
+        ? first.unavailable
         : tr("teams.failed", {
             reason: e instanceof Error ? e.message : "network_error",
           }),
@@ -102,6 +116,7 @@ function TeamsContent() {
     try {
       const next = (await actOnTeam(teamId, p.action, p.requestId)).team;
       setTeam((previous) => newestTeam(previous, next));
+      void refreshTeamNavigation();
       setPending(null);
       setError("");
       if (p.action.type === "delegate") setDelegating(false);
@@ -115,11 +130,16 @@ function TeamsContent() {
       setBusy(false);
     }
   }
+  useEffect(() => {
+    const lead = team?.bots.find(bot => bot.root && bot.sessionId);
+    if (followLead && lead?.sessionId) navigate(`/session/${encodeURIComponent(lead.sessionId)}`);
+  }, [team, followLead, navigate]);
   const disabled =
     busy || pending !== null || unavailable || team?.archivedAt !== undefined;
   const supportsTeams = (machine: (typeof machines)[number]) =>
-    (machine.metadata as { teamsVersion?: number } | null)?.teamsVersion ===
+    (machine.metadata as { teamLaunchVersion?: number } | null)?.teamLaunchVersion ===
       1 && isMachineOnline(machine);
+  const launchPhase = team ? teamLaunchPhase(team) : "empty";
   const executionMachine = machines.find(machine => machine.id === team?.machineId);
   const machineOnline = !!executionMachine && isMachineOnline(executionMachine);
   const dispatchReady =
@@ -150,6 +170,7 @@ function TeamsContent() {
           )}
         </p>
       )}
+      {searchParams.get('fromSession') && <TeamDialog title={first.title} onClose={() => { const next = new URLSearchParams(searchParams); next.delete('fromSession'); setSearchParams(next, {replace:true}); }}><AdoptTeamForm sessionId={searchParams.get('fromSession')!} onDone={() => navigate(`/session/${encodeURIComponent(searchParams.get('fromSession')!)}`)} /></TeamDialog>}
       {loading && <p role="status">{tr("common.loading")}</p>}
       {!teamId && !loading && (
         <>
@@ -159,55 +180,12 @@ function TeamsContent() {
           )}
           {creating && <TeamDialog title={c.create} onClose={() => setCreating(false)}>
             {error && <p role="alert" className="teams-error">{error}</p>}
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const f = new FormData(e.currentTarget);
-              setBusy(true);
-              try {
-                const name = String(f.get("name"));
-                const machineId = String(f.get("machineId"));
-                const signature = JSON.stringify([name, machineId]);
-                if (createRequest.current.signature !== signature)
-                  createRequest.current = {
-                    signature,
-                    id: crypto.randomUUID(),
-                  };
-                const r = await createTeam(
-                  name,
-                  machineId,
-                  createRequest.current.id,
-                );
-                navigate(`/teams/${r.team.id}`);
-              } catch (e) {
-                fail(e);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <label>
-              {tr("teams.name")}
-              <input name="name" required maxLength={128} />
-            </label>
-            <label>
-              {tr("teams.machine")}
-              <select name="machineId" required>
-                <option value="">{tr("teams.selectMachine")}</option>
-                {machines.map((m) => (
-                  <option key={m.id} value={m.id} disabled={!supportsTeams(m)}>
-                    {machineLabel(m)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              className="teams-primary"
-              disabled={disabled || !machines.some(supportsTeams)}
-            >
-              {tr("teams.create")}
-            </button>
-          </form>
+          <TeamStartForm onStart={async (name, machineId, launch, requestId) => {
+            return (await createTeam(name, machineId, requestId, launch)).team;
+          }} onStarted={created => {
+            void refreshTeamNavigation();
+            navigate(`/teams/${created.id}?starting=1`);
+          }} />
           </TeamDialog>}
           {!teams.length && !unavailable && <div className="teams-empty"><Bot size={36} /><h2>{c.noTeams}</h2><p>{c.noTeamsHint}</p><Link to="/help">{c.guide} →</Link></div>}
           <div className="teams-list">{teams.map(item => <TeamListCard key={item.id} team={item} machine={machines.find(m => m.id === item.machineId) ? machineLabel(machines.find(m => m.id === item.machineId)!) : c.unnamedMachine} />)}</div>
@@ -220,6 +198,8 @@ function TeamsContent() {
           </nav>
           {view === "overview" && <>
             {!dispatchReady && <p role="status">{tr("teams.machineRequired")}</p>}
+            {team.bots.length === 0 && <div className="teams-empty"><h2>{first.setup}</h2><p>{first.setupHint}</p><button className="teams-primary" disabled={disabled} onClick={() => setStartingExisting(true)}>{first.start}</button></div>}
+            {['preparing', 'failed'].includes(launchPhase) && <div className="team-launch-state" role="status"><h2>{launchPhase === 'failed' ? first.failed : first.preparing}</h2><p>{launchPhase === 'failed' ? first.failedHint : first.preparingHint}</p>{team.tasks.filter(task => team.bots.some(bot => bot.root && bot.id === task.assigneeBotId)).map(task => <button key={task.id} onClick={() => setSelectedTask(task.id)}>{first.inspect}</button>)}</div>}
             <div className="teams-work-actions">
               {team.bots.find(b => b.root && b.sessionId)?.sessionId && <Link className="teams-primary teams-talk" to={`/session/${encodeURIComponent(team.bots.find(b => b.root && b.sessionId)!.sessionId!)}`}><Bot size={18} />{c.talk}</Link>}
               <button disabled={disabled || !dispatchReady} onClick={() => setDelegating(true)}><Plus size={16} />{c.newTask}</button>
@@ -235,43 +215,15 @@ function TeamsContent() {
               </select>
             </label>
             <p>{tr("teams.executionModeHint")}</p>
-          </section><section>            <div>
-              <h2>{tr("teams.join")}</h2>
-              <p>{tr("teams.joinHint")}</p>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const f = new FormData(e.currentTarget);
-                  void act({
-                    type: "join",
-                    name: String(f.get("name")),
-                    sessionId: String(f.get("sessionId")),
-                    botId: String(f.get("botId")) || undefined,
-                  });
-                }}
-              >
-                <label>
-                  {tr("teams.leadName")}
-                  <input name="name" required />
-                </label>
-                <label>
-                  {tr("teams.sessionId")}
-                  <input name="sessionId" required />
-                </label>
-                <label>
-                  {tr("teams.rebind")}
-                  <select name="botId">
-                    <option value="">{tr("teams.newBot")}</option>
-                    {team.bots.map((bot) => (
-                      <option key={bot.id} value={bot.id}>
-                        {bot.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button disabled={disabled}>{tr("teams.join")}</button>
-              </form>
-            </div></section></>}
+          </section>
+            <TeamOptions team={team} disabled={disabled} onSave={async defaults => { await act({type: 'set-defaults', defaults}); }} />
+          </>}
+          {startingExisting && <TeamDialog title={first.setup} onClose={() => setStartingExisting(false)}><TeamStartForm machineId={team.machineId} intentScope={`team:${team.id}`} onStart={async (_name, _machineId, launch, requestId) => {
+            return (await actOnTeam(team.id, {type: 'start', launch}, requestId)).team;
+          }} onStarted={started => {
+            void refreshTeamNavigation();
+            setTeam(started); setStartingExisting(false); setFollowLead(true);
+          }} /></TeamDialog>}
           {delegating && <TeamDialog title={c.newTask} onClose={() => setDelegating(false)}>
             {error && <p role="alert" className="teams-error">{error}</p>}{pending && <button disabled={busy} onClick={() => void act()}>{tr("teams.retry")}</button>}
               {!dispatchReady && (
@@ -283,6 +235,7 @@ function TeamsContent() {
                   const f = new FormData(e.currentTarget);
                   void act({
                     type: "delegate",
+                    botName: String(f.get("botName") ?? "").trim() || undefined,
                     goal: String(f.get("goal")),
                     acceptance: String(f.get("acceptance"))
                       .split("\n")
@@ -310,12 +263,14 @@ function TeamsContent() {
                   <input
                     name="directory"
                     required
+                    defaultValue={team.creationLaunch?.directory ?? team.bots.find(b => b.root)?.directory ?? ""}
                     placeholder="/path/to/project"
                   />
                 </label>
+                <label>{first.member}<input name="botName" placeholder={first.working} maxLength={128} /></label>
                 <label>
                   Coding agent
-                  <select name="assistant">
+                  <select name="assistant" defaultValue={team.defaults?.assistant ?? "claude"}>
                     <option value="claude">Claude Code</option>
                     <option value="codex">Codex</option>
                     <option value="pi-acp">pi</option>
@@ -343,7 +298,7 @@ function TeamsContent() {
               </form>
           </TeamDialog>}
           {team.tasks.filter(task => task.id === selectedTask).map((t) => (
-            <TeamDialog key={t.id} title={c.details} onClose={() => { setSelectedTask(null); requestAnimationFrame(() => document.getElementById(`team-task-${t.id}`)?.focus()); }}>
+            <TeamDialog key={t.id} title={c.details} onClose={() => { setSelectedTask(null); if (searchParams.has("task")) { const next = new URLSearchParams(searchParams); next.delete("task"); setSearchParams(next, {replace:true}); } requestAnimationFrame(() => document.getElementById(`team-task-${t.id}`)?.focus()); }}>
               {error && <p role="alert" className="teams-error">{error}</p>}{pending && <button disabled={busy} onClick={() => void act()}>{tr("teams.retry")}</button>}
               <article
                 className="teams-task"

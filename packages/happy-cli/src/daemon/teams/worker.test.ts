@@ -49,6 +49,31 @@ beforeEach(() => {
 afterEach(() => { workers.forEach(w => w.stop()); workers = []; rmSync(home, { recursive: true, force: true }); });
 
 describe('daemon team effect recovery', () => {
+    it('injects the official skill and selected model into the first managed task message', async () => {
+        setup({ ...op(), model: 'provider/model', teamLaunchVersion: 1 });
+        const worker = start(); await settled(worker);
+        expect(mocks.send).toHaveBeenCalledWith('session1', expect.anything(), expect.stringContaining('name: very-happy-teams'), 'teams', expect.objectContaining({ model: 'provider/model', localId: 'teams-initial-op1' }));
+        expect(mocks.send.mock.calls[0][2]).toContain('You are a team member');
+        expect(mocks.post).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ action: expect.objectContaining({ type: 'claim-operation', teamLaunchVersion: 1 }) }));
+    });
+    it('recovers a pre-upgrade prepared receipt using the original claim payload', async () => {
+        const operation = { ...op(), status: 'claimed' as const, claimId: 'claim1' };
+        setup(operation);
+        writeReceipt(home, { operationId: operation.id, teamId: operation.teamId, claimId: 'claim1', phase: 'prepared' });
+        const original = mocks.post.getMockImplementation()!;
+        mocks.post.mockImplementation(async (...args) => {
+            const request = args[1];
+            if (request.action?.type === 'claim-operation') {
+                expect(request).toEqual({ requestId: 'claim-op1', action: { type: 'claim-operation', operationId: 'op1', machineId: 'machine1' } });
+                if ('teamLaunchVersion' in request.action) throw new Error('request_id_conflict');
+            }
+            return original(...args);
+        });
+        const worker = start(); await settled(worker);
+        expect(spawn).toHaveBeenCalledTimes(1);
+        expect(readReceipt(home, 'op1')?.phase).toBe('completed');
+        expect(mocks.post).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ action: expect.objectContaining({ type: 'complete-operation', workingDirectory: '/isolated' }) }));
+    });
     it('does not launch a second wrapper after spawn succeeded but initial message failed', async () => {
         setup(op());
         mocks.send.mockRejectedValueOnce(new Error('network unavailable'));

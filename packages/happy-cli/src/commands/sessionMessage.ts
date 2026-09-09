@@ -58,7 +58,7 @@ export async function sendUserMessage(
     persisted: PersistedSession,
     text: string,
     client: string,
-    options: { localId?: string; sentFrom?: string } = {},
+    options: { localId?: string; sentFrom?: string; model?: string } = {},
 ): Promise<void> {
     const credentials = await readCredentialsForConfiguredRelay()
     if (!credentials) {
@@ -72,7 +72,8 @@ export async function sendUserMessage(
             text
         },
         meta: {
-            sentFrom: options.sentFrom ?? 'cli'
+            sentFrom: options.sentFrom ?? 'cli',
+            ...(options.model ? { model: options.model } : {})
         }
     }
 
