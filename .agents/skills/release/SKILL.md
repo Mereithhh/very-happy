@@ -279,6 +279,18 @@ worker before refreshing. Verify takeover via `controllerchange` and the actual
 loaded entry; reload alone does not prove a version migration. Complete relevant items in
 `docs/verify-queue.md`.
 
+When checking whether release notes shipped, verify both the release entry's
+stable `id` and its translated title in the live assets with `check-shipped.mjs`.
+The pre-release changelog gate proves coverage in source; live asset matches
+prove delivery, while the normal `/changelog` page or release dialog proves
+rendering. Report only the evidence actually obtained.
+
+If the user says an update is missing, check the page origin and loaded entry
+alongside the live release. A local `/dev/mobile-chat` component preview is
+served by its local checkout/dev server; a production deploy does not update
+that checkout. Its presence alone does not establish why the user saw a missing
+change, so verify before attributing the symptom to the preview or a cache.
+
 ## Rollback
 
 - Web/server: use the phase-aware rollback above; do not update daemons for a server-only rollback.
@@ -287,4 +299,6 @@ loaded entry; reload alone does not prove a version migration. Complete relevant
   down migration during an incident.
 
 Report what was published/deployed, exact versions/SHAs, verification evidence,
-and remaining manual acceptance. A successful build alone is not a release.
+and remaining manual acceptance. For a user-facing release, include the
+changelog title and a link to `https://veryhappy.dev/changelog` so the user can
+find its notes. A successful build alone is not a release.
