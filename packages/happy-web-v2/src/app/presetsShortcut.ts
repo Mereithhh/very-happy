@@ -70,7 +70,7 @@ export function presetDigitIndex(key: string, presetCount: number): number | nul
 /**
  * Controlled-open state for a presets dropdown plus the global ⌘./Ctrl+.
  * toggle. `enabled` mirrors "is this menu openable at all": the chat
- * composer passes `presets.length > 0` (its trigger hides when empty), the
+ * composer enables any available plus-menu tools, while the
  * terminal header passes true unconditionally (its menu shows a manage item
  * when empty — it absorbed the old quick-commands menu, B-052). Inert on
  * coarse-pointer devices.
@@ -82,6 +82,7 @@ export function presetDigitIndex(key: string, presetCount: number): number | nul
 export function usePresetsMenuShortcut(
     enabled: boolean,
     onChordClose?: () => void,
+    onChordOpen?: () => void,
 ): [boolean, (open: boolean) => void] {
     const [open, _setOpen] = useState(false);
     // Mirror of `open` readable inside the listener without re-registering it.
@@ -92,6 +93,8 @@ export function usePresetsMenuShortcut(
     }, []);
     const onChordCloseRef = useRef(onChordClose);
     onChordCloseRef.current = onChordClose;
+    const onChordOpenRef = useRef(onChordOpen);
+    onChordOpenRef.current = onChordOpen;
     useEffect(() => {
         if (!enabled || !PRESETS_SHORTCUT_ACTIVE) return;
         const onKeyDown = (e: KeyboardEvent) => {
@@ -103,6 +106,7 @@ export function usePresetsMenuShortcut(
                 onChordCloseRef.current?.(); // BEFORE the close — see onCloseAutoFocus consumers
                 setOpen(false);
             } else {
+                onChordOpenRef.current?.();
                 setOpen(true);
             }
         };

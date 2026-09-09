@@ -10,9 +10,9 @@
  * usePresetsMenuShortcut), then digits 1-9 insert the numbered preset
  * directly — same code path as clicking the item. See ../../app/presetsShortcut.ts.
  */
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Plus, Paperclip, Maximize2, Minimize2 } from 'lucide-react';
+import { Plus, Paperclip, Maximize2, Minimize2, BookMarked, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useSettings } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import {
@@ -43,18 +43,26 @@ export function PresetsMenu({
     // consumed (and reset) in onCloseAutoFocus. Pointer closes (click outside,
     // item click) keep Radix's default focus handling.
     const kbCancelRef = useRef(false);
-    const [open, setOpen] = usePresetsMenuShortcut(presets.length > 0, () => {
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [page, setPage] = useState<'tools' | 'presets'>('tools');
+    const hasTools = presets.length > 0 || !!onAttach || !!onExpand;
+    const [open, setOpen] = usePresetsMenuShortcut(hasTools, () => {
         kbCancelRef.current = true;
-    });
-    if (presets.length === 0 && !onAttach && !onExpand) return null;
+    }, () => setPage(presets.length ? 'presets' : 'tools'));
+    useEffect(() => { if (!open) setPage('tools'); }, [open]);
+    if (!hasTools) return null;
 
     const pick = (text: string) => onPick(text);
+    const changePage = (next: 'tools' | 'presets') => {
+        setPage(next);
+        requestAnimationFrame(() => contentRef.current?.querySelector<HTMLElement>('[role=menuitem]')?.focus());
+    };
 
     // Digit direct-select while open. preventDefault also stops Radix's
     // typeahead (composed handlers bail on defaultPrevented) so a preset
     // titled "2 things" can't shadow the numeric selection.
     const onMenuKeyDown = (e: React.KeyboardEvent) => {
-        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        if (page !== 'presets' || e.metaKey || e.ctrlKey || e.altKey) return;
         const idx = presetDigitIndex(e.key, presets.length);
         if (idx == null) return;
         e.preventDefault();
@@ -81,7 +89,9 @@ export function PresetsMenu({
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
                 <DropdownMenu.Content
+                    ref={contentRef}
                     className="pm-content"
+                    collisionPadding={12}
                     sideOffset={6}
                     align="start"
                     side="top"
@@ -98,15 +108,17 @@ export function PresetsMenu({
                         }
                     }}
                 >
-                    {onAttach && <DropdownMenu.Item className="pm-item" onSelect={onAttach}><Paperclip size={16} aria-hidden /><span>{t('session.chat.attach')}</span></DropdownMenu.Item>}
-                    {onExpand && <DropdownMenu.Item className="pm-item" onSelect={onExpand}>{expanded ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}<span>{expanded ? t('session.input.collapse') : t('session.input.expand')}</span></DropdownMenu.Item>}
-                    {presets.length > 0 && <div className="pm-head">
+                    {page === 'tools' && onAttach && <DropdownMenu.Item className="pm-item pm-tool" onSelect={onAttach}><Paperclip size={16} aria-hidden /><span>{t('session.chat.attach')}</span></DropdownMenu.Item>}
+                    {page === 'tools' && onExpand && <DropdownMenu.Item className="pm-item pm-tool" onSelect={onExpand}>{expanded ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}<span>{expanded ? t('session.input.collapse') : t('session.input.expand')}</span></DropdownMenu.Item>}
+                    {page === 'tools' && presets.length > 0 && <DropdownMenu.Item className="pm-item pm-tool" onSelect={event => { event.preventDefault(); changePage('presets'); }}><BookMarked size={16} aria-hidden /><span>{t('session.chat.presets')}</span><ChevronRight size={14} aria-hidden /></DropdownMenu.Item>}
+                    {page === 'presets' && <DropdownMenu.Item className="pm-item pm-tool" onSelect={event => { event.preventDefault(); changePage('tools'); }}><ArrowLeft size={16} aria-hidden /><span>{t('common.back')}</span></DropdownMenu.Item>}
+                    {page === 'presets' && <div className="pm-head">
                         {t('session.chat.presetsTitle')}
                         {PRESETS_SHORTCUT_ACTIVE && (
                             <span className="pm-head-hint">{t('session.chat.presetsDigitHint')}</span>
                         )}
                     </div>}
-                    {presets.map((p, i) => (
+                    {page === 'presets' && presets.map((p, i) => (
                         <DropdownMenu.Item key={p.id} className="pm-item" onSelect={() => pick(p.text)}>
                             <span className="pm-item-title">
                                 {PRESETS_SHORTCUT_ACTIVE && i < 9 && (

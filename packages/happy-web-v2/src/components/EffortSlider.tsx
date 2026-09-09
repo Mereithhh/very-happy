@@ -18,7 +18,7 @@ export function EffortSlider({ label, options, value, onChange, busy = false, hi
     // Unknown/default is a separate stop; low/off remains directly selectable.
     const minimum = index < 0 ? -1 : 0;
     const selected = index;
-    const atMax = selected === options.length - 1 && options.length > 1;
+    const atMax = selected === options.length - 1 && options.length > 1 && !['default', 'off', 'none'].includes(options[selected]?.key);
     const pick = (next: number) => {
         const key = options[next]?.key;
         if (!key || busy) return;

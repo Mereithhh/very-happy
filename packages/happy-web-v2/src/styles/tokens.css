@@ -185,6 +185,9 @@
   --term-accent: #34e2c4;
   --term-accent-ink: #04110e;
 
+  /* Explicit maximum reasoning selection; separate from live/status accent. */
+  --effort-max-gradient: linear-gradient(90deg, #1ba7be 0%, #557af7 32%, #b65bdc 65%, #ef8d44 100%);
+
   /* fonts */
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
