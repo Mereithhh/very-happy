@@ -8,6 +8,7 @@
  */
 
 export interface FsPreviewRequest {
+    sessionId?: string;
     machineId: string;
     /** Absolute path on that machine (already decrypted + validated). */
     path: string;

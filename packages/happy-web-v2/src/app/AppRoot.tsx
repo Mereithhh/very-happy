@@ -160,6 +160,7 @@ const WorkspaceDesignHarness = import.meta.env.DEV
 const WorkspaceNotesHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/WorkspaceFilesHarness').then((m) => ({ default: m.WorkspaceNotesHarness })))
   : null;
+const FilePreviewHarness = import.meta.env.DEV ? lazy(() => import('@/dev/FilePreviewHarness').then(m => ({ default: m.FilePreviewHarness }))) : null;
 const WorkspaceFilesHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/WorkspaceFilesHarness').then((m) => ({ default: m.WorkspaceFilesHarness })))
   : null;
@@ -194,6 +195,7 @@ const router = createBrowserRouter(
       ? [{ path: '/dev/workspace-design', element: <Lazy><WorkspaceDesignHarness /></Lazy> }]
       : []),
     ...(WorkspaceNotesHarness ? [{ path: '/dev/workspace-notes', element: <Lazy><WorkspaceNotesHarness /></Lazy> }] : []),
+    ...(FilePreviewHarness ? [{ path: '/dev/file-preview', element: <Lazy><FilePreviewHarness /></Lazy> }] : []),
     ...(WorkspaceFilesHarness ? [{ path: '/dev/workspace-files', element: <Lazy><WorkspaceFilesHarness /></Lazy> }] : []),
     ...(MobileChatHarness
       ? [{ path: '/dev/mobile-chat', element: <Lazy><MobileChatHarness /></Lazy> }]

@@ -12,7 +12,7 @@
 import { imageMimeOf } from './fsBrowseModel';
 
 /** What the viewer does with a file, decided by extension alone. */
-export type FsPreviewKind = 'image' | 'markdown' | 'pdf' | 'text';
+export type FsPreviewKind = 'image' | 'markdown' | 'pdf' | 'spreadsheet' | 'text';
 
 export function previewKindOf(path: string): FsPreviewKind {
     const base = path.split('/').pop() ?? path;
@@ -20,6 +20,7 @@ export function previewKindOf(path: string): FsPreviewKind {
     if (ext && imageMimeOf(base)) return 'image';
     if (ext === 'md' || ext === 'markdown') return 'markdown';
     if (ext === 'pdf') return 'pdf';
+    if (ext && ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv', 'tsv'].includes(ext)) return 'spreadsheet';
     return 'text';
 }
 
@@ -105,7 +106,9 @@ export async function assembleFsFile(
         } else if (res.size !== size) {
             return { ok: false, code: 'inconsistent' };
         }
+        if (!Number.isSafeInteger(size) || size < 0) return { ok: false, code: 'inconsistent' };
         const bytes = base64ToBytes(res.content ?? '');
+        if (loaded + bytes.length > size) return { ok: false, code: 'inconsistent' };
         // Multi-window assembly requires the daemon to honor `offset`; the
         // echo is the proof. (First window at offset 0 needs no proof.)
         if (loaded > 0 && res.offset !== loaded) {
@@ -118,6 +121,7 @@ export async function assembleFsFile(
         loaded += bytes.length;
         options.onProgress?.(loaded, size);
         if (!res.truncated) {
+            if (loaded !== size) return { ok: false, code: 'inconsistent' };
             return { ok: true, bytes: concatBytes(parts), size };
         }
         if (bytes.length === 0) {

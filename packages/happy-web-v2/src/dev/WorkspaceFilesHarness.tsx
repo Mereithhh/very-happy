@@ -6,7 +6,7 @@ import { useNotes } from '@/sync/notesStore';
 import { storage } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 
-/** DEV-only real file panel with clearly labelled in-memory data. */
+/** DEV-only legacy cached-file panel without machine metadata; filesystem previews use FilePreviewHarness. */
 export function WorkspaceFilesHarness() {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState('workspace-fixture-a');
@@ -16,7 +16,7 @@ export function WorkspaceFilesHarness() {
   useEffect(() => {
     const now = Date.now();
     for (const id of ['workspace-fixture-a', 'workspace-fixture-b']) {
-      storage.getState().applySessions([{ id, seq: 0, createdAt: now, updatedAt: now, active: true, activeAt: now, metadata: { path: `/example/${id}`, host: 'example', flavor:'claude', capabilities:['claude-btw-v1'], machineId: 'workspace-fixture-machine' }, metadataVersion: 1, agentState: null, agentStateVersion: 0, thinking: false, thinkingAt: 0, presence:'online' } as Session]);
+      storage.getState().applySessions([{ id, seq: 0, createdAt: now, updatedAt: now, active: true, activeAt: now, metadata: { path: `/example/${id}`, host: 'example', flavor:'claude', capabilities:['claude-btw-v1'] }, metadataVersion: 1, agentState: null, agentStateVersion: 0, thinking: false, thinkingAt: 0, presence:'online' } as Session]);
       const pathKey = storage.getState().getSessionPathKey(id)!;
       storage.getState().applyProjectFiles(pathKey, { fetchedAt: now, files: ['src/index.ts','test/index.ts'].map(fullPath => ({ fullPath, fileName:'index.ts', filePath:fullPath.split('/')[0] })) });
       for (const path of ['src/index.ts','test/index.ts']) storage.getState().applyFileCache(id, path, Array.from({length:100},(_,i)=>`// ${id} ${path} line ${i + 1}`).join('\n'), null, false);

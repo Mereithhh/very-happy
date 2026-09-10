@@ -42,7 +42,7 @@ export function FilePathLink({
             onClick={(e) => {
                 // 常见于嵌在可折叠行里：点路径不该顺带把行折叠了
                 e.stopPropagation();
-                openFsPreview({ machineId, path: absolute, mode: 'file' });
+                openFsPreview({ sessionId, machineId, path: absolute, mode: 'file' });
             }}
         >
             <FileText size={11} className="fpl-icon" />

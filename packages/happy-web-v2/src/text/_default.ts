@@ -1827,6 +1827,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10l: {
+                title: 'More useful file previews',
+                summary: 'Read, copy and download files without leaving your conversation.',
+                files: 'The file button opens the browser. Modal previews can be pinned to the workspace; both views offer downloads and separate actions for copying paths or complete text.',
+                workbooks: 'Preview Excel and CSV worksheets locally in your browser, with worksheet switching and pagination. Fixed the misplaced slash in preview paths.',
+            },
             sep10k: {
                 title: 'New chats in the right workspace',
                 summary: 'Start a conversation alongside the work you are viewing.',

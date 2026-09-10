@@ -66,7 +66,7 @@ export function collectSessionFilePaths(messages: readonly Message[]): Set<strin
 export function resolveAgainstCwd(path: string, cwd: string | null | undefined): string {
     const p = path.trim();
     if (!p) return p;
-    if (p.startsWith('/') || p.startsWith('~')) return p;
+    if (p.startsWith('/') || p.startsWith('~') || /^[a-z]:[\\/]/i.test(p) || p.startsWith('\\\\')) return p;
     if (!cwd) return p;   // 没有 cwd 就原样交给 daemon，它会报 not-found 而不是猜
     return `${cwd.replace(/\/+$/, '')}/${p.replace(/^\.\//, '')}`;
 }

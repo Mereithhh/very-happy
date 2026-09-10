@@ -1,3 +1,6 @@
+import { useSearchParams } from 'react-router-dom';
+import { FsFileViewer } from '../files/FsFileViewer';
+import { resolveAgainstCwd } from './toolFilePath';
 /**
  * FilesPanel — project file tree + changed-files view for a session. Desktop
  * renders it as a right sidebar; mobile as a full-screen overlay (controlled by
@@ -134,7 +137,17 @@ function FilesPanelContent({
     const { t } = useTranslation();
     const { projectFiles, gitStatusFiles, isLoading, isFetching, refresh } = useSessionFiles(sessionId, refreshOnMount);
     const session = useSession(sessionId);
-    const [localTab, setLocalTab] = useState<FilesPanelTab>('changed');
+    const [fileFullscreen, setFileFullscreen] = useState(false);
+    useEffect(() => {
+        if (!fileFullscreen || !active) return;
+        const exit = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault(); event.stopPropagation(); setFileFullscreen(false);
+        };
+        window.addEventListener('keydown', exit, true);
+        return () => window.removeEventListener('keydown', exit, true);
+    }, [fileFullscreen, active]);
+    const [localTab, setLocalTab] = useState<FilesPanelTab>('browse');
     const tab = controlledTab ?? localTab;
     const selectTab = (next: FilesPanelTab) => {
         if (controlledTab === undefined) setLocalTab(next);
@@ -142,6 +155,7 @@ function FilesPanelContent({
     };
     const [fileTabs, setFileTabs] = useWorkspaceView(viewIdentity);
     const selected = fileTabs.active;
+    useEffect(() => { setFileFullscreen(false); }, [selected]);
     const setSelected = (path: string) => setFileTabs(state => openWorkspaceTab(state, { id: path, title: path.split('/').pop() || path, description: path }));
     const previousControlledTab = useRef(controlledTab);
     useEffect(() => {
@@ -155,6 +169,13 @@ function FilesPanelContent({
     // is still syncing, or on legacy sessions without a machineId).
     const browseMachineId = session?.metadata?.machineId ?? null;
     const browsePath = session?.metadata?.path ?? null;
+    const [params, setParams] = useSearchParams();
+    const pinFile = params.get('pinFile');
+    useEffect(() => {
+        if (!pinFile || !browseMachineId) return;
+        setSelected(pinFile);
+        const next = new URLSearchParams(params); next.delete('pinFile'); setParams(next, { replace: true });
+    }, [pinFile, browseMachineId]);
 
     const tree = useMemo(() => buildTree(projectFiles?.files ?? []), [projectFiles]);
 
@@ -177,9 +198,9 @@ function FilesPanelContent({
         <div className="fp">
             <WorkspaceTabsSlot render={renderTabs}
                 tabs={[
+                    { id: 'tool:browse', title: t('fsBrowser.browseTab'), closable: false, movable: false },
                     { id: 'tool:changed', title: t('session.chat.changedFiles') + (changed.length ? ` (${changed.length})` : ''), closable: false, movable: false },
                     { id: 'tool:all', title: t('session.chat.fileTree'), closable: false, movable: false },
-                    { id: 'tool:browse', title: t('fsBrowser.browseTab'), closable: false, movable: false },
                     ...fileTabs.tabs.map(file => ({ ...file, id: `file:${file.id}`, group: 'files' })),
                 ]}
                 active={selected ? `file:${selected}` : `tool:${effectiveTab}`}
@@ -243,8 +264,8 @@ function FilesPanelContent({
                 )}
             </div>
             {fileTabs.tabs.map(file => <WorkspacePane className="fp-viewer" key={file.id} active={active && selected === file.id} order={fileTabs.tabs.map(tab => tab.id).join("\n")}>
-                <div className="fp-viewer-head"><span className="fp-viewer-path" title={file.id}>{file.id}</span></div>
-                <FileView sessionId={sessionId} fullPath={file.id}/>
+                {!browseMachineId && <div className="fp-viewer-head"><span className="fp-viewer-path" title={file.id}>{file.id}</span></div>}
+                {browseMachineId ? <FsFileViewer machineId={browseMachineId} path={resolveAgainstCwd(file.id, browsePath)} fullscreen={fileFullscreen} onToggleFullscreen={() => setFileFullscreen(value => !value)} onClose={() => setFileTabs(state => closeWorkspaceTab(state, file.id))}/> : <FileView sessionId={sessionId} fullPath={file.id}/>}
             </WorkspacePane>)}
             {children}
         </div>

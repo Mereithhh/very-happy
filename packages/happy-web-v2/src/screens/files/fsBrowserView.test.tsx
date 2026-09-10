@@ -65,3 +65,15 @@ it('expands folders in place and retains their children when a preview closes', 
   expect(host.querySelector('[title="/repo/src"]')?.getAttribute('aria-expanded')).toBe('true');
  }finally {await act(async()=>root.unmount());host.remove();}
 });
+
+it('opens a repeated pin request after closing the same file', async () => {
+ Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ const request=()=>act(async()=>root.render(<FsBrowser machineId="machine" initialPath="/repo" initialFile={{path:'/repo/src/app.ts'}}/>));
+ try {
+  await request();expect(host.querySelector('[data-file]')).not.toBeNull();
+  await act(async()=>host.querySelector<HTMLButtonElement>('[data-file]')!.click());
+  expect(host.querySelector('[data-file]')).toBeNull();
+  await request();expect(host.querySelector('[data-file]')?.getAttribute('data-file')).toBe('/repo/src/app.ts');
+ } finally {await act(async()=>root.unmount());host.remove();}
+});

@@ -23,6 +23,7 @@ export function CopyButton({
     showLabel = false,
     size = 13,
     label,
+    icon: Icon = Copy,
 }: {
     /** Raw text to copy — a string, or a lazy producer for large payloads. */
     text: string | (() => string);
@@ -33,6 +34,7 @@ export function CopyButton({
     size?: number;
     /** Accessible name / tooltip override; defaults to common.copy. */
     label?: string;
+    icon?: typeof Copy;
 }) {
     const { t } = useTranslation();
     const [copied, setCopied] = useState(false);
@@ -66,7 +68,7 @@ export function CopyButton({
             aria-label={name}
             title={name}
         >
-            {copied ? <Check size={size} /> : <Copy size={size} />}
+            {copied ? <Check size={size} /> : <Icon size={size} />}
             {showLabel && <span>{copied ? t('common.copied') : name}</span>}
         </button>
     );
