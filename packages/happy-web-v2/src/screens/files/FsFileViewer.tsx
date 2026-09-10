@@ -236,7 +236,7 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
                     );
                 }
                 return (
-                    <div className="fsb-viewer-body">
+                    <div className="fsb-viewer-body fsb-viewer-body--code">
                         {truncNotice}
                         {/* file viewer has its own scroll surface — never collapse */}
                         <CodeView code={state.text} lang={langForPath(path)} showLineNumbers collapsible={false} />
