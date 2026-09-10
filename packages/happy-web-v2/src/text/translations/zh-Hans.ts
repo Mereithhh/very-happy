@@ -1792,6 +1792,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10m: {
+                title: '工作区衔接更自然',
+                summary: '对话和右侧文件区使用统一画布。',
+                surface: '去掉分栏处的亮色带与文件区底色差异，保留细分界、标签选中反馈和拖拽调宽。',
+            },
             sep10l: {
                 title: '文件预览更好用了',
                 summary: '查看、复制与下载文件，不用离开当前对话。',

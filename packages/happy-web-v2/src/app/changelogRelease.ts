@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-workspace-seam',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10m.title',
+    summaryKey: 'changelog.releases.sep10m.summary',
+    itemKeys: ['changelog.releases.sep10m.surface'],
+  },
+  {
     id: '2026-09-10-file-preview-actions',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,
