@@ -1,3 +1,4 @@
+import { RouteError } from './RouteError';
 /**
  * Lightweight anonymous shell.
  *
@@ -14,14 +15,14 @@ import { ThemeProvider } from '@/ui/theme';
 import { PwaInstallPrompt } from './PwaInstallPrompt';
 
 const publicRouter = createBrowserRouter(
-  [
+  [{ errorElement: <RouteError />, children: [
     { path: '/', element: <LandingScreen /> },
     { path: '/welcome', element: <LandingScreen /> },
     { path: '/docs', element: <DocsScreen /> },
     { path: '/docs/:slug', element: <DocsScreen /> },
     { path: '/privacy', element: <PrivacyScreen /> },
     { path: '/terms', element: <TermsScreen /> },
-  ],
+  ] }],
   { basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/' },
 );
 

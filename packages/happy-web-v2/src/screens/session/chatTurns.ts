@@ -1,3 +1,5 @@
+import { isTerminalToolName } from '@/utils/toolDisplay';
+import { normalizePiToolCall } from '@/components/tools/piToolMapping';
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { askUserQuestionDisplayAnswer, type AskQuestion } from './askUserQuestion';
 import { parseLocalCommandMessage, parseTaskNotification, stripHarnessBlocks } from './harness';
@@ -147,11 +149,16 @@ export function isRenderableActivityMessage(message: Message): boolean {
     return true;
 }
 
+function isCompletedTerminal(message: Message): boolean {
+    return message.kind === 'tool-call' && message.tool.state === 'completed'
+        && isTerminalToolName(normalizePiToolCall(message.tool).name);
+}
+
 /** Render leaf messages, optionally keeping consecutive tools in a compact group. */
 export function buildLeafRows(
     messages: Message[],
     finalAgentId: string | null,
-    groupConsecutiveTools = true,
+    groupConsecutiveTools: boolean | 'completed-terminal' = true,
     projectAskAnswers = true,
     attachments?: Map<string, ToolCallMessage[]>,
 ): LeafRow[] {
@@ -172,12 +179,14 @@ export function buildLeafRows(
             while (
                 i < messages.length &&
                 messages[i].kind === 'tool-call' &&
-                (groupConsecutiveTools || tools.length === 0)
+                (tools.length === 0 || groupConsecutiveTools === true ||
+                    (groupConsecutiveTools === 'completed-terminal' &&
+                        isCompletedTerminal(tools[0]) && isCompletedTerminal(messages[i])))
             ) {
                 tools.push(messages[i] as ToolCallMessage);
                 i++;
             }
-            rows.push({ type: 'toolgroup', key: `tg-${tools[0].id}`, tools });
+            rows.push({ type: 'toolgroup', key: `${groupConsecutiveTools === 'completed-terminal' && tools.length > 1 ? 'commands' : 'tg'}-${tools[0].id}`, tools });
             if (projectAskAnswers) rows.push(...askAnswerRows(tools));
             continue;
         }

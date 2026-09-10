@@ -85,9 +85,12 @@
   user-select: none;
 }
 
-.language-switcher-option[data-highlighted] {
-  background: var(--bg-2);
+.language-switcher-option[data-highlighted],
+.language-switcher-option:focus-visible {
+  background: var(--bg-3);
   color: var(--text);
+  outline: none;
+  box-shadow: none;
 }
 
 .language-switcher-option[data-state='checked'] {

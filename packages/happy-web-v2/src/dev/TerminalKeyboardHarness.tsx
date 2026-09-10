@@ -1,4 +1,5 @@
 /** DEV-only visual harness for the real mobile terminal Web keyboard. */
+import { TerminalConnectionNotice } from '@/screens/terminal/TerminalConnectionNotice';
 import { useState } from 'react';
 import { TermWebKeyboard } from '@/screens/terminal/TermWebKeyboard';
 import '@/screens/terminal/terminal.css';
@@ -15,7 +16,10 @@ function visibleBytes(value: string): string {
 }
 
 export function TerminalKeyboardHarness() {
-  const [open, setOpen] = useState(true);
+  const query = new URLSearchParams(window.location.search);
+  const candidate = query.get('connection');
+  const connection = candidate === 'connecting' || candidate === 'checking' || candidate === 'offline' || candidate === 'failed' ? candidate : null;
+  const [open, setOpen] = useState(!connection);
   const [bytes, setBytes] = useState('');
   const emit = (next: string) => setBytes((current) => current + next);
 
@@ -25,6 +29,7 @@ export function TerminalKeyboardHarness() {
         <strong className="term-title">Terminal keyboard · mobile QA</strong>
       </header>
       <section className="term-host" aria-label="Terminal fixture">
+        <TerminalConnectionNotice state={connection} machineName="example-machine" compact={query.has('compact')} canRetry onRetry={() => {}} onMachine={() => {}} />
         <pre
           data-testid="pty-output"
           style={{ margin: 0, color: 'var(--term-chrome-fg)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}

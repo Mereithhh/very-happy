@@ -4,18 +4,17 @@ import { useNavigate } from 'react-router-dom';
 import { Bot } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 /**
- * ChatHeader — title (editable rename), machine·cwd breadcrumb, connection dot,
+ * ChatHeader — title (editable rename), machine·cwd breadcrumb, relay badge,
  * and the global back button.
  */
 import { useEffect, useState } from 'react';
 import { StickyNote, Check, FolderOpen, MessageCircleQuestion, MoreHorizontal, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useSession } from '@/sync/storage';
-import { useSocketStatus } from '@/app/useConnection';
 import { sessionUpdateTitle } from '@/sync/ops';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { useTranslation } from '@/i18n/useTranslation';
-import { ActionDropdownMenu, Spinner, StatusDot, type MenuItemDef, type Status } from '@/ui';
+import { ActionDropdownMenu, Spinner, type MenuItemDef } from '@/ui';
 import { useIsTablet } from '@/app/useMediaQuery';
 import { planChatHeaderActions, type ChatHeaderActionKey } from './chatHeaderLayout';
 import { useImeGuard } from '@/utils/ime';
@@ -23,15 +22,6 @@ import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { RelayBadge } from '@/components/RelayBadge';
 import { sessionAgentLabel } from './sessionAgentLabel';
 import './header.css';
-
-// Session is "connected" when its agent is online AND our relay socket is up.
-// (Previously gated on the realtime/voice status — a cut feature — so it never
-// showed connected.)
-function connectionStatus(presence: 'online' | number | undefined, socketStatus: string): Status {
-    if (presence !== 'online') return 'offline';
-    if (socketStatus === 'connected') return 'connected';
-    return 'offline';
-}
 
 export function ChatHeader({
     sessionId,
@@ -52,7 +42,6 @@ export function ChatHeader({
     const showTeams = useLocalSetting('happyBotEntryVisible');
     const teams = useTeamNavigation();
     const session = useSession(sessionId);
-    const socketStatus = useSocketStatus();
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
@@ -64,7 +53,6 @@ export function ChatHeader({
     const agent = sessionAgentLabel(meta?.flavor, t('status.unknown'));
     const host = meta?.host;
     const cwd = meta?.path;
-    const status = connectionStatus(session?.presence, socketStatus);
     const machineId = meta?.machineId;
     const [relayStatus, setRelayStatus] = useState<MachineRelayStatus>(() =>
         machineId ? apiSocket.getMachineRelayStatus(machineId) : { transport: 'legacy', state: 'fallback' });
@@ -221,7 +209,6 @@ export function ChatHeader({
             {!editing && (
                 <div className="ch-status">
                     <RelayBadge status={relayStatus} />
-                    <StatusDot status={status} size={9} pulse={status === 'connected'} />
                 </div>
             )}
             {!editing && plan.inline.map(renderAction)}

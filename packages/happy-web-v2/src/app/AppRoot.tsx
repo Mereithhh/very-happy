@@ -1,3 +1,4 @@
+import { RouteError } from './RouteError';
 import { useEffect, useState, lazy, Suspense, type ReactNode } from 'react';
 import {
   createBrowserRouter,
@@ -52,10 +53,10 @@ const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) =>
 const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
 const ChangelogScreen = lazy(() => import('@/screens/changelog/ChangelogScreen').then((m) => ({ default: m.ChangelogScreen })));
 
-function Lazy({ children, fullViewport = true }: { children: ReactNode; fullViewport?: boolean }) {
+function Lazy({ children, fullViewport = true, centered = false }: { children: ReactNode; fullViewport?: boolean; centered?: boolean }) {
   return (
     <Suspense
-      fallback={<RouteLoading fullViewport={fullViewport} />}
+      fallback={<RouteLoading fullViewport={fullViewport} centered={centered} />}
     >
       {children}
     </Suspense>
@@ -178,7 +179,7 @@ const TerminalKeyboardHarness = import.meta.env.DEV
   : null;
 
 const router = createBrowserRouter(
-  [
+  [{ errorElement: <RouteError />, children: [
     ...(SidebarHarness
       ? [
           { path: '/dev/sidebar', element: <Lazy><SidebarHarness /></Lazy> },
@@ -261,7 +262,7 @@ const router = createBrowserRouter(
             { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
-            { path: 'terminal/:machineId', element: <Lazy><WebTerminalRoute /></Lazy> },
+            { path: 'terminal/:machineId', element: <Lazy fullViewport={false} centered><WebTerminalRoute /></Lazy> },
             // B-296: static segment, so it outranks `machine/:id` in the router.
             { path: 'machine/connect', element: <Lazy><ConnectMachineScreen /></Lazy> },
             { path: 'machine/:id', element: <Lazy><MachineScreen /></Lazy> },
@@ -270,7 +271,7 @@ const router = createBrowserRouter(
         },
       ],
     },
-  ],
+  ] }],
   { basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/' },
 );
 

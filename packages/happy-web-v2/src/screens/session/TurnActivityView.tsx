@@ -41,9 +41,8 @@ function TurnActivityViewImpl({
         wasLiveRef.current = live;
     }, [live]);
 
-    // Inside a turn, every tool call is its own disclosure row. Grouping them
-    // would reintroduce an unnecessary hierarchy and prevent independent folds.
-    const rows = useMemo(() => buildLeafRows(messages, null, false, false), [messages]);
+    // Fold only adjacent completed commands; running/error calls and prose keep their own rows.
+    const rows = useMemo(() => buildLeafRows(messages, null, 'completed-terminal', false), [messages]);
     // B-260: a folded turn should still say how many sub-agents ran inside it.
     const subagentCount = useMemo(() => countSubagentCards(messages), [messages]);
     const runningSubagents = useMemo(() => countRunningSubagentCards(messages), [messages]);

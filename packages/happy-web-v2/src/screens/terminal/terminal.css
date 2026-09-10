@@ -733,16 +733,22 @@
   align-items: flex-start;
   justify-content: center;
   gap: 12px;
-  padding: clamp(24px, 12vh, 96px) 20px 20px;
+  padding: 20px;
+  flex-direction: column;
   overflow: auto;
   background: var(--term-bg);
   color: var(--term-chrome-fg);
   font-size: 14px;
   line-height: 1.5;
 }
-.term-connection-notice > svg { flex-shrink: 0; margin-top: 2px; }
+.term-connection-content { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; margin: auto; max-width: 100%; }
+.term-connection-content > svg { flex-shrink: 0; }
+.term-connection-notice .term-connection-loading { --text: var(--term-chrome-fg); padding: 0; color: var(--term-chrome-fg); }
+.term-connection-loading .vh-startup-caption { color: var(--term-chrome-fg); }
+.term-connection-notice.is-compact .term-connection-content { flex-direction: row; align-items: flex-start; text-align: left; margin: 0 auto; }
+.term-connection-notice:not(.is-compact) .term-connection-actions { justify-content: center; }
 .term-connection-copy { min-width: 0; max-width: 440px; }
-.term-connection-copy strong { display: block; font-size: 16px; }
+.term-connection-copy strong { display: block; font-size: 14px; }
 .term-connection-machine { display: block; overflow-wrap: anywhere; color: var(--term-chrome-dim); margin-top: 6px; }
 .term-connection-copy p { margin: 12px 0 0; }
 .term-connection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }

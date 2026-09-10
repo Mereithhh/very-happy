@@ -10,7 +10,7 @@ const props = { machineName: 'dsw-test', compact: false, canRetry: true, onRetry
 it('renders an accessible loading indicator and target identity', () => {
     const html = renderToStaticMarkup(<Notice {...props} state="connecting" />);
     expect(html).toContain('role="status"');
-    expect(html).toContain('term-connection-spinner');
+    expect(html).toContain('term-connection-loading');
     expect(html).toContain('dsw-test');
     expect(html).not.toContain('<button');
 });

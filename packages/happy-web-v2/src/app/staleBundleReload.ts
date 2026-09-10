@@ -32,6 +32,7 @@
  * front of the update would let the user "stay" on the very zombie bundle this
  * module exists to retire.
  */
+import { createChunkRecovery } from './chunkRecovery';
 import { markProgrammaticReload } from '@/app/programmaticReload';
 import { flushPendingDrafts } from '@/app/draftFlush';
 import { getPendingUpdate, setPendingUpdate } from '@/app/pendingUpdate';
@@ -68,15 +69,18 @@ function ownEntryName(): string | null {
 }
 
 async function serverEntryName(): Promise<string | null> {
+  if (navigator.onLine === false) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    const res = await fetch(`/index.html?vh=${Date.now()}`, { cache: 'no-store' });
+    const res = await fetch(`/index.html?vh=${Date.now()}`, { cache: 'no-store', signal: controller.signal });
     if (!res.ok) return null;
     const html = await res.text();
     const m = html.match(ENTRY_RE);
     return m ? m[1] : null;
   } catch {
     return null; // offline / transient — never reload on uncertainty
-  }
+  } finally { clearTimeout(timeout); }
 }
 
 function clearRetry(): void {
@@ -252,3 +256,10 @@ export function installStaleBundleReload(): void {
   // This is non-blocking, so a slow/offline network never holds startup.
   setTimeout(() => void checkOnce(own), 3_000);
 }
+
+/** Lazy-load failure is already blocking navigation, so recover immediately. */
+export const recoverChunkLoad = createChunkRecovery({
+  entry: serverEntryName,
+  storage: () => sessionStorage,
+  apply: applyUpdate,
+});

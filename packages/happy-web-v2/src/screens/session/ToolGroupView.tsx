@@ -1,3 +1,4 @@
+import { isTerminalToolName, getTerminalToolCommand } from '@/utils/toolDisplay';
 /**
  * ToolGroupView — a run of consecutive tool calls rendered as a single
  * collapsible block with a mono font and a teal accent left-spine. The spine
@@ -212,6 +213,10 @@ function ToolGroupViewImpl({
         : null;
     const elapsed = useElapsedSeconds(running ? runningStarted : null);
 
+    const commandRun = tools.every(m => isTerminalToolName(normalizePiToolCall(m.tool).name));
+    const summary = commandRun
+        ? getTerminalToolCommand(normalizePiToolCall(tools[tools.length - 1].tool)) ?? ''
+        : toolRunSummary(tools.map(m => m.tool));
     const single = tools.length === 1;
     if (single) {
         // Single tool: render directly with the spine, no group header.
@@ -243,9 +248,9 @@ function ToolGroupViewImpl({
                     aria-controls={rowsId}
                 >
                     <ChevronRight size={14} className={`tg-chevron${expanded ? ' is-open' : ''}`} />
-                    <span className="tg-summary">{t('session.chat.usedTools', { count: tools.length })}</span>
-                    <span className="tg-run-summary" title={toolRunSummary(tools.map((m) => m.tool))}>
-                        {toolRunSummary(tools.map((m) => m.tool))}
+                    <span className="tg-summary">{t(commandRun ? 'session.chat.commandCount' : 'session.chat.usedTools', { count: tools.length })}</span>
+                    <span className="tg-run-summary" title={summary}>
+                        {summary}
                     </span>
                     {running ? (
                         <span className="tg-elapsed tg-elapsed--live">

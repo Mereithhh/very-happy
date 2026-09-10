@@ -688,6 +688,8 @@ export const en = {
             steerNow: 'Steer now',
             liveThinkingShort: 'Thinking',
             liveRequesting: 'Requesting',
+            liveExecutingTool: ({ tool }: { tool: string }) => tool === 'Bash' ? 'Running command' : `Running ${tool}`,
+            commandCount: ({ count }: { count: number }) => `${count} commands`,
             liveProcessing: 'Working',
             liveInputTokens: 'Input',
             liveOutputTokens: 'Output',
@@ -1829,6 +1831,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10r: {
+                title: 'Clearer activity, smoother updates',
+                summary: 'Compact command groups and more consistent workspace feedback.',
+                activity: 'Completed commands collapse into expandable groups across agents. Activity stays compact, with token details on demand.',
+                polish: 'Menus use a consistent highlight, redundant connection dots are removed, Markdown task lists flow correctly, and terminal loading is centered.',
+                recovery: 'Recover from outdated page modules without a reload loop, with a retry screen when the network is unavailable.',
+            },
             sep10q: {
                 title: 'Clearer agent status',
                 summary: 'One consistent status indicator for conversations and terminals.',

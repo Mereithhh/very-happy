@@ -24,7 +24,6 @@ import type { Session } from '@/sync/storageTypes';
 // aliased: `Settings` is already taken by the lucide gear icon above
 import type { Settings as SyncedSettings } from '@/sync/settings';
 import { StatusDot, QuickThemeToggle, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
-import { useSocketStatus, socketToStatus } from '@/app/useConnection';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useIsDesktop } from '@/app/useMediaQuery';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -145,7 +144,6 @@ export function Sidebar() {
   useEffect(() => {
     if (currentTeamId) setExpandedTeams((current) => current.has(currentTeamId) ? current : new Set([...current, currentTeamId]));
   }, [currentTeamId]);
-  const socket = useSocketStatus();
   const { t, lang } = useTranslation();
   // Three segments, ONE state: 列表/状态 are display modes over the active
   // set, 归档 is a filter over a different set — but three parallel segments
@@ -846,7 +844,6 @@ export function Sidebar() {
         </button>
         <div className="sb-header-right">
           <button className="sb-icon-btn" aria-label={t("sidebar.openSearch")} title={`${t("sidebar.openSearch")} · ⌘K`} onClick={openCommandPalette}><Search size={17}/></button>
-          <StatusDot status={socketToStatus(socket)} pulse={socket === 'connecting'} title={socket} />
           {/* Collapse only exists in the two-pane desktop layout. On mobile
               (single pane) AppLayout ignores `collapsed` entirely, so this
               button did nothing visible — worse, it silently wrote

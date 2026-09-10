@@ -18,7 +18,10 @@ import './styles/tokens.css';
 import './styles/base.css';
 
 import { installPwaPromptCapture } from './app/pwaInstallCapture.ts';
-import { installStaleBundleReload } from './app/staleBundleReload.ts';
+import { installChunkRecovery } from './app/chunkRecovery';
+import { ChunkFailure } from './app/ChunkFailure';
+import { flushPendingDrafts } from './app/draftFlush';
+import { installStaleBundleReload, recoverChunkLoad } from './app/staleBundleReload.ts';
 import { markProgrammaticReload } from './app/programmaticReload.ts';
 import { shouldUsePublicRoot } from './app/rootSelection.ts';
 import { dismissPrepaintSplash } from './app/prepaintSplash.ts';
@@ -55,20 +58,9 @@ registerSW({
   },
 });
 
-// Stale-deploy recovery: after a redeploy the old hashed lazy chunks are gone,
-// so a client still running the previous shell hits "Failed to fetch
-// dynamically imported module" on navigation. Vite surfaces that as
-// `vite:preloadError` — reload once to pick up the new shell (loop-guarded via
-// sessionStorage so a genuinely broken deploy doesn't reload forever).
-window.addEventListener('vite:preloadError', (event) => {
-  const KEY = 'vh-preload-reload-at';
-  const last = Number(sessionStorage.getItem(KEY) || 0);
-  if (Date.now() - last < 30_000) return; // already tried recently — let it throw
-  sessionStorage.setItem(KEY, String(Date.now()));
-  event.preventDefault(); // suppress the error overlay/throw; we're recovering
-  markProgrammaticReload(); // recovery reload — the unload guard must stand down
-  window.location.reload();
-});
+// Do not suppress the failed import: React/router must render its recoverable
+// boundary instead of receiving undefined from Vite's import wrapper.
+installChunkRecovery(window, flushPendingDrafts, recoverChunkLoad);
 
 installStaleBundleReload();
 
@@ -98,4 +90,6 @@ void rootModule.then((RootComponent) => {
   // Public pages have no async account bootstrap. AppRoot owns the
   // authenticated handoff after credentials + persisted sync are restored.
   if (usePublicRoot) dismissPrepaintSplash();
+}).catch((error: unknown) => {
+  createRoot(root).render(<ChunkFailure error={error} />);
 });

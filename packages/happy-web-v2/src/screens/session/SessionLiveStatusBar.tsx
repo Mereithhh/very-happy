@@ -1,3 +1,4 @@
+import { isTerminalToolName } from '@/utils/toolDisplay';
 import { memo } from 'react';
 import { ArrowUp, ArrowDown, Brain, Zap, ChevronDown } from 'lucide-react';
 import { useSession, useSessionRunningTool } from '@/sync/storage';
@@ -66,7 +67,7 @@ export const SessionLiveStatusBar = memo(function SessionLiveStatusBar({ session
         : progress.status === 'requesting' ? 'requesting'
         : 'working';
     const label = phase === 'compacting' ? t('session.chat.liveCompacting')
-        : phase === 'tool' ? runningTool!.name
+        : phase === 'tool' ? t('session.chat.liveExecutingTool', { tool: isTerminalToolName(runningTool!.name) ? 'Bash' : runningTool!.name })
         : phase === 'requesting' ? t('session.chat.liveRequesting')
         : t('session.chat.liveProcessing');
     const names = {
@@ -90,9 +91,9 @@ export const SessionLiveStatusBar = memo(function SessionLiveStatusBar({ session
             <summary className="lsb-content">
                 <LiveActivityMark />
                 <span className="lsb-label" role="status" aria-live="polite" title={label}>{label}</span>
-                <ChevronDown size={12} className="lsb-chevron" aria-hidden="true" />
+                <span className="lsb-separator" aria-hidden="true">·</span>
                 <span className="lsb-elapsed">{formatElapsed(elapsed)}</span>
-                <span className="lsb-counts">{metrics.filter(m => m.kind === 'input' || m.kind === 'output').map(metricNode)}</span>
+                <ChevronDown size={12} className="lsb-chevron" aria-hidden="true" />
             </summary>
             <div className="lsb-details">
                 <strong>{label}</strong>
