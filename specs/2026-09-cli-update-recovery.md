@@ -134,8 +134,7 @@ using production CSS passed. CLI publish/promote 34425626732 and push smoke
 34425626730 attempt 1 use tag v0.2.133 / b245843a3; all six Linux/macOS/Windows ×
 Node 20/24 jobs passed. npm latest is 0.2.133. mac-office runs 0.2.133 under
 launchd, advertises `manualUpdateSupported`, rejects an invalid version through
-the new authenticated RPC, and answers the read-only terminal-list RPC. Existing
-terminals remain present. Auto-install approval remains 0.2.132; recommending or
+the new authenticated RPC, and answers the read-only terminal-list RPC. The terminal-list response contains three terminals. Auto-install approval remains 0.2.132; recommending or
 manually requesting a version does not change it. Rollback: Web 8e8c03f0e,
 CLI 0.2.132. All local gates passed: wire 82, Web 2755, CLI 2103, server 647
 (one existing skip), required builds/typechecks and executable version smoke.
