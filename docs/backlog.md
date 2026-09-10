@@ -20,7 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-453 | 子代理工作区、预览记录、Claude 运行控制与 Agent 更新提示 | feat | Owner 2026-09-11 | done | SDK 0.3.267；子代理与工具字号统一、命令合并、实际模型和任务状态展示；预览记录可重开；MCP/任务/文件回退控制；Agent 版本检测与 SDK 依赖更新 PR。发布目标 CLI 0.2.135，见 subagent-parity 与 agent-version-detection spec。 |
+| B-453 | 子代理工作区、预览记录、Claude 运行控制与 Agent 更新提示 | feat | Owner 2026-09-11 | done | SDK 0.3.267；子代理与工具字号统一、命令合并、实际模型和任务状态展示；预览记录可重开；MCP/任务/文件回退控制；Agent 版本检测与 SDK 依赖更新 PR。PR #352，Web/Server f726b440；CLI v0.2.135 同一提交，见 subagent-parity 与 agent-version-detection spec。 |
 | B-449 | 文件代码预览去除内嵌底色与重复留白 | ux | Owner 2026-09-10 | done | Shiki 预览继承宿主表面，代码仅保留一层内边距；聊天代码卡片不变。 |
 | B-448 | 统一右侧文件工作区与正文接缝 | ux | Owner 2026-09-10 | done | 右栏共用正文画布，去掉拖拽色带；文件预览继承宿主，保留单像素边线与标签选中态。 |
 | B-447 | 文件预览下载、表格、内容复制与固定到工作区 | feat | Owner 2026-09-10 | done | 修复 RTL 路径显示；统一弹窗/浏览器下载与复制；Excel 本地 worker 预览，默认文件入口，预览固定到右栏。 |
