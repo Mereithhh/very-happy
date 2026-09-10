@@ -1827,6 +1827,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10m: {
+                title: 'A more cohesive workspace',
+                summary: 'The conversation and file pane now share one continuous canvas.',
+                surface: 'Removed the bright resize strip and mismatched file backgrounds. Thin dividers, selected tabs and panel resizing remain clear.',
+            },
             sep10l: {
                 title: 'More useful file previews',
                 summary: 'Read, copy and download files without leaving your conversation.',

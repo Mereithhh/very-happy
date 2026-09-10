@@ -59,15 +59,16 @@
   width: max(320px, 36vw);
   max-width: min(60vw, calc(100% - 320px)); /* belt: a width stored on a big monitor can't crush the chat */
   border-left: 1px solid var(--line);
-  background: var(--bg-1);
+  background: var(--bg-0);
   display: flex;
   min-height: 0;
 }
-.sd-files-handle {
+.app-resize-handle.sd-files-handle {
+  background: var(--bg-0);
   flex: none;
   width: 6px; /* visuals come from .app-resize-handle (layout.css) */
 }
-/* the handle's 2px line IS the seam — a border-left too would double it */
+/* the handle's 1px line IS the seam — a border-left too would double it */
 .sd-files-handle + .sd-files {
   border-left: none;
 }

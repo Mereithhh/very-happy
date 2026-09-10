@@ -6,7 +6,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: var(--bg-1);
+  background: transparent;
 }
 .fsb-bar {
   flex: none;
@@ -176,7 +176,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: var(--bg-1);
+  background: transparent;
 }
 .fsb-viewer-head {
   flex: none;
@@ -185,7 +185,7 @@
   gap: var(--sp-1);
   padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
   border-bottom: 1px solid var(--line);
-  background: var(--bg-2);
+  background: transparent;
 }
 .fsb-viewer-path {
   flex: 1;

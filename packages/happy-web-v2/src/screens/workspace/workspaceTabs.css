@@ -1,7 +1,7 @@
-.workspace-tabs { display:flex; align-items:stretch; flex:none; min-width:0; min-height:40px; background:var(--bg-1); border-bottom:1px solid var(--line); }
+.workspace-tabs { display:flex; align-items:stretch; flex:none; min-width:0; min-height:40px; background:transparent; border-bottom:1px solid var(--line); }
 .workspace-tabstrip { display:flex; min-width:0; flex:1; overflow-x:auto; scrollbar-width:thin; }
 .workspace-tab { display:flex; align-items:stretch; flex:none; max-width:240px; color:var(--text-dim); border-right:1px solid var(--line); }
-.workspace-tab.is-active { background:var(--bg-0); color:var(--text); }
+.workspace-tab.is-active { background:var(--bg-2); color:var(--text); }
 .workspace-tab.is-drop-target { box-shadow:inset 2px 0 var(--accent); }
 .workspace-tab-label { min-width:0; padding:8px 10px; font-size:var(--fs-12); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .workspace-tab-close { display:grid; place-items:center; flex:none; width:24px; color:var(--text-faint); }
