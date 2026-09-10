@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-right-workspace-polish',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10p.title',
+    summaryKey: 'changelog.releases.sep10p.summary',
+    itemKeys: ['changelog.releases.sep10p.workspace', 'changelog.releases.sep10p.motion'],
+  },
+  {
     id: '2026-09-10-sidebar-status-alignment',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,

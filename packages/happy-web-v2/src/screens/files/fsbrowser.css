@@ -13,7 +13,7 @@
   display: flex;
   align-items: center;
   gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
+  padding: 6px 12px;
   border-bottom: 1px solid var(--line);
 }
 .fsb-crumbs {
@@ -24,7 +24,7 @@
   overflow-x: auto;
   scrollbar-width: none;
   white-space: nowrap;
-  font-size: var(--fs-11);
+  font-size: var(--fs-12);
 }
 .fsb-crumbs::-webkit-scrollbar {
   display: none;
@@ -55,8 +55,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--r-sm);
   color: var(--text-dim);
 }
@@ -94,8 +94,10 @@
   gap: var(--sp-2);
   width: 100%;
   text-align: left;
-  padding: 4px var(--sp-3);
-  font-size: var(--fs-12);
+  padding: 6px var(--sp-3);
+  min-height:32px;
+  border-radius:var(--r-sm);
+  font-size: var(--fs-13);
   color: var(--text-dim);
 }
 .fsb-row:hover {
@@ -183,7 +185,7 @@
   display: flex;
   align-items: center;
   gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
+  padding: 6px 12px;
   border-bottom: 1px solid var(--line);
   background: transparent;
 }
@@ -326,8 +328,8 @@
 .fsb-split > .fsb-viewer { min-width:0; flex:1; }
 .fsb-shell.has-preview .fsb-split > .fsb { flex:0 0 240px; border-right:1px solid var(--line); }
 .fsb-tree { display:flex; flex-direction:column; min-height:0; height:100%; }
-.fsb-tree-list { flex:1; min-height:0; overflow:auto; }
-.fsb-filter { flex:none; display:flex; align-items:center; gap:var(--sp-2); margin:var(--sp-2); padding:var(--sp-1) var(--sp-2); border:1px solid var(--line); border-radius:var(--r-sm); color:var(--text-faint); }
+.fsb-tree-list { flex:1; min-height:0; overflow:auto; padding:4px 8px; }
+.fsb-filter { flex:none; display:flex; align-items:center; gap:var(--sp-2); margin:var(--sp-2); padding:var(--sp-1) var(--sp-2); border:1px solid transparent; background:var(--bg-1); border-radius:var(--r-md); color:var(--text-faint); }
 .fsb-filter input { min-width:0; width:100%; background:transparent; border:0; color:var(--text); font:inherit; }
 .fsb-tree-row { gap:var(--sp-2); text-align:left; }
 .fsb-tree-row > svg, .fsb-tree-spacer { flex:none; }

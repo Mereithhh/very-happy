@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { ArrowUp, ArrowDown, Brain, Zap } from 'lucide-react';
+import { ArrowUp, ArrowDown, Brain, Zap, ChevronDown } from 'lucide-react';
 import { useSession, useSessionRunningTool } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
@@ -90,6 +90,7 @@ export const SessionLiveStatusBar = memo(function SessionLiveStatusBar({ session
             <summary className="lsb-content">
                 <LiveActivityMark />
                 <span className="lsb-label" role="status" aria-live="polite" title={label}>{label}</span>
+                <ChevronDown size={12} className="lsb-chevron" aria-hidden="true" />
                 <span className="lsb-elapsed">{formatElapsed(elapsed)}</span>
                 <span className="lsb-counts">{metrics.filter(m => m.kind === 'input' || m.kind === 'output').map(metricNode)}</span>
             </summary>

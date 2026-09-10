@@ -1827,6 +1827,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10p: {
+                title: 'A lighter side workspace',
+                summary: 'Files, notes and side questions now share a compact layout.',
+                workspace: 'Open tools from the + menu, with stable close buttons on tabs. Notes match conversation typography and side questions use a simpler composer.',
+                motion: 'Panels fade in gently. Activity rows stay transparent on hover, using text and chevrons for feedback. Reduced motion preferences remain respected.',
+            },
             sep10o: {
                 title: 'Aligned sidebar status indicators',
                 summary: 'Running and attention indicators now share the same center line.',

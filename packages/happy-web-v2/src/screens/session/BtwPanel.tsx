@@ -9,7 +9,7 @@
  * disabled composer (铁律 14: capability per session, never per machine).
  */
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircleQuestion, Send, Square, Trash2, X } from 'lucide-react';
+import { MessageCircleQuestion, ArrowUp, Square, Trash2, X } from 'lucide-react';
 import { useSession, useSetting } from '@/sync/storage';
 import { btwStore, useBtwSession, type BtwExchange } from '@/sync/btwStore';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -120,7 +120,7 @@ export function BtwPanel({ sessionId, onClose, embedded = false, active = true }
 
     return (
         <div className="btw">
-            <div className={`btw-head${embedded ? ' btw-head--embedded' : ''}`}>
+            {!embedded && <div className={`btw-head${embedded ? ' btw-head--embedded' : ''}`}>
                 {!embedded && <MessageCircleQuestion size={15} className="btw-head-icon" />}
                 {!embedded && <span className="btw-title">{t('session.btw.title')}</span>}
                 <span className="btw-head-hint">{t('session.btw.subtitle')}</span>
@@ -138,11 +138,12 @@ export function BtwPanel({ sessionId, onClose, embedded = false, active = true }
                 {!embedded && <button type="button" className="btw-icon" onClick={onClose} aria-label={t('session.btw.close')} title={t('session.btw.close')}>
                     <X size={16} />
                 </button>}
-            </div>
+            </div>}
 
             <div className="btw-body" ref={bodyRef}>
                 {exchanges.length === 0 ? (
                     <div className="btw-empty">
+                        <MessageCircleQuestion size={28} strokeWidth={1.5} className="btw-empty-icon" aria-hidden />
                         <div className="btw-empty-title">{t('session.btw.emptyTitle')}</div>
                         <div className="btw-empty-desc">{t('session.btw.emptyDesc')}</div>
                     </div>
@@ -173,6 +174,9 @@ export function BtwPanel({ sessionId, onClose, embedded = false, active = true }
                         onCompositionEnd={ime.onCompositionEnd}
                         aria-label={t('session.btw.title')}
                     />
+                    <div className="btw-composer-tools">
+                    <span className="btw-composer-hint">{t('session.btw.subtitle')}</span>
+                    {embedded && exchanges.length > 0 && !running && <button type="button" className="btw-icon" onClick={() => btwStore.getState().clear(sessionId)} aria-label={t('session.btw.clear')} title={t('session.btw.clear')}><Trash2 size={15}/></button>}
                     {running ? (
                         <button
                             type="button"
@@ -192,9 +196,10 @@ export function BtwPanel({ sessionId, onClose, embedded = false, active = true }
                             aria-label={t('session.btw.send')}
                             title={t('session.btw.send')}
                         >
-                            <Send size={15} />
+                            <ArrowUp size={18} />
                         </button>
                     )}
+                    </div>
                 </div>
             </div>
         </div>

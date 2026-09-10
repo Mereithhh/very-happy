@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Maximize2, Plus } from 'lucide-react';
+import { Maximize2, SquarePen } from 'lucide-react';
 import { useLocalSetting } from '@/sync/storage';
 import { useNotes } from '@/sync/notesStore';
 import { noteDisplayTitle } from '@/sync/notes';
@@ -37,7 +37,7 @@ export function useNotesWorkspace(active = true) {
     onMove:(id,target)=>moveNoteTab(id.slice(5),target.slice(5)),
   };
   const actions = <>
-    <button type="button" className="notes-tab--icon" onClick={createNote} aria-label={t('notes.new')} title={t('notes.new')}><Plus size={14}/></button>
+    <button type="button" className="notes-tab--icon" onClick={createNote} aria-label={t('notes.new')} title={t('notes.new')}><SquarePen size={15}/></button>
     <button type="button" className="notes-tab--icon" onClick={()=>navigate('/notes')} aria-label={t('notes.fullscreen')} title={t('notes.fullscreen')}><Maximize2 size={13}/></button>
   </>;
   const content = <div className="notes-dock-body">
