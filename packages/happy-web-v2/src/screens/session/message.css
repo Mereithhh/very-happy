@@ -32,8 +32,8 @@
   border: 0;
   border-radius: 20px;
   padding: 12px 18px;
-  font-size: var(--fs-14);
-  line-height: 1.55;
+  font-size: var(--conversation-size);
+  line-height: var(--conversation-leading);
   color: var(--message-user-text);
 }
 /* Long user queries (B-102): clamp + fade + explicit expand toggle. No nested
@@ -44,9 +44,9 @@
   overflow-wrap: anywhere;
 }
 .msg-bubble-text--clamped {
-  /* ~10 visible lines at the bubble's 1.55 line-height; the JS threshold
+  /* ~10 visible lines at the bubble's 1.6 line-height; the JS threshold
    * (codeCollapse.ts BUBBLE_VISIBLE_LINES) mirrors this cap */
-  max-height: calc(1.55em * 10);
+  max-height: calc(var(--conversation-leading) * 1em * 10);
   overflow: hidden;
 }
 .msg-bubble-fade {
@@ -94,8 +94,11 @@
 
 /* agent text — borderless */
 .msg-agent-text {
-  font-size: var(--fs-16);
-  line-height: 1.7;
+  --markdown-leading: var(--conversation-leading);
+  --markdown-gap: var(--sp-3);
+  --markdown-list-gap: var(--sp-1);
+  font-size: var(--conversation-size);
+  line-height: var(--conversation-leading);
   color: var(--text);
   max-width: 100%;
   min-width: 0;

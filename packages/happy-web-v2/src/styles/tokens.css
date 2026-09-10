@@ -213,6 +213,11 @@
   --fs-32: 32px;
   --fs-40: 40px;
 
+  /* Workspace primary labels and transcript text share a desktop baseline. */
+  --workspace-primary-size: var(--fs-14);
+  --conversation-size: var(--fs-14);
+  --conversation-leading: 1.6;
+
   /* spacing (4px base) */
   --sp-1: 4px;
   --sp-2: 8px;
@@ -249,4 +254,8 @@
     --motion-med: 0ms;
     --motion-slow: 0ms;
   }
+}
+
+@media (pointer: coarse), (max-width: 860px) {
+  :root { --conversation-size: var(--fs-15); }
 }

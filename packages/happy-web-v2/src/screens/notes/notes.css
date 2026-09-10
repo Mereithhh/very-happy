@@ -451,6 +451,6 @@
 @media (pointer:coarse) {
  .notes-screen-new, .notes-meta-btn, .notes-insert-btn, .notes-screen-back, .notes-bind-chip, .notes-list-pin { min-height:44px; }
  .notes-screen-new, .notes-meta-btn, .notes-list-pin { min-width:44px; }
- .notes-editor-ta, .notes-screen-filter { font-size:var(--fs-17); }
+ .notes-editor-ta, .notes-screen-filter { font-size:var(--fs-16); }
  .notes-list-item:has(.notes-list-pin) .notes-list-row { padding-right:56px; min-height:56px; }
 }

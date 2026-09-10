@@ -35,8 +35,8 @@ describe('composerTextareaHeight', () => {
         expect(composerTextareaHeight(false, 420, 1000)).toBe(COMPOSER_MAX_HEIGHT);
     });
 
-    it('gives a phone composer a useful three-line minimum without changing desktop sizing', () => {
-        expect(composerTextareaHeight(false, 24, 800, COMPOSER_MOBILE_MIN_HEIGHT)).toBe(72);
+    it('gives a phone composer a compact minimum without changing desktop sizing', () => {
+        expect(composerTextareaHeight(false, 24, 800, COMPOSER_MOBILE_MIN_HEIGHT)).toBe(50);
         expect(composerTextareaHeight(false, 120, 800, COMPOSER_MOBILE_MIN_HEIGHT)).toBe(120);
         expect(composerTextareaHeight(false, 24, 800)).toBe(24);
     });

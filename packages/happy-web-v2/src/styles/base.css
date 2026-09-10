@@ -107,7 +107,7 @@ select,
     select,
     [contenteditable]:not([contenteditable='false' i])
   ):not(:where(.xterm, .xterm *)) {
-    font-size: var(--fs-17);
+    font-size: var(--fs-16);
   }
 
   /* xterm paints this textarea invisibly and positions it with inline cell

@@ -23,13 +23,13 @@ describe('mobile Safari editable font floor', () => {
     expect(rule).toContain('@media (pointer: coarse), (max-width: 860px)');
   });
 
-  it('covers every focusable text-editing surface with a 17px token', () => {
+  it('covers every focusable text-editing surface with a 16px token', () => {
     expect(rule).toContain(':is(#root, body) :where(');
     expect(rule).toMatch(/\binput,/);
     expect(rule).toMatch(/\btextarea,/);
     expect(rule).toMatch(/\bselect,/);
     expect(rule).toContain("[contenteditable]:not([contenteditable='false' i])");
-    expect(rule.slice(0, rule.indexOf(':is(#root, body) .xterm'))).toContain('font-size: var(--fs-17);');
+    expect(rule.slice(0, rule.indexOf(':is(#root, body) .xterm'))).toContain('font-size: var(--fs-16);');
   });
 
   it('uses root specificity so later component classes cannot lower the floor', () => {

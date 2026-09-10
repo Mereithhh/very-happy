@@ -334,7 +334,7 @@
 .fsb-tree-spacer { width:13px; }
 .fsb-tree-row.is-selected { background:var(--bg-2); color:var(--text); }
 @container (max-width:619px) { .fsb-shell.has-preview .fsb-split > .fsb { display:none; } }
-@media (pointer:coarse), (max-width:600px) { .fsb-filter input { font-size:17px; min-height:36px; } }
+@media (pointer:coarse), (max-width:600px) { .fsb-filter input { font-size:16px; min-height:36px; } }
 
 .fsb-shell.fsb--full > .fsb-split > .fsb > .fsb-bar,
 .fsb-shell.fsb--full > .fsb-split > .fsb-viewer > .fsb-viewer-head { padding-top:max(var(--sp-1),env(safe-area-inset-top)); }

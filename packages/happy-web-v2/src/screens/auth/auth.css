@@ -388,7 +388,7 @@
   .auth-form-header h2 { font-size: var(--fs-20); }
   .auth-email { padding: var(--sp-3); }
   .auth-card--login .auth-email { padding: 0; }
-  #root .auth-card :is(input, textarea, select) { font-size: 17px; }
+  #root .auth-card :is(input, textarea, select) { font-size: 16px; }
 }
 @media (max-width: 720px), (max-height: 500px) {
   .auth-page { background: var(--bg-0); }

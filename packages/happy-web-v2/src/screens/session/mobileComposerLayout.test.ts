@@ -20,7 +20,7 @@ describe('mobile composer layout contract', () => {
     it('gives the text its own row and keeps controls in a fixed toolbar below it', () => {
         expect(component).toContain('<div className="ci-composer-toolbar">');
         expect(component).toContain('<div className="ci-composer-tools">');
-        expect(input).toMatch(/\.ci-textarea \{[\s\S]*grid-row: 1;[\s\S]*min-height: 72px;/);
+        expect(input).toMatch(/\.ci-textarea \{[^}]*grid-row: 1;[^}]*min-height: 50px;/);
         expect(input).toMatch(/\.ci-composer-toolbar \{[\s\S]*grid-row: 2;[\s\S]*justify-content: space-between;/);
     });
 

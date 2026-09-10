@@ -1,5 +1,5 @@
 /* Proposed workspace standard. Scoped to the DEV review until Owner accepts it. */
-.wd { display:grid; grid-template-columns:260px minmax(0,1fr); height:100dvh; overflow:hidden; color:var(--text); background:var(--bg-0); font:13px/1.5 var(--font-sans); }
+.wd { display:grid; grid-template-columns:260px minmax(0,1fr); height:100dvh; overflow:hidden; color:var(--text); background:var(--bg-0); font:14px/1.5 var(--font-sans); }
 .wd *, .wd *::before, .wd *::after { box-sizing:border-box; }
 .wd button { cursor:pointer; }
 .wd button:focus, .wd input:focus, .wd textarea:focus, .wd select:focus { outline:none; box-shadow:none; }
@@ -146,7 +146,7 @@
  .wd-task-more { display:flex; width:44px; height:44px; }
  .wd-tools, .wd-nav > button, .wd-project, .wd-option, .wd-permission, .wd-model, .wd-queued button, .wd-answer-actions button, .wd-effort-options button { min-height:44px; }
  .wd-queued button, .wd-answer-actions button { min-width:44px; }
- .wd-composer textarea, .wd-search input { font-size:17px; }
+ .wd-composer textarea, .wd-search input { font-size:16px; }
  .wd-toolbar { gap:2px; }
  .wd-assistant { font-size:15px; }
 }
@@ -198,10 +198,10 @@
  .wd-settings-row select { max-width:100%; }
  .wd-settings-content h1 { margin-bottom:22px; }
  /* Width fallback also covers phone browsers without pointer emulation. */
- #root .wd :is(input, textarea, select) { font-size:17px; }
+ #root .wd :is(input, textarea, select) { font-size:16px; }
 }
 @media (pointer:coarse) {
- #root .wd :is(input, textarea, select) { font-size:17px; }
+ #root .wd :is(input, textarea, select) { font-size:16px; }
  .wd-switch { min-height:44px; width:44px; background:transparent; position:relative; }
  .wd-switch::before { content:''; position:absolute; inset:10px 0; background:var(--bg-3); border-radius:var(--r-pill); }
  .wd-switch span { position:relative; }

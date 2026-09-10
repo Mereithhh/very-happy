@@ -75,7 +75,7 @@
   .product-preview .mrb-note { flex-wrap: wrap; }
   .product-preview .mrb-note-text { flex-basis: calc(100% - 90px); }
   .product-preview .mrb-term-btn { order: 3; }
-  .product-preview .mri-input { font-size: var(--fs-17); }
+  .product-preview .mri-input { font-size: var(--fs-16); }
 }
 
 @media (prefers-reduced-motion: reduce) {
