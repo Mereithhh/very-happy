@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10g: {
+                title: '等待推送时也能手动更新 CLI',
+                summary: '推荐等待自动推送，需要提前体验时也有清晰的手动入口。',
+                action: '新版 CLI 等待推送提示新增立即更新，更新当前机器，空闲后安装，不中断会话。',
+                compatibility: '远程更新需要机器运行 CLI 0.2.133 或更高版本；旧版提供固定版本升级命令。',
+            },
             sep10f: {
                 title: '运行状态跟随正文',
                 summary: '正文与输入框对齐，对话中的运行提示更轻盈。',
@@ -2612,7 +2618,7 @@ export const zhHans: TranslationStructure = {
 
     cliUpdate: {
         retry: '重试更新',
-        retryHelp: '机器空闲后，对当前批准版本重试一次。',
+        retryHelp: '机器空闲后，对当前目标版本重试一次。',
         retryAccepted: '已受理重试，机器空闲后开始安装。',
         retryFailed: '未受理重试，请检查连接和批准版本，或使用手动升级命令。',
         recovery: {
@@ -2629,9 +2635,16 @@ export const zhHans: TranslationStructure = {
             manual: '暂时无法确认自动更新状态，可稍后查看',
         },
         automaticTitle: '稍等，CLI 会自动更新',
+        updateNow: '立即更新',
+        manualUpdate: '手动更新',
+        requesting: '正在请求…',
+        requested: '已请求更新',
+        requestAccepted: '更新请求已接受，机器空闲后会安装。当前会话不会被中断。',
+        requestFailed: '更新请求未确认。请查看机器状态后重试，或等待自动推送。',
+        legacyManualHelp: '这台机器的 CLI 暂不支持远程手动更新。推荐等待自动推送；也可在这台机器的终端执行以下命令。',
         pendingTitle: '新版 CLI 等待推送',
         automaticSummary: ({ machine, target }: { machine: string; current: string; target: string; count: number }) => `${machine} 将自动更新到 ${target}。运行中的会话和终端结束后完成更新，无需手动操作。`,
-        pendingSummary: ({ machine, target }: { machine: string; current: string; target: string; count: number }) => `${machine} 可更新到 ${target}，此版本尚未开始自动推送。暂时无需操作。`,
+        pendingSummary: ({ machine, target }: { machine: string; current: string; target: string; count: number }) => `${machine} 可更新到 ${target}，此版本尚未开始自动推送。推荐等待推送，也可手动更新。`,
         availableEyebrow: 'CLI 可更新',
         requiredEyebrow: 'CLI 必须更新',
         availableTitle: '新的机器端运行时已可用',

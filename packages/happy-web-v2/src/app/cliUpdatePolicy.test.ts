@@ -103,3 +103,14 @@ describe('automatic update messaging', () => {
    Object.assign(m.daemonState.cliUpdate, {autoUpdate: {state:'failed', version:'0.2.128'}});
    expect(visibleCliUpdateNotices([m], {a:'0.2.126'}, now)).toHaveLength(1);
  });
+
+it('recognizes only fresh, explicitly manual progress for the exact recommendation', () => {
+ const now=Date.now(); const m=machine('a','0.2.132','0.2.133');
+ Object.assign(m.daemonState.cliUpdate,{checkedAt:now,autoUpdateVersion:null,autoUpdate:{state:'waiting_idle',version:'0.2.133',source:'manual'}});
+ expect(machineCliUpdateNotice(m,now)).toMatchObject({delivery:'automatic',automaticVersion:'0.2.133'});
+ expect(machineCliUpdateNotice(m,now+66*60_000)?.delivery).toBe('unknown');
+ Object.assign(m.daemonState.cliUpdate,{autoUpdate:{state:'waiting_idle',version:'0.2.133'}});
+ expect(machineCliUpdateNotice(m,now)?.delivery).not.toBe('automatic');
+ Object.assign(m.daemonState.cliUpdate,{autoUpdate:{state:'waiting_idle',version:'0.2.134',source:'manual'}});
+ expect(machineCliUpdateNotice(m,now)?.delivery).not.toBe('automatic');
+});

@@ -4,6 +4,8 @@
   right: max(var(--sp-4), env(safe-area-inset-right));
   z-index: 900;
   width: min(460px, calc(100vw - 2 * var(--sp-4)));
+  max-height: calc(100dvh - 2 * var(--sp-4));
+  overflow-y: auto;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--sp-3);
@@ -37,4 +39,11 @@
   .cli-update { left: max(var(--sp-3), env(safe-area-inset-left)); right: max(var(--sp-3), env(safe-area-inset-right)); top: max(var(--sp-3), env(safe-area-inset-top)); width: auto; }
   .cli-update__actions { align-items: stretch; flex-direction: column; }
   .cli-update__actions button { justify-content: center; width: 100%; min-height: 44px; }
+}
+
+.cli-update__actions button:disabled { opacity: .6; cursor: default; }
+.cli-update__manual code { display: block; margin-top: var(--sp-2); font-size: var(--fs-11); line-height: 1.6; overflow-wrap: anywhere; user-select: text; }
+@media (pointer: coarse) {
+  .cli-update__close { width: 44px; height: 44px; }
+  .cli-update__actions button { min-height: 44px; }
 }

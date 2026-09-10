@@ -98,3 +98,32 @@ later. Windows process-tree behavior is covered by mocked invocation tests, not
 a local Windows host run.
 
 Online machines retain manual_required instructions even when the approved-version policy expires: the installer fence deliberately stops policy refresh. Offline status still indicates that the displayed state is not live.
+
+## Explicit update before automatic rollout (B-442)
+
+Status: Implemented and verified; pending release as CLI 0.2.133.
+
+The pending-rollout notice keeps waiting for automatic delivery as the recommended
+choice and adds a manual action for the displayed machine and exact version.
+`cli-update-request { version }` is an authenticated machine RPC; it re-fetches
+relay policy and accepts only the current recommended version, newer than the
+running CLI and not below the minimum. It acknowledges scheduling, not installation.
+It shares the existing controller fence, idle check, bounded installer and handover
+preflight. It never kills sessions or changes `CLI_AUTO_UPDATE_VERSION` / settings.
+An explicit request may run when unattended installation is disabled.
+
+Add optional `manualUpdateSupported` and `autoUpdate.source: 'manual'` to daemon
+state. The exact manual intent lives in this daemon controller; restart cancels an
+unstarted request. Policy changes revoke it rather than selecting another version.
+Failed manual installs remain failed until a matching explicit retry/request;
+installer termination uncertainty still requires manual recovery. Duplicate requests
+while waiting/installing/installed cannot schedule another install.
+
+Compatibility: new Web checks the reported capability, never a version threshold.
+Old daemons expose a pinned copyable install command with a clear explanation,
+not a nonfunctional one-click RPC. Old Web ignores additive fields. Deploy Web
+before CLI; no server or wire schema change is needed for opaque daemon state.
+Tests cover fresh policy, invalid/stale/mismatched versions, disabled unattended
+updates, busy wait, duplicate/concurrent requests, revocation, failure/retry,
+blocked installer and handover exclusion; browser covers pending recommendation,
+manual acknowledgement/failure and legacy command in both themes/mobile sizes.

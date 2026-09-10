@@ -25,3 +25,14 @@ describe('machine update recovery',()=>{
   await expect(retryMachineUpdate('m','0.2.123')).resolves.toBeUndefined();
  });
 });
+
+import { requestMachineUpdate } from './cliUpdateRecovery';
+it('requests one exact machine/version and requires an explicit accepted acknowledgement', async () => {
+ for (const result of [null, {}, {error:'update_policy_changed_or_unavailable'}, {accepted:false}]) {
+  vi.mocked(apiSocket.machineRPC).mockResolvedValue(result);
+  await expect(requestMachineUpdate('target-machine','0.2.133')).rejects.toThrow();
+ }
+ vi.mocked(apiSocket.machineRPC).mockResolvedValue({accepted:true});
+ await expect(requestMachineUpdate('target-machine','0.2.133')).resolves.toBeUndefined();
+ expect(apiSocket.machineRPC).toHaveBeenLastCalledWith('target-machine','cli-update-request',{version:'0.2.133'});
+});

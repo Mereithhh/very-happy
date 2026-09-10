@@ -105,6 +105,12 @@ that a release is safe to push onto other people's machines while they are away.
 If it ever feels like friction worth removing, re-read this paragraph — removing
 it is exactly the change it exists to prevent.
 
+A user may explicitly request the freshly recommended exact version for one
+machine from the pending-rollout banner (B-442, CLI 0.2.133+). This does not
+change `CLI_AUTO_UPDATE_VERSION` or the machine's automatic-update preference.
+It still waits for idle and uses the same installer fence. Older machines show
+the fixed-version terminal command. See [update recovery](../specs/2026-09-cli-update-recovery.md).
+
 ## Google login
 
 Set `GOOGLE_CLIENT_ID` and `GOOGLE_ALLOWED_ORIGINS` together. Create your own Web
