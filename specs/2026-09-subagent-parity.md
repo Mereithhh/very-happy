@@ -1,6 +1,6 @@
 # 子代理模型与执行过程对齐
 
-状态：已实现并本地验证，发布目标 CLI 0.2.135；不宣称官方全能力等价。
+状态：实现已合入 [PR #352](https://github.com/Mereithhh/very-happy/pull/352)，Web/Server 于 2026-09-11 上线 `f726b440`；CLI 发布标签 `v0.2.135` 指向同一提交。
 
 ## 数据约定
 
@@ -39,3 +39,5 @@ Codex 真实 app-server 隔离探针：当前原生子代理由 subAgentActivity
 字号核验：任务名称与运行状态由 12/11px 改为 conversation-size，css-probe 确认桌面 14px、320/390px coarse 15px，浏览器三尺寸明暗主题交互无溢出。
 
 发布前链路回归：SDK converter → OutgoingMessageQueue → mapper 按顺序透传 task_started/updated/progress/notification，其他 system 帧仍过滤；延迟的 tool call 不被生命周期事件超越。Codex live 开始/完成快照用不同 envelope ID，保留相同 call ID；Web 更新已知接收线程列表，历史回填不擦掉新快照。嵌套子线程仅展示本地可读详情，不把其局部消息 ID 送入父会话索引。运行入口复用当前 turn、在线/心跳与归档判据，失活时隐藏入口，不推断任务已完成。
+
+发布核验：完整镜像切换成功，线上 entry 与本批预览/运行控制资源均为 f726b440；保留旧页面实测 controllerchange 后加载新 entry，无 pageerror。回滚保留 4d267c4d 镜像。CLI 由 [tag publish workflow](https://github.com/Mereithhh/very-happy/actions/runs/34513241036) 与 [六平台 smoke](https://github.com/Mereithhh/very-happy/actions/runs/34513241048) 发布和提升推荐版本；自动安装 pin 独立，现有 wrapper 不热加载。上述本地验证记录均为发布前证据，不等同于官方 CLI 全能力等价。

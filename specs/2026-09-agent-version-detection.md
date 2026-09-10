@@ -1,6 +1,6 @@
 # Coding agent 版本检测与 SDK 升级
 
-状态：已实现并本地验证，发布目标 CLI 0.2.135。
+状态：实现已合入 [PR #352](https://github.com/Mereithhh/very-happy/pull/352)，Web/Server 于 2026-09-11 上线 `f726b440`；CLI 发布标签 `v0.2.135` 指向同一提交。
 
 ## 行为
 
@@ -53,3 +53,5 @@ Review 补强：status 包含实例隔离的 queryGeneration；换代后旧 runn
 本批最终核验：Web 全量 2806 项，review 后新增/修订专项 5 项；CLI 全量 2155 项，review 后 runtimeControls 9 项与 claudeRemote 17 项专项；wire 82 项；Server 649 项通过、1 项原有跳过。Web/CLI/Server 类型检查和构建通过，生成 CLI --version 可执行。浏览器侧栏手机/桌面明暗主题品牌与导航中心同为 x=25，分组只保留新建加号。尚未发布，不将本地依赖升级描述成用户 CLI 已更新。
 
 发布候选最终门禁（2026-09-11）：Web 2817、CLI 2162、wire 82、Server 649 项通过（Server 1 项既有跳过）；Web/CLI/Server 类型检查退出 0，构建及 CLI 产物启动成功。Server 首轮与其他包并发时四个 PGlite 初始化超过 10 秒，空闲重跑完整套件通过，未放宽超时。最终浏览器复验 320/390/900 coarse、1400 × 明暗主题通过；嵌套导航与运行活性补齐回归。
+
+发布核验：完整镜像切换成功，线上 entry 与本批预览/运行控制资源均为 f726b440；保留旧页面实测 controllerchange 后加载新 entry，无 pageerror。回滚保留 4d267c4d 镜像。CLI 由 [tag publish workflow](https://github.com/Mereithhh/very-happy/actions/runs/34513241036) 与 [六平台 smoke](https://github.com/Mereithhh/very-happy/actions/runs/34513241048) 发布和提升推荐版本；自动安装 pin 独立，现有 wrapper 不热加载。上述本地验证记录均为发布前证据，不等同于官方 CLI 全能力等价。
