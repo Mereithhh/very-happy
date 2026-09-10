@@ -1827,6 +1827,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10n: {
+                title: 'Smoother code file previews',
+                summary: 'Code previews now meet the path bar without an inset card.',
+                surface: 'Removed the extra code background and double padding in file previews while preserving highlighting, line numbers and ordinary chat code blocks.',
+            },
             sep10m: {
                 title: 'A more cohesive workspace',
                 summary: 'The conversation and file pane now share one continuous canvas.',

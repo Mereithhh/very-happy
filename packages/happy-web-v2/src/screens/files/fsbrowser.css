@@ -340,6 +340,10 @@
 .fsb-shell.fsb--full > .fsb-split > .fsb-viewer > .fsb-viewer-head { padding-top:max(var(--sp-1),env(safe-area-inset-top)); }
 
 .fsb-viewer-body > .cv { border:0; border-radius:0; background:transparent; }
+/* A file is the document surface, not a chat code card. Keep one inset,
+   inside the pre, and let syntax highlighting use the host's canvas. */
+.fsb-viewer-body--code { padding:0; }
+.fsb-viewer-body--code > .cv { --cv-code-background:transparent; }
 
 .fsb-viewer { min-width: 0; container-type: inline-size; }
 .fsb-viewer-actions { display: flex; align-items: center; gap: var(--sp-1); flex: none; }
