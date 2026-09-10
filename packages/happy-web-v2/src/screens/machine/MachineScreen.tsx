@@ -385,7 +385,7 @@ export function MachineScreen() {
                 right={<Badge tone="err">{t('cliUpdate.handoverHeldBadge')}</Badge>}
               />
             )}
-            {cliUpdate && !['automatic', 'pending'].includes(cliUpdate.delivery) && (
+            {cliUpdate && cliUpdate.delivery !== 'automatic' && (
               <Item
                 title={t('cliUpdate.copyCommand')}
                 subtitle={cliUpdateInstallCommand(cliUpdate.targetVersion) ?? undefined}

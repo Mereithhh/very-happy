@@ -22,3 +22,11 @@ export async function retryMachineUpdate(machineId: string, version: string): Pr
     throw new Error('Update retry was not accepted');
   }
 }
+
+/** Explicit request for one machine; an accepted RPC only schedules the update. */
+export async function requestMachineUpdate(machineId: string, version: string): Promise<void> {
+  const result = await apiSocket.machineRPC<unknown, { version: string }>(machineId, 'cli-update-request', { version });
+  if (!result || typeof result !== 'object' || 'error' in result || (result as { accepted?: unknown }).accepted !== true) {
+    throw new Error('Update request was not accepted');
+  }
+}

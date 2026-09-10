@@ -16,6 +16,11 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-cli-manual-update', date: '2026-09-10', buildVersion: __APP_VERSION__, cliVersion: '0.2.133',
+    titleKey: 'changelog.releases.sep10g.title', summaryKey: 'changelog.releases.sep10g.summary',
+    itemKeys: ['changelog.releases.sep10g.action', 'changelog.releases.sep10g.compatibility'],
+  },
+  {
     id: '2026-09-10-transcript-activity',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,

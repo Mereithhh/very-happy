@@ -9,6 +9,7 @@ export interface CliUpdateStateLike {
   autoUpdateVersion?: unknown;
   autoUpdate?: unknown;
   handoverHold?: unknown;
+  manualUpdateSupported?: unknown;
 }
 
 export interface CliUpdateMachineLike {
@@ -97,16 +98,17 @@ export function machineCliUpdateNotice(machine: CliUpdateMachineLike, now = Date
   const autoTarget = version(update?.autoUpdateVersion);
   const reportedTarget = version(auto.version);
   const coversTarget = autoTarget && reportedTarget && autoTarget.exact === reportedTarget.exact && !below(autoTarget, target);
+  const manualTarget = auto.source === 'manual' && reportedTarget?.exact === target.exact ? reportedTarget : null;
   const delivery: CliUpdateMachineNotice['delivery'] =
     machine.active === true && (auto.state === 'manual_required' || update?.handoverHold) ? 'attention'
     : !fresh ? 'unknown'
     : ['failed', 'disabled'].includes(String(auto.state)) ? 'attention'
-    : coversTarget && ['waiting_idle', 'installing', 'installed'].includes(String(auto.state)) ? 'automatic'
+    : (coversTarget || manualTarget) && ['waiting_idle', 'installing', 'installed'].includes(String(auto.state)) ? 'automatic'
     : !required && (auto.state === 'unapproved' || (autoTarget && reportedTarget && autoTarget.exact === reportedTarget.exact && below(autoTarget, target) && ['current', 'waiting_idle', 'installing', 'installed'].includes(String(auto.state)))) ? 'pending'
     : 'unknown';
   return {
     delivery,
-    automaticVersion: delivery === 'automatic' ? autoTarget!.exact : null,
+    automaticVersion: delivery === 'automatic' ? (manualTarget ?? autoTarget)!.exact : null,
     machineId: machine.id,
     machineName: machine.metadata?.displayName || machine.metadata?.host || machine.id.slice(0, 8),
     currentVersion: current.exact,

@@ -319,6 +319,11 @@ export class ApiMachineClient {
         this.wireAutoRestoreReport();
     }
 
+    setCliUpdateRequestHandler(handler: (version: unknown) => Promise<{ accepted: true } | { error: string }>): void {
+        this.rpcHandlerManager.registerHandler('cli-update-request', (params: unknown) =>
+            handler(params && typeof params === 'object' ? (params as { version?: unknown }).version : undefined));
+    }
+
     setCliUpdateRetryHandler(handler: (version: unknown) => Promise<{ accepted: true } | { error: string }>): void {
         this.rpcHandlerManager.registerHandler('cli-update-retry', (params: unknown) =>
             handler(params && typeof params === 'object' ? (params as { version?: unknown }).version : undefined));

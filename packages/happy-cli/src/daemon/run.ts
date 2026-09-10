@@ -1694,6 +1694,7 @@ export async function startDaemon(): Promise<void> {
       },
     });
     apiMachine.setCliUpdateRetryHandler(updateController.retry);
+    apiMachine.setCliUpdateRequestHandler(updateController.request);
     const refreshCliUpdate = () => updateController.refresh().catch((error) => {
       logger.debug('[DAEMON RUN] CLI update policy check failed:', error);
     });

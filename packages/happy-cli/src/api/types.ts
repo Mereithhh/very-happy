@@ -201,6 +201,7 @@ export const CliUpdateStateSchema = z.object({
    *  from `recommendedVersion`; null means no unattended install. */
   autoUpdateVersion: z.string().nullable().optional(),
   retrySupported: z.boolean().optional(),
+  manualUpdateSupported: z.boolean().optional(),
   checkedAt: z.number(),
   /**
    * B-321: a new bundle is on disk but refused to run, so the daemon is still
@@ -210,6 +211,7 @@ export const CliUpdateStateSchema = z.object({
   handoverHold: z.object({ reason: z.string(), at: z.number() }).nullable().optional(),
   /** B-327: the last thing the machine's auto-update did, or why it did nothing. */
   autoUpdate: z.object({
+    source: z.string().optional(),
     state: z.union([z.enum(['installing', 'installed', 'failed', 'skipped']), z.string()]),
     version: z.string().nullable(),
     detail: z.string().optional(),
