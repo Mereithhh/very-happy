@@ -45,6 +45,8 @@ export const NOTIFY_COOLDOWN_MS = 60_000;
 export const NOTIFY_MIN_SAMPLE_GAP_MS = 5_000;
 
 interface TrackState {
+    agentKind?: string;
+    lastObservedAt: number;
     /** Seen 'working' since the last notification → eligible to fire. */
     armed: boolean;
     /** Last state that survived the stability window. */
@@ -79,12 +81,14 @@ export class TerminalNotifyTracker {
      * Feed one observation for a terminal. Returns the notification event this
      * observation triggers, or null. Call once per terminal per tick.
      */
-    observe(terminalId: string, state: AgentState | undefined, now: number): TerminalNotifyEvent | null {
+    observe(terminalId: string, state: AgentState | undefined, now: number, agentKind?: string): TerminalNotifyEvent | null {
         let t = this.tracks.get(terminalId);
-        if (!t) {
+        if (!t || t.agentKind !== agentKind || now - t.lastObservedAt > 45_000) {
             // First sighting is the baseline, never a transition. It arms the
             // terminal only if claude is already mid-turn.
             t = {
+                agentKind,
+                lastObservedAt: now,
                 armed: state === 'working',
                 confirmed: state,
                 candidate: state,
@@ -96,6 +100,7 @@ export class TerminalNotifyTracker {
             return null;
         }
 
+        t.lastObservedAt = now;
         if (state === 'working') t.armed = true;
 
         if (state === t.confirmed) {

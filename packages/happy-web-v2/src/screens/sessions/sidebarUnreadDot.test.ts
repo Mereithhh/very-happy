@@ -10,23 +10,12 @@ describe('sidebar unread dot (B-312)', () => {
     const css = readFileSync(new URL('./sidebar.css', import.meta.url), 'utf8');
     const storage = readFileSync(new URL('../../sync/storage.ts', import.meta.url), 'utf8');
 
-    it('paints the unread badge with --danger, not --text, and keeps a halo', () => {
-        const rule = css.slice(css.indexOf('.sb-row-signal--unread'));
-        const body = rule.slice(0, rule.indexOf('}'));
-        expect(body).toContain('background: var(--danger)');
-        expect(body).toContain('var(--danger-dim)');
-        expect(body).not.toContain('var(--text)');
-    });
-
-    it('keeps attention (waiting on you) on accent so the two levels stay distinct', () => {
-        const rule = css.slice(css.indexOf('.sb-row-signal--attention'));
-        expect(rule.slice(0, rule.indexOf('}'))).toContain('background: var(--accent)');
-    });
-
-    it('uses no raw color literal for either signal dot', () => {
-        const block = css.slice(css.indexOf('.sb-row-signal {'), css.indexOf('.sb-row.is-selected .sb-row-sub'));
-        expect(block).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-        expect(block).not.toMatch(/\brgba?\(/i);
+    it('uses a quiet unread dot and a distinct input warning in the shared slot', () => {
+        const unread = css.match(/\.sb-row-unread-dot\s*\{([^}]+)\}/)?.[1];
+        const input = css.match(/\.sb-row-status--input\s*\{([^}]+)\}/)?.[1];
+        expect(unread).toContain('background: var(--danger)');
+        expect(unread).not.toContain('box-shadow');
+        expect(input).toContain('color: var(--warn)');
     });
 
     it('seeds the unread set from the mirror on boot', () => {

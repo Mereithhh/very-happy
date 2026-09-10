@@ -1,3 +1,9 @@
+import { isHeartbeatFresh, useHeartbeatLeaseBump } from '@/sync/heartbeatLease';
+import { isTerminalStatusFresh } from '@/sync/terminalAgentState';
+import { useShallow } from 'zustand/react/shallow';
+import { storage } from '@/sync/storage';
+import { currentTurnMessages } from '@/sync/agentLiveness';
+import { countRunningSubagentCards } from '@/screens/session/subagentPills';
 /**
  * Store-facing hooks for the Task Board. The mapping itself lives in
  * boardItems.ts (pure, unit-tested); these hooks only wire the existing
@@ -5,7 +11,7 @@
  * in AppLayout keeps terminal state fresh for every consumer).
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useAllSessions, useAllMachines, useAttentionSessions } from '@/sync/storage';
+import { useAllSessions, useAllMachines } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardTasks } from '@/sync/boardTasks';
@@ -14,9 +20,25 @@ import { buildBoardItems, buildCompletedEntries, type BoardItem, type CompletedE
 
 /** re-derive "waiting 4m" / the 24h ended cutoff even with no store activity */
 const TICK_MS = 30_000;
+const backgroundCounts = new WeakMap<object, number>();
+function runningBackgroundCounts(state: ReturnType<typeof storage.getState>): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [id, entry] of Object.entries(state.sessionMessages)) {
+    let count = backgroundCounts.get(entry);
+    if (count === undefined) {
+      count = countRunningSubagentCards(currentTurnMessages(entry.messages));
+      backgroundCounts.set(entry, count);
+    }
+    if (count > 0) result[id] = count;
+  }
+  return result;
+}
 
 export function useBoardItems(): BoardItem[] {
   const sessions = useAllSessions();
+  const leaseBump = useHeartbeatLeaseBump(s => s.bump);
+  // Text deltas must not rebuild the whole sidebar when the live subagent count is unchanged.
+  const runningSubagents = storage(useShallow(runningBackgroundCounts));
   const terminals = useTerminalSessions((s) => s.terminals);
   const agentStates = useTerminalAgentStates((s) => s.states);
   const machines = useAllMachines({ includeOffline: true });
@@ -26,8 +48,12 @@ export function useBoardItems(): BoardItem[] {
     return () => clearInterval(timer);
   }, []);
   return useMemo(
-    () => buildBoardItems({ sessions, terminals, agentStates, machines, now }),
-    [sessions, terminals, agentStates, machines, now],
+    () => buildBoardItems({ sessions, terminals, agentStates, machines, now,
+      sessionFresh:Object.fromEntries(sessions.map(s=>[s.id,isHeartbeatFresh(s.id)])),
+      terminalFresh:Object.fromEntries(terminals.map(t=>[t.id,isTerminalStatusFresh(t.id,agentStates[t.id])])),
+      runningSubagents,
+    }),
+    [sessions, terminals, agentStates, machines, now, leaseBump, runningSubagents],
   );
 }
 
@@ -41,20 +67,4 @@ export function useBoardCompleted(now: number): CompletedEntry[] {
     () => buildCompletedEntries(sessions, visibleTasks(tasks), now),
     [sessions, tasks, now],
   );
-}
-
-/** Cheap attention counter for the sidebar badge: attention chat sessions +
- *  needs_input terminals on ONLINE machines (same offline gate as the board;
- *  counts agent-state entries directly so it doesn't recompute the board). */
-export function useBoardAttentionCount(): number {
-  const sessionCount = useAttentionSessions().length;
-  const onlineMachines = useAllMachines(); // online only by default
-  const states = useTerminalAgentStates((s) => s.states);
-  return useMemo(() => {
-    const online = new Set(onlineMachines.map((m) => m.id));
-    const terminalCount = Object.values(states).filter(
-      (e) => e.state === 'needs_input' && online.has(e.machineId),
-    ).length;
-    return sessionCount + terminalCount;
-  }, [sessionCount, onlineMachines, states]);
 }

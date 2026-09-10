@@ -1260,7 +1260,8 @@ export class AcpBackend implements AgentBackend {
 
     try {
       await this.connection.cancel({ sessionId: this.acpSessionId });
-      this.emit({ type: 'status', status: 'stopped', detail: 'Cancelled by user' });
+      // Cancelling a turn does not terminate the ACP process/session.
+      this.emit({ type: 'status', status: 'idle', detail: 'Cancelled by user' });
     } catch (error) {
       // Log to file only, not console
       logger.debug('[AcpBackend] Error cancelling:', errorLogMetadata(error));

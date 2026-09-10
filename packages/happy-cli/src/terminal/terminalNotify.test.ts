@@ -174,3 +174,18 @@ describe('notification copy & link', () => {
         expect(terminalNotifyLink('machine-1', 'abc123')).toBe('/terminal/machine-1?tid=abc123');
     });
 });
+
+describe('agent continuity', () => {
+    it('does not call an agent switch a completion', () => {
+        const tracker = new TerminalNotifyTracker();
+        tracker.observe('t', 'working', 0, 'claude');
+        expect(tracker.observe('t', 'idle', 10_000, 'pi')).toBeNull();
+        expect(tracker.observe('t', 'idle', 20_000, 'pi')).toBeNull();
+    });
+    it('does not infer completion across a long observation gap', () => {
+        const tracker = new TerminalNotifyTracker();
+        tracker.observe('t', 'working', 0, 'codex');
+        expect(tracker.observe('t', 'idle', 60_000, 'codex')).toBeNull();
+        expect(tracker.observe('t', 'idle', 70_000, 'codex')).toBeNull();
+    });
+});

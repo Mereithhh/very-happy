@@ -1422,6 +1422,8 @@ export const en = {
     },
 
     sidebar: {
+        agentStatusUnknown: 'Status unknown — waiting for a fresh agent observation',
+        agentStatusOffline: 'Agent unavailable',
         collapse: 'Collapse sidebar',
         openSessions: 'Open sessions',
         archiveConfirm: 'Archive this session?',
@@ -1827,6 +1829,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10q: {
+                title: 'Clearer agent status',
+                summary: 'One consistent status indicator for conversations and terminals.',
+                sidebar: 'Neutral type icons identify Claude, Codex and Pi terminals. One fixed status slot shows running, waiting for input, unknown/offline or unread.',
+                detection: 'Process identity and fresh heartbeats fix Pi/Codex terminal detection, input selectors, Pi cancellation crashes, and wrapper shutdown status. Requires the companion CLI update; older daemons display unknown status.',
+            },
             sep10p: {
                 title: 'A lighter side workspace',
                 summary: 'Files, notes and side questions now share a compact layout.',
@@ -2571,6 +2579,7 @@ export const en = {
         // Claude Code status inside a web terminal (sidebar dot + notification)
         claudeWorking: 'Claude: working',
         claudeNeedsInput: 'Claude: needs input',
+        agentNeedsInputBody: ({ agent }: { agent: string }) => `${agent} needs your input`,
         claudeNeedsInputBody: 'Claude needs your input',
         // B-105 terminal mirror: header toggle to the structured (chat) face
         structuredView: 'Structured view',

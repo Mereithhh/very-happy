@@ -205,30 +205,6 @@
 .sb-row.is-selected { background: var(--bg-3); }
 .sb-row.is-selected .sb-row-title, .sb-row--attention .sb-row-title { font-weight: 600; }
 .sb-row--unread .sb-row-title { font-weight: 500; }
-/* right-edge badge dot (8px — deliberately bigger than the 7px corner agent
- * dot: this one must read at a glance across the whole list) */
-.sb-row-signal {
-  /* Same 16px status slot as the running spinner, with an 8px dot. */
-  margin-inline: 4px;
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.sb-row-signal--attention {
-  background: var(--accent);
-  /* --accent-glow is a translucent token in BOTH themes — the halo ring reads
-   * on every bg step without a hard-edged second border */
-  box-shadow: 0 0 0 3px var(--accent-glow);
-}
-/* red = "there is output you have not looked at" — the universal unread-badge
- * convention, NOT an error (tokens.css / design-language.md carry the scoped
- * widening of --danger). Same halo construction as the attention dot so both
- * levels read at a glance; --danger-dim is translucent in both themes. */
-.sb-row-signal--unread {
-  background: var(--danger);
-  box-shadow: 0 0 0 3px var(--danger-dim);
-}
 /* --text-faint sits at only ~2.4:1 on dark --bg-3, so the selected row lifts
  * its metadata / kebab / offline dot one ink step — legibility and the
  * "text brightens when selected" cue in the same move. */
@@ -258,32 +234,6 @@
   width: 18px;
   flex-shrink: 0;
   color: var(--text-faint);
-}
-.sb-row-icon--term {
-  color: var(--accent-2);
-}
-/* Claude agent-state badge on a terminal row: small StatusDot pinned to the
- * icon's corner so the terminal glyph itself stays recognizable. */
-.sb-row-term-icon {
-  position: relative;
-  display: inline-flex;
-}
-.sb-row-agent-dot {
-  position: absolute;
-  right: -4px;
-  bottom: -3px;
-  display: inline-flex;
-  border-radius: 50%;
-  /* ring punches the dot out of the icon strokes underneath */
-  box-shadow: 0 0 0 2px var(--bg-1);
-}
-.sb-row:hover .sb-row-agent-dot {
-  box-shadow: 0 0 0 2px var(--bg-2);
-}
-/* selected wins over hover — its row background is one step higher */
-.sb-row.is-selected .sb-row-agent-dot,
-.sb-row.is-selected:hover .sb-row-agent-dot {
-  box-shadow: 0 0 0 2px var(--bg-3);
 }
 .sb-row-text {
   display: flex;
@@ -634,10 +584,10 @@
 .sb-list-tools .sb-icon-btn { width:26px; height:28px; }
 .sb-products { display:flex; flex-direction:column; gap:2px; padding:var(--sp-2); }
 .sb-products > button, .sb-products .sb-nav-btn { display:flex; align-items:center; gap:var(--sp-2); width:100%; min-height:32px; padding:5px var(--sp-2); font-size:var(--workspace-primary-size); text-align:left; border-radius:var(--r-sm); }
-.sb-products button:hover, .sb-products button:focus-visible { outline:none; box-shadow:none; background:var(--bg-2); }
+.sb-products button:hover, .sb-products button:focus-visible { outline:none; box-shadow:none; background: var(--bg-2); }
 .sb-products > button > svg, .sb-products .sb-nav-btn > svg:first-child { width:18px; flex-shrink:0; }
 .sb-row-tags .vh-tag { border-color:transparent; }
-.sb-products kbd { margin-left:auto; color:var(--text-faint); font-size:var(--fs-10); }
+.sb-products kbd { margin-left:auto; color: var(--text-faint); font-size:var(--fs-10); }
 @media (pointer:coarse) {
  .sb-brand--button { min-height:44px; }
  .sb-products > button, .sb-products .sb-nav-btn, .sb-row-main, .sb-row-menu { min-height:44px; }
@@ -647,12 +597,18 @@
 }
 
 .sb-new-chevron { margin-left:auto; flex:none; }
-.sb-nav-btn[data-state="open"] { background:var(--bg-2); }
+.sb-nav-btn[data-state="open"] { background: var(--bg-2); }
 
-.sb-row-running { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; color: var(--text-dim); }
 .sb-nav-btn[aria-busy="true"] { cursor: progress; }
 
 .sb-team-member-status { color: var(--text-dim); font-weight: 400; }
 
 .sb-workspace-new { margin: 0; }
 .sb-workspace-new + .sb-workspace-changes { margin-left: 0; }
+
+/* Agent identity is neutral; exactly one fixed slot carries live state. */
+.sb-row-icon.sb-row-icon--neutral { color: var(--text-dim); }
+.sb-row-status { display:inline-flex; align-items:center; justify-content:center; flex:0 0 16px; width:16px; height:16px; color: var(--text-dim); }
+.sb-row-status--input { color: var(--warn); }
+.sb-row-status--unknown, .sb-row-status--offline { color: var(--text-faint); }
+.sb-row-unread-dot { width:6px; height:6px; border-radius:50%; background: var(--danger); }

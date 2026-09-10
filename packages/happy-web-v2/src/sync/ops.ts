@@ -867,6 +867,8 @@ export interface MachineTerminal {
     /** tmux session_activity (ms) — newer daemons only; fall back to createdAt. */
     activityAt?: number;
     agentState?: TerminalAgentState;
+    agentKind?: string;
+    agentObservedAt?: number;
     /** B-105: id of this terminal's shadow mirror session (a hand-launched
      *  `claude` is being tailed into it). Absent when there is no mirror. */
     mirrorSessionId?: string;

@@ -245,7 +245,7 @@ vi.mock('./AcpBackend', () => ({
     async cancel(sessionId: string) {
       mocks.backendState.cancelCalls.push(sessionId);
       for (const listener of mocks.backendState.listeners) {
-        listener({ type: 'status', status: 'stopped' });
+        listener({ type: 'status', status: 'idle', detail: 'Cancelled by user' });
       }
     }
 
@@ -839,6 +839,28 @@ describe('runAcp', () => {
     }
   });
 
+it('keeps the session usable after cancelling an in-flight turn', async () => {
+  let release!: () => void;
+  mocks.backendState.sendPromptScript = async emit => {
+    emit({type:'status',status:'running'});
+    await new Promise<void>(resolve => { release = resolve; });
+  };
+  const runPromise = runAcp({credentials:{token:'token',encryption:{type:'legacy',secret:new Uint8Array(32)}},agentName:'pi',command:'pi-acp',args:[]});
+  try {
+    await vi.waitFor(()=>expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+    mocks.getUserMessageHandler()!({role:'user',content:{type:'text',text:'first'}});
+    await vi.waitFor(()=>expect(release).toBeTypeOf('function'));
+    await mocks.sessionHandlers.get('abort')!({});
+    release();
+    await vi.waitFor(()=>expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m])=>m.ev.t==='turn-end'&&m.ev.status==='cancelled')).toBe(true));
+    expect(mocks.backendState.disposeCalls).toBe(0);
+    mocks.backendState.sendPromptScript = null;
+    mocks.getUserMessageHandler()!({role:'user',content:{type:'text',text:'second'}});
+    await vi.waitFor(()=>expect(mocks.backendState.prompts).toHaveLength(2));
+    await vi.waitFor(()=>expect(mocks.mockSession.keepAlive).toHaveBeenLastCalledWith(false,'remote'));
+  } finally { release?.(); await mocks.getKillHandler()!(); await runPromise; }
+});
+
   it('registers abort handler that cancels the ACP backend session', async () => {
     const runPromise = runAcp({
       credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
@@ -1335,4 +1357,7 @@ describe('extractConfigSelector (B-351)', () => {
     expect(extractConfigSelector(options, 'mode')?.configId).toBe('approval');
     expect(extractConfigSelector(options, 'model')?.configId).toBe('model');
   });
+
+
+
 });

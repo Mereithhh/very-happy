@@ -10,10 +10,11 @@ beforeAll(async () => {
 });
 
 const MACHINE = 'm1';
+let observedAt = 1;
 
 function push(id: string, agentState: TerminalAgentState) {
     useTerminalAgentStates.getState().ingest(MACHINE, [
-        { id, agentState, title: 'term' } as unknown as MachineTerminal,
+        { id, agentState, agentKind: 'claude', agentObservedAt: ++observedAt, title: 'term' } as unknown as MachineTerminal,
     ]);
 }
 
@@ -89,7 +90,7 @@ describe('B-360 the same terminal id arriving from two machine rows', () => {
 
     function pushFrom(machineId: string, id: string, agentState: TerminalAgentState) {
         useTerminalAgentStates.getState().ingest(machineId, [
-            { id, agentState, title: 'term' } as unknown as MachineTerminal,
+            { id, agentState, agentKind: 'claude', agentObservedAt: ++observedAt, title: 'term' } as unknown as MachineTerminal,
         ]);
     }
 
@@ -139,5 +140,47 @@ describe('B-360 the same terminal id arriving from two machine rows', () => {
             g.Notification = savedNotification;
             g.document.hasFocus = savedHasFocus;
         }
+    });
+});
+
+describe('B-452 terminal observation freshness and identity', () => {
+    it('a replay cannot extend a lease or fake a finished run after expiry', async () => {
+        const { vi } = await import('vitest');
+        const { resetHeartbeatLeaseForTest } = await import('./heartbeatLease');
+        const { isTerminalStatusFresh } = await import('./terminalAgentState');
+        vi.useFakeTimers();
+        vi.setSystemTime(1_000_000);
+        resetHeartbeatLeaseForTest();
+        useTerminalAgentStates.setState({ states:{}, unread:new Set(), viewingTerminalId:null });
+        const sample = { id:'lease', agentKind:'pi', agentState:'working', agentObservedAt:50 } as MachineTerminal;
+        try {
+            useTerminalAgentStates.getState().ingest(MACHINE,[sample]);
+            expect(isTerminalStatusFresh('lease',useTerminalAgentStates.getState().states.lease)).toBe(true);
+            vi.advanceTimersByTime(30_000);
+            useTerminalAgentStates.getState().ingest(MACHINE,[sample]);
+            vi.advanceTimersByTime(15_001);
+            expect(isTerminalStatusFresh('lease',useTerminalAgentStates.getState().states.lease)).toBe(false);
+            useTerminalAgentStates.getState().ingest(MACHINE,[{ ...sample, agentState:'idle', agentObservedAt:51 }]);
+            expect(unread()).toEqual([]);
+            expect(isTerminalStatusFresh('lease',useTerminalAgentStates.getState().states.lease)).toBe(true);
+        } finally { resetHeartbeatLeaseForTest(); vi.useRealTimers(); }
+    });
+    it('switching agent is a new observation, not the old agent completing', () => {
+        useTerminalAgentStates.setState({ states:{}, unread:new Set(), viewingTerminalId:null });
+        const sample = { id:'switch', agentKind:'claude', agentState:'working', agentObservedAt:70 } as MachineTerminal;
+        useTerminalAgentStates.getState().ingest(MACHINE,[sample]);
+        useTerminalAgentStates.getState().ingest(MACHINE,[{ ...sample, agentKind:'codex', agentState:'idle', agentObservedAt:71 }]);
+        expect(unread()).toEqual([]);
+        useTerminalAgentStates.getState().ingest(MACHINE,[sample]);
+        expect(useTerminalAgentStates.getState().states.switch.agentKind).toBe('codex');
+    });
+    it('old daemons and unknown future states do not become idle', async () => {
+        const { isTerminalStatusFresh } = await import('./terminalAgentState');
+        useTerminalAgentStates.setState({ states:{}, unread:new Set(), viewingTerminalId:null });
+        useTerminalAgentStates.getState().ingest(MACHINE,[{ id:'old', agentState:'working' } as MachineTerminal]);
+        expect(isTerminalStatusFresh('old',useTerminalAgentStates.getState().states.old)).toBe(false);
+        useTerminalAgentStates.getState().ingest(MACHINE,[{ id:'future',agentKind:'future-agent',agentState:'future-state',agentObservedAt:80 } as unknown as MachineTerminal]);
+        expect(useTerminalAgentStates.getState().states.future.state).toBeUndefined();
+        expect(useTerminalAgentStates.getState().states.future.agentKind).toBeUndefined();
     });
 });
