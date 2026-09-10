@@ -1835,6 +1835,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep11b: {
+                title: 'Consistent conversation alignment',
+                summary: 'Text, tools and live status share a clear left edge.',
+                alignment: 'Tool groups, previews, subagents and live status now share one leading icon column without extra horizontal indentation.',
+                thinking: 'Thinking blocks use the same unindented layout in the main conversation and subagents. Touch targets remain easy to tap, and expanded code keeps its reading space.',
+            },
             sep11a: {
                 title: 'Simpler activity and message timestamps',
                 summary: 'Usage at a glance, with message times on hover.',

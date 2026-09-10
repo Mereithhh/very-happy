@@ -1,5 +1,5 @@
 .lsb { width:100%; max-width:440px; padding:0; box-sizing:border-box; margin:0; flex:none; color:var(--text-dim); }
-.lsb-content { display:flex; width:fit-content; max-width:100%; align-items:center; gap:var(--sp-2); min-width:0; height:32px; padding-inline:var(--sp-2); box-sizing:border-box; cursor:default; border-radius:var(--r-sm); background:transparent; }
+.lsb-content { display:flex; width:fit-content; max-width:100%; align-items:center; gap:var(--sp-2); min-width:0; height:32px; padding-inline:0; box-sizing:border-box; cursor:default; border-radius:var(--r-sm); background:transparent; }
 .lsb-label { min-width:0; flex:0 1 auto; font-family:var(--font-sans); font-size:var(--fs-12); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; }
 .lsb-elapsed { flex:none; color:var(--text-faint); }
 .lsb-elapsed, .lsb-metric { font-family:var(--font-mono); font-size:var(--fs-11); font-variant-numeric:tabular-nums; }
@@ -8,7 +8,7 @@
 .lsb-metric svg { flex:none; }
 .lsb-metrics { display:inline-flex; align-items:center; flex:none; gap:var(--sp-2); color:var(--text-faint); }
 @media (pointer: coarse) { .lsb-content { height:44px; } }
-.lsb-mark { position: relative; display: grid; place-items: center; width: 18px; height: 18px; flex: none; color: var(--accent); }
+.lsb-mark { position: relative; display: grid; place-items: center; width: var(--conversation-icon-size); height: var(--conversation-icon-size); flex: none; color: var(--accent); }
 .lsb-orbit { position: absolute; inset: 0; width: 100%; height: 100%; animation: lsb-orbit 2.4s linear infinite; }
 .lsb-track { stroke: currentColor; stroke-width: 1; opacity: .18; }
 .lsb-sweep { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 17 52.12; }

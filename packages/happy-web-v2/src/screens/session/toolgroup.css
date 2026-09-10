@@ -27,7 +27,7 @@
   width: 100%;
   text-align: left;
   min-height: 32px;
-  padding-inline: var(--sp-1);
+  padding-inline: 0;
 }
 .tg-summary {
   flex: none;
@@ -68,6 +68,11 @@
   flex: none;
   color: var(--text-faint);
   transition: transform var(--motion-fast);
+}
+/* Share the leading icon column with live status, previews and subagents. */
+.tg-head > .tg-chevron,
+.tg-row-head > .tg-chevron {
+  width: var(--conversation-icon-size);
 }
 .tg-chevron.is-open {
   transform: rotate(90deg);
@@ -125,7 +130,7 @@
   min-width: 0;
   text-align: left;
   min-height: 30px;
-  padding: 2px var(--sp-1);
+  padding: 2px 0;
 }
 /* detail 不在按钮里时，按钮只需要包住 label；detail 自己吃剩余宽度 */
 .tg-row-head-wrap > .tg-tool-detail {
@@ -174,9 +179,12 @@
   word-break: break-word;
 }
 
-.tg-preview-row { display:flex; align-items:center; gap:var(--sp-2); min-width:0; min-height:32px; padding:2px var(--sp-1); }
-.tg-preview-row > svg { flex:none; color:var(--text-dim); }
+.tg-preview-row { display:flex; align-items:center; gap:var(--sp-2); min-width:0; min-height:32px; padding:2px 0; }
+.tg-preview-row > svg { width:var(--conversation-icon-size); flex:none; color:var(--text-dim); }
 .tg-preview-path { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-dim); }
 .tg-preview-path .fpl-icon { display:none; }
 .tg-preview-path .fpl-text { min-width:0; overflow:hidden; text-overflow:ellipsis; }
-@media(pointer:coarse) { .tg-preview-path { min-height:44px; align-items:center; } }
+@media(pointer:coarse) {
+  .tg-head, .tg-row-head { min-height:44px; }
+  .tg-preview-path { min-height:44px; align-items:center; }
+}

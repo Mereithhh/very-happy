@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-11-conversation-row-alignment',
+    date: '2026-09-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep11b.title',
+    summaryKey: 'changelog.releases.sep11b.summary',
+    itemKeys: ['changelog.releases.sep11b.alignment', 'changelog.releases.sep11b.thinking'],
+  },
+  {
     id: '2026-09-11-inline-status-message-time',
     date: '2026-09-11',
     buildVersion: __APP_VERSION__,

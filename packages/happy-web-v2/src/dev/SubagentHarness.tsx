@@ -1,3 +1,6 @@
+import { TurnActivityView } from '@/screens/session/TurnActivityView';
+import { LiveStatusRow } from '@/screens/session/SessionLiveStatusBar';
+import { LiveStreamBlocks } from '@/screens/session/LiveStreamView';
 import { ActivityMessages } from '@/screens/session/ActivityMessages';
 import { SessionPreviews } from '@/screens/session/SessionPreviews';
 import { SubagentDock } from '@/screens/session/SubagentDock';
@@ -6,7 +9,7 @@ import { SubagentDock } from '@/screens/session/SubagentDock';
  *  real drawer path instead of the no-session inline fallback. */
 import { useEffect, useState } from 'react';
 import { storage } from '@/sync/storage';
-import type { ToolCallMessage } from '@/sync/typesMessage';
+import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { ToolGroupView } from '@/screens/session/ToolGroupView';
 import { SubagentPanel } from '@/screens/session/SubagentPanel';
 import { onSubagentOpen } from '@/screens/session/subagentPanelState';
@@ -62,6 +65,15 @@ const CARDS = [
     card('task-stopped', 'stopped'),
 ];
 
+const ALIGNMENT_MESSAGES: Message[] = [
+    child('align-1', 'Bash', {command:'git status --short'}),
+    child('align-2', 'Bash', {command:'git diff --stat'}),
+    {kind:'agent-text',id:'align-text',localId:null,createdAt:NOW,text:'先核对运行情况，再汇总检查结果。'},
+    child('align-3', 'Bash', {command:'pnpm test --filter workspace'}),
+    child('align-4', 'Bash', {command:'git diff -- src/workspace.ts'}),
+    {kind:'agent-text',id:'align-thinking',localId:null,createdAt:NOW,isThinking:true,text:'检查本轮命令和消息的对齐情况。'},
+];
+
 export function SubagentHarness() {
     const [open, setOpen] = useState<string | null>(null);
     useEffect(() => {
@@ -86,6 +98,11 @@ export function SubagentHarness() {
                 <div className="sd-body"><div className="cl"><div className="cl-scroll"><div className="cl-inner">
                     <div style={{color:'var(--text-faint)',fontSize:'var(--fs-12)'}}>本地示例 · 主对话与子代理字体对照</div>
                     <ActivityMessages sessionId={SESSION_ID} messages={[{kind:'agent-text',id:'main-example',localId:null,createdAt:NOW,text:'先核对配置，再汇总检查结果。'}]} />
+                    <div data-testid="activity-alignment" style={{display:'flex',flexDirection:'column',gap:'var(--sp-3)'}}>
+                        <TurnActivityView messages={ALIGNMENT_MESSAGES} sessionId={SESSION_ID} live />
+                        <LiveStreamBlocks blocks={[{key:'align-draft',kind:'thinking',text:'继续核对实时思考状态。',done:false,doneAt:null}]} />
+                        <LiveStatusRow phase="requesting" label="请求中" elapsed={87} metrics={[{kind:'input',value:'1.2k'},{kind:'output',value:'864'}]} />
+                    </div>
                     {CARDS.map((c) => <ToolGroupView key={c.id} tools={[c]} />)}
                 </div></div></div></div>
                 <div className="sd-foot"><SessionPreviews sessionId={SESSION_ID} /><SubagentDock sessionId={SESSION_ID} /><div className="ci"><div className="ci-composer"><textarea className="ci-textarea" aria-label="Message" placeholder="本地预览 · 输入内容不会发送" rows={2} /></div></div></div>
