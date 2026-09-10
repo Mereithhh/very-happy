@@ -1835,6 +1835,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep11c: {
+                title: 'Message actions and time at a glance',
+                summary: 'Message actions stay visible, with the time beside them.',
+                actions: 'Copy, quote and edit use compact icons on desktop and mobile, with tooltips for each action.',
+                time: 'Message footers show hours and minutes directly; hover over the time for the full date and timezone. Attachment-only and local-command messages show their time too.',
+            },
             sep11b: {
                 title: 'Consistent conversation alignment',
                 summary: 'Text, tools and live status share a clear left edge.',

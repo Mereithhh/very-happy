@@ -118,8 +118,12 @@ export function MobileChatHarness() {
           <CommandView command={'NODE_ENV=test pnpm test --filter "chat" && echo "完成"'} stdout={'Tests  48 passed\nDuration  1.2s'} />
         </section>
         <section data-testid="message-actions" style={{ display: 'grid', gap: 16 }}>
+          <span style={{fontSize:'var(--fs-12)',color:'var(--text-faint)'}}>本地示例 · 消息操作与时间</span>
           <MessageView sessionId="mobile-chat-edit" showMeta={false} message={{ kind: 'user-text', id: 'edit-point', localId: null, createdAt: Date.now(), seq: 1, claudeUuid: '22222222-2222-4222-8222-222222222222', text: '请检查 @example 的实现，然后解释这一处为什么要这样写。' }} />
           <MessageView sessionId="mobile-chat-permission" showMeta={false} message={{ kind: 'agent-text', id: 'answer', localId: null, createdAt: Date.now(), seq: 2, text: '可以先检查数据流，再验证结果。\n\n这里的 `@example` 应保留原样。' }} />
+          <MessageView sessionId="mobile-chat-edit" showMeta={false} message={{ kind:'user-text', id:'short-answer',localId:null,createdAt:Date.now(),text:'好。' }} />
+          <MessageView sessionId="mobile-chat-edit" showMeta={false} message={{ kind:'user-text',id:'attachment-only',localId:null,createdAt:Date.now(),text:'<attached_files>\n{"path":"/workspace/report.md","name":"report.md","mimeType":"text/markdown"}\n</attached_files>' }} />
+          <MessageView sessionId="mobile-chat-edit" showMeta={false} message={{ kind:'user-text',id:'local-command',localId:null,createdAt:Date.now(),text:'<command-name>/status</command-name>' }} />
         </section>
         <h1 style={{ margin: 0, fontSize: 16 }}>Structured chat · mobile QA</h1>
         <button type="button" onClick={() => toast.show('Copied to clipboard', 'success', { sticky: true })}>Show copy toast</button>
