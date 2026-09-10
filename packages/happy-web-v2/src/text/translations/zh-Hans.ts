@@ -1800,6 +1800,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep11b: {
+                title: '更整齐的对话左边界',
+                summary: '正文、工具和运行状态统一对齐。',
+                alignment: '工具组、文件预览、子代理与 loading 共用首图标列，去掉各自多余的横向缩进。',
+                thinking: '主对话和子代理的思考块统一去掉左侧竖线与缩进，触屏操作区保持易点，展开后的代码仍保留阅读留白。',
+            },
             sep11a: {
                 title: '更简洁的运行状态与消息时间',
                 summary: '直接查看 token 用量，悬停查看消息时间。',

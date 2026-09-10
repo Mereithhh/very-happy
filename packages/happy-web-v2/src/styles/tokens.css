@@ -217,6 +217,7 @@
   --workspace-primary-size: var(--fs-14);
   --conversation-size: var(--fs-14);
   --conversation-leading: 1.6;
+  --conversation-icon-size: 18px;
 
   /* spacing (4px base) */
   --sp-1: 4px;

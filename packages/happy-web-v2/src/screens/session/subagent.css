@@ -171,22 +171,22 @@
 /* One line, always. Clicking anywhere on it opens the drawer; the row itself
    never expands, which is the whole point of B-317. */
 .tg-subagent-open {
-  display:grid; grid-template-columns:16px minmax(0,1fr) auto 14px;
+  display:grid; grid-template-columns:var(--conversation-icon-size) minmax(0,1fr) auto 14px;
   align-items:center; gap:var(--sp-2); min-width:0; width:100%; max-width:680px;
-  text-align:left; padding:var(--sp-2) var(--sp-1); min-height:36px;
+  text-align:left; padding:var(--sp-2) 0; min-height:36px;
   border-radius:var(--r-sm); font:inherit; color:var(--text);
 }
 .tg-subagent-open:hover, .tg-subagent-open:focus-visible { background:var(--bg-2); }
 .tg-subagent-open-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:inherit; color:var(--text); }
 .tg-subagent-open-cue { color:var(--text-faint); }
-.tg-subagent-status-slot { display:flex; align-items:center; justify-content:center; width:16px; height:16px; }
+.tg-subagent-status-slot { display:flex; align-items:center; justify-content:center; width:var(--conversation-icon-size); height:16px; }
 .tg-subagent-status-slot > * { flex:none; }
 .tg-subagent-error, .tg-subagent-open--failed .tg-subagent-meta { color:var(--danger); }
 .tg-subagent-spinner { color:var(--accent); }
 .tg-subagent-meta { display:flex; align-items:center; gap:var(--sp-2); color:var(--text-dim); white-space:nowrap; font:inherit; }
 .tg-subagent-meta > span + span::before { content:'·'; margin-right:var(--sp-2); }
 @media(max-width:600px) {
-  .tg-subagent-open { grid-template-columns:16px minmax(0,1fr) 14px; row-gap:0; min-height:44px; }
+  .tg-subagent-open { grid-template-columns:var(--conversation-icon-size) minmax(0,1fr) 14px; row-gap:0; min-height:44px; }
   .tg-subagent-open-cue { grid-column:3; grid-row:1 / 3; }
   .tg-subagent-meta { grid-column:2; grid-row:2; }
 }
