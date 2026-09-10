@@ -1798,7 +1798,7 @@ export const zhHans: TranslationStructure = {
                 title: '更清晰的 Agent 状态',
                 summary: '对话与终端使用统一的状态提示。',
                 sidebar: '灰色类型图标区分 Claude、Codex、Pi 终端；右侧固定一个位置显示运行、等待操作、未知/离线或未读。',
-                detection: '通过观察新鲜度避免会话一直显示运行中。终端识别需要配套更新 CLI；旧版 daemon 的状态显示为未知。',
+                detection: '结合真实进程与新鲜心跳识别状态，修正 Pi/Codex 终端漏报、选择器等待提示、Pi 停止回复后崩溃及 wrapper 退出下线。需要配套更新 CLI；旧版 daemon 显示未知状态。',
             },
             sep10p: {
                 title: '更轻巧的右侧工作区',

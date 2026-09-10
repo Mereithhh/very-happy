@@ -1833,7 +1833,7 @@ export const en = {
                 title: 'Clearer agent status',
                 summary: 'One consistent status indicator for conversations and terminals.',
                 sidebar: 'Neutral type icons identify Claude, Codex and Pi terminals. One fixed status slot shows running, waiting for input, unknown/offline or unread.',
-                detection: 'Fresh observations keep stale sessions from appearing busy. Terminal agent recognition requires the companion CLI update; older daemons display unknown status.',
+                detection: 'Process identity and fresh heartbeats fix Pi/Codex terminal detection, input selectors, Pi cancellation crashes, and wrapper shutdown status. Requires the companion CLI update; older daemons display unknown status.',
             },
             sep10p: {
                 title: 'A lighter side workspace',

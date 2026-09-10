@@ -741,3 +741,8 @@ describe('utf8LocaleEnv (CJK width: force a UTF-8 locale for tmux)', () => {
         expect(out).toEqual({ LANG: 'C.UTF-8', LC_CTYPE: 'C.UTF-8' });
     });
 });
+
+it('keeps a pane pid alongside the foreground command without shifting title fields', () => {
+    const parts = ['vh-probe', '1', '2', '/repo', '', '', '[]', '', '120', '36', 'node 1234', 'Title'];
+    expect(parseSessionListLine(parts.join(LIST_FIELD_SEP))).toMatchObject({paneCurrentCommand:'node',panePid:1234,paneTitle:'Title'});
+});

@@ -1,3 +1,4 @@
+import { codingAgentFromProcessTree } from './agentProcess';
 import { classifyAgentPane, type CodingAgentKind } from './agentStatus';
 /**
  * Web terminal manager (daemon side).
@@ -733,7 +734,7 @@ export const LIST_SESSIONS_FORMAT = [
     // command only separates shell/idle). MUST stay before pane_title: that
     // field is deliberately last so a pathological 0x1f inside a title can only
     // garble the title, never shift the fields.
-    '#{pane_current_command}',
+    '#{pane_current_command} #{pane_pid}',
     '#{pane_title}',
 ].join(LIST_FIELD_SEP);
 
@@ -751,6 +752,7 @@ export interface SessionListLine {
     /** `#{pane_current_command}` of the active pane (B-121: the poll-cadence
      *  replacement for the pty's live foreground name). */
     paneCurrentCommand?: string;
+    panePid?: number;
     /** B-273: `@vh_attach` — name of the user tmux session attached inside. */
     attachTmux?: string;
     /** B-287: `#{pane_width}` / `#{pane_height}` of the active pane; absent
@@ -779,7 +781,8 @@ export function parseSessionListLine(line: string): SessionListLine | undefined 
         vhTitle: vhTitle.trim() || undefined,
         manual: manual.trim().length > 0,
         tags: parseTerminalTags(vhTags),
-        paneCurrentCommand: paneCommand.trim() || undefined,
+        paneCurrentCommand: paneCommand.trim().replace(/ \d+$/, '') || undefined,
+        ...( / (\d+)$/.test(paneCommand) ? { panePid: Number(paneCommand.match(/ (\d+)$/)![1]) } : {}),
         // Verbatim (no trim): tmux allows edge spaces in a session name and the
         // restore lookup / attach echo compare it exactly.
         attachTmux: isSafeTmuxSessionName(vhAttach) ? vhAttach : undefined,
@@ -3122,6 +3125,7 @@ export class WebTerminalManager {
             if (r.status !== 0 || !r.stdout) return [];
             const hostname = os.hostname();
             const out: TerminalListItem[] = [];
+            let processSnapshot: string | undefined;
             for (const line of r.stdout.split('\n')) {
                 const s = parseSessionListLine(line);
                 if (!s || !s.name.startsWith('vh-')) continue;
@@ -3139,7 +3143,15 @@ export class WebTerminalManager {
                         if (w.status === 0) title = auto;
                     } catch { /* keep the stored title */ }
                 }
-                const probe = this.probeAgentState(s.name, s.paneCurrentCommand);
+                let identity = s.paneCurrentCommand;
+                if (identity === 'node' && s.panePid) {
+                    if (processSnapshot === undefined) {
+                        const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,args='], { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS });
+                        processSnapshot = ps.status === 0 ? ps.stdout : '';
+                    }
+                    identity = codingAgentFromProcessTree(s.panePid, processSnapshot) ?? identity;
+                }
+                const probe = this.probeAgentState(s.name, identity);
                 out.push({
                     id,
                     title,
@@ -3184,17 +3196,17 @@ export class WebTerminalManager {
                 // empty — the same list-sessions read that produced this line
                 // carries `#{pane_current_command}` instead (≤ one tick old).
                 // The pty value still wins when there IS one (no-tmux fallback).
-                const observation = classifyAgentPane(command || polledCommand || '', tail);
+                const observation = classifyAgentPane(command === 'node' ? polledCommand || command : command || polledCommand || '', tail);
                 return { ...observation, agentObservedAt: Date.now(), claudeConfident: observation.agentKind === 'claude' && isClaudeConfident(tail) };
             } catch { /* fall through to the tmux probe */ }
         }
-        return this.probeAgentStateViaTmux(sessionName);
+        return this.probeAgentStateViaTmux(sessionName, polledCommand);
     }
 
     /** Fallback probe for sessions with no live headless: 2 short tmux calls
      *  (foreground command + pane tail) fed into classifyPane. Any failure or
      *  timeout → undefined (the field is omitted), never an error. */
-    private probeAgentStateViaTmux(sessionName: string): { agentState?: AgentState; agentKind?: CodingAgentKind; agentObservedAt?: number; claudeConfident: boolean } {
+    private probeAgentStateViaTmux(sessionName: string, polledCommand?: string): { agentState?: AgentState; agentKind?: CodingAgentKind; agentObservedAt?: number; claudeConfident: boolean } {
         try {
             const cmd = spawnSync('tmux', tmuxArgs(['display-message', '-p', '-t', sessionName, '#{pane_current_command}']),
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
@@ -3202,7 +3214,7 @@ export class WebTerminalManager {
             const cap = spawnSync('tmux', tmuxArgs(['capture-pane', '-p', '-t', sessionName, '-S', '-40']),
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (cap.status !== 0 || typeof cap.stdout !== 'string') return { agentState: undefined, claudeConfident: false };
-            const observation = classifyAgentPane(cmd.stdout.trim(), cap.stdout);
+            const observation = classifyAgentPane(cmd.stdout.trim() === 'node' ? polledCommand || 'node' : cmd.stdout.trim(), cap.stdout);
             return { ...observation, agentObservedAt: Date.now(), claudeConfident: observation.agentKind === 'claude' && isClaudeConfident(cap.stdout) };
         } catch {
             return { agentState: undefined, claudeConfident: false };

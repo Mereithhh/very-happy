@@ -57,7 +57,7 @@ describe('parseVhTerminals', () => {
         // asserted too, because a silent drift here is what broke this file.
         expect(fields.length).toBe(12) // B-273 added @vh_attach; B-287 added pane_width/pane_height
         expect(fields[fields.length - 1]).toBe('#{pane_title}')
-        expect(fields).toContain('#{pane_current_command}')
+        expect(fields).toContain('#{pane_current_command} #{pane_pid}')
         expect(fields).toContain('#{@vh_tags}')
     })
 })

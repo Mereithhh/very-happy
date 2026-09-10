@@ -2,7 +2,7 @@
 
 Status: Final · B-452 · 2026-09-10
 
-## Confirmed current behavior
+## Baseline before this change
 - `Sidebar.tsx` renders separate left raw `thinking`/presence/terminal dots and right board lifecycle/unread indicators.
 - `boardItems.ts:classifySession` bypasses `agentLiveness.ts` and heartbeat expiry.
 - `webTerminal.ts:classifyPane` considers bare node a Claude idle process and generic y/n prose an input request, before checking identity.
@@ -29,3 +29,18 @@ Table-driven six-path lifecycle coverage: start/tool gap/input/end/abort/crash/d
 - Same-agent continuity also gates daemon webhook transitions; an agent swap or >45s observation gap establishes a new baseline.
 - Existing Claude-only terminal scroll control and mirror adoption remain Claude-only even when Pi/Codex become detectable.
 - Sidebar harness `/dev/sidebar` uses the actual Sidebar and stores with labeled example data. Terminal push-schema fields are additive. No production state was changed.
+
+## Real runtime verification follow-up
+Actual local relay + independent CLI home tests run Claude Code 2.1.267, Codex 0.153.4 (subsequent approval probe 0.154.0), and Pi 0.84.4. Harmless sleep tools exercised UI wrappers and real tmux screens. UI heartbeat running→idle and pending permission/user-question records were observed for all three; these are distinct from fixture coverage.
+
+Runtime findings: tmux reports both Node-launched agents as `node`; Pi's normal footer can use decimal `1.0M`; Codex can hide context percentage; Pi model selection and Claude translated questions differ from generic approval text. The adapters cover these observed forms. A single bounded `ps` snapshot per terminal-list read resolves Node process-tree identity using executable positions only; argv is not persisted or sent to Web. Foreground shell still wins after agent exit.
+
+Codex and ACP wrappers previously exited on SIGTERM without publishing session death. They now route SIGTERM/SIGINT through the same idempotent shutdown as archive/RPC, and remove listeners during normal cleanup. SIGKILL/network loss still rely on the existing lease and are not represented as successful completion.
+
+The real Stop-button RPC probe exposed a Pi/ACP bug: AcpBackend.cancel emitted backend `stopped`, causing runAcp to terminate and an early pending-turn rejection to escape before sendPrompt settled. User cancellation now emits idle (the backend stays alive), the runner ends the turn as cancelled, and pending-turn failures are observed immediately while still awaited for cleanup. Regression coverage requires a second prompt in the same session after cancellation.
+
+### Verified runtime scope
+- UI wrappers: all three completed harmless sleep requests and emitted running→idle heartbeats. Codex/Pi tool approval and Claude AskUserQuestion produced pending input records. Stop retained Claude/Codex sessions; after the fix Pi also returned idle and answered `AFTER_CANCEL_OK` in the same session.
+- Real private tmux: all three exposed running/idle; Claude translated questions, Codex command approval and Pi model picker exposed needs_input. Cold capture and opened/headless probes agreed on idle/input/identity; Pi returning to a retained shell exposed shell, not the previous agent.
+- SIGTERM: new Codex/ACP wrappers emitted inactive within one second, matching the Claude path. SIGKILL, network partition and non-macOS/custom-theme runtimes are not claimed as newly live-tested; their fallback remains lease expiry/unknown.
+- Final local checks: CLI 237 files / 2,132 cases; Web 321 files / 2,781 cases; CLI build and Web typecheck passed. All local probe wrappers and private tmux sessions were cleaned up; production was not touched.

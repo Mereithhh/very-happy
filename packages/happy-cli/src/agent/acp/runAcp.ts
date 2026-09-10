@@ -679,6 +679,7 @@ export async function runAcp(opts: {
   let shouldExit = false;
   let abortController = new AbortController();
   let pendingTurn: PendingTurn | null = null;
+  let turnCancelled = false;
 
   const clearPendingTurn = (error?: Error) => {
     if (!pendingTurn) {
@@ -1064,6 +1065,7 @@ export async function runAcp(opts: {
   }, 2000);
 
   async function handleAbort() {
+    turnCancelled = thinking;
     try {
       if (acpSessionId) {
         await backend.cancel(acpSessionId);
@@ -1099,12 +1101,12 @@ export async function runAcp(opts: {
       return { mode };
     },
   );
-  registerKillSessionHandler(session.rpcHandlerManager, async () => {
+  const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, async () => {
     shouldExit = true;
     messageQueue.close();
     clearPendingTurn(new Error('Session terminated'));
     await handleAbort();
-  }, session);
+  }, session, { processSignals: true });
 
   try {
     const started = await backend.startSession();
@@ -1155,8 +1157,12 @@ export async function runAcp(opts: {
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());
+      turnCancelled = false;
       setThinking(true);
       const turnEnded = waitForTurnEnd();
+      // A backend error can reject this while sendPrompt is still pending.
+      // Observe it immediately; the awaited promise below retains the error.
+      void turnEnded.catch(() => {});
       try {
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
           await switchPermissionModeIfRequested(batch.mode.permissionMode);
@@ -1174,7 +1180,7 @@ export async function runAcp(opts: {
         await backend.sendPrompt(acpSessionId, appendStagedAttachmentsToPrompt(prompt, staged), attachments);
         todoDiscoverySent = true;
         await turnEnded;
-        sendEnvelopes(sessionManager.endTurn('completed'));
+        sendEnvelopes(sessionManager.endTurn(turnCancelled ? 'cancelled' : 'completed'));
         // Sweep AFTER the turn's envelopes are queued: `turn-end` starts the
         // web's 1.5s countdown for unclaimed drafts.
         streamRelay.endTurn();
@@ -1197,6 +1203,7 @@ export async function runAcp(opts: {
       }
     }
   } finally {
+    disposeTermination?.();
     // A turn cut short by kill/backend death never reached setThinking(false)
     // above; release the lease before the interval stops re-sending it.
     setThinking(false);

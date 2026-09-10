@@ -543,7 +543,7 @@ export async function runCodex(opts: {
     // Register abort handler
     session.rpcHandlerManager.registerHandler('abort', handleAbort);
 
-    registerKillSessionHandler(session.rpcHandlerManager, handleKillSession, session);
+    const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, handleKillSession, session, { processSignals: true });
 
     //
     // Initialize Ink UI
@@ -952,6 +952,7 @@ export async function runCodex(opts: {
 
     } finally {
         // Clean up resources when main loop exits
+        disposeTermination?.();
         logger.debug('[codex]: Final cleanup start');
         logActiveHandles('cleanup-start');
 

@@ -37,3 +37,20 @@ describe('agent-specific terminal observations', () => {
         expect(classifyAgentPane('pi', 'tell Claude what to do' + piEditor).agentKind).toBe('pi');
     });
 });
+
+describe('real installed agent screen regressions', () => {
+    it('recognizes Pi 0.84.4 decimal-million context footer', () => {
+        expect(classifyAgentPane('pi', piEditor.replace('262k','1.0M'))).toEqual({agentKind:'pi',agentState:'idle'});
+    });
+    it('recognizes the actual Pi model picker even when the selection is above the status footer', () => {
+        expect(classifyAgentPane('pi', '→ glm-5.3 [zai]\n' + '  model\n'.repeat(20) + 'Enter to select · Ctrl+S to set as default · Esc to cancel')).toEqual({agentKind:'pi',agentState:'needs_input'});
+    });
+    it('recognizes the current Codex footer with hidden context percentage', () => {
+        expect(classifyAgentPane('codex', '› Ask Codex to do anything\n  gpt-6-astra medium fast · ~/repo')).toEqual({agentKind:'codex',agentState:'idle'});
+        expect(classifyAgentPane('codex', '• Working (0s • esc to interrupt)\n› Ask Codex to do anything\n  gpt-6-astra medium fast · ~/repo').agentState).toBe('working');
+    });
+});
+
+it('detects the actual Claude Chinese AskUserQuestion selector without English Yes', () => {
+    expect(classifyAgentPane('2.1.267', '你倾向选择哪个方案？\n❯ 1. 选项 A\n  2. 选项 B\nEnter to select · ↑/↓ to navigate · Esc to cancel')).toEqual({agentKind:'claude',agentState:'needs_input'});
+});

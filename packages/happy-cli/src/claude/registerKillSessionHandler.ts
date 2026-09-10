@@ -12,6 +12,7 @@ interface KillSessionResponse {
 
 interface SessionArchiveEvents {
     on(event: 'archived', listener: () => void): unknown;
+    off?(event: 'archived', listener: () => void): unknown;
 }
 
 
@@ -19,6 +20,7 @@ export function registerKillSessionHandler(
     rpcHandlerManager: RpcHandlerManager,
     killThisHappy: () => Promise<void>,
     archiveEvents: SessionArchiveEvents,
+    options?: { processSignals?: boolean },
 ) {
     let terminationStarted = false;
     const terminateOnce = () => {
@@ -32,6 +34,10 @@ export function registerKillSessionHandler(
     // obeys the same lifecycle command, including a directly launched CLI
     // whose machine daemon is unavailable.
     archiveEvents.on('archived', terminateOnce);
+    if (options?.processSignals) {
+        process.on('SIGTERM', terminateOnce);
+        process.on('SIGINT', terminateOnce);
+    }
 
     rpcHandlerManager.registerHandler<KillSessionRequest, KillSessionResponse>('killSession', async () => {
         logger.debug('Kill session request received');
@@ -46,4 +52,11 @@ export function registerKillSessionHandler(
             message: 'Killing happy-cli process'
         };
     });
+    return () => {
+        archiveEvents.off?.('archived', terminateOnce);
+        if (options?.processSignals) {
+            process.off('SIGTERM', terminateOnce);
+            process.off('SIGINT', terminateOnce);
+        }
+    };
 }
