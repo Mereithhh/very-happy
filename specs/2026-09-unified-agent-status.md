@@ -47,3 +47,5 @@ The real Stop-button RPC probe exposed a Pi/ACP bug: AcpBackend.cancel emitted b
 
 ## Release evidence
 PR #348 merged as `c7db3fc2ff5074df8bd28756bad3f6d9e26c89a4`. Web assets at veryhappy.dev expose the new neutral identity and single-status CSS. CLI `v0.2.134` was published from that commit, all six Linux/macOS/Windows × Node 20/24 smoke jobs passed, and npm latest plus the public recommendation both report 0.2.134. mac-office runs 0.2.134 under launchd; a real central `list-terminals` RPC returned fresh observation timestamps and Claude identity after upgrade (the previous version returned neither). Existing business wrappers were preserved.
+
+The initial production workflow lost its remote process after the public switch: blue served the target and green was drained, but state.env still described green. After confirming no deployment process remained and cancelling the stalled workflow, recovery revalidated blue readiness and public assets, used the existing release functions to stop drained green and atomically commit state, and retained c014708e as rollback. This was a recovered deployment, not a successful initial workflow run.
