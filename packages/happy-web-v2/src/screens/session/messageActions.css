@@ -43,5 +43,5 @@
 .msg-branch-preview { min-width: 0; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (pointer: coarse), (max-width: 600px) {
-  .msg-edit-label textarea, .msg-edit-points select { font-size: 17px; }
+  .msg-edit-label textarea, .msg-edit-points select { font-size: var(--fs-16); }
 }

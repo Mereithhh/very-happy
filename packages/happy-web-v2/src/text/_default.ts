@@ -1827,6 +1827,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10i: {
+                title: 'Consistent workspace typography',
+                summary: 'Balanced sidebar and conversation text with a compact reading rhythm.',
+                density: 'Desktop session titles and messages share a 14px baseline, with tighter paragraphs, lists and a compact composer.',
+                mobile: 'Mobile inputs, search and forms use 16px, with 15px message text and preserved touch targets.',
+            },
             sep10h: {
                 title: 'Roomier activity indicators and timely CLI recommendations',
                 summary: 'Refined chat spacing and verified CLI recommendations after release.',

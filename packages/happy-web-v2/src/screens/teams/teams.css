@@ -114,7 +114,7 @@
   .teams-screen input,
   .teams-screen textarea,
   .teams-screen select {
-    font-size: var(--fs-17);
+    font-size: var(--fs-16);
   }
 }
 
@@ -217,7 +217,7 @@
 /* First use follows the ordinary conversation visual language. */
 .teams-screen .team-start-form { display: flex; flex-direction: column; gap: var(--sp-3); }
 .team-start-form fieldset { display: flex; flex-direction: column; gap: var(--sp-4); border: 0; padding: 0; margin: 0; min-width: 0; }
-.team-start-form input, .team-start-form select, .team-start-form textarea { font-size: var(--fs-17); width: 100%; }
+.team-start-form input, .team-start-form select, .team-start-form textarea { font-size: var(--fs-16); width: 100%; }
 .team-start-form textarea { min-height: 112px; }
 .team-folder-input { display: flex; align-items: stretch; gap: var(--sp-2); }
 .team-folder-input input { min-width: 0; flex: 1; }
@@ -239,7 +239,7 @@
   .team-folder-input button { width: 100%; justify-content: center; }
 }
 
-@media (pointer: coarse) { .teams-screen input, .teams-screen select, .teams-screen textarea { font-size: var(--fs-17); } }
+@media (pointer: coarse) { .teams-screen input, .teams-screen select, .teams-screen textarea { font-size: var(--fs-16); } }
 
 @media (pointer: coarse) {
  .teams-screen button, .teams-screen input, .teams-screen select, .teams-talk, .teams-back, .teams-screen summary { min-height:44px; }

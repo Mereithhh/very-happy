@@ -266,9 +266,9 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--fs-16);
+  font-size: var(--workspace-primary-size);
   line-height: 1.6;
-  min-height: 76px;
+  min-height: 50px;
   width: 100%;
   padding: var(--sp-2);
   /* max-height 不在 CSS 里定义——唯一事实源是 composerExpand.ts 的
@@ -383,7 +383,7 @@
     grid-column: 1;
     grid-row: 1;
     width: 100%;
-    min-height: 72px;
+    min-height: 50px;
     font-size: var(--fs-16);
     padding: var(--sp-2);
   }

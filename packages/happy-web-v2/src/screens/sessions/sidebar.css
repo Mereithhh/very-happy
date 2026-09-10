@@ -287,7 +287,7 @@
   flex: 1;
 }
 .sb-row-title {
-  font-size: var(--fs-13);
+  font-size: var(--workspace-primary-size);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -627,7 +627,7 @@
 .sb-list-tools { display:flex; align-items:center; gap:2px; }
 .sb-list-tools .sb-icon-btn { width:26px; height:28px; }
 .sb-products { display:flex; flex-direction:column; gap:2px; padding:var(--sp-2); }
-.sb-products > button, .sb-products .sb-nav-btn { display:flex; align-items:center; gap:var(--sp-2); width:100%; min-height:32px; padding:5px var(--sp-2); font-size:var(--fs-13); text-align:left; border-radius:var(--r-sm); }
+.sb-products > button, .sb-products .sb-nav-btn { display:flex; align-items:center; gap:var(--sp-2); width:100%; min-height:32px; padding:5px var(--sp-2); font-size:var(--workspace-primary-size); text-align:left; border-radius:var(--r-sm); }
 .sb-products button:hover, .sb-products button:focus-visible { outline:none; box-shadow:none; background:var(--bg-2); }
 .sb-products kbd { margin-left:auto; color:var(--text-faint); font-size:var(--fs-10); }
 @media (pointer:coarse) {

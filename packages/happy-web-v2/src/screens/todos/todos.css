@@ -436,5 +436,5 @@
 
 @media (pointer: coarse) {
  .td-source-tabs button, .td-filters button, .td-action, .td-primary, .td-builtin .td-input { min-height:44px; }
- .td-input, .td-select, .td-builtin .td-input { font-size:var(--fs-17); }
+ .td-input, .td-select, .td-builtin .td-input { font-size:var(--fs-16); }
 }

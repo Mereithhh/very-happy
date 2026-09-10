@@ -11,8 +11,8 @@
 /** 常态下 textarea 的最大高度（px）。 */
 export const COMPOSER_MAX_HEIGHT = 200;
 
-/** Phone composer starts at three readable lines instead of a squeezed row. */
-export const COMPOSER_MOBILE_MIN_HEIGHT = 72;
+/** Compact composer floor; content still grows to the normal height cap. */
+export const COMPOSER_MOBILE_MIN_HEIGHT = 50;
 
 /** 展开态占视口高度的比例（~60dvh）。 */
 export const COMPOSER_EXPANDED_RATIO = 0.6;

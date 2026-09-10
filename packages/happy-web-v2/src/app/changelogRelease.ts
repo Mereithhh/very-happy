@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-workspace-typography',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10i.title',
+    summaryKey: 'changelog.releases.sep10i.summary',
+    itemKeys: ['changelog.releases.sep10i.density', 'changelog.releases.sep10i.mobile'],
+  },
+  {
     id: '2026-09-10-loading-cli-recommendation',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,

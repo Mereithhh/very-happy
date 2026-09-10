@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10i: {
+                title: '工作台文字更协调',
+                summary: '统一侧栏与对话字号，恢复紧凑的阅读节奏。',
+                density: '桌面会话名、用户消息与回复统一 14px，收紧正文行距、段落和列表间距，输入框默认高度更紧凑。',
+                mobile: '手机输入框、搜索与表单统一 16px，正文保持 15px，保留触屏点击区域。',
+            },
             sep10h: {
                 title: '运行提示更舒展，CLI 推荐更新更及时',
                 summary: '细化对话留白，并补齐 CLI 发布后的推荐验收。',
