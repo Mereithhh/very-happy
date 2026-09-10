@@ -17,6 +17,7 @@ export interface ChangelogRelease {
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
     id: '2026-09-10-unified-agent-status',
+    cliVersion: '0.2.134',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.sep10q.title',

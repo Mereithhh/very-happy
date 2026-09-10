@@ -31,7 +31,7 @@ export function classifyAgentPane(command: string, tail: string): AgentObservati
         if (editorRules.length >= 2 && /(?:\d+(?:\.\d+)?|\?)%\/\d+(?:\.\d+)?[km]?.* • (?:thinking off|minimal|low|medium|high|xhigh)/i.test(footer)) return result('idle');
         return result();
     }
-    const choice = /^[\s│]*[❯›>]\s*1\.\s/m.test(footer);
+    const choice = /^[\s│]*[❯›>]\s*\d+\.\s/m.test(footer);
     if (choice && /Do you want|Would you like|approve|Yes,|Yes\b|Enter to select.*navigate.*Esc to cancel/i.test(footer)) return result('needs_input');
     if (/esc to interrupt/i.test(footer)) return result('working');
     if (agentKind === 'codex' && /^\s*gpt-[\w.-]+ (?:minimal|low|medium|high|xhigh|fast)[^\n]* · (?:~|\/|[A-Z]:[\\/])/m.test(footer) && /^› /m.test(footer)) return result('idle');

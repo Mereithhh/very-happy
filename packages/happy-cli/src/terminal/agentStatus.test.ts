@@ -54,3 +54,7 @@ describe('real installed agent screen regressions', () => {
 it('detects the actual Claude Chinese AskUserQuestion selector without English Yes', () => {
     expect(classifyAgentPane('2.1.267', '你倾向选择哪个方案？\n❯ 1. 选项 A\n  2. 选项 B\nEnter to select · ↑/↓ to navigate · Esc to cancel')).toEqual({agentKind:'claude',agentState:'needs_input'});
 });
+
+ it.each(['claude', 'codex'])('keeps %s waiting when approval selection moves to another option', agent => {
+    expect(classifyAgentPane(agent, 'Would you like to proceed?\n  1. Yes\n› 2. No\nEnter to select · Esc to cancel').agentState).toBe('needs_input');
+ });
