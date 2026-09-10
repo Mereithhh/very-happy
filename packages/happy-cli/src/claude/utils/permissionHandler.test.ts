@@ -259,6 +259,15 @@ describe('PermissionHandler SDK protocol', () => {
         expect(getState().requests).toEqual({});
     });
 
+    it('cancels an invalid result for a known dialog instead of forwarding arbitrary data', async () => {
+        const { handler, respond } = fixture();
+        const pending = handler.handleUserDialog({dialogKind: 'refusal_fallback_prompt', payload: {}}, {
+            signal: new AbortController().signal, requestId: 'invalid-choice',
+        });
+        await respond({id: 'invalid-choice', approved: true, updatedInput: {result: 'invented-choice'}});
+        await expect(pending).resolves.toEqual({behavior: 'cancelled'});
+    });
+
     it('answers the declared refusal fallback dialog with the CLI choice token', async () => {
         const { handler, getState, respond } = fixture();
         const pending = handler.handleUserDialog({

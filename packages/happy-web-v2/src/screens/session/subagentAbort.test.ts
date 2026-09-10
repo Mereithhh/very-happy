@@ -5,6 +5,15 @@ import { countRunningSubagentCards } from './subagentPills';
 
 const T0 = 1_700_000_000_000;
 
+it('does not infer background command termination from a foreground stop or count it as a child agent', () => {
+    const background = card(T0, {status:'running',subagentType:'background-command'});
+    background.tool.name = 'Bash';
+    expect(presentedSubagentStatus(background, T0 + 100)).toBe('running');
+    expect(countRunningSubagentCards([background])).toBe(0);
+    background.subagent!.status = 'completed';
+    expect(presentedSubagentStatus(background, T0 + 100)).toBe('completed');
+});
+
 function card(createdAt: number, subagent?: Partial<SubagentLifecycle>): ToolCallMessage {
     return {
         kind: 'tool-call',

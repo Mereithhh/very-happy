@@ -16,6 +16,7 @@ export const sessionTextEventSchema = z.object({
   t: z.literal('text'),
   text: z.string(),
   thinking: z.boolean().optional(),
+  actualModel: z.string().optional(),
 });
 
 export const sessionServiceMessageEventSchema = z.object({

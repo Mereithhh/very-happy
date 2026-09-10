@@ -721,8 +721,9 @@ export class PermissionHandler {
                     ? { action: 'accept', content: elicitationContent(message.updatedInput) }
                     : { action: message.decision === 'abort' ? 'cancel' : 'decline' });
             } else {
-                pending.resolve(message.approved
-                    ? { behavior: 'completed', result: message.updatedInput?.result ?? 'retry_fallback' }
+                pending.resolve(message.approved && pending.request.dialogKind === 'refusal_fallback_prompt'
+                    && (message.updatedInput?.result === undefined || message.updatedInput.result === 'retry_fallback')
+                    ? { behavior: 'completed', result: 'retry_fallback' }
                     : { behavior: 'cancelled' });
             }
 

@@ -198,6 +198,7 @@ type ToolResultContent = {
 
 export type ReducerState = {
     toolIdToMessageId: Map<string, string>; // toolId/permissionId -> messageId (since they're the same now)
+    codexCollaborationUpdatedAt: Map<string, number>;
     sidechainToolIdToMessageId: Map<string, string>; // toolId -> sidechain messageId (for dual tracking)
     // tool-result whose tool-call message hasn't been seen yet. Backward backfill
     // paginates newest→oldest, so a result page can arrive before its (older)
@@ -238,6 +239,7 @@ export type ReducerState = {
 export function createReducer(): ReducerState {
     return {
         toolIdToMessageId: new Map(),
+        codexCollaborationUpdatedAt: new Map(),
         sidechainToolIdToMessageId: new Map(),
         pendingToolResults: new Map(),
         permissions: new Map(),
@@ -265,6 +267,25 @@ function mergeToolInputs(existingInput: unknown, nextInput: unknown): unknown {
         return { ...nextInput, ...existingInput };
     }
     return nextInput ?? existingInput;
+}
+
+// Codex reports receivers after a spawn starts. Unlike permission-edited
+// arguments, these are provider snapshots: an initial empty array must not
+// override the later receiver list. Backfilled older frames may add identity,
+// but must not replace newer status snapshots.
+function mergeCodexCollaborationInput(existing: unknown, next: unknown, newer: boolean): unknown {
+    if (!isRecord(existing) || !isRecord(next)) return newer ? next ?? existing : existing ?? next;
+    const receivers = [...new Set([
+        ...(Array.isArray(existing.receiverThreadIds) ? existing.receiverThreadIds : []),
+        ...(Array.isArray(next.receiverThreadIds) ? next.receiverThreadIds : []),
+    ])];
+    const oldStates = isRecord(existing.agentsStates) ? existing.agentsStates : {};
+    const nextStates = isRecord(next.agentsStates) ? next.agentsStates : {};
+    return {
+        ...(newer ? { ...existing, ...next } : { ...next, ...existing }),
+        receiverThreadIds: receivers,
+        agentsStates: newer ? { ...oldStates, ...nextStates } : { ...nextStates, ...oldStates },
+    };
 }
 
 function getSidechainOwner(state: ReducerState, sidechainId: string): ReducerMessage | null {
@@ -991,9 +1012,15 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
                             if (message.seq === undefined || message.seq === null) {
                                 message.seq = msg.seq;
                             }
-                            message.tool.input = mergeToolInputs(message.tool.input, c.input);
+                            if (c.name === 'CodexCollaboration') {
+                                const updatedAt = state.codexCollaborationUpdatedAt.get(c.id) ?? message.tool.startedAt ?? 0;
+                                message.tool.input = mergeCodexCollaborationInput(message.tool.input, c.input, msg.createdAt >= updatedAt);
+                                state.codexCollaborationUpdatedAt.set(c.id, Math.max(updatedAt, msg.createdAt));
+                            } else {
+                                message.tool.input = mergeToolInputs(message.tool.input, c.input);
+                                message.tool.startedAt = msg.createdAt;
+                            }
                             message.tool.description = c.description;
-                            message.tool.startedAt = msg.createdAt;
                             // If permission was approved and shown as completed (no tool), now it's running
                             if (message.tool.permission?.status === 'approved' && message.tool.state === 'completed') {
                                 message.tool.state = 'running';

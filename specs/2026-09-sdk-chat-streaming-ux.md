@@ -268,3 +268,14 @@ liveStream[sessionId] = {
 4. `runAcp`：`turn-end` 帧在 `endTurn` 信封出队**之后**发（与 launcher 同序）；finally 里 `endTurn()+dispose()`，被杀的 turn 不会把半截草稿留在 web 上 5 分钟。
 
 残余（已知、接受）：pi 无 token 进度（要 pi-acp 转发 usage 才行）；gemini / opencode 走同一 mapper 顺带受益但未实测；Codex / OpenClaw runner 仍未接。
+
+## 2026-09-11 SDK / CLI 能力复核（局部样本）
+
+针对「只有连续命令、中间没有正文、无法启动后台任务」反馈，使用隔离工作目录、禁用 hooks、禁止持久化，以同一提示分别实跑 SDK 0.3.232 与 Claude Code 2.1.267 的 `-p --output-format stream-json --include-partial-messages`。每条路径各 1 次：先输出说明，再启动 `sleep 2; echo SDK_BACKGROUND_PROBE` 后台 Bash，输出进度，最后通过 TaskOutput 收取结果。
+
+- 两条路径均成功输出两段中间正文，Bash 输入均有 `run_in_background: true`，收到 `task_started`、`task_updated`、`task_notification`，TaskOutput 成功并以成功 result 结束。
+- SDK 样本有 105 个 text delta、3 个 thinking delta，但思考正文为空。只能描述本次配置/上游的样本；不能推广为所有 Claude 提供方均不返回思考正文。
+- 这是 SDK 与 CLI print mode 的对照，不是交互 TUI 全能力等价证明，也未复现反馈用户的具体会话。不得用本次成功代替用户会话链路取证，或通过强制叙述提示掩盖可能的事件丢失。
+- 已确认的可见性缺口：`sessionProtocolMapper` 仅给已登记 Agent/Task tool ID 映射 task 生命周期；后台 Bash 的 `local_bash` 被排除。因此没有任务卡不代表命令未启动。通用后台任务展示仍需单独补齐，不能把 Bash 冒充为子代理。
+
+本次子代理 UI 本地预览：正文入口与普通命令使用相同缩进，任务说明默认展开、可手动收起，详情使用现有消息/命令组件，运行中 Agent/Task 在输入区上方提供紧凑入口。完成或停止移出运行入口，正文历史仍保留；尚未改变后端生命周期协议。

@@ -4,7 +4,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -109,7 +109,6 @@ interface SidebarSection {
   collapsible: boolean;
   open: boolean;
   detail?: string;
-  changesSessionId?: string | null;
   createLocation?: RecentMachinePath;
 }
 
@@ -819,7 +818,6 @@ export function Sidebar() {
         rows: g.rows,
         collapsible: false,
         open: true,
-        changesSessionId: g.representativeSessionId,
         createLocation: g.machineId && g.path ? { machineId: g.machineId, path: g.rows.find(r => r.workspacePath)?.workspacePath ?? g.path } : undefined,
       }));
     }
@@ -840,7 +838,7 @@ export function Sidebar() {
       <header className="sb-header">
 
         <button className="sb-brand sb-brand--button" type="button" onClick={() => navigate('/help')} title={t('sidebar.openHelp')} aria-label={t('sidebar.openHelp')}>
-          <CyberMark size={24} /><span>Very Happy</span>
+          <CyberMark size={18} /><span>Very Happy</span>
         </button>
         <div className="sb-header-right">
           <button className="sb-icon-btn" aria-label={t("sidebar.openSearch")} title={`${t("sidebar.openSearch")} · ⌘K`} onClick={openCommandPalette}><Search size={17}/></button>
@@ -1020,7 +1018,7 @@ export function Sidebar() {
                         <span className="sb-section-count mono">{sec.count}</span>
                       </button>
                     ) : (
-                      <div className={`sb-section-head${sec.changesSessionId || sec.createLocation ? ' sb-section-head--workspace' : ''}`} title={sec.detail || undefined}>
+                      <div className={`sb-section-head${sec.createLocation ? ' sb-section-head--workspace' : ''}`} title={sec.detail || undefined}>
                         <span className="sb-section-label">{sec.label}</span>
                         <span className="sb-section-count mono">{sec.count}</span>
                         {sec.detail && <span className="sb-section-detail">{sec.detail}</span>}
@@ -1030,17 +1028,7 @@ export function Sidebar() {
                           aria-label={lang.startsWith('zh') ? `在此目录新建会话：${sec.label}` : `New chat here: ${sec.label}`}
                           onClick={() => void createChatOrConfigure(navigate, configureNew, { target: sec.createLocation })}
                         ><Plus size={14} /></button>}
-                        {sec.changesSessionId && (
-                          <button
-                            type="button"
-                            className="sb-workspace-changes"
-                            title={t('sidebar.openWorkspaceChanges')}
-                            aria-label={`${t('sidebar.openWorkspaceChanges')}: ${sec.label}`}
-                            onClick={() => navigate(`/session/${encodeURIComponent(sec.changesSessionId!)}?panel=changes`)}
-                          >
-                            <FileDiff size={14} />
-                          </button>
-                        )}
+
                       </div>
                     ))}
                   {sec.rows.map((r) => {

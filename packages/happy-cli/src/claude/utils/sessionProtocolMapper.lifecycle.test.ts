@@ -119,3 +119,27 @@ describe('sub-agent lifecycle mapping (B-260-P2)', () => {
         expect(skipped.envelopes).toEqual([]);
     });
 });
+
+it('keeps the actual child model on linked prose without relabelling the main reply', () => {
+    const state: ClaudeSessionProtocolState = { currentTurnId: null };
+    agentToolUse(state);
+    const child = mapClaudeLogMessageToSessionEnvelopes({type:'assistant', uuid:'child-model', parent_tool_use_id:'toolu_agent_1', message:{role:'assistant', model:'claude-haiku-real', content:[{type:'text',text:'child answer'}]}} as any, state);
+    const text = child.envelopes.find(e => e.ev.t === 'text');
+    expect(text?.subagent).toBeTruthy();
+    expect(text?.ev).toMatchObject({actualModel:'claude-haiku-real',text:'child answer'});
+    const main = mapClaudeLogMessageToSessionEnvelopes({type:'assistant', uuid:'main-model', message:{role:'assistant',model:'claude-opus-real',content:[{type:'text',text:'main answer'}]}} as any,state);
+    expect(main.envelopes.find(e => e.ev.t === 'text')?.ev).not.toHaveProperty('actualModel');
+});
+
+it('tracks a known background Bash independently of its launch result and parent turn',()=>{
+    const state: ClaudeSessionProtocolState = {currentTurnId:null};
+    const launch=mapClaudeLogMessageToSessionEnvelopes({type:'assistant',uuid:'bash',message:{role:'assistant',content:[{type:'tool_use',id:'bash-call',name:'Bash',input:{command:'sleep 2',run_in_background:true}}]}} as any,state);
+    const card=launch.envelopes.find(e=>e.ev.t==='tool-call-start')!;
+    const sub=(card.ev as any).args.sessionSubagent;
+    const started=mapClaudeLogMessageToSessionEnvelopes({type:'system',subtype:'task_started',task_type:'local_bash',tool_use_id:'bash-call',description:'sleep 2'} as any,state);
+    expect(started.envelopes.at(-1)).toMatchObject({subagent:sub,ev:{t:'start',subagentType:'background-command'}});
+    const stub=mapClaudeLogMessageToSessionEnvelopes({type:'user',message:{content:[{type:'tool_result',tool_use_id:'bash-call',content:'running in background'}]}} as any,state);
+    expect(stub.envelopes.some(e=>e.ev.t==='stop')).toBe(false);
+    const done=mapClaudeLogMessageToSessionEnvelopes({type:'system',subtype:'task_notification',tool_use_id:'bash-call',status:'completed'} as any,state);
+    expect(done.envelopes.at(-1)).toMatchObject({subagent:sub,ev:{t:'stop',status:'completed'}});
+});

@@ -77,6 +77,7 @@ const sessionTextEventSchema = z.object({
     t: z.literal('text'),
     text: z.string(),
     thinking: z.boolean().optional(),
+    actualModel: z.string().optional(),
 });
 
 const sessionServiceMessageEventSchema = z.object({
@@ -802,7 +803,7 @@ function normalizeSessionEnvelope(
                     parentUUID
                 }
             ],
-            meta,
+            meta: envelope.ev.actualModel ? { ...meta, reportedModel: envelope.ev.actualModel } : meta,
             usage: envelope.usage,
             claudeUuid: envelope.claudeUuid,
             codexItemId: envelope.codexItemId,

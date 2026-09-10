@@ -1,16 +1,17 @@
 import { isTerminalToolName, getTerminalToolCommand } from '@/utils/toolDisplay';
 /**
  * ToolGroupView — a run of consecutive tool calls rendered as a single
- * collapsible block with a mono font and a teal accent left-spine. The spine
- * color encodes state: teal=running, danger=error, warn=mixed, line=done.
+ * collapsible block. Labels share conversation typography; only commands and
+ * paths use mono. A single state icon describes live sub-agent tasks.
  */
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { ChevronRight, AlertTriangle, Bot, Check, PanelRight, Square } from 'lucide-react';
+import { ChevronRight, AlertTriangle, Bot, Check, FileText, Square } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import { sameItems } from './rowMemo';
 import { useTranslation } from '@/i18n/useTranslation';
-import { StatusDot } from '@/ui';
+import { previewToolPath } from './previewTools';
+import { StatusDot, Spinner } from '@/ui';
 import { ToolView } from './ToolView';
 import { toolLabel, toolDetail } from './toolInfo';
 import { toolFilePathOf } from './toolFilePath';
@@ -22,6 +23,7 @@ import { toolRunSummary } from './toolRunSummary';
 import { buildSubagentSummary } from './subagentSummary';
 import { presentedSubagentStatus } from './subagentAbort';
 import { openSubagentPanel } from './subagentPanelState';
+import { useSubagentNavigation } from './subagentNavigation';
 import { normalizePiToolCall } from '@/components/tools/piToolMapping';
 import './toolgroup.css';
 import './subagent.css';
@@ -58,8 +60,8 @@ function subagentGlyph(
     aborted: boolean,
 ) {
     if (status === 'stopped' || (aborted && status === undefined)) return <Square size={11} className="tg-subagent-glyph" aria-hidden />;
-    if (status === 'running' || (status === undefined && toolState === 'running')) return <StatusDot status="thinking" size={7} pulse />;
-    if (status === 'failed' || toolState === 'error') return <StatusDot status="permission" size={7} />;
+    if (status === 'running' || (status === undefined && toolState === 'running')) return <Spinner size={16} className="tg-subagent-spinner" />;
+    if (status === 'failed' || (status === undefined && toolState === 'error')) return <AlertTriangle size={16} className="tg-subagent-error" aria-hidden />;
     if (status === 'completed') return <Check size={13} className="tg-subagent-glyph" aria-hidden />;
     // No lifecycle from the CLI (old wrapper / stub completion): neutral, no claim.
     return <Bot size={13} className="tg-subagent-glyph" aria-hidden />;
@@ -81,6 +83,7 @@ function ToolRow({
     abortedAt?: number | null;
 }) {
     const { t } = useTranslation();
+    const subagentNavigation = useSubagentNavigation();
     // B-353: a pi tool call carrying `piTool` is rewritten to its Claude-shaped twin
     // (bash→Bash, edit→Edit…) once here, so header label/detail and the expanded
     // ToolView all see the same identity. No `piTool` → same object, today's path.
@@ -95,7 +98,7 @@ function ToolRow({
     // one-line process summary outside the disclosure panel.
     const isSubagent = tool.name === 'Task' || tool.name === 'Agent';
     const subagentSummary = isSubagent ? buildSubagentSummary(message) : null;
-    const subagentStatus = isSubagent ? presentedSubagentStatus(message, abortedAt) : undefined;
+    const subagentStatus = isSubagent ? (presentedSubagentStatus(message, abortedAt) ?? (tool.state === 'error' ? 'failed' : undefined)) : undefined;
     const isAborted = abortedAt !== null && message.createdAt <= abortedAt;
     const [open, setOpen] = useState(defaultOpen);
     const wasRunningRef = useRef(tool.state === 'running');
@@ -138,22 +141,33 @@ function ToolRow({
     // between two paragraphs of the main conversation. Without a session route
     // (the dev harness) there is no drawer to open, so the old inline
     // disclosure below stays as the fallback.
-    if (isSubagent && sessionId) {
+    if (isSubagent && sessionId && subagentNavigation === 'session') {
         return (
             <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
                 <button
                     type="button"
-                    className="tg-subagent-open"
+                    className={`tg-subagent-open${subagentStatus === 'failed' ? ' tg-subagent-open--failed' : ''}`}
                     onClick={() => openSubagentPanel(sessionId, message.id)}
                 >
-                    {subagentGlyph(subagentStatus, tool.state, isAborted)}
-                    <span className="tg-tool-label">{label}</span>
-                    {detail && detail !== label && <span className="tg-subagent-open-title">{detail}</span>}
-                    <PanelRight size={13} className="tg-subagent-open-cue" aria-hidden />
+                    <span className="tg-subagent-status-slot" aria-hidden>{subagentGlyph(subagentStatus, tool.state, isAborted)}</span>
+                    <span className="tg-subagent-open-title">{detail || label}</span>
+                    <span className="tg-subagent-meta">
+                        {subagentStatus && <span>{t(`session.chat.subagentStatus.${subagentStatus}` as 'session.chat.subagentStatus.running')}</span>}
+                        {subagentSummary && subagentSummary.toolCount > 0 && <span>{t('session.chat.usedTools', {count:subagentSummary.toolCount})}</span>}
+                    </span>
+                    <ChevronRight size={14} className="tg-subagent-open-cue" aria-hidden />
                 </button>
-                {subagentLine}
             </div>
         );
+    }
+
+    const previewPath = previewToolPath(tool);
+    if (previewPath && sessionId && tool.state === 'completed') {
+        return <div className="tg-preview-row" title={label}>
+            <FileText size={16} aria-hidden />
+            <span className="tg-tool-label">{t('filePreview.title')}</span>
+            <FilePathLink path={previewPath} sessionId={sessionId} className="tg-preview-path" />
+        </div>;
     }
 
     return (
@@ -219,10 +233,9 @@ function ToolGroupViewImpl({
         : toolRunSummary(tools.map(m => m.tool));
     const single = tools.length === 1;
     if (single) {
-        // Single tool: render directly with the spine, no group header.
+        // Single tool: render directly without a group header.
         return (
             <div className={`tg tg--${state}`}>
-                <div className="tg-spine" aria-hidden />
                 <div className="tg-content">
                     <ToolRow
                         message={tools[0]}
@@ -238,7 +251,6 @@ function ToolGroupViewImpl({
 
     return (
         <div className={`tg tg--${state}`}>
-            <div className="tg-spine" aria-hidden />
             <div className="tg-content">
                 <button
                     type="button"
@@ -254,7 +266,7 @@ function ToolGroupViewImpl({
                     </span>
                     {running ? (
                         <span className="tg-elapsed tg-elapsed--live">
-                            <StatusDot status="thinking" size={7} pulse />
+                            <Spinner size={16} className="tg-subagent-spinner" />
                             {formatElapsed(elapsed)}
                         </span>
                     ) : state === 'stalled' ? (

@@ -15,6 +15,8 @@ export interface SubagentSummary {
     title: string | null;
     /** mono 中性徽章内容。 */
     subtype: string | null;
+    requestedModel: string | null;
+    actualModels: string[];
     toolCount: number;
     /** 子工具调用，按会话顺序（seq → createdAt → sortOrder 升序）。 */
     childTools: ToolCallMessage[];
@@ -74,6 +76,8 @@ export function buildSubagentSummary(message: ToolCallMessage, recentLimit = 3):
     return {
         title: title ?? lc?.description ?? lc?.subagentType ?? null,
         subtype: subtype ?? lc?.subagentType ?? null,
+        requestedModel: asTrimmedString(input.model),
+        actualModels: [...new Set(message.children.filter(child => child.kind === 'agent-text').map(child => asTrimmedString(child.meta?.reportedModel)).filter((model): model is string => model !== null))],
         toolCount,
         childTools,
         recent,

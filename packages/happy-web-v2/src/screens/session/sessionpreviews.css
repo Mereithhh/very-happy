@@ -1,0 +1,4 @@
+.session-previews { box-sizing:border-box; width:100%; max-width:820px; margin:0 auto; padding:var(--sp-2) var(--sp-4) 0; font-size:var(--conversation-size); line-height:var(--conversation-leading); color:var(--text-dim); }
+.session-previews > summary { cursor:pointer; width:fit-content; padding:var(--sp-1) 0; }
+.session-previews-list { display:flex; flex-wrap:wrap; gap:var(--sp-2); max-height:140px; overflow:auto; padding:var(--sp-2) 0; }
+.session-previews-list .fpl { max-width:100%; }

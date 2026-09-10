@@ -21,7 +21,7 @@
   justify-content: flex-start;
   font-size: var(--fs-14);
   font-weight: 600;
-  margin: -4px;
+  margin: 0;
   border-radius: var(--r-sm);
   color: var(--text);
   transition: background var(--motion-fast);
@@ -149,8 +149,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sb-workspace-new,
-.sb-workspace-changes {
+.sb-workspace-new {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -163,9 +162,7 @@
   transition: background var(--motion-fast), color var(--motion-fast);
 }
 .sb-workspace-new:hover,
-.sb-workspace-new:focus-visible,
-.sb-workspace-changes:hover,
-.sb-workspace-changes:focus-visible {
+.sb-workspace-new:focus-visible {
   background: var(--bg-3);
   color: var(--text);
 }
@@ -174,8 +171,7 @@
     min-height: 44px;
     padding-block: 0;
   }
-  .sb-workspace-new,
-  .sb-workspace-changes {
+  .sb-workspace-new {
     width: 44px;
     height: 44px;
     margin: 0 -12px 0 auto;
@@ -607,7 +603,7 @@
 .sb-team-member-status { color: var(--text-dim); font-weight: 400; }
 
 .sb-workspace-new { margin: 0; }
-.sb-workspace-new + .sb-workspace-changes { margin-left: 0; }
+
 
 /* Agent identity is neutral; exactly one fixed slot carries live state. */
 .sb-row-icon.sb-row-icon--neutral { color: var(--text-dim); }

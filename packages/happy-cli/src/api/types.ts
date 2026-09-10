@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AgentVersionsSchema } from '@slopus/happy-wire';
 import type { Update, UpdateMachineBody } from '@slopus/happy-wire';
 import type { ReleaseDrainNotice } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
@@ -279,6 +280,8 @@ export const ClosedTerminalRecordSchema = z.object({
  * Daemon state - dynamic runtime information (frequently updated)
  */
 export const DaemonStateSchema = z.object({
+  agentVersions: AgentVersionsSchema.optional(),
+  agentVersionEpoch: z.number().optional(),
   status: z.union([
     z.enum(['running', 'shutting-down']),
     z.string() // Forward compatibility

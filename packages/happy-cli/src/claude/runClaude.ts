@@ -192,7 +192,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1'],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1'],
         // Effective mode this process enforces. Kept current by
         // publishPermissionMode below; the web renders it instead of guessing.
         permissionMode: mapToClaudeMode(initialPermissionMode ?? 'default'),

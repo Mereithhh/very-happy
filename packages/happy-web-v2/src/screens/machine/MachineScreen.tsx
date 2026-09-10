@@ -1,3 +1,4 @@
+import { AgentVersionsGroup } from './AgentVersionsGroup';
 import { useEffect, useMemo, useState } from 'react';
 import { readUpdateRecovery, retryMachineUpdate } from '@/app/cliUpdateRecovery';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -329,6 +330,8 @@ export function MachineScreen() {
               </div>
             </ItemGroup>
           )}
+
+          <AgentVersionsGroup daemon={machine.daemonState} online={online} now={updateStatusNow}/>
 
           <ItemGroup title={t('machine.daemon')}>
             <Item

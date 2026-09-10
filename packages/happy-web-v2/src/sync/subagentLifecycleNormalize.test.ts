@@ -38,3 +38,10 @@ describe('B-260-P2 lifecycle envelopes → normalized messages', () => {
         expect(m).toBeNull();
     });
 });
+
+it('retains the reported model in child text metadata', () => {
+    const m = envelope({t:'text',text:'child answer',actualModel:'actual-haiku'});
+    expect(m?.meta?.reportedModel).toBe('actual-haiku');
+    expect(m?.isSidechain).toBe(true);
+    expect(envelope({t:'text',text:'old message'})?.meta?.reportedModel).toBeUndefined();
+});

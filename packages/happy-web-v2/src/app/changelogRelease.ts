@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-11-subagents-runtime-controls',
+    cliVersion: '0.2.135',
+    date: '2026-09-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep11.title',
+    summaryKey: 'changelog.releases.sep11.summary',
+    itemKeys: ['changelog.releases.sep11.subagents', 'changelog.releases.sep11.previews', 'changelog.releases.sep11.controls', 'changelog.releases.sep11.updates', 'changelog.releases.sep11.polish'],
+  },
+  {
     id: '2026-09-10-chat-polish-recovery',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,

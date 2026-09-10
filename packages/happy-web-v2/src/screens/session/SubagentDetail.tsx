@@ -1,3 +1,4 @@
+import { useParams } from 'react-router-dom';
 /**
  * SubagentDetail — everything one Agent/Task card knows, rendered in ONE place
  * (B-317). Both tenants use it: the drawer (`SubagentPanel`) and, when there is
@@ -7,7 +8,8 @@
  * prompt is routinely 40+ lines of briefing written for a machine; rendering it
  * open, inside the transcript, pushed the actual conversation off the screen and
  * made the card read like a bug. Identity and progress are what the reader wants
- * at a glance, so those stay always-visible; the prompt is a closed disclosure.
+ * at a glance, so those stay always-visible; the briefing opens by default and
+ * can be collapsed when the reader wants more room for execution progress.
  */
 import { useId, useState, type ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
@@ -17,8 +19,10 @@ import { CopyButton } from '@/ui/CopyButton';
 import { Markdown } from './Markdown';
 import { buildSubagentSummary } from './subagentSummary';
 import { presentedSubagentStatus } from './subagentAbort';
-import { resultToText, toolDetail, toolLabel } from './toolInfo';
+import { resultToText } from './toolInfo';
 import { formatDurationMs, formatTokens } from './format';
+import { ActivityMessages } from './ActivityMessages';
+import { compareMessagesNewestFirst } from '@/sync/messageOrder';
 import './subagent.css';
 
 function Fold({ label, children, defaultOpen = false }: { label: string; children: ReactNode; defaultOpen?: boolean }) {
@@ -45,13 +49,14 @@ function Fold({ label, children, defaultOpen = false }: { label: string; childre
 
 export function SubagentDetail({ message, abortedAt = null }: { message: ToolCallMessage; abortedAt?: number | null }) {
     const { t } = useTranslation();
+    const { id: sessionId = '' } = useParams();
     const summary = buildSubagentSummary(message, Number.POSITIVE_INFINITY);
     const status = presentedSubagentStatus(message, abortedAt);
     const prompt = typeof message.tool.input?.prompt === 'string' ? message.tool.input.prompt : null;
     const out = resultToText(message.tool.result);
     // The log is the point of the drawer, so it is not clipped to 50 lines the
     // way the old inline card was — the drawer scrolls, the transcript doesn't.
-    const logTools = summary.childTools;
+    const children = [...message.children].sort((a, b) => compareMessagesNewestFirst(b, a));
     const lifecycle = summary.lifecycle;
     const facts = [
         summary.toolCount > 0 ? t('session.chat.usedTools', { count: summary.toolCount }) : null,
@@ -67,36 +72,26 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
                         {t(`session.chat.subagentStatus.${status}` as 'session.chat.subagentStatus.running')}
                     </span>
                 )}
-                {summary.subtype && <span className="tv-badge">{summary.subtype}</span>}
+                {summary.subtype && <span className="sa-kind">{summary.subtype === 'background-command' ? t('session.chat.backgroundCommand') : summary.subtype}</span>}
+                {summary.actualModels.map(model => <span key={model} className="sa-model">{t('session.chat.subagentActualModel')}: {model}</span>)}
+                {summary.requestedModel && <span className="sa-model">{t('session.chat.subagentRequestedModel')}: {summary.requestedModel}</span>}
                 {facts.length > 0 && <span className="sa-facts">{facts.join(' · ')}</span>}
             </div>
 
             {prompt && (
-                <Fold label={t('session.chat.subagentPrompt')}>
-                    <div className="sa-prompt vh-copyhost">
-                        <pre className="sa-prompt-text">{prompt}</pre>
-                        <CopyButton text={prompt} className="vh-copy--overlay" />
+                <Fold label={t('session.chat.subagentPrompt')} defaultOpen>
+                    <div className="sa-brief">
+                        <Markdown text={prompt} />
+                        <div className="sa-brief-actions"><CopyButton text={prompt} /></div>
                     </div>
                 </Fold>
             )}
 
-            {logTools.length > 0 && (
+            {children.length > 0 && (
                 <div className="sa-log">
                     <div className="sa-section-label">{t('session.chat.subagentLog')}</div>
-                    {logTools.map((child) => {
-                        const label = toolLabel(child.tool);
-                        const detail = toolDetail(child.tool);
-                        const line = detail && detail !== label ? `[${label}] ${detail}` : `[${label}]`;
-                        return (
-                            <div
-                                key={child.id}
-                                className={`sa-log-line${child.tool.state === 'error' ? ' sa-log-line--error' : ''}`}
-                                title={line}
-                            >
-                                {line}
-                            </div>
-                        );
-                    })}
+                    <ActivityMessages messages={children} sessionId={sessionId}
+                        stalled={status !== 'running'} abortedAt={abortedAt} subagentNavigation="inline" />
                 </div>
             )}
 
@@ -119,7 +114,7 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
                 </Fold>
             )}
 
-            {logTools.length === 0 && !lifecycle?.result && !out.trim() && (
+            {children.length === 0 && !lifecycle?.result && !out.trim() && (
                 <div className="sa-empty">{t('session.chat.subagentNoActivity')}</div>
             )}
         </div>

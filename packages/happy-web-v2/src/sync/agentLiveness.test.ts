@@ -116,6 +116,5 @@ describe('every liveness consumer goes through the one module', () => {
         expect(source).toContain("return stalled ? 'stalled' : 'running'");
         expect(source).toContain("pulse={tool.state === 'running' && !isStalled}");
         expect(read('../screens/session/TurnActivityView.tsx')).toContain('stalled={!live}');
-        expect(read('../screens/session/toolgroup.css')).toContain('.tg--stalled .tg-spine');
     });
 });

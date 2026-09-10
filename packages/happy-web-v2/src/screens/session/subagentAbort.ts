@@ -55,6 +55,8 @@ export function presentedSubagentStatus(
 ): SubagentLifecycle['status'] | undefined {
     const lifecycle = message.subagent;
     if (!lifecycle) return undefined;
+    // Background commands may outlive the foreground turn and its stop button.
+    if (lifecycle.subagentType === 'background-command') return lifecycle.status;
     // 中止之后开的卡不受这条约束（用户中止的是上一轮）。
     if (abortedAt === null || message.createdAt > abortedAt) return lifecycle.status;
     if (lifecycle.status === 'failed' || lifecycle.status === 'stopped') return lifecycle.status;

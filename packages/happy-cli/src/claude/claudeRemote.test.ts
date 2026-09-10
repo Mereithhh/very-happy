@@ -17,6 +17,28 @@ describe('claudeRemote', () => {
         vi.mocked(query).mockReset();
     });
 
+    it('keeps runtime controls blocked until the permission callback response can flush', async () => {
+        let controls!: {canControl:()=>boolean};
+        let callbackDone!:()=>void;
+        const pending=new Promise<void>(resolve=>{callbackDone=resolve;});
+        vi.mocked(query).mockImplementation((args:any)=>({
+            async *[Symbol.asyncIterator]() {
+                expect(controls.canControl()).toBe(true);
+                const response=args.options.canCallTool('Bash',{}, {signal:new AbortController().signal,toolUseID:'tool'});
+                expect(controls.canControl()).toBe(false);
+                callbackDone(); await response;
+                expect(controls.canControl()).toBe(false);
+                await new Promise(resolve=>setImmediate(resolve));
+                expect(controls.canControl()).toBe(true);
+            },
+        } as any));
+        let n=0;
+        await claudeRemote({sessionId:null,path:process.cwd(),allowedTools:[],hookSettingsPath:'/unused-test-settings.json',
+            nextMessage:async()=>++n===1?{message:'hello',mode}:null,onReady:vi.fn(),
+            canCallTool:async()=>{await pending;return {behavior:'allow',updatedInput:{}};},
+            onQueryReady:q=>{controls=q;},isAborted:()=>false,onSessionFound:vi.fn(),onMessage:vi.fn()});
+    });
+
     it('marks /clear as a completed reset turn', async () => {
         const callbackOrder: string[] = [];
         const onCompletionEvent = vi.fn((message: string) => {

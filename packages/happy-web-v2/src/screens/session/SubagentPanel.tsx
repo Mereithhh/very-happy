@@ -1,3 +1,4 @@
+import { CodexChildDetail } from './CodexChildDetail';
 /**
  * SubagentPanel — the sub-agent drawer (B-317). Lives in the session aside,
  * the same slot (and therefore the same mobile full-screen overlay + scrim) as
@@ -54,7 +55,9 @@ export function SubagentPanel({
             </div>}
             <div className="sap-body">
                 {card
-                    ? <SubagentDetail message={card} abortedAt={abortedAt} />
+                    ? card.tool.name === 'CodexCollaboration'
+                        ? <CodexChildDetail key={`${sessionId}:${card.id}`} sessionId={sessionId} message={card}/>
+                        : <SubagentDetail message={card} abortedAt={abortedAt} />
                     // "Not here" and "not here YET" are different answers. A
                     // reload with `?panel=agent&sub=…` in the URL mounts this
                     // before the transcript has been fetched; claiming the card

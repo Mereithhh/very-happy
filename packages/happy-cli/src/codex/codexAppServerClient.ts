@@ -345,6 +345,11 @@ export class CodexAppServerClient {
             return method.startsWith('item/');
         }
 
+        if ((method === 'item/started' || method === 'item/completed') && (item.type === 'collabAgentToolCall' || item.type === 'subAgentActivity')) {
+            this.eventHandler?.({ type: 'collab_agent_item', item });
+            return true;
+        }
+
         if (method === 'item/started' && item.type === 'commandExecution') {
             const callId = typeof item.id === 'string' ? item.id : '';
             this.eventHandler?.({

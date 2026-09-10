@@ -1,3 +1,5 @@
+import { SessionPreviews } from './SessionPreviews';
+import { SubagentDock } from './SubagentDock';
 import { messageActionsCopy } from './messageActionsCopy';
 import { useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
@@ -180,6 +182,8 @@ export function SessionDetailScreen() {
                 </div>
                 {!mirror && (
                     <div className="sd-foot">
+                        <SessionPreviews sessionId={id} />
+                        <SubagentDock sessionId={id} />
                         {/* Queue/draft/attachment ownership is session-scoped.
                             Force a clean composer instance when route params change so
                             an unsent item can never cross into another session. */}
