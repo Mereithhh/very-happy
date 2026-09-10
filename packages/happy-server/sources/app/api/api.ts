@@ -1,3 +1,4 @@
+import { spaFallback } from './spaFallback';
 import { startBusinessAudit, stopBusinessAudit } from '@/app/audit/producer';
 import { auditLoginFailure } from '@/app/audit/requestAudit';
 import { teamRoutes } from './routes/teamRoutes';
@@ -176,23 +177,7 @@ export async function startApi(opts: StartApiOptions = {}) {
                 return injected;
             });
         }
-        // SPA fallback: serve index.html for any unmatched GET that looks like a route.
-        app.setNotFoundHandler(async (request, reply) => {
-            const url = request.raw.url || '';
-            // Don't fall through for API/socket/files paths
-            if (request.method !== 'GET') return reply.code(404).send({ error: 'Not found' });
-            if (url.startsWith('/v1') || url.startsWith('/v3') || url.startsWith('/socket') ||
-                url.startsWith('/files/') || url.startsWith('/metrics') || url.startsWith('/health')) {
-                return reply.code(404).send({ error: 'Not found' });
-            }
-            const indexPath = path.join(opts.staticDir!, 'index.html');
-            if (!fs.existsSync(indexPath)) {
-                return reply.code(404).send({ error: 'Not found' });
-            }
-            const html = fs.readFileSync(indexPath, 'utf8');
-            const injected = injectScript ? injectRuntimeConfig(html, injectScript) : html;
-            reply.type('text/html').send(injected);
-        });
+        app.setNotFoundHandler(spaFallback(opts.staticDir, injectScript));
     }
 
     // Socket.IO and release-admin routes must be registered before Fastify

@@ -1,3 +1,4 @@
+import { isTerminalToolName } from '@/utils/toolDisplay';
 import type { ToolCall } from '@/sync/typesMessage';
 import { toolLabel } from './toolInfo';
 import { normalizePiToolCall } from '@/components/tools/piToolMapping';
@@ -6,6 +7,7 @@ import { normalizePiToolCall } from '@/components/tools/piToolMapping';
  * into a short, stable activity scan, while each row remains expandable. */
 function activityLabel(rawTool: ToolCall): string {
   const tool = normalizePiToolCall(rawTool);   // B-353: pi bash/read/edit → Terminal/Read/Edit, not Execute/Other
+  if (isTerminalToolName(tool.name)) return 'Terminal';
   switch (tool.name) {
     case 'Edit':
     case 'MultiEdit':

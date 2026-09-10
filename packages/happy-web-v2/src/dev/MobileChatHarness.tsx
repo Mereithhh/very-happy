@@ -11,6 +11,7 @@ import { storage } from '@/sync/storage';
 import { useLiveStreamStore } from '@/sync/liveStreamStore';
 import { ChatHeader } from '@/screens/session/ChatHeader';
 import { ChatList } from '@/screens/session/ChatList';
+import { TurnActivityView } from '@/screens/session/TurnActivityView';
 import { ToolGroupView } from '@/screens/session/ToolGroupView';
 import { AgentInput } from '@/screens/session/AgentInput';
 import { useToast } from '@/ui/Toast';
@@ -140,6 +141,10 @@ export function MobileChatHarness() {
         </section>
         <section data-testid="completed-tool"><ToolGroupView tools={completed} /></section>
         <section data-testid="running-tool"><ToolGroupView tools={running} /></section>
+        <section data-testid="command-run"><TurnActivityView sessionId="mobile-chat-live" live messages={[
+            ...Array.from({ length: 10 }, (_, i) => message('command-' + i, ['Bash', 'CodexBash', 'execute'][i % 3], 'completed', i % 3 === 2 ? { piTool: 'bash', command: 'git status --short' } : { command: i % 3 === 1 ? ['git', 'status', '--short'] : 'git status --short' })),
+            message('command-live', 'Bash', 'running', { command: 'pnpm test' }),
+          ]} /></section>
         <section data-testid="tool-run"><ToolGroupView tools={run} /></section>
         <section
           data-testid="mobile-composer-shell"

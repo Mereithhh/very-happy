@@ -38,8 +38,11 @@
   cursor: pointer;
   outline: none;
 }
-.pm-item[data-highlighted] {
+.pm-item[data-highlighted],
+.pm-item:focus-visible {
   background: var(--bg-3);
+  outline: none;
+  box-shadow: none;
 }
 .pm-item-title {
   font-size: var(--fs-13);

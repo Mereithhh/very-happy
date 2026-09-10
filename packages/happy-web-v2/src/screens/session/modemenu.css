@@ -60,8 +60,11 @@
   cursor: pointer;
   outline: none;
 }
-.mm-item[data-highlighted] {
+.mm-item[data-highlighted],
+.mm-item:focus-visible {
   background: var(--bg-3);
+  outline: none;
+  box-shadow: none;
 }
 .mm-item-check {
   width: 14px;

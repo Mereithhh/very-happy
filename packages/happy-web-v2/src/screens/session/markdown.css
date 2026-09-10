@@ -97,15 +97,22 @@
   padding-left: var(--sp-2);
   list-style: none;
 }
+/* Keep Markdown inline nodes in normal text flow. Flex splits text, strong,
+   links and code into separate columns, even though this is not a table. */
 .md li.task-list-item {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
+  display: block;
+  position: relative;
+  padding-left: calc(14px + var(--sp-2));
 }
-.md li.task-list-item input[type='checkbox'] {
+.md li.task-list-item > input[type='checkbox'],
+.md li.task-list-item > p > input[type='checkbox'] {
+  position: absolute;
+  left: 0;
+  top: calc((1lh - 14px) / 2);
+  width: 14px;
+  height: 14px;
   accent-color: var(--text-faint);
   margin: 0;
-  flex: none;
 }
 
 /* GFM footnotes */

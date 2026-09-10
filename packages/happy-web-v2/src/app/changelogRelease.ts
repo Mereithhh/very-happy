@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-chat-polish-recovery',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10r.title',
+    summaryKey: 'changelog.releases.sep10r.summary',
+    itemKeys: ['changelog.releases.sep10r.activity', 'changelog.releases.sep10r.polish', 'changelog.releases.sep10r.recovery'],
+  },
+  {
     id: '2026-09-10-unified-agent-status',
     cliVersion: '0.2.134',
     date: '2026-09-10',

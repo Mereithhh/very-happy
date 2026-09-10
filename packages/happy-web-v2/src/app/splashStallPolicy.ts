@@ -7,8 +7,9 @@
  * refresh. That is reachable in a completely ordinary way: after a redeploy the
  * previous shell's hashed lazy chunks are gone from the server, so a client
  * still running that shell fails its dynamic import. `vite:preloadError`
- * recovers by reloading, but only once per 30s — once that budget is spent the
- * route stays suspended and the splash stays up.
+ * used to reload once per 30s and suppress the rejection, leaving the route
+ * suspended. Chunk recovery now preserves rejection for a retry boundary;
+ * this watchdog still covers other bootstrap stalls.
  *
  * Recovery is staged, because the two failures need different answers:
  *

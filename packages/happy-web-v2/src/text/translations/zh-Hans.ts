@@ -694,6 +694,8 @@ export const zhHans: TranslationStructure = {
             steerNow: '立即调整方向',
             liveThinkingShort: '思考',
             liveRequesting: '请求中',
+            liveExecutingTool: ({ tool }: { tool: string }) => tool === 'Bash' ? '正在执行命令' : `正在执行 ${tool}`,
+            commandCount: ({ count }: { count: number }) => `${count} 条命令`,
             liveProcessing: '处理中',
             liveInputTokens: '输入',
             liveOutputTokens: '输出',
@@ -1794,6 +1796,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10r: {
+                title: '对话更清爽，更新更顺畅',
+                summary: '统一命令分组与界面反馈，改善更新后的页面恢复。',
+                activity: '各 Agent 连续完成的命令合并为可展开的命令组，运行状态保持紧凑，展开可查看 token 明细。',
+                polish: '统一菜单高亮，移除重复连接绿点，修复 Markdown 任务列表排版，终端加载提示居中显示。',
+                recovery: '旧页面模块加载失败时尝试恢复最新版本，避免循环刷新；网络不可用时提供重试入口。',
+            },
             sep10q: {
                 title: '更清晰的 Agent 状态',
                 summary: '对话与终端使用统一的状态提示。',

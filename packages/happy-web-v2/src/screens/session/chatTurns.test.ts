@@ -260,3 +260,43 @@ describe('assistant action boundaries', () => {
         expect(rows.find(row => row.type === 'message' && row.message.id === 'final')).not.toHaveProperty('showActions', false);
     });
 });
+
+describe('completed command grouping', () => {
+    const shell = (id: string, state: 'completed' | 'running' | 'error' = 'completed'): Message => ({
+        id, localId: null, createdAt: 1, kind: 'tool-call', children: [],
+        tool: { name: 'Bash', state, input: { command: 'pwd' }, createdAt: 1, startedAt: 1, completedAt: state === 'completed' ? 2 : null, description: null },
+    });
+    it('folds adjacent completed commands without losing their identity or order', () => {
+        const messages = [shell('a'), shell('b'), shell('c')];
+        const rows = buildLeafRows(messages, null, 'completed-terminal', false);
+        expect(rows).toEqual([{ type: 'toolgroup', key: 'commands-a', tools: messages }]);
+        expect(buildLeafRows(messages.slice(0, 1), null, 'completed-terminal')[0].key).toBe('tg-a');
+    });
+    it('leaves running, failed, non-shell calls and intervening prose outside command groups', () => {
+        const messages = [shell('a'), shell('b'), shell('running', 'running'), shell('failed', 'error'), tool('Read', 2), agent('text', 3), shell('c'), shell('d')];
+        const rows = buildLeafRows(messages, null, 'completed-terminal', false);
+        expect(rows.map(row => row.type === 'toolgroup' ? row.tools.map(m => m.id) : row.message.id))
+            .toEqual([['a', 'b'], ['running'], ['failed'], ['Read'], 'text', ['c', 'd']]);
+    });
+    it('recognizes pi shell calls through the same mapping as the renderer', () => {
+        const pi = shell('pi');
+        if (pi.kind !== 'tool-call') throw new Error('fixture');
+        pi.tool.name = 'execute';
+        pi.tool.input = { piTool: 'bash', command: 'pwd' };
+        const rows = buildLeafRows([shell('a'), pi], null, 'completed-terminal');
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({ tools: [{ id: 'a' }, { id: 'pi' }] });
+    });
+});
+
+describe('provider terminal groups', () => {
+    it.each(['Bash', 'CodexBash', 'GeminiBash', 'shell', 'execute'])('groups %s calls using the shared terminal classification', name => {
+        const messages = ['a', 'b'].map(id => ({
+            kind: 'tool-call' as const, id, localId: null, createdAt: 1, children: [],
+            tool: { name, state: 'completed' as const, input: { command: ['echo', 'hello'] }, createdAt: 1, startedAt: 1, completedAt: 2, description: null },
+        }));
+        expect(buildLeafRows(messages, null, 'completed-terminal')).toEqual([
+            { type: 'toolgroup', key: 'commands-a', tools: messages },
+        ]);
+    });
+});

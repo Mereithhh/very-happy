@@ -426,8 +426,11 @@
   cursor: pointer;
   outline: none;
 }
-.vh-menu-item[data-highlighted] {
-  background: var(--bg-2);
+.vh-menu-item[data-highlighted],
+.vh-menu-item:focus-visible {
+  background: var(--bg-3);
+  outline: none;
+  box-shadow: none;
 }
 .vh-menu-item.is-danger {
   color: var(--danger);

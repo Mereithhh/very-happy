@@ -3,9 +3,11 @@ import { StartupLoader } from '@/ui/StartupLoader';
 export function RouteLoading({
   fullViewport = false,
   label = 'Loading workspace',
+  centered = false,
 }: {
   fullViewport?: boolean;
   label?: string;
+  centered?: boolean;
 }) {
   return (
     <div
@@ -24,7 +26,7 @@ export function RouteLoading({
         justifyContent: 'center',
       }}
     >
-      {fullViewport ? <StartupLoader label={label}/> : <div className="vh-route-skeleton">
+      {fullViewport || centered ? <StartupLoader compact={centered} showWordmark={!centered} label={label}/> : <div className="vh-route-skeleton">
         <div className="vh-startup-caption" role="status" aria-label={label}><span className="vh-startup-dot" aria-hidden="true"/>{label}</div>
         {[0,1,2,3].map(line=><div key={line} className="vh-route-skeleton-line" aria-hidden="true"/>)}
       </div>}
