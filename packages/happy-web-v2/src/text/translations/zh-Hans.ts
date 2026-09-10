@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10f: {
+                title: '运行状态跟随正文',
+                summary: '正文与输入框对齐，对话中的运行提示更轻盈。',
+                alignment: '统一正文和输入框的左右边界，修正滚动条和手机内边距导致的偏移。',
+                activity: '当前活动展示在最新正文之后，随对话滚动；工具、耗时与 token 计量直接可见，点击展开详情，上翻阅读时保持位置。',
+            },
             sep10e: {
                 title: '新建团队默认免审批',
                 summary: '减少逐项审批，让团队直接推进工作。',

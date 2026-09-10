@@ -131,11 +131,11 @@ export function MobileChatHarness() {
           </div>
           <button onClick={() => {
             useLiveStreamStore.getState().ingest('mobile-chat-live',{t:'block-start',mid:'visual-stream',idx:0,kind:'text'});
-            useLiveStreamStore.getState().ingest('mobile-chat-live',{t:'block-delta',mid:'visual-stream',idx:0,text:('持续输出，检查自动跟随与状态固定位置。\n\n').repeat(12)});
+            useLiveStreamStore.getState().ingest('mobile-chat-live',{t:'block-delta',mid:'visual-stream',idx:0,text:('持续输出，检查自动跟随与正文末尾状态。\n\n').repeat(12)});
           }}>Grow transcript</button>
           <ChatHeader sessionId="mobile-chat-live" onToggleFiles={() => toast.show('Files action · fixture', 'success')}/><div style={{height:320,display:'flex',flexDirection:'column'}}><ChatList sessionId="mobile-chat-live"/></div>
           <output data-testid="live-status-result" style={{ display: 'block', padding: 8, fontSize: 12 }}>
-            fixed live status · real ChatList
+            inline live status · real ChatList
           </output>
         </section>
         <section data-testid="completed-tool"><ToolGroupView tools={completed} /></section>
