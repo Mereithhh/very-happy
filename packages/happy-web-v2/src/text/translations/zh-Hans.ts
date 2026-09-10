@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10e: {
+                title: '新建团队默认免审批',
+                summary: '减少逐项审批，让团队直接推进工作。',
+                default: '新建团队的负责人和后续分派成员默认使用免审批执行模式。',
+                control: '可在团队设置中调整模式；已有团队、运行中的会话与已排队工作保留原来的权限设置。',
+            },
             sep10d: {
                 title: '更轻盈的对话气泡',
                 summary: '用户消息更清爽，长内容与手机操作更自然。',

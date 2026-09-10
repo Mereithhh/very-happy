@@ -58,6 +58,8 @@ use, with a shared view of assignments and results.
 
 ![Very Happy Teams: a goal reaches the lead, teammates work in parallel, and results return for review](packages/happy-web-v2/public/architecture/agent-teams.svg)
 
+New teams default to **No approvals** for the lead and newly delegated members. Change the mode in team settings when needed; existing teams and running sessions retain their permissions.
+
 Teams requires an enabled account and a compatible online daemon. No manual
 skill installation is needed when creating a team in the app. An
 existing managed conversation can also become a team from its **More** menu.

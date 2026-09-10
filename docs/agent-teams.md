@@ -84,8 +84,9 @@ a bare `pi` terminal does not gain a background inbox from installation.
 
 ## Choose execution mode
 
-In the team page, choose **No approvals** to let newly dispatched agents work without
-routine tool prompts. **Ask when needed** keeps the runner's normal approval behavior.
+New teams default to **No approvals** for the lead and newly dispatched members.
+Choose **Ask when needed** in team settings to restore routine tool prompts. Existing
+teams keep their saved mode (historical teams without a mode use normal approvals).
 The choice takes effect directly, without a second confirmation. Existing sessions
 and already queued operations retain their prior mode; change a live lead's session
 mode separately. This does not change global agent settings or provide credentials.

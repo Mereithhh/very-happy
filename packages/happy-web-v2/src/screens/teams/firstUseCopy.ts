@@ -1,7 +1,7 @@
 import { useTranslation } from '@/i18n/useTranslation';
 const en = {
   launchFailed: 'Startup needs attention', retryHint: 'The computer will retry this same launch after the cause is fixed. Sending a message does not restart the agent.', configure: 'Computer, project and agent', chatIntro: 'Describe the goal. Your lead will organize the work and continue in chat.', title: 'Start a team', start: 'Start working', goal: 'What would you like done?', goalHint: 'For example: review this project, fix the most important issues in parallel, and test the changes.',
-  project: 'Project folder', browse: 'Choose folder', machine: 'Computer', lead: 'Team lead', automatic: 'We prepare the collaboration instructions and open your lead’s conversation automatically. No skill installation needed here.',
+  project: 'Project folder', browse: 'Choose folder', machine: 'Computer', lead: 'Team lead', automatic: 'New teams run without per-tool approvals by default; you can change this in team settings. We prepare the collaboration instructions and open the lead’s conversation.',
   options: 'Team options', name: 'Team name (optional)', model: 'Model (optional)', modelHint: 'Leave blank to use this agent’s default.', members: 'New members', parallel: 'Tasks progressing at once', settingsHint: 'Applies to new assignments. Running members keep their current configuration. Parents waiting for children do not occupy a work slot.',
   preparing: 'Preparing your team', preparingHint: 'Starting the lead and connecting its conversation. You can leave this page and return from your history.',
   offline: 'This computer is offline. Reconnect it to start a team.', machineRequired: 'Connect a computer to start a team.', upgrade: 'This computer needs a newer CLI to start teams automatically. Check its update status.', machineSettings: 'View computer', unavailable: 'Team collaboration is unavailable for this account. Ordinary conversations still work.',
@@ -15,7 +15,7 @@ const en = {
 };
 const zh: typeof en = {
   launchFailed: '启动需处理', retryHint: '修复原因后，电脑会继续重试同一次启动。发送消息不会重新启动 agent。', configure: '电脑、项目与 Agent', chatIntro: '说说你想完成什么，负责人会组织工作，并在对话中继续。', title: '新建团队', start: '开始协作', goal: '你想完成什么？', goalHint: '例如：检查这个项目，组队并行修复最重要的问题，并测试修改结果。',
-  project: '项目文件夹', browse: '选择文件夹', machine: '执行电脑', lead: '负责人使用', automatic: '系统会自动准备协作指引，并打开负责人的对话。在这里使用无需安装 skill。',
+  project: '项目文件夹', browse: '选择文件夹', machine: '执行电脑', lead: '负责人使用', automatic: '新建团队默认免审批执行，可在团队设置中调整。系统会准备协作指引，并打开负责人的对话。',
   options: '团队选项', name: '团队名称（选填）', model: '模型（选填）', modelHint: '留空使用该 agent 的默认模型。', members: '新成员默认使用', parallel: '同时推进的任务数', settingsHint: '对新分派的工作生效，运行中的成员保留当前配置。等待子任务的父任务不占推进名额。',
   preparing: '正在准备团队', preparingHint: '正在启动负责人并连接对话。可以离开此页，稍后从历史列表回来。',
   offline: '这台电脑当前离线，重新连接后即可启动团队。', machineRequired: '连接一台电脑，即可开始团队协作。', upgrade: '这台电脑需要新版 CLI 才能自动启动团队，请查看更新状态。', machineSettings: '查看电脑', unavailable: '当前账号尚未开放团队协作，普通对话仍可正常使用。',
