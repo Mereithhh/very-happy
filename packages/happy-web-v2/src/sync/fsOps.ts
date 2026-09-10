@@ -78,6 +78,7 @@ function failureOf(error: string): FsFailure {
 
 /** List a directory on the machine. `path` may use `~`. Never throws. */
 export async function machineFsList(machineId: string, path: string): Promise<FsListResult> {
+    if (import.meta.env.DEV && machineId === 'workspace-preview-machine') return (await import('@/dev/workspaceFileFixtures')).listExample(path);
     try {
         // Cold-load race guard (same as machineOpenTerminal): don't fire before
         // the machine's encryption key has synced.
@@ -111,6 +112,7 @@ export async function machineFsRead(
     path: string,
     options: { maxBytes?: number; allowBinary?: boolean; offset?: number } = {},
 ): Promise<FsReadResult> {
+    if (import.meta.env.DEV && machineId === 'workspace-preview-machine') return (await import('@/dev/workspaceFileFixtures')).readExample(path, options);
     try {
         await ensureMachineEncryption(machineId);
         const res = await apiSocket.machineRPC<

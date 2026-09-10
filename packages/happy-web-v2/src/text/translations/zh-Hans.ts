@@ -583,7 +583,7 @@ export const zhHans: TranslationStructure = {
             close: '关闭侧问',
             thinking: '思考中…',
             emptyTitle: '不打断，直接问',
-            emptyDesc: 'Claude 基于当前对话上下文单轮作答——不用工具、不进主对话。主任务跑着的时候也能问。',
+            emptyDesc: '基于当前对话回答，不打断主任务。\n不用工具，也不写入主对话。',
             unsupported: '当前会话的 CLI 不支持侧问。升级 very-happy-cli 后新建会话即可。',
             offline: '会话离线——侧问需要 agent 在线。',
             noContext: '本次回答没有对话上下文（在第一轮之前提问）。',
@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10p: {
+                title: '更轻巧的右侧工作区',
+                summary: '文件、笔记和侧问采用统一的紧凑布局。',
+                workspace: '从＋菜单打开工具，标签保持固定关闭按钮；笔记字号与对话正文统一，侧问输入区更简洁。',
+                motion: '切换面板增加轻量淡入；运行状态悬停保持透明，通过文字与箭头反馈。减少动态效果设置继续生效。',
+            },
             sep10o: {
                 title: '侧栏状态图标对齐',
                 summary: '运行转圈和状态圆点现在位于同一条中心线上。',

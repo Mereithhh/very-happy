@@ -64,15 +64,16 @@
   gap: var(--sp-2);
   width: 100%;
   text-align: left;
-  padding: 4px var(--sp-3);
-  font-size: var(--fs-12);
+  padding: 6px var(--sp-3);
+  min-height:32px;
+  font-size: var(--fs-13);
   color: var(--text-dim);
 }
 .fp-row:hover {
   background: var(--bg-2);
 }
 .fp-row--active {
-  background: var(--accent-dim);
+  background: var(--bg-2);
   color: var(--text);
 }
 .fp-row--dir {

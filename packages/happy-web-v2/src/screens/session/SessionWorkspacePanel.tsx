@@ -1,4 +1,5 @@
-import { Globe } from 'lucide-react';
+import { Globe, Plus, FolderOpen, Files, GitCompareArrows, MessageCircleQuestion, StickyNote } from 'lucide-react';
+import { ActionDropdownMenu } from '@/ui/Menu';
 import { BrowserPreview } from '../workspace/BrowserPreview';
 import { useEffect, useRef } from 'react';
 import { useMessage, useSession } from '@/sync/storage';
@@ -52,9 +53,14 @@ export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAll
   return <FilesPanel sessionId={sessionId} tab={filesTab.current} active={filesActive}
     refreshOnMount={refreshOnMount && filesActive} onTabChange={onPanel} onClose={onClose}
     renderTabs={fileProps => <OrderedWorkspaceTabs identity={identity} {...fileProps}
-      tabs={[...fileProps.tabs,...tabs.filter(tab=>tab.id!=='notes').map(tab=>({...tab,id:`extra:${tab.id}`,group:'tools'})),...(tabs.some(tab=>tab.id==='notes')?notes.tabProps.tabs.map(tab=>({...tab,id:`notes:${tab.id}`,closable:true})):[])]}
+      tabs={[...fileProps.tabs.filter(tab=>!tab.id.startsWith('tool:') || (!activeTool && tab.id===fileProps.active)),...tabs.filter(tab=>tab.id!=='notes').map(tab=>({...tab,id:`extra:${tab.id}`,group:'tools'})),...(tabs.some(tab=>tab.id==='notes')?notes.tabProps.tabs.map(tab=>({...tab,id:`notes:${tab.id}`,closable:true})):[])]}
       active={activeTool==='notes'?`notes:${notes.tabProps.active}`:activeTool ? `extra:${activeTool}` : fileProps.active}
-      actions={<><button className="fp-icon" onClick={()=>onPanel('web')} aria-label={lang.startsWith('zh')?'网页预览':'Web preview'} title={lang.startsWith('zh')?'网页预览':'Web preview'}><Globe size={15}/></button>{activeTool==='notes'&&notes.actions}{fileProps.actions}</>}
+      actions={<><ActionDropdownMenu items={[
+        ...fileProps.tabs.filter(tab=>tab.id.startsWith('tool:')).map(tab=>({key:tab.id,label:tab.title,icon:tab.id==='tool:browse'?FolderOpen:tab.id==='tool:changed'?GitCompareArrows:Files,onSelect:()=>fileProps.onSelect(tab.id)})),
+        {key:'web',label:lang.startsWith('zh')?'网页预览':'Web preview',icon:Globe,onSelect:()=>onPanel('web')},
+        ...(btwAllowed?[{key:'btw',label:t('session.btw.title'),icon:MessageCircleQuestion,onSelect:()=>onPanel('btw')}]:[]),
+        {key:'notes',label:t('notes.title'),icon:StickyNote,onSelect:()=>onPanel('notes')},
+      ]}><button className="fp-icon" aria-label={lang.startsWith('zh')?'打开工具':'Open tools'} title={lang.startsWith('zh')?'打开工具':'Open tools'}><Plus size={17}/></button></ActionDropdownMenu>{activeTool==='notes'&&notes.actions}{fileProps.actions}</>}
       onSelect={id=>{
         if(id.startsWith('notes:')) { notes.tabProps.onSelect(id.slice(6)); onPanel('notes'); }
         else if(id.startsWith('extra:')) selectTool(id.slice(6));

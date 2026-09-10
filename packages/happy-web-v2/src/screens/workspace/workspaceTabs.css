@@ -1,10 +1,10 @@
-.workspace-tabs { display:flex; align-items:stretch; flex:none; min-width:0; min-height:40px; background:transparent; border-bottom:1px solid var(--line); }
-.workspace-tabstrip { display:flex; min-width:0; flex:1; overflow-x:auto; scrollbar-width:thin; }
-.workspace-tab { display:flex; align-items:stretch; flex:none; max-width:240px; color:var(--text-dim); border-right:1px solid var(--line); }
+.workspace-tabs { display:flex; align-items:center; gap:4px; padding:6px 8px; flex:none; min-width:0; min-height:44px; background:transparent; border-bottom:0; }
+.workspace-tabstrip { display:flex; gap:4px; min-width:0; flex:1; overflow-x:auto; scrollbar-width:thin; }
+.workspace-tab { display:flex; align-items:stretch; flex:none; max-width:240px; color:var(--text-dim); border-radius:var(--r-md); }
 .workspace-tab.is-active { background:var(--bg-2); color:var(--text); }
 .workspace-tab.is-drop-target { box-shadow:inset 2px 0 var(--accent); }
-.workspace-tab-label { min-width:0; padding:8px 10px; font-size:var(--fs-12); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.workspace-tab-close { display:grid; place-items:center; flex:none; width:24px; color:var(--text-faint); }
+.workspace-tab-label { min-width:0; padding:8px 10px; font-size:var(--fs-13); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.workspace-tab-close { display:grid; place-items:center; flex:none; width:28px; border-radius:var(--r-md); color:var(--text-faint); }
 .workspace-tab-close:hover { background:var(--bg-2); color:var(--text); }
 .workspace-tab-actions { display:flex; align-items:center; flex:none; padding-inline:4px; }
 @media (pointer:coarse) {
@@ -12,4 +12,12 @@
  .workspace-tab { max-width:280px; }
  .workspace-tab-label, .workspace-tab-close { min-height:44px; }
  .workspace-tab-close { width:44px; }
+}
+
+.workspace-tab, .workspace-tab-close { transition:background-color 140ms ease, color 140ms ease; }
+@keyframes workspace-pane-enter { from { opacity:.65; } to { opacity:1; } }
+.session-workspace-pane:not([hidden]), .fp-body:not([hidden]), .notes-editor { animation:workspace-pane-enter 140ms ease-out; }
+@media (prefers-reduced-motion:reduce) {
+ .workspace-tab, .workspace-tab-close { transition:none; }
+ .session-workspace-pane:not([hidden]), .fp-body:not([hidden]), .notes-editor { animation:none; }
 }
