@@ -101,7 +101,7 @@ Online machines retain manual_required instructions even when the approved-versi
 
 ## Explicit update before automatic rollout (B-442)
 
-Status: Implemented and verified; pending release as CLI 0.2.133.
+Status: Shipped 2026-09-10. Web c628adf41 (PR #334), CLI 0.2.133 at b245843a3 (PR #335 fixes release-scanner field layout).
 
 The pending-rollout notice keeps waiting for automatic delivery as the recommended
 choice and adds a manual action for the displayed machine and exact version.
@@ -127,3 +127,14 @@ Tests cover fresh policy, invalid/stale/mismatched versions, disabled unattended
 updates, busy wait, duplicate/concurrent requests, revocation, failure/retry,
 blocked installer and handover exclusion; browser covers pending recommendation,
 manual acknowledgement/failure and legacy command in both themes/mobile sizes.
+
+Release evidence: Web deploy 34425148876 serves the exact c628adf41 entry and all
+52 reachable assets; health, 24 public-page checks and six real-component layouts
+using production CSS passed. CLI publish/promote 34425626732 and push smoke
+34425626730 attempt 1 use tag v0.2.133 / b245843a3; all six Linux/macOS/Windows ×
+Node 20/24 jobs passed. npm latest is 0.2.133. mac-office runs 0.2.133 under
+launchd, advertises `manualUpdateSupported`, rejects an invalid version through
+the new authenticated RPC, and answers the read-only terminal-list RPC. The terminal-list response contains three terminals. Auto-install approval remains 0.2.132; recommending or
+manually requesting a version does not change it. Rollback: Web 8e8c03f0e,
+CLI 0.2.132. All local gates passed: wire 82, Web 2755, CLI 2103, server 647
+(one existing skip), required builds/typechecks and executable version smoke.

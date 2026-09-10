@@ -67,6 +67,10 @@ node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev
 node scripts/changelog/check-release.mjs --mode cli --version X.Y.Z --sha <sha>
 ```
 
+Keep `id` and `cliVersion` on their own lines in each release entry: the current
+release scanner matches those fields at line starts. Verify both release modes
+before the merge that will be tagged.
+
 `FAIL` prints the conventional-commit draft: write the entry (id, title,
 summary, items; `cliVersion` when a CLI ships), merge it, re-lock the SHA.
 Escape hatches are explicit and logged — deploy input `changelog=skip` with a
