@@ -50,7 +50,7 @@
     "@types/node": ">=20",
     "pkgroll": "^2.14.2",
     "typescript": "5.9.3",
-    "vitest": "3.2.6"
+    "vitest": "4.1.11"
   },
   "publishConfig": {
     "access": "public",
