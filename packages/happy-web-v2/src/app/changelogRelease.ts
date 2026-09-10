@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-11-inline-status-message-time',
+    date: '2026-09-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep11a.title',
+    summaryKey: 'changelog.releases.sep11a.summary',
+    itemKeys: ['changelog.releases.sep11a.activity', 'changelog.releases.sep11a.timestamps'],
+  },
+  {
     id: '2026-09-11-subagents-runtime-controls',
     cliVersion: '0.2.135',
     date: '2026-09-11',

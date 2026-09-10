@@ -1,13 +1,13 @@
 import { isTerminalToolName } from '@/utils/toolDisplay';
 import { memo } from 'react';
-import { ArrowUp, ArrowDown, Brain, Zap, ChevronDown } from 'lucide-react';
+import { ArrowUp, ArrowDown, Brain, Zap } from 'lucide-react';
 import { useSession, useSessionRunningTool } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { useLiveStreamProgress } from '@/sync/liveStreamStore';
 import { useElapsedSeconds } from './useElapsed';
 import { formatElapsed } from './format';
-import { liveTokenMetrics } from './liveStatus';
+import { liveTokenMetrics, type LiveTokenMetric } from './liveStatus';
 import './statusbar.css';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 
@@ -70,6 +70,17 @@ export const SessionLiveStatusBar = memo(function SessionLiveStatusBar({ session
         : phase === 'tool' ? t('session.chat.liveExecutingTool', { tool: isTerminalToolName(runningTool!.name) ? 'Bash' : runningTool!.name })
         : phase === 'requesting' ? t('session.chat.liveRequesting')
         : t('session.chat.liveProcessing');
+    return <LiveStatusRow phase={phase} label={label} elapsed={elapsed} metrics={metrics} />;
+});
+
+/** Passive progress, never a disclosure. Shared by the real chat and visual fixtures. */
+export function LiveStatusRow({ phase, label, elapsed, metrics }: {
+    phase: 'tool' | 'thinking' | 'working' | 'requesting' | 'compacting';
+    label: string;
+    elapsed: number;
+    metrics: LiveTokenMetric[];
+}) {
+    const { t } = useTranslation();
     const names = {
         input: t('session.chat.liveInputTokens'),
         output: t('session.chat.liveOutputTokens'),
@@ -77,33 +88,30 @@ export const SessionLiveStatusBar = memo(function SessionLiveStatusBar({ session
         thinking: t('session.chat.liveThinkingTokens'),
     };
     const icons = { input: ArrowUp, output: ArrowDown, cache: Zap, thinking: Brain };
+    // Show reported input/output directly; estimates remain separate and are
+    // never added to exact usage. Older runners may only report thinking/cache.
+    const usage = metrics.filter(metric => metric.kind === 'input' || metric.kind === 'output');
+    const visibleMetrics = usage.length > 0 ? usage : metrics;
+    const usageDescription = metrics.map(metric => `${names[metric.kind]}: ${metric.value}`).join(' · ');
 
-    const metricNode = ({ kind: metric, value }: (typeof metrics)[number]) => {
-        const Icon = icons[metric];
-        return <span className="lsb-metric" key={metric} title={names[metric]} aria-label={`${names[metric]}: ${value}`}>
-            <Icon size={12} aria-hidden="true" />
-            <span>{value}</span>
-        </span>;
-    };
-
-    return (
-        <details className="lsb" data-phase={phase}>
-            <summary className="lsb-content">
-                <LiveActivityMark />
-                <span className="lsb-label" role="status" aria-live="polite" title={label}>{label}</span>
+    return <div className="lsb" data-phase={phase}>
+        <div className="lsb-content">
+            <LiveActivityMark />
+            <span className="lsb-label" role="status" aria-live="polite" title={label}>{label}</span>
+            <span className="lsb-separator" aria-hidden="true">·</span>
+            <span className="lsb-elapsed">{formatElapsed(elapsed)}</span>
+            {visibleMetrics.length > 0 && <>
                 <span className="lsb-separator" aria-hidden="true">·</span>
-                <span className="lsb-elapsed">{formatElapsed(elapsed)}</span>
-                <ChevronDown size={12} className="lsb-chevron" aria-hidden="true" />
-            </summary>
-            <div className="lsb-details">
-                <strong>{label}</strong>
-                <span className="lsb-elapsed">{formatElapsed(elapsed)}</span>
-                {metrics.length > 0 && <div className="lsb-metrics">
-                    {metrics.map(metric => <div className="lsb-detail-row" key={metric.kind}>
-                        <span>{names[metric.kind]}</span>{metricNode(metric)}
-                    </div>)}
-                </div>}
-            </div>
-        </details>
-    );
-});
+                <span className="lsb-metrics" title={usageDescription} aria-label={usageDescription}>
+                    {visibleMetrics.map(({ kind, value }) => {
+                        const Icon = icons[kind];
+                        return <span className="lsb-metric" key={kind} aria-label={`${names[kind]}: ${value}`}>
+                            <Icon size={12} aria-hidden="true" />
+                            <span>{value}</span>
+                        </span>;
+                    })}
+                </span>
+            </>}
+        </div>
+    </div>;
+}

@@ -21,7 +21,7 @@ vi.mock('./ToolGroupView', () => ({ ToolGroupView: () => null }));
 vi.mock('./TurnActivityView', () => ({ TurnActivityView: () => <p data-testid="message">Activity</p> }));
 vi.mock('./LiveStreamView', () => ({ LiveStreamView: () => <p data-testid="draft">Streaming</p> }));
 vi.mock('./PermissionCard', () => ({ PermissionCard: () => <p data-testid="permission">Permission</p> }));
-vi.mock('./SessionLiveStatusBar', () => ({ SessionLiveStatusBar: () => <details className="lsb"><summary>Working</summary></details> }));
+vi.mock('./SessionLiveStatusBar', () => ({ SessionLiveStatusBar: () => <div className="lsb">Working</div> }));
 import { ChatList } from './ChatList';
 
 function render(showLiveStatus = true) {
