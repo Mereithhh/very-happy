@@ -25,6 +25,7 @@ import { presentedSubagentStatus } from './subagentAbort';
 import { openSubagentPanel } from './subagentPanelState';
 import { useSubagentNavigation } from './subagentNavigation';
 import { normalizePiToolCall } from '@/components/tools/piToolMapping';
+import { messageTimestamp, messageTimestampRange } from './messageTimestamp';
 import './toolgroup.css';
 import './subagent.css';
 
@@ -82,7 +83,7 @@ function ToolRow({
     /** B-317: time of the user abort that ended this turn, if any. */
     abortedAt?: number | null;
 }) {
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
     const subagentNavigation = useSubagentNavigation();
     // B-353: a pi tool call carrying `piTool` is rewritten to its Claude-shaped twin
     // (bash→Bash, edit→Edit…) once here, so header label/detail and the expanded
@@ -143,7 +144,7 @@ function ToolRow({
     // disclosure below stays as the fallback.
     if (isSubagent && sessionId && subagentNavigation === 'session') {
         return (
-            <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
+            <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`} title={messageTimestamp(message.createdAt, lang)}>
                 <button
                     type="button"
                     className={`tg-subagent-open${subagentStatus === 'failed' ? ' tg-subagent-open--failed' : ''}`}
@@ -163,7 +164,7 @@ function ToolRow({
 
     const previewPath = previewToolPath(tool);
     if (previewPath && sessionId && tool.state === 'completed') {
-        return <div className="tg-preview-row" title={label}>
+        return <div className="tg-preview-row" title={messageTimestamp(message.createdAt, lang)}>
             <FileText size={16} aria-hidden />
             <span className="tg-tool-label">{t('filePreview.title')}</span>
             <FilePathLink path={previewPath} sessionId={sessionId} className="tg-preview-path" />
@@ -171,7 +172,7 @@ function ToolRow({
     }
 
     return (
-        <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
+        <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`} title={messageTimestamp(message.createdAt, lang)}>
             <div className="tg-row-head-wrap">
                 <button type="button" className="tg-row-head vh-disclosure-trigger" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={bodyId}>
                     <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
@@ -210,7 +211,7 @@ function ToolGroupViewImpl({
     /** B-317: time of the user abort that ended this turn, if any. */
     abortedAt?: number | null;
 }) {
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
     const state = groupState(tools, stalled);
     const running = state === 'running';
     const compact = useMediaQuery('(max-width: 860px)');
@@ -255,6 +256,7 @@ function ToolGroupViewImpl({
                 <button
                     type="button"
                     className="tg-head vh-disclosure-trigger"
+                    title={messageTimestampRange(tools.map(message => message.createdAt), lang)}
                     onClick={() => setExpanded((v) => !v)}
                     aria-expanded={expanded}
                     aria-controls={rowsId}

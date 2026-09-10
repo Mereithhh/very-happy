@@ -6,17 +6,18 @@ import { teamMessageTask, memberTitle, teamForMessage } from '@/screens/teams/te
 import { useFirstUseCopy } from '@/screens/teams/firstUseCopy';
 import type { presentTeamMessage } from './teamMessage';
 import './teamMessage.css';
+import { messageTimestamp } from './messageTimestamp';
 
-export function TeamMessageCard({ content, sessionId, localId }: { content: NonNullable<ReturnType<typeof presentTeamMessage>>; sessionId?: string; localId?: string | null }) {
-    const { t } = useTranslation();
+export function TeamMessageCard({ content, sessionId, localId, createdAt }: { content: NonNullable<ReturnType<typeof presentTeamMessage>>; sessionId?: string; localId?: string | null; createdAt?: number }) {
+    const { t, lang } = useTranslation();
     const copy = useFirstUseCopy();
     const teams = useTeamNavigation();
     const team = teamForMessage(teams, sessionId, localId ?? null);
     const task = team && teamMessageTask(team, localId ?? null);
     const assignee = team?.bots.find(bot => bot.id === task?.assigneeBotId);
     const result = task?.attempts.find(a => a.id === task.currentAttemptId)?.result;
-    return <div className="msg msg--team">
-        {task && team && <div className="team-message-work">
+    return <div className="msg msg--team" title={messageTimestamp(createdAt, lang)}>
+        {task && team && <div className="team-message-work" title="">
             <div className="team-message-work-heading"><Users size={16} /><span>{copy.message}</span><span>{t(`teams.${task.status}`)}</span></div>
             <strong>{task.goal}</strong>
             {assignee && <span>{memberTitle(assignee, copy)} · {assignee.assistant === 'pi-acp' ? 'pi' : assignee.assistant}</span>}

@@ -5,8 +5,7 @@ import type { SessionPanelTab } from '@/screens/session/sessionPanelState';
 import { NotesDock } from '@/screens/notes/NotesDock';
 import { useNotes } from '@/sync/notesStore';
 import { storage } from '@/sync/storage';
-import { LiveActivityMark } from '@/screens/session/SessionLiveStatusBar';
-import { ChevronDown } from 'lucide-react';
+import { LiveStatusRow } from '@/screens/session/SessionLiveStatusBar';
 import { btwStore } from '@/sync/btwStore';
 import { createReducer } from '@/sync/reducer/reducer';
 import type { ToolCallMessage } from '@/sync/typesMessage';
@@ -45,7 +44,7 @@ export function WorkspaceFilesHarness() {
   }, []);
   return <div style={{height:'100dvh',display:'flex',flexDirection:'column'}}>
     <div style={{display:'flex',gap:8,padding:8,flexWrap:'wrap'}}><span>本地预览 · 示例数据</span><button onClick={()=>document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'}>切换明暗</button><button onClick={()=>setSession(session.endsWith('-a')?'workspace-fixture-b':'workspace-fixture-a')}>切换示例</button><button onClick={()=>setOpen(true)}>打开面板</button><button onClick={()=>setShowActivity(v=>!v)}>Loading 效果</button><button onClick={()=>setPanel('browse')}>文件</button><button onClick={()=>setPanel('web')}>网页</button><button onClick={()=>setPanel('btw')}>旁问</button><button onClick={()=>setPanel('subagent')}>子代理</button><button onClick={()=>setPanel('notes')}>笔记</button></div>
-    {showActivity && <div style={{padding:'16px',borderBottom:'1px solid var(--line)'}}><details className="lsb" data-phase="requesting"><summary className="lsb-content"><LiveActivityMark/><span className="lsb-label">请求中 · 本地示例</span><ChevronDown size={12} className="lsb-chevron"/><span className="lsb-elapsed">2m 29s</span><span className="lsb-metric">↑ 32 ↓ 20</span></summary><div className="lsb-details">示例用量详情；hover 保持透明底，点击展开。</div></details></div>}
+    {showActivity && <div style={{padding:'16px',borderBottom:'1px solid var(--line)'}}><LiveStatusRow phase="requesting" label="请求中 · 本地示例" elapsed={149} metrics={[{kind:'input',value:'32'},{kind:'output',value:'20'}]} /></div>}
     <div className="workspace-preview-layout"><main className="workspace-preview-chat"><header>工作区视觉预览 <span>本地示例</span></header><section><p className="workspace-preview-question">帮我检查这次更新的文件，顺便看看有没有遗漏。</p><p>我会检查文件改动与验证结果。你也可以在右侧随时旁问，主任务继续运行。</p><p className="workspace-preview-tool">⌄　<span>●</span>　Read <small>src/workspace.tsx</small></p></section><div className="workspace-preview-input">输入消息…<div>＋ <small>自动执行</small><span>↑</span></div></div></main><div className="workspace-preview-aside">{ready && open && <SessionWorkspacePanel key={session} refreshOnMount={false} sessionId={session} panel={panel} subagentTarget={target} btwAllowed onPanel={setPanel} onSubagent={id=>{setTarget(id);setPanel('subagent');}} onClose={()=>setOpen(false)}/>}</div></div>
   </div>;
 }

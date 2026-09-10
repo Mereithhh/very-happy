@@ -16,7 +16,7 @@ import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 const render = () => renderToStaticMarkup(<SessionLiveStatusBar sessionId="s" />);
 
 describe('SessionLiveStatusBar', () => {
-    it('renders input/output/cache and thinking separately, outside the live announcer', () => {
+    it('shows usage inline without a disclosure and keeps metrics outside the live announcer', () => {
         state.progress = { inputTokens: 1200, outputTokens: 42, cacheTokens: 72000, thinkingTokens: 500 };
         const html = render();
         expect(html).toContain('liveInputTokens: 1.2k');
@@ -29,8 +29,20 @@ describe('SessionLiveStatusBar', () => {
         expect(announcement).toBe('liveProcessing');
         expect(html).toContain('14s');
         expect(html).toContain('class="lsb-orbit"');
-        expect(html).toContain('<summary');
-        expect(html).toContain('class="lsb-details"');
+        expect(html).not.toMatch(/<(details|summary|button)\b/);
+        expect(html).not.toContain('aria-expanded');
+        expect(html).not.toContain('lsb-chevron');
+        expect(html).toMatch(/class="lsb-metric"[^>]*aria-label="liveInputTokens: 1.2k"/);
+        expect(html).toMatch(/class="lsb-metric"[^>]*aria-label="liveOutputTokens: 42"/);
+        expect(html).not.toContain('lucide-brain');
+        expect(html).not.toContain('lucide-zap');
+    });
+    it('keeps a thinking-only runner estimate explicitly approximate', () => {
+        state.progress = { thinkingTokens: 1230 };
+        const html = render();
+        expect(html).toContain('liveThinkingTokens: ≈ 1.2k');
+        expect(html).toContain('lucide-brain');
+        expect(html).not.toContain('lucide-arrow-down');
     });
     it('degrades to status/time and prioritises compaction over a tool', () => {
         state.progress = {};

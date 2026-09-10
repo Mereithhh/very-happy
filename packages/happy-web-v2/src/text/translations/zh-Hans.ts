@@ -1800,6 +1800,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep11a: {
+                title: '更简洁的运行状态与消息时间',
+                summary: '直接查看 token 用量，悬停查看消息时间。',
+                activity: '正文运行状态不再展开，耗时旁直接显示已上报的输入、输出 token 数。',
+                timestamps: '悬停消息与工具可查看本地日期和时间；合并命令组显示时间范围，展开后各条显示自己的时间，子代理内保持一致。',
+            },
             sep11: {
                 title: '更清楚的子代理过程，更完整的运行控制',
                 summary: '统一对话与工具排版，找回预览记录，并补齐 Claude 会话的常用控制。CLI 新能力在升级后新建或重启的会话中生效。',

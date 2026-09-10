@@ -22,6 +22,7 @@ import { presentedSubagentStatus } from './subagentAbort';
 import { resultToText } from './toolInfo';
 import { formatDurationMs, formatTokens } from './format';
 import { ActivityMessages } from './ActivityMessages';
+import { messageTimestamp } from './messageTimestamp';
 import { compareMessagesNewestFirst } from '@/sync/messageOrder';
 import './subagent.css';
 
@@ -48,7 +49,7 @@ function Fold({ label, children, defaultOpen = false }: { label: string; childre
 }
 
 export function SubagentDetail({ message, abortedAt = null }: { message: ToolCallMessage; abortedAt?: number | null }) {
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
     const { id: sessionId = '' } = useParams();
     const summary = buildSubagentSummary(message, Number.POSITIVE_INFINITY);
     const status = presentedSubagentStatus(message, abortedAt);
@@ -65,7 +66,7 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
     ].filter((v): v is string => v !== null);
 
     return (
-        <div className="sa">
+        <div className="sa" title="">
             <div className="sa-head">
                 {status && (
                     <span className={`sa-status sa-status--${status}`}>
@@ -80,7 +81,7 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
 
             {prompt && (
                 <Fold label={t('session.chat.subagentPrompt')} defaultOpen>
-                    <div className="sa-brief">
+                    <div className="sa-brief" title={messageTimestamp(message.createdAt, lang)}>
                         <Markdown text={prompt} />
                         <div className="sa-brief-actions"><CopyButton text={prompt} /></div>
                     </div>
@@ -107,7 +108,7 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
 
             {!lifecycle?.result && out.trim() && (
                 <Fold label={t('tools.fullView.output')}>
-                    <div className="sa-prompt vh-copyhost">
+                    <div className="sa-prompt vh-copyhost" title={messageTimestamp(message.tool.completedAt, lang)}>
                         <pre className="sa-prompt-text">{out}</pre>
                         <CopyButton text={out} className="vh-copy--overlay" />
                     </div>

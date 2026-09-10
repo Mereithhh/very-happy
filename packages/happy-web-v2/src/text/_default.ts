@@ -1835,6 +1835,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep11a: {
+                title: 'Simpler activity and message timestamps',
+                summary: 'Usage at a glance, with message times on hover.',
+                activity: 'Activity is now a non-expandable status line, with reported input and output tokens shown beside elapsed time.',
+                timestamps: 'Hover over messages and tools to see their local date and time. Command groups show a time range, with individual times after expanding; subagents use the same display.',
+            },
             sep11: {
                 title: 'Clearer subagent activity and more runtime controls',
                 summary: 'Consistent conversation typography, reopenable previews, and common Claude session controls. New CLI capabilities apply to sessions started or restarted after upgrading.',
