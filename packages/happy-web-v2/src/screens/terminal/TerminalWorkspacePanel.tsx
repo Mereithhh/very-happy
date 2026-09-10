@@ -11,7 +11,7 @@ import { openWorkspaceTab,closeWorkspaceTab } from '../workspace/workspaceTabMod
 import '../session/files.css';
 import '../session/session.css';
 export type TerminalWorkspaceKind = 'files' | 'notes' | 'web';
-export function TerminalWorkspacePanel({identity,machineId,path,active,visible=true,onSelect,onClose}:{identity:string;machineId:string;path:string;active:TerminalWorkspaceKind;visible?:boolean;onSelect:(kind:TerminalWorkspaceKind)=>void;onClose:()=>void}) {
+export function TerminalWorkspacePanel({identity,machineId,path,initialFile,active,visible=true,onSelect,onClose}:{initialFile?:{path:string}|null;identity:string;machineId:string;path:string;active:TerminalWorkspaceKind;visible?:boolean;onSelect:(kind:TerminalWorkspaceKind)=>void;onClose:()=>void}) {
  const {t,lang}=useTranslation();const zh=lang.startsWith('zh');
  const notes=useNotesWorkspace(visible&&active==='notes');const [views,setViews]=useWorkspaceView(`terminal-tools:${identity}`);
  useEffect(()=>{if(active!=='files')setViews(s=>openWorkspaceTab(s,{id:active,title:active}));},[identity,active]);
@@ -23,7 +23,7 @@ export function TerminalWorkspacePanel({identity,machineId,path,active,visible=t
    onCloseOthers={id=>{setViews(state=>({...state,tabs:state.tabs.filter(tab=>id.startsWith('notes:')?tab.id==='notes':tab.id===id),active:null}));if(hasNotes)notes.tabProps.tabs.filter(tab=>tab.closable!==false&&`notes:${tab.id}`!==id).forEach(tab=>notes.tabProps.onClose(tab.id));select(id);}}
    onMove={(id,target)=>{if(id.startsWith('notes:')&&target.startsWith('notes:'))notes.tabProps.onMove(id.slice(6),target.slice(6));}}
    actions={<>{active==='notes'&&notes.actions}<button className="fp-icon" onClick={()=>onSelect('notes')} aria-label={t('notes.title')}><StickyNote size={15}/></button><button className="fp-icon" onClick={()=>onSelect('web')} aria-label={zh?'网页预览':'Web preview'}><Globe size={15}/></button><button className="fp-icon" onClick={onClose} aria-label={t('session.chat.closeFiles')}><X size={15}/></button></>}/>
-  <WorkspacePane order={identity} className="session-workspace-pane" active={visible&&active==='files'}><FsBrowser active={visible&&active==='files'} viewKey={`terminal:${identity}`} machineId={machineId} initialPath={path}/></WorkspacePane>
+  <WorkspacePane order={identity} className="session-workspace-pane" active={visible&&active==='files'}><FsBrowser initialFile={initialFile} active={visible&&active==='files'} viewKey={`terminal:${identity}`} machineId={machineId} initialPath={path}/></WorkspacePane>
   {hasNotes&&<WorkspacePane order={identity} className="session-workspace-pane" active={visible&&active==='notes'}>{notes.content}</WorkspacePane>}
   {hasWeb&&<WorkspacePane order={identity} className="session-workspace-pane" active={visible&&active==='web'}><BrowserPreview identity={`terminal:${identity}`}/></WorkspacePane>}
  </div>;

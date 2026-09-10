@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10l: {
+                title: '文件预览更好用了',
+                summary: '查看、复制与下载文件，不用离开当前对话。',
+                files: '文件入口默认打开目录；弹窗可固定到右侧工作区，两处均可下载文件，并分别复制路径与完整文本内容。',
+                workbooks: 'Excel、CSV 表格在浏览器内预览，支持切换工作表和分页；修复路径开头斜杠显示到末尾的问题。',
+            },
             sep10k: {
                 title: '在当前目录继续新对话',
                 summary: '新建对话跟随正在查看的工作空间。',

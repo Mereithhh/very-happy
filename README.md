@@ -326,8 +326,10 @@ structured parity with Claude.
   attachments, and resume.
 - Real tmux browser terminals with reconnect, scrollback, search, mobile input,
   archived sessions, file access, and automatic recovery.
-- A machine file browser with rich previews for text, Markdown, images, and PDFs,
-  plus clickable files from agent output.
+- A machine file browser with previews for text, Markdown, images, PDFs, and Excel/CSV
+  worksheets. Download original files (up to 50 MiB), copy text or paths, and pin
+  clickable previews from agent output to the workspace. Workbook previews run
+  locally in a browser worker (10 MiB; up to 50 sheets, 500 rows and 100 columns per sheet).
 - Clipboard and drag/drop handoff into a target-machine terminal, with an 8 MB
   limit, bounded chunking, upload feedback, and quoted-path insertion without
   auto-execution.

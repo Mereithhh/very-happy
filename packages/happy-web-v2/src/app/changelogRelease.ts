@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-file-preview-actions',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10l.title',
+    summaryKey: 'changelog.releases.sep10l.summary',
+    itemKeys: ['changelog.releases.sep10l.files', 'changelog.releases.sep10l.workbooks'],
+  },
+  {
     id: '2026-09-10-contextual-new-chat',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,

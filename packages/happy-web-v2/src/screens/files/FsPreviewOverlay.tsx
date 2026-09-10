@@ -24,7 +24,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Maximize2, Minimize2, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
-import { useMachine } from '@/sync/storage';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { previewPinTarget } from './previewPinTarget';
+import { storage, useMachine } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { onFsPreviewOpen, type FsPreviewRequest } from '@/sync/filePreviewOpen';
 import { FsFileViewer } from './FsFileViewer';
@@ -63,7 +65,8 @@ function UnreachableMachine({ request, fullscreen, onToggleFullscreen, onClose, 
     );
 }
 
-function PreviewBody({ request, fullscreen, onToggleFullscreen, onClose }: {
+function PreviewBody({ request, fullscreen, onToggleFullscreen, onClose, onPin }: {
+    onPin?: () => void;
     request: FsPreviewRequest;
     fullscreen: boolean;
     onToggleFullscreen: () => void;
@@ -97,6 +100,7 @@ function PreviewBody({ request, fullscreen, onToggleFullscreen, onClose }: {
 
     return (
         <FsFileViewer
+            onPin={onPin}
             machineId={request.machineId}
             path={request.path}
             onClose={onClose}
@@ -107,6 +111,8 @@ function PreviewBody({ request, fullscreen, onToggleFullscreen, onClose }: {
 }
 
 export function FsPreviewOverlay() {
+    const location = useLocation();
+    const navigate = useNavigate();
     const { t } = useTranslation();
     const [request, setRequest] = useState<FsPreviewRequest | null>(null);
     const [fullscreen, setFullscreen] = useState(false);
@@ -142,6 +148,7 @@ export function FsPreviewOverlay() {
     }, [request]);
 
     if (!request || typeof document === 'undefined') return null;
+    const pinTarget = previewPinTarget(request, location, id => storage.getState().sessions[id]?.metadata?.machineId);
 
     return createPortal(
         <div className="fpo-layer">
@@ -164,6 +171,7 @@ export function FsPreviewOverlay() {
                     <div className="fsb-notice fpo-notice">{t('filePreview.diffUnavailable')}</div>
                 )}
                 <PreviewBody
+                    onPin={pinTarget ? () => { navigate(pinTarget); close(); } : undefined}
                     request={request}
                     fullscreen={fullscreen}
                     onToggleFullscreen={() => setFullscreen((v) => !v)}

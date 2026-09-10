@@ -8,7 +8,7 @@ import * as Popover from '@radix-ui/react-popover';
  * and the global back button.
  */
 import { useEffect, useState } from 'react';
-import { StickyNote, Check, FolderTree, MessageCircleQuestion, MoreHorizontal, Pencil, X } from 'lucide-react';
+import { StickyNote, Check, FolderOpen, MessageCircleQuestion, MoreHorizontal, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useSession } from '@/sync/storage';
 import { useSocketStatus } from '@/app/useConnection';
@@ -125,7 +125,7 @@ export function ChatHeader({
             case 'btw':
                 return { key, label: t('session.btw.title'), icon: MessageCircleQuestion, checked: !!btwOpen, onSelect: () => onToggleBtw?.() };
             case 'files':
-                return { key, label: t('session.chat.files'), icon: FolderTree, checked: !!filesOpen, onSelect: () => onToggleFiles?.() };
+                return { key, label: t('session.chat.files'), icon: FolderOpen, checked: !!filesOpen, onSelect: () => onToggleFiles?.() };
         }
     };
     const renderAction = (key: ChatHeaderActionKey) => {
@@ -169,7 +169,7 @@ export function ChatHeader({
                         title={t('session.chat.files')}
                         aria-pressed={filesOpen}
                     >
-                        <FolderTree size={16} />
+                        <FolderOpen size={16} />
                     </button>
                 );
         }

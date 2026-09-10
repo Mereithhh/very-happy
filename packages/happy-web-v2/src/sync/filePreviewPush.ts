@@ -128,5 +128,5 @@ export async function handleFilePreviewPush(encryption: Encryption, data: unknow
         return;
     }
 
-    openFsPreview({ machineId: target.machineId, path, mode: normalizePreviewMode(event.mode) });
+    openFsPreview({ sessionId: event.sessionId, machineId: target.machineId, path, mode: normalizePreviewMode(event.mode) });
 }

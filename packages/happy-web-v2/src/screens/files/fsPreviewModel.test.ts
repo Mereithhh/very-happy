@@ -137,3 +137,9 @@ describe('assembleFsFile', () => {
         expect(FS_PREVIEW_MAX_BYTES).toBeGreaterThan(FS_PREVIEW_CHUNK_BYTES);
     });
 });
+
+it('refuses short or oversized final payloads rather than downloading corrupt files', async () => {
+    for (const size of [1, 3, -1]) {
+        expect(await assembleFsFile(async () => ({ ok: true, size, content: b64([65,66]), truncated: false, offset: 0 }))).toEqual({ ok: false, code: 'inconsistent' });
+    }
+});

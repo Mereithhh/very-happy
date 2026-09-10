@@ -49,6 +49,7 @@
     "thumbhash": "^0.1.1",
     "tweetnacl": "^1.0.3",
     "unist-util-visit": "5.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.0.0",
     "zustand": "^5.0.6"
   },

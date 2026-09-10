@@ -47,7 +47,7 @@ function entryIcon(type: FsEntry['type']) {
 type BrowserView = { path: string; file: string | null; showHidden: boolean };
 // View identities only; file contents and RPC results stay with their original owners.
 const browserViews = new Map<string, BrowserView>();
-type BrowserProps = { active?: boolean; machineId: string; initialPath: string; viewKey?: string; onPickDir?: (path: string) => void };
+type BrowserProps = { initialFile?: { path: string } | null; active?: boolean; machineId: string; initialPath: string; viewKey?: string; onPickDir?: (path: string) => void };
 export function FsBrowser(props: BrowserProps) {
     const identity = props.viewKey && !props.onPickDir ? JSON.stringify([props.viewKey, props.machineId, props.initialPath]) : undefined;
     return <FsBrowserContent key={identity ?? JSON.stringify([props.machineId, props.initialPath])} {...props} identity={identity}/>;
@@ -55,10 +55,12 @@ export function FsBrowser(props: BrowserProps) {
 function FsBrowserContent({
     machineId,
     initialPath,
+    initialFile,
     onPickDir,
     identity,
     active = true,
 }: {
+    initialFile?: { path: string } | null;
     active?: boolean;
     identity?: string;
     machineId: string;
@@ -87,6 +89,7 @@ function FsBrowserContent({
     const [sortRaw, setSortSetting] = useLocalSettingMutable('fsBrowserSort');
     const sortMode = resolveFsSortMode(sortRaw);
     const [file, setFile] = useState<string | null>(initialView?.file ?? null);
+    useEffect(() => { if (initialFile && !picking) setFile(initialFile.path); }, [initialFile, picking]);
     useEffect(() => {
         if (!identity) return;
         browserViews.delete(identity);

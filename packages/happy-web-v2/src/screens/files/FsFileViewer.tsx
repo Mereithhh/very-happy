@@ -17,8 +17,8 @@
  * The head shows the full path with a copy-path button, plus the host's
  * fullscreen toggle (owned by FsBrowser).
  */
-import { useEffect, useState } from 'react';
-import { Code, Eye, Maximize2, Minimize2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Code, Eye, ClipboardCopy, Download, PanelRightOpen, Maximize2, Minimize2, X } from 'lucide-react';
 import { machineFsRead, type FsFailure } from '@/sync/fsOps';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
@@ -34,6 +34,8 @@ import {
     previewKindOf,
     previewMimeOf,
 } from './fsPreviewModel';
+import { SpreadsheetPreview } from './SpreadsheetPreview';
+import { downloadBytes, readDownload } from './fileDownload';
 import { fsFailureText } from './fsFailureText';
 
 type ViewerState =
@@ -52,15 +54,36 @@ function decodeUtf8(b64: string): string {
     return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
 }
 
-export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFullscreen, contained = false }: {
+export function FsFileViewer(props: FsFileViewerProps) {
+    return <FsFileViewerContent key={JSON.stringify([props.machineId, props.path])} {...props}/>;
+}
+interface FsFileViewerProps {
+    onPin?: () => void;
     contained?: boolean;
     machineId: string;
     path: string;
     onClose: () => void;
     fullscreen: boolean;
     onToggleFullscreen: () => void;
-}) {
-    const { t } = useTranslation();
+}
+function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFullscreen, onPin, contained = false }: FsFileViewerProps) {
+    const { t, lang } = useTranslation();
+    const zh = lang.startsWith('zh');
+    const alive = useRef(true);
+    useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+    const [downloading, setDownloading] = useState(false);
+    const [downloadError, setDownloadError] = useState('');
+    const download = async () => {
+        if (downloading) return;
+        setDownloading(true); setDownloadError('');
+        try {
+            const result = await readDownload(machineId, path, () => !alive.current);
+            if (!alive.current) return;
+            if (result.ok) downloadBytes(result.bytes, path);
+            else setDownloadError(result.code === 'too-large' ? (zh ? '下载上限为 50 MiB。' : 'Download limit is 50 MiB.') : result.code === 'needs-upgrade' ? t('fsBrowser.largeNeedsUpgrade', { size: formatFsSize(result.size) }) : (zh ? '下载失败，请检查连接后重试。' : 'Download failed. Check the connection and retry.'));
+        } catch { if (alive.current) setDownloadError(zh ? '下载失败，请重试。' : 'Download failed. Please retry.'); }
+        finally { if (alive.current) setDownloading(false); }
+    };
     const kind = previewKindOf(path);
     const [state, setState] = useState<ViewerState>({ phase: 'loading', progress: null });
     const [mdSource, setMdSource] = useState(false);
@@ -74,7 +97,7 @@ export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFul
         setImgActual(false);
 
         (async () => {
-            if (kind === 'image' || kind === 'pdf') {
+            if (kind === 'image' || kind === 'pdf' || kind === 'spreadsheet') {
                 // Whole-file binary assembly from ≤512KB offset windows.
                 const res = await assembleFsFile(
                     async (offset) => {
@@ -121,7 +144,7 @@ export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFul
                 return;
             }
             setState({ phase: 'text', text: decodeUtf8(res.content), size: res.size, truncated: res.truncated });
-        })();
+        })().catch(() => { if (!cancelled) setState({ phase: 'failed', failure: { ok: false, code: 'unknown', error: 'read failed' } }); });
 
         return () => {
             cancelled = true;
@@ -131,7 +154,7 @@ export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFul
     // Blob URL lifecycle: created in an effect (not lazily during render — a
     // StrictMode double-render would leak one), revoked on replace/unmount.
     useEffect(() => {
-        if (state.phase !== 'bytes') return;
+        if (state.phase !== 'bytes' || kind === 'spreadsheet') return;
         const url = URL.createObjectURL(new Blob([state.bytes as BlobPart], { type: previewMimeOf(path) }));
         setBlobUrl(url);
         return () => {
@@ -175,6 +198,7 @@ export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFul
                     </div>
                 );
             case 'bytes':
+                if (kind === 'spreadsheet') return <SpreadsheetPreview bytes={state.bytes}/>;
                 if (!blobUrl) return <div className="fsb-center"><Spinner size={16} /></div>;
                 if (kind === 'pdf') {
                     return (
@@ -226,6 +250,7 @@ export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFul
         <div className={`fsb-viewer${fullscreen && !contained ? ' fsb--full' : ''}`}>
             <div className="fsb-viewer-head">
                 <span className="fsb-viewer-path" title={path}>{path}</span>
+                <div className="fsb-viewer-actions">
                 {kind === 'markdown' && state.phase === 'text' && (
                     <button
                         type="button"
@@ -237,6 +262,9 @@ export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFul
                         {mdSource ? <Eye size={14} /> : <Code size={14} />}
                     </button>
                 )}
+                {state.phase === 'text' && !state.truncated && <CopyButton icon={ClipboardCopy} text={state.text} label={zh ? '复制文件内容' : 'Copy file contents'} showLabel className="fsb-iconbtn fsb-copy-content" size={14}/>}
+                <button type="button" className="fsb-iconbtn" disabled={downloading} onClick={() => void download()} title={zh ? '下载文件' : 'Download file'} aria-label={zh ? '下载文件' : 'Download file'}>{downloading ? <Spinner size={14}/> : <Download size={14}/>}</button>
+                {onPin && <button type="button" className="fsb-iconbtn" onClick={onPin} title={zh ? '固定到侧边栏' : 'Pin to side panel'} aria-label={zh ? '固定到侧边栏' : 'Pin to side panel'}><PanelRightOpen size={14}/></button>}
                 <CopyButton text={path} label={t('fsBrowser.copyPath')} className="fsb-iconbtn" size={14} />
                 <button
                     type="button"
@@ -247,10 +275,12 @@ export function FsFileViewer({ machineId, path, onClose, fullscreen, onToggleFul
                 >
                     {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                 </button>
-                <button type="button" className="fsb-iconbtn" onClick={onClose} aria-label={t('common.back')} title={t('common.back')}>
+                </div>
+                <button type="button" className="fsb-iconbtn fsb-viewer-close" onClick={onClose} aria-label={t('common.back')} title={t('common.back')}>
                     <X size={15} />
                 </button>
             </div>
+            {downloadError && <div className="fsb-notice" role="alert">{downloadError}</div>}
             {body()}
         </div>
     );

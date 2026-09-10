@@ -52,6 +52,8 @@ describe('resolveAgainstCwd', () => {
         expect(resolveAgainstCwd('docs/a.md', '/repo')).toBe('/repo/docs/a.md');
         expect(resolveAgainstCwd('./docs/a.md', '/repo/')).toBe('/repo/docs/a.md');
         expect(resolveAgainstCwd('/abs/a.md', '/repo')).toBe('/abs/a.md');
+        expect(resolveAgainstCwd('C:/work/a.md', '/repo')).toBe('C:/work/a.md');
+        expect(resolveAgainstCwd(String.raw`\\host\share\a.md`, '/repo')).toBe(String.raw`\\host\share\a.md`);
         expect(resolveAgainstCwd('~/a.md', '/repo')).toBe('~/a.md');
     });
 

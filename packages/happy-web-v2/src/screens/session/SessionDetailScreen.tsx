@@ -165,7 +165,7 @@ export function SessionDetailScreen() {
                 <ChatHeader
                     sessionId={id}
                     filesOpen={filesOpen}
-                    onToggleFiles={() => filesOpen ? setPanel(null, true) : setPanel('browse')}
+                    onToggleFiles={() => panelTab === 'browse' ? setPanel(null, true) : setPanel('browse')}
                     btwOpen={btwOpen}
                     onToggleBtw={btwAllowed
                         ? () => (btwOpen ? setPanel(null, true) : setPanel('btw'))

@@ -352,6 +352,14 @@ export function WebTerminalScreen() {
     else if(workspaceKind==='notes')setFilesOpen(false);
   },[notesOpen]);
   const selectWorkspace=(kind:TerminalWorkspaceKind)=>{setWorkspaceKind(kind);setFilesOpen(true);setNotesPanelOpen(kind==='notes');};
+  const [pinnedPath, setPinnedPath] = useState<{ path: string } | null>(null);
+  useEffect(() => { setPinnedPath(null); }, [workspaceIdentity]);
+  const pinnedFile = params.get('pinFile');
+  useEffect(() => {
+    if (!pinnedFile) return;
+    setPinnedPath({ path: pinnedFile }); setWorkspaceKind('files'); setFilesOpen(true);
+    const next = new URLSearchParams(params); next.delete('pinFile'); setSearchParams(next, { replace: true });
+  }, [pinnedFile]);
   const closeWorkspace=()=>{setFilesOpen(false);setNotesPanelOpen(false);};
   const toggleFiles=()=>{if(filesOpen&&workspaceKind==='files')closeWorkspace();else selectWorkspace('files');};
   const [fileUpload, setFileUpload] = useState<{ name: string; sent: number; total: number } | null>(null);
@@ -2785,7 +2793,7 @@ export function WebTerminalScreen() {
               />
             )}
             <aside className="term-files" hidden={!filesOpen} style={{ ...(filesSplit ? { width: filesWidth } : {}), ...(!filesOpen ? { display: 'none' } : {}) }}>
-              <TerminalWorkspacePanel key={workspaceIdentity} identity={workspaceIdentity} machineId={machineId} path={meta?.cwd||'~'} visible={filesOpen} active={retainedWorkspace} onSelect={selectWorkspace} onClose={closeWorkspace}/>
+              <TerminalWorkspacePanel initialFile={pinnedPath} key={workspaceIdentity} identity={workspaceIdentity} machineId={machineId} path={meta?.cwd||'~'} visible={filesOpen} active={retainedWorkspace} onSelect={selectWorkspace} onClose={closeWorkspace}/>
 
             </aside>
           </>

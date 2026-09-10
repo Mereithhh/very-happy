@@ -196,7 +196,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  direction: rtl;
+  direction: ltr;
   text-align: left;
 }
 .fsb-viewer-body {
@@ -283,7 +283,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  direction: rtl; /* long paths: keep the tail (the leaf dir) readable */
+  direction: ltr; /* preserve absolute path character order */
   text-align: left;
 }
 .fsb-pickbtn {
@@ -340,3 +340,27 @@
 .fsb-shell.fsb--full > .fsb-split > .fsb-viewer > .fsb-viewer-head { padding-top:max(var(--sp-1),env(safe-area-inset-top)); }
 
 .fsb-viewer-body > .cv { border:0; border-radius:0; background:transparent; }
+
+.fsb-viewer { min-width: 0; container-type: inline-size; }
+.fsb-viewer-actions { display: flex; align-items: center; gap: var(--sp-1); flex: none; }
+.fsb-copy-content { width: auto; white-space: nowrap; }
+.fsb-sheet { display:flex; flex-direction:column; flex:1; min-height:0; min-width:0; }
+.fsb-sheet-tabs { display:flex; overflow-x:auto; flex:none; border-bottom:1px solid var(--line); }
+.fsb-sheet-tabs button { padding:8px 12px; white-space:nowrap; color:var(--text-dim); }
+.fsb-sheet-tabs button[aria-selected="true"] { background:var(--bg-3); color:var(--text); }
+.fsb-sheet-grid { flex:1; overflow:auto; min-height:0; }
+.fsb-sheet-grid table { border-collapse:collapse; font-size:var(--fs-12); }
+.fsb-sheet-grid td, .fsb-sheet-grid th { border:1px solid var(--line); padding:5px 8px; min-width:64px; max-width:320px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.fsb-sheet-grid th { position:sticky; left:0; background:var(--bg-2); color:var(--text-dim); min-width:36px; font-weight:400; }
+@container (max-width: 560px) {
+  .fsb-viewer-head { flex-wrap:wrap; }
+  .fsb-viewer-path { flex-basis:calc(100% - 52px); }
+  .fsb-viewer-close { order:1; }
+  .fsb-viewer-actions { order:2; margin-left:auto; max-width:100%; flex-wrap:wrap; }
+  .fsb-copy-content span { display:none; }
+}
+@media (pointer: coarse) {
+  .fsb-viewer-head .fsb-iconbtn, .fsb-sheet-tabs button { min-width:44px; min-height:44px; }
+}
+.fsb-sheet-paging { display:flex; align-items:center; justify-content:center; gap:12px; border-top:1px solid var(--line); flex:none; }
+.fsb-sheet-paging button { padding:8px 12px; min-height:44px; }
