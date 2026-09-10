@@ -168,7 +168,7 @@ jobs:
   # scripts/ci/check-public-pr-isolation.mjs: a privileged trigger must never be
   # able to run fork code). It polls the smoke runs for this very commit.
   #
-  # Failing this job never un-publishes anything and never moves `latest`: the
+  # Failing the smoke gate never un-publishes anything or moves `latest`: the
   # version stays on `next`, installable by exact version, and the fleet simply
   # is not told to take it. That is the intended failure mode.
   promote:
@@ -236,14 +236,9 @@ jobs:
           npm dist-tag add "very-happy-cli@$version" latest
           npm view very-happy-cli version
 
-      # B-348: publishing tells nobody — the update surfaces read the relay's
-      # recommendation. This runs AFTER the promotion (not next to the publish
-      # step, where it would fire on every single release: the relay follows the
-      # dist-tag with a one-hour cache, so "not yet" is normal there). Reports
-      # rather than fails: holding a release back is legitimate, and a red X on
-      # a successful publish teaches people to ignore red Xs.
-      - name: Check the relay will recommend what was just published
-        if: always()
+      # Publication is complete only when the relay advertises the promoted version.
+      # Run only after smoke and promotion succeed; a failed check does not undo npm.
+      - name: Wait for the relay to recommend the promoted CLI
         run: node scripts/release/check-recommended.mjs "${VERSION#v}"
         env:
           VH_PUBLIC_ORIGIN: https://veryhappy.dev

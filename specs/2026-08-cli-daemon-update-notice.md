@@ -57,7 +57,7 @@ daemon 提供。产品持续迭代时，旧 daemon 会缺 RPC/协议能力，目
 - `CLI_RECOMMENDED_VERSION` 可精确 pin recommended；`CLI_MINIMUM_VERSION` 可选。
 - recommended 未配置且 operator 显式设置 `CLI_VERSION_REGISTRY_LOOKUP=true` 时，server
   才以固定 HTTPS npm registry URL 查询 `very-happy-cli/latest`；只接受合法 semver，
-  成功缓存 1h，失败至少退避 5min 并返回上次成功值；无缓存则返回 null，不阻断业务。
+  成功缓存 1min（B-443 缩短发布后的推荐延迟），失败至少退避 5min 并返回上次成功值；无缓存则返回 null，不阻断业务。
 - `CLI_VERSION_REGISTRY_LOOKUP` 默认 `false`，self-hosted 默认无版本查询出站。
 - response 不包含 URL/命令/包名等可执行数据。
 

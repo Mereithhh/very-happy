@@ -24,6 +24,7 @@ describe('GET /v1/version/cli', () => {
         versionRoutes(app.withTypeProvider<ZodTypeProvider>() as unknown as Fastify);
         const response = await app.inject({ method: 'GET', url: '/v1/version/cli' });
         expect(response.statusCode).toBe(200);
+        expect(response.headers['cache-control']).toBe('public, max-age=60');
         expect(response.json()).toMatchObject({
             recommendedVersion: '0.2.68',
             minimumVersion: '0.2.34',

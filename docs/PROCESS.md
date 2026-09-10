@@ -137,7 +137,7 @@ triage（分独立/冲突域）
   `very-happy-tools-<arch>-<os>` 平台包，再发布带精确 optionalDependency 版本的
   `very-happy-cli` 主包，部分成功后 workflow 可幂等重跑；web = bundle salt 随每次部署；server 随源同步。
 - **发布顺序**：默认 server → web → CLI（tag → npm 200 →「等 smoke 绿 → `promote` 移 `latest`」→ relay
-  ≤1h 跟上 → 各机空闲时自动升级）。**推荐版本不再需要手动 pin**（铁律 6 / B-348）；`vh-update` 只用来
+  一分钟缓存刷新、CI 等待推荐一致 → 已独立批准的版本在各机空闲时自动升级）。**推荐版本不再需要手动 pin**（铁律 6 / B-348）；`vh-update` 只用来
   让某一台机器立刻跟上；
   涉及协议字段时按实现报告里的兼容矩阵定顺序，**双向兼容（旧端忽略新字段）是设计要求**不是可选项。
 - **部署核对**：push 后 ≥20s 再触发 CI；`gh run view --json headSha` 核对构建 sha = 预期 commit

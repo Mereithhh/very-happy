@@ -25,7 +25,7 @@ export function versionRoutes(app: Fastify) {
             },
         },
     }, async (_request, reply) => {
-        reply.header('cache-control', 'public, max-age=300');
+        reply.header('cache-control', 'public, max-age=60');
         reply.send(await cliPolicy.get());
     });
 

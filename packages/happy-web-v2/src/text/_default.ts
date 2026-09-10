@@ -1827,6 +1827,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10h: {
+                title: 'Roomier activity indicators and timely CLI recommendations',
+                summary: 'Refined chat spacing and verified CLI recommendations after release.',
+                spacing: 'Activity indicators gain horizontal padding while staying on one line on phones.',
+                release: 'CLI releases become recommended after release checks, with verification that the relay advertises the new version.',
+            },
             sep10g: {
                 title: 'Update your CLI before rollout',
                 summary: 'Waiting for automatic rollout is recommended, with a manual option when you need it.',
