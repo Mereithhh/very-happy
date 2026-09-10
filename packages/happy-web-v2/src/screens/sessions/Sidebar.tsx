@@ -164,6 +164,7 @@ export function Sidebar() {
   const [showAttachTmux, setShowAttachTmux] = useState(false);
   const [showImportClaude, setShowImportClaude] = useState(false);
   const [cmdHeld, setCmdHeld] = useState(false);
+  const [showOrderHint, setShowOrderHint] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
   const terminalViewDefault = useLocalSetting('terminalViewDefault');
   const terminalViewOverrides = useLocalSetting('terminalViewOverrides');
@@ -970,6 +971,7 @@ export function Sidebar() {
                 { key: 'workspace', disabled: !orderable, label: `${groupMode === 'workspace' ? '✓ ' : ''}${t('sidebar.groupWorkspace')}`, icon: FolderTree, onSelect: () => selectGroupMode('workspace') },
                 { key: 'tag', disabled: !orderable, label: `${groupMode === 'tag' ? '✓ ' : ''}${t('sidebar.groupTags')}`, icon: Tags, onSelect: () => selectGroupMode('tag') },
                 { key: 'none', disabled: !orderable, label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Rows3, onSelect: () => selectGroupMode('none') },
+                { key: 'ordering-help', disabled: !orderable || Boolean(teamHistory), label: lang.startsWith('zh') ? '排序说明' : 'Reordering help', icon: CircleHelp, checked: showOrderHint, onSelect: () => setShowOrderHint((shown) => !shown) },
                 { key: 'overview', label: `${t('board.title')}${attentionCount ? ` · ${attentionCount}` : ''}`, icon: LayoutGrid, separatorBefore: true, onSelect: () => navigate('/board') },
               ]}
             >
@@ -980,7 +982,7 @@ export function Sidebar() {
           )}
 
 </div></div>
-      {orderable && !teamHistory && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
+      {showOrderHint && orderable && !teamHistory && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
 
       <div className={`sb-list${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
         {displayRows === null ? (

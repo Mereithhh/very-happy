@@ -12,18 +12,20 @@
 /* draggable column divider */
 .app-resize-handle {
   cursor: col-resize;
-  background: transparent;
+  background: var(--bg-1);
   position: relative;
 }
 .app-resize-handle::after {
   content: '';
   position: absolute;
-  inset: 0 2px;
+  inset: 0 0 0 auto;
+  width: 1px;
   background: var(--line);
   transition: background var(--motion-fast);
 }
-.app-resize-handle:hover::after {
-  background: var(--accent);
+.app-resize-handle:hover::after,
+body.vh-col-resizing .app-resize-handle::after {
+  background: var(--line-2);
 }
 body.vh-col-resizing {
   cursor: col-resize;
@@ -60,15 +62,11 @@ body.vh-col-resizing iframe {
   background: var(--bg-2);
 }
 .app-sidebar {
-  border-right: 1px solid var(--line);
   background: var(--bg-1);
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-}
-.app-sidebar--full {
-  border-right: none;
 }
 .app-detail {
   min-width: 0;

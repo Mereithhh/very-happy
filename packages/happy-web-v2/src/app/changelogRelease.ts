@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-sidebar-harmony',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10j.title',
+    summaryKey: 'changelog.releases.sep10j.summary',
+    itemKeys: ['changelog.releases.sep10j.layout', 'changelog.releases.sep10j.details'],
+  },
+  {
     id: '2026-09-10-workspace-typography',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,
