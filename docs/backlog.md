@@ -257,3 +257,5 @@
 | B-081 | 中文音色：Settings→Voice 内置 ElevenLabs Voice Library 浏览（默认中文筛选）+ 试听 + 一键添加到账号（自动选中）；server 代理 shared-voices 搜索与 add 端点 | feat | Owner 2026-08-14 | done | Shipped `2bb2fe3e`（shared-voices 代理 + 一键添加 + Voice 设置页音色库）。 |
 | B-054 | assistant 版本门控 dev 逃生门：dev 构建恒 0.1.0 被 ≥0.2.34 挡住，本地联调要 hack machine metadata | debt | B-051 E2E 走查#3 | dropped | 并入 B-057 小清理。 |
 | B-056 | /board 在 devtools emulate 切换后首进偶发主线程阻塞 >40s（一次复现，二次不可） | bug | B-051 E2E 走查#5 | dropped | 一次复现不可再现。 |
+
+- [x] **B-450** 侧栏运行转圈与待处理/未读状态点统一 16px 占位，保持中心对齐。

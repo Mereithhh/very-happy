@@ -1792,6 +1792,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10o: {
+                title: '侧栏状态图标对齐',
+                summary: '运行转圈和状态圆点现在位于同一条中心线上。',
+                alignment: '统一运行转圈和待处理、未读圆点的占位，保留原有状态含义。',
+            },
             sep10n: {
                 title: '代码文件预览衔接更自然',
                 summary: '代码区与路径栏使用同一背景，不再内嵌一层白块。',

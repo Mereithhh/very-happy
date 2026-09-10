@@ -1827,6 +1827,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10o: {
+                title: 'Aligned sidebar status indicators',
+                summary: 'Running and attention indicators now share the same center line.',
+                alignment: 'Aligned the running spinner and status dots without changing their status meanings.',
+            },
             sep10n: {
                 title: 'Smoother code file previews',
                 summary: 'Code previews now meet the path bar without an inset card.',
