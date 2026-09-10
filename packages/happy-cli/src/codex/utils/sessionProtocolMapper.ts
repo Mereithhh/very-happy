@@ -225,6 +225,8 @@ function emitHistoricalToolCall(
         }));
     }
 
+    if ('status' in item && (item.status === 'inProgress' || item.status === 'running')) return;
+
     envelopes.push(createEnvelope('agent', {
         t: 'tool-call-end',
         call: item.id,
@@ -233,6 +235,34 @@ function emitHistoricalToolCall(
         id: `${item.id}:end`,
         time: completedTimestampMs(turn),
     }));
+}
+
+/** Preserve native collaboration calls. Completion here is the control call,
+ * never an inferred child-agent completion. agentsStates remain reported snapshots. */
+export function mapCodexCollaborationItem(item: Record<string, unknown>, opts: CreateEnvelopeOptions = {}, source: 'live' | 'history' = 'history'): SessionEnvelope[] {
+    if (item.type === 'subAgentActivity' && typeof item.agentThreadId === 'string') {
+        item = {...item,type:'collabAgentToolCall',tool:item.kind,status:'completed',receiverThreadIds:[item.agentThreadId]};
+    }
+    if (item.type !== 'collabAgentToolCall' || typeof item.id !== 'string' || typeof item.tool !== 'string') return [];
+    const args = {
+        operation: item.tool,
+        ...(typeof item.prompt === 'string' ? { prompt: item.prompt } : {}),
+        ...(typeof item.model === 'string' ? { model: item.model } : {}),
+        receiverThreadIds: Array.isArray(item.receiverThreadIds) ? item.receiverThreadIds : [],
+        agentsStates: item.agentsStates ?? {},
+    };
+    // A completed notification fills in receivers and agent snapshots that
+    // may be absent at start. Keep the tool-call identity, but use a distinct
+    // message identity so incremental reducers do not discard that update.
+    const startId = source === 'live' ? `${item.id}:${item.status ?? 'unknown'}:start` : `${item.id}:start`;
+    const envelopes = [createEnvelope('agent', {
+        t:'tool-call-start',call:item.id,name:'CodexCollaboration',title:`Codex · ${item.tool}`,description:`Codex · ${item.tool}`,args,
+    }, {...opts, id:startId})];
+    if (item.status === 'completed' || item.status === 'failed' || item.status === 'interrupted') {
+        envelopes.push(createEnvelope('agent', {t:'tool-call-end',call:item.id,
+            result:{text:JSON.stringify(args,null,2),isError:item.status !== 'completed'}}, {...opts,id:`${item.id}:end`}));
+    }
+    return envelopes;
 }
 
 export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>): SessionEnvelope[] {
@@ -249,6 +279,11 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
 
         for (const item of turn.items ?? []) {
             switch (item.type) {
+                case 'subAgentActivity':
+                case 'collabAgentToolCall': {
+                    envelopes.push(...mapCodexCollaborationItem(item, {turn:turn.id,time:startedAt,codexItemId:item.id}));
+                    break;
+                }
                 case 'userMessage': {
                     const text = textFromInputItems(item.content);
                     if (text) {
@@ -387,6 +422,11 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     const startedSubagents = getStartedSubagents(state);
     const activeSubagents = getActiveSubagents(state);
     const providerSubagentToSessionSubagent = getProviderSubagentToSessionSubagent(state);
+
+    if (type === 'collab_agent_item') {
+        return {currentTurnId:state.currentTurnId, startedSubagents, activeSubagents, providerSubagentToSessionSubagent,
+            envelopes:mapCodexCollaborationItem(message.item as Record<string, unknown>, buildEnvelopeOptions(state.currentTurnId), 'live')};
+    }
 
     if (type === 'task_started') {
         const turnId = createId();

@@ -7,6 +7,10 @@
 
 import { AsyncLock } from '@/utils/lock';
 
+// Lifecycle frames must follow their delayed tool-use frame through the same
+// queue. Other SDK system frames are housekeeping, not transcript content.
+const transcriptSystemSubtypes = new Set(['task_started', 'task_updated', 'task_progress', 'task_notification']);
+
 interface QueueItem {
     id: number;                    // Incremental ID for ordering
     logMessage: any;               
@@ -121,7 +125,7 @@ export class OutgoingMessageQueue {
             
             // Send if not already sent
             if (!item.sent) {
-                if (item.logMessage.type !== 'system') {
+                if (item.logMessage.type !== 'system' || transcriptSystemSubtypes.has(item.logMessage.subtype)) {
                     this.sendFunction(item.logMessage);
                 }
                 item.sent = true;

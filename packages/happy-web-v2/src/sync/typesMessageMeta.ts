@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 // Shared message metadata schema
 export const MessageMetaSchema = z.object({
+    reportedModel: z.string().optional(), // Actual model reported by a linked child assistant, never a requested alias.
     sentFrom: z.string().optional(), // Source identifier
     permissionMode: z.string().optional(), // Permission mode key for this message
     model: z.string().nullable().optional(), // Model name for this message (null = reset)

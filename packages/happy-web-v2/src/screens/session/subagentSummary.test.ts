@@ -80,3 +80,9 @@ describe('buildSubagentSummary with CLI lifecycle (B-260-P2)', () => {
         expect(buildSubagentSummary(card({}, [])).lifecycle).toBeNull();
     });
 });
+
+it('distinguishes requested and reported models, without guessing inheritance', () => {
+    const child = {kind:'agent-text',id:'c',createdAt:1,text:'done',meta:{reportedModel:'actual-haiku'}} as Message;
+    expect(buildSubagentSummary(card({model:'inherit'},[child,child]))).toMatchObject({requestedModel:'inherit',actualModels:['actual-haiku']});
+    expect(buildSubagentSummary(card({},[]))).toMatchObject({requestedModel:null,actualModels:[]});
+});

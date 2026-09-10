@@ -1,3 +1,4 @@
+import { agentUpdateCount } from '@/app/agentVersions';
 /**
  * Settings → Machines (B-082): the discoverable doorway to /machine/:id.
  *
@@ -14,7 +15,7 @@
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, HardDrive, PlusCircle } from 'lucide-react';
 import { SettingsPage as Page, SettingsHeader as Header } from './SettingsLayout';
-import { ItemList, ItemGroup, Item, StatusDot } from '@/ui';
+import { ItemList, ItemGroup, Item, StatusDot, Badge } from '@/ui';
 import { useAllMachines, useSupersededMachineIds } from '@/sync/storage';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -51,6 +52,7 @@ export function MachinesSettings() {
                     {machines.map((m) => {
                         const online = isMachineOnline(m);
                         const isSuperseded = superseded.has(m.id);
+                        const upgrades = online && !isSuperseded ? agentUpdateCount(m.daemonState) : 0;
                         const state = isSuperseded
                             ? t('settingsMachines.superseded')
                             : online ? t('settingsMachines.online') : t('settingsMachines.offline');
@@ -62,6 +64,7 @@ export function MachinesSettings() {
                                 left={<HardDrive size={18} />}
                                 right={
                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                                        {upgrades > 0 && <Badge dot={false} tone="warn">{t('agentUpdates.availableCount', { count: upgrades })}</Badge>}
                                         <StatusDot status={online ? 'connected' : 'offline'} />
                                         <ChevronRight size={16} />
                                     </span>

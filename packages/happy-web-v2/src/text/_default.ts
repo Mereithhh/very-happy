@@ -715,6 +715,9 @@ export const en = {
             subagentResult: 'sub-agent report',
             subagentResultTruncated: 'truncated at 16KB',
             subagentPanelTitle: 'Sub-agent',
+            subagentActualModel: 'Reported model',
+            subagentRequestedModel: 'Requested model',
+            backgroundCommand: 'Background command',
             subagentPrompt: 'prompt',
             subagentLog: 'process',
             subagentNoActivity: 'This sub-agent has not reported anything yet.',
@@ -946,6 +949,7 @@ export const en = {
 
     // open_preview pushes: the singleton file-preview overlay (B-131)
     filePreview: {
+        history: 'Preview history',
         /** B-144: tooltip on a clickable file path in chat / tool cards. */
         openPath: ({ path }: { path: string }) => `Open ${path} in the preview panel`,
         title: 'File preview',
@@ -1831,6 +1835,15 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep11: {
+                title: 'Clearer subagent activity and more runtime controls',
+                summary: 'Consistent conversation typography, reopenable previews, and common Claude session controls. New CLI capabilities apply to sessions started or restarted after upgrading.',
+                subagents: 'Subagents share the main conversation activity renderer, including grouped completed terminal commands. Compact task entries show progress; Claude displays reported child models when available, and linked Codex child threads can be opened from their parent session.',
+                previews: 'File preview tools become direct entries. Discovered previews are remembered per session on this device and can be reopened after closing the overlay.',
+                controls: 'Claude runtime controls now include backgrounding and stopping tasks, reloading skills/plugins, reconnecting or toggling MCP servers, and previewing file restores before confirmation. Pending permission and dialog responses are kept separate from controls.',
+                updates: 'Bundled Claude Agent SDK updated to 0.3.267. Machine pages periodically check installed coding agents for updates. SDK dependency updates open review PRs; external agents retain their official upgrade paths.',
+                polish: 'Tool names and preview paths match conversation text size. Subagent entries remove repeated Task labels and long command summaries. Sidebar branding aligns with navigation, and workspace groups retain only the new-chat plus button.',
+            },
             sep10r: {
                 title: 'Clearer activity, smoother updates',
                 summary: 'Compact command groups and more consistent workspace feedback.',
@@ -2786,6 +2799,23 @@ export const en = {
         copiedToClipboard: ({ label }: { label: string }) => `${label} copied to clipboard`
     },
 
+    runtimeControls: {
+        rewindPartial:'Some files were skipped during restore',
+        nothingBackgrounded:'No running task could be moved to the background.',
+        title:'Claude runtime controls', description:'Manage this session’s tasks, extensions and connections.',
+        inactive:'This session has no active Claude runtime. Resume the session to use these controls.', busy:'Answer the pending permission request or dialog first, then retry.',
+        working:'Applying…', done:'Completed', tasks:'Background tasks', background:'Move running tasks to background', noTasks:'No background tasks reported.', stop:'Stop task',
+        extensions:'Skills and plugins', reloadSkills:'Reload skills', reloadPlugins:'Reload plugins', refreshMcp:'Refresh MCP status', noMcp:'No MCP servers configured.', reconnect:'Reconnect', enable:'Enable', disable:'Disable',
+        rewind:'Restore files', rewindHelp:'Available while idle. Restores files from a checkpoint; conversation history stays intact. Preview the affected files before confirming.', checkpoint:'Checkpoint', chooseCheckpoint:'Choose a checkpoint', preview:'Preview file restore', rewindReady:'Files can be restored:', rewindUnavailable:'This checkpoint cannot restore files.', confirmRewind:'Confirm file restore',
+        task:{running:'Running',completed:'Completed',failed:'Failed',stopped:'Stopped',unknown:'Unknown'},
+    },
+    agentUpdates: {
+        title: 'Coding agent versions', help: 'Checked automatically every 6 hours. Updates are offered, not installed during running sessions.',
+        notChecked: 'Not checked yet. This feature requires an updated Very Happy daemon.', checked: 'Last checked', stale: 'Check expired',
+        current: 'No update', 'update-available': 'Update available', unknown: 'Unverified',
+        bundled: 'Bundled runtime · update through Very Happy CLI', external: 'Installed on this machine', guide: 'Upgrade guide',
+        availableCount: ({count}: {count:number}) => `${count} agent updates`,
+    },
     cliUpdate: {
         retry: 'Retry update',
         retryHelp: 'Try this approved version once, when the machine is idle.',

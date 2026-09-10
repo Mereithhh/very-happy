@@ -13,3 +13,4 @@ export * from './builtinTodos';
 export * from './builtinTodoSkill';
 
 export * from './contextUsage';
+export * from './agentVersions';

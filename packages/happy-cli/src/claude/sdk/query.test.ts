@@ -9,7 +9,15 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (importOriginal) => ({
 import { query } from './query';
 
 describe('Claude SDK query adapter', () => {
+    it('forwards child text for the nested transcript', () => {
+        query({ prompt: 'hello' });
+        expect(sdkQuery.mock.calls[0][0].options.forwardSubagentText).toBe(true);
+    });
     beforeEach(() => sdkQuery.mockClear());
+    it('enables file checkpoints and replays their actual SDK user UUIDs', () => {
+        query({ prompt: 'hello' });
+        expect(sdkQuery.mock.calls[0][0].options).toMatchObject({ enableFileCheckpointing: true, extraArgs: { 'replay-user-messages': null } });
+    });
 
     it('sets the SDK safety acknowledgement for bypassPermissions', () => {
         query({ prompt: 'hello', options: { permissionMode: 'bypassPermissions' } });

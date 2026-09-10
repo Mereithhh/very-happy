@@ -1,3 +1,4 @@
+import type { RuntimeQuery } from './runtimeControls';
 import { EnhancedMode } from "./loop";
 import { query, type QueryOptions, type SDKMessage, type SDKResultMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import type { MessageParam } from '@anthropic-ai/sdk/resources'
@@ -32,7 +33,7 @@ export async function claudeRemote(opts: {
     onElicitation?: OnElicitation,
     onUserDialog?: OnUserDialog,
     /** Called when the Query object is ready — exposes live query controls. */
-    onQueryReady?: (query: {
+    onQueryReady?: (query: RuntimeQuery & {
         setPermissionMode: (mode: string) => Promise<void>;
         /** Live model switch; rejects on an alias Claude Code does not know. */
         setModel: (model?: string) => Promise<void>;
@@ -196,6 +197,14 @@ export async function claudeRemote(opts: {
     });
 
     // Start the loop
+    let callbackDepth = 0;
+    const guardCallback = <T extends (...args:any[])=>Promise<any>>(callback:T):T => (async (...args:Parameters<T>) => {
+        callbackDepth++;
+        try { return await callback(...args); } finally { setImmediate(()=>{callbackDepth--;}); }
+    }) as T;
+    if(sdkOptions.canCallTool) sdkOptions.canCallTool=guardCallback(sdkOptions.canCallTool);
+    if(sdkOptions.onElicitation) sdkOptions.onElicitation=guardCallback(sdkOptions.onElicitation);
+    if(sdkOptions.onUserDialog) sdkOptions.onUserDialog=guardCallback(sdkOptions.onUserDialog);
     const response = query({
         prompt: messages,
         options: sdkOptions,
@@ -220,6 +229,15 @@ export async function claudeRemote(opts: {
     // Expose query control methods to permission handler
     if (opts.onQueryReady) {
         opts.onQueryReady({
+            canControl: () => callbackDepth === 0,
+            reloadSkills: () => response.reloadSkills(),
+            reloadPlugins: () => response.reloadPlugins(),
+            mcpServerStatus: () => response.mcpServerStatus(),
+            reconnectMcpServer: (name) => response.reconnectMcpServer(name),
+            toggleMcpServer: (name, enabled) => response.toggleMcpServer(name, enabled),
+            stopTask: (id) => response.stopTask(id),
+            backgroundTasks: (id) => response.backgroundTasks(id),
+            rewindFiles: (id, options) => response.rewindFiles(id, options),
             setPermissionMode: (mode: string) => response.setPermissionMode(mode as any),
             setModel: (model?: string) => response.setModel(modelTarget(model)),
             interrupt: async () => { await response.interrupt(); },

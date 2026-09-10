@@ -52,7 +52,7 @@ export function countRunningSubagentCards(messages: Message[]): number {
     let count = 0;
     for (const message of messages) {
         if (message.kind !== 'tool-call') continue;
-        if (presentedSubagentStatus(message, abortedAt) === 'running') count++;
+        if ((message.tool.name === 'Task' || message.tool.name === 'Agent') && presentedSubagentStatus(message, abortedAt) === 'running') count++;
     }
     return count;
 }

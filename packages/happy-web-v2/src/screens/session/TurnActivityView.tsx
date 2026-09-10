@@ -3,9 +3,8 @@ import { ChevronRight } from 'lucide-react';
 import type { Message } from '@/sync/typesMessage';
 import { sameItems } from './rowMemo';
 import { useTranslation } from '@/i18n/useTranslation';
-import { MessageView } from './MessageView';
-import { ToolGroupView } from './ToolGroupView';
-import { activityDurationSeconds, buildLeafRows } from './chatTurns';
+import { ActivityMessages } from './ActivityMessages';
+import { activityDurationSeconds } from './chatTurns';
 import { countRunningSubagentCards, countSubagentCards } from './subagentPills';
 import { userAbortedAt } from './subagentAbort';
 import { StatusDot } from '@/ui';
@@ -41,8 +40,6 @@ function TurnActivityViewImpl({
         wasLiveRef.current = live;
     }, [live]);
 
-    // Fold only adjacent completed commands; running/error calls and prose keep their own rows.
-    const rows = useMemo(() => buildLeafRows(messages, null, 'completed-terminal', false), [messages]);
     // B-260: a folded turn should still say how many sub-agents ran inside it.
     const subagentCount = useMemo(() => countSubagentCards(messages), [messages]);
     const runningSubagents = useMemo(() => countRunningSubagentCards(messages), [messages]);
@@ -77,20 +74,7 @@ function TurnActivityViewImpl({
             </button>
             {expanded && (
                 <div id={detailId} className="ta-detail vh-disclosure-panel">
-                    {rows.map((row) =>
-                        row.type === 'toolgroup' ? (
-                            <ToolGroupView key={row.key} tools={row.tools} collapseCompleted stalled={!live} abortedAt={abortedAt} />
-                        ) : (
-                            <MessageView
-                                key={row.key}
-                                message={row.message}
-                                showMeta={false}
-                                showActions={false}
-                                sessionId={sessionId}
-                                thinkingDurationMs={row.thinkingDurationMs}
-                            />
-                        ),
-                    )}
+                    <ActivityMessages messages={messages} sessionId={sessionId} stalled={!live} abortedAt={abortedAt} />
                 </div>
             )}
         </section>

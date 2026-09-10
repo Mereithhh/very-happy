@@ -1,3 +1,4 @@
+import { startAgentVersionChecks } from './agentVersions';
 import { sanitizeSpawnModel } from './spawnModel';
 import fs from 'fs/promises';
 import os from 'os';
@@ -1705,6 +1706,10 @@ export async function startDaemon(): Promise<void> {
       logger.warn(`[DAEMON RUN] Ignoring invalid HAPPY_CLI_UPDATE_CHECK_INTERVAL; using ${DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS}ms`);
     }
     const cliUpdateInterval = setInterval(() => void refreshCliUpdate(), cliUpdateIntervalMs);
+    const stopAgentVersionChecks = startAgentVersionChecks(
+      snapshot => apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot })),
+      error => logger.debug('[DAEMON RUN] Agent version check failed', error),
+    );
 
     // Every 60 seconds:
     // 1. Prune stale sessions
@@ -1777,6 +1782,7 @@ export async function startDaemon(): Promise<void> {
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
         clearInterval(cliUpdateInterval);
+        stopAgentVersionChecks();
         claudeAuthService.stop();
 
         // Release ownership BEFORE spawning the new daemon. Otherwise the spawned
@@ -1858,6 +1864,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Health check interval cleared');
       }
       clearInterval(cliUpdateInterval);
+      stopAgentVersionChecks();
 
       // Update daemon state before shutting down
       await apiMachine.updateDaemonState((state: DaemonState | null) => ({

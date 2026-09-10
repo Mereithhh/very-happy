@@ -1,3 +1,4 @@
+import { ClaudeRuntimeDialog } from './ClaudeRuntimeDialog';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { useLocalSetting } from '@/sync/storage';
 import { useNavigate } from 'react-router-dom';
@@ -43,6 +44,8 @@ export function ChatHeader({
     const teams = useTeamNavigation();
     const session = useSession(sessionId);
     const [editing, setEditing] = useState(false);
+    const [runtimeOpen, setRuntimeOpen] = useState(false);
+    const canControlRuntime = session?.metadata?.capabilities?.includes('claude-runtime-controls-v1') === true;
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const ime = useImeGuard();
@@ -212,8 +215,8 @@ export function ChatHeader({
                 </div>
             )}
             {!editing && plan.inline.map(renderAction)}
-            {!editing && (plan.overflow.length > 0 || canStartTeam) && (
-                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : [])]}>
+            {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime) && (
+                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : [])]}>
                     <button
                         type="button"
                         className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}
@@ -224,6 +227,7 @@ export function ChatHeader({
                     </button>
                 </ActionDropdownMenu>
             )}
+            {canControlRuntime && <ClaudeRuntimeDialog key={sessionId} sessionId={sessionId} open={runtimeOpen} onOpenChange={setRuntimeOpen}/>}
         </header>
     );
 }

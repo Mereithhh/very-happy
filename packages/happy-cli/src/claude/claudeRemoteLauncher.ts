@@ -1,3 +1,4 @@
+import { createRuntimeControls, isRuntimeCheckpointReplay } from './runtimeControls';
 import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
 import { render } from "ink";
 import { Session } from "./session";
@@ -93,6 +94,8 @@ export async function claudeRemoteLauncher(
     let abortController: AbortController | null = null;
     let abortFuture: Future<void> | null = null;
     const turnSteering = createTurnSteeringController();
+    const runtimeControls = createRuntimeControls(() => session.thinking);
+    session.client.rpcHandlerManager.registerHandler('claude-runtime-control', async input => runtimeControls.request(input));
 
     async function abort() {
         if (abortController && !abortController.signal.aborted) {
@@ -197,6 +200,9 @@ export async function claudeRemoteLauncher(
     let notifiedQuestionToolCalls = new Set<string>();
 
     function onMessage(message: SDKMessage) {
+        runtimeControls.observe(message);
+        // SDK prompt echoes supply checkpoint UUIDs; the app already owns the user bubble.
+        if (isRuntimeCheckpointReplay(message)) return;
 
         // Claude Code emits this synthetic user frame for an interrupted
         // query. It is engine bookkeeping, not conversation content.
@@ -512,6 +518,7 @@ export async function claudeRemoteLauncher(
                         if (metadata.permissionMode) onEffectivePermissionMode?.(metadata.permissionMode);
                     },
                     onQueryReady: (q) => {
+                        runtimeControls.setQuery(q);
                         turnSteering.setInterrupt(q.interrupt);
                         session.setSteerHandler(async (input) => {
                             // Steer injects into the RUNNING turn, so it is only
@@ -626,6 +633,7 @@ export async function claudeRemoteLauncher(
                 }
             } finally {
 
+                runtimeControls.setQuery(null);
                 turnSteering.reset();
                 session.setSteerHandler(null);
                 livePermissionModeHandler = null;

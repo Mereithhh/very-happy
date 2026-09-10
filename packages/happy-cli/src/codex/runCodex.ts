@@ -1,3 +1,4 @@
+import { readChildThread } from './readChildThread';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
 import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
 import type { PendingAttachment } from '@/utils/MessageQueue2';
@@ -541,6 +542,10 @@ export async function runCodex(opts: {
     };
 
     // Register abort handler
+    session.rpcHandlerManager.registerHandler('codex-child-read', async (args: {threadId?: unknown}) => {
+        try { return await readChildThread(client, args?.threadId); }
+        catch (error) { return {error:error instanceof Error ? error.message : 'Child read failed'}; }
+    });
     session.rpcHandlerManager.registerHandler('abort', handleAbort);
 
     const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, handleKillSession, session, { processSignals: true });

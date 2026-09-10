@@ -241,3 +241,32 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
         });
     });
 });
+
+it('preserves collaboration call completion separately from running child snapshots', () => {
+    const item = {type:'collabAgentToolCall',id:'spawn-1',tool:'spawnAgent',status:'completed',model:'requested-model',prompt:'Review',receiverThreadIds:['child-1'],agentsStates:{'child-1':{status:'running'}}};
+    const live = mapCodexMcpMessageToSessionEnvelopes({type:'collab_agent_item',item}, {currentTurnId:'turn-1'}).envelopes;
+    expect(live.map(e=>e.ev.t)).toEqual(['tool-call-start','tool-call-end']);
+    expect(live[0].ev).toMatchObject({name:'CodexCollaboration',args:{model:'requested-model',agentsStates:{'child-1':{status:'running'}}}});
+    expect(live.some(e=>e.subagent)).toBe(false);
+    const history = mapCodexThreadToSessionEnvelopes({turns:[{id:'turn-1',items:[item]}]} as any);
+    expect(history.filter(e=>e.ev.t.startsWith('tool-call')).map(e=>e.ev)).toEqual(live.map(e=>e.ev));
+    expect(mapCodexMcpMessageToSessionEnvelopes({type:'collab_agent_item',item:{...item,status:'inProgress'}},{currentTurnId:'turn-1'}).envelopes).toHaveLength(1);
+});
+
+it('delivers completed collaboration receivers after an incremental start with no receivers', () => {
+    const initial = { type: 'collabAgentToolCall', id: 'spawn-1', tool: 'spawnAgent', status: 'inProgress', receiverThreadIds: [], agentsStates: {} };
+    const completed = { ...initial, status: 'completed', receiverThreadIds: ['child-1'], agentsStates: { 'child-1': { status: 'running' } } };
+    const mapLive = (item: Record<string, unknown>) => mapCodexMcpMessageToSessionEnvelopes({ type: 'collab_agent_item', item }, { currentTurnId: 'turn-1' }).envelopes;
+    const started = mapLive(initial);
+    const finished = mapLive(completed);
+    expect(started[0].id).not.toBe(finished[0].id);
+    expect(started[0].ev).toMatchObject({ call: 'spawn-1', args: { receiverThreadIds: [] } });
+    expect(finished[0].ev).toMatchObject({ call: 'spawn-1', args: { receiverThreadIds: ['child-1'] } });
+
+    // Model message-ID deduplication at the consumer boundary. Both updates
+    // must survive, while replaying the same terminal notification is stable.
+    const messages = new Map([...started, ...finished, ...mapLive(completed)].map(envelope => [envelope.id, envelope]));
+    expect([...messages.values()].map(e => e.ev.t)).toEqual(['tool-call-start', 'tool-call-start', 'tool-call-end']);
+    const history = mapCodexThreadToSessionEnvelopes({ turns: [{ id: 'turn-1', items: [completed] }] } as any);
+    expect(history.find(e => e.ev.t === 'tool-call-start')?.id).toBe('spawn-1:start');
+});

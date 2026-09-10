@@ -188,6 +188,8 @@ export class ApiMachineClient {
      *  stale" so the FIRST keep-alive tick always probes and populates the
      *  machine metadata that a connecting/reconnecting web client reads. */
     private lastCliProbeAt = Date.now() - CLI_AVAILABILITY_RECHECK_MS;
+    /** Stable across socket reconnects; a new client/run invalidates old version checks. */
+    private readonly agentVersionEpoch = Date.now();
     private cliUpdateState: CliUpdateState | null = null;
     private cliUpdatePushChain: Promise<void> = Promise.resolve();
     private claudeAuthState: ClaudeAuthState | null = null;
@@ -1199,6 +1201,7 @@ export class ApiMachineClient {
                     pid: process.pid,
                     httpPort: this.machine.daemonState?.httpPort,
                     startedAt: now,
+                    agentVersionEpoch: this.agentVersionEpoch,
                     webTerminals: { updatedAt: now, terminals: initialTerminals },
                     // B-265 capability flag; restamped every connect so the
                     // web's `detectedAt >= startedAt` trust rule holds.

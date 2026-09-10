@@ -1,30 +1,12 @@
 .tg {
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
+  line-height: var(--conversation-leading);
   display: flex;
   gap: var(--sp-2);
   align-items: stretch;
   min-width: 0;
   max-width: 100%;
-}
-.tg-spine {
-  flex: none;
-  width: 1px;
-  border-radius: var(--r-pill);
-  background: var(--line-2);
-}
-.tg--running .tg-spine {
-  background: var(--accent);
-
-}
-.tg--error .tg-spine {
-  background: var(--danger);
-}
-.tg--mixed .tg-spine {
-  background: var(--warn);
-}
-/* B-295: an orphaned `running` tool keeps the neutral spine — phosphor teal
-   means live, and this one provably is not (sync/agentLiveness.ts). */
-.tg--stalled .tg-spine {
-  background: var(--line-2);
 }
 .tg-content {
   flex: 1;
@@ -37,8 +19,9 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
+  line-height: var(--conversation-leading);
   color: var(--text-dim);
   padding: 2px 0;
   width: 100%;
@@ -52,6 +35,7 @@
   color: var(--text);
 }
 .tg-run-summary {
+  font-family: var(--font-mono);
   min-width: 0;
   overflow: hidden;
   color: var(--text-faint);
@@ -66,22 +50,6 @@
   font-size: var(--fs-11);
 }
 
-@media (max-width: 860px) {
-  /* The overview is the primary scan target on a phone; the generic count is
-     redundant there and costs a full line on narrow screens. */
-  .tg-head .tg-summary {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .tg-run-summary {
-    color: var(--text-dim);
-    font-weight: 600;
-  }
-}
 .tg-elapsed--live {
   color: var(--accent-2);
 }
@@ -114,10 +82,11 @@
  * outside the disclosure panel so a collapsed row still says what happened. */
 .tg-subagent-glyph { color: var(--text-dim); flex: none; }
 .tg-subagent-line {
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
+  line-height: var(--conversation-leading);
   color: var(--text-dim);
-  padding: 0 0 2px 22px;
+  padding: 0 0 2px 40px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -141,15 +110,17 @@
   align-items: center;
   gap: var(--sp-2);
   min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
+  line-height: var(--conversation-leading);
 }
 .tg-row-head {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
+  line-height: var(--conversation-leading);
   color: var(--text-dim);
   min-width: 0;
   text-align: left;
@@ -158,16 +129,18 @@
 }
 /* detail 不在按钮里时，按钮只需要包住 label；detail 自己吃剩余宽度 */
 .tg-row-head-wrap > .tg-tool-detail {
+  font-family: var(--font-mono);
   flex: 1;
 }
 .tg-tool-label {
   font-family: var(--font-sans);
-  font-size: var(--fs-13);
+  font-size: var(--conversation-size);
   flex: none;
   color: var(--text);
   font-weight: 600;
 }
 .tg-tool-detail {
+  font-family: var(--font-mono);
   flex: 1;
   min-width: 0;
   color: var(--text-dim);
@@ -183,7 +156,7 @@
   flex-direction: column;
   gap: var(--sp-2);
 }
-/* tool body content must never overflow the spine container */
+/* Tool bodies stay within the available conversation width. */
 .tg-row > .tv,
 .tg-row > .vh-disclosure-panel > .tv,
 .tg-content > .tv {
@@ -200,3 +173,10 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.tg-preview-row { display:flex; align-items:center; gap:var(--sp-2); min-width:0; min-height:32px; padding:2px var(--sp-1); }
+.tg-preview-row > svg { flex:none; color:var(--text-dim); }
+.tg-preview-path { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-dim); }
+.tg-preview-path .fpl-icon { display:none; }
+.tg-preview-path .fpl-text { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+@media(pointer:coarse) { .tg-preview-path { min-height:44px; align-items:center; } }

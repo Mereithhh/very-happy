@@ -1,3 +1,6 @@
+import { openSubagentPanel } from './subagentPanelState';
+import { useSubagentNavigation } from './subagentNavigation';
+import { previewToolPath } from './previewTools';
 /**
  * ToolView — specialized per-tool rendering for an expanded tool call.
  * Dispatches on tool name to a purpose-built view; everything unrecognized
@@ -372,10 +375,17 @@ function prettyInput(input: unknown): string {
 }
 
 export function ToolView({ message, abortedAt = null }: { message: ToolCallMessage; abortedAt?: number | null }) {
+    const {id:sessionId}=useParams();
+    const subagentNavigation = useSubagentNavigation();
     const tool = message.tool;
+    if (tool.name === 'CodexCollaboration' && sessionId && subagentNavigation === 'session' && Array.isArray(tool.input?.receiverThreadIds) && tool.input.receiverThreadIds.length) {
+        return <button type="button" className="sa-dock-item" onClick={()=>openSubagentPanel(sessionId,message.id)}>Codex · {tool.input.operation} →</button>;
+    }
     const error = tool.state === 'error' ? extractError(tool) : undefined;
     let body: ReactNode;
     let handlesOwnError = false;
+    const previewPath = previewToolPath(tool);
+    if (previewPath) return <div className="tv"><ToolPath path={previewPath} />{error && <div className="tg-error">{error}</div>}</div>;
     switch (tool.name) {
         case 'Bash':
             body = <BashView tool={tool} />;

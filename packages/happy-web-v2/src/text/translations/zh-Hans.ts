@@ -721,6 +721,9 @@ export const zhHans: TranslationStructure = {
             subagentResult: '子代理报告',
             subagentResultTruncated: '已截断至 16KB',
             subagentPanelTitle: '子代理',
+            subagentActualModel: '实际模型',
+            subagentRequestedModel: '请求模型',
+            backgroundCommand: '后台命令',
             subagentPrompt: '任务说明',
             subagentLog: '执行过程',
             subagentNoActivity: '这个子代理还没有任何回报。',
@@ -944,6 +947,7 @@ export const zhHans: TranslationStructure = {
 
     // open_preview 推送：文件预览浮层（B-131）
     filePreview: {
+        history: '预览记录',
         openPath: ({ path }: { path: string }) => `在预览面板里打开 ${path}`,
         title: '文件预览',
         receiveTitle: '接收预览推送',
@@ -1796,6 +1800,15 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep11: {
+                title: '更清楚的子代理过程，更完整的运行控制',
+                summary: '统一对话与工具排版，找回预览记录，并补齐 Claude 会话的常用控制。CLI 新能力在升级后新建或重启的会话中生效。',
+                subagents: '子代理与主对话共用执行过程组件，连续完成的终端命令可合并查看。运行任务以紧凑入口展示，Claude 子代理在有真实上报时显示实际模型；Codex 子线程可从所属会话按需查看。',
+                previews: '文件预览工具显示为直接入口，已发现的预览记录在当前设备按会话保存，关闭弹窗后仍可重新打开。',
+                controls: '新增 Claude 运行控制：任务转后台与停止、重载 skills/plugins、MCP 开关与重连，以及先预览再确认的文件回退。等待权限或对话响应时避免并发控制。',
+                updates: '内置 Claude Agent SDK 升级至 0.3.267；机器页面定期检查已安装的 coding agent 并提示新版。SDK 依赖更新自动提交检查 PR，外部 Agent 保留官方升级入口。',
+                polish: '工具名、预览路径与正文统一字号；子代理入口去掉重复 Task 和长命令摘要。侧栏品牌对齐导航，工作目录分组只保留新建加号。',
+            },
             sep10r: {
                 title: '对话更清爽，更新更顺畅',
                 summary: '统一命令分组与界面反馈，改善更新后的页面恢复。',
@@ -2685,6 +2698,23 @@ export const zhHans: TranslationStructure = {
         copiedToClipboard: ({ label }: { label: string }) => `${label} 已复制到剪贴板`
     },
 
+    runtimeControls: {
+        rewindPartial:'回退时部分文件被跳过',
+        nothingBackgrounded:'当前没有可转到后台的运行任务。',
+        title:'Claude 运行控制', description:'管理当前会话的任务、扩展和连接。',
+        inactive:'此会话没有活动的 Claude 运行时，请恢复会话后使用。', busy:'请先处理当前权限询问或弹窗，再重试。',
+        working:'正在处理…', done:'已完成', tasks:'后台任务', background:'将运行任务转到后台', noTasks:'暂无已上报的后台任务。', stop:'停止任务',
+        extensions:'Skills 和插件', reloadSkills:'重新加载 skills', reloadPlugins:'重新加载插件', refreshMcp:'刷新 MCP 状态', noMcp:'未配置 MCP 服务。', reconnect:'重新连接', enable:'启用', disable:'禁用',
+        rewind:'恢复文件', rewindHelp:'会话空闲时可用。恢复检查点中的文件，对话历史保持不变。先预览受影响的文件，再确认执行。', checkpoint:'检查点', chooseCheckpoint:'选择检查点', preview:'预览文件恢复', rewindReady:'可以恢复以下文件：', rewindUnavailable:'此检查点无法恢复文件。', confirmRewind:'确认恢复文件',
+        task:{running:'运行中',completed:'已完成',failed:'失败',stopped:'已停止',unknown:'未知状态'},
+    },
+    agentUpdates: {
+        title: 'Coding agent 版本', help: '每 6 小时自动检测。发现新版会提示，不在会话运行中自动安装。',
+        notChecked: '尚未检测；此功能需要更新 Very Happy daemon。', checked: '上次检测', stale: '检测已过期',
+        current: '暂无更新', 'update-available': '可升级', unknown: '未能核验',
+        bundled: '内置运行时 · 随 Very Happy CLI 升级', external: '此机器独立安装', guide: '升级说明',
+        availableCount: ({count}: {count:number}) => `${count} 个 agent 可升级`,
+    },
     cliUpdate: {
         retry: '重试更新',
         retryHelp: '机器空闲后，对当前目标版本重试一次。',

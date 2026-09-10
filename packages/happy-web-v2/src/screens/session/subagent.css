@@ -31,7 +31,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--fs-13);
+  font-size: var(--conversation-size);
   font-weight: 600;
   color: var(--text);
 }
@@ -53,11 +53,17 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 20px;
+  padding: var(--sp-4);
 }
 
 /* ── shared detail body ───────────────────────────────────────────────── */
 .sa {
+  --markdown-leading: var(--conversation-leading);
+  --markdown-gap: var(--sp-3);
+  --markdown-list-gap: var(--sp-1);
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
+  line-height: var(--conversation-leading);
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
@@ -68,11 +74,12 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--sp-1) var(--sp-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
   min-width: 0;
 }
 .sa-facts {
+  font-size: var(--fs-12);
   color: var(--text-dim);
   /* The facts are one string; without these it overflows the drawer instead of
      wrapping (measured at 1400px AND 390px). */
@@ -80,8 +87,8 @@
   overflow-wrap: anywhere;
 }
 .sa-status {
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
   color: var(--text-dim);
 }
 .sa-status--running { color: var(--accent); }
@@ -89,8 +96,8 @@
 .sa-status--stopped { color: var(--warn); }
 
 .sa-section-label {
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
   color: var(--text-faint);
   margin-bottom: var(--sp-1);
 }
@@ -104,8 +111,8 @@
   display: flex;
   align-items: center;
   gap: var(--sp-1);
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
   color: var(--text-faint);
 }
 .sa-fold-head:hover { color: var(--text-dim); }
@@ -121,9 +128,9 @@
 .sa-prompt-text {
   margin: 0;
   padding: var(--sp-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
-  line-height: 1.55;
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
+  line-height: var(--conversation-leading);
   color: var(--text-dim);
   white-space: pre-wrap;
   word-break: break-word;
@@ -132,9 +139,9 @@
 .sa-log {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  gap: var(--sp-3);
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
   color: var(--text-dim);
   min-width: 0;
 }
@@ -157,39 +164,44 @@
 }
 .sa-empty {
   color: var(--text-faint);
-  font-size: var(--fs-12);
+  font-size: var(--conversation-size);
 }
 
 /* ── the transcript pointer row ───────────────────────────────────────── */
 /* One line, always. Clicking anywhere on it opens the drawer; the row itself
    never expands, which is the whole point of B-317. */
 .tg-subagent-open {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-width: 0;
-  width: 100%;
-  text-align: left;
-  padding: 2px 4px 2px 0;
-  border-radius: var(--r-sm);
+  display:grid; grid-template-columns:16px minmax(0,1fr) auto 14px;
+  align-items:center; gap:var(--sp-2); min-width:0; width:100%; max-width:680px;
+  text-align:left; padding:var(--sp-2) var(--sp-1); min-height:36px;
+  border-radius:var(--r-sm); font:inherit; color:var(--text);
 }
-.tg-subagent-open:hover {
-  background: var(--bg-2);
+.tg-subagent-open:hover, .tg-subagent-open:focus-visible { background:var(--bg-2); }
+.tg-subagent-open-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:inherit; color:var(--text); }
+.tg-subagent-open-cue { color:var(--text-faint); }
+.tg-subagent-status-slot { display:flex; align-items:center; justify-content:center; width:16px; height:16px; }
+.tg-subagent-status-slot > * { flex:none; }
+.tg-subagent-error, .tg-subagent-open--failed .tg-subagent-meta { color:var(--danger); }
+.tg-subagent-spinner { color:var(--accent); }
+.tg-subagent-meta { display:flex; align-items:center; gap:var(--sp-2); color:var(--text-dim); white-space:nowrap; font:inherit; }
+.tg-subagent-meta > span + span::before { content:'·'; margin-right:var(--sp-2); }
+@media(max-width:600px) {
+  .tg-subagent-open { grid-template-columns:16px minmax(0,1fr) 14px; row-gap:0; min-height:44px; }
+  .tg-subagent-open-cue { grid-column:3; grid-row:1 / 3; }
+  .tg-subagent-meta { grid-column:2; grid-row:2; }
 }
-.tg-subagent-open .tg-tool-label {
-  flex: none;
-}
-.tg-subagent-open-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: var(--fs-12);
-  color: var(--text-dim);
-}
-.tg-subagent-open-cue {
-  flex: none;
-  color: var(--text-faint);
-}
+@media(prefers-reduced-motion:reduce) { .tg-subagent-spinner { animation:none; } }
+
+.sa-dock { display:flex; gap:var(--sp-2); overflow-x:auto; padding:var(--sp-2) var(--sp-4) 0; min-width:0; width:100%; max-width:820px; margin:0 auto; box-sizing:border-box; }
+.sa-dock-item { display:flex; align-items:center; gap:var(--sp-2); flex:0 0 auto; max-width:min(320px, 100%); min-height:32px; padding:var(--sp-1) var(--sp-2); border:1px solid var(--line); border-radius:var(--r-sm); color:var(--text-dim); background:transparent; text-align:left; font-size:var(--conversation-size); }
+.sa-dock-item:hover { background:var(--bg-2); }
+.sa-dock-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sa-dock-state { color:var(--text-dim); white-space:nowrap; font-size:var(--conversation-size); }
+.sa-dock-item > svg { flex:none; }
+@media(pointer:coarse) { .sa-dock-item, .tg-subagent-open { min-height:44px; } }
+
+/* Briefings read like conversation prose, without a nested log viewport. */
+.sa-brief { color:var(--text); min-width:0; padding:var(--sp-2) 0; }
+.sa-brief-actions { display:flex; justify-content:flex-end; margin-top:var(--sp-2); }
+.sa-kind { color:var(--text-dim); }
+.sa-model { min-width:0; overflow-wrap:anywhere; color:var(--text-dim); }

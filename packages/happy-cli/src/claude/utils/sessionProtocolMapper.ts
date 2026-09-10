@@ -31,6 +31,8 @@ export type ClaudeSessionProtocolState = {
     // outlive the turn that launched them).
     /** tool_use ids of Agent/Task calls seen in this process. */
     agentToolCalls?: Set<string>;
+    bashToolCalls?: Set<string>;
+    backgroundBashCalls?: Set<string>;
     /** Identity captured from the Agent input / task_started. */
     subagentMeta?: Map<string, { description?: string; subagentType?: string }>;
     /** Sub-agents whose tool_result was the async stub — their stop comes from task_notification. */
@@ -584,6 +586,7 @@ function mapTaskLifecycleSystemMessage(
     const raw = message as RawJSONLines & {
         subtype?: unknown;
         tool_use_id?: unknown;
+        task_type?: unknown;
         description?: unknown;
         subagent_type?: unknown;
         skip_transcript?: unknown;
@@ -597,7 +600,12 @@ function mapTaskLifecycleSystemMessage(
     if (!subtype.startsWith('task_')) return;
     if (raw.skip_transcript === true) return;
     const toolUseId = typeof raw.tool_use_id === 'string' && raw.tool_use_id.length > 0 ? raw.tool_use_id : null;
-    if (!toolUseId || !getAgentToolCalls(state).has(toolUseId)) return;
+    if (!toolUseId) return;
+    if (subtype === 'task_started' && raw.task_type === 'local_bash' && state.bashToolCalls?.has(toolUseId)) {
+        (state.backgroundBashCalls ??= new Set()).add(toolUseId);
+    }
+    const backgroundBash = state.backgroundBashCalls?.has(toolUseId) === true;
+    if (!getAgentToolCalls(state).has(toolUseId) && !backgroundBash) return;
     const subagent = ensureSessionSubagentIdForProviderSubagent(state, toolUseId);
     const usage = raw.usage && typeof raw.usage === 'object'
         ? {
@@ -608,7 +616,7 @@ function mapTaskLifecycleSystemMessage(
         : undefined;
 
     if (subtype === 'task_started') {
-        rememberSubagentMeta(state, subagent, { description: raw.description, subagentType: raw.subagent_type });
+        rememberSubagentMeta(state, subagent, { description: raw.description, subagentType: backgroundBash ? 'background-command' : raw.subagent_type });
         const turn = ensureTurn(state, envelopes);
         // A resumed sub-agent (same tool_use_id notifies again) comes back to
         // running: drop it from the started set so start is re-emitted.
@@ -731,16 +739,18 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             blockCursor = state.streamBlockCursor ?? 0;
             state.streamBlockCursor = blockCursor + blocks.length;
         }
+        const actualModel = subagent && typeof message.message?.model === 'string' && message.message.model.trim()
+            ? { actualModel: message.message.model.trim() } : {};
         const draftKey = (index: number) => (apiMessageId ? streamKeyOf(apiMessageId, blockCursor + index) : undefined);
 
         for (const [blockIndex, block] of blocks.entries()) {
             if (block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0) {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, claudeUuid, usage, streamKey: draftKey(blockIndex) }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text, ...actualModel }, { turn: turnId, subagent, claudeUuid, usage, streamKey: draftKey(blockIndex) }));
                 continue;
             }
 
             if (block.type === 'thinking' && typeof block.thinking === 'string' && block.thinking.trim().length > 0) {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, claudeUuid, usage, streamKey: draftKey(blockIndex) }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true, ...actualModel }, { turn: turnId, subagent, claudeUuid, usage, streamKey: draftKey(blockIndex) }));
                 continue;
             }
 
@@ -770,7 +780,8 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     }
                     continue;
                 }
-                const args = isSubagentTool(name)
+                if (name === 'Bash') (state.bashToolCalls ??= new Set()).add(call);
+                const args = isSubagentTool(name) || name === 'Bash'
                     ? { ...baseArgs, sessionSubagent: sessionSubagentForCall }
                     : baseArgs;
 
@@ -895,7 +906,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                             continue;
                         }
                     }
-                    if (sessionSubagentForToolResult) {
+                    if (sessionSubagentForToolResult && !state.backgroundBashCalls?.has(block.tool_use_id)) {
                         maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, envelopes);
                     }
                 }
