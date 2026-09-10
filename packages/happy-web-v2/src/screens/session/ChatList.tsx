@@ -287,13 +287,15 @@ export function ChatList({
         return (
             <div className="cl cl--empty">
                 <div className="cl-scroll">
-                <EmptyState
-                    title={t('session.chat.emptyTitle')}
-                    description={t('session.chat.emptyDescription')}
-                />
-                <PermissionCard sessionId={sessionId} />
+                    <div className="cl-inner">
+                        <EmptyState
+                            title={t('session.chat.emptyTitle')}
+                            description={t('session.chat.emptyDescription')}
+                        />
+                        <PermissionCard sessionId={sessionId} />
+                        {showLiveStatus && <SessionLiveStatusBar sessionId={sessionId} />}
+                    </div>
                 </div>
-                {showLiveStatus && <div className="cl-live-slot"><SessionLiveStatusBar sessionId={sessionId} /></div>}
             </div>
         );
     }
@@ -302,9 +304,11 @@ export function ChatList({
         return (
             <div className="cl cl--loading">
                 <div className="cl-scroll">
-                    <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
+                    <div className="cl-inner">
+                        <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
+                        {showLiveStatus && <SessionLiveStatusBar sessionId={sessionId} />}
+                    </div>
                 </div>
-                {showLiveStatus && <div className="cl-live-slot"><SessionLiveStatusBar sessionId={sessionId} /></div>}
             </div>
         );
     }
@@ -368,10 +372,11 @@ export function ChatList({
                         lands. */}
                     <LiveStreamView sessionId={sessionId} />
                     <PermissionCard sessionId={sessionId} />
+                    {/* Part of scrollback: innerRef observes growth, while manual
+                        scrollback keeps the user's position. No empty footer slot. */}
+                    {showLiveStatus && <SessionLiveStatusBar sessionId={sessionId} />}
                 </div>
             </div>
-            {/* Fixed slot stays outside scrollback, even between live turns. */}
-            {showLiveStatus && <div className="cl-live-slot"><SessionLiveStatusBar sessionId={sessionId} /></div>}
             {queuedMessages.length > 0 && (
                 <section className="cl-queue" aria-label={t('session.chat.queuedTitle', { count: queuedMessages.length })}>
                     <div className="cl-queue-head">

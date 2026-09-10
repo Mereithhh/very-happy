@@ -1,4 +1,6 @@
 .cl {
+  container-type: inline-size;
+  --chat-content-inset: var(--sp-4);
   position: relative;
   flex: 1;
   min-height: 0;
@@ -14,7 +16,9 @@
   font-size: var(--fs-13);
 }
 .cl--empty .cl-scroll { width:100%; display:flex; flex-direction:column; justify-content:safe center; }
+.cl--loading .cl-inner { justify-self: start; }
 .cl--loading .cl-scroll {
+  width: 100%;
   display: grid;
   place-items: center;
 }
@@ -34,10 +38,13 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  max-width: 820px;
-  margin: 0 auto;
-  width: 100%;
-  padding: var(--sp-4) var(--sp-4) var(--sp-6);
+  /* Align to the full chat lane, not its scrollbar-reduced client width.
+     Leave the horizontal inset outside this box so the scrollbar never
+     creates hidden horizontal overflow. */
+  width: calc(min(820px, 100cqi) - 2 * var(--chat-content-inset));
+  margin-block: 0;
+  margin-inline-start: calc(max(0px, (100cqi - 820px) / 2) + var(--chat-content-inset));
+  padding-block: var(--sp-4) var(--sp-6);
 }
 .cl-queue {
   flex: 0 0 auto;
@@ -147,14 +154,8 @@
   justify-content: center;
   padding-bottom: var(--sp-2);
 }
-/* Live state follows the latest transcript content instead of occupying a
-   fixed lane above the composer. */
-.cl-inner > .lsb {
-  align-self: flex-start;
-  max-width: 100%;
-  margin: 0;
-  border-radius: var(--r-md);
-  box-shadow: none;
+@media (max-width: 600px), (pointer: coarse) {
+  .cl { --chat-content-inset: var(--sp-3); }
 }
 .cl-jump {
   position: absolute;
@@ -172,8 +173,6 @@
   box-shadow: var(--shadow-lift);
   transition: background var(--motion-fast), transform var(--motion-fast);
 }
-.cl:has(> .cl-live-slot) .cl-jump { bottom:48px; }
-@media (pointer:coarse) { .cl:has(> .cl-live-slot) .cl-jump { bottom:60px; } }
 .cl-jump:hover {
   background: var(--bg-3);
   transform: translateY(-1px);

@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-transcript-activity',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10f.title',
+    summaryKey: 'changelog.releases.sep10f.summary',
+    itemKeys: ['changelog.releases.sep10f.alignment', 'changelog.releases.sep10f.activity'],
+  },
+  {
     id: '2026-09-10-team-default-permissions',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,

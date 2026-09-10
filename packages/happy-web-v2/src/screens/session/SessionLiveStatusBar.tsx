@@ -17,9 +17,6 @@ export function LiveActivityMark() {
             <circle className="lsb-track" cx="14" cy="14" r="11" />
             <circle className="lsb-sweep" cx="14" cy="14" r="11" />
         </svg>
-        <svg className="lsb-orbit lsb-orbit--inner" viewBox="0 0 28 28" fill="none">
-            <circle className="lsb-sweep" cx="14" cy="14" r="7" />
-        </svg>
         <span className="lsb-core" />
     </span>;
 }

@@ -1827,6 +1827,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10f: {
+                title: 'Activity follows the conversation',
+                summary: 'Aligned reading and input areas, with a lighter activity indicator.',
+                alignment: 'Conversation text and the composer share the same edges, including on phones and with a visible scrollbar.',
+                activity: 'Current activity appears after the latest text and scrolls with it. See tools, elapsed time and token counts at a glance; click for details. Scrolling back keeps your place.',
+            },
             sep10e: {
                 title: 'Teams start without approval interruptions',
                 summary: 'New teams use no-approval mode by default.',
