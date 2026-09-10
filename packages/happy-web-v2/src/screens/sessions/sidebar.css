@@ -208,6 +208,8 @@
 /* right-edge badge dot (8px — deliberately bigger than the 7px corner agent
  * dot: this one must read at a glance across the whole list) */
 .sb-row-signal {
+  /* Same 16px status slot as the running spinner, with an 8px dot. */
+  margin-inline: 4px;
   flex-shrink: 0;
   width: 8px;
   height: 8px;
@@ -647,7 +649,7 @@
 .sb-new-chevron { margin-left:auto; flex:none; }
 .sb-nav-btn[data-state="open"] { background:var(--bg-2); }
 
-.sb-row-running { display: inline-flex; align-items: center; flex: 0 0 16px; color: var(--text-dim); }
+.sb-row-running { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; color: var(--text-dim); }
 .sb-nav-btn[aria-busy="true"] { cursor: progress; }
 
 .sb-team-member-status { color: var(--text-dim); font-weight: 400; }
