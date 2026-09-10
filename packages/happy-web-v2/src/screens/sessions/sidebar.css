@@ -144,11 +144,12 @@
 }
 .sb-section-head--workspace .sb-section-label {
   max-width: 112px;
-  flex-shrink: 0;
+  flex-shrink: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sb-workspace-new,
 .sb-workspace-changes {
   display: inline-flex;
   align-items: center;
@@ -161,6 +162,8 @@
   color: var(--text-faint);
   transition: background var(--motion-fast), color var(--motion-fast);
 }
+.sb-workspace-new:hover,
+.sb-workspace-new:focus-visible,
 .sb-workspace-changes:hover,
 .sb-workspace-changes:focus-visible {
   background: var(--bg-3);
@@ -171,6 +174,7 @@
     min-height: 44px;
     padding-block: 0;
   }
+  .sb-workspace-new,
   .sb-workspace-changes {
     width: 44px;
     height: 44px;
@@ -647,3 +651,6 @@
 .sb-nav-btn[aria-busy="true"] { cursor: progress; }
 
 .sb-team-member-status { color: var(--text-dim); font-weight: 400; }
+
+.sb-workspace-new { margin: 0; }
+.sb-workspace-new + .sb-workspace-changes { margin-left: 0; }

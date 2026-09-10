@@ -1,3 +1,4 @@
+import type { RecentMachinePath } from '@/utils/quickChat';
 import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
@@ -109,6 +110,7 @@ interface SidebarSection {
   open: boolean;
   detail?: string;
   changesSessionId?: string | null;
+  createLocation?: RecentMachinePath;
 }
 
 function sessionRow(s: Session): Row {
@@ -160,6 +162,8 @@ export function Sidebar() {
     [setSavedView],
   );
   const [showNew, setShowNew] = useState(false);
+  const [newLocation, setNewLocation] = useState<RecentMachinePath>();
+  const configureNew = (target?: RecentMachinePath) => { setNewLocation(target); setShowNew(true); };
   const [showNewTerminal, setShowNewTerminal] = useState(false);
   const [showAttachTmux, setShowAttachTmux] = useState(false);
   const [showImportClaude, setShowImportClaude] = useState(false);
@@ -816,6 +820,7 @@ export function Sidebar() {
         collapsible: false,
         open: true,
         changesSessionId: g.representativeSessionId,
+        createLocation: g.machineId && g.path ? { machineId: g.machineId, path: g.rows.find(r => r.workspacePath)?.workspacePath ?? g.path } : undefined,
       }));
     }
     return [
@@ -869,13 +874,13 @@ export function Sidebar() {
                 disabled: creatingChat,
                 label: t('newSessionModal.chatTitle'),
                 icon: MessageSquare,
-                onSelect: () => void createChatOrConfigure(navigate, () => setShowNew(true)),
+                onSelect: () => void createChatOrConfigure(navigate, configureNew, { location }),
               },
               {
                 key: 'advanced',
                 label: t('newSessionModal.advancedTitle'),
                 icon: SlidersHorizontal,
-                onSelect: () => setShowNew(true),
+                onSelect: () => configureNew(),
               },
               {
                 key: 'terminal',
@@ -1016,10 +1021,16 @@ export function Sidebar() {
                         <span className="sb-section-count mono">{sec.count}</span>
                       </button>
                     ) : (
-                      <div className={`sb-section-head${sec.changesSessionId ? ' sb-section-head--workspace' : ''}`} title={sec.detail || undefined}>
+                      <div className={`sb-section-head${sec.changesSessionId || sec.createLocation ? ' sb-section-head--workspace' : ''}`} title={sec.detail || undefined}>
                         <span className="sb-section-label">{sec.label}</span>
                         <span className="sb-section-count mono">{sec.count}</span>
                         {sec.detail && <span className="sb-section-detail">{sec.detail}</span>}
+                        {sec.createLocation && <button
+                          type="button" className="sb-workspace-new" disabled={creatingChat}
+                          title={lang.startsWith('zh') ? `在此目录新建会话：${sec.createLocation.path}` : `New chat here: ${sec.createLocation.path}`}
+                          aria-label={lang.startsWith('zh') ? `在此目录新建会话：${sec.label}` : `New chat here: ${sec.label}`}
+                          onClick={() => void createChatOrConfigure(navigate, configureNew, { target: sec.createLocation })}
+                        ><Plus size={14} /></button>}
                         {sec.changesSessionId && (
                           <button
                             type="button"
@@ -1206,7 +1217,7 @@ export function Sidebar() {
         <NotificationBell className="sb-footer-bell" />
       </footer>
 
-      {showNew && <NewSessionModal onClose={() => setShowNew(false)} />}
+      {showNew && <NewSessionModal initialLocation={newLocation} onClose={() => setShowNew(false)} />}
       {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
       {showImportClaude && <ImportClaudeHistoryModal onClose={() => setShowImportClaude(false)} />}

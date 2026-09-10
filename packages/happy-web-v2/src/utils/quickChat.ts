@@ -16,6 +16,7 @@ export type QuickChatDecision =
  * orchestrator (app/newChat.ts) feeds it the freshest store state.
  *
  *   always-ask setting on        → configure (the 1% who want the dialog)
+ *   explicit/current scope       → exact machine/path, otherwise configure
  *   no machine online            → configure (dialog shows its empty state)
  *   exactly 1 machine online     → that machine
  *   several online               → the machine of the most recent
@@ -34,13 +35,20 @@ export function decideQuickChat({
     machines,
     recents,
     alwaysAsk,
+    target,
 }: {
     machines: Machine[];
     recents: RecentMachinePath[];
     alwaysAsk: boolean;
+    target?: RecentMachinePath;
 }): QuickChatDecision {
     if (alwaysAsk) return { kind: 'configure' };
     const online = machines.filter(isMachineOnline);
+    if (target) {
+        // A chosen scope is authoritative; never silently switch hosts/paths.
+        if (!target.path.trim() || !online.some(m => m.id === target.machineId)) return { kind: 'configure' };
+        return { kind: 'spawn', machineId: target.machineId, directory: target.path };
+    }
     if (online.length === 0) return { kind: 'configure' };
 
     let machineId: string;

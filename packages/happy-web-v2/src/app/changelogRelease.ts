@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-contextual-new-chat',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10k.title',
+    summaryKey: 'changelog.releases.sep10k.summary',
+    itemKeys: ['changelog.releases.sep10k.workspace', 'changelog.releases.sep10k.context'],
+  },
+  {
     id: '2026-09-10-sidebar-harmony',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,

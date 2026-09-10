@@ -1827,6 +1827,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10k: {
+                title: 'New chats in the right workspace',
+                summary: 'Start a conversation alongside the work you are viewing.',
+                workspace: 'Create a chat directly from the plus button beside a workspace heading.',
+                context: 'Quick new chat uses the current conversation or terminal folder. If its machine is offline, the dialog keeps that location for review.',
+            },
             sep10j: {
                 title: 'A calmer, more consistent sidebar',
                 summary: 'Simpler dividers and quieter details put conversation titles first.',

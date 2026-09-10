@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10k: {
+                title: '在当前目录继续新对话',
+                summary: '新建对话跟随正在查看的工作空间。',
+                workspace: '工作目录标题旁新增加号，可直接在该目录新建对话。',
+                context: '快速新建优先使用当前会话或终端的目录；目标机器离线时保留目录并打开配置，不再误用其他最近目录。',
+            },
             sep10j: {
                 title: '侧栏更清爽、更协调',
                 summary: '简化分隔与辅助标记，让会话标题更清晰。',
