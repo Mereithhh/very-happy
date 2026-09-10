@@ -1,6 +1,6 @@
 # Unified coding-agent status
 
-Status: Final · B-452 · 2026-09-10
+Status: Shipped · B-452 · 2026-09-10
 
 ## Baseline before this change
 - `Sidebar.tsx` renders separate left raw `thinking`/presence/terminal dots and right board lifecycle/unread indicators.
@@ -43,4 +43,9 @@ The real Stop-button RPC probe exposed a Pi/ACP bug: AcpBackend.cancel emitted b
 - UI wrappers: all three completed harmless sleep requests and emitted running→idle heartbeats. Codex/Pi tool approval and Claude AskUserQuestion produced pending input records. Stop retained Claude/Codex sessions; after the fix Pi also returned idle and answered `AFTER_CANCEL_OK` in the same session.
 - Real private tmux: all three exposed running/idle; Claude translated questions, Codex command approval and Pi model picker exposed needs_input. Cold capture and opened/headless probes agreed on idle/input/identity; Pi returning to a retained shell exposed shell, not the previous agent.
 - SIGTERM: new Codex/ACP wrappers emitted inactive within one second, matching the Claude path. SIGKILL, network partition and non-macOS/custom-theme runtimes are not claimed as newly live-tested; their fallback remains lease expiry/unknown.
-- Final local checks: CLI 237 files / 2,132 cases; Web 321 files / 2,781 cases; CLI build and Web typecheck passed. All local probe wrappers and private tmux sessions were cleaned up; production was not touched.
+- Final local checks: CLI 237 files / 2,134 cases; Web 321 files / 2,781 cases; CLI build and Web typecheck passed. All local probe wrappers and private tmux sessions were cleaned up; production was not touched.
+
+## Release evidence
+PR #348 merged as `c7db3fc2ff5074df8bd28756bad3f6d9e26c89a4`. Web assets at veryhappy.dev expose the new neutral identity and single-status CSS. CLI `v0.2.134` was published from that commit, all six Linux/macOS/Windows × Node 20/24 smoke jobs passed, and npm latest plus the public recommendation both report 0.2.134. mac-office runs 0.2.134 under launchd; a real central `list-terminals` RPC returned fresh observation timestamps and Claude identity after upgrade (the previous version returned neither). Existing business wrappers were preserved.
+
+The initial production workflow lost its remote process after the public switch: blue served the target and green was drained, but state.env still described green. After confirming no deployment process remained and cancelling the stalled workflow, recovery revalidated blue readiness and public assets, used the existing release functions to stop drained green and atomically commit state, and retained c014708e as rollback. This was a recovered deployment, not a successful initial workflow run.

@@ -262,4 +262,4 @@
 
 - [x] **B-451** 右侧工作区轻量标签、统一工具入口、笔记正文排版与侧问输入框；Owner 已确认预览并授权发布。保留文件操作与标签状态，增加轻量过渡及透明 loading hover。
 
-- [ ] **B-452** 统一 Claude/Codex/Pi 的 UI 与终端状态来源、心跳有效期和侧栏单一状态位；终端区分 Agent，左侧类型图标中性化。本地实现、全包门禁与六组浏览器预览完成；补做真实三 Agent UI/终端验证，修正 Node 进程身份、实际 TUI 标记和 Codex/ACP 终止下线；实跑 Stop 另修 Pi 取消导致 wrapper 崩溃。待发布。见 specs/2026-09-unified-agent-status.md。
+- [x] **B-452** 统一 Claude/Codex/Pi 的 UI 与终端状态来源、心跳有效期和侧栏单一状态位；终端区分 Agent，左侧类型图标中性化。本地实现、全包门禁与六组浏览器预览完成；补做真实三 Agent UI/终端验证，修正 Node 进程身份、实际 TUI 标记和 Codex/ACP 终止下线；实跑 Stop 另修 Pi 取消导致 wrapper 崩溃。已合并 PR #348（c7db3fc2）；Web 资源上线，CLI 0.2.134 六平台检查与推荐版本核对通过，mac-office launchd／线上终端 RPC 验证通过。见 specs/2026-09-unified-agent-status.md。
