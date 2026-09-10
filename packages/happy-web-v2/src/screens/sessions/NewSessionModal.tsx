@@ -4,6 +4,7 @@ import { Bookmark, Check, X } from 'lucide-react';
 import { storage, useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
 import { isMachineOnline, pickDefaultMachineId } from '@/utils/machineUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
+import type { RecentMachinePath } from '@/utils/quickChat';
 import { recordRecentMachinePath } from '@/app/newChat';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { sync } from '@/sync/sync';
@@ -39,9 +40,11 @@ function newId(): string {
 export function NewSessionModal({
   onClose,
   initialCommandDefault,
+  initialLocation,
   onSpawned,
 }: {
   onClose: () => void;
+  initialLocation?: RecentMachinePath;
   /** Prefill for the initial-instruction field (Task Board dispatch passes
    *  the task description so it becomes the session's first message). */
   initialCommandDefault?: string;
@@ -51,7 +54,7 @@ export function NewSessionModal({
 }) {
   const navigate = useNavigate();
   const toast = useToast();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const machines = useAllMachines({ includeOffline: true });
   const online = useMemo(() => machines.filter(isMachineOnline), [machines]);
   const [presets, setPresets] = useSettingMutable('sessionPathPresets');
@@ -61,9 +64,9 @@ export function NewSessionModal({
   const agentDefaultOverrides = useSetting('agentDefaultOverrides');
   const reviewFirst = useLocalSetting('newSessionReviewFirst');
 
-  const [machineId, setMachineId] = useState('');
-  const [directory, setDirectory] = useState(list[0]?.path ?? '');
-  const [editingId, setEditingId] = useState<string | null>(list[0]?.id ?? null);
+  const [machineId, setMachineId] = useState(initialLocation?.machineId ?? '');
+  const [directory, setDirectory] = useState(initialLocation?.path ?? list[0]?.path ?? '');
+  const [editingId, setEditingId] = useState<string | null>(initialLocation ? null : list[0]?.id ?? null);
   const [agent, setAgent] = useState<SessionAgent>(() => normalizeAgentKey(defaultAgent));
   const [initialCommand, setInitialCommand] = useState(initialCommandDefault ?? '');
   const ime = useImeGuard();
@@ -83,15 +86,16 @@ export function NewSessionModal({
   // loop) and re-picks when the chosen machine drops off.
   const onlineIds = useMemo(() => online.map((m) => m.id), [online]);
   useEffect(() => {
+    if (initialLocation && machineId === initialLocation.machineId) return;
     const next = pickDefaultMachineId(onlineIds, machineId);
     if (next !== machineId) setMachineId(next);
-  }, [onlineIds, machineId]);
+  }, [onlineIds, machineId, initialLocation]);
 
   // Directory + agent: adopt ONCE, and only while the user hasn't touched the
   // field. These are edited values, not a projection of the store — re-deriving
   // them on every store change would yank the path out from under someone
   // mid-type (which is why this is a latch, not the machine effect's pattern).
-  const dirAdopted = useRef(false);
+  const dirAdopted = useRef(Boolean(initialLocation));
   const firstPreset = list[0];
   useEffect(() => {
     if (dirAdopted.current) return;
@@ -125,7 +129,7 @@ export function NewSessionModal({
   // user just completed, and a launcher that refuses on stale evidence is worse
   // than one that says what it knows.
   const selectedClaudeAuth = claudeAuthNotice(selectedMachine, agent);
-  const canCreate = !!machineId
+  const canCreate = !!selectedMachine
     && trimmed.length > 0
     && selectedAgentAvailability.available
     && !busy;
@@ -231,6 +235,7 @@ export function NewSessionModal({
               <ConnectMachineLink onClose={onClose} />
             </div>
             <select className="ns-select" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
+              {machineId && !onlineIds.includes(machineId) && <option value={machineId} disabled>{machineLabel(machines.find(m => m.id === machineId))} · {(lang.startsWith('zh') ? '离线' : 'Offline')}</option>}
               {online.map((m) => (
                 <option key={m.id} value={m.id}>
                   {/* A native <option> can only carry text, so the marker is

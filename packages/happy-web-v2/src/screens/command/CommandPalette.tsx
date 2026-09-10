@@ -1,3 +1,4 @@
+import type { RecentMachinePath } from '@/utils/quickChat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IS_MAC, isAppChord } from '@/app/appChord';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -85,6 +86,7 @@ export function CommandPalette() {
   const ime = useImeGuard();
   const [active, setActive] = useState(0);
   const [showNewSession, setShowNewSession] = useState(false);
+  const [newLocation, setNewLocation] = useState<RecentMachinePath>();
   const [showNewTerminal, setShowNewTerminal] = useState(false);
   const [showAttachTmux, setShowAttachTmux] = useState(false);
   const [showImportClaude, setShowImportClaude] = useState(false);
@@ -235,7 +237,7 @@ export function CommandPalette() {
       haystack: (t('commandPalette.actionNewChat') as string).toLowerCase(),
       // Quick create (same flow as the sidebar "+"): spawn directly, fall
       // back to the full dialog only when the quick path can't decide.
-      run: () => void createChatOrConfigure(navigate, () => setShowNewSession(true)),
+      run: () => void createChatOrConfigure(navigate, target => { setNewLocation(target); setShowNewSession(true); }, { location }),
     });
     out.push({
       key: 'action:new-chat-advanced',
@@ -243,7 +245,7 @@ export function CommandPalette() {
       title: t('commandPalette.actionNewChatAdvanced'),
       icon: <MessageSquare size={16} />,
       haystack: (t('commandPalette.actionNewChatAdvanced') as string).toLowerCase(),
-      run: () => setShowNewSession(true),
+      run: () => { setNewLocation(undefined); setShowNewSession(true); },
     });
     if (currentSessionId) {
       out.push({
@@ -379,6 +381,8 @@ export function CommandPalette() {
     machines,
     terminals,
     currentSessionId,
+    location.pathname,
+    location.search,
     t,
     navigate,
     openNewTerminal,
@@ -541,7 +545,7 @@ export function CommandPalette() {
         </div>
       )}
 
-      {showNewSession && <NewSessionModal onClose={() => setShowNewSession(false)} />}
+      {showNewSession && <NewSessionModal initialLocation={newLocation} onClose={() => setShowNewSession(false)} />}
       {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
       {showImportClaude && <ImportClaudeHistoryModal onClose={() => setShowImportClaude(false)} />}

@@ -102,3 +102,16 @@ describe('pushRecentMachinePath', () => {
         expect(next.at(-1)).toEqual(R('m', '/p8'));
     });
 });
+
+
+describe('contextual new chat', () => {
+    const base = { machines: [M('a', true), M('b', true)], recents: [R('a', '/one')], alwaysAsk: false };
+    it('explicit scope wins over most recent history', () => {
+        expect(decideQuickChat({ ...base, target: R('b', '/two') })).toEqual({ kind: 'spawn', machineId: 'b', directory: '/two' });
+    });
+    it('never substitutes a different host or directory for an unavailable scope', () => {
+        expect(decideQuickChat({ ...base, target: R('offline', '/two') })).toEqual({ kind: 'configure' });
+        expect(decideQuickChat({ ...base, target: R('b', '') })).toEqual({ kind: 'configure' });
+        expect(decideQuickChat({ ...base, target: R('b', '/two'), alwaysAsk: true })).toEqual({ kind: 'configure' });
+    });
+});

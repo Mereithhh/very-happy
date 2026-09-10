@@ -2,12 +2,12 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ spawn: vi.fn(), alert: vi.fn(), configure: vi.fn(), navigate: vi.fn(), mode: vi.fn(), decision: {kind:'spawn',machineId:'m',directory:'/repo'} }));
-vi.mock('@/sync/storage', () => ({ storage: {getState: () => ({machines:{},settings:{},localSettings:{},updateSessionPermissionMode:mocks.mode})} }));
+const mocks = vi.hoisted(() => ({ spawn: vi.fn(), alert: vi.fn(), configure: vi.fn(), navigate: vi.fn(), mode: vi.fn(), decide: vi.fn(), decision: {kind:'spawn',machineId:'m',directory:'/repo'} }));
+vi.mock('@/sync/storage', () => ({ storage: {getState: () => ({machines:{},sessions:{viewed:{metadata:{machineId:'target',path:'/viewed'}}},settings:{},localSettings:{},updateSessionPermissionMode:mocks.mode})} }));
 vi.mock('@/sync/sync', () => ({sync:{applySettings:vi.fn()}}));
 vi.mock('@/sync/ops', () => ({machineSpawnNewSession:mocks.spawn}));
 vi.mock('@/sync/agentDefaults', () => ({normalizeAgentKey:()=> 'claude',resolveNewSessionPermissionMode:()=> 'default'}));
-vi.mock('@/utils/quickChat', () => ({decideQuickChat:()=>mocks.decision,pushRecentMachinePath:()=>[]}));
+vi.mock('@/utils/quickChat', () => ({decideQuickChat:(args:unknown)=>{mocks.decide(args);return mocks.decision;},pushRecentMachinePath:()=>[]}));
 vi.mock('@/modal', () => ({Modal:{alert:mocks.alert}}));
 vi.mock('@/text', () => ({t:(key:string)=>key}));
 import {createChatOrConfigure,useNewChatPending} from './newChat';
@@ -31,4 +31,19 @@ it('publishes pending feedback across entries, rejects duplicate creation and re
   expect(mocks.navigate).toHaveBeenCalledWith('/session/created');
   expect(host.querySelector('button')?.disabled).toBe(false);
  } finally {await act(async()=>root.unmount());host.remove();}
+});
+
+it('passes current route scope and preserves explicit scope when configuration is needed', async () => {
+ mocks.decision = { kind: 'configure' } as typeof mocks.decision;
+ await createChatOrConfigure(mocks.navigate, mocks.configure, { location: { pathname: '/session/viewed' } });
+ expect(mocks.decide).toHaveBeenLastCalledWith(expect.objectContaining({ target: { machineId: 'target', path: '/viewed' } }));
+ expect(mocks.configure).toHaveBeenLastCalledWith({ machineId: 'target', path: '/viewed' });
+ await createChatOrConfigure(mocks.navigate, mocks.configure, { target: { machineId: 'explicit', path: '/chosen' }, location: { pathname: '/session/viewed' } });
+ expect(mocks.configure).toHaveBeenLastCalledWith({ machineId: 'explicit', path: '/chosen' });
+});
+it('preserves the actual attempted path when the daemon requires directory creation approval', async () => {
+ mocks.decision = { kind: 'spawn', machineId: 'm', directory: '/vanished' };
+ mocks.spawn.mockResolvedValueOnce({ type: 'requestToApproveDirectoryCreation' });
+ await createChatOrConfigure(mocks.navigate, mocks.configure);
+ expect(mocks.configure).toHaveBeenLastCalledWith({ machineId: 'm', path: '/vanished' });
 });
