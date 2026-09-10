@@ -1827,6 +1827,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep10j: {
+                title: 'A calmer, more consistent sidebar',
+                summary: 'Simpler dividers and quieter details put conversation titles first.',
+                layout: 'Removed duplicate dividers and the footer rule, aligned navigation and conversation rows, and kept sidebar resizing.',
+                details: 'Reordering help is available from the view menu. Shortcut badges use neutral colors, and tags have lighter borders.',
+            },
             sep10i: {
                 title: 'Consistent workspace typography',
                 summary: 'Balanced sidebar and conversation text with a compact reading rhythm.',

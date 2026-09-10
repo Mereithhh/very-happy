@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10j: {
+                title: '侧栏更清爽、更协调',
+                summary: '简化分隔与辅助标记，让会话标题更清晰。',
+                layout: '移除侧栏重复分隔线和底部横线，统一导航、会话与设置的对齐和留白，保留拖拽调宽。',
+                details: '排序说明可在展示菜单中按需展开；快捷键使用中性色，标签减少描边，原有操作保持可用。',
+            },
             sep10i: {
                 title: '工作台文字更协调',
                 summary: '统一侧栏与对话字号，恢复紧凑的阅读节奏。',

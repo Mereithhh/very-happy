@@ -99,7 +99,7 @@
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding-bottom: var(--sp-4);
+  padding: 0 var(--sp-2) var(--sp-3);
   /* anchor for the drag insertion line (.sb-drop-line) */
   position: relative;
 }
@@ -237,7 +237,7 @@
 .sb-row-main {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
   flex: 1;
   min-width: 0;
   text-align: left;
@@ -411,8 +411,7 @@
   display: flex;
   align-items: center;
   gap: var(--sp-1);
-  border-top: 1px solid var(--line);
-  padding: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2);
   padding-bottom: max(var(--sp-2), env(safe-area-inset-bottom));
 }
 .sb-footer-btn {
@@ -421,11 +420,12 @@
   gap: var(--sp-2);
   flex: 1;
   min-width: 0;
-  padding: 10px var(--sp-3);
+  padding: 10px var(--sp-2);
   border-radius: var(--r-sm);
   color: var(--text-dim);
   font-size: var(--fs-13);
 }
+.sb-footer-btn > svg { flex-shrink: 0; width: 18px; }
 .sb-footer-btn > span {
   min-width: 0;
   overflow: hidden;
@@ -499,9 +499,9 @@
 .sb-row-badge {
   flex-shrink: 0;
   font-size: var(--fs-11);
-  color: var(--accent-2);
-  background: var(--accent-dim);
-  border: 1px solid var(--accent);
+  color: var(--text-dim);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
   border-radius: var(--r-sm);
   padding: 1px 6px;
   margin-right: var(--sp-2);
@@ -629,6 +629,8 @@
 .sb-products { display:flex; flex-direction:column; gap:2px; padding:var(--sp-2); }
 .sb-products > button, .sb-products .sb-nav-btn { display:flex; align-items:center; gap:var(--sp-2); width:100%; min-height:32px; padding:5px var(--sp-2); font-size:var(--workspace-primary-size); text-align:left; border-radius:var(--r-sm); }
 .sb-products button:hover, .sb-products button:focus-visible { outline:none; box-shadow:none; background:var(--bg-2); }
+.sb-products > button > svg, .sb-products .sb-nav-btn > svg:first-child { width:18px; flex-shrink:0; }
+.sb-row-tags .vh-tag { border-color:transparent; }
 .sb-products kbd { margin-left:auto; color:var(--text-faint); font-size:var(--fs-10); }
 @media (pointer:coarse) {
  .sb-brand--button { min-height:44px; }
