@@ -70,6 +70,23 @@ describe('CliVersionPolicyProvider', () => {
         expect(fetcher).toHaveBeenCalledTimes(1);
     });
 
+    it('refreshes the recommendation after one minute without changing auto-install approval', async () => {
+        let now = 0;
+        const fetcher = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify({ version: '0.2.132' })))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ version: '0.2.133' })));
+        const provider = new CliVersionPolicyProvider({
+            recommendedVersion: null, minimumVersion: null, autoUpdateVersion: '0.2.132', registryLookup: true,
+        }, fetcher, () => now);
+        await provider.get();
+        now = 59_999;
+        await expect(provider.get()).resolves.toMatchObject({ recommendedVersion: '0.2.132' });
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        now = 60_000;
+        await expect(provider.get()).resolves.toMatchObject({ recommendedVersion: '0.2.133', autoUpdateVersion: '0.2.132', checkedAt: now });
+        expect(fetcher).toHaveBeenCalledTimes(2);
+    });
+
     it('deduplicates concurrent registry lookups and never recommends below minimum', async () => {
         let release!: (response: Response) => void;
         const fetcher = vi.fn(() => new Promise<Response>((resolve) => { release = resolve; }));

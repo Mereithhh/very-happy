@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-loading-cli-recommendation',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10h.title',
+    summaryKey: 'changelog.releases.sep10h.summary',
+    itemKeys: ['changelog.releases.sep10h.spacing', 'changelog.releases.sep10h.release'],
+  },
+  {
     id: '2026-09-10-cli-manual-update',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,

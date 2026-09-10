@@ -138,3 +138,28 @@ the new authenticated RPC, and answers the read-only terminal-list RPC. The term
 manually requesting a version does not change it. Rollback: Web 8e8c03f0e,
 CLI 0.2.132. All local gates passed: wire 82, Web 2755, CLI 2103, server 647
 (one existing skip), required builds/typechecks and executable version smoke.
+
+## Release recommendation convergence (B-443)
+
+The old publish check returned success even with a stale recommendation; the
+relay cached npm latest for one hour. After six smoke jobs pass and promotion
+succeeds, the release now waits up to ten minutes for npm latest and the public
+relay recommendation to equal the exact release. The relay refreshes its shared,
+in-flight-deduplicated registry cache after one minute; failed lookups retain
+the last good value with the existing five-minute backoff. HTTP policy caching
+is limited to one minute. No timer or extra endpoint is introduced.
+
+A mismatching explicit pin fails verification with a hold explanation, without
+overwriting configuration. Unavailable/stale/network responses retry within the
+bound; timeout fails the release job after publication (npm artifacts and latest
+are not rolled back). Rerunning is idempotent. The independent auto-install pin
+is unchanged. Existing clients and response schema remain compatible; deploy
+server/Web before relying on the new publish check.
+
+Verification: release-check behavior tests cover stale policy, registry mismatch,
+explicit hold, unavailable service, network recovery, idempotency and invalid
+versions; provider tests prove refresh at 60 seconds and unchanged installation
+approval. Full wire/Web/CLI/server gates pass (82/2755/2103/648 tests; one existing
+server skip). Real Chromium checks at 1280/760/390/320px in both themes confirm
+8px internal status spacing, unchanged transcript/composer alignment, single-row
+height, no overflow, working details, streaming follow and preserved scrollback.

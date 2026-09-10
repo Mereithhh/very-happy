@@ -177,7 +177,10 @@ dist-tag only after the same repository/tag/SHA push smoke run has all six
 Linux/macOS/Windows × Node 20/24 jobs completed successfully in its current
 attempt. A green workflow with skipped or missing jobs is rejected; tag pushes
 run Windows as well as macOS. The relay follows
-`latest` via `CLI_VERSION_REGISTRY_LOOKUP=true`, cached one hour. So there is no
+`latest` via `CLI_VERSION_REGISTRY_LOOKUP=true`, cached one minute (failed refresh backs off five minutes). The promote job waits
+up to ten minutes for npm and the public relay to advertise the exact release;
+timeout or a mismatching explicit pin fails verification without undoing npm or
+overwriting the pin. Rerun after resolving the cause. So there is no
 per-release env edit. `CLI_RECOMMENDED_VERSION` must be unset for the registry
 to drive recommendations; reserve that pin for an explicit hold or rollback.
 The independent `CLI_AUTO_UPDATE_VERSION` remains unchanged by CI. Confirm it landed:

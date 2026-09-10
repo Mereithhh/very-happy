@@ -1792,6 +1792,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10h: {
+                title: '运行提示更舒展，CLI 推荐更新更及时',
+                summary: '细化对话留白，并补齐 CLI 发布后的推荐验收。',
+                spacing: '运行提示增加左右内边距，工具名和用量不再贴边，手机上保持单行。',
+                release: 'CLI 通过发布检查后自动成为推荐版本，发布流程会核验线上推荐已更新。',
+            },
             sep10g: {
                 title: '等待推送时也能手动更新 CLI',
                 summary: '推荐等待自动推送，需要提前体验时也有清晰的手动入口。',
