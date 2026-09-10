@@ -23,6 +23,7 @@ import { parseAttachedFiles, stripAttachedFiles } from './attachedFiles';
 import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, type AttachmentItem } from './UserAttachments';
 import { discardedReasonKey } from './discardedInput';
 import { MessageActions } from './MessageActions';
+import { MessageTime } from './MessageTime';
 import './message.css';
 import { presentTeamMessage } from './teamMessage';
 import { TeamMessageCard } from './TeamMessageCard';
@@ -71,6 +72,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
                     <span className="msg-cmd-name">/{parsed.commandName}</span>
                     {parsed.args && <span className="msg-cmd-args">{parsed.args}</span>}
                 </div>
+                <div className="msg-actions"><MessageTime createdAt={message.createdAt} /></div>
             </div>
         );
     }
@@ -88,9 +90,9 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     return (
         <div className="msg msg--user" title={messageTimestamp(message.createdAt, lang)}>
             <UserAttachments sessionId={sessionId} items={attachmentItems} />
-            {text && <div className="msg-bubble-wrap vh-copyhost">
+            <div className="msg-bubble-wrap vh-copyhost">
                 <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0}>
-                <div className="msg-bubble">
+                {text && <div className="msg-bubble">
                     <div id={contentId} className={`msg-bubble-text${clamped ? ' msg-bubble-text--clamped' : ''}`}>
                         {text}
                         {clamped && <div className="msg-bubble-fade" aria-hidden />}
@@ -107,9 +109,9 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
                             <ChevronDown size={13} className={`vh-disclosure-icon${!clamped ? ' is-open' : ''}`} aria-hidden />
                         </button>
                     )}
-                </div>
+                </div>}
                 </MessageActions>
-            </div>}
+            </div>
             {discarded && (
                 <span className="msg-discarded" role="status">
                     <Ban size={12} aria-hidden />
@@ -203,7 +205,7 @@ function AgentText({
             {prose && (
                 <div className="msg-agent-text vh-copyhost">
                     <Markdown text={prose} onOption={onOption} />
-                    {showActions && <MessageActions text={text} sessionId={sessionId} />}
+                    {showActions && <MessageActions text={text} sessionId={sessionId} createdAt={message.createdAt} />}
                 </div>
             )}
             {showMeta && (

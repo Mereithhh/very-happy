@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
-import { messageTimestamp, messageTimestampRange } from './messageTimestamp';
+import { compactMessageTime, messageTimestamp, messageTimestampRange } from './messageTimestamp';
 
 let MessageView: typeof import('./MessageView').MessageView;
 let ToolGroupView: typeof import('./ToolGroupView').ToolGroupView;
@@ -34,6 +34,18 @@ function render(node: React.ReactNode) {
 }
 
 describe('message timestamps', () => {
+    it.each([
+        text('user-text'), text('agent-text'),
+        { ...text('user-text'), text: '<command-name>/status</command-name>' },
+        { ...text('user-text'), text: '<attached_files>\n{"path":"/repo/report.md","name":"report.md"}\n</attached_files>' },
+    ] satisfies Message[])('places a visible time in the $kind footer', message => {
+        const host = render(<MessageView message={message} sessionId="s1" showMeta={false} />);
+        const time = host.querySelector('.msg-actions time');
+        expect(time?.textContent).toBe(compactMessageTime(T0, 'en'));
+        expect(time?.getAttribute('datetime')).toBe(new Date(T0).toISOString());
+        expect(time?.getAttribute('title')).toBe(messageTimestamp(T0, 'en'));
+    });
+
     it('includes the date, seconds and local timezone without changing the source timestamp', () => {
         expect(messageTimestamp(T0, 'en', 'UTC')).toBe('09/11/2026, 12:34:56 UTC');
         const chinese = messageTimestamp(T0, 'zh-Hans', 'Asia/Singapore');

@@ -1,7 +1,7 @@
 import { useShallow } from 'zustand/react/shallow';
 import type { Session } from '@/sync/storageTypes';
 import { useId, useRef, useState, type ReactNode } from 'react';
-import { MoreHorizontal, Pencil, Quote, X } from 'lucide-react';
+import { Pencil, Quote, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
@@ -19,10 +19,11 @@ import { getRewindTarget, rewindPermissionMode } from './messageActionsModel';
 import { createRewindBranch } from './rewindOperation';
 import { quoteMessage } from './messageQuote';
 import { messageActionsCopy } from './messageActionsCopy';
+import { MessageTime } from './MessageTime';
 import './messageActions.css';
 
-export function MessageActions({ text, sessionId, userMessage, hasAttachments = false, children }: {
-    text: string; sessionId: string; userMessage?: UserTextMessage; hasAttachments?: boolean; children?: ReactNode;
+export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, hasAttachments = false, children }: {
+    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments?: boolean; children?: ReactNode;
 }) {
     const { t, lang } = useTranslation();
     const copy = messageActionsCopy(lang);
@@ -34,7 +35,6 @@ export function MessageActions({ text, sessionId, userMessage, hasAttachments = 
     const navigate = useNavigate();
     const editId = useId();
     const editButton = useRef<HTMLButtonElement>(null);
-    const [actionsOpen, setActionsOpen] = useState(false);
     const [open, setOpen] = useState(false);
     const [edited, setEdited] = useState(text);
     const [busy, setBusy] = useState(false);
@@ -55,12 +55,10 @@ export function MessageActions({ text, sessionId, userMessage, hasAttachments = 
         if (busyRef.current) return;
         historyRequest.current += 1;
         setLoadingPoints(false);
-        setActionsOpen(true);
         setOpen(false);
         requestAnimationFrame(() => editButton.current?.focus());
     };
     const openEditor = async () => {
-        setActionsOpen(false);
         setOpen(true);
         if (attempted) return;
         const request = ++historyRequest.current;
@@ -155,13 +153,13 @@ export function MessageActions({ text, sessionId, userMessage, hasAttachments = 
     };
     return <>
         {(!open || unavailable) && children}
-        {!open && <div className={`msg-actions${actionsOpen ? ' is-open' : ''}`} role="group" aria-label={copy.actions}>
-            <button type="button" className="msg-action msg-actions-more" aria-label={copy.actions} aria-expanded={actionsOpen} aria-controls={`${editId}-actions`} onClick={() => setActionsOpen(value => !value)}><MoreHorizontal size={18} aria-hidden /></button>
-            <div className="msg-actions-items" id={`${editId}-actions`}>
-                <CopyButton text={text} showLabel label={t('message.copyMessage')} />
-                <button type="button" className="msg-action" onClick={() => { quoteMessage(sessionId, text); setActionsOpen(false); }}><Quote size={14} aria-hidden /><span>{copy.quote}</span></button>
-                {userMessage && <button ref={editButton} type="button" className="msg-action" onClick={() => void openEditor()}><Pencil size={14} aria-hidden /><span>{copy.edit}</span></button>}
-            </div>
+        {!open && <div className="msg-actions" role={text ? 'group' : undefined} aria-label={text ? copy.actions : undefined}>
+            {text && <div className="msg-actions-items">
+                <CopyButton text={text} size={14} label={t('message.copyMessage')} />
+                <button type="button" className="msg-action" aria-label={copy.quote} title={copy.quote} onClick={() => quoteMessage(sessionId, text)}><Quote size={14} aria-hidden /></button>
+                {userMessage && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={() => void openEditor()}><Pencil size={14} aria-hidden /></button>}
+            </div>}
+            <MessageTime createdAt={createdAt} />
         </div>}
         {userMessage && open && <section className="msg-edit-inline" aria-labelledby={editId} onKeyDown={event => {
             if (event.key === 'Escape' && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); closeEditor(); }

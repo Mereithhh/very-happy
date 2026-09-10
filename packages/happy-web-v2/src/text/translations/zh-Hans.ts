@@ -1800,6 +1800,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep11c: {
+                title: '更直观的消息操作与时间',
+                summary: '消息操作常驻，时间直接显示在旁边。',
+                actions: '桌面和手机的复制、引用、编辑统一只显示图标，各自保留用途提示。',
+                time: '消息底部直接显示时分，悬停时间可查看完整日期和时区；仅附件和本地命令消息也能看到时间。',
+            },
             sep11b: {
                 title: '更整齐的对话左边界',
                 summary: '正文、工具和运行状态统一对齐。',
