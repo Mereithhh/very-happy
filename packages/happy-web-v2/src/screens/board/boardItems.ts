@@ -1,3 +1,4 @@
+import { sessionExecution, terminalExecution } from '@/sync/agentStatus';
 /**
  * boardItems — pure derivation of the global Task Board from state the app
  * already holds: chat sessions (socket-pushed), the terminal registry and
@@ -31,7 +32,7 @@ import { compareTaskOrder, type BoardTask } from '@/sync/boardTaskOps';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { hasPriorityTag } from '@/utils/tags';
 
-export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended';
+export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended' | 'unknown';
 
 //
 // Lifecycle view (the default board): management flips from process state to
@@ -53,6 +54,7 @@ export type WaitReason =
   | 'needsInput' // terminal needs input (urgent)
   | 'idle' // agent finished / awaits new input, not marked done (reap)
   | 'ended' // process died un-archived, within 24h (reap)
+  | 'unknown'
   | 'machineOffline'; // terminal's machine offline, within 24h (reap)
 
 /** Reasons that make a waiting item urgent (blocked on the user right now)
@@ -119,6 +121,9 @@ export interface BoardInput {
   /** all machines incl. offline (useAllMachines({includeOffline:true})) */
   machines: Machine[];
   now: number;
+  sessionFresh: Record<string, boolean>;
+  terminalFresh: Record<string, boolean>;
+  runningSubagents?: Record<string, number>;
 }
 
 /** ~/-relative path (standalone twin of sessionUtils.formatPathRelativeToHome,
@@ -170,15 +175,13 @@ function llmAttentionOf(s: Session): 'review' | 'blocked' | undefined {
   return a === 'review' || a === 'blocked' ? a : undefined;
 }
 
-function classifySession(s: Session, now: number): { status: BoardStatus } | null {
-  // V2: an LLM 'review'/'blocked' verdict folds into attention, but ONLY for
-  // online sessions — the V1 presence gate stays, so a dead session's stale
-  // verdict can't park it in the attention column forever.
-  if (s.presence === 'online' && (sessionHasPendingRequests(s) || llmAttentionOf(s))) {
-    return { status: 'attention' };
-  }
-  if (s.active && s.thinking) return { status: 'working' };
-  if (s.active && s.presence === 'online') return { status: 'idle' };
+function classifySession(s: Session, now: number, fresh: boolean, runningSubagents = 0): { status: BoardStatus } | null {
+  const execution = sessionExecution({ online:s.presence === 'online', active:s.active, fresh,
+    thinking:s.thinking, needsInput:sessionHasPendingRequests(s) || !!llmAttentionOf(s), runningSubagents });
+  if (execution === 'input') return { status:'attention' };
+  if (execution === 'running') return { status:'working' };
+  if (execution === 'unknown') return { status:'unknown' };
+  if (execution === 'idle') return { status:'idle' };
   // Archived (user explicitly dismissed it) never shows on the board — the
   // archived filter in the sidebar is its home. 'ended' is only for sessions
   // whose process died but nobody archived yet ("刚跑完还没看" reminders).
@@ -211,6 +214,7 @@ function classifySession(s: Session, now: number): { status: BoardStatus } | nul
 export function lifecycleOf(
   item: Pick<BoardItem, 'kind' | 'status' | 'detail' | 'llmAttention'>,
 ): { lifecycle: BoardLifecycle; waitReason?: WaitReason } {
+  if (item.status === 'unknown') return { lifecycle:'waiting', waitReason:'unknown' };
   if (item.status === 'working') return { lifecycle: 'running' };
   if (item.status === 'attention') {
     if (item.kind === 'terminal') return { lifecycle: 'waiting', waitReason: 'needsInput' };
@@ -238,7 +242,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     // B-053/B-105: hidden sessions (assistant, terminal mirrors) are not
     // tasks — presence/attention judgments are meaningless for a mirror.
     if (isHiddenSession(s)) continue;
-    const cls = classifySession(s, now);
+    const cls = classifySession(s, now, input.sessionFresh[s.id] ?? false, input.runningSubagents?.[s.id] ?? 0);
     if (!cls) continue;
     const lastActivityAt = s.updatedAt || s.activeAt || s.createdAt;
     const item: BoardItem = {
@@ -285,6 +289,8 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       if (now - lastActivityAt > ENDED_WINDOW_MS) continue;
       status = 'ended';
       detail = { kind: 'machineOffline' };
+    } else if (terminalExecution({online, fresh:input.terminalFresh[tm.id] ?? false, state:entry?.state}) === 'unknown') {
+      status = 'unknown';
     } else if (entry?.state === 'needs_input') {
       status = 'attention';
       attentionSince = entry.since ?? lastActivityAt;
@@ -323,7 +329,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
   // top of the waiting column no matter what), then attention =
   // longest-waiting FIRST, others = most recent activity first.
   // Key tiebreak keeps the order stable across polls (no column jitter).
-  const RANK: Record<BoardStatus, number> = { attention: 0, working: 1, idle: 2, ended: 3 };
+  const RANK: Record<BoardStatus, number> = { attention: 0, working: 1, idle: 2, unknown: 3, ended: 4 };
   items.sort((a, b) => {
     const r = RANK[a.status] - RANK[b.status];
     if (r !== 0) return r;

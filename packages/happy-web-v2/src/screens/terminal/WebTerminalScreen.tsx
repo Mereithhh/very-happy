@@ -54,7 +54,7 @@ import { presetPasteText } from './termPresetPaste';
 import { onInsertToInput } from '@/app/insertToInput';
 import { storage, useMachine, useSettings, useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
-import { useTerminalAgentState } from '@/sync/terminalAgentState';
+import { useTerminalAgentState, useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { collectAllTags, saveRowRename } from '@/app/rowActions';
 import { RenameModal } from '@/screens/sessions/RenameModal';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
@@ -192,7 +192,8 @@ export function WebTerminalScreen() {
   const meta = terminals.find((x) => x.id === tid);
   const terminalAgentState = useTerminalAgentState(tid);
   const claudeLikeRef = useRef(false);
-  claudeLikeRef.current = terminalAgentState != null && terminalAgentState !== 'shell';
+  const terminalAgentKind = useTerminalAgentStates(s => tid ? s.states[tid]?.agentKind : undefined);
+  claudeLikeRef.current = terminalAgentKind === 'claude' && terminalAgentState != null && terminalAgentState !== 'shell';
   const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle');
   const [showRename, setShowRename] = useState(false);
   const [relayStatus, setRelayStatus] = useState<MachineRelayStatus>(() =>

@@ -24,6 +24,7 @@ import { useEffect, useState } from 'react';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { recordHeartbeat } from '@/sync/heartbeatLease';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { CommandPalette } from '@/screens/command/CommandPalette';
@@ -37,6 +38,7 @@ if (typeof window !== 'undefined') {
 
 interface FakeOpts {
   thinking?: boolean;
+  flavor?: 'claude' | 'codex' | 'pi';
   /** minutes a pending permission request has been waiting */
   permissionWaitMin?: number;
   archived?: boolean;
@@ -57,7 +59,8 @@ function fakeSession(id: string, title: string, i: number, opts: FakeOpts = {}):
     active,
     activeAt: ts,
     metadata: {
-      path: `/home/dev/${id}`,
+      path: '/home/dev/project',
+      flavor: opts.flavor ?? 'claude',
       host: 'devbox',
       machineId: 'm1',
       summary: { text: title, updatedAt: now },
@@ -105,9 +108,9 @@ function seed() {
     fakeSession('s1', 'Alpha perm 5m', 1, { permissionWaitMin: 5, tags: ['api', 'prod'] }),
     fakeSession('s2', 'Bravo perm 30m', 2, { permissionWaitMin: 30 }),
     // 进行中
-    fakeSession('s3', 'Charlie building', 3, { thinking: true }),
+    fakeSession('s3', 'Charlie building', 3, { thinking: true, flavor: 'codex' }),
     // 等我看 (reap band: idle, most recent first)
-    fakeSession('s4', 'Delta idle', 4, { tags: ['web'] }),
+    fakeSession('s4', 'Delta idle', 4, { tags: ['web'], flavor:'pi' }),
     fakeSession('s5', 'Echo idle older', 5),
     // 已完成(今日) — collapsed section, newest first: s6 above s7
     fakeSession('s6', 'Foxtrot done 2h ago', 6, { completedAgoMs: 2 * 3600_000 }),
@@ -130,17 +133,20 @@ function seed() {
         createdAt: now,
       },
       { id: 'term2', machineId: 'm1', machineName: 'devbox', title: 'agent needs input', createdAt: now - 60_000 },
-      { id: 'term3', machineId: 'm1', machineName: 'devbox', title: 'plain shell', createdAt: now - 120_000 },
+      { id: 'term3', machineId: 'm1', machineName: 'devbox', title: '旧版终端 · 状态未知', createdAt: now - 120_000 },
+      { id: 'term4', machineId: 'm1', machineName: 'devbox', title: 'Codex · 代码检查', createdAt: now - 180_000 },
+      { id: 'term5', machineId: 'm1', machineName: 'devbox', title: 'Pi · 执行任务', createdAt: now - 240_000 },
     ],
   });
-  useTerminalAgentStates.setState({
-    states: {
-      term1: { machineId: 'm1', state: 'working', since: now - 30_000, activityAt: now },
-      // waiting longer than both permission sessions — tops the urgent band
-      term2: { machineId: 'm1', state: 'needs_input', since: now - 45 * 60_000, activityAt: now - 60_000 },
-      // term3: no entry (old daemon) → idle bucket
-    },
-  });
+  useTerminalAgentStates.getState().ingest('m1', [
+    { id:'term1', agentKind:'claude', agentState:'working', agentObservedAt:now },
+    { id:'term2', agentKind:'pi', agentState:'needs_input', agentObservedAt:now },
+    { id:'term3' },
+    { id:'term4', agentKind:'codex', agentState:'idle', agentObservedAt:now },
+    { id:'term5', agentKind:'pi', agentState:'working', agentObservedAt:now },
+  ]);
+  for (const id of ['s1','s2','s3','s4','s5']) recordHeartbeat(id, id === 's3', now);
+
 }
 
 export function SidebarHarness() {
@@ -148,13 +154,21 @@ export function SidebarHarness() {
   useEffect(() => {
     seed();
     setReady(true);
+    const timer = setInterval(() => {
+      for (const id of ['s1','s2','s3','s4','s5']) recordHeartbeat(id, id === 's3');
+      const states = useTerminalAgentStates.getState().states;
+      useTerminalAgentStates.getState().ingest('m1', Object.entries(states).map(([id, e]) => ({ id, agentKind:e.agentKind, agentState:e.state, agentObservedAt:Date.now() })));
+    }, 2000);
+    return () => clearInterval(timer);
   }, []);
   if (!ready) return null;
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-0)' }}>
+    <div style={{ display: 'flex', height: '100dvh', background: 'var(--bg-0)' }}>
+      <style>{'@media(max-width:600px){.sidebar-harness-note{display:none}}'}</style>
       <div
         style={{
-          width: 300,
+          width: 320,
+          maxWidth: '100vw',
           display: 'flex',
           flexDirection: 'column',
           borderRight: '1px solid var(--line)',
@@ -163,7 +177,7 @@ export function SidebarHarness() {
       >
         <Sidebar />
       </div>
-      <div style={{ flex: 1 }} />
+      <main className="sidebar-harness-note" style={{ flex: 1, padding:24 }}>本地状态预览 · 示例数据<br/>灰色类型图标；右侧统一状态位。终端区分 Claude、Codex、Pi。</main>
       {/* the sidebar's search entry (⌘K / mobile header icon) — real palette */}
       <CommandPalette />
     </div>

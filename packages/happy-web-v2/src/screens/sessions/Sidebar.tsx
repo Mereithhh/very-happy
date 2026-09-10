@@ -1,9 +1,10 @@
+import { agentStatusSignal, codingAgentLabel, type AgentExecution } from '@/sync/agentStatus';
 import type { RecentMachinePath } from '@/utils/quickChat';
 import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -32,7 +33,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useActivityOverlay } from '@/sync/activityOverlayStore';
 import { resolveActivityTs } from '@/sync/activityOverlay';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
-import { useBoardAttentionCount, useBoardItems } from '@/screens/board/useBoardItems';
+import { useBoardItems } from '@/screens/board/useBoardItems';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { openCommandPalette } from '@/screens/command/CommandPalette';
 import { NewSessionModal } from './NewSessionModal';
@@ -180,7 +181,6 @@ export function Sidebar() {
   // collapsed or on mobile detail screens. This component is a pure consumer
   // of its stores.
 
-  const attentionCount = useBoardAttentionCount();
 
   // ----- sort mode (列表 view) -----
   // Synced `sidebarSort`: 'recent' (default) auto-sorts every row by last
@@ -370,7 +370,9 @@ export function Sidebar() {
   // same model as the 列表 view's recent sort.
   const boardItems = useBoardItems();
   const creatingChat = useNewChatPending();
-  const runningKeys = useMemo(() => new Set(boardItems.filter(item => item.lifecycle === 'running').map(item => item.key)), [boardItems]);
+  const executionByKey = useMemo(() => new Map(boardItems.map(item => [item.key,
+    item.status === 'working' ? 'running' : item.status === 'attention' ? 'input' : item.status === 'unknown' ? 'unknown' : item.status === 'ended' ? 'offline' : 'idle'] as [string, AgentExecution])), [boardItems]);
+  const attentionCount = boardItems.filter(item => item.status === 'attention').length;
 
   // ----- two-level row signal (B-085) -----
   // 待处理 (accent) = the board's urgent waiting band — permission request /
@@ -1073,7 +1075,7 @@ export function Sidebar() {
                       >
                         <SidebarRow
                           row={r}
-                          running={runningKeys.has(r.key)}
+                          execution={executionByKey.get(r.key) ?? (r.session?.presence === 'online' ? 'idle' : 'offline')}
                           signal={rowSignalOf({
                             attention: attentionKeys.has(r.key),
                             // Sessions: the flag stays out of the archived view
@@ -1342,7 +1344,7 @@ function rowMenuItems(opts: {
 
 function SidebarRow({
   row,
-  running,
+  execution,
   signal,
   badge,
   canMoveUp,
@@ -1351,7 +1353,7 @@ function SidebarRow({
   onRenameRequest,
 }: {
   row: Row;
-  running: boolean;
+  execution: AgentExecution;
   /** two-level marker (B-085): 'attention' = agent waiting on the user
    *  (accent rail + badge dot), 'unread' = finished-while-away (text-stage
    *  dot). Decided in the parent via rowSignalOf. */
@@ -1381,31 +1383,12 @@ function SidebarRow({
   const selected = rawTerminalSelected || location.pathname === row.href;
   const s = row.session;
 
-  // Claude agent state inside a web terminal (undefined = old daemon / no data
-  // → keep the plain terminal icon, exactly the pre-agentState rendering).
-  const agentState = useTerminalAgentStates((st) =>
-    isTerminal && row.terminalId ? st.states[row.terminalId]?.state : undefined,
-  );
-  const agentDot =
-    agentState === 'needs_input' ? ('permission' as const)
-    : agentState === 'working' ? ('thinking' as const)
-    : null; // idle / shell / undefined → current rendering, no extra dot
-  const agentDotTitle =
-    agentDot === 'permission' ? t('terminal.claudeNeedsInput') : t('terminal.claudeWorking');
-
-  // status dot — gate "live/thinking" on the session actually being active so
-  // ended/archived sessions never render as running (bug #6).
-  const dot = isTerminal
-    ? 'connected'
-    : !s!.active
-      ? 'offline'
-      : (s!.agentState?.requests && Object.keys(s!.agentState.requests).length > 0)
-        ? 'permission'
-        : s!.thinking
-          ? 'thinking'
-          : s!.presence === 'online'
-            ? 'connected'
-            : 'offline';
+  const terminalAgent = useTerminalAgentStates(st => isTerminal && row.terminalId ? st.states[row.terminalId]?.agentKind : undefined);
+  const agentLabel = codingAgentLabel(isTerminal ? terminalAgent : s?.metadata?.flavor);
+  const status = agentStatusSignal(execution, signal === 'unread');
+  const availabilityLabel = execution === 'offline' ? t('sidebar.agentStatusOffline') : execution === 'unknown' ? t('sidebar.agentStatusUnknown') : '';
+  const statusLabel = status === 'running' ? t('sidebar.groupRunning') : status === 'input' ? t('sidebar.rowNeedsAttention')
+    : status === 'unread' ? [t('sidebar.rowUnread'), availabilityLabel].filter(Boolean).join(' · ') : status === 'offline' ? t('sidebar.agentStatusOffline') : t('sidebar.agentStatusUnknown');
 
   const open = () => navigate(row.href);
 
@@ -1512,27 +1495,8 @@ function SidebarRow({
         onClick={open}
         aria-current={selected ? 'page' : undefined}
       >
-        <span className={`sb-row-icon${isTerminal ? ' sb-row-icon--term' : ''}`}>
-          {isTerminal ? (
-            <span className="sb-row-term-icon" title={agentDot ? agentDotTitle : undefined}>
-              <TerminalSquare size={16} />
-              {agentDot && (
-                <span className="sb-row-agent-dot">
-                  {/* pulse also on 待处理 (needs_input, machine online) —
-                      reduced-motion users get the static dot (ui.css). */}
-                  <StatusDot
-                    status={agentDot}
-                    pulse={!running && (agentDot === 'thinking' || signal === 'attention')}
-                    size={7}
-                    title={agentDotTitle}
-                  />
-                </span>
-              )}
-            </span>
-          ) : (
-            // 待处理 rows pulse too (permission dot); reduced-motion → static
-            <StatusDot status={dot} pulse={!running && (dot === 'thinking' || signal === 'attention')} size={9} />
-          )}
+        <span className="sb-row-icon sb-row-icon--neutral" title={`${agentLabel} · ${isTerminal ? 'Terminal' : 'Chat'}`} aria-label={`${agentLabel} · ${isTerminal ? 'Terminal' : 'Chat'}`}>
+          {!isTerminal ? <MessageSquare size={15} /> : terminalAgent === 'claude' ? <Asterisk size={16} /> : terminalAgent === 'codex' ? <CodeXml size={16} /> : terminalAgent === 'pi' ? <Pi size={16} /> : <TerminalSquare size={16} />}
         </span>
         <span className="sb-row-text">
           <span className="sb-row-title-line">
@@ -1556,18 +1520,11 @@ function SidebarRow({
           </span>
           <span className="sb-row-sub mono">{row.subtitle}</span>
         </span>
-        {/* right-edge signal dot: accent+glow = 待处理, text-stage = 未读.
-            Sits INSIDE .sb-row-main (before the kebab column), so the
-            hover-revealed kebab never covers it. */}
-        {running && <span className="sb-row-running" title={t('sidebar.groupRunning')} aria-label={t('sidebar.groupRunning')}><Spinner size={14} /></span>}
-        {signal && (
-          <span
-            className={`sb-row-signal sb-row-signal--${signal}`}
-            role="img"
-            aria-label={t(signal === 'attention' ? 'sidebar.rowNeedsAttention' : 'sidebar.rowUnread')}
-            title={t(signal === 'attention' ? 'sidebar.rowNeedsAttention' : 'sidebar.rowUnread')}
-          />
-        )}
+        <span className={`sb-row-status${status ? ` sb-row-status--${status}` : ''}`} title={status ? `${agentLabel} · ${statusLabel}` : undefined} role={status ? 'img' : undefined} aria-label={status ? `${agentLabel} · ${statusLabel}` : undefined}>
+          {status === 'running' ? <Spinner size={14} /> : status === 'input' ? <CircleAlert size={14} />
+            : status === 'unknown' ? <UnknownStatus size={13} /> : status === 'offline' ? <Unplug size={13} />
+            : status === 'unread' ? <span className="sb-row-unread-dot" /> : null}
+        </span>
         {badge != null && <kbd className="sb-row-badge mono">⌘{badge}</kbd>}
       </button>
       {restorable && (

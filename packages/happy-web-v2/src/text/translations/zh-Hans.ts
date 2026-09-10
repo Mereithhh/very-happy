@@ -1403,6 +1403,8 @@ export const zhHans: TranslationStructure = {
     },
 
     sidebar: {
+        agentStatusUnknown: '状态未知，等待新的 Agent 状态上报',
+        agentStatusOffline: 'Agent 未连接',
         collapse: '收起侧栏',
         openSessions: '打开的会话',
         archiveConfirm: '归档此会话？',
@@ -1792,6 +1794,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep10q: {
+                title: '更清晰的 Agent 状态',
+                summary: '对话与终端使用统一的状态提示。',
+                sidebar: '灰色类型图标区分 Claude、Codex、Pi 终端；右侧固定一个位置显示运行、等待操作、未知/离线或未读。',
+                detection: '通过观察新鲜度避免会话一直显示运行中。终端识别需要配套更新 CLI；旧版 daemon 的状态显示为未知。',
+            },
             sep10p: {
                 title: '更轻巧的右侧工作区',
                 summary: '文件、笔记和侧问采用统一的紧凑布局。',
@@ -2535,6 +2543,7 @@ export const zhHans: TranslationStructure = {
         // 终端内 Claude Code 状态（侧边栏状态点 + 通知）
         claudeWorking: 'Claude：工作中',
         claudeNeedsInput: 'Claude：等待输入',
+        agentNeedsInputBody: ({ agent }: { agent: string }) => `${agent} 需要你的输入`,
         claudeNeedsInputBody: 'Claude 需要你的输入',
         structuredView: '结构化视图',
         fontLoading: '终端字体加载中…',

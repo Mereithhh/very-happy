@@ -63,6 +63,7 @@ let appliedPushVersions = new Map<string, number>();
  *  daemon) so stale data stops rendering. */
 function syncPushes(): void {
   const machines = allMachines();
+  useTerminalAgentStates.getState().setMachineOnline(Object.fromEntries(machines.map(m => [m.id, m.active])));
   const pushed = pushedMachineSnapshots(machines);
   const trusted = new Set(pushed.map((p) => p.id));
   let applied = false;
@@ -78,6 +79,7 @@ function syncPushes(): void {
     if (trusted.has(id)) continue;
     appliedPushVersions.delete(id);
     useTerminalSessions.getState().clearPush(id);
+    useTerminalAgentStates.getState().ingest(id, []);
   }
   // B-105: the per-terminal view overrides (localSettings) ride the same
   // ingestion beat — a terminal with a closed record no longer needs its

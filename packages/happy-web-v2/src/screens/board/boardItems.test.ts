@@ -73,6 +73,8 @@ function build(over: Partial<BoardInput>): ReturnType<typeof buildBoardItems> {
     agentStates: {},
     machines: [mkMachine('m1', true)],
     now: NOW,
+    sessionFresh: Object.fromEntries((over.sessions ?? []).map(s => [s.id, true])),
+    terminalFresh: Object.fromEntries((over.terminals ?? []).map(s => [s.id, true])),
     ...over,
   });
 }
@@ -179,7 +181,7 @@ describe('terminal mapping', () => {
     expect(items.find((i) => i.key === 't:t2')!.status).toBe('working');
   });
 
-  it('shell / idle / unknown (old daemon) → idle, never attention', () => {
+  it('shell / idle stay idle; old daemon stays unknown', () => {
     const items = build({
       terminals: [
         mkTerminal({ id: 't1' }),
@@ -188,7 +190,7 @@ describe('terminal mapping', () => {
       ],
       agentStates: { t1: entry('shell'), t2: entry('idle') },
     });
-    expect(items.map((i) => i.status)).toEqual(['idle', 'idle', 'idle']);
+    expect(items.map((i) => i.status)).toEqual(['idle', 'idle', 'unknown']);
   });
 
   it('OFFLINE machine: stale needs_input is gated out of attention → ended + machineOffline', () => {
@@ -548,14 +550,14 @@ describe('lifecycle classifier (decision table)', () => {
     expect(items[0].waitReason).toBeUndefined();
   });
 
-  it('terminal shell / idle / unknown → waiting/idle', () => {
+  it('terminal shell / idle / unknown retain their waiting reason', () => {
     const items = build({
       terminals: [mkTerminal({ id: 't1' }), mkTerminal({ id: 't2' }), mkTerminal({ id: 't3' })],
       agentStates: { t1: entry('shell'), t2: entry('idle') },
     });
     for (const i of items) {
       expect(i.lifecycle).toBe('waiting');
-      expect(i.waitReason).toBe('idle');
+      expect(i.waitReason).toBe(i.status === 'unknown' ? 'unknown' : 'idle');
     }
   });
 
@@ -636,5 +638,18 @@ describe('buildCompletedEntries', () => {
     const entries = buildCompletedEntries([], [doneTask('k1', { updatedAt: undefined, createdAt: NOW - 1000 })], NOW);
     expect(entries).toHaveLength(1);
     expect(entries[0].at).toBe(NOW - 1000);
+  });
+});
+
+
+describe('freshness is required by the shared board/sidebar classifier', () => {
+  it('does not claim running or attention from stale observations', () => {
+    const items = build({
+      sessions: [mkSession({ id:'stale', thinking:true })],
+      terminals: [mkTerminal({ id:'term' })],
+      agentStates: { term:{ machineId:'m1', state:'needs_input' } },
+      sessionFresh: {}, terminalFresh: {},
+    });
+    expect(items.map(i => i.status)).toEqual(['unknown','unknown']);
   });
 });

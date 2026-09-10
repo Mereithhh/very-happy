@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-10-unified-agent-status',
+    date: '2026-09-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep10q.title',
+    summaryKey: 'changelog.releases.sep10q.summary',
+    itemKeys: ['changelog.releases.sep10q.sidebar', 'changelog.releases.sep10q.detection'],
+  },
+  {
     id: '2026-09-10-right-workspace-polish',
     date: '2026-09-10',
     buildVersion: __APP_VERSION__,

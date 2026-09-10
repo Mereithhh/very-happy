@@ -236,6 +236,8 @@ export const WebTerminalListItemSchema = z.object({
   createdAt: z.number().optional(),
   activityAt: z.number().optional(),
   agentState: z.enum(['working', 'needs_input', 'idle', 'shell']).optional(),
+  agentKind: z.string().optional(),
+  agentObservedAt: z.number().optional(),
   /** B-105: mirror session of the claude running inside the terminal. */
   mirrorSessionId: z.string().optional(),
   /** B-150: auto-restored after a restart (ms epoch) — the directory and the

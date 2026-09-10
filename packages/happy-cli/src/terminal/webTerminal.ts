@@ -1,3 +1,4 @@
+import { classifyAgentPane, type CodingAgentKind } from './agentStatus';
 /**
  * Web terminal manager (daemon side).
  *
@@ -572,6 +573,8 @@ export interface TerminalListItem {
     createdAt?: number;
     activityAt?: number;
     agentState?: AgentState;
+    agentKind?: CodingAgentKind;
+    agentObservedAt?: number;
     /** Mirror reconcile (design v3): stricter "claude is really here" gate (its
      *  own TUI footer/dialog present) — daemon-internal, NOT pushed to web and
      *  NOT part of the list signature. Only this may trigger mirror adopt (which
@@ -630,6 +633,8 @@ export function terminalListSignature(items: TerminalListItem[]): string {
             t.createdAt ?? 0,
             Math.floor((t.activityAt ?? 0) / ACTIVITY_SIGNATURE_BUCKET_MS),
             t.agentState ?? '',
+            t.agentKind ?? '',
+            Math.floor((t.agentObservedAt ?? 0) / 10_000),
             // B-105: a mirror binding appearing/disappearing MUST push the
             // list, or the web never learns the toggle became available.
             t.mirrorSessionId ?? '',
@@ -836,38 +841,7 @@ export function parseTerminalTags(raw: unknown): string[] {
  * recognizable (e.g. vim/htop in the pane) — callers omit the field then.
  */
 export function classifyPane(currentCommand: string, tail: string): AgentState | undefined {
-    const cmd = (currentCommand || '').trim().replace(/^-/, '').toLowerCase();
-    const isShell = SHELL_COMMANDS.has(cmd);
-    const lines = tail.replace(/\r/g, '').split('\n').map((l) => l.trimEnd());
-    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-    const text = lines.join('\n');
-    const last15 = lines.slice(-15).join('\n');
-
-    // Interactive dialog (permission prompt / choice list / plan approval).
-    // Checked first: a waiting dialog also shows other footer text around it.
-    const hasDialog =
-        last15.includes('Do you want')
-        || last15.includes('Would you like to proceed')
-        // Numbered choice list: a line starting (after box-drawing/space) with
-        // "❯ 1." or "> 1." — Claude Code renders options inside │…│ borders.
-        || /^[\s│]*[❯>]\s*1\.\s/m.test(last15)
-        || /\(y\/n\)/i.test(last15);
-    if (hasDialog) return 'needs_input';
-
-    // Claude Code's in-progress footer while a turn is running.
-    if (text.includes('esc to interrupt')) return 'working';
-
-    // Claude Code idle at its input box: the process itself (claude, or node
-    // for the bundled CLI) is foreground, or its input-box footer is visible.
-    const looksLikeClaude = looksLikeClaudeCommand(cmd);
-    const hasIdleFooter =
-        text.includes('? for shortcuts')
-        || text.includes('bypass permissions on')
-        || text.includes('⏵⏵');
-    if (looksLikeClaude || hasIdleFooter) return 'idle';
-
-    if (isShell) return 'shell';
-    return undefined;
+    return classifyAgentPane(currentCommand, tail).agentState;
 }
 
 /**
@@ -2165,7 +2139,7 @@ export class WebTerminalManager {
         const now = Date.now();
         this.notifyTracker.prune(list.map((t) => t.id));
         for (const item of list) {
-            const event = this.notifyTracker.observe(item.id, item.agentState, now);
+            const event = this.notifyTracker.observe(item.id, item.agentState, now, item.agentKind);
             if (!event) continue;
             try {
                 this.onNotify({ terminalId: item.id, title: item.title || 'Terminal', event });
@@ -3177,6 +3151,8 @@ export class WebTerminalManager {
                     // simply omit it and web clients fall back to createdAt.
                     activityAt: s.activity,
                     agentState: probe.agentState,
+                    agentKind: probe.agentKind,
+                    agentObservedAt: probe.agentObservedAt,
                     // Daemon-internal (not pushed to web / not in the signature):
                     // the mirror reconciler's stricter "claude is really here" gate.
                     claudeConfident: probe.claudeConfident,
@@ -3198,7 +3174,7 @@ export class WebTerminalManager {
      *  the old path spawned 2 tmux procs EACH (2×N per refresh) — now a terminal
      *  you've opened this daemon lifetime costs nothing. Cold tmux-only sessions
      *  (pty reaped / never attached) fall back to the tmux probe. */
-    private probeAgentState(sessionName: string, polledCommand?: string): { agentState: AgentState | undefined; claudeConfident: boolean } {
+    private probeAgentState(sessionName: string, polledCommand?: string): { agentState?: AgentState; agentKind?: CodingAgentKind; agentObservedAt?: number; claudeConfident: boolean } {
         const id = sessionName.startsWith('vh-') ? sessionName.slice(3) : sessionName;
         const live = this.terminals.get(id);
         if (live) {
@@ -3208,7 +3184,8 @@ export class WebTerminalManager {
                 // empty — the same list-sessions read that produced this line
                 // carries `#{pane_current_command}` instead (≤ one tick old).
                 // The pty value still wins when there IS one (no-tmux fallback).
-                return { agentState: classifyPane(command || polledCommand || '', tail), claudeConfident: isClaudeConfident(tail) };
+                const observation = classifyAgentPane(command || polledCommand || '', tail);
+                return { ...observation, agentObservedAt: Date.now(), claudeConfident: observation.agentKind === 'claude' && isClaudeConfident(tail) };
             } catch { /* fall through to the tmux probe */ }
         }
         return this.probeAgentStateViaTmux(sessionName);
@@ -3217,7 +3194,7 @@ export class WebTerminalManager {
     /** Fallback probe for sessions with no live headless: 2 short tmux calls
      *  (foreground command + pane tail) fed into classifyPane. Any failure or
      *  timeout → undefined (the field is omitted), never an error. */
-    private probeAgentStateViaTmux(sessionName: string): { agentState: AgentState | undefined; claudeConfident: boolean } {
+    private probeAgentStateViaTmux(sessionName: string): { agentState?: AgentState; agentKind?: CodingAgentKind; agentObservedAt?: number; claudeConfident: boolean } {
         try {
             const cmd = spawnSync('tmux', tmuxArgs(['display-message', '-p', '-t', sessionName, '#{pane_current_command}']),
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
@@ -3225,7 +3202,8 @@ export class WebTerminalManager {
             const cap = spawnSync('tmux', tmuxArgs(['capture-pane', '-p', '-t', sessionName, '-S', '-40']),
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (cap.status !== 0 || typeof cap.stdout !== 'string') return { agentState: undefined, claudeConfident: false };
-            return { agentState: classifyPane(cmd.stdout.trim(), cap.stdout), claudeConfident: isClaudeConfident(cap.stdout) };
+            const observation = classifyAgentPane(cmd.stdout.trim(), cap.stdout);
+            return { ...observation, agentObservedAt: Date.now(), claudeConfident: observation.agentKind === 'claude' && isClaudeConfident(cap.stdout) };
         } catch {
             return { agentState: undefined, claudeConfident: false };
         }

@@ -62,6 +62,7 @@ export type LeaseInput = {
     now: number;
     /** 本端 socket 断开 / 标签页不可见 —— 停表，不判死。 */
     suspended: boolean;
+    ttlMs?: number;
 };
 
 export type LeaseVerdict = {
@@ -79,7 +80,7 @@ export function leaseVerdict(input: LeaseInput): LeaseVerdict {
     // （`sync.ts` 的 processedSession），活性由它自己决定；这里只负责让**已经**为真的
     // thinking 会过期，不负责制造「先按不活」。
     if (input.lastBeatAt === undefined) return { fresh: true, nextLastBeatAt: undefined };
-    return { fresh: input.now - input.lastBeatAt < HEARTBEAT_LEASE_TTL_MS, nextLastBeatAt: input.lastBeatAt };
+    return { fresh: input.now - input.lastBeatAt < (input.ttlMs ?? HEARTBEAT_LEASE_TTL_MS), nextLastBeatAt: input.lastBeatAt };
 }
 
 function isSuspended(): boolean {
@@ -101,7 +102,7 @@ export function setHeartbeatSocketStatusReader(reader: () => string): void {
  * 累加器对纯时间戳心跳不算 significant change，会压 2s 且计时器不重置，
  * 记在 flush 里等于凭空吃掉 TTL 的净余量。
  */
-export function recordHeartbeat(sessionId: string, thinking: boolean, now = Date.now()): void {
+export function recordHeartbeat(sessionId: string, thinking: boolean, now = Date.now(), ttlMs = HEARTBEAT_LEASE_TTL_MS): void {
     lastBeatAt.set(sessionId, now);
     const existing = expiryTimers.get(sessionId);
     if (existing) clearTimeout(existing);
@@ -111,15 +112,15 @@ export function recordHeartbeat(sessionId: string, thinking: boolean, now = Date
     const timer = setTimeout(() => {
         expiryTimers.delete(sessionId);
         useHeartbeatLeaseBump.getState().tick();
-    }, HEARTBEAT_LEASE_TTL_MS);
+    }, ttlMs);
     // Node 环境（测试/SSR）下别让一个挂起的 timer 拖住进程退出。
     (timer as unknown as { unref?: () => void }).unref?.();
     expiryTimers.set(sessionId, timer);
 }
 
 /** 当前会话的心跳是否新鲜。停表时会顺带把计时起点推到当前（见约束 ②）。 */
-export function isHeartbeatFresh(sessionId: string, now = Date.now()): boolean {
-    const verdict = leaseVerdict({ lastBeatAt: lastBeatAt.get(sessionId), now, suspended: isSuspended() });
+export function isHeartbeatFresh(sessionId: string, now = Date.now(), ttlMs = HEARTBEAT_LEASE_TTL_MS): boolean {
+    const verdict = leaseVerdict({ lastBeatAt: lastBeatAt.get(sessionId), now, suspended: isSuspended(), ttlMs });
     if (verdict.nextLastBeatAt === undefined) lastBeatAt.delete(sessionId);
     else lastBeatAt.set(sessionId, verdict.nextLastBeatAt);
     return verdict.fresh;

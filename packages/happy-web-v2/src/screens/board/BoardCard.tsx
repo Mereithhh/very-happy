@@ -25,6 +25,7 @@ const DOT: Record<BoardItem['status'], { status: Status; pulse: boolean }> = {
   attention: { status: 'permission', pulse: true },
   working: { status: 'thinking', pulse: true },
   idle: { status: 'connected', pulse: false },
+  unknown: { status: 'offline', pulse: false },
   ended: { status: 'offline', pulse: false },
 };
 
@@ -180,6 +181,7 @@ export function BoardCard({
           {item.status === 'ended' && item.detail?.kind !== 'machineOffline' && (
             <span className="bd-card-offline">{t('board.endedTag')}</span>
           )}
+          {item.waitReason === 'unknown' && <span className="bd-card-offline">{t('sidebar.agentStatusUnknown')}</span>}
           {item.waitReason === 'idle' && (
             <span className="bd-card-offline">{t('board.readyToReview')}</span>
           )}

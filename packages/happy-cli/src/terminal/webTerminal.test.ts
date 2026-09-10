@@ -4,6 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
+import { WebTerminalListItemSchema } from '@/api/types';
 import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, parseTerminalTags, validateTerminalTags, LIST_FIELD_SEP, looksLikeClaudeCommand, isClaudeConfident, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, resolveDefaultShell, tmuxNewSessionArgs, shouldUseDirectPtyFallback, utf8LocaleEnv, type TerminalListItem } from './webTerminal';
 
 describe('resolveDefaultShell', () => {
@@ -255,8 +256,8 @@ describe('classifyPane', () => {
         expect(classifyPane('claude', PLAN_APPROVAL)).toBe('needs_input');
     });
 
-    it('detects needs_input from a (y/n) prompt', () => {
-        expect(classifyPane('node', 'Overwrite existing file? (y/n)')).toBe('needs_input');
+    it('does not attribute a generic node y/n prompt to a coding agent', () => {
+        expect(classifyPane('node', 'Overwrite existing file? (y/n)')).toBeUndefined();
     });
 
     it('prioritizes needs_input over working when both markers show', () => {
@@ -264,12 +265,12 @@ describe('classifyPane', () => {
     });
 
     it('detects idle from the input-box footer', () => {
-        expect(classifyPane('node', IDLE_INPUT_BOX)).toBe('idle');
+        expect(classifyPane('claude', IDLE_INPUT_BOX)).toBe('idle');
     });
 
-    it('detects idle from claude/node foreground even without footer text', () => {
-        expect(classifyPane('claude', 'some scrolled output with no markers')).toBe('idle');
-        expect(classifyPane('node', '')).toBe('idle');
+    it('keeps unobservable claude/node foreground state unknown', () => {
+        expect(classifyPane('claude', 'some scrolled output with no markers')).toBeUndefined();
+        expect(classifyPane('node', '')).toBeUndefined();
     });
 
     it('detects idle from the ⏵⏵ / bypass permissions footer', () => {
@@ -437,6 +438,15 @@ describe('terminalListSignature', () => {
         expect(terminalListSignature([item({ cwd: '/y' })])).not.toBe(base);
         expect(terminalListSignature([item({ agentState: 'working' })])).not.toBe(base);
         expect(terminalListSignature([item({ agentState: undefined })])).not.toBe(base);
+    });
+
+    it('renews unchanged observations at tracker cadence and preserves fields through the schema', () => {
+        const observation = item({ agentKind:'pi', agentObservedAt:100_000 });
+        expect(WebTerminalListItemSchema.parse(observation)).toMatchObject({ agentKind:'pi', agentObservedAt:100_000 });
+        const base = terminalListSignature([observation]);
+        expect(terminalListSignature([{ ...observation, agentObservedAt:109_999 }])).toBe(base);
+        expect(terminalListSignature([{ ...observation, agentObservedAt:110_000 }])).not.toBe(base);
+        expect(terminalListSignature([{ ...observation, agentKind:'codex' }])).not.toBe(base);
     });
 
     it('changes when a mirror binding appears or disappears (B-105 toggle push)', () => {
