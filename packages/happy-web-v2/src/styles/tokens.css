@@ -190,8 +190,10 @@
   --term-accent: #34e2c4;
   --term-accent-ink: #04110e;
 
-  /* Explicit maximum reasoning selection; separate from live/status accent. */
-  --effort-max-gradient: linear-gradient(90deg, #1ba7be 0%, #557af7 32%, #b65bdc 65%, #ef8d44 100%);
+  /* Owner-approved animated maximum reasoning energy; never a live/status signal.
+     Matching end stops make translated duplicate bands seamless. */
+  --effort-max-gradient: linear-gradient(90deg, #1bbdd1 0%, #567bff 20%, #c55ef4 40%, #fa9070 60%, #f4c859 78%, #1bbdd1 100%);
+  --effort-max-highlight: #ffffff;
 
   /* fonts */
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;

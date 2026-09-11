@@ -3,6 +3,8 @@
 .me-trigger > svg { flex: none; }
 .me-strength { color: var(--text-dim); flex: none; font-size: var(--fs-11); }
 .me-strength::before { content: '·'; margin-inline-end: 5px; color: var(--text-faint); }
+.me-strength--max { position: relative; color: var(--text); }
+.me-strength--max > .effort-energy { inset: auto 0 -4px 9px; height: 3px; border-radius: var(--r-pill); }
 .me-panel {
   width: min(320px, calc(100vw - 24px));
   max-height: var(--radix-popover-content-available-height);
@@ -39,7 +41,7 @@
 }
 .me-panel .effort-slider-heading { font-size: var(--fs-13); }
 .me-panel .effort-slider input { height: 44px; }
-.me-panel .effort-slider-rail { top: 18px; height: 8px; border-radius: var(--r-pill); }
+.me-panel .effort-slider-rail { top: calc(50% - 4px); height: 8px; border-radius: var(--r-pill); }
 .me-panel .effort-slider-rail > span { border-radius: inherit; }
 .me-panel .effort-slider-ticks { top: 20px; }
 .me-panel .effort-slider-ticks i { width: 4px; height: 4px; border-radius: 50%; background: var(--text-faint); }

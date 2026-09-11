@@ -1,22 +1,35 @@
 .relay-badge {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   flex: none;
+  min-width: 44px;
   max-width: 150px;
   gap: 6px;
   min-height: 28px;
   padding: 3px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: var(--bg-1);
+  border: 0;
+  background: transparent;
   color: var(--text-dim);
   font: var(--fs-11)/1.4 var(--font-mono);
   white-space: nowrap;
   cursor: pointer;
 }
-.relay-badge:hover, .relay-badge[data-state='open'] { background: var(--bg-2); color: var(--text); }
+.relay-badge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--bg-1);
+}
+.relay-badge:hover, .relay-badge[data-state='open'] { color: var(--text); }
+.relay-badge:hover::before, .relay-badge[data-state='open']::before { background: var(--bg-2); }
 .relay-badge.is-connected > svg { color: var(--accent); }
-.relay-badge:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-dim); }
+.relay-badge:focus-visible { outline:none; box-shadow:none; }
+.relay-badge:focus-visible::before { border-color:var(--text-dim); }
 .relay-detail {
   z-index: 100;
   width: min(300px, calc(100vw - 24px));
@@ -33,9 +46,19 @@
 .relay-detail dt, .relay-detail p { color: var(--text-dim); }
 .relay-detail dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 .relay-detail p { font-size: var(--fs-12); margin: 0; }
-@media (pointer: coarse) { .relay-badge { min-height: 44px; } }
+@media (pointer: coarse) {
+  .relay-badge { min-height:44px; }
+  /* Keep a compact tag inside the unchanged finger-sized target. */
+  .relay-badge::before { inset:8px 0; }
+}
 
-.relay-badge > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.relay-badge-label { display:inline-flex; align-items:center; min-width:0; gap:var(--sp-1); }
+.relay-badge-flag { flex:none; }
+.relay-badge-region { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 .relay-badge > svg { flex: none; }
-@media (max-width: 520px) { .relay-badge { max-width: 112px; } }
+@media (max-width: 600px) {
+  .relay-badge { max-width:112px; }
+  /* Keep the route symbol and the readable region; the flag repeats the region. */
+  .relay-badge-flag { display:none; }
+}

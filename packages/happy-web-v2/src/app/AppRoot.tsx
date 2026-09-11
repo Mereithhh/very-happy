@@ -161,6 +161,7 @@ const WorkspaceDesignHarness = import.meta.env.DEV
 const WorkspaceNotesHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/WorkspaceFilesHarness').then((m) => ({ default: m.WorkspaceNotesHarness })))
   : null;
+const ComposerFeedbackHarness = import.meta.env.DEV ? lazy(() => import('@/dev/ComposerFeedbackHarness').then(m => ({ default: m.ComposerFeedbackHarness }))) : null;
 const MediaPreviewHarness = import.meta.env.DEV ? lazy(() => import('@/dev/MediaPreviewHarness').then(m => ({ default: m.MediaPreviewHarness }))) : null;
 const FilePreviewHarness = import.meta.env.DEV ? lazy(() => import('@/dev/FilePreviewHarness').then(m => ({ default: m.FilePreviewHarness }))) : null;
 const WorkspaceFilesHarness = import.meta.env.DEV
@@ -197,6 +198,7 @@ const router = createBrowserRouter(
       ? [{ path: '/dev/workspace-design', element: <Lazy><WorkspaceDesignHarness /></Lazy> }]
       : []),
     ...(WorkspaceNotesHarness ? [{ path: '/dev/workspace-notes', element: <Lazy><WorkspaceNotesHarness /></Lazy> }] : []),
+    ...(ComposerFeedbackHarness ? [{ path: '/dev/composer-feedback', element: <Lazy><ComposerFeedbackHarness /></Lazy> }] : []),
     ...(MediaPreviewHarness ? [{ path: '/dev/media-preview', element: <Lazy><MediaPreviewHarness /></Lazy> }] : []),
     ...(FilePreviewHarness ? [{ path: '/dev/file-preview', element: <Lazy><FilePreviewHarness /></Lazy> }] : []),
     ...(WorkspaceFilesHarness ? [{ path: '/dev/workspace-files', element: <Lazy><WorkspaceFilesHarness /></Lazy> }] : []),

@@ -1800,6 +1800,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep11e: {
+                title: '发送反馈与移动端控件优化',
+                summary: '发送即时转圈，中继标签更清晰，最大思考档增加彩色动效。',
+                send: '点击发送立即转圈，再准备和提交消息；排队与恢复会话也有即时反馈。',
+                relay: '手机会话顶栏为中继区域留出空间，点击仍可查看连接详情。',
+                effort: '最高有效思考档显示流动彩色效果；系统开启减少动态效果时保持静态。',
+            },
             sep11d: {
                 title: '图片与 skill 站内预览',
                 summary: '直接查看图片附件和 skill 文档，不用离开当前对话。',

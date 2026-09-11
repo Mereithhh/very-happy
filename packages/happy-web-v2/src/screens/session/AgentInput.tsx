@@ -91,12 +91,21 @@ import { resolveIntentSource } from '@/sync/yoloEnforcement';
 import { getAgentDefaultOverride } from '@/sync/agentDefaults';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
+import { yieldForSendFeedback } from './sendFeedback';
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
 // historical unconditional refocus (mouse-clicking Send should return the
 // caret to the textarea).
 const IS_COARSE_POINTER =
     typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
+
+function persistSessionQueue(sessionId: string, queue: QueuedMessage[]) {
+    const all = loadQueuedMessages();
+    const persisted = persistableQueuedMessages(queue);
+    if (persisted.length > 0) all[sessionId] = persisted;
+    else delete all[sessionId];
+    saveQueuedMessages(all);
+}
 
 export function AgentInput({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
@@ -113,6 +122,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const draftRef = useRef(text);
     draftRef.current = text;
     const [sending, setSending] = useState(false);
+    // React state can batch Enter/click events; take the send slot synchronously.
+    const sendingRef = useRef(false);
     const [aborting, setAborting] = useState(false);
     const [interveningId, setInterveningId] = useState<string | null>(null);
     const [queued, setQueued] = useState<QueuedMessage[]>(() =>
@@ -126,7 +137,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const [permissionModeBusy, setPermissionModeBusy] = useState(false);
     // B-098 手动展开态：上限 200px ↔ ~60% 视口高。会话内状态，刻意不持久化。
     const [expanded, setExpanded] = useState(false);
-    const { attachments, processing: processingAttachments, addFiles, remove, clear, take, restore } = useAttachments();
+    const { attachments, processing: processingAttachments, addFiles, remove, take, restore } = useAttachments();
     const queuedRef = useRef(queued);
     queuedRef.current = queued;
     const deliveryPhaseRef = useRef<QueueDeliveryPhase>('idle');
@@ -183,11 +194,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     }, [text, sessionId]);
 
     useEffect(() => {
-        const all = loadQueuedMessages();
-        const persisted = persistableQueuedMessages(queued);
-        if (persisted.length > 0) all[sessionId] = persisted;
-        else delete all[sessionId];
-        saveQueuedMessages(all);
+        persistSessionQueue(sessionId, queued);
     }, [queued, sessionId]);
 
     // selectors
@@ -403,9 +410,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     };
 
     const doSend = async (delivery: 'queue' | 'steer' = 'queue') => {
-        const value = text.trim();
-        const atts = attachments.length > 0 ? attachments : undefined;
-        if ((!value && !atts) || sending || !session) return;
+        const draft = draftRef.current;
+        const value = draft.trim();
+        if ((!value && attachments.length === 0) || sendingRef.current || processingAttachments || !session) return;
         // B-283: `/btw [question]` opens the side-question panel and NEVER
         // reaches the main conversation (attachments stay in the composer).
         // Non-Claude sessions keep sending the text verbatim.
@@ -425,43 +432,63 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         // dead state where the next tap fires no focus event and the keyboard
         // can't be summoned. Mobile-only; desktop always refocuses.
         const hadFocus = document.activeElement === taRef.current;
-        draftRef.current = '';
-        const item: QueuedMessage = {
-            id: randomUUID(),
-            text: value,
-            createdAt: Date.now(),
-            modeMeta: resolveMessageModeMeta(session, storage.getState().settings),
-            attachments: atts ? take() : undefined,
-        };
-        setText('');
-        if (!atts) clear();
-        storage.getState().updateSessionDraft(sessionId, null);
-
-        if (gate === 'restore-first') {
-            // Never write to an archived session: the message would sit on the
-            // server unprocessed. Queue it locally and bring the session back.
-            setQueued((current) => [...current, item]);
-            void restoreSession(sessionId);
-            if (hadFocus || !IS_COARSE_POINTER) requestAnimationFrame(() => taRef.current?.focus());
-            return;
-        }
-
-        if (isWorking && delivery === 'queue') {
-            setQueued((current) => [...current, item]);
-            if (hadFocus || !IS_COARSE_POINTER) requestAnimationFrame(() => taRef.current?.focus());
-            return;
-        }
-
+        sendingRef.current = true;
         setSending(true);
+        const createdAt = Date.now();
+        let takenAttachments: QueuedMessage['attachments'];
+        let draftTaken = false;
+        let queueOwnsItem = false;
         try {
-            await sendQueuedItem(item, delivery);
+            // Take only this submission before yielding. The user may start a
+            // new draft or attach another file while the request is in flight.
+            takenAttachments = attachments.length > 0 ? take() : undefined;
+            draftRef.current = '';
+            setText('');
+            draftTaken = true;
+            // Clear the submitted draft in the same transaction. A late write
+            // after the frame could overwrite a freshly remounted composer's
+            // draft for this session.
+            storage.getState().updateSessionDraft(sessionId, null);
+            const makeItem = (): QueuedMessage => ({
+                id: randomUUID(),
+                text: value,
+                createdAt,
+                modeMeta: resolveMessageModeMeta(session, storage.getState().settings),
+                attachments: takenAttachments,
+            });
+            if (gate === 'restore-first' || (isWorking && delivery === 'queue')) {
+                // Queue ownership must transfer in the click stack: navigating
+                // away during the frame must not lose an accepted submission.
+                const next = [...queuedRef.current, makeItem()];
+                persistSessionQueue(sessionId, next);
+                queuedRef.current = next;
+                setQueued(next);
+                queueOwnsItem = true;
+            }
+            // A resolved promise / one rAF resumes before paint. Yield through
+            // the frame instead, so busy is visible before relay/restore work.
+            // The release effect also waits for this submission's feedback.
+            await yieldForSendFeedback();
+
+            if (queueOwnsItem) {
+                // Its existing restore/idle gate owns eventual queue delivery.
+                if (gate === 'restore-first') void restoreSession(sessionId);
+                return;
+            }
+
+            await sendQueuedItem(makeItem(), delivery);
         } catch {
-            // Restore the complete draft on failure so attachment-only sends
-            // do not disappear after an upload or relay error.
-            draftRef.current = value;
-            setText(value);
-            if (item.attachments) restore(item.attachments);
+            // Preserve the exact failed draft and any text/files composed
+            // meanwhile, including attachment-only sends and preflight errors.
+            if (draftTaken && !queueOwnsItem) {
+                const current = draftRef.current;
+                const restoredDraft = draft && current ? `${draft}\n${current}` : draft || current;
+                draftRef.current = restoredDraft;
+                setText(restoredDraft);
+            }
+            if (takenAttachments && !queueOwnsItem) restore(takenAttachments);
         } finally {
+            sendingRef.current = false;
             setSending(false);
             if (hadFocus || !IS_COARSE_POINTER) {
                 requestAnimationFrame(() => taRef.current?.focus());
@@ -470,7 +497,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     };
 
     const interveneQueued = async (id: string) => {
-        if (!supportsSteer || !isWorking || editingId === id || deliveryPhaseRef.current === 'intervening' || sending) return;
+        if (!supportsSteer || !isWorking || editingId === id || deliveryPhaseRef.current === 'intervening' || sendingRef.current) return;
         const index = queuedRef.current.findIndex((item) => item.id === id);
         if (index < 0) return;
         const item = queuedRef.current[index];
@@ -508,6 +535,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             waitingStartSinceRef.current === null ? 0 : Date.now() - waitingStartSinceRef.current,
         );
         if (deliveryPhaseRef.current !== 'waiting-start') waitingStartSinceRef.current = null;
+        if (sendingRef.current) return;
         // B-265: hold while archived AND while a restore is still settling
         // (the store entry is dropped once presence held 'online' for 2 s).
         const releaseGate = gate === 'restore-first' || (restoreState && restoreState.phase !== 'failed') ? 'restore-first' : 'send';
@@ -522,7 +550,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             setQueued((current) => [item, ...current]);
             toast.error(t('session.chat.queueDeliveryFailed'));
         });
-    }, [isWorking, queued, sessionId, gate, restoreState, stuckTick, editingId]);
+    }, [isWorking, queued, sessionId, gate, restoreState, stuckTick, editingId, sending]);
 
     // B-322: the timeout above needs a clock of its own. Being stuck in
     // `waiting-start` is by definition the case where nothing changes, so
@@ -834,7 +862,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     value={text}
                     rows={1}
                     placeholder={t('session.inputPlaceholder')}
-                    onChange={(e) => setText(e.target.value)}
+                    onChange={(e) => { draftRef.current = e.target.value; setText(e.target.value); }}
                     onKeyDown={onKeyDown}
                     onPaste={onPaste}
                     onCompositionStart={ime.onCompositionStart}

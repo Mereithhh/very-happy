@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-11-send-relay-effort',
+    date: '2026-09-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep11e.title',
+    summaryKey: 'changelog.releases.sep11e.summary',
+    itemKeys: ['changelog.releases.sep11e.send', 'changelog.releases.sep11e.relay', 'changelog.releases.sep11e.effort'],
+  },
+  {
     id: '2026-09-11-in-app-media-preview',
     date: '2026-09-11',
     buildVersion: __APP_VERSION__,

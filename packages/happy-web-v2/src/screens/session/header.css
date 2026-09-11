@@ -92,13 +92,9 @@
   gap: var(--sp-2);
   padding-right: var(--sp-1);
 }
-/* Diagnostic chip — it must never outrank the session title, which is the only
-   thing telling you WHICH conversation this is. Clamped like .term-relay. */
-.ch-relay { border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--bg-2); color: var(--text-dim); padding: 1px 7px; font: var(--fs-10)/1.5 var(--font-mono); letter-spacing: .04em; white-space: nowrap; max-width: 112px; overflow: hidden; text-overflow: ellipsis; }
 .ch-files-toggle {
   flex: none;
 }
-@media (max-width: 420px) { .ch-relay { padding-inline: 5px; } }
 .ch-files-toggle.is-active,
 .ch-btw-toggle.is-active,
 /* the "⋯" trigger inherits the treatment when a collapsed toggle is on, so a
@@ -132,11 +128,10 @@
 .ch-identity-details dt { color:var(--text-faint); }
 .ch-identity-details dd { margin:0; overflow-wrap:anywhere; }
 @media (max-width:600px) {
- .ch { gap:2px; padding-inline:8px; }
+ .ch { gap:var(--sp-1); padding-inline:var(--sp-2); }
  .ch .vh-back { width:44px; height:44px; }
  .ch-identity-trigger { flex-direction:column; justify-content:center; gap:2px; padding:2px; min-height:44px; }
  .ch-agent, .ch-host { max-width:42px; font-size:var(--fs-10); }
- .ch .relay-badge { max-width:44px; padding-inline:4px; }
  .ch-status { gap:2px; padding-right:0; }
  .ch-title-pencil { display:none; }
  .ch-title-btn { min-height:44px; }
