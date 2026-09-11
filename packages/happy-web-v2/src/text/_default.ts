@@ -1840,9 +1840,8 @@ export const en = {
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
             sep12: {
-                title: 'Faster new chats, background command details, and HTML preview',
-                summary: 'Opening a new chat no longer stalls after your tab wakes, background commands show what they ran, and .html files render.',
-                newchat: 'Starting a new chat no longer waits on the live connection to catch up after your tab returns from the background — the new session opens right away.',
+                title: 'Background command details and HTML preview',
+                summary: 'Background commands show what they ran, and .html files render.',
                 background: 'Opening a running background command now shows the command it launched, and its output once it finishes, instead of an empty panel.',
                 html: 'Previewing an .html file renders the page in a sandboxed frame, with a toggle to view the source.',
             },

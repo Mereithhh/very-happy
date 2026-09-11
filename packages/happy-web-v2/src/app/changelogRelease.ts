@@ -21,7 +21,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.sep12.title',
     summaryKey: 'changelog.releases.sep12.summary',
-    itemKeys: ['changelog.releases.sep12.newchat', 'changelog.releases.sep12.background', 'changelog.releases.sep12.html'],
+    itemKeys: ['changelog.releases.sep12.background', 'changelog.releases.sep12.html'],
   },
   {
     id: '2026-09-11-send-relay-effort',
