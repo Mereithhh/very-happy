@@ -1,7 +1,7 @@
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Zap } from 'lucide-react';
 import { useId } from 'react';
-import { EffortSlider } from '@/components/EffortSlider';
+import { EffortEnergy, EffortSlider, isMaximumEffort } from '@/components/EffortSlider';
 import type { ModeOption } from '@/components/modelModeOptions';
 import './modemenu.css';
 import './modelEffortMenu.css';
@@ -19,12 +19,13 @@ export function ModelEffortMenu({ label, options, value, onChange, subtitle, eff
     if (!options.length) return null;
     const current = options.find(option => option.key === value) ?? options[0];
     const strength = effort.options.find(option => option.key === effort.value)?.name;
+    const atMax = isMaximumEffort(effort.options, effort.value);
     return <Popover.Root>
         <Popover.Trigger asChild>
             <button type="button" className="mm-trigger me-trigger" aria-label={label}>
                 <Zap size={13} aria-hidden="true" />
                 <span className="mm-v">{current.name}</span>
-                {strength && <span className="me-strength">{strength}</span>}
+                {strength && <span className={`me-strength${atMax ? ' me-strength--max' : ''}`}><span>{strength}</span>{atMax && <EffortEnergy />}</span>}
                 <ChevronDown size={12} className="mm-caret" aria-hidden="true" />
             </button>
         </Popover.Trigger>

@@ -21,6 +21,8 @@ export function RelayBadge({ status }: { status: MachineRelayStatus }) {
     useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
     const regional = status.transport === 'regional' && status.state === 'connected';
     const label = relayRegionLabel(status, getServerUrl());
+    const flaggedLabel = /^(\p{Regional_Indicator}{2})\s+(.+)$/u.exec(label);
+    const region = flaggedLabel?.[2] ?? label;
     return (
         <Popover.Root open={open} onOpenChange={setOpen}>
             <Popover.Trigger asChild>
@@ -31,7 +33,10 @@ export function RelayBadge({ status }: { status: MachineRelayStatus }) {
                     onClick={(event) => { event.preventDefault(); show(); }}
                 >
                     <Radio size={12} aria-hidden />
-                    <span>{label}</span>
+                    <span className="relay-badge-label">
+                        {flaggedLabel && <span className="relay-badge-flag" aria-hidden>{flaggedLabel[1]}</span>}
+                        <span className="relay-badge-region">{region}</span>
+                    </span>
                 </button>
             </Popover.Trigger>
             <Popover.Portal>

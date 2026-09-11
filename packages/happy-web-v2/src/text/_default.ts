@@ -1839,6 +1839,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep11e: {
+                title: 'Faster feedback and clearer mobile controls',
+                summary: 'Immediate send feedback, a readable relay badge, and animated maximum effort.',
+                send: 'The send button shows a spinner immediately while preparing and submitting your message, including queue and restore actions.',
+                relay: 'Mobile conversation headers give the relay region room to breathe, with connection details one tap away.',
+                effort: 'The highest supported thinking level has a flowing color effect; reduced-motion settings keep it static.',
+            },
             sep11d: {
                 title: 'Preview images and skills in the app',
                 summary: 'Inspect attachments and skill documents without leaving your conversation.',
