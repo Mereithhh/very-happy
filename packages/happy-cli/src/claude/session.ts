@@ -36,6 +36,19 @@ export class Session {
     thinking: boolean = false;
 
     /**
+     * Window after a user-initiated abort during which stray promise rejections
+     * from tearing down the SDK query (MCP transports, in-flight tool calls,
+     * the aborted streaming generator) are benign teardown noise — NOT a real
+     * crash. The process-level unhandledRejection/uncaughtException handlers
+     * must not treat them as fatal and force-archive the session (the reported
+     * "点终止就 archive" bug). Self-expiring so a genuine later crash still
+     * archives normally.
+     */
+    private abortingUntil = 0;
+    markAborting = (windowMs = 8000): void => { this.abortingUntil = Date.now() + windowMs; };
+    isAborting = (): boolean => Date.now() < this.abortingUntil;
+
+    /**
      * Account-encrypted notification producer. Set lazily once we have a
      * server session id (notifications are addressed per session). May be
      * null in offline/degraded paths — all call sites must null-check.

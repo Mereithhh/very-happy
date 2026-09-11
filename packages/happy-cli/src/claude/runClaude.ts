@@ -1049,13 +1049,29 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Crashes archive on the way out so the session shows up correctly
     // in the app rather than masquerading as live.
+    //
+    // EXCEPTION (the "点终止就 archive" bug): a user-initiated abort tears down
+    // the SDK query — its in-flight tool calls, MCP transports and the aborted
+    // streaming generator can surface a stray rejection AFTER the turn was
+    // already cancelled. That is benign teardown noise, not a crash. Treating
+    // it as a crash force-archived the whole session (unrecoverable together
+    // with a missing transcript). During the short abort window, swallow it:
+    // the query stays alive and the session stays usable.
     process.on('uncaughtException', (error) => {
         logger.debug('[START] Uncaught exception:', error);
+        if (currentSession?.isAborting()) {
+            logger.debug('[START] Uncaught exception during abort teardown — swallowing, not archiving');
+            return;
+        }
         void cleanup({ archive: true });
     });
 
     process.on('unhandledRejection', (reason) => {
         logger.debug('[START] Unhandled rejection:', reason);
+        if (currentSession?.isAborting()) {
+            logger.debug('[START] Unhandled rejection during abort teardown — swallowing, not archiving');
+            return;
+        }
         void cleanup({ archive: true });
     });
 

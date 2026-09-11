@@ -65,6 +65,33 @@ describe('buildResumeLaunch', () => {
         });
     });
 
+    it('freshConversation drops --resume and does not need the recorded id (transcript gone)', () => {
+        // Claude: no --resume, no claudeSessionId required.
+        expect(buildResumeLaunch({
+            id: 'session-4',
+            active: false,
+            metadata: {
+                path: '/tmp/repo', flavor: 'claude',
+                host: 'localhost', homeDir: '/tmp', happyHomeDir: '/tmp/.happy', happyLibDir: '/tmp/happy', happyToolsDir: '/tmp/happy/tools',
+            },
+        }, { startedBy: 'daemon', claudeStartingMode: 'remote', freshConversation: true })).toEqual({
+            cwd: '/tmp/repo',
+            args: ['claude', '--happy-starting-mode', 'remote', '--started-by', 'daemon'],
+        });
+        // Codex: same — fresh thread, no --resume.
+        expect(buildResumeLaunch({
+            id: 'session-5',
+            active: false,
+            metadata: {
+                path: '/tmp/p', flavor: 'codex',
+                host: 'localhost', homeDir: '/tmp', happyHomeDir: '/tmp/.happy', happyLibDir: '/tmp/happy', happyToolsDir: '/tmp/happy/tools',
+            },
+        }, { startedBy: 'daemon', freshConversation: true })).toEqual({
+            cwd: '/tmp/p',
+            args: ['codex', '--started-by', 'daemon'],
+        });
+    });
+
     it('rejects unsupported flavors', () => {
         expect(() => buildResumeLaunch({
             id: 'session-3',

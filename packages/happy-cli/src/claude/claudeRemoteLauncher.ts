@@ -39,6 +39,10 @@ interface PermissionsField {
     allowedTools?: string[];
 }
 
+/** How long the stop button waits for a graceful `interrupt()` to actually
+ *  stop the turn before escalating to the hard AbortController abort. */
+const ABORT_INTERRUPT_GRACE_MS = 4000;
+
 export async function claudeRemoteLauncher(
     session: Session,
     onPermissionModeChange?: (mode: ClaudeSdkPermissionMode) => void,
@@ -106,8 +110,39 @@ export async function claudeRemoteLauncher(
 
     async function doAbort() {
         logger.debug('[remote]: doAbort');
+        // Open the abort-teardown window BEFORE touching the query so a stray
+        // rejection from the escalated hard abort below can never be mistaken
+        // for a crash and force-archive the session (see Session.markAborting).
+        session.markAborting();
         session.onAbort();
+        // Prefer the SDK's graceful interrupt: it stops the current turn but
+        // keeps the streaming query — same process, same claudeSessionId — so
+        // we neither re-launch a fresh Claude process (a new transcript id that
+        // can strand restore on "conversation-missing") nor tear MCP/tools down
+        // abruptly. Escalate to the hard abort only if the turn does not
+        // actually stop within the grace window (a genuinely wedged turn).
+        if (session.thinking) {
+            const interrupted = await turnSteering.interruptTurn().catch((e) => {
+                logger.debug('[remote]: interruptTurn threw, falling back to hard abort', e);
+                return false;
+            });
+            if (interrupted && await waitForThinkingToStop(ABORT_INTERRUPT_GRACE_MS)) {
+                logger.debug('[remote]: interrupt stopped the turn gracefully; query kept alive');
+                return;
+            }
+            logger.debug('[remote]: interrupt did not stop the turn in time; escalating to hard abort');
+        }
         await abort();
+    }
+
+    /** Poll until the turn stops thinking or the grace window elapses. */
+    async function waitForThinkingToStop(graceMs: number): Promise<boolean> {
+        const deadline = Date.now() + graceMs;
+        while (Date.now() < deadline) {
+            if (!session.thinking) return true;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return !session.thinking;
     }
 
     async function doSwitch() {

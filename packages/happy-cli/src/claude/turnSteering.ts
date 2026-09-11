@@ -18,6 +18,18 @@ export function createTurnSteeringController() {
                 throw error;
             }
         },
+        /**
+         * Interrupt the current turn WITHOUT injecting a follow-up message —
+         * used by the stop button. Like steer it keeps the streaming query
+         * alive (same process, same claudeSessionId); unlike steer it does not
+         * set the steering flag, so the turn simply ends and the query waits
+         * for the next user message. Returns false when no query is attached.
+         */
+        async interruptTurn(): Promise<boolean> {
+            if (!interrupt) return false;
+            await interrupt();
+            return true;
+        },
         consumeReady(): boolean {
             if (!steering) return false;
             steering = false;

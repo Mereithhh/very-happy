@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-12-abort-keeps-session',
+    cliVersion: '0.2.136',
+    date: '2026-09-12',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep12a.title',
+    summaryKey: 'changelog.releases.sep12a.summary',
+    itemKeys: ['changelog.releases.sep12a.stop', 'changelog.releases.sep12a.restore'],
+  },
+  {
     id: '2026-09-12-edit-message-inline-resend',
     date: '2026-09-12',
     buildVersion: __APP_VERSION__,

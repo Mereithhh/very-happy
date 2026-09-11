@@ -20,4 +20,21 @@ describe('turn steering controller', () => {
         await expect(controller.steer()).rejects.toThrow('unsupported');
         expect(controller.consumeReady()).toBe(false);
     });
+
+    it('interruptTurn stops the turn WITHOUT the steering flag (stop button, not steer)', async () => {
+        const controller = createTurnSteeringController();
+        const interrupt = vi.fn(async () => undefined);
+        controller.setInterrupt(interrupt);
+
+        await expect(controller.interruptTurn()).resolves.toBe(true);
+        expect(interrupt).toHaveBeenCalledOnce();
+        // Unlike steer(), a plain abort must NOT arm a follow-up injection:
+        // the turn just ends and the streaming query waits for the next message.
+        expect(controller.consumeReady()).toBe(false);
+    });
+
+    it('interruptTurn returns false when no query is attached', async () => {
+        const controller = createTurnSteeringController();
+        await expect(controller.interruptTurn()).resolves.toBe(false);
+    });
 });

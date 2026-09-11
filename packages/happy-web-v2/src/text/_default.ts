@@ -1839,6 +1839,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep12a: {
+                title: 'Stopping a turn keeps your session',
+                summary: 'The stop button interrupts the current turn without ending or archiving the whole session, and a session whose transcript went missing can still be restored. Applies to sessions started or restarted after the CLI updates.',
+                stop: 'Pressing stop now interrupts just the current turn and keeps the session (and its history) alive, instead of tearing the whole thing down — which could crash-archive a session so it could no longer be reopened.',
+                restore: 'Restoring a session whose on-disk transcript is gone continues it as a fresh conversation in the same directory, with your history still visible, instead of failing with "the conversation file is no longer on the machine".',
+            },
             sep12b: {
                 title: 'Simpler edit and resend',
                 summary: 'Editing a message resends it in place, without creating a branch.',
