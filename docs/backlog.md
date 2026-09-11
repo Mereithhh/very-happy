@@ -20,6 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-459 | **US relay 搬离 fb-us**：FiberState SLC1 电力维护通告暴露 relay-us 与 fb-us 单公网 IP→DNAT→k3s traefik 链路同生共死 | ops | Owner 2026-09-11（同事在用，要求先迁） | done | 2026-09-11 make-before-break 迁到 dmit-la（洛杉矶 Docker + Caddy，与 hw-sg 同形态）：同一 `RELAY_TOKEN_SECRET`、id 仍 `us-fb`/US West、域名不变故控制面 `HAPPY_RELAYS_JSON` 不动；CF A 记录 38.58.179.254→154.21.82.68 后 Caddy 当场签证书，health/WS 101/`/v1/relays` 候选核过，k8sus `relay-us` 缩到 0 留作回滚。`deploy-relays.sh` 两区统一走 Docker 路径并清旧镜像（1.5 GB/版，20 GB 小盘），`RELAY_US_*` secrets 与 deploy key 已指向 dmit-la；k3s manifest 与远端脚本删除。⚠️ dmit-la 1c/1G 已有 docker-mirror/captcha-web/intern 四个租户，relay 占 ~115 MB，再加东西前先看内存 |
 | B-458 | 发送即时反馈、移动中继布局与最大思考档动效 | ux | Owner 2026-09-11 | done | 发送首帧 busy、防重复与 queue 切换会话保护；移动中继可读短码、28px 视觉标签/44px 点击区；最高档共享流动彩带，减少动态效果静止。32 项发送/队列机制回归，320/390px/桌面明暗实测与动画像素核验通过。 |
 | B-457 | 输入附件、历史图片与 skill 站内预览 | ux | Owner 2026-09-11 | done | 输入与历史图片共用站内缩放/下载预览，关闭保留草稿和焦点；skill 同页阅读、复制、下载及相对文档导航。缓存租约与失败下载回归、真实粘贴、320/390px/桌面明暗主题验证通过。 |
 | B-456 | 消息操作常驻图标与可见时间 | ux | Owner 2026-09-11 | done | 消息操作栏常驻且仅显示图标，旁边显示真实 HH:mm，悬停时间保留完整日期；覆盖附件-only/本地命令，保留原位编辑与触屏命中区。桌面、320/390px 明暗主题与完整包门禁通过。 |

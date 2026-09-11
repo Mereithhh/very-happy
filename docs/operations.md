@@ -21,7 +21,7 @@ commits or tags to it and do not use it as a deployment source.
 | Host base services | `/opt/happy/docker-compose.yml` runs `vh-pgbouncer` only; release slots in `/opt/happy/release/docker-compose.yml` join the same `happy_default` network |
 | Daemon | published `very-happy-cli` on `mac-office` / `mac-main` |
 | Singapore relay | `sg-hw`, `https://relay-sg.veryhappy.dev`, Docker + Caddy on `hw-sg` |
-| US relay | `us-fb`, `https://relay-us.veryhappy.dev`, k3s + Traefik on `fb-us`/`k8sus` |
+| US relay | `us-fb`, `https://relay-us.veryhappy.dev`, Docker + Caddy on `dmit-la` (Los Angeles). Moved off `fb-us`/k8sus on 2026-09-11 (B-459); the k3s deployment there is scaled to 0 and kept only as a rollback |
 | Retired origin | `vh-us` (Tokyo VPS, 69.8.128.238) — server stopped 2026-09-07; keeps a frozen PostgreSQL copy for rollback until ~2026-09-21. Its Caddy now 301-redirects `happy.mereith.com` page loads to `veryhappy.dev` and transparently proxies `/v1|/v2|/v3|/files|/health` (websocket included) to `vh-sg`, so a client still configured with the legacy host keeps working |
 
 The hosted service is server-trusted, not E2E. The server can recover account
@@ -297,8 +297,13 @@ the package is intentionally changed back to private.
 
 The workflow uses a dedicated deploy key and never creates or rotates
 `RELAY_TOKEN_SECRET`. The one-time secret and reverse-proxy setup must already
-exist. `hw-sg` binds the container on `127.0.0.1:3011` because port 3010 belongs
-to another service; k3s keeps the relay's container port at 3010. Post-deploy
+exist. Both regions are plain Docker + Caddy hosts with the same layout
+(`/opt/very-happy-relay/{.env,docker-compose.yml}`, a Caddy site block in
+`ops/relay/Caddyfile.<region>`); `hw-sg` binds the container on
+`127.0.0.1:3011` because port 3010 belongs to another service, `dmit-la` uses
+`127.0.0.1:3010`. The deploy removes every other relay image tag on the host
+after the new container is healthy, because each image is ~1.5 GB and the
+hosts have 20 GB disks. Post-deploy
 health checks require both the configured relay id and the exact commit SHA in
 `version`; a healthy old pod is not accepted as a successful rollout.
 
