@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-12-edit-message-inline-resend',
+    date: '2026-09-12',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep12b.title',
+    summaryKey: 'changelog.releases.sep12b.summary',
+    itemKeys: ['changelog.releases.sep12b.resend'],
+  },
+  {
     id: '2026-09-12-faster-new-chat-html-preview',
     date: '2026-09-12',
     buildVersion: __APP_VERSION__,

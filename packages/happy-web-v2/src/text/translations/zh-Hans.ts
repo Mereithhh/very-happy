@@ -1800,6 +1800,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep12b: {
+                title: '编辑重发更简单',
+                summary: '编辑消息即在原地重新发送，不再创建分支。',
+                resend: '消息上的编辑按钮现在直接编辑文本，并把它作为新消息发到当前会话——不再创建分支，也没有回退点选择。',
+            },
             sep12: {
                 title: '后台命令详情与 HTML 预览',
                 summary: '后台命令能看到执行的命令，.html 文件可直接渲染。',

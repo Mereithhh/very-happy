@@ -1839,6 +1839,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep12b: {
+                title: 'Simpler edit and resend',
+                summary: 'Editing a message resends it in place, without creating a branch.',
+                resend: 'The Edit button on your message now edits the text and resends it as a new message in the same conversation — no branch, no rewind-point picker.',
+            },
             sep12: {
                 title: 'Background command details and HTML preview',
                 summary: 'Background commands show what they ran, and .html files render.',
