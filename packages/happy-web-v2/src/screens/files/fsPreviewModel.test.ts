@@ -20,6 +20,8 @@ describe('previewKindOf / previewMimeOf', () => {
         expect(previewKindOf('/a/vec.svg')).toBe('image');
         expect(previewKindOf('/a/README.md')).toBe('markdown');
         expect(previewKindOf('/a/notes.markdown')).toBe('markdown');
+        expect(previewKindOf('/a/report.HTML')).toBe('html');
+        expect(previewKindOf('/a/page.htm')).toBe('html');
         expect(previewKindOf('/a/paper.pdf')).toBe('pdf');
         expect(previewKindOf('/a/main.ts')).toBe('text');
         expect(previewKindOf('/a/Makefile')).toBe('text');

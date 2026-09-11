@@ -14,6 +14,7 @@ let runningSubagentCards: typeof import('./SubagentDock').runningSubagentCards;
 let liveSubagentDockCards: typeof import('./SubagentDock').liveSubagentDockCards;
 let ToolGroupView: typeof import('./ToolGroupView').ToolGroupView;
 let ActivityMessages: typeof import('./ActivityMessages').ActivityMessages;
+let SubagentDetail: typeof import('./SubagentDetail').SubagentDetail;
 
 beforeAll(async () => {
     installBrowserTestGlobals();
@@ -21,6 +22,7 @@ beforeAll(async () => {
     ({ runningSubagentCards } = await import('./SubagentDock'));
     ({ liveSubagentDockCards } = await import('./SubagentDock'));
     ({ ActivityMessages } = await import('./ActivityMessages'));
+    ({ SubagentDetail } = await import('./SubagentDetail'));
 });
 
 const T0 = 1_700_000_000_000;
@@ -131,6 +133,42 @@ describe('sub-agent row (B-317)', () => {
         expect(nested).not.toContain('sa-dock-item');
         expect(nested).toContain('grandchild-thread');
         expect(nested).toContain('Grandchild task');
+    });
+});
+
+function bgCommandCard(overrides?: { state?: 'running' | 'completed'; result?: unknown }): ToolCallMessage {
+    return {
+        kind: 'tool-call',
+        id: 'bg-cmd-1',
+        localId: null,
+        createdAt: T0,
+        children: [],
+        subagent: { status: overrides?.state === 'completed' ? 'completed' : 'running', subagentType: 'background-command', updatedAt: T0 },
+        tool: {
+            name: 'Bash',
+            state: overrides?.state ?? 'running',
+            input: { sessionSubagent: 'bg-1', description: '验证 kubectl', command: 'echo NEEDLE_CMD && sleep 5' },
+            result: overrides?.result ?? null,
+            createdAt: T0,
+            startedAt: T0,
+            completedAt: overrides?.state === 'completed' ? T0 + 10 : null,
+            description: null,
+        },
+    } as ToolCallMessage;
+}
+
+describe('background command drawer (backgrounded Bash)', () => {
+    it('shows the command a running background task launched instead of "no activity"', () => {
+        const html = inSession(<SubagentDetail message={bgCommandCard()} />);
+        expect(html).toContain('NEEDLE_CMD');
+        expect(html).toContain('cmd-prompt'); // terminal-styled CommandView
+        expect(html).not.toContain('sa-empty');
+    });
+
+    it('shows the captured output once the background command completes', () => {
+        const html = inSession(<SubagentDetail message={bgCommandCard({ state: 'completed', result: { stdout: 'NEEDLE_OUT\n' } })} />);
+        expect(html).toContain('NEEDLE_CMD');
+        expect(html).toContain('NEEDLE_OUT');
     });
 });
 

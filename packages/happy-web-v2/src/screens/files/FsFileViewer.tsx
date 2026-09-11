@@ -86,14 +86,14 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
     };
     const kind = previewKindOf(path);
     const [state, setState] = useState<ViewerState>({ phase: 'loading', progress: null });
-    const [mdSource, setMdSource] = useState(false);
+    const [showSource, setShowSource] = useState(false);
     const [imgActual, setImgActual] = useState(false);
     const [blobUrl, setBlobUrl] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
         setState({ phase: 'loading', progress: null });
-        setMdSource(false);
+        setShowSource(false);
         setImgActual(false);
 
         (async () => {
@@ -225,13 +225,35 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
                         {t('fsBrowser.fileTruncated', { size: formatFsSize(state.size) })}
                     </div>
                 );
-                if (kind === 'markdown' && !mdSource) {
+                if (kind === 'markdown' && !showSource) {
                     return (
                         <div className="fsb-viewer-body fsb-viewer-body--md">
                             {truncNotice}
                             <div className="fsb-md">
                                 <Markdown text={state.text} trustContent />
                             </div>
+                        </div>
+                    );
+                }
+                if (kind === 'html' && !showSource) {
+                    // Render the page itself, isolated in a sandboxed iframe.
+                    // Crucially NO `allow-same-origin`: the file is written by the
+                    // agent (or whoever it ran), so its scripts run in an opaque
+                    // origin and cannot read this app's cookies, localStorage, or
+                    // DOM. `srcDoc` keeps it fully inline — machine-local relative
+                    // asset paths do not resolve here (the frame has no origin),
+                    // which is the expected limit of a single-file preview; the
+                    // source toggle in the head shows the raw HTML.
+                    return (
+                        <div className="fsb-viewer-body fsb-viewer-body--html">
+                            {truncNotice}
+                            <iframe
+                                className="fsb-html"
+                                title={path}
+                                srcDoc={state.text}
+                                sandbox="allow-scripts allow-popups allow-forms allow-modals"
+                                referrerPolicy="no-referrer"
+                            />
                         </div>
                     );
                 }
@@ -251,15 +273,15 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
             <div className="fsb-viewer-head">
                 <span className="fsb-viewer-path" title={path}>{path}</span>
                 <div className="fsb-viewer-actions">
-                {kind === 'markdown' && state.phase === 'text' && (
+                {(kind === 'markdown' || kind === 'html') && state.phase === 'text' && (
                     <button
                         type="button"
-                        className={`fsb-iconbtn${mdSource ? ' is-active' : ''}`}
-                        onClick={() => setMdSource((v) => !v)}
-                        aria-label={mdSource ? t('fsBrowser.viewRendered') : t('fsBrowser.viewSource')}
-                        title={mdSource ? t('fsBrowser.viewRendered') : t('fsBrowser.viewSource')}
+                        className={`fsb-iconbtn${showSource ? ' is-active' : ''}`}
+                        onClick={() => setShowSource((v) => !v)}
+                        aria-label={showSource ? t('fsBrowser.viewRendered') : t('fsBrowser.viewSource')}
+                        title={showSource ? t('fsBrowser.viewRendered') : t('fsBrowser.viewSource')}
                     >
-                        {mdSource ? <Eye size={14} /> : <Code size={14} />}
+                        {showSource ? <Eye size={14} /> : <Code size={14} />}
                     </button>
                 )}
                 {state.phase === 'text' && !state.truncated && <CopyButton icon={ClipboardCopy} text={state.text} label={zh ? '复制文件内容' : 'Copy file contents'} showLabel className="fsb-iconbtn fsb-copy-content" size={14}/>}

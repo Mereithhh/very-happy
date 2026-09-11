@@ -19,7 +19,8 @@ import { CopyButton } from '@/ui/CopyButton';
 import { Markdown } from './Markdown';
 import { buildSubagentSummary } from './subagentSummary';
 import { presentedSubagentStatus } from './subagentAbort';
-import { resultToText } from './toolInfo';
+import { asCommand, resultToText } from './toolInfo';
+import { CommandView } from './CommandView';
 import { formatDurationMs, formatTokens } from './format';
 import { ActivityMessages } from './ActivityMessages';
 import { messageTimestamp } from './messageTimestamp';
@@ -54,7 +55,13 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
     const summary = buildSubagentSummary(message, Number.POSITIVE_INFINITY);
     const status = presentedSubagentStatus(message, abortedAt);
     const prompt = typeof message.tool.input?.prompt === 'string' ? message.tool.input.prompt : null;
-    const out = resultToText(message.tool.result);
+    // A backgrounded shell command surfaces here as a Bash tool-call (no prompt,
+    // no sidechain children) rather than an Agent/Task sub-agent. Without this
+    // its drawer showed only the status badge and "no activity" — never the
+    // command the user launched. Render it terminal-styled like an inline Bash
+    // card; the same view fills in stdout/stderr once the command finishes.
+    const command = asCommand(message.tool);
+    const out = command ? '' : resultToText(message.tool.result);
     // The log is the point of the drawer, so it is not clipped to 50 lines the
     // way the old inline card was — the drawer scrolls, the transcript doesn't.
     const children = [...message.children].sort((a, b) => compareMessagesNewestFirst(b, a));
@@ -78,6 +85,12 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
                 {summary.requestedModel && <span className="sa-model">{t('session.chat.subagentRequestedModel')}: {summary.requestedModel}</span>}
                 {facts.length > 0 && <span className="sa-facts">{facts.join(' · ')}</span>}
             </div>
+
+            {command && (
+                <div className="sa-command">
+                    <CommandView command={command.command} stdout={command.stdout} stderr={command.stderr} error={command.error} />
+                </div>
+            )}
 
             {prompt && (
                 <Fold label={t('session.chat.subagentPrompt')} defaultOpen>
@@ -115,7 +128,7 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
                 </Fold>
             )}
 
-            {children.length === 0 && !lifecycle?.result && !out.trim() && (
+            {!command && children.length === 0 && !lifecycle?.result && !out.trim() && (
                 <div className="sa-empty">{t('session.chat.subagentNoActivity')}</div>
             )}
         </div>
