@@ -1,4 +1,5 @@
 import { useTranslation } from '@/i18n/useTranslation';
+import { SkillDocumentLink } from '@/ui/SkillDocumentLink';
 
 export function TodoSetupGuide({ onRetry }: { onRetry: () => void }) {
     const { lang, t } = useTranslation();
@@ -14,7 +15,7 @@ export function TodoSetupGuide({ onRetry }: { onRetry: () => void }) {
         </ol>
         <p className="td-setup-body">{zh ? '也可以把下面的接入 skill 链接交给 AI，让它帮你检查机器、配置并验证。' : 'Give the setup skill link below to your AI to check the machine, configure and verify the integration.'}</p>
         <div className="td-setup-actions">
-            <a href="/skills/very-happy-todo-provider/SKILL.md" target="_blank" rel="noreferrer">{zh ? 'AI 接入 skill' : 'AI setup skill'}</a>
+            <SkillDocumentLink href="/skills/very-happy-todo-provider/SKILL.md">{zh ? 'AI 接入 skill' : 'AI setup skill'}</SkillDocumentLink>
             <a href="https://github.com/Mereithhh/very-happy/blob/main/docs/channels.md#quick-start-local-file-provider" target="_blank" rel="noreferrer">{zh ? '查看接入教程' : 'Read setup guide'}</a>
             <button type="button" className="td-retry" onClick={onRetry}>{t('todos.retry')}</button>
         </div>

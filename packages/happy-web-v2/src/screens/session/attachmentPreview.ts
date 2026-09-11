@@ -24,19 +24,58 @@ export function isPreviewableImage(mimeType: string | null | undefined): boolean
 
 const cache = new Map<string, string>();           // insertion order == LRU order
 const inflight = new Map<string, Promise<string | null>>();
+const retainedUrls = new Map<string, number>();
+const pendingRetains = new Map<string, number>();
 
 function cacheKey(sessionId: string, ref: string): string {
     return `${sessionId}\u0000${ref}`;
 }
 
-function remember(key: string, url: string) {
-    cache.set(key, url);
+function trimCache(keepKey?: string) {
     while (cache.size > MAX_ENTRIES) {
-        const oldest = cache.keys().next().value as string | undefined;
+        const oldest = [...cache.keys()].find(key => key !== keepKey && !pendingRetains.has(key) && !retainedUrls.has(cache.get(key)!));
         if (oldest === undefined) break;
         const evicted = cache.get(oldest);
         cache.delete(oldest);
         if (evicted) URL.revokeObjectURL(evicted);
+    }
+}
+
+function remember(key: string, url: string) {
+    cache.set(key, url);
+    trimCache(key);
+}
+
+/** Keep an open full-size preview downloadable while older thumbnails rotate out. */
+export function retainAttachmentUrl(url: string): () => void {
+    retainedUrls.set(url, (retainedUrls.get(url) ?? 0) + 1);
+    let released = false;
+    return () => {
+        if (released) return;
+        released = true;
+        const count = retainedUrls.get(url) ?? 0;
+        if (count > 1) retainedUrls.set(url, count - 1);
+        else {
+            retainedUrls.delete(url);
+            if (![...cache.values()].includes(url)) URL.revokeObjectURL(url);
+        }
+        trimCache();
+    };
+}
+
+/** Reserve before awaiting: concurrent image loads cannot evict the URL between
+ * its creation and the full-size viewer receiving its lease. */
+export async function acquireAttachmentUrl(sessionId: string, ref: string, mimeType: string) {
+    const key = cacheKey(sessionId, ref);
+    pendingRetains.set(key, (pendingRetains.get(key) ?? 0) + 1);
+    try {
+        const url = await loadAttachmentUrl(sessionId, ref, mimeType);
+        return url ? { url, release: retainAttachmentUrl(url) } : null;
+    } finally {
+        const count = pendingRetains.get(key) ?? 0;
+        if (count > 1) pendingRetains.set(key, count - 1);
+        else pendingRetains.delete(key);
+        trimCache();
     }
 }
 
@@ -76,7 +115,7 @@ export function forgetAttachmentUrl(sessionId: string, ref: string) {
     const url = cache.get(key);
     if (url !== undefined) {
         cache.delete(key);
-        URL.revokeObjectURL(url);
+        if (!retainedUrls.has(url)) URL.revokeObjectURL(url);
     }
     inflight.delete(key);
 }
@@ -86,6 +125,8 @@ export function resetAttachmentPreviewCache() {
     for (const url of cache.values()) URL.revokeObjectURL(url);
     cache.clear();
     inflight.clear();
+    retainedUrls.clear();
+    pendingRetains.clear();
 }
 
 /** 测试用：当前缓存条目数。 */

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { MonitorSmartphone, TerminalSquare, FolderOpen, ArrowRight } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Command } from './ConnectMachineGuide';
+import { SkillDocumentLink } from '@/ui/SkillDocumentLink';
 import './capabilityGuide.css';
 
 /** Shared by first-run and the persistent help page: describe shipped paths only. */
@@ -37,7 +38,7 @@ export function AgentSkillsGuide() {
     <div className="cap-guide__skills">
       <article><h3>{zh ? '团队协作 skill' : 'Teams skill'}</h3><p>{zh ? '网页创建团队会自动准备协作指引。从终端发起时，展开上方“从终端发起团队”，选择 Claude Code、Codex 或 pi，复制安装命令。让托管会话读取安装返回的绝对路径；安装本身不会自动接管终端或修改宿主的 skill 发现目录。' : 'The app prepares team instructions automatically. For terminal use, expand “Start from a terminal” above, select Claude Code, Codex or pi, and copy the install command. Have the managed conversation read the returned path. Installation does not attach a terminal or modify host skill discovery.'}</p><a href="#team-skill-install" onClick={() => { const panel = document.getElementById('team-skill-install'); if (panel instanceof HTMLDetailsElement) panel.open = true; }}>{zh ? '选择 Agent 并查看安装命令' : 'Choose an agent and get the install command'}<ArrowRight size={14}/></a><br/><Link to="/docs/agent-teams">{zh ? '团队安装与使用教程' : 'Teams installation guide'}<ArrowRight size={14}/></Link></article>
       <article><h3>{zh ? '让 AI 使用我的待办' : 'Let AI use my todos'}</h3><p>{zh ? '在“待办 → 我的待办”点击“让 AI 使用我的待办”，复制完整指引给 Agent；也可在已连接的电脑运行下方命令。请让 Agent 使用同一个账号和 server，先读取现有待办。' : 'In Todos → My todos, choose “Let AI use my todos” and paste the instructions into your agent, or run this command on your connected computer. Use the same account and server, and read existing todos first.'}</p><Command value="very-happy todo skill"/><Link to="/todos">{zh ? '打开待办并复制 skill' : 'Open todos and copy the skill'}<ArrowRight size={14}/></Link></article>
-      <article><h3>{zh ? '接入自己的待办来源' : 'Connect a todo provider'}</h3><p>{zh ? '如果已有外部任务系统，可以让 Agent 阅读 provider skill，协助配置来源。它与内置待办独立；是否支持你的服务，需要按文档核对，读取 skill 不会自动获得账号权限。' : 'If you use an external task system, give your agent the provider skill to help configure a source. Providers are separate from built-in todos. Check service compatibility; reading a skill grants no account access.'}</p><a href="/skills/very-happy-todo-provider/SKILL.md" target="_blank" rel="noreferrer">{zh ? '打开 provider skill' : 'Open provider skill'}<ArrowRight size={14}/></a></article>
+      <article><h3>{zh ? '接入自己的待办来源' : 'Connect a todo provider'}</h3><p>{zh ? '如果已有外部任务系统，可以让 Agent 阅读 provider skill，协助配置来源。它与内置待办独立；是否支持你的服务，需要按文档核对，读取 skill 不会自动获得账号权限。' : 'If you use an external task system, give your agent the provider skill to help configure a source. Providers are separate from built-in todos. Check service compatibility; reading a skill grants no account access.'}</p><SkillDocumentLink href="/skills/very-happy-todo-provider/SKILL.md">{zh ? '打开 provider skill' : 'Open provider skill'}<ArrowRight size={14}/></SkillDocumentLink></article>
     </div>
   </section>;
 }

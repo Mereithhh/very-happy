@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * 附件条的失败路径（B-355 round-4）。
  *

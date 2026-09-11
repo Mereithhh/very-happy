@@ -11,7 +11,7 @@ import { appendMessageQuote } from './messageActionsModel';
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, CornerDownRight, FileText, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
+import { Check, CornerDownRight, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
@@ -84,6 +84,7 @@ import {
     composerTextareaHeight,
 } from './composerExpand';
 import './input.css';
+import { ComposerAttachments } from './ComposerAttachments';
 import { shouldApplyPermissionModeLive } from './livePermissionMode';
 import { derivePermissionModeDisplay } from './permissionModeDisplay';
 import { resolveIntentSource } from '@/sync/yoloEnforcement';
@@ -685,31 +686,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     return (
         <div className="ci" style={{ paddingBottom: 'max(var(--sp-3), env(safe-area-inset-bottom))' }}>
-            {/* attachment previews */}
-            {attachments.length > 0 && (
-                <div className="ci-attachments">
-                    {attachments.map((a) => (
-                        <div key={a.id} className="ci-att">
-                            {a.width === 0 || a.height === 0 ? (
-                                <div className="ci-att-file" title={a.name}>
-                                    <FileText size={20} />
-                                    <span>{a.name}</span>
-                                </div>
-                            ) : (
-                                <img className="ci-att-img" src={a.uri} alt={a.name} />
-                            )}
-                            <button
-                                type="button"
-                                className="ci-att-remove"
-                                onClick={() => remove(a.id)}
-                                aria-label={t('common.delete')}
-                            >
-                                <X size={12} />
-                            </button>
-                        </div>
-                    ))}
-                </div>
-            )}
+            <ComposerAttachments attachments={attachments} onRemove={remove} />
 
             {isPiAgent(flavor) && attachments.some((attachment) => attachment.mimeType.startsWith('image/')) && (
                 <p className="ci-attachment-hint">{t('imageUpload.visionModelHint')}</p>

@@ -36,6 +36,7 @@ import { useSessionMessages } from '@/sync/storage';
 import { splitOptionSegments } from './optionsBlock';
 import { rehypeTableCellBreaks, rehypeTableScope, rehypeTextLeaves, safeUrlTransform } from './markdownPlugins';
 import { streamThrottleMs } from './streamThrottle';
+import { SkillDocumentLink } from '@/ui/SkillDocumentLink';
 
 // Stable identities: react-markdown re-runs the whole unified pipeline on every
 // render, and a fresh array here would also invalidate the memo below.
@@ -219,9 +220,9 @@ function buildComponents(plainCode: boolean, trustContent: boolean): Components 
         },
         a({ href, children }) {
             return (
-                <a href={href} target="_blank" rel="noopener noreferrer" className="md-link">
+                <SkillDocumentLink href={href} target="_blank" rel="noopener noreferrer" className="md-link">
                     {children}
-                </a>
+                </SkillDocumentLink>
             );
         },
         img({ src, alt, title }) {

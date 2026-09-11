@@ -34,6 +34,8 @@
 }
 .ua-thumb {
   display: block;
+  padding: 0;
+  cursor: zoom-in;
   max-width: min(240px, 100%);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
