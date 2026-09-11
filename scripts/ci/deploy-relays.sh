@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy the immutable relay image to hw-sg Docker and/or fb-us k3s.
+# Deploy the immutable relay image to the hw-sg (sg) and dmit-la (us) Docker hosts.
 set -euo pipefail
 
 TARGET="${1:-all}"
@@ -10,29 +10,34 @@ SSH_OPTS=(-i "${SSH_KEY:?SSH_KEY is required}" -o StrictHostKeyChecking=accept-n
 [[ "$IMAGE" == "ghcr.io/mereithhh/very-happy-relay:${VERSION}" ]]
 [[ "$VERSION" =~ ^[0-9a-f]{40}$ ]]
 
-deploy_sg() {
-    local remote="${RELAY_SG_USER}@${RELAY_SG_HOST}"
-    local ssh_opts=("${SSH_OPTS[@]}" -p "${RELAY_SG_PORT}")
-    local scp_opts=("${SSH_OPTS[@]}" -P "${RELAY_SG_PORT}")
+deploy_docker() {
+    # $1 = region key (sg|us); the remote runs Docker + Caddy, compose file
+    # lives in ops/relay/docker-compose.<region>.yml and the one-time .env
+    # (RELAY_TOKEN_SECRET only) must already exist on the host.
+    local region="$1" host port user
+    case "$region" in
+        sg) host="${RELAY_SG_HOST:?}"; port="${RELAY_SG_PORT:?}"; user="${RELAY_SG_USER:?}" ;;
+        us) host="${RELAY_US_HOST:?}"; port="${RELAY_US_PORT:?}"; user="${RELAY_US_USER:?}" ;;
+        *) echo "unknown region $region" >&2; return 2 ;;
+    esac
+    local remote="${user}@${host}"
+    local ssh_opts=("${SSH_OPTS[@]}" -p "$port")
+    local scp_opts=("${SSH_OPTS[@]}" -P "$port")
     ssh "${ssh_opts[@]}" "$remote" \
         'install -d -m 700 /opt/very-happy-relay; test -s /opt/very-happy-relay/.env'
-    echo "== relay-sg: pull immutable image from GHCR =="
+    echo "== relay-$region: pull immutable image from GHCR =="
     ssh "${ssh_opts[@]}" "$remote" "docker pull '$IMAGE' >/dev/null"
-    scp "${scp_opts[@]}" ops/relay/docker-compose.sg.yml "$remote:/opt/very-happy-relay/docker-compose.yml"
+    scp "${scp_opts[@]}" "ops/relay/docker-compose.$region.yml" "$remote:/opt/very-happy-relay/docker-compose.yml"
     ssh "${ssh_opts[@]}" "$remote" \
         "cd /opt/very-happy-relay && RELAY_IMAGE='$IMAGE' RELAY_VERSION='$VERSION' docker compose up -d --wait"
+    # Relay images are ~1.5 GB and the hosts are 20 GB VPSes: drop every other
+    # very-happy-relay tag once the new container is healthy.
+    ssh "${ssh_opts[@]}" "$remote" \
+        "docker images ghcr.io/mereithhh/very-happy-relay --format '{{.Repository}}:{{.Tag}}' | grep -vx '$IMAGE' | xargs -r docker rmi >/dev/null 2>&1 || true"
 }
 
-deploy_us() {
-    local remote="${RELAY_US_USER}@${RELAY_US_HOST}"
-    local ssh_opts=("${SSH_OPTS[@]}" -p "${RELAY_US_PORT}")
-    local scp_opts=("${SSH_OPTS[@]}" -P "${RELAY_US_PORT}")
-    echo "== relay-us: let k3s pull immutable image from GHCR =="
-    scp "${scp_opts[@]}" ops/relay/k8s-us.yaml "$remote:/tmp/very-happy-relay-k8s.yaml"
-    scp "${scp_opts[@]}" scripts/ci/deploy-relay-k8s-remote.sh "$remote:/tmp/deploy-relay-k8s-remote.sh"
-    ssh "${ssh_opts[@]}" "$remote" \
-        "chmod 700 /tmp/deploy-relay-k8s-remote.sh && /tmp/deploy-relay-k8s-remote.sh '$IMAGE' '$VERSION'"
-}
+deploy_sg() { deploy_docker sg; }
+deploy_us() { deploy_docker us; }
 
 case "$TARGET" in
     sg) deploy_sg ;;

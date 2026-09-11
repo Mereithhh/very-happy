@@ -172,7 +172,7 @@ docker build -t very-happy-server -f Dockerfile.server .
 
 Operators who split realtime traffic into regional data-plane processes can
 build the database-free image from `Dockerfile.relay`. Maintainer deployment
-manifests for Docker/Caddy and k3s/Traefik live under `ops/relay/`; they are
+manifests for Docker/Caddy live under `ops/relay/`; they are
 examples of topology, not a source for signing secrets.
 
 Key notes:
