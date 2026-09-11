@@ -455,6 +455,10 @@ export const en = {
         imageUploadSubtitle: 'Attach images to messages for Claude to analyze',
     },
 
+    imagePreview: {
+        open: ({ name }: { name: string }) => `Preview ${name}`,
+    },
+
     imageUpload: {
         visionModelHint: 'Image understanding requires a model that supports images.',
         permissionTitle: 'Photo Library Access',
@@ -1835,6 +1839,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep11d: {
+                title: 'Preview images and skills in the app',
+                summary: 'Inspect attachments and skill documents without leaving your conversation.',
+                images: 'Click a pasted image or a history thumbnail to fit, zoom and download it in an image viewer. Closing the preview keeps your draft intact.',
+                skills: 'Skill links in help, todos, documentation and messages open an in-app reader with copy and download actions.',
+            },
             sep11c: {
                 title: 'Message actions and time at a glance',
                 summary: 'Message actions stay visible, with the time beside them.',

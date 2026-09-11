@@ -9,6 +9,7 @@ import { getPublicDocs, type PublicDoc } from './publicContent';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import './public.css';
 import { docFragmentId, docSectionIds } from './docSectionIds';
+import { SkillDocumentLink } from '@/ui/SkillDocumentLink';
 
 function DocNav({ docs, label, onNavigate }: { docs: PublicDoc[]; label: string; onNavigate?: () => void }) {
   return <nav className="docs-nav" aria-label={label}>{docs.map((doc) => <NavLink key={doc.slug} to={`/docs/${doc.slug}`} onClick={onNavigate}>{doc.label}</NavLink>)}</nav>;
@@ -98,7 +99,7 @@ function DocArticle({ doc, docs, fieldGuideLabel, adjacentLabel, endLabel, copyC
     if (block.type === 'p') return <p key={blockIndex}>{block.text}</p>;
     if (block.type === 'code') return <CopyableCode key={blockIndex} code={block.code} copyLabel={copyCodeLabel} copiedLabel={copiedLabel} />;
     if (block.type === 'list') return <ul key={blockIndex}>{block.items.map((item) => <li key={item}>{item}</li>)}</ul>;
-    if (block.type === 'link') return <p key={blockIndex}><a href={block.href} target="_blank" rel="noreferrer">{block.label}</a></p>;
+    if (block.type === 'link') return <p key={blockIndex}><SkillDocumentLink href={block.href} target="_blank" rel="noreferrer">{block.label}</SkillDocumentLink></p>;
     if (block.type === 'image') return <figure className="docs-diagram" key={blockIndex}><img src={block.src} alt={block.alt} loading="lazy" /><figcaption className="mono">{block.caption}</figcaption></figure>;
     return <div className="docs-note" key={blockIndex}>{block.text}</div>;
   })}</section>)}<nav className="docs-pager" aria-label={adjacentLabel}>{previous ? <Link to={`/docs/${previous.slug}`}><ArrowLeft size={14} />{previous.label}</Link> : <span />}{next && <Link to={`/docs/${next.slug}`}>{next.label}<ArrowRight size={14} /></Link>}</nav><div className="docs-end-mark"><TerminalSquare size={15} aria-hidden="true" /> {endLabel}</div></article>;

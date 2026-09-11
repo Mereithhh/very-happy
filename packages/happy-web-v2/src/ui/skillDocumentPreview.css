@@ -1,0 +1,18 @@
+.skill-preview-overlay { position:fixed; inset:0; z-index:4300; background:var(--scrim); }
+.skill-preview { position:fixed; inset:0; z-index:4301; display:flex; flex-direction:column; width:min(900px, calc(100vw - 32px)); height:min(820px, calc(100dvh - 32px)); margin:auto; min-width:0; min-height:0; overflow:hidden; background:var(--bg-1); color:var(--text); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow-modal); font-family:var(--font-sans); font-size:var(--conversation-size); line-height:var(--conversation-leading); }
+.skill-preview-head { display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--line); flex:none; min-width:0; }
+.skill-preview-head > svg { flex:none; color:var(--text-dim); }
+.skill-preview-heading { flex:1; min-width:0; }
+.skill-preview-heading h2 { margin:0; font-size:var(--conversation-size); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.skill-preview-heading p { margin:var(--sp-1) 0 0; color:var(--text-faint); font:var(--fs-12)/1.5 var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:ltr; }
+.skill-preview-toolbar { display:flex; align-items:center; gap:var(--sp-1); flex:none; }
+.skill-preview-action, .skill-preview-toolbar .vh-copy { display:inline-flex; align-items:center; justify-content:center; gap:var(--sp-2); min-width:32px; min-height:32px; padding:var(--sp-1) var(--sp-2); border-radius:var(--r-sm); color:var(--text-dim); background:transparent; font:inherit; text-decoration:none; cursor:pointer; }
+.skill-preview-action:hover:not(:disabled), .skill-preview-toolbar .vh-copy:hover { background:var(--bg-2); color:var(--text); }
+.skill-preview-action:disabled { opacity:.45; cursor:default; }
+.skill-preview-action:focus-visible, .skill-preview-toolbar .vh-copy:focus-visible { outline:none; box-shadow:inset 0 0 0 1px var(--text-faint); }
+.skill-preview-action > svg, .skill-preview-toolbar .vh-copy > svg { flex:none; }
+.skill-preview-body { min-width:0; min-height:0; flex:1; overflow:auto; padding:var(--sp-5); overscroll-behavior:contain; --markdown-leading:var(--conversation-leading); --markdown-gap:var(--sp-3); --markdown-list-gap:var(--sp-1); }
+.skill-preview-state { display:flex; min-height:160px; flex-direction:column; align-items:center; justify-content:center; gap:var(--sp-3); text-align:center; color:var(--text-dim); }
+.skill-preview-state p { margin:0; }
+@media(pointer:coarse) { .skill-preview-action, .skill-preview-toolbar .vh-copy { min-width:44px; min-height:44px; } }
+@media(max-width:600px) { .skill-preview { inset:max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom)); width:auto; height:auto; margin:0; } .skill-preview-head { padding:var(--sp-2); gap:var(--sp-2); } .skill-preview-head > svg { display:none; } .skill-preview-body { padding:var(--sp-3); } }

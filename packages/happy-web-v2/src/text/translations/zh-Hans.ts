@@ -1800,6 +1800,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep11d: {
+                title: '图片与 skill 站内预览',
+                summary: '直接查看图片附件和 skill 文档，不用离开当前对话。',
+                images: '点击输入框或历史消息的小图，即可适应窗口、放大和下载；关闭预览仍保留草稿。',
+                skills: '帮助、待办、文档和消息中的 skill 链接在网页内打开，支持复制内容与下载。',
+            },
             sep11c: {
                 title: '更直观的消息操作与时间',
                 summary: '消息操作常驻，时间直接显示在旁边。',
@@ -3032,6 +3038,10 @@ export const zhHans: TranslationStructure = {
         periodStart: '周期开始',
         now: '现在',
         byAgent: '按 agent',
+    },
+
+    imagePreview: {
+        open: ({ name }: { name: string }) => `预览 ${name}`,
     },
 
     imageUpload: {

@@ -8,9 +8,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
+import { ImagePreview } from '@/components/ImagePreview';
+import { useTranslation } from '@/i18n/useTranslation';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import type { AttachedFileRef } from './attachedFiles';
-import { cachedAttachmentUrl, forgetAttachmentUrl, isPreviewableImage, loadAttachmentUrl } from './attachmentPreview';
+import { acquireAttachmentUrl, cachedAttachmentUrl, forgetAttachmentUrl, isPreviewableImage, loadAttachmentUrl } from './attachmentPreview';
 import './attachments.css';
 
 export interface AttachmentItem {
@@ -74,10 +76,37 @@ function Thumbnail({ sessionId, item, onFailed }: {
     item: AttachmentItem;
     onFailed: () => void;
 }) {
+    const { t } = useTranslation();
     const ref = item.ref;
     const mimeType = item.mimeType ?? '';
     const [url, setUrl] = useState<string | null>(() => (ref ? cachedAttachmentUrl(sessionId, ref) : null));
     const retried = useRef(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const releasePreview = useRef<(() => void) | null>(null);
+    const openAttempt = useRef(0);
+    const closePreview = useCallback(() => {
+        openAttempt.current++;
+        setPreviewUrl(null);
+        releasePreview.current?.();
+        releasePreview.current = null;
+    }, []);
+    useEffect(() => () => {
+        openAttempt.current++;
+        releasePreview.current?.();
+    }, []);
+    const openPreview = async () => {
+        if (!ref) return;
+        const attempt = ++openAttempt.current;
+        // An already-painted thumbnail may outlive its LRU URL. Resolve again
+        // before opening instead of handing a revoked URL to the full preview.
+        const fresh = await acquireAttachmentUrl(sessionId, ref, mimeType);
+        if (attempt !== openAttempt.current) { fresh?.release(); return; }
+        if (!fresh) { onFailed(); return; }
+        releasePreview.current?.();
+        releasePreview.current = fresh.release;
+        setUrl(fresh.url);
+        setPreviewUrl(fresh.url);
+    };
 
     useEffect(() => {
         if (!ref || url) return;
@@ -100,22 +129,26 @@ function Thumbnail({ sessionId, item, onFailed }: {
 
     if (!url) return null;
     return (
-        <a className="ua-thumb" href={url} target="_blank" rel="noopener noreferrer" title={item.name}>
-            <img
-                src={url}
-                alt={item.name}
-                loading="lazy"
-                onError={() => {
-                    // One retry: the LRU may have revoked this URL while the image
-                    // was still on screen. A second failure means the bytes cannot
-                    // be decoded here — show the file row instead of looping.
-                    if (!ref || retried.current) { onFailed(); return; }
-                    retried.current = true;
-                    forgetAttachmentUrl(sessionId, ref);
-                    setUrl(null);
-                }}
-            />
-        </a>
+        <>
+            <button type="button" className="ua-thumb" onClick={() => void openPreview()}
+                aria-label={t('imagePreview.open', { name: item.name })} title={t('imagePreview.open', { name: item.name })}>
+                <img
+                    src={url}
+                    alt={item.name}
+                    loading="lazy"
+                    onError={() => {
+                        // One retry: the LRU may have revoked this URL while the image
+                        // was still on screen. A second failure means the bytes cannot
+                        // be decoded here — show the file row instead of looping.
+                        if (!ref || retried.current) { onFailed(); return; }
+                        retried.current = true;
+                        forgetAttachmentUrl(sessionId, ref);
+                        setUrl(null);
+                    }}
+                />
+            </button>
+            {previewUrl && <ImagePreview src={previewUrl} name={item.name} onClose={closePreview} />}
+        </>
     );
 }
 
