@@ -12,13 +12,14 @@
 import { imageMimeOf } from './fsBrowseModel';
 
 /** What the viewer does with a file, decided by extension alone. */
-export type FsPreviewKind = 'image' | 'markdown' | 'pdf' | 'spreadsheet' | 'text';
+export type FsPreviewKind = 'image' | 'markdown' | 'html' | 'pdf' | 'spreadsheet' | 'text';
 
 export function previewKindOf(path: string): FsPreviewKind {
     const base = path.split('/').pop() ?? path;
     const ext = base.includes('.') ? base.split('.').pop()!.toLowerCase() : null;
     if (ext && imageMimeOf(base)) return 'image';
     if (ext === 'md' || ext === 'markdown') return 'markdown';
+    if (ext === 'html' || ext === 'htm') return 'html';
     if (ext === 'pdf') return 'pdf';
     if (ext && ['xlsx', 'xls', 'xlsm', 'xlsb', 'ods', 'csv', 'tsv'].includes(ext)) return 'spreadsheet';
     return 'text';

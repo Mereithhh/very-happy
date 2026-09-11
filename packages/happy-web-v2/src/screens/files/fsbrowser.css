@@ -254,6 +254,20 @@
   border: 0;
   background: var(--bg-2);
 }
+/* HTML: render the page in a sandboxed frame filling the body. Force a white
+   backdrop so pages that assume the browser default are legible in dark mode. */
+.fsb-viewer-body--html {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fsb-html {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
 .fsb-caption {
   font-size: var(--fs-11);
   color: var(--text-faint);
