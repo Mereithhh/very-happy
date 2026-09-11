@@ -322,20 +322,6 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             'spawn-happy-session',
             { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode, model }
         );
-        // A freshly spawned session lands in the store only when the server's
-        // `new-session` update arrives over the control socket. On a resumed
-        // desktop tab that socket may still be reconnecting (ping-timeout after
-        // the tab was backgrounded), so the update — and with it the session
-        // the user just opened — can be tens of seconds late, leaving them on
-        // the loading screen. The spawn RPC (which rides the machine's relay,
-        // a socket independent of the control link) has already proven the
-        // session exists server-side, so pull it in over REST now instead of
-        // waiting for the socket. Fire-and-forget and idempotent: the
-        // `/v1/sessions` refetch must not delay returning the new session id,
-        // and a duplicate `new-session` update later is a no-op.
-        if (result.type === 'success') {
-            void sync.refreshSessions().catch(() => { /* best-effort; the socket `new-session` update is the backstop */ });
-        }
         return result;
     } catch (error) {
         // Handle RPC errors

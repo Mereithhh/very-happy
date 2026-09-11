@@ -1801,9 +1801,8 @@ export const zhHans: TranslationStructure = {
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
             sep12: {
-                title: '更快开启新对话、后台命令详情、HTML 预览',
-                summary: '标签页从后台唤醒后开新对话不再卡顿，后台命令能看到执行的命令，.html 文件可直接渲染。',
-                newchat: '标签页从后台切回后开新对话，不再等待实时连接恢复，会话立即打开。',
+                title: '后台命令详情与 HTML 预览',
+                summary: '后台命令能看到执行的命令，.html 文件可直接渲染。',
                 background: '点开运行中的后台命令，现在会显示它执行的命令，结束后还会显示输出，不再是空面板。',
                 html: '预览 .html 文件时在沙箱中渲染页面，并可切换查看源码。',
             },

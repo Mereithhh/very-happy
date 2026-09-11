@@ -1,32 +1,18 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { AgentDefaultOverrides } from './agentDefaults';
-const mocks = vi.hoisted(() => ({ machineRPC: vi.fn(), refreshSessions: vi.fn(), settings: { agentDefaultOverrides: {} as AgentDefaultOverrides } }));
+const mocks = vi.hoisted(() => ({ machineRPC: vi.fn(), settings: { agentDefaultOverrides: {} as AgentDefaultOverrides } }));
 vi.mock('./apiSocket', () => ({ apiSocket: { machineRPC: mocks.machineRPC } }));
-vi.mock('./sync', () => ({ sync: { refreshSessions: mocks.refreshSessions } }));
+vi.mock('./sync', () => ({ sync: {} }));
 vi.mock('./storage', () => ({ storage: { getState: () => ({ settings: mocks.settings }) } }));
 import { machineSpawnNewSession } from './ops';
 import { setAgentDefaultOverride } from './agentDefaults';
 
 beforeEach(() => {
     mocks.machineRPC.mockReset().mockResolvedValue({ type: 'success', sessionId: 'created' });
-    mocks.refreshSessions.mockReset().mockResolvedValue(undefined);
     mocks.settings.agentDefaultOverrides = {};
 });
 
-it('refetches sessions over REST on a successful spawn so a stale control socket does not strand the new session on the loading screen', async () => {
-    const res = await machineSpawnNewSession({ machineId: 'machine', directory: '/work', agent: 'claude' });
-    expect(res).toEqual({ type: 'success', sessionId: 'created' });
-    expect(mocks.refreshSessions).toHaveBeenCalledTimes(1);
-});
 
-it('does not refetch sessions when the spawn did not create one', async () => {
-    mocks.machineRPC.mockResolvedValueOnce({ type: 'requestToApproveDirectoryCreation', directory: '/work' });
-    await machineSpawnNewSession({ machineId: 'machine', directory: '/work', agent: 'claude' });
-    mocks.machineRPC.mockRejectedValueOnce(new Error('boom'));
-    const errored = await machineSpawnNewSession({ machineId: 'machine', directory: '/work', agent: 'claude' });
-    expect(errored.type).toBe('error');
-    expect(mocks.refreshSessions).not.toHaveBeenCalled();
-});
 
 it('sends the current saved pi conversation model in the actual fresh-spawn RPC', async () => {
     mocks.settings.agentDefaultOverrides = setAgentDefaultOverride({}, 'acp', 'modelMode', 'provider/model-a');
