@@ -1800,6 +1800,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep12a: {
+                title: '点停止不再归档整个会话',
+                summary: '停止键只中断当前这一轮，不再结束或归档整个会话；transcript 丢失的会话也能恢复。对 CLI 更新后新建或重启的会话生效。',
+                stop: '点停止现在只中断当前这一轮、保留会话与历史，不再把整条流拆掉——那会导致会话被“崩溃归档”而无法再打开。',
+                restore: '恢复一个磁盘 transcript 已丢失的会话时，会在原目录续起新会话（历史照常可见），不再报“对话文件已不在机器上”。',
+            },
             sep12b: {
                 title: '编辑重发更简单',
                 summary: '编辑消息即在原地重新发送，不再创建分支。',

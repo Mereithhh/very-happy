@@ -1147,13 +1147,25 @@ export async function startDaemon(): Promise<void> {
           cwdExists: (p) => existsSync(p),
           conversationExists: (cwd, claudeSessionId) => existsSync(join(getProjectPath(cwd), `${claudeSessionId}.jsonl`)),
         });
+        // A missing transcript is NOT a dead end: the conversation history lives
+        // on the server and stays visible. Rather than strand the user on
+        // "conversation-missing" (unrestorable forever), fall back to a fresh
+        // agent conversation in the same directory — the session becomes usable
+        // again. Every other precheck failure (bad cwd, unsupported flavor, no
+        // backend id at all) is still fatal.
+        let freshConversation = false;
         if (!precheck.ok) {
-          return { type: 'error', errorMessage: `resume-precheck:${precheck.reason}: ${precheck.detail}` };
+          if (precheck.reason === 'conversation-missing') {
+            logger.debug(`[DAEMON RUN] resume: transcript for ${happySessionId} is gone (${precheck.detail}); starting a fresh conversation in ${metadata.path}`);
+            freshConversation = true;
+          } else {
+            return { type: 'error', errorMessage: `resume-precheck:${precheck.reason}: ${precheck.detail}` };
+          }
         }
 
         const launch = buildResumeLaunch(
           { id: happySessionId, active: true, metadata },
-          { startedBy: 'daemon', claudeStartingMode: 'remote' },
+          { startedBy: 'daemon', claudeStartingMode: 'remote', freshConversation },
         );
 
         const model = sanitizeResumeModel(options?.model);

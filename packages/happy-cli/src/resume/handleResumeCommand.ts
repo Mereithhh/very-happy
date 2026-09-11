@@ -13,6 +13,14 @@ export type ResumeLaunch = {
 export type ResumeLaunchOptions = {
     claudeStartingMode?: 'local' | 'remote';
     startedBy?: 'daemon' | 'terminal';
+    /**
+     * Start a FRESH agent conversation in the session's directory instead of
+     * `--resume`-ing the recorded one. Used when the on-disk transcript is gone
+     * ("conversation-missing"): the server-side history is preserved and stays
+     * visible, only the agent's local resume context is lost — far better than
+     * refusing to restore at all.
+     */
+    freshConversation?: boolean;
 };
 
 export function parseResumeCommandArgs(args: string[]): { showHelp: boolean; sessionId: string } {
@@ -51,10 +59,15 @@ export function buildResumeLaunch(session: ResumableHappySession, options: Resum
     const flavor = resolveFlavor(metadata);
 
     if (flavor === 'codex') {
-        if (!metadata.codexThreadId) {
-            throw new Error(`Happy session ${session.id} is missing its Codex thread ID.`);
+        const args = ['codex'];
+        if (options.freshConversation) {
+            // Transcript gone — start fresh in the same directory (no --resume).
+        } else {
+            if (!metadata.codexThreadId) {
+                throw new Error(`Happy session ${session.id} is missing its Codex thread ID.`);
+            }
+            args.push('--resume', metadata.codexThreadId);
         }
-        const args = ['codex', '--resume', metadata.codexThreadId];
         if (options.startedBy) {
             args.push('--started-by', options.startedBy);
         }
@@ -65,9 +78,6 @@ export function buildResumeLaunch(session: ResumableHappySession, options: Resum
     }
 
     if (flavor === 'claude') {
-        if (!metadata.claudeSessionId) {
-            throw new Error(`Happy session ${session.id} is missing its Claude session ID.`);
-        }
         const args = ['claude'];
         if (options.claudeStartingMode) {
             args.push('--happy-starting-mode', options.claudeStartingMode);
@@ -75,7 +85,14 @@ export function buildResumeLaunch(session: ResumableHappySession, options: Resum
         if (options.startedBy) {
             args.push('--started-by', options.startedBy);
         }
-        args.push('--resume', metadata.claudeSessionId);
+        if (options.freshConversation) {
+            // Transcript gone — start fresh in the same directory (no --resume).
+        } else {
+            if (!metadata.claudeSessionId) {
+                throw new Error(`Happy session ${session.id} is missing its Claude session ID.`);
+            }
+            args.push('--resume', metadata.claudeSessionId);
+        }
         return {
             cwd: metadata.path,
             args,
