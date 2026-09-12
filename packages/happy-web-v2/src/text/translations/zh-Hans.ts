@@ -1800,6 +1800,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep13: {
+                title: '网络抖动时发出的消息不再丢失',
+                summary: 'relay 直投的消息在 runner 自己落库卡住时，改为直接采用服务端已落库的那份，不再当作"已处理"忽略。对 CLI 更新后新建或重启的会话生效。',
+                echo: '消息经就近 relay 直投给 runner，由 runner 自己写回中心。这一步在网络差时会卡住：网页端 3 秒等不到确认就走中心兜底落库，而 runner 却把服务端回推的这份当成"自己那条、稍后处理"吞掉，于是永远没有回应。现在服务端回推一到就直接路由，且只路由一次。',
+                log: '两个可能让消息无声消失的位置现在都会往会话日志写一行，下次再丢能从日志直接定位。',
+            },
             sep12a: {
                 title: '点停止不再归档整个会话',
                 summary: '停止键只中断当前这一轮，不再结束或归档整个会话；transcript 丢失的会话也能恢复。对 CLI 更新后新建或重启的会话生效。',

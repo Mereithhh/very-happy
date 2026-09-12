@@ -1839,6 +1839,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep13: {
+                title: 'A message sent on a flaky link is never lost',
+                summary: 'If the runner\'s own save of a relay-delivered message stalls, it now picks the message up from the server instead of ignoring it. Applies to sessions started or restarted after the CLI updates.',
+                echo: 'Messages reach the runner through the nearest relay and the runner saves them centrally itself. When that save hung on a bad connection, the web\'s fallback saved the message but the runner treated the server\'s copy as "already handled" and never answered. The server\'s copy is now routed as soon as it arrives, exactly once.',
+                log: 'The two places where a message could vanish without a trace now write a line to the session log, so the next silent drop can be diagnosed from the log alone.',
+            },
             sep12a: {
                 title: 'Stopping a turn keeps your session',
                 summary: 'The stop button interrupts the current turn without ending or archiving the whole session, and a session whose transcript went missing can still be restored. Applies to sessions started or restarted after the CLI updates.',

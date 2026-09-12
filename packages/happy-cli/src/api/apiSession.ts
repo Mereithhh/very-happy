@@ -245,9 +245,22 @@ export class ApiSessionClient extends EventEmitter {
                         return;
                     }
                     const localId = data.body.message.localId;
-                    if (localId && this.directInboundLocalIds.delete(localId)) {
+                    // B-460: a localId we accepted from the relay may still be
+                    // waiting on our own persist POST (which can hang for the
+                    // full axios timeout on a flaky link) while the web's 3 s
+                    // ack budget expires and its central fallback persists the
+                    // same message. The server's echo is the proof it is
+                    // durable, so route it here unless the relay path already
+                    // did — never swallow it. The relay path and this path both
+                    // check-then-mark `routedInboundLocalIds` synchronously, so
+                    // the message is routed exactly once whichever arrives first.
+                    const relayAccepted = !!localId && this.directInboundLocalIds.delete(localId);
+                    if (localId && this.routedInboundLocalIds.has(localId)) {
                         this.lastSeq = messageSeq;
                         return;
+                    }
+                    if (relayAccepted) {
+                        logger.debug(`[API] Routing relay-accepted message ${localId} from the central echo (own persist still pending or failed)`);
                     }
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
                     logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
@@ -523,6 +536,16 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
 
+        // B-460: a user-role envelope that fails the schema used to vanish
+        // here without a trace. Log the shape so the next silent drop is
+        // diagnosable from the session log alone.
+        const role = typeof message === 'object' && message !== null ? (message as { role?: unknown }).role : undefined;
+        if (role === 'user') {
+            logger.debug('[API] Inbound user-role message did not match UserMessageSchema; forwarding as generic message', {
+                sourceLocalId: sourceLocalId ?? null,
+                issues: userResult.error.issues.slice(0, 5).map((issue) => `${issue.path.join('.')}: ${issue.message}`),
+            });
+        }
         this.emit('message', message);
     }
 
@@ -558,12 +581,15 @@ export class ApiSessionClient extends EventEmitter {
 
                 if (skipRouting) continue;
 
-                if (message.localId && this.directInboundLocalIds.delete(message.localId)) {
-                    continue;
-                }
+                // B-460: same rule as the socket echo — a relay-accepted
+                // localId is only skipped when it was actually routed.
+                const relayAccepted = !!message.localId && this.directInboundLocalIds.delete(message.localId);
                 // Already routed off the socket fast path — never twice.
                 if (message.localId && this.routedInboundLocalIds.has(message.localId)) {
                     continue;
+                }
+                if (relayAccepted) {
+                    logger.debug(`[API] Routing relay-accepted message ${message.localId} from catch-up fetch (own persist still pending or failed)`);
                 }
 
                 if (message.content?.t !== 'encrypted') {
@@ -719,6 +745,11 @@ export class ApiSessionClient extends EventEmitter {
                     }
                     callback({ ok: true, messages: stored });
                 } catch (error) {
+                    // B-460: this used to be the silent end of the road for a
+                    // message whose central echo had already been swallowed.
+                    // The echo path now routes it; here we only report.
+                    const routed = batch.filter((item) => this.routedInboundLocalIds.has(item.localId)).length;
+                    logger.debug(`[API] Relay-delivered persist failed for ${batch.length} message(s) (${routed} already routed via central echo): ${error instanceof Error ? error.message : error}`);
                     for (const item of batch) this.directInboundLocalIds.delete(item.localId);
                     callback({ ok: false, error: error instanceof Error ? error.message : 'Failed to persist session messages' });
                 }

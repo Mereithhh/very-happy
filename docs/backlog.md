@@ -276,3 +276,5 @@
 
 
 - [ ] 子代理能力对齐后续：mac-office 已核实使用 pi-subagents 0.66.0；该扩展的结构化生命周期尚未适配。Claude SDK 和 Codex 本批已接入的能力与实际验证边界见 specs/2026-09-subagent-parity.md、specs/2026-09-agent-version-detection.md，不宣称与官方交互 CLI 全能力等价。
+
+- [ ] **B-460** relay 直投消息静默丢失：wrapper 收到 relay 直投后先记 directInbound 再自己 POST 落库；POST 在网络差时挂住（mac-office 2026-09-12 22:40 实例，VPN 抖动），web 3s ack 超时走中心兜底落库，server 回推的 new-message 被 wrapper 当"自己那条"吞掉只推进 lastSeq，随后 POST 超时进无日志的 catch——消息在服务端存在、网页显示已发、runner 永远不回。修：update/fetch 路径收到 directInbound 的 localId 时若未 routed 就直接路由（server 已落库即事实源，两侧 check-then-mark 保证恰好一次）；relay catch 与 UserMessageSchema 失败处补日志。回归测试 ×4（apiSession.test.ts B-460）。CLI 0.2.137。

@@ -1093,6 +1093,170 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(onUserMessage).toHaveBeenCalledTimes(2);
     });
 
+    // B-460: the relay path accepts a message, then its own persist POST hangs
+    // (flaky link); the web's 3 s ack budget expires and its central fallback
+    // persists the same localId. Before the fix the runner treated the server
+    // echo as "mine, handled later" and swallowed it, then the POST timed out
+    // into a silent catch: the message was lost with zero log lines.
+    async function connectRelayForTest() {
+        (session.metadata as any).machineId = 'machine-1';
+        const relayHandlers: SocketHandlers = {};
+        const relaySocket = {
+            connected: true,
+            on: vi.fn((event: string, handler: SocketHandler) => {
+                (relayHandlers[event] ||= []).push(handler);
+            }),
+            emit: vi.fn(),
+            close: vi.fn(),
+        };
+        mockIo.mockReturnValueOnce(mockSocket).mockReturnValueOnce(relaySocket);
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                assignment: {
+                    relayId: 'sin',
+                    url: 'https://relay.test',
+                    region: 'Singapore',
+                    token: 'relay-token',
+                    expiresAt: Date.now() + 60_000,
+                },
+            }),
+        })));
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        await (client as any).connectSessionRelay();
+        return { client, onUserMessage, deliver: relayHandlers['session-message-deliver'][0] };
+    }
+
+    function echoUpdate(seq: number, encrypted: string, localId: string): Update {
+        const update = createNewMessageUpdate(seq, encrypted);
+        (update.body as any).message.localId = localId;
+        return update;
+    }
+
+    it('B-460 routes a relay-accepted message from the central echo while its own persist is still in flight, exactly once', async () => {
+        const { client, onUserMessage, deliver } = await connectRelayForTest();
+        (client as any).lastSeq = 1;
+        (client as any).awaitingInitialFetch = false;
+
+        const encrypted = encryptContent(session, {
+            role: 'user',
+            content: { type: 'text', text: 'echo wins the race' },
+        });
+        let resolvePost!: (value: unknown) => void;
+        mockAxiosPost.mockReturnValueOnce(new Promise((resolve) => { resolvePost = resolve; }));
+        const ack = vi.fn();
+        const delivered = deliver({
+            sessionId: session.id,
+            messages: [{ localId: 'local-hang', content: encrypted }],
+        }, ack);
+        await Promise.resolve();
+        expect(onUserMessage).not.toHaveBeenCalled();
+
+        // The web gave up waiting on our ack and persisted centrally; the
+        // server echoes seq 2 with our localId.
+        emitSocketEvent('update', echoUpdate(2, encrypted, 'local-hang'));
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+        expect(onUserMessage.mock.calls[0][0].content.text).toBe('echo wins the race');
+        expect((client as any).lastSeq).toBe(2);
+
+        // Our POST finally returns (dedup'd by localId server-side): no second routing.
+        resolvePost({ data: { messages: [{ id: 'stored-2', seq: 2, localId: 'local-hang', createdAt: 2, updatedAt: 2 }] } });
+        await delivered;
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+        expect(ack).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+        expect(mockAxiosGet).not.toHaveBeenCalled();
+    });
+
+    it('B-460 keeps the echo-routed message and logs when the relay persist ultimately fails', async () => {
+        const { client, onUserMessage, deliver } = await connectRelayForTest();
+        (client as any).lastSeq = 1;
+        (client as any).awaitingInitialFetch = false;
+
+        const encrypted = encryptContent(session, {
+            role: 'user',
+            content: { type: 'text', text: 'persist times out' },
+        });
+        let rejectPost!: (error: unknown) => void;
+        mockAxiosPost.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectPost = reject; }));
+        const ack = vi.fn();
+        const delivered = deliver({
+            sessionId: session.id,
+            messages: [{ localId: 'local-timeout', content: encrypted }],
+        }, ack);
+        await Promise.resolve();
+
+        emitSocketEvent('update', echoUpdate(2, encrypted, 'local-timeout'));
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+
+        rejectPost(new Error('timeout of 60000ms exceeded'));
+        await delivered;
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+        expect(ack).toHaveBeenCalledWith({ ok: false, error: 'timeout of 60000ms exceeded' });
+        const { logger } = await import('@/ui/logger');
+        expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('Relay-delivered persist failed for 1 message(s) (1 already routed via central echo)'));
+        // The relay bookkeeping is clean: a later central echo of the same id is not a duplicate route either.
+        expect((client as any).directInboundLocalIds.has('local-timeout')).toBe(false);
+    });
+
+    it('B-460 routes a relay-accepted message from the catch-up fetch when the echo arrives with a seq gap', async () => {
+        const { client, onUserMessage, deliver } = await connectRelayForTest();
+        (client as any).lastSeq = 1;
+        (client as any).awaitingInitialFetch = false;
+
+        const encrypted = encryptContent(session, {
+            role: 'user',
+            content: { type: 'text', text: 'gap then fetch' },
+        });
+        mockAxiosPost.mockReturnValueOnce(new Promise(() => undefined)); // never resolves
+        void deliver({
+            sessionId: session.id,
+            messages: [{ localId: 'local-gap', content: encrypted }],
+        }, vi.fn());
+        await Promise.resolve();
+
+        const agentOutput = encryptContent(session, { role: 'agent', content: { type: 'output', data: {} } });
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    { id: 'm2', seq: 2, localId: null, content: { t: 'encrypted', c: agentOutput }, createdAt: 2, updatedAt: 2 },
+                    { id: 'm3', seq: 3, localId: 'local-gap', content: { t: 'encrypted', c: encrypted }, createdAt: 3, updatedAt: 3 },
+                ],
+                hasMore: false,
+            },
+        });
+        emitSocketEvent('update', echoUpdate(3, encrypted, 'local-gap'));
+        await waitForCheck(() => {
+            expect(onUserMessage).toHaveBeenCalledTimes(1);
+        });
+        expect(onUserMessage.mock.calls[0][0].content.text).toBe('gap then fetch');
+        expect((client as any).lastSeq).toBe(3);
+        expect((client as any).routedInboundLocalIds.has('local-gap')).toBe(true);
+    });
+
+    it('B-460 logs a user-role envelope that fails UserMessageSchema instead of dropping it silently', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        const onGeneric = vi.fn();
+        client.onUserMessage(onUserMessage);
+        client.on('message', onGeneric);
+        (client as any).lastSeq = 1;
+
+        emitSocketEvent('update', createNewMessageUpdate(2, encryptContent(session, {
+            role: 'user',
+            content: { type: 'text', text: 42 },
+        })));
+
+        expect(onUserMessage).not.toHaveBeenCalled();
+        expect(onGeneric).toHaveBeenCalledTimes(1);
+        const { logger } = await import('@/ui/logger');
+        expect(logger.debug).toHaveBeenCalledWith(
+            expect.stringContaining('did not match UserMessageSchema'),
+            expect.objectContaining({ issues: expect.arrayContaining([expect.stringContaining('content.text')]) }),
+        );
+    });
+
     it('pushes centrally committed output to the session relay with authoritative id and seq', async () => {
         (session.metadata as any).machineId = 'machine-1';
         const relaySocket = {
