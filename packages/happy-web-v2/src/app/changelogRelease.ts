@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-13-relay-message-never-dropped',
+    cliVersion: '0.2.137',
+    date: '2026-09-13',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep13.title',
+    summaryKey: 'changelog.releases.sep13.summary',
+    itemKeys: ['changelog.releases.sep13.echo', 'changelog.releases.sep13.log'],
+  },
+  {
     id: '2026-09-12-abort-keeps-session',
     cliVersion: '0.2.136',
     date: '2026-09-12',
