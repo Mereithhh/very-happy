@@ -196,6 +196,9 @@ export class CodexAppServerClient {
     // Tracks in-flight interruptTurn() RPCs so sendTurnAndWait can wait for them
     // before starting a new turn (prevents stale turn/interrupt from aborting the next turn).
     private pendingInterrupt: Promise<void> | null = null;
+    // In-flight idle release (B-461); ensureConnected() waits for it so a message
+    // arriving mid-release cannot spawn a second app-server against a dying one.
+    private idleRelease: Promise<boolean> | null = null;
     private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
     private completedTurnIds = new Set<string>();
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
@@ -611,6 +614,58 @@ export class CodexAppServerClient {
         await this.disconnectInternal();
     }
 
+    /** True while an app-server child process is owned by this client. */
+    get hasProcess(): boolean {
+        return this.process !== null;
+    }
+
+    /**
+     * Drop the app-server process while the session is idle, keeping the thread
+     * id and defaults so the next turn can `thread/resume` it (B-461). Refuses —
+     * returning false — whenever anything is still in flight: an active turn, a
+     * pending interrupt, or any outstanding RPC. See codexIdleRelease.ts.
+     */
+    async releaseIdleProcess(): Promise<boolean> {
+        if (this.idleRelease) return this.idleRelease;
+        if (!this.connected && !this.process) return false;
+        if (this.pendingTurnCompletion || this.pendingInterrupt || this.pending.size > 0) {
+            logger.debug('[CodexAppServer] Idle release skipped: work still in flight');
+            return false;
+        }
+        const run = (async () => {
+            const threadId = this._threadId;
+            logger.debug(`[CodexAppServer] Releasing idle app-server; thread=${threadId ?? 'none'} kept for resume`);
+            await this.disconnectInternal({ preserveThreadState: !!threadId });
+            return true;
+        })();
+        this.idleRelease = run;
+        try {
+            return await run;
+        } finally {
+            if (this.idleRelease === run) this.idleRelease = null;
+        }
+    }
+
+    /**
+     * Make sure an app-server is running and, if a thread is remembered, resumed
+     * in it. Cheap no-op while connected. Covers both the idle release above and
+     * an app-server that exited on its own between turns.
+     */
+    async ensureConnected(): Promise<void> {
+        if (this.idleRelease) await this.idleRelease;
+        if (this.connected) return;
+        const threadId = this._threadId;
+        if (this.process) {
+            // Process exited underneath us (exit handler flipped `connected`);
+            // clean the stale handle before spawning a replacement.
+            await this.disconnectInternal({ preserveThreadState: !!threadId });
+        }
+        await this.connect();
+        if (threadId) {
+            await this.resumeThread({ threadId });
+        }
+    }
+
     private buildThreadConfig(mcpServers?: Record<string, unknown>): Record<string, unknown> | null {
         return mcpServers ? { mcp_servers: mcpServers } : null;
     }
@@ -640,6 +695,7 @@ export class CodexAppServerClient {
         sandbox?: SandboxMode;
         mcpServers?: Record<string, unknown>;
     }): Promise<{ threadId: string; model: string }> {
+        await this.ensureConnected();
         const params: NewConversationParams = {
             model: opts.model ?? null,
             modelProvider: null,
@@ -676,6 +732,9 @@ export class CodexAppServerClient {
         if (!threadId) {
             throw new Error('No thread available to resume.');
         }
+        // ensureConnected() itself resumes a remembered thread after connect(); by
+        // then `connected` is true so this is a no-op and never recurses.
+        await this.ensureConnected();
 
         const defaults = this.threadDefaults ?? {};
         const params: ResumeConversationParams = {
@@ -713,6 +772,7 @@ export class CodexAppServerClient {
         sandbox?: SandboxMode;
         mcpServers?: Record<string, unknown>;
     }): Promise<{ threadId: string; model: string; thread: Thread }> {
+        await this.ensureConnected();
         const defaults = this.threadDefaults ?? {};
         const params: ForkConversationParams = {
             threadId: opts.threadId,
@@ -746,6 +806,7 @@ export class CodexAppServerClient {
         threadId: string;
         includeTurns?: boolean;
     }): Promise<ReadConversationResponse> {
+        await this.ensureConnected();
         const params: ReadConversationParams = {
             threadId: opts.threadId,
             includeTurns: opts.includeTurns ?? true,
@@ -757,6 +818,7 @@ export class CodexAppServerClient {
         threadId: string;
         numTurns: number;
     }): Promise<RollbackConversationResponse> {
+        await this.ensureConnected();
         const params: RollbackConversationParams = {
             threadId: opts.threadId,
             numTurns: opts.numTurns,
@@ -768,6 +830,7 @@ export class CodexAppServerClient {
         threadId: string;
         items: unknown[];
     }): Promise<InjectItemsResponse> {
+        await this.ensureConnected();
         const params: InjectItemsParams = {
             threadId: opts.threadId,
             items: opts.items,
@@ -908,6 +971,7 @@ export class CodexAppServerClient {
         if (!this._threadId) {
             throw new Error('No active thread. Call startThread first.');
         }
+        await this.ensureConnected();
 
         const input: InputItem[] = [
             { type: 'text', text: prompt },
@@ -978,6 +1042,11 @@ export class CodexAppServerClient {
             // (harmlessly, since pendingTurnCompletion is null at this point).
             await new Promise(resolve => setTimeout(resolve, 0));
         }
+
+        // Respawn + resume before registering the turn completion, so a released
+        // (B-461) or crashed app-server is brought back without a pending turn
+        // that the reconnect's disconnectInternal() would otherwise resolve as aborted.
+        await this.ensureConnected();
 
         const timeoutMs = opts?.turnTimeoutMs ?? CodexAppServerClient.TURN_TIMEOUT_MS;
         let timer: ReturnType<typeof setTimeout> | null = null;

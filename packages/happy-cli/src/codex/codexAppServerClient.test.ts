@@ -386,6 +386,139 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('releases the app-server while idle and resumes the same thread on the next turn (B-461)', async () => {
+        const firstProcessRequests: MockRpcMessage[] = [];
+        const secondProcessRequests: MockRpcMessage[] = [];
+
+        const threadResult = {
+            thread: { id: 'thread-idle', path: '/tmp/thread-idle' },
+            model: 'gpt-test',
+            modelProvider: 'openai',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: { type: 'workspaceWrite' },
+            reasoningEffort: null,
+        };
+        const completeTurn = (msg: MockRpcMessage, stdout: any, turnId: string) => {
+            setTimeout(() => {
+                pushJsonLine(stdout, { id: msg.id, result: {} });
+                pushJsonLine(stdout, { method: 'codex/event', params: { msg: { type: 'task_started', turn_id: turnId } } });
+                pushJsonLine(stdout, { method: 'codex/event', params: { msg: { type: 'task_complete', turn_id: turnId } } });
+            }, 0);
+        };
+
+        const proc1 = createMockProcess({
+            pid: 3001,
+            onRequest: (msg, stdout) => {
+                firstProcessRequests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadResult }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) completeTurn(msg, stdout, 'turn-a');
+            },
+        });
+        const proc2 = createMockProcess({
+            pid: 3002,
+            onRequest: (msg, stdout) => {
+                secondProcessRequests.push(msg);
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadResult }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) completeTurn(msg, stdout, 'turn-b');
+            },
+        });
+        mockSpawn
+            .mockImplementationOnce(() => proc1)
+            .mockImplementationOnce(() => proc2);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+        await expect(client.sendTurnAndWait('first')).resolves.toEqual({ aborted: false });
+        expect(mockSpawn).toHaveBeenCalledTimes(1);
+
+        // Idle: the child is killed but the thread is remembered.
+        await expect(client.releaseIdleProcess()).resolves.toBe(true);
+        expect(proc1.kill).toHaveBeenCalledWith('SIGTERM');
+        expect(client.hasProcess).toBe(false);
+        expect(client.hasActiveThread()).toBe(true);
+        expect(client.threadId).toBe('thread-idle');
+        // Nothing left to release; must not throw or spawn.
+        await expect(client.releaseIdleProcess()).resolves.toBe(false);
+        expect(mockSpawn).toHaveBeenCalledTimes(1);
+
+        // Next message: respawn, thread/resume with the remembered defaults, then turn/start.
+        await expect(client.sendTurnAndWait('after idle')).resolves.toEqual({ aborted: false });
+        expect(mockSpawn).toHaveBeenCalledTimes(2);
+        expect(client.hasProcess).toBe(true);
+        const methods = secondProcessRequests.map((msg) => msg.method);
+        expect(methods.indexOf('initialize')).toBeLessThan(methods.indexOf('thread/resume'));
+        expect(methods.indexOf('thread/resume')).toBeLessThan(methods.indexOf('turn/start'));
+        const resumeRequest = secondProcessRequests.find((msg) => msg.method === 'thread/resume');
+        expect(resumeRequest?.params).toEqual(expect.objectContaining({
+            threadId: 'thread-idle',
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        }));
+        const turnRequest = secondProcessRequests.find((msg) => msg.method === 'turn/start');
+        expect(turnRequest?.params).toEqual(expect.objectContaining({ threadId: 'thread-idle' }));
+        expect(firstProcessRequests.filter((msg) => msg.method === 'turn/start')).toHaveLength(1);
+
+        await client.disconnect();
+    });
+
+    it('refuses to release the app-server while a turn is still running (B-461)', async () => {
+        const proc = createMockProcess({
+            pid: 3003,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, {
+                        id: msg.id,
+                        result: {
+                            thread: { id: 'thread-busy', path: '/tmp/thread-busy' },
+                            model: 'gpt-test', modelProvider: 'openai', cwd: '/tmp/project',
+                            approvalPolicy: 'on-request', sandbox: { type: 'readOnly' }, reasoningEffort: null,
+                        },
+                    }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: {} });
+                        pushJsonLine(stdout, { method: 'codex/event', params: { msg: { type: 'task_started', turn_id: 'turn-busy' } } });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementationOnce(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project' });
+
+        const pendingTurn = client.sendTurnAndWait('hang', { turnTimeoutMs: 5000 });
+        await waitFor(() => client.turnId === 'turn-busy');
+
+        await expect(client.releaseIdleProcess()).resolves.toBe(false);
+        expect(proc.kill).not.toHaveBeenCalled();
+        expect(client.hasProcess).toBe(true);
+
+        // Idle release never resolves the turn — only a real completion does.
+        proc.stdout.push(JSON.stringify({ method: 'codex/event', params: { msg: { type: 'task_complete', turn_id: 'turn-busy' } } }) + '\n');
+        await expect(pendingTurn).resolves.toEqual({ aborted: false });
+
+        await client.disconnect();
+    });
+
     it('forks, reads, and rolls back Codex threads through app-server RPC', async () => {
         const requests: MockRpcMessage[] = [];
         const proc = createMockProcess({
@@ -1160,6 +1293,9 @@ it('passes native local images alongside the text manifest without expanding san
     const { CodexAppServerClient } = await import('./codexAppServerClient');
     const client = new CodexAppServerClient();
     (client as any)._threadId = 'image-thread';
+    // sendTurn() now reconnects a released app-server first (B-461); this unit
+    // test never spawned one, so present it as already connected.
+    (client as any).connected = true;
     const request = vi.spyOn(client as any, 'request').mockResolvedValue({ turn: { id: 'image-turn' } });
     await client.sendTurn('Inspect attached file', { images: ['/private/chat/photo.png'], sandbox: 'read-only' });
     expect(request).toHaveBeenCalledWith('turn/start', {

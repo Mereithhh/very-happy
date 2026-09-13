@@ -1839,6 +1839,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep13a: {
+                title: 'Idle Codex sessions let go of the Codex backend',
+                summary: 'A Codex session that has been quiet for five minutes now stops its codex app-server process instead of holding it — and the files under ~/.codex — for as long as the session exists. The next message brings it back and resumes the same thread. Applies to sessions started or restarted after the CLI updates.',
+                release: 'Every Codex session used to keep one codex app-server alive until the session ended, even after days of silence. That process holds the Codex database open, so the Codex App and repair tools that need exclusive access to ~/.codex were blocked by a process you could not see. Set HAPPY_CODEX_IDLE_RELEASE_MS on the machine to change the delay, or to 0 to keep the old behaviour.',
+                resume: 'Releasing the backend does not touch the conversation. The thread is kept and resumed in a fresh app-server on your next message; the only visible difference is a short start-up pause after a long break.',
+            },
             sep13: {
                 title: 'A message sent on a flaky link is never lost',
                 summary: 'If the runner\'s own save of a relay-delivered message stalls, it now picks the message up from the server instead of ignoring it. Applies to sessions started or restarted after the CLI updates.',
