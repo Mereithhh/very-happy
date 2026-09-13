@@ -1800,6 +1800,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep13a: {
+                title: '空闲的 Codex 会话会放开 Codex 后端',
+                summary: 'Codex 会话安静 5 分钟后会结束自己的 codex app-server 进程，不再在会话存续期间一直占着它和 ~/.codex 下的文件。下一条消息会重新拉起并接上同一个 thread。对 CLI 更新后新建或重启的会话生效。',
+                release: '以前每个 Codex 会话都保活一个 codex app-server 直到会话结束，哪怕几天没人说话。这个进程一直打开着 Codex 的数据库，Codex App 以及需要独占 ~/.codex 的修复工具会被一个你看不见的进程挡住。在那台机器上设置 HAPPY_CODEX_IDLE_RELEASE_MS 可以改延时，设为 0 则保留旧行为。',
+                resume: '放开后端不影响对话本身：thread 会保留，下一条消息在新的 app-server 里恢复它；唯一可见的差别是长时间停顿后第一条消息多一小段启动等待。',
+            },
             sep13: {
                 title: '网络抖动时发出的消息不再丢失',
                 summary: 'relay 直投的消息在 runner 自己落库卡住时，改为直接采用服务端已落库的那份，不再当作"已处理"忽略。对 CLI 更新后新建或重启的会话生效。',

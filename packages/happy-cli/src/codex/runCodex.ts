@@ -43,6 +43,7 @@ import {
 } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
+import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseMs, shouldReleaseIdleCodex } from './codexIdleRelease';
 import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
 import {
     buildCodexTurnPrompt,
@@ -206,6 +207,8 @@ export async function runCodex(opts: {
     let client!: CodexAppServerClient;
     let reasoningProcessor!: ReasoningProcessor;
     let abortInProgress: Promise<void> | null = null;
+    // True from dequeue until the turn's finally block; gates the idle release (B-461).
+    let turnActive = false;
     const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
         api,
         sessionTag,
@@ -589,6 +592,26 @@ export async function runCodex(opts: {
 
     client = new CodexAppServerClient(sandboxConfig);
 
+    // B-461: an idle Codex session must not pin `codex app-server` (and with it the
+    // ~/.codex sqlite files) forever. Release it after a quiet period; the next
+    // message respawns and resumes the same thread via client.ensureConnected().
+    const idleRelease = new CodexIdleReleaseTimer({
+        delayMs: resolveCodexIdleReleaseMs(process.env[CODEX_IDLE_RELEASE_ENV]),
+        isIdle: () => shouldReleaseIdleCodex({
+            turnActive,
+            queueSize: messageQueue.size(),
+            shouldExit,
+            abortInProgress: abortInProgress !== null,
+        }),
+        release: async () => {
+            const released = await client.releaseIdleProcess();
+            if (released) {
+                logger.debug('[Codex] Released idle app-server; thread kept for resume on next message');
+            }
+        },
+        onError: (error) => logger.debug('[Codex] Idle app-server release failed', safeCodexErrorMetadata(error)),
+    });
+
     permissionHandler = new CodexPermissionHandler(session);
     // Drop any permission requests left in agent state from a previous CLI
     // process that died while a tool prompt was open — see the matching
@@ -814,6 +837,9 @@ export async function runCodex(opts: {
 
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = null;
 
+        // Idle from the start: a session nobody ever writes to must not hold app-server either.
+        idleRelease.arm();
+
         while (!shouldExit) {
             logActiveHandles('loop-top');
             let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = pending;
@@ -838,6 +864,9 @@ export async function runCodex(opts: {
             if (!message) {
                 break;
             }
+
+            idleRelease.cancel();
+            turnActive = true;
 
             if (isCodexClearText(message.message)) {
                 logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
@@ -865,6 +894,8 @@ export async function runCodex(opts: {
                     shouldExit,
                     sendReady,
                 });
+                turnActive = false;
+                idleRelease.arm();
                 continue;
             }
 
@@ -872,6 +903,10 @@ export async function runCodex(opts: {
             messageBuffer.addMessage(message.message, 'user');
 
             try {
+                // Bring a released/crashed app-server back before reading
+                // client.sandboxEnabled — it is only meaningful for a live process.
+                await client.ensureConnected();
+
                 // Map permission mode to approval policy and sandbox.
                 // With app-server, these are per-turn — no restart needed on mode change.
                 const sandboxManagedByHappy = client.sandboxEnabled;
@@ -951,6 +986,8 @@ export async function runCodex(opts: {
                     shouldExit,
                     sendReady,
                 });
+                turnActive = false;
+                idleRelease.arm();
                 logActiveHandles('after-turn');
             }
         }
@@ -979,6 +1016,7 @@ export async function runCodex(opts: {
         } catch (e) {
             logger.debug('[codex]: Error while closing session', safeCodexErrorMetadata(e));
         }
+        idleRelease.cancel();
         logger.debug('[codex]: client.disconnect begin');
         await client.disconnect();
         logger.debug('[codex]: client.disconnect done');

@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-13-codex-idle-release',
+    cliVersion: '0.2.138',
+    date: '2026-09-13',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep13a.title',
+    summaryKey: 'changelog.releases.sep13a.summary',
+    itemKeys: ['changelog.releases.sep13a.release', 'changelog.releases.sep13a.resume'],
+  },
+  {
     id: '2026-09-13-relay-message-never-dropped',
     cliVersion: '0.2.137',
     date: '2026-09-13',

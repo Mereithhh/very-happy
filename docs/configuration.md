@@ -247,6 +247,7 @@ See [deployment.md](deployment.md) for the full list and persistence guidance.
 | `HAPPY_HOME_DIR` | Credentials, settings, logs, daemon state, and local server data | `~/.happy` |
 | `HAPPY_DISABLE_CAFFEINATE` | Disable the macOS sleep-prevention helper when `true`/`1`/`yes` | unset |
 | `HAPPY_EXPERIMENTAL` | Enable explicitly experimental CLI paths | unset |
+| `HAPPY_CODEX_IDLE_RELEASE_MS` | How long a Codex session may sit idle before its `codex app-server` child is stopped (the thread is kept and resumed on the next message, so `~/.codex` is not held open by silent sessions). `0` keeps the process for the session's lifetime | `300000` (5 min) |
 
 Cloud users need no endpoint variables. For self-hosting, set both URL variables
 to the matching deployment. The daemon inherits them when it starts, so a value
