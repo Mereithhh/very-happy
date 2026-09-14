@@ -20,7 +20,7 @@ state. Never commit production values.
 | `AUTH_ALLOW_LEGACY_PAIRING` | Temporarily accept pairing without a one-time claim secret | Unset/`false`; enable only during the documented CLI rollout |
 | `AUTH_PAIRING_TTL_MINUTES` | Pairing request lifetime, bounded to 1–60 minutes | `10` |
 | `CLI_RECOMMENDED_VERSION` | Pin the exact `very-happy-cli` version advertised to daemons | The last fully approved release, or unset |
-| `CLI_AUTO_UPDATE_VERSION` | Exact version an idle machine may install **by itself**. Never derived from the registry, and unset means no machine auto-installs anything | Unset until a release has been out long enough to trust unattended |
+| `CLI_AUTO_UPDATE_VERSION` | Exact version a machine may install **by itself** while no agent turn is in flight (B-466: idle wrappers and web terminals no longer hold it back). Never derived from the registry, and unset means no machine auto-installs anything | Unset until a release has been out long enough to trust unattended |
 | `CLI_MINIMUM_VERSION` | Optional exact version below which Web/CLI show a required-update warning | Unset until an actual compatibility/security floor exists |
 | `CLI_VERSION_REGISTRY_LOOKUP` | Allow the relay to discover `very-happy-cli/latest` when no recommended version is pinned | `true` since B-348 — `latest` is now promoted only after the 3-OS smoke matrix passes, so following it is the reviewed default. Set `CLI_RECOMMENDED_VERSION` to override it (that pin always wins) |
 | `MAX_PENDING_AUTH_PAIRINGS` | Global unclaimed Terminal + Account pairing rows retained inside the TTL window | `1000` |
@@ -78,7 +78,7 @@ startup and every six hours, then publish it inside their encrypted machine
 state.
 
 **Which of the two to use (B-348).** `recommendedVersion` is what B-327's
-auto-update installs on an idle machine, so whatever feeds it is the fleet's
+auto-update installs on a machine with no turn in flight, so whatever feeds it is the fleet's
 blast radius.
 
 - `CLI_VERSION_REGISTRY_LOOKUP=true` follows npm's `latest` dist-tag. This is

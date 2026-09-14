@@ -172,6 +172,19 @@ export async function notifyDaemonClaudeAuthFailed(sessionId: string): Promise<{
   return daemonPost('/session-event', { sessionId, event: 'auth_failed' });
 }
 
+/**
+ * B-466: tell the daemon this session's turn started (or is still running —
+ * sent again as a lease renewal) or ended, so it never installs or hands over
+ * while an agent is mid-answer. Every wrapper reports, no origin gate.
+ * Fire-and-forget: an old daemon answers 400 and `daemonPost` returns `{error}`.
+ */
+export async function notifyDaemonTurnEvent(
+  sessionId: string,
+  event: 'turn_started' | 'turn_ended',
+): Promise<{ error?: string } | any> {
+  return daemonPost('/session-event', { sessionId, event });
+}
+
 export async function stopDaemonHttp(): Promise<void> {
   await daemonPost('/stop');
 }

@@ -1862,6 +1862,7 @@ export const en = {
                 summary: 'Threads started in the codex CLI, codex exec or the Codex desktop app can now be imported and continued here, the same way Claude Code conversations can. The built-in todo list also scrolls again once it grows past the screen. Codex import needs the CLI update on the machine.',
                 codex: 'The import dialog (sidebar "+" menu, ⌘K, or the machine page) gained a Codex source. It lists the threads under ~/.codex/sessions that Very Happy does not track yet; importing forks the thread inside Codex and opens a chat that continues from its full history. The original thread is never touched.',
                 todos: 'On the Todos page, the list used to be clipped at the bottom of the screen instead of scrolling once it held more tasks than fit. Fixed.',
+                update: 'Automatic CLI updates no longer wait for every session and terminal to close — only for no agent turn to be in flight on the machine. Machines that always have web terminals open (which never counted as idle, so never updated) now pick up approved releases too. Needs the CLI update once, by hand, on those machines.',
                 status: 'Terminals on a machine whose Very Happy CLI is older than 0.2.134 showed a question mark and were filed under "waiting for me" even while the agent was working. Their state is now estimated from what that daemon reports plus terminal activity, and the tooltip says it is an estimate. Update the daemon on that machine for exact status.',
             },
             sep13a: {
@@ -2912,7 +2913,7 @@ export const en = {
         retryFailed: 'Retry was not accepted. Check the connection and approved version, or use the manual command.',
         recovery: {
             manual_required: 'Automatic processing stopped. Confirm the installer has exited, then recover with the fixed-version command below.',
-            waiting_idle: 'Will update automatically once sessions and terminals close; no manual action needed',
+            waiting_idle: 'Will update automatically as soon as no agent is mid-turn on this machine; no manual action needed',
             installing: 'Updating automatically; please wait, no manual action needed',
             installed: 'Installed; switching automatically, no manual action needed',
             failed: 'Installation failed; retry or use the manual command',

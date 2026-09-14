@@ -24,6 +24,7 @@ export function startDaemonControlServer({
   onHappySessionWebhook,
   onSessionStateEvent,
   onClaudeAuthFailed,
+  onSessionTurnEvent,
   pushClipboard,
   onTerminalHook,
   setTerminalTitle
@@ -40,6 +41,9 @@ export function startDaemonControlServer({
   onSessionStateEvent?: (sessionId: string, event: AssistantReportEvent, spawnedBy?: string) => void;
   /** B-276: a session's Claude Code turn ended with `authentication_failed`. */
   onClaudeAuthFailed?: (sessionId: string) => void;
+  /** B-466: a wrapper's turn started (also a lease renewal) or ended — feeds
+   *  the auto-update "no turn in flight" gate. Optional for older wirings. */
+  onSessionTurnEvent?: (sessionId: string, event: 'turn_started' | 'turn_ended') => void;
   pushClipboard: (text: string) => { delivered: boolean; truncated: boolean; totalBytes: number; error?: string };
   /** B-105: a claude SessionStart/SessionEnd hook forwarded from inside a vh
    *  web terminal (scripts/terminal_mirror_forwarder.cjs). Payload is claude's
@@ -125,7 +129,7 @@ export function startDaemonControlServer({
       schema: {
         body: z.object({
           sessionId: z.string(),
-          event: z.enum(['completed', 'needs_input', 'auth_failed']),
+          event: z.enum(['completed', 'needs_input', 'auth_failed', 'turn_started', 'turn_ended']),
           spawnedBy: z.string().optional(),
         }),
         response: {
@@ -141,6 +145,12 @@ export function startDaemonControlServer({
         // B-276: never route into the assistant-report sink (its vocabulary is
         // completed/needs_input); this only re-arms the auth preflight.
         onClaudeAuthFailed?.(sessionId);
+        return { status: 'ok' as const };
+      }
+      if (event === 'turn_started' || event === 'turn_ended') {
+        // B-466: every wrapper reports these, assistant-dispatched or not — the
+        // update gate is the only consumer.
+        onSessionTurnEvent?.(sessionId, event);
         return { status: 'ok' as const };
       }
       onSessionStateEvent?.(sessionId, event, spawnedBy);

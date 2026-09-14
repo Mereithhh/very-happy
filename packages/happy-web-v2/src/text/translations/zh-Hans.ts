@@ -1819,6 +1819,7 @@ export const zhHans: TranslationStructure = {
                 summary: '在 codex CLI、codex exec 或 Codex 桌面版里开始的 thread，现在可以像 Claude Code 对话一样导入到这里继续。内置待办列表超过一屏后也重新能滚动了。导入 Codex 需要那台机器更新 CLI。',
                 codex: '导入对话框（侧栏「+」菜单、⌘K 或机器页）新增了 Codex 来源：列出 ~/.codex/sessions 下 Very Happy 尚未接管的 thread；导入会在 Codex 里 fork 这条 thread，并打开一个带完整历史的对话接着聊。原 thread 不会被改动。',
                 todos: '待办页的列表在任务超过一屏时会被截在屏幕底部而不能滚动。已修复。',
+                update: 'CLI 自动升级不再等所有会话和终端都关掉，只等机器上没有 agent 正在回答。常年开着 web 终端的机器以前永远不算空闲、永远升不了级，现在也能收到已批准的版本了。这些机器需要手动升一次 CLI 才能用上这条规则。',
                 status: '机器上的 Very Happy CLI 低于 0.2.134 时，它的终端会显示问号并被归到「等我看」，哪怕 agent 正在跑。现在会按该 daemon 上报的状态加终端活动来估计，并在提示里注明是估计值；把那台机器的 daemon 升级后才是精确状态。',
             },
             sep13a: {
@@ -2803,7 +2804,7 @@ export const zhHans: TranslationStructure = {
         retryFailed: '未受理重试，请检查连接和批准版本，或使用手动升级命令。',
         recovery: {
             manual_required: '自动处理已停止。确认安装进程已退出后，使用下方固定版本升级命令手动恢复。',
-            waiting_idle: '会话和终端结束后会自动更新，无需手动操作',
+            waiting_idle: '这台机器上没有 agent 正在回答时会自动更新，无需手动操作',
             installing: '正在自动更新，请稍等，无需手动操作',
             installed: '已安装，即将自动切换到新版本，无需手动操作',
             failed: '安装失败，可重试或使用手动升级命令',
