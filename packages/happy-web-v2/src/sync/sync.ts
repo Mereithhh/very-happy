@@ -3075,6 +3075,7 @@ class Sync {
                     event: soundEventOfNotifType(feedItem.body.notifType),
                     key: feedItem.body.sessionId,
                     href: `/session/${feedItem.body.sessionId}`,
+                    error: feedItem.body.notifType === 'error',
                 });
             }
         } else if (updateData.body.t === 'kv-batch-update') {

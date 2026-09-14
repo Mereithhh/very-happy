@@ -110,6 +110,8 @@ import {
   getSoundPrefs,
 } from '@/sync/soundPrefs';
 import { playChime, CHIME_VOICES, type ChimeVoice } from '@/utils/chimes';
+import { playPackSound, preloadSoundPack } from '@/utils/soundPackPlayer';
+import { SOUND_PACKS } from '@/sync/soundPacks';
 import {
   useRetentionDays,
   setRetentionDays,
@@ -1776,10 +1778,23 @@ function SoundGroups() {
   const prefs = useSoundPrefs();
 
   // Preview reads prefs from the store (not the render closure) so the value
-  // just committed by the same interaction is what plays.
+  // just committed by the same interaction is what plays. With a pack chosen,
+  // the volume/enable previews play the pack (what the user will hear).
   const preview = (voice?: ChimeVoice) => {
     const cur = getSoundPrefs();
+    if (!voice && cur.pack) {
+      void previewPack(cur.pack, 'done');
+      return;
+    }
     playChime(voice ?? cur.voice, cur.volume);
+  };
+  // B-469: per-row pack preview state — the first play fetches the pack from
+  // its host, so the row shows busy and then whether a line actually played.
+  const [packPreview, setPackPreview] = useState<{ id: string; state: 'loading' | 'played' | 'unavailable' } | null>(null);
+  const previewPack = async (id: string, event: SoundEvent) => {
+    setPackPreview({ id, state: 'loading' });
+    const outcome = await playPackSound(id, event, getSoundPrefs().volume);
+    setPackPreview({ id, state: outcome });
   };
 
   return (
@@ -1822,9 +1837,9 @@ function SoundGroups() {
           <Item
             key={voice}
             title={t(CHIME_VOICE_LABEL[voice])}
-            selected={prefs.voice === voice}
+            selected={prefs.pack === null && prefs.voice === voice}
             onClick={() => {
-              updateSoundPrefs({ voice });
+              updateSoundPrefs({ voice, pack: null });
               preview(voice);
             }}
             right={
@@ -1841,11 +1856,52 @@ function SoundGroups() {
                 >
                   <Volume2 size={15} />
                 </button>
-                {prefs.voice === voice && <Check size={16} />}
+                {prefs.pack === null && prefs.voice === voice && <Check size={16} />}
               </span>
             }
           />
         ))}
+      </ItemGroup>
+
+      {/* B-469: OpenPeon / peon-ping voice packs, fetched from their own host
+          on first use (game audio the project distributes as CC-BY-NC / fair
+          use — never bundled here). Red Alert first. */}
+      <ItemGroup title={t('notifications.soundPacks')} footer={t('notifications.soundPacksDescription')}>
+        {SOUND_PACKS.map((pack) => {
+          const selected = prefs.pack === pack.id;
+          const state = packPreview?.id === pack.id ? packPreview.state : null;
+          return (
+            <Item
+              key={pack.id}
+              title={pack.name}
+              subtitle={`${pack.franchise} · ${pack.language}${state === 'unavailable' ? ` · ${t('notifications.soundPackUnavailable')}` : ''}`}
+              selected={selected}
+              onClick={() => {
+                updateSoundPrefs({ pack: pack.id });
+                void previewPack(pack.id, 'done');
+                void preloadSoundPack(pack.id);
+              }}
+              right={
+                <span className="set-voice-right" data-pack={pack.id} data-preview={state ?? 'idle'}>
+                  <button
+                    type="button"
+                    className="set-voice-preview"
+                    title={t('notifications.soundPreview')}
+                    aria-label={`${t('notifications.soundPreview')} · ${pack.name}`}
+                    aria-busy={state === 'loading'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void previewPack(pack.id, 'permission');
+                    }}
+                  >
+                    {state === 'loading' ? <Spinner size={14} /> : <Volume2 size={15} />}
+                  </button>
+                  {selected && <Check size={16} />}
+                </span>
+              }
+            />
+          );
+        })}
       </ItemGroup>
 
       <ItemGroup title={t('notifications.soundEvents')} footer={t('notifications.soundEventsDescription')}>

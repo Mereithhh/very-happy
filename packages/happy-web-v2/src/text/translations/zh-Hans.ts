@@ -250,6 +250,9 @@ export const zhHans: TranslationStructure = {
         voiceWoodblock: '木鱼',
         voiceMelody: '小旋律',
         soundPreview: '试听',
+        soundPacks: '语音包',
+        soundPacksDescription: '来自 peon-ping / OpenPeon 的游戏语音包（PeonPing/og-packs）。选中即试听并从其托管地址下载，之后缓存在本浏览器。权限请求和提问播放它的「需要输入」台词，回合完成播放「任务完成」台词。语音包加载不了时会退回上面的合成提示音。音频版权归各游戏发行方，由该项目按 CC-BY-NC-4.0 / 个人提醒用途合理使用分发。',
+        soundPackUnavailable: '加载失败，请检查网络',
         soundEvents: '触发事件',
         soundEventsDescription: '选择哪些事件响铃。正在看着的那个会话不响；页面隐藏时照响。',
         soundEventPermission: '权限请求',
@@ -1814,6 +1817,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep15a: {
+                title: '提示音可以换成游戏语音包了，含红色警戒',
+                summary: '设置 → 通知新增 peon-ping / OpenPeon 语音包：红色警戒的苏联士兵、基洛夫飞艇、魔兽苦工、星际单位、GLaDOS 等。选一个，权限请求时是「Yes, sir?」，回合完成时是「Reporting.」。',
+                packs: '语音包首次播放时从其托管地址下载，之后缓存在本浏览器，不打进本站。权限请求和提问用包里的「需要输入」台词，回合完成用「任务完成」台词，同一句不会连播两次。',
+                fallback: '合成提示音仍是默认。语音包加载不了（离线、托管方故障）时退回提示音，通知不会哑掉。',
+            },
             sep15: {
                 title: '停掉的一轮现在会明说',
                 summary: 'Claude 刚开始回答时按「停止」，以前对话里什么都不留，还会推一条「Session error」通知。现在 transcript 会显示「已由你停止」，和其他停止一样。对 CLI 更新后新建或重启的会话生效。',

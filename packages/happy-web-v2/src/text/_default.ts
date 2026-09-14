@@ -210,6 +210,10 @@ export const en = {
         voiceWoodblock: 'Woodblock',
         voiceMelody: 'Tiny tune',
         soundPreview: 'Preview',
+        // B-469: OpenPeon / peon-ping voice packs
+        soundPacks: 'Voice Packs',
+        soundPacksDescription: 'Game voice lines from the peon-ping / OpenPeon packs (PeonPing/og-packs). Picking a pack plays a line and downloads the pack from its host; it is then cached in this browser. Permission requests and questions play its "input required" lines, a finished turn its "task complete" lines. If a pack cannot be loaded, the chime above rings instead. Audio belongs to the games\' publishers and is distributed by that project under CC-BY-NC-4.0 / fair use for personal notifications.',
+        soundPackUnavailable: 'could not load — check the network',
         soundEvents: 'Play For',
         soundEventsDescription: 'Which events ring. The event\'s own session stays silent while you are looking at it; a hidden tab always rings.',
         soundEventPermission: 'Permission requests',
@@ -1857,6 +1861,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep15a: {
+                title: 'Game voice packs for notifications — Red Alert included',
+                summary: 'Settings → Notifications now offers the peon-ping / OpenPeon voice packs: Red Alert\'s Soviet soldier, the Kirov airship, Warcraft peons, StarCraft units, GLaDOS and more. Pick one and "Yes, sir?" answers a permission request, "Reporting." a finished turn.',
+                packs: 'Packs are fetched from their own host the first time they play and cached in this browser; nothing is bundled here. Permission requests and questions use a pack\'s "input required" lines, a finished turn its "task complete" lines, and the same line is never played twice in a row.',
+                fallback: 'The synthesized chimes stay the default. If a pack cannot be loaded (offline, host down), the chime rings instead, so a notification is never silent.',
+            },
             sep15: {
                 title: 'A stopped turn now says so',
                 summary: 'Pressing Stop while Claude was still starting its answer used to leave nothing in the conversation — and a "Session error" notification. The transcript now shows "Stopped by you", the same as any other stop. Applies to sessions started or restarted after the CLI updates.',

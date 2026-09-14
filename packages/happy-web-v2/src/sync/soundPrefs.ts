@@ -14,6 +14,7 @@ import * as React from 'react';
 import type { ChimeVoice } from '@/utils/chimes';
 import { CHIME_VOICES } from '@/utils/chimes';
 import type { SoundEvent } from './notificationInbox';
+import { normalizeSoundPackId } from './soundPacks';
 
 const store = new MMKV({ id: 'notification-sound-prefs' });
 const KEY = 'sound-prefs';
@@ -24,6 +25,9 @@ export interface SoundPrefs {
     /** 0..1 */
     volume: number;
     voice: ChimeVoice;
+    /** B-469: an OpenPeon pack id (sync/soundPacks.ts) that replaces the
+     *  synthesized chime; null = chime. Unknown ids parse back to null. */
+    pack: string | null;
     /** per-event-category opt-out (权限请求 / 提问 / 完成) */
     events: Record<SoundEvent, boolean>;
 }
@@ -32,6 +36,7 @@ export const DEFAULT_SOUND_PREFS: SoundPrefs = {
     enabled: true,
     volume: 0.6,
     voice: 'duo',
+    pack: null,
     events: {
         permission: true,
         question: true,
@@ -53,6 +58,7 @@ function parsePrefs(raw: string | undefined): SoundPrefs {
             enabled: typeof obj?.enabled === 'boolean' ? obj.enabled : DEFAULT_SOUND_PREFS.enabled,
             volume: clamp01(obj?.volume) ?? DEFAULT_SOUND_PREFS.volume,
             voice: CHIME_VOICES.includes(obj?.voice) ? obj.voice : DEFAULT_SOUND_PREFS.voice,
+            pack: normalizeSoundPackId(obj?.pack),
             events: {
                 permission: typeof ev.permission === 'boolean' ? ev.permission : DEFAULT_SOUND_PREFS.events.permission,
                 question: typeof ev.question === 'boolean' ? ev.question : DEFAULT_SOUND_PREFS.events.question,
