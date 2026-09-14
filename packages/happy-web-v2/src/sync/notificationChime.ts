@@ -19,6 +19,7 @@ import { getSoundPrefs } from './soundPrefs';
 import { getNotificationPrefs, isWithinQuietHours } from './notificationPrefs';
 import { isSameTarget, type SoundEvent } from './notificationInbox';
 import { playChime } from '@/utils/chimes';
+import { playPackSound } from '@/utils/soundPackPlayer';
 
 const COOLDOWN_MS = 5_000;
 const lastPlayed = new Map<string, number>();
@@ -35,6 +36,9 @@ export interface ChimeInput {
     key: string;
     /** the event's target view (self-view suppression) */
     href: string;
+    /** B-469: the underlying inbox category was an error (picks `task.error`
+     *  lines in packs that have them; the event stays 'question'). */
+    error?: boolean;
 }
 
 /** Best-effort: never throws; silently does nothing when gated. */
@@ -56,6 +60,14 @@ export function maybePlayNotificationSound(input: ChimeInput): void {
             }
         }
         lastPlayed.set(k, now);
+        // B-469: a chosen OpenPeon pack plays its line; if the pack cannot be
+        // fetched/decoded right now the chime rings instead — never silence.
+        if (prefs.pack) {
+            const { voice, volume } = prefs;
+            void playPackSound(prefs.pack, input.event, volume, { error: input.error })
+                .then((outcome) => { if (outcome !== 'played') playChime(voice, volume); });
+            return;
+        }
         playChime(prefs.voice, prefs.volume);
     } catch {
         // a broken chime must never break message handling

@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-15-voice-packs',
+    date: '2026-09-15',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep15a.title',
+    summaryKey: 'changelog.releases.sep15a.summary',
+    itemKeys: ['changelog.releases.sep15a.packs', 'changelog.releases.sep15a.fallback'],
+  },
+  {
     id: '2026-09-15-stopped-turn-marker',
     cliVersion: '0.2.140',
     date: '2026-09-15',

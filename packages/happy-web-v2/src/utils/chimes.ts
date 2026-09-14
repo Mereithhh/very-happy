@@ -84,6 +84,45 @@ export function playChime(voice: ChimeVoice, volume: number): void {
         .catch(() => {});
 }
 
+/** B-469: the pack player shares this context (and its autoplay unlock). */
+export function getAudioContext(): AudioContext | null {
+    return getCtx();
+}
+
+/**
+ * B-469: play an already-decoded clip (an OpenPeon pack line) at `volume`
+ * through the same perceptual taper as the chimes. Returns false when the
+ * context is missing or still locked (a resume is attempted, as in playChime).
+ */
+export function playDecodedBuffer(buffer: AudioBuffer, volume: number): boolean {
+    const c = getCtx();
+    if (!c) return false;
+    const vol = Math.min(1, Math.max(0, volume));
+    if (vol <= 0) return false;
+    const start = () => {
+        try {
+            const master = c.createGain();
+            master.gain.value = vol * vol * 0.9;
+            master.connect(c.destination);
+            const src = c.createBufferSource();
+            src.buffer = buffer;
+            src.connect(master);
+            src.start();
+        } catch {
+            // best-effort
+        }
+    };
+    if (c.state === 'running') {
+        start();
+        return true;
+    }
+    // Locked: the resume succeeds iff we are inside a user gesture; report
+    // "not played" so the caller can fall back — the clip still plays if the
+    // resume lands, exactly like playChime.
+    void c.resume().then(() => { if ((c.state as AudioContextState) === 'running') start(); }).catch(() => {});
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // synthesis
 // ---------------------------------------------------------------------------
