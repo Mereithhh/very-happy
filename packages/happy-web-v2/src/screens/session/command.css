@@ -34,7 +34,15 @@
 .cmd-out {
   max-height: 360px;
   overflow: auto;
-  overscroll-behavior: contain;
+  /* B-467: NO `overscroll-behavior: contain` here. This box is a nested
+     vertical scroller inside the transcript; `contain` stops scroll chaining
+     to the ancestor, so with the pointer resting on a tall output that is
+     already at its top, wheel/trackpad-up moved nothing — the whole
+     conversation looked frozen until the pointer left the box (or the page
+     was reloaded, which collapsed it). Chaining into `.cl-scroll` is exactly
+     what a reader expects; `.cl-scroll` itself still contains against the
+     body, so the iOS bounce this was meant to prevent stays prevented. */
+  overscroll-behavior: auto;
 }
 .cmd-stream {
   margin: 0;

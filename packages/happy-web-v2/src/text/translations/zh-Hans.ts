@@ -1814,6 +1814,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep14a: {
+                title: '指针停在命令输出上时，对话又能往上滚了',
+                summary: '鼠标停在一段已经滚到顶的长命令输出上时，往上滚什么都不动，整个对话像是冻住了，得挪开指针或刷新才恢复。已修复。',
+                scroll: '命令输出框内部照常可以滚动，但滚到边缘后滚轮会交给外面的对话，和其他内容块一样。',
+            },
             sep14: {
                 title: '可以导入 Codex 对话了，待办列表能滚动了，旧版 daemon 的终端不再全是问号',
                 summary: '在 codex CLI、codex exec 或 Codex 桌面版里开始的 thread，现在可以像 Claude Code 对话一样导入到这里继续。内置待办列表超过一屏后也重新能滚动了。导入 Codex 需要那台机器更新 CLI。',

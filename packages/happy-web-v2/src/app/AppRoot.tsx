@@ -170,6 +170,9 @@ const WorkspaceFilesHarness = import.meta.env.DEV
 const MobileChatHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/MobileChatHarness').then((m) => ({ default: m.MobileChatHarness })))
   : null;
+const ChatScrollHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/ChatScrollHarness').then((m) => ({ default: m.ChatScrollHarness })))
+  : null;
 const ChangelogHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/ChangelogHarness').then((m) => ({ default: m.ChangelogHarness })))
   : null;
@@ -204,6 +207,9 @@ const router = createBrowserRouter(
     ...(WorkspaceFilesHarness ? [{ path: '/dev/workspace-files', element: <Lazy><WorkspaceFilesHarness /></Lazy> }] : []),
     ...(MobileChatHarness
       ? [{ path: '/dev/mobile-chat', element: <Lazy><MobileChatHarness /></Lazy> }]
+      : []),
+    ...(ChatScrollHarness
+      ? [{ path: '/dev/chat-scroll', element: <Lazy><ChatScrollHarness /></Lazy> }]
       : []),
     ...(ChangelogHarness
       ? [
