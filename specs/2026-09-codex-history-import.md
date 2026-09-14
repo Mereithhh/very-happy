@@ -1,6 +1,6 @@
 # 导入 Codex 对话（codex TUI / `codex exec` / Codex 桌面版 thread → very-happy 会话）
 
-> 状态：Implemented（本批 PR；CLI 预计 v0.2.139）
+> 状态：Shipped（PR #368 → `main@90ab515a`，web/server 2026-09-14 blue 槽 generation 139；CLI v0.2.139 npm latest 已 promote、六平台 smoke 全绿）
 > 日期：2026-09-14 ｜ 关联 backlog：B-464 ｜ 出处：Owner 2026-09-14「需要支持 codex 对话导入功能」｜ 前身：`2026-09-claude-history-import.md`（B-290）
 
 ## 背景
@@ -85,5 +85,6 @@ very-happy 已经会「接着一条 thread 聊」：`thread/fork` + `thread/resu
 - [x] `codex-list-history` / `codex-import-session` RPC 单测 ×6（含 sessions.json 排除、参数校验、spawn 三种结果透传、`run.ts` env 源码断言）。
 - [x] `importCodexThread` 单测 ×4（fork+metadata+回放、无 turns 时只读 fork、同 id/后端错误、`runCodex` 接线源码断言）。
 - [x] web 纯函数测试（Codex 解析、tracked、来源标签、通用选择/汇总）；changelog 条目测试；`connectMachine` 契约测试。
-- [x] 门禁：见 PR。
+- [x] 门禁：PR #368 全绿；本地 wire/web/cli/server 门禁通过（web 4 个文件在未改动 main 上同样失败：Node 26.7 无 `localStorage`，CI 绿）。
+- [x] 线上：`check-shipped` 命中 `2026-09-14-codex-history-import` / `codex-list-history`；health ok。
 - [ ] 真机：机器升级后在 veryhappy.dev 导入一条 codex CLI thread 并继续（V-153，Owner 清账）。
