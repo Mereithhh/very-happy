@@ -12,6 +12,7 @@
 
 | id | 版本/批次 | 验证项 | 怎么验 | 登记日期 |
 |---|---|---|---|---|
+| V-154 | B-468（CLI 0.2.140 已发布） | **刚发出消息就点「停止」，对话里要出现「已由你停止」** | 前提：机器 daemon ≥0.2.140，**新建**一个 Claude 会话（旧 wrapper 不热更新）。①发一条消息，在 Claude 还没输出任何内容时（1～2 秒内）点停止：transcript 应立刻出现「已由你停止」，不应收到「Session error」推送；②再发一条消息，应正常回答（query 没被拆掉）；③对照：等 Claude 已经输出一段再点停止，同样出现「已由你停止」。**为什么浏览器验不了**：优雅中断的 result 时序来自真实 SDK，本地只用源码断言与控制器单测锁机制。 | 2026-09-15 |
 | V-153 | B-464（web 本批；CLI 预计 0.2.139，待发布） | **导入一条真实 Codex thread 并接着聊** | 前提：机器 daemon 升到含 B-464 的 CLI。侧栏「+」→「导入 Codex 对话…」：①列表应只列出 codex CLI / Codex 桌面版起的 thread（very-happy 自己的会话不出现），标题优先用 Codex 起的名字，来源标签写 codex CLI / codex exec / Codex Desktop；②导入一条：新会话应带完整历史、标题即原 thread 名/首句；③在新会话里发一条消息，Codex 应带着上下文回答（引用前文即通过）；④回到 Codex 桌面版/TUI 看原 thread：内容不变、没有 very-happy 的新消息（fork 语义）；⑤再打开导入对话框：刚导入的那条不再出现；⑥daemon `very-happy daemon stop` → `start` 后恢复该会话，再发一条应接得上（reconnect 走 `--resume <fork>`）。**为什么浏览器验不了**：`thread/fork` 与回放内容取决于真实 app-server 与真实 rollout；本地只能用构造数据锁机制（单测 ×18）。 | 2026-09-14 |
 | V-152 | B-444 | iOS 16px 输入聚焦与键盘收放 | Safari/PWA 打开对话、编辑消息、搜索和登录表单，聚焦后页面不应自动放大，键盘收放不应遮挡操作。Chromium 已验证窄屏/coarse 下 computed font-size 为 16px、焦点前后 scale 不变；无法代替真机 Safari 的原生键盘与 viewport 行为。 | 2026-09-10 |
 | V-151 | B-436 | Fold8 折叠/展开与浏览器桌面站点设置 | 在实际使用的三星浏览器、Chrome 或 PWA 中刷新新版；折叠时应为单栏，展开后按可用宽度进入双栏，切换保留当前页面。浏览器已验证 412px 屏幕+980px虚拟视口及 850px 展开场景；无法模拟特定三星系统/浏览器报告的 screen.width、桌面站点开关和物理折叠事件，因此仍需同一真机核对。 | 2026-09-10 |
