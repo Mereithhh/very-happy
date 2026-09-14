@@ -139,6 +139,27 @@ manually requesting a version does not change it. Rollback: Web 8e8c03f0e,
 CLI 0.2.132. All local gates passed: wire 82, Web 2755, CLI 2103, server 647
 (one existing skip), required builds/typechecks and executable version smoke.
 
+## Idle means "no turn in flight" (B-466, 2026-09-14)
+
+The install and handover gates required no session wrapper and no live web
+terminal. A machine whose owner keeps web terminals open is never idle by that
+rule and never updates (five machines still on 0.2.129 twelve days after
+0.2.134). Owner decision 2026-09-14: wait only for an agent turn in flight;
+terminals live in tmux and idle wrappers survive a handover, so neither holds
+an update.
+
+Mechanism (`update/turnActivity.ts`): every wrapper's `ApiSessionClient.keepAlive`
+feeds a `TurnReporter` that POSTs `turn_started` on the rising edge of
+`thinking` (renewed every 60 s while it stays up) and `turn_ended` on the
+falling edge to the daemon's `/session-event`. The daemon's
+`TurnActivityTracker` marks a session busy until `turn_ended`, the wrapper's
+exit, or 150 s without renewal — a lost `turn_ended` cannot pin a machine on an
+old version. `idle()` for the controller and both handover checks are
+`!turnActivity.hasActiveTurn()`; `teamWorker.busy` and a running installer
+still hold. Wrappers started by an older CLI never report and therefore never
+count as busy. Old daemons reject the new event values with 400, which the
+wrapper ignores.
+
 ## Release recommendation convergence (B-443)
 
 The old publish check returned success even with a stale recommendation; the

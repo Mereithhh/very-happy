@@ -52,6 +52,7 @@ import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
 import { installCliSafely } from '@/update/npmInstall';
 import { createUpdateController } from '@/update/updateController';
+import { TurnActivityTracker } from '@/update/turnActivity';
 import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
@@ -266,6 +267,9 @@ export async function startDaemon(): Promise<void> {
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
+    // B-466: which sessions have a turn in flight (wrapper-reported, TTL'd).
+    // The only thing the auto-update install/handover gate waits for.
+    const turnActivity = new TurnActivityTracker();
 
     // Retain session data after process exits so resume can still find it.
     // Pre-populate from disk so sessions survive daemon restarts.
@@ -657,6 +661,12 @@ export async function startDaemon(): Promise<void> {
         }
         if (options.resumeCodexThreadId) {
           extraEnv.HAPPY_FORK_CODEX_THREAD_ID = options.resumeCodexThreadId;
+        }
+        // B-464: the wrapper forks the source thread itself (see
+        // codex/importCodexThread.ts); the id came off the wire, so it only
+        // travels when it is a UUID.
+        if (options.importCodexThreadId && UUID_RE.test(options.importCodexThreadId)) {
+          extraEnv.HAPPY_IMPORT_CODEX_THREAD_ID = options.importCodexThreadId;
         }
         // B-051: mark the spawned CLI as the assistant variant (fresh-spawn
         // path; the re-attach path above sets it directly on its env). This is
@@ -1419,6 +1429,7 @@ export async function startDaemon(): Promise<void> {
     const onChildExited = (pid: number) => {
       const session = pidToTrackedSession.get(pid);
       if (session?.happySessionId && (session.spawnedBy === 'teams' || teamWorker?.hasSession(session.happySessionId))) teamWorker?.report(session.happySessionId, 'exited');
+      if (session?.happySessionId) turnActivity.forget(session.happySessionId);
       if (session?.happySessionId && session.encryption) {
         sessionIdToFinishedSession.set(session.happySessionId, session);
         logger.debug(`[DAEMON RUN] Process PID ${pid} exited, preserved session ${session.happySessionId} for resume`);
@@ -1518,6 +1529,7 @@ export async function startDaemon(): Promise<void> {
       onHappySessionWebhook,
       onSessionStateEvent,
       onClaudeAuthFailed: (sessionId: string) => claudeAuthServiceRef?.signalAuthFailed(sessionId),
+      onSessionTurnEvent: (sessionId, event) => turnActivity.apply(sessionId, event),
       pushClipboard: (text: string) => {
         if (!apiMachineRef) {
           return { delivered: false, truncated: false, totalBytes: 0, error: 'daemon is still starting up' };
@@ -1692,7 +1704,10 @@ export async function startDaemon(): Promise<void> {
     const updateController = createUpdateController({
       policy: () => fetchCliUpdateState(configuration.serverUrl, packageJson.version),
       enabled: async () => ((await readSettings()).cliAutoUpdate ?? 'idle') !== 'off',
-      idle: () => pidToTrackedSession.size === 0 && !apiMachine.hasLiveTerminals(),
+      // B-466: "idle" = no agent turn in flight. Idle wrappers survive a
+      // handover (they talk to the server themselves) and web terminals live
+      // in tmux, so neither is a reason to hold an update.
+      idle: () => !turnActivity.hasActiveTurn(),
       install: installCliSafely,
       publish: (state) => {
         cliUpdateStateRef = state;
@@ -1766,7 +1781,7 @@ export async function startDaemon(): Promise<void> {
           // File temporarily missing (e.g. mid-install) — retry on next heartbeat.
         }
       }
-      if (bundleReplaced && !teamWorker?.busy && !updateController.isRunning() && pidToTrackedSession.size === 0 && !apiMachine.hasLiveTerminals()) {
+      if (bundleReplaced && !teamWorker?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn()) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
@@ -1787,7 +1802,7 @@ export async function startDaemon(): Promise<void> {
           // still-finishing install is picked up moments later.
           return;
         }
-        if (teamWorker?.busy || updateController.isRunning() || pidToTrackedSession.size > 0 || apiMachine.hasLiveTerminals()) return;
+        if (teamWorker?.busy || updateController.isRunning() || turnActivity.hasActiveTurn()) return;
         lastHandoverHold = null;
         logger.debug('[DAEMON RUN] Daemon bundle replaced on disk and verified, handing off to new daemon');
         teamWorker?.stop();

@@ -9,15 +9,25 @@ import {
     historyEntrypointLabel,
     historyEntryTitle,
     parseClaudeHistory,
+    parseCodexHistory,
+    codexSourceLabel,
+    historySourceLabel,
     shortenCwd,
     trackedClaudeSessionIds,
+    trackedCodexThreadIds,
+    trackedHistoryIds,
+    type ClaudeHistoryEntry,
 } from './claudeHistoryImport';
 
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
-describe('B-290 claudeHistoryImport', () => {
+function claude(id: string, rest: Omit<ClaudeHistoryEntry, 'id' | 'agent' | 'claudeSessionId'>): ClaudeHistoryEntry {
+    return { id, agent: 'claude', claudeSessionId: id, ...rest };
+}
+
+describe('B-290 / B-464 history import helpers', () => {
     it('parses only well-formed rows from the RPC payload', () => {
         const rows = parseClaudeHistory({
             type: 'success',
@@ -32,8 +42,8 @@ describe('B-290 claudeHistoryImport', () => {
             ],
         });
         expect(rows).toEqual([
-            { claudeSessionId: A, cwd: '/w/app', firstPrompt: 'fix it', startedAt: 5, updatedAt: 10, sizeBytes: 100, entrypoint: 'cli', gitBranch: 'main' },
-            { claudeSessionId: B, cwd: '/w/app', firstPrompt: 'Titled', summary: 'Titled', startedAt: 0, updatedAt: 20, sizeBytes: 0 },
+            { id: A, agent: 'claude', claudeSessionId: A, cwd: '/w/app', firstPrompt: 'fix it', startedAt: 5, updatedAt: 10, sizeBytes: 100, entrypoint: 'cli', gitBranch: 'main' },
+            { id: B, agent: 'claude', claudeSessionId: B, cwd: '/w/app', firstPrompt: 'Titled', summary: 'Titled', startedAt: 0, updatedAt: 20, sizeBytes: 0 },
         ]);
         expect(parseClaudeHistory(null)).toEqual([]);
         expect(parseClaudeHistory({ error: 'boom' })).toEqual([]);
@@ -49,11 +59,49 @@ describe('B-290 claudeHistoryImport', () => {
         expect(ids.sort()).toEqual([A, B, C].sort());
     });
 
+    it('B-464 parses codex-list-history rows and tracks own thread + import origin', () => {
+        const rows = parseCodexHistory({
+            type: 'success',
+            entries: [
+                { codexThreadId: A.toUpperCase(), cwd: '/w/app', firstPrompt: 'fix it', updatedAt: 10, startedAt: 5, sizeBytes: 100, entrypoint: 'cli', originator: 'codex-tui', gitBranch: 'main', version: '0.154.0' },
+                { codexThreadId: B, cwd: '/w/app', firstPrompt: '', summary: 'Named', updatedAt: 20 },
+                { codexThreadId: 'nope', cwd: '/w/app', firstPrompt: 'x' },
+                { claudeSessionId: C, cwd: '/w/app', firstPrompt: 'wrong shape' },
+                null,
+            ],
+        });
+        expect(rows).toEqual([
+            { id: A, agent: 'codex', codexThreadId: A, cwd: '/w/app', firstPrompt: 'fix it', startedAt: 5, updatedAt: 10, sizeBytes: 100, entrypoint: 'cli', originator: 'codex-tui', gitBranch: 'main', version: '0.154.0' },
+            { id: B, agent: 'codex', codexThreadId: B, cwd: '/w/app', firstPrompt: 'Named', summary: 'Named', startedAt: 0, updatedAt: 20, sizeBytes: 0 },
+        ]);
+        expect(parseCodexHistory({ error: 'boom' })).toEqual([]);
+
+        const ids = trackedCodexThreadIds([
+            { metadata: { codexThreadId: A.toUpperCase() } } as any,
+            { metadata: { codexThreadId: B, importedFromCodexThreadId: C } } as any,
+            { metadata: { claudeSessionId: A } } as any,
+            { metadata: null } as any,
+        ]);
+        expect(ids.sort()).toEqual([A, B, C].sort());
+        expect(trackedHistoryIds('codex', [{ metadata: { codexThreadId: A } } as any])).toEqual([A]);
+        expect(trackedHistoryIds('claude', [{ metadata: { codexThreadId: A } } as any])).toEqual([]);
+
+        expect(codexSourceLabel({ originator: 'codex-tui' })).toBe('codex CLI');
+        expect(codexSourceLabel({ originator: 'codex_exec', entrypoint: 'exec' })).toBe('codex exec');
+        expect(codexSourceLabel({ originator: 'Codex Desktop', entrypoint: 'vscode' })).toBe('Codex Desktop');
+        expect(codexSourceLabel({ originator: 'my-tool' })).toBe('my-tool');
+        expect(codexSourceLabel({ entrypoint: 'vscode' })).toBe('Codex app');
+        expect(codexSourceLabel({ entrypoint: 'cli' })).toBe('codex CLI');
+        expect(codexSourceLabel({})).toBeUndefined();
+        expect(historySourceLabel(rows[0])).toBe('codex CLI');
+        expect(historySourceLabel(claude(A, { cwd: '/w', firstPrompt: 'p', startedAt: 0, updatedAt: 0, sizeBytes: 0, entrypoint: 'remote_mobile' }))).toBe('claude.ai');
+    });
+
     it('hides tracked conversations, searches, and sorts newest first', () => {
         const entries = [
-            { claudeSessionId: A, cwd: '/w/app', firstPrompt: 'fix login', startedAt: 0, updatedAt: 1, sizeBytes: 1 },
-            { claudeSessionId: B, cwd: '/w/docs', firstPrompt: 'write docs', summary: 'Docs pass', startedAt: 0, updatedAt: 3, sizeBytes: 1, gitBranch: 'feat/x' },
-            { claudeSessionId: C, cwd: '/w/app', firstPrompt: 'tracked', startedAt: 0, updatedAt: 2, sizeBytes: 1 },
+            claude(A, { cwd: '/w/app', firstPrompt: 'fix login', startedAt: 0, updatedAt: 1, sizeBytes: 1 }),
+            claude(B, { cwd: '/w/docs', firstPrompt: 'write docs', summary: 'Docs pass', startedAt: 0, updatedAt: 3, sizeBytes: 1, gitBranch: 'feat/x' }),
+            claude(C, { cwd: '/w/app', firstPrompt: 'tracked', startedAt: 0, updatedAt: 2, sizeBytes: 1 }),
         ];
         expect(filterImportableHistory(entries, [C.toUpperCase()]).map((e) => e.claudeSessionId)).toEqual([B, A]);
         expect(filterImportableHistory(entries, [], 'DOCS').map((e) => e.claudeSessionId)).toEqual([B]);
@@ -85,12 +133,12 @@ describe('B-290 claudeHistoryImport', () => {
         expect(toggleImportSelection([A, B], A)).toEqual([B]);
 
         const visible = [
-            { claudeSessionId: B, cwd: '/w', firstPrompt: 'b', startedAt: 0, updatedAt: 2, sizeBytes: 1 },
-            { claudeSessionId: A, cwd: '/w', firstPrompt: 'a', startedAt: 0, updatedAt: 1, sizeBytes: 1 },
+            claude(B, { cwd: '/w', firstPrompt: 'b', startedAt: 0, updatedAt: 2, sizeBytes: 1 }),
+            claude(A, { cwd: '/w', firstPrompt: 'a', startedAt: 0, updatedAt: 1, sizeBytes: 1 }),
         ];
         expect(pruneImportSelection([A, C, B], visible).sort()).toEqual([A, B].sort());
         // same array identity semantics matter for the effect that prunes: order follows the list
-        expect(orderSelectionForImport([A, B], visible).map((e) => e.claudeSessionId)).toEqual([B, A]);
+        expect(orderSelectionForImport([A, B], visible).map((e) => e.id)).toEqual([B, A]);
         expect(orderSelectionForImport([C], visible)).toEqual([]);
     });
 

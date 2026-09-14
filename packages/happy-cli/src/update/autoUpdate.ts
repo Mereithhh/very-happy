@@ -7,10 +7,14 @@
  * on the old code when it will not start, and reports why. So all this adds is
  * "run npm", and it adds it under conditions chosen so a failure costs nothing:
  *
- * - **Idle only.** No session wrapper running, no live web terminal. An upgrade
- *   swaps the daemon; wrappers already running keep the code they started with
- *   (iron rule 14), and a terminal's owner process is replaced underneath it.
- *   Waiting for idle means neither is ever true at the moment we act.
+ * - **Idle only — and idle means "no agent turn in flight" (B-466).** It used
+ *   to mean no session wrapper and no live web terminal, which a machine with
+ *   permanently open terminals never satisfies (five machines sat on 0.2.129
+ *   for that reason). A handover does not kill wrappers (they talk to the
+ *   server themselves and keep the code they started with, iron rule 14) and
+ *   a web terminal lives in tmux, so the only thing worth waiting for is an
+ *   agent mid-answer; wrappers report that from their keepAlive heartbeat
+ *   (`update/turnActivity.ts`).
  * - **To the explicitly approved auto-update version, never `latest`.** The operator pins
  *   that after validating a release, so nothing reaches a user's machine that
  *   has not been deliberately promoted — the blast radius is a decision, not a

@@ -28,6 +28,8 @@ import { createEnvelope } from '@slopus/happy-wire';
 import { scanUndeliveredQueuedInputs, type UndeliveredScan } from '@/utils/undeliveredQueuedInputs';
 import { normalizeAgentUsage, usageAgentKey } from './usageReport';
 import { MAX_CHAT_ATTACHMENT_ENCRYPTED_BYTES } from '@/utils/attachmentLimits';
+import { TurnReporter } from '@/update/turnActivity';
+import { notifyDaemonTurnEvent } from '@/daemon/controlClient';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -1006,10 +1008,16 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * Send a ping message to keep the connection alive
      */
+    /** B-466: turn edges (and a periodic lease) reported to the local daemon so
+     *  auto-update waits for "no turn in flight" instead of "no sessions". */
+    private readonly turnReporter = new TurnReporter((event) => void notifyDaemonTurnEvent(this.sessionId, event)
+        .catch((error) => logger.debug('[API] Failed to report turn event to daemon:', error)));
+
     keepAlive(thinking: boolean, mode: 'local' | 'remote') {
         if (process.env.DEBUG) { // too verbose for production
             logger.debug(`[API] Sending keep alive message: ${thinking}`);
         }
+        this.turnReporter.observe(thinking);
         this.socket.volatile.emit('session-alive', {
             sid: this.sessionId,
             time: Date.now(),

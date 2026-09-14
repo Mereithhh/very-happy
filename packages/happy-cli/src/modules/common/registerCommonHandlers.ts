@@ -157,6 +157,13 @@ export interface SpawnSessionOptions {
      */
     importedFromClaudeSessionId?: string;
     /**
+     * B-464: Codex thread (written by the codex TUI / exec / desktop app) to
+     * import: the spawned wrapper forks it through the app-server, continues
+     * on the fork and records the original as `importedFromCodexThreadId`.
+     * Mutually exclusive with `resumeCodexThreadId`. Old daemons ignore it.
+     */
+    importCodexThreadId?: string;
+    /**
      * B-294: title to stamp on the imported session's metadata (the source
      * conversation's summary / first prompt). Sanitized daemon-side.
      */

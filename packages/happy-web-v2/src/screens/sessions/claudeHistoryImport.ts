@@ -1,18 +1,24 @@
 /**
- * B-290 — pure helpers for "Import a Claude Code conversation".
+ * B-290 / B-464 — pure helpers for "Import a conversation" (Claude Code and
+ * Codex).
  *
  * Claude Code (CLI, desktop app, SDK) stores every conversation under
- * `~/.claude/projects/<cwd>/<id>.jsonl` on the machine. The daemon's
- * `claude-list-history` RPC scans those files; this module parses the payload
- * tolerantly, hides the conversations very-happy already tracks, and shapes a
- * row for the picker. No React, no stores — everything the modal decides is a
- * function of (payload, known sessions, query), so it is unit-tested here and
- * the component stays wiring.
+ * `~/.claude/projects/<cwd>/<id>.jsonl`; Codex (TUI, `codex exec`, desktop
+ * app) under `~/.codex/sessions/<date>/rollout-*-<id>.jsonl`. The daemon's
+ * `claude-list-history` / `codex-list-history` RPCs scan those files; this
+ * module parses the payloads tolerantly, hides the conversations very-happy
+ * already tracks, and shapes a row for the picker. No React, no stores —
+ * everything the modal decides is a function of (payload, known sessions,
+ * query), so it is unit-tested here and the component stays wiring.
  */
 import type { Session } from '@/sync/storageTypes';
 
-export interface ClaudeHistoryEntry {
-    claudeSessionId: string;
+export type HistoryAgent = 'claude' | 'codex';
+
+interface HistoryEntryBase {
+    /** The source conversation id (lower-cased UUID) — the picker's row key. */
+    id: string;
+    agent: HistoryAgent;
     cwd: string;
     firstPrompt: string;
     summary?: string;
@@ -24,7 +30,40 @@ export interface ClaudeHistoryEntry {
     version?: string;
 }
 
+export interface ClaudeHistoryEntry extends HistoryEntryBase {
+    agent: 'claude';
+    claudeSessionId: string;
+}
+
+export interface CodexHistoryEntry extends HistoryEntryBase {
+    agent: 'codex';
+    codexThreadId: string;
+    /** `codex-tui` / `codex_exec` / `Codex Desktop` … as Codex writes it. */
+    originator?: string;
+}
+
+export type HistoryEntry = ClaudeHistoryEntry | CodexHistoryEntry;
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseCommon(e: Record<string, unknown>): Omit<HistoryEntryBase, 'id' | 'agent'> | null {
+    const { cwd, firstPrompt, summary, startedAt, updatedAt, sizeBytes, entrypoint, gitBranch, version } = e;
+    if (typeof cwd !== 'string' || !cwd) return null;
+    const prompt = typeof firstPrompt === 'string' ? firstPrompt : '';
+    const title = typeof summary === 'string' && summary ? summary : undefined;
+    if (!prompt && !title) return null;
+    return {
+        cwd,
+        firstPrompt: prompt || title || '',
+        ...(title ? { summary: title } : {}),
+        startedAt: typeof startedAt === 'number' && Number.isFinite(startedAt) ? startedAt : 0,
+        updatedAt: typeof updatedAt === 'number' && Number.isFinite(updatedAt) ? updatedAt : 0,
+        sizeBytes: typeof sizeBytes === 'number' && Number.isFinite(sizeBytes) ? sizeBytes : 0,
+        ...(typeof entrypoint === 'string' && entrypoint ? { entrypoint } : {}),
+        ...(typeof gitBranch === 'string' && gitBranch ? { gitBranch } : {}),
+        ...(typeof version === 'string' && version ? { version } : {}),
+    };
+}
 
 /** Tolerant parse of the `claude-list-history` RPC payload: only well-formed
  *  rows survive (the daemon validates too; this guards a garbled relay or an
@@ -35,23 +74,34 @@ export function parseClaudeHistory(raw: unknown): ClaudeHistoryEntry[] {
     const out: ClaudeHistoryEntry[] = [];
     for (const e of list) {
         if (!e || typeof e !== 'object') continue;
-        const { claudeSessionId, cwd, firstPrompt, summary, startedAt, updatedAt, sizeBytes, entrypoint, gitBranch, version } = e as Record<string, unknown>;
+        const { claudeSessionId } = e as Record<string, unknown>;
         if (typeof claudeSessionId !== 'string' || !UUID_RE.test(claudeSessionId)) continue;
-        if (typeof cwd !== 'string' || !cwd) continue;
-        const prompt = typeof firstPrompt === 'string' ? firstPrompt : '';
-        const title = typeof summary === 'string' && summary ? summary : undefined;
-        if (!prompt && !title) continue;
+        const common = parseCommon(e as Record<string, unknown>);
+        if (!common) continue;
+        const id = claudeSessionId.toLowerCase();
+        out.push({ id, agent: 'claude', claudeSessionId: id, ...common });
+    }
+    return out;
+}
+
+/** Same for `codex-list-history` (B-464). */
+export function parseCodexHistory(raw: unknown): CodexHistoryEntry[] {
+    const list = (raw as any)?.entries;
+    if (!Array.isArray(list)) return [];
+    const out: CodexHistoryEntry[] = [];
+    for (const e of list) {
+        if (!e || typeof e !== 'object') continue;
+        const { codexThreadId, originator } = e as Record<string, unknown>;
+        if (typeof codexThreadId !== 'string' || !UUID_RE.test(codexThreadId)) continue;
+        const common = parseCommon(e as Record<string, unknown>);
+        if (!common) continue;
+        const id = codexThreadId.toLowerCase();
         out.push({
-            claudeSessionId: claudeSessionId.toLowerCase(),
-            cwd,
-            firstPrompt: prompt || title || '',
-            ...(title ? { summary: title } : {}),
-            startedAt: typeof startedAt === 'number' && Number.isFinite(startedAt) ? startedAt : 0,
-            updatedAt: typeof updatedAt === 'number' && Number.isFinite(updatedAt) ? updatedAt : 0,
-            sizeBytes: typeof sizeBytes === 'number' && Number.isFinite(sizeBytes) ? sizeBytes : 0,
-            ...(typeof entrypoint === 'string' && entrypoint ? { entrypoint } : {}),
-            ...(typeof gitBranch === 'string' && gitBranch ? { gitBranch } : {}),
-            ...(typeof version === 'string' && version ? { version } : {}),
+            id,
+            agent: 'codex',
+            codexThreadId: id,
+            ...common,
+            ...(typeof originator === 'string' && originator ? { originator } : {}),
         });
     }
     return out;
@@ -72,24 +122,41 @@ export function trackedClaudeSessionIds(sessions: ReadonlyArray<Pick<Session, 'm
     return [...ids];
 }
 
+/** Codex twin (B-464): a session's own thread (the fork, for imports) plus the
+ *  original the import was forked from. */
+export function trackedCodexThreadIds(sessions: ReadonlyArray<Pick<Session, 'metadata'>>): string[] {
+    const ids = new Set<string>();
+    for (const s of sessions) {
+        const own = s.metadata?.codexThreadId;
+        if (typeof own === 'string' && UUID_RE.test(own)) ids.add(own.toLowerCase());
+        const source = s.metadata?.importedFromCodexThreadId;
+        if (typeof source === 'string' && UUID_RE.test(source)) ids.add(source.toLowerCase());
+    }
+    return [...ids];
+}
+
+export function trackedHistoryIds(agent: HistoryAgent, sessions: ReadonlyArray<Pick<Session, 'metadata'>>): string[] {
+    return agent === 'claude' ? trackedClaudeSessionIds(sessions) : trackedCodexThreadIds(sessions);
+}
+
 /** Rows the picker shows: untracked, newest first, optionally narrowed by a
  *  case-insensitive query over title, first prompt, cwd and branch. */
-export function filterImportableHistory(
-    entries: ReadonlyArray<ClaudeHistoryEntry>,
+export function filterImportableHistory<T extends HistoryEntry>(
+    entries: ReadonlyArray<T>,
     tracked: ReadonlyArray<string>,
     query = '',
-): ClaudeHistoryEntry[] {
+): T[] {
     const hidden = new Set(tracked.map((id) => id.toLowerCase()));
     const q = query.trim().toLowerCase();
     return entries
-        .filter((e) => !hidden.has(e.claudeSessionId))
+        .filter((e) => !hidden.has(e.id))
         .filter((e) => !q || [e.summary ?? '', e.firstPrompt, e.cwd, e.gitBranch ?? ''].some((v) => v.toLowerCase().includes(q)))
         .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-/** What the row is called: Claude Code's own summary when it has one, else the
- *  first prompt. */
-export function historyEntryTitle(entry: Pick<ClaudeHistoryEntry, 'summary' | 'firstPrompt'>): string {
+/** What the row is called: the tool's own summary/thread name when it has one,
+ *  else the first prompt. */
+export function historyEntryTitle(entry: Pick<HistoryEntryBase, 'summary' | 'firstPrompt'>): string {
     return entry.summary || entry.firstPrompt;
 }
 
@@ -111,6 +178,30 @@ export function historyEntrypointLabel(entrypoint: string | undefined): string |
         case 'remote_mobile': return 'claude.ai';
         default: return entrypoint;
     }
+}
+
+/** Human label for where a Codex thread came from. The originator is the
+ *  precise one (`codex-tui`, `codex_exec`, `Codex Desktop`); `source`
+ *  (`cli` / `exec` / `vscode`) is the fallback for rollouts without it. */
+export function codexSourceLabel(entry: Pick<CodexHistoryEntry, 'entrypoint' | 'originator'>): string | undefined {
+    switch (entry.originator) {
+        case 'codex-tui': return 'codex CLI';
+        case 'codex_exec': return 'codex exec';
+        case 'Codex Desktop': return 'Codex Desktop';
+        case undefined: break;
+        default: return entry.originator;
+    }
+    switch (entry.entrypoint) {
+        case 'cli': return 'codex CLI';
+        case 'exec': return 'codex exec';
+        case 'vscode': return 'Codex app';
+        case undefined: return undefined;
+        default: return entry.entrypoint;
+    }
+}
+
+export function historySourceLabel(entry: HistoryEntry): string | undefined {
+    return entry.agent === 'claude' ? historyEntrypointLabel(entry.entrypoint) : codexSourceLabel(entry);
 }
 
 /** Compact size for the meta line: `12 KB`, `3.4 MB`. */
@@ -146,19 +237,19 @@ export function toggleImportSelection(current: ReadonlyArray<string>, id: string
  *  see any more. */
 export function pruneImportSelection(
     current: ReadonlyArray<string>,
-    visible: ReadonlyArray<{ claudeSessionId: string }>,
+    visible: ReadonlyArray<{ id: string }>,
 ): string[] {
-    const ids = new Set(visible.map((e) => e.claudeSessionId));
+    const ids = new Set(visible.map((e) => e.id));
     return current.filter((id) => ids.has(id));
 }
 
 /** Import order = the order shown, so progress reads top-down. */
-export function orderSelectionForImport(
+export function orderSelectionForImport<T extends { id: string }>(
     selected: ReadonlyArray<string>,
-    visible: ReadonlyArray<ClaudeHistoryEntry>,
-): ClaudeHistoryEntry[] {
+    visible: ReadonlyArray<T>,
+): T[] {
     const wanted = new Set(selected);
-    return visible.filter((e) => wanted.has(e.claudeSessionId));
+    return visible.filter((e) => wanted.has(e.id));
 }
 
 export function summarizeImportRun(states: ReadonlyMap<string, ImportRowState>): ImportRunSummary {

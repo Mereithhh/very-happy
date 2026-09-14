@@ -181,7 +181,7 @@ export function BoardCard({
           {item.status === 'ended' && item.detail?.kind !== 'machineOffline' && (
             <span className="bd-card-offline">{t('board.endedTag')}</span>
           )}
-          {item.waitReason === 'unknown' && <span className="bd-card-offline">{t('sidebar.agentStatusUnknown')}</span>}
+          {item.waitReason === 'unknown' && <span className="bd-card-offline">{t(item.legacyStatus ? 'sidebar.agentStatusLegacy' : 'sidebar.agentStatusUnknown')}</span>}
           {item.waitReason === 'idle' && (
             <span className="bd-card-offline">{t('board.readyToReview')}</span>
           )}

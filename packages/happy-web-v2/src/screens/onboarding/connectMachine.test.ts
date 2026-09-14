@@ -25,7 +25,7 @@ describe('connect-a-machine doorways', () => {
     });
 
     it('every "no online machine" dead end offers the guide', () => {
-        for (const modal of ['NewSessionModal', 'NewTerminalModal', 'AttachTmuxModal', 'ImportClaudeHistoryModal']) {
+        for (const modal of ['NewSessionModal', 'NewTerminalModal', 'AttachTmuxModal', 'ImportHistoryModal']) {
             const source = read(`../sessions/${modal}.tsx`);
             expect(source, modal).toContain('<NoMachinesNotice onClose={onClose} />');
             expect(source, modal).not.toContain('"ns-empty">{t(\'machine.noMachines\')}');

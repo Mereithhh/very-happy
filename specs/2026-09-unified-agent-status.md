@@ -45,6 +45,22 @@ The real Stop-button RPC probe exposed a Pi/ACP bug: AcpBackend.cancel emitted b
 - SIGTERM: new Codex/ACP wrappers emitted inactive within one second, matching the Claude path. SIGKILL, network partition and non-macOS/custom-theme runtimes are not claimed as newly live-tested; their fallback remains lease expiry/unknown.
 - Final local checks: CLI 237 files / 2,134 cases; Web 321 files / 2,781 cases; CLI build and Web typecheck passed. All local probe wrappers and private tmux sessions were cleaned up; production was not touched.
 
+## Revision 2026-09-14 (B-465): old daemons get an estimate, not a question mark
+
+The rule "old daemons have unknown freshness, never manufacture fresh terminal work from them" produced a worse sidebar than before this spec on every machine still running a CLI below 0.2.134: with no observation stamp the lease is never fresh, so **every** terminal on such a machine read `unknown` — a question mark, filed under 等我看 — including a Claude mid-turn (Wenqing ZHANG's report, both machines on 0.2.129; auto-update never reaches a machine that always has web terminals open, see B-466).
+
+Revised rule, Web only (`sync/agentStatus.ts` `terminalExecution`, `boardItems.ts`): an entry that carries `agentState` but **no** `agentObservedAt` is a legacy daemon. Its verdict is estimated from what it reports plus terminal activity — the newest of the pushed `activityAt`, the realtime `terminal-activity` overlay and the registry `updatedAt`:
+
+| legacy state | activity within 60 s | verdict |
+|---|---|---|
+| `working` | yes | running |
+| `working` | no / none | unknown |
+| `needs_input` | (irrelevant — a dialog is silent) | input |
+| `idle` / `shell` | — | idle |
+| absent | — | unknown |
+
+Offline still gates everything; a stamped observation whose lease expired is not legacy and stays unknown. Items carry `legacyStatus: true`; the sidebar tooltip and the board card say the verdict is an estimate and to update the daemon. Once the daemon stamps observations none of this applies.
+
 ## Release evidence
 PR #348 merged as `c7db3fc2ff5074df8bd28756bad3f6d9e26c89a4`. Web assets at veryhappy.dev expose the new neutral identity and single-status CSS. CLI `v0.2.134` was published from that commit, all six Linux/macOS/Windows × Node 20/24 smoke jobs passed, and npm latest plus the public recommendation both report 0.2.134. mac-office runs 0.2.134 under launchd; a real central `list-terminals` RPC returned fresh observation timestamps and Claude identity after upgrade (the previous version returned neither). Existing business wrappers were preserved.
 

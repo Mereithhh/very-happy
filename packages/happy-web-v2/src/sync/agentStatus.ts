@@ -11,9 +11,30 @@ export function sessionExecution(input: {
         heartbeatFresh: input.fresh, runningSubagentsInTurn: input.runningSubagents ?? 0 });
     return running ? 'running' : input.fresh ? 'idle' : 'unknown';
 }
-export function terminalExecution(input: { online: boolean; fresh: boolean; state?: string }): AgentExecution {
+/** B-465: daemons before 0.2.134 report `agentState` without an observation
+ *  stamp, so their receipt lease is never fresh and every terminal read as
+ *  "unknown" — a Claude mid-turn landed in 等我看 with a question mark. Those
+ *  daemons still push state CHANGES and tmux activity, and an agent in a turn
+ *  keeps its spinner moving, so recent activity is the honest "still working"
+ *  signal for them; a pending dialog is silent, so needs_input is taken as
+ *  reported (that is what the old classifier already did, and offline still
+ *  gates it). Nothing here applies once the daemon stamps observations. */
+export const LEGACY_TERMINAL_ACTIVITY_TTL_MS = 60_000;
+export function terminalExecution(input: {
+    online: boolean; fresh: boolean; state?: string;
+    /** Set only for an entry with NO `agentObservedAt` (old daemon). */
+    legacy?: { activityAt?: number; now: number };
+}): AgentExecution {
     if (!input.online) return 'offline';
-    if (!input.fresh) return 'unknown';
+    if (!input.fresh) {
+        const legacy = input.legacy;
+        if (!legacy) return 'unknown';
+        if (input.state === 'needs_input') return 'input';
+        if (input.state === 'working') {
+            return legacy.activityAt !== undefined && legacy.now - legacy.activityAt <= LEGACY_TERMINAL_ACTIVITY_TTL_MS ? 'running' : 'unknown';
+        }
+        return input.state === 'idle' || input.state === 'shell' ? 'idle' : 'unknown';
+    }
     return input.state === 'working' ? 'running' : input.state === 'needs_input' ? 'input'
         : input.state === 'idle' || input.state === 'shell' ? 'idle' : 'unknown';
 }

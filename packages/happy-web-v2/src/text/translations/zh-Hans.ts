@@ -861,6 +861,7 @@ export const zhHans: TranslationStructure = {
         actionNewTerminalAt: '在指定目录新建终端…',
         actionAttachTmux: '接入 tmux 会话…',
         actionImportClaude: '导入 Claude Code 对话…',
+        actionImportCodex: '导入 Codex 对话…',
         actionRenameSession: '重命名当前对话',
         actionArchiveSession: '归档当前对话',
         actionRestoreSession: '恢复当前对话',
@@ -1155,6 +1156,7 @@ export const zhHans: TranslationStructure = {
         terminalAtTitle: '在指定目录新建终端…',
         terminalAttachTitle: '接入 tmux 会话…',
         importClaudeTitle: '导入 Claude Code 对话…',
+        importCodexTitle: '导入 Codex 对话…',
     },
 
     attachTmuxModal: {
@@ -1185,6 +1187,17 @@ export const zhHans: TranslationStructure = {
         progress: ({ done, total }: { done: number; total: number }) => `${done}/${total}`,
         batchImported: ({ count }: { count: number }) => `已导入 ${count} 个对话`,
         batchPartial: ({ done, failed }: { done: number; failed: number }) => `成功 ${done} 个，失败 ${failed} 个——失败的行里写了原因`,
+        agentLabel: '来源',
+        agentClaude: 'Claude Code',
+        agentCodex: 'Codex',
+        codexTitle: '导入 Codex 对话',
+        codexIntro: '这台机器上由 codex CLI、codex exec 或 Codex 桌面版保存的 thread——~/.codex/sessions 下所有 Very Happy 尚未接管的记录。',
+        codexNeedsCli: '导入 Codex thread 需要这台机器运行当前版本的 Very Happy CLI。请先升级 daemon，再重新打开此对话框。',
+        codexNotInstalled: '这台机器上没有安装 Codex，导入的 thread 无法在这里继续。',
+        codexLoading: '正在扫描 ~/.codex/sessions…',
+        codexEmpty: '这台机器上没有可导入的 thread——~/.codex/sessions 下的记录都已在这里，或者机器上还没有 Codex 历史。',
+        codexLoadFailed: '无法读取这台机器上的 Codex 历史。',
+        codexCopyNote: '导入会在 Codex 里 fork 这条 thread：原件保持不变、留给写它的工具；新对话在同一目录里接着完整历史继续。',
     },
     newTerminalModal: {
         eyebrow: '新建终端',
@@ -1410,6 +1423,7 @@ export const zhHans: TranslationStructure = {
 
     sidebar: {
         agentStatusUnknown: '状态未知，等待新的 Agent 状态上报',
+        agentStatusLegacy: '由旧版 Very Happy CLI 上报，按终端活动估计；升级 daemon 后才精确',
         agentStatusOffline: 'Agent 未连接',
         collapse: '收起侧栏',
         openSessions: '打开的会话',
@@ -1800,6 +1814,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep14: {
+                title: '可以导入 Codex 对话了，待办列表能滚动了，旧版 daemon 的终端不再全是问号',
+                summary: '在 codex CLI、codex exec 或 Codex 桌面版里开始的 thread，现在可以像 Claude Code 对话一样导入到这里继续。内置待办列表超过一屏后也重新能滚动了。导入 Codex 需要那台机器更新 CLI。',
+                codex: '导入对话框（侧栏「+」菜单、⌘K 或机器页）新增了 Codex 来源：列出 ~/.codex/sessions 下 Very Happy 尚未接管的 thread；导入会在 Codex 里 fork 这条 thread，并打开一个带完整历史的对话接着聊。原 thread 不会被改动。',
+                todos: '待办页的列表在任务超过一屏时会被截在屏幕底部而不能滚动。已修复。',
+                update: 'CLI 自动升级不再等所有会话和终端都关掉，只等机器上没有 agent 正在回答。常年开着 web 终端的机器以前永远不算空闲、永远升不了级，现在也能收到已批准的版本了。这些机器需要手动升一次 CLI 才能用上这条规则。',
+                status: '机器上的 Very Happy CLI 低于 0.2.134 时，它的终端会显示问号并被归到「等我看」，哪怕 agent 正在跑。现在会按该 daemon 上报的状态加终端活动来估计，并在提示里注明是估计值；把那台机器的 daemon 升级后才是精确状态。',
+            },
             sep13a: {
                 title: '空闲的 Codex 会话会放开 Codex 后端',
                 summary: 'Codex 会话安静 5 分钟后会结束自己的 codex app-server 进程，不再在会话存续期间一直占着它和 ~/.codex 下的文件。下一条消息会重新拉起并接上同一个 thread。对 CLI 更新后新建或重启的会话生效。',
@@ -2782,7 +2804,7 @@ export const zhHans: TranslationStructure = {
         retryFailed: '未受理重试，请检查连接和批准版本，或使用手动升级命令。',
         recovery: {
             manual_required: '自动处理已停止。确认安装进程已退出后，使用下方固定版本升级命令手动恢复。',
-            waiting_idle: '会话和终端结束后会自动更新，无需手动操作',
+            waiting_idle: '这台机器上没有 agent 正在回答时会自动更新，无需手动操作',
             installing: '正在自动更新，请稍等，无需手动操作',
             installed: '已安装，即将自动切换到新版本，无需手动操作',
             failed: '安装失败，可重试或使用手动升级命令',
@@ -2836,6 +2858,8 @@ export const zhHans: TranslationStructure = {
         launchNewSessionInDirectory: '在目录中启动新会话',
         importClaudeHistory: '导入 Claude Code 对话…',
         importClaudeHistorySubtitle: '把 claude CLI、Claude Code 桌面版或 claude.ai 里的对话接到这里继续',
+        importCodexHistory: '导入 Codex 对话…',
+        importCodexHistorySubtitle: '把 codex CLI、codex exec 或 Codex 桌面版里的 thread 接到这里继续',
         offlineUnableToSpawn: '设备离线时无法启动',
         offlineHelp: '• 确保您的计算机在线\n• 运行 `very-happy daemon status` 进行诊断\n• 在诊断页查看 relay 确认的精确版本升级命令',
         daemon: '守护进程',

@@ -352,6 +352,15 @@ export const DaemonStateSchema = z.object({
     rpcAvailable: z.boolean(),
     detectedAt: z.number(),
   }).optional(),
+  /**
+   * B-464 capability flag: this daemon answers `codex-list-history` /
+   * `codex-import-session` (import a Codex CLI / desktop thread that was never
+   * started through very-happy). Same trust rule (`detectedAt >= startedAt`).
+   */
+  codexHistory: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
   /** Relay-owned CLI compatibility/update policy last checked by this daemon. */
   cliUpdate: CliUpdateStateSchema.optional(),
   /**
@@ -560,6 +569,13 @@ export type Metadata = {
    * that already have a copy here. Absent on every other session.
    */
   importedFromClaudeSessionId?: string
+  /**
+   * B-464: the Codex thread this session was imported from (the rollout
+   * written by the codex TUI / `codex exec` / Codex desktop that the wrapper
+   * forked at start). `codexThreadId` is the fork. Lets the import picker hide
+   * originals that already have a copy here. Absent on every other session.
+   */
+  importedFromCodexThreadId?: string
   /**
    * B-051: session variant. 'assistant' marks the machine's meta-agent
    * (dispatcher / voice assistant) session — fixed cwd ~/.happy/assistant,

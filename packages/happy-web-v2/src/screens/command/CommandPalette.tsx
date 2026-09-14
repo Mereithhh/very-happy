@@ -34,7 +34,7 @@ import { useImeGuard } from '@/utils/ime';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import { NewTerminalModal } from '@/screens/sessions/NewTerminalModal';
 import { AttachTmuxModal } from '@/screens/sessions/AttachTmuxModal';
-import { ImportClaudeHistoryModal } from '@/screens/sessions/ImportClaudeHistoryModal';
+import { ImportHistoryModal, type ImportHistoryAgent } from '@/screens/sessions/ImportHistoryModal';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import {
@@ -89,7 +89,7 @@ export function CommandPalette() {
   const [newLocation, setNewLocation] = useState<RecentMachinePath>();
   const [showNewTerminal, setShowNewTerminal] = useState(false);
   const [showAttachTmux, setShowAttachTmux] = useState(false);
-  const [showImportClaude, setShowImportClaude] = useState(false);
+  const [showImport, setShowImport] = useState<ImportHistoryAgent | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -217,7 +217,16 @@ export function CommandPalette() {
       title: t('commandPalette.actionImportClaude'),
       icon: <History size={16} />,
       haystack: `import claude code history conversation desktop resume ${(t('commandPalette.actionImportClaude') as string).toLowerCase()}`,
-      run: () => setShowImportClaude(true),
+      run: () => setShowImport('claude'),
+    });
+    out.push({
+      // B-464: import a Codex thread stored on a machine.
+      key: 'action:import-codex-history',
+      group: 'actions',
+      title: t('commandPalette.actionImportCodex'),
+      icon: <History size={16} />,
+      haystack: `import codex history thread conversation desktop resume ${(t('commandPalette.actionImportCodex') as string).toLowerCase()}`,
+      run: () => setShowImport('codex'),
     });
     out.push({
       // B-300: the "+" menu's last entry, mirrored here — ⌘K must not be the
@@ -548,7 +557,7 @@ export function CommandPalette() {
       {showNewSession && <NewSessionModal initialLocation={newLocation} onClose={() => setShowNewSession(false)} />}
       {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
-      {showImportClaude && <ImportClaudeHistoryModal onClose={() => setShowImportClaude(false)} />}
+      {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
     </>
   );
 }

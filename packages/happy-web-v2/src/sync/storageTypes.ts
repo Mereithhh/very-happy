@@ -96,6 +96,11 @@ export const MetadataSchema = z.object({
      */
     importedFromClaudeSessionId: z.string().optional(),
     /**
+     * B-464: the Codex thread (codex TUI / exec / desktop rollout) this
+     * session was imported from; `codexThreadId` is the fork it continues on.
+     */
+    importedFromCodexThreadId: z.string().optional(),
+    /**
      * User-assigned tags for this session (sidebar chips + `#tag` search).
      * Optional only — NO zod .default([]): clients that never touched tags
      * must not write an empty array into metadata. Edited via the rename

@@ -111,6 +111,14 @@
   flex-direction: column;
   gap: var(--sp-3);
 }
+/* B-463: the body is the scroll container, so nothing inside it may shrink.
+   `.td-list` has overflow:hidden (rounded corners), which turns its automatic
+   flex minimum into 0 — as a flex item it then shrank to whatever height was
+   left and clipped every row past the fold; the body never overflowed and the
+   page could not be scrolled at all. */
+.td-body > * {
+  flex-shrink: 0;
+}
 .td-loading {
   flex: 1;
   display: flex;

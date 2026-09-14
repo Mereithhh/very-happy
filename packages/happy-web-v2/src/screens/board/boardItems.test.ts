@@ -193,6 +193,50 @@ describe('terminal mapping', () => {
     expect(items.map((i) => i.status)).toEqual(['idle', 'idle', 'unknown']);
   });
 
+  it('B-465: an old daemon (state, no observation stamp) is estimated, and says so', () => {
+    const items = build({
+      terminals: [
+        mkTerminal({ id: 'busy' }),
+        mkTerminal({ id: 'silent' }),
+        mkTerminal({ id: 'overlay' }),
+        mkTerminal({ id: 'dialog' }),
+        mkTerminal({ id: 'done' }),
+        mkTerminal({ id: 'stamped' }),
+      ],
+      agentStates: {
+        busy: entry('working', { activityAt: NOW - 5_000 }),
+        silent: entry('working', { activityAt: NOW - 5 * 60_000 }),
+        overlay: entry('working', { activityAt: NOW - 5 * 60_000 }),
+        dialog: entry('needs_input', { since: NOW - 30_000 }),
+        done: entry('idle'),
+        stamped: entry('working', { agentObservedAt: NOW - 120_000 }),
+      },
+      terminalFresh: {},
+      terminalActivity: { overlay: NOW - 2_000 },
+    });
+    const byKey = Object.fromEntries(items.map((i) => [i.key, i]));
+    expect(byKey['t:busy']).toMatchObject({ status: 'working', lifecycle: 'running', legacyStatus: true });
+    expect(byKey['t:silent']).toMatchObject({ status: 'unknown', waitReason: 'unknown', legacyStatus: true });
+    // the realtime activity overlay counts as activity too
+    expect(byKey['t:overlay']).toMatchObject({ status: 'working', legacyStatus: true });
+    expect(byKey['t:dialog']).toMatchObject({ status: 'attention', waitReason: 'needsInput', attentionSince: NOW - 30_000, legacyStatus: true });
+    expect(byKey['t:done']).toMatchObject({ status: 'idle', waitReason: 'idle', legacyStatus: true });
+    // a stamped observation that went stale is NOT an old daemon: stays unknown, no note
+    expect(byKey['t:stamped'].status).toBe('unknown');
+    expect(byKey['t:stamped'].legacyStatus).toBeUndefined();
+  });
+
+  it('B-465: the legacy estimate never survives an offline machine', () => {
+    const items = build({
+      machines: [mkMachine('m1', false)],
+      terminals: [mkTerminal({ id: 't1', updatedAt: NOW - 1_000 })],
+      agentStates: { t1: entry('working', { activityAt: NOW - 1_000 }) },
+      terminalFresh: {},
+    });
+    expect(items[0]).toMatchObject({ status: 'ended', waitReason: 'machineOffline' });
+    expect(items[0].legacyStatus).toBeUndefined();
+  });
+
   it('OFFLINE machine: stale needs_input is gated out of attention → ended + machineOffline', () => {
     const items = build({
       machines: [mkMachine('m1', false)],
@@ -647,7 +691,8 @@ describe('freshness is required by the shared board/sidebar classifier', () => {
     const items = build({
       sessions: [mkSession({ id:'stale', thinking:true })],
       terminals: [mkTerminal({ id:'term' })],
-      agentStates: { term:{ machineId:'m1', state:'needs_input' } },
+      // stamped (new daemon) but the lease expired — NOT the B-465 legacy case
+      agentStates: { term:{ machineId:'m1', state:'needs_input', agentObservedAt: NOW - 120_000 } },
       sessionFresh: {}, terminalFresh: {},
     });
     expect(items.map(i => i.status)).toEqual(['unknown','unknown']);

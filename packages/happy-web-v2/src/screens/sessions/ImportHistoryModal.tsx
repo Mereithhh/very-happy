@@ -1,13 +1,20 @@
 /**
- * ImportClaudeHistoryModal (B-290, batch + progress in B-294) — import Claude
- * Code conversations that were never started through very-happy (claude CLI,
- * the Claude Code desktop app, claude.ai remote sessions, SDK runs).
+ * ImportHistoryModal (B-290, batch + progress in B-294, Codex in B-464) —
+ * import conversations that were never started through very-happy:
  *
- * Pick the machine (auto when only one is online), select one or more of its
- * untracked conversations, and import them in one run. Import = copy, not move:
- * each one is a single `claude-import-session` RPC that forks the transcript
- * and spawns a Happy session resuming the copy, deleting the copy again on any
- * failure. The original file stays untouched for the tool that wrote it.
+ *  - Claude Code: claude CLI, the Claude Code desktop app, claude.ai remote
+ *    sessions, SDK runs — `~/.claude/projects/<cwd>/<id>.jsonl`.
+ *  - Codex: the codex TUI, `codex exec`, the Codex desktop app / IDE
+ *    extension — `~/.codex/sessions/<date>/rollout-*-<id>.jsonl`.
+ *
+ * Pick the source and the machine (auto when only one is online), select one
+ * or more of its untracked conversations, and import them in one run. Import
+ * = copy, not move. Claude: one `claude-import-session` RPC forks the
+ * transcript and spawns a Happy session resuming the copy, deleting the copy
+ * again on any failure. Codex: one `codex-import-session` RPC spawns a Codex
+ * session whose wrapper forks the thread through the app-server and continues
+ * on the fork. Either way the original stays untouched for the tool that
+ * wrote it.
  *
  * The run is sequential on purpose: every import spawns a CLI process on the
  * machine, and a burst of them would race for the same daemon and hit the
@@ -19,10 +26,11 @@ import { useNavigate } from 'react-router-dom';
 import { Check, Search } from 'lucide-react';
 import { storage, useAllMachines, useLocalSetting, useSetting } from '@/sync/storage';
 import { isMachineOnline, machineLabel, pickDefaultMachineId } from '@/utils/machineUtils';
-import { machineImportClaudeSession, machineListClaudeHistory, sessionUpdateTitle } from '@/sync/ops';
+import { machineImportClaudeSession, machineImportCodexSession, machineListClaudeHistory, machineListCodexHistory, sessionUpdateTitle } from '@/sync/ops';
 import { sync } from '@/sync/sync';
-import { claudeHistorySupported } from '@/sync/closedTerminals';
+import { claudeHistorySupported, codexHistorySupported } from '@/sync/closedTerminals';
 import { resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
+import { resolveAgentAvailability } from '@/utils/agentAvailability';
 import { recordRecentMachinePath } from '@/app/newChat';
 import { Button, Spinner, useToast } from '@/ui';
 import { Modal } from '@/modal';
@@ -32,24 +40,31 @@ import { formatSessionAge } from './newTerminalAttach';
 import {
   filterImportableHistory,
   formatHistorySize,
-  historyEntrypointLabel,
+  historySourceLabel,
   historyEntryTitle,
   orderSelectionForImport,
   pruneImportSelection,
   shortenCwd,
   summarizeImportRun,
   toggleImportSelection,
-  trackedClaudeSessionIds,
-  type ClaudeHistoryEntry,
+  trackedHistoryIds,
+  type HistoryAgent,
+  type HistoryEntry,
   type ImportRowState,
 } from './claudeHistoryImport';
 import './newsession.css';
 
-export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
+export type ImportHistoryAgent = HistoryAgent;
+
+const AGENTS: readonly HistoryAgent[] = ['claude', 'codex'];
+
+export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = 'claude' }: {
   onClose: () => void;
   /** Preselect this machine (the machine page opens the dialog for its own
    *  machine; without this the picker would default to the newest one). */
   initialMachineId?: string;
+  /** Which source the dialog opens on; the user can switch inside. */
+  initialAgent?: HistoryAgent;
 }) {
   const navigate = useNavigate();
   const toast = useToast();
@@ -64,8 +79,9 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
   const agentDefaultOverrides = useSetting('agentDefaultOverrides');
   const reviewFirst = useLocalSetting('newSessionReviewFirst');
 
+  const [agent, setAgent] = useState<HistoryAgent>(initialAgent);
   const [machineId, setMachineId] = useState(() => pickDefaultMachineId(online.map((m) => m.id), initialMachineId));
-  const [entries, setEntries] = useState<ClaudeHistoryEntry[]>([]);
+  const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -84,8 +100,12 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
 
   const machine = online.find((m) => m.id === machineId);
   const homeDir = (machine as any)?.metadata?.homeDir as string | undefined;
-  const supported = !!machine && claudeHistorySupported((machine as any).daemonState);
-  const tracked = useMemo(() => trackedClaudeSessionIds(Object.values(sessionsById)), [sessionsById]);
+  const daemonState = (machine as any)?.daemonState;
+  const supported = !!machine && (agent === 'claude' ? claudeHistorySupported(daemonState) : codexHistorySupported(daemonState));
+  // Codex is not bundled: a machine without it can list its rollouts but could
+  // not continue an import. Say so instead of failing at spawn.
+  const codexMissing = agent === 'codex' && !!machine && !resolveAgentAvailability((machine as any).metadata, 'codex').available;
+  const tracked = useMemo(() => trackedHistoryIds(agent, Object.values(sessionsById)), [agent, sessionsById]);
 
   useEffect(() => {
     setEntries([]);
@@ -93,10 +113,14 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
     setLoadError(null);
     setSelected([]);
     setRowStates(new Map());
+    setQuery('');
     if (!machineId || !supported) return;
     let cancelled = false;
     setLoading(true);
-    machineListClaudeHistory(machineId, { limit: 100, exclude: tracked })
+    const request = agent === 'claude'
+      ? machineListClaudeHistory(machineId, { limit: 100, exclude: tracked })
+      : machineListCodexHistory(machineId, { limit: 100, exclude: tracked });
+    request
       .then((result) => {
         if (cancelled) return;
         if (!result.ok) { setLoadError(result.message ?? ''); return; }
@@ -108,7 +132,7 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
     // `tracked` is deliberately not a dependency: it changes the moment an
     // import lands and would refetch the whole list mid-run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [machineId, supported]);
+  }, [agent, machineId, supported]);
 
   const visible = useMemo(() => filterImportableHistory(entries, tracked, query), [entries, tracked, query]);
 
@@ -142,26 +166,22 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
 
   /** One conversation. Returns the new session id, or null when it failed or
    *  the user declined to create the missing directory. */
-  async function importOne(entry: ClaudeHistoryEntry, approved = false): Promise<string | null> {
+  async function importOne(entry: HistoryEntry, approved = false): Promise<string | null> {
     const live = storage.getState().machines[machineId];
     if (!live || !isMachineOnline(live)) {
-      setRowState(entry.claudeSessionId, { kind: 'failed', message: t('newSession.machineOffline') });
+      setRowState(entry.id, { kind: 'failed', message: t('newSession.machineOffline') });
       return null;
     }
     const title = historyEntryTitle(entry);
-    const permissionMode = resolveNewSessionPermissionMode(agentDefaultOverrides, 'claude', reviewFirst);
-    const res = await machineImportClaudeSession({
-      machineId,
-      directory: entry.cwd,
-      claudeSessionId: entry.claudeSessionId,
-      approvedNewDirectoryCreation: approved,
-      permissionMode,
-      title,
-    });
+    const permissionMode = resolveNewSessionPermissionMode(agentDefaultOverrides, entry.agent, reviewFirst);
+    const common = { machineId, directory: entry.cwd, approvedNewDirectoryCreation: approved, permissionMode, title };
+    const res = entry.agent === 'claude'
+      ? await machineImportClaudeSession({ ...common, claudeSessionId: entry.claudeSessionId })
+      : await machineImportCodexSession({ ...common, codexThreadId: entry.codexThreadId });
     // A transcript often names a directory that no longer exists (a checkout
     // that moved, a /tmp workspace). Offer to recreate it instead of failing
-    // with a generic error — the daemon has already discarded its copy, so a
-    // confirmed retry starts from a clean fork.
+    // with a generic error — nothing has been created yet on the machine, so a
+    // confirmed retry starts clean.
     if (res.type === 'requestToApproveDirectoryCreation') {
       const ok = await Modal.confirm(
         t('newSession.createDirTitle'),
@@ -169,16 +189,16 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
         { confirmText: t('common.create') },
       );
       if (ok) return importOne(entry, true);
-      setRowState(entry.claudeSessionId, { kind: 'failed', message: t('importClaudeHistory.skippedNoDirectory') });
+      setRowState(entry.id, { kind: 'failed', message: t('importClaudeHistory.skippedNoDirectory') });
       return null;
     }
     if (res.type !== 'success') {
-      setRowState(entry.claudeSessionId, { kind: 'failed', message: res.errorMessage });
+      setRowState(entry.id, { kind: 'failed', message: res.errorMessage });
       return null;
     }
     storage.getState().updateSessionPermissionMode(res.sessionId, permissionMode);
     recordRecentMachinePath(machineId, entry.cwd);
-    setRowState(entry.claudeSessionId, { kind: 'done', sessionId: res.sessionId });
+    setRowState(entry.id, { kind: 'done', sessionId: res.sessionId });
     void ensureTitle(res.sessionId, title);
     return res.sessionId;
   }
@@ -189,14 +209,14 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
     if (batch.length === 0) return;
     runningRef.current = true;
     setRunning(true);
-    setRowStates(new Map(batch.map((e) => [e.claudeSessionId, { kind: 'queued' } as ImportRowState])));
+    setRowStates(new Map(batch.map((e) => [e.id, { kind: 'queued' } as ImportRowState])));
     try {
       for (const entry of batch) {
-        setRowState(entry.claudeSessionId, { kind: 'running' });
+        setRowState(entry.id, { kind: 'running' });
         try {
           await importOne(entry);
         } catch (e: any) {
-          setRowState(entry.claudeSessionId, { kind: 'failed', message: e?.message });
+          setRowState(entry.id, { kind: 'failed', message: e?.message });
         }
       }
     } finally {
@@ -224,19 +244,55 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, summary.done, summary.failed, summary.total]);
 
+  const copy = agent === 'claude' ? {
+    title: t('importClaudeHistory.title'),
+    intro: t('importClaudeHistory.intro'),
+    needsCli: t('importClaudeHistory.needsCli'),
+    loading: t('importClaudeHistory.loading'),
+    empty: t('importClaudeHistory.empty'),
+    loadFailed: t('importClaudeHistory.loadFailed'),
+    copyNote: t('importClaudeHistory.copyNote'),
+  } : {
+    title: t('importClaudeHistory.codexTitle'),
+    intro: t('importClaudeHistory.codexIntro'),
+    needsCli: t('importClaudeHistory.codexNeedsCli'),
+    loading: t('importClaudeHistory.codexLoading'),
+    empty: t('importClaudeHistory.codexEmpty'),
+    loadFailed: t('importClaudeHistory.codexLoadFailed'),
+    copyNote: t('importClaudeHistory.codexCopyNote'),
+  };
+  const agentLabel = (a: HistoryAgent) => a === 'claude' ? t('importClaudeHistory.agentClaude') : t('importClaudeHistory.agentCodex');
+
   const now = Date.now();
   const progressed = summary.done + summary.failed;
   return (
     <div className="ns-backdrop" onClick={running ? undefined : onClose}>
       <div className="ns-card ns-card--wide" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="eyebrow">{t('importClaudeHistory.eyebrow')}</div>
-        <div className="ns-title">{t('importClaudeHistory.title')}</div>
-        <div className="ns-hint" style={{ marginTop: 0 }}>{t('importClaudeHistory.intro')}</div>
+        <div className="ns-title">{copy.title}</div>
+        <div className="ns-hint" style={{ marginTop: 0 }}>{copy.intro}</div>
 
         {online.length === 0 ? (
           <NoMachinesNotice onClose={onClose} />
         ) : (
           <>
+            <label className="ns-label">{t('importClaudeHistory.agentLabel')}</label>
+            <div className="ns-agents" role="radiogroup" aria-label={t('importClaudeHistory.agentLabel')}>
+              {AGENTS.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  role="radio"
+                  aria-checked={agent === a}
+                  className={`ns-agent${agent === a ? ' is-on' : ''}`}
+                  disabled={running}
+                  onClick={() => setAgent(a)}
+                >
+                  {agentLabel(a)}
+                </button>
+              ))}
+            </div>
+
             {online.length > 1 && (
               <>
                 <label className="ns-label">{t('newSession.machine')}</label>
@@ -249,15 +305,16 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
             )}
 
             {!supported ? (
-              <div className="ns-hint">{t('importClaudeHistory.needsCli')}</div>
+              <div className="ns-hint">{copy.needsCli}</div>
             ) : loadError !== null ? (
-              <div className="ns-hint">{t('importClaudeHistory.loadFailed')}{loadError ? ` · ${loadError}` : ''}</div>
+              <div className="ns-hint">{copy.loadFailed}{loadError ? ` · ${loadError}` : ''}</div>
             ) : loading && entries.length === 0 ? (
-              <div className="ns-loading-row"><Spinner size={14} /><span>{t('importClaudeHistory.loading')}</span></div>
+              <div className="ns-loading-row"><Spinner size={14} /><span>{copy.loading}</span></div>
             ) : entries.length === 0 ? (
-              <div className="ns-hint">{t('importClaudeHistory.empty')}</div>
+              <div className="ns-hint">{copy.empty}</div>
             ) : (
               <>
+                {codexMissing && <div className="ns-hint">{t('importClaudeHistory.codexNotInstalled')}</div>}
                 <div className="ns-path-row">
                   <Search size={14} className="ns-search-icon" aria-hidden="true" />
                   <input
@@ -273,12 +330,12 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
                 {visible.length === 0 ? (
                   <div className="ns-hint">{t('importClaudeHistory.noMatch')}</div>
                 ) : (
-                  <div className="ns-sessions ns-sessions--tall" role="listbox" aria-multiselectable="true" aria-label={t('importClaudeHistory.title')}>
+                  <div className="ns-sessions ns-sessions--tall" role="listbox" aria-multiselectable="true" aria-label={copy.title}>
                     {visible.map((entry) => {
                       const age = formatSessionAge(entry.updatedAt, now);
-                      const source = historyEntrypointLabel(entry.entrypoint);
-                      const state = rowStates.get(entry.claudeSessionId) ?? { kind: 'idle' as const };
-                      const isSelected = selected.includes(entry.claudeSessionId);
+                      const source = historySourceLabel(entry);
+                      const state = rowStates.get(entry.id) ?? { kind: 'idle' as const };
+                      const isSelected = selected.includes(entry.id);
                       const statusLabel = state.kind === 'running' ? t('importClaudeHistory.importing')
                         : state.kind === 'queued' ? t('importClaudeHistory.queued')
                           : state.kind === 'done' ? t('importClaudeHistory.rowDone')
@@ -286,11 +343,11 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
                               : null;
                       const toggle = () => {
                         if (running) return;
-                        setSelected((current) => toggleImportSelection(current, entry.claudeSessionId));
+                        setSelected((current) => toggleImportSelection(current, entry.id));
                       };
                       return (
                         <div
-                          key={entry.claudeSessionId}
+                          key={entry.id}
                           className={`ns-session ns-session--stack${isSelected ? ' is-on' : ''}${state.kind === 'failed' ? ' is-failed' : ''}`}
                           role="option"
                           aria-selected={isSelected}
@@ -322,7 +379,7 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
                   </div>
                 )}
                 {truncated && <div className="ns-hint">{t('importClaudeHistory.truncated')}</div>}
-                <div className="ns-hint">{t('importClaudeHistory.copyNote')}</div>
+                <div className="ns-hint">{copy.copyNote}</div>
               </>
             )}
           </>
@@ -338,7 +395,7 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
           <Button
             variant="primary"
             loading={running}
-            disabled={running || selected.length === 0}
+            disabled={running || selected.length === 0 || codexMissing}
             onClick={() => void runImport()}
           >
             {t('importClaudeHistory.importAction', { count: selected.length })}

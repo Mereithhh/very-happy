@@ -106,6 +106,9 @@ export interface BoardItem {
   /** B-091: session carries the priority tag — floats first WITHIN its
    *  status band (never above the urgent/attention band; 优先 ≠ 紧急). */
   priority?: boolean;
+  /** B-465: terminal status came from an old daemon (no observation stamp)
+   *  and was estimated from its reported state + tmux activity. */
+  legacyStatus?: true;
 }
 
 /** ended items older than this fall off the board entirely */
@@ -124,6 +127,9 @@ export interface BoardInput {
   sessionFresh: Record<string, boolean>;
   terminalFresh: Record<string, boolean>;
   runningSubagents?: Record<string, number>;
+  /** B-465: realtime `terminal-activity` overlay (terminalId → ms). Only the
+   *  legacy-daemon estimate reads it; fresh observations never need it. */
+  terminalActivity?: Record<string, number>;
 }
 
 /** ~/-relative path (standalone twin of sessionUtils.formatPathRelativeToHome,
@@ -281,6 +287,13 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     const entry = agentStates[tm.id];
     const online = machineOnline(machines, tm.machineId);
     const lastActivityAt = entry?.activityAt ?? tm.updatedAt ?? tm.createdAt;
+    // B-465: an entry that carries a state but no observation stamp comes from
+    // a daemon older than 0.2.134. Its state is estimated against the newest
+    // activity we know (pushed activityAt, realtime overlay, registry).
+    const legacy = !!entry && entry.state !== undefined && entry.agentObservedAt === undefined
+      ? { activityAt: Math.max(entry.activityAt ?? 0, input.terminalActivity?.[tm.id] ?? 0, tm.updatedAt ?? 0) || undefined, now }
+      : undefined;
+    const execution = terminalExecution({ online, fresh: input.terminalFresh[tm.id] ?? false, state: entry?.state, legacy });
     let status: BoardStatus;
     let detail: BoardDetail | undefined;
     let attentionSince: number | undefined;
@@ -289,15 +302,15 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       if (now - lastActivityAt > ENDED_WINDOW_MS) continue;
       status = 'ended';
       detail = { kind: 'machineOffline' };
-    } else if (terminalExecution({online, fresh:input.terminalFresh[tm.id] ?? false, state:entry?.state}) === 'unknown') {
+    } else if (execution === 'unknown') {
       status = 'unknown';
-    } else if (entry?.state === 'needs_input') {
+    } else if (execution === 'input') {
       status = 'attention';
-      attentionSince = entry.since ?? lastActivityAt;
-    } else if (entry?.state === 'working') {
+      attentionSince = entry?.since ?? lastActivityAt;
+    } else if (execution === 'running') {
       status = 'working';
     } else {
-      // idle / shell / undefined (old daemon — unknown is NOT attention)
+      // idle / shell (undefined state from an old daemon is unknown above)
       status = 'idle';
     }
     const termItem: BoardItem = {
@@ -316,6 +329,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       lifecycle: 'running', // placeholder — assigned by lifecycleOf below
     };
     if (hasPriorityTag(tm.tags)) termItem.priority = true;
+    if (legacy && online) termItem.legacyStatus = true;
     const lc = lifecycleOf(termItem);
     termItem.lifecycle = lc.lifecycle;
     if (lc.waitReason) termItem.waitReason = lc.waitReason;

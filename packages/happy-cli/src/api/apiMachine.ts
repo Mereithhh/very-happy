@@ -26,7 +26,7 @@ import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
 import { getClaudeProjectsRoot, getProjectPath } from '@/claude/utils/path';
-import { readTrackedClaudeSessionIds } from '@/persistence';
+import { readTrackedClaudeSessionIds, readTrackedCodexThreadIds } from '@/persistence';
 import { listClaudeProjectDirs, listClaudeSessionHistory } from '@/claude/utils/claudeSessionHistory';
 import {
     forkBeforeUserMessage,
@@ -38,6 +38,7 @@ import {
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
 import { CodexAppServerClient } from '@/codex/codexAppServerClient';
+import { getCodexSessionIndexPath, getCodexSessionsRoot, listCodexSessionHistory } from '@/codex/utils/codexSessionHistory';
 import { discoverAndClaimRelay, type RelaySwitchTracker } from './relaySelection';
 import { ReleaseDrainNoticeSchema, type RelayAssignment, type ReleaseDrainNotice } from '@slopus/happy-wire';
 import {
@@ -796,6 +797,60 @@ export class ApiMachineClient {
             return { type: 'success', ...result };
         });
 
+        // B-464: list the Codex threads stored on this machine (codex TUI /
+        // `codex exec` / Codex desktop all write <CODEX_HOME>/sessions/…/rollout-*.jsonl)
+        // so the web can import one. Read-only scan of file heads — the Codex
+        // sqlite is never opened, so the scan takes no thread lock; gated
+        // web-side by `daemonState.codexHistory`.
+        this.rpcHandlerManager.registerHandler('codex-list-history', async (params: any) => {
+            const { directory, limit, exclude } = params || {};
+            if (directory !== undefined && (typeof directory !== 'string' || directory.length === 0)) {
+                throw new Error('directory must be a non-empty string when provided');
+            }
+            const excludeIds = [
+                ...(Array.isArray(exclude)
+                    ? exclude.filter((id: unknown): id is string => typeof id === 'string' && UUID_RE.test(id))
+                    : []),
+                ...readTrackedCodexThreadIds(),
+            ];
+            const result = await listCodexSessionHistory({
+                sessionsRoot: getCodexSessionsRoot(),
+                sessionIndexPath: getCodexSessionIndexPath(),
+                ...(typeof directory === 'string' ? { directory } : {}),
+                limit: typeof limit === 'number' && Number.isFinite(limit) ? Math.max(1, Math.min(Math.floor(limit), 200)) : 60,
+                exclude: excludeIds,
+            });
+            return { type: 'success', ...result };
+        });
+
+        // B-464: import a Codex thread. Unlike `claude-import-session` the copy
+        // is made by the spawned wrapper (`thread/fork` needs a live app-server,
+        // and a fork made here would have no owner to discard when the spawn is
+        // refused — Codex keeps the sqlite row even without the rollout file).
+        // So a refused spawn creates nothing; the same three result shapes as a
+        // spawn come back so the web can run its "create the directory?" retry.
+        this.rpcHandlerManager.registerHandler('codex-import-session', async (params: any) => {
+            const { directory, codexThreadId, approvedNewDirectoryCreation, permissionMode, title } = params || {};
+            if (typeof directory !== 'string' || directory.length === 0) {
+                throw new Error('directory is required');
+            }
+            if (typeof codexThreadId !== 'string' || !UUID_RE.test(codexThreadId)) {
+                throw new Error('codexThreadId must be a valid UUID');
+            }
+            const result = await spawnSession({
+                directory,
+                machineId: this.machine.id,
+                approvedNewDirectoryCreation: approvedNewDirectoryCreation === true,
+                agent: 'codex',
+                importCodexThreadId: codexThreadId.toLowerCase(),
+                permissionMode: typeof permissionMode === 'string' ? permissionMode : undefined,
+                importTitle: typeof title === 'string' ? title : undefined,
+            });
+            if (result.type !== 'success') return result;
+            logger.debug(`[API MACHINE] Importing Codex thread ${codexThreadId} as session ${result.sessionId}`);
+            return { type: 'success', sessionId: result.sessionId };
+        });
+
         this.rpcHandlerManager.registerHandler('codex-fork-thread', async (params: any) => {
             const directory = requireNonEmptyString(params?.directory, 'directory');
             const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
@@ -1210,6 +1265,8 @@ export class ApiMachineClient {
                     tmuxSessions: { rpcAvailable: true, detectedAt: now, killAttached: true },
                     // B-290 capability flag: `claude-list-history` (same restamp discipline).
                     claudeHistory: { rpcAvailable: true, detectedAt: now },
+                    // B-464 capability flag: `codex-list-history` / `codex-import-session`.
+                    codexHistory: { rpcAvailable: true, detectedAt: now },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.
