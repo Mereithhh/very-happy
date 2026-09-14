@@ -12,7 +12,7 @@ import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
 import type { MachineMetadata, Metadata } from './storageTypes';
 import { ClaudeAuthStateSchema, type ClaudeAuthState } from './claudeAuth';
 import { commitSessionResume } from './sessionResumeFlow';
-import { parseClaudeHistory, type ClaudeHistoryEntry } from '@/screens/sessions/claudeHistoryImport';
+import { parseClaudeHistory, parseCodexHistory, type ClaudeHistoryEntry, type CodexHistoryEntry } from '@/screens/sessions/claudeHistoryImport';
 
 // Strict type definitions for all operations
 
@@ -825,6 +825,75 @@ export async function machineImportClaudeSession(options: {
         );
         // A handler that throws comes back as a normal ack carrying `error`
         // (iron rule 17), so check that before trusting the payload.
+        const error = (result as { error?: unknown } | null)?.error;
+        if (typeof error === 'string' && error) return { type: 'error', errorMessage: error };
+        if (result && (result.type === 'success' || result.type === 'requestToApproveDirectoryCreation' || result.type === 'error')) {
+            return result;
+        }
+        return { type: 'error', errorMessage: 'Unexpected import response' };
+    } catch (error) {
+        return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+/** B-464: list the Codex threads stored on a machine so one can be imported.
+ *  Callers must check `codexHistorySupported(daemonState)` first. Never throws. */
+export async function machineListCodexHistory(
+    machineId: string,
+    opts?: { directory?: string; limit?: number; exclude?: string[] },
+): Promise<{ ok: true; entries: CodexHistoryEntry[]; truncated: boolean } | { ok: false; message?: string }> {
+    try {
+        await ensureMachineEncryption(machineId);
+        const result = await apiSocket.machineRPC<unknown, { directory?: string; limit?: number; exclude?: string[] }>(
+            machineId,
+            'codex-list-history',
+            {
+                ...(opts?.directory ? { directory: opts.directory } : {}),
+                ...(typeof opts?.limit === 'number' ? { limit: opts.limit } : {}),
+                ...(opts?.exclude && opts.exclude.length > 0 ? { exclude: opts.exclude } : {}),
+            },
+            { timeoutMs: 20_000 },
+        );
+        const error = (result as { error?: unknown } | null)?.error;
+        if (typeof error === 'string' && error) return { ok: false, message: error };
+        return { ok: true, entries: parseCodexHistory(result), truncated: (result as any)?.truncated === true };
+    } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+/** B-464: import a Codex thread. The daemon spawns a Codex session whose
+ *  wrapper forks the thread through the app-server and continues on the fork
+ *  (copy semantics, the original is never touched). Same three shapes as a
+ *  spawn, so the caller can run the "create the directory?" confirmation and
+ *  retry with `approved`. */
+export type ImportCodexSessionResult =
+    | { type: 'success'; sessionId: string }
+    | { type: 'requestToApproveDirectoryCreation'; directory: string }
+    | { type: 'error'; errorMessage: string };
+export async function machineImportCodexSession(options: {
+    machineId: string;
+    directory: string;
+    codexThreadId: string;
+    approvedNewDirectoryCreation?: boolean;
+    permissionMode?: string;
+    title?: string;
+}): Promise<ImportCodexSessionResult> {
+    const { machineId, directory, codexThreadId, approvedNewDirectoryCreation = false, permissionMode, title } = options;
+    try {
+        await ensureMachineEncryption(machineId);
+        const result = await apiSocket.machineRPC<ImportCodexSessionResult, {
+            directory: string;
+            codexThreadId: string;
+            approvedNewDirectoryCreation?: boolean;
+            permissionMode?: string;
+            title?: string;
+        }>(
+            machineId,
+            'codex-import-session',
+            { directory, codexThreadId, approvedNewDirectoryCreation, permissionMode, title },
+            { timeoutMs: 25_000 },
+        );
         const error = (result as { error?: unknown } | null)?.error;
         if (typeof error === 'string' && error) return { type: 'error', errorMessage: error };
         if (result && (result.type === 'success' || result.type === 'requestToApproveDirectoryCreation' || result.type === 'error')) {

@@ -29,8 +29,8 @@ import {
 } from '@/sync/ops';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useImeGuard } from '@/utils/ime';
-import { ImportClaudeHistoryModal } from '@/screens/sessions/ImportClaudeHistoryModal';
-import { claudeHistorySupported } from '@/sync/closedTerminals';
+import { ImportHistoryModal, type ImportHistoryAgent } from '@/screens/sessions/ImportHistoryModal';
+import { claudeHistorySupported, codexHistorySupported } from '@/sync/closedTerminals';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { getSessionName, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
@@ -62,7 +62,7 @@ export function MachineScreen() {
   const [stopping, setStopping] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [showImportClaude, setShowImportClaude] = useState(false);
+  const [showImport, setShowImport] = useState<ImportHistoryAgent | null>(null);
 
   const online = machine ? isMachineOnline(machine) : false;
   const name = machine?.metadata?.displayName || machine?.metadata?.host || id || '';
@@ -317,7 +317,16 @@ export function MachineScreen() {
                   title={t('machine.importClaudeHistory')}
                   subtitle={t('machine.importClaudeHistorySubtitle')}
                   left={<History size={16} />}
-                  onClick={() => setShowImportClaude(true)}
+                  onClick={() => setShowImport('claude')}
+                  right={<ChevronRight size={16} />}
+                />
+              )}
+              {codexHistorySupported(machine.daemonState) && (
+                <Item
+                  title={t('machine.importCodexHistory')}
+                  subtitle={t('machine.importCodexHistorySubtitle')}
+                  left={<History size={16} />}
+                  onClick={() => setShowImport('codex')}
                   right={<ChevronRight size={16} />}
                 />
               )}
@@ -510,7 +519,7 @@ export function MachineScreen() {
             <Item title={t('machine.delete')} destructive onClick={del} loading={deleting} />
           </ItemGroup>
         </ItemList>
-      {showImportClaude && <ImportClaudeHistoryModal initialMachineId={machine.id} onClose={() => setShowImportClaude(false)} />}
+      {showImport && <ImportHistoryModal initialAgent={showImport} initialMachineId={machine.id} onClose={() => setShowImport(null)} />}
     </SettingsPage>
   );
 }

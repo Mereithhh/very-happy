@@ -38,7 +38,7 @@ import { openCommandPalette } from '@/screens/command/CommandPalette';
 import { NewSessionModal } from './NewSessionModal';
 import { NewTerminalModal } from './NewTerminalModal';
 import { AttachTmuxModal } from './AttachTmuxModal';
-import { ImportClaudeHistoryModal } from './ImportClaudeHistoryModal';
+import { ImportHistoryModal, type ImportHistoryAgent } from './ImportHistoryModal';
 import { RenameModal } from './RenameModal';
 import { splitPinnedRows } from './sidebarPins';
 import { sortRowsByManualOrder, mergeLegacyPinned, planSidebarOrder, pruneEntries } from './sidebarOrder';
@@ -164,7 +164,7 @@ export function Sidebar() {
   const configureNew = (target?: RecentMachinePath) => { setNewLocation(target); setShowNew(true); };
   const [showNewTerminal, setShowNewTerminal] = useState(false);
   const [showAttachTmux, setShowAttachTmux] = useState(false);
-  const [showImportClaude, setShowImportClaude] = useState(false);
+  const [showImport, setShowImport] = useState<ImportHistoryAgent | null>(null);
   const [cmdHeld, setCmdHeld] = useState(false);
   const [showOrderHint, setShowOrderHint] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
@@ -908,7 +908,14 @@ export function Sidebar() {
                 key: 'import-claude',
                 label: t('newSessionModal.importClaudeTitle'),
                 icon: History,
-                onSelect: () => setShowImportClaude(true),
+                onSelect: () => setShowImport('claude'),
+              },
+              {
+                // B-464: same dialog, Codex source (codex TUI / exec / desktop).
+                key: 'import-codex',
+                label: t('newSessionModal.importCodexTitle'),
+                icon: History,
+                onSelect: () => setShowImport('codex'),
               },
               {
                 // B-300: everything above needs a machine, so the way to get
@@ -1207,7 +1214,7 @@ export function Sidebar() {
       {showNew && <NewSessionModal initialLocation={newLocation} onClose={() => setShowNew(false)} />}
       {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
-      {showImportClaude && <ImportClaudeHistoryModal onClose={() => setShowImportClaude(false)} />}
+      {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
       {renameTarget && (
         <RenameModal
           defaultTitle={renameTarget.title}

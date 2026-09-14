@@ -42,6 +42,7 @@ import {
     mapCodexThreadToSessionEnvelopes,
 } from './utils/sessionProtocolMapper';
 import { resumeExistingThread } from './resumeExistingThread';
+import { importCodexThread, IMPORT_CODEX_THREAD_ENV } from './importCodexThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseMs, shouldReleaseIdleCodex } from './codexIdleRelease';
 import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
@@ -150,6 +151,16 @@ export async function runCodex(opts: {
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
+    // B-464: import of a Codex CLI / desktop thread. The original id is stamped
+    // from birth so the import picker hides it even if the fork below fails;
+    // the title rides along like the Claude import (B-294) — the title
+    // generator never fires for an imported session.
+    const importCodexThreadId = process.env[IMPORT_CODEX_THREAD_ENV];
+    if (importCodexThreadId) {
+        metadata.importedFromCodexThreadId = importCodexThreadId;
+        const importTitle = process.env.HAPPY_IMPORT_TITLE;
+        if (importTitle) metadata.summary = { text: importTitle, updatedAt: Date.now() };
+    }
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
     const reconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID;
@@ -807,6 +818,22 @@ export async function runCodex(opts: {
                 session,
                 messageBuffer,
                 threadId: opts.resumeThreadId,
+                cwd: process.cwd(),
+                mcpServers,
+            });
+            first = false;
+            appendSystemPromptInjected = true;
+        }
+
+        // B-464: fork the source thread into this session and replay its history.
+        // Not on reconnect: the fork already happened and metadata.codexThreadId
+        // (the fork) is what the daemon resumed above.
+        if (!reconnectSessionId && !opts.resumeThreadId && importCodexThreadId) {
+            await importCodexThread({
+                client,
+                session,
+                messageBuffer,
+                threadId: importCodexThreadId,
                 cwd: process.cwd(),
                 mcpServers,
             });

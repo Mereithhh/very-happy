@@ -658,6 +658,12 @@ export async function startDaemon(): Promise<void> {
         if (options.resumeCodexThreadId) {
           extraEnv.HAPPY_FORK_CODEX_THREAD_ID = options.resumeCodexThreadId;
         }
+        // B-464: the wrapper forks the source thread itself (see
+        // codex/importCodexThread.ts); the id came off the wire, so it only
+        // travels when it is a UUID.
+        if (options.importCodexThreadId && UUID_RE.test(options.importCodexThreadId)) {
+          extraEnv.HAPPY_IMPORT_CODEX_THREAD_ID = options.importCodexThreadId;
+        }
         // B-051: mark the spawned CLI as the assistant variant (fresh-spawn
         // path; the re-attach path above sets it directly on its env). This is
         // the ONE thing 'env-only' mode (non-Claude meta-agent) shares with the

@@ -68,6 +68,12 @@ export function claudeHistorySupported(daemonState: any): boolean {
   return daemonRpcFlagSupported(daemonState, 'claudeHistory');
 }
 
+/** B-464: does this daemon run answer `codex-list-history` / `codex-import-session`
+ *  (import a Codex CLI / desktop thread that was never started through very-happy)? */
+export function codexHistorySupported(daemonState: any): boolean {
+  return daemonRpcFlagSupported(daemonState, 'codexHistory');
+}
+
 /** B-282: does `kill-terminal` honour `alsoAttached` on this daemon run? */
 export function killAttachedSupported(daemonState: any): boolean {
   return daemonRpcFlagSupported(daemonState, 'tmuxSessions') && daemonState?.tmuxSessions?.killAttached === true;
