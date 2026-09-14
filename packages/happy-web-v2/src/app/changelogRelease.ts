@@ -22,7 +22,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.sep14.title',
     summaryKey: 'changelog.releases.sep14.summary',
-    itemKeys: ['changelog.releases.sep14.codex', 'changelog.releases.sep14.todos'],
+    itemKeys: ['changelog.releases.sep14.codex', 'changelog.releases.sep14.todos', 'changelog.releases.sep14.status'],
   },
   {
     id: '2026-09-13-codex-idle-release',

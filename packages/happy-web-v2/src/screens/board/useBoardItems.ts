@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAllSessions, useAllMachines } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
+import { useActivityOverlay } from '@/sync/activityOverlayStore';
 import { useBoardTasks } from '@/sync/boardTasks';
 import { visibleTasks } from '@/sync/boardTaskOps';
 import { buildBoardItems, buildCompletedEntries, type BoardItem, type CompletedEntry } from './boardItems';
@@ -41,6 +42,9 @@ export function useBoardItems(): BoardItem[] {
   const runningSubagents = storage(useShallow(runningBackgroundCounts));
   const terminals = useTerminalSessions((s) => s.terminals);
   const agentStates = useTerminalAgentStates((s) => s.states);
+  // B-465: realtime activity for the legacy-daemon estimate (remote lane only —
+  // local stamps are this browser's own actions, not the agent's).
+  const remoteActivity = useActivityOverlay((s) => s.remote);
   const machines = useAllMachines({ includeOffline: true });
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -52,8 +56,9 @@ export function useBoardItems(): BoardItem[] {
       sessionFresh:Object.fromEntries(sessions.map(s=>[s.id,isHeartbeatFresh(s.id)])),
       terminalFresh:Object.fromEntries(terminals.map(t=>[t.id,isTerminalStatusFresh(t.id,agentStates[t.id])])),
       runningSubagents,
+      terminalActivity:Object.fromEntries(terminals.flatMap(t=>{ const at=remoteActivity[`t:${t.id}`]; return typeof at==='number' ? [[t.id,at]] : []; })),
     }),
-    [sessions, terminals, agentStates, machines, now, leaseBump, runningSubagents],
+    [sessions, terminals, agentStates, machines, now, leaseBump, runningSubagents, remoteActivity],
   );
 }
 

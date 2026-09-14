@@ -369,6 +369,8 @@ export function Sidebar() {
   const creatingChat = useNewChatPending();
   const executionByKey = useMemo(() => new Map(boardItems.map(item => [item.key,
     item.status === 'working' ? 'running' : item.status === 'attention' ? 'input' : item.status === 'unknown' ? 'unknown' : item.status === 'ended' ? 'offline' : 'idle'] as [string, AgentExecution])), [boardItems]);
+  // B-465: rows whose status is an estimate from an old daemon get a note.
+  const legacyStatusKeys = useMemo(() => new Set(boardItems.filter(item => item.legacyStatus).map(item => item.key)), [boardItems]);
   const attentionCount = boardItems.filter(item => item.status === 'attention').length;
 
   // ----- two-level row signal (B-085) -----
@@ -1068,6 +1070,7 @@ export function Sidebar() {
                         <SidebarRow
                           row={r}
                           execution={executionByKey.get(r.key) ?? (r.session?.presence === 'online' ? 'idle' : 'offline')}
+                          statusNote={legacyStatusKeys.has(r.key) ? t('sidebar.agentStatusLegacy') : undefined}
                           signal={rowSignalOf({
                             attention: attentionKeys.has(r.key),
                             // Sessions: the flag stays out of the archived view
@@ -1337,6 +1340,7 @@ function rowMenuItems(opts: {
 function SidebarRow({
   row,
   execution,
+  statusNote,
   signal,
   badge,
   canMoveUp,
@@ -1346,6 +1350,8 @@ function SidebarRow({
 }: {
   row: Row;
   execution: AgentExecution;
+  /** B-465: appended to the status tooltip when the verdict is an estimate. */
+  statusNote?: string;
   /** two-level marker (B-085): 'attention' = agent waiting on the user
    *  (accent rail + badge dot), 'unread' = finished-while-away (text-stage
    *  dot). Decided in the parent via rowSignalOf. */
@@ -1378,9 +1384,10 @@ function SidebarRow({
   const terminalAgent = useTerminalAgentStates(st => isTerminal && row.terminalId ? st.states[row.terminalId]?.agentKind : undefined);
   const agentLabel = codingAgentLabel(isTerminal ? terminalAgent : s?.metadata?.flavor);
   const status = agentStatusSignal(execution, signal === 'unread');
-  const availabilityLabel = execution === 'offline' ? t('sidebar.agentStatusOffline') : execution === 'unknown' ? t('sidebar.agentStatusUnknown') : '';
-  const statusLabel = status === 'running' ? t('sidebar.groupRunning') : status === 'input' ? t('sidebar.rowNeedsAttention')
-    : status === 'unread' ? [t('sidebar.rowUnread'), availabilityLabel].filter(Boolean).join(' · ') : status === 'offline' ? t('sidebar.agentStatusOffline') : t('sidebar.agentStatusUnknown');
+  const availabilityLabel = [execution === 'offline' ? t('sidebar.agentStatusOffline') : execution === 'unknown' ? t('sidebar.agentStatusUnknown') : '', statusNote ?? ''].filter(Boolean).join(' · ');
+  const withNote = (label: string) => [label, statusNote ?? ''].filter(Boolean).join(' · ');
+  const statusLabel = status === 'running' ? withNote(t('sidebar.groupRunning')) : status === 'input' ? withNote(t('sidebar.rowNeedsAttention'))
+    : status === 'unread' ? [t('sidebar.rowUnread'), availabilityLabel].filter(Boolean).join(' · ') : status === 'offline' ? t('sidebar.agentStatusOffline') : availabilityLabel || t('sidebar.agentStatusUnknown');
 
   const open = () => navigate(row.href);
 

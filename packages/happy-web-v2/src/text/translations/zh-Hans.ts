@@ -1423,6 +1423,7 @@ export const zhHans: TranslationStructure = {
 
     sidebar: {
         agentStatusUnknown: '状态未知，等待新的 Agent 状态上报',
+        agentStatusLegacy: '由旧版 Very Happy CLI 上报，按终端活动估计；升级 daemon 后才精确',
         agentStatusOffline: 'Agent 未连接',
         collapse: '收起侧栏',
         openSessions: '打开的会话',
@@ -1814,10 +1815,11 @@ export const zhHans: TranslationStructure = {
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
             sep14: {
-                title: '可以导入 Codex 对话了，待办列表也能滚动了',
+                title: '可以导入 Codex 对话了，待办列表能滚动了，旧版 daemon 的终端不再全是问号',
                 summary: '在 codex CLI、codex exec 或 Codex 桌面版里开始的 thread，现在可以像 Claude Code 对话一样导入到这里继续。内置待办列表超过一屏后也重新能滚动了。导入 Codex 需要那台机器更新 CLI。',
                 codex: '导入对话框（侧栏「+」菜单、⌘K 或机器页）新增了 Codex 来源：列出 ~/.codex/sessions 下 Very Happy 尚未接管的 thread；导入会在 Codex 里 fork 这条 thread，并打开一个带完整历史的对话接着聊。原 thread 不会被改动。',
                 todos: '待办页的列表在任务超过一屏时会被截在屏幕底部而不能滚动。已修复。',
+                status: '机器上的 Very Happy CLI 低于 0.2.134 时，它的终端会显示问号并被归到「等我看」，哪怕 agent 正在跑。现在会按该 daemon 上报的状态加终端活动来估计，并在提示里注明是估计值；把那台机器的 daemon 升级后才是精确状态。',
             },
             sep13a: {
                 title: '空闲的 Codex 会话会放开 Codex 后端',

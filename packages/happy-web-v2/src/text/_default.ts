@@ -1449,6 +1449,8 @@ export const en = {
 
     sidebar: {
         agentStatusUnknown: 'Status unknown — waiting for a fresh agent observation',
+        // B-465: the daemon predates observation stamps; the verdict is an estimate.
+        agentStatusLegacy: 'Estimated from an older Very Happy CLI (terminal activity) — update the daemon for exact status',
         agentStatusOffline: 'Agent unavailable',
         collapse: 'Collapse sidebar',
         openSessions: 'Open sessions',
@@ -1856,10 +1858,11 @@ export const en = {
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
             sep14: {
-                title: 'Import Codex conversations, and a todo list that scrolls again',
+                title: 'Import Codex conversations, todo list scrolls again, older daemons keep a status',
                 summary: 'Threads started in the codex CLI, codex exec or the Codex desktop app can now be imported and continued here, the same way Claude Code conversations can. The built-in todo list also scrolls again once it grows past the screen. Codex import needs the CLI update on the machine.',
                 codex: 'The import dialog (sidebar "+" menu, ⌘K, or the machine page) gained a Codex source. It lists the threads under ~/.codex/sessions that Very Happy does not track yet; importing forks the thread inside Codex and opens a chat that continues from its full history. The original thread is never touched.',
                 todos: 'On the Todos page, the list used to be clipped at the bottom of the screen instead of scrolling once it held more tasks than fit. Fixed.',
+                status: 'Terminals on a machine whose Very Happy CLI is older than 0.2.134 showed a question mark and were filed under "waiting for me" even while the agent was working. Their state is now estimated from what that daemon reports plus terminal activity, and the tooltip says it is an estimate. Update the daemon on that machine for exact status.',
             },
             sep13a: {
                 title: 'Idle Codex sessions let go of the Codex backend',
