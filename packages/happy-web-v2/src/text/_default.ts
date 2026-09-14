@@ -1857,6 +1857,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep15: {
+                title: 'A stopped turn now says so',
+                summary: 'Pressing Stop while Claude was still starting its answer used to leave nothing in the conversation — and a "Session error" notification. The transcript now shows "Stopped by you", the same as any other stop. Applies to sessions started or restarted after the CLI updates.',
+                marker: 'Stop keeps the session and its history (unchanged); the difference is that a turn interrupted before it produced any output is now recorded as stopped rather than as a failed turn.',
+            },
             sep14a: {
                 title: 'A conversation scrolls again with the pointer over a command output',
                 summary: 'With the mouse resting on a long command output that was already scrolled to its top, scrolling up did nothing — the whole conversation looked frozen until you moved the pointer or reloaded. Fixed.',

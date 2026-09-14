@@ -2,6 +2,11 @@
 export function createTurnSteeringController() {
     let interrupt: (() => Promise<void>) | null = null;
     let steering = false;
+    // B-468: a stop-button interrupt in flight. The SDK answers it with an
+    // ordinary `result` (is_error, "Request interrupted by user"); without this
+    // flag that result read as a failed turn — an error push and NO transcript
+    // marker, so a stopped turn looked like "nothing happened".
+    let interrupting = false;
 
     return {
         setInterrupt(next: (() => Promise<void>) | null) {
@@ -27,17 +32,31 @@ export function createTurnSteeringController() {
          */
         async interruptTurn(): Promise<boolean> {
             if (!interrupt) return false;
-            await interrupt();
-            return true;
+            interrupting = true;
+            try {
+                await interrupt();
+                return true;
+            } catch (error) {
+                interrupting = false;
+                throw error;
+            }
         },
         consumeReady(): boolean {
             if (!steering) return false;
             steering = false;
             return true;
         },
+        /** The next `result` belongs to a stop-button interrupt: close the
+         *  turn as cancelled and say "Aborted by user", not "failed". */
+        consumeInterrupted(): boolean {
+            if (!interrupting) return false;
+            interrupting = false;
+            return true;
+        },
         reset() {
             interrupt = null;
             steering = false;
+            interrupting = false;
         },
     };
 }
