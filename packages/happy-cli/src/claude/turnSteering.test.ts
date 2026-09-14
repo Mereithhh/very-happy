@@ -36,5 +36,45 @@ describe('turn steering controller', () => {
     it('interruptTurn returns false when no query is attached', async () => {
         const controller = createTurnSteeringController();
         await expect(controller.interruptTurn()).resolves.toBe(false);
+        expect(controller.consumeInterrupted()).toBe(false);
+    });
+
+    it('B-468: interruptTurn marks exactly one result as user-interrupted', async () => {
+        const controller = createTurnSteeringController();
+        controller.setInterrupt(async () => undefined);
+        await controller.interruptTurn();
+        expect(controller.consumeReady()).toBe(false);      // still not a steer
+        expect(controller.consumeInterrupted()).toBe(true);
+        expect(controller.consumeInterrupted()).toBe(false); // consumed once
+        // a failed interrupt leaves nothing behind
+        controller.setInterrupt(async () => { throw new Error('gone'); });
+        await expect(controller.interruptTurn()).rejects.toThrow('gone');
+        expect(controller.consumeInterrupted()).toBe(false);
+        // reset clears a pending mark
+        controller.setInterrupt(async () => undefined);
+        await controller.interruptTurn();
+        controller.reset();
+        expect(controller.consumeInterrupted()).toBe(false);
+    });
+});
+
+describe('B-468: the remote launcher turns a graceful stop into "Aborted by user"', () => {
+    // Verified with scripts/dev/mutation-check.mjs (see PR).
+    it('closes the interrupted result as cancelled with the lifecycle event, and never lets the mark leak to the next turn', async () => {
+        const { readFileSync } = await import('node:fs');
+        const { join } = await import('node:path');
+        const src = readFileSync(join(__dirname, 'claudeRemoteLauncher.ts'), 'utf8');
+        expect(src).toContain([
+            '                        if (turnSteering.consumeInterrupted()) {',
+            "                            session.client.closeClaudeSessionTurn('cancelled');",
+            "                            session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });",
+            '                            return;',
+            '                        }',
+        ].join('\n'));
+        // the interrupted branch sits before the failed/completed lifecycle mapping
+        expect(src.indexOf('turnSteering.consumeInterrupted()')).toBeLessThan(src.indexOf('applyClaudeResultLifecycle(result, {'));
+        // escalating to the hard abort drops the mark (the hard path emits its own event)
+        const escalation = src.indexOf("escalating to hard abort");
+        expect(src.slice(escalation, escalation + 400)).toContain('turnSteering.consumeInterrupted();');
     });
 });

@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-15-stopped-turn-marker',
+    cliVersion: '0.2.140',
+    date: '2026-09-15',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep15.title',
+    summaryKey: 'changelog.releases.sep15.summary',
+    itemKeys: ['changelog.releases.sep15.marker'],
+  },
+  {
     id: '2026-09-14-chat-scroll-over-command-output',
     date: '2026-09-14',
     buildVersion: __APP_VERSION__,

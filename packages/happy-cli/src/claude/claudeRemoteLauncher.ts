@@ -131,6 +131,10 @@ export async function claudeRemoteLauncher(
                 return;
             }
             logger.debug('[remote]: interrupt did not stop the turn in time; escalating to hard abort');
+            // The hard abort ends the query and emits its own "Aborted by
+            // user" below; the pending interrupt mark must not be consumed by
+            // the NEXT turn's result.
+            turnSteering.consumeInterrupted();
         }
         await abort();
     }
@@ -617,6 +621,15 @@ export async function claudeRemoteLauncher(
                     onReady: (result) => {
                         if (turnSteering.consumeReady()) {
                             session.client.closeClaudeSessionTurn('cancelled');
+                            return;
+                        }
+                        // B-468: the stop button's graceful interrupt. Same
+                        // lifecycle as the hard abort (turn cancelled + the
+                        // "Aborted by user" event the web renders as 已由你停止),
+                        // and no "Session error" push for a stop the user asked for.
+                        if (turnSteering.consumeInterrupted()) {
+                            session.client.closeClaudeSessionTurn('cancelled');
+                            session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                             return;
                         }
                         applyClaudeResultLifecycle(result, {

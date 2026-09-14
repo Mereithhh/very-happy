@@ -1814,6 +1814,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep15: {
+                title: '停掉的一轮现在会明说',
+                summary: 'Claude 刚开始回答时按「停止」，以前对话里什么都不留，还会推一条「Session error」通知。现在 transcript 会显示「已由你停止」，和其他停止一样。对 CLI 更新后新建或重启的会话生效。',
+                marker: '停止仍然保留会话和历史（没变）；区别是一轮在产生任何输出前被打断时，现在记为「已停止」，而不是记成失败的一轮。',
+            },
             sep14a: {
                 title: '指针停在命令输出上时，对话又能往上滚了',
                 summary: '鼠标停在一段已经滚到顶的长命令输出上时，往上滚什么都不动，整个对话像是冻住了，得挪开指针或刷新才恢复。已修复。',
