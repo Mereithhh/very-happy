@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-14-chat-scroll-over-command-output',
+    date: '2026-09-14',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep14a.title',
+    summaryKey: 'changelog.releases.sep14a.summary',
+    itemKeys: ['changelog.releases.sep14a.scroll'],
+  },
+  {
     id: '2026-09-14-codex-history-import',
     cliVersion: '0.2.139',
     date: '2026-09-14',

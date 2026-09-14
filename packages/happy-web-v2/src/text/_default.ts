@@ -1857,6 +1857,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep14a: {
+                title: 'A conversation scrolls again with the pointer over a command output',
+                summary: 'With the mouse resting on a long command output that was already scrolled to its top, scrolling up did nothing — the whole conversation looked frozen until you moved the pointer or reloaded. Fixed.',
+                scroll: 'Command output boxes scroll inside themselves, but the wheel now hands over to the conversation once the box reaches its edge, the way every other block does.',
+            },
             sep14: {
                 title: 'Import Codex conversations, todo list scrolls again, older daemons keep a status',
                 summary: 'Threads started in the codex CLI, codex exec or the Codex desktop app can now be imported and continued here, the same way Claude Code conversations can. The built-in todo list also scrolls again once it grows past the screen. Codex import needs the CLI update on the machine.',
