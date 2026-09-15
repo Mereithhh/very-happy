@@ -1865,6 +1865,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep15d: {
+                title: 'A readable time on hover, and terminals of a dead machine can go',
+                summary: 'Hovering a message now shows its time straight away in a small bubble instead of waiting on the browser tooltip that a live turn kept cancelling. And a terminal whose machine is offline can finally be taken off the list.',
+                time: 'The full timestamp also reads properly again: date, clock, then timezone (2026/09/15 21:40:12 (GMT+8)) — the timezone used to land between the date and the clock in Chinese. Touch devices keep their usual long-press behaviour.',
+                offline: 'Closing a terminal on an offline machine used to wait for a request nobody would answer and then fail with the row still there. It now offers to remove it from the list, saying plainly that nothing is being terminated; if the machine comes back with the session still running, the terminal reappears.',
+            },
             sep15c: {
                 title: 'Stop also stops background sub-agents and commands',
                 summary: 'Pressing Stop ended the current turn but left async sub-agents and backgrounded commands running — still working, still spending, their cards still spinning. Stop now asks each of them to stop as well. Applies to sessions started or restarted after the CLI updates.',
@@ -2685,6 +2691,11 @@ export const en = {
         connectionMachine: "View machine",
         // Runtime-neutral because Web terminals may use tmux or direct PTY.
         closeTitle: 'Close terminal?',
+        // B-474: the machine is offline — the row can be dropped, nothing killed.
+        offlineCloseTitle: 'Machine is offline',
+        offlineCloseMessage: ({ machine }: { machine: string }) => `${machine} is not connected, so this terminal cannot be closed on it — nothing will be terminated. It can be removed from the list instead. If the machine comes back and the session is still running, the terminal reappears.`,
+        offlineCloseConfirm: 'Remove from list',
+        offlineCloseFailed: 'Could not remove the terminal from the list.',
         closeMessage: 'The terminal moves to the archive and can be restored from there (same directory, title and tags; a recorded claude conversation is resumed automatically). The terminal process ends now and the screen contents are not kept.',
         // B-283: attach terminals — closing only disconnects.
         closeAttachedTitle: 'Disconnect this tmux session?',

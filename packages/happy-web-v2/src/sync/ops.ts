@@ -6,6 +6,7 @@ import { resolveSpawnModel } from './spawnModel';
 
 import { apiSocket } from './apiSocket';
 import { parseTmuxSessions, type UserTmuxSession } from '@/screens/sessions/newTerminalAttach';
+import { daemonStateWithoutTerminal } from './terminalPushOps';
 import { sync } from './sync';
 import { storage } from './storage';
 import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
@@ -903,6 +904,61 @@ export async function machineImportCodexSession(options: {
     } catch (error) {
         return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error) };
     }
+}
+
+/**
+ * B-474: drop one terminal from an OFFLINE machine's stored list.
+ *
+ * `kill-terminal` is an RPC to the daemon, so a machine that is gone (a pod
+ * that was destroyed, a laptop that will not come back) leaves its rows in the
+ * sidebar forever: the server keeps the last `daemonState` and the list is
+ * rendered from it. This rewrites that stored state instead — the same
+ * account-scoped, version-checked `machine-update-state` the daemon itself
+ * uses — so the row disappears on every device and survives a reload.
+ *
+ * It is a LIST edit, not a kill: nothing is terminated on the machine. If the
+ * machine comes back and its tmux session is really still there, its next push
+ * carries the terminal again and the row returns — which is the honest
+ * outcome, and what the confirm dialog promises.
+ *
+ * Returns the terminal list that was stored (so the caller can apply it
+ * locally), or a failure the caller surfaces. Never throws.
+ */
+export async function machineForgetTerminal(
+    machineId: string,
+    terminalId: string,
+): Promise<{ ok: true; terminals: MachineTerminal[] } | { ok: false; message?: string }> {
+    const machineEncryption = sync.encryption.getMachineEncryption(machineId);
+    if (!machineEncryption) return { ok: false, message: 'Machine encryption not available' };
+    const machine = storage.getState().machines[machineId];
+    if (!machine) return { ok: false, message: 'Machine not found' };
+    let state = (machine.daemonState ?? null) as Record<string, unknown> | null;
+    let expectedVersion = machine.daemonStateVersion ?? 0;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const edit = daemonStateWithoutTerminal(state, terminalId, Date.now());
+        if (!edit.changed) return { ok: true, terminals: edit.terminals };
+        try {
+            const encrypted = await machineEncryption.encryptRaw(edit.next);
+            const result = await apiSocket.emitWithAck<{
+                result: 'success' | 'version-mismatch' | 'error';
+                version?: number;
+                daemonState?: string;
+                message?: string;
+            }>('machine-update-state', { machineId, daemonState: encrypted, expectedVersion });
+            if (result?.result === 'success') return { ok: true, terminals: edit.terminals };
+            if (result?.result !== 'version-mismatch') return { ok: false, message: result?.message };
+            // The daemon (or another tab) wrote first — redo the edit on top of
+            // what is stored now rather than clobbering it.
+            expectedVersion = result.version ?? expectedVersion;
+            state = result.daemonState
+                ? (await machineEncryption.decryptRaw(result.daemonState)) as typeof state
+                : state;
+        } catch (error) {
+            return { ok: false, message: error instanceof Error ? error.message : String(error) };
+        }
+    }
+    return { ok: false, message: 'Machine state kept changing' };
 }
 
 export async function machineKillTerminal(machineId: string, terminalId: string, opts?: {

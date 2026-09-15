@@ -47,10 +47,13 @@ describe('message timestamps', () => {
     });
 
     it('includes the date, seconds and local timezone without changing the source timestamp', () => {
-        expect(messageTimestamp(T0, 'en', 'UTC')).toBe('09/11/2026, 12:34:56 UTC');
-        const chinese = messageTimestamp(T0, 'zh-Hans', 'Asia/Singapore');
-        for (const part of ['2026/09/11', '20:34:56', 'GMT+8']) expect(chinese).toContain(part);
-        expect(messageTimestamp(T0, 'en', 'UTC')).toBe('09/11/2026, 12:34:56 UTC');
+        // B-473: date, clock, zone — in that order, in every locale. A single
+        // combined skeleton let ICU wedge the zone into the middle for zh
+        // (`2026/09/11 GMT+8 20:34:56`), which reads as a broken timestamp.
+        expect(messageTimestamp(T0, 'en', 'UTC')).toBe('09/11/2026 12:34:56 (UTC)');
+        expect(messageTimestamp(T0, 'zh-Hans', 'Asia/Singapore')).toBe('2026/09/11 20:34:56 (GMT+8)');
+        // each half stays locale-correct: zh keeps y/m/d, en keeps m/d/y
+        expect(messageTimestamp(T0, 'en', 'UTC')).toBe('09/11/2026 12:34:56 (UTC)');
     });
 
     it.each([undefined, null, NaN, Infinity, -1, 0, 1e20])('does not invent a time for %s', createdAt => {
@@ -59,7 +62,7 @@ describe('message timestamps', () => {
 
     it('describes all known creation times in a collapsed group, even with unsorted input', () => {
         expect(messageTimestampRange([T0 + 60_000, null, T0], 'en', 'UTC'))
-            .toBe('09/11/2026, 12:34:56 UTC – 09/11/2026, 12:35:56 UTC');
+            .toBe('09/11/2026 12:34:56 (UTC) – 09/11/2026 12:35:56 (UTC)');
         expect(messageTimestampRange([T0, T0, NaN], 'en', 'UTC')).toBe(messageTimestamp(T0, 'en', 'UTC'));
         expect(messageTimestampRange([T0, T0 + 999], 'en', 'UTC')).toBe(messageTimestamp(T0, 'en', 'UTC'));
         expect(messageTimestampRange([null, NaN, 0], 'en')).toBeUndefined();

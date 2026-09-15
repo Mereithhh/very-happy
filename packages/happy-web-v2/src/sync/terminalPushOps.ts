@@ -119,6 +119,32 @@ export function trustedWebTerminals(daemonState: any): PushedSnapshot | null {
 
 /** Every machine's trusted snapshot, for the sync loop. Machines without one
  *  (old/downgraded daemons) are simply absent — nothing is rendered for them. */
+/**
+ * B-474: the stored daemonState with one terminal taken out of its pushed
+ * list — the edit behind "remove from list" for an offline machine.
+ *
+ * Unknown fields are preserved (spread, not rebuilt): the state belongs to the
+ * daemon, and a newer daemon writes keys this client has never heard of. A
+ * state with no readable list, or one that does not contain the terminal, is
+ * reported as unchanged so the caller writes nothing.
+ */
+export function daemonStateWithoutTerminal(
+    state: Record<string, unknown> | null | undefined,
+    terminalId: string,
+    now: number,
+): { changed: boolean; terminals: MachineTerminal[]; next: Record<string, unknown> | null } {
+    const webTerminals = (state as { webTerminals?: { terminals?: unknown } } | null | undefined)?.webTerminals;
+    const current = webTerminals?.terminals;
+    if (!state || !Array.isArray(current)) return { changed: false, terminals: [], next: null };
+    const terminals = (current as MachineTerminal[]).filter((terminal) => terminal?.id !== terminalId);
+    if (terminals.length === current.length) return { changed: false, terminals, next: null };
+    return {
+        changed: true,
+        terminals,
+        next: { ...state, webTerminals: { ...webTerminals, terminals, updatedAt: now } },
+    };
+}
+
 export function pushedMachineSnapshots(
   machines: Array<{ id: string; daemonState: any }>,
 ): Array<{ id: string; snapshot: PushedSnapshot }> {

@@ -15,6 +15,7 @@ import {
   RENAME_OVERLAY_TTL_MS,
   REMOVE_OVERLAY_TTL_MS,
   terminalOwnerByMachine,
+  daemonStateWithoutTerminal,
   type MachinePush,
   type PushOverlay,
   type TerminalSession,
@@ -345,4 +346,40 @@ describe('terminalOwnerByMachine', () => {
     });
     expect(owner.get('aaa')).toBe('a');
   });
+});
+
+describe('B-474 removing a terminal from an offline machine\'s stored state', () => {
+    const term = (id: string): MachineTerminal => ({ id, title: id, createdAt: 1, updatedAt: 1 } as MachineTerminal);
+    const state = () => ({
+        status: 'running',
+        pid: 42,
+        somethingANewerDaemonWrites: { keep: true },
+        webTerminals: { updatedAt: 1_000, terminals: [term('a'), term('b')] },
+    });
+
+    it('drops just that terminal and keeps every other field of the daemon state', () => {
+        const edit = daemonStateWithoutTerminal(state(), 'a', 9_000);
+        expect(edit.changed).toBe(true);
+        expect(edit.terminals.map(t => t.id)).toEqual(['b']);
+        expect(edit.next).toEqual({
+            status: 'running',
+            pid: 42,
+            somethingANewerDaemonWrites: { keep: true },
+            webTerminals: { updatedAt: 9_000, terminals: [term('b')] },
+        });
+    });
+
+    it('reports nothing to write when the terminal is absent or the state has no list', () => {
+        expect(daemonStateWithoutTerminal(state(), 'missing', 9_000)).toMatchObject({ changed: false, next: null });
+        expect(daemonStateWithoutTerminal(null, 'a', 9_000)).toEqual({ changed: false, terminals: [], next: null });
+        expect(daemonStateWithoutTerminal({ status: 'running' }, 'a', 9_000)).toEqual({ changed: false, terminals: [], next: null });
+        expect(daemonStateWithoutTerminal({ webTerminals: { terminals: 'nope' } } as never, 'a', 9_000)).toEqual({ changed: false, terminals: [], next: null });
+    });
+
+    it('leaves the source object untouched (the store keeps rendering the old list until the write lands)', () => {
+        const original = state();
+        daemonStateWithoutTerminal(original, 'a', 9_000);
+        expect(original.webTerminals.terminals.map(t => t.id)).toEqual(['a', 'b']);
+        expect(original.webTerminals.updatedAt).toBe(1_000);
+    });
 });

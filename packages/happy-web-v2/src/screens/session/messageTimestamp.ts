@@ -5,27 +5,43 @@ function validTimestamp(value: number | null | undefined): value is number {
         && Number.isFinite(new Date(value).getTime());
 }
 
-function timeFormatter(style: 'full' | 'compact', locale?: string, timeZone?: string): Intl.DateTimeFormat {
-    const key = `${style}:${locale ?? ''}:${timeZone ?? ''}`;
+type FormatterKind = 'date' | 'time' | 'zone' | 'compact';
+
+const OPTIONS: Record<FormatterKind, Intl.DateTimeFormatOptions> = {
+    date: { year: 'numeric', month: '2-digit', day: '2-digit' },
+    time: { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' },
+    zone: { timeZoneName: 'short' },
+    compact: { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
+};
+
+function timeFormatter(kind: FormatterKind, locale?: string, timeZone?: string): Intl.DateTimeFormat {
+    const key = `${kind}:${locale ?? ''}:${timeZone ?? ''}`;
     let formatter = formatters.get(key);
     if (!formatter) {
-        formatter = new Intl.DateTimeFormat(locale, {
-            hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-            ...(style === 'full' ? {
-                year: 'numeric', month: '2-digit', day: '2-digit',
-                second: '2-digit', timeZoneName: 'short',
-            } as const : {}),
-            ...(timeZone ? { timeZone } : {}),
-        });
+        formatter = new Intl.DateTimeFormat(locale, { ...OPTIONS[kind], ...(timeZone ? { timeZone } : {}) });
         formatters.set(key, formatter);
     }
     return formatter;
 }
 
-/** Full local date/time for passive message hover hints. Never infer a missing time. */
+/**
+ * Full local date/time for the message hover hint. Never infer a missing time.
+ *
+ * B-473: composed from three formatters instead of one options bag with every
+ * field in it. ICU picks its own pattern for a combined skeleton, and for zh
+ * that pattern wedges the zone between the date and the clock —
+ * `2026/09/11 GMT+8 20:34:56`, which reads as a broken timestamp. Date, clock
+ * and zone are formatted separately (each still locale-correct: zh keeps
+ * y/m/d, en keeps m/d/y) and joined in one fixed order, so every locale gets
+ * `<date> <HH:MM:SS> (<zone>)`.
+ */
 export function messageTimestamp(createdAt: number | null | undefined, locale?: string, timeZone?: string): string | undefined {
     if (!validTimestamp(createdAt)) return undefined;
-    return timeFormatter('full', locale, timeZone).format(createdAt);
+    const date = timeFormatter('date', locale, timeZone).format(createdAt);
+    const clock = timeFormatter('time', locale, timeZone).format(createdAt);
+    const zone = timeFormatter('zone', locale, timeZone)
+        .formatToParts(createdAt).find((part) => part.type === 'timeZoneName')?.value;
+    return zone ? `${date} ${clock} (${zone})` : `${date} ${clock}`;
 }
 
 /** Always-visible message action time; the complete date remains available in the hover hint. */

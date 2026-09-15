@@ -16,11 +16,11 @@ import { t } from '@/i18n/useTranslation';
 import { Modal } from '@/modal';
 import { getCurrentAuth } from '@/auth/AuthContext';
 import { notifyWebhook } from '@/sync/apiWebhook';
-import { sessionUpdateTitleTags, sessionArchive, sessionMarkCompleted, machineKillTerminal, machineRestoreTerminal } from '@/sync/ops';
+import { sessionUpdateTitleTags, sessionArchive, sessionMarkCompleted, machineForgetTerminal, machineKillTerminal, machineRestoreTerminal } from '@/sync/ops';
 import type { NavigateFunction } from 'react-router-dom';
 import { createTerminalAt } from './newTerminal';
 import type { ClosedTerminalRow } from '@/sync/closedTerminals';
-import { machineLabel } from '@/utils/machineUtils';
+import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { Session } from '@/sync/storageTypes';
@@ -177,6 +177,23 @@ export async function confirmCloseTerminal(
   // session (and everything running in it) stays alive on the machine. Say
   // so instead of the generic "process ends now" text. Derived here so every
   // caller (sidebar, board, ⌘W) gets the honest wording for free.
+  // B-474: the machine is gone — `kill-terminal` has nobody to answer it, and
+  // before this the user waited for the RPC to time out and then got an error
+  // with the row still there. Offer what IS possible: take the row off the
+  // stored list, saying plainly that nothing is being terminated and that a
+  // machine which comes back with the session alive brings the row back.
+  const machine = storage.getState().machines[machineId];
+  if (machine && !isMachineOnline(machine)) {
+    const removed = await Modal.confirm(
+      t('terminal.offlineCloseTitle'),
+      t('terminal.offlineCloseMessage', { machine: machineLabel(machine) }),
+      { confirmText: t('terminal.offlineCloseConfirm'), destructive: true },
+    );
+    if (!removed) return false;
+    onConfirmed?.();
+    await forgetTerminalNow(machineId, terminalId);
+    return true;
+  }
   const attachName = useTerminalSessions.getState().terminals.find((tm) => tm.id === terminalId)?.attachTmux;
   const ok = attachName
     ? await Modal.confirm(t('terminal.closeAttachedTitle'), t('terminal.closeAttachedMessage', { name: attachName }), {
@@ -207,6 +224,26 @@ export async function confirmKillAttachedTerminal(
   if (!ok) return false;
   await closeTerminalNow(machineId, terminalId, onConfirmed, { alsoAttached: true });
   return true;
+}
+
+/** B-474: take a terminal off an offline machine's stored list (no kill — see
+ *  machineForgetTerminal). The row goes locally too, and the machine's push
+ *  record is rewritten with the same list so the 30 s remove-overlay expiring
+ *  cannot bring it back. */
+export async function forgetTerminalNow(machineId: string, terminalId: string): Promise<void> {
+  const result = await machineForgetTerminal(machineId, terminalId);
+  if (!result.ok) {
+    Modal.alert(t('common.error'), `${t('terminal.offlineCloseFailed')}${result.message ? ` (${result.message})` : ''}`);
+    return;
+  }
+  const machine = storage.getState().machines[machineId];
+  useTerminalSessions.getState().remove(terminalId);
+  useTerminalSessions.getState().applyPush(
+    machineId,
+    machine ? machineLabel(machine) : machineId.slice(0, 8),
+    result.terminals,
+    Date.now(),
+  );
 }
 
 /** The close itself, no confirm (⌘W with `closeViewConfirm` off, and the tail

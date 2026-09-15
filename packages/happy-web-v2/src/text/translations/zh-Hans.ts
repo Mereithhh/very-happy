@@ -1819,6 +1819,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep15d: {
+                title: '悬停即见的时间浮层，离线机器的终端也能清掉了',
+                summary: '现在把鼠标放到消息上会立刻弹出时间小浮层，不再依赖那个流式输出时总被打断、要等一秒的浏览器原生提示。机器已经离线的终端，也终于能从列表里移除。',
+                time: '完整时间也终于读得通了：日期、时钟、时区依次排列（2026/09/15 21:40:12 (GMT+8)），中文下时区不再夹在日期和时间中间。触屏设备保持原来的长按行为。',
+                offline: '以前在离线机器上关闭终端，会先等一个没人应答的请求超时，然后报错、行还在。现在改成询问是否从列表移除，并说明不会终止任何东西；机器恢复且会话还在时，这个终端会重新出现。',
+            },
             sep15c: {
                 title: '停止时后台子代理和后台命令也会停下',
                 summary: '以前点「停止」只结束当前这一轮，异步子代理和转到后台的命令还在跑——继续干活、继续花钱，卡片一直转。现在停止会同时让它们停下。对 CLI 更新后新建或重启的会话生效。',
@@ -2639,6 +2645,10 @@ export const zhHans: TranslationStructure = {
         connectionMachine: "查看机器",
         // 同时适用 tmux 与 direct PTY 终端。
         closeTitle: '关闭终端？',
+        offlineCloseTitle: '机器已离线',
+        offlineCloseMessage: ({ machine }: { machine: string }) => `${machine} 没有连接，无法在它上面关闭这个终端——不会终止任何东西。可以先把它从列表里移除；如果这台机器恢复上线、会话还在，这个终端会重新出现。`,
+        offlineCloseConfirm: '从列表移除',
+        offlineCloseFailed: '没能把这个终端从列表里移除。',
         closeMessage: '终端会移入归档，可从归档恢复（同目录、同标题、同标签；有记录的 claude 对话会自动接回）。终端进程现在结束，屏幕内容不保留。',
         closeAttachedTitle: '断开这个 tmux 会话？',
         closeAttachedMessage: ({ name }: { name: string }) => `关闭只是断开连接：你的 tmux 会话「${name}」和里面运行的进程会继续在机器上跑，随时可以重新接入；这一行会移入归档。`,
