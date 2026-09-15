@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAllMachines, useLocalSettingMutable } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
-import { cliUpdateInstallCommand, visibleCliUpdateNotices } from './cliUpdatePolicy';
+import { cliUpdateAcknowledgement, cliUpdateInstallCommand, visibleCliUpdateNotices } from './cliUpdatePolicy';
 import { requestMachineUpdate } from './cliUpdateRecovery';
 import './cliUpdateBanner.css';
 
@@ -31,7 +31,8 @@ export function CliUpdateBanner() {
   if (!lead) return null;
 
   const required = lead.severity === 'required';
-  const dismissible = !required && lead.delivery !== 'attention';
+  // B-470: only a required (compatibility floor) update cannot be put away.
+  const dismissible = !required;
   const automatic = lead.delivery === 'automatic';
   const pending = lead.delivery === 'pending';
   const key = `${lead.machineId}:${lead.targetVersion}`;
@@ -59,8 +60,8 @@ export function CliUpdateBanner() {
     if (!dismissible) return;
     const next = { ...acknowledged };
     for (const notice of notices) {
-      if (notice.severity === 'available' && notice.delivery !== 'attention' && notice.targetVersion === lead.targetVersion) {
-        next[notice.machineId] = notice.targetVersion;
+      if (notice.severity === 'available' && notice.targetVersion === lead.targetVersion) {
+        next[notice.machineId] = cliUpdateAcknowledgement(notice);
       }
     }
     setAcknowledged(next);

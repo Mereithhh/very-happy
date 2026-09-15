@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-15-cli-update-banner-dismiss',
+    date: '2026-09-15',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep15b.title',
+    summaryKey: 'changelog.releases.sep15b.summary',
+    itemKeys: ['changelog.releases.sep15b.dismiss'],
+  },
+  {
     id: '2026-09-15-voice-packs',
     date: '2026-09-15',
     buildVersion: __APP_VERSION__,

@@ -124,6 +124,24 @@ export function hasValidCliUpdatePolicy(machine: CliUpdateMachineLike): boolean 
     && (version(update?.recommendedVersion) || version(update?.minimumVersion)));
 }
 
+/**
+ * B-470: what a dismissal remembers. A plain target version hides the ordinary
+ * "update available / will update itself" notice but NOT an 'attention' one
+ * (a failed automatic install after the user waved the progress away still
+ * deserves a card). An attention notice the user closed explicitly is
+ * remembered with a `!` suffix and hides every state for that target; a newer
+ * target re-surfaces the card either way. Required updates never hide.
+ */
+export function cliUpdateAcknowledgement(notice: Pick<CliUpdateMachineNotice, 'targetVersion' | 'delivery'>): string {
+  return notice.delivery === 'attention' ? `${notice.targetVersion}!` : notice.targetVersion;
+}
+
+export function isCliUpdateNoticeVisible(notice: Pick<CliUpdateMachineNotice, 'severity' | 'targetVersion' | 'delivery'>, acknowledged: string | undefined): boolean {
+  if (notice.severity === 'required') return true;
+  if (acknowledged === `${notice.targetVersion}!`) return false;
+  return notice.delivery === 'attention' || acknowledged !== notice.targetVersion;
+}
+
 export function visibleCliUpdateNotices(
   machines: readonly CliUpdateMachineLike[],
   acknowledged: Readonly<Record<string, string>>,
@@ -133,7 +151,7 @@ export function visibleCliUpdateNotices(
     .filter((machine) => machine.active === true)
     .map((machine) => machineCliUpdateNotice(machine, now))
     .filter((notice): notice is CliUpdateMachineNotice => Boolean(notice))
-    .filter((notice) => notice.severity === 'required' || notice.delivery === 'attention' || acknowledged[notice.machineId] !== notice.targetVersion)
+    .filter((notice) => isCliUpdateNoticeVisible(notice, acknowledged[notice.machineId]))
     .sort((left, right) => {
       if (left.severity !== right.severity) return left.severity === 'required' ? -1 : 1;
       if (left.delivery !== right.delivery) {
