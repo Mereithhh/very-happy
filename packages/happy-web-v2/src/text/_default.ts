@@ -1861,6 +1861,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep15b: {
+                title: 'The CLI update card can always be closed',
+                summary: 'The "CLI update available" card in the corner had no close button when a machine\'s automatic update had failed or needed a hand. It can now be put away like any other update notice.',
+                dismiss: 'Closing it remembers that version for that machine; the machine page keeps showing the update state, and a newer release brings the card back. Only a required compatibility update stays.',
+            },
             sep15a: {
                 title: 'Game voice packs for notifications — Red Alert included',
                 summary: 'Settings → Notifications now offers the peon-ping / OpenPeon voice packs: Red Alert\'s Soviet soldier, the Kirov airship, Warcraft peons, StarCraft units, GLaDOS and more. Pick one and "Yes, sir?" answers a permission request, "Reporting." a finished turn.',

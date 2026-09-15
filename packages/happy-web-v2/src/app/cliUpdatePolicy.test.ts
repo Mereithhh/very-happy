@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cliUpdateInstallCommand, isCliVersionBelow, machineCliUpdateNotice, visibleCliUpdateNotices } from './cliUpdatePolicy';
+import { cliUpdateAcknowledgement, cliUpdateInstallCommand, isCliVersionBelow, machineCliUpdateNotice, visibleCliUpdateNotices } from './cliUpdatePolicy';
 
 const machine = (id: string, current: string, recommended: string | null, minimum: string | null = null) => ({
   id,
@@ -19,6 +19,22 @@ describe('CLI update notices', () => {
     expect(visibleCliUpdateNotices([machine('a', '0.2.50', '0.2.68')], { a: '0.2.68' })).toEqual([]);
     expect(visibleCliUpdateNotices([machine('a', '0.2.50', '0.2.69')], { a: '0.2.68' })).toHaveLength(1);
     expect(visibleCliUpdateNotices([machine('a', '0.2.20', '0.2.68', '0.2.34')], { a: '0.2.68' })).toHaveLength(1);
+  });
+
+  it('B-470: an attention notice (failed / manual_required) can be put away too, and comes back for a newer target', () => {
+    const failed = { ...machine('a', '0.2.50', '0.2.68'), daemonState: { ...machine('a', '0.2.50', '0.2.68').daemonState, cliUpdate: { ...machine('a', '0.2.50', '0.2.68').daemonState!.cliUpdate, checkedAt: Date.now(), autoUpdate: { state: 'failed', version: '0.2.68' } } } };
+    const notice = machineCliUpdateNotice(failed as any, Date.now())!;
+    expect(notice.delivery).toBe('attention');
+    // a plain acknowledgement (the user waved the progress card away) does NOT hide a failure…
+    expect(visibleCliUpdateNotices([failed as any], { a: '0.2.68' }, Date.now())).toHaveLength(1);
+    // …but closing the attention card itself does, for that target
+    expect(cliUpdateAcknowledgement(notice)).toBe('0.2.68!');
+    expect(visibleCliUpdateNotices([failed as any], { a: '0.2.68!' }, Date.now())).toEqual([]);
+    // a newer target brings it back
+    const newer = { ...failed, daemonState: { cliUpdate: { ...failed.daemonState.cliUpdate, recommendedVersion: '0.2.69' } } };
+    expect(visibleCliUpdateNotices([newer as any], { a: '0.2.68!' }, Date.now())).toHaveLength(1);
+    // required never hides
+    expect(visibleCliUpdateNotices([machine('r', '0.2.20', '0.2.68', '0.2.34')], { r: '0.2.68!' })).toHaveLength(1);
   });
 
   it('puts required machines first and ignores malformed policy values', () => {

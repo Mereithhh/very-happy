@@ -1817,6 +1817,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep15b: {
+                title: '「CLI 可更新」卡片总能关掉了',
+                summary: '某台机器自动升级失败或需要人工处理时，右上角的「CLI 可更新」卡片没有关闭按钮，一直挂着。现在和其他更新提示一样可以关。',
+                dismiss: '关掉即记住这台机器的这个版本；机器页仍显示更新状态，出新版本时卡片会再出现。只有强制兼容更新不能关。',
+            },
             sep15a: {
                 title: '提示音可以换成游戏语音包了，含红色警戒',
                 summary: '设置 → 通知新增 peon-ping / OpenPeon 语音包：红色警戒的苏联士兵、基洛夫飞艇、魔兽苦工、星际单位、GLaDOS 等。选一个，权限请求时是「Yes, sir?」，回合完成时是「Reporting.」。',
