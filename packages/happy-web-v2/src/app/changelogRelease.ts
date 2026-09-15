@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-15-stop-background-tasks',
+    cliVersion: '0.2.141',
+    date: '2026-09-15',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep15c.title',
+    summaryKey: 'changelog.releases.sep15c.summary',
+    itemKeys: ['changelog.releases.sep15c.tasks', 'changelog.releases.sep15c.attach'],
+  },
+  {
     id: '2026-09-15-cli-update-banner-dismiss',
     date: '2026-09-15',
     buildVersion: __APP_VERSION__,

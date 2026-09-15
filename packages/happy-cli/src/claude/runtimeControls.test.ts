@@ -57,6 +57,53 @@ it('suppresses only SDK replay prompts, preserving tool results and child messag
  expect(isRuntimeCheckpointReplay({...message,message:{content:[{type:'tool_result'}]}})).toBe(false);
 });
 
+describe('B-471: Stop also stops background tasks',()=>{
+ it('stops every running task, survives one refusal, and skips settled ones',async()=>{
+  const {q,controls}=setup();
+  controls.observe({type:'system',subtype:'task_started',task_id:'running-1',description:'Child A'} as any);
+  controls.observe({type:'system',subtype:'task_started',task_id:'running-2',description:'Child B'} as any);
+  controls.observe({type:'system',subtype:'task_started',task_id:'refuses'} as any);
+  controls.observe({type:'system',subtype:'task_started',task_id:'done'} as any);
+  controls.observe({type:'system',subtype:'task_notification',task_id:'done',status:'completed'} as any);
+  q.stopTask.mockImplementation((async(id:string)=>{if(id==='refuses')throw new Error('gone');}) as any);
+
+  const stopped=await controls.stopRunningTasks();
+
+  expect(stopped.sort()).toEqual(['running-1','running-2']);
+  expect(q.stopTask.mock.calls.map((call:any)=>call[0]).sort()).toEqual(['refuses','running-1','running-2']);
+  // a settled task is never re-stopped, and a refusal is not reported as stopped
+  expect(q.stopTask).not.toHaveBeenCalledWith('done');
+  // local state stays the SDK's to change: only its task_notification marks a stop
+  expect((controls.request({action:'status'}).tasks as any[]).find(task=>task.id==='running-1')).toMatchObject({status:'running'});
+ });
+
+ it('never dispatches without a live, controllable query, and is not blocked by a pending operation',async()=>{
+  const {q,controls}=setup();
+  controls.observe({type:'system',subtype:'task_started',task_id:'t1'} as any);
+  q.canControl.mockReturnValue(false);
+  expect(await controls.stopRunningTasks()).toEqual([]);
+  expect(q.stopTask).not.toHaveBeenCalled();
+  q.canControl.mockReturnValue(true);
+  // an in-flight control operation holds the request() fence — a Stop must not wait behind it
+  q.reloadSkills.mockImplementation(()=>new Promise<any>(()=>{}));
+  controls.request({action:'reload-skills'});await flush();
+  expect(controls.request({action:'stop-task',taskId:'t1'})).toHaveProperty('error');
+  expect(await controls.stopRunningTasks()).toEqual(['t1']);
+  controls.setQuery(null);
+  expect(await controls.stopRunningTasks()).toEqual([]);
+ });
+
+ it('is wired into the abort path before the interrupt',async()=>{
+  // Verified with scripts/dev/mutation-check.mjs (see PR).
+  const {readFileSync}=await import('node:fs');const {join}=await import('node:path');
+  const src=readFileSync(join(__dirname,'claudeRemoteLauncher.ts'),'utf8');
+  expect(src).toContain('void runtimeControls.stopRunningTasks()');
+  expect(src.indexOf('void runtimeControls.stopRunningTasks()')).toBeLessThan(src.indexOf('turnSteering.interruptTurn()'));
+  // fired from doAbort (the Stop button), not from the switch/exit path
+  expect(src.slice(src.indexOf('async function doAbort'),src.indexOf('async function waitForThinkingToStop'))).toContain('stopRunningTasks');
+ });
+});
+
 it('does not revive a stopped task from delayed progress',()=>{
  const {controls}=setup();
  controls.observe({type:'system',subtype:'task_notification',task_id:'t',status:'stopped'} as any);

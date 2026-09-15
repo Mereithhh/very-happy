@@ -754,7 +754,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                         }}
                                     />
                                 ) : (
-                                    <span className="ci-queue-text">{item.text || t('session.chat.attach')}</span>
+                                    <span className="ci-queue-text">{item.text || t('session.chat.attachmentOnly')}</span>
                                 )}
                                 <div className="ci-queue-actions">
                                     {editingId === item.id ? (
@@ -873,6 +873,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     <div className="ci-composer-tools">
                         <PresetsMenu onPick={insertPreset} onCancel={() => taRef.current?.focus()}
                             onAttach={supportsAttachments ? onPickFiles : undefined}
+                            attachAnyFile={supportsAnyAttachments}
                             onExpand={expanded || text.length > 200 || text.includes('\n') ? toggleExpanded : undefined}
                             expanded={expanded} />
                         <ModeMenu
