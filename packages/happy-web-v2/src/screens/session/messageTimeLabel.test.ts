@@ -23,9 +23,9 @@ describe('compact message time', () => {
 
     it('keeps compact labels and full hover dates separate when sharing formatter caches', () => {
         expect(compactMessageTime(timestamp, 'en', 'UTC')).toBe('03:05');
-        expect(messageTimestamp(timestamp, 'en', 'UTC')).toBe('09/11/2026, 03:05:59 UTC');
+        expect(messageTimestamp(timestamp, 'en', 'UTC')).toBe('09/11/2026 03:05:59 (UTC)');
         expect(messageTimestampRange([timestamp, timestamp + 1000], 'en', 'UTC'))
-            .toBe('09/11/2026, 03:05:59 UTC – 09/11/2026, 03:06:00 UTC');
+            .toBe('09/11/2026 03:05:59 (UTC) – 09/11/2026 03:06:00 (UTC)');
         expect(compactMessageTime(timestamp + 1000, 'en', 'UTC')).toBe('03:06');
     });
 });

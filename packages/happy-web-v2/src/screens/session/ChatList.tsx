@@ -33,6 +33,7 @@ import { dropDuplicateAttachmentEchoes } from './attachedFiles';
 import { countRunningSubagentCards, suppressSubagentPills } from './subagentPills';
 import { userAbortedAt } from './subagentAbort';
 import { currentTurnMessages, isAgentWorkLive } from '@/sync/agentLiveness';
+import { MessageTimeTooltip } from './MessageTimeTooltip';
 import './chatlist.css';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { isTranscriptVisibleInput } from './discardedInput';
@@ -318,6 +319,8 @@ export function ChatList({
         // 变成 O(N²)（每条各订阅全量 messages 并各扫一遍），流式输出时尤其明显。
         <MarkdownPathProvider sessionId={sessionId}>
         <div className="cl">
+            {/* B-473: one delegated hover-time bubble for every row below. */}
+            <MessageTimeTooltip containerRef={scrollRef} />
             <div
                 className="cl-scroll"
                 ref={scrollRef}

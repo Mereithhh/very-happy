@@ -11,6 +11,10 @@
 .msg-edit-label textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
 .msg-edit-error { color: var(--danger); overflow-wrap: anywhere; font-size: var(--fs-13); }
 .msg-edit-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
+/* B-473: the transcript's own hover time bubble. Fixed to the viewport (the
+   scroll container clips) and inert, so it can never eat a click meant for the
+   message under it. Above the chat, below modals/toasts. */
+.msg-hover-time { position: fixed; z-index: 800; pointer-events: none; padding: 4px var(--sp-2); border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--bg-2); color: var(--text-dim); font-size: var(--fs-11); line-height: 1.5; white-space: nowrap; box-shadow: 0 6px 18px rgb(0 0 0 / 0.18); }
 .msg-parent-link { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--text-dim); font-size: var(--fs-12); padding: var(--sp-2) var(--sp-4); }
 .msg-parent-link:hover { color: var(--text); }
 @media (pointer: coarse) {

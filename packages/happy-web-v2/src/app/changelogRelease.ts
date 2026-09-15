@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-15-hover-time-and-offline-terminals',
+    date: '2026-09-15',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep15d.title',
+    summaryKey: 'changelog.releases.sep15d.summary',
+    itemKeys: ['changelog.releases.sep15d.time', 'changelog.releases.sep15d.offline'],
+  },
+  {
     id: '2026-09-15-stop-background-tasks',
     cliVersion: '0.2.141',
     date: '2026-09-15',
