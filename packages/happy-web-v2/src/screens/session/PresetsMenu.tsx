@@ -26,13 +26,18 @@ import './presets.css';
 export function PresetsMenu({
     onPick,
     onCancel,
-    onAttach, onExpand, expanded,
+    onAttach, attachAnyFile = true, onExpand, expanded,
 }: {
     onPick: (text: string) => void;
     /** Keyboard cancel (Esc / ⌘. while open) — refocus the composer textarea
      *  so the keyboard-only flow never strands focus on the trigger button. */
     onCancel?: () => void;
     onAttach?: () => void;
+    /** B-472: this session accepts any file (the wildcard entry in
+     *  attachmentKinds) — the label then says "file". Old daemons take images
+     *  and PDF only, so they keep the narrower wording instead of promising
+     *  something the wrapper will reject. */
+    attachAnyFile?: boolean;
     onExpand?: () => void;
     expanded?: boolean;
 }) {
@@ -108,7 +113,7 @@ export function PresetsMenu({
                         }
                     }}
                 >
-                    {page === 'tools' && onAttach && <DropdownMenu.Item className="pm-item pm-tool" onSelect={onAttach}><Paperclip size={16} aria-hidden /><span>{t('session.chat.attach')}</span></DropdownMenu.Item>}
+                    {page === 'tools' && onAttach && <DropdownMenu.Item className="pm-item pm-tool" onSelect={onAttach}><Paperclip size={16} aria-hidden /><span>{t(attachAnyFile ? 'session.chat.attach' : 'session.chat.attachImage')}</span></DropdownMenu.Item>}
                     {page === 'tools' && onExpand && <DropdownMenu.Item className="pm-item pm-tool" onSelect={onExpand}>{expanded ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}<span>{expanded ? t('session.input.collapse') : t('session.input.expand')}</span></DropdownMenu.Item>}
                     {page === 'tools' && presets.length > 0 && <DropdownMenu.Item className="pm-item pm-tool" onSelect={event => { event.preventDefault(); changePage('presets'); }}><BookMarked size={16} aria-hidden /><span>{t('session.chat.presets')}</span><ChevronRight size={14} aria-hidden /></DropdownMenu.Item>}
                     {page === 'presets' && <DropdownMenu.Item className="pm-item pm-tool" onSelect={event => { event.preventDefault(); changePage('tools'); }}><ArrowLeft size={16} aria-hidden /><span>{t('common.back')}</span></DropdownMenu.Item>}

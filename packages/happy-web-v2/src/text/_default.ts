@@ -757,7 +757,11 @@ export const en = {
             relayRegion: 'Realtime relay region',
             effortDefault: 'default',
             effortDefaultDesc: "engine default (currently high; may downgrade per model)",
-            attach: 'Attach image',
+            // B-472: the wrapper accepts any file (attachmentKinds carries
+            // `*/*`); `attachImage` is the old-daemon wording.
+            attach: 'Attach file',
+            attachImage: 'Attach image',
+            attachmentOnly: 'Attachment',
             // Unified shortcuts (B-052): same list as the terminal menu, but
             // in the chat composer EVERY entry inserts (run flag ignored).
             presets: 'Shortcuts',
@@ -1861,6 +1865,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep15c: {
+                title: 'Stop also stops background sub-agents and commands',
+                summary: 'Pressing Stop ended the current turn but left async sub-agents and backgrounded commands running — still working, still spending, their cards still spinning. Stop now asks each of them to stop as well. Applies to sessions started or restarted after the CLI updates.',
+                tasks: 'Every background task the session is tracking is stopped individually, so one that refuses does not keep the others alive. The session itself and its history are kept, exactly as before.',
+                attach: 'The composer menu says "Attach file" instead of "Attach image": any file type is accepted. A machine on an older CLI, which really does take only images and PDFs, still says "Attach image".',
+            },
             sep15b: {
                 title: 'The CLI update card can always be closed',
                 summary: 'The "CLI update available" card in the corner had no close button when a machine\'s automatic update had failed or needed a hand. It can now be put away like any other update notice.',

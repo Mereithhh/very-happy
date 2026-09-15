@@ -758,7 +758,9 @@ export const zhHans: TranslationStructure = {
             relayRegion: '实时 Relay 地区',
             effortDefault: '默认',
             effortDefaultDesc: '引擎默认（当前=high，部分模型会静默降档）',
-            attach: '添加图片',
+            attach: '添加文件',
+            attachImage: '添加图片',
+            attachmentOnly: '附件',
             presets: '快捷指令',
             presetsTitle: '快捷指令',
             presetsDigitHint: '按 1-9 插入',
@@ -1817,6 +1819,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep15c: {
+                title: '停止时后台子代理和后台命令也会停下',
+                summary: '以前点「停止」只结束当前这一轮，异步子代理和转到后台的命令还在跑——继续干活、继续花钱，卡片一直转。现在停止会同时让它们停下。对 CLI 更新后新建或重启的会话生效。',
+                tasks: '会话正在跟踪的每个后台任务都会被单独停止，一个停不掉不影响其余。会话本身和历史照旧保留。',
+                attach: '输入框菜单的「添加图片」改成「添加文件」：什么格式都收。机器上跑旧版 CLI（确实只收图片和 PDF）时仍显示「添加图片」。',
+            },
             sep15b: {
                 title: '「CLI 可更新」卡片总能关掉了',
                 summary: '某台机器自动升级失败或需要人工处理时，右上角的「CLI 可更新」卡片没有关闭按钮，一直挂着。现在和其他更新提示一样可以关。',

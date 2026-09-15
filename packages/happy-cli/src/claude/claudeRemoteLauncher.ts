@@ -115,6 +115,17 @@ export async function claudeRemoteLauncher(
         // for a crash and force-archive the session (see Session.markAborting).
         session.markAborting();
         session.onAbort();
+        // B-471: Stop means stop everything the user can see running. The
+        // graceful interrupt below ends the foreground turn only — an
+        // async-launched sub-agent or a backgrounded command outlives turns by
+        // design, so it kept running (and kept spending) after a Stop, with its
+        // card spinning forever. Fired here, before the interrupt, so the
+        // request reaches a query that is still fully alive; NOT awaited, so
+        // the Stop button never waits on it. Each stop lands its own
+        // task_notification('stopped').
+        void runtimeControls.stopRunningTasks()
+            .then((ids) => { if (ids.length > 0) logger.debug(`[remote]: stopped ${ids.length} background task(s) on abort: ${ids.join(', ')}`); })
+            .catch((error) => logger.debug('[remote]: stopping background tasks on abort failed', error));
         // Prefer the SDK's graceful interrupt: it stops the current turn but
         // keeps the streaming query — same process, same claudeSessionId — so
         // we neither re-launch a fresh Claude process (a new transcript id that

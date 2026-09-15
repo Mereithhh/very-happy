@@ -87,5 +87,34 @@ export function createRuntimeControls(isThinking:()=>boolean) {
         void Promise.resolve().then(()=>{if(query!==q || generation!==runGeneration || !q.canControl())throw Error('Claude query changed or is waiting for an interaction');return execute();}).then(result=>{if(generation!==runGeneration || op.status!=='running')return;op.status='completed';op.result=result??null;},error=>{if(generation!==runGeneration || op.status!=='running')return;op.status='failed';op.error=error instanceof Error?error.message:'Claude control failed';}).finally(()=>{if(generation===runGeneration)pending=false;});
         return {operationId:op.id};
     }
-    return {setQuery,observe,request};
+    /**
+     * B-471: stop every background task this query still has running — the
+     * Stop button's "stop everything" leg.
+     *
+     * A graceful interrupt (#364) only ends the foreground turn. Work that is
+     * designed to outlive a turn does not stop: an async-launched sub-agent
+     * (`async_launched` tool_result; its stop only ever comes from
+     * task_notification) and a backgrounded command keep running, keep burning
+     * tokens, and leave a card spinning in the app. `stopTask` is the SDK's
+     * own per-task stop, so ask it for each one we are still tracking.
+     *
+     * Deliberately outside the `request()` fence: a Stop must not be refused
+     * because some other control operation is pending, and it publishes no
+     * operation of its own. `canControl()` still gates it (iron rule 8: no
+     * control request nested inside an SDK callback). Best-effort per task —
+     * one refusal must not keep the others running. Local task state is left
+     * alone: the authoritative `task_notification('stopped')` does that, and a
+     * failed stop must not be painted as a stopped task.
+     */
+    async function stopRunningTasks(): Promise<string[]> {
+        const q=query, runGeneration=generation;
+        if(!q || !q.canControl()) return [];
+        const running=[...tasks.values()].filter(task=>task.status==='running' && text(task.id)).map(task=>String(task.id)).slice(0,20);
+        const stopped:string[]=[];
+        await Promise.all(running.map(async id=>{
+            try {await q.stopTask(id);if(query===q && generation===runGeneration) stopped.push(id);} catch {/* best-effort */}
+        }));
+        return stopped;
+    }
+    return {setQuery,observe,request,stopRunningTasks};
 }
