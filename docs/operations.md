@@ -587,6 +587,58 @@ Every release report records the deployed SHA/version, verification evidence and
 the rollback point.
 
 
+### A switch that dies after the Caddy reload (recovered deployment)
+
+Twice now (B-452's rollout, and 2026-09-15 / `83fe2398`) the deploy workflow has
+reported **failure after traffic was already on the new release**. Both times the
+remote step died in the drain wait — the second time with
+`client_loop: send disconnect: Broken pipe` about four minutes after the Caddy
+reload. Everything before the wait had run: the candidate was up, the drain was
+requested on the old slot, `active-upstream.caddy` pointed at the candidate and
+the public release verified. Everything after it had not: `stop_old_slot` and the
+final `write_state`.
+
+The damage is **only** in `state.env`: it still names the old slot as active. That
+file is the authority the next deploy reads, so leaving it wrong makes the next
+release treat the live slot as its candidate. Fix it before anything else; a red
+workflow whose site is already serving the new SHA is a bookkeeping incident, not
+an outage.
+
+Establish reality first — never trust either the workflow result or `state.env`:
+
+```bash
+ssh vh-sg 'cat /opt/happy/release/active-upstream.caddy; cat /opt/happy/release/state.env'
+ssh vh-sg 'docker ps --format "{{.Names}} {{.Image}} {{.Status}}" | grep happy-server'
+# which release each slot actually serves (the entry asset carries the SHA)
+ssh vh-sg 'for p in 3101 3102; do curl -fsS http://127.0.0.1:$p/ | grep -oE "/assets/index-[^\"]+\.js" | head -1; done'
+node scripts/dev/check-shipped.mjs --needle '<a string only the new code contains>'
+```
+
+Then commit the truth with the script's **own** writer rather than hand-editing
+the file (it is read back through `load_state`, which validates every field):
+
+```bash
+scp scripts/ci/deploy-blue-green-remote.sh vh-sg:/tmp/vh-release-lib.sh
+ssh vh-sg 'set -e
+cp -p /opt/happy/release/state.env /opt/happy/release/state.env.bak-$(date +%Y%m%d%H%M%S)
+export VH_RELEASE_LIBRARY_ONLY=1; . /tmp/vh-release-lib.sh; load_state
+MODE=bluegreen
+ROLLBACK_SLOT=<old> ROLLBACK_PORT=<old port> ROLLBACK_IMAGE=<old digest> ROLLBACK_RELEASE=<old sha>
+ACTIVE_SLOT=<live> ACTIVE_PORT=<live port> ACTIVE_IMAGE=<live digest> ACTIVE_RELEASE=<live sha>
+SHADOW_IMAGE="" SHADOW_RELEASE=""
+write_state
+rm -f /tmp/vh-release-lib.sh'
+```
+
+`RELEASE_GENERATION` is already correct: the switch bumps and persists it before
+any candidate work, precisely so a half-finished attempt still consumes one.
+
+The old slot may be left **running and drained**. It serves no traffic (Caddy
+points elsewhere), it is the rollback point, and the next deploy resets its drain
+state when it becomes the candidate. On vh-sg a server slot is ~220 MB against
+13 GB free, so stopping it buys nothing; `stop_old_slot` is what the script would
+have done, not something the state depends on.
+
 ### Connection incident evidence (B-380)
 
 The server/web and regional relay builds containing B-380 log authenticated socket
