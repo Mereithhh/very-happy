@@ -39,7 +39,7 @@ has the same tool set:
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
 | Voice Assistant / legacy assistant variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
-| User-scoped `very-happy mcp` **inside a vh web terminal** (`VH_TERMINAL_ID` set by the daemon's tmux terminal) | + `change_title` (titles that terminal via the daemon's `/terminal-title`) |
+| User-scoped `very-happy mcp` **inside a vh web terminal** (`VH_TERMINAL_ID` set by the daemon's tmux terminal) | + `change_title`, `open_preview` (titles/previews for that terminal via authenticated daemon IPC) |
 | User-scoped `very-happy mcp` **inside a meta-agent session of a non-Claude runner** (`HAPPY_SESSION_VARIANT=assistant`, legacy compatibility only) | `copy_to_clipboard` + `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive` |
 
 The first two paths are injected by their managed runners. The assistant-only
@@ -47,8 +47,8 @@ additions can read and mutate sessions, terminals, memory, and journals; treat
 that variant and its prompt/tool permissions as a high-privilege machine
 control surface. The standalone `very-happy mcp` command is narrower: outside a
 meta-agent session it is clipboard-only, and even inside one it never exposes
-terminal, memory, journal, provider routing, preview, title, or progress
-tools. It also stays clipboard-only under a happy-managed Claude
+terminal management, memory, journal, provider routing, or progress
+tools. A terminal context additionally enables title and file-preview tools. It also stays clipboard-only under a happy-managed Claude
 (`HAPPY_MANAGED=1`), so a Claude assistant that happens to have the user-scoped
 registration too does not see the session tools twice. External automation
 should use the explicit CLI contracts below.
@@ -454,7 +454,7 @@ through `HAPPY_MCP_URL`; a private supervisor wrapper or `.mcp.json` is not
 required for Teams. Use `very-happy pi` for this path. Installing the shared
 skill does not attach a bare pi process or provide its background inbox.
 
-A plain Web-terminal MCP registration remains a separate clipboard/title
+A plain Web-terminal MCP registration remains a separate clipboard/title/preview
 handoff. `VH_TERMINAL_ID` identifies that terminal; when both it and
 `HAPPY_MCP_URL` exist, the managed session endpoint takes precedence to avoid
 duplicate title tools. `very-happy mcp` discovers the daemon using
@@ -748,3 +748,36 @@ Unknown launch outcomes require verification, not blind retry. See the
 [Teams contract](../specs/2026-09-agent-teams.md) for scope, limits, rollback and
 legacy ledger migration preview. This feature has not been deployed by the
 implementation task.
+
+
+### Native Pi terminal tools
+
+Inside a Very Happy tmux terminal, start native Pi with:
+
+```sh
+very-happy pi --terminal
+# Pi arguments are preserved, e.g. continue the current Pi conversation:
+very-happy pi --terminal --continue
+```
+
+This loads the official extension for `change_title`, `copy_to_clipboard`, and
+`open_preview` without editing Pi settings or adding a native permission gate.
+`change_title` changes the Very Happy terminal name; `open_preview` accepts an
+absolute file path (or `~/…`) and uses the existing file viewer and path checks.
+The machine must run the matching CLI/daemon. Existing Pi processes must be
+restarted through this command to load the extension. `very-happy pi` still
+starts the managed ACP conversation; `HAPPY_MCP_URL` takes priority if present.
+
+**Copy and preview history** appears inside conversations and terminal sessions.
+Records are isolated by session or machine plus terminal ID and saved in account
+KV, so a browser need not be open when a call arrives. Viewing history does not
+automatically copy or open anything. Click **Copy again** or **Open preview**.
+Each scope retains up to 50 recent calls within a 240 KiB storage budget; repeated
+calls remain separate. Clipboard history retains up to 32 KiB per text (less for
+JSON-escaped content), explicitly marked when truncated. Live clipboard delivery
+still accepts up to 256 KiB. Saving history is best effort under server storage
+failures or overload, and a record confirms only receipt of a valid push, not
+that a device copied it or a person viewed it. Preview reopening requires the
+source machine and file to remain available. Older chat transcripts can supply
+previous clipboard calls and preview paths; old terminal calls lacking a terminal
+ID cannot be reconstructed. The separate device-local clipboard panel is unchanged.

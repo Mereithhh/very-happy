@@ -27,14 +27,15 @@ On restart inspect authoritative state and messages before taking new actions. D
 
 /** Standalone pi extension: no personal settings, dependencies, or policy overrides. */
 export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport default async function(pi) {
-  const endpoint = process.env.HAPPY_MCP_URL;
+  const managed = !!process.env.HAPPY_MCP_URL;
+  const endpoint = process.env.HAPPY_MCP_URL || process.env.HAPPY_TERMINAL_MCP_URL;
   if (!endpoint) return;
   const url = new URL(endpoint);
   if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || url.protocol !== 'http:') throw new Error('Very Happy MCP must be local');
   const {readFile} = await import('node:fs/promises');
   const {join} = await import('node:path');
   const {homedir} = await import('node:os');
-  const contextEndpoint = process.env.HAPPY_CONTEXT_USAGE_URL;
+  const contextEndpoint = managed && process.env.HAPPY_CONTEXT_USAGE_URL;
   if (contextEndpoint) {
     const target = new URL(contextEndpoint);
     if (target.origin !== url.origin || !target.pathname.startsWith('/runtime-context/')) throw new Error('Very Happy context must be local');
@@ -52,7 +53,7 @@ export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport
       });
     }
   }
-  pi.on('tool_call', async (event, ctx) => {
+  if (managed) pi.on('tool_call', async (event, ctx) => {
     let mode = process.env.HAPPY_PERMISSION_MODE || 'default';
     const sid = process.env.HAPPY_SESSION_ID;
     if (sid && /^[a-zA-Z0-9_-]+$/.test(sid)) {

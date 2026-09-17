@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
-import { prepareClipboardText } from '@/clipboard/limits';
+import { prepareClipboardHistoryText, prepareClipboardText } from '@/clipboard/limits';
 import { backoff, delay } from '@/utils/time';
 import { isRateQuotaCode, pauseForRateQuota } from './stateWriteRetry';
 import { configuration } from '@/configuration';
@@ -1071,12 +1071,15 @@ export class ApiSessionClient extends EventEmitter {
      */
     pushClipboard(text: string): { delivered: boolean; truncated: boolean; totalBytes: number } {
         const prepared = prepareClipboardText(text);
+        const history = prepareClipboardHistoryText(text);
         if (!this.socket.connected) {
             return { delivered: false, truncated: prepared.truncated, totalBytes: prepared.totalBytes };
         }
         this.socket.emit('clipboard-push', {
             payload: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, prepared.text)),
             enc: true,
+            historyPayload: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, history.text)),
+            historyTruncated: history.truncated,
             truncated: prepared.truncated,
             totalBytes: prepared.totalBytes
         });

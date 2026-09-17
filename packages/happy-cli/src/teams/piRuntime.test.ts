@@ -4,6 +4,8 @@ import { PI_TEAMS_EXTENSION } from './resources';
 describe('official pi bridge', () => {
     it('loads without dependencies and maps the advertised scoped tools through real JSON-RPC shapes', async () => {
         const previous = process.env.HAPPY_MCP_URL;
+        const terminalEndpoint = process.env.HAPPY_TERMINAL_MCP_URL;
+        process.env.HAPPY_TERMINAL_MCP_URL = 'http://127.0.0.1:12345/wrong-terminal-endpoint';
         process.env.HAPPY_MCP_URL = 'http://127.0.0.1:12345/mcp';
         const requests: any[] = [];
         const tools: any[] = [];
@@ -13,6 +15,7 @@ describe('official pi bridge', () => {
         delete process.env.HAPPY_SESSION_ID;
         process.env.HAPPY_PERMISSION_MODE = 'default';
         vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+            expect(String(_url)).toBe('http://127.0.0.1:12345/mcp');
             const request = JSON.parse(options.body); requests.push(request);
             const result = request.method === 'tools/list' ? { tools: [
                 { name: 'team_inspect', inputSchema: { type: 'object', properties: {} } },
@@ -33,7 +36,7 @@ describe('official pi bridge', () => {
             process.env.HAPPY_PERMISSION_MODE = 'bypassPermissions';
             expect(await gate({ toolName: 'bash' }, {})).toBeUndefined();
             expect(requests.map(req => req.method)).toEqual(['initialize', 'tools/list', 'tools/call']);
-        } finally { if (priorMode === undefined) delete process.env.HAPPY_PERMISSION_MODE; else process.env.HAPPY_PERMISSION_MODE = priorMode; if (priorSession === undefined) delete process.env.HAPPY_SESSION_ID; else process.env.HAPPY_SESSION_ID = priorSession; vi.unstubAllGlobals(); if (previous === undefined) delete process.env.HAPPY_MCP_URL; else process.env.HAPPY_MCP_URL = previous; }
+        } finally { if (terminalEndpoint === undefined) delete process.env.HAPPY_TERMINAL_MCP_URL; else process.env.HAPPY_TERMINAL_MCP_URL = terminalEndpoint; if (priorMode === undefined) delete process.env.HAPPY_PERMISSION_MODE; else process.env.HAPPY_PERMISSION_MODE = priorMode; if (priorSession === undefined) delete process.env.HAPPY_SESSION_ID; else process.env.HAPPY_SESSION_ID = priorSession; vi.unstubAllGlobals(); if (previous === undefined) delete process.env.HAPPY_MCP_URL; else process.env.HAPPY_MCP_URL = previous; }
     });
 });
 

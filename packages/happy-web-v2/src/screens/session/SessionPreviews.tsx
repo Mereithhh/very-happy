@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useSessionMessages } from '@/sync/storage';
-import { useTranslation } from '@/i18n/useTranslation';
-import { FilePathLink } from './FilePathLink';
-import { sessionPreviewPaths } from './previewTools';
-import './sessionpreviews.css';
+import { ToolHistory } from './ToolHistory';
+import { transcriptClipboardHistory } from '@/sync/toolHistory';
+import { useSession, useSessionMessages } from '@/sync/storage';
+import { sessionPreviewPaths, legacyPreviewHistory } from './previewTools';
 
 /** Reconstructed from persisted tool calls; closing a preview never removes its entry. */
 export function SessionPreviews({ sessionId }: {sessionId:string}) {
@@ -12,7 +11,7 @@ export function SessionPreviews({ sessionId }: {sessionId:string}) {
 
 function PreviewHistory({sessionId}:{sessionId:string}) {
     const {messages} = useSessionMessages(sessionId);
-    const {t} = useTranslation();
+    const session = useSession(sessionId);
     const cacheKey = `vh:session-previews:${sessionId}`;
     const [saved, setSaved] = useState<string[]>(() => {
         try {
@@ -26,9 +25,8 @@ function PreviewHistory({sessionId}:{sessionId:string}) {
         setSaved(previous => JSON.stringify(previous) === serialized ? previous : JSON.parse(serialized));
         try { localStorage.setItem(cacheKey, serialized); } catch { /* Transcript entries remain usable when browser storage is unavailable. */ }
     }, [cacheKey, serialized]);
-    if (!paths.length) return null;
-    return <details className="session-previews">
-        <summary>{t('filePreview.history')} · {paths.length}</summary>
-        <div className="session-previews-list">{paths.map(path => <FilePathLink key={path} sessionId={sessionId} path={path} label={path.split(/[\\/]/).pop() || path} />)}</div>
-    </details>;
+    return <ToolHistory scope={{sessionId}} machineId={session?.metadata?.machineId} transcript={[
+        ...transcriptClipboardHistory(messages),
+        ...legacyPreviewHistory(paths, session?.metadata?.path),
+    ]} />;
 }

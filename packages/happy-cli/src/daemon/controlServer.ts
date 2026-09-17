@@ -14,6 +14,7 @@ import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/regist
 import { SPAWN_AGENTS } from '@/utils/spawnAgents';
 import type { AssistantReportEvent } from './assistantReport';
 import { isAuthorizedDaemonControlRequest } from './controlAuth';
+import { checkPreviewPath } from '@/claude/utils/previewPath';
 
 export function startDaemonControlServer({
   controlToken,
@@ -26,6 +27,7 @@ export function startDaemonControlServer({
   onClaudeAuthFailed,
   onSessionTurnEvent,
   pushClipboard,
+  pushFilePreview,
   onTerminalHook,
   setTerminalTitle
 }: {
@@ -44,7 +46,8 @@ export function startDaemonControlServer({
   /** B-466: a wrapper's turn started (also a lease renewal) or ended — feeds
    *  the auto-update "no turn in flight" gate. Optional for older wirings. */
   onSessionTurnEvent?: (sessionId: string, event: 'turn_started' | 'turn_ended') => void;
-  pushClipboard: (text: string) => { delivered: boolean; truncated: boolean; totalBytes: number; error?: string };
+  pushClipboard: (text: string, terminalId?: string) => { delivered: boolean; truncated: boolean; totalBytes: number; error?: string };
+  pushFilePreview?: (terminalId: string, path: string, mode: 'file' | 'diff') => { delivered: boolean; error?: string };
   /** B-105: a claude SessionStart/SessionEnd hook forwarded from inside a vh
    *  web terminal (scripts/terminal_mirror_forwarder.cjs). Payload is claude's
    *  hook JSON + terminalId; parsing/validation is the mirror manager's job.
@@ -317,7 +320,8 @@ export function startDaemonControlServer({
     typed.post('/clipboard', {
       schema: {
         body: z.object({
-          text: z.string()
+          text: z.string(),
+          terminalId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional()
         }),
         response: {
           200: z.object({
@@ -329,9 +333,26 @@ export function startDaemonControlServer({
         }
       }
     }, async (request) => {
-      const { text } = request.body;
+      const { text, terminalId } = request.body;
       logger.debug(`[CONTROL SERVER] Clipboard push request (${text.length} chars)`);
-      return pushClipboard(text);
+      return terminalId ? pushClipboard(text, terminalId) : pushClipboard(text);
+    });
+
+    typed.post('/file-preview', {
+      schema: {
+        body: z.object({
+          terminalId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
+          path: z.string().min(1),
+          mode: z.enum(['file', 'diff']).optional(),
+        }),
+        response: { 200: z.object({ delivered: z.boolean(), error: z.string().optional() }) },
+      },
+    }, async (request) => {
+      const { terminalId, path, mode } = request.body;
+      const verdict = checkPreviewPath(path);
+      if (verdict.deniedReason) return { delivered: false, error: verdict.deniedReason };
+      if (!pushFilePreview) return { delivered: false, error: 'daemon is still starting up' };
+      return pushFilePreview(terminalId, verdict.resolved, mode ?? 'file');
     });
 
     // Title a web terminal from a process running inside it. Local IPC for

@@ -44,6 +44,18 @@ describe('control server /clipboard', () => {
         expect(pushClipboard).toHaveBeenCalledWith('copy me');
     });
 
+    it('retains a valid terminal id and rejects an invalid one', async () => {
+        const post = (terminalId: string) => fetch(`http://127.0.0.1:${port}/clipboard`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${controlToken}` },
+            body: JSON.stringify({ text: 'from pi', terminalId }),
+        });
+        expect((await post('term_1')).status).toBe(200);
+        expect(pushClipboard).toHaveBeenLastCalledWith('from pi', 'term_1');
+        pushClipboard.mockClear();
+        expect((await post('bad id')).status).toBe(400);
+        expect(pushClipboard).not.toHaveBeenCalled();
+    });
+
     it('rejects a missing text field', async () => {
         const res = await fetch(`http://127.0.0.1:${port}/clipboard`, {
             method: 'POST',
@@ -84,6 +96,7 @@ describe('control server /clipboard', () => {
         '/spawn-session',
         '/terminal-hook',
         '/clipboard',
+        '/file-preview',
         '/terminal-title',
         '/stop',
     ])('protects %s with the common fail-closed gate', async (path) => {

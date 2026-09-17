@@ -42,6 +42,9 @@ ordinary terminal access does not imply identical structured support for every
 agent. Connect each machine once, keep its daemon online, and use the same
 workspace for a single conversation or a coordinated team.
 
+Run `very-happy pi --terminal` inside a Very Happy terminal to load native Pi tools for naming that terminal, copying text, and opening file previews. Each conversation and terminal has a **Copy and preview history** disclosure for reopening files and copying earlier content. [Tool setup and retention limits](docs/channels.md#native-pi-terminal-tools).
+
+
 ## Teams: from one goal to parallel work
 
 **Very Happy Teams** brings Claude Code, Codex, and pi together around a goal.

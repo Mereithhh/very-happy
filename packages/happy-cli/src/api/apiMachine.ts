@@ -13,7 +13,7 @@ import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from 
 import { registerFsHandlers } from '../modules/fs/fsRpc';
 import { registerTodoHandlers } from '@/modules/todo/todoRpc';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
-import { prepareClipboardText } from '@/clipboard/limits';
+import { prepareClipboardHistoryText, prepareClipboardText } from '@/clipboard/limits';
 import { backoff, delay } from '@/utils/time';
 import { isRateQuotaCode, pauseForRateQuota } from './stateWriteRetry';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -87,7 +87,8 @@ interface DaemonToServerEvents {
     // Clipboard push: daemon → server → all of the user's web clients.
     // `payload` is the clipboard text, encrypted with the per-machine key when
     // `enc` is true (same primitive as the terminal byte stream).
-    'clipboard-push': (data: { payload: string, enc?: boolean, truncated?: boolean, totalBytes?: number }) => void;
+    'file-preview-push': (data: { payload: string, enc?: boolean, terminalId: string, mode: 'file' | 'diff' }) => void;
+    'clipboard-push': (data: { payload: string, enc?: boolean, terminalId?: string, historyPayload?: string, historyTruncated?: boolean, truncated?: boolean, totalBytes?: number }) => void;
     'machine-alive': (data: {
         machineId: string;
         time: number;
@@ -276,18 +277,34 @@ export class ApiMachineClient {
      * (terminal-path claude → `very-happy mcp` → daemon /clipboard → here).
      * Encrypted with the per-machine key; the server relays without reading.
      */
-    pushClipboard(text: string): { delivered: boolean; truncated: boolean; totalBytes: number; error?: string } {
+    pushClipboard(text: string, terminalId?: string): { delivered: boolean; truncated: boolean; totalBytes: number; error?: string } {
         const prepared = prepareClipboardText(text);
+        const history = prepareClipboardHistoryText(text);
         if (!this.socket?.connected) {
             return { delivered: false, truncated: prepared.truncated, totalBytes: prepared.totalBytes, error: 'daemon is not connected to the server' };
         }
         this.socket.emit('clipboard-push', {
+            ...(terminalId ? { terminalId } : {}),
             payload: encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, prepared.text)),
             enc: true,
+            historyPayload: encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, history.text)),
+            historyTruncated: history.truncated,
             truncated: prepared.truncated,
             totalBytes: prepared.totalBytes
         });
         return { delivered: true, truncated: prepared.truncated, totalBytes: prepared.totalBytes };
+    }
+
+    /** Queue a terminal preview with the machine key. Delivery does not prove a browser opened it. */
+    pushFilePreview(terminalId: string, path: string, mode: 'file' | 'diff' = 'file'): { delivered: boolean; error?: string } {
+        if (!this.socket?.connected) return { delivered: false, error: 'daemon is not connected to the server' };
+        this.socket.emit('file-preview-push', {
+            terminalId,
+            payload: encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, path)),
+            enc: true,
+            mode,
+        });
+        return { delivered: true };
     }
 
     /** Encrypt one base64 terminal payload with the per-machine key (same scheme

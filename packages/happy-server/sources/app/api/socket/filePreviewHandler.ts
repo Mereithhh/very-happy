@@ -23,6 +23,7 @@
  */
 import { Server, Socket } from "socket.io";
 import { AccountTerminalRateLimiter, allowAccountRelay } from './terminalRateLimit';
+import { recordToolHistory, validTerminalId } from '@/app/kv/toolHistory';
 
 type Conn = { connectionType: string; machineId?: string; sessionId?: string };
 
@@ -39,6 +40,7 @@ export interface FilePreviewPushEvent {
     payload: string;
     enc?: boolean;
     mode?: FilePreviewMode;
+    terminalId?: string;
 }
 
 /** Unknown modes are normalized to 'file' rather than passed through, so a new
@@ -66,7 +68,7 @@ export function filePreviewHandler(
 
     const userRoom = `user:${userId}:user-scoped`;
 
-    socket.on('file-preview-push', (data: FilePreviewPushEvent) => {
+    socket.on('file-preview-push', async (data: FilePreviewPushEvent) => {
         if (!allowAccountRelay({
             limiter: rateLimiter,
             accountId: userId,
@@ -78,8 +80,17 @@ export function filePreviewHandler(
         if (data.payload.length === 0) return;
         if (Buffer.byteLength(data.payload, 'utf8') > MAX_PATH_PAYLOAD_CHARS) return;
         if (data.enc !== undefined && typeof data.enc !== 'boolean') return;
+        if (source.sourceType === 'machine' && !validTerminalId(data.terminalId)) return;
+        const terminal = source.sourceType === 'machine' && data.terminalId ? { terminalId: data.terminalId } : {};
         io.to(userRoom).emit('file-preview-push', {
             ...source,
+            ...terminal,
+            payload: data.payload,
+            enc: data.enc === true,
+            mode: normalizeMode(data.mode),
+        });
+        await recordToolHistory(userId, { ...source, ...terminal }, {
+            kind: 'preview',
             payload: data.payload,
             enc: data.enc === true,
             mode: normalizeMode(data.mode),

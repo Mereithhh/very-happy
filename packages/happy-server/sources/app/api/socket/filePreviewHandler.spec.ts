@@ -1,6 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { filePreviewHandler } from './filePreviewHandler';
 import { AccountTerminalRateLimiter } from './terminalRateLimit';
+import { recordToolHistory } from '@/app/kv/toolHistory';
+
+vi.mock('@/app/kv/kvGet', () => ({ kvGet: vi.fn() }));
+vi.mock('@/app/kv/kvMutate', () => ({ kvMutate: vi.fn() }));
+vi.mock('@/app/kv/toolHistory', async (importOriginal) => {
+    const original = await importOriginal<typeof import('@/app/kv/toolHistory')>();
+    return { ...original, recordToolHistory: vi.fn().mockResolvedValue(undefined) };
+});
+
+beforeEach(() => vi.mocked(recordToolHistory).mockClear());
 
 /** Minimal socket.io stand-ins: capture the handler and room emits. */
 function makeFakes() {
@@ -24,6 +34,32 @@ function makeFakes() {
 }
 
 describe('filePreviewHandler', () => {
+    it('persists a preview against the authenticated terminal and normalizes the saved mode', async () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        filePreviewHandler('u', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' });
+        await handlers.get('file-preview-push')!({ payload: 'ciphertext', enc: true, terminalId: 't-1', mode: 'future', machineId: 'spoofed' });
+        expect(recordToolHistory).toHaveBeenCalledWith('u', { sourceType: 'machine', machineId: 'm1', terminalId: 't-1' }, {
+            kind: 'preview', payload: 'ciphertext', enc: true, mode: 'file',
+        });
+        expect(emitted[0].data).toEqual({ sourceType: 'machine', machineId: 'm1', terminalId: 't-1', payload: 'ciphertext', enc: true, mode: 'file' });
+    });
+
+    it('ignores a session terminal field and rejects malformed machine terminal ids', async () => {
+        const session = makeFakes();
+        filePreviewHandler('u', session.socket, session.io, { connectionType: 'session-scoped', sessionId: 's1' });
+        await session.handlers.get('file-preview-push')!({ payload: '/path', terminalId: '../spoofed' });
+        expect(recordToolHistory).toHaveBeenCalledWith('u', { sourceType: 'session', sessionId: 's1' }, expect.objectContaining({ payload: '/path' }));
+        expect(session.emitted[0].data.terminalId).toBeUndefined();
+        vi.mocked(recordToolHistory).mockClear();
+        const machine = makeFakes();
+        filePreviewHandler('u', machine.socket, machine.io, { connectionType: 'machine-scoped', machineId: 'm1' });
+        for (const terminalId of ['../bad', '', 'x'.repeat(65), 1, null]) {
+            await machine.handlers.get('file-preview-push')!({ payload: '/path', terminalId });
+        }
+        expect(machine.emitted).toHaveLength(0);
+        expect(recordToolHistory).not.toHaveBeenCalled();
+    });
+
     it('forwards a session push to the user room, stamped with the CONNECTION sessionId', () => {
         const { handlers, emitted, socket, io } = makeFakes();
         filePreviewHandler('user1', socket, io, { connectionType: 'session-scoped', sessionId: 's1' });

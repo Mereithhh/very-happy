@@ -112,7 +112,7 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
             return {
                 content: [{
                     type: 'text',
-                    text: `Sent to the user's clipboard on their currently open device(s)${note}. If the page was not focused, they may need to tap a confirmation button.`,
+                    text: `Queued a clipboard request for the user's open Very Happy device(s)${note}. This does not confirm that a browser wrote the clipboard; the user may need to tap a confirmation button.`,
                 }],
                 isError: false,
             };

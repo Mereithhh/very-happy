@@ -422,6 +422,16 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     }
     return;
   } else if (subcommand === 'pi') {
+    if (args[1] === '--terminal') {
+      try {
+        const { runPiTerminal } = await import('@/commands/piTerminal');
+        process.exitCode = await runPiTerminal(args.slice(2));
+      } catch (error) {
+        console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
+        process.exitCode = 1;
+      }
+      return;
+    }
     // pi via the generic ACP runner + pi-acp adapter. Kept as its own
     // subcommand so the daemon can spawn it with the same argv shape it uses
     // for every backend (see parsePiRunnerArgs for which flags are consumed or dropped).
@@ -844,6 +854,8 @@ ${chalk.bold('Usage:')}
   very-happy codex             Start Codex mode
   very-happy gemini            Start Gemini mode (ACP)
   very-happy pi                Start pi mode (ACP via the pi-acp adapter)
+  very-happy pi --terminal     Run native pi with title, clipboard and preview tools
+                            inside a Very Happy terminal
   very-happy acp               Start a generic ACP-compatible agent
   very-happy openclaw          Connect through a configured OpenClaw gateway
   very-happy install-terminal-hooks
