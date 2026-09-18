@@ -651,6 +651,19 @@ RPC failures add a bounded method and outcome code plus the hashed target
 Web builds identify themselves with a commit SHA, while CLI versions use semver.
 Older relay clients may have no client identity; `unknown` is expected.
 
+For diagnostic RPC probes, let the caller wait longer than the server's 30s
+handler timeout plus its reconnect lookup window (55s covers the normal path).
+A 30s client timeout can hide the server's final error. Test `ping` on the same
+socket, then correlate `rpc_calls_total` with daemon handler/response logs;
+process liveness and `rpc-registered` alone do not prove the response path.
+On 2026-09-18, one mac-office daemon on 0.2.141 returned `list-terminals` locally
+in about 80ms after a blue-green handover, while control-origin calls timed out
+through both server versions. Re-adopting that same-version daemon through the
+procedure above restored RPC; all three wrapper PIDs and six terminal IDs
+survived, and the two previously active sessions kept fresh heartbeats. This is
+one recovery sample, not a confirmed root cause or a requirement to restart
+daemons on every release; unresolved mechanism investigation is B-476.
+
 A disconnect count alone does not identify a failed phone connection: tab closure,
 backgrounding, reconnects and user restarts all contribute. Match the reported
 window against machine heartbeats, relay claim responses and RPC outcomes.

@@ -1,6 +1,6 @@
 # Pi terminal tools and session tool history
 
-> 状态：Final
+> 状态：Shipped
 > 日期：2026-09-18 ｜ 关联 backlog：B-475
 
 ## 目标与现状
@@ -33,7 +33,7 @@
 | 新 server + 旧 Web | 原事件字段兼容；KV 广播被无订阅者忽略 |
 | 新 Web + 旧 server | KV 404 视为空；旧 transcript preview 保留 |
 
-先完整 server/Web 镜像，再 CLI。旧 wrapper/裸 pi 需重启或重新载入扩展才获得新工具。实现请求不包含生产部署；发布前按 operations 核对精确 SHA 与回滚镜像/CLI 版本。
+先完整 server/Web 镜像，再 CLI。旧 wrapper 保留原进程及已载入代码；原生 Pi 可用 `/reload` 载入扩展。Owner 后续已授权合并发布；按 operations 核对精确 SHA、回滚镜像与 CLI 版本。
 
 ## 验收
 
@@ -44,7 +44,7 @@
 - 包门禁与全量 diff review；不以收到调用记录推断用户已查看或系统复制成功。
 
 
-## 实现验收（2026-09-18，待 PR 合并与发布）
+## 实现验收（2026-09-18）
 
 - 原生推荐入口为 `very-happy install-pi-tools` 后直接 `pi` 或已有会话 `/reload`；保留 `very-happy pi --terminal [pi arguments]` 临时入口。独立 `HAPPY_TERMINAL_MCP_URL` 与托管 endpoint 分开，HAPPY_MCP_URL 优先。
 - CLI 全量 255 文件 / 2240 tests；wire 10 文件 / 82 tests；server 100 文件 / 666 tests、1 skipped；Web 全量 341 文件 / 2967 tests，含真实组件加载/实时更新/重连/账号切换测试。Web/server/CLI tsc、Web/CLI/wire build 与 CLI 产物 `--version` 均退出 0。
@@ -53,4 +53,14 @@
 - 实际 MCP HTTP → authenticated daemon HTTP 调用三工具通过；加密历史分别覆盖 legacy/dataKey，JSON 转义后仍符合密文上限。超长文本与旧 transcript 一对一匹配、失败调用不被成功 push 吞掉、旧 relative preview 保留会话 cwd。
 - 真实浏览器验证展开正文、再次复制后粘贴字节匹配、preview 重开事件；390px 交互无横向溢出。css-probe 修前/修后：1280/390/320、明暗主题，coarse 实测为 true，触屏按钮 44px，页面和历史正文横向溢出均 0。
 - 本批全量 diff 与直接 pi 补充改动均独立 review；问题已修并补机制测试，复查无剩余 actionable findings；公开文档源码断言 mutation-check 1/1 caught。
-- 临时日志/截图/真实 pi RPC 证据：`~/code/github/skills/tmp/pi-terminal-session-tools/`；server 最终日志：`~/code/github/skills/tmp/pi-terminal-tools/`。本请求未执行生产发布。
+- 临时日志/截图/真实 pi RPC 证据：`~/code/github/skills/tmp/pi-terminal-session-tools/`；server 最终日志：`~/code/github/skills/tmp/pi-terminal-tools/`。
+
+## 发布验收（2026-09-18）
+
+- PR [#384](https://github.com/Mereithhh/very-happy/pull/384) 合并为 `4f4d82ec9788216c3a38e8c3367b6ad93cf8f5a3`；合入 main 的 Quality `35304440040` 与 CLI smoke `35304440056` 成功。
+- 完整 server/Web deploy [35304745474](https://github.com/Mereithhh/very-happy/actions/runs/35304745474) attempt 2 成功：blue / generation 149，镜像 `sha256:f815fb6662fc4f66d91885df8e500ce2405ce2082e23187b6d3932036a4ebe55`；公网 health 正常，`check-shipped` 读取 56 份资源并命中历史存储 key 与 Pi 安装入口。回滚保留 green / `83fe23982c5c34030690419d0ad4517ad5b3a4f3`，镜像 `sha256:cc9dd30edc17767a104a3877e946cb949920fe3d43d0a005053d0b5b77ff94b9`。
+- 首次部署在切流前因宿主机磁盘满失败；仅清理超过 72h 的未引用 Docker 镜像，active/rollback 镜像与用户数据保留，恢复约 39 GiB 空间后重试。
+- CLI `v0.2.142` 指向同一 main SHA；[publish 35305958952](https://github.com/Mereithhh/very-happy/actions/runs/35305958952) 与 [tag smoke 35305958973](https://github.com/Mereithhh/very-happy/actions/runs/35305958973) attempt 1 全部成功，六个 Linux/macOS/Windows × Node 20/24 job 均 success。平台包先于主包，npm latest 与线上 recommendedVersion 均为 `0.2.142`；自动安装 pin 仍为 `0.2.141`。
+- 切流后 mac-office 旧 daemon 的 control RPC ACK 超时；同版本重新接管后恢复，两次端到端复测成功。原 3 个 wrapper PID、6 个终端 ID 保留，两个原活跃对话心跳新鲜；另一个 Pi wrapper 在发布前已长期 inactive。根因未定，按 B-476 跟进，不把进程存活等同于响应链正常。
+- mac-office 使用已发布 CLI 0.2.142 与原生 Pi 0.85.1，在独立 HAPPY_HOME_DIR / PI_CODING_AGENT_DIR 中实跑安装、直接 Pi 自动发现和 `/reload`：三个工具均 active，退出 0、stderr 空、模型消息数 0；未写入个人 Pi 配置或向真实会话发送测试消息。
+- mac-office 经 `cli-update-request` 空闲检查安装 0.2.142，完成 daemon handover 后按 operations 重新纳入 launchd。最终 installed/running 均 0.2.142，launchd running 且监督进程为 daemon 的父进程；只读 RPC 成功，原 3 个 wrapper PID、6 个终端 ID 与发布前完全一致，两个原活跃对话仍有新鲜心跳。没有停止或恢复业务会话，旧 wrapper 不声称热载入新版。
