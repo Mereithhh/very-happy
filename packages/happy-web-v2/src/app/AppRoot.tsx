@@ -176,6 +176,9 @@ const ChatScrollHarness = import.meta.env.DEV
 const ChangelogHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/ChangelogHarness').then((m) => ({ default: m.ChangelogHarness })))
   : null;
+const ToolHistoryHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/ToolHistoryHarness').then(m => ({default:m.ToolHistoryHarness})))
+  : null;
 const SubagentHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/SubagentHarness').then((m) => ({ default: m.SubagentHarness })))
   : null;
@@ -217,6 +220,7 @@ const router = createBrowserRouter(
           { path: '/dev/changelog-history', element: <Lazy><ChangelogScreen /></Lazy> },
         ]
       : []),
+    ...(ToolHistoryHarness ? [{path:'/dev/tool-history',element:<Lazy><ToolHistoryHarness /></Lazy>}] : []),
     ...(SubagentHarness
       ? [{ path: '/dev/subagent/:id', element: <Lazy><SubagentHarness /></Lazy> }]
       : []),

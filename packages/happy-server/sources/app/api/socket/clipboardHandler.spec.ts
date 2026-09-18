@@ -1,7 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clipboardHandler } from './clipboardHandler';
 import { filePreviewHandler } from './filePreviewHandler';
 import { AccountTerminalRateLimiter } from './terminalRateLimit';
+import { recordToolHistory } from '@/app/kv/toolHistory';
+
+vi.mock('@/app/kv/kvGet', () => ({ kvGet: vi.fn() }));
+vi.mock('@/app/kv/kvMutate', () => ({ kvMutate: vi.fn() }));
+vi.mock('@/app/kv/toolHistory', async (importOriginal) => {
+    const original = await importOriginal<typeof import('@/app/kv/toolHistory')>();
+    return { ...original, recordToolHistory: vi.fn().mockResolvedValue(undefined) };
+});
+
+beforeEach(() => vi.mocked(recordToolHistory).mockClear());
 
 /** Minimal socket.io stand-ins: capture the handler and room emits. */
 function makeFakes() {
@@ -25,6 +35,42 @@ function makeFakes() {
 }
 
 describe('clipboardHandler', () => {
+    it('persists the bounded history payload with authenticated machine/terminal scope while relaying the original', async () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        clipboardHandler('u', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' });
+        await handlers.get('clipboard-push')!({
+            payload: 'live ciphertext', historyPayload: 'short ciphertext', historyTruncated: true,
+            terminalId: 't_1', enc: true, totalBytes: 200000,
+            userId: 'other', machineId: 'spoofed', sessionId: 'spoofed', id: 'spoofed', createdAt: 0,
+        });
+        expect(recordToolHistory).toHaveBeenCalledWith('u', { sourceType: 'machine', machineId: 'm1', terminalId: 't_1' }, {
+            kind: 'clipboard', payload: 'short ciphertext', enc: true, truncated: true, totalBytes: 200000,
+        });
+        expect(emitted[0].data).toEqual({
+            sourceType: 'machine', machineId: 'm1', terminalId: 't_1', payload: 'live ciphertext', enc: true,
+            truncated: false, totalBytes: 200000,
+        });
+    });
+
+    it('ignores terminal identity on session sockets and records only the authenticated session', async () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        clipboardHandler('u', socket, io, { connectionType: 'session-scoped', sessionId: 's1' });
+        await handlers.get('clipboard-push')!({ payload: 'p', sessionId: 'spoof', terminalId: '../spoof' });
+        expect(recordToolHistory).toHaveBeenCalledWith('u', { sourceType: 'session', sessionId: 's1' }, expect.objectContaining({ payload: 'p' }));
+        expect(emitted[0].data.terminalId).toBeUndefined();
+    });
+
+    it('drops malformed terminal and history fields before relay or persistence', async () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        clipboardHandler('u', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' });
+        for (const fields of [
+            { terminalId: '../bad' }, { terminalId: '' }, { terminalId: 'x'.repeat(65) }, { terminalId: 1 },
+            { historyPayload: 123 }, { historyPayload: '字'.repeat(17 * 1024) }, { historyTruncated: 'yes' },
+        ]) await handlers.get('clipboard-push')!({ payload: 'p', ...fields });
+        expect(emitted).toHaveLength(0);
+        expect(recordToolHistory).not.toHaveBeenCalled();
+    });
+
     it('forwards a machine push to the user room with ALL fields intact', () => {
         const { handlers, emitted, socket, io } = makeFakes();
         clipboardHandler('user1', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' });

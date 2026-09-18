@@ -193,17 +193,24 @@ export async function stopDaemonHttp(): Promise<void> {
  * Push text to the user's web-client clipboard via the local daemon.
  * Used by the `very-happy mcp` stdio server (terminal-path claude).
  */
-export async function pushClipboardViaDaemon(text: string): Promise<{
+export async function pushClipboardViaDaemon(text: string, terminalId?: string): Promise<{
   delivered: boolean;
   truncated?: boolean;
   totalBytes?: number;
   error?: string;
 }> {
-  const result = await daemonPost('/clipboard', { text });
+  const result = await daemonPost('/clipboard', { text, ...(terminalId ? { terminalId } : {}) });
   if (result?.error && result.delivered === undefined) {
     return { delivered: false, error: result.error };
   }
   return result;
+}
+
+/** Terminal previews use the same authenticated daemon IPC as clipboard pushes. */
+export async function pushFilePreviewViaDaemon(terminalId: string, path: string, mode: 'file' | 'diff' = 'file'): Promise<{ delivered: boolean; error?: string }> {
+  const result = await daemonPost('/file-preview', { terminalId, path, mode });
+  if (result?.error) return { delivered: false, error: result.error };
+  return { delivered: result?.delivered === true, ...(result?.delivered === true ? {} : { error: 'preview was not delivered' }) };
 }
 
 /**

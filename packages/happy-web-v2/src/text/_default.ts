@@ -1865,6 +1865,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep18: {
+                title: 'Pi terminal tools and reusable history',
+                summary: 'Rename a Pi terminal and revisit clipboard and preview calls inside each session.',
+                pi: 'With the matching CLI update, run very-happy install-pi-tools once, then launch pi directly inside a Very Happy terminal for title, clipboard and file preview tools.',
+                history: 'Copy and preview history keeps recent calls per session across devices. Expand content to copy it again or reopen a file; long content is marked as an excerpt.',
+            },
             sep15d: {
                 title: 'A readable time on hover, and terminals of a dead machine can go',
                 summary: 'Hovering a message now shows its time straight away in a small bubble instead of waiting on the browser tooltip that a live turn kept cancelling. And a terminal whose machine is offline can finally be taken off the list.',

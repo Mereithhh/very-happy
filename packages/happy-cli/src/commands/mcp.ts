@@ -8,7 +8,7 @@
  * sees the user's normal MCP registrations. Registering this once:
  *
  *   claude mcp add --scope user very-happy-clipboard -- very-happy mcp
- *   (pi: an entry in ~/.pi/agent/mcp.json, see docs/channels.md)
+ *   pi: very-happy install-pi-tools (then launch pi directly)
  *
  * gives that agent a `copy_to_clipboard` tool. The tool forwards the text to
  * the local very-happy daemon over its existing 127.0.0.1 control server
@@ -29,10 +29,12 @@ import { registerTeamsTools } from '@/teams/tools';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { pushClipboardViaDaemon, setTerminalTitleViaDaemon } from '@/daemon/controlClient';
+import { pushClipboardViaDaemon, pushFilePreviewViaDaemon, setTerminalTitleViaDaemon } from '@/daemon/controlClient';
 import { CLIPBOARD_MAX_BYTES, CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, CLIPBOARD_TOOL_TITLE } from '@/clipboard/limits';
 import { registerAssistantSessionTools, type AssistantToolRegistrar } from '@/assistant/assistantTools';
 import { logger } from '@/ui/logger';
+import { checkPreviewPath } from '@/claude/utils/previewPath';
+import { PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE } from '@/claude/utils/agentGuidance';
 import { resolveMcpTerminalId, resolveMcpToolSurface, TERMINAL_TITLE_TOOL_NAME, type McpToolSurface } from './mcpToolSurface';
 
 /** Register every tool of `surface` (+ the terminal row when `terminalId` is set) on `server` (pure over the registrar, unit-tested). */
@@ -45,7 +47,7 @@ export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToo
         },
     }, async (args) => {
         logger.debug(`[MCP] copy_to_clipboard called (${args.text.length} chars)`);
-        const result = await pushClipboardViaDaemon(args.text);
+        const result = await pushClipboardViaDaemon(args.text, terminalId ?? undefined);
 
         if (result.delivered) {
             const note = result.truncated
@@ -54,7 +56,7 @@ export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToo
             return {
                 content: [{
                     type: 'text' as const,
-                    text: `Sent to the user's clipboard on their currently open device(s)${note}. If the page was not focused, they may need to tap a confirmation button.`,
+                    text: `Queued a clipboard request for the user's open Very Happy device(s)${note}. This does not confirm that a browser wrote the clipboard; the user may need to tap a confirmation button.`,
                 }],
                 isError: false,
             };
@@ -71,6 +73,24 @@ export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToo
     });
 
     if (terminalId) {
+        server.registerTool(PREVIEW_TOOL_NAME, {
+            description: PREVIEW_TOOL_DESCRIPTION,
+            title: PREVIEW_TOOL_TITLE,
+            inputSchema: {
+                path: z.string().min(1).describe('Absolute path or path relative to the current working directory'),
+                mode: z.enum(['file', 'diff']).optional().describe("'file' (default) previews the file; 'diff' is reserved and currently falls back to 'file'"),
+            },
+        }, async (args) => {
+            const verdict = checkPreviewPath(args.path);
+            if (verdict.deniedReason) return { content: [{ type: 'text' as const, text: verdict.deniedReason }], isError: true };
+            const result = await pushFilePreviewViaDaemon(terminalId, verdict.resolved, args.mode ?? 'file');
+            return {
+                content: [{ type: 'text' as const, text: result.delivered
+                    ? `Queued a preview request for ${verdict.resolved}. This does not confirm that a browser opened it.`
+                    : `Failed to request preview: ${result.error || 'unknown error'}` }],
+                isError: !result.delivered,
+            };
+        });
         server.registerTool(TERMINAL_TITLE_TOOL_NAME, {
             description: 'Change the title of the very-happy web terminal this agent is running in',
             title: 'Change Terminal Title',
@@ -102,16 +122,17 @@ export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToo
     }
 }
 
-export async function handleMcpCommand(): Promise<void> {
+export async function handleMcpCommand(terminalToolsOnly = false): Promise<void> {
     const server = new McpServer({
         name: 'very-happy',
         version: '1.0.0',
     });
 
-    const surface = resolveMcpToolSurface(process.env);
+    const surface = terminalToolsOnly ? 'clipboard' : resolveMcpToolSurface(process.env);
     const terminalId = resolveMcpTerminalId(process.env);
+    if (terminalToolsOnly && !terminalId) throw new Error('Very Happy terminal context is required');
     registerMcpTools(server, surface, terminalId);
-    if (process.env.HAPPY_MANAGED !== '1' && !process.env.HAPPY_MCP_URL) registerTeamsTools(server, process.env.HAPPY_SESSION_ID);
+    if (!terminalToolsOnly && process.env.HAPPY_MANAGED !== '1' && !process.env.HAPPY_MCP_URL) registerTeamsTools(server, process.env.HAPPY_SESSION_ID);
 
     const transport = new StdioServerTransport();
     await server.connect(transport);

@@ -1,3 +1,4 @@
+import { ToolHistory } from '../session/ToolHistory';
 import { startConnectionStage, connectionFailureOutcome } from '@/sync/connectionDiagnostics';
 import { TerminalConnectionNotice } from './TerminalConnectionNotice';
 import { terminalConnectionNotice } from './termConnectionState';
@@ -2738,6 +2739,7 @@ export function WebTerminalScreen() {
           )}
         </div>
       </header>
+      {machineId && tid && <ToolHistory key={`${machineId}:${tid}`} scope={{machineId, terminalId:tid}} machineId={machineId} />}
       {/* term-mid: desktop (fine pointer, wide) = flex ROW so the file browser
           splits the width with the terminal (B-088); coarse/narrow viewports
           set it to display:contents (CSS) so the terminal stays a direct flex

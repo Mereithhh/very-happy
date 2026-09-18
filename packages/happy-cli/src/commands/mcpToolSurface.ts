@@ -15,7 +15,7 @@
  *    runner-specific injection path.
  *
  * Orthogonal to the surface, a *terminal context* (VH_TERMINAL_ID set: the
- * agent runs inside a vh web terminal, see webTerminal.ts) adds `change_title`,
+ * agent runs inside a vh web terminal, see webTerminal.ts) adds `open_preview` and `change_title`,
  * which titles that terminal through the daemon's /terminal-title endpoint —
  * pi has no hooks and no mirror session, so this is the only way a hand-run pi
  * can name its tab. Managed ACP sessions use the in-process happy server
@@ -34,6 +34,7 @@
  */
 
 import { CLIPBOARD_TOOL_NAME } from '@/clipboard/limits'
+import { PREVIEW_TOOL_NAME } from '@/claude/utils/agentGuidance'
 import { ASSISTANT_SESSION_TOOL_NAMES } from '@/assistant/assistantTools'
 
 export type McpToolSurface = 'clipboard' | 'assistant'
@@ -46,11 +47,7 @@ export const TERMINAL_TITLE_TOOL_NAME = 'change_title'
  * The web terminal id this MCP process runs inside, or null when not in a
  * terminal — or when a managed ACP session (HAPPY_MCP_URL) owns `change_title`.
  */
-export function resolveMcpTerminalId(env: McpSurfaceEnv): string | null {
-    if (env.HAPPY_MCP_URL) return null
-    const id = env.VH_TERMINAL_ID
-    return id && /^[a-zA-Z0-9_-]{1,64}$/.test(id) ? id : null
-}
+export { resolveMcpTerminalId } from '@/terminal/terminalToolContext'
 
 export function resolveMcpToolSurface(env: McpSurfaceEnv): McpToolSurface {
     if (env.HAPPY_SESSION_VARIANT !== 'assistant') return 'clipboard'
@@ -61,7 +58,7 @@ export function resolveMcpToolSurface(env: McpSurfaceEnv): McpToolSurface {
 export function mcpToolNamesForSurface(surface: McpToolSurface, terminalId: string | null = null): readonly string[] {
     return [
         CLIPBOARD_TOOL_NAME,
-        ...(terminalId ? [TERMINAL_TITLE_TOOL_NAME] : []),
+        ...(terminalId ? [PREVIEW_TOOL_NAME, TERMINAL_TITLE_TOOL_NAME] : []),
         ...(surface === 'assistant' ? ASSISTANT_SESSION_TOOL_NAMES : []),
     ]
 }

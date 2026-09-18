@@ -10,6 +10,8 @@
 
 /** Max clipboard text size in UTF-8 bytes (256KB). */
 export const CLIPBOARD_MAX_BYTES = 256 * 1024;
+/** Persist only a bounded excerpt, encrypted independently from the live payload. */
+export const CLIPBOARD_HISTORY_MAX_BYTES = 32 * 1024;
 
 /** Identical tool metadata for both MCP surfaces (SDK session + stdio). */
 export const CLIPBOARD_TOOL_NAME = 'copy_to_clipboard';
@@ -36,15 +38,15 @@ export interface PreparedClipboardText {
  * Enforce the byte cap on a clipboard payload. Truncation happens on a UTF-8
  * character boundary (never splits a multi-byte sequence or a surrogate pair).
  */
-export function prepareClipboardText(input: string): PreparedClipboardText {
+export function prepareClipboardText(input: string, maxBytes = CLIPBOARD_MAX_BYTES): PreparedClipboardText {
     const totalBytes = Buffer.byteLength(input, 'utf8');
-    if (totalBytes <= CLIPBOARD_MAX_BYTES) {
+    if (totalBytes <= maxBytes) {
         return { text: input, truncated: false, totalBytes };
     }
     // Byte-slice then repair the tail: Buffer#toString replaces a split
     // multi-byte sequence with U+FFFD, so cut anything after the last clean
     // character instead of shipping a replacement char.
-    const sliced = Buffer.from(input, 'utf8').subarray(0, CLIPBOARD_MAX_BYTES).toString('utf8');
+    const sliced = Buffer.from(input, 'utf8').subarray(0, maxBytes).toString('utf8');
     let text = sliced;
     if (text.endsWith('�')) {
         text = text.slice(0, -1);
@@ -56,4 +58,20 @@ export function prepareClipboardText(input: string): PreparedClipboardText {
         text = text.slice(0, -1);
     }
     return { text, truncated: true, totalBytes };
+}
+
+/** encrypt() JSON-encodes strings first. Account for escapes so even control
+ * characters fit the server's 48 KiB ciphertext cap after base64 + crypto overhead. */
+export function prepareClipboardHistoryText(input: string): PreparedClipboardText {
+    const prepared = prepareClipboardText(input, CLIPBOARD_HISTORY_MAX_BYTES);
+    if (Buffer.byteLength(JSON.stringify(prepared.text), 'utf8') <= CLIPBOARD_HISTORY_MAX_BYTES + 2) return prepared;
+    let encodedBytes = 0;
+    let text = '';
+    for (const character of prepared.text) {
+        const cost = Buffer.byteLength(JSON.stringify(character), 'utf8') - 2;
+        if (encodedBytes + cost > CLIPBOARD_HISTORY_MAX_BYTES) break;
+        encodedBytes += cost;
+        text += character;
+    }
+    return { text, truncated: true, totalBytes: prepared.totalBytes };
 }

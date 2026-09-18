@@ -20,7 +20,7 @@ export type PiToolArgs = {
 export type MappedKnownTool = { name: string; input: Record<string, unknown> };
 
 /** Bridge-proxied very-happy tools that a pi session may call by name (rendered with their own cards). */
-export const PI_BRIDGE_TOOLS = ['session_spawn', 'session_send', 'session_read', 'sessions_list', 'session_kill', 'session_archive', 'report_progress', 'change_title'] as const;
+export const PI_BRIDGE_TOOLS = ['session_spawn', 'session_send', 'session_read', 'sessions_list', 'session_kill', 'session_archive', 'report_progress', 'change_title', 'copy_to_clipboard', 'open_preview'] as const;
 export type PiBridgeTool = typeof PI_BRIDGE_TOOLS[number];
 
 export function isPiBridgeTool(name: unknown): name is PiBridgeTool {

@@ -25,6 +25,10 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
   "exports": {
+    "./pi-extension": {
+      "types": "./dist/piExtension.d.mts",
+      "default": "./dist/piExtension.mjs"
+    },
     ".": {
       "require": {
         "types": "./dist/index.d.cts",

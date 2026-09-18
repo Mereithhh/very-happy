@@ -19,6 +19,7 @@
  */
 import { Server, Socket } from "socket.io";
 import { AccountTerminalRateLimiter, allowAccountRelay } from './terminalRateLimit';
+import { recordToolHistory, TOOL_HISTORY_PAYLOAD_MAX_BYTES, validTerminalId } from '@/app/kv/toolHistory';
 
 type Conn = { connectionType: string; machineId?: string; sessionId?: string };
 
@@ -33,6 +34,9 @@ export interface ClipboardPushEvent {
     enc?: boolean;
     truncated?: boolean;
     totalBytes?: number;
+    terminalId?: string;
+    historyPayload?: string;
+    historyTruncated?: boolean;
 }
 
 export function clipboardHandler(
@@ -54,7 +58,7 @@ export function clipboardHandler(
 
     const userRoom = `user:${userId}:user-scoped`;
 
-    socket.on('clipboard-push', (data: ClipboardPushEvent) => {
+    socket.on('clipboard-push', async (data: ClipboardPushEvent) => {
         if (!allowAccountRelay({
             limiter: rateLimiter,
             accountId: userId,
@@ -67,12 +71,25 @@ export function clipboardHandler(
         if (!optionalBoolean(data.enc) || !optionalBoolean(data.truncated)) return;
         if (data.totalBytes !== undefined &&
             (!Number.isSafeInteger(data.totalBytes) || data.totalBytes < 0 || data.totalBytes > Number.MAX_SAFE_INTEGER)) return;
+        if (source.sourceType === 'machine' && !validTerminalId(data.terminalId)) return;
+        if (data.historyPayload !== undefined && (typeof data.historyPayload !== 'string' ||
+            Buffer.byteLength(data.historyPayload, 'utf8') > TOOL_HISTORY_PAYLOAD_MAX_BYTES)) return;
+        if (!optionalBoolean(data.historyTruncated)) return;
+        const terminal = source.sourceType === 'machine' && data.terminalId ? { terminalId: data.terminalId } : {};
         io.to(userRoom).emit('clipboard-push', {
             ...source,
+            ...terminal,
             payload: data.payload,
             enc: data.enc === true,
             truncated: data.truncated === true,
             totalBytes: typeof data.totalBytes === 'number' ? data.totalBytes : undefined,
+        });
+        await recordToolHistory(userId, { ...source, ...terminal }, {
+            kind: 'clipboard',
+            payload: data.historyPayload ?? data.payload,
+            enc: data.enc === true,
+            truncated: data.truncated === true || data.historyTruncated === true,
+            totalBytes: data.totalBytes,
         });
     });
 }

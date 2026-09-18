@@ -1819,6 +1819,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep18: {
+                title: 'Pi 终端工具与会话调用记录',
+                summary: 'Pi 可以修改终端名称，会话内可以重看剪贴板和预览调用。',
+                pi: '配合本次 CLI 更新，执行一次 very-happy install-pi-tools，之后在 Very Happy 终端直接运行 pi，即可加载改名、复制和文件预览工具。',
+                history: '每个会话保留最近的复制与预览调用，可跨设备查看、展开后再次复制或重新打开文件；超长内容会标明节选。',
+            },
             sep15d: {
                 title: '悬停即见的时间浮层，离线机器的终端也能清掉了',
                 summary: '现在把鼠标放到消息上会立刻弹出时间小浮层，不再依赖那个流式输出时总被打断、要等一秒的浏览器原生提示。机器已经离线的终端，也终于能从列表里移除。',

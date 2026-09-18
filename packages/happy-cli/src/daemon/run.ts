@@ -1530,11 +1530,15 @@ export async function startDaemon(): Promise<void> {
       onSessionStateEvent,
       onClaudeAuthFailed: (sessionId: string) => claudeAuthServiceRef?.signalAuthFailed(sessionId),
       onSessionTurnEvent: (sessionId, event) => turnActivity.apply(sessionId, event),
-      pushClipboard: (text: string) => {
+      pushClipboard: (text: string, terminalId?: string) => {
         if (!apiMachineRef) {
           return { delivered: false, truncated: false, totalBytes: 0, error: 'daemon is still starting up' };
         }
-        return apiMachineRef.pushClipboard(text);
+        return apiMachineRef.pushClipboard(text, terminalId);
+      },
+      pushFilePreview: (terminalId, path, mode) => {
+        if (!apiMachineRef) return { delivered: false, error: 'daemon is still starting up' };
+        return apiMachineRef.pushFilePreview(terminalId, path, mode);
       },
       onTerminalHook: (body: unknown) => {
         mirrorManagerRef?.handleHookPayload(body);

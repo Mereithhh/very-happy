@@ -77,9 +77,10 @@ describe('terminal context (VH_TERMINAL_ID)', () => {
 
     it('adds change_title after the clipboard tool on either surface', () => {
         expect(resolveMcpTerminalId({ VH_TERMINAL_ID: 'term_1-A' })).toBe('term_1-A')
-        expect(mcpToolNamesForSurface('clipboard', 'term_1-A')).toEqual(['copy_to_clipboard', 'change_title'])
+        expect(mcpToolNamesForSurface('clipboard', 'term_1-A')).toEqual(['copy_to_clipboard', 'open_preview', 'change_title'])
         expect(mcpToolNamesForSurface('assistant', 'term_1-A')).toEqual([
             'copy_to_clipboard',
+            'open_preview',
             'change_title',
             ...ASSISTANT_SESSION_TOOL_NAMES,
         ])
