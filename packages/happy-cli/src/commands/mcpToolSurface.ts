@@ -47,11 +47,7 @@ export const TERMINAL_TITLE_TOOL_NAME = 'change_title'
  * The web terminal id this MCP process runs inside, or null when not in a
  * terminal — or when a managed ACP session (HAPPY_MCP_URL) owns `change_title`.
  */
-export function resolveMcpTerminalId(env: McpSurfaceEnv): string | null {
-    if (env.HAPPY_MCP_URL) return null
-    const id = env.VH_TERMINAL_ID
-    return id && /^[a-zA-Z0-9_-]{1,64}$/.test(id) ? id : null
-}
+export { resolveMcpTerminalId } from '@/terminal/terminalToolContext'
 
 export function resolveMcpToolSurface(env: McpSurfaceEnv): McpToolSurface {
     if (env.HAPPY_SESSION_VARIANT !== 'assistant') return 'clipboard'

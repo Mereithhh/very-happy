@@ -136,6 +136,15 @@ Conversation history is preserved on the server, but in-flight tool calls are in
   } else if (subcommand === 'bye') {
     console.log('Bye!');
     process.exit(0);
+  } else if (subcommand === 'install-pi-tools') {
+    try {
+      const { handleInstallPiTools } = await import('./commands/installPiTools');
+      await handleInstallPiTools(args.slice(1));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : 'Pi tools installation failed');
+      process.exitCode = 1;
+    }
+    return;
   } else if (subcommand === 'install-terminal-hooks') {
     // B-105: install/remove the global claude SessionStart+SessionEnd hook
     // pair that mirrors hand-typed terminal claude sessions.
@@ -591,15 +600,15 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exitCode = 1;
     }
     return;
-  } else if (subcommand === 'mcp' && args.length === 1) {
+  } else if (subcommand === 'mcp' && (args.length === 1 || (args.length === 2 && args[1] === '--terminal-tools'))) {
     // Standalone stdio MCP server for the real claude CLI (web terminal path).
     // Register once with: claude mcp add --scope user very-happy-clipboard -- very-happy mcp
-    // Only the BARE `mcp` is ours: `very-happy mcp add ...` etc. still falls through
+    // Bare `mcp` and the native Pi bridge are ours; `very-happy mcp add ...` still falls through
     // to claude's own `mcp` subcommand (happy forwards unknown args to claude).
     // NOTE: never print to stdout here — it would corrupt the MCP stdio framing.
     try {
       const { handleMcpCommand } = await import('./commands/mcp')
-      await handleMcpCommand()
+      await handleMcpCommand(args[1] === '--terminal-tools')
     } catch (error) {
       process.stderr.write(`[very-happy mcp] Fatal: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exit(1)
@@ -856,6 +865,8 @@ ${chalk.bold('Usage:')}
   very-happy pi                Start pi mode (ACP via the pi-acp adapter)
   very-happy pi --terminal     Run native pi with title, clipboard and preview tools
                             inside a Very Happy terminal
+  very-happy install-pi-tools  Install tools for directly launched pi sessions
+                            (add --remove to uninstall)
   very-happy acp               Start a generic ACP-compatible agent
   very-happy openclaw          Connect through a configured OpenClaw gateway
   very-happy install-terminal-hooks

@@ -55,14 +55,13 @@ describe('native pi terminal tools', () => {
             await tools.get('open_preview').execute('3', { path: 'notes.md', mode: 'diff' });
             expect(preview).toHaveBeenCalledWith('term_1', resolve('notes.md'), 'diff');
 
-            const denied = await tools.get('open_preview').execute('4', { path: '~/.ssh/id_ed25519' });
-            expect(denied.details.isError).toBe(true);
+            await expect(tools.get('open_preview').execute('4', { path: '~/.ssh/id_ed25519' })).rejects.toThrow();
             expect(preview).toHaveBeenCalledTimes(1);
             title.mockReturnValueOnce(false);
-            expect((await tools.get('change_title').execute('5', { title: 'Cannot land' })).details.isError).toBe(true);
+            await expect(tools.get('change_title').execute('5', { title: 'Cannot land' })).rejects.toThrow('Failed to change terminal title');
 
             vi.mocked(readDaemonState).mockResolvedValue(null);
-            expect((await tools.get('copy_to_clipboard').execute('6', { text: 'offline' })).details.isError).toBe(true);
+            await expect(tools.get('copy_to_clipboard').execute('6', { text: 'offline' })).rejects.toThrow('Failed to push to clipboard');
         } finally { await bridge.stop(); await daemon.stop(); }
     });
 

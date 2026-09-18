@@ -1868,7 +1868,7 @@ export const en = {
             sep18: {
                 title: 'Pi terminal tools and reusable history',
                 summary: 'Rename a Pi terminal and revisit clipboard and preview calls inside each session.',
-                pi: 'With the matching CLI update, run very-happy pi --terminal inside a Very Happy terminal to load title, clipboard and file preview tools.',
+                pi: 'With the matching CLI update, run very-happy install-pi-tools once, then launch pi directly inside a Very Happy terminal for title, clipboard and file preview tools.',
                 history: 'Copy and preview history keeps recent calls per session across devices. Expand content to copy it again or reopen a file; long content is marked as an excerpt.',
             },
             sep15d: {

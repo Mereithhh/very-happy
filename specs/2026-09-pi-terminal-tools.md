@@ -17,7 +17,7 @@
 
 ## 设计
 
-1. 官方 pi 扩展提供明确的原生终端启动入口，不改个人全局配置。HAPPY_MCP_URL 优先使用托管会话工具；只有 VH_TERMINAL_ID 时走本机 authenticated daemon IPC。原生终端不套托管权限 gate。改名继续写 tmux @vh_title，并由 daemonState 更新 Web 列表。
+1. 原生 Pi 支持一次 `very-happy install-pi-tools` 后直接运行 `pi`，或 `pi -e <extension>` 显式加载；保留 `very-happy pi --terminal` 临时入口。安装命令只管理 Pi discovery 目录内自己的扩展文件，不改 settings、认证或其他扩展；支持 `PI_CODING_AGENT_DIR` 与 `--remove`，拒绝覆盖用户修改。自动扩展仅在合法 VH_TERMINAL_ID 且没有 HAPPY_MCP_URL/HAPPY_TERMINAL_MCP_URL 时启用，托管/临时 launcher 继续独占现有桥接。扩展从 session_start 启动 CLI stdio MCP 子进程，session_shutdown 关闭，工厂不启动后台资源；复用同一工具定义与 authenticated daemon IPC，按终端 VH_HAPPY_HOME_DIR 找 daemon。原生终端不套托管权限 gate。改名继续写 tmux @vh_title，并由 daemonState 更新 Web 列表。
 2. 终端 clipboard/preview push 附 optional terminalId；server 仅在 machine-scoped 连接接受合法 id。session-scoped 始终使用认证 sessionId。preview 复用 checkPreviewPath，不新增文件读取权限。
 3. server 保存有效 push（不代表用户看过或系统剪贴板已写入）。KV key 为 `tool-history.v1/session/<encoded sid>` 或 `tool-history.v1/terminal/<encoded mid>/<encoded tid>`，value 是 base64 UTF-8 JSON `{version:1,entries:[...]}`。每条 `{id,kind,createdAt,payload,enc,truncated?,totalBytes?,mode?}`，server UUID/时间，最新在前，重复调用不去重。
 4. 每个 scope 最多 50 条，整个 JSON 上限 240 KiB，超过时删除完整最旧条目。剪贴板实时正文仍上限 256 KiB；新增 historyPayload 为最多 32 KiB UTF-8 正文独立加密，historyTruncated 明示截断。旧客户端大 payload 无法安全截密文，存不可用标志而不伪造正文。单 history payload 上限 48 KiB。存储失败不阻断原实时推送；不打印正文。待存储调用按 scope 串行，每个 scope 最多 50 个、每个 server 进程合计最多 200 个（均含正在写入）；积压超限只略过历史存储并记录无正文 warning，实时推送继续。
@@ -46,10 +46,11 @@
 
 ## 实现验收（2026-09-18，待 PR 合并与发布）
 
-- 原生入口为 `very-happy pi --terminal [pi arguments]`；独立 `HAPPY_TERMINAL_MCP_URL` 与托管 endpoint 分开，HAPPY_MCP_URL 优先。
-- CLI 全量 253 文件 / 2236 tests；wire 10 文件 / 82 tests；server 100 文件 / 666 tests、1 skipped；Web 全量 340 文件 / 2965 tests，加真实组件加载/实时更新/重连/账号切换 2 tests。Web/server/CLI tsc、Web/CLI/wire build 与 CLI 产物 `--version` 均退出 0。
-- 官方 pi 0.84.4、实际编译 CLI、隔离 HAPPY_HOME_DIR/PI_CODING_AGENT_DIR 实跑 RPC 初始化：三工具 active、来源 temporary 官方扩展，零模型消息、stderr 空、退出 0。未发模型请求，未改个人配置。
+- 原生推荐入口为 `very-happy install-pi-tools` 后直接 `pi` 或已有会话 `/reload`；保留 `very-happy pi --terminal [pi arguments]` 临时入口。独立 `HAPPY_TERMINAL_MCP_URL` 与托管 endpoint 分开，HAPPY_MCP_URL 优先。
+- CLI 全量 255 文件 / 2240 tests；wire 10 文件 / 82 tests；server 100 文件 / 666 tests、1 skipped；Web 全量 341 文件 / 2967 tests，含真实组件加载/实时更新/重连/账号切换测试。Web/server/CLI tsc、Web/CLI/wire build 与 CLI 产物 `--version` 均退出 0。
+- 官方 pi 0.84.4、实际编译 CLI、隔离 HAPPY_HOME_DIR/PI_CODING_AGENT_DIR 实跑 RPC：直接 pi 自动发现、显式 -e、已安装扩展叠加临时 launcher 三条路径及各自 /reload 均仅有三工具 active，零模型消息、stderr 空、退出 0。未改个人配置。
+- 新增真实编译 stdio bridge 行为测试：终端专属 home、三工具真实 authenticated daemon IPC、daemon 状态丢失/恢复、/reload 旧进程退出及新进程建立。MCP isError 在两个 Pi 桥中均抛异常，让 Pi 正确标记失败；离线、路径拒绝、改名失败均有回归覆盖。安装幂等与卸载保留其他配置，拒绝自定义修改与 symlink。
 - 实际 MCP HTTP → authenticated daemon HTTP 调用三工具通过；加密历史分别覆盖 legacy/dataKey，JSON 转义后仍符合密文上限。超长文本与旧 transcript 一对一匹配、失败调用不被成功 push 吞掉、旧 relative preview 保留会话 cwd。
 - 真实浏览器验证展开正文、再次复制后粘贴字节匹配、preview 重开事件；390px 交互无横向溢出。css-probe 修前/修后：1280/390/320、明暗主题，coarse 实测为 true，触屏按钮 44px，页面和历史正文横向溢出均 0。
-- 本批全量 diff 独立 review 两项 P2 已修并补机制测试，复查无剩余 actionable findings；公开文档源码断言 mutation-check 1/1 caught。
+- 本批全量 diff 与直接 pi 补充改动均独立 review；问题已修并补机制测试，复查无剩余 actionable findings；公开文档源码断言 mutation-check 1/1 caught。
 - 临时日志/截图/真实 pi RPC 证据：`~/code/github/skills/tmp/pi-terminal-session-tools/`；server 最终日志：`~/code/github/skills/tmp/pi-terminal-tools/`。本请求未执行生产发布。

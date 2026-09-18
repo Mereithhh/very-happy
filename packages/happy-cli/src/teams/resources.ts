@@ -92,7 +92,11 @@ export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport
   const available = await rpc('tools/list', {});
   for (const tool of available.tools || []) {
     pi.registerTool({name:tool.name,label:tool.name,description:tool.description || tool.name,parameters:tool.inputSchema,
-      async execute(_id, args) { const result = await rpc('tools/call', {name:tool.name,arguments:args}); return {content:result.content,details:{isError:!!result.isError}}; }
+      async execute(_id, args) {
+        const result = await rpc('tools/call', {name:tool.name,arguments:args});
+        if (result.isError) throw new Error((result.content || []).filter(block => block.type === 'text').map(block => block.text).join('\\n') || 'Very Happy tool failed');
+        return {content:result.content,details:{isError:false}};
+      }
     });
   }
 }

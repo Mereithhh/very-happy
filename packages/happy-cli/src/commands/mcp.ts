@@ -8,7 +8,7 @@
  * sees the user's normal MCP registrations. Registering this once:
  *
  *   claude mcp add --scope user very-happy-clipboard -- very-happy mcp
- *   pi: very-happy pi --terminal (loads the official bridge extension)
+ *   pi: very-happy install-pi-tools (then launch pi directly)
  *
  * gives that agent a `copy_to_clipboard` tool. The tool forwards the text to
  * the local very-happy daemon over its existing 127.0.0.1 control server
@@ -122,16 +122,17 @@ export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToo
     }
 }
 
-export async function handleMcpCommand(): Promise<void> {
+export async function handleMcpCommand(terminalToolsOnly = false): Promise<void> {
     const server = new McpServer({
         name: 'very-happy',
         version: '1.0.0',
     });
 
-    const surface = resolveMcpToolSurface(process.env);
+    const surface = terminalToolsOnly ? 'clipboard' : resolveMcpToolSurface(process.env);
     const terminalId = resolveMcpTerminalId(process.env);
+    if (terminalToolsOnly && !terminalId) throw new Error('Very Happy terminal context is required');
     registerMcpTools(server, surface, terminalId);
-    if (process.env.HAPPY_MANAGED !== '1' && !process.env.HAPPY_MCP_URL) registerTeamsTools(server, process.env.HAPPY_SESSION_ID);
+    if (!terminalToolsOnly && process.env.HAPPY_MANAGED !== '1' && !process.env.HAPPY_MCP_URL) registerTeamsTools(server, process.env.HAPPY_SESSION_ID);
 
     const transport = new StdioServerTransport();
     await server.connect(transport);

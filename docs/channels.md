@@ -752,21 +752,36 @@ implementation task.
 
 ### Native Pi terminal tools
 
-Inside a Very Happy tmux terminal, start native Pi with:
+Install the native Pi extension once, then launch Pi directly in a Very Happy
+tmux terminal:
 
 ```sh
-very-happy pi --terminal
-# Pi arguments are preserved, e.g. continue the current Pi conversation:
-very-happy pi --terminal --continue
+very-happy install-pi-tools
+pi
+# Existing Pi in that terminal can use /reload; normal Pi arguments still work:
+pi --continue
+# Remove only the installed Very Happy extension:
+very-happy install-pi-tools --remove
 ```
 
-This loads the official extension for `change_title`, `copy_to_clipboard`, and
-`open_preview` without editing Pi settings or adding a native permission gate.
-`change_title` changes the Very Happy terminal name; `open_preview` accepts an
-absolute file path (or `~/…`) and uses the existing file viewer and path checks.
-The machine must run the matching CLI/daemon. Existing Pi processes must be
-restarted through this command to load the extension. `very-happy pi` still
-starts the managed ACP conversation; `HAPPY_MCP_URL` takes priority if present.
+Installation adds `~/.pi/agent/extensions/very-happy-terminal-tools.js` (or under
+`$PI_CODING_AGENT_DIR/extensions`); it preserves Pi settings and other extensions,
+and refuses to overwrite an edited loader. The loader points to the installed
+CLI, so rerun installation if you move the CLI installation. For explicit loading,
+use `pi -e ~/.pi/agent/extensions/very-happy-terminal-tools.js` after installation.
+For temporary loading without installation, `very-happy pi --terminal [pi args]`
+is also available.
+
+The extension provides `change_title`, `copy_to_clipboard`, and `open_preview`
+only when the process has a valid `VH_TERMINAL_ID`. New Very Happy tmux terminals
+provide this context; an existing external tmux pane may need a new Very Happy
+terminal. It starts its CLI bridge on Pi session start and closes it on shutdown
+or `/reload`, without adding a native permission gate. `change_title` changes the
+Very Happy terminal name; `open_preview` accepts absolute, `~/…`, or cwd-relative
+paths and uses the existing file viewer and path checks. The machine must run the
+matching CLI/daemon. `very-happy pi` still starts a managed ACP conversation;
+managed `HAPPY_MCP_URL` and the temporary launcher's `HAPPY_TERMINAL_MCP_URL` take
+priority, so the auto-discovered extension does not register duplicate tools.
 
 **Copy and preview history** appears inside conversations and terminal sessions.
 Records are isolated by session or machine plus terminal ID and saved in account
