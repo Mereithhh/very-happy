@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-20-stale-wrapper-notice',
+    date: '2026-09-20',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep20a.title',
+    summaryKey: 'changelog.releases.sep20a.summary',
+    itemKeys: ['changelog.releases.sep20a.delivery', 'changelog.releases.sep20a.dismiss'],
+  },
+  {
     id: '2026-09-20-daemon-crash-recovery',
     cliVersion: '0.2.143',
     date: '2026-09-20',
