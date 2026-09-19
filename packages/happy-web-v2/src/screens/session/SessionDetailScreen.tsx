@@ -25,6 +25,7 @@ import { btwStore } from '@/sync/btwStore';
 import { MirrorBanner } from './MirrorBanner';
 import { MirrorInputBar } from './MirrorInputBar';
 import { SessionArchivedBanner } from './SessionArchivedBanner';
+import { StaleWrapperBanner } from './StaleWrapperBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
@@ -177,6 +178,8 @@ export function SessionDetailScreen() {
                 {mirror && <MirrorBanner sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}
                 {!mirror && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
+                {/* B-462: live session still on an older wrapper than the machine runs → offer a restart */}
+                {!mirror && !canOfferRestore(session, bannerMachine) && <StaleWrapperBanner sessionId={id} />}
                 <div className="sd-body">
                     <ChatList key={id} sessionId={id} showLiveStatus={!mirror} />
                 </div>

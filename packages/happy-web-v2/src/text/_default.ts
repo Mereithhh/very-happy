@@ -1548,6 +1548,16 @@ export const en = {
         },
     },
 
+    // B-462: a live session whose wrapper process still runs older CLI code
+    // than the machine has installed. Advisory only — never a capability gate.
+    staleWrapper: {
+        criticalNotice: ({ sessionVersion }: { sessionVersion: string }) =>
+            `This session is still being run by CLI v${sessionVersion}, a version that can drop a message you send and never answer. Restart it to move onto the version installed on the machine — the conversation is kept.`,
+        behindNotice: ({ sessionVersion, machineVersion }: { sessionVersion: string; machineVersion: string }) =>
+            `This session is still being run by CLI v${sessionVersion}; the machine now has v${machineVersion}. Restart it to pick up the newer version — the conversation is kept.`,
+        dismiss: 'Dismiss',
+    },
+
     zen: {
         toggle: 'Zen mode',
     },
@@ -1865,6 +1875,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep20a: {
+                title: 'A session still running older CLI code now says so',
+                summary: 'Updating the CLI on a machine never replaces the process already running an open session — that process keeps executing the code it started with, sometimes for weeks, so wrapper-side fixes never reach long-lived sessions. Such a session now carries a notice naming the version it is on, with a Restart that moves it onto the installed one. The conversation is kept.',
+                delivery: 'A session still on a version that could drop a message you sent and never answer gets a stronger notice — that is exactly the "it looks online but never replies" case, and restarting is the fix.',
+                dismiss: 'The notice can be put away per session. It only comes back if that session falls behind again after a restart.',
+            },
             sep20: {
                 title: 'A dropped reply no longer takes the machine offline',
                 summary: 'A reconnecting connection could deliver a request with nowhere to send the answer. Replying anyway crashed the daemon, and because the crash reported success, the service manager saw a clean stop and never brought it back — the machine simply went offline and stayed offline.',
