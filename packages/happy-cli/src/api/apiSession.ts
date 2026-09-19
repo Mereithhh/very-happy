@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { deriveKey } from '@/utils/deriveKey';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { answerSocketRequest, describeSocketAckDrop, safeAck } from './socketAck';
 import { ReleaseDrainNoticeSchema, type ReleaseDrainNotice } from '@slopus/happy-wire';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
@@ -196,8 +197,14 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         // Set up global RPC request handler
-        this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
-            callback(await this.rpcHandlerManager.handleRequest(data));
+        // B-477: the ack is optional (see api/socketAck.ts); a frame redelivered
+        // after a transport close has none, and calling it anyway crashed the process.
+        this.socket.on('rpc-request', async (data: { method: string, params: string }, callback?: (response: string) => void) => {
+            await answerSocketRequest<string>(
+                callback,
+                () => this.rpcHandlerManager.handleRequest(data),
+                drop => logger.debug(`[API] RPC ${data?.method} unanswered — ${describeSocketAckDrop(drop)}`),
+            );
         })
 
         this.socket.on('disconnect', (reason) => {
@@ -706,13 +713,20 @@ export class ApiSessionClient extends EventEmitter {
                 this.rpcHandlerManager.onSocketConnect(relaySocket);
                 logger.debug(`[API] Session connected to regional relay ${assignment.relayId}`);
             });
-            relaySocket.on('rpc-request', async (data: { method: string; params: string }, callback: (response: string) => void) => {
-                callback(await this.rpcHandlerManager.handleRequest(data));
+            relaySocket.on('rpc-request', async (data: { method: string; params: string }, callback?: (response: string) => void) => {
+                await answerSocketRequest<string>(
+                    callback,
+                    () => this.rpcHandlerManager.handleRequest(data),
+                    drop => logger.debug(`[API] Relay RPC ${data?.method} unanswered — ${describeSocketAckDrop(drop)}`),
+                );
             });
             relaySocket.on('session-message-deliver', async (data: {
                 sessionId?: unknown;
                 messages?: Array<{ localId?: unknown; content?: unknown }>;
-            }, callback: (response: unknown) => void) => {
+            }, rawCallback?: (response: unknown) => void) => {
+                // B-477: same optional-ack hazard as rpc-request, on the same
+                // relay socket — answer through safeAck from every branch.
+                const callback = safeAck<unknown>(rawCallback, drop => logger.debug(`[API] session-message-deliver unanswered — ${describeSocketAckDrop(drop)}`));
                 if (data?.sessionId !== this.sessionId || !Array.isArray(data.messages) || data.messages.length === 0 || data.messages.length > 50) {
                     callback({ ok: false, error: 'Invalid session message request' });
                     return;

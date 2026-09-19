@@ -64,6 +64,7 @@ import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
 import { readSessionLock } from '@/utils/sessionLock';
 import { createTeamWorker } from './teams/worker';
+import { daemonExitCode, type ShutdownSource } from './shutdownExit';
 
 import { shellescape } from '@/utils/shellescape';
 
@@ -157,19 +158,23 @@ export async function startDaemon(): Promise<void> {
   //
   // In case the setup malfunctions - our signal handlers will not properly
   // shut down. We will force exit the process with code 1.
-  let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => void;
-  let resolvesWhenShutdownRequested = new Promise<({ source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string })>((resolve) => {
+  let requestShutdown: (source: ShutdownSource, errorMessage?: string) => void;
+  let resolvesWhenShutdownRequested = new Promise<({ source: ShutdownSource, errorMessage?: string })>((resolve) => {
     requestShutdown = (source, errorMessage) => {
       logger.debug(`[DAEMON RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
 
-      // Fallback - in case startup malfunctions - we will force exit the process with code 1
+      // Fallback - in case startup malfunctions - we force exit rather than hang.
+      // B-477: the code still follows the shutdown source. This timer is not
+      // cleared, so it races a slow-but-healthy cleanup; a hard-coded 1 meant a
+      // user-requested stop that took over a second looked like a crash and
+      // KeepAlive brought the daemon back.
       setTimeout(async () => {
-        logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
+        logger.debug(`[DAEMON RUN] Shutdown did not complete in time, forcing exit with code ${daemonExitCode(source)}`);
 
         // Give time for logs to be flushed
         await new Promise(resolve => setTimeout(resolve, 100))
 
-        process.exit(1);
+        process.exit(daemonExitCode(source));
       }, 1_000);
 
       // Start graceful shutdown
@@ -1885,7 +1890,7 @@ export async function startDaemon(): Promise<void> {
     })).catch(() => logger.debug('[DAEMON RUN] Teams capability publication will retry on reconnect'));
 
     // Setup signal handlers
-    const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
+    const cleanupAndShutdown = async (source: ShutdownSource, errorMessage?: string) => {
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
       teamWorker?.stop();
 
@@ -1922,8 +1927,11 @@ export async function startDaemon(): Promise<void> {
       await stopCaffeinate();
       await releaseDaemonLock(daemonLockHandle);
 
-      logger.debug('[DAEMON RUN] Cleanup completed, exiting process');
-      process.exit(0);
+      // B-477: an exception-sourced shutdown must not report success, or
+      // launchd's KeepAlive.SuccessfulExit=false leaves the machine with no
+      // daemon until a human notices. See daemon/shutdownExit.ts.
+      logger.debug(`[DAEMON RUN] Cleanup completed, exiting process with code ${daemonExitCode(source)}`);
+      process.exit(daemonExitCode(source));
     };
 
     logger.debug('[DAEMON RUN] Daemon started successfully, waiting for shutdown request');

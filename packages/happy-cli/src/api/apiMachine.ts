@@ -17,6 +17,7 @@ import { prepareClipboardHistoryText, prepareClipboardText } from '@/clipboard/l
 import { backoff, delay } from '@/utils/time';
 import { isRateQuotaCode, pauseForRateQuota } from './stateWriteRetry';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { answerSocketRequest, describeSocketAckDrop } from './socketAck';
 import { WebTerminalManager, TerminalListItem } from '@/terminal/webTerminal';
 import { sendToVhTerminal } from '@/assistant/terminals';
 import { isValidTerminalId } from '@/assistant/ids';
@@ -1459,9 +1460,16 @@ export class ApiMachineClient {
     }
 
     private bindRpcRequestHandler(socket: Socket, transport: 'control' | 'regional-relay') {
-        socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
+        // B-477: the ack is optional (see api/socketAck.ts). A frame redelivered
+        // after a transport close arrives without one, and calling it anyway
+        // took the daemon down as an unhandled rejection.
+        socket.on('rpc-request', async (data: { method: string, params: string }, callback?: (response: string) => void) => {
             logger.debugLargeJson(`[API MACHINE] Received RPC request via ${transport}:`, data);
-            callback(await this.rpcHandlerManager.handleRequest(data));
+            await answerSocketRequest<string>(
+                callback,
+                () => this.rpcHandlerManager.handleRequest(data),
+                drop => logger.debug(`[API MACHINE] RPC ${data?.method} via ${transport} unanswered — ${describeSocketAckDrop(drop)}`),
+            );
         });
     }
 

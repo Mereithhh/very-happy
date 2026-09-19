@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-20-daemon-crash-recovery',
+    cliVersion: '0.2.143',
+    date: '2026-09-20',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep20.title',
+    summaryKey: 'changelog.releases.sep20.summary',
+    itemKeys: ['changelog.releases.sep20.ack', 'changelog.releases.sep20.restart'],
+  },
+  {
     id: '2026-09-18-pi-terminal-tools-history',
     cliVersion: '0.2.142',
     date: '2026-09-18',
