@@ -1819,6 +1819,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep20: {
+                title: '丢一个回包不再让机器掉线',
+                summary: '连接重连时，可能送来一个没有回传通道的请求；照常回复就会让 daemon 崩溃，而崩溃又报告成功退出，守护进程以为是正常停止、不再拉起——机器就这么掉线，而且一直不回来。',
+                ack: '现在所有回应请求的地方都是尽力而为：没有回传通道、处理失败、回包送不出去，都只记日志并丢弃，不再让进程整个退出。',
+                restart: '崩溃退出码改为失败，launchd、systemd 或任何看退出码的包装脚本都能自己把 daemon 拉起来；你主动停止的仍然是正常退出，停了就保持停止。',
+            },
             sep18: {
                 title: 'Pi 终端工具与会话调用记录',
                 summary: 'Pi 可以修改终端名称，会话内可以重看剪贴板和预览调用。',

@@ -1865,6 +1865,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep20: {
+                title: 'A dropped reply no longer takes the machine offline',
+                summary: 'A reconnecting connection could deliver a request with nowhere to send the answer. Replying anyway crashed the daemon, and because the crash reported success, the service manager saw a clean stop and never brought it back — the machine simply went offline and stayed offline.',
+                ack: 'Answering a request is now best-effort everywhere it happens: a request with no return path, a handler that fails, or a reply that cannot be delivered is logged and dropped instead of taking the process down.',
+                restart: 'A crash now exits with a failure code, so launchd, systemd or any wrapper watching the exit status restarts the daemon by itself. A stop you asked for still exits cleanly and stays stopped.',
+            },
             sep18: {
                 title: 'Pi terminal tools and reusable history',
                 summary: 'Rename a Pi terminal and revisit clipboard and preview calls inside each session.',
