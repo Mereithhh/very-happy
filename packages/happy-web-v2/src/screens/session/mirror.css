@@ -130,6 +130,32 @@
   color: var(--warn);
 }
 
+/* B-462 StaleWrapperBanner: same strip; the critical case (a wrapper that can
+ * drop messages) borrows the --warn family, and the strip can be put away. */
+.mrb[data-severity="critical"] .mrb-note {
+  background: var(--warn-dim);
+  color: var(--text);
+}
+.mrb-dismiss {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.mrb-dismiss:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+
 @media (pointer: coarse) {
   .mrb-term-btn, .mrb-needs { min-height: 44px; }
+  .mrb-dismiss { width: 44px; height: 44px; }
 }

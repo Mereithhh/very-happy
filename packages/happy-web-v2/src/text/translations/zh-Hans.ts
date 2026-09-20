@@ -1507,6 +1507,15 @@ export const zhHans: TranslationStructure = {
         },
     },
 
+    // B-462
+    staleWrapper: {
+        criticalNotice: ({ sessionVersion }: { sessionVersion: string }) =>
+            `这个会话仍由 CLI v${sessionVersion} 运行，该版本可能吞掉你发出的消息且永不回复。重启会话即可换到机器上已安装的版本，对话内容保留。`,
+        behindNotice: ({ sessionVersion, machineVersion }: { sessionVersion: string; machineVersion: string }) =>
+            `这个会话仍由 CLI v${sessionVersion} 运行，机器上已是 v${machineVersion}。重启会话即可用上新版本，对话内容保留。`,
+        dismiss: '不再提示',
+    },
+
     zen: {
         toggle: '禅模式',
     },
@@ -1819,6 +1828,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep20a: {
+                title: '还在跑旧版 CLI 的会话会主动说明',
+                summary: '机器升级 CLI 不会替换正在运行的会话进程——它会一直用启动时的那份代码，有时长达数周，于是 wrapper 侧的修复永远到不了长期开着的会话。现在这类会话会显示一条提示，写明它运行的版本，并提供「重启」把它换到机器上已安装的版本，对话内容保留。',
+                delivery: '如果会话所用的版本可能吞掉你发出的消息且永不回复，提示会更醒目——这正是「看着在线却不回话」的情形，重启即可解决。',
+                dismiss: '提示可按会话关闭；只有该会话重启后再次落后时才会重新出现。',
+            },
             sep20: {
                 title: '丢一个回包不再让机器掉线',
                 summary: '连接重连时，可能送来一个没有回传通道的请求；照常回复就会让 daemon 崩溃，而崩溃又报告成功退出，守护进程以为是正常停止、不再拉起——机器就这么掉线，而且一直不回来。',
