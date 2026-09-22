@@ -1,6 +1,6 @@
 # `/btw` 侧问（side question）：不打断主对话的旁路问答
 
-> 状态：Shipped（commit `9d3a101f`，PR #143，2026-09-02 合入 main；web `main@892be05e` + CLI v0.2.100 已于 2026-09-02 发布）
+> 状态：Shipped（commit `9d3a101f`，PR #143，2026-09-02 合入 main；web `main@892be05e` + CLI v0.2.100 已于 2026-09-02 发布）；2026-09-22 B-480 修订提示词形状与并发语义（见「B-480 修订」）
 > 日期：2026-09-02 ｜ 关联 backlog：B-283 ｜ 出处：Owner 2026-09-02「给 claude code sdk session 支持类似 btw 命令的能力」
 
 ## 背景
@@ -49,13 +49,13 @@ web 用户在等 agent 干活时想顺口问一句「这个报错啥意思」只
 - 新模块 `claude/sideQuestion.ts`：
   - `buildSideQuestionPrompt(question, history)` 纯函数：把此前侧问问答按
     `Earlier side questions` 段落拼进 prompt（Claude CLI 的 `btwHistory` 等价物由 web 持有、随请求带来）。
-  - `SIDE_QUESTION_SYSTEM_PROMPT`：与 CLI 同义的 system-reminder 文案（直接单轮作答、不能用工具、基于当前对话上下文）。
+  - `SIDE_QUESTION_REMINDER`：Claude Code 2.1.x `/btw` 的原话 `<system-reminder>`，放在**用户消息里、紧贴问题**（B-480 前只有 `appendSystemPrompt` 一句，压不住上下文，见下）；`SIDE_QUESTION_SYSTEM_PROMPT` 只剩一句 system 尾注。
   - `runSideQuestion({ query, question, history, resumeSessionId, cwd, model, signal, onText })`：
     `query()` 选项 = `{ cwd, resume, forkSession: true, persistSession: false, tools: [], mcpServers: {}, strictMcpConfig: true, maxTurns: 1, includePartialMessages: true, permissionMode: 'default', canCallTool: deny, appendSystemPrompt }`；
     从 `stream_event` 的 `text_delta` 累积渐进文本，`assistant` 文本块为最终答案，`result.subtype!=='success'` 抛错。
     `resumeSessionId` 为空（主会话还没跑过第一轮）时不 resume、无上下文直接答。
 - 新模块 `claude/registerSideQuestionHandler.ts`（纯注册函数，deps 注入，可单测）：
-  - RPC `btw-ask {question, history?}` → 立即返回 `{ requestId }`，后台跑 `runSideQuestion`；同一会话同一时刻只允许一个在跑（忙则 `throw`）。
+  - RPC `btw-ask {question, history?}` → 立即返回 `{ requestId }`，后台跑 `runSideQuestion`；同一会话同一时刻只有一个在跑——**新的 ask 取代（abort）在跑的那条**（B-480 前是 `throw 'already running'`）。
   - RPC `btw-poll {requestId}` → `{ status: 'running'|'done'|'error'|'cancelled', text, error?, startedAt, finishedAt? }`（渐进 text）。
   - RPC `btw-cancel {requestId}` → abort。
   - 已完成结果保留 5 分钟后丢弃（web 拿到 done 就本地持有）。
@@ -106,3 +106,20 @@ server 无改动。发布顺序：web（镜像）→ CLI patch 版；存量 wrap
 ## 留真机验证项
 
 - 窄屏（<860px）面板全屏遮罩下的 IME 输入与 Enter 发送。
+
+## B-480 修订（2026-09-22，Yue DENG 实报）
+
+现象：问「现在在干嘛呢」「怎么没有动静了」，答「抱歉，上一条我只说了没做。现在真的起：」然后没有下文；另报「失败率挺高」。
+
+真因（本机 SDK 0.3.267 对真实 transcript 复现，`sideQuestion.test.ts` 钉住措辞）：
+
+| 提示词形状 | 同一 transcript 问「现在在干嘛呢」 |
+|---|---|
+| 只有 `appendSystemPrompt` 一句（B-283 原版） | 「会话重启了…**我先核实磁盘上到底留下了什么,再决定怎么续。**」——当成主对话下一轮，要去调工具；fork 无工具 ⇒ 文本停在承诺处 |
+| Claude Code `/btw` 原话 reminder 放用户消息里紧贴问题 | 「主线上已经跑完了,当前没有在跑的任务。刚做完的：…现在在等你决定下一步：…」 |
+
+- reminder 原文取自 CLI 2.1.267 二进制里的 `LOe()`（`strings` 可见）：独立轻量实例、主 agent 未被打断、不要提「被打断/之前在做」、没有工具、单次回复、NEVER「Let me check…」。历史问答块仍在 reminder 之前，reminder 是模型读到的最后一段指令。
+- **主 turn 正在跑工具时 fork**：transcript 末尾是没有 tool_result 的 `tool_use`，本机截断 transcript 实测 CLI resume 自己补 interrupted 占位后正常作答；不是失败源，但模型会把它描述成「上个进程退出时被中断」，可接受。
+- 并发语义：页面刷新/换 tab 后 btwStore（内存）丢 requestId，永远发不出 `btw-cancel`；旧行为是再问就 `already running`，最长撑到 10 min 上限。现在 `btw-ask` 遇到在跑的 slot 直接 abort 它并标 `cancelled`，新问题接管。web 自身仍有「本页有 running 就不发」的守卫，所以只有丢状态的客户端会走到这条。
+- 模型仍去调工具（理论上 `tools: []` 下不会，MCP 也被 `strictMcpConfig` 清空）：不再把 `error_max_turns` 当失败，按 Claude Code 回 `(The model tried to call X instead of answering directly. Try rephrasing or ask in the main conversation.)`；`system/api_error` 的 `error.formatted` 进错误文案。
+- 仅 CLI 改动；存量 wrapper 不受益（铁律 14），需新建会话或重启会话。

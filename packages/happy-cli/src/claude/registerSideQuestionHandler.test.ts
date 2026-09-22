@@ -64,17 +64,32 @@ describe('registerSideQuestionHandler (B-283)', () => {
         expect(done).toEqual(expect.objectContaining({ status: 'done', text: 'done text', finishedAt: 1000 }));
     });
 
-    it('rejects empty, oversized and concurrent questions', async () => {
-        let release!: () => void;
-        const gate = new Promise<void>((r) => { release = r; });
-        const h = harness({ run: async () => { await gate; return { answer: 'x', hadContext: true }; } });
+    it('rejects empty and oversized questions', async () => {
+        const h = harness();
         await expect(h.call('btw-ask', { question: '   ' })).rejects.toThrow('empty');
         await expect(h.call('btw-ask', { question: 'x'.repeat(8001) })).rejects.toThrow('too long');
-        await h.call('btw-ask', { question: 'first' });
-        await expect(h.call('btw-ask', { question: 'second' })).rejects.toThrow('already running');
+    });
+
+    it('a new ask supersedes a running one instead of failing (client that lost the request id)', async () => {
+        const aborted: string[] = [];
+        let release!: () => void;
+        const gate = new Promise<void>((r) => { release = r; });
+        const h = harness({
+            run: (input) => new Promise((resolve, reject) => {
+                input.signal.addEventListener('abort', () => { aborted.push(input.question); reject(new Error('aborted')); });
+                void gate.then(() => resolve({ answer: 'x', hadContext: true }));
+            }),
+        });
+        const first = await h.call('btw-ask', { question: 'first' });
+        const second = await h.call('btw-ask', { question: 'second' });
+        expect(second.requestId).not.toBe(first.requestId);
+        expect(aborted).toEqual(['first']);
+        await flush();
+        expect(await h.call('btw-poll', { requestId: first.requestId })).toEqual(expect.objectContaining({ status: 'cancelled' }));
+        expect(await h.call('btw-poll', { requestId: second.requestId })).toEqual(expect.objectContaining({ status: 'running' }));
         release();
         await flush();
-        await expect(h.call('btw-ask', { question: 'third' })).resolves.toEqual(expect.objectContaining({ requestId: expect.any(String) }));
+        expect(await h.call('btw-poll', { requestId: second.requestId })).toEqual(expect.objectContaining({ status: 'done', text: 'x' }));
     });
 
     it('surfaces run failures as error status', async () => {
@@ -111,7 +126,6 @@ describe('registerSideQuestionHandler (B-283)', () => {
                 }),
             });
             const ask = await h.call('btw-ask', { question: 'q' });
-            await expect(h.call('btw-ask', { question: 'again' })).rejects.toThrow('already running');
             await vi.advanceTimersByTimeAsync(5001);
             expect(aborted).toHaveBeenCalledTimes(1);
             expect(await h.call('btw-poll', { requestId: ask.requestId })).toEqual(expect.objectContaining({

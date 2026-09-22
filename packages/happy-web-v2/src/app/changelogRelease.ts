@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-22-side-question-answers-as-itself',
+    cliVersion: '0.2.145',
+    date: '2026-09-22',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep22a.title',
+    summaryKey: 'changelog.releases.sep22a.summary',
+    itemKeys: ['changelog.releases.sep22a.answer', 'changelog.releases.sep22a.retry'],
+  },
+  {
     id: '2026-09-22-agent-home-dirs',
     cliVersion: '0.2.144',
     date: '2026-09-22',

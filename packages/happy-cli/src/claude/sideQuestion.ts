@@ -42,15 +42,43 @@ export interface SideQuestionResult {
 
 type QueryFn = (params: { prompt: QueryPrompt; options?: QueryOptions }) => AsyncIterable<SDKMessage>;
 
-/** Same contract Claude Code's `/btw` injects as a system reminder. */
+/**
+ * Short system-prompt tail; the real steering lives in `SIDE_QUESTION_REMINDER`
+ * inside the user turn. 2026-09-22 (Yue DENG's report): with only this append,
+ * a fork asked "现在在干嘛呢" answered like the MAIN agent — "现在真的起："
+ * then stopped dead, because it went to call a tool it does not have. A system
+ * prompt tail is too far from the question to beat a transcript full of the
+ * agent doing things; Claude Code's own `/btw` puts the reminder in the user
+ * message, right before the question, and so do we now.
+ */
 export const SIDE_QUESTION_SYSTEM_PROMPT = [
-    'This is a SIDE QUESTION from the user, asked next to the main conversation above.',
-    'Answer it directly in a single response, using the conversation context and your own knowledge.',
-    'Side questions cannot use tools: do not attempt to read files, run commands, or call tools — if',
-    'the answer would require that, say what you would check and why.',
-    'Do NOT continue, resume, or reference progress on the main task; the main conversation is',
-    'unaffected by this exchange.',
+    'A user message wrapped in a side-question system-reminder is a SIDE QUESTION: answer it',
+    'directly in one response from the conversation context, with no tools and no action on the main task.',
 ].join(' ');
+
+/**
+ * Verbatim wording of Claude Code 2.1.x's `/btw` reminder (the one the model
+ * has been tuned against). Kept in one place so a test pins the clauses that
+ * matter: separate instance, no tools, no "let me check" promises.
+ */
+export const SIDE_QUESTION_REMINDER = [
+    '<system-reminder>This is a side question from the user. You must answer this question directly in a single response.',
+    '',
+    'IMPORTANT CONTEXT:',
+    '- You are a separate, lightweight agent spawned to answer this one question',
+    '- The main agent is NOT interrupted - it continues working independently in the background',
+    '- You share the conversation context but are a completely separate instance',
+    '- Do NOT reference being interrupted or what you were "previously doing" - that framing is incorrect',
+    '',
+    'CRITICAL CONSTRAINTS:',
+    '- You have NO tools available - you cannot read files, run commands, search, or take any actions',
+    '- This is a one-off response - there will be no follow-up turns',
+    '- You can ONLY provide information based on what you already know from the conversation context',
+    '- NEVER say things like "Let me try...", "I\'ll now...", "Let me check...", or promise to take any action',
+    '- If you don\'t know the answer, say so - do not offer to look it up or investigate',
+    '',
+    'Simply answer the question with the information you have.</system-reminder>',
+].join('\n');
 
 export const MAX_HISTORY = 12;
 export const MAX_HISTORY_CHARS = 2000;
@@ -62,16 +90,19 @@ function clip(text: string, max: number): string {
 /**
  * Prompt for one side question. Earlier exchanges ride along as plain text
  * (the fork's transcript never contains them — like the CLI's in-memory
- * `btwHistory`), bounded so a long chat can't crowd out the question.
+ * `btwHistory`), bounded so a long chat can't crowd out the question. The
+ * reminder sits directly before the question, after the history block, so it
+ * is the last instruction the model reads.
  */
 export function buildSideQuestionPrompt(question: string, history: SideQuestionExchange[] = []): string {
     const trimmed = question.trim();
     const prior = history
         .filter((h) => h.question.trim() && h.answer.trim())
         .slice(-MAX_HISTORY);
-    if (prior.length === 0) return trimmed;
+    const body = `${SIDE_QUESTION_REMINDER}\n\n${trimmed}`;
+    if (prior.length === 0) return body;
     const lines = prior.map((h) => `Q: ${clip(h.question.trim(), MAX_HISTORY_CHARS)}\nA: ${clip(h.answer.trim(), MAX_HISTORY_CHARS)}`);
-    return `<earlier-side-questions>\n${lines.join('\n\n')}\n</earlier-side-questions>\n\n${trimmed}`;
+    return `<earlier-side-questions>\n${lines.join('\n\n')}\n</earlier-side-questions>\n\n${body}`;
 }
 
 /** Options for the side query — exported so tests can pin the contract. */
@@ -95,15 +126,35 @@ export function sideQuestionQueryOptions(input: SideQuestionInput): QueryOptions
     };
 }
 
-function textFromAssistant(message: SDKMessage): string {
-    if (message.type !== 'assistant') return '';
+function assistantBlocks(message: SDKMessage): { type?: string; text?: unknown; name?: unknown }[] {
+    if (message.type !== 'assistant') return [];
     const content = (message as { message?: { content?: unknown } }).message?.content;
-    if (!Array.isArray(content)) return '';
-    return content
-        .map((block) => (block && typeof block === 'object' && (block as { type?: string }).type === 'text'
-            ? String((block as { text?: unknown }).text ?? '')
-            : ''))
+    return Array.isArray(content) ? content.filter((b): b is { type?: string } => Boolean(b) && typeof b === 'object') : [];
+}
+
+function textFromAssistant(message: SDKMessage): string {
+    return assistantBlocks(message)
+        .map((block) => (block.type === 'text' ? String(block.text ?? '') : ''))
         .join('');
+}
+
+function toolUseFromAssistant(message: SDKMessage): string | null {
+    const block = assistantBlocks(message).find((b) => b.type === 'tool_use');
+    return block ? String(block.name ?? 'a tool') : null;
+}
+
+/** Same fallback Claude Code shows when the fork reaches for a tool instead of answering. */
+export function toolAttemptNotice(toolName: string): string {
+    return `(The model tried to call ${toolName} instead of answering directly. Try rephrasing or ask in the main conversation.)`;
+}
+
+function apiErrorFromSystem(message: SDKMessage): string | null {
+    if (message.type !== 'system') return null;
+    const m = message as { subtype?: string; error?: { formatted?: unknown; message?: unknown } | string };
+    if (m.subtype !== 'api_error') return null;
+    if (typeof m.error === 'string') return m.error;
+    const detail = m.error?.formatted ?? m.error?.message;
+    return typeof detail === 'string' && detail ? detail : 'API error';
 }
 
 export async function runSideQuestion(query: QueryFn, input: SideQuestionInput): Promise<SideQuestionResult> {
@@ -111,6 +162,8 @@ export async function runSideQuestion(query: QueryFn, input: SideQuestionInput):
     const stream = query({ prompt: buildSideQuestionPrompt(input.question, input.history), options });
     let streamed = '';
     let final = '';
+    let toolAttempt: string | null = null;
+    let lastApiError: string | null = null;
     let resultSeen = false;
     for await (const message of stream) {
         if (message.type === 'stream_event') {
@@ -127,23 +180,36 @@ export async function runSideQuestion(query: QueryFn, input: SideQuestionInput):
                 final = final ? `${final}\n\n${text}` : text;
                 input.onText?.(final);
             }
+            toolAttempt ??= toolUseFromAssistant(message);
+            continue;
+        }
+        if (message.type === 'system') {
+            lastApiError = apiErrorFromSystem(message) ?? lastApiError;
             continue;
         }
         if (message.type === 'result') {
             resultSeen = true;
             const result = message as { subtype?: string; errors?: unknown; result?: unknown };
             if (result.subtype !== 'success') {
+                // maxTurns:1 ends in error_max_turns when the model emitted a
+                // tool_use; that is not a failure to report, it is the notice below.
+                if (toolAttempt && result.subtype === 'error_max_turns') break;
                 const detail = Array.isArray(result.errors) && result.errors.length > 0
                     ? String(result.errors[0])
                     : typeof result.result === 'string' && result.result
                         ? result.result
-                        : result.subtype ?? 'unknown';
+                        : lastApiError ?? result.subtype ?? 'unknown';
                 throw new Error(`Side question failed: ${detail}`);
             }
             if (!final && typeof result.result === 'string') final = result.result;
         }
     }
     if (input.signal?.aborted) throw new Error('Side question cancelled');
-    if (!resultSeen && !final && !streamed) throw new Error('Side question ended without a result');
+    if (toolAttempt && !final.trim() && !streamed.trim()) {
+        const notice = toolAttemptNotice(toolAttempt);
+        input.onText?.(notice);
+        return { answer: notice, hadContext: Boolean(input.resumeSessionId) };
+    }
+    if (!resultSeen && !final && !streamed) throw new Error(`Side question ended without a result${lastApiError ? `: ${lastApiError}` : ''}`);
     return { answer: final || streamed, hadContext: Boolean(input.resumeSessionId) };
 }

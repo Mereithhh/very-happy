@@ -1875,6 +1875,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep22a: {
+                title: 'Side questions answer as a bystander, not as the agent',
+                summary: 'Asking the side panel "what are you doing right now?" could come back as "Sorry, I only said it last time — starting for real now:" and then nothing. The side question was being read as the next turn of the main conversation, so the model set off to run a tool it does not have and stopped mid-sentence.',
+                answer: 'The side question now carries the same framing Claude Code uses for /btw — a separate instance with no tools, answering from what is already in the conversation — so "what are you doing?" gets a status report instead of a promise to go and check.',
+                retry: 'A new side question no longer fails with "already running" after a page reload; it takes over from the one it lost track of. If the model still reaches for a tool, the panel says so instead of showing an empty answer. Needs the CLI update and a new or restarted session.',
+            },
             sep22: {
                 title: 'Resume finds conversations you moved out of ~/.claude',
                 summary: 'If Claude Code or Codex state lives somewhere other than the default directory — a persistent disk on a dev box, pointed at with CLAUDE_CONFIG_DIR or CODEX_HOME — a resume from the web used to look in the default place, find nothing and open a fresh conversation, while claude --resume in a terminal worked. The daemon only knew the environment it had been started with.',
