@@ -6,8 +6,9 @@
  * context routinely takes longer. `btw-ask` returns a request id at once; the
  * web polls `btw-poll` (~1s) for progressive text until a terminal status.
  *
- * One side question per session at a time; finished results linger briefly so
- * a poll that raced the completion still finds it, then are dropped.
+ * One side question per session at a time — a newer ask supersedes (aborts) a
+ * running one; finished results linger briefly so a poll that raced the
+ * completion still finds it, then are dropped.
  */
 import { logger } from '@/ui/logger';
 import { randomUUID } from 'node:crypto';
@@ -124,7 +125,17 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
         if (!question) throw new Error('Side question is empty');
         if (question.length > SIDE_QUESTION_MAX_CHARS) throw new Error('Side question is too long');
         prune();
-        if (active) throw new Error('A side question is already running');
+        // A second ask while one runs means the client lost track of the first
+        // (page reload / another tab: btwStore is memory-only and guards against
+        // double-asks itself) — it can never send btw-cancel for a request id it
+        // no longer holds. Refusing left the panel failing with "already running"
+        // for up to maxRunMs (2026-09-22, Yue DENG); the newest question wins.
+        if (active) {
+            const stale = active;
+            stale.abort.abort('superseded');
+            finish(stale, 'cancelled');
+            logger.debug(`[btw] side question ${stale.requestId} superseded by a new ask`);
+        }
         const resumeSessionId = deps.getClaudeSessionId() ?? null;
         const slot: Slot = {
             requestId: randomUUID(),

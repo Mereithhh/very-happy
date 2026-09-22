@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+    SIDE_QUESTION_REMINDER,
     SIDE_QUESTION_SYSTEM_PROMPT,
     buildSideQuestionPrompt,
     runSideQuestion,
     sideQuestionQueryOptions,
+    toolAttemptNotice,
 } from './sideQuestion';
 
 function stream(messages: unknown[]) {
@@ -17,20 +19,38 @@ function stream(messages: unknown[]) {
 const base = { question: 'what does this error mean?', resumeSessionId: 'sess-1', cwd: '/repo' };
 
 describe('buildSideQuestionPrompt (B-283)', () => {
-    it('is just the question when there is no history', () => {
-        expect(buildSideQuestionPrompt('  why?  ')).toBe('why?');
+    it('is the reminder followed by the question when there is no history', () => {
+        expect(buildSideQuestionPrompt('  why?  ')).toBe(`${SIDE_QUESTION_REMINDER}\n\nwhy?`);
     });
 
-    it('prepends earlier exchanges as a bounded block', () => {
+    // 2026-09-22: a system-prompt tail alone let the fork answer as the main
+    // agent ("现在真的起：" and then nothing — it reached for a tool). The
+    // reminder must be the user-turn wording Claude Code's own /btw uses.
+    it('carries Claude Code\'s /btw reminder in the user turn, directly before the question', () => {
+        const prompt = buildSideQuestionPrompt('what now?');
+        expect(prompt.startsWith('<system-reminder>This is a side question from the user.')).toBe(true);
+        expect(prompt.endsWith('</system-reminder>\n\nwhat now?')).toBe(true);
+        for (const clause of [
+            'You are a separate, lightweight agent spawned to answer this one question',
+            'The main agent is NOT interrupted',
+            'Do NOT reference being interrupted or what you were "previously doing"',
+            'You have NO tools available',
+            'NEVER say things like "Let me try...", "I\'ll now...", "Let me check..."',
+            'If you don\'t know the answer, say so',
+        ]) expect(prompt).toContain(clause);
+    });
+
+    it('prepends earlier exchanges as a bounded block, keeping the reminder next to the question', () => {
         const prompt = buildSideQuestionPrompt('next', [
             { question: 'q1', answer: 'a1' },
             { question: '   ', answer: 'skipped' },
             { question: 'q2', answer: 'a'.repeat(5000) },
         ]);
         expect(prompt.startsWith('<earlier-side-questions>\nQ: q1\nA: a1\n\nQ: q2\nA: ')).toBe(true);
-        expect(prompt.endsWith('</earlier-side-questions>\n\nnext')).toBe(true);
+        expect(prompt).toContain(`</earlier-side-questions>\n\n${SIDE_QUESTION_REMINDER}\n\nnext`);
+        expect(prompt.endsWith('\n\nnext')).toBe(true);
         expect(prompt).not.toContain('skipped');
-        expect(prompt.length).toBeLessThan(2200);
+        expect(prompt.length).toBeLessThan(2200 + SIDE_QUESTION_REMINDER.length);
     });
 
     it('keeps only the most recent twelve exchanges', () => {
@@ -89,7 +109,34 @@ describe('runSideQuestion', () => {
         const result = await runSideQuestion(query as any, { ...base, onText });
         expect(result).toEqual({ answer: 'Hello', hadContext: true });
         expect(onText.mock.calls.map((c) => c[0])).toEqual(['Hel', 'Hello', 'Hello']);
-        expect(query.mock.calls[0]?.[0].prompt).toBe(base.question);
+        expect(query.mock.calls[0]?.[0].prompt).toBe(buildSideQuestionPrompt(base.question));
+    });
+
+    it('turns a tool_use attempt into Claude Code\'s notice instead of a blank or an error', async () => {
+        const query = stream([
+            { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: {} }] } },
+            { type: 'result', subtype: 'error_max_turns', errors: [] },
+        ]);
+        const onText = vi.fn();
+        const result = await runSideQuestion(query as any, { ...base, onText });
+        expect(result.answer).toBe(toolAttemptNotice('Bash'));
+        expect(onText).toHaveBeenLastCalledWith(toolAttemptNotice('Bash'));
+    });
+
+    it('keeps the text the model wrote before reaching for a tool', async () => {
+        const query = stream([
+            { type: 'assistant', message: { content: [{ type: 'text', text: 'Short answer.' }, { type: 'tool_use', name: 'Read', input: {} }] } },
+            { type: 'result', subtype: 'success', result: 'Short answer.' },
+        ]);
+        await expect(runSideQuestion(query as any, base)).resolves.toEqual({ answer: 'Short answer.', hadContext: true });
+    });
+
+    it('names the API error when the run fails without a result payload', async () => {
+        const query = stream([
+            { type: 'system', subtype: 'api_error', error: { formatted: '529 overloaded' } },
+            { type: 'result', subtype: 'error_during_execution', errors: [] },
+        ]);
+        await expect(runSideQuestion(query as any, base)).rejects.toThrow('Side question failed: 529 overloaded');
     });
 
     it('maps a non-success result to an error', async () => {

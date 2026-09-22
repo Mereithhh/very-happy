@@ -1828,6 +1828,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep22a: {
+                title: '侧问改成旁观者作答，不再冒充主 agent',
+                summary: '在侧问面板问「现在在干嘛呢」，可能回一句「抱歉，上一条我只说了没做。现在真的起：」然后就没了。原因是侧问被当成了主对话的下一轮，模型去调它并没有的工具，话说到一半就停了。',
+                answer: '侧问现在带上和 Claude Code /btw 一样的说明——一个没有工具的独立实例，只根据对话里已有的内容作答——所以「现在在干嘛」得到的是现状汇报，而不是「我先去核实」。',
+                retry: '刷新页面后再问不会再报「already running」，新问题会接管丢了踪迹的那条；模型如果仍去调工具，面板会明说，而不是显示一个空答案。需要更新 CLI 并新建或重启会话。',
+            },
             sep22: {
                 title: '恢复会话能找到搬出 ~/.claude 的对话了',
                 summary: '如果 Claude Code / Codex 的状态不在默认目录——比如开发机上放在持久盘、用 CLAUDE_CONFIG_DIR 或 CODEX_HOME 指过去——网页上恢复会话以前只会去默认位置找，找不到就开一个新对话，而终端里 claude --resume 却能找到。原因是 daemon 只认识自己启动时那份环境。',
