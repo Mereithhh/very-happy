@@ -1,4 +1,5 @@
 import type { RuntimeQuery } from './runtimeControls';
+import type { SideQuestionLiveAsk, SideQuestionLiveResponse } from './sideQuestion';
 import { EnhancedMode } from "./loop";
 import { query, type QueryOptions, type SDKMessage, type SDKResultMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import type { MessageParam } from '@anthropic-ai/sdk/resources'
@@ -39,6 +40,8 @@ export async function claudeRemote(opts: {
         setModel: (model?: string) => Promise<void>;
         interrupt: () => Promise<void>;
         steer: (message: MessageParam['content'], mode: EnhancedMode) => void;
+        /** B-482: Claude Code's own `/btw` — a `side_question` control request answered in-process from live messages. */
+        sideQuestion: SideQuestionLiveAsk;
     }) => void,
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string,
@@ -241,6 +244,16 @@ export async function claudeRemote(opts: {
             setPermissionMode: (mode: string) => response.setPermissionMode(mode as any),
             setModel: (model?: string) => response.setModel(modelTarget(model)),
             interrupt: async () => { await response.interrupt(); },
+            // `request` is the SDK's generic control-request sender (every typed
+            // method wraps it); the public types omit `side_question`, the CLI
+            // handles it. An abort on `signal` becomes control_cancel_request.
+            sideQuestion: async (request, signal) => {
+                const raw = await (response as unknown as {
+                    request: (req: Record<string, unknown>, opts?: { signal?: AbortSignal }) => Promise<{ response?: unknown }>;
+                }).request({ subtype: 'side_question', ...request }, { signal });
+                const body = raw?.response;
+                return (body && typeof body === 'object' ? body : { response: null }) as SideQuestionLiveResponse;
+            },
             steer: (message, nextMode) => {
                 // Steer injects into the CURRENT turn, and a model cannot change
                 // mid-turn — keep the one that is actually running so the next

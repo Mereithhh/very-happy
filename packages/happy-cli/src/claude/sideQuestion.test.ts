@@ -3,10 +3,16 @@ import {
     SIDE_QUESTION_REMINDER,
     SIDE_QUESTION_SYSTEM_PROMPT,
     buildSideQuestionPrompt,
+    isUnsupportedSideQuestionError,
     runSideQuestion,
+    runSideQuestionLive,
     sideQuestionQueryOptions,
     toolAttemptNotice,
+    type SideQuestionLiveRequest,
+    type SideQuestionLiveResponse,
 } from './sideQuestion';
+
+const liveAsk = (impl: (request: SideQuestionLiveRequest, signal?: AbortSignal) => Promise<SideQuestionLiveResponse>) => vi.fn(impl);
 
 function stream(messages: unknown[]) {
     return vi.fn((_params: { prompt: unknown; options?: unknown }) => ({
@@ -107,7 +113,7 @@ describe('runSideQuestion', () => {
         ]);
         const onText = vi.fn();
         const result = await runSideQuestion(query as any, { ...base, onText });
-        expect(result).toEqual({ answer: 'Hello', hadContext: true });
+        expect(result).toEqual({ answer: 'Hello', hadContext: true, mode: 'fork' });
         expect(onText.mock.calls.map((c) => c[0])).toEqual(['Hel', 'Hello', 'Hello']);
         expect(query.mock.calls[0]?.[0].prompt).toBe(buildSideQuestionPrompt(base.question));
     });
@@ -128,7 +134,7 @@ describe('runSideQuestion', () => {
             { type: 'assistant', message: { content: [{ type: 'text', text: 'Short answer.' }, { type: 'tool_use', name: 'Read', input: {} }] } },
             { type: 'result', subtype: 'success', result: 'Short answer.' },
         ]);
-        await expect(runSideQuestion(query as any, base)).resolves.toEqual({ answer: 'Short answer.', hadContext: true });
+        await expect(runSideQuestion(query as any, base)).resolves.toEqual({ answer: 'Short answer.', hadContext: true, mode: 'fork' });
     });
 
     it('names the API error when the run fails without a result payload', async () => {
@@ -157,5 +163,59 @@ describe('runSideQuestion', () => {
 
     it('fails loudly on an empty stream', async () => {
         await expect(runSideQuestion(stream([]) as any, base)).rejects.toThrow('without a result');
+    });
+});
+
+describe('runSideQuestionLive (B-482, in-process /btw)', () => {
+    it('sends the question with history in Claude Code\'s btwHistory shape and returns the live answer', async () => {
+        const ask = liveAsk(async () => ({ response: 'It is running the tests.', synthetic: false }));
+        const onText = vi.fn();
+        const result = await runSideQuestionLive(ask, {
+            ...base,
+            question: '  what now?  ',
+            history: [
+                { question: 'q1', answer: 'a1' },
+                { question: 'blank', answer: '   ' },
+                { question: 'q2', answer: 'a'.repeat(5000) },
+            ],
+            onText,
+        });
+        expect(result).toEqual({ answer: 'It is running the tests.', hadContext: true, mode: 'live' });
+        expect(onText).toHaveBeenCalledWith('It is running the tests.');
+        const [request, signal] = ask.mock.calls[0]!;
+        expect(request!.question).toBe('what now?');
+        expect(request!.history).toHaveLength(2);
+        expect(request!.history![0]).toEqual({ question: 'q1', response: 'a1' });
+        expect(request!.history![1]!.response.length).toBeLessThanOrEqual(2001);
+        expect(request!.history![1]).not.toHaveProperty('answer');
+        expect(signal).toBeUndefined();
+    });
+
+    it('omits history when there is none and prefixes a refusal fallback notice', async () => {
+        const ask = liveAsk(async () => ({
+            response: 'answer',
+            refusal_fallback: { original_model: 'a', fallback_model: 'b', content: 'Answered by b after a refused' },
+        }));
+        const result = await runSideQuestionLive(ask, base);
+        expect(ask.mock.calls[0]![0]).toEqual({ question: base.question });
+        expect(result.answer).toBe('⚠ Answered by b after a refused\n\nanswer');
+    });
+
+    it('passes the abort signal through and reports cancellation', async () => {
+        const controller = new AbortController();
+        const ask = vi.fn(async (_r: unknown, signal?: AbortSignal) => { controller.abort(); expect(signal).toBe(controller.signal); return { response: null }; });
+        await expect(runSideQuestionLive(ask, { ...base, signal: controller.signal })).rejects.toThrow('cancelled');
+    });
+
+    it('fails loudly on an empty live answer', async () => {
+        await expect(runSideQuestionLive(async () => ({ response: null }), base)).rejects.toThrow('without a result');
+        await expect(runSideQuestionLive(async () => ({ response: '   ' }), base)).rejects.toThrow('without a result');
+    });
+
+    it('recognises an old CLI\'s unknown-subtype verdict', () => {
+        expect(isUnsupportedSideQuestionError(new Error('Unknown control request subtype: side_question'))).toBe(true);
+        expect(isUnsupportedSideQuestionError(new Error('unsupported request'))).toBe(true);
+        expect(isUnsupportedSideQuestionError(new Error('API Error: 529 overloaded'))).toBe(false);
+        expect(isUnsupportedSideQuestionError(new Error('Query closed before response received'))).toBe(false);
     });
 });

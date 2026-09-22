@@ -14,7 +14,16 @@ import { logger } from '@/ui/logger';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { runSideQuestion, type SideQuestionExchange, type SideQuestionInput } from './sideQuestion';
+import {
+    isUnsupportedSideQuestionError,
+    runSideQuestion,
+    runSideQuestionLive,
+    type SideQuestionExchange,
+    type SideQuestionInput,
+    type SideQuestionLiveQuery,
+    type SideQuestionMode,
+    type SideQuestionResult,
+} from './sideQuestion';
 
 export type SideQuestionStatus = 'running' | 'done' | 'error' | 'cancelled';
 
@@ -26,6 +35,8 @@ export interface SideQuestionAskResponse {
     requestId: string;
     /** false when the main session has not produced a Claude session id yet. */
     hadContext: boolean;
+    /** B-482: which path took the question; old web ignores the field. */
+    mode: SideQuestionMode;
 }
 export interface SideQuestionPollResponse {
     requestId: string;
@@ -51,7 +62,15 @@ export interface SideQuestionDeps {
     settingsPath?: string;
     /** Wall-clock cap for one side question; the slot is freed (aborted) when it elapses. */
     maxRunMs?: number;
-    run?: (input: SideQuestionInput) => Promise<{ answer: string; hadContext: boolean }>;
+    /**
+     * B-482: the running remote Query's in-process entry, when there is one.
+     * Preferred over the fork — it is Claude Code's own /btw (live messages,
+     * turn in flight included). Null → fork; `canControl()` false (wrapper
+     * inside an SDK callback, 铁律 8) → fork; CLI too old to know the
+     * subtype → fork.
+     */
+    getLiveQuery?: () => SideQuestionLiveQuery | null;
+    run?: (input: SideQuestionInput) => Promise<SideQuestionResult>;
     now?: () => number;
     /** How long a finished result stays pollable. */
     retainMs?: number;
@@ -99,10 +118,20 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
     const now = deps.now ?? (() => Date.now());
     const retainMs = deps.retainMs ?? SIDE_QUESTION_RETAIN_MS;
     const maxRunMs = deps.maxRunMs ?? SIDE_QUESTION_MAX_RUN_MS;
-    const run = deps.run ?? (async (input) => {
+    const fork = deps.run ?? (async (input) => {
         const { query } = await import('@/claude/sdk');
         return runSideQuestion(query as any, input);
     });
+    const run = async (input: SideQuestionInput, live: SideQuestionLiveQuery | null): Promise<SideQuestionResult> => {
+        if (!live) return fork(input);
+        try {
+            return await runSideQuestionLive(live.ask, input);
+        } catch (error) {
+            if (input.signal?.aborted || !isUnsupportedSideQuestionError(error)) throw error;
+            logger.debug(`[btw] live side question unsupported by this CLI, forking instead: ${error instanceof Error ? error.message : String(error)}`);
+            return fork(input);
+        }
+    };
     const slots = new Map<string, Slot>();
     let active: Slot | null = null;
 
@@ -136,6 +165,8 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
             finish(stale, 'cancelled');
             logger.debug(`[btw] side question ${stale.requestId} superseded by a new ask`);
         }
+        const candidate = deps.getLiveQuery?.() ?? null;
+        const live = candidate && candidate.canControl() ? candidate : null;
         const resumeSessionId = deps.getClaudeSessionId() ?? null;
         const slot: Slot = {
             requestId: randomUUID(),
@@ -146,7 +177,7 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
         };
         slots.set(slot.requestId, slot);
         active = slot;
-        logger.debug(`[btw] side question ${slot.requestId} start (context=${resumeSessionId ? 'fork' : 'none'})`);
+        logger.debug(`[btw] side question ${slot.requestId} start (${live ? 'live' : resumeSessionId ? 'fork' : 'no-context'})`);
         // The web may vanish mid-answer (socket loss, tab closed) without ever
         // sending btw-cancel; without a cap the slot would stay busy forever.
         const deadline = setTimeout(() => {
@@ -166,10 +197,10 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
             settingsPath: deps.settingsPath,
             signal: slot.abort.signal,
             onText: (text) => { if (slot.status === 'running') slot.text = text; },
-        }).then((result) => {
+        }, live).then((result) => {
             slot.text = result.answer;
             finish(slot, 'done');
-            logger.debug(`[btw] side question ${slot.requestId} done (${result.answer.length} chars)`);
+            logger.debug(`[btw] side question ${slot.requestId} done (${result.mode ?? 'fork'}, ${result.answer.length} chars)`);
         }).catch((error: unknown) => {
             const message = error instanceof Error ? error.message : String(error);
             if (slot.abort.signal.aborted) {
@@ -179,7 +210,7 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
                 logger.debug(`[btw] side question ${slot.requestId} failed: ${message}`);
             }
         }).finally(() => clearTimeout(deadline));
-        return { requestId: slot.requestId, hadContext: Boolean(resumeSessionId) };
+        return { requestId: slot.requestId, hadContext: live ? true : Boolean(resumeSessionId), mode: live ? 'live' : 'fork' };
     });
 
     rpc.registerHandler<{ requestId?: unknown }, SideQuestionPollResponse>('btw-poll', async (request) => {

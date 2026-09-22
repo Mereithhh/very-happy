@@ -39,6 +39,29 @@ describe('claudeRemote', () => {
             onQueryReady:q=>{controls=q;},isAborted:()=>false,onSessionFound:vi.fn(),onMessage:vi.fn()});
     });
 
+    it('exposes /btw as a side_question control request on the live Query (B-482)', async () => {
+        let controls!: Parameters<NonNullable<Parameters<typeof claudeRemote>[0]['onQueryReady']>>[0];
+        const request = vi.fn(async () => ({ subtype: 'success', request_id: 'r1', response: { response: 'live answer', synthetic: false } }));
+        vi.mocked(query).mockImplementation(() => ({
+            async *[Symbol.asyncIterator]() {
+                const controller = new AbortController();
+                await expect(controls.sideQuestion({ question: 'what now?', history: [{ question: 'a', response: 'b' }] }, controller.signal))
+                    .resolves.toEqual({ response: 'live answer', synthetic: false });
+                expect(request).toHaveBeenCalledWith(
+                    { subtype: 'side_question', question: 'what now?', history: [{ question: 'a', response: 'b' }] },
+                    { signal: controller.signal },
+                );
+            },
+            request,
+        } as any));
+        let n = 0;
+        await claudeRemote({ sessionId: null, path: process.cwd(), allowedTools: [], hookSettingsPath: '/unused-test-settings.json',
+            nextMessage: async () => ++n === 1 ? { message: 'hello', mode } : null, onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow', updatedInput: {} }),
+            onQueryReady: (q) => { controls = q; }, isAborted: () => false, onSessionFound: vi.fn(), onMessage: vi.fn() });
+        expect(request).toHaveBeenCalledTimes(1);
+    });
+
     it('marks /clear as a completed reset turn', async () => {
         const callbackOrder: string[] = [];
         const onCompletionEvent = vi.fn((message: string) => {

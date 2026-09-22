@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { registerSideQuestionHandler, type SideQuestionPollResponse } from './registerSideQuestionHandler';
+import type { SideQuestionLiveQuery, SideQuestionLiveRequest, SideQuestionLiveResponse } from './sideQuestion';
 
 type Handler = (request: any) => Promise<any>;
 
-function harness(opts: { run?: (input: any) => Promise<{ answer: string; hadContext: boolean }>; claudeSessionId?: string | null; maxRunMs?: number } = {}) {
+function harness(opts: { run?: (input: any) => Promise<{ answer: string; hadContext: boolean }>; claudeSessionId?: string | null; maxRunMs?: number; getLiveQuery?: () => SideQuestionLiveQuery | null } = {}) {
     const handlers = new Map<string, Handler>();
     let clock = 1000;
     const rpc = { registerHandler: (method: string, handler: Handler) => { handlers.set(method, handler); } };
@@ -22,6 +23,7 @@ function harness(opts: { run?: (input: any) => Promise<{ answer: string; hadCont
         maxRunMs: opts.maxRunMs,
         getEnv: () => ({ ANTHROPIC_BASE_URL: 'https://hub.example' }),
         settingsPath: '/tmp/side-question.json',
+        getLiveQuery: opts.getLiveQuery,
     });
     const call = (method: string, request?: unknown) => handlers.get(method)!(request);
     return { call, runSpy, tick: (ms: number) => { clock += ms; } };
@@ -146,5 +148,62 @@ describe('registerSideQuestionHandler (B-283)', () => {
         h.tick(1001);
         await expect(h.call('btw-poll', { requestId: ask.requestId })).rejects.toThrow('Unknown side question');
         await expect(h.call('btw-poll', { requestId: 'nope' })).rejects.toThrow('Unknown side question');
+    });
+
+    describe('live (in-process) path, B-482', () => {
+        it('prefers the running Query and reports mode=live with context', async () => {
+            const ask = vi.fn(async (_request: SideQuestionLiveRequest, _signal?: AbortSignal): Promise<SideQuestionLiveResponse> => ({ response: 'live answer' }));
+            const fork = vi.fn(async () => ({ answer: 'fork answer', hadContext: true }));
+            const h = harness({ run: fork, claudeSessionId: null, getLiveQuery: () => ({ ask, canControl: () => true }) });
+            const ack = await h.call('btw-ask', { question: 'q', history: [{ question: 'a', answer: 'b' }] });
+            expect(ack).toEqual(expect.objectContaining({ hadContext: true, mode: 'live' }));
+            await flush();
+            expect(await h.call('btw-poll', { requestId: ack.requestId })).toEqual(expect.objectContaining({ status: 'done', text: 'live answer' }));
+            expect(fork).not.toHaveBeenCalled();
+            expect(ask.mock.calls[0]![0]).toEqual({ question: 'q', history: [{ question: 'a', response: 'b' }] });
+        });
+
+        it('forks while the wrapper sits inside an SDK callback (canControl false) and when no Query is alive', async () => {
+            const ask = vi.fn(async () => ({ response: 'live answer' }));
+            const fork = vi.fn(async () => ({ answer: 'fork answer', hadContext: true }));
+            const blocked = harness({ run: fork, getLiveQuery: () => ({ ask, canControl: () => false }) });
+            const a = await blocked.call('btw-ask', { question: 'q' });
+            expect(a).toEqual(expect.objectContaining({ mode: 'fork' }));
+            const none = harness({ run: fork, getLiveQuery: () => null });
+            const b = await none.call('btw-ask', { question: 'q' });
+            expect(b).toEqual(expect.objectContaining({ mode: 'fork' }));
+            await flush();
+            expect(ask).not.toHaveBeenCalled();
+            expect(fork).toHaveBeenCalledTimes(2);
+            expect(await none.call('btw-poll', { requestId: b.requestId })).toEqual(expect.objectContaining({ status: 'done', text: 'fork answer' }));
+        });
+
+        it('falls back to the fork when the CLI does not know the subtype, but not on other live errors', async () => {
+            const fork = vi.fn(async () => ({ answer: 'fork answer', hadContext: true }));
+            const old = harness({ run: fork, getLiveQuery: () => ({ ask: async () => { throw new Error('Unknown control request subtype: side_question'); }, canControl: () => true }) });
+            const a = await old.call('btw-ask', { question: 'q' });
+            await flush();
+            expect(await old.call('btw-poll', { requestId: a.requestId })).toEqual(expect.objectContaining({ status: 'done', text: 'fork answer' }));
+            const broken = harness({ run: fork, getLiveQuery: () => ({ ask: async () => { throw new Error('API Error: 529 overloaded'); }, canControl: () => true }) });
+            const b = await broken.call('btw-ask', { question: 'q' });
+            await flush();
+            expect(await broken.call('btw-poll', { requestId: b.requestId })).toEqual(expect.objectContaining({ status: 'error', error: 'API Error: 529 overloaded' }));
+            expect(fork).toHaveBeenCalledTimes(1);
+        });
+
+        it('cancel aborts the live control request', async () => {
+            let seen: AbortSignal | undefined;
+            const h = harness({
+                getLiveQuery: () => ({
+                    canControl: () => true,
+                    ask: (_r, signal) => new Promise((_, reject) => { seen = signal; signal!.addEventListener('abort', () => reject(new Error('aborted'))); }),
+                }),
+            });
+            const ask = await h.call('btw-ask', { question: 'q' });
+            expect(await h.call('btw-cancel', { requestId: ask.requestId })).toEqual({ cancelled: true });
+            await flush();
+            expect(seen?.aborted).toBe(true);
+            expect(await h.call('btw-poll', { requestId: ask.requestId })).toEqual(expect.objectContaining({ status: 'cancelled' }));
+        });
     });
 });

@@ -669,6 +669,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         cwd: workingDirectory,
         getEnv: () => options.claudeEnvVars,
         settingsPath: writeSideQuestionSettingsFile(configuration.happyHomeDir),
+        // B-482: in remote mode the launcher parks the live Query's /btw entry
+        // on the session while the Query is alive; local mode never sets it.
+        getLiveQuery: () => currentSession?.getSideQuestionLive() ?? null,
     });
 
     const resetCurrentModeDefaults = () => {

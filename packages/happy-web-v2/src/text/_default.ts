@@ -1875,6 +1875,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep22b: {
+                title: 'Side questions are now answered by the running session itself',
+                summary: 'A side question used to be answered by a second Claude process reading the conversation back from disk, so mid-task it saw only what had been written out and sometimes described the running step as "interrupted". Claude Code has its own in-process /btw, and the session now uses exactly that.',
+                live: 'The question goes to the live session: it sees the turn in flight, answers with Claude Code\'s own side-question framing, and costs no extra process. Ask "what are you doing right now?" while a command runs and you get the real answer.',
+                fallback: 'Before the first turn, while the session waits on a permission prompt, or on a CLI too old to know the request, the previous separate-query path still answers. Needs the CLI update and a new or restarted session.',
+            },
             sep22a: {
                 title: 'Side questions answer as a bystander, not as the agent',
                 summary: 'Asking the side panel "what are you doing right now?" could come back as "Sorry, I only said it last time — starting for real now:" and then nothing. The side question was being read as the next turn of the main conversation, so the model set off to run a tool it does not have and stopped mid-sentence.',

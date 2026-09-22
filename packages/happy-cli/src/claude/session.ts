@@ -1,4 +1,5 @@
 import { ApiClient, ApiSessionClient } from "@/lib";
+import type { SideQuestionLiveQuery } from './sideQuestion';
 import { MessageQueue2, type PendingAttachment } from "@/utils/MessageQueue2";
 import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
@@ -66,6 +67,8 @@ export class Session {
 
     /** Live remote-query input sink. Absent in local mode and between SDK queries. */
     private steerHandler: ((input: ClaudeSteerInput) => Promise<boolean>) | null = null;
+    /** B-482: the live remote Query's in-process side-question entry; null between Queries and in local mode. */
+    private sideQuestionLive: SideQuestionLiveQuery | null = null;
 
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
@@ -136,8 +139,16 @@ export class Session {
         clearInterval(this.keepAliveInterval);
         this.sessionFoundCallbacks = [];
         this.steerHandler = null;
+        this.sideQuestionLive = null;
         logger.debug('[Session] Cleaned up resources');
     }
+
+    /** Register the current remote query's in-process side-question entry (B-482); null removes it. */
+    setSideQuestionLive = (live: SideQuestionLiveQuery | null): void => {
+        this.sideQuestionLive = live;
+    }
+
+    getSideQuestionLive = (): SideQuestionLiveQuery | null => this.sideQuestionLive;
 
     /** Register the current remote query's Steer sink; null removes it. */
     setSteerHandler = (handler: ((input: ClaudeSteerInput) => Promise<boolean>) | null): void => {
