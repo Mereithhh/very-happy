@@ -107,6 +107,16 @@ interface Settings {
   terminalAutoRestore?: boolean
   terminalAutoRestoreMax?: number
   terminalAutoRestoreWindowHours?: number
+  /**
+   * B-478: where Claude Code / Codex keep their conversations on this machine
+   * when the daemon must not trust its own environment or the login shell
+   * (`~` allowed). Normally unset: the daemon asks the user's login shell for
+   * `CLAUDE_CONFIG_DIR` / `CODEX_HOME` before every spawn, which is what makes
+   * `claude --resume` in a terminal and a resume from the web look in the
+   * same place. Machine-local because a path is a property of this disk.
+   */
+  claudeConfigDir?: string
+  codexHome?: string
 }
 
 const defaultSettings: Settings = {

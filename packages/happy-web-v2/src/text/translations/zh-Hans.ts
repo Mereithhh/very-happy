@@ -1828,6 +1828,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep22: {
+                title: '恢复会话能找到搬出 ~/.claude 的对话了',
+                summary: '如果 Claude Code / Codex 的状态不在默认目录——比如开发机上放在持久盘、用 CLAUDE_CONFIG_DIR 或 CODEX_HOME 指过去——网页上恢复会话以前只会去默认位置找，找不到就开一个新对话，而终端里 claude --resume 却能找到。原因是 daemon 只认识自己启动时那份环境。',
+                shell: '现在每次新建或恢复前，daemon 都会先问你的登录 shell 拿 CLAUDE_CONFIG_DIR 和 CODEX_HOME；如果 transcript 仍不在那里，还会把你用过的其他目录都查一遍。在 shell 里 export 之后不需要重启 daemon。',
+                pin: 'very-happy agent-home 会显示解析出的目录和来源，也能为某台 shell 答案不对的机器固定一个目录；very-happy doctor 输出同样的信息。',
+            },
             sep20a: {
                 title: '还在跑旧版 CLI 的会话会主动说明',
                 summary: '机器升级 CLI 不会替换正在运行的会话进程——它会一直用启动时的那份代码，有时长达数周，于是 wrapper 侧的修复永远到不了长期开着的会话。现在这类会话会显示一条提示，写明它运行的版本，并提供「重启」把它换到机器上已安装的版本，对话内容保留。',

@@ -1875,6 +1875,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep22: {
+                title: 'Resume finds conversations you moved out of ~/.claude',
+                summary: 'If Claude Code or Codex state lives somewhere other than the default directory — a persistent disk on a dev box, pointed at with CLAUDE_CONFIG_DIR or CODEX_HOME — a resume from the web used to look in the default place, find nothing and open a fresh conversation, while claude --resume in a terminal worked. The daemon only knew the environment it had been started with.',
+                shell: 'Before every spawn or resume the daemon now asks your login shell for CLAUDE_CONFIG_DIR and CODEX_HOME, and if a transcript still is not where that points it checks every other directory you have used. No daemon restart needed after exporting the variable.',
+                pin: 'very-happy agent-home shows the directories it resolved and where they came from, and can pin one for a machine whose shell answer is wrong; very-happy doctor prints the same.',
+            },
             sep20a: {
                 title: 'A session still running older CLI code now says so',
                 summary: 'Updating the CLI on a machine never replaces the process already running an open session — that process keeps executing the code it started with, sometimes for weeks, so wrapper-side fixes never reach long-lived sessions. Such a session now carries a notice naming the version it is on, with a Restart that moves it onto the installed one. The conversation is kept.',
