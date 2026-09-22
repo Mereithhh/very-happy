@@ -7,8 +7,32 @@ set -euo pipefail
 
 TARGET="${1:-all}"
 ROLLOUT_MODE="${2:-switch}"
-SSH_OPTS="-i ${SSH_KEY} -p ${HWSG_PORT} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20"
+# Keepalives: the drain wait used to sit silent for up to 10 minutes and the
+# runner->host session was cut in the middle of it (B-479/B-483).
+SSH_OPTS="-i ${SSH_KEY} -p ${HWSG_PORT} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=8"
 REMOTE="${HWSG_USER}@${HWSG_HOST}"
+
+# Print new log bytes each round; stop when the result file appears. Echoes the
+# remote exit code on stdout (7 = gave up waiting, 8 = unreadable result).
+poll_remote_deploy() {
+    local log="$1" result="$2" offset=0 chunk size marker deadline
+    deadline=$(( $(date +%s) + ${VH_DEPLOY_POLL_SECONDS:-1500} ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        chunk=$(ssh ${SSH_OPTS} "${REMOTE}" "size=\$(stat -c %s '$log' 2>/dev/null || echo 0); tail -c +$((offset + 1)) '$log' 2>/dev/null | head -c \$((size - $offset)); printf '\n__VH_SIZE=%s\n' \"\$size\"; [ -f '$result' ] && printf '__VH_RESULT=%s\n' \"\$(head -1 '$result')\"" 2>/dev/null) || { sleep 5; continue; }
+        printf '%s\n' "$chunk" | grep -v '^__VH_' >&2
+        size=$(printf '%s\n' "$chunk" | sed -n 's/^__VH_SIZE=//p' | tail -1)
+        [[ "$size" =~ ^[0-9]+$ ]] && offset="$size"
+        marker=$(printf '%s\n' "$chunk" | sed -n 's/^__VH_RESULT=//p' | tail -1)
+        if [ -n "$marker" ]; then
+            echo "remote: $marker" >&2
+            case "$marker" in exit=*) marker="${marker#exit=}"; echo "${marker%% *}"; return 0 ;; esac
+            echo 8; return 0
+        fi
+        sleep 10
+    done
+    echo 'gave up waiting for the remote deployment; it may still be running on the host (check /opt/happy/release/deploy.lock and the log)' >&2
+    echo 7
+}
 
 deploy_complete_image() {
     local deploy_sha image remote_dir
@@ -52,12 +76,16 @@ deploy_complete_image() {
         ops/production/legacy-release.override.yml \
         ops/production/Caddyfile.blue-green \
         | ssh ${SSH_OPTS} "${REMOTE}" "tar -xzf - -C '$remote_dir'"
-    set +e
+    # B-483: run the remote script detached from this SSH session and poll its
+    # log and result file over short-lived connections. A session that dies
+    # mid-drain no longer decides anything: the host finishes the release on
+    # its own and the verdict is read from the result file.
+    local log="$remote_dir/deploy.log" result="$remote_dir/deploy.result"
     ssh ${SSH_OPTS} "${REMOTE}" \
-        "bash '$remote_dir/scripts/ci/deploy-blue-green-remote.sh' '$image' '$deploy_sha' '$ROLLOUT_MODE'"
-    local status=$?
-    set -e
-    ssh ${SSH_OPTS} "${REMOTE}" "rm -rf '$remote_dir'"
+        "rm -f '$result'; VH_RELEASE_RESULT_FILE='$result' setsid nohup bash '$remote_dir/scripts/ci/deploy-blue-green-remote.sh' '$image' '$deploy_sha' '$ROLLOUT_MODE' > '$log' 2>&1 < /dev/null & echo \"remote deploy pid \$!\""
+    local status
+    status=$(poll_remote_deploy "$log" "$result")
+    ssh ${SSH_OPTS} "${REMOTE}" "rm -rf '$remote_dir'" || true
     if [ -n "${GITHUB_OUTPUT:-}" ]; then
         printf 'image=%s\nrelease=%s\n' "$image" "$deploy_sha" >> "$GITHUB_OUTPUT"
     fi

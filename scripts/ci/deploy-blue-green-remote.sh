@@ -381,11 +381,17 @@ start_old_slot() {
 }
 
 stop_old_slot() {
+    local slot="${1:-$ACTIVE_SLOT}"
     if [ "$MODE" = legacy ]; then
         docker compose -f /opt/happy/docker-compose.yml -f "$LEGACY_OVERRIDE" --env-file "$SLOT_ENV" stop happy-server
     else
-        slot_compose stop "happy-server-$ACTIVE_SLOT"
+        slot_compose stop "happy-server-$slot"
     fi
+}
+
+slot_healthy() {
+    local port="$1"
+    curl -fsS --max-time 3 "http://127.0.0.1:${port}/health" >/dev/null 2>&1
 }
 
 rollback_switch() {
@@ -401,10 +407,19 @@ rollback_switch() {
         admin_curl "$ACTIVE_PORT" POST /_vh/release/cancel >/dev/null || true
     fi
     if [ "$PHASE" = after-switch-write ] || [ "$PHASE" = after-switch ] || [ "$PHASE" = after-old-stop ]; then
-        write_active_upstream "$ACTIVE_PORT"
-        reload_caddy
-        verify_public_release "$ACTIVE_RELEASE"
-        echo 'rollback upstream verified; both slots retained for inspection' >&2
+        # B-483: pointing Caddy at an upstream nobody answers on is an outage,
+        # not a rollback. The old slot may have been stopped by hand while this
+        # script was still alive; if it does not answer, keep whatever is in
+        # front now (the candidate already passed verify_public_release when
+        # PHASE moved past after-switch-write) and let a human decide.
+        if slot_healthy "$ACTIVE_PORT"; then
+            write_active_upstream "$ACTIVE_PORT"
+            reload_caddy
+            verify_public_release "$ACTIVE_RELEASE"
+            echo 'rollback upstream verified; both slots retained for inspection' >&2
+        else
+            echo "old slot $ACTIVE_SLOT (:$ACTIVE_PORT) does not answer /health; NOT repointing Caddy at it — current upstream left as is" >&2
+        fi
     else
         stop_candidate
     fi
@@ -509,41 +524,91 @@ switch_release() {
     PHASE=after-switch
     verify_public_release "$VERSION"
 
-    while [ "$(date +%s)" -lt "$((deadline / 1000))" ]; do
-        status=$(admin_curl "$ACTIVE_PORT" GET /_vh/release/status || true)
-        if printf '%s' "$status" | grep -Fq '"state":"drained"'; then drained=true; break; fi
-        sleep 2
-    done
-    if [ "$drained" != true ]; then
-        admin_curl "$ACTIVE_PORT" POST /_vh/release/disconnect >/dev/null
-        for _ in $(seq 1 30); do
-            status=$(admin_curl "$ACTIVE_PORT" GET /_vh/release/status || true)
-            if printf '%s' "$status" | grep -Fq '"state":"drained"'; then drained=true; break; fi
-            sleep 1
-        done
-    fi
-    [ "$drained" = true ]
+    # B-483: the public release is verified, so from here on the switch is a
+    # fact. Persist it NOW and disarm the rollback trap: everything below is
+    # housekeeping (draining and stopping the old slot, probe bookkeeping),
+    # and none of it may ever move traffic back. Before this change a drain
+    # that never completed (long-lived daemon sockets, slot-pinned clients)
+    # tripped the ERR trap at the deadline and rollback_switch put the OLD
+    # slot back in front — silently when it was alive, as a 15-minute 502
+    # once it had been stopped by hand. The SSH session from the runner dying
+    # does not stop this script either (it did not before; now that is safe).
+    commit_switch
+    finish_switch "$deadline"
+}
 
-    stop_old_slot
-    PHASE=after-old-stop
-    verify_public_release "$VERSION"
-    stop_http_probe
-    probe_release_verdict
-
+# Persist the verified switch: candidate becomes active, old slot becomes the
+# rollback point. Idempotent; safe to call exactly once per switch.
+commit_switch() {
+    OLD_SLOT="$ACTIVE_SLOT" OLD_PORT="$ACTIVE_PORT"
     ROLLBACK_SLOT="$ACTIVE_SLOT" ROLLBACK_PORT="$ACTIVE_PORT" ROLLBACK_IMAGE="$ACTIVE_IMAGE" ROLLBACK_RELEASE="$ACTIVE_RELEASE"
     MODE=bluegreen ACTIVE_SLOT="$CANDIDATE_SLOT" ACTIVE_PORT="$CANDIDATE_PORT" ACTIVE_IMAGE="$IMAGE" ACTIVE_RELEASE="$VERSION"
     SHADOW_IMAGE="" SHADOW_RELEASE=""
     write_state
     CANDIDATE_STARTED=false
     trap - ERR
+    PHASE=committed
     echo "blue-green live: $ACTIVE_SLOT $IMAGE"
     echo "rollback slot: $ROLLBACK_SLOT $ROLLBACK_IMAGE"
+}
+
+# Wait for the old slot to drain until the deadline, then force-disconnect its
+# sockets and give them a grace period. Returns 0 when drained, 1 otherwise;
+# never fails the release.
+wait_for_drain() {
+    local old_port="$1" deadline="$2" drain_status drained=false
+    while [ "$(date +%s)" -lt "$((deadline / 1000))" ]; do
+        drain_status=$(admin_curl "$old_port" GET /_vh/release/status || true)
+        if printf '%s' "$drain_status" | grep -Fq '"state":"drained"'; then drained=true; break; fi
+        sleep 2
+    done
+    if [ "$drained" != true ]; then
+        admin_curl "$old_port" POST /_vh/release/disconnect >/dev/null || true
+        for _ in $(seq 1 30); do
+            drain_status=$(admin_curl "$old_port" GET /_vh/release/status || true)
+            if printf '%s' "$drain_status" | grep -Fq '"state":"drained"'; then drained=true; break; fi
+            sleep 1
+        done
+    fi
+    if [ "$drained" = true ]; then return 0; fi
+    echo "old slot did not report drained by the deadline; last drain_status: ${drain_status:-<none>}" >&2
+    return 1
+}
+
+# Post-commit housekeeping. Runs with the ERR trap disarmed and must never
+# touch the Caddy include. The old slot is stopped only when it drained (the
+# spec allows SIGTERM only at all-zero status); otherwise it stays up, drained
+# and off the upstream, for a human or the next release to retire.
+finish_switch() {
+    local deadline="$1" rc=0
+    set +e
+    if wait_for_drain "$OLD_PORT" "$deadline"; then
+        stop_old_slot "$OLD_SLOT" || echo "warning: could not stop old slot $OLD_SLOT; it serves no traffic" >&2
+        PHASE=after-old-stop
+    else
+        echo "old slot $OLD_SLOT left running (drained state not reached); stop it by hand once its sockets are gone: docker compose -f $RELEASE_COMPOSE --env-file $SLOT_ENV stop happy-server-$OLD_SLOT" >&2
+        PHASE=old-slot-retained
+    fi
+    verify_public_release "$VERSION" || { echo 'public release check failed AFTER the verified switch; traffic was not moved' >&2; rc=5; }
+    stop_http_probe
+    probe_release_verdict || { echo 'probe recorded a release-window failure AFTER the verified switch; traffic was not moved' >&2; rc=5; }
+    set -e
+    return "$rc"
 }
 
 if [ "$VH_RELEASE_LIBRARY_ONLY" != 1 ]; then
     validate_host_contract
     verify_image
     initialize_release_files
+    # One deployment at a time on this host. The runner's SSH session may die
+    # while an earlier attempt is still running; a retry must not race it.
+    exec 9>"$RELEASE_DIR/deploy.lock"
+    flock -n 9 || { echo "another deployment is still running on this host (lock $RELEASE_DIR/deploy.lock); wait for it or kill -TERM the stale deploy-blue-green-remote.sh" >&2; exit 6; }
+    # The runner learns the outcome from this file, not from the SSH exit
+    # status, so a dropped connection cannot hide a finished release.
+    if [ -n "${VH_RELEASE_RESULT_FILE:-}" ]; then
+        trap 'rc=$?; printf "exit=%s phase=%s\n" "$rc" "${PHASE:-unknown}" > "$VH_RELEASE_RESULT_FILE"' EXIT
+    fi
 
     case "$ROLLOUT" in
         groundwork) groundwork ;;

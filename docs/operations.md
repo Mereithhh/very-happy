@@ -598,31 +598,36 @@ requested on the old slot, `active-upstream.caddy` pointed at the candidate and
 the public release verified. Everything after it had not: `stop_old_slot` and the
 final `write_state`.
 
-**Corrected 2026-09-23 (B-483): the remote script does NOT die with the SSH
-session.** It keeps waiting in the drain loop, the old slot never reports
-`drained` (long-lived daemon sockets), and at the drain deadline
-(`VH_RELEASE_DRAIN_SECONDS`, default 600 s after the drain request) the failed
-`[ "$drained" = true ]` fires `trap rollback_switch ERR`, which writes the OLD
-port back into `active-upstream.caddy` and reloads Caddy. With both slots alive
-that silently puts the old release back in front (every earlier B-479 looked
+**B-483 (2026-09-23) changed the contract; the "old behaviour" paragraph at the
+end remains for reading old incidents.** Since B-483:
+
+- The runner starts the remote script with `setsid nohup` and polls its log and
+  a result file over short keepalive'd SSH calls, so a dropped session neither
+  stops the release nor hides its verdict (`exit=N phase=…` in the result file).
+- The script takes `flock /opt/happy/release/deploy.lock`; a second run while
+  one is alive exits 6 instead of racing it.
+- As soon as `verify_public_release` passes after the Caddy reload, the switch
+  is **committed**: `state.env` is written with the candidate as active and the
+  ERR trap is disarmed. Drain is best-effort housekeeping: if the old slot does
+  not report `drained` by the deadline (+30 s after a forced disconnect) it is
+  left running, off the upstream, and the log tells you how to stop it. Nothing
+  after the commit can move traffic back.
+- `rollback_switch` (only reachable before the commit) refuses to point Caddy at
+  an old slot that does not answer `/health`; it leaves the current upstream
+  alone and says so.
+
+If you ever find `state.env` naming the wrong slot again, the recovery below
+still applies — but first confirm no `deploy-blue-green-remote.sh` is alive
+(`pgrep -af deploy-blue-green-remote.sh`; the lock file tells you too).
+
+Old behaviour, for the record: the remote script did not die with the SSH
+session; it kept waiting in the drain loop, the old slot never reported
+`drained` (long-lived daemon sockets), and at the drain deadline the failed
+`[ "$drained" = true ]` fired `trap rollback_switch ERR`, which wrote the OLD
+port back into `active-upstream.caddy` and reloaded Caddy. With both slots alive
+that silently put the old release back in front (every earlier B-479 looked
 "fine" only because both slots held the same release). With the old slot
-stopped it is a 502 outage (2026-09-23, ~15 min). So, first thing:
-
-```bash
-ssh vh-sg 'pgrep -af deploy-blue-green-remote.sh'   # alive = it WILL roll back at the deadline
-ssh vh-sg 'pkill -TERM -f deploy-blue-green-remote.sh'  # SIGTERM does not run the ERR trap
-```
-
-Only then repair `state.env`, and never stop the old slot while that script is
-alive. If traffic already flipped back to the old slot, write
-`reverse_proxy 127.0.0.1:<new port>` into `active-upstream.caddy` and
-`systemctl reload caddy`.
-
-The remaining damage is in `state.env`: it still names the old slot as active. That
-file is the authority the next deploy reads, so leaving it wrong makes the next
-release treat the live slot as its candidate. A red workflow whose site is
-already serving the new SHA is a bookkeeping incident, not an outage — as long
-as the zombie script is dead.
+stopped it was a 502 outage (2026-09-23, ~15 min).
 
 Establish reality first — never trust either the workflow result or `state.env`:
 

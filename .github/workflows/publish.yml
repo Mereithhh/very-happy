@@ -197,6 +197,34 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: node scripts/ci/wait-cli-smoke.mjs
 
+      # B-481: `npm publish` acknowledges a platform package before the registry
+      # actually serves its tarball (0.2.145 and 0.2.147: `+ published`, then
+      # a 404 tarball for ~12 minutes; 0.2.145 never landed at all). The smoke
+      # matrix installs a locally packed tools tarball, so it cannot notice.
+      # Moving `latest` while a tarball is missing breaks `npm i -g` on that
+      # platform's postinstall. Wait for every platform tarball to answer 200
+      # before promoting; give up (and leave `latest` alone) after 25 minutes.
+      - name: Wait for every platform tarball on the registry
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=${VERSION#v}
+          deadline=$(( $(date +%s) + 1500 ))
+          for platform in arm64-darwin arm64-linux arm64-win32 x64-darwin x64-linux x64-win32; do
+            name="very-happy-tools-$platform"
+            url="https://registry.npmjs.org/$name/-/$name-$version.tgz"
+            until code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "$url"); [ "$code" = 200 ]; do
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::$name@$version tarball still $code on the registry; refusing to promote latest (re-run this workflow once it lands, or re-tag the same commit if it never does)"
+                exit 1
+              fi
+              echo "$name@$version tarball -> $code; waiting"
+              sleep 20
+            done
+            echo "$name@$version tarball -> 200"
+          done
+
       - name: Promote to latest (never backwards, idempotent)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -123,6 +123,7 @@ run_rollback_case() {
         write_active_upstream() { echo "write-active:$1" >> "$action_log"; }
         reload_caddy() { echo reload-caddy >> "$action_log"; }
         verify_public_release() { echo "verify:$1" >> "$action_log"; }
+        slot_healthy() { [ "${OLD_SLOT_HEALTHY:-1}" = 1 ]; }
         false
         rollback_switch
     ) >/dev/null 2>&1
@@ -144,6 +145,49 @@ run_rollback_case after-switch-write write-active:3005 stop-candidate
 run_rollback_case after-switch write-active:3005 stop-candidate
 # A failure after old shutdown first restores old capacity, then switches back.
 run_rollback_case after-old-stop start-old stop-candidate
+# B-483: an old slot that does not answer /health must never be put back in
+# front — that is how a stopped slot became a 15-minute 502. The include is
+# left alone; the candidate that already passed verification keeps serving.
+OLD_SLOT_HEALTHY=0 run_rollback_case after-switch stop-probe write-active
+OLD_SLOT_HEALTHY=0 run_rollback_case after-switch-write stop-probe write-active
+
+# B-483: once the public release is verified the switch is committed — state
+# is written first, and a drain that never completes must neither roll back
+# nor stop an undrained slot.
+switch_case() {
+    local name="$1" drain_answer="$2" expected="$3" forbidden="$4" action_log
+    action_log=$(mktemp)
+    (
+        set -e
+        ACTIVE_SLOT=blue ACTIVE_PORT=3101 ACTIVE_IMAGE=old-image ACTIVE_RELEASE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        CANDIDATE_SLOT=green CANDIDATE_PORT=3102 IMAGE=new-image VERSION=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        RELEASE_COMPOSE=/x SLOT_ENV=/y PHASE=after-switch
+        write_state() { echo "write-state:$ACTIVE_SLOT:$ROLLBACK_SLOT" >> "$action_log"; }
+        admin_curl() { echo "admin:$1:$2:$3" >> "$action_log"; printf '{"state":"%s","localSockets":3}' "$drain_answer"; }
+        stop_old_slot() { echo "stop-old:$1" >> "$action_log"; }
+        write_active_upstream() { echo "write-active:$1" >> "$action_log"; }
+        reload_caddy() { echo reload-caddy >> "$action_log"; }
+        verify_public_release() { echo "verify:$1" >> "$action_log"; }
+        stop_http_probe() { echo stop-probe >> "$action_log"; }
+        probe_release_verdict() { echo probe-verdict >> "$action_log"; }
+        sleep() { :; }
+        commit_switch >/dev/null
+        [ "$PHASE" = committed ] || exit 90
+        [ "$ACTIVE_SLOT" = green ] && [ "$ROLLBACK_SLOT" = blue ] && [ "$OLD_PORT" = 3101 ] || exit 91
+        # deadline already in the past: straight to disconnect + grace loop
+        finish_switch "$(( ($(date +%s) - 1) * 1000 ))" 2>/dev/null
+        echo "finish-rc:$?" >> "$action_log"
+        echo "phase:$PHASE" >> "$action_log"
+    ) || fail "$name: switch flow aborted ($?)"
+    head -1 "$action_log" | grep -Fq 'write-state:green:blue' || fail "$name: state must be committed before any drain work"
+    grep -Fq "$expected" "$action_log" || fail "$name missing action $expected"
+    if [ -n "$forbidden" ] && grep -Fq "$forbidden" "$action_log"; then fail "$name unexpectedly ran $forbidden"; fi
+    grep -Fq 'finish-rc:0' "$action_log" || fail "$name: housekeeping must not fail the release"
+    rm -f "$action_log"
+}
+switch_case 'drain never completes' draining 'phase:old-slot-retained' 'stop-old'
+switch_case 'drain never completes keeps upstream' draining 'admin:3101:POST:/_vh/release/disconnect' 'write-active'
+switch_case 'drained old slot is stopped' drained 'stop-old:blue' 'write-active'
 
 VH_BLUE_IMAGE=ghcr.io/mereithhh/very-happy-server@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
 VH_GREEN_IMAGE=ghcr.io/mereithhh/very-happy-server@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
@@ -154,6 +198,15 @@ VH_PRODUCTION_ENV_FILE=/dev/null \
 docker compose -f "$REPO_ROOT/ops/production/docker-compose.blue-green.yml" config --quiet
 
 bash -n "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh" "$REPO_ROOT/scripts/ci/deploy-hwsg.sh"
+
+# B-483 contracts: one deployment per host, the runner learns the verdict from
+# the result file over keepalive'd short SSH calls, and the remote run is
+# detached from the runner's session.
+grep -Fq 'flock -n 9' "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh" || fail 'remote deploy must hold the host lock'
+grep -Fq 'VH_RELEASE_RESULT_FILE' "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh" || fail 'remote deploy must write a result marker'
+grep -Fq 'ServerAliveInterval=15' "$REPO_ROOT/scripts/ci/deploy-hwsg.sh" || fail 'runner ssh must send keepalives'
+grep -Fq 'setsid nohup bash' "$REPO_ROOT/scripts/ci/deploy-hwsg.sh" || fail 'remote deploy must be detached from the runner session'
+grep -Fq 'poll_remote_deploy "$log" "$result"' "$REPO_ROOT/scripts/ci/deploy-hwsg.sh" || fail 'runner must poll the result file'
 
 # Production bootstrap contracts: Caddy must be able to traverse the release
 # directory, while both the forward path and rollback recreate only the server.
