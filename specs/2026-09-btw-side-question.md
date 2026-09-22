@@ -1,6 +1,6 @@
 # `/btw` 侧问（side question）：不打断主对话的旁路问答
 
-> 状态：Shipped（commit `9d3a101f`，PR #143，2026-09-02 合入 main；web `main@892be05e` + CLI v0.2.100 已于 2026-09-02 发布）；2026-09-22 B-480 修订提示词形状与并发语义（见「B-480 修订」），CLI v0.2.146 发布（v0.2.145 因 npm 平台包 staged 作废）
+> 状态：Shipped（commit `9d3a101f`，PR #143，2026-09-02 合入 main；web `main@892be05e` + CLI v0.2.100 已于 2026-09-02 发布）；2026-09-22 B-480 修订提示词形状与并发语义（见「B-480 修订」），CLI v0.2.146 发布（v0.2.145 因 npm 平台包 staged 作废）；B-482 改走进程内 `side_question` 控制请求（已合入，待发布）
 > 日期：2026-09-02 ｜ 关联 backlog：B-283 ｜ 出处：Owner 2026-09-02「给 claude code sdk session 支持类似 btw 命令的能力」
 
 ## 背景
@@ -123,3 +123,34 @@ server 无改动。发布顺序：web（镜像）→ CLI patch 版；存量 wrap
 - 并发语义：页面刷新/换 tab 后 btwStore（内存）丢 requestId，永远发不出 `btw-cancel`；旧行为是再问就 `already running`，最长撑到 10 min 上限。现在 `btw-ask` 遇到在跑的 slot 直接 abort 它并标 `cancelled`，新问题接管。web 自身仍有「本页有 running 就不发」的守卫，所以只有丢状态的客户端会走到这条。
 - 模型仍去调工具（理论上 `tools: []` 下不会，MCP 也被 `strictMcpConfig` 清空）：不再把 `error_max_turns` 当失败，按 Claude Code 回 `(The model tried to call X instead of answering directly. Try rephrasing or ask in the main conversation.)`；`system/api_error` 的 `error.formatted` 进错误文案。
 - 仅 CLI 改动；存量 wrapper 不受益（铁律 14），需新建会话或重启会话。
+
+## B-482 修订（2026-09-22）：走 Claude Code 自己的进程内 `/btw`
+
+Owner 问「有啥办法能做到和 claude code 的逻辑一样」。答案是有现成通道：
+
+- 运行中的 `claude` 进程在 SDK stdio 的控制请求分发链里处理 `side_question`（2.1.267 二进制，与 `interrupt` / `set_model` / `get_context_usage` 同一条 `else if (kt.request.subtype === …)`）。入参 `{question, history?: [{question, response, fallback_notice?}]}`，回 `{response, synthetic, refusal_fallback?}`；进度 `system/control_request_progress {status: 'started' | 'api_retry'}`（sdk.d.ts 注明「currently only side_question」）；SDK `Query.request()` 的 AbortSignal 会发 `control_cancel_request`，CLI 按 request_id abort。Remote Control 瘦客户端的 `/btw`（`thinClientDispatch: "control-request"`）走的就是它。
+- 它用进程内实时 messages（`dt`），主 turn 在跑时复用在跑的 query 上下文（`p4e()`），然后调 `/btw` 本地路径同一个函数（`LOe`）：同一段 reminder、同一个 fork、无工具、单轮、不落盘、同款 "(The model tried to call X…)"、refusal fallback。
+
+实现（仅 CLI；RPC `btw-ask/poll/cancel` 形状不变，web 零改动）：
+
+| 层 | 改动 |
+|---|---|
+| `claudeRemote.ts` | `onQueryReady` 多暴露 `sideQuestion(request, signal)` = `(response as any).request({subtype:'side_question', ...request}, {signal})` 的 `.response`。`request` 是 SDK 内部通用发送器（typed 方法全是它包的），公开类型没列这个 subtype |
+| `claudeRemoteLauncher.ts` | Query 就绪时 `session.setSideQuestionLive({ask, canControl})`，Query 结束 `finally` 置空 |
+| `session.ts` | 新增 `setSideQuestionLive / getSideQuestionLive`，`cleanup` 置空 |
+| `sideQuestion.ts` | `runSideQuestionLive(ask, input)`：history `{question, answer}` → `{question, response}`（同样 12 条 / 2000 字裁剪）；`response` 空 → 抛「without a result」；`refusal_fallback.content` 前置 `⚠ …`；结果带 `mode: 'live'`。`isUnsupportedSideQuestionError` 识别老 CLI 的 unknown-subtype |
+| `registerSideQuestionHandler.ts` | `getLiveQuery` dep；有 live 且 `canControl()` → live，否则 fork；live 因 unknown subtype 失败（且未取消）→ fork，其它 live 错误原样报错；ack 多 `mode` 字段 |
+| `runClaude.ts` | `getLiveQuery: () => currentSession?.getSideQuestionLive() ?? null`（local 模式永远 null） |
+
+兜底矩阵：
+
+| 情况 | 路径 |
+|---|---|
+| remote 模式、Query 存活、不在 SDK 回调里 | live |
+| 首轮前 / Query 重建间隙 / local 模式 | fork（B-283 + B-480 的路径） |
+| wrapper 正停在 canUseTool / elicitation 回调里（铁律 8） | fork |
+| wrapper 的 SDK 太老，CLI 回 unknown subtype | 首次 live 失败后 fork |
+
+与 B-280 版本的差异：上下文从「磁盘 transcript + resume 补 interrupted 占位」变成进程内实时消息（不再说「上个进程被中断」）；没有 token 级渐进文本（Claude Code 本地 `/btw` 也是整段回）；不再多起一个 claude 进程，hooks 问题不复存在。
+
+验证：本机 SDK 0.3.267 裸 Query 探针（`scratchpad/probe3.mjs`）——主 turn 跑 Bash 时问「现在在干嘛呢」3.5s 答出正在跑什么；turn 结束后与带历史再问正常；每次 `control_request_progress started` 先到。`claudeRemote.test.ts` 锁控制请求形状，`registerSideQuestionHandler.test.ts` 锁 live 优先与三种回退，`sideQuestion.test.ts` 锁 history 映射 / 取消 / 空答 / refusal 前缀。真机 V-158。

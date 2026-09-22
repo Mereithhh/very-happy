@@ -38,6 +38,60 @@ export interface SideQuestionResult {
     answer: string;
     /** Whether the fork actually carried the main conversation's context. */
     hadContext: boolean;
+    /** 'live' = answered inside the running Claude process (B-482); 'fork' = separate query over the transcript. */
+    mode?: SideQuestionMode;
+}
+
+export type SideQuestionMode = 'live' | 'fork';
+
+/**
+ * B-482 — the in-process path. Claude Code's own `/btw` is a `side_question`
+ * control request handled by the running `claude` process (the same chain
+ * that serves `interrupt` / `set_model` over the SDK's stdio channel; the
+ * Remote Control thin client uses exactly this). The process answers from its
+ * LIVE messages — including the turn in flight — with its own reminder, fork,
+ * no-tools policy and synthetic notices, so the behaviour is Claude Code's
+ * verbatim. The SDK types don't list the subtype; `Query.request()` sends it
+ * untyped. Progress (`system/control_request_progress`) is not consumed here.
+ */
+export interface SideQuestionLiveRequest {
+    question: string;
+    /** Claude Code's `btwHistory` shape: `response`, not `answer`. */
+    history?: { question: string; response: string; fallback_notice?: string }[];
+}
+export interface SideQuestionLiveResponse {
+    /** null when the process answered nothing (aborted); text otherwise, possibly a synthetic notice. */
+    response: string | null;
+    synthetic?: boolean;
+    refusal_fallback?: { original_model?: string; fallback_model?: string; content?: string };
+}
+export type SideQuestionLiveAsk = (request: SideQuestionLiveRequest, signal?: AbortSignal) => Promise<SideQuestionLiveResponse>;
+/** What the launcher hands over while a remote Query is alive (null between Queries / in local mode). */
+export interface SideQuestionLiveQuery {
+    ask: SideQuestionLiveAsk;
+    /** 铁律 8: no control request while the wrapper sits inside an SDK callback. */
+    canControl: () => boolean;
+}
+
+/** True for the CLI's "I don't know this control request" verdicts — the caller then falls back to the fork. */
+export function isUnsupportedSideQuestionError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /unknown|unsupported|not supported|unrecognized|invalid.*subtype/i.test(message);
+}
+
+export async function runSideQuestionLive(ask: SideQuestionLiveAsk, input: SideQuestionInput): Promise<SideQuestionResult> {
+    const history = (input.history ?? [])
+        .filter((h) => h.question.trim() && h.answer.trim())
+        .slice(-MAX_HISTORY)
+        .map((h) => ({ question: clip(h.question.trim(), MAX_HISTORY_CHARS), response: clip(h.answer.trim(), MAX_HISTORY_CHARS) }));
+    const result = await ask({ question: input.question.trim(), ...(history.length ? { history } : {}) }, input.signal);
+    if (input.signal?.aborted) throw new Error('Side question cancelled');
+    const text = typeof result?.response === 'string' ? result.response : '';
+    if (!text.trim()) throw new Error('Side question ended without a result');
+    const fallback = result.refusal_fallback?.content;
+    const answer = fallback ? `⚠ ${fallback}\n\n${text}` : text;
+    input.onText?.(answer);
+    return { answer, hadContext: true, mode: 'live' };
 }
 
 type QueryFn = (params: { prompt: QueryPrompt; options?: QueryOptions }) => AsyncIterable<SDKMessage>;
@@ -208,8 +262,8 @@ export async function runSideQuestion(query: QueryFn, input: SideQuestionInput):
     if (toolAttempt && !final.trim() && !streamed.trim()) {
         const notice = toolAttemptNotice(toolAttempt);
         input.onText?.(notice);
-        return { answer: notice, hadContext: Boolean(input.resumeSessionId) };
+        return { answer: notice, hadContext: Boolean(input.resumeSessionId), mode: 'fork' };
     }
     if (!resultSeen && !final && !streamed) throw new Error(`Side question ended without a result${lastApiError ? `: ${lastApiError}` : ''}`);
-    return { answer: final || streamed, hadContext: Boolean(input.resumeSessionId) };
+    return { answer: final || streamed, hadContext: Boolean(input.resumeSessionId), mode: 'fork' };
 }

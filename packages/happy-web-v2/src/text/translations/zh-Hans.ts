@@ -1828,6 +1828,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep22b: {
+                title: '侧问改由正在运行的会话自己作答',
+                summary: '以前侧问是另起一个 Claude 进程从磁盘读回对话来答，任务进行中它只看得到已写盘的部分，有时会把正在跑的一步说成「被中断」。Claude Code 自带进程内的 /btw，现在会话直接用它。',
+                live: '问题发给活着的会话：它看得到正在进行的这一轮，用 Claude Code 自己的侧问口径作答，也不再多起一个进程。命令跑着的时候问「现在在干嘛」，得到的是真实现状。',
+                fallback: '首轮之前、会话正停在权限确认上、或 CLI 太老不认识这个请求时，仍走原来的独立查询路径。需要更新 CLI 并新建或重启会话。',
+            },
             sep22a: {
                 title: '侧问改成旁观者作答，不再冒充主 agent',
                 summary: '在侧问面板问「现在在干嘛呢」，可能回一句「抱歉，上一条我只说了没做。现在真的起：」然后就没了。原因是侧问被当成了主对话的下一轮，模型去调它并没有的工具，话说到一半就停了。',

@@ -570,6 +570,8 @@ export async function claudeRemoteLauncher(
                     onQueryReady: (q) => {
                         runtimeControls.setQuery(q);
                         turnSteering.setInterrupt(q.interrupt);
+                        // B-482: /btw answers inside this process while it lives.
+                        session.setSideQuestionLive({ ask: q.sideQuestion, canControl: q.canControl });
                         session.setSteerHandler(async (input) => {
                             // Steer injects into the RUNNING turn, so it is only
                             // legal when the live Query was built for this mode.
@@ -695,6 +697,7 @@ export async function claudeRemoteLauncher(
                 runtimeControls.setQuery(null);
                 turnSteering.reset();
                 session.setSteerHandler(null);
+                session.setSideQuestionLive(null);
                 livePermissionModeHandler = null;
                 permissionHandler.setPermissionModeUpdater(undefined);
                 sdkToLogConverter.resetTransientState();
