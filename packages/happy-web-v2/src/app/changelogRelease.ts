@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-22-agent-home-dirs',
+    cliVersion: '0.2.144',
+    date: '2026-09-22',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep22.title',
+    summaryKey: 'changelog.releases.sep22.summary',
+    itemKeys: ['changelog.releases.sep22.shell', 'changelog.releases.sep22.pin'],
+  },
+  {
     id: '2026-09-20-stale-wrapper-notice',
     date: '2026-09-20',
     buildVersion: __APP_VERSION__,

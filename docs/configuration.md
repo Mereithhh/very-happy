@@ -277,6 +277,29 @@ trusted relay. This storage is not end-to-end encrypted and is currently used
 primarily by the Gemini path. Do not use it unless you trust the relay operator
 and backups.
 
+### Claude and Codex home directories
+
+Claude Code keeps transcripts under `$CLAUDE_CONFIG_DIR` (default `~/.claude`)
+and Codex under `$CODEX_HOME` (default `~/.codex`). A resume from the web must
+look in the same place as `claude --resume` in a terminal, so the daemon does
+not rely on the environment it was started with. Before every spawn, resume or
+restart it resolves each directory in this order:
+
+1. a machine-local pin in `$HAPPY_HOME_DIR/settings.json` (`claudeConfigDir`,
+   `codexHome`; `~` allowed) — set with `very-happy agent-home set claude <dir>`;
+2. the daemon user's login shell (`$SHELL -l -i`), i.e. whatever the rc files
+   export — the normal case when a dev box keeps the directories on a
+   persistent disk;
+3. the daemon's own environment (a service manager may set it deliberately);
+4. the provider default.
+
+The login-shell answer is cached for a minute and a shell that does not answer
+within three seconds is skipped for five. If a transcript is still not where
+the resolved directory says, every other directory from the list is checked
+and that one spawn is pointed at the directory that holds it. `very-happy
+agent-home` and `very-happy doctor` print the resolved directories with their
+source. Running sessions keep the directory they started with.
+
 ### Claude credentials for structured sessions
 
 Web-created structured Claude sessions use the bundled Agent SDK. Very Happy

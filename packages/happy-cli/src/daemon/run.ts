@@ -32,7 +32,7 @@ import { decideRestart, recordRestartAttempt, DEFAULT_MAX_RESTARTS } from './res
 import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
-import { getProjectPath } from '@/claude/utils/path';
+import { refreshAgentHomes, agentHomeSpawnEnv, locateClaudeConversation, describeAgentHome } from '@/agentHome';
 import { existsSync, mkdtempSync, rmSync, statSync } from 'fs';
 import { join } from 'path';
 import { spawn } from 'node:child_process';
@@ -149,6 +149,14 @@ export async function startDaemon(): Promise<void> {
   let cliUpdateStateRef: CliUpdateState | null = null;
   let lastHandoverHold: string | null = null;
   let claudeCredentialStoreSetting: 'auto' | 'file' = (await readSettings()).claudeCredentialStore === 'file' ? 'file' : 'auto';
+  // B-478: align the daemon's own CLAUDE_CONFIG_DIR / CODEX_HOME with the
+  // user's login shell (and settings.json) before anything reads them.
+  try {
+    const homes = await refreshAgentHomes();
+    logger.debug(`[DAEMON RUN] Claude config dir: ${describeAgentHome(homes.claudeConfigDir)}; Codex home: ${describeAgentHome(homes.codexHome)}`);
+  } catch (error) {
+    logger.debug('[DAEMON RUN] agent home resolution failed; using the daemon environment as-is', error);
+  }
   // We don't have cleanup function at the time of server construction
   // Control flow is:
   // 1. Create promise that will resolve when shutdown is requested
@@ -405,7 +413,11 @@ export async function startDaemon(): Promise<void> {
     const assistantSpawnGate = createSpawnGate<SpawnSessionResult>();
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
-    const spawnSession = (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+    const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+      // B-478: re-read where Claude/Codex keep their state before every spawn
+      // (cached; a login-shell probe at most once a minute) so a directory the
+      // user moved after `daemon start` is honoured without a daemon restart.
+      await refreshAgentHomes();
       if (assistantSpawnMode(options) !== 'claude-singleton') {
         return spawnSessionImpl(options);
       }
@@ -535,7 +547,7 @@ export async function startDaemon(): Promise<void> {
           );
           const claudeSessionId = resolveAssistantClaudeSessionId(s.metadata, serverMetadata);
           const canResumeClaude = !!claudeSessionId
-            && existsSync(join(getProjectPath(assistantHome()), `${claudeSessionId}.jsonl`));
+            && locateClaudeConversation(assistantHome(), claudeSessionId) !== null;
           return spawnTrackedHappyProcess({
             args: [
               'claude',
@@ -552,6 +564,8 @@ export async function startDaemon(): Promise<void> {
               // B-297: see the resume/restart paths — every spawn carries the
               // credentialStore=file shim, not just fresh sessions (B-276 D8).
               ...(claudeAuthServiceRef?.claudeProcessEnvOverrides() ?? {}),
+              // B-478: point Claude at the directory the transcript was found in.
+              ...(canResumeClaude ? agentHomeSpawnEnv({ workingDirectory: assistantHome(), claudeSessionId }) : {}),
               HAPPY_SESSION_VARIANT: 'assistant',
               HAPPY_RECONNECT_SESSION_ID: assistantSessionId,
               HAPPY_RECONNECT_ENCRYPTION_KEY: s.encryptionKey,
@@ -791,6 +805,8 @@ export async function startDaemon(): Promise<void> {
             }
           }
 
+          // B-478: same per-spawn home override as the direct path.
+          Object.assign(tmuxEnv, agentHomeSpawnEnv({ workingDirectory: directory, claudeSessionId: options.resumeClaudeSessionId, codexThreadId: options.resumeCodexThreadId }));
           // Add extra environment variables (these should already be filtered)
           Object.assign(tmuxEnv, extraEnv);
 
@@ -911,6 +927,9 @@ export async function startDaemon(): Promise<void> {
             cwd: directory,
             env: {
               ...process.env,
+              // B-478: a fork/duplicate resumes a transcript that may live in
+              // a moved config dir. Explicit environmentVariables still win.
+              ...agentHomeSpawnEnv({ workingDirectory: directory, claudeSessionId: options.resumeClaudeSessionId, codexThreadId: options.resumeCodexThreadId }),
               ...extraEnv
             },
             directoryCreated,
@@ -1102,6 +1121,7 @@ export async function startDaemon(): Promise<void> {
         gate = createSpawnGate<SpawnSessionResult>();
         resumeGates.set(happySessionId, gate);
       }
+      await refreshAgentHomes(); // B-478
       try {
         return await gate.join(() => resumeSessionImpl(happySessionId, options));
       } finally {
@@ -1160,7 +1180,9 @@ export async function startDaemon(): Promise<void> {
 
         const precheck = resumePrecheck(metadata, {
           cwdExists: (p) => existsSync(p),
-          conversationExists: (cwd, claudeSessionId) => existsSync(join(getProjectPath(cwd), `${claudeSessionId}.jsonl`)),
+          // B-478: also looks in every other Claude config dir the user's shell
+          // or settings point at, not just the one the daemon was started with.
+          conversationExists: (cwd, claudeSessionId) => locateClaudeConversation(cwd, claudeSessionId) !== null,
         });
         // A missing transcript is NOT a dead end: the conversation history lives
         // on the server and stays visible. Rather than strand the user on
@@ -1200,6 +1222,9 @@ export async function startDaemon(): Promise<void> {
             // fell back to `auto` reads a different credential store than the
             // fresh one next to it (B-276 D8).
             ...(claudeAuthServiceRef?.claudeProcessEnvOverrides() ?? {}),
+            // B-478: if the transcript lives in a Claude/Codex home other than
+            // the resolved one, this spawn is pointed there.
+            ...(freshConversation ? {} : agentHomeSpawnEnv({ workingDirectory: launch.cwd, claudeSessionId: metadata.claudeSessionId, codexThreadId: metadata.codexThreadId })),
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
             HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,
@@ -1279,6 +1304,7 @@ export async function startDaemon(): Promise<void> {
         gate = createSpawnGate<SpawnSessionResult>();
         resumeGates.set(happySessionId, gate);
       }
+      await refreshAgentHomes(); // B-478
       try {
         // `replace` (not `join`): a restart must actually run and must serialize
         // AFTER any in-flight resume for the same session rather than dedupe
@@ -1334,7 +1360,9 @@ export async function startDaemon(): Promise<void> {
         // transcript. Mirrors the assistant re-attach path.
         const precheck = resumePrecheck(metadata, {
           cwdExists: (p) => existsSync(p),
-          conversationExists: (cwd, claudeSessionId) => existsSync(join(getProjectPath(cwd), `${claudeSessionId}.jsonl`)),
+          // B-478: also looks in every other Claude config dir the user's shell
+          // or settings point at, not just the one the daemon was started with.
+          conversationExists: (cwd, claudeSessionId) => locateClaudeConversation(cwd, claudeSessionId) !== null,
         });
         let args: string[];
         let cwd: string;
@@ -1376,6 +1404,8 @@ export async function startDaemon(): Promise<void> {
             // fell back to `auto` reads a different credential store than the
             // fresh one next to it (B-276 D8).
             ...(claudeAuthServiceRef?.claudeProcessEnvOverrides() ?? {}),
+            // B-478: see resumeSession.
+            ...(precheck.ok ? agentHomeSpawnEnv({ workingDirectory: cwd, claudeSessionId: metadata.claudeSessionId, codexThreadId: metadata.codexThreadId }) : {}),
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
             HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,

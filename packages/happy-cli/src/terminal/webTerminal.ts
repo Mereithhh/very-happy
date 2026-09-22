@@ -64,7 +64,7 @@ import * as pty from 'node-pty';
 import { planTerminalRestore, TERMINAL_ID_RE } from './terminalRestore';
 import { USER_SESSIONS_FORMAT, parseUserSessions, attachStartupCommand, isSafeTmuxSessionName, isVhSessionName, TMUX_SESSION_ID_RE, type UserTmuxSession } from './userTmuxSessions';
 import { VH_TMUX_SOCKET_ENV } from './tmuxSocket';
-import { getProjectPath } from '@/claude/utils/path';
+import { locateClaudeConversation } from '@/agentHome';
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
@@ -2037,7 +2037,8 @@ export class WebTerminalManager {
             cwdExists: (cwd) => {
                 try { return existsSync(cwd) && statSync(cwd).isDirectory(); } catch { return false; }
             },
-            conversationExists: (cwd, claudeSessionId) => existsSync(join(getProjectPath(cwd), `${claudeSessionId}.jsonl`)),
+            // B-478: every Claude config dir the user might have pointed a shell at.
+            conversationExists: (cwd, claudeSessionId) => locateClaudeConversation(cwd, claudeSessionId) !== null,
             // B-273: only consulted for records that were attach terminals.
             // Unbounded: the panel's 50-row cap must not hide a restore target.
             userSessions: record.attachTmux ? this.listUserTmuxSessions(Infinity) : [],

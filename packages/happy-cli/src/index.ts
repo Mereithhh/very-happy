@@ -164,6 +164,16 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       }
       process.exit(1)
     }
+  } else if (subcommand === 'agent-home') {
+    // B-478: show / pin where Claude Code and Codex keep their conversations.
+    try {
+      const { parseAgentHomeArgs, runAgentHomeCommand } = await import('./commands/agentHome');
+      await runAgentHomeCommand(parseAgentHomeArgs(args.slice(1)));
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      process.exit(1)
+    }
   } else if (subcommand === 'spawn') {
     try {
       const { handleSpawnCommand } = await import('./commands/spawn');
@@ -872,6 +882,8 @@ ${chalk.bold('Usage:')}
   very-happy install-terminal-hooks
                             Install optional Claude terminal mirror hooks
                             (add --remove to uninstall them)
+  very-happy agent-home        Show or pin where Claude Code / Codex keep their
+                            conversations on this machine (agent-home --help)
   very-happy connect           Connect AI vendor API keys
   very-happy todo              Built-in Todos and official agent skill (todo --help)
   very-happy sandbox           Configure and manage OS-level sandboxing

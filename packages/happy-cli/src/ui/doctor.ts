@@ -280,6 +280,17 @@ export async function runDoctorCommand(): Promise<void> {
         console.log(chalk.gray('  OS-keychain credentials cannot be verified here; see /docs/configuration#claude-credentials.'));
     }
     console.log(chalk.gray('  An external claude command is only needed for native terminal/mirror use.'));
+    // B-478: where resumes will look for transcripts, and why.
+    try {
+        const { resolveAgentHomesForCli } = await import('@/commands/agentHome');
+        const { describeAgentHome } = await import('@/agentHome');
+        const homes = await resolveAgentHomesForCli();
+        console.log(chalk.green(`✓ Claude config dir: ${describeAgentHome(homes.claudeConfigDir)}`));
+        console.log(chalk.green(`✓ Codex home: ${describeAgentHome(homes.codexHome)}`));
+        console.log(chalk.gray('  Resolved from settings.json, then your login shell, then the daemon environment; pin with `very-happy agent-home`.'));
+    } catch {
+        console.log(chalk.yellow('○ Could not resolve the Claude/Codex home directories'));
+    }
     if (availableAgents.length === 0) {
         console.log(chalk.yellow('○ No external agent command found on this daemon PATH'));
         console.log(chalk.gray('  Codex, Gemini, OpenCode, OpenClaw, and native Claude terminal paths need their local command or gateway.'));
