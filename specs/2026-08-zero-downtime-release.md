@@ -423,3 +423,33 @@ debounce 与 RPC reconnect grace 吸收 daemon 控制 socket 的短暂切换。
   tool result 和 Usage 更新连续。
 - 旧版本 CLI 与发布前已打开的旧 Web tab 在 passive drain deadline 后能自动恢复，且不会
   出现需要手工刷新才能继续的状态。
+
+
+## 修订 2026-09-23（B-483）：切流验证通过即提交，drain 不再有回滚权
+
+事故：远端脚本在 runner 的 SSH 断掉后继续跑，旧槽永远等不到 `drained`（daemon 长连接、
+`?vh_slot=` 钉住的客户端），600s deadline 一到 `[ "$drained" = true ]` 触发 ERR trap，
+`rollback_switch` 把 Caddy 切回旧槽。两槽都活 = 静默回滚到旧 release（B-479 前四次）；
+旧槽已被停 = 15 分钟 502。
+
+契约改为：
+
+1. `verify_public_release` 在 Caddy reload 后通过 ⇒ 立即 `commit_switch`：`write_state`
+   （candidate 成为 active，旧槽成为 rollback）并 `trap - ERR`。此后任何步骤都不得改
+   `active-upstream.caddy`。
+2. `finish_switch` 是善后：`wait_for_drain` 到 deadline，未 drained 则 `/disconnect` + 30s；
+   仍未 drained 就**保留旧槽运行**（只有全零状态才允许 SIGTERM，与 §2.2 一致），日志给出手工
+   停止命令；drained 才 `stop_old_slot`。善后失败（公网复核、probe streak）以 exit 5 报告，
+   不回滚。
+3. `rollback_switch` 只在提交前可达，且写回旧 upstream 前先探 `/health`；旧槽不应答就不
+   写回，保留当前 upstream。
+4. 主机侧 `flock /opt/happy/release/deploy.lock`，同一时刻只有一个部署；runner 用
+   `setsid nohup` 起脚本并轮询 `deploy.log` + `deploy.result`（`exit=N phase=…`），SSH 加
+   keepalive。runner 会话死掉不再影响结论。
+5. `publish.yml` 的 promote 前等六个 `very-happy-tools-*` tarball 在 registry 上都 200
+   （最长 25 分钟），否则不动 `latest`（B-481）。
+
+测试：`scripts/ci/test-blue-green-state-machine.sh` 新增——旧槽不健康时 rollback 不写回
+include；commit 先于任何 drain 动作写 state；drain 永不完成时不 stop 旧槽、不写 include、
+善后 rc=0；drained 时 stop 的是旧槽。runner 轮询函数在本机用假 ssh 跑通（流式日志、返回远端
+退出码）。
