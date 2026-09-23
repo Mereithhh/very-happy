@@ -33,13 +33,27 @@ export type AgentDefaultConfig = {
     effortLevel: string | null;
 };
 
+/**
+ * Opus 5.5 needs Claude Code >= 2.1.280: older bundled CLIs get a 400
+ * "version 2.1.280 or newer is required" (probed on SDK 0.3.267, 2026-09-24).
+ * Wrappers on SDK >= 0.3.281 advertise this capability at spawn, before the
+ * first SDK response publishes their model catalog.
+ */
+export const CLAUDE_OPUS_55_MODEL = 'claude-opus-5-5';
+export const CLAUDE_OPUS_55_CAPABILITY = 'claude-opus-5-5-v1';
+
+export function supportsClaudeOpus55(metadata: { capabilities?: string[] | null } | null | undefined): boolean {
+    return metadata?.capabilities?.includes(CLAUDE_OPUS_55_CAPABILITY) === true;
+}
+
 const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     // The Claude UI key for YOLO is `bypassPermissions`; the CLI also accepts
     // `yolo` and maps it to the Claude SDK's bypass mode.
-    // model/effort default to the CLI's own local config ('default' = don't
-    // pass a model; effort null = don't send effort) so a new chat follows
-    // whatever the machine's `claude` is configured with (e.g. /model there).
-    claude: { permissionMode: 'bypassPermissions', modelMode: 'default', effortLevel: null },
+    // model defaults to the pinned Opus 5.5 id (not the `opus` alias, whose
+    // target depends on the wrapper's bundled Claude Code). Wrappers that
+    // cannot run it fall back to 'default' via resolveDefaultModelMode.
+    // effort null = don't send effort.
+    claude: { permissionMode: 'bypassPermissions', modelMode: CLAUDE_OPUS_55_MODEL, effortLevel: null },
     codex: { permissionMode: 'yolo', modelMode: 'gpt-5.5', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
@@ -130,6 +144,24 @@ export function resolveAgentDefaultConfig(
         modelMode: userOverride.modelMode ?? codeDefaults.modelMode,
         effortLevel: userOverride.effortLevel ?? codeDefaults.effortLevel,
     };
+}
+
+/**
+ * Model a session runs when nobody picked one for it: the synced per-agent
+ * override, else the code default. A session whose wrapper cannot run the
+ * pinned Opus 5.5 default follows the machine's own default instead. Without
+ * session metadata (launcher, settings) the code default is shown as is.
+ */
+export function resolveDefaultModelMode(
+    overrides: AgentDefaultOverrides | null | undefined,
+    flavor: string | null | undefined,
+    metadata?: { capabilities?: string[] | null } | null,
+): string {
+    const selected = getAgentDefaultOverride(overrides, flavor).modelMode;
+    if (selected !== undefined) return selected;
+    const codeDefault = getCodeAgentDefaults(flavor).modelMode;
+    if (codeDefault === CLAUDE_OPUS_55_MODEL && metadata && !supportsClaudeOpus55(metadata)) return 'default';
+    return codeDefault;
 }
 
 export function hasAgentDefaultOverride(

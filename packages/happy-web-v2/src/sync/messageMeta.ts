@@ -1,6 +1,6 @@
 import type { Session } from './storageTypes';
 import type { Settings } from './settings';
-import { getAgentDefaultOverride, isPiAgent, normalizeAgentKey } from './agentDefaults';
+import { getAgentDefaultOverride, isPiAgent, normalizeAgentKey, resolveDefaultModelMode } from './agentDefaults';
 import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
 import { getEffortLevelsForModel } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
@@ -50,14 +50,13 @@ export function resolveMessageModeMeta(
     // B-103: for claude, ALWAYS send model/effort explicitly — `null` means
     // "reset to the machine's own default" on the CLI (both fields already
     // decode null → undefined there, on every released version). Omitting the
-    // field instead leaves the CLI's sticky per-session state (or its old
-    // hardcoded opus/medium fallbacks) in force, which silently defeated the
-    // "default = follow the machine /model" contract in agentDefaults.ts.
-    const modelMode = session.modelMode ?? agentOverrides.modelMode;
+    // field instead leaves the CLI's sticky per-session state in force.
+    // Claude falls back to the code default (pinned Opus 5.5) when the wrapper
+    // advertises it can run it, so the picker and the running model agree.
+    const modelMode = session.modelMode
+        ?? (isClaude ? resolveDefaultModelMode(settings?.agentDefaultOverrides, session.metadata?.flavor, session.metadata ?? {}) : agentOverrides.modelMode);
     if (modelMode !== undefined) {
         meta.model = modelMode === 'default' ? null : modelMode;
-    } else if (isClaude) {
-        meta.model = null;
     }
 
     const effort = session.effortLevel ?? agentOverrides.effortLevel;

@@ -1879,6 +1879,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep24a: {
+                title: 'Claude Opus 5.5 is the default; Codex gets gpt-6-sol and gpt-6-luna',
+                summary: 'Claude sessions now start on Opus 5.5 unless you picked another default in Settings → Agents. Opus 5.5 and its 1M-context variant are at the top of the model menu.',
+                opus: 'Opus 5.5 needs the CLI update: older CLIs bundle a Claude Code that cannot run it, so their sessions keep following the machine default instead of failing.',
+                codex: 'Codex sessions can pick gpt-6-sol and gpt-6-luna even though Codex does not list them yet.',
+            },
             sep23a: {
                 title: 'Terminals on machines without tmux no longer vanish',
                 summary: 'On a machine without tmux a web terminal still opens, but as a plain shell the daemon did not report — so about a minute after you opened it, it disappeared from the sidebar while it kept running.',

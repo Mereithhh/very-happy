@@ -1831,6 +1831,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep24a: {
+                title: 'Claude 默认改用 Opus 5.5；Codex 可选 gpt-6-sol 与 gpt-6-luna',
+                summary: '没在「设置 → 代理」里另选默认模型的话，Claude 会话现在默认用 Opus 5.5；模型菜单顶部新增 Opus 5.5 和它的 1M 上下文版本。',
+                opus: 'Opus 5.5 需要更新 CLI：旧 CLI 自带的 Claude Code 跑不了它，这类会话会继续跟随机器默认模型，而不是报错。',
+                codex: 'Codex 会话可以选 gpt-6-sol 和 gpt-6-luna，即使 Codex 自己的模型列表里还没有它们。',
+            },
             sep23a: {
                 title: '没有 tmux 的机器上，终端不再从列表里消失',
                 summary: '没装 tmux 的机器上网页终端照样能打开，但它是 daemon 没有上报的普通 shell，所以打开一分钟左右就会从侧栏消失，其实还在后台运行。',

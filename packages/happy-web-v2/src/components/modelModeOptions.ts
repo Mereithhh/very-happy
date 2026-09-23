@@ -1,7 +1,7 @@
 import type { Metadata } from '@/sync/storageTypes';
 import type { SimpleTranslationKey } from '@/text';
 import { hackModes } from '@/sync/modeHacks';
-import { getCodeAgentDefaults, isPiAgent } from '@/sync/agentDefaults';
+import { getCodeAgentDefaults, isPiAgent, supportsClaudeOpus55 } from '@/sync/agentDefaults';
 
 export type ModeOption = {
     key: string;
@@ -87,22 +87,25 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 }
 
 /**
- * Claude model picker. Keys are Claude Code `--model` aliases — the CLI, not
- * this list, decides what they resolve to, so the labels mirror Claude Code's
- * own /model picker (2.1.258: fable → Fable 5.1, opus → Opus 5, sonnet →
- * Sonnet 5, haiku → Haiku 4.5) instead of pinning a model id. `[1m]` is Claude
- * Code's 1M-context marker (accepted by the daemon resume path since B-290).
+ * Claude model picker. Most keys are Claude Code `--model` aliases — the CLI,
+ * not this list, decides what they resolve to, so their labels mirror the
+ * wrapper's bundled Claude Code (SDK 0.3.281 / CC 2.1.281: fable → Fable 5.1,
+ * opus → Opus 5.5, sonnet → Sonnet 5, haiku → Haiku 4.5). Opus 5.5 is also
+ * offered as a pinned id so it stays Opus 5.5 whatever the alias points at;
+ * it is the code default (agentDefaults.ts). `[1m]` is Claude Code's
+ * 1M-context marker (accepted by the daemon resume path since B-290).
  * `fable5` (pinned Fable 5) is deliberately absent: 2.1.258 rejects it with
  * `unrecognized_model` (probed 2026-09-03).
  */
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
+        ...CLAUDE_PINNED_MODELS,
         { key: 'fable', name: 'fable 5.1', description: 'Most capable for the hardest and longest-running tasks' },
         { key: 'fable[1m]', name: 'fable 5.1 (1M context)', description: 'Fable 5.1 with the 1M context window for long sessions' },
         { key: 'best', name: 'best available', description: 'Claude Code chooses the strongest available model' },
-        { key: 'opus', name: 'opus 5', description: 'Best for everyday, complex tasks (Claude Code opus alias)' },
-        { key: 'opus[1m]', name: 'opus 5 (1M context)', description: 'Opus 5 with the 1M context window for long sessions' },
+        { key: 'opus', name: 'opus (alias)', description: 'Claude Code opus alias — Opus 5.5 on current wrappers' },
+        { key: 'opus[1m]', name: 'opus (alias, 1M context)', description: 'Claude Code opus alias with the 1M context window' },
         { key: 'sonnet', name: 'sonnet 5', description: 'Efficient for routine tasks (Claude Code sonnet alias)' },
         { key: 'sonnet[1m]', name: 'sonnet 5 (1M context)', description: 'Sonnet 5 with the 1M context window for long sessions' },
         { key: 'haiku', name: 'haiku 4.5', description: 'Fastest for quick answers' },
@@ -110,10 +113,26 @@ export function getClaudeModelModes(): ModelMode[] {
     ];
 }
 
+const CLAUDE_PINNED_MODELS: ModelMode[] = [
+    { key: 'claude-opus-5-5', name: 'opus 5.5', description: 'Latest Opus — best for everyday, complex tasks' },
+    { key: 'claude-opus-5-5[1m]', name: 'opus 5.5 (1M context)', description: 'Opus 5.5 with the 1M context window for long sessions' },
+];
+
+/**
+ * Codex models newer than the catalog Codex's own `model/list` returns (0.154
+ * bundles gpt-6-astra and gpt-5.6-*). Both were run end to end through
+ * `codex exec -m` at low…ultra effort on 2026-09-24.
+ */
+const CODEX_EXTRA_MODELS: ModelMode[] = [
+    { key: 'gpt-6-sol', name: 'gpt-6-sol', description: null },
+    { key: 'gpt-6-luna', name: 'gpt-6-luna', description: null },
+];
+
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
         { key: 'gpt-6-astra', name: 'gpt-6-astra', description: null },
+        ...CODEX_EXTRA_MODELS,
         { key: 'gpt-5.6-sol', name: 'gpt-5.6-sol', description: null },
         { key: 'gpt-5.6-terra', name: 'gpt-5.6-terra', description: null },
         { key: 'gpt-5.6-luna', name: 'gpt-5.6-luna', description: null },
@@ -125,6 +144,18 @@ export function getCodexModelModes(): ModelMode[] {
         { key: 'gpt-5.2', name: 'gpt-5.2', description: null },
         { key: 'gpt-5.1-codex-mini', name: 'gpt-5.1-codex-mini', description: null },
     ];
+}
+
+/**
+ * Models the wrapper's published catalog can lack but the session can still
+ * run: pinned Opus 5.5 (the SDK lists it only under its `opus` alias, and only
+ * on wrappers that advertise the capability) and Codex models newer than
+ * Codex's bundled list.
+ */
+function getCatalogExtras(flavor: AgentFlavor, metadata: Metadata | null | undefined): ModelMode[] {
+    if (flavor === 'codex') return CODEX_EXTRA_MODELS;
+    if (flavor === 'claude' && supportsClaudeOpus55(metadata)) return CLAUDE_PINNED_MODELS;
+    return [];
 }
 
 export function getGeminiModelModes(): ModelMode[] {
@@ -211,10 +242,13 @@ export function getAvailableModels(
 ): ModelMode[] {
     const metadataModels = mapMetadataOptions(metadata?.models);
     if (metadataModels.length > 0) {
-        if ((flavor === 'codex' || flavor === 'claude') && !metadataModels.some((model) => model.key === 'default')) {
-            return [{ key: 'default', name: 'default model', description: null }, ...metadataModels];
+        const extras = getCatalogExtras(flavor, metadata).filter((extra) => !metadataModels.some((model) => model.key === extra.key));
+        const [first, ...rest] = metadataModels;
+        const withExtras = first?.key === 'default' ? [first, ...extras, ...rest] : [...extras, ...metadataModels];
+        if ((flavor === 'codex' || flavor === 'claude') && !withExtras.some((model) => model.key === 'default')) {
+            return [{ key: 'default', name: 'default model', description: null }, ...withExtras];
         }
-        return metadataModels;
+        return withExtras;
     }
     return getHardcodedModelModes(flavor, translate);
 }
@@ -322,12 +356,14 @@ export function getEffortLevelsForModel(
         const levels = getCodexEffortLevels();
         // Old wrappers silently ignore newer levels. Only advertise expanded
         // session ranges when that wrapper published its model capabilities.
-        if (metadata) return levels;
-        // Codex 0.153.4 app-server fallback, verified via model/list.
+        if (metadata && !metadata.models?.length) return levels;
+        // Codex 0.153.4 app-server fallback, verified via model/list; gpt-6-sol
+        // and gpt-6-luna follow their 5.6 siblings (luna tops out at max).
         // A connected machine's advertised catalog always takes precedence.
-        if (/^gpt-(6-astra|5\.6-(sol|terra|luna))$/.test(resolvedKey ?? modelKey)) {
+        const key = resolvedKey ?? modelKey;
+        if (/^gpt-(6-(astra|sol|luna)|5\.6-(sol|terra|luna))$/.test(key)) {
             const higher = [...levels, { key: 'max', name: 'max' }];
-            return (resolvedKey ?? modelKey) === 'gpt-5.6-luna' ? higher : [...higher, { key: 'ultra', name: 'ultra' }];
+            return key.endsWith('-luna') ? higher : [...higher, { key: 'ultra', name: 'ultra' }];
         }
         return levels;
     }

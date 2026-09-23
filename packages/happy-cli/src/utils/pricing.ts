@@ -23,6 +23,7 @@ export const PRICING = {
     'claude-mythos-5': { input: 10.0, output: 50.0, cache_write: 12.5, cache_read: 1.0 },
 
     // --- Claude 5 ---
+    'claude-opus-5-5': { input: 4.0, output: 20.0, cache_write: 5.0, cache_read: 0.20 },
     'claude-opus-5': { input: 5.0, output: 25.0, cache_write: 6.25, cache_read: 0.50 },
     'claude-sonnet-5': { input: 2.0, output: 10.0, cache_write: 2.5, cache_read: 0.20 },
 
@@ -50,14 +51,14 @@ export const PRICING = {
 
 export type ModelId = keyof typeof PRICING;
 
-/** Unknown / missing model → current Claude Code default (Opus 5). */
-const DEFAULT_MODEL: ModelId = 'claude-opus-5';
+/** Unknown / missing model → current Claude Code default (Opus 5.5 since CC 2.1.280). */
+const DEFAULT_MODEL: ModelId = 'claude-opus-5-5';
 
 const FAMILY_DEFAULTS: Record<'fable' | 'mythos' | 'opus' | 'sonnet' | 'haiku', ModelId> = {
     fable: 'claude-fable-5-1',
     // Project Glasswing counterpart of Fable: same tier, same published rates.
     mythos: 'claude-mythos-5-1',
-    opus: 'claude-opus-5',
+    opus: 'claude-opus-5-5',
     sonnet: 'claude-sonnet-5',
     haiku: 'claude-haiku-4-5',
 };
