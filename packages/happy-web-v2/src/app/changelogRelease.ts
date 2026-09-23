@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-23-terminals-without-tmux',
+    cliVersion: '0.2.148',
+    date: '2026-09-23',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep23a.title',
+    summaryKey: 'changelog.releases.sep23a.summary',
+    itemKeys: ['changelog.releases.sep23a.listed', 'changelog.releases.sep23a.install'],
+  },
+  {
     id: '2026-09-22-side-question-in-process',
     cliVersion: '0.2.147',
     date: '2026-09-22',

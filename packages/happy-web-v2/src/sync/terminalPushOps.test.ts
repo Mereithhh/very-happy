@@ -383,3 +383,26 @@ describe('B-474 removing a terminal from an offline machine\'s stored state', ()
         expect(original.webTerminals.updatedAt).toBe(1_000);
     });
 });
+
+// ── B-486: direct shells on a machine without tmux ───────────────────────────
+describe('B-486 direct-shell rows', () => {
+  it('the Chuhui case: once the daemon pushes the direct row, the expired create overlay no longer matters', () => {
+    const created = createdRow({ id: 'd1', machineId: 'push-m' });
+    const overlay: PushOverlay = { ...EMPTY_OVERLAY, created: [created] };
+    const later = NOW + CREATE_OVERLAY_TTL_MS + 1;
+    // Old daemon: tmux-less terminal is never pushed → the row disappears at the TTL.
+    const before = { 'push-m': push('new-box', []) };
+    expect(composeTerminalList(before, pruneOverlay(overlay, before, later), 20).map((r) => r.id)).not.toContain('d1');
+    // New daemon: the direct row is pushed → it stays, badged.
+    const after = { 'push-m': push('new-box', [term({ id: 'd1', direct: true, tags: [] })]) };
+    const rows = composeTerminalList(after, pruneOverlay(overlay, after, later), 20);
+    expect(rows.find((r) => r.id === 'd1')?.direct).toBe(true);
+  });
+
+  it('only a literal true marks a row direct', () => {
+    const rows = composeTerminalList({
+      m1: push('M', [{ id: 'x1', direct: 'yes' as any }, { id: 'x2' }]),
+    }, EMPTY_OVERLAY, 20);
+    expect(rows.map((r) => r.direct)).toEqual([undefined, undefined]);
+  });
+});

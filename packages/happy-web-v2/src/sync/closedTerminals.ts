@@ -74,6 +74,17 @@ export function codexHistorySupported(daemonState: any): boolean {
   return daemonRpcFlagSupported(daemonState, 'codexHistory');
 }
 
+/** B-486: did this machine's CURRENT daemon run report that tmux is missing
+ *  (so every new web terminal is a temporary direct shell)? Unknown — old
+ *  daemon, or a flag from a previous run — reads as false: never warn on a
+ *  guess. */
+export function tmuxMissing(daemonState: any): boolean {
+  const host = daemonState?.terminalHost;
+  if (!host || host.tmuxAvailable !== false || typeof host.detectedAt !== 'number') return false;
+  const startedAt = typeof daemonState.startedAt === 'number' ? daemonState.startedAt : 0;
+  return host.detectedAt >= startedAt;
+}
+
 /** B-282: does `kill-terminal` honour `alsoAttached` on this daemon run? */
 export function killAttachedSupported(daemonState: any): boolean {
   return daemonRpcFlagSupported(daemonState, 'tmuxSessions') && daemonState?.tmuxSessions?.killAttached === true;

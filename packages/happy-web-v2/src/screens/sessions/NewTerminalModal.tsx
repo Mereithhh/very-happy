@@ -35,7 +35,7 @@ import { createTerminalAt } from '@/app/newTerminal';
 import { machineFsList } from '@/sync/fsOps';
 import { recordRecentMachinePath } from '@/app/newChat';
 import { machineListTmuxSessions } from '@/sync/ops';
-import { tmuxSessionsSupported } from '@/sync/closedTerminals';
+import { tmuxMissing, tmuxSessionsSupported } from '@/sync/closedTerminals';
 import {
   attachSectionVisible,
   formatSessionAge,
@@ -262,6 +262,10 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
                 </option>
               ))}
             </select>
+            {/* B-486: warn BEFORE creating a terminal that cannot survive. */}
+            {machine && tmuxMissing((machine as any).daemonState) && (
+              <div className="ns-hint" role="note">{t('newTerminalModal.tmuxMissing')}</div>
+            )}
             {attachSectionVisible(attachSupported) && (
               <>
                 <label className="ns-label">{t('newTerminalModal.attachSection')}</label>

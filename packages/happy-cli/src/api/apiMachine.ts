@@ -18,7 +18,7 @@ import { backoff, delay } from '@/utils/time';
 import { isRateQuotaCode, pauseForRateQuota } from './stateWriteRetry';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { answerSocketRequest, describeSocketAckDrop } from './socketAck';
-import { WebTerminalManager, TerminalListItem } from '@/terminal/webTerminal';
+import { WebTerminalManager, TerminalListItem, tmuxRuntimeInfo } from '@/terminal/webTerminal';
 import { sendToVhTerminal } from '@/assistant/terminals';
 import { isValidTerminalId } from '@/assistant/ids';
 import { parseMirrorSendParams } from '@/mirror/mirrorProtocol';
@@ -1103,6 +1103,9 @@ export class ApiMachineClient {
                     // even in the (unreachable) case of a null prior state.
                     status: state?.status ?? 'running',
                     webTerminals: { updatedAt: Date.now(), terminals: list },
+                    // B-486: tmux can appear (user installs it) mid-run; the
+                    // tracker forces a push on that flip, so restamp here too.
+                    terminalHost: { ...tmuxRuntimeInfo(), detectedAt: Date.now() },
                     // B-084: the closed-terminal records ride every list push
                     // (a close always changes the list, so they stay in step).
                     // Read at write time — same freshness rule as the list.
@@ -1281,6 +1284,8 @@ export class ApiMachineClient {
                     terminalRestore: { rpcAvailable: true, detectedAt: now },
                     // B-273 capability flag (same restamp discipline).
                     tmuxSessions: { rpcAvailable: true, detectedAt: now, killAttached: true },
+                    // B-486: tmux presence (same restamp discipline).
+                    terminalHost: { ...tmuxRuntimeInfo(), detectedAt: now },
                     // B-290 capability flag: `claude-list-history` (same restamp discipline).
                     claudeHistory: { rpcAvailable: true, detectedAt: now },
                     // B-464 capability flag: `codex-list-history` / `codex-import-session`.

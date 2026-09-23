@@ -97,6 +97,8 @@ interface Row {
   /** B-150: terminal rows the daemon brought back after a restart. Cleared by
    *  the daemon on first open, so the badge disappears by itself. */
   restored?: boolean;
+  /** B-486: temporary direct shell (machine has no tmux). */
+  direct?: boolean;
   /** B-273/B-282: terminal attached to this user tmux session (name). */
   attachTmux?: string;
 }
@@ -285,6 +287,7 @@ export function Sidebar() {
             tags: tm.tags,
             subtitle: `${tm.machineName} · terminal`,
             restored: !!tm.restoredAt,
+            direct: tm.direct === true,
             attachTmux: tm.attachTmux,
           }));
     // One place applies the overlay for every ACTIVITY-ORDERED surface, so
@@ -1506,6 +1509,13 @@ function SidebarRow({
             {row.restored && (
               <span className="sb-row-restored" title={t('sidebar.terminalRestoredHint')}>
                 {t('sidebar.terminalRestored')}
+              </span>
+            )}
+            {/* B-486: no tmux on that machine — this shell ends with the
+                daemon. Same quiet marker as "restored": context, not alarm. */}
+            {row.direct && (
+              <span className="sb-row-restored" title={t('sidebar.terminalDirectHint')}>
+                {t('sidebar.terminalDirect')}
               </span>
             )}
             {row.tags && row.tags.length > 0 && (

@@ -1004,6 +1004,9 @@ export interface MachineTerminal {
     restoredAt?: number;
     /** B-273: name of the user tmux session attached inside this terminal. */
     attachTmux?: string;
+    /** B-486: a direct shell (the machine has no tmux) — ends with the daemon,
+     *  cannot be reattached after a restart. */
+    direct?: boolean;
 }
 
 /** Persist a terminal's title on the machine so every device sees it.
