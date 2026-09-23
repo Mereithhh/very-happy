@@ -158,6 +158,23 @@ function getCatalogExtras(flavor: AgentFlavor, metadata: Metadata | null | undef
     return [];
 }
 
+/**
+ * With pinned Opus 5.5 in the menu, the SDK's own `opus` alias entry (display
+ * name "Opus 5.5", resolvedModel claude-opus-5-5) reads as a duplicate. Keep
+ * the entry — a session may have it selected — but name it for what it is.
+ */
+function labelPinnedAliases(flavor: AgentFlavor, metadata: Metadata | null | undefined, models: ModelMode[]): ModelMode[] {
+    if (flavor !== 'claude' || !supportsClaudeOpus55(metadata)) return models;
+    const pinnedKeys = new Set(CLAUDE_PINNED_MODELS.map((model) => model.key));
+    const aliasOfPinned = new Set((metadata?.models ?? [])
+        .filter((model) => model.code !== 'default' && !pinnedKeys.has(model.code)
+            && typeof model.resolvedModel === 'string' && model.resolvedModel.replace(/\[1m\]$/, '') === 'claude-opus-5-5')
+        .map((model) => model.code));
+    return models.map((model) => aliasOfPinned.has(model.key)
+        ? { ...model, name: `${model.key.replace(/\[1m\]$/, '')} (alias${model.key.endsWith('[1m]') ? ', 1M context' : ''})` }
+        : model);
+}
+
 export function getGeminiModelModes(): ModelMode[] {
     return GEMINI_MODEL_FALLBACKS;
 }
@@ -240,7 +257,7 @@ export function getAvailableModels(
     metadata: Metadata | null | undefined,
     translate: Translate,
 ): ModelMode[] {
-    const metadataModels = mapMetadataOptions(metadata?.models);
+    const metadataModels = labelPinnedAliases(flavor, metadata, mapMetadataOptions(metadata?.models));
     if (metadataModels.length > 0) {
         const extras = getCatalogExtras(flavor, metadata).filter((extra) => !metadataModels.some((model) => model.key === extra.key));
         const [first, ...rest] = metadataModels;

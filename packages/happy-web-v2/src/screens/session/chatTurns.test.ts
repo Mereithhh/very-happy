@@ -25,6 +25,24 @@ const tool = (id: string, createdAt: number, state: 'running' | 'completed' = 'c
 });
 
 describe('buildChatRows', () => {
+    it('keeps the failure of an answerless turn visible and drops the reason-less duplicate (B-487)', () => {
+        const event = (id: string, createdAt: number, message: string): Message => ({
+            kind: 'agent-event', id, createdAt, event: { type: 'message', message },
+        } as Message);
+        const rows = buildChatRows([
+            user('u1', 1),
+            event('codex-error', 2, "Codex error: The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account."),
+            event('generic', 3, 'Turn failed'),
+        ], false);
+        expect(rows.map((row) => row.type)).toEqual(['message', 'message']);
+        expect(rows[1]).toMatchObject({ type: 'message', message: { id: 'codex-error' } });
+
+        const genericOnly = buildChatRows([user('u2', 1), tool('read', 2), event('generic', 3, 'Claude turn failed')], false);
+        expect(genericOnly.map((row) => row.type)).toEqual(['message', 'activity', 'message']);
+        expect(genericOnly[1]).toMatchObject({ messages: [{ id: 'read' }] });
+        expect(genericOnly[2]).toMatchObject({ message: { id: 'generic' } });
+    });
+
     it('keeps the live turn detailed inside one activity row', () => {
         const rows = buildChatRows([
             user('u1', 1),

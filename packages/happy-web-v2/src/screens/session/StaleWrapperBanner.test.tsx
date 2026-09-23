@@ -15,6 +15,7 @@ vi.mock('@/sync/storage', () => ({
     useSession: () => mock.session,
     storage: (selector: any) => selector({ machines: mock.machine ? { m1: mock.machine } : {} }),
     useLocalSettingMutable: () => [mock.dismissed, mock.setDismissed],
+    useSetting: () => undefined,
 }));
 vi.mock('@/app/sessionRestartAction', () => ({
     restartBrokenSession: mock.restartSession,
@@ -80,4 +81,15 @@ it('still shows a restart in flight and a failure the user dismissed earlier', (
     render();
     expect(host.textContent).toContain('session.chat.restartDaemonTooOld');
     expect(host.querySelector<HTMLButtonElement>('.mrb-term-btn')!.disabled).toBe(false);
+});
+
+it('steps aside for the Opus 5.5 notice, which offers the same restart with the reason', () => {
+    mock.session = { archivedAt: null, modelMode: null, metadata: { machineId: 'm1', flavor: 'claude', version: '0.2.148', capabilities: [] } };
+    mock.machine = { active: true, daemonState: { startedWithCliVersion: '0.2.149' } };
+    render();
+    expect(banner()).toBeNull();
+    // Once the Opus notice is dismissed the plain stale-wrapper strip returns.
+    mock.dismissed = { 'model-support:s1:claude-opus-55:claude-opus-5-5:0.2.148': 1 };
+    render();
+    expect(host.textContent).toContain('staleWrapper.behindNotice');
 });

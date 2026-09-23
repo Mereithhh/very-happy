@@ -531,7 +531,9 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
                     message: msg,
                     event: {
                         type: 'message',
-                        message: msg.content.error?.trim() || 'Claude turn failed',
+                        // Agent-neutral: Codex turn-ends carry no error text (its reason
+                        // arrives as a separate `Codex error:` event).
+                        message: msg.content.error?.trim() || 'Turn failed',
                     },
                 });
             }

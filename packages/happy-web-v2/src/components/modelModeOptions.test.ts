@@ -71,6 +71,27 @@ describe('Claude model picker (Fable 5.1)', () => {
             .toEqual(['default', 'opus']);
     });
 
+    it('names the SDK opus alias apart from pinned Opus 5.5 without dropping it', () => {
+        const t = (k: string) => k;
+        const models = [
+            { code: 'default', value: 'Default (recommended)', resolvedModel: 'claude-opus-5-5' },
+            { code: 'opus', value: 'Opus 5.5', resolvedModel: 'claude-opus-5-5' },
+            { code: 'opus[1m]', value: 'Opus 5.5 (1M context)', resolvedModel: 'claude-opus-5-5[1m]' },
+            { code: 'sonnet', value: 'Sonnet 5', resolvedModel: 'claude-sonnet-5' },
+        ];
+        const names = Object.fromEntries(getAvailableModels('claude', { models, capabilities: ['claude-opus-5-5-v1'] } as any, t as any).map((m) => [m.key, m.name]));
+        expect(names).toMatchObject({
+            'claude-opus-5-5': 'opus 5.5',
+            opus: 'opus (alias)',
+            'opus[1m]': 'opus (alias, 1M context)',
+            sonnet: 'Sonnet 5',
+            default: 'Default (recommended)',
+        });
+        // Without pinned entries there is nothing to tell apart: SDK names stay.
+        const plain = getAvailableModels('claude', { models } as any, t as any);
+        expect(plain.find((m) => m.key === 'opus')?.name).toBe('Opus 5.5');
+    });
+
     it('is what Settings → Agents shows for claude', () => {
         expect(getHardcodedModelModes('claude', (k) => k)).toEqual(getClaudeModelModes());
     });

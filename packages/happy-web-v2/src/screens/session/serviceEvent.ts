@@ -3,6 +3,9 @@ export type ServiceEventPresentation =
     | { kind: 'stopped'; textKey: 'session.chat.stoppedByYou' }
     | { kind: 'error'; textKey: 'session.chat.processFailed' }
     | { kind: 'claude-auth' }
+    /** B-487: the agent refused the turn and said why (e.g. Codex's backend
+     *  400 for a model the sign-in cannot use) — shown as an error, verbatim. */
+    | { kind: 'agent-error'; text: string }
     | { kind: 'subtle'; text: string };
 
 /**
@@ -20,6 +23,9 @@ export type ServiceEventPresentation =
  * service events (never assistant prose), but `authentication_failed` must not
  * match a longer sentence that merely mentions it.
  */
+/** The reason-less line a failed turn-end becomes (reducer fallback). */
+export const GENERIC_TURN_FAILURE = /^(claude )?turn failed$/i;
+
 const CLAUDE_AUTH_FAILURE = /^authentication_failed$|failed to authenticate|oauth session expired/i;
 
 export function presentServiceEvent(message: string): ServiceEventPresentation {
@@ -45,6 +51,9 @@ export function presentServiceEvent(message: string): ServiceEventPresentation {
     }
     if (visibleEntries.some((entry) => CLAUDE_AUTH_FAILURE.test(entry))) {
         return { kind: 'claude-auth' };
+    }
+    if (/^codex error:\s*\S/i.test(visibleMessage) || GENERIC_TURN_FAILURE.test(visibleMessage)) {
+        return { kind: 'agent-error', text: visibleMessage };
     }
     return { kind: 'subtle', text: visibleMessage };
 }

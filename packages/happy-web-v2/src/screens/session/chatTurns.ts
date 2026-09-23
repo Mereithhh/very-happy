@@ -3,7 +3,7 @@ import { normalizePiToolCall } from '@/components/tools/piToolMapping';
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { askUserQuestionDisplayAnswer, type AskQuestion } from './askUserQuestion';
 import { parseLocalCommandMessage, parseTaskNotification, stripHarnessBlocks } from './harness';
-import { presentServiceEvent } from './serviceEvent';
+import { GENERIC_TURN_FAILURE, presentServiceEvent } from './serviceEvent';
 import { stripThinkingWrapper } from './thinking';
 
 export type LeafRow =
@@ -149,6 +149,21 @@ export function isRenderableActivityMessage(message: Message): boolean {
     return true;
 }
 
+function isTurnFailure(message: Message): boolean {
+    if (message.kind !== 'agent-event' || message.event.type !== 'message') return false;
+    const kind = presentServiceEvent(message.event.message).kind;
+    return kind === 'error' || kind === 'agent-error' || kind === 'claude-auth';
+}
+
+/** Failure events of an answerless turn; the reason-less "Turn failed" is
+ *  dropped when a specific reason (e.g. `Codex error: …`) is there too. */
+function visibleTurnFailures(messages: Message[]): Message[] {
+    const failures = messages.filter(isTurnFailure);
+    const generic = (candidate: Message) => candidate.kind === 'agent-event' && candidate.event.type === 'message'
+        && GENERIC_TURN_FAILURE.test(candidate.event.message.trim());
+    return failures.some((candidate) => !generic(candidate)) ? failures.filter((candidate) => !generic(candidate)) : failures;
+}
+
 function isCompletedTerminal(message: Message): boolean {
     return message.kind === 'tool-call' && message.tool.state === 'completed'
         && isTerminalToolName(normalizePiToolCall(message.tool).name);
@@ -268,17 +283,23 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean): Cha
             }
 
             if (finalIndex < 0) {
-                const activity = turnMessages.filter(isRenderableActivityMessage);
+                // B-487: a turn that ended without an answer ends on its
+                // failure — keep that visible instead of folding it into the
+                // collapsed activity where nobody opens it.
+                const renderable = turnMessages.filter(isRenderableActivityMessage);
+                const failures = visibleTurnFailures(renderable);
+                const activity = renderable.filter((candidate) => !isTurnFailure(candidate));
                 if (activity.length > 0) {
                     rows.push({
                         type: 'activity',
                         key: `activity-${message.id}`,
                         messages: activity,
                         live: false,
-                        durationSeconds: activityDurationSeconds(activity),
+                        durationSeconds: activityDurationSeconds(renderable),
                     });
                     rows.push(...askAnswerRows(turnMessages));
                 }
+                if (failures.length > 0) rows.push(...buildLeafRows(failures, finalAgentId));
             } else {
                 const activity = turnMessages
                     .slice(0, finalIndex)

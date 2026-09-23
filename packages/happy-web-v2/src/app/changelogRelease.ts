@@ -22,7 +22,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.sep24a.title',
     summaryKey: 'changelog.releases.sep24a.summary',
-    itemKeys: ['changelog.releases.sep24a.opus', 'changelog.releases.sep24a.codex'],
+    itemKeys: ['changelog.releases.sep24a.opus', 'changelog.releases.sep24a.codex', 'changelog.releases.sep24a.notice'],
   },
   {
     id: '2026-09-23-terminals-without-tmux',

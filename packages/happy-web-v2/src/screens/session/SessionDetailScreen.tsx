@@ -26,6 +26,7 @@ import { MirrorBanner } from './MirrorBanner';
 import { MirrorInputBar } from './MirrorInputBar';
 import { SessionArchivedBanner } from './SessionArchivedBanner';
 import { StaleWrapperBanner } from './StaleWrapperBanner';
+import { ModelSupportBanner } from './ModelSupportBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
@@ -180,6 +181,8 @@ export function SessionDetailScreen() {
                 {!mirror && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
                 {/* B-462: live session still on an older wrapper than the machine runs → offer a restart */}
                 {!mirror && !canOfferRestore(session, bannerMachine) && <StaleWrapperBanner sessionId={id} />}
+                {/* B-487: the wanted model cannot run on this wrapper / agent CLI → say so and offer the fix */}
+                {!mirror && !canOfferRestore(session, bannerMachine) && <ModelSupportBanner sessionId={id} />}
                 <div className="sd-body">
                     <ChatList key={id} sessionId={id} showLiveStatus={!mirror} />
                 </div>
