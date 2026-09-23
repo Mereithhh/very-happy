@@ -2655,7 +2655,10 @@ export class WebTerminalManager {
             created.direct = { cwd, createdAt: Date.now() };
             // tmux follows pane_title into @vh_title for durable terminals; a
             // direct shell only has the headless screen's OSC title.
-            created.onTitleChange((title) => { if (created.direct && !created.direct.manual) created.direct.title = title; });
+            // Same filter as the tmux pane_title follow (hostname / shell names are not titles).
+            created.onTitleChange((title) => {
+                if (created.direct && !created.direct.manual) created.direct.title = deriveAutoTitle(title, os.hostname());
+            });
             created.onOutputChunk = (chunk) => {
                 this.emit('terminal-output', { terminalId: id, data: chunk.data, seq: chunk.seq });
                 this.noteActivity();
