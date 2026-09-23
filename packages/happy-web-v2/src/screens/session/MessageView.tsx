@@ -321,6 +321,9 @@ function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; s
                         </div>
                     );
                 }
+                if (presentation.kind === 'agent-error') {
+                    return <div className="msg msg--event" title={messageTimestamp(message.createdAt, lang)}><span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{presentation.text}</span></div>;
+                }
                 label = presentation.text;
                 subtle = true;
                 break;

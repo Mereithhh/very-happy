@@ -37,6 +37,7 @@ import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { unsupportedEffortReason } from './effortSupport';
+import { describeCodexFailure, describeThrownTurnError } from './codexFailureText';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
@@ -59,17 +60,6 @@ import { DEFAULT_CODEX_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
  * Returns null if the event represents a successful/clean completion.
  */
-function describeCodexFailure(msg: any): string | null {
-    const hasFailure = msg?.status === 'failed' || (msg?.error !== undefined && msg?.error !== null);
-    if (!hasFailure) return null;
-    const err = msg.error;
-    if (typeof err === 'string' && err.length > 0) return err;
-    if (err && typeof err === 'object' && typeof err.message === 'string' && err.message.length > 0) {
-        return err.message;
-    }
-    return 'Unknown error';
-}
-
 const DEFAULT_CODEX_MODEL = 'gpt-5.5';
 const DEFAULT_CODEX_EFFORT: ReasoningEffort = 'medium';
 
@@ -993,8 +983,16 @@ export async function runCodex(opts: {
             } catch (error) {
                 // Only actual errors reach here (process crash, connection failure, etc.)
                 logger.warn('Error in codex session', safeCodexErrorMetadata(error));
-                messageBuffer.addMessage('Process exited unexpectedly', 'status');
-                session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                // B-487: a rejected request or pre-flight refusal says why;
+                // only a lost app-server gets the generic crash line.
+                const reason = describeThrownTurnError(error);
+                if (reason) {
+                    messageBuffer.addMessage(`Task failed: ${reason}`, 'status');
+                    session.sendSessionEvent({ type: 'message', message: `Codex error: ${reason}` });
+                } else {
+                    messageBuffer.addMessage('Process exited unexpectedly', 'status');
+                    session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                }
             } finally {
                 // Reset permission handler, reasoning processor, and diff processor
                 permissionHandler.reset();

@@ -14,6 +14,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
 import { restartBrokenSession, useRestartState } from '@/app/sessionRestartAction';
 import { isStaleWrapperNoticeVisible, staleWrapperHintKey, staleWrapperNotice } from '@/app/staleWrapperPolicy';
+import { useVisibleModelSupportNotice } from './ModelSupportBanner';
 import './mirror.css';
 
 export function StaleWrapperBanner({ sessionId }: { sessionId: string }) {
@@ -25,8 +26,12 @@ export function StaleWrapperBanner({ sessionId }: { sessionId: string }) {
     });
     const [dismissedHints, setDismissedHints] = useLocalSettingMutable('dismissedHints');
     const restart = useRestartState(sessionId);
+    // B-487: an Opus 5.5 notice already offers this same restart with the
+    // concrete reason; don't stack two strips for one action.
+    const modelNotice = useVisibleModelSupportNotice(sessionId);
     const notice = staleWrapperNotice(session, machine);
     if (!notice) return null;
+    if (modelNotice?.notice.kind === 'claude-opus-55' && modelNotice.notice.action === 'restart') return null;
     const hintKey = staleWrapperHintKey(sessionId, notice);
     // A restart in flight keeps the strip up so its progress has somewhere to
     // show, even if the user had dismissed this notice earlier.

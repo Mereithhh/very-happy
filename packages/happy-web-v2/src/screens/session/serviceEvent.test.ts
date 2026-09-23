@@ -41,3 +41,9 @@ describe('presentServiceEvent', () => {
         )).toEqual({ kind: 'subtle', text: 'permission bridge crashed' });
     });
 });
+
+it('shows a Codex turn refusal as an error with its reason (B-487)', () => {
+    const message = "Codex error: The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account.";
+    expect(presentServiceEvent(message)).toEqual({ kind: 'agent-error', text: message });
+    expect(presentServiceEvent('Codex error:')).toEqual({ kind: 'subtle', text: 'Codex error:' });
+});

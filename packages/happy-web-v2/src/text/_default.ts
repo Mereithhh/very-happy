@@ -1554,6 +1554,30 @@ export const en = {
 
     // B-462: a live session whose wrapper process still runs older CLI code
     // than the machine has installed. Advisory only — never a capability gate.
+    modelSupport: {
+        opusUpdate: ({ current, target }: { current: string; target: string }) =>
+            `This machine's Very Happy CLI (v${current}) is too old to run Opus 5.5, so this session is on the machine's default model. Update to v${target} or newer, then restart the session.`,
+        opusUpdateUnknown: ({ target }: { target: string }) =>
+            `This machine's Very Happy CLI is too old to run Opus 5.5, so this session is on the machine's default model. Update to v${target} or newer, then restart the session.`,
+        opusRestart: ({ sessionVersion, machineVersion }: { sessionVersion: string; machineVersion: string }) =>
+            `This session is still run by CLI v${sessionVersion}, which cannot run Opus 5.5, so it is on the machine's default model. The machine has v${machineVersion}: restart the session to use Opus 5.5 — the conversation is kept.`,
+        codexUpdate: ({ model, installed, min }: { model: string; installed: string; min: string }) =>
+            `${model} needs Codex ${min} or newer; this machine has ${installed}. With a ChatGPT sign-in, older Codex is refused. Update Codex, then restart the session.`,
+        codexUpdateUnknown: ({ model, min }: { model: string; min: string }) =>
+            `${model} needs Codex ${min} or newer, and this session's Codex does not list it. With a ChatGPT sign-in, older Codex is refused. Update Codex, then restart the session.`,
+        codexRestart: ({ model }: { model: string }) =>
+            `This session started before Codex was updated, so ${model} is not in its model list yet. Restart the session to pick it up — the conversation is kept.`,
+        updateCli: 'Update CLI',
+        updateCodex: 'Update Codex',
+        updateRequested: 'Update requested. The machine installs it when idle; restart the session afterwards.',
+        updateRequestedShort: 'Requested',
+        updateFailed: 'The machine did not accept the update request. Run the command below on it instead.',
+        copyCommand: 'Copy command',
+        copied: 'Copied',
+        copyFailed: 'Could not copy the command',
+        dismiss: 'Dismiss',
+    },
+
     staleWrapper: {
         criticalNotice: ({ sessionVersion }: { sessionVersion: string }) =>
             `This session is still being run by CLI v${sessionVersion}, a version that can drop a message you send and never answer. Restart it to move onto the version installed on the machine — the conversation is kept.`,
@@ -1884,6 +1908,7 @@ export const en = {
                 summary: 'Claude sessions now start on Opus 5.5 unless you picked another default in Settings → Agents. Opus 5.5 and its 1M-context variant are at the top of the model menu.',
                 opus: 'Opus 5.5 needs the CLI update: older CLIs bundle a Claude Code that cannot run it, so their sessions keep following the machine default instead of failing.',
                 codex: 'Codex sessions can pick gpt-6-sol and gpt-6-luna even though Codex does not list them yet.',
+                notice: 'When the CLI or Codex on a machine is too old for the model you picked, the session now says so and offers the update and a restart. Codex errors such as a refused model are shown with their reason instead of "process exited unexpectedly".',
             },
             sep23a: {
                 title: 'Terminals on machines without tmux no longer vanish',

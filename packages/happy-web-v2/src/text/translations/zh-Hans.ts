@@ -1511,6 +1511,30 @@ export const zhHans: TranslationStructure = {
     },
 
     // B-462
+    modelSupport: {
+        opusUpdate: ({ current, target }: { current: string; target: string }) =>
+            `这台机器的 Very Happy CLI（v${current}）太旧，跑不了 Opus 5.5，本会话正在用机器默认模型。更新到 v${target} 或更高版本后重启会话。`,
+        opusUpdateUnknown: ({ target }: { target: string }) =>
+            `这台机器的 Very Happy CLI 太旧，跑不了 Opus 5.5，本会话正在用机器默认模型。更新到 v${target} 或更高版本后重启会话。`,
+        opusRestart: ({ sessionVersion, machineVersion }: { sessionVersion: string; machineVersion: string }) =>
+            `这个会话仍由 CLI v${sessionVersion} 运行，跑不了 Opus 5.5，正在用机器默认模型。机器上已是 v${machineVersion}，重启会话即可用上 Opus 5.5，对话内容保留。`,
+        codexUpdate: ({ model, installed, min }: { model: string; installed: string; min: string }) =>
+            `${model} 需要 Codex ${min} 或更高版本，这台机器是 ${installed}。用 ChatGPT 账号登录时旧版 Codex 会被拒绝。更新 Codex 后重启会话。`,
+        codexUpdateUnknown: ({ model, min }: { model: string; min: string }) =>
+            `${model} 需要 Codex ${min} 或更高版本，本会话的 Codex 模型列表里没有它。用 ChatGPT 账号登录时旧版 Codex 会被拒绝。更新 Codex 后重启会话。`,
+        codexRestart: ({ model }: { model: string }) =>
+            `这个会话启动于 Codex 更新之前，模型列表里还没有 ${model}。重启会话即可用上，对话内容保留。`,
+        updateCli: '更新 CLI',
+        updateCodex: '更新 Codex',
+        updateRequested: '已请求更新，机器空闲时安装；装好后重启会话。',
+        updateRequestedShort: '已请求',
+        updateFailed: '机器没有接受更新请求，请在机器上运行下面的命令。',
+        copyCommand: '复制命令',
+        copied: '已复制',
+        copyFailed: '无法复制命令',
+        dismiss: '不再提示',
+    },
+
     staleWrapper: {
         criticalNotice: ({ sessionVersion }: { sessionVersion: string }) =>
             `这个会话仍由 CLI v${sessionVersion} 运行，该版本可能吞掉你发出的消息且永不回复。重启会话即可换到机器上已安装的版本，对话内容保留。`,
@@ -1836,6 +1860,7 @@ export const zhHans: TranslationStructure = {
                 summary: '没在「设置 → 代理」里另选默认模型的话，Claude 会话现在默认用 Opus 5.5；模型菜单顶部新增 Opus 5.5 和它的 1M 上下文版本。',
                 opus: 'Opus 5.5 需要更新 CLI：旧 CLI 自带的 Claude Code 跑不了它，这类会话会继续跟随机器默认模型，而不是报错。',
                 codex: 'Codex 会话可以选 gpt-6-sol 和 gpt-6-luna，即使 Codex 自己的模型列表里还没有它们。',
+                notice: '机器上的 CLI 或 Codex 版本太旧、跑不了你选的模型时，会话里会直接提示，并给出更新和重启入口。Codex 拒绝某个模型之类的错误会显示真实原因，不再只有「进程意外退出」。',
             },
             sep23a: {
                 title: '没有 tmux 的机器上，终端不再从列表里消失',

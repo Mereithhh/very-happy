@@ -155,6 +155,43 @@
   color: var(--text);
 }
 
+/* B-487 ModelSupportBanner: the model the user wants cannot run on this
+ * wrapper/agent CLI — attention (--warn-dim), wraps so actions and the
+ * update command stay reachable on narrow screens. */
+.mrb[data-kind="model-support"] .mrb-note {
+  flex-wrap: wrap;
+  background: var(--warn-dim);
+  color: var(--text);
+}
+.mrb[data-kind="model-support"] .mrb-note-text {
+  flex: 1 1 240px;
+}
+.mrb-note-actions {
+  flex: none;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.mrb-cmd {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.mrb-cmd code {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 @media (pointer: coarse) {
   .mrb-term-btn, .mrb-needs { min-height: 44px; }
   .mrb-dismiss { width: 44px; height: 44px; }
