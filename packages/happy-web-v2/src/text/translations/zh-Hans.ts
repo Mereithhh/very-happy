@@ -3445,7 +3445,7 @@ export const zhHans: TranslationStructure = {
         codeDefaultSuffix: '（默认）',
         noOverrides: '使用内置默认',
         newSessions: '新建会话',
-        newSessionsFooter: '新会话会直接在你最近使用的机器和目录上创建。模型、投入档位与权限来自下方各智能体的默认设置——未显式设置时不会下发任何值，跟随机器上 CLI 自身的配置（例如 claude 里的 /model）。完整选项对话框仍可通过「新会话（自定义选项）」打开。',
+        newSessionsFooter: '新会话会直接在你最近使用的机器和目录上创建。模型、投入档位与权限来自下方各智能体的默认设置——未显式设置时，Claude 模型默认 Opus 5.5（CLI 太旧跑不了时跟随机器默认），其余项跟随机器上 CLI 自身的配置；想跟随 claude 里的 /model，选「default model」。完整选项对话框仍可通过「新会话（自定义选项）」打开。',
         defaultAgent: '默认智能体',
         alwaysAsk: '总是询问',
         alwaysAskDescription: '每次新建会话都打开完整选项对话框，而不是直接创建',

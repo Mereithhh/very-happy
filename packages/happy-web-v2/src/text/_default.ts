@@ -3554,7 +3554,7 @@ export const en = {
         noOverrides: 'Using built-in defaults',
         // Quick new-chat group (sidebar "+" / palette direct creation).
         newSessions: 'New chat creation',
-        newSessionsFooter: 'New chats are created instantly on your most recent machine and directory. Model, effort and permission come from the per-agent defaults below — with no override set, nothing is sent and the machine\'s own CLI configuration applies (e.g. /model in claude). The full dialog stays available under "New chat (choose options)".',
+        newSessionsFooter: 'New chats are created instantly on your most recent machine and directory. Model, effort and permission come from the per-agent defaults below — with no override set, Claude uses Opus 5.5 (the machine\'s own default on CLIs too old to run it) and the other fields follow the machine\'s CLI configuration; pick "default model" to follow /model in claude. The full dialog stays available under "New chat (choose options)".',
         defaultAgent: 'Default agent',
         alwaysAsk: 'Always ask',
         alwaysAskDescription: 'Open the full options dialog on every new chat instead of creating instantly',

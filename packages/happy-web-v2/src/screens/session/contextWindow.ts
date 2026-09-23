@@ -48,8 +48,18 @@ export function contextPercentOf(contextSize: number, window: number | null): nu
     return Math.max(0, Math.min(100, Math.round((contextSize / window) * 100)));
 }
 
-/** Pi reports current occupancy through its runtime; message/billing totals are not a fallback. */
-export function composerContextUsage(isPi: boolean, runtime: import('@slopus/happy-wire').ContextUsage | null | undefined, message: {contextSize: number; model?: string | null} | null | undefined) {
+/**
+ * Pi reports current occupancy through its runtime; message/billing totals are not a fallback.
+ * Session-protocol envelopes carry usage but no model id, so the model the
+ * wrapper reports running (`metadata.currentModelCode`, SDK init — keeps the
+ * `[1m]` marker) sizes the window when the usage snapshot has none.
+ */
+export function composerContextUsage(
+    isPi: boolean,
+    runtime: import('@slopus/happy-wire').ContextUsage | null | undefined,
+    message: {contextSize: number; model?: string | null} | null | undefined,
+    runningModel?: string | null,
+) {
     if (isPi) return { tokens: runtime?.tokens ?? null, window: runtime?.contextWindow ?? null, estimated: true };
-    return { tokens: message?.contextSize ?? null, window: contextWindowFor(message?.model), estimated: false };
+    return { tokens: message?.contextSize ?? null, window: contextWindowFor(message?.model ?? runningModel), estimated: false };
 }
