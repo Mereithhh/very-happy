@@ -30,6 +30,10 @@ export function contextWindowFor(model: string | null | undefined): number | nul
     const id = model.trim().toLowerCase();
     if (!id) return null;
     if (/(\[1m\]|[-_:]1m\b|[-_:]1m$)/.test(id)) return LONG_CONTEXT_WINDOW;
+    // Opus 5.5 has no 200k variant: Claude Code 2.1.281 reports
+    // contextWindow 1_000_000 for the bare id (probed 2026-09-24), and the
+    // bare id is what the web default and the `opus` alias run.
+    if (/^claude-opus-5-5(?![0-9])/.test(id)) return LONG_CONTEXT_WINDOW;
     // A non-Claude model ID does not imply a 200k window. Pi uses runtime capacity.
     return /^(claude[-_:]|(?:opus|sonnet|haiku)[-_:])/.test(id) ? DEFAULT_CONTEXT_WINDOW : null;
 }
