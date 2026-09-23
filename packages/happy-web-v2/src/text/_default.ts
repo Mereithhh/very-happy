@@ -1256,6 +1256,7 @@ export const en = {
         attachGone: 'That tmux session no longer exists on the machine. Pick another one.',
         attachUnavailable: 'tmux is not available on this machine, so there is nothing to attach.',
         attachUnsupported: 'This machine’s CLI is too old to attach sessions — a plain terminal was opened. Update the CLI to enable it.',
+        tmuxMissing: 'This machine has no tmux: new terminals are temporary shells that end with the daemon. Install tmux to make them durable — no daemon restart needed.',
         tipsTitle: 'About web terminals',
         tips1: 'Every web terminal is its own tmux session on the machine.',
         tips2: 'To reach a tmux session you already have, use “Attach an existing tmux session” below — do not run tmux attach inside a web terminal (tmux refuses to nest).',
@@ -1511,6 +1512,9 @@ export const en = {
         closeWithTmuxSession: 'Close together with the tmux session…',
         terminalRestored: 'restored',
         terminalRestoredHint: 'Brought back after a restart: same directory, conversation resumed — the processes are new and the scrollback starts fresh.',
+        // B-486: direct shell on a machine without tmux
+        terminalDirect: 'temporary',
+        terminalDirectHint: 'This machine has no tmux, so this is a plain shell: it ends when the daemon stops and cannot be reattached after a restart. Install tmux for durable terminals.',
         closedTerminalGap: 'ended in a restart',
         // B-105: closed terminal that had a mirror — its history stays readable
         closedTerminalHistory: 'View structured history',
@@ -1875,6 +1879,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep23a: {
+                title: 'Terminals on machines without tmux no longer vanish',
+                summary: 'On a machine without tmux a web terminal still opens, but as a plain shell the daemon did not report — so about a minute after you opened it, it disappeared from the sidebar while it kept running.',
+                listed: 'Such a shell now stays in the list, marked “temporary”, until you close it; it is no longer closed behind your back after 20 idle minutes. It still ends when the daemon stops or the machine restarts.',
+                install: 'The terminal and the new-terminal dialog now say when a machine has no tmux and show how to install it (brew, apt, or conda without sudo). New terminals pick tmux up within about 30 seconds of installing it — no daemon restart. Needs the CLI update.',
+            },
             sep22b: {
                 title: 'Side questions are now answered by the running session itself',
                 summary: 'A side question used to be answered by a second Claude process reading the conversation back from disk, so mid-task it saw only what had been written out and sometimes described the running step as "interrupted". Claude Code has its own in-process /btw, and the session now uses exactly that.',
@@ -2735,6 +2745,10 @@ export const en = {
         connectionCreateUnknown: "The creation result could not be confirmed. Check the machine’s terminal list before creating another terminal.",
         connectionRetry: "Retry connection",
         connectionMachine: "View machine",
+        // B-486: the open answered without a tmux session (direct PTY).
+        directShellTitle: "Temporary terminal — tmux is not installed on this machine",
+        directShellHint: "This shell stays in the list while the daemon runs, but ends when the daemon stops or the machine restarts and cannot be reattached. Install tmux, then open a new terminal (no daemon restart needed):",
+        directShellDismiss: "Dismiss",
         // Runtime-neutral because Web terminals may use tmux or direct PTY.
         closeTitle: 'Close terminal?',
         // B-474: the machine is offline — the row can be dropped, nothing killed.

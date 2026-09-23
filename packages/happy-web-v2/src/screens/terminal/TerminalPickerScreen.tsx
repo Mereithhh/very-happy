@@ -6,6 +6,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { terminalMachineState } from '@/utils/machineUtils';
 import { Badge, ItemList, ItemGroup, Item, EmptyState, StatusDot } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
+import { tmuxMissing } from '@/sync/closedTerminals';
 
 function machineLabel(m: any): string {
   return m?.metadata?.displayName || m?.metadata?.host || m?.id?.slice(0, 8) || 'machine';
@@ -50,7 +51,10 @@ export function TerminalPickerScreen() {
                     key={m.id}
                     title={name}
                     detail={m.metadata?.host}
-                    subtitle={state.needsDaemonStart ? t('newSessionModal.offlineTerminalHelp') : undefined}
+                    subtitle={state.needsDaemonStart
+                      ? t('newSessionModal.offlineTerminalHelp')
+                      // B-486: say it before the user creates a shell that cannot survive.
+                      : tmuxMissing((m as any).daemonState) ? t('newTerminalModal.tmuxMissing') : undefined}
                     left={<StatusDot status={state.status} size={9} />}
                     right={state.available
                       ? <Plus size={16} />

@@ -114,6 +114,7 @@ import {
     type ClosedTerminalRecord,
 } from './closedTerminals';
 import { scrubTmuxClientEnv, tmuxArgs } from './tmuxSocket';
+import { directTerminalItems, type DirectTerminalInfo } from './directTerminals';
 
 // ── Kill tombstones ──────────────────────────────────────────────────────────
 // A deleted terminal's id is remembered here so that a STALE CLIENT (an old
@@ -604,6 +605,10 @@ export interface TerminalListItem {
      *  it last had. */
     paneCols?: number;
     paneRows?: number;
+    /** B-486: a direct-pty shell (no tmux). Listed from the daemon's own
+     *  session map; dies with the daemon, so the web marks it non-restorable.
+     *  Old webs ignore it. */
+    direct?: boolean;
 }
 
 /** What the close/gap bookkeeping remembers per live terminal (B-084/B-265). */
@@ -640,8 +645,15 @@ export function terminalListSignature(items: TerminalListItem[]): string {
             // list, or the web never learns the toggle became available.
             t.mirrorSessionId ?? '',
             t.attachTmux ?? '',
+            t.direct ? 1 : 0,
         ]);
     return JSON.stringify(canon);
+}
+
+/** The list signature plus the host's tmux availability (B-486): the push
+ *  carries `terminalHost`, so a flip must count as a change. */
+function hostListSignature(items: TerminalListItem[]): string {
+    return `${isTmuxAvailable() ? 'tmux' : 'no-tmux'}|${terminalListSignature(items)}`;
 }
 
 const SHELL_COMMANDS = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh']);
@@ -1006,16 +1018,48 @@ export function tmuxSupportsNewSessionEnv(versionOutput: string): boolean {
 }
 
 let tmuxAvailableCache: boolean | null = null;
+/** B-486: when the NEGATIVE answer was cached. A found tmux stays cached for
+ *  the daemon's lifetime; a missing one is re-probed after
+ *  TMUX_MISSING_REPROBE_MS, so "install tmux, open a new terminal" works
+ *  without restarting the daemon (which would kill every direct shell). */
+let tmuxMissingSince = 0;
+const TMUX_MISSING_REPROBE_MS = 30_000;
 function isTmuxAvailable(): boolean {
-    if (tmuxAvailableCache !== null) return tmuxAvailableCache;
+    if (tmuxAvailableCache === true) return true;
+    if (tmuxAvailableCache === false && Date.now() - tmuxMissingSince < TMUX_MISSING_REPROBE_MS) return false;
     try {
         const r = spawnSync('tmux', tmuxArgs(['-V']), { stdio: 'ignore', env: ptyEnv() });
         tmuxAvailableCache = r.status === 0;
     } catch {
         tmuxAvailableCache = false;
     }
+    if (tmuxAvailableCache) {
+        // The env-flag answer was probed against a missing binary — re-ask.
+        tmuxEnvFlagCache = null;
+        tmuxVersionCache = undefined;
+    } else {
+        tmuxMissingSince = Date.now();
+    }
     return tmuxAvailableCache;
 }
+
+/** B-486: what the daemon reports as `daemonState.terminalHost` — whether web
+ *  terminals on this machine can be durable (tmux) or fall back to a direct
+ *  shell. Probed once per daemon run (same cache as isTmuxAvailable), so a
+ *  tmux installed afterwards is picked up by the next daemon start. */
+export function tmuxRuntimeInfo(): { tmuxAvailable: boolean; tmuxVersion?: string } {
+    if (!isTmuxAvailable()) return { tmuxAvailable: false };
+    if (tmuxVersionCache === undefined) {
+        try {
+            const r = spawnSync('tmux', tmuxArgs(['-V']), { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
+            tmuxVersionCache = (r.stdout || '').trim().slice(0, 64);
+        } catch {
+            tmuxVersionCache = '';
+        }
+    }
+    return tmuxVersionCache ? { tmuxAvailable: true, tmuxVersion: tmuxVersionCache } : { tmuxAvailable: true };
+}
+let tmuxVersionCache: string | undefined;
 
 let tmuxEnvFlagCache: boolean | null = null;
 /** Runtime probe for the `-e` support above; a pre-3.2 tmux would reject the
@@ -1200,6 +1244,9 @@ class TerminalSession {
     readonly id: string;
     readonly tmuxSession?: string;
     transport: SessionTransport;
+    /** B-486: set only for a direct-pty (no tmux) session — the list row's
+     *  source, since tmux knows nothing about it. */
+    direct?: DirectTerminalInfo;
     /** B-273: the user tmux session this terminal was created to attach —
      *  echoed to any later open of the same live session. */
     attachedTmux?: { id: string; name: string };
@@ -1716,7 +1763,7 @@ export class WebTerminalManager {
      *  other means (the connect-time daemonState write carries the initial
      *  snapshot), so the first tick doesn't re-push an identical list. */
     primeListSignature(list: TerminalListItem[]): void {
-        this.lastListSignature = terminalListSignature(list);
+        this.lastListSignature = hostListSignature(list);
         // Also seed the close-record info cache, so a terminal that ends
         // before the first tracking tick still gets a titled/cwd'd record.
         this.noteSeen(list);
@@ -1764,7 +1811,10 @@ export class WebTerminalManager {
      * what only the live pty stream knows (fresher activityAt).
      */
     buildTerminalList(): TerminalListItem[] {
-        const list = this.listSessions();
+        const list: TerminalListItem[] = this.listSessions();
+        // B-486: direct-pty shells are invisible to tmux; without this they
+        // never reach the pushed list and vanish from every sidebar.
+        list.push(...directTerminalItems(this.terminals.values(), new Set(list.map((t) => t.id))));
         for (const item of list) {
             const live = this.terminals.get(item.id);
             if (live?.lastOutputAt) {
@@ -1815,7 +1865,9 @@ export class WebTerminalManager {
             // UNCHANGED signature, so a signature-gated push would never fire —
             // the reconciler must see every tick to self-heal it (~10s).
             this.mirrorTickObserver?.(list);
-            const sig = terminalListSignature(list);
+            // B-486: the host part makes an installed (or removed) tmux push
+            // a fresh daemonState.terminalHost even when no row changed.
+            const sig = hostListSignature(list);
             if (sig === this.lastListSignature) return;
             this.lastListSignature = sig;
             cb(list);
@@ -2164,6 +2216,10 @@ export class WebTerminalManager {
         // and the store stays a pure state machine (B-121).
         this.snapshots.sweep(now);
         for (const [id, session] of [...this.terminals]) {
+            // B-486: detaching a direct pty KILLS its shell (there is no tmux
+            // session to survive it). Those are listed and closable now, so an
+            // unwatched one stays until the user closes it or the cap evicts.
+            if (session.direct) continue;
             if (session.subscribers === 0 && now - session.lastTouch > SESSION_IDLE_MS) {
                 logger.debug(`[WEB TERMINAL] reaping orphaned idle session ${id} (idle ${Math.round((now - session.lastTouch) / 60000)}m)`);
                 this.detach(id);
@@ -2596,6 +2652,10 @@ export class WebTerminalManager {
                 try { proc.write(startup + '\r'); } catch { /* best-effort */ }
             }
             const created = new TerminalSession(id, { kind: 'pty', pty: proc }, undefined, cols, rows);
+            created.direct = { cwd, createdAt: Date.now() };
+            // tmux follows pane_title into @vh_title for durable terminals; a
+            // direct shell only has the headless screen's OSC title.
+            created.onTitleChange((title) => { if (created.direct && !created.direct.manual) created.direct.title = title; });
             created.onOutputChunk = (chunk) => {
                 this.emit('terminal-output', { terminalId: id, data: chunk.data, seq: chunk.seq });
                 this.noteActivity();
@@ -3023,6 +3083,29 @@ export class WebTerminalManager {
      *  session (so a local `tmux attach` won't find it either). Used when the
      *  user deletes the terminal from the sidebar. */
     killSession(terminalId: string, opts?: { alsoAttached?: boolean }): boolean {
+        // B-486: a direct-pty shell has no tmux session to kill or verify —
+        // the pty IS the terminal, and detaching disposes (kills) it.
+        const liveDirect = this.terminals.get(terminalId);
+        if (liveDirect?.direct) {
+            this.recordClosed({
+                id: terminalId,
+                ...(liveDirect.direct.title?.trim() ? { title: liveDirect.direct.title.trim() } : {}),
+                cwd: liveDirect.direct.cwd,
+                tags: liveDirect.direct.tags ?? [],
+                ...(liveDirect.direct.manual ? { manual: true } : {}),
+                reason: 'closed',
+                closedAt: Date.now(),
+            });
+            this.lastSeenInfo.delete(terminalId);
+            this.detach(terminalId);
+            // Same stale-client guard as the tmux path below.
+            this.tombstones[terminalId] = Date.now();
+            saveTombstones(this.tombstones);
+            this.notifyTracker.remove(terminalId);
+            logger.debug(`[WEB TERMINAL] killed direct pty ${terminalId}`);
+            this.kickListRefresh();
+            return true;
+        }
         // Record the close BEFORE the kill, while title/cwd are still knowable
         // (B-084). Cache first (fed by every tracking tick), fresh tmux lookup
         // as fallback (kill can arrive before tracking ever observed this id).
@@ -3308,6 +3391,15 @@ export class WebTerminalManager {
      *  landed. `ifAbsent` finding an existing title counts as success (there IS
      *  a title; nothing to retry). */
     setTitle(terminalId: string, title: string, ifAbsent = false): boolean {
+        // B-486: a direct shell keeps its title in the daemon (no tmux options).
+        const direct = this.terminals.get(terminalId)?.direct;
+        if (direct) {
+            if (ifAbsent && (direct.manual || direct.title?.trim())) return true;
+            direct.title = title;
+            if (!ifAbsent) direct.manual = true;
+            this.kickListRefresh();
+            return true;
+        }
         if (!isTmuxAvailable()) return false;
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(terminalId)) return false;
         const name = `vh-${terminalId}`;
@@ -3331,10 +3423,17 @@ export class WebTerminalManager {
 
     /** Persist terminal tags in tmux, parallel to @vh_title. */
     setTags(terminalId: string, tags: unknown): boolean {
-        if (!isTmuxAvailable()) return false;
+        const direct = this.terminals.get(terminalId)?.direct;
+        if (!direct && !isTmuxAvailable()) return false;
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(terminalId)) return false;
         const valid = validateTerminalTags(tags);
         if (!valid) return false;
+        if (direct) {
+            // B-486: same as the title — daemon memory is the store.
+            direct.tags = valid;
+            this.kickListRefresh();
+            return true;
+        }
         const name = `vh-${terminalId}`;
         try {
             const r = spawnSync('tmux', tmuxArgs(['set-option', '-t', name, '@vh_tags', JSON.stringify(valid)]), {

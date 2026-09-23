@@ -269,3 +269,14 @@ describe('B-360 closed records pushed by two machine rows of one host', () => {
     expect(rows.map((r) => r.terminalId)).toEqual(['bbb', 'aaa']);
   });
 });
+
+describe('B-486 tmuxMissing', () => {
+    it('warns only on an explicit false stamped by THIS daemon run', async () => {
+        const { tmuxMissing } = await import('./closedTerminals');
+        expect(tmuxMissing(undefined)).toBe(false);
+        expect(tmuxMissing({ startedAt: 10 })).toBe(false); // old daemon: unknown ≠ missing
+        expect(tmuxMissing({ startedAt: 10, terminalHost: { tmuxAvailable: false, detectedAt: 10 } })).toBe(true);
+        expect(tmuxMissing({ startedAt: 10, terminalHost: { tmuxAvailable: true, detectedAt: 10 } })).toBe(false);
+        expect(tmuxMissing({ startedAt: 20, terminalHost: { tmuxAvailable: false, detectedAt: 10 } })).toBe(false); // stale flag
+    });
+});

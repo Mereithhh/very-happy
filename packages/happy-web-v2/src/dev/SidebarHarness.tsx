@@ -136,6 +136,8 @@ function seed() {
       { id: 'term3', machineId: 'm1', machineName: 'devbox', title: '旧版终端 · 状态未知', createdAt: now - 120_000 },
       { id: 'term4', machineId: 'm1', machineName: 'devbox', title: 'Codex · 代码检查', createdAt: now - 180_000 },
       { id: 'term5', machineId: 'm1', machineName: 'devbox', title: 'Pi · 执行任务', createdAt: now - 240_000 },
+      // B-486: direct shell on a machine without tmux
+      { id: 'term6', machineId: 'm1', machineName: 'devbox', title: 'hyperpod', cwd: '/fsx/data', createdAt: now - 300_000, direct: true },
     ],
   });
   useTerminalAgentStates.getState().ingest('m1', [

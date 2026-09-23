@@ -64,6 +64,8 @@ export interface TerminalSession {
   /** B-273: this terminal is attached to the user's tmux session of this name
    *  (close = detach only; B-282 offers kill-together separately). */
   attachTmux?: string;
+  /** B-486: direct shell without tmux — badged as temporary. */
+  direct?: boolean;
 }
 
 /** A trusted webTerminals snapshot read out of a machine's daemonState. */
@@ -178,6 +180,7 @@ function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): 
       typeof t.mirrorSessionId === 'string' && t.mirrorSessionId ? t.mirrorSessionId : undefined,
     restoredAt: typeof t.restoredAt === 'number' && t.restoredAt > 0 ? t.restoredAt : undefined,
     attachTmux: typeof t.attachTmux === 'string' && t.attachTmux ? t.attachTmux : undefined,
+    direct: t.direct === true ? true : undefined,
   };
 }
 

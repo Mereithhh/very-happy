@@ -1227,6 +1227,7 @@ export const zhHans: TranslationStructure = {
         attachGone: '这个 tmux 会话在机器上已不存在，请重新选择。',
         attachUnavailable: '这台机器上没有 tmux，没有可接入的会话。',
         attachUnsupported: '这台机器的 CLI 版本过旧，不支持接入会话，已打开普通终端。升级 CLI 后可用。',
+        tmuxMissing: '这台机器没有 tmux：新终端是临时 shell，daemon 停止就会结束。安装 tmux 后即可持久保留，无需重启 daemon。',
         tipsTitle: '关于 web 终端',
         tips1: 'web 终端本身就是机器上的一个 tmux 会话。',
         tips2: '要进入你已有的 tmux 会话，用下面的「接入已有 tmux 会话」；不要在 web 终端里再敲 tmux attach（tmux 不允许嵌套）。',
@@ -1473,6 +1474,8 @@ export const zhHans: TranslationStructure = {
         closeWithTmuxSession: '连同 tmux 会话彻底关闭…',
         terminalRestored: '已恢复',
         terminalRestoredHint: '重启后自动恢复：目录相同、对话已接回；进程是新的，屏幕历史从头开始。',
+        terminalDirect: '临时',
+        terminalDirectHint: '这台机器没有 tmux，这是一个普通 shell：daemon 停止时就会结束，重启后无法恢复。安装 tmux 后新开的终端即可持久保留。',
         closedTerminalGap: '重启时结束',
         closedTerminalHistory: '查看结构化历史',
         rowNeedsAttention: '等你处理',
@@ -1828,6 +1831,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep23a: {
+                title: '没有 tmux 的机器上，终端不再从列表里消失',
+                summary: '没装 tmux 的机器上网页终端照样能打开，但它是 daemon 没有上报的普通 shell，所以打开一分钟左右就会从侧栏消失，其实还在后台运行。',
+                listed: '这类 shell 现在会一直留在列表里，标为「临时」，直到你关掉它；闲置 20 分钟也不再被悄悄关掉。daemon 停止或机器重启时它仍会结束。',
+                install: '终端页和新建终端对话框会提示这台机器没有 tmux，并给出安装命令（brew、apt，无 sudo 可用 conda）。装好后约 30 秒内新开的终端就会用上 tmux，无需重启 daemon。需要更新 CLI。',
+            },
             sep22b: {
                 title: '侧问改由正在运行的会话自己作答',
                 summary: '以前侧问是另起一个 Claude 进程从磁盘读回对话来答，任务进行中它只看得到已写盘的部分，有时会把正在跑的一步说成「被中断」。Claude Code 自带进程内的 /btw，现在会话直接用它。',
@@ -2688,6 +2697,9 @@ export const zhHans: TranslationStructure = {
         connectionCreateUnknown: "无法确认终端是否已创建。请先查看机器的终端列表，避免重复创建。",
         connectionRetry: "重试连接",
         connectionMachine: "查看机器",
+        directShellTitle: "临时终端：这台机器没有安装 tmux",
+        directShellHint: "daemon 运行期间它会一直留在列表里，但 daemon 停止或机器重启后就会结束，无法恢复。安装 tmux 后新开终端即可持久保留（无需重启 daemon）：",
+        directShellDismiss: "知道了",
         // 同时适用 tmux 与 direct PTY 终端。
         closeTitle: '关闭终端？',
         offlineCloseTitle: '机器已离线',

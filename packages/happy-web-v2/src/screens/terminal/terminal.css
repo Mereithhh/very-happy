@@ -774,3 +774,38 @@
 @media (prefers-reduced-motion: reduce) {
   .term-connection-spinner { animation: none; }
 }
+
+/* B-486: temporary direct shell (no tmux on the machine). A flow row under the
+   header — never overlays the pane, so xterm geometry is re-fit once when it
+   appears/disappears like any other layout change. Neutral surface: --warn is
+   reserved for "waiting on permission", --accent for live. */
+.term-direct-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.term-direct-notice-icon { flex: none; margin-top: 2px; color: var(--text-dim); }
+.term-direct-notice-copy { flex: 1; min-width: 0; }
+.term-direct-notice-copy strong { display: block; color: var(--text); font-weight: 600; }
+.term-direct-notice-copy p { margin: 2px 0 4px; }
+.term-direct-notice-cmds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.term-direct-notice-cmds li { display: flex; flex-wrap: wrap; column-gap: 6px; min-width: 0; }
+.term-direct-notice-cmds span { color: var(--text-faint); }
+/* A command is copied whole: never break it mid-token ("conda-\nforge"); a
+   narrow phone wraps label/command as units and, at worst, scrolls this row. */
+.term-direct-notice-cmds code { color: var(--text); white-space: nowrap; user-select: all; }
+.term-direct-notice-copy { overflow-x: auto; }

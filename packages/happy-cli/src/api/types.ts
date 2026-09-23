@@ -248,6 +248,8 @@ export const WebTerminalListItemSchema = z.object({
   manual: z.boolean().optional(),
   /** B-273: opened attached to the user's tmux session of this name. */
   attachTmux: z.string().optional(),
+  /** B-486: direct-pty shell (no tmux) — not restorable after a daemon restart. */
+  direct: z.boolean().optional(),
 })
 
 /**
@@ -359,6 +361,17 @@ export const DaemonStateSchema = z.object({
    */
   codexHistory: z.object({
     rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
+  /**
+   * B-486: can web terminals on this machine be durable? `tmuxAvailable:
+   * false` ⇒ every new terminal is a direct shell that dies with the daemon,
+   * so the web tells the user to install tmux. Same trust rule
+   * (`detectedAt >= startedAt`); old webs ignore it.
+   */
+  terminalHost: z.object({
+    tmuxAvailable: z.boolean(),
+    tmuxVersion: z.string().optional(),
     detectedAt: z.number(),
   }).optional(),
   /** Relay-owned CLI compatibility/update policy last checked by this daemon. */

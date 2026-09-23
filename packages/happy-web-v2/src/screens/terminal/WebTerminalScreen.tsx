@@ -1,6 +1,7 @@
 import { ToolHistory } from '../session/ToolHistory';
 import { startConnectionStage, connectionFailureOutcome } from '@/sync/connectionDiagnostics';
 import { TerminalConnectionNotice } from './TerminalConnectionNotice';
+import { TerminalDirectShellNotice } from './TerminalDirectShellNotice';
 import { terminalConnectionNotice } from './termConnectionState';
 import { machineLabel } from '@/utils/machineUtils';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
@@ -334,6 +335,10 @@ export function WebTerminalScreen() {
   // expectations so the swap doesn't read as a stall. Never shows once cached.
   const [cjkFontLoading, setCjkFontLoading] = useState(false);
   const [hasTmuxSession, setHasTmuxSession] = useState(false);
+  // B-486: the open answered with no tmux session ⇒ a temporary direct shell.
+  // Separate from hasTmuxSession, whose `false` also means "not opened yet".
+  const [directShell, setDirectShell] = useState(false);
+  const [directNoticeDismissed, setDirectNoticeDismissed] = useState(false);
   // File browser drawer (fs-list / fs-read RPCs). Desktop (fine pointer,
   // >=1100px): an inline SPLIT — the terminal yields width instead of being
   // covered (B-088; the old always-overlay is kept on touch/narrow where the
@@ -538,6 +543,7 @@ export function WebTerminalScreen() {
     setConnecting(true);
     setFailedSurfaceKey(null);
     setHasTmuxSession(false);
+    setDirectShell(false);
     setShowHelp(false);
     ensureImeFix();
     // Start fetching the dual-width CJK terminal font (Maple Mono CN) the
@@ -1506,6 +1512,7 @@ export function WebTerminalScreen() {
           enc = res.encStream === true;
           tmuxAttached = !!res.tmuxSession;
           setHasTmuxSession(tmuxAttached);
+          setDirectShell(!tmuxAttached);
           // Restore runs INSIDE this outChain slot: live chunks that arrived
           // during the RPC queued their writes after it, and their seqs were
           // accepted after seqAtCall so the snapshot baseline keeps them.
@@ -1760,6 +1767,7 @@ export function WebTerminalScreen() {
       enc = res.encStream === true;
       tmuxAttached = !!res.tmuxSession;
       setHasTmuxSession(tmuxAttached);
+      setDirectShell(!tmuxAttached);
       // Latch the channel for this mount (see mountStreamMode / streamRemount).
       // Absent streamMode = old daemon = the v1 attach path, fully preserved.
       mountStreamMode = res.streamMode ?? 'attach';
@@ -2739,6 +2747,7 @@ export function WebTerminalScreen() {
           )}
         </div>
       </header>
+      {directShell && !directNoticeDismissed && <TerminalDirectShellNotice onDismiss={() => setDirectNoticeDismissed(true)} />}
       {machineId && tid && <ToolHistory key={`${machineId}:${tid}`} scope={{machineId, terminalId:tid}} machineId={machineId} />}
       {/* term-mid: desktop (fine pointer, wide) = flex ROW so the file browser
           splits the width with the terminal (B-088); coarse/narrow viewports
