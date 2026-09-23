@@ -1,6 +1,6 @@
 # 没有 tmux 的机器上的网页终端
 
-> 状态：Final
+> 状态：Shipped（commit `a36964b4`，web 2026-09-23 上线，CLI v0.2.148）
 > 日期：2026-09-23 ｜ 关联 backlog：B-486 ｜ 出处：Chuhui XUE 实报（SageMaker HyperPod 开发机，录屏）
 
 ## 背景
@@ -72,8 +72,10 @@ Chuhui 在一台新连的 HyperPod 开发机上开网页终端，终端能用，
 - [x] tmux 装好后 30 s 内 `tmuxRuntimeInfo()` 变为可用，不需要重启。
 - [x] web：推送的直连行在乐观行过期后仍在（`terminalPushOps.test.ts`）；`tmuxMissing` 遵守信任规则。
 - [x] 终端页两条 open 路径都会设置直连状态（源码断言 + mutation-check）。
-- [ ] 真实浏览器：提示条和「临时」标记在亮/暗主题、390px 宽度下的效果。
+- [x] 真实浏览器（css-probe，Chromium）：提示条在亮/暗、1000/390/320px 下无横向溢出；「临时」复用 `sb-row-restored` 样式。
 
 ## 留真机验证项
+
+已转 `docs/verify-queue.md` V-160。
 
 - 在一台真正没有 tmux 的 Linux 机器上（HyperPod / DSW 镜像）走完整流程：开终端 → 1 分钟后仍在侧栏 → 装 tmux → 30 s 后新开终端变成持久终端。
