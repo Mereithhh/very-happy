@@ -6,6 +6,7 @@ describe('pricing.resolvePricingKey', () => {
         expect(resolvePricingKey('claude-fable-5-1')).toBe('claude-fable-5-1');
         expect(resolvePricingKey('claude-fable-5-1[1m]')).toBe('claude-fable-5-1');
         expect(resolvePricingKey('claude-opus-5[1m]')).toBe('claude-opus-5');
+        expect(resolvePricingKey('claude-opus-5-5[1m]')).toBe('claude-opus-5-5');
         expect(resolvePricingKey('claude-sonnet-5')).toBe('claude-sonnet-5');
         expect(resolvePricingKey('claude-haiku-4-5')).toBe('claude-haiku-4-5');
     });
@@ -13,10 +14,10 @@ describe('pricing.resolvePricingKey', () => {
     it('maps Claude Code aliases to the model they currently resolve to', () => {
         expect(resolvePricingKey('fable')).toBe('claude-fable-5-1');
         expect(resolvePricingKey('fable[1m]')).toBe('claude-fable-5-1');
-        expect(resolvePricingKey('opus')).toBe('claude-opus-5');
+        expect(resolvePricingKey('opus')).toBe('claude-opus-5-5');
         expect(resolvePricingKey('sonnet')).toBe('claude-sonnet-5');
         expect(resolvePricingKey('haiku')).toBe('claude-haiku-4-5');
-        expect(resolvePricingKey('opusplan')).toBe('claude-opus-5');
+        expect(resolvePricingKey('opusplan')).toBe('claude-opus-5-5');
     });
 
     it('handles dated snapshots, dotted versions and provider prefixes', () => {
@@ -39,9 +40,9 @@ describe('pricing.resolvePricingKey', () => {
         expect(resolvePricingKey('claude-fable-6')).toBe('claude-fable-5-1');
         expect(resolvePricingKey('claude-fable-3')).toBe('claude-fable-5-1');
         expect(resolvePricingKey('claude-mythos-6')).toBe('claude-mythos-5-1');
-        expect(resolvePricingKey('claude-opus-6')).toBe('claude-opus-5');
-        expect(resolvePricingKey(undefined)).toBe('claude-opus-5');
-        expect(resolvePricingKey('something-else')).toBe('claude-opus-5');
+        expect(resolvePricingKey('claude-opus-6')).toBe('claude-opus-5-5');
+        expect(resolvePricingKey(undefined)).toBe('claude-opus-5-5');
+        expect(resolvePricingKey('something-else')).toBe('claude-opus-5-5');
     });
 });
 

@@ -27,6 +27,18 @@ describe('resolveMessageModeMeta (B-103)', () => {
         expect('effort' in meta).toBe(true);
     });
 
+    it('claude defaults to pinned Opus 5.5 only when the wrapper advertises it', () => {
+        const capable = { permissionMode: null, modelMode: null, effortLevel: null,
+            metadata: { flavor: 'claude', capabilities: ['claude-steer-v1', 'claude-opus-5-5-v1'] } } as any;
+        expect(resolveMessageModeMeta(capable).model).toBe('claude-opus-5-5');
+        // Older wrappers bundle Claude Code < 2.1.280, which 400s on Opus 5.5.
+        const old = { ...capable, metadata: { flavor: 'claude', capabilities: ['claude-steer-v1'] } };
+        expect(resolveMessageModeMeta(old).model).toBeNull();
+        // A synced override still wins over the code default.
+        expect(resolveMessageModeMeta(capable, { agentDefaultOverrides: { claude: { modelMode: 'sonnet' } } } as any).model).toBe('sonnet');
+        expect(resolveMessageModeMeta(capable, { agentDefaultOverrides: { claude: { modelMode: 'default' } } } as any).model).toBeNull();
+    });
+
     it("explicit 'default' model still maps to null; picked values pass through", () => {
         expect(resolveMessageModeMeta(session({ modelMode: 'default' })).model).toBeNull();
         expect(resolveMessageModeMeta(session({ modelMode: 'fable' })).model).toBe('fable');

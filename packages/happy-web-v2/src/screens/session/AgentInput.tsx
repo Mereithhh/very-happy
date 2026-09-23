@@ -37,6 +37,7 @@ import {
     isPiAgent,
     normalizeAgentKey,
     resolveAgentDefaultConfig,
+    resolveDefaultModelMode,
     setAgentDefaultOverride,
     type AgentDefaultField,
 } from '@/sync/agentDefaults';
@@ -199,7 +200,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     // selectors
     const agentDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, flavor);
-    const modelKey = session?.modelMode ?? agentDefaults.modelMode;
+    const modelKey = session?.modelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, session ? (metadata ?? {}) : null);
     const resolvedDefaultModel = metadata?.defaultModelCode
         ?? (modelKey === 'default' ? usage?.model : undefined);
     const defaultModelLabel = resolvedDefaultModel
