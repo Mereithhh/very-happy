@@ -37,8 +37,8 @@ Chuhui 在一台新连的 HyperPod 开发机上开网页终端，终端能用，
 ## 设计
 
 **daemon（CLI）**
-- `TerminalSession.direct = {cwd, createdAt, title?}` 只在直连 pty 分支设置；title 取 headless 屏幕上的 OSC 标题。
-- `buildTerminalList` 在 tmux 列表后追加 `directTerminalItems(...)`（纯函数，`terminal/directTerminals.ts`）：tmux 已列出的 id 不重复，每行带 `direct: true`、`tags: []`。
+- `TerminalSession.direct = {cwd, createdAt, title?, manual?, tags?}` 只在直连 pty 分支设置；title 取 headless 屏幕上的 OSC 标题（经 `deriveAutoTitle` 过滤，与 tmux pane_title 跟随同规则），用户改名（`manual`）后不再被 OSC 覆盖；改名、打标签存在 daemon 内存里。
+- `buildTerminalList` 在 tmux 列表后追加 `directTerminalItems(...)`（纯函数，`terminal/directTerminals.ts`）：tmux 已列出的 id 不重复，每行带 `direct: true`。
 - `reapIdle` 跳过直连会话，因为回收它等于杀掉用户的 shell。它们现在会列出来、可以关闭；上限仍由 `enforceCap` 兜底（48）。
 - `killSession` 遇到直连会话：写关闭记录、detach（即结束 shell）、写 tombstone、刷新列表，不调用 tmux。
 - tmux 缺失的结论只缓存 30 s（`TMUX_MISSING_REPROBE_MS`），之后重新探测；找到后永久缓存，并清掉 env-flag、版本缓存。
