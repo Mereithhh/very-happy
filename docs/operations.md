@@ -658,11 +658,13 @@ rm -f /tmp/vh-release-lib.sh'
 `RELEASE_GENERATION` is already correct: the switch bumps and persists it before
 any candidate work, precisely so a half-finished attempt still consumes one.
 
-The old slot may be left **running and drained**. It serves no traffic (Caddy
-points elsewhere), it is the rollback point, and the next deploy resets its drain
-state when it becomes the candidate. On vh-sg a server slot is ~220 MB against
-13 GB free, so stopping it buys nothing; `stop_old_slot` is what the script would
-have done, not something the state depends on.
+**Stop the old slot** (`docker stop happy-server-<old>`; the container stays as
+the rollback point) — do not leave it running. 2026-09-22 (B-484) showed why the
+earlier "leaving it is harmless" reading was wrong: a drained slot still holds
+every client that never got the `disconnect`, keeps consuming and producing on
+the shared Redis streams adapter, and when Redis went OOM it crash-looped
+(RestartCount 2) while marking machines and sessions inactive from its stale
+view. `stop_old_slot` is exactly what the script would have done next.
 
 ### Connection incident evidence (B-380)
 
