@@ -288,7 +288,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         running: metadata?.currentModelCode,
     });
     // context meter — always visible when we have a usage snapshot.
-    const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage);
+    const context = composerContextUsage(isPiAgent(flavor), session?.agentState?.contextUsage, usage, metadata?.currentModelCode);
     const contextKnown = context.tokens !== null;
     const contextSize = context.tokens ?? 0;
     const contextWindow = context.window;

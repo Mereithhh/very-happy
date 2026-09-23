@@ -148,20 +148,24 @@ export function resolveAgentDefaultConfig(
 
 /**
  * Model a session runs when nobody picked one for it: the synced per-agent
- * override, else the code default. A session whose wrapper cannot run the
- * pinned Opus 5.5 default follows the machine's own default instead. Without
- * session metadata (launcher, settings) the code default is shown as is.
+ * override, else the code default. Picking a model in any session also writes
+ * the override, so pinned Opus 5.5 can arrive from either source; a session
+ * whose wrapper cannot run it follows the machine's own default instead of
+ * failing every turn. Without session metadata (launcher, settings) the value
+ * is shown as is.
  */
 export function resolveDefaultModelMode(
     overrides: AgentDefaultOverrides | null | undefined,
     flavor: string | null | undefined,
     metadata?: { capabilities?: string[] | null } | null,
 ): string {
-    const selected = getAgentDefaultOverride(overrides, flavor).modelMode;
-    if (selected !== undefined) return selected;
-    const codeDefault = getCodeAgentDefaults(flavor).modelMode;
-    if (codeDefault === CLAUDE_OPUS_55_MODEL && metadata && !supportsClaudeOpus55(metadata)) return 'default';
-    return codeDefault;
+    const selected = getAgentDefaultOverride(overrides, flavor).modelMode ?? getCodeAgentDefaults(flavor).modelMode;
+    if (isClaudeOpus55Model(selected) && metadata && !supportsClaudeOpus55(metadata)) return 'default';
+    return selected;
+}
+
+function isClaudeOpus55Model(model: string): boolean {
+    return model === CLAUDE_OPUS_55_MODEL || model === `${CLAUDE_OPUS_55_MODEL}[1m]`;
 }
 
 export function hasAgentDefaultOverride(

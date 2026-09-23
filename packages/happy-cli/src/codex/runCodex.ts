@@ -36,6 +36,7 @@ import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
+import { unsupportedEffortReason } from './effortSupport';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
@@ -309,9 +310,6 @@ export async function runCodex(opts: {
     ];
 
     let discoveredModels: Awaited<ReturnType<CodexAppServerClient['listModels']>> = [];
-    const VALID_REMOTE_EFFORTS: readonly ReasoningEffort[] = [
-        'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max',
-    ];
 
     registerAgentAttachmentDownloads(session);
     let userMessageDelivery = Promise.resolve();
@@ -942,12 +940,9 @@ export async function runCodex(opts: {
                     sandboxManagedByHappy,
                 );
 
-                const selectedModel = discoveredModels.find((model) => message.mode.model
-                    ? model.model === message.mode.model : model.isDefault);
-                const supportedEfforts = selectedModel?.supportedReasoningEfforts.map((option) => option.reasoningEffort)
-                    ?? VALID_REMOTE_EFFORTS;
-                if (message.mode.effort && !supportedEfforts.includes(message.mode.effort)) {
-                    throw new Error(`Reasoning effort "${message.mode.effort}" is not supported by ${message.mode.model ?? 'the default model'}. Choose a supported level.`);
+                const effortRefusal = unsupportedEffortReason(discoveredModels, message.mode.model, message.mode.effort);
+                if (effortRefusal) {
+                    throw new Error(effortRefusal);
                 }
 
                 // Start thread on first turn (thread persists across mode changes)

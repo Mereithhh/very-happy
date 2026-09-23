@@ -20,6 +20,13 @@ describe('contextWindowFor', () => {
         }
     });
 
+    it('Opus 5.5 裸 id 也是 1M（没有 200k 版本，默认与 opus 别名跑的就是它）', () => {
+        expect(contextWindowFor('claude-opus-5-5')).toBe(LONG_CONTEXT_WINDOW);
+        expect(contextWindowFor('claude-opus-5-5-20260901')).toBe(LONG_CONTEXT_WINDOW);
+        expect(contextWindowFor('claude-opus-5')).toBe(DEFAULT_CONTEXT_WINDOW);
+        expect(contextWindowFor('claude-opus-5-50')).toBe(DEFAULT_CONTEXT_WINDOW);
+    });
+
     it('普通模型走标准窗口', () => {
         for (const id of [
             'claude-opus-4-5-20260101',
@@ -75,4 +82,9 @@ it('uses pi runtime occupancy, including unknown after compaction, without falli
     expect(composerContextUsage(true,{source:'pi',tokens:null,contextWindow:131072,updatedAt:1},stale)).toMatchObject({tokens:null,window:131072});
     expect(composerContextUsage(true,{source:'pi',tokens:32768,contextWindow:131072,updatedAt:2},stale)).toMatchObject({tokens:32768,window:131072,estimated:true});
     expect(composerContextUsage(false, undefined, {contextSize:1234,model:'claude-opus-5[1m]'})).toMatchObject({tokens:1234,window:1000000,estimated:false});
+    // Session-protocol usage has no model: size by the running model instead.
+    expect(composerContextUsage(false, undefined, {contextSize:1234}, 'claude-opus-5-5')).toMatchObject({tokens:1234,window:1000000});
+    expect(composerContextUsage(false, undefined, {contextSize:1234}, 'claude-sonnet-5')).toMatchObject({window:200000});
+    expect(composerContextUsage(false, undefined, {contextSize:1234,model:'claude-sonnet-5'}, 'claude-opus-5[1m]')).toMatchObject({window:200000});
+    expect(composerContextUsage(false, undefined, {contextSize:1234}, null)).toMatchObject({window:null});
 });

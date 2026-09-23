@@ -37,6 +37,10 @@ describe('resolveMessageModeMeta (B-103)', () => {
         // A synced override still wins over the code default.
         expect(resolveMessageModeMeta(capable, { agentDefaultOverrides: { claude: { modelMode: 'sonnet' } } } as any).model).toBe('sonnet');
         expect(resolveMessageModeMeta(capable, { agentDefaultOverrides: { claude: { modelMode: 'default' } } } as any).model).toBeNull();
+        // A pinned Opus 5.5 override (picked in another session) must not
+        // break sessions on wrappers that cannot run it.
+        expect(resolveMessageModeMeta(old, { agentDefaultOverrides: { claude: { modelMode: 'claude-opus-5-5[1m]' } } } as any).model).toBeNull();
+        expect(resolveMessageModeMeta(capable, { agentDefaultOverrides: { claude: { modelMode: 'claude-opus-5-5[1m]' } } } as any).model).toBe('claude-opus-5-5[1m]');
     });
 
     it("explicit 'default' model still maps to null; picked values pass through", () => {
