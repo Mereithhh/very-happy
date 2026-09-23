@@ -659,7 +659,7 @@ rm -f /tmp/vh-release-lib.sh'
 any candidate work, precisely so a half-finished attempt still consumes one.
 
 **Stop the old slot** (`docker stop happy-server-<old>`; the container stays as
-the rollback point) — do not leave it running. 2026-09-22 (B-480) showed why the
+the rollback point) — do not leave it running. 2026-09-22 (B-484) showed why the
 earlier "leaving it is harmless" reading was wrong: a drained slot still holds
 every client that never got the `disconnect`, keeps consuming and producing on
 the shared Redis streams adapter, and when Redis went OOM it crash-looped
