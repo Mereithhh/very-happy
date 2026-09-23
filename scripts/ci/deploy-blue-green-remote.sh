@@ -29,6 +29,14 @@ PHASE=before-switch
 CANDIDATE_STARTED=false
 
 if [ "$VH_RELEASE_LIBRARY_ONLY" != 1 ]; then
+    # The runner learns the outcome from this file, not from the SSH exit
+    # status, so a dropped connection cannot hide a finished release. Armed
+    # before any check: a failed image pull used to exit with no marker and
+    # the runner polled for 25 minutes (2026-09-24).
+    if [ -n "${VH_RELEASE_RESULT_FILE:-}" ]; then
+        trap 'rc=$?; printf "exit=%s phase=%s\n" "$rc" "${PHASE:-unknown}" > "$VH_RELEASE_RESULT_FILE"' EXIT
+    fi
+    PHASE=preflight
     [[ "$IMAGE" =~ ^ghcr\.io/mereithhh/very-happy-server@sha256:[0-9a-f]{64}$ ]]
     [[ "$VERSION" =~ ^[0-9a-f]{40}$ ]]
     case "$ROLLOUT" in groundwork|shadow|switch) ;; *) echo "invalid rollout mode: $ROLLOUT" >&2; exit 2 ;; esac
@@ -76,8 +84,20 @@ rewrite_compose_image() {
     grep -Fq "image: $image" "$compose_file"
 }
 
+# A registry hiccup (2026-09-24: ghcr `connection reset by peer`) must not end a
+# release: pulls are content-addressed, so retrying is always safe.
+pull_image() {
+    local attempt
+    for attempt in 1 2 3 4 5; do
+        docker pull "$1" >/dev/null && return 0
+        echo "docker pull $1 failed (attempt $attempt/5)" >&2
+        [ "$attempt" -lt 5 ] && sleep $((attempt * 5))
+    done
+    return 1
+}
+
 verify_image() {
-    docker pull "$IMAGE" >/dev/null
+    pull_image "$IMAGE"
     docker run --rm --entrypoint sh "$IMAGE" -c '
       package_schema=$(sha256sum /repo/packages/happy-server/prisma/schema.prisma | cut -d " " -f 1)
       client_schema=$(sha256sum /repo/node_modules/.prisma/client/schema.prisma | cut -d " " -f 1)
@@ -87,7 +107,7 @@ verify_image() {
 
 migration_tree_digest() {
     local image="$1"
-    docker image inspect "$image" >/dev/null 2>&1 || docker pull "$image" >/dev/null
+    docker image inspect "$image" >/dev/null 2>&1 || pull_image "$image"
     docker run --rm --entrypoint sh "$image" -c '
       find /repo/packages/happy-server/prisma/migrations -type f -print0 \
         | sort -z \
@@ -604,11 +624,7 @@ if [ "$VH_RELEASE_LIBRARY_ONLY" != 1 ]; then
     # while an earlier attempt is still running; a retry must not race it.
     exec 9>"$RELEASE_DIR/deploy.lock"
     flock -n 9 || { echo "another deployment is still running on this host (lock $RELEASE_DIR/deploy.lock); wait for it or kill -TERM the stale deploy-blue-green-remote.sh" >&2; exit 6; }
-    # The runner learns the outcome from this file, not from the SSH exit
-    # status, so a dropped connection cannot hide a finished release.
-    if [ -n "${VH_RELEASE_RESULT_FILE:-}" ]; then
-        trap 'rc=$?; printf "exit=%s phase=%s\n" "$rc" "${PHASE:-unknown}" > "$VH_RELEASE_RESULT_FILE"' EXIT
-    fi
+    PHASE=before-switch
 
     case "$ROLLOUT" in
         groundwork) groundwork ;;

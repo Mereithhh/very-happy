@@ -208,6 +208,16 @@ grep -Fq 'ServerAliveInterval=15' "$REPO_ROOT/scripts/ci/deploy-hwsg.sh" || fail
 grep -Fq 'setsid nohup bash' "$REPO_ROOT/scripts/ci/deploy-hwsg.sh" || fail 'remote deploy must be detached from the runner session'
 grep -Fq 'poll_remote_deploy "$log" "$result"' "$REPO_ROOT/scripts/ci/deploy-hwsg.sh" || fail 'runner must poll the result file'
 
+# 2026-09-24: an early failure (a ghcr pull reset) exited before the result
+# trap was armed, so the runner polled for 25 minutes. Any exit must leave a
+# marker, and registry pulls retry.
+result_probe=$(mktemp)
+rm -f "$result_probe"
+VH_RELEASE_LIBRARY_ONLY=0 VH_RELEASE_RESULT_FILE="$result_probe" bash "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh" not-a-digest 0 switch >/dev/null 2>&1 || true
+grep -Eq '^exit=[1-9][0-9]* phase=preflight$' "$result_probe" 2>/dev/null || fail 'an early remote failure must still write the result marker'
+rm -f "$result_probe"
+grep -Fq 'pull_image "$IMAGE"' "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh" || fail 'image pulls must go through the retrying pull_image'
+
 # Production bootstrap contracts: Caddy must be able to traverse the release
 # directory, while both the forward path and rollback recreate only the server.
 grep -Fq 'install -d -m 755 "$RELEASE_DIR"' "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh" \

@@ -127,7 +127,7 @@ if (!/docker pull "\$IMAGE"/.test(remoteServerDeployScript)
 if (/docker compose restart happy-server/.test(remoteServerDeployScript)) {
   errors.push('deploy-server-remote.sh: source-only container restart is forbidden');
 }
-if (!/docker pull "\$IMAGE"/.test(blueGreenDeployScript)
+if (!/(docker pull|pull_image) "\$IMAGE"/.test(blueGreenDeployScript)
   || !/node_modules\/\.prisma\/client\/schema\.prisma/.test(blueGreenDeployScript)
   || !/groundwork\|shadow\|switch/.test(blueGreenDeployScript)
   || !/\/_vh\/release\/canary/.test(blueGreenDeployScript)
