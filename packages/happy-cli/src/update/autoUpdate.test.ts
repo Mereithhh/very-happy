@@ -67,4 +67,9 @@ describe('autoUpdateInstallArgs', () => {
             'i', '-g', '--allow-scripts=very-happy-cli,node-pty', 'very-happy-cli@0.2.115',
         ]);
     });
+    it('B-489: pins the global prefix when one is given', () => {
+        expect(autoUpdateInstallArgs('0.2.115', '/home/u/.local')).toEqual([
+            'i', '-g', '--prefix=/home/u/.local', '--allow-scripts=very-happy-cli,node-pty', 'very-happy-cli@0.2.115',
+        ]);
+    });
 });

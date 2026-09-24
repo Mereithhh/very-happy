@@ -16,6 +16,15 @@ describe('machine update recovery',()=>{
   expect(readUpdateRecovery(blocked,true,4_000_000)).toMatchObject({state:'manual_required',canRetry:false});
   expect(readUpdateRecovery(blocked,false,4_000_000)).toMatchObject({state:'stale',canRetry:false});
  });
+ it('B-489: an install that never reached the running copy outranks the raw state',()=>{
+  const now = 10*60*60_000;
+  const installed = {checkedAt:now,currentVersion:'0.2.144',retrySupported:true,autoUpdate:{state:'installed',version:'0.2.149',at:now-8*60*60_000}};
+  expect(readUpdateRecovery(installed,true,now).state).toBe('installed_not_running');
+  expect(readUpdateRecovery({...installed,autoUpdate:{...installed.autoUpdate,at:now-60_000}},true,now).state).toBe('installed');
+  expect(readUpdateRecovery(installed,false,now).state).toBe('stale');
+  expect(readUpdateRecovery({...installed,autoUpdate:{state:'failed',version:'0.2.149',detail:'installed_elsewhere'}},true,now)).toMatchObject({state:'installed_elsewhere',canRetry:true});
+  expect(readUpdateRecovery({...installed,autoUpdate:{state:'manual_required',version:'0.2.149',detail:'install_location_unverified'}},true,now).state).toBe('install_location');
+ });
  it('rejects both normal-ack errors and malformed success responses',async()=>{
   vi.mocked(apiSocket.machineRPC).mockResolvedValue({error:'denied'});
   await expect(retryMachineUpdate('m','0.2.123')).rejects.toThrow();

@@ -52,3 +52,9 @@ it('allows an explicit retry when acknowledged progress never arrives',async()=>
   expect(mock.rpc).toHaveBeenCalledTimes(1);
  } finally {vi.useRealTimers();}
 });
+
+it('B-489: an install that never took effect is no longer "will update automatically"',()=>{
+ mock.machines[0].daemonState.cliUpdate={...mock.machines[0].daemonState.cliUpdate,autoUpdateVersion:'0.2.133',autoUpdate:{state:'installed',version:'0.2.133',at:Date.now()-2*60*60_000}};render();
+ expect(host.textContent).toContain('cliUpdate.problemTitle');expect(host.textContent).not.toContain('cliUpdate.automaticTitle');
+ expect(host.querySelector('[data-delivery]')?.getAttribute('data-delivery')).toBe('attention');
+});

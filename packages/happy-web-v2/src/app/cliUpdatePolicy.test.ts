@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cliUpdateAcknowledgement, cliUpdateInstallCommand, isCliVersionBelow, machineCliUpdateNotice, visibleCliUpdateNotices } from './cliUpdatePolicy';
+import { INSTALLED_NOT_RUNNING_GRACE_MS, cliUpdateAcknowledgement, cliUpdateCommandForNotice, cliUpdateInstallCommand, cliUpdateProblem, isCliVersionBelow, machineCliUpdateNotice, visibleCliUpdateNotices } from './cliUpdatePolicy';
 
 const machine = (id: string, current: string, recommended: string | null, minimum: string | null = null) => ({
   id,
@@ -129,4 +129,35 @@ it('recognizes only fresh, explicitly manual progress for the exact recommendati
  expect(machineCliUpdateNotice(m,now)?.delivery).not.toBe('automatic');
  Object.assign(m.daemonState.cliUpdate,{autoUpdate:{state:'waiting_idle',version:'0.2.134',source:'manual'}});
  expect(machineCliUpdateNotice(m,now)?.delivery).not.toBe('automatic');
+});
+
+describe('B-489 update that never reached the running copy', () => {
+  const now = 1_800_000_000_000;
+  // Shape reported by the SageMaker daemon: 0.2.144 running, 0.2.149 "installed" into /opt/conda.
+  const stuck = (state: string, detail?: string, installedAgoMs = 8 * 60 * 60_000) => ({
+    ...machine('wei', '0.2.144', '0.2.149'),
+    daemonState: { cliUpdate: { currentVersion: '0.2.144', recommendedVersion: '0.2.149', minimumVersion: '0.2.91', checkedAt: now,
+      autoUpdateVersion: '0.2.149', retrySupported: true, manualUpdateSupported: true,
+      autoUpdate: { state, version: '0.2.149', at: now - installedAgoMs, ...(detail ? { detail } : {}) } } },
+  });
+  it('an old daemon stuck on installed stops being "no action needed" after the grace period', () => {
+    expect(machineCliUpdateNotice(stuck('installed', undefined, INSTALLED_NOT_RUNNING_GRACE_MS - 1), now)).toMatchObject({ delivery: 'automatic', problem: null });
+    const notice = machineCliUpdateNotice(stuck('installed'), now)!;
+    expect(notice).toMatchObject({ delivery: 'attention', problem: 'installed_not_running' });
+    expect(cliUpdateCommandForNotice(notice)).toBe('P=$(readlink -f "$(command -v very-happy)") && npm install -g --prefix "${P%/lib/node_modules/very-happy-cli/*}" --allow-scripts=very-happy-cli,node-pty very-happy-cli@0.2.149 && very-happy daemon start');
+    // Once the daemon runs the installed version there is nothing to report.
+    const done = stuck('installed'); done.daemonState.cliUpdate.currentVersion = '0.2.149';
+    expect(cliUpdateProblem(done.daemonState.cliUpdate, now)).toBeNull();
+  });
+  it('maps the new daemon details to readable problems', () => {
+    expect(machineCliUpdateNotice(stuck('failed', 'installed_elsewhere'), now)).toMatchObject({ delivery: 'attention', problem: 'installed_elsewhere' });
+    const location = machineCliUpdateNotice(stuck('manual_required', 'install_location_not_writable'), now)!;
+    expect(location).toMatchObject({ delivery: 'attention', problem: 'install_location' });
+    expect(cliUpdateCommandForNotice(location)).toBe(cliUpdateInstallCommand('0.2.149'));
+    expect(machineCliUpdateNotice(stuck('failed', 'npm_install_failed'), now)?.problem).toBeNull();
+  });
+  it('the shell prefix strip lands on the running prefix', () => {
+    const P = '/home/sagemaker-user/.local/lib/node_modules/very-happy-cli/bin/very-happy.mjs';
+    expect(P.replace(/\/lib\/node_modules\/very-happy-cli\/.*$/, '')).toBe('/home/sagemaker-user/.local');
+  });
 });

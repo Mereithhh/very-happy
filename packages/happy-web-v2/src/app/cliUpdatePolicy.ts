@@ -28,7 +28,27 @@ export interface CliUpdateMachineNotice {
   automaticVersion: string | null;
   severity: CliUpdateSeverity;
   delivery: 'automatic' | 'pending' | 'attention' | 'unknown';
+  /** B-489: why an 'attention' notice needs a person, when it is an install-location problem. */
+  problem: CliUpdateProblem | null;
 }
+
+/**
+ * B-489: the automatic update could not reach the copy the daemon runs.
+ * - installed_elsewhere: a new daemon saw npm succeed without changing its own package.
+ * - install_location: a new daemon refused to install (unwritable / unrecognised layout).
+ * - installed_not_running: an OLD daemon reported `installed` long ago and still runs
+ *   the previous version. Old daemons cannot tell us more, and `installed` is
+ *   terminal for them, so without this the Web keeps saying "no action needed"
+ *   forever (the SageMaker case: 0.2.144 for two days after installing 0.2.149).
+ */
+export type CliUpdateProblem = 'installed_elsewhere' | 'install_location' | 'installed_not_running';
+
+/**
+ * Past this, `installed` without a handover is not "switching shortly". The
+ * handover waits for no agent turn in flight, so a long turn can hold it; the
+ * copy says so rather than asserting the npm-tree cause.
+ */
+export const INSTALLED_NOT_RUNNING_GRACE_MS = 30 * 60_000;
 
 type Version = { exact: string; core: [number, number, number]; pre: Array<number | string> | null };
 
@@ -80,6 +100,36 @@ export function cliUpdateInstallCommand(targetVersion: string): string | null {
     : null;
 }
 
+export function cliUpdateProblem(update: CliUpdateStateLike | null | undefined, now = Date.now()): CliUpdateProblem | null {
+  const auto = update?.autoUpdate && typeof update.autoUpdate === 'object'
+    ? update.autoUpdate as Record<string, unknown> : {};
+  if (auto.state === 'failed' && auto.detail === 'installed_elsewhere') return 'installed_elsewhere';
+  if (auto.state === 'manual_required' && typeof auto.detail === 'string' && auto.detail.startsWith('install_location_')) return 'install_location';
+  const current = version(update?.currentVersion);
+  const installed = version(auto.version);
+  if (auto.state === 'installed' && current && installed && below(current, installed)
+    && typeof auto.at === 'number' && now - auto.at > INSTALLED_NOT_RUNNING_GRACE_MS) return 'installed_not_running';
+  return null;
+}
+
+/**
+ * B-489: the manual command for an update that landed in another npm tree. It
+ * installs into the prefix of the `very-happy` the shell runs (the one the
+ * daemon was started from), so a second node/npm on PATH cannot capture it.
+ */
+export function cliUpdateRunningInstallCommand(targetVersion: string): string | null {
+  const target = version(targetVersion);
+  return target
+    ? `P=$(readlink -f "$(command -v very-happy)") && npm install -g --prefix "\${P%/lib/node_modules/very-happy-cli/*}" --allow-scripts=very-happy-cli,node-pty very-happy-cli@${target.exact} && very-happy daemon start`
+    : null;
+}
+
+export function cliUpdateCommandForNotice(notice: Pick<CliUpdateMachineNotice, 'targetVersion' | 'problem'>): string | null {
+  return notice.problem === 'installed_elsewhere' || notice.problem === 'installed_not_running'
+    ? cliUpdateRunningInstallCommand(notice.targetVersion)
+    : cliUpdateInstallCommand(notice.targetVersion);
+}
+
 export function machineCliUpdateNotice(machine: CliUpdateMachineLike, now = Date.now()): CliUpdateMachineNotice | null {
   const update = machine.daemonState?.cliUpdate;
   const current = version(update?.currentVersion ?? machine.metadata?.happyCliVersion);
@@ -99,8 +149,9 @@ export function machineCliUpdateNotice(machine: CliUpdateMachineLike, now = Date
   const reportedTarget = version(auto.version);
   const coversTarget = autoTarget && reportedTarget && autoTarget.exact === reportedTarget.exact && !below(autoTarget, target);
   const manualTarget = auto.source === 'manual' && reportedTarget?.exact === target.exact ? reportedTarget : null;
+  const problem = cliUpdateProblem(update ? { ...update, currentVersion: current.exact } : update, now);
   const delivery: CliUpdateMachineNotice['delivery'] =
-    machine.active === true && (auto.state === 'manual_required' || update?.handoverHold) ? 'attention'
+    machine.active === true && (auto.state === 'manual_required' || update?.handoverHold || problem) ? 'attention'
     : !fresh ? 'unknown'
     : ['failed', 'disabled'].includes(String(auto.state)) ? 'attention'
     : (coversTarget || manualTarget) && ['waiting_idle', 'installing', 'installed'].includes(String(auto.state)) ? 'automatic'
@@ -108,6 +159,7 @@ export function machineCliUpdateNotice(machine: CliUpdateMachineLike, now = Date
     : 'unknown';
   return {
     delivery,
+    problem: machine.active === true ? problem : null,
     automaticVersion: delivery === 'automatic' ? (manualTarget ?? autoTarget)!.exact : null,
     machineId: machine.id,
     machineName: machine.metadata?.displayName || machine.metadata?.host || machine.id.slice(0, 8),
