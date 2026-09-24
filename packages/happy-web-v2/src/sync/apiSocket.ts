@@ -1,4 +1,5 @@
 import { connectionDiagnostics, startConnectionStage, connectionFailureOutcome, diagnosticRegion, type DiagnosticRegion } from './connectionDiagnostics';
+import { isAuthLatched } from '@/auth/authLatch';
 import { io, Socket } from 'socket.io-client';
 import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -128,6 +129,10 @@ class ApiSocket {
 
     connect() {
         if (!this.config || this.socket) {
+            return;
+        }
+        // B-490: a rejected token must not keep a reconnect loop alive.
+        if (isAuthLatched()) {
             return;
         }
 

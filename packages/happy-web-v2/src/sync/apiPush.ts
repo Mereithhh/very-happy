@@ -1,5 +1,6 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
+import { assertNotAuthFailure } from '@/auth/authLatch';
 import { z } from 'zod';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
@@ -30,6 +31,8 @@ export async function registerPushToken(credentials: AuthCredentials, token: str
             body: JSON.stringify({ token })
         });
 
+        assertNotAuthFailure(response, 'apiPush'); // B-490: 401/403 are never retried
+
         if (!response.ok) {
             throw new Error(`Failed to register push token: ${response.status}`);
         }
@@ -53,6 +56,8 @@ export async function fetchPushTokens(credentials: AuthCredentials): Promise<Pus
             }
         });
 
+        assertNotAuthFailure(response, 'apiPush'); // B-490: 401/403 are never retried
+
         if (!response.ok) {
             throw new Error(`Failed to fetch push tokens: ${response.status}`);
         }
@@ -73,6 +78,8 @@ export async function unregisterPushToken(credentials: AuthCredentials, token: s
                 'X-Happy-Client': getHappyClientId(),
             }
         });
+
+        assertNotAuthFailure(response, 'apiPush'); // B-490: 401/403 are never retried
 
         if (!response.ok) {
             throw new Error(`Failed to unregister push token: ${response.status}`);

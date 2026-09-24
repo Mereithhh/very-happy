@@ -35,6 +35,8 @@ import { MMKV } from '@/storage/mmkv-web';
 import { accountFingerprint } from '@/sync/accountFingerprint';
 import { kvGet, kvMutate } from '@/sync/apiKv';
 import { onKvChanges } from '@/sync/kvUpdates';
+import { isAuthFailure, isAuthLatched } from '@/auth/authLatch';
+import { exponentialBackoffDelay } from '@/utils/time';
 import {
     mergeSeenMaps,
     parseSeenMap,
@@ -53,6 +55,8 @@ export const SEEN_KV_KEY = 'vh.notif-seen.v1';
 const PUSH_DEBOUNCE_MS = 500;
 /** CAS retries before we give up (local cache still holds the truth) */
 const PUSH_MAX_ATTEMPTS = 4;
+/** ceiling for the republish delay after consecutive transport failures */
+const PUSH_FAILURE_MAX_DELAY_MS = 5 * 60_000;
 /** floor between refetches, so a flurry of wake-ups is one request */
 const REFRESH_MIN_INTERVAL_MS = 30_000;
 
@@ -151,14 +155,44 @@ function absorbRemote(remote: SeenMap, version: number | undefined) {
  * read-merge-write CAS loop (pushSeenWithCas — pure and tested): the 409 body
  * carries the winning value, we merge it in and retry. A blind re-push would
  * drop the other device's reads.
+ *
+ * B-490: at most ONE push is ever in flight. Before, every markSeen (dwell,
+ * 60 s heartbeat, message arrival) that fired after the debounce started a new
+ * kvMutate whose backoff never ended on 401 — the loops piled up and one dead
+ * tab reached ~240 POST /v1/kv per second. Now: a push requested while one is
+ * running just marks "again"; consecutive transport failures space the next
+ * attempt out exponentially (up to 5 min); an auth failure stops pushing until
+ * the account is signed in again.
  */
+let pushInFlight = false;
+let pushAgain = false;
+let pushFailures = 0;
+
 function scheduleKvPush() {
-    const creds = currentCreds();
-    if (!creds) return; // not logged in → local cache only
+    if (isAuthLatched()) return;
+    if (!currentCreds()) return; // not logged in → local cache only
+    if (pushInFlight) {
+        pushAgain = true;
+        return;
+    }
     if (pushTimer) clearTimeout(pushTimer);
-    pushTimer = setTimeout(async () => {
+    const wait = pushFailures > 0
+        ? exponentialBackoffDelay(pushFailures, PUSH_DEBOUNCE_MS, PUSH_FAILURE_MAX_DELAY_MS)
+        : PUSH_DEBOUNCE_MS;
+    pushTimer = setTimeout(() => {
         pushTimer = null;
-        const outcome = await pushSeenWithCas(
+        void runKvPush();
+    }, wait);
+}
+
+async function runKvPush() {
+    const creds = currentCreds();
+    if (!creds || isAuthLatched()) return;
+    pushInFlight = true;
+    pushAgain = false;
+    let outcome: Awaited<ReturnType<typeof pushSeenWithCas>>;
+    try {
+        outcome = await pushSeenWithCas(
             {
                 read: () => useNotificationSeen.getState().seen,
                 version: () => kvVersion ?? -1,
@@ -178,15 +212,41 @@ function scheduleKvPush() {
             },
             PUSH_MAX_ATTEMPTS,
         );
-        if (outcome.status === 'written') kvVersion = outcome.version;
-        else if (outcome.status === 'exhausted') {
-            console.warn('[notificationSeen] KV push gave up after CAS retries');
-        } else {
-            // Transport failure — the local cache keeps the truth and the next
-            // markSeen (or the next refresh) republishes.
-            console.warn('[notificationSeen] KV push failed', (outcome.error as any)?.message);
-        }
-    }, PUSH_DEBOUNCE_MS);
+    } finally {
+        pushInFlight = false;
+    }
+    if (outcome.status === 'written') {
+        kvVersion = outcome.version;
+        pushFailures = 0;
+    } else if (outcome.status === 'exhausted') {
+        console.warn('[notificationSeen] KV push gave up after CAS retries');
+    } else if (isAuthFailure(outcome.error) || isAuthLatched()) {
+        // Token rejected: the local cache keeps the truth; nothing more to do
+        // until the account signs in again (the page reloads then).
+        console.warn('[notificationSeen] KV push stopped: not authorized');
+        pushAgain = false;
+        return;
+    } else {
+        // Transport failure — the local cache keeps the truth and the next
+        // markSeen (or the next refresh) republishes, spaced out.
+        pushFailures++;
+        console.warn('[notificationSeen] KV push failed', (outcome.error as any)?.message);
+    }
+    if (pushAgain) {
+        pushAgain = false;
+        scheduleKvPush();
+    }
+}
+
+/** Test-only: reset module-level push state. */
+export function __resetSeenPushStateForTests() {
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = null;
+    pushInFlight = false;
+    pushAgain = false;
+    pushFailures = 0;
+    kvVersion = undefined;
+    lastRefreshAt = 0;
 }
 
 /** Live cross-device updates: another device wrote the blob. */
@@ -235,7 +295,7 @@ export const useNotificationSeen = create<NotificationSeenState>((set, get) => (
     },
     refresh: async (force = false) => {
         const creds = currentCreds();
-        if (!creds) return;
+        if (!creds || isAuthLatched()) return;
         const now = Date.now();
         if (!force && now - lastRefreshAt < REFRESH_MIN_INTERVAL_MS) return;
         lastRefreshAt = now;

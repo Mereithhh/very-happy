@@ -35,7 +35,12 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { RouteLoading } from './RouteLoading';
 import { dismissPrepaintSplashWhenRouteReady } from './prepaintSplash';
 import { ChangelogNotice } from './ChangelogNotice';
+import { AuthExpiredNotice } from './AuthExpiredNotice';
+import { installAuthGuards } from './authGuards';
 import './appFonts';
+
+// B-490: before any sync starts — a rejected token must stop every loop.
+installAuthGuards();
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
 // markdown renderer, terminal pulls xterm, settings is large).
@@ -73,14 +78,14 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <><Outlet /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /></>;
+  return <><Outlet /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
 function RootGate() {
   const { isAuthenticated } = useAuth();
   useGlobalBackNav();
   if (!isAuthenticated) return <LandingScreen />;
-  return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /></>;
+  return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
 /** B-315: the auto-update reload is silent by design — it must not ask

@@ -19,6 +19,7 @@ import { create } from 'zustand';
 import { getCurrentAuth } from '@/auth/AuthContext';
 import { MMKV } from '@/storage/mmkv-web';
 import { kvGet, kvSet } from '@/sync/apiKv';
+import { isAuthFailure, isAuthLatched } from '@/auth/authLatch';
 import { accountFingerprint } from '@/sync/accountFingerprint';
 import { mergeBoardTasks, orderKeyBetween, type BoardTask } from '@/sync/boardTaskOps';
 
@@ -95,6 +96,7 @@ let pushTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleKvPush() {
   const auth = getCurrentAuth();
   if (!auth?.credentials) return; // not logged in → local cache only
+  if (isAuthLatched()) return; // B-490: token rejected — local cache only
   const creds = auth.credentials;
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
@@ -103,6 +105,11 @@ function scheduleKvPush() {
       const value = toB64(JSON.stringify({ tasks: snapshot() }));
       kvVersion = await kvSet(creds, KV_KEY, value, kvVersion ?? -1);
     } catch (e: any) {
+      // B-490: an auth failure is not a version conflict — don't re-read/re-push.
+      if (isAuthFailure(e) || isAuthLatched()) {
+        console.warn('[boardTasks] KV push stopped: not authorized');
+        return;
+      }
       try {
         const fresh = await kvGet(creds, KV_KEY);
         const remote = fresh ? parseKvTasks(fresh.value) : [];

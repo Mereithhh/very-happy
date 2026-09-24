@@ -19,6 +19,7 @@ import type { AuthCredentials } from '@/auth/tokenStorage';
 import { MMKV } from '@/storage/mmkv-web';
 import { accountFingerprint } from '@/sync/accountFingerprint';
 import { kvGetByPrefix, kvMutate } from '@/sync/apiKv';
+import { isAuthLatched } from '@/auth/authLatch';
 import { onKvChanges } from '@/sync/kvUpdates';
 import {
     NOTE_EXPLICIT_TITLE_MAX_CHARS,
@@ -174,6 +175,7 @@ function removeLocal(id: string) {
 function schedulePush(id: string) {
     const creds = currentCreds();
     if (!creds) return; // not logged in → local cache only
+    if (isAuthLatched()) { dirty.add(id); return; } // B-490: token rejected — keep it dirty, don't call the server
     dirty.add(id);
     if (pushTimers[id]) clearTimeout(pushTimers[id]);
     pushTimers[id] = setTimeout(() => {
@@ -184,6 +186,7 @@ function schedulePush(id: string) {
 
 async function pushNow(id: string, creds: AuthCredentials) {
     for (let attempt = 0; attempt < PUSH_MAX_ATTEMPTS; attempt++) {
+        if (isAuthLatched()) return; // B-490
         const note = useNotes.getState().notes[id] as NoteRecord | undefined;
         const deleting = note === undefined;
         const version = versions[id] ?? -1;

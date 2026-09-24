@@ -1,5 +1,6 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
+import { assertNotAuthFailure } from '@/auth/authLatch';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 
@@ -23,6 +24,8 @@ export async function connectService(
             },
             body: JSON.stringify({ token: JSON.stringify(token) })
         });
+
+        assertNotAuthFailure(response, 'apiServices'); // B-490: 401/403 are never retried
 
         if (!response.ok) {
             throw new Error(`Failed to connect ${service}: ${response.status}`);
@@ -49,6 +52,8 @@ export async function disconnectService(credentials: AuthCredentials, service: s
                 'X-Happy-Client': getHappyClientId(),
             }
         });
+
+        assertNotAuthFailure(response, 'apiServices'); // B-490: 401/403 are never retried
 
         if (!response.ok) {
             if (response.status === 404) {

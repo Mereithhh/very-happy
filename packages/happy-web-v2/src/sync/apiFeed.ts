@@ -1,5 +1,6 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
+import { assertNotAuthFailure } from '@/auth/authLatch';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 import { FeedResponseSchema, FeedItem } from './feedTypes';
@@ -34,6 +35,8 @@ export async function fetchFeed(
                 'X-Happy-Client': getHappyClientId(),
             }
         });
+
+        assertNotAuthFailure(response, 'apiFeed'); // B-490: 401/403 are never retried
 
         if (!response.ok) {
             throw new Error(`Failed to fetch feed: ${response.status}`);

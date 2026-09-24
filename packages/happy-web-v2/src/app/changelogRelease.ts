@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-signed-out-stops-sync',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25a.title',
+    summaryKey: 'changelog.releases.sep25a.summary',
+    itemKeys: ['changelog.releases.sep25a.prompt', 'changelog.releases.sep25a.retries'],
+  },
+  {
     id: '2026-09-24-update-into-running-copy',
     cliVersion: '0.2.150',
     date: '2026-09-24',

@@ -8,6 +8,7 @@ import { Platform } from 'react-native';
 import { trackLogout } from '@/track';
 import { markProgrammaticReload } from '@/app/programmaticReload';
 import { revokeCloudLogin } from '@/auth/cloudAuth';
+import { isAuthLatched, resetAuthLatch } from '@/auth/authLatch';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -31,6 +32,7 @@ export function AuthProvider({ children, initialCredentials }: { children: React
         const newCredentials: AuthCredentials = { token, secret };
         const success = await TokenStorage.setCredentials(newCredentials);
         if (success) {
+            resetAuthLatch(); // B-490: a fresh token starts with a clean slate
             await syncCreate(newCredentials);
             setCredentials(newCredentials);
             setIsAuthenticated(true);
@@ -42,14 +44,16 @@ export function AuthProvider({ children, initialCredentials }: { children: React
     const logout = async () => {
         trackLogout();
         const registeredPushToken = credentials ? loadRegisteredPushToken() : null;
-        if (credentials && registeredPushToken) {
+        // B-490: with a rejected token these server calls can only 401 (the
+        // guard refuses them anyway) — skip straight to the local sign-out.
+        if (credentials && registeredPushToken && !isAuthLatched()) {
             try {
                 await unregisterPushToken(credentials, registeredPushToken);
             } catch (error) {
                 console.log('Failed to unregister push token during logout:', error);
             }
         }
-        if (credentials) {
+        if (credentials && !isAuthLatched()) {
             await revokeCloudLogin(credentials);
         }
         clearPersistence();
