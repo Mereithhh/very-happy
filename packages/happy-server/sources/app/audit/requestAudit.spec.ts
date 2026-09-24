@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import fastify from 'fastify';
 import { requestAuditContext, auditLoginFailure, auditLogin } from './requestAudit';
 import { publishAudit } from './producer';
+import { configureClientIpTrust } from '@/app/api/clientIp';
 vi.mock('./producer', () => ({ publishAudit: vi.fn() }));
 
 describe('audit request origin', () => {
@@ -63,5 +64,20 @@ describe('explicit Cloudflare origin recovery', () => {
             expect(requestAuditContext(base)).toMatchObject({ ip: '104.21.58.207', ipSource: 'forwarded-peer' });
             expect(requestAuditContext({ ...base, headers: { 'cf-connecting-ip': '203.0.113.7' } })).toMatchObject({ ip: '203.0.113.7', ipSource: 'cloudflare' });
         } finally { vi.unstubAllEnvs(); }
+    });
+});
+
+describe('edge-written client IP (B-491)', () => {
+    it('prefers X-Real-Client-IP from the trusted proxy over CF-Connecting-IP and the edge peer', () => {
+        configureClientIpTrust(['172.18.0.1']);
+        vi.stubEnv('BUSINESS_AUDIT_TRUST_CLOUDFLARE', '1');
+        try {
+            const base = { ip: '104.21.58.207', ips: ['172.18.0.1', '104.21.58.207'], method: 'POST', socket: { remoteAddress: '172.18.0.1' } };
+            expect(requestAuditContext({ ...base, headers: { 'x-real-client-ip': '198.51.100.4', 'cf-connecting-ip': '203.0.113.7' } }))
+                .toMatchObject({ ip: '198.51.100.4', ipSource: 'edge-proxy' });
+            // Header from an untrusted peer is ignored; legacy CF recovery still applies.
+            expect(requestAuditContext({ ...base, socket: { remoteAddress: '104.21.58.207' }, headers: { 'x-real-client-ip': '6.6.6.6', 'cf-connecting-ip': '203.0.113.7' } }))
+                .toMatchObject({ ip: '203.0.113.7', ipSource: 'cloudflare' });
+        } finally { vi.unstubAllEnvs(); configureClientIpTrust(false); }
     });
 });

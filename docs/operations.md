@@ -24,6 +24,36 @@ commits or tags to it and do not use it as a deployment source.
 | US relay | `us-fb`, `https://relay-us.veryhappy.dev`, Docker + Caddy on `dmit-la` (Los Angeles). Moved off `fb-us`/k8sus on 2026-09-11 (B-459); the k3s deployment there is scaled to 0 and kept only as a rollback |
 | Retired origin | `vh-us` (Tokyo VPS, 69.8.128.238) — server stopped 2026-09-07; keeps a frozen PostgreSQL copy for rollback until ~2026-09-21. Its Caddy now 301-redirects `happy.mereith.com` page loads to `veryhappy.dev` and transparently proxies `/v1|/v2|/v3|/files|/health` (websocket included) to `vh-sg`, so a client still configured with the legacy host keeps working |
 
+### Client IP (B-491)
+
+Caddy is the only component that decides the end-user IP; the server never
+parses edge headers itself.
+
+- `ops/production/Caddyfile.blue-green` drops any inbound `X-Real-Client-IP`
+  and rewrites it: `X-Origin-Verify` equal to the origin secret (CloudFront
+  `E2JUP4WHDXD8HU` origin custom header) → `CloudFront-Viewer-Address` minus the
+  port; else a peer inside Cloudflare's published ranges → `CF-Connecting-IP`;
+  else the TCP peer. `X-Origin-Verify` and `CloudFront-Viewer-Address` are
+  removed before proxying. Update the Cloudflare ranges in the Caddyfile when
+  https://www.cloudflare.com/ips/ changes.
+- The secret lives only in rbw `apodex/VH_CLOUDFRONT_ORIGIN_SECRET`, the
+  CloudFront origin config, and host file `/etc/caddy/vh-origin-secret.caddy`
+  (`root:caddy 0640`, a `(vh_origin_secret)` snippet setting
+  `vars vh_origin_secret "<secret>"`). **Every Caddy validate/reload, including
+  the switch deploy, fails if that file is missing** — recreate it from rbw
+  before rebuilding the host. Rotating: write the new value to CloudFront and
+  the file together, reload Caddy; during the gap CloudFront requests fall back
+  to the CloudFront edge IP (no outage).
+- The server (`sources/app/api/clientIp.ts`) reads `X-Real-Client-IP` only when
+  the socket peer matches `TRUST_PROXY` (`172.18.0.1`, the Docker gateway Caddy
+  arrives from); otherwise it keeps Fastify's `request.ip`. Rate limits key on
+  it (IPv6 per /64), request logs' `remoteAddress` and business audit
+  (`ipSource: edge-proxy`) use it. `BUSINESS_AUDIT_TRUST_CLOUDFLARE` only
+  matters when the header is absent and can be turned off.
+- Check: `tcpdump -i lo -A 'tcp dst port 3101 or tcp dst port 3102'` on vh-sg
+  shows the header Caddy sends; `docker logs happy-server-<slot> | grep
+  remoteAddress` shows what the server resolved.
+
 The hosted service is server-trusted, not E2E. The server can recover account
 secrets and relay remote execution to a user's connected daemon. Treat access to
 vh-sg, its environment, the RDS instance, backups and deploy key as high impact.

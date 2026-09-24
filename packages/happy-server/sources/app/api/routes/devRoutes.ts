@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { clientRateLimitKey } from "@/app/api/clientIp";
 import { timingSafeEqual } from 'node:crypto';
 import { Fastify } from '../types';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
@@ -27,7 +28,7 @@ export function devRoutes(app: Fastify) {
                 if (!remoteLogTokenMatches(request.headers.authorization, remoteLogToken)) {
                     return reply.code(401).send({ error: 'Unauthorized' });
                 }
-                if (!(await allowAuthRequest(`remote-log:${request.ip}`, { max: 60, windowMs: 60_000 }))) {
+                if (!(await allowAuthRequest(`remote-log:${clientRateLimitKey(request)}`, { max: 60, windowMs: 60_000 }))) {
                     return reply.code(429).send({ error: 'Too many requests' });
                 }
             },

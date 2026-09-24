@@ -1,21 +1,29 @@
 import { cloudflareClientIp, normalizedIp } from './cloudflareOrigin';
+import { clientIpInfo } from '@/app/api/clientIp';
 import { publishAudit, type AuditInput } from './producer';
 
 type Request = {
     ip: string; ips?: string[]; method: string;
     headers: Record<string, string | string[] | undefined>;
+    socket?: { remoteAddress?: string } | null;
     routeOptions?: { url?: string };
 };
 
-/** Fastify establishes the ingress peer; CF origin is accepted only with opt-in + a verified CF peer. */
+/**
+ * Client IP comes from clientIpInfo (edge-written X-Real-Client-IP from the
+ * TRUST_PROXY peer, B-491). Without that header, fall back to the Fastify peer;
+ * the legacy CF-Connecting-IP recovery still needs opt-in + a verified CF peer.
+ */
 export function requestAuditContext(request: Request): Partial<AuditInput> {
+    const resolved = clientIpInfo(request);
+    const proxied = resolved.source === 'proxy-header' ? resolved.ip : undefined;
     const peer = normalizedIp(request.ip);
-    const origin = cloudflareClientIp(peer, request.headers['cf-connecting-ip'], process.env.BUSINESS_AUDIT_TRUST_CLOUDFLARE === '1');
-    const ip = origin ?? peer;
+    const origin = proxied ? undefined : cloudflareClientIp(peer, request.headers['cf-connecting-ip'], process.env.BUSINESS_AUDIT_TRUST_CLOUDFLARE === '1');
+    const ip = proxied ?? origin ?? peer;
     const ua = request.headers['user-agent'];
     return {
         ip,
-        ipSource: origin ? 'cloudflare' : ip ? (request.ips && request.ips.length > 1 ? 'forwarded-peer' : 'socket-peer') : 'unavailable',
+        ipSource: proxied ? 'edge-proxy' : origin ? 'cloudflare' : ip ? (request.ips && request.ips.length > 1 ? 'forwarded-peer' : 'socket-peer') : 'unavailable',
         userAgent: typeof ua === 'string' ? ua.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 256) : undefined,
         method: request.method.slice(0, 16),
         // route template only: query params may contain authentication material.

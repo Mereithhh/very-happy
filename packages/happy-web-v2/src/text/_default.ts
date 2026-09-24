@@ -1903,6 +1903,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25b: {
+                title: 'Sign-in limits now count each visitor separately',
+                summary: 'The server used to see the address of the network edge in front of it rather than your own, so everyone reaching it through the same edge shared one set of sign-in limits.',
+                limits: 'Sign-in, email code, device pairing and Google sign-in limits are now counted per visitor address, so someone else hitting a limit no longer blocks you.',
+            },
             sep25a: {
                 title: 'A signed-out tab now says so instead of retrying in the background',
                 summary: 'When the server stopped accepting a browser\'s sign-in, the open tab kept retrying every background request forever — faster and faster the longer it stayed open — and never told you anything was wrong.',
