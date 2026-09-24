@@ -1855,6 +1855,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25c: {
+                title: '会话不再多花一轮给自己改标题',
+                summary: '从 Very Happy 启动的 Claude 会话以前被要求每次开场都调用改标题工具，哪怕只问一句话。标题本来就会根据你的第一条消息自动生成，这一轮现在省掉了。需要更新 CLI。',
+                prompt: '话题明显转移、或标题太笼统不好找时，仍会自动改标题。',
+                commit: '「via Very Happy」署名只加在 agent 自己提交的 commit 上，你让它帮忙写的 commit message 不再带上；同时遵循 Claude Code 的 attribution.commit 设置。',
+                spawn: '`very-happy spawn` 启动会话时的默认模型和权限模式与网页一致，新增 --model，并可用 --fork <id> 分叉已有会话。',
+                read: '`very-happy sessions read --wait --answer` 会等当前这一轮结束，只输出最终回答；超时以退出码 2 结束。',
+            },
             sep25b: {
                 title: '登录限流改为按每位访问者单独计算',
                 summary: '服务器之前看到的是前面网络边缘节点的地址而不是你的地址，经过同一个边缘节点的人会共用一套登录限流额度。',

@@ -1903,6 +1903,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25c: {
+                title: 'Sessions no longer spend a turn renaming themselves',
+                summary: 'Claude sessions started from Very Happy were told to call the rename tool at the start of every chat, even for a one-line question. Titles already come from your first message, so that extra turn is gone. Needs the CLI update.',
+                prompt: 'Chats are still renamed when the topic clearly moves on or the title is too vague to find later.',
+                commit: 'The "via Very Happy" credit is only added to commits the agent makes itself, not to a commit message you asked it to write for you. It also follows Claude Code\'s attribution.commit setting.',
+                spawn: '`very-happy spawn` now starts sessions with the same defaults as the web app (model and permission mode), accepts --model, and can fork an existing session with --fork <id>.',
+                read: '`very-happy sessions read --wait --answer` waits for the current turn to finish and prints only the final answer; it exits with code 2 on timeout.',
+            },
             sep25b: {
                 title: 'Sign-in limits now count each visitor separately',
                 summary: 'The server used to see the address of the network edge in front of it rather than your own, so everyone reaching it through the same edge shared one set of sign-in limits.',
