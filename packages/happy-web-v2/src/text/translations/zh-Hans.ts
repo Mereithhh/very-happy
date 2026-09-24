@@ -1855,6 +1855,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25a: {
+                title: '登录失效的标签页会直接提示，不再在后台无限重试',
+                summary: '服务器不再接受某个浏览器的登录后，开着的标签页会把所有后台请求无限重试下去，开得越久重试越密，而且从不提示出了问题。',
+                prompt: '现在第一次被拒就会停掉全部后台同步，并弹出「登录已失效」，点「重新登录」登录后回到原来的页面。',
+                retries: '后台保存与刷新失败时改为指数退避，几次之后就停，不再不间断重试；改动保留在本设备，之后再发送。',
+            },
             sep24b: {
                 title: 'CLI 自动更新会装到正在运行的那份',
                 summary: '机器上装了不止一套 Node.js/npm 时，自动更新可能装进另一个 npm 目录，报告成功却什么都没变。',
@@ -3432,6 +3438,12 @@ export const zhHans: TranslationStructure = {
         network: '无法连接中继，请检查网络后重试。',
     },
 
+    authExpired: {
+        title: '登录已失效',
+        body: '服务器已不再接受此浏览器的登录凭据，同步已停止。请重新登录后继续。',
+        signIn: '重新登录',
+        reload: '重新加载页面',
+    },
     emailLink: {
         title: '关联邮箱登录',
         subtitle: '为当前账户添加已验证的邮箱地址。',

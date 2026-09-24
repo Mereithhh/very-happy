@@ -1,5 +1,6 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
+import { assertNotAuthFailure } from '@/auth/authLatch';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 
@@ -50,6 +51,8 @@ export async function queryUsage(
             },
             body: JSON.stringify(params)
         });
+
+        assertNotAuthFailure(response, 'apiUsage'); // B-490: 401/403 are never retried
 
         if (!response.ok) {
             if (response.status === 404 && params.sessionId) {

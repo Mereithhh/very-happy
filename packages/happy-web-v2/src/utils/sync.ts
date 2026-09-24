@@ -1,4 +1,22 @@
 import { backoff } from "@/utils/time";
+import { isAuthLatched } from "@/auth/authLatch";
+
+/**
+ * B-490: backoff() rethrows auth failures (401/403, or anything after the auth
+ * latch tripped) instead of retrying forever. A latched account stops the sync
+ * for good (no more requests until reload/login); a plain 403 ends THIS round
+ * so a later invalidate() may try again.
+ */
+async function runGuarded(fn: () => Promise<void>): Promise<'ok' | 'stop'> {
+    try {
+        await backoff(fn);
+        return 'ok';
+    } catch (e) {
+        if (isAuthLatched()) return 'stop';
+        console.warn('[sync] giving up this round', (e as Error)?.message ?? e);
+        return 'ok';
+    }
+}
 
 export class InvalidateSync {
     private _invalidated = false;
@@ -62,12 +80,13 @@ export class InvalidateSync {
 
 
     private _doSync = async () => {
-        await backoff(async () => {
+        const outcome = await runGuarded(async () => {
             if (this._stopped) {
                 return;
             }
             await this._command();
         });
+        if (outcome === 'stop') this.stop();
         if (this._stopped) {
             this._notifyPendings();
             return;
@@ -145,13 +164,14 @@ export class ValueSync<T> {
             const value = this._latestValue!;
             this._hasValue = false;
             
-            await backoff(async () => {
+            const outcome = await runGuarded(async () => {
                 if (this._stopped) {
                     return;
                 }
                 await this._command(value);
             });
-            
+            if (outcome === 'stop') this.stop();
+
             if (this._stopped) {
                 this._notifyPendings();
                 return;

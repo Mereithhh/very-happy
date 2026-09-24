@@ -1,5 +1,6 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
-import { backoff } from '@/utils/time';
+import { createBackoff } from '@/utils/time';
+import { assertNotAuthFailure } from '@/auth/authLatch';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 
@@ -65,6 +66,21 @@ export type KvMutateResponse = KvMutateSuccessResponse | KvMutateErrorResponse;
 //
 
 /**
+ * B-490: KV calls are BOUNDED (the shared `backoff` retries forever). Callers
+ * (notification-seen, notes, board tasks) keep the truth in a local cache and
+ * republish later, so giving up after a few spaced-out attempts loses nothing;
+ * 401/403 are never retried at all (assertNotAuthFailure + backoff policy).
+ * Exported for tests.
+ */
+export const KV_MAX_ATTEMPTS = 5;
+const kvBackoff = createBackoff({
+    minDelay: 500,
+    maxDelay: 15_000,
+    maxAttempts: KV_MAX_ATTEMPTS,
+    onError: (e) => { console.warn(e); },
+});
+
+/**
  * Get a single value by key
  */
 export async function kvGet(
@@ -73,7 +89,7 @@ export async function kvGet(
 ): Promise<KvItem | null> {
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
+    return await kvBackoff(async () => {
         const response = await fetch(`${API_ENDPOINT}/v1/kv/${encodeURIComponent(key)}`, {
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
@@ -85,6 +101,7 @@ export async function kvGet(
             return null;
         }
 
+        assertNotAuthFailure(response, 'GET /v1/kv/:key');
         if (!response.ok) {
             throw new Error(`Failed to get KV value: ${response.status}`);
         }
@@ -115,7 +132,7 @@ export async function kvList(
         ? `${API_ENDPOINT}/v1/kv?${queryParams.toString()}`
         : `${API_ENDPOINT}/v1/kv`;
 
-    return await backoff(async () => {
+    return await kvBackoff(async () => {
         const response = await fetch(url, {
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
@@ -123,6 +140,7 @@ export async function kvList(
             }
         });
 
+        assertNotAuthFailure(response, 'GET /v1/kv');
         if (!response.ok) {
             throw new Error(`Failed to list KV items: ${response.status}`);
         }
@@ -149,7 +167,7 @@ export async function kvBulkGet(
 
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
+    return await kvBackoff(async () => {
         const response = await fetch(`${API_ENDPOINT}/v1/kv/bulk`, {
             method: 'POST',
             headers: {
@@ -160,6 +178,7 @@ export async function kvBulkGet(
             body: JSON.stringify({ keys })
         });
 
+        assertNotAuthFailure(response, 'POST /v1/kv/bulk');
         if (!response.ok) {
             throw new Error(`Failed to bulk get KV values: ${response.status}`);
         }
@@ -188,7 +207,7 @@ export async function kvMutate(
 
     const API_ENDPOINT = getServerUrl();
 
-    return await backoff(async () => {
+    return await kvBackoff(async () => {
         const response = await fetch(`${API_ENDPOINT}/v1/kv`, {
             method: 'POST',
             headers: {
@@ -199,6 +218,7 @@ export async function kvMutate(
             body: JSON.stringify({ mutations })
         });
 
+        assertNotAuthFailure(response, 'POST /v1/kv');
         if (response.status === 409) {
             const data = await response.json() as KvMutateErrorResponse;
             return data;

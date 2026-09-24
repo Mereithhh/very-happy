@@ -1903,6 +1903,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25a: {
+                title: 'A signed-out tab now says so instead of retrying in the background',
+                summary: 'When the server stopped accepting a browser\'s sign-in, the open tab kept retrying every background request forever — faster and faster the longer it stayed open — and never told you anything was wrong.',
+                prompt: 'The first rejected request now stops all background syncing and shows a "Signed out" prompt with a Sign in again button that brings you back to the same page.',
+                retries: 'Failed background saves and refreshes now back off exponentially and give up after a few attempts instead of retrying non-stop; your changes stay on this device and are sent again later.',
+            },
             sep24b: {
                 title: 'Automatic CLI updates land in the copy that is actually running',
                 summary: 'On machines with more than one Node.js/npm install, an automatic update could go into a different npm directory than the one the daemon runs from, report success, and change nothing.',
@@ -3540,6 +3546,12 @@ export const en = {
         network: 'Could not reach the relay. Check your connection and try again.',
     },
 
+    authExpired: {
+        title: 'Signed out',
+        body: 'The server no longer accepts this browser\'s sign-in, so syncing has stopped. Sign in again to continue.',
+        signIn: 'Sign in again',
+        reload: 'Reload page',
+    },
     emailLink: {
         title: 'Link email sign-in',
         subtitle: 'Add a verified email address to this account.',

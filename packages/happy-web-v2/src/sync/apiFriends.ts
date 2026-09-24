@@ -1,5 +1,6 @@
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
+import { assertNotAuthFailure } from '@/auth/authLatch';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 import {
@@ -29,6 +30,8 @@ export async function searchUsersByUsername(
                 }
             }
         );
+
+        assertNotAuthFailure(response, 'apiFriends'); // B-490: 401/403 are never retried
 
         if (!response.ok) {
             if (response.status === 404) {
@@ -68,6 +71,8 @@ export async function getUserProfile(
                 }
             }
         );
+
+        assertNotAuthFailure(response, 'apiFriends'); // B-490: 401/403 are never retried
 
         if (!response.ok) {
             if (response.status === 404) {
@@ -124,6 +129,8 @@ export async function sendFriendRequest(
             body: JSON.stringify({ uid: recipientId })
         });
 
+        assertNotAuthFailure(response, 'apiFriends'); // B-490: 401/403 are never retried
+
         if (!response.ok) {
             if (response.status === 404) {
                 return null;
@@ -165,6 +172,8 @@ export async function getFriendsList(
             }
         });
 
+        assertNotAuthFailure(response, 'apiFriends'); // B-490: 401/403 are never retried
+
         if (!response.ok) {
             throw new Error(`Failed to get friends list: ${response.status}`);
         }
@@ -199,6 +208,8 @@ export async function removeFriend(
             },
             body: JSON.stringify({ uid: friendId })
         });
+
+        assertNotAuthFailure(response, 'apiFriends'); // B-490: 401/403 are never retried
 
         if (!response.ok) {
             if (response.status === 404) {
