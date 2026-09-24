@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-cli-spawn-fork-and-leaner-prompt',
+    cliVersion: '0.2.151',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25c.title',
+    summaryKey: 'changelog.releases.sep25c.summary',
+    itemKeys: ['changelog.releases.sep25c.prompt', 'changelog.releases.sep25c.commit', 'changelog.releases.sep25c.spawn', 'changelog.releases.sep25c.read'],
+  },
+  {
     id: '2026-09-25-per-visitor-sign-in-limits',
     date: '2026-09-25',
     buildVersion: __APP_VERSION__,
