@@ -112,3 +112,17 @@ describe('permissionFailureRecord — approve/deny refused before any RPC (revie
         expect(permissionFailureRecord(ID, 'req-1', 'plain string')).toEqual({ sessionId: ID, requestId: 'req-1', error: 'plain string' })
     })
 })
+
+describe('parseSessionsArgs — B-492 read --full / --answer / --wait', () => {
+    it('parses the read flags', () => {
+        const options = parseSessionsArgs(['read', ID, '--wait', '--timeout', '90', '--answer', '--full'])
+        expect(options).toMatchObject({ action: 'read', sessionId: ID, wait: true, timeoutSec: 90, answer: true, full: true })
+    })
+
+    it('rejects them outside read, and --timeout without --wait', () => {
+        expect(() => parseSessionsArgs(['stop', ID, '--wait'])).toThrow(/--wait only applies/)
+        expect(() => parseSessionsArgs(['list', '--answer'])).toThrow(/--answer only applies/)
+        expect(() => parseSessionsArgs(['read', ID, '--timeout', '5'])).toThrow(/--timeout only applies/)
+        expect(() => parseSessionsArgs(['read', ID, '--wait', '--timeout', '0'])).toThrow(/positive/)
+    })
+})

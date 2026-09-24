@@ -37,6 +37,7 @@ import { listDaemonSessions, stopDaemonSession } from '@/daemon/controlClient'
 import { readCredentialsForConfiguredRelay, readPersistedSessions, type PersistedSession } from '@/persistence'
 import { sessionWebUrl } from '@/commands/sessionMessage'
 import { formatTranscript } from '@/assistant/transcript'
+import { analyzeLatestTurn, type LogEntry, type TurnState } from '@/sessions/turnState'
 import { pendingRequestsOf, type PendingPermissionRequest } from '@/sessions/permissionOps'
 import type { AgentState, Metadata } from '@/api/types'
 
@@ -321,8 +322,10 @@ export interface SessionTranscript {
     summary: SessionSummary
     /** How many messages the server actually returned. */
     messageCount: number
-    /** Role-tagged, truncated transcript text (empty when nothing readable). */
+    /** Role-tagged transcript text (empty when nothing readable); truncated unless `full`. */
     transcript: string
+    /** B-492: where the latest turn stands, and the agent's reply to the latest prompt. */
+    turn: TurnState
 }
 
 async function bearerToken(): Promise<string> {
@@ -331,25 +334,26 @@ async function bearerToken(): Promise<string> {
     return credentials.token
 }
 
-/**
- * Read the tail of a session as a compact transcript.
- *
- * Throws when there is no local key: without it the messages cannot be
- * decrypted, and that is a different failure from "the session is empty".
- */
-export async function readSessionTranscript(sessionId: string, limit: number): Promise<SessionTranscript> {
+function requirePersisted(sessionId: string): PersistedSession {
     const persisted = readPersistedSessions()[sessionId]
     if (!persisted) {
         throw new Error(
             `No local key for session ${sessionId} — it was not spawned by this machine's daemon (or is older than 14 days).`,
         )
     }
-    const bounded = Math.max(1, Math.min(MAX_READ_LIMIT, Math.floor(limit)))
+    return persisted
+}
+
+/**
+ * The newest `limit` messages of a session, decrypted, in ascending seq order.
+ * Undecryptable entries come back with `body: null`.
+ */
+export async function readSessionLog(sessionId: string, persisted: PersistedSession, limit: number): Promise<LogEntry[]> {
     const token = await bearerToken()
     const response = await axios.get(
         `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(sessionId)}/messages`,
         {
-            params: { before_seq: 2147483647, limit: bounded },
+            params: { before_seq: 2147483647, limit },
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'X-Happy-Client': `${SESSION_OPS_CLIENT}/${configuration.currentCliVersion}`,
@@ -362,20 +366,90 @@ export async function readSessionTranscript(sessionId: string, limit: number): P
     // `before_seq` returns newest-first — flip to chronological order.
     messages.reverse()
     const key = decodeBase64(persisted.encryptionKey)
-    // Same daemon `/list` merge as `sessions list`; unreachable daemon → [] → live: false.
-    const live = await listDaemonSessions() as LiveSessionLike[]
-    const bodies = messages.map((message) => {
-        if (message.content?.t !== 'encrypted') return null
+    return messages.map((message) => {
+        if (message.content?.t !== 'encrypted') return { seq: message.seq, body: null }
         try {
-            return decrypt(key, persisted.encryptionVariant, decodeBase64(message.content.c))
+            return { seq: message.seq, body: decrypt(key, persisted.encryptionVariant, decodeBase64(message.content.c)) }
         } catch {
-            return null
+            return { seq: message.seq, body: null }
         }
     })
+}
+
+/**
+ * How many messages turn analysis looks at. The server caps a page at 500; a
+ * single turn longer than that (hundreds of tool calls) falls back to the last
+ * turn marker — see analyzeLatestTurn.
+ */
+export const TURN_WINDOW = 500
+
+/**
+ * Read the tail of a session as a compact transcript.
+ *
+ * Throws when there is no local key: without it the messages cannot be
+ * decrypted, and that is a different failure from "the session is empty".
+ */
+export async function readSessionTranscript(sessionId: string, limit: number, options: { full?: boolean } = {}): Promise<SessionTranscript> {
+    const persisted = requirePersisted(sessionId)
+    const bounded = Math.max(1, Math.min(MAX_READ_LIMIT, Math.floor(limit)))
+    // One fetch serves both: the transcript shows the newest `bounded`
+    // entries, turn analysis needs a wider window to find the prompt.
+    const entries = await readSessionLog(sessionId, persisted, Math.max(bounded, TURN_WINDOW))
+    const shown = entries.slice(-bounded)
+    // Same daemon `/list` merge as `sessions list`; unreachable daemon → [] → live: false.
+    const live = await listDaemonSessions() as LiveSessionLike[]
     return {
         summary: toSummary(sessionId, persisted, sessionLiveness(live, sessionId)),
-        messageCount: messages.length,
-        transcript: formatTranscript(bodies),
+        messageCount: shown.length,
+        transcript: formatTranscript(shown.map((entry) => entry.body), { full: options.full }),
+        turn: analyzeLatestTurn(entries),
+    }
+}
+
+/**
+ * The session's CURRENT metadata from the server, decrypted with the local key
+ * (B-492). `~/.happy/sessions.json` holds the metadata from spawn time, before
+ * the wrapper learned its Claude conversation / Codex thread id — a fork needs
+ * the live value. Returns null when the server row has no metadata.
+ */
+export async function readSessionMetadata(sessionId: string, persisted: PersistedSession): Promise<Metadata | null> {
+    const token = await bearerToken()
+    const response = await axios.get(`${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'X-Happy-Client': `${SESSION_OPS_CLIENT}/${configuration.currentCliVersion}`,
+        },
+        timeout: 15_000,
+    })
+    const ciphertext = response.data?.session?.metadata
+    if (typeof ciphertext !== 'string' || ciphertext.length === 0) return null
+    return decrypt(decodeBase64(persisted.encryptionKey), persisted.encryptionVariant, decodeBase64(ciphertext)) as Metadata | null
+}
+
+export class TurnWaitTimeoutError extends Error {
+    constructor(readonly sessionId: string, readonly timeoutMs: number, readonly turn: TurnState) {
+        super(`Session ${sessionId}: the latest turn did not end within ${Math.round(timeoutMs / 1000)}s`)
+    }
+}
+
+/**
+ * Poll until the latest turn has ended (B-492 `sessions read --wait`), then
+ * return its state. Throws TurnWaitTimeoutError (carrying the last state seen)
+ * when `timeoutMs` passes first.
+ */
+export async function waitForTurnEnd(
+    sessionId: string,
+    options: { timeoutMs: number; pollMs?: number; sleep?: (ms: number) => Promise<void> },
+): Promise<TurnState> {
+    const persisted = requirePersisted(sessionId)
+    const pollMs = options.pollMs ?? 3_000
+    const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+    const deadline = Date.now() + options.timeoutMs
+    while (true) {
+        const turn = analyzeLatestTurn(await readSessionLog(sessionId, persisted, TURN_WINDOW))
+        if (turn.ended) return turn
+        if (Date.now() + pollMs > deadline) throw new TurnWaitTimeoutError(sessionId, options.timeoutMs, turn)
+        await sleep(pollMs)
     }
 }
 

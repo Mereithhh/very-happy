@@ -58,7 +58,14 @@ export async function sendUserMessage(
     persisted: PersistedSession,
     text: string,
     client: string,
-    options: { localId?: string; sentFrom?: string; model?: string } = {},
+    options: {
+        localId?: string
+        sentFrom?: string
+        /** null = reset to the machine's default model (web semantics). */
+        model?: string | null
+        permissionMode?: string
+        effort?: string | null
+    } = {},
 ): Promise<void> {
     const credentials = await readCredentialsForConfiguredRelay()
     if (!credentials) {
@@ -73,7 +80,9 @@ export async function sendUserMessage(
         },
         meta: {
             sentFrom: options.sentFrom ?? 'cli',
-            ...(options.model ? { model: options.model } : {})
+            ...(options.model !== undefined ? { model: options.model } : {}),
+            ...(options.permissionMode !== undefined ? { permissionMode: options.permissionMode } : {}),
+            ...(options.effort !== undefined ? { effort: options.effort } : {})
         }
     }
 

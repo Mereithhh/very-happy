@@ -122,3 +122,17 @@ describe('sessionWebUrl', () => {
         expect(sessionWebUrl('abc123')).not.toMatch(/[^:]\/\/session/)
     })
 })
+
+describe('parseSpawnArgs — B-492 --model / --fork', () => {
+    it('parses --model and -m', () => {
+        expect(parseSpawnArgs(['--dir', '/w', '--model', 'claude-sonnet-5']).model).toBe('claude-sonnet-5')
+        expect(parseSpawnArgs(['--dir', '/w', '-m', 'default']).model).toBe('default')
+        expect(() => parseSpawnArgs(['--dir', '/w', '--model'])).toThrow(/--model requires a value/)
+    })
+
+    it('parses --fork and validates the id', () => {
+        expect(parseSpawnArgs(['--fork', 'cmabc123', '--prompt', 'go']).fork).toBe('cmabc123')
+        expect(() => parseSpawnArgs(['--fork'])).toThrow(/--fork requires/)
+        expect(() => parseSpawnArgs(['--fork', '../etc'])).toThrow(/Invalid session id/)
+    })
+})

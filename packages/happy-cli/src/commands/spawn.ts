@@ -7,6 +7,11 @@
  * machine as the daemon:
  *
  *   very-happy spawn --dir <cwd> [--prompt <text>|--prompt-file <path>] [--json]
+ *   very-happy spawn --fork <sessionId> [--prompt …] [--json]
+ *
+ * B-492: defaults match the web launcher — permission mode and first-message
+ * model come from happy-wire's AGENT_CODE_DEFAULTS (claude: yolo on Opus 5.5),
+ * overridable with --permission-mode / --model. `--fork` is the web's fork.
  *
  * Implementation notes:
  * - Spawn rides the existing daemon control-server endpoint
@@ -34,7 +39,11 @@
 import chalk from 'chalk'
 import { readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession } from '@/daemon/controlClient'
+import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession, stopDaemonSession } from '@/daemon/controlClient'
+import { readPersistedSessions } from '@/persistence'
+import { resolveFirstMessageMeta, resolveSpawnPermissionMode, type FirstMessageMeta } from './spawnDefaults'
+import { forkProviderConversation, resolveForkSource, type ForkSource } from './spawnFork'
+import { readSessionMetadata } from '@/sessions/sessionOps'
 import { sendUserMessage, sessionWebUrl, waitForSessionKey } from './sessionMessage'
 import { isValidSpawnOrigin } from '@/utils/createSessionMetadata'
 import { ALLOWED_SPAWN_PERMISSION_MODES, sanitizeSpawnPermissionMode } from '@/daemon/spawnPermissionMode'
@@ -57,6 +66,10 @@ export interface SpawnCommandOptions {
     agent?: string
     /** B-306: extra environment for the session process. */
     env?: Record<string, string>
+    /** B-492: model for the first message ('default' = machine default). */
+    model?: string
+    /** B-492: fork this session (id) instead of starting from scratch. */
+    fork?: string
     json: boolean
     help: boolean
 }
@@ -123,6 +136,15 @@ export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
             if (value === undefined) throw new Error('--env requires a value')
             const [key, val] = parseEnvAssignment(value)
             options.env = { ...(options.env ?? {}), [key]: val }
+        } else if (arg === '--model' || arg === '-m') {
+            const value = args[++i]
+            if (value === undefined || value.trim().length === 0) throw new Error('--model requires a value')
+            options.model = value
+        } else if (arg === '--fork') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--fork requires a session id')
+            if (!/^[a-zA-Z0-9_-]{1,128}$/.test(value)) throw new Error(`Invalid session id for --fork: ${value}`)
+            options.fork = value
         } else if (arg === '--json') {
             options.json = true
         } else if (arg === '--help' || arg === '-h') {
@@ -144,7 +166,9 @@ ${chalk.bold('very-happy spawn')} - Spawn a remote session via the local daemon 
 ${chalk.bold('Usage:')}
   very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>]
                    [--spawned-by <name>] [--permission-mode <mode>]
-                   [--agent <name>] [--env KEY=VALUE]... [--json]
+                   [--agent <name>] [--model <id>] [--env KEY=VALUE]... [--json]
+  very-happy spawn --fork <sessionId> [--prompt …] [--permission-mode <mode>]
+                   [--model <id>] [--spawned-by <name>] [--json]
 
 ${chalk.bold('Options:')}
   --dir, -d <path>       Working directory for the new session (required)
@@ -155,22 +179,34 @@ ${chalk.bold('Options:')}
                             the web list and is searchable as #<name>.
   --permission-mode <m>  Permission mode for the new session: default,
                             acceptEdits, plan, yolo, bypassPermissions.
-                            WITHOUT this the session runs in 'default' and stops
-                            at the first un-allowlisted tool waiting for someone
-                            to approve — if nothing is watching, it just hangs.
-                            Unattended dispatchers want bypassPermissions.
+                            Default = the web launcher's: yolo for claude /
+                            codex / pi, 'default' for gemini / openclaw. A fork
+                            keeps its source's mode. 'default' stops at the first
+                            un-allowlisted tool until someone approves it (see
+                            \`sessions approve\`).
   --agent <name>         Backend to run: claude (default), codex, gemini,
                             openclaw, pi (needs pi-acp on the daemon's PATH).
+  --model, -m <id>       Model for the session, sent with the first message
+                            (needs --prompt). Default = the web launcher's:
+                            claude-opus-5-5 for claude (the machine default when
+                            its Claude Code is too old for it); other agents use
+                            their own default. 'default' = the machine default.
+  --fork <sessionId>     Fork an existing session of THIS machine (same as the
+                            web's fork): copies its conversation and continues
+                            it in a new session, in the same directory and with
+                            the same agent (so --dir / --agent are not needed).
   --env KEY=VALUE        Extra environment for the session process. Repeatable.
                             \${VAR} is expanded against the daemon's environment;
                             an unresolved reference fails the spawn.
-  --json                 Machine-readable output: {"sessionId", "url"}
+  --json                 Machine-readable output: {"sessionId", "url",
+                            "permissionMode", …}
   -h, --help             Show this help
 
 ${chalk.bold('Behavior:')}
   Requires the Very Happy daemon to be running on this machine (same semantics
   as spawning from the web: an offline machine cannot spawn). Without
-  --prompt / --prompt-file the session is spawned idle.
+  --prompt / --prompt-file the session is spawned idle. To collect the reply:
+  \`very-happy sessions read <id> --wait --answer\`.
 
 ${chalk.bold('Exit codes:')}
   0  success
@@ -184,9 +220,15 @@ ${chalk.bold('Exit codes:')}
  * daemon to persist the fresh session's key, then push via the shared
  * sessionMessage primitive.
  */
-async function sendFirstMessage(sessionId: string, text: string): Promise<void> {
+async function sendFirstMessage(
+    sessionId: string,
+    text: string,
+    metaFor: (capabilities: string[] | null) => FirstMessageMeta,
+): Promise<FirstMessageMeta> {
     const persisted = await waitForSessionKey(sessionId, 15_000)
-    await sendUserMessage(sessionId, persisted, text, 'cli-spawn')
+    const meta = metaFor(persisted.metadata?.capabilities ?? null)
+    await sendUserMessage(sessionId, persisted, text, 'cli-spawn', meta)
+    return meta
 }
 
 export async function handleSpawnCommand(args: string[]): Promise<never> {
@@ -204,12 +246,36 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         process.exit(0)
     }
 
-    if (!options.dir) {
-        console.error(chalk.red('Error:'), '--dir is required')
+    let forkSource: ForkSource | null = null
+    if (options.fork !== undefined) {
+        try {
+            // sessions.json keeps spawn-time metadata; the provider conversation
+            // id arrives later, so overlay the server's current metadata.
+            const persisted = readPersistedSessions()[options.fork]
+            const current = persisted ? await readSessionMetadata(options.fork, persisted) : null
+            forkSource = resolveForkSource(options.fork, persisted && current ? { ...persisted, metadata: { ...persisted.metadata, ...current } } : persisted)
+        } catch (error) {
+            console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error))
+            process.exit(1)
+        }
+        if (options.dir !== undefined && resolve(options.dir) !== forkSource.directory) {
+            console.error(chalk.red('Error:'), `--dir ${resolve(options.dir)} differs from the forked session's directory ${forkSource.directory}; a fork always continues in its source directory.`)
+            process.exit(1)
+        }
+        if (options.agent !== undefined && options.agent !== forkSource.agent) {
+            console.error(chalk.red('Error:'), `--agent ${options.agent} differs from the forked session's agent ${forkSource.agent}.`)
+            process.exit(1)
+        }
+    } else if (!options.dir) {
+        console.error(chalk.red('Error:'), '--dir is required (or --fork <sessionId>)')
         console.error(`Run ${chalk.cyan('very-happy spawn --help')} for usage.`)
         process.exit(1)
     }
-    const directory = resolve(options.dir)
+    const directory = forkSource ? forkSource.directory : resolve(options.dir as string)
+    const agent = forkSource ? forkSource.agent : options.agent
+    // Web launcher semantics (B-492): explicit flag, else a fork keeps its
+    // source's mode, else the per-agent code default (claude: yolo).
+    const permissionMode = options.permissionMode ?? forkSource?.permissionMode ?? resolveSpawnPermissionMode(agent, undefined)
 
     // Resolve the prompt up front so a bad --prompt-file fails BEFORE we
     // spawn anything.
@@ -224,6 +290,11 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
     }
     if (prompt !== undefined && prompt.trim().length === 0) {
         console.error(chalk.red('Error:'), 'Prompt is empty')
+        process.exit(1)
+    }
+    if (options.model !== undefined && prompt === undefined) {
+        // The model travels on a message (web semantics); an idle spawn has none.
+        console.error(chalk.red('Error:'), '--model needs --prompt / --prompt-file (the model is sent with the first message); for an idle session pass it later with `very-happy send --model`.')
         process.exit(1)
     }
 
@@ -250,7 +321,20 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         process.exit(1)
     }
 
-    logger.debug(`[SPAWN CMD] Spawning session in ${directory}`)
+    // Fork step 1 (web: claude-fork-session / codex-fork-thread RPC): copy the
+    // conversation locally. Only after the daemon check, so a stopped daemon
+    // does not leave an orphan copy behind.
+    let resumeIds: { resumeClaudeSessionId?: string; resumeCodexThreadId?: string } = {}
+    if (forkSource) {
+        try {
+            resumeIds = await forkProviderConversation(forkSource)
+        } catch (error) {
+            console.error(chalk.red('Error:'), `Failed to fork session ${forkSource.parentSessionId}: ${error instanceof Error ? error.message : String(error)}`)
+            process.exit(1)
+        }
+    }
+
+    logger.debug(`[SPAWN CMD] Spawning session in ${directory}${forkSource ? ` (fork of ${forkSource.parentSessionId})` : ''}`)
     // A daemon older than the field strips the unknown key from its zod body
     // schema, so the session still spawns — just without that option (铁律 4).
     // ⚠️ For --permission-mode that degradation is silent and matters: the
@@ -260,9 +344,11 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
     // `very-happy daemon status` after an upgrade.
     const result = await spawnDaemonSession(directory, undefined, {
         spawnedBy: options.spawnedBy,
-        permissionMode: options.permissionMode,
-        agent: options.agent,
+        permissionMode,
+        agent,
         environmentVariables: options.env,
+        ...resumeIds,
+        ...(forkSource ? { parentSessionId: forkSource.parentSessionId } : {}),
     })
     if (result?.error || !result?.success || !result?.sessionId) {
         const message = result?.error || 'Daemon returned no session ID'
@@ -273,25 +359,39 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
     const sessionId: string = result.sessionId
     const url = sessionWebUrl(sessionId)
 
+    // A daemon older than B-492 strips the resume fields and starts a FRESH
+    // session — silently wrong for a fork. Stop it instead of handing it out.
+    if (forkSource && result.resumed !== true) {
+        await stopDaemonSession(sessionId).catch(() => false)
+        console.error(chalk.red('Error:'), 'The running daemon is too old to fork from the CLI (it spawned a fresh session, now stopped). Restart the daemon on this CLI version and retry.')
+        process.exit(1)
+    }
+
     let promptError: string | null = null
+    let sentMeta: FirstMessageMeta | null = null
     if (prompt !== undefined) {
         try {
-            await sendFirstMessage(sessionId, prompt)
+            sentMeta = await sendFirstMessage(sessionId, prompt, (capabilities) => resolveFirstMessageMeta({
+                agent, permissionMode, explicitModel: options.model, capabilities,
+            }))
         } catch (error) {
             promptError = error instanceof Error ? error.message : String(error)
         }
     }
 
     if (options.json) {
-        const payload: Record<string, unknown> = { sessionId, url }
+        const payload: Record<string, unknown> = { sessionId, url, permissionMode }
         if (options.spawnedBy !== undefined) {
             payload.spawnedBy = options.spawnedBy
         }
-        if (options.permissionMode !== undefined) {
-            payload.permissionMode = options.permissionMode
+        if (agent !== undefined) {
+            payload.agent = agent
         }
-        if (options.agent !== undefined) {
-            payload.agent = options.agent
+        if (forkSource) {
+            payload.forkedFrom = forkSource.parentSessionId
+        }
+        if (sentMeta && sentMeta.model !== undefined) {
+            payload.model = sentMeta.model
         }
         if (prompt !== undefined) {
             payload.promptDelivered = promptError === null

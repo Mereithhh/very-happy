@@ -227,12 +227,21 @@ export function startDaemonControlServer({
           // B-069: spawn-origin tag ('assistant' = session_spawn). Recorded on
           // the TrackedSession; old clients never send it.
           spawnedBy: z.string().optional(),
+          // B-492: `very-happy spawn --fork` — same fields the web's fork flow
+          // sends over the machine RPC. Old CLIs never send them.
+          resumeClaudeSessionId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).optional(),
+          resumeCodexThreadId: z.string().min(1).max(200).optional(),
+          parentSessionId: z.string().min(1).max(200).optional(),
         }),
         response: {
           200: z.object({
             success: z.boolean(),
             sessionId: z.string().optional(),
-            approvedNewDirectoryCreation: z.boolean().optional()
+            approvedNewDirectoryCreation: z.boolean().optional(),
+            // B-492: true when resumeClaudeSessionId / resumeCodexThreadId was
+            // honoured. A caller that asked for a fork and does not get this
+            // back is talking to an older daemon that spawned a fresh session.
+            resumed: z.boolean().optional()
           }),
           409: z.object({
             success: z.boolean(),
@@ -247,7 +256,7 @@ export function startDaemonControlServer({
         }
       }
     }, async (request, reply) => {
-      const { directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy } = request.body;
+      const { directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId } = request.body;
 
       if (!directory && variant !== 'assistant') {
         reply.code(500);
@@ -255,7 +264,8 @@ export function startDaemonControlServer({
       }
 
       logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}, variant=${variant || 'none'}, forceNew=${forceNew === true}, spawnedBy=${spawnedBy || 'unset'}`);
-      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy });
+      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId });
+      const resumed = Boolean(resumeClaudeSessionId || resumeCodexThreadId);
 
       switch (result.type) {
         case 'success':
@@ -270,7 +280,8 @@ export function startDaemonControlServer({
           return {
             success: true,
             sessionId: result.sessionId,
-            approvedNewDirectoryCreation: true
+            approvedNewDirectoryCreation: true,
+            ...(resumed ? { resumed: true } : {})
           };
         
         case 'requestToApproveDirectoryCreation':

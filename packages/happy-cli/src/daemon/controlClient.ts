@@ -132,6 +132,14 @@ export async function spawnDaemonSession(
     /** B-306: extra env for the session process. The daemon expands ${VAR}
      *  against its own env and fails the spawn on an unresolved reference. */
     environmentVariables?: Record<string, string>;
+    /** B-492 fork: attach the new session to a copied Claude conversation /
+     *  forked Codex thread. The daemon answers `resumed: true` when it honoured
+     *  it; an older daemon strips these keys and spawns a FRESH session, so the
+     *  caller must check that flag. */
+    resumeClaudeSessionId?: string;
+    resumeCodexThreadId?: string;
+    /** Lineage: the Happy session this fork branched from. */
+    parentSessionId?: string;
   }
 ): Promise<any> {
   const result = await daemonPost('/spawn-session', {
@@ -141,6 +149,9 @@ export async function spawnDaemonSession(
     permissionMode: opts?.permissionMode,
     agent: opts?.agent,
     environmentVariables: opts?.environmentVariables,
+    resumeClaudeSessionId: opts?.resumeClaudeSessionId,
+    resumeCodexThreadId: opts?.resumeCodexThreadId,
+    parentSessionId: opts?.parentSessionId,
   });
   return result;
 }
