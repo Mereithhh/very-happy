@@ -706,6 +706,45 @@ the shared Redis streams adapter, and when Redis went OOM it crash-looped
 (RestartCount 2) while marking machines and sessions inactive from its stale
 view. `stop_old_slot` is exactly what the script would have done next.
 
+### socket.io Redis stream and recovery bounds (B-494)
+
+The streams adapter keeps every cross-slot broadcast in `vh:socket.io`
+(ElastiCache, Redis 7.1). Since B-494
+(`packages/happy-server/sources/app/api/socket/boundedStreamsAdapter.ts`):
+
+- **Length**: `MAXLEN ~ 20000` (approximate trimming, whole listpack nodes; Redis
+  7 trims at most 10k entries per XADD, so a longer stream converges within a
+  few XADDs of a deploy). At the observed ~90 entries/s (≈440 B each) that is
+  ~3.7 minutes, several times the 30 s recovery window. Do **not** XTRIM by
+  hand (B-484 decision); the length converges through normal XADDs.
+- **Recovery is bounded**: an offset older than 60 s, missing from the stream,
+  needing more than 10k entries, or waiting more than 3 s for one of 16 restore
+  slots is refused. The client then connects with `recovered=false` and runs its
+  normal full resync (Web `onReconnected`; CLI refetches messages by seq on every
+  connect and never reads `recovered`), so nothing is lost. Every read is paged
+  (`XRANGE … COUNT 500`); the stock adapter's single unbounded
+  `XRANGE <offset> +` is what grew one connection's output buffer to ~4 GB on
+  2026-09-25.
+- **Three connections** per slot, visible in `CLIENT LIST` as
+  `vh-adapter-publish` (XADD/SET/GETDEL), `vh-adapter-poll` (XREAD BLOCK) and
+  `vh-adapter-restore` (recovery XRANGE and the 5 s XINFO sample; 5 s command
+  timeout). A slow recovery read can no longer hold up XADD.
+
+Metrics (per slot, `/metrics`): `socket_stream_length`,
+`socket_stream_head_age_seconds` (grows when nothing reaches the stream),
+`redis_client_errors_total{client,code}` (replaces ioredis' "Unhandled error
+event" log; `code` is ECONNRESET/OOM/timeout/…),
+`socket_recovery_attempts_total{outcome}` and
+`socket_recovery_scanned_entries`. Suggested alerts (not yet wired to a
+receiver): `max(socket_stream_head_age_seconds{job="very-happy"}) > 30` for 1m;
+`sum(rate(redis_client_errors_total{job="very-happy"}[5m])) * 60 > 1`;
+`max(socket_stream_length{job="very-happy"}) > 50000` for 10m.
+
+Check from the host without redis-cli (the image has ioredis):
+`docker exec -i -w /repo/packages/happy-server happy-server-<slot> node -` with a
+script that prints `XLEN vh:socket.io` and `XINFO STREAM` `last-generated-id`
+twice a few seconds apart; the head must advance.
+
 ### Connection incident evidence (B-380)
 
 The server/web and regional relay builds containing B-380 log authenticated socket
