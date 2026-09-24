@@ -1,4 +1,5 @@
 import { log } from "@/utils/log";
+import { clientIp } from "@/app/api/clientIp";
 import { Fastify } from "../types";
 import { FastifyError } from "fastify";
 import { safeRequestPath } from './enableAuthentication';
@@ -12,7 +13,7 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
     app.setErrorHandler(async (error: FastifyError, request, reply) => {
         const method = request.method;
         const url = safeRequestPath(request.url);
-        const ip = request.ip || 'unknown';
+        const ip = clientIp(request) || 'unknown';
 
         // Log the error with comprehensive context
         log({

@@ -1,26 +1,69 @@
+# Host-only secret (never in git): /etc/caddy/vh-origin-secret.caddy, root:caddy 0640:
+#   (vh_origin_secret) {
+#   	vars vh_origin_secret "<64 hex chars; rbw apodex/VH_CLOUDFRONT_ORIGIN_SECRET>"
+#   }
+# The same value is the CloudFront origin custom header X-Origin-Verify. A
+# missing file fails `caddy validate`, so reload is refused and the old config
+# stays live; a value shorter than 32 chars never matches.
+import /etc/caddy/vh-origin-secret.caddy
+
+# Caddy is the only place that decides the client IP (B-491). It always
+# rewrites X-Real-Client-IP, which happy-server trusts only from its TRUST_PROXY
+# peer. Priority:
+#   1. X-Origin-Verify == secret (CloudFront) -> CloudFront-Viewer-Address
+#      minus the port ("1.2.3.4:5", "2001:db8::1:5", "[2001:db8::1]:5")
+#   2. peer in Cloudflare's published ranges -> CF-Connecting-IP
+#   3. otherwise the TCP peer
+# X-Origin-Verify and CloudFront-Viewer-Address never reach the server.
+# Must run inside `route` so it executes before the handle blocks.
+(vh_client_ip) {
+	import vh_origin_secret
+	@vh_cloudfront {
+		expression `size({http.vars.vh_origin_secret}) >= 32 && {http.request.header.X-Origin-Verify} == {http.vars.vh_origin_secret}`
+		header CloudFront-Viewer-Address *
+	}
+	# https://www.cloudflare.com/ips-v4/ and /ips-v6/ (verified 2026-09-25).
+	@vh_cloudflare {
+		remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		header CF-Connecting-IP *
+	}
+	request_header -X-Real-Client-IP
+	request_header X-Real-Client-IP {http.request.remote.host}
+	request_header @vh_cloudflare X-Real-Client-IP {http.request.header.CF-Connecting-IP}
+	request_header @vh_cloudfront X-Real-Client-IP {http.request.header.CloudFront-Viewer-Address}
+	request_header @vh_cloudfront X-Real-Client-IP ^\[?(.+?)\]?:[0-9]+$ $1
+	request_header -X-Origin-Verify
+	request_header -CloudFront-Viewer-Address
+	vars vh_origin_secret ""
+}
+
 veryhappy.dev, happy.mereith.com {
-	# Slot-pinned clients (a handover in flight, or a client that kept ?vh_slot=
-	# from a past handover — see B-364) must never be sent to a slot with nothing
-	# listening: list both ports, prefer the pinned one, fall back to the other.
-	@vh_blue query vh_slot=blue
-	handle @vh_blue {
-		reverse_proxy 127.0.0.1:3101 127.0.0.1:3102 {
-			lb_policy first
-			lb_try_duration 2s
-			fail_duration 10s
-		}
-	}
+	route {
+		import vh_client_ip
 
-	@vh_green query vh_slot=green
-	handle @vh_green {
-		reverse_proxy 127.0.0.1:3102 127.0.0.1:3101 {
-			lb_policy first
-			lb_try_duration 2s
-			fail_duration 10s
+		# Slot-pinned clients (a handover in flight, or a client that kept ?vh_slot=
+		# from a past handover — see B-364) must never be sent to a slot with nothing
+		# listening: list both ports, prefer the pinned one, fall back to the other.
+		@vh_blue query vh_slot=blue
+		handle @vh_blue {
+			reverse_proxy 127.0.0.1:3101 127.0.0.1:3102 {
+				lb_policy first
+				lb_try_duration 2s
+				fail_duration 10s
+			}
 		}
-	}
 
-	handle {
-		import /opt/happy/release/active-upstream.caddy
+		@vh_green query vh_slot=green
+		handle @vh_green {
+			reverse_proxy 127.0.0.1:3102 127.0.0.1:3101 {
+				lb_policy first
+				lb_try_duration 2s
+				fail_duration 10s
+			}
+		}
+
+		handle {
+			import /opt/happy/release/active-upstream.caddy
+		}
 	}
 }

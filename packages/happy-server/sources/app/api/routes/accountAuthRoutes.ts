@@ -1,4 +1,5 @@
 import { auditLogin } from '@/app/audit/requestAudit';
+import { clientRateLimitKey } from "@/app/api/clientIp";
 import { z } from 'zod';
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
@@ -279,7 +280,7 @@ export function accountAuthRoutes(app: Fastify) {
     }, async (request, reply) => {
         if (!emailConfig) return reply.code(501).send({ error: 'email_not_configured' as const });
         const email = normalizeEmail(request.body.email);
-        const allowed = await consumeRateBucketsSequentially(emailCodeRateBuckets(request.ip, email, emailConfig));
+        const allowed = await consumeRateBucketsSequentially(emailCodeRateBuckets(clientRateLimitKey(request), email, emailConfig));
         if (!allowed) return reply.code(429).send({ error: 'too_many_requests' as const });
 
         let challenge: Awaited<ReturnType<typeof createEmailLoginChallenge>>;
@@ -325,7 +326,7 @@ export function accountAuthRoutes(app: Fastify) {
         if (!isGoogleOriginAllowed(request.headers.origin, googleConfig)) {
             return reply.code(403).send({ error: 'origin_not_allowed' as const });
         }
-        const challengeBucket = googleChallengeRateBucket(request.ip);
+        const challengeBucket = googleChallengeRateBucket(clientRateLimitKey(request));
         if (!(await allowAuthRequest(challengeBucket.key, challengeBucket))) {
             return reply.code(429).send({ error: 'too_many_requests' as const });
         }
@@ -361,7 +362,7 @@ export function accountAuthRoutes(app: Fastify) {
         const username = request.body.username;
         const publicKey = accountPublicKeyFromSecret(request.body.secret);
         if (!publicKey) return reply.code(400).send({ error: 'invalid_secret' as const });
-        const ipKey = hashPairingValue(request.ip).slice(0, 32);
+        const ipKey = hashPairingValue(clientRateLimitKey(request)).slice(0, 32);
         const usernameKey = hashPairingValue(username).slice(0, 32);
         const allowed = await consumeRateBucketsSequentially([
             { key: `password-signup:ip:${ipKey}`, max: 5 },
@@ -666,7 +667,7 @@ export function accountAuthRoutes(app: Fastify) {
         const email = normalizeEmail(request.body.email);
         const accountKey = hashPairingValue(accountId).slice(0, 32);
         const allowed = await consumeRateBucketsSequentially([
-            ...emailVerifyRateBuckets(request.ip, email, request.body.challengeId),
+            ...emailVerifyRateBuckets(clientRateLimitKey(request), email, request.body.challengeId),
             { key: `email-link:account:${accountKey}:hour`, max: 5, windowMs: 60 * 60_000 },
             { key: `email-link:account:${accountKey}:day`, max: 10, windowMs: 24 * 60 * 60_000 },
         ]);
@@ -723,7 +724,7 @@ export function accountAuthRoutes(app: Fastify) {
         }
         const accountKey = hashPairingValue(accountId).slice(0, 32);
         const allowed = await consumeRateBucketsSequentially([
-            { key: `google-link:ip:${hashPairingValue(request.ip).slice(0, 32)}:minute`, max: 10 },
+            { key: `google-link:ip:${hashPairingValue(clientRateLimitKey(request)).slice(0, 32)}:minute`, max: 10 },
             { key: `google-link:account:${accountKey}:hour`, max: 5, windowMs: 60 * 60_000 },
             { key: `google-link:account:${accountKey}:day`, max: 10, windowMs: 24 * 60 * 60_000 },
             { key: 'google-link:global:hour', max: 300, windowMs: 60 * 60_000 },
@@ -775,7 +776,7 @@ export function accountAuthRoutes(app: Fastify) {
     }, async (request, reply) => {
         if (!passwordLoginEnabled) return reply.code(403).send({ error: 'password_login_disabled' as const });
         const username = request.body.username;
-        const allowed = await consumeRateBucketsSequentially(passwordLoginRateBuckets(request.ip, username));
+        const allowed = await consumeRateBucketsSequentially(passwordLoginRateBuckets(clientRateLimitKey(request), username));
         if (!allowed) {
             return reply.code(429).send({ error: 'too_many_requests' as const });
         }
@@ -829,7 +830,7 @@ export function accountAuthRoutes(app: Fastify) {
     }, async (request, reply) => {
         if (!emailConfig) return reply.code(501).send({ error: 'email_not_configured' as const });
         const email = normalizeEmail(request.body.email);
-        const allowed = await consumeRateBucketsSequentially(emailVerifyRateBuckets(request.ip, email, request.body.challengeId));
+        const allowed = await consumeRateBucketsSequentially(emailVerifyRateBuckets(clientRateLimitKey(request), email, request.body.challengeId));
         if (!allowed) return reply.code(429).send({ error: 'too_many_requests' as const });
         if (!(await consumeEmailLoginChallenge(request.body.challengeId, email, request.body.code))) {
             return reply.code(401).send({ error: 'invalid_email_code' as const });
@@ -906,7 +907,7 @@ export function accountAuthRoutes(app: Fastify) {
         if (!isGoogleOriginAllowed(request.headers.origin, googleConfig)) {
             return reply.code(403).send({ error: 'origin_not_allowed' as const });
         }
-        const loginBucket = googleLoginRateBucket(request.ip);
+        const loginBucket = googleLoginRateBucket(clientRateLimitKey(request));
         if (!(await allowAuthRequest(loginBucket.key, loginBucket))) {
             return reply.code(429).send({ error: 'too_many_requests' as const });
         }

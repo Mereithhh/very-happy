@@ -446,6 +446,28 @@ describe('authenticated account credential secret validation', () => {
         await app.close();
     });
 
+    it('buckets password login by the edge-written client IP, not the shared edge (B-491)', async () => {
+        const { configureClientIpTrust } = await import('@/app/api/clientIp');
+        configureClientIpTrust(['172.18.0.1']);
+        try {
+            const app = await buildApp();
+            const login = (remoteAddress: string, realIp: string) => app.inject({
+                method: 'POST', url: '/v1/account/login', remoteAddress,
+                headers: { 'x-real-client-ip': realIp }, payload: { username: 'alice', password: 'password' },
+            });
+            await login('172.18.0.1', '203.0.113.1');
+            await login('172.18.0.1', '203.0.113.2');
+            await login('198.51.100.66', '203.0.113.1');
+            const ipKeys = allowAuthRequestMock.mock.calls.map(([key]) => key).filter((key) => key.startsWith('password-login:ip:'));
+            expect(ipKeys).toEqual([
+                passwordLoginRateBuckets('203.0.113.1', 'alice')[0].key,
+                passwordLoginRateBuckets('203.0.113.2', 'alice')[0].key,
+                passwordLoginRateBuckets('198.51.100.66', 'alice')[0].key,
+            ]);
+            await app.close();
+        } finally { configureClientIpTrust(false); }
+    });
+
     it('rate-limits credential changes before password hashing and writes', async () => {
         allowAuthRequestMock.mockResolvedValue(false);
         const app = await buildApp();

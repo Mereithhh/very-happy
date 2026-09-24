@@ -1,4 +1,5 @@
 import { auditLogin } from '@/app/audit/requestAudit';
+import { clientRateLimitKey } from "@/app/api/clientIp";
 import { z } from 'zod';
 import { type Fastify } from '../types';
 import * as privacyKit from 'privacy-kit';
@@ -81,7 +82,7 @@ export function authRoutes(app: Fastify) {
         let user = await db.account.findUnique({ where: { publicKey: publicKeyHex } });
         if (!user) {
             if (process.env.ALLOW_LEGACY_KEY_SIGNUP !== 'true') return reply.code(403).send({ error: 'legacy-key-signup-disabled' });
-            const ipAllowed = await allowAuthRequest(`key-signup:ip:${hashPairingValue(request.ip).slice(0, 32)}`, { max: 10, windowMs: 60_000 });
+            const ipAllowed = await allowAuthRequest(`key-signup:ip:${hashPairingValue(clientRateLimitKey(request)).slice(0, 32)}`, { max: 10, windowMs: 60_000 });
             const globalAllowed = await allowAuthRequest('key-signup:global', { max: 50, windowMs: 60_000 });
             if (!ipAllowed || !globalAllowed) return reply.code(429).send({ error: 'rate-limit' });
             try {
@@ -117,7 +118,7 @@ export function authRoutes(app: Fastify) {
         const publicKey = decodePairingPublicKey(request.query.publicKey);
         if (!publicKey) return reply.send({ status: 'not_found', supportsV2: false });
         const publicKeyHex = privacyKit.encodeHex(Uint8Array.from(publicKey));
-        if (!await allowPairingRate({ action: 'status', ip: request.ip, publicKeyHex })) return pairingError(reply, 429, 'rate-limit');
+        if (!await allowPairingRate({ action: 'status', ip: clientRateLimitKey(request), publicKeyHex })) return pairingError(reply, 429, 'rate-limit');
         const row = await findPairing('terminal', publicKeyHex);
         if (!row) return reply.send({ status: 'not_found', supportsV2: false });
         if (pairingExpired(row.createdAt)) return reply.send({ status: 'expired', supportsV2: row.supportsV2 });
@@ -147,7 +148,7 @@ async function handlePairingRequest(kind: PairingKind, request: any, reply: any)
     if (request.body.supportsClaimSecret && !secretHash) return pairingError(reply, 400, 'invalid-claim-secret');
     const existing = await findPairing(kind, publicKeyHex);
     const action = request.body.pairingAction ?? (existing ? 'poll' : 'create');
-    if (!await allowPairingRate({ action, ip: request.ip, publicKeyHex })) return pairingError(reply, 429, 'rate-limit');
+    if (!await allowPairingRate({ action, ip: clientRateLimitKey(request), publicKeyHex })) return pairingError(reply, 429, 'rate-limit');
     if (!existing && action === 'poll') return pairingError(reply, 404, 'not-found');
     if (!existing && !secretHash && !legacyPairingAllowed()) return pairingError(reply, 426, 'upgrade-required');
     if (existing && pairingExpired(existing.createdAt)) {
@@ -183,7 +184,7 @@ async function approvePairing(kind: PairingKind, request: any, reply: any) {
     const publicKey = decodePairingPublicKey(request.body.publicKey);
     if (!publicKey) return pairingError(reply, 401, 'invalid-public-key');
     const publicKeyHex = privacyKit.encodeHex(Uint8Array.from(publicKey));
-    if (!await allowPairingRate({ action: 'approve', ip: request.ip, publicKeyHex, accountId: request.userId })) return pairingError(reply, 429, 'rate-limit');
+    if (!await allowPairingRate({ action: 'approve', ip: clientRateLimitKey(request), publicKeyHex, accountId: request.userId })) return pairingError(reply, 429, 'rate-limit');
     const row = await findPairing(kind, publicKeyHex);
     if (!row || pairingExpired(row.createdAt)) return pairingError(reply, 404, row ? 'expired' : 'not-found');
     if (!row.response) await approvePairingRow(kind, row.id, request.body.response, request.userId);

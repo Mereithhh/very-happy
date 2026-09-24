@@ -34,6 +34,7 @@ import * as path from "path";
 import { injectRuntimeConfig, runtimeConfigScript } from './htmlConfigInjection';
 import * as fs from "fs";
 import { resolveTrustProxy, type TrustedProxyConfig } from './trustProxy';
+import { configureClientIpTrust, requestLogSerializer } from './clientIp';
 import { configuredResourceLimit } from './resourceLimits';
 import { relayRoutes } from './routes/relayRoutes';
 import { connectionDiagnosticsRoutes } from './routes/connectionDiagnosticsRoutes';
@@ -58,10 +59,13 @@ export async function startApi(opts: StartApiOptions = {}) {
 
     // Start API
     const configuredBodyLimit = configuredResourceLimit('HTTP_BODY_LIMIT_BYTES', 1024 * 1024);
+    const trustProxy = opts.trustProxy ?? resolveTrustProxy(process.env.TRUST_PROXY);
+    configureClientIpTrust(trustProxy);
     const app = fastify({
-        loggerInstance: logger,
+        // Request logs report the resolved end-user IP (clientIp), not the edge hop.
+        loggerInstance: logger.child({}, { serializers: { req: requestLogSerializer } }),
         bodyLimit: configuredBodyLimit === 0 ? Number.MAX_SAFE_INTEGER : configuredBodyLimit,
-        trustProxy: opts.trustProxy ?? resolveTrustProxy(process.env.TRUST_PROXY),
+        trustProxy,
     });
     startBusinessAudit();
     app.addHook('onResponse', async (request, reply) => { auditLoginFailure(request, reply.statusCode); });

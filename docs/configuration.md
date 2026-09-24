@@ -14,7 +14,7 @@ state. Never commit production values.
 | `LOGIN_SESSION_TTL_DAYS` | Email/Google/password Web login lifetime, 1–365 | `30` |
 | `MAX_LOGIN_SESSIONS_PER_ACCOUNT` | Active Email/Google/password Web sessions retained per account; oldest active session is evicted before a new login | `20` |
 | `MAX_CREDENTIAL_CHANGES_PER_ACCOUNT_PER_MINUTE` | Shared database-backed password/username change rate; `0` disables only for a trusted private relay | `5` |
-| `TRUST_PROXY` | Trusted hop count or proxy IP/CIDR allowlist | Exact topology; never unrestricted trust |
+| `TRUST_PROXY` | Trusted hop count or proxy IP/CIDR allowlist | Exact topology; never unrestricted trust. Only a peer matching it may supply `X-Real-Client-IP` (the edge-resolved client IP, B-491) |
 | `PORT` | HTTP/WebSocket port | `3005` |
 | `METRICS_ENABLED` / `METRICS_HOST` / `METRICS_PORT` | Prometheus endpoint | Disabled by default; enable explicitly on `127.0.0.1:9090` |
 | `AUTH_ALLOW_LEGACY_PAIRING` | Temporarily accept pairing without a one-time claim secret | Unset/`false`; enable only during the documented CLI rollout |

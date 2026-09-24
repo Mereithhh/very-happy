@@ -1855,6 +1855,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25b: {
+                title: '登录限流改为按每位访问者单独计算',
+                summary: '服务器之前看到的是前面网络边缘节点的地址而不是你的地址，经过同一个边缘节点的人会共用一套登录限流额度。',
+                limits: '登录、邮箱验证码、设备配对和 Google 登录的限流现在按每位访问者的地址计算，别人触发限流不会再连累你。',
+            },
             sep25a: {
                 title: '登录失效的标签页会直接提示，不再在后台无限重试',
                 summary: '服务器不再接受某个浏览器的登录后，开着的标签页会把所有后台请求无限重试下去，开得越久重试越密，而且从不提示出了问题。',
