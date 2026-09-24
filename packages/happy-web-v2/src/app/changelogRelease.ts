@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-live-updates-survive-reconnect-storm',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25d.title',
+    summaryKey: 'changelog.releases.sep25d.summary',
+    itemKeys: ['changelog.releases.sep25d.relay'],
+  },
+  {
     id: '2026-09-25-cli-spawn-fork-and-leaner-prompt',
     cliVersion: '0.2.151',
     date: '2026-09-25',

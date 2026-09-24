@@ -2,12 +2,12 @@ import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
 import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { Server } from "socket.io";
-import { createAdapter } from "@socket.io/redis-streams-adapter";
-import { Redis } from "ioredis";
-import { log } from "@/utils/log";
+import { Redis, type RedisOptions } from "ioredis";
+import { decode as msgpackDecode } from "@msgpack/msgpack";
+import { log, warn } from "@/utils/log";
 import { attachSocketDiagnostics } from "@/utils/socketDiagnostics";
 import { auth } from "@/app/auth/auth";
-import { getMetricsLabelsFromSocket, redisStreamLagMsGauge, releaseHandoverCounter, releaseHandoverDuration, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
+import { getMetricsLabelsFromSocket, redisClientErrorsCounter, redisStreamLagMsGauge, socketRecoveryCounter, socketRecoveryScannedEntries, socketStreamHeadAgeSeconds, socketStreamLengthGauge, releaseHandoverCounter, releaseHandoverDuration, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
 import { pingHandler } from "./socket/pingHandler";
@@ -27,8 +27,28 @@ import { resolveReleaseConfig } from '@/app/release/releaseConfig';
 import { ReleaseCoordinator } from '@/app/release/releaseCoordinator';
 import { closeCoordinationRedis, initializeCoordinationRedis } from '@/app/release/redisCoordination';
 import { DistributedSocketConnectionLimiter } from './socket/distributedSocketLimit';
+import { createBoundedStreamsAdapter, defaultRecoveryLimits, SOCKET_STREAM_MAX_LEN, type AdapterConnections } from './socket/boundedStreamsAdapter';
 
 export const SOCKET_STREAM_NAME = 'vh:socket.io';
+export const SOCKET_RECOVERY_WINDOW_MS = 30_000;
+
+const REDIS_ERROR_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND', 'EHOSTUNREACH']);
+
+/** Bounded label for redis_client_errors_total; also replaces ioredis' "Unhandled error event" log. */
+export function redisErrorCode(error: unknown): string {
+    const code = (error as { code?: unknown } | null)?.code;
+    if (typeof code === 'string' && REDIS_ERROR_CODES.has(code)) return code;
+    const message = error instanceof Error ? error.message : String(error);
+    if (/^OOM\b/.test(message)) return 'OOM';
+    if (/timed? ?out/i.test(message)) return 'timeout';
+    return 'other';
+}
+
+function recordRedisError(client: string, error: unknown) {
+    const code = redisErrorCode(error);
+    redisClientErrorsCounter.inc({ client, code });
+    warn({ module: 'redis' }, `[${client}] Redis error ${code}: ${error instanceof Error ? error.message : String(error)}`);
+}
 
 function configuredLimit(name: string, fallback: number): number {
     const parsed = Number.parseInt(process.env[name] || '', 10);
@@ -66,8 +86,11 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         // a half-dead link BEFORE the server noticed the disconnect are not in
         // the replay, so a recovered connect still triggers a bounded refetch
         // of the viewed session. Spec: specs/2026-08-web-resume-sync.md.
+        // B-494: the adapter refuses recoveries that would scan too much
+        // (see socket/boundedStreamsAdapter.ts); those clients get
+        // recovered === false and take the full resync path instead.
         connectionStateRecovery: {
-            maxDisconnectionDuration: 30_000,
+            maxDisconnectionDuration: SOCKET_RECOVERY_WINDOW_MS,
             skipMiddlewares: false,
         },
     });
@@ -84,30 +107,64 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
 
     let releaseCoordinator: ReleaseCoordinator | null = null;
     let distributedConnectionLimiter: DistributedSocketConnectionLimiter | null = null;
-    let adapterClient: Redis | null = null;
+    let adapterConnections: AdapterConnections | null = null;
     let streamLagTimer: NodeJS.Timeout | null = null;
 
     // Multi-process support: attach Redis streams adapter when REDIS_URL is set.
-    // Use a dedicated adapter connection because its blocking stream reads must
-    // never hold up coordination commands such as readiness and relay leases.
+    // Adapter connections are separate from coordination (readiness, relay
+    // leases) and, since B-494, from each other: publish (XADD) / poll (XREAD
+    // BLOCK) / restore (recovery XRANGE). See boundedStreamsAdapter.ts.
     if (process.env.REDIS_URL) {
         const coordinationRedis = await initializeCoordinationRedis(process.env.REDIS_URL);
-        adapterClient = new Redis(process.env.REDIS_URL, {
-            lazyConnect: true,
-            enableReadyCheck: true,
-            maxRetriesPerRequest: null,
-        });
-        await adapterClient.connect();
-        if (await adapterClient.ping() !== 'PONG') throw new Error('Socket adapter Redis PING failed');
-        io.adapter(createAdapter(adapterClient, {
+        coordinationRedis.on('error', (error) => recordRedisError('coordination', error));
+        const connect = async (role: string, extra: Partial<RedisOptions>) => {
+            const client = new Redis(process.env.REDIS_URL!, {
+                lazyConnect: true,
+                enableReadyCheck: true,
+                maxRetriesPerRequest: null,
+                connectionName: `vh-adapter-${role}`,
+                ...extra,
+            });
+            client.on('error', (error) => recordRedisError(`adapter_${role}`, error));
+            await client.connect();
+            if (await client.ping() !== 'PONG') throw new Error(`Socket adapter Redis PING failed (${role})`);
+            return client;
+        };
+        adapterConnections = {
+            // Broadcasts must not be dropped: keep queueing across reconnects.
+            publish: await connect('publish', {}),
+            poll: await connect('poll', {}),
+            // A recovery read that cannot finish quickly is abandoned; the
+            // client then falls back to its full resync instead of waiting.
+            restore: await connect('restore', { maxRetriesPerRequest: 1, commandTimeout: 5_000 }),
+        };
+        const recoveryLimits = defaultRecoveryLimits(SOCKET_RECOVERY_WINDOW_MS);
+        io.adapter(createBoundedStreamsAdapter(adapterConnections, {
             streamName: SOCKET_STREAM_NAME,
             sessionKeyPrefix: 'vh:sio:session:',
-            maxLen: 200000,
+            maxLen: SOCKET_STREAM_MAX_LEN,
             readCount: 2000,
             heartbeatInterval: 5_000,
             heartbeatTimeout: 10_000,
+            limits: recoveryLimits,
+            // Sessions are persisted by the stock adapter (possibly on the
+            // other slot) as base64 msgpack; decode with the adapter's own
+            // msgpack package so both slots agree on the format.
+            decodeSession: (raw) => msgpackDecode(Buffer.from(raw, 'base64')),
+            observer: {
+                onOutcome(outcome, scanned) {
+                    socketRecoveryCounter.inc({ outcome });
+                    if (outcome !== 'offset_too_old' && outcome !== 'invalid_offset' && outcome !== 'busy') {
+                        socketRecoveryScannedEntries.observe(scanned);
+                    }
+                    if (outcome === 'scan_limit' || outcome === 'error' || outcome === 'busy' || outcome === 'timeout') {
+                        warn({ module: 'websocket' }, `connection state recovery skipped: ${outcome} (scanned ${scanned})`);
+                    }
+                },
+            },
         }));
-        log({ module: 'websocket' }, 'Redis streams adapter enabled for multi-process support');
+        log({ module: 'websocket' }, `Redis streams adapter enabled (maxLen ~${SOCKET_STREAM_MAX_LEN}, recovery offset age ≤${recoveryLimits.maxOffsetAgeMs}ms, scan ≤${recoveryLimits.maxScanEntries})`);
+        const adapterRedis = adapterConnections;
 
         // Track stream reader lag: wrap onRawMessage to capture last-read offset,
         // then periodically compare against stream HEAD.
@@ -118,14 +175,21 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
             lastReadOffset = offset;
             return origOnRawMessage(msg, offset);
         };
+        // Sampled on the restore connection (it has a command timeout), so a
+        // stalled publish connection shows up as a growing head age instead
+        // of a frozen sample.
+        let lastHeadMs = 0;
         streamLagTimer = setInterval(async () => {
             try {
-                const info = await adapterClient!.xinfo("STREAM", SOCKET_STREAM_NAME) as any[];
+                const info = await adapterRedis.restore.xinfo("STREAM", SOCKET_STREAM_NAME) as any[];
                 const headId = String(info[info.indexOf("last-generated-id") + 1]);
                 const headMs = parseInt(headId.split("-")[0]);
                 const readMs = parseInt(lastReadOffset.split("-")[0]);
                 redisStreamLagMsGauge.set(headMs - readMs);
-            } catch { /* stream may not exist yet */ }
+                socketStreamLengthGauge.set(Number(info[info.indexOf("length") + 1]));
+                lastHeadMs = headMs;
+            } catch { /* stream may not exist yet, or Redis is unreachable */ }
+            if (lastHeadMs > 0) socketStreamHeadAgeSeconds.set(Math.max(0, (Date.now() - lastHeadMs) / 1000));
         }, 5000);
 
         if (releaseConfig) {
@@ -393,8 +457,8 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
     onShutdown('api', async () => {
         if (streamLagTimer) clearInterval(streamLagTimer);
         await io.close();
-        if (adapterClient) {
-            try { await adapterClient.quit(); } catch { adapterClient.disconnect(); }
+        for (const client of adapterConnections ? Object.values(adapterConnections) : []) {
+            try { await client.quit(); } catch { client.disconnect(); }
         }
         await closeCoordinationRedis();
     });

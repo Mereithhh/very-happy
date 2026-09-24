@@ -1855,6 +1855,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25d: {
+                title: '大家同时重连后，实时推送不会再卡住',
+                summary: '所有标签页和机器在同一时刻重连时，服务器为每个连接补发错过的事件可能把消息中继堵死，所有人的实时推送都会停住，直到堵塞自己消退（9 月 25 日持续了约 25 分钟）。',
+                relay: '重连后的补发现在有上限：离线太久的设备改为重新加载状态，其他人的新消息照常送达。',
+            },
             sep25c: {
                 title: '会话不再多花一轮给自己改标题',
                 summary: '从 Very Happy 启动的 Claude 会话以前被要求每次开场都调用改标题工具，哪怕只问一句话。标题本来就会根据你的第一条消息自动生成，这一轮现在省掉了。需要更新 CLI。',

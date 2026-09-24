@@ -1903,6 +1903,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25d: {
+                title: 'Live updates no longer stall after everyone reconnects at once',
+                summary: 'When every open tab and machine reconnected at the same moment, catching each of them up on missed events could jam the server\'s message relay, and live updates stopped for everyone until it cleared (about 25 minutes on 25 September).',
+                relay: 'Catching up after a reconnect is now bounded: a device that has been away too long reloads its state instead, so new messages keep flowing to everyone else while the rest catch up.',
+            },
             sep25c: {
                 title: 'Sessions no longer spend a turn renaming themselves',
                 summary: 'Claude sessions started from Very Happy were told to call the rename tool at the start of every chat, even for a one-line question. Titles already come from your first message, so that extra turn is gone. Needs the CLI update.',
