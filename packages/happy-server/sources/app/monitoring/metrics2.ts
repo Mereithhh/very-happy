@@ -259,5 +259,41 @@ export const redisStreamLagMsGauge = new Gauge({
     registers: [register]
 });
 
+// B-494: socket.io adapter health. A frozen stream head or a burst of
+// ECONNRESET on the adapter connections is what the 2026-09-25 push outage
+// looked like from the outside.
+export const redisClientErrorsCounter = new Counter({
+    name: 'redis_client_errors_total',
+    help: 'ioredis connection errors by client role and bounded error code',
+    labelNames: ['client', 'code'] as const,
+    registers: [register]
+});
+
+export const socketRecoveryCounter = new Counter({
+    name: 'socket_recovery_attempts_total',
+    help: 'socket.io connection-state recovery attempts by outcome (anything but recovered falls back to full resync)',
+    labelNames: ['outcome'] as const,
+    registers: [register]
+});
+
+export const socketRecoveryScannedEntries = new Histogram({
+    name: 'socket_recovery_scanned_entries',
+    help: 'Redis stream entries scanned by one recovery attempt',
+    buckets: [0, 10, 50, 100, 500, 1000, 2500, 5000, 10000],
+    registers: [register]
+});
+
+export const socketStreamLengthGauge = new Gauge({
+    name: 'socket_stream_length',
+    help: 'XLEN of the socket.io adapter stream',
+    registers: [register]
+});
+
+export const socketStreamHeadAgeSeconds = new Gauge({
+    name: 'socket_stream_head_age_seconds',
+    help: 'Seconds since the newest entry of the socket.io adapter stream (grows when publishing stalls)',
+    registers: [register]
+});
+
 // Export the register for combining metrics
 export { register };
