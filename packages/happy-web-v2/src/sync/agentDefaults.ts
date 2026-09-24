@@ -4,8 +4,22 @@ import * as z from 'zod';
 // first-class (B-370): before it was folded into `claude`, so the settings page
 // offered Claude aliases (opus/sonnet/fable) as pi's model list and a model
 // picked inside a pi session was written into agentDefaultOverrides.claude.
-export const agentKeys = ['claude', 'codex', 'gemini', 'openclaw', 'pi'] as const;
-export type AgentKey = typeof agentKeys[number];
+// The key list and the code defaults below live in happy-wire so
+// `very-happy spawn` starts sessions exactly like the launcher (B-492).
+import {
+    AGENT_KEYS,
+    AGENT_CODE_DEFAULTS,
+    CLAUDE_OPUS_55_MODEL,
+    CLAUDE_OPUS_55_CAPABILITY,
+    supportsClaudeOpus55,
+    isClaudeOpus55Model,
+    normalizeAgentKey,
+    type AgentKey,
+    type AgentDefaultConfig,
+} from '@slopus/happy-wire';
+export { CLAUDE_OPUS_55_MODEL, CLAUDE_OPUS_55_CAPABILITY, supportsClaudeOpus55, normalizeAgentKey };
+export type { AgentKey, AgentDefaultConfig };
+export const agentKeys = AGENT_KEYS;
 
 export const AgentDefaultOverrideSchema = z.object({
     permissionMode: z.string().optional(),
@@ -27,70 +41,12 @@ export type AgentDefaultOverride = z.infer<typeof AgentDefaultOverrideSchema>;
 export type AgentDefaultOverrides = z.infer<typeof AgentDefaultOverridesSchema>;
 export type AgentDefaultField = keyof Pick<AgentDefaultOverride, 'permissionMode' | 'modelMode' | 'effortLevel'>;
 
-export type AgentDefaultConfig = {
-    permissionMode: string;
-    modelMode: string;
-    effortLevel: string | null;
-};
-
-/**
- * Opus 5.5 needs Claude Code >= 2.1.280: older bundled CLIs get a 400
- * "version 2.1.280 or newer is required" (probed on SDK 0.3.267, 2026-09-24).
- * Wrappers on SDK >= 0.3.281 advertise this capability at spawn, before the
- * first SDK response publishes their model catalog.
- */
-export const CLAUDE_OPUS_55_MODEL = 'claude-opus-5-5';
-export const CLAUDE_OPUS_55_CAPABILITY = 'claude-opus-5-5-v1';
-
-export function supportsClaudeOpus55(metadata: { capabilities?: string[] | null } | null | undefined): boolean {
-    return metadata?.capabilities?.includes(CLAUDE_OPUS_55_CAPABILITY) === true;
-}
-
-const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
-    // The Claude UI key for YOLO is `bypassPermissions`; the CLI also accepts
-    // `yolo` and maps it to the Claude SDK's bypass mode.
-    // model defaults to the pinned Opus 5.5 id (not the `opus` alias, whose
-    // target depends on the wrapper's bundled Claude Code). Wrappers that
-    // cannot run it fall back to 'default' via resolveDefaultModelMode.
-    // effort null = don't send effort.
-    claude: { permissionMode: 'bypassPermissions', modelMode: CLAUDE_OPUS_55_MODEL, effortLevel: null },
-    codex: { permissionMode: 'yolo', modelMode: 'gpt-5.5', effortLevel: 'medium' },
-    gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
-    openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
-    // pi: the runner keeps Claude's permission vocabulary (B-350 — HAPPY_PERMISSION_MODE +
-    // session-modes file, enforced by the pi-side gate; `bypassPermissions` = auto-allow every
-    // ask rule), so yolo is the same key as for Claude. Model 'default' = don't send a model:
-    // the session runs on whatever the machine's pi is configured with (pi-acp publishes
-    // its own registry in metadata.models plus the model really in effect in
-    // metadata.currentModelCode, B-362). Thinking levels follow the session
-    // catalog and travel through ACP config options, independently of permissions.
-    pi: { permissionMode: 'bypassPermissions', modelMode: 'default', effortLevel: null },
-};
-
-/**
- * Launcher agent key ↔ session flavor. The launcher spawns `agent: 'pi'`, but the
- * CLI records a pi session as `metadata.flavor === 'acp'` (runAcp's
- * resolveSessionFlavor: gemini → 'gemini', opencode → 'opencode', anything else
- * → 'acp'). pi is the only ACP agent the web offers, so both spellings resolve
- * to the same defaults slot — otherwise a running pi session would read and
- * WRITE Claude's defaults while the launcher used pi's.
- */
-export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
-    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'pi') {
-        return flavor;
-    }
-    if (flavor === 'acp') {
-        return 'pi';
-    }
-    return 'claude';
-}
-
 export function isPiAgent(flavor: string | null | undefined): boolean {
     return normalizeAgentKey(flavor) === 'pi';
 }
 
 export function getCodeAgentDefaults(flavor: string | null | undefined): AgentDefaultConfig {
-    return codeAgentDefaults[normalizeAgentKey(flavor)];
+    return AGENT_CODE_DEFAULTS[normalizeAgentKey(flavor)];
 }
 
 // Review-first permission mode per agent: the agent proposes changes and waits
@@ -164,9 +120,6 @@ export function resolveDefaultModelMode(
     return selected;
 }
 
-function isClaudeOpus55Model(model: string): boolean {
-    return model === CLAUDE_OPUS_55_MODEL || model === `${CLAUDE_OPUS_55_MODEL}[1m]`;
-}
 
 export function hasAgentDefaultOverride(
     overrides: AgentDefaultOverrides | null | undefined,

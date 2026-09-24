@@ -1,7 +1,7 @@
 /**
  * `very-happy send` — push one user message into an EXISTING happy session:
  *
- *   very-happy send --session <id> (--prompt <text> | --prompt-file <path>) [--json]
+ *   very-happy send --session <id> (--prompt <text> | --prompt-file <path>) [--model <id>] [--json]
  *
  * Companion to `very-happy spawn` for external automation (for example an IM
  * quote-reply dispatcher): spawn creates a session and optionally sends the
@@ -34,6 +34,8 @@ export interface SendCommandOptions {
     session?: string
     prompt?: string
     promptFile?: string
+    /** B-492: switch the session's model with this message ('default' = machine default). */
+    model?: string
     json: boolean
     help: boolean
 }
@@ -55,6 +57,10 @@ export function parseSendArgs(args: string[]): SendCommandOptions {
             const value = args[++i]
             if (value === undefined) throw new Error('--prompt-file requires a value')
             options.promptFile = value
+        } else if (arg === '--model' || arg === '-m') {
+            const value = args[++i]
+            if (value === undefined || value.trim().length === 0) throw new Error('--model requires a value')
+            options.model = value
         } else if (arg === '--json') {
             options.json = true
         } else if (arg === '--help' || arg === '-h') {
@@ -74,12 +80,16 @@ function printHelp() {
 ${chalk.bold('very-happy send')} - Send a message into an existing session (for automation)
 
 ${chalk.bold('Usage:')}
-  very-happy send --session <id> (--prompt <text> | --prompt-file <file>) [--json]
+  very-happy send --session <id> (--prompt <text> | --prompt-file <file>)
+                  [--model <id>] [--json]
 
 ${chalk.bold('Options:')}
   --session, -s <id>     Target session id (required)
   --prompt, -p <text>    Message text to send
   --prompt-file <file>   Read the message from a file (UTF-8)
+  --model, -m <id>       Switch the session to this model with this message
+                            ('default' = the machine default). Without it the
+                            session keeps whatever model it is on.
   --json                 Machine-readable output: {"sessionId", "url", "delivered"}
   -h, --help             Show this help
 
@@ -158,7 +168,8 @@ export async function handleSendCommand(args: string[]): Promise<never> {
     }
 
     try {
-        await sendUserMessage(sessionId, persisted, prompt, 'cli-send')
+        await sendUserMessage(sessionId, persisted, prompt, 'cli-send',
+            options.model !== undefined ? { model: options.model === 'default' ? null : options.model } : {})
     } catch (error) {
         fail(options, sessionId, `Failed to send message: ${error instanceof Error ? error.message : String(error)}`)
     }

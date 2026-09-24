@@ -1,0 +1,19 @@
+# systemd USER unit for the very-happy daemon on dev-sg (Ubuntu 24.04 x86_64,
+# user `ubuntu`, linger enabled). Installed at
+# ~/.config/systemd/user/very-happy-daemon.service — copy of what runs there
+# (verified 2026-09-25). See ops/dev-sg/README.md.
+[Unit]
+Description=very-happy machine daemon
+After=network-online.target
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-%h/.config/very-happy/daemon.env
+WorkingDirectory=%h
+ExecStart=/usr/bin/very-happy daemon start-sync
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:%h/.local/state/happy/daemon-systemd.log
+StandardError=append:%h/.local/state/happy/daemon-systemd.log
+[Install]
+WantedBy=default.target

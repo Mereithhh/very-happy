@@ -183,8 +183,20 @@ message delivery encrypts the user envelope with the session key from
 ```bash
 very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   [--spawned-by <name>] [--permission-mode <mode>] [--agent <name>] \
-  [--env KEY=VALUE]... [--json]
+  [--model <id>] [--env KEY=VALUE]... [--json]
+very-happy spawn --fork <sessionId> [--prompt …] [--permission-mode <mode>] \
+  [--model <id>] [--spawned-by <name>] [--json]
 ```
+
+**Defaults match the Web launcher (B-492).** Permission mode and the first
+message's model come from the same table the launcher uses
+(`AGENT_CODE_DEFAULTS` in `packages/happy-wire/src/agentCodeDefaults.ts`):
+claude / codex / pi start in yolo, gemini / openclaw in `default`; a claude
+session's first message pins `claude-opus-5-5` (or the machine default when
+the wrapper does not advertise `claude-opus-5-5-v1`) with `effort: null`,
+exactly as `resolveMessageModeMeta` does for a fresh Web session. Account-level
+overrides from the Web settings page are **not** applied: they are encrypted
+with the account content key, which `dataKey` CLI credentials do not hold.
 
 - `--dir, -d <path>` — working directory for the new session (required; must
   already exist — spawn refuses to create directories).
@@ -200,11 +212,12 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   it and the session is simply untagged. A daemon predating the field strips it
   and still spawns, so **a missing tag is not a spawn failure**.
 - `--permission-mode <mode>` — `default`, `acceptEdits`, `plan`, `yolo` or
-  `bypassPermissions`. **Omitting it means `default`**, and a `default` session
-  stops at the first tool that is not already allowed, waiting for a human to
-  approve in the Web UI. For an unattended dispatcher that is a hang, not a
-  prompt: pass `bypassPermissions`, or watch for the `permission` webhook /
-  poll `sessions list --all` and answer with `sessions approve` / `deny`.
+  `bypassPermissions`. **Omitting it gives the launcher default** (yolo for
+  claude / codex / pi — before B-492 it was `default`); a fork keeps its
+  source's mode. A `default` session stops at the first tool that is not
+  already allowed, waiting for a human to approve in the Web UI. For an
+  unattended dispatcher that is a hang, not a prompt: watch for the `permission`
+  webhook / poll `sessions list --all` and answer with `sessions approve` / `deny`.
   The CLI rejects an unknown mode instead of passing it on, because
   the daemon's own behaviour for an invalid mode is to drop it and spawn
   without the flag — silently giving you `default` again.
@@ -262,14 +275,27 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   `acpTitle` / `acpKind` / `message` from the gate's confirm payload so the ask
   card can show the rule id and reason instead of a bare `other`. All of these
   fields are optional; a Web build that does not know them ignores them.
+- `--model, -m <id>` — model for the session, carried by the first message
+  (so it needs `--prompt` / `--prompt-file`; for an idle spawn pass it on the
+  first `send --model`). `default` = the machine's own default.
+- `--fork <sessionId>` — the Web's "fork session" from the CLI: copies the
+  source conversation (Claude JSONL copy / Codex app-server `thread/fork`) and
+  continues it in a new session with `parentSessionId` lineage, in the source's
+  directory and agent (`--dir` / `--agent` are then optional and must match).
+  The source must be a session this machine's daemon spawned; its current
+  metadata is read from the server (the spawn-time copy in `sessions.json`
+  lacks the provider id). The daemon must be B-492 or newer: it answers
+  `resumed: true` from `/spawn-session`; an older daemon strips the resume
+  fields and starts a fresh session, which `spawn --fork` then stops and
+  reports as an error (the copied conversation file stays behind).
 - `--env KEY=VALUE` — extra environment for the session process; repeatable.
   A `${VAR}` reference is expanded against the daemon's own environment, and an
   unresolved reference fails the spawn rather than starting a session with a
   literal `${VAR}` in its environment. Useful because a spawned session inherits
   the **daemon's** environment, not the dispatcher's.
-- `--json` — machine-readable output: `{"sessionId": "...", "url": "..."}`,
-  plus `"spawnedBy"`, `"permissionMode"` and `"agent"` when those flags were
-  given. Without it, a human-readable line with a clickable session URL is
+- `--json` — machine-readable output: `{"sessionId", "url", "permissionMode"}`
+  (the effective mode), plus `"spawnedBy"`, `"agent"`, `"forkedFrom"` and the
+  `"model"` actually sent when they apply. Without it, a human-readable line with a clickable session URL is
   printed.
 
 Requires the daemon to be running (same semantics as spawning from the web:
@@ -287,12 +313,30 @@ Exit codes:
 
 ```bash
 very-happy sessions list [--all [--include-archived]] [--tag <name>] [--limit <n>] [--json]
-very-happy sessions read <id> [--limit <n>] [--json]
+very-happy sessions read <id> [--limit <n>] [--full] [--answer] [--wait [--timeout <s>]] [--json]
 very-happy sessions stop <id> [--json]
 very-happy sessions archive <id> [--json]
 very-happy sessions approve <id> <requestId> [--for-session] [--json]
 very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
 ```
+
+**Ask and collect (B-492).** `read` reports where the latest turn stands:
+`turn` in `--json` = `{ userSeq, ended, status, error, answer, lastSeq }`, where
+`answer` is the agent's reply to the latest prompt — the text it wrote after its
+last tool call, untruncated. `--wait` polls (every 3 s, window of the newest 500
+messages) until a `turn-end` follows the latest prompt, then reads; it exits `2`
+when `--timeout` (default 600 s) runs out, still printing the partial state.
+`--answer` prints only that reply; `--full` lifts the 500-char per-line cap of
+the transcript. A dispatcher's whole loop is therefore:
+
+```bash
+id=$(very-happy spawn --dir "$WORKDIR" --prompt-file task.md --spawned-by bot --json | jq -r .sessionId)
+very-happy sessions read "$id" --wait --timeout 1800 --answer > reply.md
+very-happy send --session "$id" --prompt "follow-up"   # then read --wait again
+```
+
+A prompt sent while a turn is running only counts as answered after its own
+`turn-start` … `turn-end`, so the previous turn ending does not end the wait.
 
 `spawn` and `send` start work; these let an external agent layer *see* it and
 intervene — the same four operations the built-in assistant has over MCP, now
@@ -388,8 +432,11 @@ or in the `permission` webhook.
 ### `very-happy send` — message an existing session
 
 ```bash
-very-happy send --session <id> (--prompt <text> | --prompt-file <file>) [--json]
+very-happy send --session <id> (--prompt <text> | --prompt-file <file>) [--model <id>] [--json]
 ```
+
+`--model` switches the session's model with this message (`default` = machine
+default); without it the session keeps its current model.
 
 Pushes one user message into a session that is already running. The session
 key must be present in `~/.happy/sessions.json`, i.e. the session must have

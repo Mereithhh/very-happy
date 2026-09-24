@@ -3,6 +3,7 @@
 自托管 Web 客户端与中继，fork 自 slopus/happy；自有登录、服务端可信存储，非端到端加密。
 唯一开发/发布源是公开仓 `Mereithhh/very-happy`；旧私有仓只读，不推发布 commit/tag、不从中部署。
 生产 `veryhappy.dev` 的 server/Web 在 **vh-sg（AWS 新加坡）**；拓扑与恢复以 [operations](docs/operations.md) 为准。
+daemon 主机：mac-office（launchd）与主力开发机 **dev-sg**（Linux，systemd 用户单元，[ops/dev-sg](ops/dev-sg/README.md)）。
 
 ## 工作方式
 

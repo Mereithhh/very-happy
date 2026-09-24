@@ -7,7 +7,7 @@
  * the shared transport lives in `@/sessions/sessionOps`.
  *
  *   very-happy sessions list [--all] [--tag <name>] [--limit <n>] [--json]
- *   very-happy sessions read <id> [--limit <n>] [--json]
+ *   very-happy sessions read <id> [--limit <n>] [--full] [--answer] [--wait [--timeout <s>]] [--json]
  *   very-happy sessions stop <id> [--json]
  *   very-happy sessions archive <id> [--json]
  *   very-happy sessions approve <id> <requestId> [--for-session] [--json]
@@ -41,6 +41,8 @@ import {
     MAX_READ_LIMIT,
     readSessionTranscript,
     stopSession,
+    TurnWaitTimeoutError,
+    waitForTurnEnd,
     type AccountSessionSummary,
     type SessionSummary,
 } from '@/sessions/sessionOps'
@@ -64,6 +66,14 @@ export interface SessionsCommandOptions {
     forSession: boolean
     /** deny: free-text reason forwarded to the wrapper. */
     reason?: string
+    /** read: no per-entry truncation. */
+    full: boolean
+    /** read: print only the agent's reply to the latest prompt. */
+    answer: boolean
+    /** read: block until the latest turn has ended. */
+    wait: boolean
+    /** read --wait: give up after this many seconds (default 600). */
+    timeoutSec?: number
     json: boolean
 }
 
@@ -75,7 +85,7 @@ const ACTIONS_NEEDING_REQUEST_ID: ReadonlySet<SessionsAction> = new Set(['approv
 const REQUEST_ID_RE = /^[a-zA-Z0-9_.:-]{1,128}$/
 
 function defaultOptions(): SessionsCommandOptions {
-    return { action: 'help', all: false, includeArchived: false, forSession: false, json: false }
+    return { action: 'help', all: false, includeArchived: false, forSession: false, full: false, answer: false, wait: false, json: false }
 }
 
 /** Pure argv parser (exported for tests). Throws on malformed input. */
@@ -96,6 +106,18 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
             options.includeArchived = true
         } else if (arg === '--for-session') {
             options.forSession = true
+        } else if (arg === '--full') {
+            options.full = true
+        } else if (arg === '--answer') {
+            options.answer = true
+        } else if (arg === '--wait') {
+            options.wait = true
+        } else if (arg === '--timeout') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--timeout requires a value')
+            const parsed = Number(value)
+            if (!Number.isFinite(parsed) || parsed <= 0) throw new Error('--timeout must be a positive number of seconds')
+            options.timeoutSec = parsed
         } else if (arg === '--reason') {
             const value = args[++i]
             if (value === undefined) throw new Error('--reason requires a value')
@@ -153,6 +175,12 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
     }
     if (options.forSession && options.action !== 'approve') throw new Error('--for-session only applies to `sessions approve`')
     if (options.reason !== undefined && options.action !== 'deny') throw new Error('--reason only applies to `sessions deny`')
+    if (options.action !== 'read') {
+        if (options.full) throw new Error('--full only applies to `sessions read`')
+        if (options.answer) throw new Error('--answer only applies to `sessions read`')
+        if (options.wait) throw new Error('--wait only applies to `sessions read`')
+    }
+    if (options.timeoutSec !== undefined && !options.wait) throw new Error('--timeout only applies to `sessions read --wait`')
     return options
 }
 
@@ -161,7 +189,8 @@ ${chalk.bold('very-happy sessions')} - Inspect and control sessions on this mach
 
 ${chalk.bold('Usage:')}
   very-happy sessions list [--all [--include-archived]] [--tag <name>] [--limit <n>] [--json]
-  very-happy sessions read <id> [--limit <n>] [--json]
+  very-happy sessions read <id> [--limit <n>] [--full] [--answer]
+                          [--wait [--timeout <s>]] [--json]
   very-happy sessions stop <id> [--json]
   very-happy sessions archive <id> [--json]
   very-happy sessions approve <id> <requestId> [--for-session] [--json]
@@ -173,7 +202,9 @@ ${chalk.bold('Actions:')}
              REST), attention first. Each row says whether this machine could
              decrypt it (\`decryptable\`); rows from other machines show only
              id / active / archived / timestamps / url.
-  read       The tail of a session as a role-tagged transcript.
+  read       The tail of a session as a role-tagged transcript, plus where
+             the latest turn stands (\`turn\` in --json: ended, status and
+             \`answer\` = the agent's reply to the latest prompt).
   stop       SIGTERM the session's process via the local daemon.
   archive    Mark the session inactive server-side (it stays resumable).
   approve    Answer a pending permission request \`requestId\` with approve —
@@ -191,6 +222,14 @@ ${chalk.bold('Options:')}
   --limit <n>        list: how many NOT-running / not-attention sessions to
                      include (default ${DEFAULT_RECENT_LIMIT}; running and attention rows are
                      never cut). read: how many messages (default 20, max ${MAX_READ_LIMIT}).
+  --full             read only: do not truncate entries (default caps each
+                     line at 500 chars).
+  --answer           read only: print just the agent's reply to the latest
+                     prompt (the text after its last tool call), untruncated.
+  --wait             read only: block until the latest turn has ended
+                     (claude / codex / pi), then read. Pairs with
+                     \`spawn --prompt\` / \`send\` for "ask and collect".
+  --timeout <s>      read --wait only: give up after <s> seconds (default 600).
   --for-session      approve only: approved_for_session instead of approved.
   --reason <text>    deny only: reason forwarded to the wrapper.
   --json             Machine-readable output.
@@ -206,6 +245,8 @@ ${chalk.bold('Scope:')}
   the account content key — a credentials change, not a flag.
 
 ${chalk.bold('Exit codes:')}
+  2  read --wait: the turn had not ended when --timeout ran out (the
+     partial state is still printed)
   0  success (approve/deny: the wrapper acknowledged the verdict; check
      \`settled\` in --json to see whether the request has left the pending set)
   1  bad arguments, unknown session, no local key, request not pending,
@@ -310,15 +351,30 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
         const sessionId = options.sessionId as string
 
         if (options.action === 'read') {
-            const result = await readSessionTranscript(sessionId, options.limit ?? 20)
+            let timedOut = false
+            if (options.wait) {
+                try {
+                    await waitForTurnEnd(sessionId, { timeoutMs: (options.timeoutSec ?? 600) * 1000 })
+                } catch (error) {
+                    if (!(error instanceof TurnWaitTimeoutError)) throw error
+                    timedOut = true
+                    console.error(chalk.yellow('Timeout:'), error.message)
+                }
+            }
+            const result = await readSessionTranscript(sessionId, options.limit ?? 20, { full: options.full })
             if (options.json) {
-                console.log(JSON.stringify(result))
+                console.log(JSON.stringify(options.answer ? { sessionId, turn: result.turn } : result))
+            } else if (options.answer) {
+                if (result.turn.answer.length > 0) console.log(result.turn.answer)
+                else console.error(chalk.dim('(the agent has not replied to the latest prompt yet)'))
             } else {
                 console.log(formatSummaryLine(result.summary))
                 console.log(`--- last ${result.messageCount} message(s) ---`)
                 console.log(result.transcript.length > 0 ? result.transcript : '(no readable conversation content in this range)')
+                const turn = result.turn
+                console.log(chalk.dim(`--- latest turn: ${turn.ended ? `ended (${turn.status ?? 'unknown'})` : 'running'}${turn.error ? ` — ${turn.error}` : ''} ---`))
             }
-            process.exit(0)
+            process.exit(timedOut ? 2 : 0)
         }
 
         if (options.action === 'stop') {

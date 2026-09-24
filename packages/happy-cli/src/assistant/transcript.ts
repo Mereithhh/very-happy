@@ -18,6 +18,14 @@
 const MAX_LINE_CHARS = 500
 const MAX_ARGS_CHARS = 160
 
+/** Per-entry size caps. `{ full: true }` on formatTranscript lifts them (B-492 `sessions read --full`). */
+export interface TranscriptLimits {
+    line: number
+    args: number
+}
+const DEFAULT_LIMITS: TranscriptLimits = { line: MAX_LINE_CHARS, args: MAX_ARGS_CHARS }
+const NO_LIMITS: TranscriptLimits = { line: Number.POSITIVE_INFINITY, args: Number.POSITIVE_INFINITY }
+
 /** Truncate to `max` code points with an ellipsis marker. */
 export function truncateText(text: string, max: number = MAX_LINE_CHARS): string {
     const chars = Array.from(text)
@@ -43,14 +51,14 @@ function safeJson(value: unknown, max: number): string {
  * entry carries no conversational information (turn markers, tool-call-end,
  * thinking, file blobs, token counters, …).
  */
-export function formatMessageBody(body: unknown): string | null {
+export function formatMessageBody(body: unknown, limits: TranscriptLimits = DEFAULT_LIMITS): string | null {
     if (!body || typeof body !== 'object') return null
     const b = body as Record<string, any>
 
     // User prompt (web / app / CLI send path).
     if (b.role === 'user' && b.content?.type === 'text' && typeof b.content.text === 'string') {
         const text = squash(b.content.text)
-        return text.length > 0 ? `user: ${truncateText(text)}` : null
+        return text.length > 0 ? `user: ${truncateText(text, limits.line)}` : null
     }
 
     // Claude protocol envelope.
@@ -64,18 +72,18 @@ export function formatMessageBody(body: unknown): string | null {
                 const text = squash(String(ev.text ?? ''))
                 if (text.length === 0) return null
                 const role = env.role === 'user' ? 'user' : 'assistant'
-                return `${role}: ${truncateText(text)}`
+                return `${role}: ${truncateText(text, limits.line)}`
             }
             case 'tool-call-start': {
                 const name = String(ev.name ?? 'tool')
                 const title = squash(String(ev.title ?? ''))
-                const args = ev.args ? safeJson(ev.args, MAX_ARGS_CHARS) : ''
+                const args = ev.args ? safeJson(ev.args, limits.args) : ''
                 const detail = title || args
-                return `[tool] ${name}${detail ? `: ${truncateText(detail, MAX_ARGS_CHARS)}` : ''}`
+                return `[tool] ${name}${detail ? `: ${truncateText(detail, limits.args)}` : ''}`
             }
             case 'service': {
                 const text = squash(String(ev.text ?? ''))
-                return text.length > 0 ? `[service] ${truncateText(text, MAX_ARGS_CHARS)}` : null
+                return text.length > 0 ? `[service] ${truncateText(text, limits.args)}` : null
             }
             case 'turn-end': {
                 if (ev.status && ev.status !== 'completed') return `[turn ${ev.status}]`
@@ -92,12 +100,12 @@ export function formatMessageBody(body: unknown): string | null {
         switch (d.type) {
             case 'message': {
                 const text = squash(String(d.message ?? ''))
-                return text.length > 0 ? `assistant: ${truncateText(text)}` : null
+                return text.length > 0 ? `assistant: ${truncateText(text, limits.line)}` : null
             }
             case 'tool-call':
-                return `[tool] ${String(d.name ?? 'tool')}: ${safeJson(d.input, MAX_ARGS_CHARS)}`
+                return `[tool] ${String(d.name ?? 'tool')}: ${safeJson(d.input, limits.args)}`
             case 'permission-request':
-                return `[permission] ${String(d.toolName ?? '')}: ${truncateText(squash(String(d.description ?? '')), MAX_ARGS_CHARS)}`
+                return `[permission] ${String(d.toolName ?? '')}: ${truncateText(squash(String(d.description ?? '')), limits.args)}`
             default:
                 return null // reasoning / thinking / tool-result / terminal-output / lifecycle
         }
@@ -113,7 +121,7 @@ export function formatMessageBody(body: unknown): string | null {
                 .filter((t: string) => t.length > 0)
             if (texts.length > 0) {
                 const role = msg.role === 'user' ? 'user' : 'assistant'
-                return `${role}: ${truncateText(texts.join(' '))}`
+                return `${role}: ${truncateText(texts.join(' '), limits.line)}`
             }
         }
         return null
@@ -126,10 +134,11 @@ export function formatMessageBody(body: unknown): string | null {
  * Format a batch of decrypted bodies (ascending seq order) into a transcript.
  * Undecryptable entries should be passed as null — they are skipped.
  */
-export function formatTranscript(bodies: Array<unknown | null>): string {
+export function formatTranscript(bodies: Array<unknown | null>, options: { full?: boolean } = {}): string {
+    const limits = options.full ? NO_LIMITS : DEFAULT_LIMITS
     const lines: string[] = []
     for (const body of bodies) {
-        const line = formatMessageBody(body)
+        const line = formatMessageBody(body, limits)
         if (line !== null) lines.push(line)
     }
     return lines.join('\n')

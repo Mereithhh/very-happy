@@ -51,3 +51,11 @@ describe('parseSendArgs', () => {
         expect(options.promptFile).toBeUndefined()
     })
 })
+
+describe('parseSendArgs — B-492 --model', () => {
+    it('parses --model / -m', () => {
+        expect(parseSendArgs(['--session', 's', '--prompt', 'p', '--model', 'claude-opus-5-5']).model).toBe('claude-opus-5-5')
+        expect(parseSendArgs(['-s', 's', '-p', 'p', '-m', 'default']).model).toBe('default')
+        expect(() => parseSendArgs(['-s', 's', '--model'])).toThrow(/--model requires a value/)
+    })
+})
