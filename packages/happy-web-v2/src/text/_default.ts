@@ -1903,6 +1903,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep24b: {
+                title: 'Automatic CLI updates land in the copy that is actually running',
+                summary: 'On machines with more than one Node.js/npm install, an automatic update could go into a different npm directory than the one the daemon runs from, report success, and change nothing.',
+                install: 'The daemon now installs updates into the directory it runs from and checks afterwards that its own copy really changed. If it cannot write there, it asks you to update by hand instead of claiming success.',
+                notice: 'If a machine reports an update as installed but keeps running the old version, the update card now says the update did not take effect, and the machine page gives a command that installs into the running copy.',
+                doctor: '`very-happy doctor` and `very-happy daemon status` warn when several very-happy installs are on PATH or when npm -g points somewhere else.',
+            },
             sep24a: {
                 title: 'Claude Opus 5.5 is the default; Codex gets gpt-6-sol and gpt-6-luna',
                 summary: 'Claude sessions now start on Opus 5.5 unless you picked another default in Settings → Agents. Opus 5.5 and its 1M-context variant are at the top of the model menu.',

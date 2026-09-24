@@ -1855,6 +1855,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep24b: {
+                title: 'CLI 自动更新会装到正在运行的那份',
+                summary: '机器上装了不止一套 Node.js/npm 时，自动更新可能装进另一个 npm 目录，报告成功却什么都没变。',
+                install: 'daemon 现在把更新装进自己运行所在的目录，装完再核对自己这份确实变了；那个目录写不进去时，会提示你手动更新，而不是报告成功。',
+                notice: '机器报告已安装、却还在跑旧版本时，更新卡片会直接说「自动更新没有生效」，机器页给出装到正在运行那份的命令。',
+                doctor: '`very-happy doctor` 和 `very-happy daemon status` 会在 PATH 上有多份 very-happy、或 npm -g 指向别处时给出警告。',
+            },
             sep24a: {
                 title: 'Claude 默认改用 Opus 5.5；Codex 可选 gpt-6-sol 与 gpt-6-luna',
                 summary: '没在「设置 → 代理」里另选默认模型的话，Claude 会话现在默认用 Opus 5.5；模型菜单顶部新增 Opus 5.5 和它的 1M 上下文版本。',
