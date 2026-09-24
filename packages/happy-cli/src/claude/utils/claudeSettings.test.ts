@@ -76,6 +76,20 @@ describe('Claude Settings', () => {
       expect(result).toBe(true);
     });
 
+    it('returns false when attribution.commit is an empty string', () => {
+      const settingsPath = join(testClaudeDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({ attribution: { commit: '' } }));
+
+      expect(shouldIncludeCoAuthoredBy()).toBe(false);
+    });
+
+    it('keeps the default when attribution.commit is customised', () => {
+      const settingsPath = join(testClaudeDir, 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify({ attribution: { commit: 'Made by me' } }));
+
+      expect(shouldIncludeCoAuthoredBy()).toBe(true);
+    });
+
     it('returns false when includeCoAuthoredBy is explicitly set to false', () => {
       const settingsPath = join(testClaudeDir, 'settings.json');
       writeFileSync(settingsPath, JSON.stringify({ includeCoAuthoredBy: false }));
