@@ -19,7 +19,7 @@ commits or tags to it and do not use it as a deployment source.
 | Database | **RDS PostgreSQL 16** `vh-pg` (db.m7g.large, single-AZ, private subnet, 7-day automated backups, deletion protection), reached through **PgBouncer** (`vh-pgbouncer`, transaction pooling, `127.0.0.1:6432`, logical db `happy`). Runtime uses transaction pooling; Prisma migrations use the separate `happy_migrations` alias with session pooling. Neither connects to RDS directly |
 | Redis | **ElastiCache** `vh-redis` (cache.t4g.micro, private subnet), socket.io Redis streams adapter |
 | Host base services | `/opt/happy/docker-compose.yml` runs `vh-pgbouncer` only; release slots in `/opt/happy/release/docker-compose.yml` join the same `happy_default` network |
-| Daemon | published `very-happy-cli` on `mac-office` / `mac-main` |
+| Daemon | published `very-happy-cli` on `mac-office` / `mac-main` (launchd) and `dev-sg` (Linux dev machine, systemd user unit — [`ops/dev-sg/README.md`](../ops/dev-sg/README.md)) |
 | Singapore relay | `sg-hw`, `https://relay-sg.veryhappy.dev`, Docker + Caddy on `hw-sg` |
 | US relay | `us-fb`, `https://relay-us.veryhappy.dev`, Docker + Caddy on `dmit-la` (Los Angeles). Moved off `fb-us`/k8sus on 2026-09-11 (B-459); the k3s deployment there is scaled to 0 and kept only as a rollback |
 | Retired origin | `vh-us` (Tokyo VPS, 69.8.128.238) — server stopped 2026-09-07; keeps a frozen PostgreSQL copy for rollback until ~2026-09-21. Its Caddy now 301-redirects `happy.mereith.com` page loads to `veryhappy.dev` and transparently proxies `/v1|/v2|/v3|/files|/health` (websocket included) to `vh-sg`, so a client still configured with the legacy host keeps working |
@@ -417,6 +417,16 @@ Detailed behavior is documented in
 Do not use `sudo very-happy daemon install`: the upstream macOS installer is dead
 code for this fork, targets a root LaunchDaemon, cannot see the user's home/keychain,
 and invokes a nonexistent command.
+
+## dev-sg daemon
+
+dev-sg (Ubuntu x86_64, one of the main development machines) runs the public npm
+package under a **systemd user unit** instead of launchd. Install location,
+health check and the upgrade sequence (`sudo npm i -g` → `daemon stop` →
+`systemctl --user start very-happy-daemon`) are in
+[`ops/dev-sg/README.md`](../ops/dev-sg/README.md); the unit file is kept next to it.
+The same handover caveat as mac-office applies: a `daemon start` from a shell
+leaves the daemon outside systemd until it is stopped and started via the unit.
 
 ## Account resource limits
 
