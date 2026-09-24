@@ -184,3 +184,50 @@ approval. Full wire/Web/CLI/server gates pass (82/2755/2103/648 tests; one exist
 server skip). Real Chromium checks at 1280/760/390/320px in both themes confirm
 8px internal status spacing, unchanged transcript/composer alignment, single-row
 height, no overflow, working details, streaming follow and preserved scrollback.
+
+## Install into the running copy (B-489, 2026-09-24)
+
+Evidence: a SageMaker dev machine ran the daemon from
+`~/.local/lib/node_modules/very-happy-cli` (0.2.144) while the `npm` on the
+daemon's PATH was conda's (`npm prefix -g` = `/opt/conda`). Automatic installs of
+0.2.148 and 0.2.149 exited 0 into `/opt/conda`, were reported `installed`, and the
+daemon stayed on 0.2.144 for two days: the bundle it watches never changed, and
+`installed` is terminal, so the Web kept saying "no manual action needed".
+
+Design:
+
+- The daemon installs into the prefix of the package it runs from
+  (`projectPath()`), accepted only in the standard
+  `<prefix>/lib/node_modules/very-happy-cli` layout with an allowlisted path.
+  `npm root -g`, `npm prefix -g` and `npm i -g` all carry `--prefix=<that>`, and
+  the resolved package dir must equal the running one. npm's own default prefix
+  is never trusted.
+- Unrecognised layout, symlinked package, unreadable manifest → `manual_required`
+  `install_location_unverified`; unwritable `lib/node_modules`, package dir or
+  `bin` → `install_location_not_writable`. No npm runs and nothing is mutated, so
+  unlike `installer_termination_unconfirmed` the controller fence stays open; the
+  state is terminal for that target (a newer approved target is evaluated again).
+- After npm exits 0 the running package's `package.json` version must equal the
+  target, else `failed` / `installed_elsewhere` (retry stays available). Windows
+  keeps npm's layout but gets the same post-install check.
+- Web: `failed/installed_elsewhere` and `manual_required/install_location_*` are
+  `attention` with readable copy. For OLD daemons, which can only say
+  `installed`, the Web treats `installed` whose `at` is older than 30 minutes while
+  `currentVersion` is still below it as `installed_not_running` (`attention`).
+  The handover waits for no agent turn in flight, so the copy names that as the
+  other possible cause. The copied command for these two problems installs into
+  the prefix of the `very-happy` the shell resolves:
+  `P=$(readlink -f "$(command -v very-happy)") && npm install -g --prefix "${P%/lib/node_modules/very-happy-cli/*}" …`.
+- `doctor` / `daemon status` warn when PATH holds several very-happy installs,
+  when the shell command resolves to a different copy than the running CLI, or
+  when `npm prefix -g` differs from the running prefix (with the `--prefix`
+  command).
+
+Compatibility: additive detail strings in existing opaque daemon state; old Web
+shows them through the existing generic `failed` / `manual_required` paths. No
+server or wire change. Deploy order does not matter; the Web half is what reaches
+machines already stuck, because they cannot receive the CLI half automatically.
+
+Not covered: machines already stuck need one manual update (the Web now says so);
+installs where the running copy's prefix is not writable need a person; the extra
+copy left in the other npm tree is only warned about by `doctor`.

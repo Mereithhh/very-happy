@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-24-update-into-running-copy',
+    cliVersion: '0.2.150',
+    date: '2026-09-24',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep24b.title',
+    summaryKey: 'changelog.releases.sep24b.summary',
+    itemKeys: ['changelog.releases.sep24b.install', 'changelog.releases.sep24b.notice', 'changelog.releases.sep24b.doctor'],
+  },
+  {
     id: '2026-09-24-opus-5-5-default',
     cliVersion: '0.2.149',
     date: '2026-09-24',

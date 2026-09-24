@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createUpdateController } from './updateController';
 import type { CliUpdateState } from '@/api/types';
+import type { InstallOutcome } from './npmInstall';
 const policy: CliUpdateState = { currentVersion: '0.2.122', recommendedVersion: '0.2.123', minimumVersion: null, autoUpdateVersion: '0.2.123', checkedAt: 1000, status: 'available' };
 function setup() {
   const deps = { policy: vi.fn(async () => policy), enabled: vi.fn(async () => true), idle: vi.fn(() => true), install: vi.fn(async () => 1 as number | null), publish: vi.fn(), now: () => 1000 };
@@ -156,4 +157,28 @@ it('disarms a queued manual intent when a duplicate request discovers revoked po
   expect(await controller.request('0.2.123')).toHaveProperty('error');
   deps.idle.mockReturnValue(true);await controller.tick();expect(deps.install).not.toHaveBeenCalled();
  } finally {vi.useRealTimers();}
+});
+
+describe('B-489 install location outcomes', () => {
+  function locationSetup(result: InstallOutcome) {
+    const deps = { policy: vi.fn(async () => policy), enabled: vi.fn(async () => true), idle: vi.fn(() => true), install: vi.fn(async (): Promise<InstallOutcome> => result), publish: vi.fn(), now: () => 1000 };
+    return { deps, controller: createUpdateController(deps) };
+  }
+  it('reports npm success that did not change the running copy as failed, never installed', async () => {
+    const {deps, controller} = locationSetup({ failed: 'installed_elsewhere' });
+    await controller.refresh(); await controller.refresh();
+    expect(deps.install).toHaveBeenCalledTimes(1);
+    expect(deps.publish.mock.lastCall?.[0].autoUpdate).toMatchObject({ state: 'failed', version: '0.2.123', detail: 'installed_elsewhere' });
+    // Still an ordinary failure: explicit retry stays available.
+    expect(deps.publish.mock.lastCall?.[0].retrySupported).toBe(true);
+  });
+  it('an unusable install location asks for a manual update once and keeps the fence open', async () => {
+    const {deps, controller} = locationSetup({ manual: 'install_location_not_writable' });
+    await controller.refresh(); await controller.tick(); await controller.refresh();
+    expect(deps.install).toHaveBeenCalledTimes(1);
+    expect(deps.publish.mock.lastCall?.[0]).toMatchObject({ retrySupported: true, manualUpdateSupported: true, autoUpdate: { state: 'manual_required', detail: 'install_location_not_writable' } });
+    // A newer approved target is evaluated again.
+    deps.policy.mockResolvedValue({ ...policy, recommendedVersion: '0.2.124', autoUpdateVersion: '0.2.124', checkedAt: 1000 });
+    await controller.refresh(); expect(deps.install).toHaveBeenCalledTimes(2);
+  });
 });

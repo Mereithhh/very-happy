@@ -77,8 +77,8 @@ export function CliUpdateBanner() {
       <PackageOpen className="cli-update__icon" size={22} aria-hidden="true" />
       <div className="cli-update__body">
         <div className="cli-update__eyebrow mono">{required ? t('cliUpdate.requiredEyebrow') : t('cliUpdate.availableEyebrow')}</div>
-        <strong id="cli-update-title">{automatic ? t('cliUpdate.automaticTitle') : pending ? t('cliUpdate.pendingTitle') : required ? t('cliUpdate.requiredTitle') : t('cliUpdate.availableTitle')}</strong>
-        <p id="cli-update-summary">{t(automatic ? 'cliUpdate.automaticSummary' : pending ? 'cliUpdate.pendingSummary' : 'cliUpdate.summary', { machine: lead.machineName, current: lead.currentVersion, target: lead.automaticVersion ?? lead.targetVersion, count: notices.length })}</p>
+        <strong id="cli-update-title">{lead.problem ? t('cliUpdate.problemTitle') : automatic ? t('cliUpdate.automaticTitle') : pending ? t('cliUpdate.pendingTitle') : required ? t('cliUpdate.requiredTitle') : t('cliUpdate.availableTitle')}</strong>
+        <p id="cli-update-summary">{t(lead.problem ? 'cliUpdate.problemSummary' : automatic ? 'cliUpdate.automaticSummary' : pending ? 'cliUpdate.pendingSummary' : 'cliUpdate.summary', { machine: lead.machineName, current: lead.currentVersion, target: lead.automaticVersion ?? lead.targetVersion, count: notices.length })}</p>
         <div className="cli-update__actions">
           {pending && <button type="button" disabled={actionState === 'sending' || actionState === 'accepted'} aria-busy={actionState === 'sending'} onClick={update}>{t(actionState === 'sending' ? 'cliUpdate.requesting' : actionState === 'accepted' ? 'cliUpdate.requested' : supported ? 'cliUpdate.updateNow' : 'cliUpdate.manualUpdate')}</button>}
           <button type="button" onClick={() => navigate(`/machine/${encodeURIComponent(lead.machineId)}`)}>{t('cliUpdate.details')}<ArrowRight size={15} /></button>

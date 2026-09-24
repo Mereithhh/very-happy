@@ -76,7 +76,11 @@ export function decideAutoUpdate(context: AutoUpdateContext): AutoUpdateDecision
  * documented manual command uses (iron rule 7) — `very-happy-cli`'s tool unpack
  * and `node-pty`'s prebuild hook, nothing else, so npm's deny-by-default posture
  * survives.
+ *
+ * B-489: `prefix` pins the global tree to the one this daemon runs from. Without
+ * it npm installs into whatever its own default prefix is, which on a machine
+ * with two node installs is not the copy the daemon (or the shell) runs.
  */
-export function autoUpdateInstallArgs(version: string): string[] {
-    return ['i', '-g', '--allow-scripts=very-happy-cli,node-pty', `very-happy-cli@${version}`];
+export function autoUpdateInstallArgs(version: string, prefix?: string): string[] {
+    return ['i', '-g', ...(prefix ? [`--prefix=${prefix}`] : []), '--allow-scripts=very-happy-cli,node-pty', `very-happy-cli@${version}`];
 }

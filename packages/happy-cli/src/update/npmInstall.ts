@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
-import { lstat, readlink, unlink, rm, readFile, symlink } from 'node:fs/promises';
+import { access, constants, lstat, readlink, unlink, rm, readFile, symlink } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { projectPath } from '@/projectPath';
 import { autoUpdateInstallArgs } from './autoUpdate';
 import { parseExactVersion } from './cliUpdate';
+import { globalPrefixForPackage } from './installLocation';
 
 export type NpmResult = { code: number | null; stdout: string; stderr?: string; terminationConfirmed?: boolean };
 export interface NpmProcessDependencies {
@@ -51,10 +53,49 @@ export const runNpm = (args: string[]) => runNpmProcess(args);
 
 export interface InstallDependencies {
     npm: typeof runNpm;
-    fs: Pick<typeof import('node:fs/promises'), 'lstat' | 'readlink' | 'unlink' | 'rm' | 'readFile' | 'symlink'>;
+    fs: Pick<typeof import('node:fs/promises'), 'lstat' | 'readlink' | 'unlink' | 'rm' | 'readFile' | 'symlink'> & { access?: typeof access };
     platform: string;
+    /**
+     * B-489: the package this daemon runs from. When set, the install targets its
+     * prefix and success means THIS package now carries the target version. Unset
+     * keeps npm's default prefix (used by callers that are not the daemon).
+     */
+    runningPackageDir?: string;
 }
-const defaults: InstallDependencies = { npm: runNpm, fs: { lstat, readlink, unlink, rm, readFile, symlink }, platform: process.platform };
+const defaults: InstallDependencies = {
+    npm: runNpm, fs: { lstat, readlink, unlink, rm, readFile, symlink, access }, platform: process.platform,
+    runningPackageDir: projectPath(),
+};
+
+/**
+ * B-489: outcomes beyond an npm exit code. `manual` = we will not install
+ * because we cannot install into the running copy; `failed` = npm said yes but
+ * the running copy did not change. Both are reported to the Web, never as
+ * `installed`.
+ */
+export type InstallLocationProblem = 'install_location_unverified' | 'install_location_not_writable';
+export type InstallOutcome = number | null | 'blocked' | { manual: InstallLocationProblem } | { failed: 'installed_elsewhere' };
+
+async function runningVersion(deps: InstallDependencies): Promise<string | null> {
+    if (!deps.runningPackageDir) return null;
+    try {
+        const manifest = JSON.parse(await deps.fs.readFile(join(deps.runningPackageDir, 'package.json'), 'utf8'));
+        return manifest?.name === 'very-happy-cli' && typeof manifest.version === 'string' ? manifest.version : null;
+    } catch { return null; }
+}
+
+/** After npm exits 0: did the package this daemon runs from actually become `version`? */
+async function verifyRunningCopy(code: number | null, version: string, deps: InstallDependencies): Promise<InstallOutcome> {
+    if (code !== 0 || !deps.runningPackageDir) return code;
+    return await runningVersion(deps) === version ? 0 : { failed: 'installed_elsewhere' };
+}
+
+async function writable(path: string, deps: InstallDependencies): Promise<boolean> {
+    if (!deps.fs.access) return true;
+    try { await deps.fs.access(path, constants.W_OK); return true; } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'ENOENT';
+    }
+}
 
 /** Never infer ownership from a substring in a symlink target. */
 export function ownedCliLink(link: string, target: string, packageDir: string): boolean {
@@ -63,18 +104,33 @@ export function ownedCliLink(link: string, target: string, packageDir: string): 
 }
 
 /** One bounded repair inside one logical attempt, with no shell or arbitrary path removal. */
-export async function installCliSafely(version: string, deps: InstallDependencies = defaults): Promise<number | null | 'blocked'> {
+export async function installCliSafely(version: string, deps: InstallDependencies = defaults): Promise<InstallOutcome> {
     const parsed = parseExactVersion(version);
     if (!parsed) throw new Error('Invalid exact CLI version');
-    const args = autoUpdateInstallArgs(parsed.exact);
-    // Windows npm uses shims, not the Unix symlinks addressed by this repair.
+    // Windows npm uses shims, not the Unix symlinks addressed by this repair,
+    // and a different global layout; keep npm's prefix but still verify the result.
     if (deps.platform === 'win32') {
-        const result = await deps.npm(args);
-        return result.terminationConfirmed === false ? 'blocked' : result.code;
+        const result = await deps.npm(autoUpdateInstallArgs(parsed.exact));
+        return result.terminationConfirmed === false ? 'blocked' : verifyRunningCopy(result.code, parsed.exact, deps);
     }
-    const rootResult = await deps.npm(['root', '-g']);
+    // B-489: install into the tree this daemon runs from, not npm's default.
+    let pinnedPrefix: string | undefined;
+    if (deps.runningPackageDir) {
+        const running = globalPrefixForPackage(deps.runningPackageDir);
+        const runningStat = running ? await deps.fs.lstat(deps.runningPackageDir).catch(() => null) : null;
+        if (!running || !runningStat?.isDirectory() || runningStat.isSymbolicLink() || !await runningVersion(deps)) {
+            return { manual: 'install_location_unverified' };
+        }
+        for (const path of [dirname(deps.runningPackageDir), deps.runningPackageDir, join(running, 'bin')]) {
+            if (!await writable(path, deps)) return { manual: 'install_location_not_writable' };
+        }
+        pinnedPrefix = running;
+    }
+    const prefixArgs = pinnedPrefix ? [`--prefix=${pinnedPrefix}`] : [];
+    const args = autoUpdateInstallArgs(parsed.exact, pinnedPrefix);
+    const rootResult = await deps.npm(['root', '-g', ...prefixArgs]);
     if (rootResult.terminationConfirmed === false) return 'blocked';
-    const prefixResult = await deps.npm(['prefix', '-g']);
+    const prefixResult = await deps.npm(['prefix', '-g', ...prefixArgs]);
     if (prefixResult.terminationConfirmed === false) return 'blocked';
     const root = rootResult.stdout.trim();
     const prefix = prefixResult.stdout.trim();
@@ -84,6 +140,9 @@ export async function installCliSafely(version: string, deps: InstallDependencie
     }
     if (resolve(root) !== resolve(prefix, 'lib/node_modules')) throw new Error('Unexpected npm root/prefix relationship');
     const packageDir = join(root, 'very-happy-cli');
+    if (deps.runningPackageDir && resolve(packageDir) !== resolve(deps.runningPackageDir)) {
+        return { manual: 'install_location_unverified' };
+    }
     const packageStat = await deps.fs.lstat(packageDir).catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'ENOENT') return null;
         throw error;
@@ -116,7 +175,7 @@ export async function installCliSafely(version: string, deps: InstallDependencie
         const first = await deps.npm(args);
         if (first.terminationConfirmed === false) { safeToRestore = false; return 'blocked'; }
         result = first.code;
-        if (first.code === 0 || first.code === null) return first.code;
+        if (first.code === 0 || first.code === null) return await verifyRunningCopy(first.code, parsed.exact, deps);
         // A network/registry failure is not evidence of a damaged tree.
         if (!/\b(?:EEXIST|ENOTEMPTY)\b/.test(first.stderr ?? '')) return first.code;
         const failedStat = await deps.fs.lstat(packageDir).catch((error: NodeJS.ErrnoException) => {
@@ -130,7 +189,7 @@ export async function installCliSafely(version: string, deps: InstallDependencie
         const second = await deps.npm(args);
         result = second.code;
         if (second.terminationConfirmed === false) { safeToRestore = false; return 'blocked'; }
-        return result;
+        return await verifyRunningCopy(result, parsed.exact, deps);
     } finally {
         if (result !== 0 && safeToRestore) {
             for (const {link, target} of ownLinks) {

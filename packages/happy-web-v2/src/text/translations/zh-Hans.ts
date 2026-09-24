@@ -1855,6 +1855,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep24b: {
+                title: 'CLI 自动更新会装到正在运行的那份',
+                summary: '机器上装了不止一套 Node.js/npm 时，自动更新可能装进另一个 npm 目录，报告成功却什么都没变。',
+                install: 'daemon 现在把更新装进自己运行所在的目录，装完再核对自己这份确实变了；那个目录写不进去时，会提示你手动更新，而不是报告成功。',
+                notice: '机器报告已安装、却还在跑旧版本时，更新卡片会直接说「自动更新没有生效」，机器页给出装到正在运行那份的命令。',
+                doctor: '`very-happy doctor` 和 `very-happy daemon status` 会在 PATH 上有多份 very-happy、或 npm -g 指向别处时给出警告。',
+            },
             sep24a: {
                 title: 'Claude 默认改用 Opus 5.5；Codex 可选 gpt-6-sol 与 gpt-6-luna',
                 summary: '没在「设置 → 代理」里另选默认模型的话，Claude 会话现在默认用 Opus 5.5；模型菜单顶部新增 Opus 5.5 和它的 1M 上下文版本。',
@@ -2944,7 +2951,12 @@ export const zhHans: TranslationStructure = {
             policy_stale: '更新策略已过期，等待重新检查',
             stale: '机器离线或更新状态已过期，暂无实时进度',
             manual: '暂时无法确认自动更新状态，可稍后查看',
+            installed_elsewhere: 'npm 报告安装成功，但 daemon 正在运行的那份没有变化：更新装进了另一套 npm 目录。请用下方命令，它会装到正在运行的那份',
+            install_location: '未自动安装：daemon 对它运行所在的目录没有写权限，或无法识别该目录结构。请用下方命令手动更新',
+            installed_not_running: '早已报告安装完成，但 daemon 仍在运行旧版本。若这段时间没有 agent 一直在回答，多半是装进了另一套 npm 目录；请用下方命令，它会装到正在运行的那份',
         },
+        problemTitle: '自动更新没有生效',
+        problemSummary: ({ machine, current, target }: { machine: string; current: string; target: string; count: number }) => `${machine} 仍在运行 ${current}，但 ${target} 已安装或尝试安装过，多半装进了这台机器上的另一套 npm 目录。打开机器详情复制能更新正在运行那份的命令。`,
         automaticTitle: '稍等，CLI 会自动更新',
         updateNow: '立即更新',
         manualUpdate: '手动更新',

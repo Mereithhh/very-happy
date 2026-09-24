@@ -1,4 +1,5 @@
 import { apiSocket } from '@/sync/apiSocket';
+import { cliUpdateProblem } from './cliUpdatePolicy';
 
 const states = new Set(['waiting_idle', 'installing', 'installed', 'failed', 'disabled', 'current', 'unapproved', 'policy_stale', 'manual_required']);
 export function readUpdateRecovery(value: unknown, online: boolean, now = Date.now()) {
@@ -7,10 +8,12 @@ export function readUpdateRecovery(value: unknown, online: boolean, now = Date.n
   const stale = !online || typeof raw.checkedAt !== 'number' || now - raw.checkedAt > 65 * 60_000 || raw.checkedAt > now + 60_000;
   const known = typeof auto.state === 'string' && states.has(auto.state);
   const version = typeof auto.version === 'string' && /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(auto.version) ? auto.version : null;
+  // B-489: an install that never reached the running copy outranks the raw state.
+  const problem = online ? cliUpdateProblem(raw, now) : null;
   return {
     // A fenced installer cannot refresh its policy. Keep its manual-recovery
     // instruction visible while online instead of hiding it after 65 minutes.
-    state: online && auto.state === 'manual_required' ? 'manual_required' : stale ? 'stale' : known ? auto.state as string : 'manual',
+    state: problem ?? (online && auto.state === 'manual_required' ? 'manual_required' : stale ? 'stale' : known ? auto.state as string : 'manual'),
     version,
     canRetry: !stale && raw.retrySupported === true && auto.state === 'failed' && !!version,
   };

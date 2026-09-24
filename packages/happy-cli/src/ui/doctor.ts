@@ -19,6 +19,7 @@ import { collectRuntimeReadiness, daemonEndpointsMatch, daemonReadiness, resolve
 import { credentialRelayProblem } from './authRelay'
 import { shareSafeDaemonState, shareSafeEnvironmentInfo, shareSafeProcessLine } from './doctorPrivacy'
 import { deriveLocalCliUpdateSummary } from '@/update/cliUpdate'
+import { gatherInstallLocationFacts, installLocationWarnings } from '@/update/installLocation'
 
 function printCliUpdateStatus(state: Awaited<ReturnType<typeof readDaemonState>>): void {
     const installed = configuration.currentCliVersion;
@@ -37,6 +38,11 @@ function printCliUpdateStatus(state: Awaited<ReturnType<typeof readDaemonState>>
         console.log(chalk.yellow('  △ A newer CLI is available.'));
     }
     if (summary.installCommand) console.log(`  Update: ${summary.installCommand}`);
+    // B-489: an update that lands in another npm tree never takes effect.
+    const facts = gatherInstallLocationFacts(projectPath());
+    for (const warning of facts ? installLocationWarnings(facts, state?.cliUpdate?.recommendedVersion ?? undefined) : []) {
+        console.log(chalk.yellow(`  ⚠ ${warning}`));
+    }
 }
 
 /**

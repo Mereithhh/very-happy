@@ -1903,6 +1903,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep24b: {
+                title: 'Automatic CLI updates land in the copy that is actually running',
+                summary: 'On machines with more than one Node.js/npm install, an automatic update could go into a different npm directory than the one the daemon runs from, report success, and change nothing.',
+                install: 'The daemon now installs updates into the directory it runs from and checks afterwards that its own copy really changed. If it cannot write there, it asks you to update by hand instead of claiming success.',
+                notice: 'If a machine reports an update as installed but keeps running the old version, the update card now says the update did not take effect, and the machine page gives a command that installs into the running copy.',
+                doctor: '`very-happy doctor` and `very-happy daemon status` warn when several very-happy installs are on PATH or when npm -g points somewhere else.',
+            },
             sep24a: {
                 title: 'Claude Opus 5.5 is the default; Codex gets gpt-6-sol and gpt-6-luna',
                 summary: 'Claude sessions now start on Opus 5.5 unless you picked another default in Settings → Agents. Opus 5.5 and its 1M-context variant are at the top of the model menu.',
@@ -3060,8 +3067,13 @@ export const en = {
             policy_stale: 'Update policy is stale; waiting for a fresh check',
             stale: 'Machine offline or update status stale; showing no live progress',
             manual: 'Automatic update status is unavailable; check again later',
+            installed_elsewhere: 'npm reported success, but the copy this daemon runs did not change: the update went into another npm install. Use the command below, which targets the running copy',
+            install_location: 'Not installed automatically: the daemon cannot write to, or does not recognise, the directory it runs from. Update manually with the command below',
+            installed_not_running: 'Reported installed a while ago, but the daemon still runs the old version. If no agent has been mid-turn, the update most likely went into another npm install; use the command below, which targets the running copy',
         },
         automaticTitle: 'Your CLI will update automatically',
+        problemTitle: 'The automatic update did not take effect',
+        problemSummary: ({ machine, current, target }: { machine: string; current: string; target: string; count: number }) => `${machine} still runs ${current} although ${target} was installed or attempted, probably into another npm install on that machine. Open the machine for the command that updates the running copy.`,
         updateNow: 'Update now',
         manualUpdate: 'Update manually',
         requesting: 'Requesting…',

@@ -1,11 +1,12 @@
 import type { CliUpdateState } from '@/api/types';
 import { compareExactVersions } from './cliUpdate';
+import type { InstallOutcome } from './npmInstall';
 
 export interface UpdateControllerDependencies {
     policy: () => Promise<CliUpdateState | null>;
     enabled: () => Promise<boolean>;
     idle: () => boolean;
-    install: (version: string) => Promise<number | null | 'blocked'>;
+    install: (version: string) => Promise<InstallOutcome>;
     publish: (state: CliUpdateState) => void;
     now?: () => number;
 }
@@ -37,7 +38,9 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
     async function evaluate() {
         if (!policy || running) return;
         const target = manualVersion ?? policy.autoUpdateVersion ?? null;
-        if (outcome?.version === target && ['failed', 'installed'].includes(outcome.state)) {
+        // B-489: manual_required from an install-location check is terminal for
+        // this target too — re-checking every heartbeat would only re-log it.
+        if (outcome?.version === target && ['failed', 'installed', 'manual_required'].includes(outcome.state)) {
             const fingerprint = JSON.stringify([policy.checkedAt, outcome.state, outcome.version, outcome.detail, manualVersion]);
             if (fingerprint !== lastPublished) {
                 lastPublished = fingerprint;
@@ -59,6 +62,13 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         publish('installing', target);
         try {
             const code = await deps.install(target);
+            if (code && typeof code === 'object') {
+                // B-489: npm is not running and nothing is half-written, so the
+                // fence stays open (unlike 'blocked'); only the outcome is reported.
+                if ('manual' in code) publish('manual_required', target, code.manual);
+                else publish('failed', target, code.failed);
+                return;
+            }
             blocked = code === 'blocked';
             publish(blocked ? 'manual_required' : code === 0 ? 'installed' : 'failed', target,
                 blocked ? 'installer_termination_unconfirmed' : code === 0 ? undefined : 'npm_install_failed');

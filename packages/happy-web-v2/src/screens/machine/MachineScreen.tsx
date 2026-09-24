@@ -34,7 +34,7 @@ import { claudeHistorySupported, codexHistorySupported } from '@/sync/closedTerm
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { getSessionName, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
-import { cliUpdateInstallCommand, hasValidCliUpdatePolicy, machineCliUpdateNotice } from '@/app/cliUpdatePolicy';
+import { cliUpdateCommandForNotice, hasValidCliUpdatePolicy, machineCliUpdateNotice } from '@/app/cliUpdatePolicy';
 import { claudeAuthTone, isClaudeAuthStale, isKnownClaudeAuthDiagnosis, readClaudeAuth } from '@/sync/claudeAuth';
 import { machineClaudeAuthProbe, machineClaudeAuthRepair, machineClaudeAuthSetStore, type ClaudeAuthRpcResult } from '@/sync/ops';
 
@@ -249,7 +249,7 @@ export function MachineScreen() {
     : null;
 
   async function copyUpdateCommand() {
-    const command = cliUpdate ? cliUpdateInstallCommand(cliUpdate.targetVersion) : null;
+    const command = cliUpdate ? cliUpdateCommandForNotice(cliUpdate) : null;
     if (!command) return;
     try {
       await navigator.clipboard.writeText(command);
@@ -400,7 +400,7 @@ export function MachineScreen() {
             {cliUpdate && cliUpdate.delivery !== 'automatic' && (
               <Item
                 title={t('cliUpdate.copyCommand')}
-                subtitle={cliUpdateInstallCommand(cliUpdate.targetVersion) ?? undefined}
+                subtitle={cliUpdateCommandForNotice(cliUpdate) ?? undefined}
                 onClick={() => void copyUpdateCommand()}
                 right={<ChevronRight size={16} />}
               />
