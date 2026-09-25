@@ -41,6 +41,16 @@ describe('mergeSessionSummaries (B-304)', () => {
         expect(out[1].pid).toBeUndefined()
     })
 
+    it('B-507: carries the daemon\'s backgroundTasks report through, and leaves it absent for an old daemon', () => {
+        const report = { count: 1, tasks: [{ id: 't1', type: 'local_bash', description: 'sleep 300', startedAt: 5 }], reportedAt: 10 }
+        const live: LiveSessionLike[] = [{ happySessionId: 'bg', pid: 1, backgroundTasks: report }, { happySessionId: 'old', pid: 2 }, { happySessionId: 'junk', pid: 3, backgroundTasks: { count: 'x' } }]
+        const out = mergeSessionSummaries(live, { bg: persisted(), old: persisted(), junk: persisted() })
+        expect(out[0].backgroundTasks).toEqual(report)
+        expect(out[1].backgroundTasks).toBeUndefined()
+        expect(out[2].backgroundTasks).toBeUndefined()
+        expect(sessionLiveness(live, 'bg')).toEqual({ live: true, pid: 1, backgroundTasks: report })
+    })
+
     it('never lists a running session twice', () => {
         const live: LiveSessionLike[] = [{ happySessionId: 'dup' }, { happySessionId: 'dup' }]
         expect(mergeSessionSummaries(live, { dup: persisted() }).map((s) => s.id)).toEqual(['dup'])
@@ -203,6 +213,17 @@ describe('summarizeAccountSession (sessions list --all)', () => {
         const out = summarizeAccountSession(row(), wrong, new Set(), 1_000)
         expect(out.decryptable).toBe(false)
         expect(out.title).toBeUndefined()
+    })
+
+    it('B-507: backgroundTasks comes from agentState, expired by its updatedAt and the server active flag', () => {
+        const tasks = [{ id: 'bg-1', type: 'local_agent', description: 'Explore', startedAt: 500 }]
+        const fresh = row({ agentState: seal({ backgroundTasks: { updatedAt: 990, tasks } }) })
+        expect(summarizeAccountSession(fresh, keyed, new Set(), 1_000).backgroundTasks).toEqual({ count: 1, tasks, reportedAt: 990 })
+        expect(summarizeAccountSession(fresh, keyed, new Set(), 990 + 150_001).backgroundTasks).toEqual({ count: 0, tasks: [], reportedAt: 990, stale: true })
+        expect(summarizeAccountSession(row({ active: false, agentState: seal({ backgroundTasks: { updatedAt: 990, tasks } }) }), keyed, new Set(), 1_000).backgroundTasks).toEqual({ count: 0, tasks: [], reportedAt: 990, stale: true })
+        expect(summarizeAccountSession(row(), keyed, new Set(), 1_000).backgroundTasks).toEqual({ count: 0, tasks: [] })
+        // an undecryptable row cannot claim anything about background tasks
+        expect(summarizeAccountSession(fresh, undefined, new Set(), 1_000).backgroundTasks).toBeUndefined()
     })
 
     it('no pending requests → attention=false and an empty pending list (still decryptable)', () => {

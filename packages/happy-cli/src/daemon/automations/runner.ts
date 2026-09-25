@@ -56,6 +56,9 @@ export interface AutomationRunnerDeps {
     live: (sessionId: string) => boolean;
     /** A turn is in flight per the wrapper's B-466 heartbeat. */
     turnActive: (sessionId: string) => boolean;
+    /** B-507: background tasks still in flight per the wrapper's report (0 when
+     *  unknown / lease expired). A run whose turn ended is not done while > 0. */
+    backgroundTasks?: (sessionId: string) => number;
     log: (message: string) => void;
     home?: string;
     serverUrl?: string;
@@ -84,6 +87,8 @@ interface Tracked {
     nextLogReadAt: number;
     attentionReported: boolean;
     exited: boolean;
+    /** B-507: the turn ended but background tasks were still running (logged once). */
+    waitingOnBackground?: boolean;
     /** `running` report not yet accepted; re-attached to every renewal until it is. */
     pendingRunning?: { sessionId: string; stickyKey?: string };
     /** Final report that failed to send; retried each tick. */
@@ -293,6 +298,17 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
             if (edgeFell) item.sawTurn = false; // one read per edge; a renewed turn sets it again
             const turn = await readTurn(sessionId, item.runId).catch(() => null);
             if (!turn?.ended) continue;
+            // B-507: a turn that ended with background tasks still running (an
+            // async sub-agent, a backgrounded command) is not the run's end —
+            // their completion wakes the session for another turn, whose
+            // falling edge (or the next periodic read) judges the run.
+            const background = deps.backgroundTasks?.(sessionId) ?? 0;
+            if (background > 0 && turn.status !== 'failed' && turn.status !== 'cancelled') {
+                if (!item.waitingOnBackground) deps.log(`Automation run ${item.runId}: turn ended but ${background} background task(s) still running; not done yet`);
+                item.waitingOnBackground = true;
+                continue;
+            }
+            item.waitingOnBackground = false;
             if (turn.status === 'failed' || turn.status === 'cancelled') await finish(item, { claimId: item.claimId, status: 'failed', sessionId, error: turn.error ?? `Turn ${turn.status}`, needsAttention: true, attentionReason: `turn_${turn.status}` });
             else await finish(item, { claimId: item.claimId, status: 'done', sessionId, summary: clipText(turn.answer, AUTOMATION_SUMMARY_MAX_CHARS) });
         }

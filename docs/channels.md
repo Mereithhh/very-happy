@@ -373,6 +373,27 @@ very-happy send --session "$id" --prompt "follow-up"   # then read --wait again
 A prompt sent while a turn is running only counts as answered after its own
 `turn-start` … `turn-end`, so the previous turn ending does not end the wait.
 
+**Background tasks (B-507).** A turn ending is not the session going quiet:
+an async-launched sub-agent, a `run_in_background` command or a Monitor keeps
+running and wakes the session with a notification later. Every `list` row and
+the `summary` of `read` carry `backgroundTasks` = `{ count, tasks[], reportedAt?,
+stale? }`, each task `{ id, type, description, startedAt }` (`type` is the SDK
+task type: `local_bash`, `local_agent`, `monitor`, …). The wrapper reports the
+set on every change and renews it every 60 s; the local `list` reads it from
+the daemon (lease 150 s, cleared when the wrapper exits), `--all` from the
+session's agentState (same lease, plus the server's `active` flag; `stale:
+true` means a set was reported but its lease ran out — count is 0). The field
+is **absent** on a daemon or CLI too old to report it: absent means unknown,
+not zero. Rules for a supervisor or an auto-archiver: `count > 0` → the
+session is busy even though `turn.ended` is true; do not archive it, do not
+call the work done. `read --wait` still returns on `turn-end` — check
+`summary.backgroundTasks.count` afterwards if the task may fan out. Only the
+Claude runner has this notion; Codex and pi rows never carry the field.
+Automations runs (`very-happy auto`) apply the same rule: a spawn/send run
+whose turn ended with background tasks still running stays `running` until
+they finish and the wake-up turn ends (a never-ending Monitor therefore holds
+the run until the server's `maxRuntimeMs`).
+
 `spawn` and `send` start work; these let an external agent layer *see* it and
 intervene — the same four operations the built-in assistant has over MCP, now
 reachable without being the assistant.

@@ -42,6 +42,17 @@ describe('one status vocabulary for all agent transports', () => {
     it('counts live background subagents using the main transcript rule', () => {
         expect(sessionExecution({ ...ready, runningSubagents:1 })).toBe('running');
     });
+    it('B-507: heartbeat-reported background tasks after the turn ended are `background`, never idle', () => {
+        expect(sessionExecution({ ...ready, backgroundTasks:2 })).toBe('background');
+        // a live turn outranks it; a pending request outranks both; stale/offline still gate
+        expect(sessionExecution({ ...ready, thinking:true, backgroundTasks:2 })).toBe('running');
+        expect(sessionExecution({ ...ready, needsInput:true, backgroundTasks:2 })).toBe('input');
+        expect(sessionExecution({ ...ready, fresh:false, backgroundTasks:2 })).toBe('unknown');
+        expect(sessionExecution({ ...ready, online:false, backgroundTasks:2 })).toBe('offline');
+        expect(sessionExecution({ ...ready, backgroundTasks:0 })).toBe('idle');
+        expect(agentStatusSignal('background', false)).toBe('background');
+        expect(agentStatusSignal('background', true)).toBe('background');
+    });
     it('renders only one slot without destroying the independent unread bit', () => {
         for (const state of ['running','input'] as const) expect(agentStatusSignal(state,true)).toBe(state);
         expect(agentStatusSignal('offline',true)).toBe('unread');

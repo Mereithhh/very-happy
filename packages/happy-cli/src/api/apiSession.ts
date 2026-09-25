@@ -30,7 +30,9 @@ import { scanUndeliveredQueuedInputs, type UndeliveredScan } from '@/utils/undel
 import { normalizeAgentUsage, usageAgentKey } from './usageReport';
 import { MAX_CHAT_ATTACHMENT_ENCRYPTED_BYTES } from '@/utils/attachmentLimits';
 import { TurnReporter } from '@/update/turnActivity';
-import { notifyDaemonTurnEvent } from '@/daemon/controlClient';
+import { BackgroundTaskReporter } from '@/update/backgroundTaskActivity';
+import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
+import { notifyDaemonBackgroundTasks, notifyDaemonTurnEvent } from '@/daemon/controlClient';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -1027,16 +1029,31 @@ export class ApiSessionClient extends EventEmitter {
     private readonly turnReporter = new TurnReporter((event) => void notifyDaemonTurnEvent(this.sessionId, event)
         .catch((error) => logger.debug('[API] Failed to report turn event to daemon:', error)));
 
-    keepAlive(thinking: boolean, mode: 'local' | 'remote') {
+    /** B-507: background tasks in flight, published on change and renewed every
+     *  60s to the daemon (`/session-event background_tasks`) and into agentState
+     *  (`backgroundTasks: { updatedAt, tasks }`) — the two readers that outlive a
+     *  single heartbeat. The heartbeat itself carries only the count. */
+    private readonly backgroundTaskReporter = new BackgroundTaskReporter((tasks, now) => {
+        void notifyDaemonBackgroundTasks(this.sessionId, tasks)
+            .catch((error) => logger.debug('[API] Failed to report background tasks to daemon:', error));
+        this.updateAgentState((state) => ({
+            ...state,
+            backgroundTasks: tasks.length > 0 ? { updatedAt: now, tasks } : undefined,
+        }));
+    });
+
+    keepAlive(thinking: boolean, mode: 'local' | 'remote', backgroundTasks?: readonly BackgroundTaskInfo[]) {
         if (process.env.DEBUG) { // too verbose for production
             logger.debug(`[API] Sending keep alive message: ${thinking}`);
         }
         this.turnReporter.observe(thinking);
+        if (backgroundTasks) this.backgroundTaskReporter.observe(backgroundTasks);
         this.socket.volatile.emit('session-alive', {
             sid: this.sessionId,
             time: Date.now(),
             thinking,
-            mode
+            mode,
+            ...(backgroundTasks ? { backgroundTasks: backgroundTasks.length } : {}),
         });
     }
 

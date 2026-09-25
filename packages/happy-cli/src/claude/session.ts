@@ -7,6 +7,7 @@ import type { JsRuntime } from "./runClaude";
 import type { SandboxConfig } from "@/persistence";
 import { NotificationProducer } from "./notificationProducer";
 import { notifyDaemonSessionEvent } from "@/daemon/controlClient";
+import { sameBackgroundTasks, type BackgroundTaskInfo } from "./backgroundTasks";
 
 export type ClaudeSteerInput = {
     message: string;
@@ -35,6 +36,11 @@ export class Session {
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
+    /** B-507: background tasks still in flight (async sub-agents, backgrounded
+     *  commands, monitors) — published with every keepAlive. Always an array
+     *  for the Claude runner: an empty one says "nothing running", which is a
+     *  different statement from a runner that has no such notion (undefined). */
+    backgroundTasks: BackgroundTaskInfo[] = [];
 
     /**
      * Window after a user-initiated abort during which stray promise rejections
@@ -126,10 +132,21 @@ export class Session {
         }
 
         // Start keep alive
-        this.client.keepAlive(this.thinking, this.mode);
+        this.client.keepAlive(this.thinking, this.mode, this.backgroundTasks);
         this.keepAliveInterval = setInterval(() => {
-            this.client.keepAlive(this.thinking, this.mode);
+            this.client.keepAlive(this.thinking, this.mode, this.backgroundTasks);
         }, 2000);
+    }
+
+    /**
+     * B-507: the tracker's current set (`claude/backgroundTasks.ts`). A change
+     * beats at once so the daemon, agentState and the web see the edge without
+     * waiting for the 2s tick; an unchanged set is left to the interval.
+     */
+    setBackgroundTasks = (tasks: BackgroundTaskInfo[]): void => {
+        if (sameBackgroundTasks(this.backgroundTasks, tasks)) return;
+        this.backgroundTasks = tasks;
+        this.client.keepAlive(this.thinking, this.mode, this.backgroundTasks);
     }
     
     /**
@@ -173,7 +190,7 @@ export class Session {
             this.lastAssistantSnippet = undefined;
         }
         this.thinking = thinking;
-        this.client.keepAlive(thinking, this.mode);
+        this.client.keepAlive(thinking, this.mode, this.backgroundTasks);
     }
 
     /**
@@ -258,7 +275,7 @@ export class Session {
 
     onModeChange = (mode: 'local' | 'remote') => {
         this.mode = mode;
-        this.client.keepAlive(this.thinking, mode);
+        this.client.keepAlive(this.thinking, mode, this.backgroundTasks);
         this._onModeChange(mode);
     }
 

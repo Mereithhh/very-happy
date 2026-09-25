@@ -40,6 +40,8 @@ import { formatTranscript } from '@/assistant/transcript'
 import { analyzeLatestTurn, type LogEntry, type TurnState } from '@/sessions/turnState'
 import { pendingRequestsOf, type PendingPermissionRequest } from '@/sessions/permissionOps'
 import type { AgentState, Metadata } from '@/api/types'
+import { backgroundTasksReport, type BackgroundTasksReport } from '@/update/backgroundTaskActivity'
+import type { BackgroundTaskInfo } from '@/claude/backgroundTasks'
 
 /** Client tag on the REST calls these operations make. */
 const SESSION_OPS_CLIENT = 'session-ops'
@@ -55,6 +57,15 @@ export interface SessionSummary {
     /** The local daemon is currently tracking a process for this session. */
     live: boolean
     pid?: number
+    /**
+     * B-507: background tasks still in flight (async sub-agents, backgrounded
+     * commands, monitors). Local listing: from the daemon's `/list` (absent on
+     * an old daemon = unknown, not zero). `--all`: from the decrypted
+     * agentState, expired by its `updatedAt` and the server's `active` flag
+     * (`stale: true` = a set was reported but its lease ran out; count is 0).
+     * A turn can end while this is > 0 — do not treat such a session as idle.
+     */
+    backgroundTasks?: BackgroundTasksReport
     title?: string
     cwd?: string
     /** Backend that runs it: claude / codex / gemini / … */
@@ -78,6 +89,22 @@ export interface ListSessionsOptions {
 export interface LiveSessionLike {
     happySessionId?: unknown
     pid?: unknown
+    /** B-507: absent on daemons that predate background-task tracking. */
+    backgroundTasks?: unknown
+}
+
+/** B-507: the daemon's `/list` field, re-validated shape-wise (an old daemon sends nothing → undefined). */
+function backgroundTasksOf(child: LiveSessionLike): BackgroundTasksReport | undefined {
+    const raw = child.backgroundTasks
+    if (!raw || typeof raw !== 'object') return undefined
+    const r = raw as Record<string, unknown>
+    if (typeof r.count !== 'number' || !Array.isArray(r.tasks)) return undefined
+    return {
+        count: r.count,
+        tasks: r.tasks.filter((task): task is BackgroundTaskInfo => !!task && typeof task === 'object' && typeof (task as BackgroundTaskInfo).id === 'string'),
+        ...(typeof r.reportedAt === 'number' ? { reportedAt: r.reportedAt } : {}),
+        ...(r.stale === true ? { stale: true } : {}),
+    }
 }
 
 /**
@@ -118,8 +145,9 @@ export function mergeSessionSummaries(
     return summaries.filter((summary) => summary.tags?.includes(wanted) === true)
 }
 
-function livenessOf(child: LiveSessionLike): { live: boolean; pid?: number } {
-    return { live: true, pid: typeof child.pid === 'number' ? child.pid : undefined }
+function livenessOf(child: LiveSessionLike): { live: boolean; pid?: number; backgroundTasks?: BackgroundTasksReport } {
+    const backgroundTasks = backgroundTasksOf(child)
+    return { live: true, pid: typeof child.pid === 'number' ? child.pid : undefined, ...(backgroundTasks ? { backgroundTasks } : {}) }
 }
 
 /**
@@ -128,7 +156,7 @@ function livenessOf(child: LiveSessionLike): { live: boolean; pid?: number } {
  * only calls `read` sees the same `live`/`pid` as `list` (an unreachable daemon
  * lists nothing, so both degrade to `live: false` together).
  */
-export function sessionLiveness(live: readonly LiveSessionLike[], sessionId: string): { live: boolean; pid?: number } {
+export function sessionLiveness(live: readonly LiveSessionLike[], sessionId: string): { live: boolean; pid?: number; backgroundTasks?: BackgroundTasksReport } {
     const child = live.find((entry) => entry.happySessionId === sessionId)
     return child ? livenessOf(child) : { live: false }
 }
@@ -136,13 +164,14 @@ export function sessionLiveness(live: readonly LiveSessionLike[], sessionId: str
 function toSummary(
     id: string,
     persisted: PersistedSession | undefined,
-    extra: { live: boolean; pid?: number },
+    extra: { live: boolean; pid?: number; backgroundTasks?: BackgroundTasksReport },
 ): SessionSummary {
     const meta = persisted?.metadata as (PersistedSession['metadata'] & { variant?: string }) | undefined
     return {
         id,
         live: extra.live,
         ...(extra.pid !== undefined ? { pid: extra.pid } : {}),
+        ...(extra.backgroundTasks ? { backgroundTasks: extra.backgroundTasks } : {}),
         ...(meta?.summary?.text ? { title: meta.summary.text } : {}),
         ...(meta?.path ? { cwd: meta.path } : {}),
         ...(meta?.flavor ? { flavor: meta.flavor } : {}),
@@ -252,10 +281,15 @@ export function summarizeAccountSession(
 
     const meta = metadata as Metadata & { variant?: string }
     const pending = pendingRequestsOf(agentState, now)
+    // B-507: the wrapper renews `backgroundTasks.updatedAt` every 60s while the
+    // set is non-empty; a dead wrapper's last agentState stays on the server,
+    // so the TTL and the server's `active` flag are what make this honest.
+    const backgroundTasks = backgroundTasksReport(agentState?.backgroundTasks, now, { active: row.active === true })
     return {
         ...base,
         decryptable: true,
         readable: true,
+        backgroundTasks,
         ...(meta.summary?.text ? { title: meta.summary.text } : {}),
         ...(meta.path ? { cwd: meta.path } : {}),
         ...(meta.flavor ? { flavor: meta.flavor } : {}),

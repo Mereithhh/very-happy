@@ -48,6 +48,8 @@ export const HEARTBEAT_LEASE_TTL_MS = 25_000;
 
 const lastBeatAt = new Map<string, number>();
 const expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** B-507：心跳上带来的在飞后台任务计数；只在会话 id 下、只由 activity ephemeral 写。 */
+const backgroundTasks = new Map<string, number>();
 
 /** 只用来把「租约到期」这件事推给 React —— 它不在 `sessions` 里（见文件头）。 */
 type LeaseBumpState = { bump: number; tick: () => void };
@@ -108,7 +110,8 @@ export function recordHeartbeat(sessionId: string, thinking: boolean, now = Date
     if (existing) clearTimeout(existing);
     expiryTimers.delete(sessionId);
     // 只有「正在跑」才需要一个到期时刻——空闲会话不武装任何 timer（见约束 ③）。
-    if (!thinking) return;
+    // B-507：turn 结束但后台任务在跑同样是「正在跑」——计数也靠这个 timer 过期。
+    if (!thinking && !(backgroundTasks.get(sessionId) ?? 0)) return;
     const timer = setTimeout(() => {
         expiryTimers.delete(sessionId);
         useHeartbeatLeaseBump.getState().tick();
@@ -126,18 +129,42 @@ export function isHeartbeatFresh(sessionId: string, now = Date.now(), ttlMs = HE
     return verdict.fresh;
 }
 
+/**
+ * B-507：一次 activity 心跳带来的在飞后台任务计数。**在 `recordHeartbeat` 之前调用**
+ * （它决定要不要武装到期 timer）。`count` 为 undefined 表示这次广播没带字段——旧 server /
+ * 旧 CLI / 没有后台任务概念的 runner，以及所有 `active:false` 的广播（session-end、归档、
+ * presence 超时）——一律归零：断连即过期，和 thinking 一个口径。计数变化触发一次 bump，
+ * 让侧栏/看板重算（心跳本身不进 store，见文件头）。
+ */
+export function recordBackgroundTasks(sessionId: string, count: number | undefined): void {
+    const next = typeof count === 'number' && count > 0 ? count : 0;
+    const previous = backgroundTasks.get(sessionId) ?? 0;
+    if (next === 0) backgroundTasks.delete(sessionId);
+    else backgroundTasks.set(sessionId, next);
+    if (next !== previous) useHeartbeatLeaseBump.getState().tick();
+}
+
+/** B-507：此刻可声称的在飞后台任务数——心跳租约过期即 0（同 `isHeartbeatFresh` 的停表规则）。 */
+export function backgroundTaskCount(sessionId: string, now = Date.now(), ttlMs = HEARTBEAT_LEASE_TTL_MS): number {
+    const count = backgroundTasks.get(sessionId) ?? 0;
+    if (count === 0) return 0;
+    return isHeartbeatFresh(sessionId, now, ttlMs) ? count : 0;
+}
+
 /** 会话被删除时清理，别把 Map 和 timer 漏在这里（B-312 的红点泄漏同形）。 */
 export function forgetHeartbeat(sessionId: string): void {
     const timer = expiryTimers.get(sessionId);
     if (timer) clearTimeout(timer);
     expiryTimers.delete(sessionId);
     lastBeatAt.delete(sessionId);
+    backgroundTasks.delete(sessionId);
 }
 
 export function resetHeartbeatLeaseForTest(): void {
     for (const timer of expiryTimers.values()) clearTimeout(timer);
     expiryTimers.clear();
     lastBeatAt.clear();
+    backgroundTasks.clear();
     currentSocketStatus = () => 'connected';
 }
 

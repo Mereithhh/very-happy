@@ -114,6 +114,8 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         sid: string;
         time: number;
         thinking?: boolean;
+        /** B-507: in-flight background tasks (Claude only); absent on older CLIs / other runners. */
+        backgroundTasks?: number;
     }) => {
         try {
             // Track metrics
@@ -134,6 +136,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             }
 
             const { sid, thinking } = data;
+            // B-507: bounded, integer, only when the wrapper actually sent it —
+            // the field's ABSENCE is meaningful (a runner with no such notion).
+            const backgroundTasks = typeof data.backgroundTasks === 'number' && Number.isFinite(data.backgroundTasks)
+                ? Math.max(0, Math.min(1000, Math.floor(data.backgroundTasks)))
+                : undefined;
             if (!ownsSessionLifecycle(connection, sid)) return;
 
             // Check session validity using cache
@@ -147,12 +154,12 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
             // Emit session activity update — coalesced (B-484): edges go out
             // at once, repeated beats at most every 4 s (busy) / 30 s (idle).
-            if (!sessionActivityRelayGate.shouldRelay(sid, thinking === true, Date.now())) {
+            if (!sessionActivityRelayGate.shouldRelay(sid, thinking === true, Date.now(), backgroundTasks ?? 0)) {
                 sessionAliveRelayCounter.inc({ outcome: 'coalesced' });
                 return;
             }
             sessionAliveRelayCounter.inc({ outcome: 'relayed' });
-            const sessionActivity = buildSessionActivityEphemeral(sid, true, t, thinking || false);
+            const sessionActivity = buildSessionActivityEphemeral(sid, true, t, thinking || false, backgroundTasks);
             eventRouter.emitEphemeral({
                 userId,
                 payload: sessionActivity,

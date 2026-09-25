@@ -11,7 +11,7 @@ import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForSession } from '@/sync/activityOverlay';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
-import { isHeartbeatFresh, recordHeartbeat, setHeartbeatSocketStatusReader } from '@/sync/heartbeatLease';
+import { isHeartbeatFresh, recordBackgroundTasks, recordHeartbeat, setHeartbeatSocketStatusReader } from '@/sync/heartbeatLease';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { handleClipboardPush } from '@/sync/clipboardPush';
@@ -3155,6 +3155,9 @@ class Sync {
             // A plain timestamp heartbeat is not a "significant change", so it
             // sits in a 2s debounce whose timer is deliberately not reset —
             // stamping at flush time would silently eat that much of the TTL.
+            // B-507: the count first — it decides whether the lease timer is
+            // armed; an inactive broadcast carries no field and zeroes it.
+            recordBackgroundTasks(updateData.id, updateData.active ? updateData.backgroundTasks : undefined);
             recordHeartbeat(updateData.id, updateData.thinking === true);
             // console.log('adding activity update ' + updateData.id);
             this.activityAccumulator.addUpdate(updateData);

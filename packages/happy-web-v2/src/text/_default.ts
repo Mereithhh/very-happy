@@ -1492,6 +1492,9 @@ export const en = {
         viewStatus: 'Status',
         groupWaiting: 'Waiting on me',
         groupRunning: 'Running',
+        // B-507: the turn ended but background tasks (async sub-agents,
+        // backgrounded commands) are still running — the session is not idle.
+        rowBackgroundTasks: ({ count }: { count: number }) => `${count} background task${count === 1 ? '' : 's'} running`,
         groupDoneToday: 'Done today',
         empty: 'No sessions yet',
         noResults: 'No matching sessions',

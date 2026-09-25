@@ -1627,6 +1627,7 @@ export const zhHans: TranslationStructure = {
         viewStatus: '状态',
         groupWaiting: '等我看',
         groupRunning: '进行中',
+        rowBackgroundTasks: ({ count }: { count: number }) => `后台任务 ${count} 个`,
         groupDoneToday: '已完成·今日',
         empty: '还没有会话',
         noResults: '没有匹配的会话',

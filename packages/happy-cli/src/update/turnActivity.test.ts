@@ -60,9 +60,9 @@ describe('daemon wiring (B-466)', () => {
     const controlServer = readFileSync(join(__dirname, '..', 'daemon', 'controlServer.ts'), 'utf8');
 
     it('gates install AND handover on "no turn in flight", not on wrappers or terminals', () => {
-        expect(run).toContain('idle: () => !turnActivity.hasActiveTurn(),');
-        expect(run).toContain('if (bundleReplaced && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn()) {');
-        expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || turnActivity.hasActiveTurn()) return;');
+        expect(run).toContain('idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny(),');
+        expect(run).toContain('if (bundleReplaced && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {');
+        expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;');
         expect(run).not.toMatch(/idle: \(\) =>[^\n]*hasLiveTerminals/);
         expect(run).not.toMatch(/idle: \(\) =>[^\n]*pidToTrackedSession\.size/);
         // an exited wrapper releases its mark
@@ -76,7 +76,7 @@ describe('daemon wiring (B-466)', () => {
     });
 
     it('the control server accepts turn events and never routes them into the assistant sink', () => {
-        expect(controlServer).toContain("event: z.enum(['completed', 'needs_input', 'auth_failed', 'turn_started', 'turn_ended']),");
+        expect(controlServer).toContain("event: z.enum(['completed', 'needs_input', 'auth_failed', 'turn_started', 'turn_ended', 'background_tasks']),");
         expect(controlServer).toContain("if (event === 'turn_started' || event === 'turn_ended') {");
     });
 });

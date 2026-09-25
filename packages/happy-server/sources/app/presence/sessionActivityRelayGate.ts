@@ -39,7 +39,7 @@ export const DEFAULT_SESSION_ACTIVITY_RELAY_LIMITS: SessionActivityRelayLimits =
     idleIntervalMs: 30_000,
 };
 
-type Relayed = { at: number; thinking: boolean };
+type Relayed = { at: number; thinking: boolean; backgroundTasks: number };
 
 export class SessionActivityRelayGate {
     private readonly last = new Map<string, Relayed>();
@@ -50,15 +50,22 @@ export class SessionActivityRelayGate {
     /**
      * Decide whether this `session-alive` beat is rebroadcast. Records the
      * relay when it returns true.
+     *
+     * B-507: `backgroundTasks` (in-flight background tasks, Claude only) is
+     * part of the edge — a change in the count goes out at once — and a
+     * session with background work beats at the busy spacing even when it is
+     * not thinking, so the web's 25 s lease on that count never lapses
+     * between two relays.
      */
-    shouldRelay(sessionId: string, thinking: boolean, now: number): boolean {
+    shouldRelay(sessionId: string, thinking: boolean, now: number, backgroundTasks: number = 0): boolean {
         this.sweep(now);
         const prev = this.last.get(sessionId);
-        const interval = thinking ? this.limits.busyIntervalMs : this.limits.idleIntervalMs;
-        if (prev && prev.thinking === thinking && now - prev.at < interval) {
+        const busy = thinking || backgroundTasks > 0;
+        const interval = busy ? this.limits.busyIntervalMs : this.limits.idleIntervalMs;
+        if (prev && prev.thinking === thinking && prev.backgroundTasks === backgroundTasks && now - prev.at < interval) {
             return false;
         }
-        this.last.set(sessionId, { at: now, thinking });
+        this.last.set(sessionId, { at: now, thinking, backgroundTasks });
         return true;
     }
 

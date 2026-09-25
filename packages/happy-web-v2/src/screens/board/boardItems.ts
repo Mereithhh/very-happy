@@ -109,6 +109,9 @@ export interface BoardItem {
   /** B-465: terminal status came from an old daemon (no observation stamp)
    *  and was estimated from its reported state + tmux activity. */
   legacyStatus?: true;
+  /** B-507: sessions only — `working` because background tasks are still
+   *  running after the turn ended (the count), not because of a live turn. */
+  backgroundTasks?: number;
 }
 
 /** ended items older than this fall off the board entirely */
@@ -127,6 +130,9 @@ export interface BoardInput {
   sessionFresh: Record<string, boolean>;
   terminalFresh: Record<string, boolean>;
   runningSubagents?: Record<string, number>;
+  /** B-507: sessionId → in-flight background tasks per the heartbeat lease
+   *  (`heartbeatLease.backgroundTaskCount`); only sessions with > 0. */
+  backgroundTasks?: Record<string, number>;
   /** B-465: realtime `terminal-activity` overlay (terminalId → ms). Only the
    *  legacy-daemon estimate reads it; fresh observations never need it. */
   terminalActivity?: Record<string, number>;
@@ -181,11 +187,14 @@ function llmAttentionOf(s: Session): 'review' | 'blocked' | undefined {
   return a === 'review' || a === 'blocked' ? a : undefined;
 }
 
-function classifySession(s: Session, now: number, fresh: boolean, runningSubagents = 0): { status: BoardStatus } | null {
+function classifySession(s: Session, now: number, fresh: boolean, runningSubagents = 0, backgroundTasks = 0): { status: BoardStatus; backgroundTasks?: number } | null {
   const execution = sessionExecution({ online:s.presence === 'online', active:s.active, fresh,
-    thinking:s.thinking, needsInput:sessionHasPendingRequests(s) || !!llmAttentionOf(s), runningSubagents });
+    thinking:s.thinking, needsInput:sessionHasPendingRequests(s) || !!llmAttentionOf(s), runningSubagents, backgroundTasks });
   if (execution === 'input') return { status:'attention' };
   if (execution === 'running') return { status:'working' };
+  // B-507: background work after the turn ended is still the agent working —
+  // it lands in the running lane, labelled with the count, never in 等我看.
+  if (execution === 'background') return { status:'working', backgroundTasks };
   if (execution === 'unknown') return { status:'unknown' };
   if (execution === 'idle') return { status:'idle' };
   // Archived (user explicitly dismissed it) never shows on the board — the
@@ -248,7 +257,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     // B-053/B-105: hidden sessions (assistant, terminal mirrors) are not
     // tasks — presence/attention judgments are meaningless for a mirror.
     if (isHiddenSession(s)) continue;
-    const cls = classifySession(s, now, input.sessionFresh[s.id] ?? false, input.runningSubagents?.[s.id] ?? 0);
+    const cls = classifySession(s, now, input.sessionFresh[s.id] ?? false, input.runningSubagents?.[s.id] ?? 0, input.backgroundTasks?.[s.id] ?? 0);
     if (!cls) continue;
     const lastActivityAt = s.updatedAt || s.activeAt || s.createdAt;
     const item: BoardItem = {
@@ -263,6 +272,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       lifecycle: 'running', // placeholder — assigned by lifecycleOf below
     };
     if (hasPriorityTag(s.metadata?.tags)) item.priority = true;
+    if (cls.backgroundTasks) item.backgroundTasks = cls.backgroundTasks;
     const board = s.metadata?.board;
     if (board?.progress) item.progress = board.progress;
     if (board?.taskId) item.llmTaskId = board.taskId;

@@ -114,6 +114,42 @@ describe('automation runner: spawn runs', () => {
         clock += AUTOMATION_LOG_READ_MS; await runner.tick();
         expect(client.report).toHaveBeenLastCalledWith('r1', expect.objectContaining({ status: 'done', summary: 'late' }));
     });
+    it('B-507: a turn that ended with background tasks still running is not done; it completes once they are gone', async () => {
+        const background = new Map<string, number>();
+        const client = fakeClient([claimed()]);
+        const runner = start(client, { backgroundTasks: (id) => background.get(id) ?? 0 }); await settled(runner);
+        background.set('s1', 2);
+        readTurn.mockResolvedValue(ended('kicked off two background jobs'));
+        await turnEdge(runner);
+        expect(readTurn).toHaveBeenCalledTimes(1);
+        expect(client.report).not.toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'done' }));
+        expect(runner.hasSession('s1')).toBe(true);
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('2 background task(s) still running'));
+        // still held while the count stays up (periodic reads, one log line)
+        clock += AUTOMATION_LOG_READ_MS; await runner.tick();
+        expect(client.report).not.toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'done' }));
+        expect(log.mock.calls.filter((c) => String(c[0]).includes('background task(s)'))).toHaveLength(1);
+        // the tasks finish → the notification turn runs → its falling edge completes the run with the later answer
+        background.delete('s1');
+        readTurn.mockResolvedValue(ended('both jobs finished: all green'));
+        await turnEdge(runner);
+        expect(client.report).toHaveBeenLastCalledWith('r1', { claimId: 'claim-1', status: 'done', sessionId: 's1', summary: 'both jobs finished: all green' });
+        expect(runner.hasSession('s1')).toBe(false);
+        // a failed / cancelled turn is final regardless of background work
+        client.claim.mockResolvedValueOnce({ runs: [claimed(run({ id: 'r2', claimId: 'claim-2' }))], leaseMs: 60_000 });
+        await runner.tick();
+        background.set('s1', 1);
+        readTurn.mockResolvedValue(ended('', 'failed', 'model error'));
+        await turnEdge(runner);
+        expect(client.report).toHaveBeenLastCalledWith('r2', expect.objectContaining({ status: 'failed', attentionReason: 'turn_failed' }));
+        // and a wrapper that exited is judged from the log alone
+        client.claim.mockResolvedValueOnce({ runs: [claimed(run({ id: 'r3', claimId: 'claim-3' }))], leaseMs: 60_000 });
+        await runner.tick();
+        readTurn.mockResolvedValue(ended('done before dying'));
+        live.delete('s1'); runner.report('s1', 'exited');
+        await runner.tick();
+        expect(client.report).toHaveBeenLastCalledWith('r3', expect.objectContaining({ status: 'done', summary: 'done before dying' }));
+    });
     it('marks failed / cancelled turns and dead sessions as failed with attention', async () => {
         const client = fakeClient([claimed()]);
         const runner = start(client); await settled(runner);

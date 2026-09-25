@@ -1,4 +1,5 @@
 import { createRuntimeControls, isRuntimeCheckpointReplay } from './runtimeControls';
+import { createBackgroundTaskTracker } from './backgroundTasks';
 import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
 import { render } from "ink";
 import { Session } from "./session";
@@ -100,6 +101,8 @@ export async function claudeRemoteLauncher(
     const turnSteering = createTurnSteeringController();
     const runtimeControls = createRuntimeControls(() => session.thinking);
     session.client.rpcHandlerManager.registerHandler('claude-runtime-control', async input => runtimeControls.request(input));
+    // B-507: what is still running in the background, published on the heartbeat.
+    const backgroundTasks = createBackgroundTaskTracker();
 
     async function abort() {
         if (abortController && !abortController.signal.aborted) {
@@ -251,6 +254,8 @@ export async function claudeRemoteLauncher(
 
     function onMessage(message: SDKMessage) {
         runtimeControls.observe(message);
+        backgroundTasks.observe(message);
+        session.setBackgroundTasks(backgroundTasks.list());
         // SDK prompt echoes supply checkpoint UUIDs; the app already owns the user bubble.
         if (isRuntimeCheckpointReplay(message)) return;
 
@@ -569,6 +574,10 @@ export async function claudeRemoteLauncher(
                     },
                     onQueryReady: (q) => {
                         runtimeControls.setQuery(q);
+                        // A new Claude Code process starts with no background
+                        // tasks (SDK: reset the set whenever the process restarts).
+                        backgroundTasks.reset();
+                        session.setBackgroundTasks([]);
                         turnSteering.setInterrupt(q.interrupt);
                         // B-482: /btw answers inside this process while it lives.
                         session.setSideQuestionLive({ ask: q.sideQuestion, canControl: q.canControl });
@@ -695,6 +704,8 @@ export async function claudeRemoteLauncher(
             } finally {
 
                 runtimeControls.setQuery(null);
+                backgroundTasks.reset();
+                session.setBackgroundTasks([]);
                 turnSteering.reset();
                 session.setSteerHandler(null);
                 session.setSideQuestionLive(null);

@@ -175,6 +175,9 @@ export function BoardCard({
             </span>
           )}
           {item.detail?.kind === 'tool' && <span className="bd-card-tool">{item.detail.name}</span>}
+          {item.backgroundTasks !== undefined && item.backgroundTasks > 0 && (
+            <span className="bd-card-background">{t('sidebar.rowBackgroundTasks', { count: item.backgroundTasks })}</span>
+          )}
           {item.detail?.kind === 'machineOffline' && (
             <span className="bd-card-offline">{t('board.machineOffline')}</span>
           )}

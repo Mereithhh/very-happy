@@ -284,6 +284,10 @@ ${chalk.bold('Actions:')}
              the latest turn stands (\`turn\` in --json: ended, status and
              \`answer\` = the agent's reply to the latest prompt). A session
              another machine spawned is read through that machine's daemon.
+             Both list and read carry \`backgroundTasks\` ({count, tasks[]}):
+             async sub-agents / backgrounded commands still running after
+             the turn ended — such a session is NOT idle (absent = the
+             daemon or CLI is too old to report it).
   stop       SIGTERM the session's process via the local daemon.
   archive    Mark the session inactive server-side (it stays resumable).
   approve    Answer a pending permission request \`requestId\` with approve —
@@ -379,6 +383,7 @@ function formatAccountSummaryLine(summary: AccountSessionSummary): string {
         if (summary.variant) parts.push(`variant=${summary.variant}`)
         if (summary.machineId) parts.push(`machine=${summary.machineId}`)
         if (summary.cwd) parts.push(`cwd=${summary.cwd}`)
+        if (summary.backgroundTasks && summary.backgroundTasks.count > 0) parts.push(formatBackgroundTasks(summary.backgroundTasks))
         for (const request of summary.pending ?? []) {
             parts.push(`pending=${request.id}:${request.tool}${request.waitingMs !== undefined ? `(${formatWait(request.waitingMs)})` : ''}`)
         }
@@ -396,6 +401,12 @@ export function permissionFailureRecord(sessionId: string, requestId: string, er
     return { sessionId, requestId, error: error instanceof Error ? error.message : String(error) }
 }
 
+/** B-507: `background=2(local_bash,local_agent)` — the count plus the task types, so a glance says what is still running. */
+function formatBackgroundTasks(report: NonNullable<SessionSummary['backgroundTasks']>): string {
+    const types = report.tasks.map((task) => task.type).filter(Boolean)
+    return `background=${report.count}${types.length ? `(${types.join(',')})` : ''}`
+}
+
 function formatSummaryLine(summary: SessionSummary): string {
     const parts = [summary.id, summary.live ? '[running]' : '[not running]']
     if (summary.title) parts.push(`title="${summary.title}"`)
@@ -404,6 +415,7 @@ function formatSummaryLine(summary: SessionSummary): string {
     if (summary.variant) parts.push(`variant=${summary.variant}`)
     if (summary.cwd) parts.push(`cwd=${summary.cwd}`)
     if (summary.pid !== undefined) parts.push(`pid=${summary.pid}`)
+    if (summary.backgroundTasks && summary.backgroundTasks.count > 0) parts.push(formatBackgroundTasks(summary.backgroundTasks))
     parts.push(summary.url)
     return parts.join(' ')
 }
