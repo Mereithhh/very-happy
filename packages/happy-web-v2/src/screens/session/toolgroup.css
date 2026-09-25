@@ -153,6 +153,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* B-499: built-in tool rows carry a sentence, not a command. */
+.tg-tool-detail--prose {
+  font-family: var(--font-sans);
+}
 .tg-row--error .tg-tool-label {
   color: var(--danger);
 }
