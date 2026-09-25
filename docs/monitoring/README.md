@@ -63,6 +63,36 @@ rendered configuration and live targets before considering a future collection
 change complete. Do not restart the whole monitoring stack for a stale sidecar
 without first establishing the same evidence.
 
+## Alerts
+
+`very-happy-alerts.prometheusrule.yaml` in this directory is applied as
+`monitoring/very-happy-alerts` on sy (`kubectl apply -f`, no Grafana login
+needed). The Prometheus `ruleSelector` is empty, so every PrometheusRule is
+loaded; check `/api/v1/rules` for group `very-happy` with `health=ok`. Firing
+alerts go through the existing `rancher-monitoring-alertmanager` default route
+to receiver `mereith-webhook` (`webhook.mereith.com` → `tools/webhook-server`,
+the Owner's notification server). Grafana alerting is not used: its login still
+does not work.
+
+| Alert | Condition | Why |
+| --- | --- | --- |
+| `VeryHappyMetricsDown` | `max(up)` < 1 or absent, 5m | both slots unscrapeable |
+| `VeryHappySocketStreamStalled` | head age > 30 s, 1m | B-494 frozen pushes |
+| `VeryHappyRedisErrors` | > 1 Redis error/min, 5m | ECONNRESET/OOM/timeout |
+| `VeryHappySocketStreamTooLong` | length > 50k, 10m | MAXLEN regression |
+| `VeryHappyMachinesDropped` | machine sockets < 80% of 5 min ago (base > 10), 3m | B-484 fleet-wide daemon handshake failure |
+
+Backtest over 2026-09-22..25: `MachinesDropped` would have fired for the B-484
+incident (09-22 08:35, 09-22 09:44), the 09-23 16:41 and 09-24 20:35 outages and
+once during a switch deploy (09-24 21:41, 5 min); stream-stall never crossed
+30 s in 7 days. Known gaps: the receiver has had DNS lookup failures from the
+cluster (`alertmanager_notifications_failed_total{integration="webhook"}`
+346/356 over the 24 h before 2026-09-25; resolving again at setup), the
+pre-existing `TargetDown` for the stopped slot is noise on the same route, and
+ElastiCache memory has no alert (CloudWatch, no SNS receiver).
+
+To remove: `kubectl -n monitoring delete prometheusrule very-happy-alerts`.
+
 ## Rollback
 
 Before changes, export affected objects/dashboard to a private operator backup.

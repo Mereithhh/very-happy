@@ -1,4 +1,5 @@
-import { getMetricsLabelsFromSocket, sessionAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
+import { getMetricsLabelsFromSocket, sessionAliveEventsCounter, sessionAliveRelayCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
+import { sessionActivityRelayGate } from "@/app/presence/sessionActivityRelayGate";
 import { activityCache } from "@/app/presence/sessionCache";
 import { buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
@@ -144,7 +145,13 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             // Queue database update (will only update if time difference is significant)
             activityCache.queueSessionUpdate(sid, t);
 
-            // Emit session activity update
+            // Emit session activity update — coalesced (B-484): edges go out
+            // at once, repeated beats at most every 4 s (busy) / 30 s (idle).
+            if (!sessionActivityRelayGate.shouldRelay(sid, thinking === true, Date.now())) {
+                sessionAliveRelayCounter.inc({ outcome: 'coalesced' });
+                return;
+            }
+            sessionAliveRelayCounter.inc({ outcome: 'relayed' });
             const sessionActivity = buildSessionActivityEphemeral(sid, true, t, thinking || false);
             eventRouter.emitEphemeral({
                 userId,
@@ -248,6 +255,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             });
 
             // Emit session activity update
+            sessionActivityRelayGate.forget(sid);
             const sessionActivity = buildSessionActivityEphemeral(sid, false, t, false);
             eventRouter.emitEphemeral({
                 userId,

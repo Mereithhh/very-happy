@@ -1,4 +1,5 @@
 import { spaFallback } from './spaFallback';
+import { webStaticOptions } from './staticCache';
 import { startBusinessAudit, stopBusinessAudit } from '@/app/audit/producer';
 import { auditLoginFailure } from '@/app/audit/requestAudit';
 import { teamRoutes } from './routes/teamRoutes';
@@ -150,13 +151,9 @@ export async function startApi(opts: StartApiOptions = {}) {
         const injectScript = opts.injectHtmlConfig
             ? runtimeConfigScript(opts.injectHtmlConfig)
             : null;
-        app.register(fastifyStatic, {
-            root: opts.staticDir,
-            prefix: '/',
-            decorateReply: false,
-            // SPA fallback — if file not found, serve index.html
-            wildcard: false,
-        });
+        // SPA fallback (not-found handler below) instead of wildcard; hashed
+        // build output is immutable, everything else revalidates.
+        app.register(fastifyStatic, webStaticOptions(opts.staticDir));
         if (injectScript) {
             app.addHook('onSend', async (request, reply, payload) => {
                 const contentType = reply.getHeader('content-type');

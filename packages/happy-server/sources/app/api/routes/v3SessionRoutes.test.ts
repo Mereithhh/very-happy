@@ -318,6 +318,7 @@ vi.mock("@/app/events/eventRouter", () => ({
 vi.mock("@/app/monitoring/metrics2", () => ({
     getMetricsLabelsFromSocket: () => ({}),
     sessionAliveEventsCounter: { inc: vi.fn() },
+    sessionAliveRelayCounter: { inc: vi.fn() },
     websocketEventsCounter: { inc: vi.fn() },
 }));
 vi.mock("@/app/presence/sessionCache", () => ({
