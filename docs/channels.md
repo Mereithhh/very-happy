@@ -38,8 +38,8 @@ has the same tool set:
 |---|---|
 | Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
-| Managed Claude (in-process), Codex / Gemini / ACP (the stdio bridge forwards them) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session; and the B-497 session peer tools `session_message`, `session_peers` (message / list the other sessions on this machine, see [`very-happy sessions peers` / `message`](#sessions-peers--message--talk-to-the-other-sessions-on-this-machine)) |
-| Voice Assistant / legacy assistant variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
+| Managed Claude (in-process), Codex / Gemini / ACP (the stdio bridge forwards them) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session; and the B-497 session peer tools `session_message`, `session_peers` (message / list the other sessions on this machine — and, since B-506, on the account's other machines: `session_message` to a foreign session is routed to its machine, `session_peers` takes `machineId`; see [`very-happy sessions peers` / `message`](#sessions-peers--message--talk-to-the-other-sessions-on-this-machine)) |
+| Voice Assistant / legacy assistant variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send` (both follow the B-506 route for sessions another machine spawned; optional `machineId`), `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
 | User-scoped `very-happy mcp` **inside a vh web terminal** (`VH_TERMINAL_ID` set by the daemon's tmux terminal) | + `change_title`, `open_preview` (titles/previews for that terminal via authenticated daemon IPC) |
 | User-scoped `very-happy mcp` **inside a meta-agent session of a non-Claude runner** (`HAPPY_SESSION_VARIANT=assistant`, legacy compatibility only) | `copy_to_clipboard` + `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive` |
@@ -314,15 +314,42 @@ Exit codes:
 ### `very-happy sessions` — inspect and control what is running
 
 ```bash
-very-happy sessions list [--all [--include-archived]] [--tag <name>] [--limit <n>] [--json]
-very-happy sessions read <id> [--limit <n>] [--full] [--answer] [--wait [--timeout <s>]] [--json]
+very-happy sessions list [--all [--include-archived]] [--machine <id>] [--tag <name>] [--limit <n>] [--json]
+very-happy sessions read <id> [--machine <id>] [--limit <n>] [--full] [--answer] [--wait [--timeout <s>]] [--json]
 very-happy sessions stop <id> [--json]
 very-happy sessions archive <id> [--json]
 very-happy sessions approve <id> <requestId> [--for-session] [--json]
 very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
-very-happy sessions peers [--scope repo|cwd|machine] [--cwd <dir>] [--json]
-very-happy sessions message <id> <text> [--reply-to <msgId>] [--json]
+very-happy sessions peers [--scope repo|cwd|machine] [--cwd <dir>] [--machine <id>] [--json]
+very-happy sessions message <id> <text> [--reply-to <msgId>] [--machine <id>] [--json]
 ```
+
+**Across machines (B-506, CLI ≥ 0.2.156 on both sides;
+[spec](../specs/2026-09-cross-machine-session-ops.md)).** `read`, `message`,
+`list --all` and `peers --machine` reach sessions another machine of the
+account spawned: the CLI asks the machine that holds the session to run the
+operation with *its* keys and returns the plaintext result. The calling
+machine never receives the account content key or another machine's session
+key — that is the deliberate alternative to B-337. Mechanics: one short-lived
+user-scoped socket, an `rpc-call` to `<machineId>:sessions.list|read|send|peers|message`
+(the same channel the web uses for spawn / resume), answered by the owning
+daemon as a plaintext JSON method (`RpcHandlerManager.registerPlainHandler`).
+Same-account isolation is the server's room routing (`rpc:<userId>:<method>`),
+so another account's daemon is unreachable by construction. The target daemon
+whitelists exactly those five methods, checks the request shape, caps text at
+64 KB and transcripts at 200 KB, allows 60 remote calls per minute in total,
+writes one audit line per call to its daemon log
+(`[REMOTE SESSION OPS] <method> from machine=… host=… cli=… → ok|<code>`), and
+refuses everything with `remoteSessionOps: "off"` in its `~/.happy/settings.json`.
+Without `--machine` the online machines are asked newest-active first which
+one holds the session (`sessions.list { ids }`); offline machines are skipped
+(no daemon = no plaintext source; their sessions are unreachable until they
+come back), and machines whose daemon reports a CLI older than 0.2.156 are
+skipped or refused up front (the server exposes `lastHappyClient` on
+`GET /v1/machines`). A daemon that does not answer surfaces as
+"did not answer: its daemon is offline, restarting, or runs a CLI older than
+0.2.156" rather than a silent 30 s hang. `approve` / `deny` / `stop` /
+`archive` stay local-only.
 
 **Ask and collect (B-492).** `read` reports where the latest turn stands:
 `turn` in `--json` = `{ userSeq, ended, status, error, answer, lastSeq }`, where
@@ -357,13 +384,18 @@ reachable without being the assistant.
 - `stop` — SIGTERM the session's process via the local daemon.
 - `archive` — mark the session inactive server-side; it stays resumable.
 
-Scope is **this machine**: `list`/`stop` ask the local daemon, and `read`,
-`approve` and `deny` need the session key from `~/.happy/sessions.json`, which
-exists only for sessions this machine's daemon spawned and is pruned after 14
-days. A session belonging to another machine cannot be read, stopped or
-answered from here — that is a scope limit, not a permission error. `list
---all` (below) widens the *listing* to the account and says per row whether it
-could be read.
+Scope: `list` (without flags) / `stop` / `archive` ask the local daemon;
+`read` needs the session key, which is in `~/.happy/sessions.json` for
+sessions this machine's daemon spawned (pruned after 14 days) — any other
+session of the account is read through its own machine as described above.
+`list --all` widens the listing to the account over REST (newest 150) and, for
+rows this machine cannot decrypt, asks the online machines to fill them in:
+every row carries `decryptable` (this machine's own key), `readable`
+(decrypted here or by its machine), and for proxied rows `via` (the answering
+machine id) and `machine: { id, host }`; the text form shows `via=<host>` and
+`[running on <host>]`. `--json` adds `machines: { asked, skipped }` saying
+which machines were consulted and which were skipped (offline / too old).
+Rows no online machine holds keep only the server's plaintext columns.
 
 Exit codes: `0` success, `1` anything else. Note that `stop` on a session the
 daemon is not running exits `1` — a caller asking to stop something must be
@@ -459,10 +491,16 @@ coordinate directly — no lock, no permission change.
   before), otherwise `cli <user>@<host>` (then the footer says there is no
   session to reply to). `--reply-to` quotes the peer's message id. Refused,
   exit 1, with the reason on stderr (and `{delivered:false,error}` on stdout
-  under `--json`) when the target is not spawned by this machine (no local
-  key — cross-machine messaging waits on the account content key, B-337), is
-  not running here, or is a terminal mirror (nothing reads a mirror's queue;
-  the person at that terminal does). `delivered` follows `very-happy send`
+  under `--json`) when the target is not running, or is a terminal mirror
+  (nothing reads a mirror's queue; the person at that terminal does). A
+  target another machine spawned is delivered through that machine's daemon
+  (B-506): the header gains `; machine <host>` naming the sender's host, the
+  footer says the message came from a session *on machine <host>* and that
+  `session_message` back to it is routed automatically; `--json` adds
+  `machine: { id, host }`. `--machine <id>` skips the lookup. `peers
+  --machine <id>` lists that machine's live sessions instead (scope `machine`
+  unless `--cwd` names a directory there; repo identity is computed on the
+  target). `delivered` follows `very-happy send`
   (B-501): the message goes through `deliverToSession`, so `true` means a
   wrapper was attached before and after the POST; otherwise `--json` carries
   `delivered:false`, `stored` (it is on the server, unread) and `status`.
@@ -489,15 +527,18 @@ it is a heads-up, and the Web shows it as a card linking to the other session.
 ### `very-happy send` — message an existing session
 
 ```bash
-very-happy send --session <id> (--prompt <text> | --prompt-file <file>) [--model <id>] [--resume] [--json]
+very-happy send --session <id> (--prompt <text> | --prompt-file <file>) [--model <id>] [--resume] [--machine <id>] [--json]
 ```
 
 `--model` switches the session's model with this message (`default` = machine
 default); without it the session keeps its current model.
 
-Pushes one user message into a session that is already running. The session
-key must be present in `~/.happy/sessions.json`, i.e. the session must have
-been spawned by **this machine's** daemon (recent enough to persist keys).
+Pushes one user message into a session that is already running. A session
+spawned by **this machine's** daemon (key in `~/.happy/sessions.json`) is sent
+to directly; any other session of the account is sent through the daemon of
+the machine that spawned it (B-506, see `sessions` above — that machine must
+be online and on CLI ≥ 0.2.156; `--machine <id>` names it, `--resume` then
+resumes on **that** machine; `--json` adds `machine: { id, host }`).
 The POST itself rides the server REST outbox, but the server stores a
 message for **any** session — archived or dead included — so a 2xx never
 meant a wrapper would read it (B-501). `send` therefore classifies the
@@ -532,9 +573,10 @@ the server, unread). The same logic backs the assistant's `session_send`
 {"sessionId":"…","url":"…","delivered":false,"status":"offline","resumed":false,"stored":true,"error":"Session … went offline while sending: …"}
 ```
 
-Exit codes: `0` delivered to a live wrapper, `1` bad args / unknown session /
-missing key / transport failure, `3` session not live (archived, offline,
-not found) or resume failed — nothing was delivered.
+Exit codes: `0` delivered to a live wrapper, `1` bad args / unknown session
+(no machine of the account holds it, or its machine is offline / too old) /
+transport failure, `3` session not live (archived, offline, not found) or
+resume failed — nothing was delivered.
 
 ## Inbound: Web Assistant / meta-agent
 
