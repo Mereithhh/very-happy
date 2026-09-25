@@ -12,6 +12,14 @@
  *   very-happy sessions archive <id> [--json]
  *   very-happy sessions approve <id> <requestId> [--for-session] [--json]
  *   very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
+ *   very-happy sessions peers [--scope repo|cwd|machine] [--cwd <dir>] [--json]
+ *   very-happy sessions message <id> <text> [--reply-to <msgId>] [--json]
+ *
+ * `peers` / `message` (B-497) are the CLI face of the `session_peers` /
+ * `session_message` MCP tools: who else is running here (same repo by
+ * default, with the files each touched lately) and a message into one of
+ * them that arrives tagged with the sender. Inside a managed session's shell
+ * `HAPPY_SESSION_ID` makes that session the sender; otherwise the CLI is.
  *
  * Everything is scoped to this machine (the daemon's children plus the keys in
  * ~/.happy/sessions.json). Reading another machine's session is not a
@@ -48,8 +56,12 @@ import {
 } from '@/sessions/sessionOps'
 import { resolvePermissionRequest, type PermissionVerdict } from '@/sessions/permissionOps'
 import { isValidSessionId } from '@/assistant/ids'
+import { cliPeerSelf, listPeerSessions, sendPeerMessage, type PeerToolContext } from '@/sessions/peerTools'
+import { PEER_SCOPES, type PeerScope } from '@/sessions/repoIdentity'
+import { readPersistedSessions } from '@/persistence'
+import { resolve as resolvePath } from 'node:path'
 
-export type SessionsAction = 'list' | 'read' | 'stop' | 'archive' | 'approve' | 'deny' | 'help'
+export type SessionsAction = 'list' | 'read' | 'stop' | 'archive' | 'approve' | 'deny' | 'peers' | 'message' | 'help'
 
 export interface SessionsCommandOptions {
     action: SessionsAction
@@ -74,11 +86,19 @@ export interface SessionsCommandOptions {
     wait: boolean
     /** read --wait: give up after this many seconds (default 600). */
     timeoutSec?: number
+    /** peers: repo (default) | cwd | machine. */
+    scope?: PeerScope
+    /** peers: compute the scope from this directory instead of the process cwd. */
+    cwd?: string
+    /** message: the text to send. */
+    text?: string
+    /** message: id of the peer message being answered. */
+    replyTo?: string
     json: boolean
 }
 
-const ACTIONS: readonly SessionsAction[] = ['list', 'read', 'stop', 'archive', 'approve', 'deny']
-const ACTIONS_NEEDING_ID: ReadonlySet<SessionsAction> = new Set(['read', 'stop', 'archive', 'approve', 'deny'])
+const ACTIONS: readonly SessionsAction[] = ['list', 'read', 'stop', 'archive', 'approve', 'deny', 'peers', 'message']
+const ACTIONS_NEEDING_ID: ReadonlySet<SessionsAction> = new Set(['read', 'stop', 'archive', 'approve', 'deny', 'message'])
 const ACTIONS_NEEDING_REQUEST_ID: ReadonlySet<SessionsAction> = new Set(['approve', 'deny'])
 
 /** Request ids are wrapper-generated (uuid / cuid-like). Bounded and URL-safe like session ids. */
@@ -122,6 +142,19 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
             const value = args[++i]
             if (value === undefined) throw new Error('--reason requires a value')
             options.reason = value
+        } else if (arg === '--scope') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--scope requires a value')
+            if (!(PEER_SCOPES as readonly string[]).includes(value)) throw new Error(`--scope must be one of ${PEER_SCOPES.join(', ')}`)
+            options.scope = value as PeerScope
+        } else if (arg === '--cwd') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--cwd requires a value')
+            options.cwd = value
+        } else if (arg === '--reply-to') {
+            const value = args[++i]
+            if (value === undefined || value.trim() === '') throw new Error('--reply-to requires a value')
+            options.replyTo = value
         } else if (arg === '--tag') {
             const value = args[++i]
             if (value === undefined) throw new Error('--tag requires a value')
@@ -146,7 +179,7 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
     }
 
     if (!actionSeen) return defaultOptions()
-    const expectedPositionals = ACTIONS_NEEDING_REQUEST_ID.has(options.action) ? 2 : ACTIONS_NEEDING_ID.has(options.action) ? 1 : 0
+    const expectedPositionals = ACTIONS_NEEDING_REQUEST_ID.has(options.action) || options.action === 'message' ? 2 : ACTIONS_NEEDING_ID.has(options.action) ? 1 : 0
     if (positionals.length > expectedPositionals) {
         throw new Error(`Unexpected ${expectedPositionals > 0 ? 'extra ' : ''}argument: ${positionals[expectedPositionals]}`)
     }
@@ -158,6 +191,12 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
         // the id can never be interpolated into a URL unchecked.
         if (!isValidSessionId(id)) throw new Error(`Invalid session id: ${id}`)
         options.sessionId = id
+    }
+    if (options.action === 'message') {
+        const text = positionals[1]
+        if (text === undefined) throw new Error('message requires a session id and the text to send')
+        if (text.trim() === '') throw new Error('message text is empty')
+        options.text = text
     }
     if (ACTIONS_NEEDING_REQUEST_ID.has(options.action)) {
         const requestId = positionals[1]
@@ -181,6 +220,11 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
         if (options.wait) throw new Error('--wait only applies to `sessions read`')
     }
     if (options.timeoutSec !== undefined && !options.wait) throw new Error('--timeout only applies to `sessions read --wait`')
+    if (options.action !== 'peers') {
+        if (options.scope !== undefined) throw new Error('--scope only applies to `sessions peers`')
+        if (options.cwd !== undefined) throw new Error('--cwd only applies to `sessions peers`')
+    }
+    if (options.replyTo !== undefined && options.action !== 'message') throw new Error('--reply-to only applies to `sessions message`')
     return options
 }
 
@@ -195,6 +239,8 @@ ${chalk.bold('Usage:')}
   very-happy sessions archive <id> [--json]
   very-happy sessions approve <id> <requestId> [--for-session] [--json]
   very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
+  very-happy sessions peers [--scope repo|cwd|machine] [--cwd <dir>] [--json]
+  very-happy sessions message <id> <text> [--reply-to <msgId>] [--json]
 
 ${chalk.bold('Actions:')}
   list       Running sessions plus recently seen ones, newest first.
@@ -211,6 +257,15 @@ ${chalk.bold('Actions:')}
              the same RPC the web permission card sends. --for-session makes
              it \`approved_for_session\` (the card's "allow for this session").
   deny       Answer it with deny (optional --reason is shown to the agent).
+  peers      Other live sessions on this machine and the files each edited in
+             the last 30 minutes. Default scope \`repo\`: same git repository,
+             including its other worktrees (\`sameWorktree\` says which share
+             your checkout); \`cwd\`: same directory; \`machine\`: everything.
+  message    Send <text> into a running session here. It arrives tagged with
+             the sender (the session named by HAPPY_SESSION_ID when run from a
+             managed session's shell, else this CLI) and tells the peer how to
+             reply. Refused for sessions that are not running here, not
+             spawned by this machine, or terminal mirrors.
 
 ${chalk.bold('Options:')}
   --all              list only: account-wide over REST instead of this
@@ -232,6 +287,10 @@ ${chalk.bold('Options:')}
   --timeout <s>      read --wait only: give up after <s> seconds (default 600).
   --for-session      approve only: approved_for_session instead of approved.
   --reason <text>    deny only: reason forwarded to the wrapper.
+  --scope <s>        peers only: repo (default) | cwd | machine.
+  --cwd <dir>        peers only: directory the scope is computed from
+                     (default: the process cwd, or HAPPY_SESSION_ID's cwd).
+  --reply-to <id>    message only: the peer message id being answered.
   --json             Machine-readable output.
   -h, --help         Show this help
 
@@ -346,6 +405,41 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                 for (const summary of sessions) console.log(formatSummaryLine(summary))
             }
             process.exit(0)
+        }
+
+        if (options.action === 'peers' || options.action === 'message') {
+            const cwd = options.cwd ? resolvePath(options.cwd) : process.cwd()
+            const persisted = readPersistedSessions()
+            const context: PeerToolContext = { self: () => cliPeerSelf(process.env, cwd, persisted), readPersisted: () => persisted }
+            if (options.action === 'peers') {
+                const listing = await listPeerSessions(context, options.scope ?? 'repo')
+                if (options.json) {
+                    console.log(JSON.stringify(listing))
+                } else if (listing.peers.length === 0) {
+                    console.log(`No other live sessions in scope "${listing.scope}"${listing.self.repoRoot ? ` (repo ${listing.self.repoRoot})` : ''}.`)
+                } else {
+                    for (const peer of listing.peers) {
+                        const parts = [peer.sessionId, `[${peer.kind === 'mirror' ? 'terminal' : 'running'}]`]
+                        if (peer.title) parts.push(`title="${peer.title}"`)
+                        if (peer.flavor) parts.push(`agent=${peer.flavor}`)
+                        if (peer.cwd) parts.push(`cwd=${peer.cwd}${peer.sameWorktree ? '' : ' (other worktree)'}`)
+                        parts.push(peer.url)
+                        console.log(parts.join(' '))
+                        for (const edit of peer.edits) console.log(chalk.dim(`    ${edit.tool} ${edit.path} (${Math.round((Date.now() - edit.at) / 60_000)}m ago)`))
+                    }
+                }
+                process.exit(0)
+            }
+            const target = options.sessionId as string
+            try {
+                const result = await sendPeerMessage(context, { to: target, body: options.text as string, replyTo: options.replyTo })
+                if (options.json) console.log(JSON.stringify(result))
+                else console.log(`Message ${result.messageId} sent to ${target}\n${result.url}`)
+                process.exit(0)
+            } catch (error) {
+                if (options.json) console.log(JSON.stringify({ delivered: false, to: target, error: error instanceof Error ? error.message : String(error) }))
+                throw error
+            }
         }
 
         const sessionId = options.sessionId as string

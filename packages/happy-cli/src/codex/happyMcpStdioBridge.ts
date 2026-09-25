@@ -1,5 +1,6 @@
 import { registerTeamsTools } from '@/teams/tools';
 import { registerAutomationTools } from '@/automations/tools';
+import { registerSessionPeerTools } from '@/sessions/peerTools';
 /**
  * Happy MCP STDIO Bridge
  *
@@ -170,6 +171,9 @@ async function main() {
   // B-496: automation_* execute in the owning session process too (account
   // authority lives there); the bridge only forwards by name.
   registerAutomationTools(server, (name, args) => forwardTeam(name, args));
+  // B-497: session peers execute in the owning session process too (it is the
+  // identity the peer sees); the bridge only forwards by name.
+  registerSessionPeerTools(server, (name, args) => forwardTeam(name, args));
 
   // Start STDIO transport
   const stdio = new StdioServerTransport();

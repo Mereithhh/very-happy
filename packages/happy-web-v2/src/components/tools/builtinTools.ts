@@ -38,6 +38,7 @@ export const BUILTIN_TOOL_NAMES = [
     'automation_resume', 'automation_delete', 'automation_run', 'automation_fire', 'automation_runs',
     'automation_report', 'automation_ack',
     'sessions_list', 'session_read', 'session_send', 'session_spawn', 'session_kill', 'session_archive',
+    'session_message', 'session_peers',
     'terminals_list', 'terminal_read', 'terminal_send', 'memory_update', 'journal_append',
 ] as const;
 export type BuiltinToolName = typeof BUILTIN_TOOL_NAMES[number];
@@ -111,6 +112,7 @@ function agentName(agent: string | null): string | null {
     if (agent === 'claude') return 'Claude';
     if (agent === 'codex') return 'Codex';
     if (agent === 'pi-acp' || agent === 'pi') return 'pi';
+    if (agent === 'terminal-mirror') return 'Terminal';
     return agent;
 }
 function chars(n: number): string {
@@ -141,6 +143,11 @@ function attentionLabel(v: unknown): string | null {
     if (v === 'review') return t('tools.builtin.attention.review');
     if (v === 'blocked') return t('tools.builtin.attention.blocked');
     return null;
+}
+
+/** B-497 `session_peers` scope → human label; null for absent/unknown scopes. */
+function scopeLabel(v: unknown): string | null {
+    return v === 'repo' || v === 'cwd' || v === 'machine' ? t(`tools.builtin.scope.${v}` as 'tools.builtin.scope.repo') : null;
 }
 
 function automationRef(input: Record<string, unknown>): string | null {
@@ -230,6 +237,9 @@ export function builtinToolSummary(r: ResolvedBuiltinTool): BuiltinToolSummary {
         case 'session_spawn': detail = join(str(i.directory) ? basename(str(i.directory)!) : null, line(i.prompt)); break;
         case 'session_kill':
         case 'session_archive': detail = sid(i.sessionId); break;
+        // B-497: peer messaging between sessions on one machine.
+        case 'session_message': detail = join(sid(i.to) ? t('tools.builtin.to', { target: sid(i.to)! }) : null, line(i.body)); break;
+        case 'session_peers': detail = scopeLabel(i.scope); break;
         case 'terminal_read': detail = join(line(i.terminalId, 24), num(i.lines) ? t('tools.builtin.lastN', { count: num(i.lines)! }) : null); break;
         case 'terminal_send': detail = join(line(i.terminalId, 24), line(i.text, 64), i.submit === true ? t('tools.builtin.fields.submit') : null); break;
         case 'memory_update': detail = line(i.section); break;
@@ -333,6 +343,8 @@ export function builtinToolFields(r: ResolvedBuiltinTool): BuiltinToolField[] {
         case 'session_spawn': id('directory', i.directory); text('prompt', i.prompt); break;
         case 'session_kill':
         case 'session_archive': id('session', i.sessionId); break;
+        case 'session_message': id('to', i.to); id('replyTo', i.replyTo); text('body', i.body); break;
+        case 'session_peers': F('scope', L('scope'), scopeLabel(i.scope)); break;
         case 'terminal_read': id('terminal', i.terminalId); F('lines', L('lines'), num(i.lines) ? String(num(i.lines)) : null); break;
         case 'terminal_send': id('terminal', i.terminalId); text('text', i.text, true); F('submit', L('submit'), i.submit === true ? t('tools.builtin.yes') : t('tools.builtin.no')); break;
         case 'memory_update': text('section', i.section); text('content', i.content); break;
@@ -348,6 +360,7 @@ const FIELD_KEYS = {
     reason: 1, attempt: 1, schedule: 1, runAt: 1, interval: 1, version: 1, description: 1, trigger: 1, action: 1, prompt: 1,
     command: 1, sticky: 1, concurrency: 1, maxRuntime: 1, maxRuntimeMs: 1, status: 1, payload: 1, dedupeKey: 1, limit: 1, run: 1,
     summary: 1, error: 1, session: 1, terminal: 1, lines: 1, submit: 1, section: 1, content: 1,
+    to: 1, replyTo: 1, scope: 1,
 } as const;
 
 // ── result digest ────────────────────────────────────────────────────────────
@@ -524,6 +537,27 @@ export function builtinToolDigest(r: ResolvedBuiltinTool, tool: Pick<ToolCall, '
         case 'session_archive':
             sessionLink(str(i.sessionId));
             break;
+        // B-497: `{ delivered, messageId, to, url }` — link the recipient either way.
+        case 'session_message':
+            if (json !== null && j.delivered === true) digest.lines.push(t('tools.builtin.messageDelivered'));
+            sessionLink(str(j.to) ?? str(i.to));
+            break;
+        // B-497: `{ self, scope, peers: [{ sessionId, kind, cwd, flavor, title, edits }] }`.
+        case 'session_peers': {
+            if (json === null || !Array.isArray(j.peers)) break;
+            const peers = j.peers.map(obj);
+            digest.lines.push(t('tools.builtin.peerCount', { count: peers.length }));
+            for (const peer of peers.slice(0, 8)) {
+                const sessionId = str(peer.sessionId);
+                const edits = Array.isArray(peer.edits) ? peer.edits.length : 0;
+                const parts = [str(peer.title) ?? (sessionId ? shortId(sessionId) : '?'), agentName(str(peer.flavor)), str(peer.cwd) ? basename(str(peer.cwd)!) : null,
+                    edits > 0 ? t('tools.builtin.editedFiles', { count: edits }) : null];
+                digest.lines.push(parts.filter((p): p is string => !!p).join(' · '));
+                sessionLink(sessionId);
+            }
+            if (peers.length > 8) digest.lines.push(`+${peers.length - 8}`);
+            break;
+        }
         default:
             break;
     }

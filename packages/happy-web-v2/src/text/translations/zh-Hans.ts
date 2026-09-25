@@ -742,6 +742,14 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
+        peerMessage: {
+            messageFrom: '来自其他会话的消息',
+            conflict: '编辑冲突',
+            openSession: '打开会话',
+            editedAgo: ({ ago }: { ago: string }) => `对方 ${ago} 前编辑过`,
+            fromTerminal: '这是终端会话：无法给它发消息，终端前的人拥有那些改动。',
+            source: '原文',
+        },
         btw: {
             title: '侧问',
             subtitle: '不进主对话',
@@ -1831,6 +1839,8 @@ export const zhHans: TranslationStructure = {
                 session_spawn: '新建会话',
                 session_kill: '停止会话',
                 session_archive: '归档会话',
+                session_message: '给会话发消息',
+                session_peers: '列出邻近会话',
                 terminals_list: '列出终端',
                 terminal_read: '读取终端',
                 terminal_send: '发送到终端',
@@ -1848,7 +1858,12 @@ export const zhHans: TranslationStructure = {
                 maxRuntimeMs: '最长运行', status: '状态', payload: 'Payload', dedupeKey: '去重键',
                 limit: '条数', run: '运行', summary: '摘要', error: '错误', session: '会话', terminal: '终端',
                 lines: '行数', submit: '回车执行', section: '小节', content: '内容',
+                to: '收件会话', replyTo: '回复', scope: '范围',
             },
+            scope: { repo: '同一仓库', cwd: '同一目录', machine: '整台机器' },
+            messageDelivered: '已送达',
+            peerCount: ({ count }: { count: number }) => `${count} 个邻近会话`,
+            editedFiles: ({ count }: { count: number }) => `编辑了 ${count} 个文件`,
             attention: { review: '待审阅', blocked: '受阻' },
             attentionOnly: '仅需处理',
             status: { active: '启用', paused: '已暂停' },

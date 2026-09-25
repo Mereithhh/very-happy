@@ -27,6 +27,8 @@ import { MessageTime } from './MessageTime';
 import './message.css';
 import { presentTeamMessage } from './teamMessage';
 import { TeamMessageCard } from './TeamMessageCard';
+import { presentSessionPeerMessage } from './sessionPeerMessage';
+import { SessionPeerMessageCard } from './SessionPeerMessageCard';
 import { messageTimestamp } from './messageTimestamp';
 
 function UserText({ message, sessionId, attachments }: { message: UserTextMessage; sessionId: string; attachments?: ToolCallMessage[] }) {
@@ -37,6 +39,10 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     const contentId = useId();
     const teamContent = presentTeamMessage(message);
     if (teamContent) return <TeamMessageCard content={teamContent} sessionId={sessionId} localId={message.localId} createdAt={message.createdAt} />;
+    // B-497: a message from another session on the same machine, or the
+    // daemon's edit-conflict notice — a source card with a link to that session.
+    const peerContent = presentSessionPeerMessage(message);
+    if (peerContent) return <SessionPeerMessageCard content={peerContent} createdAt={message.createdAt} />;
     const raw = message.displayText ?? message.text;
     // B-260: a background-task notification is a machine-facing user message.
     // Stripping used to leave an invisible empty bubble; render the one useful

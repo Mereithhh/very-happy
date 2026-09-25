@@ -65,6 +65,8 @@ export async function sendUserMessage(
         model?: string | null
         permissionMode?: string
         effort?: string | null
+        /** B-497: 'steer' targets the live turn (Claude remote); omitted = queue. */
+        delivery?: 'queue' | 'steer'
     } = {},
 ): Promise<void> {
     const credentials = await readCredentialsForConfiguredRelay()
@@ -82,7 +84,8 @@ export async function sendUserMessage(
             sentFrom: options.sentFrom ?? 'cli',
             ...(options.model !== undefined ? { model: options.model } : {}),
             ...(options.permissionMode !== undefined ? { permissionMode: options.permissionMode } : {}),
-            ...(options.effort !== undefined ? { effort: options.effort } : {})
+            ...(options.effort !== undefined ? { effort: options.effort } : {}),
+            ...(options.delivery !== undefined ? { delivery: options.delivery } : {})
         }
     }
 

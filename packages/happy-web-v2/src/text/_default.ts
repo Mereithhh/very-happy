@@ -564,6 +564,16 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        // B-497: a message another session on the same machine sent this one,
+        // or the daemon's edit-conflict notice — rendered as a source card.
+        peerMessage: {
+            messageFrom: 'Message from another session',
+            conflict: 'Edit conflict',
+            openSession: 'Open session',
+            editedAgo: ({ ago }: { ago: string }) => `peer edited ${ago} ago`,
+            fromTerminal: 'A terminal session: it cannot be messaged; the person at that terminal owns those edits.',
+            source: 'Source',
+        },
         // B-283 `/btw` side questions — answered by a separate single-turn
         // query that forks the live conversation; never enters the main chat.
         btw: {
@@ -1714,6 +1724,8 @@ export const en = {
                 session_spawn: 'Spawn session',
                 session_kill: 'Stop session',
                 session_archive: 'Archive session',
+                session_message: 'Message session',
+                session_peers: 'List peer sessions',
                 terminals_list: 'List terminals',
                 terminal_read: 'Read terminal',
                 terminal_send: 'Send to terminal',
@@ -1731,7 +1743,12 @@ export const en = {
                 maxRuntimeMs: 'Max runtime', status: 'Status', payload: 'Payload', dedupeKey: 'Dedupe key',
                 limit: 'Limit', run: 'Run', summary: 'Summary', error: 'Error', session: 'Session', terminal: 'Terminal',
                 lines: 'Lines', submit: 'Press Enter', section: 'Section', content: 'Content',
+                to: 'To', replyTo: 'Reply to', scope: 'Scope',
             },
+            scope: { repo: 'same repository', cwd: 'same directory', machine: 'whole machine' },
+            messageDelivered: 'Delivered',
+            peerCount: ({ count }: { count: number }) => count === 1 ? '1 peer session' : `${count} peer sessions`,
+            editedFiles: ({ count }: { count: number }) => count === 1 ? '1 file edited' : `${count} files edited`,
             attention: { review: 'needs review', blocked: 'blocked' },
             attentionOnly: 'flagged only',
             status: { active: 'active', paused: 'paused' },

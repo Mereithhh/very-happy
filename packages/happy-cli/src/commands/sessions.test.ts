@@ -126,3 +126,26 @@ describe('parseSessionsArgs — B-492 read --full / --answer / --wait', () => {
         expect(() => parseSessionsArgs(['read', ID, '--wait', '--timeout', '0'])).toThrow(/positive/)
     })
 })
+
+describe('parseSessionsArgs peers / message (B-497)', () => {
+    it('parses peers with scope and cwd', () => {
+        expect(parseSessionsArgs(['peers'])).toMatchObject({ action: 'peers', json: false })
+        expect(parseSessionsArgs(['peers', '--scope', 'machine', '--cwd', '/tmp/x', '--json'])).toMatchObject({ action: 'peers', scope: 'machine', cwd: '/tmp/x', json: true })
+        expect(() => parseSessionsArgs(['peers', '--scope', 'galaxy'])).toThrow(/--scope must be one of/)
+        expect(() => parseSessionsArgs(['peers', ID])).toThrow(/Unexpected argument/)
+    })
+
+    it('parses message with the id, text and reply-to', () => {
+        expect(parseSessionsArgs(['message', ID, 'what are you changing?', '--reply-to', 'm1']))
+            .toMatchObject({ action: 'message', sessionId: ID, text: 'what are you changing?', replyTo: 'm1' })
+        expect(() => parseSessionsArgs(['message', ID])).toThrow(/requires a session id and the text/)
+        expect(() => parseSessionsArgs(['message', ID, '   '])).toThrow(/text is empty/)
+        expect(() => parseSessionsArgs(['message', 'bad id', 'x'])).toThrow(/Invalid session id/)
+    })
+
+    it('rejects the new flags on other actions', () => {
+        expect(() => parseSessionsArgs(['list', '--scope', 'repo'])).toThrow(/--scope only applies/)
+        expect(() => parseSessionsArgs(['read', ID, '--cwd', '/x'])).toThrow(/--cwd only applies/)
+        expect(() => parseSessionsArgs(['peers', '--reply-to', 'm1'])).toThrow(/--reply-to only applies/)
+    })
+})
