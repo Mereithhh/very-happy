@@ -60,9 +60,8 @@ CLI 改动也会影响 Web `src/screens/public` 的契约测试，不能只跑 C
 - 窄屏/主题/嵌入组件改动要真浏览器验证交互、溢出与布局；用 `scripts/dev/css-probe.mjs` 修前修后取证，移动尺寸按 `pointer: coarse`。渐变、遮挡、层叠效果要采像素，不能只断言类名存在。
 - 刷新前保留当前 entry/CSS、computed style 与关键变量。SW 更新必须核对 `controllerchange`、实际 controller 与加载 entry；reload 或 `registration.update()` 返回都不能证明已换版本。
   更新链路用两个真实构建 + 本地静态 server + Chromium 验证，保留旧 hashed assets 模拟部署；机制见 `src/app/swTakeover.ts`。
-- 发布必须核对目标 SHA、完整镜像/静态资源、health 和本次真实路径；用 `scripts/dev/check-shipped.mjs` 查已发布代码。daemon 更新另验版本、RPC 重注册与 mac-office launchd 守护。
-- 所有 UI 工作先读 [design skill](.agents/skills/design/SKILL.md) 和 [设计契约](docs/design-language.md)：已确认的紧凑工作台风格是统一基线，保留 Very Happy 品牌；Landing/docs/login 保留鲜明品牌展示。重构按真实功能矩阵验收，不能照原型删能力；截图、README 与用户更新说明随正式实现同步。
-- UI 改前读设计契约；颜色只用 `tokens.css` 定义的 token，`--accent` 仅表示 live，主 CTA 用 ink/canvas 高反差；终端 pane 两种主题都保持深色。
+- 发布必须核对目标 SHA、完整镜像/静态资源、health 和本次真实路径；用 `scripts/dev/check-shipped.mjs` 查已发布代码。daemon 更新另验版本、RPC 重注册与守护接管（mac-office launchd、dev-sg systemd）。
+- 所有 UI 工作先读 [design skill](.agents/skills/design/SKILL.md) 和 [设计契约](docs/design-language.md)：已确认的紧凑工作台风格是统一基线，保留 Very Happy 品牌；Landing/docs/login 保留鲜明品牌展示。颜色只用 `tokens.css` 定义的 token，`--accent` 仅表示 live，主 CTA 用 ink/canvas 高反差；终端 pane 两种主题都保持深色。重构按真实功能矩阵验收，不能照原型删能力；截图、README 与用户更新说明随正式实现同步。
 
 ## 冲突热区
 
@@ -80,9 +79,9 @@ CLI 改动也会影响 Web `src/screens/public` 的契约测试，不能只跑 C
 4. **协议必须双向兼容**，旧端忽略新字段；spec 写兼容矩阵与发布顺序。
 5. **server/Web 随同一个完整不可变镜像发布**，不得分别覆盖 source、migration、Prisma Client 或 Web。当前 rollout phase 以 operations 为准；正常 server/Web 切换不更新 daemon，默认先 server/Web 后 CLI，协议变更按兼容矩阵。
 6. **CLI tag/npm 包不可变，平台包先于主包**；失败后递增版本，不移动旧 tag。主包发 `next`，CI 核对同仓库/tag/SHA/push run 当前 attempt 的 Linux/macOS/Windows × Node 20/24 六个 job 全部成功，才 promote `latest`；缺格或 skipped 不算通过。
-   推荐默认随 registry（1h 缓存），`CLI_RECOMMENDED_VERSION` 仅作显式 pin；**自动安装只认独立 `CLI_AUTO_UPDATE_VERSION`**，不从 registry 推导、不设就不自动装。见 [configuration](docs/configuration.md) 与 release skill。
+   推荐默认随 registry（缓存 1 分钟，查询失败退避 5 分钟），`CLI_RECOMMENDED_VERSION` 仅作显式 pin；**自动安装只认独立 `CLI_AUTO_UPDATE_VERSION`**，不从 registry 推导、不设就不自动装。见 [configuration](docs/configuration.md) 与 release skill。
 7. **用户更新固定版本并窄放行脚本**：`npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@<version> && very-happy daemon start`。`start` 幂等接管，没有 `daemon restart`，不换成 `stop && start`。
-   mac-office 按 operations 的 Re-adopt 恢复 launchd 并验 running/版本/RPC。handover 不热替换存量 wrapper，新 CLI 能力用新建或明确重启的会话验。
+   daemon 主机按 operations 交回守护（mac-office Re-adopt launchd，dev-sg `systemctl --user start`）并验 running/版本/RPC。handover 不热替换存量 wrapper，新 CLI 能力用新建或明确重启的会话验。
    安装修复只动经核验的包/bin，网络失败不删包；保留失败状态，安装与接管预检互斥。见 [更新恢复 spec](specs/2026-09-cli-update-recovery.md)。
 8. **Claude Queue / Steer / Stop / 权限回调分通道**；审批响应前不嵌套 SDK control request，内部帧不作普通回复。mode 活切与重启见 [mode spec](specs/2026-09-claude-mode-live-vs-relaunch.md)。
    SDK 帧不等于 API 消息：content block 会拆帧，不能用单帧下标当全局块序号；thinking 正文可能被 redact。改 SDK 行为先隔离 home 实跑 probe，见 [流式消息 spec](specs/2026-09-sdk-chat-streaming-ux.md)。

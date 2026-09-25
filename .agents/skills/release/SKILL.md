@@ -1,13 +1,14 @@
 ---
 name: release
 description: >-
-  Release and deploy very-happy: publish the very-happy-cli npm package from v* tags, deploy happy-web-v2 and happy-server to the active production host, update the mac-office daemon, verify production, and roll back. Use when asked to release, publish, deploy, ship, roll back, or update production.
+  Release and deploy very-happy: publish the very-happy-cli npm package from v* tags, deploy happy-web-v2 and happy-server to the active production host, update the daemon hosts (mac-office, dev-sg), verify production, and roll back. Use when asked to release, publish, deploy, ship, roll back, or update production.
 ---
 
 # very-happy release
 
 Production is `veryhappy.dev`: server + Web V2 on vh-sg (AWS Singapore), published CLI on
-npm, daemon on mac-office. `docs/operations.md` is the topology/runbook source;
+npm, daemons on mac-office (launchd) and dev-sg (systemd user unit).
+`docs/operations.md` is the topology/runbook source;
 `docs/PROCESS.md` is the gate/process source.
 
 The only canonical source and release repository is the public GitHub repository
@@ -21,7 +22,8 @@ Release targets are:
 - `server`: publish and deploy the complete server image, including Web V2.
 - `web`: deploy the same complete image; Web is not a host-mounted artifact.
 - `cli`: publish `very-happy-cli` from a `vX.Y.Z` tag.
-- `daemon`: install the published CLI and restart mac-office via `vh-update`.
+- `daemon`: install the published CLI on the daemon hosts: mac-office via
+  `vh-update` + launchd re-adopt, dev-sg per `ops/dev-sg/README.md`.
 - `all`: normally server → web → CLI → daemon, modified only by a spec's
   compatibility matrix.
 
@@ -110,7 +112,9 @@ gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
 ```
 
 Groundwork and switch promote only the verified active digest to `latest`;
-shadow never does. The remote state machine requires Redis, an explicit Prisma
+shadow never does. A switch reloads Caddy, which reconnects every WebSocket at
+once; B-494 bounds the socket.io recovery that follows (operations §socket.io
+Redis stream and recovery bounds). Do not reload Caddy outside a release casually. The remote state machine requires Redis, an explicit Prisma
 connection limit, Caddy ≥2.10.2 and host headroom. Candidate readiness includes
 DB, Redis, adapter warmup and exact Web asset. A bidirectional cross-slot canary
 is mandatory before Caddy changes. Never bypass these gates by restoring the old
@@ -121,30 +125,29 @@ set `VH_RELEASE_MIGRATIONS_REVIEWED=<target commit>` in production before the
 candidate run. The acknowledgement is commit-bound; never reuse a stale value.
 Migration lock/statement timeouts fail candidate without changing active traffic.
 
-Rollback is phase-aware: before drain, stop candidate only; after drain, cancel
-the old slot's drain state; after an include write, restore/reload the old Caddy
-include and retain both slots; after old shutdown, start old before switching
-back. Never delete the retained candidate while it may own connections.
+Automatic rollback exists only before the switch commits: before drain, stop
+candidate only; after drain, cancel the old slot's drain state; after an include
+write, restore/reload the old Caddy include (only if the old slot answers
+`/health`) and retain both slots. Once public verification passes after the Caddy
+reload, the switch is committed (`state.env` written, B-483); draining the old
+slot is best-effort and an undrained old slot is left running off the upstream
+with a printed stop command. A workflow reported failed or cancelled after that
+point did not roll back: establish reality per operations §A switch that dies
+after the Caddy reload. Never delete the retained candidate while it may own
+connections.
 
-Environment changes are different: `docker compose restart` does not reread
-`env_file`. Before groundwork only, the legacy command is:
-
-```bash
-ssh vh-sg 'cd /opt/happy && docker compose up -d --force-recreate happy-server'
-```
-
-After groundwork, never use that command: deploy the active merged `main` with
-`rollout=switch`, so candidate reads the new env while old remains available.
+Environment changes: `docker compose restart` does not reread `env_file`. Deploy
+the active merged `main` with `rollout=switch`, so candidate reads the new env
+while old remains available.
 
 The legacy `hw-sg` SSH alias is not the control origin and must never be used
 for production deployment. If `vh-sg` is absent or does not resolve to the
 current `veryhappy.dev` origin, stop and establish the exact target first.
 
-After publishing a CLI that changes handover behavior, run `vh-update` on
-mac-office. A normal blue-green Server/Web switch no longer requires restarting
-the daemon: it opens candidate, waits for every `rpc-registered` acknowledgement,
-then closes old. During the initial groundwork rollout, retain the old
-`vh-update` safeguard until the new CLI is installed.
+After publishing a CLI that changes handover behavior, update the daemon hosts.
+A normal blue-green Server/Web switch does not require restarting daemons: it
+opens candidate, waits for every `rpc-registered` acknowledgement, then closes
+old.
 
 ## Publish CLI
 
@@ -243,7 +246,9 @@ launchd. Complete the existing re-adoption procedure in
 launchd is `running`, the daemon has the expected version, and a read-only RPC
 works. Do not use `kickstart -k` against a live same-version daemon: the launcher
 can yield and leave neither process supervised. This host-specific re-adoption
-is not the generic user update command.
+is not the generic user update command. dev-sg follows the same pattern under
+its systemd user unit (`sudo npm i -g …` → `daemon stop` → `systemctl --user
+start very-happy-daemon`); see [ops/dev-sg/README.md](../../../ops/dev-sg/README.md).
 
 Never use `npm publish`, bare `npx`, `--ignore-scripts`,
 or move/force an existing tag.
@@ -292,7 +297,7 @@ loaded entry; reload alone does not prove a version migration. Complete relevant
 ## Rollback
 
 - Web/server: use the phase-aware rollback above; do not update daemons for a server-only rollback.
-- CLI/daemon: install the fixed previous version with the reviewed script allowlist, use `daemon start` handover, then re-adopt launchd on mac-office.
+- CLI/daemon: install the fixed previous version with the reviewed script allowlist, use `daemon start` handover, then hand the daemon back to launchd (mac-office) or systemd (dev-sg).
 - Database: migrations must be forward-compatible; never improvise a destructive
   down migration during an incident.
 
