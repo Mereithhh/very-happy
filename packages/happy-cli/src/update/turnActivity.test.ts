@@ -61,8 +61,8 @@ describe('daemon wiring (B-466)', () => {
 
     it('gates install AND handover on "no turn in flight", not on wrappers or terminals', () => {
         expect(run).toContain('idle: () => !turnActivity.hasActiveTurn(),');
-        expect(run).toContain('if (bundleReplaced && !teamWorker?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn()) {');
-        expect(run).toContain('if (teamWorker?.busy || updateController.isRunning() || turnActivity.hasActiveTurn()) return;');
+        expect(run).toContain('if (bundleReplaced && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn()) {');
+        expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || turnActivity.hasActiveTurn()) return;');
         expect(run).not.toMatch(/idle: \(\) =>[^\n]*hasLiveTerminals/);
         expect(run).not.toMatch(/idle: \(\) =>[^\n]*pidToTrackedSession\.size/);
         // an exited wrapper releases its mark
