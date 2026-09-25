@@ -40,6 +40,7 @@ import { BoardCard, fmtDuration } from './BoardCard';
 import { buildLifecycleColumns, groupBoardItems, type BoardItem, type CompletedEntry } from './boardItems';
 import { AttentionSection } from '@/screens/automations/AttentionSection';
 import { useAutomations } from '@/sync/automationsStore';
+import { automationsEntryVisible } from '@/sync/automationsPoll';
 import './board.css';
 
 function Column({
@@ -338,9 +339,9 @@ export function TaskBoardScreen() {
   const [editTask, setEditTask] = useState<BoardTask | null>(null);
   // card rename (chat session / terminal) — same dialog the sidebar uses
   const [renameItem, setRenameItem] = useState<BoardItem | null>(null);
-  // B-498: the Automations entry only shows once the server said the feature
-  // is on (404 automations_disabled → stays hidden, never errors).
-  const automationsEnabled = useAutomations((s) => s.enabled) === true;
+  // B-498/B-504: the Automations entry is visible unless the server said
+  // 404 automations_disabled (never errors; unknown only hides the badge).
+  const automationsEnabled = useAutomations((s) => automationsEntryVisible(s.enabled));
   const automationAttention = useAutomations((s) => s.attention.length);
 
   // Pull the server-backed task list once per board mount (merges into the

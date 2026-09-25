@@ -7,14 +7,19 @@
  * whole freshness story, the same way TeamsScreen does it.
  *
  * `enabled` is the feature gate as the server reports it:
- *   null  — not asked yet (entries stay hidden until we know)
- *   false — 404 `automations_disabled`; every entry hides, nothing errors
+ *   null  — not asked yet, or only non-gate errors so far (entries stay
+ *           visible, the badge does not — B-504)
+ *   false — 404 `automations_disabled`; every entry hides, nothing errors,
+ *           polling slows to `AUTOMATIONS_DISABLED_RECHECK_MS`
  *   true  — data is live
+ * Visibility/cadence decisions are the pure functions in automationsPoll.ts.
  */
 import { create } from 'zustand';
 import type { Automation, AutomationCreate, AutomationRun, AutomationSticky, AutomationUpdate } from '@slopus/happy-wire';
 import { useEffect } from 'react';
+import { getCurrentAuth } from '@/auth/AuthContext';
 import { sync } from '@/sync/sync';
+import { AUTOMATIONS_AUTH_RETRY_MS, automationsPollIntervalMs, planAutomationsTick } from '@/sync/automationsPoll';
 import {
   ackRun,
   cancelRun,
@@ -196,25 +201,43 @@ export const useAutomations = create<AutomationsState>((set, get) => {
 });
 
 /**
- * Poll `refresh` while mounted: immediately, every `intervalMs` when the tab
- * is visible, and on the app's single resume path (`sync.onResume`, AGENTS
- * #13 — no parallel focus/visibility listeners). Stops for good once the
- * server says the feature is disabled.
+ * Poll `refresh` while mounted: on mount, every `intervalMs` when the tab is
+ * visible, and on the app's single resume path (`sync.onResume`, AGENTS #13 —
+ * no parallel focus/visibility listeners). Once the server says the feature
+ * is disabled the cadence drops to a slow recheck instead of stopping for
+ * good, and no tick runs before the credentials are published (B-504; the
+ * decision table is `planAutomationsTick`).
  */
-export function useAutomationsPoll(refresh: () => Promise<void>, intervalMs: number, active = true): void {
+export function useAutomationsPoll(refresh: () => Promise<void>, baseIntervalMs: number, active = true): void {
   const enabled = useAutomations((s) => s.enabled);
+  const intervalMs = automationsPollIntervalMs(enabled, baseIntervalMs);
   useEffect(() => {
-    if (!active || enabled === false) return;
-    void refresh();
-    const timer = window.setInterval(() => {
-      if (!document.hidden) void refresh();
-    }, intervalMs);
-    const unsubscribe = sync.onResume(() => {
-      void refresh();
-    });
+    if (!active) return;
+    let authRetries = 0;
+    let authRetryTimer: number | null = null;
+    const tick = (kind: 'mount' | 'interval' | 'resume' | 'auth-retry') => {
+      const plan = planAutomationsTick(kind, {
+        enabled: useAutomations.getState().enabled,
+        authReady: Boolean(getCurrentAuth()?.credentials),
+        hidden: document.hidden,
+        authRetries,
+      });
+      if (plan === 'refresh') void refresh();
+      else if (plan === 'wait-auth' && authRetryTimer === null) {
+        authRetries += 1;
+        authRetryTimer = window.setTimeout(() => {
+          authRetryTimer = null;
+          tick('auth-retry');
+        }, AUTOMATIONS_AUTH_RETRY_MS);
+      }
+    };
+    tick('mount');
+    const timer = window.setInterval(() => tick('interval'), intervalMs);
+    const unsubscribe = sync.onResume(() => tick('resume'));
     return () => {
       window.clearInterval(timer);
+      if (authRetryTimer !== null) window.clearTimeout(authRetryTimer);
       unsubscribe();
     };
-  }, [refresh, intervalMs, active, enabled]);
+  }, [refresh, intervalMs, active]);
 }

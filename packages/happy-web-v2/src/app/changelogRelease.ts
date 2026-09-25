@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-automations-entry-always-there',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25l.title',
+    summaryKey: 'changelog.releases.sep25l.summary',
+    itemKeys: ['changelog.releases.sep25l.entry', 'changelog.releases.sep25l.recheck', 'changelog.releases.sep25l.teams'],
+  },
+  {
     id: '2026-09-25-session-peer-messaging',
     cliVersion: '0.2.155',
     date: '2026-09-25',

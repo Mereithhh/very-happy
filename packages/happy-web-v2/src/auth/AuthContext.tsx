@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useLayoutEffect, ReactNode } from 'react';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import { syncCreate } from '@/sync/sync';
 import * as Updates from 'expo-updates';
@@ -23,8 +23,14 @@ export function AuthProvider({ children, initialCredentials }: { children: React
     const [isAuthenticated, setIsAuthenticated] = useState(!!initialCredentials);
     const [credentials, setCredentials] = useState<AuthCredentials | null>(initialCredentials);
 
-    // Update global auth state when local state changes
-    useEffect(() => {
+    // Publish the credentials to the non-React helpers (`getCurrentAuth()`:
+    // apiAutomations, teams, useTeamNavigation…). This has to be a LAYOUT
+    // effect: React runs a child's passive effects before its parent's, so
+    // with `useEffect` a descendant fetching on mount read `null` here and
+    // threw a local 401 without sending anything (B-504 — the Automations
+    // sidebar entry stayed hidden for a minute or forever in a hidden tab).
+    // All layout effects of a commit run before any passive effect does.
+    useLayoutEffect(() => {
         setCurrentAuth(credentials ? { isAuthenticated, credentials, login, logout } : null);
     }, [isAuthenticated, credentials]);
 

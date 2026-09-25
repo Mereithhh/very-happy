@@ -2125,6 +2125,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25l: {
+                title: '「自动化」入口不再消失',
+                summary: '打开网页后，侧栏和看板的「自动化」入口可能一直不出现——可见标签页要等一分钟，后台标签页则永远不出现——尽管功能已经开启。现在入口始终存在；只有运维明确关闭功能时才隐藏。',
+                entry: '「自动化」入口随页面加载立即显示；「需要我决策」的数量角标在第一次轮询返回后补上。',
+                recheck: '服务端报告功能关闭时，页面每五分钟重新确认一次，而不是永久放弃；发版期间开关切换不再让「自动化」一直藏到你刷新为止。',
+                teams: '侧栏里的团队分组在打开网页后的第一次请求就加载，不再等第一个 15 秒刷新。',
+            },
             sep25k: {
                 title: '同一台机器上的会话可以互相说话了',
                 summary: '两个 agent 改同一个仓库不再互相看不见。每个托管会话（Claude、Codex、pi）都有 `session_peers` 和 `session_message`；两边改到同一个文件时 daemon 会同时提醒双方。需要更新 CLI；不加锁、不阻止。',

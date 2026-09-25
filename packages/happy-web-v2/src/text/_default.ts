@@ -2008,6 +2008,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25l: {
+                title: 'The Automations entry no longer goes missing',
+                summary: 'The sidebar and board entry for Automations could stay hidden after opening the web app — for a minute in a visible tab, indefinitely in a background tab — although the feature was on. It is now always there; only an operator turning the feature off hides it.',
+                entry: 'The 「Automations」 entry shows as soon as the app loads. The badge with the number of runs waiting for your decision fills in once the first poll answers.',
+                recheck: 'If the server reports the feature as off, the page re-checks every five minutes instead of giving up for good, so a switch flipped during a deploy no longer hides Automations until you reload.',
+                teams: 'Team groups in the sidebar load with the first request after opening the app instead of the first 15-second refresh.',
+            },
             sep25k: {
                 title: 'Sessions on one machine can talk to each other',
                 summary: 'Two agents editing the same repository no longer work blind. Every managed session (Claude, Codex, pi) gets `session_peers` and `session_message`; the daemon warns both sides when they touch the same file. Needs the CLI update; nothing is locked or blocked.',
