@@ -35,10 +35,33 @@ export const REMOTE_OPS_PROTOCOL_VERSION = 1
 export const REMOTE_TEXT_MAX_BYTES = 64 * 1024
 /** Transcript bytes a remote read returns before it is cut (socket acks above ~1 MB drop the connection). */
 export const REMOTE_TRANSCRIPT_MAX_BYTES = 200 * 1024
-/** Remote calls one daemon accepts per minute, all callers together. */
+/** Remote READ calls (list / read / peers) one daemon accepts per minute, all callers together. */
 export const REMOTE_CALLS_PER_MINUTE = 60
+/** Remote WRITE calls (send / message) per minute — a separate bucket so a `--wait` poller cannot starve deliveries. */
+export const REMOTE_WRITE_CALLS_PER_MINUTE = 30
 /** Sessions one locate query may ask about. */
 export const REMOTE_LOCATE_MAX_IDS = 200
+/**
+ * Timing (AGENTS.md rule 17: the server's rpc-call gives up at 30 s). Every
+ * remote op is abandoned on the daemon at `REMOTE_OP_DEADLINE_MS` with a
+ * `timeout` code, so the caller gets an answer instead of the server's
+ * silence. A send additionally refuses to POST once
+ * `REMOTE_SEND_COMMIT_DEADLINE_MS` has passed: after that point the caller may
+ * already have been told "unreachable", and a late delivery would look like a
+ * lost one and be retried. The resume wait inside a send is bounded to leave
+ * room for the POST.
+ */
+export const REMOTE_OP_DEADLINE_MS = 25_000
+export const REMOTE_SEND_COMMIT_DEADLINE_MS = 18_000
+export const REMOTE_RESUME_WAIT_MS = 10_000
+/** `--wait` against a remote machine polls slower than locally: each poll is a budgeted RPC on the target. */
+export const REMOTE_WAIT_POLL_MS = 5_000
+/** `turn.answer` / titles are capped so a read's ack stays well under the socket's 1 MB frame. */
+export const REMOTE_ANSWER_MAX_BYTES = 64 * 1024
+export const REMOTE_TITLE_MAX_BYTES = 1024
+/** `sentFrom` values a remote send may stamp on the envelope; anything else becomes `cli`. */
+export const REMOTE_SENT_FROM_ALLOWED = ['cli', 'assistant', 'automation'] as const
+const LOCAL_ID_RE = /^[a-zA-Z0-9_.:-]{1,128}$/
 
 /** Who is asking — self-reported; the server already guarantees the same account. */
 export interface RemoteCaller {
@@ -55,7 +78,7 @@ export interface RemoteOpsRequest<A> {
     args: A
 }
 
-export type RemoteOpsErrorCode = 'disabled' | 'bad_request' | 'no_local_key' | 'not_running' | 'rate_limited' | 'too_large' | 'internal'
+export type RemoteOpsErrorCode = 'disabled' | 'bad_request' | 'no_local_key' | 'not_running' | 'rate_limited' | 'too_large' | 'timeout' | 'internal'
 
 export type RemoteOpsResponse<T> =
     | { ok: true; result: T }
@@ -82,7 +105,14 @@ export interface RemoteSendArgs {
     resume?: boolean
     /** null = machine default. */
     model?: string | null
+    /** One of REMOTE_SENT_FROM_ALLOWED. */
     sentFrom?: string
+    /**
+     * Caller-chosen message id. The server stores one message per
+     * (session, localId), so a retry after an ambiguous "unreachable" reuses
+     * it and cannot double-deliver.
+     */
+    localId?: string
 }
 
 export interface RemotePeersArgs {
@@ -197,12 +227,14 @@ export function guardRemoteSessionOpsRequest<M extends RemoteSessionOpsMethod>(
             if (!isSessionId(args.sessionId)) return remoteError('bad_request', 'sessionId is required')
             if (typeof args.text !== 'string' || args.text.trim().length === 0) return remoteError('bad_request', 'text must be non-empty')
             if (utf8Bytes(args.text) > REMOTE_TEXT_MAX_BYTES) return remoteError('too_large', `text exceeds ${REMOTE_TEXT_MAX_BYTES} bytes`)
+            if (args.localId !== undefined && (typeof args.localId !== 'string' || !LOCAL_ID_RE.test(args.localId))) return remoteError('bad_request', 'localId must be a short id')
             const out: RemoteSendArgs = {
                 sessionId: args.sessionId,
                 text: args.text,
                 ...(args.resume === true ? { resume: true } : {}),
-                ...(args.model === null || typeof args.model === 'string' ? { model: args.model as string | null } : {}),
-                ...(typeof args.sentFrom === 'string' && args.sentFrom.length > 0 ? { sentFrom: args.sentFrom.slice(0, 64) } : {}),
+                ...(args.model === null || (typeof args.model === 'string' && args.model.length <= 128) ? { model: args.model as string | null } : {}),
+                ...((REMOTE_SENT_FROM_ALLOWED as readonly string[]).includes(args.sentFrom as string) ? { sentFrom: args.sentFrom as string } : {}),
+                ...(typeof args.localId === 'string' ? { localId: args.localId } : {}),
             }
             clean = out
             break
@@ -226,7 +258,10 @@ export function guardRemoteSessionOpsRequest<M extends RemoteSessionOpsMethod>(
                 to: args.to,
                 body: args.body,
                 ...(typeof args.replyTo === 'string' && args.replyTo.length > 0 ? { replyTo: args.replyTo.slice(0, 64) } : {}),
-                from: { ...sender, machine: sender.machine ?? caller.host },
+                // The recipient's header names the machine the call came
+                // from, as the caller identified itself — never a value the
+                // sender picked for someone else.
+                from: { ...sender, machine: caller.host },
             }
             clean = out
             break
@@ -262,6 +297,16 @@ export class RemoteCallBudget {
     }
 }
 
+/**
+ * Caller-supplied strings go into ONE log line: anything outside printable
+ * ASCII (newlines above all — a forged second "audit line") becomes `?`, and
+ * the value is bounded. Pure.
+ */
+export function sanitizeAuditValue(value: unknown, max = 64): string {
+    if (typeof value !== 'string' || value.length === 0) return '?'
+    return value.slice(0, max).replace(/[^\x20-\x7e]/g, '?')
+}
+
 /** One audit line per remote call — written to the daemon log on the target machine. */
 export function formatRemoteAuditLine(input: {
     method: string
@@ -271,7 +316,19 @@ export function formatRemoteAuditLine(input: {
     durationMs: number
 }): string {
     const from = input.from
-    return `[REMOTE SESSION OPS] ${input.method} from machine=${from?.machineId ?? '?'} host=${from?.host ?? '?'} cli=${from?.cli ?? '?'} session=${from?.sessionId ?? '-'} target=${input.sessionId ?? '-'} → ${input.outcome} (${Math.max(0, Math.round(input.durationMs))}ms)`
+    const opt = (value: string | undefined) => value === undefined ? '-' : sanitizeAuditValue(value)
+    return `[REMOTE SESSION OPS] ${sanitizeAuditValue(input.method)} from machine=${sanitizeAuditValue(from?.machineId)} host=${sanitizeAuditValue(from?.host)} cli=${sanitizeAuditValue(from?.cli, 32)} session=${opt(from?.sessionId)} target=${opt(input.sessionId)} → ${input.outcome} (${Math.max(0, Math.round(input.durationMs))}ms)`
+}
+
+/** Bound a text field by UTF-8 bytes (tail kept for answers, head for titles), marking the cut. */
+export function capRemoteText(text: string, maxBytes: number, keep: 'head' | 'tail' = 'head'): string {
+    if (utf8Bytes(text) <= maxBytes) return text
+    const buffer = Buffer.from(text, 'utf8')
+    const marker = '…'
+    const room = Math.max(0, maxBytes - Buffer.byteLength(marker))
+    const slice = keep === 'head' ? buffer.subarray(0, room) : buffer.subarray(buffer.length - room)
+    const clean = slice.toString('utf8').replace(/^�+|�+$/g, '')
+    return keep === 'head' ? clean + marker : marker + clean
 }
 
 /** Cut a transcript so the whole JSON result stays under the ack budget; marks the cut. */

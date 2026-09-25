@@ -27,16 +27,24 @@ import {
     type SessionSummary,
     type SessionTranscript,
 } from '@/sessions/sessionOps'
-import { deliverToSession, type DeliveryResult } from '@/commands/sessionDelivery'
+import { deliverToSession, type DeliveryDeps, type DeliveryResult } from '@/commands/sessionDelivery'
+import { sendUserMessage } from '@/commands/sessionMessage'
 import { listPeerSessions, sendPeerMessage, type PeerListing, type PeerToolContext, type SendPeerMessageResult } from '@/sessions/peerTools'
 import { CLI_PEER_SENDER_ID } from '@/sessions/peerMessage'
 import {
+    capRemoteText,
     capRemoteTranscript,
     formatRemoteAuditLine,
     guardRemoteSessionOpsRequest,
     RemoteCallBudget,
     remoteError,
+    REMOTE_ANSWER_MAX_BYTES,
+    REMOTE_OP_DEADLINE_MS,
+    REMOTE_RESUME_WAIT_MS,
+    REMOTE_SEND_COMMIT_DEADLINE_MS,
     REMOTE_SESSION_OPS_METHODS,
+    REMOTE_TITLE_MAX_BYTES,
+    REMOTE_WRITE_CALLS_PER_MINUTE,
     type RemoteArgsOf,
     type RemoteCaller,
     type RemoteOpsErrorCode,
@@ -66,13 +74,31 @@ export interface RemoteSessionOpsDeps {
     listLocal: (options: { tag?: string; recentLimit?: number }) => Promise<SessionSummary[]>
     listAccount: (options: { tag?: string; recentLimit?: number; includeArchived?: boolean }) => Promise<AccountSessionSummary[]>
     readTranscript: (sessionId: string, limit: number, options: { full?: boolean }) => Promise<SessionTranscript>
-    deliver: (sessionId: string, persisted: PersistedSession, text: string, client: string, options: { resume?: boolean; model?: string | null; sentFrom?: string }) => Promise<DeliveryResult>
+    deliver: (
+        sessionId: string,
+        persisted: PersistedSession,
+        text: string,
+        client: string,
+        options: { resume?: boolean; model?: string | null; sentFrom?: string; waitMs?: number; pollMs?: number },
+        deps?: Partial<DeliveryDeps>,
+    ) => Promise<DeliveryResult>
     listPeers: (context: PeerToolContext, scope: 'repo' | 'cwd' | 'machine') => Promise<PeerListing>
     sendPeer: (context: PeerToolContext, args: { to: string; body: string; replyTo?: string }) => Promise<SendPeerMessageResult>
     log: (line: string) => void
     now: () => number
+    /** Read bucket (list / read / peers). */
     budget?: RemoteCallBudget
+    /** Write bucket (send / message). */
+    writeBudget?: RemoteCallBudget
+    /** Whole-op deadline; the caller's server gives up at 30 s. */
+    deadlineMs?: number
+    /** A send that has not POSTed by then is abandoned instead of racing the caller's timeout. */
+    sendCommitDeadlineMs?: number
+    /** Resume wait inside a remote send. */
+    resumeWaitMs?: number
 }
+
+const WRITE_METHODS: ReadonlySet<RemoteSessionOpsMethod> = new Set(['sessions.send', 'sessions.message'])
 
 export type RemoteSessionOpsHandlers = Record<RemoteSessionOpsMethod, (params: unknown) => Promise<RemoteOpsResponse<unknown>>>
 
@@ -87,7 +113,7 @@ function defaultDeps(machineId: string): RemoteSessionOpsDeps {
         listLocal: (options) => listSessions(options),
         listAccount: (options) => listAccountSessions(options),
         readTranscript: (sessionId, limit, options) => readSessionTranscript(sessionId, limit, options),
-        deliver: (sessionId, persisted, text, client, options) => deliverToSession(sessionId, persisted, text, client, options),
+        deliver: (sessionId, persisted, text, client, options, deps) => deliverToSession(sessionId, persisted, text, client, options, deps),
         listPeers: (context, scope) => listPeerSessions(context, scope),
         sendPeer: (context, args) => sendPeerMessage(context, args),
         log: (line) => logger.info(line),
@@ -98,11 +124,15 @@ function defaultDeps(machineId: string): RemoteSessionOpsDeps {
 /** Build the five handlers. `machineId` is this daemon's; deps default to the real operations. */
 export function createRemoteSessionOpsHandlers(machineId: string, overrides: Partial<RemoteSessionOpsDeps> = {}): RemoteSessionOpsHandlers {
     const deps: RemoteSessionOpsDeps = { ...defaultDeps(machineId), ...overrides }
-    const budget = deps.budget ?? new RemoteCallBudget(undefined, deps.now)
+    const readBudget = deps.budget ?? new RemoteCallBudget(undefined, deps.now)
+    const writeBudget = deps.writeBudget ?? new RemoteCallBudget(REMOTE_WRITE_CALLS_PER_MINUTE, deps.now)
+    const deadlineMs = deps.deadlineMs ?? REMOTE_OP_DEADLINE_MS
+    const sendCommitDeadlineMs = deps.sendCommitDeadlineMs ?? REMOTE_SEND_COMMIT_DEADLINE_MS
+    const resumeWaitMs = deps.resumeWaitMs ?? REMOTE_RESUME_WAIT_MS
 
     const run = <M extends RemoteSessionOpsMethod>(
         method: M,
-        op: (args: RemoteArgsOf<M>, from: RemoteCaller) => Promise<unknown>,
+        op: (args: RemoteArgsOf<M>, from: RemoteCaller, started: number) => Promise<unknown>,
         targetOf: (args: RemoteArgsOf<M>) => string | undefined,
     ) => async (params: unknown): Promise<RemoteOpsResponse<unknown>> => {
         const started = deps.now()
@@ -113,26 +143,35 @@ export function createRemoteSessionOpsHandlers(machineId: string, overrides: Par
             deps.log(formatRemoteAuditLine({ method, from, sessionId, outcome, durationMs: deps.now() - started }))
             return response
         }
+        // Fail closed: if the setting cannot be read, the feature is off.
         let enabled = false
         try {
             enabled = await deps.enabled()
         } catch {
-            enabled = true
+            enabled = false
         }
         const guard = guardRemoteSessionOpsRequest(method, params, { enabled })
         if (!guard.ok) return finish(guard)
         from = guard.request.from
         sessionId = targetOf(guard.request.args)
+        const budget = WRITE_METHODS.has(method) ? writeBudget : readBudget
         const token = budget.take()
         if (!token.ok) {
-            return finish(remoteError('rate_limited', `This machine accepts at most ${budget.perMinute} remote session calls per minute; retry in ${Math.ceil(token.retryAfterMs / 1000)}s`))
+            return finish(remoteError('rate_limited', `This machine accepts at most ${budget.perMinute} remote ${WRITE_METHODS.has(method) ? 'send/message' : 'list/read/peers'} calls per minute; retry in ${Math.ceil(token.retryAfterMs / 1000)}s`))
         }
+        let timer: NodeJS.Timeout | undefined
+        const deadline = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new RemoteOpFailure('timeout', `${method} did not finish within ${Math.round(deadlineMs / 1000)}s on ${deps.host}`)), deadlineMs)
+            timer.unref?.()
+        })
         try {
-            return finish({ ok: true, result: await op(guard.request.args, from) })
+            return finish({ ok: true, result: await Promise.race([op(guard.request.args, from, started), deadline]) })
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Remote session operation failed'
             if (error instanceof RemoteOpFailure) return finish(remoteError(error.code, message))
             return finish(remoteError('internal', message))
+        } finally {
+            if (timer) clearTimeout(timer)
         }
     }
 
@@ -172,6 +211,11 @@ export function createRemoteSessionOpsHandlers(machineId: string, overrides: Par
             const capped = capRemoteTranscript(transcript.transcript)
             const result: RemoteReadResult = {
                 ...transcript,
+                summary: {
+                    ...transcript.summary,
+                    ...(transcript.summary.title !== undefined ? { title: capRemoteText(transcript.summary.title, REMOTE_TITLE_MAX_BYTES) } : {}),
+                },
+                turn: { ...transcript.turn, answer: capRemoteText(transcript.turn.answer, REMOTE_ANSWER_MAX_BYTES, 'tail') },
                 transcript: capped.transcript,
                 ...(capped.truncated ? { truncated: true } : {}),
                 machineId: deps.machineId,
@@ -180,13 +224,24 @@ export function createRemoteSessionOpsHandlers(machineId: string, overrides: Par
             return result
         }, (args) => args.sessionId),
 
-        'sessions.send': run('sessions.send', async (args) => {
+        'sessions.send': run('sessions.send', async (args, _from, started) => {
             const persisted = requirePersisted(args.sessionId)
+            // The POST is the one irreversible step: refuse it once the caller
+            // may already have given up, and reuse the caller's localId so a
+            // retry after an ambiguous failure is idempotent server-side.
+            const send: DeliveryDeps['send'] = (sessionId, key, text, client, options) => {
+                if (deps.now() - started > sendCommitDeadlineMs) {
+                    throw new RemoteOpFailure('timeout', `Session ${sessionId} was not live within ${Math.round(sendCommitDeadlineMs / 1000)}s on ${deps.host}; nothing was sent — retry (the same localId cannot double-deliver)`)
+                }
+                return sendUserMessage(sessionId, key, text, client, { ...options, ...(args.localId ? { localId: args.localId } : {}) })
+            }
             return deps.deliver(args.sessionId, persisted, args.text, REMOTE_CLIENT_TAG, {
                 resume: args.resume === true,
+                waitMs: resumeWaitMs,
+                pollMs: 1_000,
                 ...(args.model !== undefined ? { model: args.model } : {}),
                 ...(args.sentFrom !== undefined ? { sentFrom: args.sentFrom } : {}),
-            })
+            }, { send })
         }, (args) => args.sessionId),
 
         'sessions.peers': run('sessions.peers', async (args, from) => {

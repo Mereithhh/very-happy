@@ -112,6 +112,16 @@ B-337 的路径是让 CLI 在 `auth login` 时取回账号内容私钥、落盘�
 
 `sessions --help`、`send --help` 的 Scope 段改写；`docs/channels.md` `sessions` 与 `peers/message` 段、MCP 矩阵更新；changelog 条目 `sep25l`（cliVersion 0.2.157）。
 
+### 6. 评审后修订（2026-09-25 安全/正确性对抗评审，follow-up PR）
+
+- **30 s 上限（约束 17）**：目标 daemon 对每次调用设 25 s 总 deadline（`timeout` 码），`sessions.send` 内的 resume 等待缩到 10 s、轮询 1 s，且 **18 s 后拒绝发起 POST**（`timeout`，明确「nothing was sent」）——避免调用方已判 unreachable 而目标随后投递、重试造成重复。
+- **幂等重试**：调用方为每次 `sessions.send` 生成 `localId`（`remote-send-<uuid>`）传给目标，目标用它 POST（server 按 (session, localId) 去重）；传输层不确定失败（超时/断连，`ambiguous`）或目标 `timeout` 时**同 localId 重试一次**；明确拒绝不重试。
+- **审计行注入**：`sanitizeAuditValue` 把非可打印 ASCII（含换行）替换为 `?` 并截断（host/machineId 64、cli 32），一行只能是一行。
+- **开关 fail-closed**：设置读取失败按 `off` 处理（返回 `disabled` 并记审计），不再 fail-open。
+- **预算分桶**：读桶（list/read/peers）60/min，写桶（send/message）30/min；远程 `--wait` 轮询 5 s。
+- **响应体积**：`turn.answer` 截尾 64 KB、标题 1 KB（transcript 200 KB 不变）。
+- `sentFrom` 白名单 `cli|assistant|automation`，其它丢弃；`sessions.message` 的 `from.machine` 一律覆盖为调用方自报 host；daemon 对明文方法的 debug 日志只打方法名。
+
 ## 兼容矩阵与发布顺序
 
 | 组合 | 行为 |

@@ -1481,7 +1481,13 @@ export class ApiMachineClient {
         // after a transport close arrives without one, and calling it anyway
         // took the daemon down as an unhandled rejection.
         socket.on('rpc-request', async (data: { method: string, params: string }, callback?: (response: string) => void) => {
-            logger.debugLargeJson(`[API MACHINE] Received RPC request via ${transport}:`, data);
+            // B-506: plaintext methods carry readable message text in `params`;
+            // the debug log keeps the method only (the audit line has the rest).
+            if (typeof data?.method === 'string' && this.rpcHandlerManager.isPlainMethod(data.method)) {
+                logger.debug(`[API MACHINE] Received plain RPC request via ${transport}: ${data.method}`);
+            } else {
+                logger.debugLargeJson(`[API MACHINE] Received RPC request via ${transport}:`, data);
+            }
             await answerSocketRequest<string>(
                 callback,
                 () => this.rpcHandlerManager.handleRequest(data),

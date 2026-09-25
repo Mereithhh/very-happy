@@ -337,7 +337,11 @@ daemon as a plaintext JSON method (`RpcHandlerManager.registerPlainHandler`).
 Same-account isolation is the server's room routing (`rpc:<userId>:<method>`),
 so another account's daemon is unreachable by construction. The target daemon
 whitelists exactly those five methods, checks the request shape, caps text at
-64 KB and transcripts at 200 KB, allows 60 remote calls per minute in total,
+64 KB, transcripts at 200 KB and `turn.answer` at 64 KB, allows 60 read
+(list / read / peers) and 30 write (send / message) calls per minute in total,
+abandons any call at 25 s with a `timeout` code (a send refuses to POST after
+18 s, so an ambiguous failure never turns into a late duplicate; the CLI
+retries once with the same `localId`, which the server deduplicates),
 writes one audit line per call to its daemon log
 (`[REMOTE SESSION OPS] <method> from machine=… host=… cli=… → ok|<code>`), and
 refuses everything with `remoteSessionOps: "off"` in its `~/.happy/settings.json`.

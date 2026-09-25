@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+    capRemoteText,
     capRemoteTranscript,
+    sanitizeAuditValue,
     compareVersions,
     formatRemoteAuditLine,
     guardRemoteSessionOpsRequest,
@@ -97,5 +99,33 @@ describe('capRemoteTranscript / audit / versions', () => {
         expect(supportsRemoteSessionOps('0.2.155')).toBe(false)
         expect(supportsRemoteSessionOps('0.2.157')).toBe(true)
         expect(supportsRemoteSessionOps(null)).toBeNull()
+    })
+})
+
+describe('review follow-up (B-506 security review)', () => {
+    it('audit values cannot inject a second line or control characters, and are bounded', () => {
+        const line = formatRemoteAuditLine({ method: 'sessions.read', from: { machineId: 'm\n[REMOTE SESSION OPS] forged', host: 'h\u0007ost\ttab', cli: 'x'.repeat(100), sessionId: 's\r1' }, sessionId: 't', outcome: 'ok', durationMs: 1 })
+        expect(line.split('\n')).toHaveLength(1)
+        expect(line).toContain('machine=m?[REMOTE SESSION OPS] forged host=h?ost?tab cli=' + 'x'.repeat(32) + ' session=s?1')
+        expect(sanitizeAuditValue(undefined)).toBe('?')
+    })
+
+    it('sessions.send: sentFrom outside the whitelist is dropped, localId is validated and passed through', () => {
+        const ok = guardRemoteSessionOpsRequest('sessions.send', { v: 1, from, args: { sessionId: 's1', text: 'x', sentFrom: 'web', localId: 'remote-send-1' } }, { enabled: true })
+        expect(ok.ok && ok.request.args).toEqual({ sessionId: 's1', text: 'x', localId: 'remote-send-1' })
+        expect(guardRemoteSessionOpsRequest('sessions.send', { v: 1, from, args: { sessionId: 's1', text: 'x', localId: 'bad id!' } }, { enabled: true })).toMatchObject({ ok: false, error: { code: 'bad_request' } })
+        const auto = guardRemoteSessionOpsRequest('sessions.send', { v: 1, from, args: { sessionId: 's1', text: 'x', sentFrom: 'automation' } }, { enabled: true })
+        expect(auto.ok && auto.request.args.sentFrom).toBe('automation')
+    })
+
+    it('sessions.message: the sender machine is always the caller host, never a value the sender chose', () => {
+        const out = guardRemoteSessionOpsRequest('sessions.message', { v: 1, from, args: { to: 's1', body: 'x', from: { sessionId: 'sA', machine: 'spoofed-host' } } }, { enabled: true })
+        expect(out.ok && out.request.args.from.machine).toBe('mac')
+    })
+
+    it('capRemoteText keeps the head for titles and the tail for answers', () => {
+        expect(capRemoteText('abcdef', 4, 'head')).toBe('a…'.slice(0, 1) + '…')
+        expect(capRemoteText('abcdef', 5, 'tail')).toBe('…' + 'ef')
+        expect(capRemoteText('short', 100)).toBe('short')
     })
 })

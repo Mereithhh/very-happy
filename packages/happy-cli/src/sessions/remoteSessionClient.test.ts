@@ -8,6 +8,7 @@ import {
     readRemoteTranscript,
     RemoteSessionOpsError,
     resolveExplicitMachine,
+    sendRemoteMessage,
     sendRemotePeerMessage,
     waitForRemoteTurnEnd,
     withDefaults,
@@ -195,5 +196,58 @@ describe('fillForeignAccountRows (sessions list --all)', () => {
         const out = await fillForeignAccountRows([row('a', true)], deps(fleet({}).transport, { openTransport, listMachines: vi.fn() }))
         expect(out).toEqual({ rows: [row('a', true)], asked: [], skipped: [] })
         expect(openTransport).not.toHaveBeenCalled()
+    })
+})
+
+describe('review follow-up: idempotent send retry, slower remote --wait', () => {
+    it('sendRemoteMessage retries exactly once with the SAME localId after an ambiguous transport failure', async () => {
+        let n = 0
+        const seen: string[] = []
+        const transport: RemoteTransport = {
+            call: async (method, paramsJson) => {
+                const [, name] = method.split(':')
+                if (name === 'sessions.list') return { ok: true, result: JSON.stringify({ ok: true, result: { host: 'dev-sg', machineId: 'dev-sg', sessions: [{ id: 's1' }] } }) }
+                seen.push(JSON.parse(paramsJson).args.localId)
+                if (++n === 1) throw new Error('operation has timed out')
+                return { ok: true, result: JSON.stringify({ ok: true, result: { sessionId: 's1', status: 'live', delivered: true, resumed: false, stored: true } }) }
+            },
+            close: vi.fn(),
+        }
+        const out = await sendRemoteMessage('s1', 'hi', {}, deps(transport))
+        expect(out).toMatchObject({ delivered: true, machine: { id: 'dev-sg' } })
+        expect(seen).toHaveLength(2)
+        expect(seen[0]).toBe(seen[1])
+        expect(seen[0]).toMatch(/^remote-send-/)
+    })
+
+    it('does not retry a definite refusal (daemon code other than timeout, or "not available")', async () => {
+        let sends = 0
+        const { transport } = fleet({ 'dev-sg': {
+            'sessions.list': () => ({ ok: true, result: { host: 'dev-sg', machineId: 'dev-sg', sessions: [{ id: 's1' }] } }),
+            'sessions.send': () => { sends++; return { ok: false, error: { code: 'no_local_key', message: 'gone' } } },
+        } })
+        await expect(sendRemoteMessage('s1', 'hi', {}, deps(transport))).rejects.toMatchObject({ code: 'no_local_key' })
+        expect(sends).toBe(1)
+    })
+
+    it('retries once when the daemon reports timeout (nothing was posted)', async () => {
+        let sends = 0
+        const { transport } = fleet({ 'dev-sg': {
+            'sessions.list': () => ({ ok: true, result: { host: 'dev-sg', machineId: 'dev-sg', sessions: [{ id: 's1' }] } }),
+            'sessions.send': () => ++sends === 1 ? { ok: false, error: { code: 'timeout', message: 'not live in time' } } : { ok: true, result: { sessionId: 's1', status: 'live', delivered: true, resumed: true, stored: true } },
+        } })
+        await expect(sendRemoteMessage('s1', 'hi', { resume: true }, deps(transport))).resolves.toMatchObject({ delivered: true })
+        expect(sends).toBe(2)
+    })
+
+    it('waitForRemoteTurnEnd polls every 5 s by default', async () => {
+        let reads = 0
+        const { transport } = fleet({ 'dev-sg': {
+            'sessions.list': () => ({ ok: true, result: { host: 'dev-sg', machineId: 'dev-sg', sessions: [{ id: 's1' }] } }),
+            'sessions.read': () => ({ ok: true, result: { summary: { id: 's1', live: true, url: 'u' }, messageCount: 1, transcript: 't', machineId: 'dev-sg', host: 'dev-sg', turn: { ended: ++reads >= 2 } } }),
+        } })
+        const sleep = vi.fn(async () => undefined)
+        await waitForRemoteTurnEnd('s1', { timeoutMs: 60_000 }, deps(transport, { sleep }))
+        expect(sleep).toHaveBeenCalledWith(5_000)
     })
 })
