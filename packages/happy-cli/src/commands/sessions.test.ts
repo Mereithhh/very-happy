@@ -149,3 +149,20 @@ describe('parseSessionsArgs peers / message (B-497)', () => {
         expect(() => parseSessionsArgs(['peers', '--reply-to', 'm1'])).toThrow(/--reply-to only applies/)
     })
 })
+
+describe('parseSessionsArgs --machine (B-506)', () => {
+    it('parses --machine on list / read / peers / message', () => {
+        expect(parseSessionsArgs(['list', '--machine', 'm-1'])).toMatchObject({ action: 'list', machine: 'm-1' })
+        expect(parseSessionsArgs(['read', ID, '--machine', 'm-1', '--wait'])).toMatchObject({ action: 'read', sessionId: ID, machine: 'm-1', wait: true })
+        expect(parseSessionsArgs(['peers', '--machine', 'm-1', '--scope', 'machine'])).toMatchObject({ action: 'peers', machine: 'm-1', scope: 'machine' })
+        expect(parseSessionsArgs(['message', ID, 'hi', '--machine', 'm-1'])).toMatchObject({ action: 'message', machine: 'm-1', text: 'hi' })
+    })
+
+    it('rejects --machine where it cannot apply, a bad id, and the --all combination', () => {
+        expect(() => parseSessionsArgs(['stop', ID, '--machine', 'm-1'])).toThrow(/--machine only applies/)
+        expect(() => parseSessionsArgs(['approve', ID, 'r1', '--machine', 'm-1'])).toThrow(/--machine only applies/)
+        expect(() => parseSessionsArgs(['read', ID, '--machine'])).toThrow(/--machine requires a machine id/)
+        expect(() => parseSessionsArgs(['read', ID, '--machine', 'bad id'])).toThrow(/--machine requires a machine id/)
+        expect(() => parseSessionsArgs(['list', '--all', '--machine', 'm-1'])).toThrow(/cannot be combined with --all/)
+    })
+})

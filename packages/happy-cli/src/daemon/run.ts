@@ -32,6 +32,7 @@ import { decideRestart, recordRestartAttempt, DEFAULT_MAX_RESTARTS } from './res
 import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
 import { createPeerCoordinator } from './peerCoordinator';
+import { createRemoteSessionOpsHandlers } from './remoteSessionOps';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { refreshAgentHomes, agentHomeSpawnEnv, locateClaudeConversation, describeAgentHome } from '@/agentHome';
 import { existsSync, mkdtempSync, rmSync, statSync } from 'fs';
@@ -1711,6 +1712,10 @@ export async function startDaemon(): Promise<void> {
         .filter((sessionId): sessionId is string => typeof sessionId === 'string'),
       requestShutdown: () => requestShutdown('happy-app')
     });
+
+    // B-506: answer `sessions.*` from the account's other machines with this
+    // machine's keys (specs/2026-09-cross-machine-session-ops.md).
+    apiMachine.setRemoteSessionOpsHandlers(createRemoteSessionOpsHandlers(machineId));
 
     // B-276: daemon-context Claude auth preflight (spec 2026-09-claude-auth-preflight).
     const claudeAuthService = new ClaudeAuthService({

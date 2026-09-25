@@ -72,3 +72,12 @@ describe('parseSendArgs — B-492 --model', () => {
         expect(() => parseSendArgs(['-s', 's', '--model'])).toThrow(/--model requires a value/)
     })
 })
+
+describe('parseSendArgs — B-506 --machine', () => {
+    it('parses --machine and rejects a missing or malformed id', () => {
+        expect(parseSendArgs(['--session', 's1', '--prompt', 'x', '--machine', 'm-1'])).toMatchObject({ session: 's1', machine: 'm-1' })
+        expect(parseSendArgs(['--session', 's1', '--prompt', 'x']).machine).toBeUndefined()
+        expect(() => parseSendArgs(['--session', 's1', '--machine'])).toThrow(/--machine requires a machine id/)
+        expect(() => parseSendArgs(['--session', 's1', '--machine', 'no spaces'])).toThrow(/--machine requires a machine id/)
+    })
+})

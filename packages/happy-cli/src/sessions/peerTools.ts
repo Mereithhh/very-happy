@@ -22,6 +22,7 @@ import { sendUserMessage, sessionWebUrl } from '@/commands/sessionMessage'
 import { deliverToSession, type DeliveryResult } from '@/commands/sessionDelivery'
 import { CLI_PEER_SENDER_ID, formatSessionPeerMessage, SESSION_PEER_SENT_FROM, type PeerSender } from './peerMessage'
 import { isPeerInScope, PEER_SCOPES, resolveRepoIdentity, type PeerScope, type RepoIdentity } from './repoIdentity'
+import { listRemotePeers, sendRemotePeerMessage, type RemotePeerListing, type RemotePeerMessageResult } from './remoteSessionClient'
 
 export const SESSION_PEER_TOOL_NAMES = ['session_message', 'session_peers'] as const
 export type SessionPeerToolName = typeof SESSION_PEER_TOOL_NAMES[number]
@@ -30,19 +31,22 @@ export const SESSION_PEER_TOOL_SCHEMAS: Record<SessionPeerToolName, { descriptio
     session_message: {
         title: 'Message Another Session',
         readOnly: false,
-        description: 'Send a message to another agent session running on this machine (find ids with session_peers). It lands in that session\'s chat with your title, session id and cwd, and tells the peer how to reply to you. Use it to coordinate when you both edit the same files: say what you are changing and ask what they are changing. Returns as soon as the message is queued; the reply arrives later as a message from that session. Only sessions this machine\'s daemon runs can be reached; terminal-mirror sessions cannot receive messages.',
+        description: 'Send a message to another agent session (find ids with session_peers). It lands in that session\'s chat with your title, session id and cwd, and tells the peer how to reply to you. Use it to coordinate when you both edit the same files: say what you are changing and ask what they are changing. Returns as soon as the message is queued; the reply arrives later as a message from that session. Sessions on this machine are reached directly; a session spawned by another machine of this account is routed to that machine\'s daemon (it must be online). Terminal-mirror sessions cannot receive messages.',
         inputSchema: {
             to: z.string().min(1).max(128).describe('Target session id (from session_peers, or a peer\'s message header)'),
             body: z.string().min(1).max(16_000).describe('The message text'),
             replyTo: z.string().min(1).max(64).optional().describe('Id of the peer message you are answering (from its header), if any'),
+            machineId: z.string().min(1).max(128).optional().describe('Machine id the target session runs on, when known (skips the lookup across the account\'s machines)'),
         },
     },
     session_peers: {
         title: 'List Peer Sessions',
         readOnly: true,
-        description: 'List the other agent sessions running on this machine and the files each edited in the last 30 minutes. Default scope "repo": sessions in the same git repository, including its other worktrees (sameWorktree says whether they share your checkout). "cwd": the same directory only. "machine": every live session here.',
+        description: 'List the other agent sessions running on this machine and the files each edited in the last 30 minutes. Default scope "repo": sessions in the same git repository, including its other worktrees (sameWorktree says whether they share your checkout). "cwd": the same directory only. "machine": every live session here. With machineId, list the live sessions on that other machine of this account instead (scope "machine" unless you pass a cwd that exists there).',
         inputSchema: {
             scope: z.enum(['repo', 'cwd', 'machine']).optional().describe('repo (default) | cwd | machine'),
+            machineId: z.string().min(1).max(128).optional().describe('Another machine of this account (from the web\'s machine list) to list instead of this one'),
+            cwd: z.string().min(1).max(4096).optional().describe('With machineId: a directory on that machine to compute repo/cwd scope from'),
         },
     },
 }
@@ -67,6 +71,15 @@ export interface PeerToolContext {
     /** Send times per target session (the executor keeps one per session process). */
     sentTo?: Map<string, number[]>
     now?: () => number
+    /**
+     * B-506: deliver to a session another machine spawned (no local key).
+     * Default = locate the machine and proxy through its daemon; `null`
+     * disables the hop (the daemon answering a proxied call must not bounce
+     * it onward).
+     */
+    remoteMessage?: ((args: { to: string; body: string; replyTo?: string; from: PeerSender; machineId?: string }) => Promise<RemotePeerMessageResult>) | null
+    /** B-506: list peers on another machine (default = proxy through its daemon). */
+    remotePeers?: (machineId: string, options: { scope?: PeerScope; cwd?: string }) => Promise<RemotePeerListing>
 }
 
 export interface PeerListing {
@@ -105,6 +118,8 @@ export interface SendPeerMessageResult {
     to: string
     url: string
     error?: string
+    /** B-506: set when the target lives on another machine and its daemon delivered for us. */
+    machine?: { id: string; host: string }
 }
 
 function defaultDeliver(to: string, persisted: PersistedSession, text: string, localId: string): Promise<DeliveryResult> {
@@ -128,25 +143,35 @@ export function checkPeerSendBudget(sentTo: Map<string, number[]>, to: string, n
  * machine, not a mirror), format the message and push it into the target's
  * queue. Throws with a precise reason on every refusal.
  */
-export async function sendPeerMessage(context: PeerToolContext, args: { to: string; body: string; replyTo?: string }): Promise<SendPeerMessageResult> {
+export async function sendPeerMessage(context: PeerToolContext, args: { to: string; body: string; replyTo?: string; machineId?: string }): Promise<SendPeerMessageResult> {
     const self = context.self()
     if (!isValidSessionId(args.to)) throw new Error('Invalid session id')
     if (args.to === self.sessionId) throw new Error('That is this session; message a peer instead')
     const body = typeof args.body === 'string' ? args.body.trim() : ''
     if (!body) throw new Error('body must be non-empty')
+    const now = (context.now ?? Date.now)()
     const persisted = (context.readPersisted ?? readPersistedSessions)()[args.to]
-    if (!persisted) {
-        throw new Error(`Session ${args.to} is not on this machine (no local key); messaging sessions on other machines is not supported yet`)
+    if (!persisted || args.machineId) {
+        // B-506: not ours — hand it to the machine that spawned it. The
+        // reply-loop budget still counts here: the loop is the sender's.
+        const remote = context.remoteMessage === undefined ? sendRemotePeerMessage : context.remoteMessage
+        if (remote === null) {
+            throw new Error(`Session ${args.to} is not on this machine (no local key)`)
+        }
+        if (context.sentTo) {
+            const budget = checkPeerSendBudget(context.sentTo, args.to, now)
+            if (!budget.ok) throw new Error(replyLoopRefusal(budget.count, args.to))
+        }
+        const result = await remote({ to: args.to, body, replyTo: args.replyTo, from: self, machineId: args.machineId })
+        context.sentTo?.get(args.to)?.push(now)
+        return result
     }
     const live = (await (context.listPeers ?? listDaemonPeers)()).find((session) => session.sessionId === args.to)
     if (!live) throw new Error(`Session ${args.to} is not running on this machine; nothing would read the message`)
     if (live.kind === 'mirror') throw new Error(`Session ${args.to} is a terminal mirror (a person typing claude in a terminal); it cannot receive messages`)
-    const now = (context.now ?? Date.now)()
     if (context.sentTo) {
         const budget = checkPeerSendBudget(context.sentTo, args.to, now)
-        if (!budget.ok) {
-            throw new Error(`Refused: this session already sent ${budget.count} messages to ${args.to} in the last ${Math.round(PEER_MESSAGE_RATE_WINDOW_MS / 60_000)} minutes. That is a reply loop, not coordination — STOP replying to that session now; do not send acknowledgements or thanks. Continue your own work.`)
-        }
+        if (!budget.ok) throw new Error(replyLoopRefusal(budget.count, args.to))
     }
     const messageId = randomUUID().slice(0, 8)
     const text = formatSessionPeerMessage({ id: messageId, from: self, body, replyTo: args.replyTo })
@@ -163,12 +188,26 @@ export async function sendPeerMessage(context: PeerToolContext, args: { to: stri
     }
 }
 
+function replyLoopRefusal(count: number, to: string): string {
+    return `Refused: this session already sent ${count} messages to ${to} in the last ${Math.round(PEER_MESSAGE_RATE_WINDOW_MS / 60_000)} minutes. That is a reply loop, not coordination — STOP replying to that session now; do not send acknowledgements or thanks. Continue your own work.`
+}
+
 export async function executeSessionPeerTool(name: SessionPeerToolName, args: any, context: PeerToolContext): Promise<unknown> {
     switch (name) {
-        case 'session_message': return sendPeerMessage(context, { to: String(args?.to ?? ''), body: String(args?.body ?? ''), ...(args?.replyTo ? { replyTo: String(args.replyTo) } : {}) })
+        case 'session_message': return sendPeerMessage(context, {
+            to: String(args?.to ?? ''), body: String(args?.body ?? ''),
+            ...(args?.replyTo ? { replyTo: String(args.replyTo) } : {}),
+            ...(args?.machineId ? { machineId: String(args.machineId) } : {}),
+        })
         case 'session_peers': {
             const scope = args?.scope
             if (scope !== undefined && !PEER_SCOPES.includes(scope)) throw new Error(`scope must be one of ${PEER_SCOPES.join(', ')}`)
+            if (args?.machineId) {
+                // B-506: another machine's live sessions, computed there.
+                return (context.remotePeers ?? listRemotePeers)(String(args.machineId), {
+                    ...(scope !== undefined ? { scope } : {}), ...(typeof args.cwd === 'string' && args.cwd ? { cwd: args.cwd } : {}),
+                })
+            }
             return listPeerSessions(context, scope ?? 'repo')
         }
     }

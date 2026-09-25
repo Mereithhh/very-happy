@@ -30,6 +30,8 @@ export interface PeerSender {
     title?: string
     flavor?: string
     cwd?: string
+    /** B-506: hostname of the machine the sender runs on, when it is not the recipient's machine. */
+    machine?: string
 }
 
 export interface SessionPeerMessage {
@@ -56,6 +58,14 @@ export interface EditConflictNotice {
 export type ParsedPeerMessage = SessionPeerMessage | EditConflictNotice
 
 const MESSAGE_FOOTER = 'This message comes from another agent session on this machine, not from the user.'
+/** Shared prefix of the local and the cross-machine (B-506) footer — what readers strip on. */
+export const MESSAGE_FOOTER_PREFIX = 'This message comes from another agent session'
+
+function messageFooterFor(sender: PeerSender): string {
+    return sender.machine
+        ? `${MESSAGE_FOOTER_PREFIX} on machine ${sanitizeHeaderValue(sender.machine, 128)}, not from the user.`
+        : MESSAGE_FOOTER
+}
 
 /** Percent-encode the characters that would break the one-line header grammar; collapse whitespace. */
 export function sanitizeHeaderValue(value: string | undefined, max = 200): string {
@@ -73,6 +83,7 @@ function senderFields(sender: PeerSender): string {
     const parts: string[] = []
     if (sender.flavor) parts.push(`agent ${sanitizeHeaderValue(sender.flavor, 32)}`)
     if (sender.cwd) parts.push(`cwd ${sanitizeHeaderValue(sender.cwd, 400)}`)
+    if (sender.machine) parts.push(`machine ${sanitizeHeaderValue(sender.machine, 128)}`)
     return parts.map((part) => `; ${part}`).join('')
 }
 
@@ -82,9 +93,11 @@ function quotedTitle(sender: PeerSender): string {
 
 export function formatSessionPeerMessage(input: { id: string; from: PeerSender; body: string; replyTo?: string }): string {
     const header = `[Very Happy session message ${input.id} from ${quotedTitle(input.from)} ${input.from.sessionId}${senderFields(input.from)}${input.replyTo ? `; re ${sanitizeHeaderValue(input.replyTo, 64)}` : ''}]`
+    const base = messageFooterFor(input.from)
+    const routed = input.from.machine ? ' (it is routed to that machine for you)' : ''
     const footer = input.from.sessionId === CLI_PEER_SENDER_ID
-        ? `${MESSAGE_FOOTER} It was sent from the command line (\`very-happy sessions message\`), so there is no session to reply to; act on it here.`
-        : `${MESSAGE_FOOTER} Reply with session_message(to: "${input.from.sessionId}") — or \`very-happy sessions message ${input.from.sessionId} "<text>"\` — only when you have something to add (a question, a decision, a heads-up). Do not reply just to acknowledge or thank; the exchange ends when nothing is left to coordinate.`
+        ? `${base} It was sent from the command line (\`very-happy sessions message\`), so there is no session to reply to; act on it here.`
+        : `${base} Reply with session_message(to: "${input.from.sessionId}")${routed} — or \`very-happy sessions message ${input.from.sessionId} "<text>"\` — only when you have something to add (a question, a decision, a heads-up). Do not reply just to acknowledge or thank; the exchange ends when nothing is left to coordinate.`
     return `${header}\n${input.body.trim()}\n\n${footer}`
 }
 
@@ -113,7 +126,7 @@ export function formatEditConflictNotice(input: { id: string; path: string; path
 const MESSAGE_HEADER = /^\[Very Happy session message (\S+) from "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/
 const CONFLICT_HEADER = /^\[Very Happy edit conflict (\S+); file ([^;\]]+)(?:; more \d+)?; peer "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/
 
-const FIELD_KEYS = new Set(['agent', 'cwd', 're', 'peer', 'more'])
+const FIELD_KEYS = new Set(['agent', 'cwd', 're', 'peer', 'more', 'machine'])
 
 function parseFields(tail: string): Record<string, string> {
     const fields: Record<string, string> = Object.create(null)
@@ -153,12 +166,12 @@ export function parsePeerMessage(text: string): ParsedPeerMessage | null {
     if (message) {
         const fields = parseFields(message[4])
         let body = rest
-        const footerAt = body.lastIndexOf(`\n\n${MESSAGE_FOOTER}`)
+        const footerAt = body.lastIndexOf(`\n\n${MESSAGE_FOOTER_PREFIX}`)
         if (footerAt !== -1) body = body.slice(0, footerAt)
         return {
             kind: 'message',
             id: message[1],
-            from: { sessionId: message[3], title: decodeHeaderValue(message[2]) || undefined, flavor: fields.agent, cwd: fields.cwd },
+            from: { sessionId: message[3], title: decodeHeaderValue(message[2]) || undefined, flavor: fields.agent, cwd: fields.cwd, ...(fields.machine ? { machine: fields.machine } : {}) },
             ...(fields.re ? { replyTo: fields.re } : {}),
             body: body.trim(),
         }

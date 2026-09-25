@@ -61,3 +61,19 @@ describe('session peer message presentation (B-497)', () => {
         expect(formatAgo(7_200_000)).toBe('2h');
     });
 });
+
+describe('cross-machine session peer message (B-506)', () => {
+    it('reads the machine field and strips the cross-machine footer variant', () => {
+        const remoteFooter = `This message comes from another agent session on machine dev-sg, not from the user. Reply with session_message(to: "${from}") (it is routed to that machine for you) — only when you have something to add.`;
+        const text = `[Very Happy session message m9 from "Remote fix" ${from}; agent codex; cwd /home/ubuntu/repo; machine dev-sg]\nI am on the other box.\n\n${remoteFooter}`;
+        expect(presentSessionPeerMessage({ text, meta: { sentFrom: 'session-peer' } })).toEqual({
+            kind: 'message', id: 'm9', fromSessionId: from, fromTitle: 'Remote fix', agent: 'codex', cwd: '/home/ubuntu/repo', machine: 'dev-sg',
+            body: 'I am on the other box.', raw: text,
+        });
+    });
+
+    it('leaves machine absent for a same-machine message', () => {
+        const text = `[Very Happy session message m1 from "Fix login" ${from}; agent claude; cwd /repo]\nhello\n\n${footer}`;
+        expect(presentSessionPeerMessage({ text, meta: { sentFrom: 'session-peer' } })).not.toHaveProperty('machine');
+    });
+});

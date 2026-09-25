@@ -15,6 +15,15 @@ import { Socket } from 'socket.io-client';
 
 export class RpcHandlerManager {
     private handlers: RpcHandlerMap = new Map();
+    /**
+     * B-506: methods whose params/result are PLAINTEXT JSON strings instead of
+     * machine-key ciphertext. The caller is a CLI on another machine of the
+     * same account, which holds neither this machine's key nor the account
+     * content key; the trusted relay sees the payload either way (this fork
+     * is server-trusted, not e2e). Only `registerPlainHandler` puts a method
+     * here; everything else keeps decrypting.
+     */
+    private plainMethods = new Set<string>();
     private readonly scopePrefix: string;
     private readonly encryptionKey: Uint8Array;
     private readonly encryptionVariant: 'legacy' | 'dataKey';
@@ -48,8 +57,27 @@ export class RpcHandlerManager {
     unregisterHandler(method: string): void {
         const prefixedMethod = this.getPrefixedMethod(method);
         this.handlers.delete(prefixedMethod);
+        this.plainMethods.delete(prefixedMethod);
 
         for (const socket of this.sockets) socket.emit('rpc-unregister', { method: prefixedMethod });
+    }
+
+    /**
+     * B-506: register a method whose request is a plaintext JSON string and
+     * whose response is returned as a plaintext JSON string (see
+     * `plainMethods`). The handler receives the parsed params; a throw is
+     * answered with `{ error }` like the encrypted path.
+     */
+    registerPlainHandler<TRequest = any, TResponse = any>(
+        method: string,
+        handler: RpcHandler<TRequest, TResponse>
+    ): void {
+        this.plainMethods.add(this.getPrefixedMethod(method));
+        this.registerHandler(method, handler);
+    }
+
+    isPlainMethod(prefixedMethod: string): boolean {
+        return this.plainMethods.has(prefixedMethod);
     }
 
     /**
@@ -60,6 +88,9 @@ export class RpcHandlerManager {
     async handleRequest(
         request: RpcRequest,
     ): Promise<any> {
+        if (this.plainMethods.has(request.method)) {
+            return this.handlePlainRequest(request);
+        }
         try {
             const handler = this.handlers.get(request.method);
 
@@ -88,6 +119,26 @@ export class RpcHandlerManager {
                 error: error instanceof Error ? error.message : 'Unknown error'
             };
             return encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, errorResponse));
+        }
+    }
+
+    /** Plaintext variant of handleRequest (B-506). Never throws; never encrypts. */
+    private async handlePlainRequest(request: RpcRequest): Promise<string> {
+        const handler = this.handlers.get(request.method);
+        if (!handler) return JSON.stringify({ error: 'Method not found' });
+        let params: unknown;
+        try {
+            params = typeof request.params === 'string' && request.params.length > 0 ? JSON.parse(request.params) : {};
+        } catch {
+            return JSON.stringify({ error: 'Invalid JSON params' });
+        }
+        try {
+            this.logger('[RPC] Calling plain handler', { method: request.method });
+            const result = await handler(params);
+            return JSON.stringify(result === undefined ? null : result);
+        } catch (error) {
+            this.logger('[RPC] [ERROR] Error handling plain request', { error });
+            return JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' });
         }
     }
 

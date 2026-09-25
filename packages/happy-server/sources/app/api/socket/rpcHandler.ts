@@ -99,6 +99,13 @@ const RPC_METRIC_METHODS = new Set([
     'resume-happy-session',
     'ripgrep',
     'set-terminal-title',
+    // B-506: cross-machine session ops, called by a CLI on another machine of
+    // the same account and answered by the owning daemon in plaintext.
+    'sessions.list',
+    'sessions.read',
+    'sessions.send',
+    'sessions.peers',
+    'sessions.message',
     'spawn-happy-session',
     'stop-daemon',
     'stop-session',

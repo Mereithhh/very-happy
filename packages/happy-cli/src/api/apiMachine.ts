@@ -405,6 +405,18 @@ export class ApiMachineClient {
         });
     }
 
+    /**
+     * B-506: the five `sessions.*` methods a CLI on ANOTHER machine of this
+     * account calls to read / message sessions this daemon spawned. Plaintext
+     * on purpose (no shared key with the caller); see
+     * `api/rpc/RpcHandlerManager.ts` `registerPlainHandler`.
+     */
+    setRemoteSessionOpsHandlers(handlers: Record<string, (params: unknown) => Promise<unknown>>) {
+        for (const [method, handler] of Object.entries(handlers)) {
+            this.rpcHandlerManager.registerPlainHandler(method, handler);
+        }
+    }
+
     setRPCHandlers({
         spawnSession,
         resumeSession,

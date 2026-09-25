@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-cross-machine-session-ops',
+    cliVersion: '0.2.157',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25n.title',
+    summaryKey: 'changelog.releases.sep25n.summary',
+    itemKeys: ['changelog.releases.sep25n.reach', 'changelog.releases.sep25n.list', 'changelog.releases.sep25n.tools', 'changelog.releases.sep25n.keys', 'changelog.releases.sep25n.guard'],
+  },
+  {
     id: '2026-09-25-infra-exit-never-archives',
     cliVersion: '0.2.156',
     date: '2026-09-25',

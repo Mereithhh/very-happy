@@ -19,12 +19,14 @@ const {
     const state = {
         existingMachine: null as any,
         created: [] as any[],
+        machines: [] as any[],
         seq: 0,
     };
 
     const resetState = () => {
         state.existingMachine = null;
         state.created = [];
+        state.machines = [];
         state.seq = 0;
     };
 
@@ -53,7 +55,7 @@ const {
 
     const dbMock = {
         $queryRawUnsafe: vi.fn(async (_sql: string, accountId: string) => [{ id: accountId }]),
-        machine: { findFirst: machineFindFirst, create: machineCreate, count: vi.fn(async () => state.created.length) },
+        machine: { findFirst: machineFindFirst, create: machineCreate, count: vi.fn(async () => state.created.length), findMany: vi.fn(async () => state.machines) },
     };
     const allocateUserSeqMock = vi.fn(async () => ++state.seq);
 
@@ -186,5 +188,27 @@ describe("machinesRoutes — POST /v1/machines creation emits", () => {
         expect(newMachine).toBeDefined();
         expect(newMachine.payload.body.dataEncryptionKey).toBeNull();
         expect(ApiUpdateContainerSchema.safeParse(newMachine.payload).success).toBe(true);
+    });
+});
+
+describe("machinesRoutes — GET /v1/machines (B-506 plaintext CLI version)", () => {
+    let app: Fastify;
+    beforeEach(() => { resetState(); });
+    afterEach(async () => { if (app) await app.close(); });
+
+    it("returns lastHappyClient / lastHappyClientAt so a CLI can skip daemons that predate sessions.* RPCs", async () => {
+        const now = new Date("2026-09-25T10:00:00.000Z");
+        state.machines = [
+            { id: "m-new", accountId: "user-1", metadata: "enc", metadataVersion: 1, daemonState: null, daemonStateVersion: 0, dataEncryptionKey: null, seq: 1, active: true, lastActiveAt: now, createdAt: now, updatedAt: now, lastHappyClient: "cli-daemon/0.2.157", lastHappyClientAt: now },
+            { id: "m-old", accountId: "user-1", metadata: "enc", metadataVersion: 1, daemonState: null, daemonStateVersion: 0, dataEncryptionKey: null, seq: 1, active: false, lastActiveAt: now, createdAt: now, updatedAt: now, lastHappyClient: null, lastHappyClientAt: null },
+        ];
+        app = await createApp();
+        const response = await app.inject({ method: "GET", url: "/v1/machines", headers: { "x-user-id": "user-1" } });
+        expect(response.statusCode).toBe(200);
+        const rows = response.json();
+        expect(rows.map((r: any) => [r.id, r.active, r.lastHappyClient, r.lastHappyClientAt])).toEqual([
+            ["m-new", true, "cli-daemon/0.2.157", now.getTime()],
+            ["m-old", false, null, null],
+        ]);
     });
 });

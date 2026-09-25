@@ -72,12 +72,14 @@ describe('sendPeerMessage', () => {
         })
     })
 
-    it('refuses self, unknown, foreign, dead and mirror targets before sending', async () => {
-        const ctx = context()
+    it('refuses self, unknown, foreign (hop disabled), dead and mirror targets before sending', async () => {
+        // B-506: a foreign target normally goes to the owning machine; with the hop
+        // disabled (what a daemon answering a proxied call does) it is refused here.
+        const ctx = context({ remoteMessage: null })
         await expect(sendPeerMessage(ctx, { to: 'me', body: 'x' })).rejects.toThrow(/this session/)
         await expect(sendPeerMessage(ctx, { to: 'bad id', body: 'x' })).rejects.toThrow(/Invalid session id/)
         await expect(sendPeerMessage(ctx, { to: 'sib', body: '  ' })).rejects.toThrow(/non-empty/)
-        await expect(sendPeerMessage(ctx, { to: 'other', body: 'x' })).rejects.toThrow(/not on this machine/)
+        await expect(sendPeerMessage(ctx, { to: 'other', body: 'x' })).rejects.toThrow(/not on this machine \(no local key\)/)
         await expect(sendPeerMessage(ctx, { to: 'dead', body: 'x' })).rejects.toThrow(/not running on this machine/)
         await expect(sendPeerMessage(ctx, { to: 'mirror', body: 'x' })).rejects.toThrow(/terminal mirror/)
         expect(ctx.deliver).not.toHaveBeenCalled()
@@ -146,5 +148,37 @@ describe('cliPeerSelf', () => {
         const cli = cliPeerSelf({}, '/here', store)
         expect(cli).toMatchObject({ sessionId: 'cli', flavor: 'cli', cwd: '/here' })
         expect(cli.title).toMatch(/^cli .+@.+/)
+    })
+})
+
+describe('sendPeerMessage across machines (B-506)', () => {
+    it('hands a session without a local key to the remote route with the sender identity, and counts it in the budget', async () => {
+        const remoteMessage = vi.fn(async (args: any) => ({ delivered: true, stored: true, status: 'live' as const, messageId: 'r1', to: args.to, url: 'u', machine: { id: 'dev-sg', host: 'dev-sg' } }))
+        const ctx = context({ remoteMessage })
+        const result = await sendPeerMessage(ctx, { to: 'other', body: ' remote hi ', replyTo: 'm0' })
+        expect(result).toMatchObject({ delivered: true, to: 'other', machine: { host: 'dev-sg' } })
+        expect(remoteMessage).toHaveBeenCalledWith({ to: 'other', body: 'remote hi', replyTo: 'm0', from: { sessionId: 'me', title: 'Me', flavor: 'claude', cwd: '/repo' }, machineId: undefined })
+        expect(ctx.deliver).not.toHaveBeenCalled()
+        expect(ctx.sentTo!.get('other')).toEqual([1_000_000])
+    })
+
+    it('an explicit machineId forces the remote route even when a local key exists', async () => {
+        const remoteMessage = vi.fn(async (args: any) => ({ delivered: true, stored: true, status: 'live' as const, messageId: 'r1', to: args.to, url: 'u', machine: { id: 'x', host: 'x' } }))
+        const ctx = context({ remoteMessage })
+        await sendPeerMessage(ctx, { to: 'sib', body: 'x', machineId: 'x' })
+        expect(remoteMessage).toHaveBeenCalledWith(expect.objectContaining({ to: 'sib', machineId: 'x' }))
+        expect(ctx.deliver).not.toHaveBeenCalled()
+    })
+
+    it('with the hop disabled (a daemon answering a proxied call) a foreign target is refused instead of bounced', async () => {
+        const ctx = context({ remoteMessage: null })
+        await expect(sendPeerMessage(ctx, { to: 'other', body: 'x' })).rejects.toThrow(/not on this machine \(no local key\)/)
+    })
+
+    it('session_peers with machineId lists through the remote route', async () => {
+        const remotePeers = vi.fn(async (machineId: string, options: any) => ({ self: { sessionId: 'cli', cwd: '/', repoRoot: null, scope: 'machine' as const }, scope: 'machine' as const, peers: [], machineId, host: 'dev-sg', options }))
+        const ctx = context({ remotePeers })
+        expect(await executeSessionPeerTool('session_peers', { machineId: 'dev-sg', scope: 'cwd', cwd: '/home/u' }, ctx)).toMatchObject({ host: 'dev-sg', options: { scope: 'cwd', cwd: '/home/u' } })
+        expect(remotePeers).toHaveBeenCalledWith('dev-sg', { scope: 'cwd', cwd: '/home/u' })
     })
 })

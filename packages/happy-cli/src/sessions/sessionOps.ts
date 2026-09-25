@@ -185,6 +185,16 @@ export interface AccountSessionSummary extends SessionSummary {
      * machineId / pending are absent because they are unreadable, not empty.
      */
     decryptable: boolean
+    /**
+     * B-506: the row's content is available to the caller — either this
+     * machine decrypted it (`decryptable`) or the owning machine's daemon
+     * answered for it (`via` / `machine` set). False = bare server columns only.
+     */
+    readable: boolean
+    /** B-506: machine id whose daemon supplied the decrypted fields (absent when local). */
+    via?: string
+    /** B-506: the owning machine as it reported itself, for proxied rows. */
+    machine?: { id: string; host: string }
     /** Server-side `active` flag (the wrapper deactivates on exit). */
     active: boolean
     archived: boolean
@@ -217,6 +227,7 @@ export function summarizeAccountSession(
         live: liveIds.has(row.id),
         url: sessionWebUrl(row.id),
         decryptable: false,
+        readable: false,
         active: row.active === true,
         archived: typeof row.archivedAt === 'number',
         ...(typeof row.activeAt === 'number' ? { activeAt: row.activeAt } : {}),
@@ -244,6 +255,7 @@ export function summarizeAccountSession(
     return {
         ...base,
         decryptable: true,
+        readable: true,
         ...(meta.summary?.text ? { title: meta.summary.text } : {}),
         ...(meta.path ? { cwd: meta.path } : {}),
         ...(meta.flavor ? { flavor: meta.flavor } : {}),
