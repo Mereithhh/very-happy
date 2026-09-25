@@ -8,6 +8,7 @@ export * from './releaseProtocol';
 export * from './connectionDiagnostics';
 
 export * from "./teams";
+export * from "./automations";
 
 export * from './builtinTodos';
 export * from './builtinTodoSkill';
