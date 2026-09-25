@@ -131,3 +131,10 @@ Server 状态正确性不依赖控制事件送达；daemon 资源收敛不依赖
 
 - 生产同账号真实执行归档、普通 reload、等待至少两个 heartbeat/batch 周期后确认不复活。
 - 从“已归档”视图恢复同一会话，确认只出现一个活动行且消息历史不丢失。
+
+## 附录 B-505（2026-09-25）：基础设施退出 ≠ 归档
+
+- `POST /v1/sessions/:id/archive` 自 B-265 起写 server-owned `archivedAt` 并对 session/machine room 发 `session-archive`（wrapper 收到即自退）。它只表达**用户意图**（网页 Archive、`killSession` RPC、镜像 pane 回到 shell）或崩溃。
+- 新增 `POST /v1/sessions/:id/deactivate`：`active=false, lastActiveAt=now`，不写 `archivedAt`、不发 `session-archive`、不发 `update-session`，只发 activity ephemeral；对已归档行幂等（不 unarchive）。这是 wrapper 在 SIGTERM/SIGINT（daemon stop/升级/守护重启/关机/Ctrl-C）退出时对 socket `session-end` 的 HTTP 兜底——两者语义一致：和断网一样「离线、可恢复」。
+- 兼容矩阵：新 CLI × 旧 server → `/deactivate` 404，CLI 视为 no-op（`session-end` 已把 `active` 置 false）；旧 CLI × 新 server → 旧 wrapper 的 SIGTERM 仍打 `/archive`（事故行为），因此 daemon 主机的守护单元**不得**向 wrapper 转发信号（dev-sg `KillMode=process`）。
+- CLI 侧 `claude/sessionExitLifecycle.ts`：退出意图 `archive|offline` 在 cleanup 入口一次决定（`SessionExitGate`），server 的 `session-archive` 回声或 SDK 子进程的 teardown 噪音不能把 `offline` 升级成 `archive`。

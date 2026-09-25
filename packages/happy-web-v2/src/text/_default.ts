@@ -2017,6 +2017,13 @@ export const en = {
                 recheck: 'If the server reports the feature as off, the page re-checks every five minutes instead of giving up for good, so a switch flipped during a deploy no longer hides Automations until you reload.',
                 teams: 'Team groups in the sidebar load with the first request after opening the app instead of the first 15-second refresh.',
             },
+            sep25m: {
+                title: 'A daemon restart or upgrade never archives your sessions',
+                summary: 'When a session process is stopped by the machine rather than by you — a daemon stop or upgrade, a supervisor restart, a shutdown — the session now goes offline and stays resumable. Only Archive, kill or a crash archives. Needs the CLI update; the relay change is live now.',
+                offline: 'A session wrapper ending on SIGTERM/SIGINT marks the session offline (`active=false`) and never writes the archive tombstone; the web shows it offline with Restore, exactly like a dropped connection. Archive from the web, the kill command and crashes still archive.',
+                systemd: 'Daemons run by a systemd user unit (dev-sg) now upgrade with `systemctl --user restart` and hand automatic updates back to the unit (exit 75) instead of replacing themselves; with the shipped unit (`KillMode=process`) running sessions, their turns and tmux terminals survive the restart and are re-adopted. `very-happy daemon start` refuses to take over a unit-owned daemon and prints the restart command.',
+                list: '`very-happy daemon list` shows `turnActive` for every session on the machine and sums it up in one line, so you can see what is mid-turn before a restart.',
+            },
             sep25k: {
                 title: 'Sessions on one machine can talk to each other',
                 summary: 'Two agents editing the same repository no longer work blind. Every managed session (Claude, Codex, pi) gets `session_peers` and `session_message`; the daemon warns both sides when they touch the same file. Needs the CLI update; nothing is locked or blocked.',

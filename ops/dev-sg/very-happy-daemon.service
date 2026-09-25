@@ -1,18 +1,38 @@
 # systemd USER unit for the very-happy daemon on dev-sg (Ubuntu 24.04 x86_64,
 # user `ubuntu`, linger enabled). Installed at
-# ~/.config/systemd/user/very-happy-daemon.service — copy of what runs there
-# (verified 2026-09-25). See ops/dev-sg/README.md.
+# ~/.config/systemd/user/very-happy-daemon.service by
+# ops/dev-sg/install-systemd-unit.sh. See ops/dev-sg/README.md.
+#
+# B-505 (2026-09-25): the unit must never take session wrappers down with the
+# daemon. Wrappers, their SDK children, MCP servers and tmux live in this
+# cgroup; with the default KillMode=control-group every `daemon stop` /
+# `systemctl stop|restart` SIGTERMed all of them (sessions mid-turn ended and,
+# before the CLI fix, got archived). KillMode=process signals the main
+# process only; the next daemon re-adopts the survivors.
 [Unit]
 Description=very-happy machine daemon
 After=network-online.target
+# A crash loop is bounded here (RestartSec is short so a handover is quick).
+StartLimitIntervalSec=300
+StartLimitBurst=5
 [Service]
 Type=simple
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# Tells the daemon it is unit-owned: an auto-update handover exits 75 and lets
+# this unit restart it instead of spawning an unsupervised replacement.
+Environment=HAPPY_DAEMON_SUPERVISOR=systemd
 EnvironmentFile=-%h/.config/very-happy/daemon.env
 WorkingDirectory=%h
-ExecStart=/usr/bin/very-happy daemon start-sync
+# Run node with the quiet flags so the bin shim imports the CLI in-process
+# instead of re-exec'ing a child: the main PID must be the daemon itself for
+# KillMode=process to reach it.
+ExecStart=/usr/bin/node --no-warnings --no-deprecation /usr/bin/very-happy daemon start-sync
+KillMode=process
+# Non-zero exits restart: 1 = crash (B-477), 75 = handover (B-505).
+# `very-happy daemon stop` exits 0 and stays stopped; `systemctl --user stop`
+# is never restarted either.
 Restart=on-failure
-RestartSec=30
+RestartSec=3
 StandardOutput=append:%h/.local/state/happy/daemon-systemd.log
 StandardError=append:%h/.local/state/happy/daemon-systemd.log
 [Install]

@@ -434,11 +434,25 @@ and invokes a nonexistent command.
 
 dev-sg (Ubuntu x86_64, one of the main development machines) runs the public npm
 package under a **systemd user unit** instead of launchd. Install location,
-health check and the upgrade sequence (`sudo npm i -g` → `daemon stop` →
-`systemctl --user start very-happy-daemon`) are in
-[`ops/dev-sg/README.md`](../ops/dev-sg/README.md); the unit file is kept next to it.
-The same handover caveat as mac-office applies: a `daemon start` from a shell
-leaves the daemon outside systemd until it is stopped and started via the unit.
+health check and the upgrade sequence are in
+[`ops/dev-sg/README.md`](../ops/dev-sg/README.md); the unit file and its
+installer (`install-systemd-unit.sh`) are kept next to it.
+
+Upgrade = `sudo npm i -g … very-happy-cli@<version>` → **`systemctl --user
+restart very-happy-daemon`** (B-505). The unit runs with `KillMode=process`, so
+the restart signals the daemon only: session wrappers (and their turns), MCP
+servers and tmux terminals stay up and the new daemon re-adopts them — the same
+semantics as the Mac's `daemon start` handover. Never `daemon stop` +
+`systemctl start` for an upgrade any more, and never `daemon start` from a shell
+on this host: the CLI refuses while the daemon is unit-owned (a shell-started
+daemon runs outside systemd), and before B-505 the stop path took every wrapper
+in the cgroup down with the daemon (2026-09-25: two sessions archived mid-turn,
+twice in one day). Automatic updates hand over through the unit as well (daemon
+exits 75, `Restart=on-failure` restarts it on the new bundle).
+
+Before a restart, `very-happy daemon list` answers for the whole machine whether
+any session has a turn in flight (`turnActive`); with `KillMode=process` an
+in-flight turn survives the restart, so this is a courtesy, not a gate.
 
 ## Account resource limits
 
