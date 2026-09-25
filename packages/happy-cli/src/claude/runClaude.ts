@@ -19,6 +19,8 @@ import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
+import { EditReportThrottle, extractClaudeEditPaths } from '@/sessions/editPaths';
+import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { registerSideQuestionHandler, writeSideQuestionSettingsFile } from './registerSideQuestionHandler';
@@ -488,6 +490,23 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // and turn ends. Both listeners are cheap and swallow their own errors.
     session.on('claude-session-message', (body) => boardAnalyzer.noteClaudeMessage(body));
     session.on('turn-ended', () => boardAnalyzer.onTurnEnd());
+    // B-497: every Edit/Write/MultiEdit/NotebookEdit call goes to the daemon's
+    // conflict table (same tap, remote SDK and local scanner alike). Throttled
+    // per path, fire-and-forget; an old daemon just ignores it.
+    const editThrottle = new EditReportThrottle();
+    session.on('claude-session-message', (body) => {
+        try {
+            for (const edit of editThrottle.take(extractClaudeEditPaths(body))) {
+                reportSessionEditToDaemon({ sessionId: response.id, path: edit.path, tool: edit.tool, cwd: workingDirectory });
+            }
+        } catch (error) {
+            logger.debug('[START] edit report failed:', error);
+        }
+    });
+    // B-497: let `very-happy sessions message|peers` run from this session's
+    // shell identify the session (pi children already get it; HAPPY_MANAGED=1
+    // keeps the standalone `very-happy mcp` and the mirror forwarder quiet).
+    options = { ...options, claudeEnvVars: { ...options.claudeEnvVars, HAPPY_SESSION_ID: response.id } };
 
     // Remote-mode session scanner: catches user-typed prompts that
     // appeared in the Claude JSONL while we weren't looking — typically

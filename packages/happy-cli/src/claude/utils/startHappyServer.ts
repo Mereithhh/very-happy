@@ -10,6 +10,7 @@ import { ContextUsageSchema, type ContextUsage } from '@slopus/happy-wire';
 import { createTeamAdoption, TEAMS_ADOPT_CAPABILITY } from '@/teams/adopt';
 import { registerTeamsTools, TEAM_TOOL_NAMES } from '@/teams/tools';
 import { registerAutomationTools, AUTOMATION_TOOL_NAMES } from '@/automations/tools';
+import { registerSessionPeerTools, createSessionPeerToolExecutor, SESSION_PEER_TOOL_NAMES } from '@/sessions/peerTools';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -55,7 +56,7 @@ export interface StartHappyServerOptions {
     assistant?: boolean;
 }
 
-function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string): McpServer {
+function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient): McpServer {
     const mcp = new McpServer({
         name: "Very Happy Tools",
         version: "1.0.0",
@@ -64,6 +65,8 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     registerTeamsTools(mcp, sessionId);
     // B-496: account-level automations, same trust level as the session itself.
     registerAutomationTools(mcp);
+    // B-497: message / list the other sessions on this machine (identity = this session).
+    if (client) registerSessionPeerTools(mcp, createSessionPeerToolExecutor(client));
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -284,7 +287,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             } catch { if (!res.headersSent) res.writeHead(400).end(); }
             return;
         }
-        const mcp = createMcpServer(handlers, options, client.sessionId);
+        const mcp = createMcpServer(handlers, options, client.sessionId, client);
         try {
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined
@@ -329,6 +332,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             REPORT_PROGRESS_TOOL_NAME,
             ...TEAM_TOOL_NAMES,
             ...AUTOMATION_TOOL_NAMES,
+            ...SESSION_PEER_TOOL_NAMES,
             ...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : []),
         ],
         stop: () => {

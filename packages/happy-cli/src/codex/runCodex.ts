@@ -55,6 +55,8 @@ import {
 } from './codexPrompt';
 import { codexEventLogMetadata, logValueMetadata, safeCodexErrorMetadata } from './logMetadata';
 import { DEFAULT_CODEX_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
+import { EditReportThrottle, extractCodexPatchPaths } from '@/sessions/editPaths';
+import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -653,6 +655,7 @@ export async function runCodex(opts: {
     });
 
     // Event handler: same EventMsg types as the legacy MCP server — no changes needed
+    const editThrottle = new EditReportThrottle();
     client.setEventHandler((msg) => {
         if (msg.type === 'token_count') {
             session.sendAgentUsageSnapshot('codex', msg);
@@ -724,6 +727,10 @@ export async function runCodex(opts: {
         }
         if (msg.type === 'patch_apply_begin') {
             const { changes } = msg as any;
+            // B-497: report the touched paths to the daemon's conflict table.
+            for (const edit of editThrottle.take(extractCodexPatchPaths(changes))) {
+                reportSessionEditToDaemon({ sessionId: session.sessionId, path: edit.path, tool: edit.tool, cwd: process.cwd() });
+            }
             const changeCount = Object.keys(changes).length;
             const filesMsg = changeCount === 1 ? '1 file' : `${changeCount} files`;
             messageBuffer.addMessage(`Modifying ${filesMsg}...`, 'tool');

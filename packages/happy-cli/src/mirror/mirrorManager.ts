@@ -30,6 +30,7 @@ import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import { persistSession, readPersistedSessions, type PersistedSession } from '@/persistence';
 import { getProjectPath } from '@/claude/utils/path';
 import type { RawJSONLines } from '@/claude/types';
+import { extractClaudeEditPaths } from '@/sessions/editPaths';
 import type { TerminalListItem } from '@/terminal/webTerminal';
 import {
     parseTerminalHookPayload,
@@ -96,6 +97,8 @@ export interface MirrorManager {
     /** Daemon shutdown: flush + close clients WITHOUT archiving (a restart
      *  must be able to pick the mirrors back up). */
     shutdown(): Promise<void>;
+    /** B-497: active mirrors as peers (shadow session id + terminal cwd). */
+    listActiveMirrors(): Array<{ sessionId: string; cwd?: string; title?: string }>;
 }
 
 export function createMirrorManager(deps: {
@@ -107,6 +110,9 @@ export function createMirrorManager(deps: {
     /** A binding was created/ended/torn down — nudge the terminal-list push so
      *  the web learns about the toggle without waiting for the next tick. */
     onBindingsChanged?: () => void;
+    /** B-497: an Edit/Write call seen in a mirrored transcript (sessionId is
+     *  the shadow session; cwd the terminal's). Same table as managed wrappers. */
+    onEdit?: (edit: { sessionId: string; path: string; tool: string; cwd?: string }) => void;
 }): MirrorManager {
     const backfillLines = deps.backfillLines ?? MIRROR_BACKFILL_LINES_DEFAULT;
     const bindings = new Map<string, MirrorBinding>();
@@ -161,6 +167,15 @@ export function createMirrorManager(deps: {
 
     const sendMessages = (binding: MirrorBinding, messages: RawJSONLines[]): void => {
         for (const message of messages) {
+            if (deps.onEdit && binding.status === 'active') {
+                for (const edit of extractClaudeEditPaths(message)) {
+                    try {
+                        deps.onEdit({ sessionId: binding.happySessionId, path: edit.path, tool: edit.tool, cwd: binding.metadata.path });
+                    } catch (error) {
+                        logger.debug(`[MIRROR] edit tap failed for terminal ${binding.terminalId}:`, error);
+                    }
+                }
+            }
             const key = mirrorLineKey(message);
             binding.client.sendClaudeSessionMessage(message, key
                 ? { localIdFor: (envelopeIndex) => mirrorLocalId(key, envelopeIndex) }
@@ -448,6 +463,16 @@ export function createMirrorManager(deps: {
     };
 
     return {
+        listActiveMirrors() {
+            return [...bindings.values()]
+                .filter((binding) => binding.status === 'active')
+                .map((binding) => ({
+                    sessionId: binding.happySessionId,
+                    ...(binding.metadata.path ? { cwd: binding.metadata.path } : {}),
+                    ...(binding.metadata.summary?.text ? { title: binding.metadata.summary.text } : {}),
+                }));
+        },
+
         handleHookPayload(body: unknown): void {
             const event = parseTerminalHookPayload(body);
             if (!event) {

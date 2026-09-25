@@ -7,6 +7,7 @@ import { logger } from '@/ui/logger';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
+import type { PeerSessionInfo } from './types';
 
 function daemonControlHeaders(controlToken?: string): Record<string, string> {
   return {
@@ -228,6 +229,36 @@ export async function notifyDaemonTurnEvent(
   event: 'turn_started' | 'turn_ended',
 ): Promise<{ error?: string } | any> {
   return daemonPost('/session-event', { sessionId, event });
+}
+
+/**
+ * B-497: tell the daemon this session just called an edit tool on `path`.
+ * Fire-and-forget: the caller never awaits the conflict decision, and an old
+ * daemon (404) or no daemon at all is silently fine.
+ */
+export function reportSessionEditToDaemon(edit: { sessionId: string; path: string; tool: string; cwd?: string }): void {
+  void daemonPost('/session-edit', edit).then((result) => {
+    if (result?.error) logger.debug(`[CONTROL CLIENT] session-edit not recorded: ${result.error}`);
+  }).catch((error) => {
+    logger.debug('[CONTROL CLIENT] session-edit failed:', error);
+  });
+}
+
+/**
+ * B-497: live sessions on this machine with their recent edits. Throws with
+ * a precise reason when there is no daemon, or when the daemon predates the
+ * endpoint (the wrapper is newer than the daemon it reports to).
+ */
+export async function listDaemonPeers(): Promise<PeerSessionInfo[]> {
+  const result = await daemonPost('/peers');
+  if (result?.error) {
+    const reason = String(result.error);
+    if (/404|Not Found/i.test(reason)) {
+      throw new Error('The running daemon does not support session peers; restart it on a CLI that does (`very-happy daemon start` after updating)');
+    }
+    throw new Error(reason);
+  }
+  return Array.isArray(result?.sessions) ? result.sessions as PeerSessionInfo[] : [];
 }
 
 export async function stopDaemonHttp(): Promise<void> {

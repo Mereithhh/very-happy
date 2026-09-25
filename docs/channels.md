@@ -38,7 +38,7 @@ has the same tool set:
 |---|---|
 | Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
-| Managed Claude (in-process), Codex / Gemini / ACP (the stdio bridge forwards them) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session |
+| Managed Claude (in-process), Codex / Gemini / ACP (the stdio bridge forwards them) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session; and the B-497 session peer tools `session_message`, `session_peers` (message / list the other sessions on this machine, see [`very-happy sessions peers` / `message`](#sessions-peers--message--talk-to-the-other-sessions-on-this-machine)) |
 | Voice Assistant / legacy assistant variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
 | User-scoped `very-happy mcp` **inside a vh web terminal** (`VH_TERMINAL_ID` set by the daemon's tmux terminal) | + `change_title`, `open_preview` (titles/previews for that terminal via authenticated daemon IPC) |
@@ -320,6 +320,8 @@ very-happy sessions stop <id> [--json]
 very-happy sessions archive <id> [--json]
 very-happy sessions approve <id> <requestId> [--for-session] [--json]
 very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
+very-happy sessions peers [--scope repo|cwd|machine] [--cwd <dir>] [--json]
+very-happy sessions message <id> <text> [--reply-to <msgId>] [--json]
 ```
 
 **Ask and collect (B-492).** `read` reports where the latest turn stands:
@@ -430,6 +432,43 @@ timed out (30s); the wrapper's handler returned an `{error}` envelope. With
 with `outcome.status` for the RPC-level ones), so a poller never has to parse
 an empty string. Find `<requestId>` in `sessions list --all` (`pending[].id`)
 or in the `permission` webhook.
+
+#### `sessions peers` / `message` — talk to the other sessions on this machine
+
+B-497. Several sessions (Claude, Codex, pi, and a `claude` typed into a Very
+Happy web terminal) often work in the same repository at once. `peers` shows
+who else is live here and what each touched lately; `message` puts a note into
+one of them. The same two operations are the `session_peers` /
+`session_message` MCP tools every managed session gets, so two agents can
+coordinate directly — no lock, no permission change.
+
+- `peers` — live sessions on this machine, excluding the caller. Scope
+  `repo` (default): same git repository, **including its other worktrees**
+  (`sameWorktree` says whether a row shares your checkout); `cwd`: the same
+  directory; `machine`: everything. Each row carries `edits`: the real paths
+  the session called an edit tool on in the last 30 minutes (Claude
+  Edit/Write/MultiEdit/NotebookEdit, Codex patches, pi write/edit — and, for
+  a terminal `claude` with the mirror hooks installed, its transcript).
+  Terminal mirrors are listed with `kind: "mirror"`.
+- `message <id> <text>` — the text lands in that session's chat as a user
+  message headed `[Very Happy session message <msgId> from "<title>" <sessionId>; agent …; cwd …]`
+  and ending with how to reply. The sender is the session named by
+  `HAPPY_SESSION_ID` when the command runs from a managed session's shell
+  (every managed runner sets it), otherwise `cli <user>@<host>`. `--reply-to`
+  quotes the peer's message id. Refused, exit 1, with the reason on stderr
+  (and `{delivered:false,error}` on stdout under `--json`) when the target is
+  not spawned by this machine (no local key — cross-machine messaging waits
+  on the account content key, B-337), is not running here, or is a terminal
+  mirror (nothing reads a mirror's queue; the person at that terminal does).
+
+**Edit conflicts.** The daemon keeps a 30-minute table of real path → sessions
+that edited it. When a second live session edits a path another one touched in
+the window, **both** get a notice headed
+`[Very Happy edit conflict <id>; file <path>; peer "<title>" <sessionId>; …; peer edited <n>s ago]`
+that names the other session and suggests `session_message` — once per pair
+of sessions per file per window, delivered as a steer into a running turn
+(queued otherwise). Nothing is blocked: it is a heads-up, and the Web shows it
+as a card linking to the other session.
 
 ### `very-happy send` — message an existing session
 

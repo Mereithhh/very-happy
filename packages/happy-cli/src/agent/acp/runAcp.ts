@@ -42,6 +42,8 @@ import {
   mergeAcpSessionConfigIntoMetadata,
 } from './sessionConfigMetadata';
 import type { SessionConfigOption, SessionModeState, SessionModelState } from '@agentclientprotocol/sdk';
+import { EditReportThrottle, extractAcpEditPaths } from '@/sessions/editPaths';
+import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
 const ACP_EVENT_PREVIEW_CHARS = 240;
@@ -868,6 +870,7 @@ export async function runAcp(opts: {
     return !!legacyModels && resolveRequestedLegacyModelCode(legacyModels, requested) === legacyModels.currentModelId;
   };
 
+  const editThrottle = new EditReportThrottle();
   const onBackendMessage = (msg: AgentMessage) => {
     if (verbose) {
       logAcp('muted', `Outgoing raw backend message from ${opts.agentName}: ${formatUnknownForConsole(msg, ACP_RAW_PREVIEW_CHARS)}`);
@@ -1009,6 +1012,13 @@ export async function runAcp(opts: {
 
     if (msg.type === 'token-count') {
       session.sendAgentUsageSnapshot(resolveSessionFlavor(opts.agentName), msg);
+    }
+
+    if (msg.type === 'tool-call') {
+      // B-497: pi write/edit (and any ACP edit-kind call) feeds the daemon's conflict table.
+      for (const edit of editThrottle.take(extractAcpEditPaths(msg.toolName, msg.args))) {
+        reportSessionEditToDaemon({ sessionId: session.sessionId, path: edit.path, tool: edit.tool, cwd: process.cwd() });
+      }
     }
 
     sendEnvelopes(sessionManager.mapMessage(msg));

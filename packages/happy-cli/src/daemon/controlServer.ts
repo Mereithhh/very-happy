@@ -9,7 +9,7 @@ import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-
 import { logger } from '@/ui/logger';
 import { Metadata } from '@/api/types';
 import { decodeBase64 } from '@/api/encryption';
-import { TrackedSession, SessionEncryptionData } from './types';
+import { TrackedSession, SessionEncryptionData, PeerSessionInfo } from './types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { SPAWN_AGENTS } from '@/utils/spawnAgents';
 import type { AssistantReportEvent } from './assistantReport';
@@ -30,7 +30,9 @@ export function startDaemonControlServer({
   pushClipboard,
   pushFilePreview,
   onTerminalHook,
-  setTerminalTitle
+  setTerminalTitle,
+  onSessionEdit,
+  listPeers
 }: {
   /** Fresh per-process bearer token persisted in the private daemon state. */
   controlToken: string;
@@ -64,6 +66,12 @@ export function startDaemonControlServer({
    *  `'starting'` = the machine client does not exist yet (503, retryable).
    *  Optional so older wirings/tests keep working (→ 503). */
   setTerminalTitle?: (terminalId: string, title: string, ifAbsent: boolean) => boolean | 'starting';
+  /** B-497: a wrapper reports one edit call (path as the runner saw it, cwd
+   *  for relative paths). The daemon normalises, records and notifies; the
+   *  wrapper never waits on that. Optional so older wirings/tests keep working. */
+  onSessionEdit?: (edit: { sessionId: string; path: string; tool: string; cwd?: string }) => void;
+  /** B-497: live sessions (managed + active mirrors) with their recent edits. */
+  listPeers?: () => PeerSessionInfo[];
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -446,6 +454,49 @@ export function startDaemonControlServer({
       }
       return { status: 'ok' as const };
     });
+
+    // B-497: a wrapper saw an edit call. Best-effort, always 200 — the
+    // conflict table is advisory and must never slow a runner down.
+    typed.post('/session-edit', {
+      schema: {
+        body: z.object({
+          sessionId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),
+          path: z.string().min(1).max(4096),
+          tool: z.string().min(1).max(64),
+          cwd: z.string().max(4096).optional(),
+        }),
+        response: { 200: z.object({ status: z.literal('ok') }) },
+      },
+    }, async (request) => {
+      try {
+        onSessionEdit?.(request.body);
+      } catch (error) {
+        logger.debug('[CONTROL SERVER] session-edit handler failed:', error);
+      }
+      return { status: 'ok' as const };
+    });
+
+    // B-497: who else is running here, and what they touched lately. Feeds
+    // `session_peers` / `sessions peers` and the liveness check before a
+    // `session_message` is sent.
+    typed.post('/peers', {
+      schema: {
+        response: {
+          200: z.object({
+            sessions: z.array(z.object({
+              sessionId: z.string(),
+              kind: z.enum(['managed', 'mirror']),
+              pid: z.number().optional(),
+              cwd: z.string().optional(),
+              flavor: z.string().optional(),
+              title: z.string().optional(),
+              variant: z.string().optional(),
+              edits: z.array(z.object({ path: z.string(), tool: z.string(), at: z.number() })),
+            })),
+          }),
+        },
+      },
+    }, async () => ({ sessions: listPeers ? listPeers() : [] }));
 
     // Stop daemon
     typed.post('/stop', {

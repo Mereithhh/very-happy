@@ -46,6 +46,7 @@ describe('resolveBuiltinTool — one identity for every runner name shape', () =
             'automation_list', 'automation_get', 'automation_create', 'automation_update', 'automation_pause', 'automation_resume', 'automation_delete',
             'automation_run', 'automation_fire', 'automation_runs', 'automation_report', 'automation_ack',
             'sessions_list', 'session_read', 'session_send', 'session_spawn', 'session_kill', 'session_archive',
+            'session_message', 'session_peers',
             'terminals_list', 'terminal_read', 'terminal_send', 'memory_update', 'journal_append',
         ];
         expect([...BUILTIN_TOOL_NAMES].sort()).toEqual([...expected].sort());
@@ -127,6 +128,57 @@ describe('describeAutomationTrigger / Action — thin wrappers over B-498 automa
         expect(describeAutomationAction({ kind: 'send', sessionId: 'abcdefghijklmnopq', prompt: 'p' })).toBe('Send to session abcdefghijklmnopq');
         expect(describeAutomationAction({ kind: 'script', command: ['node', 'scripts/x.mjs', '--all'], cwd: '/srv' })).toBe('cwd /srv');
         expect(describeAutomationAction({ kind: 'spawn' })).toBeNull();
+    });
+});
+
+describe('B-497 session peer tools', () => {
+    const summary = (name: string, input: unknown) => builtinToolSummary(resolveBuiltinTool(call(name, input))!);
+    const peer = (id: string, extra: Record<string, unknown> = {}) => ({ sessionId: id, kind: 'managed', cwd: '/home/me/repo', flavor: 'claude', title: null, url: `https://veryhappy.dev/session/${id}`, edits: [], ...extra });
+
+    it('summarises a message by recipient and body, and peers by scope', () => {
+        expect(summary('mcp__happy__session_message', { to: 'cmugpssdc0001abcdefghijk', body: 'I am changing auth.ts, what are you doing there?' }))
+            .toEqual({ label: 'Message session', detail: 'to cmugpssd… · I am changing auth.ts, what are you doing there?' });
+        expect(summary('McpTool', { server: 'happy', tool: 'session_peers', arguments: { scope: 'repo' } })).toEqual({ label: 'List peer sessions', detail: 'same repository' });
+        expect(summary('other', { piTool: 'session_peers', rawInput: {} })).toEqual({ label: 'List peer sessions', detail: null });
+        expect(summary('session_peers', { scope: 'galaxy' })).toEqual({ label: 'List peer sessions', detail: null });
+    });
+
+    it('lists the recipient, reply reference and body as fields', () => {
+        const fields = builtinToolFields(resolveBuiltinTool(call('session_message', { to: 's-2', replyTo: 'm-1', body: 'hi' }))!);
+        expect(fields.map((f) => [f.key, f.value])).toEqual([['to', 's-2'], ['replyTo', 'm-1'], ['body', 'hi']]);
+        expect(fields[0].mono).toBe(true);
+        expect(builtinToolFields(resolveBuiltinTool(call('session_peers', { scope: 'cwd' }))!)).toEqual([{ key: 'scope', label: 'Scope', value: 'same directory' }]);
+        expect(builtinToolFields(resolveBuiltinTool(call('session_peers', {}))!)).toEqual([]);
+    });
+
+    it('digests a delivered message into a line plus a link to the recipient', () => {
+        const delivered = builtinToolDigest(resolveBuiltinTool(call('session_message', { to: 's-2', body: 'x' }))!, {
+            state: 'completed', result: mcpText({ delivered: true, messageId: 'm-9', to: 's-2', url: 'https://veryhappy.dev/session/s-2' }),
+        });
+        expect(delivered.lines).toEqual(['Delivered']);
+        expect(delivered.links).toEqual([{ to: '/session/s-2', label: 'Open session', id: 's-2' }]);
+        // still links the recipient while running / on a prose result; nothing when the call failed
+        expect(builtinToolDigest(resolveBuiltinTool(call('session_message', { to: 's-2' }))!, { state: 'running', result: undefined }).links[0].to).toBe('/session/s-2');
+        const failed = builtinToolDigest(resolveBuiltinTool(call('session_message', { to: 's-2' }))!, { state: 'error', result: mcpText('Session s-2 is not running on this machine') });
+        expect(failed.error).toBe('Session s-2 is not running on this machine');
+        expect(failed.links).toEqual([]);
+    });
+
+    it('digests peers into one line per session with a link each, capped at 8', () => {
+        const peers = [
+            peer('cmugpssdc0001abcdefghijk', { title: 'Fix login', edits: [{ path: '/home/me/repo/src/auth.ts', tool: 'Edit', at: 1 }, { path: '/home/me/repo/src/b.ts', tool: 'Write', at: 2 }] }),
+            peer('s-2', { flavor: 'terminal-mirror', kind: 'mirror' }),
+            ...Array.from({ length: 8 }, (_, i) => peer(`s-x${i}`, { flavor: 'codex', cwd: '/w/other' })),
+        ];
+        const digest = builtinToolDigest(resolveBuiltinTool(call('mcp__happy__session_peers', { scope: 'repo' }))!, { state: 'completed', result: mcpText({ self: { sessionId: 's-0' }, scope: 'repo', peers }) });
+        expect(digest.lines[0]).toBe('10 peer sessions');
+        expect(digest.lines[1]).toBe('Fix login · Claude · repo · 2 files edited');
+        expect(digest.lines[2]).toBe('s-2 · Terminal · repo');
+        expect(digest.lines.at(-1)).toBe('+2');
+        expect(digest.links).toHaveLength(8);
+        expect(digest.links[0]).toEqual({ to: '/session/cmugpssdc0001abcdefghijk', label: 'Open session', id: 'cmugpssdc0001abcdefghijk' });
+        expect(builtinToolDigest(resolveBuiltinTool(call('session_peers', {}))!, { state: 'completed', result: mcpText({ self: {}, scope: 'repo', peers: [] }) }).lines).toEqual(['0 peer sessions']);
+        expect(builtinToolDigest(resolveBuiltinTool(call('session_peers', {}))!, { state: 'completed', result: mcpText('no daemon') }).lines).toEqual([]);
     });
 });
 

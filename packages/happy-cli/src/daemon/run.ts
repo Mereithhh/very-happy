@@ -31,6 +31,7 @@ import { resumePrecheck, sanitizeResumeModel } from './resumePrecheck';
 import { decideRestart, recordRestartAttempt, DEFAULT_MAX_RESTARTS } from './restartBreaker';
 import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
+import { createPeerCoordinator } from './peerCoordinator';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { refreshAgentHomes, agentHomeSpawnEnv, locateClaudeConversation, describeAgentHome } from '@/agentHome';
 import { existsSync, mkdtempSync, rmSync, statSync } from 'fs';
@@ -284,6 +285,8 @@ export async function startDaemon(): Promise<void> {
     // B-466: which sessions have a turn in flight (wrapper-reported, TTL'd).
     // The only thing the auto-update install/handover gate waits for.
     const turnActivity = new TurnActivityTracker();
+    // B-497: who edited which real path lately, and the conflict notices.
+    const peerCoordinator = createPeerCoordinator({ getChildren: () => Array.from(pidToTrackedSession.values()) });
 
     // Retain session data after process exits so resume can still find it.
     // Pre-populate from disk so sessions survive daemon restarts.
@@ -1468,6 +1471,7 @@ export async function startDaemon(): Promise<void> {
       if (session?.happySessionId && (session.spawnedBy === 'teams' || teamWorker?.hasSession(session.happySessionId))) teamWorker?.report(session.happySessionId, 'exited');
       if (session?.happySessionId && automationRunner?.hasSession(session.happySessionId)) automationRunner.report(session.happySessionId, 'exited');
       if (session?.happySessionId) turnActivity.forget(session.happySessionId);
+      if (session?.happySessionId) peerCoordinator.forget(session.happySessionId);
       if (session?.happySessionId && session.encryption) {
         sessionIdToFinishedSession.set(session.happySessionId, session);
         logger.debug(`[DAEMON RUN] Process PID ${pid} exited, preserved session ${session.happySessionId} for resume`);
@@ -1571,6 +1575,8 @@ export async function startDaemon(): Promise<void> {
       onSessionStateEvent,
       onClaudeAuthFailed: (sessionId: string) => claudeAuthServiceRef?.signalAuthFailed(sessionId),
       onSessionTurnEvent: (sessionId, event) => turnActivity.apply(sessionId, event),
+      onSessionEdit: (edit) => { peerCoordinator.onEdit(edit); },
+      listPeers: () => peerCoordinator.list(),
       pushClipboard: (text: string, terminalId?: string) => {
         if (!apiMachineRef) {
           return { delivered: false, truncated: false, totalBytes: 0, error: 'daemon is still starting up' };
@@ -1668,8 +1674,10 @@ export async function startDaemon(): Promise<void> {
       api,
       machineId,
       onBindingsChanged: () => apiMachine.requestTerminalListRefresh(),
+      onEdit: (edit) => peerCoordinator.onEdit(edit),
     });
     mirrorManagerRef = mirrorManager;
+    peerCoordinator.setMirrorSource(() => mirrorManager.listActiveMirrors());
     apiMachine.setMirrorIntegration({
       resolveMirrorSessionId: (terminalId) => mirrorManager.resolveMirrorSessionId(terminalId),
       onTerminalClosed: (terminalId) => mirrorManager.onTerminalClosed(terminalId),

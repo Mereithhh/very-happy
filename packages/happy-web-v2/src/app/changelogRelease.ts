@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-session-peer-messaging',
+    cliVersion: '0.2.155',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25k.title',
+    summaryKey: 'changelog.releases.sep25k.summary',
+    itemKeys: ['changelog.releases.sep25k.message', 'changelog.releases.sep25k.peers', 'changelog.releases.sep25k.conflict', 'changelog.releases.sep25k.cards'],
+  },
+  {
     id: '2026-09-25-send-status-open-gates-auto-latest',
     cliVersion: '0.2.154',
     date: '2026-09-25',

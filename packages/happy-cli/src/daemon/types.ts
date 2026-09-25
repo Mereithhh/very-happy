@@ -41,3 +41,19 @@ export interface TrackedSession {
    */
   spawnedBy?: string;
 }
+
+/**
+ * B-497: one live session as the daemon's `/peers` reports it — managed
+ * children plus active terminal-mirror shadows, each with the real paths it
+ * edited inside the conflict window.
+ */
+export interface PeerSessionInfo {
+  sessionId: string;
+  kind: 'managed' | 'mirror';
+  pid?: number;
+  cwd?: string;
+  flavor?: string;
+  title?: string;
+  variant?: string;
+  edits: Array<{ path: string; tool: string; at: number }>;
+}
