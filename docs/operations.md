@@ -14,7 +14,7 @@ commits or tags to it and do not use it as a deployment source.
 | Role | Runtime |
 |---|---|
 | Web + server | `vh-sg` (AWS ap-southeast-1, `m6i.xlarge`, EIP `52.74.232.28`); fixed `happy-server-blue:3101` / `happy-server-green:3102` slots |
-| Public endpoint | `https://veryhappy.dev` behind Cloudflare (proxied); Caddy imports `/opt/happy/release/active-upstream.caddy` and switches it atomically. A `?vh_slot=` pin whose slot is down falls back to the other slot (`lb_policy first`) |
+| Public endpoint | `https://veryhappy.dev` behind AWS CloudFront `E2JUP4WHDXD8HU` since 2026-09-25 (the Cloudflare apex record is a DNS-only CNAME to it; Cloudflare proxying was the previous edge); Caddy imports `/opt/happy/release/active-upstream.caddy` and switches it atomically. A `?vh_slot=` pin whose slot is down falls back to the other slot (`lb_policy first`) |
 | Production artifact | Complete `ghcr.io/mereithhh/very-happy-server@sha256:<digest>` image (linux/amd64 only — the host must stay x86), including Web V2 |
 | Database | **RDS PostgreSQL 16** `vh-pg` (db.m7g.large, single-AZ, private subnet, 7-day automated backups, deletion protection), reached through **PgBouncer** (`vh-pgbouncer`, transaction pooling, `127.0.0.1:6432`, logical db `happy`). Runtime uses transaction pooling; Prisma migrations use the separate `happy_migrations` alias with session pooling. Neither connects to RDS directly |
 | Redis | **ElastiCache** `vh-redis` (Redis 7.1, cache.m7g.large since B-484, private subnet, parameter group `vh-redis7` = `default.redis7` + `maxmemory-policy allkeys-lru`), socket.io Redis streams adapter |
@@ -178,15 +178,15 @@ The workflow has three explicit `rollout` phases:
 
 Two HTTP probes run for the whole release window, both curling `/health` every
 200ms with a 2s timeout: one over the **public** path and one over the
-**origin** path (same Caddy, `--resolve`d to 127.0.0.1, so Cloudflare is out of
+**origin** path (same Caddy, `--resolve`d to 127.0.0.1, so the CDN edge is out of
 the picture). A release fails on `PROBE_MAX_STREAK` *consecutive* failed samples
 on either path — 600ms of uninterrupted unavailability by default
 (`VH_RELEASE_PROBE_MAX_STREAK`). Isolated failures are recorded and reported but
 do not fail the release.
 
-It is deliberately not one-strike, because `veryhappy.dev` resolves to
-Cloudflare from the production host: every public sample crosses
-host → Cloudflare edge → origin → back, and that leg drops requests. Measured on
+It is deliberately not one-strike, because `veryhappy.dev` resolves to the CDN
+edge from the production host: every public sample crosses host → edge →
+origin → back, and that leg drops requests. Measured (behind Cloudflare) on
 an idle host with nothing deploying: 6 failures in 2400 public samples (all
 `curl (28) … 0 bytes received` while p99 latency was 0.30s against the 2s
 timeout — dropped, not slow), against 0 in 1800 samples over the origin path.
@@ -631,9 +631,10 @@ is self-reported and unvalidated — treat it as a hint, not proof.
   legacy `happy-server:3005`.
 - Never restore source, migrations or Web independently, and never invent a
   destructive down migration during an incident.
-- CLI: install the previous `very-happy-cli` version and restart through launchd.
-- Environment: restore the prior `.env` value from the password manager, then
-  recreate the container.
+- CLI: install the previous `very-happy-cli` version and hand the daemon back to
+  launchd (mac-office) or systemd (dev-sg).
+- Environment: restore the prior value from the dated `/opt/happy/.env` backup,
+  then deploy merged `main` with `rollout=switch` (see Environment changes).
 
 Every release report records the deployed SHA/version, verification evidence and
 the rollback point.
