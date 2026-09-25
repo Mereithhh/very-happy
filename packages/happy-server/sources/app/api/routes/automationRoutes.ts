@@ -14,8 +14,10 @@ const params = z.object({ id: z.string().min(1).max(128) });
 const nameParams = z.object({ name: AutomationNameSchema });
 /**
  * B-496 Automations REST. Every route is account-authenticated; when
- * `VH_AUTOMATIONS_ENABLED` (or the account allowlist) is off the store throws
- * `automations_disabled` (404). Errors are `{ error, ...details }`.
+ * `VH_AUTOMATIONS_ENABLED` is off the store throws `automations_disabled`
+ * (404). B-502: no account allowlist; the per-account cap answers 429
+ * `automation_count_quota_exceeded` with `{ limit, count }`. Errors are
+ * `{ error, ...details }`.
  */
 export function automationRoutes(app: Fastify) {
     const handle = async (reply: any, work: () => Promise<unknown>) => {

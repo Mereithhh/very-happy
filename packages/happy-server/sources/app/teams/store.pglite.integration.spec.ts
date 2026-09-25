@@ -109,11 +109,11 @@ describe('agent teams persistent transactions and scoped credentials', () => {
         expect(response.statusCode).toBe(401);
         await app.close();
     });
-    it('is disabled by default and respects the account allowlist', async () => {
+    it('is disabled by default; B-502: the switch is server-wide and a leftover account allowlist is ignored', async () => {
         delete process.env.VH_AGENT_TEAMS_ENABLED;
         await expect(store.listTeams(accountId)).rejects.toMatchObject({ code: 'teams_disabled' });
         process.env.VH_AGENT_TEAMS_ENABLED = 'true'; process.env.VH_AGENT_TEAMS_ACCOUNT_IDS = 'different-account';
-        await expect(store.listTeams(accountId)).rejects.toMatchObject({ code: 'teams_disabled' });
+        await expect(store.listTeams(accountId)).resolves.toBeDefined();
         delete process.env.VH_AGENT_TEAMS_ACCOUNT_IDS;
     });
 

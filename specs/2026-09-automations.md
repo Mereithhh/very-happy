@@ -77,7 +77,7 @@ Owner 的日常自动化（每日 Tanka 盘点、Tanka→滴答同步、IM 事�
 - REST：`GET/POST /v1/automations`，`GET/PATCH/DELETE /v1/automations/:id`（PATCH 带 version CAS），`POST /v1/automations/:id/{pause,resume,run}`，`POST /v1/automations/by-name/:name/fire {payload?, dedupeKey?}`，`GET /v1/automations/runs?automationId=&status=&attention=1&limit=`，`POST /v1/automations/runs/:id/{cancel,ack}`（ack 清 needsAttention）。
 - CLI `very-happy auto`：`list | show <name> | create --name --cron '0 9 * * *' --tz Asia/Singapore|--every 5m|--at <iso>|--manual --spawn-dir … --prompt[-file] … [--agent --model --sticky-key] | --script -- <argv…> [--machine <id|this>] | edit | pause | resume | run | fire <name> [--payload-file f|--payload-json s] [--dedupe-key k] [--wait] | runs [--name] [--attention] | report --run <id> --status done|failed [--summary] [--attention reason] | ack <runId> | rm`。默认 machine = 本机。`--json` 输出。
 - MCP（所有 runner，经现有 happy MCP / stdio bridge / HAPPY_MCP_URL）：`automation_list, automation_get, automation_create, automation_update, automation_pause, automation_resume, automation_delete, automation_run, automation_fire, automation_runs, automation_report, automation_ack`。
-- 服务端开关 `VH_AUTOMATIONS_ENABLED=true` + 可选 `VH_AUTOMATIONS_ACCOUNT_IDS`；关闭时路由 404，CLI 明确提示。
+- 服务端开关 `VH_AUTOMATIONS_ENABLED=true`（B-502 起去掉 `VH_AUTOMATIONS_ACCOUNT_IDS` 账号白名单，全员开放；每账号 active+paused 合计上限 `MAX_AUTOMATIONS_PER_ACCOUNT`，默认 100，超出 429 `automation_count_quota_exceeded`）；关闭时路由 404，CLI 明确提示。
 - 官方 skill `very-happy-automations`（与 teams skill 同目录机制，`very-happy teams install` 同时物化或新增 `very-happy skills install`）。
 
 ### Web 视图（B-498，`packages/happy-web-v2`，PR #427 待合并）

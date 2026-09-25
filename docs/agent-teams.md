@@ -13,9 +13,9 @@ cross-machine routing is not available.
 
 ## Prerequisites
 
-- The operator enables `VH_AGENT_TEAMS_ENABLED=true`; deployments may additionally
-  restrict `VH_AGENT_TEAMS_ACCOUNT_IDS`. This is account-level access, not a
-  machine-specific allowlist.
+- The operator enables `VH_AGENT_TEAMS_ENABLED=true`; every account on that
+  server can then use Teams (B-502 removed the per-account allowlist). Each
+  account may hold 32 non-archived teams.
 - The selected machine runs a compatible, online daemon advertising Teams
   capability. Update the CLI and hand over with `very-happy daemon start`; start
   a new managed session to use the new runner tools. Existing wrappers are not

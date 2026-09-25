@@ -80,7 +80,7 @@ Bot 换 session 时递增 generation，旧 token 撤销、旧 attempt 失效；�
 - `GET /v1/teams/operations?machineId=…`：daemon 对账。
 - 公共工具：create / join / inspect / delegate / message / submit / accept / return / cancel / handoff，以及 schedule_create / schedule_pause / schedule_resume / schedule_cancel。
 
-默认关闭：`VH_AGENT_TEAMS_ENABLED=true` 开启；可选 `VH_AGENT_TEAMS_ACCOUNT_IDS` 逗号分隔账号白名单。新 daemon 通过 machine metadata `teamsVersion:1` 声明执行协议能力；宿主可执行性继续使用 cliAvailability。声明工具/二进制可用不等于已经验证模型认证。
+默认关闭：`VH_AGENT_TEAMS_ENABLED=true` 开启（B-502 起去掉 `VH_AGENT_TEAMS_ACCOUNT_IDS` 账号白名单，全员开放）。新 daemon 通过 machine metadata `teamsVersion:1` 声明执行协议能力；宿主可执行性继续使用 cliAvailability。声明工具/二进制可用不等于已经验证模型认证。
 
 | 组合 | 行为 |
 |---|---|
