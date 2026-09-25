@@ -11,7 +11,7 @@ driving `very-happy spawn` / `sessions read --wait` (B-492), run on it.
 | Supervision | systemd **user** unit [`very-happy-daemon.service`](very-happy-daemon.service), `loginctl` linger = yes (runs without a login) |
 | Daemon env | `~/.config/very-happy/daemon.env` (non-secret; optional) |
 | Logs | `~/.local/state/happy/daemon-systemd.log` (unit stdout/stderr) + `~/.happy/logs/*-daemon.log` |
-| Version on 2026-09-25 | 0.2.142 — below 0.2.143, see the warning below |
+| Version | not recorded here; read it with the health check below |
 
 ## Health check
 
