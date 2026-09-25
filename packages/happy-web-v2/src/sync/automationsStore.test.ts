@@ -23,6 +23,7 @@ const api = vi.hoisted(() => ({
   updateAutomation: vi.fn(),
 }));
 vi.mock('@/sync/sync', () => ({ sync: { onResume: () => () => {} } }));
+vi.mock('@/auth/AuthContext', () => ({ getCurrentAuth: () => null }));
 vi.mock('@/sync/apiAutomations', () => api);
 
 import { useAutomations } from './automationsStore';

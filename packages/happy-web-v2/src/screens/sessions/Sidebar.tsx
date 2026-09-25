@@ -34,6 +34,7 @@ import { resolveActivityTs } from '@/sync/activityOverlay';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardItems } from '@/screens/board/useBoardItems';
 import { AUTOMATIONS_SIDEBAR_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
+import { automationsEntryVisible } from '@/sync/automationsPoll';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { openCommandPalette } from '@/screens/command/CommandPalette';
 import { NewSessionModal } from './NewSessionModal';
@@ -139,10 +140,10 @@ export function Sidebar() {
   const teams = useTeamNavigation();
   const teamCopy = useTeamNavigationCopy();
   const happyBotEntryVisible = useLocalSetting('happyBotEntryVisible');
-  // B-498: the Automations entry shows once the server confirmed the feature
-  // (404 automations_disabled keeps it hidden); the badge is the count of runs
-  // waiting for a decision. One slow poll here feeds both.
-  const automationsEnabled = useAutomations((s) => s.enabled) === true;
+  // B-498/B-504: the Automations entry is visible unless the server said
+  // 404 automations_disabled (the feature is open to everyone); the badge is
+  // the count of runs waiting for a decision. One slow poll here feeds both.
+  const automationsEnabled = useAutomations((s) => automationsEntryVisible(s.enabled));
   const automationAttention = useAutomations((s) => s.attention.length);
   const refreshAutomations = useAutomations((s) => s.refreshOverview);
   useAutomationsPoll(refreshAutomations, AUTOMATIONS_SIDEBAR_POLL_MS);
