@@ -108,11 +108,15 @@ export const AutomationClaimSchema = z.object({
 });
 export type AutomationClaim = z.infer<typeof AutomationClaimSchema>;
 
-// Fencing: `claimId` is issued by the claim response; only its holder may
-// report. Omitting `status` only renews the lease (and may attach session /
-// sticky / attention). Terminal statuses are final.
+// Two report shapes share one schema:
+// - daemon (with `claimId`, issued by the claim response): fenced; omitting
+//   `status` only renews the lease, and session / sticky / lease fields apply.
+// - account-level explicit outcome (no `claimId`, e.g. `automation_report` from
+//   inside the session): `status` must be done|failed; only summary / error /
+//   exitCode / attention are applied, never lease, session or sticky.
+// Terminal statuses are final either way.
 export const AutomationReportSchema = z.object({
-    claimId: id,
+    claimId: id.optional(),
     status: z.enum(['running', 'done', 'failed']).optional(),
     sessionId: id.nullable().optional(),
     stickyKey: z.string().min(1).max(512).optional(),

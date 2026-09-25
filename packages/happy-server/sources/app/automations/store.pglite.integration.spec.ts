@@ -244,6 +244,28 @@ describe('automations store (pglite)', () => {
         await expect(store.listRuns(accountId, { status: 'bogus' })).rejects.toMatchObject({ code: 'invalid_status', status: 400 });
     });
 
+    it('accepts account-level terminal reports without a claimId under conservative rules', async () => {
+        const a = await make({ concurrency: 'queue' });
+        const queued = await store.runAutomationNow(accountId, a.id, {});
+        await expect(store.reportRun(accountId, queued.id, { status: 'done' })).rejects.toMatchObject({ code: 'run_not_claimed', status: 409, details: { status: 'queued' } });
+        const { runs } = await store.claimRuns(accountId, { machineId, leaseMs: 30_000 });
+        const claimed = runs.find(r => r.run.id === queued.id)!;
+        await expect(store.reportRun(accountId, queued.id, { summary: 'no status' })).rejects.toMatchObject({ code: 'status_required', status: 400 });
+        await expect(store.reportRun(accountId, queued.id, { status: 'running' })).rejects.toMatchObject({ code: 'status_required' });
+        await expect(store.reportRun(accountId, queued.id, { status: 'done', leaseMs: 60_000 })).rejects.toMatchObject({ code: 'claim_required', status: 400 });
+        await expect(store.reportRun(accountId, queued.id, { status: 'done', stickyKey: 'k' })).rejects.toMatchObject({ code: 'claim_required' });
+        await expect(store.reportRun(accountId, queued.id, { status: 'done', sessionId })).rejects.toMatchObject({ code: 'claim_required' });
+        await expect(store.reportRun(otherAccountId, queued.id, { status: 'done' })).rejects.toMatchObject({ code: 'run_not_found' });
+        const running = await store.reportRun(accountId, queued.id, { claimId: claimed.run.claimId, status: 'running', sessionId });
+        const done = await store.reportRun(accountId, queued.id, { status: 'done', summary: 'agent said so', exitCode: 0, needsAttention: true, attentionReason: 'review' });
+        expect(done).toMatchObject({ status: 'done', summary: 'agent said so', exitCode: 0, needsAttention: true, attentionReason: 'review', sessionId, leaseUntil: running.leaseUntil });
+        expect(done.finishedAt).not.toBeNull();
+        // The daemon's later fenced report cannot reopen or override the terminal state.
+        await expect(store.reportRun(accountId, queued.id, { claimId: claimed.run.claimId, status: 'failed' })).rejects.toMatchObject({ code: 'run_finished', details: { status: 'done' } });
+        await expect(store.reportRun(accountId, queued.id, { status: 'failed' })).rejects.toMatchObject({ code: 'run_finished' });
+        expect((await store.getAutomation(accountId, a.id)).lastRunStatus).toBe('done');
+    });
+
     it('expires stale leases and overlong runs, and flags unclaimed runs after ten minutes', async () => {
         const a = await make({ maxRuntimeMs: 60_000 });
         const lease = await store.runAutomationNow(accountId, a.id, {});
@@ -335,7 +357,7 @@ describe('automations store (pglite)', () => {
         const mine = claim.json().runs.find((r: any) => r.automation.id === automation.id);
         expect(mine).toMatchObject({ run: { id: fired.json().run.id, status: 'claimed' }, automation: { name: 'rest' }, stickies: [] });
         expect(typeof mine.run.claimId).toBe('string');
-        expect((await app.inject({ method: 'POST', url: `/v1/automations/runs/${mine.run.id}/report`, payload: { status: 'done' } })).statusCode).toBe(400);
+        expect((await app.inject({ method: 'POST', url: `/v1/automations/runs/${mine.run.id}/report`, payload: { summary: 'no status' } })).json()).toEqual({ error: 'status_required' });
         const done = await app.inject({ method: 'POST', url: `/v1/automations/runs/${mine.run.id}/report`, payload: { claimId: mine.run.claimId, status: 'done', summary: 's' } });
         expect(done.json().run).toMatchObject({ status: 'done', summary: 's' });
         expect((await app.inject({ method: 'POST', url: `/v1/automations/runs/${mine.run.id}/cancel` })).json()).toEqual({ error: 'run_finished', status: 'done' });

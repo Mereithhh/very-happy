@@ -16,9 +16,9 @@ describe('automation wire schemas', () => {
         expect(AutomationActionSchema.safeParse({ kind: 'script', command: [] }).success).toBe(false);
         expect(AutomationActionSchema.safeParse({ kind: 'script', command: ['echo', 'hi'], env: { A: '1' } }).success).toBe(true);
     });
-    it('requires a claimId on reports and allows lease-only renewals', () => {
+    it('accepts daemon and account-level report shapes', () => {
         expect(AutomationReportSchema.safeParse({ claimId: 'c1' }).success).toBe(true);
-        expect(AutomationReportSchema.safeParse({ status: 'done' }).success).toBe(false);
+        expect(AutomationReportSchema.safeParse({ status: 'done', summary: 's' }).success).toBe(true);
         expect(AutomationReportSchema.safeParse({ claimId: 'c1', status: 'expired' }).success).toBe(false);
         expect(AutomationCreateSchema.safeParse({ name: 'x', machineId: 'm', trigger: { kind: 'manual' }, action: { kind: 'send', sessionId: 's', prompt: 'p' } }).success).toBe(true);
     });

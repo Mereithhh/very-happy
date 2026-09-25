@@ -291,9 +291,12 @@ async function upsertSticky(tx: Tx, automationId: string, key: string, sessionId
     return stickyView(row);
 }
 /**
- * Daemon progress report. Fenced by `claimId`; terminal statuses never change
- * again (`run_finished` carries the current status). Without `status` this only
- * renews the lease and attaches session / sticky / attention updates.
+ * Run report. With `claimId` (daemon): fenced, renews the lease, and may attach
+ * session / sticky / attention; without `status` it is a pure renewal. Without
+ * `claimId` (agent or CLI inside the session): only an explicit `done|failed`
+ * with summary / error / exitCode / attention on a claimed or running run — no
+ * lease, session or sticky changes. Terminal statuses never change again
+ * (`run_finished` carries the current status).
  */
 export async function reportRun(accountId: string, runId: string, input: AutomationReport): Promise<AutomationRun> {
     assertAutomationsEnabled(accountId);
@@ -302,8 +305,16 @@ export async function reportRun(accountId: string, runId: string, input: Automat
         const row = await tx.automationRun.findFirst({ where: { id: runId, accountId }, include: { automation: { select: { name: true } } } });
         requireAutomation(row, 'run_not_found', 404);
         requireAutomation(!TERMINAL.includes(row.status), 'run_finished', 409, { status: row.status });
-        requireAutomation(row.claimId !== null && row.claimId === input.claimId, 'claim_mismatch', 409, { status: row.status });
-        const data: Prisma.AutomationRunUpdateInput = { leaseUntil: new Date(now.getTime() + (input.leaseMs ?? AUTOMATION_DEFAULT_LEASE_MS)), updatedAt: now };
+        if (input.claimId === undefined) {
+            // Account-level explicit outcome (agent / CLI without the daemon's claimId): terminal only, on a claimed or running run.
+            requireAutomation(input.status === 'done' || input.status === 'failed', 'status_required', 400);
+            requireAutomation(row.status !== 'queued', 'run_not_claimed', 409, { status: row.status });
+            requireAutomation(input.leaseMs === undefined && input.stickyKey === undefined && input.sessionId === undefined, 'claim_required', 400);
+        } else {
+            requireAutomation(row.claimId !== null && row.claimId === input.claimId, 'claim_mismatch', 409, { status: row.status });
+        }
+        const data: Prisma.AutomationRunUpdateInput = { updatedAt: now };
+        if (input.claimId !== undefined) data.leaseUntil = new Date(now.getTime() + (input.leaseMs ?? AUTOMATION_DEFAULT_LEASE_MS));
         if (input.sessionId) { await requireSession(tx, accountId, input.sessionId); data.sessionId = input.sessionId; }
         else if (input.sessionId === null) data.sessionId = null;
         if (input.stickyKey) {
