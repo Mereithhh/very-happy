@@ -590,10 +590,13 @@ model AutomationRun {
     machineId       String
     source          String
     dedupeKey       String?
+    /// Holds `dedupeKey` while the run occupies the 24h idempotency slot (queued runs only; cleared when the window expires).
+    dedupeSlot      String?
     payload         String?
     status          String     @default("queued")
     needsAttention  Boolean    @default(false)
     attentionReason String?
+    offlineFlaggedAt DateTime?
     claimId         String?
     sessionId       String?
     stickyKey       String?
@@ -610,6 +613,15 @@ model AutomationRun {
     @@index([automationId, createdAt])
     @@index([accountId, machineId, status])
     @@index([automationId, dedupeKey])
+    @@unique([automationId, dedupeSlot])
+}
+
+/// Last successful claim per (account, machine): the daemon liveness signal used for `machine_offline` attention.
+model AutomationClaimCursor {
+    accountId   String
+    machineId   String
+    lastClaimAt DateTime
+    @@id([accountId, machineId])
 }
 
 model AutomationSticky {

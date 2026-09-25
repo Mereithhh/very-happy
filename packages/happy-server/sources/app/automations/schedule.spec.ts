@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { nextCronAfter, parseCron, isValidTimeZone, CronParseError } from './cron';
+import { afterAll, describe, expect, it } from 'vitest';
+import { nextCronAfter, parseCron, isValidTimeZone, canonicalTimeZone, instantOf, wallClockOf, CronParseError } from './cron';
 import { initialRunAt, nextIntervalAfter, nextRunAfter, normalizeTrigger } from './schedule';
 
 const iso = (ms: number | null) => ms === null ? null : new Date(ms).toISOString();
@@ -24,9 +24,12 @@ describe('cron parsing', () => {
             expect(() => parseCron(bad), bad).toThrow(CronParseError);
         }
     });
-    it('validates IANA zones', () => {
+    it('validates and canonicalizes IANA zones', () => {
         expect(isValidTimeZone('Asia/Singapore')).toBe(true);
         expect(isValidTimeZone('Not/AZone')).toBe(false);
+        expect(canonicalTimeZone('asia/singapore')).toBe('Asia/Singapore');
+        expect(canonicalTimeZone('utc')).toBe('UTC');
+        expect(canonicalTimeZone('Mars/Olympus')).toBeNull();
     });
 });
 
@@ -55,19 +58,50 @@ describe('nextCronAfter', () => {
         expect(next('0 12 31 * *', 'UTC', '2026-02-01T00:00:00Z')).toBe('2026-03-31T12:00:00.000Z');
         expect(nextCronAfter(parseCron('0 0 31 2 *'), 'UTC', at('2026-01-01T00:00:00Z'))).toBeNull();
     });
-    it('moves a DST-gap wall clock to the first instant after the gap and fires once across fall-back', () => {
-        // New York springs forward 2026-03-08 02:00 -> 03:00 EST->EDT.
-        expect(next('30 2 * * *', 'America/New_York', '2026-03-07T12:00:00Z')).toBe('2026-03-08T07:30:00.000Z'); // 03:30 EDT
-        expect(next('30 2 * * *', 'America/New_York', '2026-03-08T07:30:00Z')).toBe('2026-03-09T06:30:00.000Z'); // 02:30 EDT next day
-        // Fall back 2026-11-01 02:00 EDT -> 01:00 EST: 01:30 occurs twice; fire on the first.
-        expect(next('30 1 * * *', 'America/New_York', '2026-10-31T12:00:00Z')).toBe('2026-11-01T05:30:00.000Z'); // 01:30 EDT
-        expect(next('30 1 * * *', 'America/New_York', '2026-11-01T05:30:00Z')).toBe('2026-11-02T06:30:00.000Z'); // 01:30 EST next day
-        // The repeated wall-clock hour is not replayed, even for wildcard hours (documented contract).
-        expect(next('0 * * * *', 'America/New_York', '2026-11-01T05:00:00Z')).toBe('2026-11-01T07:00:00.000Z');
-        expect(next('0 * * * *', 'America/New_York', '2026-11-01T07:00:00Z')).toBe('2026-11-01T08:00:00.000Z');
-        // Daily at 09:00 keeps a 24h cadence except across the transition (23h/25h).
-        expect(next('0 9 * * *', 'America/New_York', '2026-03-07T14:00:00Z')).toBe('2026-03-08T13:00:00.000Z');
-        expect(next('0 9 * * *', 'America/New_York', '2026-03-08T13:00:00Z')).toBe('2026-03-09T13:00:00.000Z');
+    const dstCases: Array<[string, string, string, string]> = [
+        // New York springs forward 2026-03-08 02:00 -> 03:00: 02:30 is in the gap.
+        ['30 2 * * *', 'America/New_York', '2026-03-07T12:00:00Z', '2026-03-08T07:00:00.000Z'],
+        ['30 2 * * *', 'America/New_York', '2026-03-08T07:00:00Z', '2026-03-09T06:30:00.000Z'],
+        // New York falls back 2026-11-01: 01:30 occurs twice; fire on the first only.
+        ['30 1 * * *', 'America/New_York', '2026-10-31T12:00:00Z', '2026-11-01T05:30:00.000Z'],
+        ['30 1 * * *', 'America/New_York', '2026-11-01T05:30:00Z', '2026-11-02T06:30:00.000Z'],
+        ['0 * * * *', 'America/New_York', '2026-11-01T05:00:00Z', '2026-11-01T07:00:00.000Z'],
+        ['0 9 * * *', 'America/New_York', '2026-03-07T14:00:00Z', '2026-03-08T13:00:00.000Z'],
+        ['0 9 * * *', 'America/New_York', '2026-03-08T13:00:00Z', '2026-03-09T13:00:00.000Z'],
+        // London falls back 2026-10-25 02:00 BST -> 01:00 GMT: 01:30 BST (00:30Z) once, then 01:30 GMT next day.
+        ['30 1 * * *', 'Europe/London', '2026-10-24T12:00:00Z', '2026-10-25T00:30:00.000Z'],
+        ['30 1 * * *', 'Europe/London', '2026-10-25T00:30:00Z', '2026-10-26T01:30:00.000Z'],
+        // London springs forward 2026-03-29 01:00 GMT -> 02:00 BST: 01:30 is in the gap -> 01:00Z.
+        ['30 1 * * *', 'Europe/London', '2026-03-28T12:00:00Z', '2026-03-29T01:00:00.000Z'],
+        ['30 1 * * *', 'Europe/London', '2026-03-29T01:00:00Z', '2026-03-30T00:30:00.000Z'],
+        // Santiago springs forward 2026-09-06 00:00 (-04) -> 01:00 (-03): midnight is in the gap -> 04:00Z.
+        ['0 0 * * *', 'America/Santiago', '2026-09-05T12:00:00Z', '2026-09-06T04:00:00.000Z'],
+        ['0 0 * * *', 'America/Santiago', '2026-09-06T04:00:00Z', '2026-09-07T03:00:00.000Z'],
+        // Santiago falls back 2026-04-05 00:00 (-03) -> 23:00 (-04) on 04-04: 23:30 twice, first only.
+        ['30 23 * * *', 'America/Santiago', '2026-04-04T12:00:00Z', '2026-04-05T02:30:00.000Z'],
+        ['30 23 * * *', 'America/Santiago', '2026-04-05T02:30:00Z', '2026-04-06T03:30:00.000Z'],
+        // Lord Howe (30-minute shift) falls back 2026-04-05 02:00 (+11) -> 01:30 (+10:30): 01:45 twice.
+        ['45 1 * * *', 'Australia/Lord_Howe', '2026-04-04T00:00:00Z', '2026-04-04T14:45:00.000Z'],
+        ['45 1 * * *', 'Australia/Lord_Howe', '2026-04-04T14:45:00Z', '2026-04-05T15:15:00.000Z'],
+        // Lord Howe springs forward 2026-10-04 02:00 (+10:30) -> 02:30 (+11): 02:15 is in the gap -> 15:30Z.
+        ['15 2 * * *', 'Australia/Lord_Howe', '2026-10-03T00:00:00Z', '2026-10-03T15:30:00.000Z'],
+        ['15 2 * * *', 'Australia/Lord_Howe', '2026-10-03T15:30:00Z', '2026-10-04T15:15:00.000Z'],
+    ];
+    const runDstCases = () => { for (const [expr, tz, after, expected] of dstCases) expect(next(expr, tz, after), `${expr} ${tz} after ${after}`).toBe(expected); };
+    it('moves DST-gap wall clocks to the first instant after the gap and fires fall-back overlaps once', runDstCases);
+    describe('is independent of the process time zone', () => {
+        const originalTz = process.env.TZ;
+        afterAll(() => { if (originalTz === undefined) delete process.env.TZ; else process.env.TZ = originalTz; });
+        it.each(['UTC', 'America/New_York', 'Asia/Kolkata', 'Australia/Lord_Howe', 'America/Santiago'])('under TZ=%s', tz => {
+            process.env.TZ = tz;
+            // Prove the process zone actually switched (Node re-reads TZ on assignment).
+            expect(new Date(Date.UTC(2026, 0, 15, 12)).getTimezoneOffset() + (wallClockOf(tz, Date.UTC(2026, 0, 15, 12)) - Date.UTC(2026, 0, 15, 12)) / 60_000).toBe(0);
+            runDstCases();
+            expect(iso(instantOf('Europe/London', Date.UTC(2026, 9, 25, 1, 30)))).toBe('2026-10-25T00:30:00.000Z');
+            expect(iso(instantOf('America/Santiago', Date.UTC(2026, 8, 6, 0, 0)))).toBe('2026-09-06T04:00:00.000Z');
+            expect(iso(instantOf('Australia/Lord_Howe', Date.UTC(2026, 9, 4, 2, 15)))).toBe('2026-10-03T15:30:00.000Z');
+            expect(iso(wallClockOf('Asia/Kolkata', Date.UTC(2026, 0, 1, 0, 0)))).toBe('2026-01-01T05:30:00.000Z');
+        });
     });
 });
 
@@ -100,6 +134,7 @@ describe('nextRunAfter', () => {
         const now = at('2026-09-25T10:00:00Z');
         expect(normalizeTrigger({ kind: 'interval', everyMs: 60_000 }, now)).toEqual({ kind: 'interval', everyMs: 60_000, anchorAt: now });
         expect(normalizeTrigger({ kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Singapore' }, now)).toEqual({ kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Singapore' });
+        expect(normalizeTrigger({ kind: 'cron', expr: ' 0 9 * * * ', tz: 'asia/singapore' }, now)).toEqual({ kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Singapore' });
         expect(() => normalizeTrigger({ kind: 'cron', expr: '0 9 * *', tz: 'UTC' }, now)).toThrow(expect.objectContaining({ code: 'invalid_cron', status: 400 }));
         expect(() => normalizeTrigger({ kind: 'cron', expr: '0 0 31 2 *', tz: 'UTC' }, now)).toThrow(expect.objectContaining({ code: 'invalid_cron' }));
         expect(() => normalizeTrigger({ kind: 'cron', expr: '0 9 * * *', tz: 'Mars/Olympus' }, now)).toThrow(expect.objectContaining({ code: 'invalid_timezone', status: 400 }));

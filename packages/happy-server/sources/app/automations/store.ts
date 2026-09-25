@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import {
     AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DEDUPE_WINDOW_MS, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_DEFAULT_MAX_RUNTIME_MS,
     AUTOMATION_QUEUED_ATTENTION_MS, AUTOMATION_RUN_RETENTION, AUTOMATION_SCRIPT_DEFAULT_MAX_RUNTIME_MS, AUTOMATION_RUN_STATUSES,
-    isAutomationRunTerminal,
+    AUTOMATION_RUN_TERMINAL_STATUSES, isAutomationRunTerminal,
     type Automation, type AutomationClaim, type AutomationClaimResponse, type AutomationCreate, type AutomationFire, type AutomationFireResponse,
     type AutomationManualRun, type AutomationReport, type AutomationRun, type AutomationRunStatus, type AutomationSticky, type AutomationUpdate,
 } from '@slopus/happy-wire';
 import { db } from '@/storage/db';
-import { inTx, type Tx } from '@/storage/inTx';
+import { inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
 import { AutomationError, requireAutomation } from './errors';
 import { initialRunAt, nextRunAfter, normalizeTrigger } from './schedule';
 
@@ -19,7 +19,7 @@ import { initialRunAt, nextRunAfter, normalizeTrigger } from './schedule';
  */
 type AutomationRow = Prisma.AutomationGetPayload<{}>;
 type RunRow = Prisma.AutomationRunGetPayload<{}>;
-const TERMINAL: readonly string[] = ['done', 'failed', 'skipped', 'expired', 'cancelled'];
+const TERMINAL: readonly string[] = AUTOMATION_RUN_TERMINAL_STATUSES;
 const ACTIVE_RUN: readonly string[] = ['queued', 'claimed', 'running'];
 const MAX_STICKIES = 256;
 
@@ -65,14 +65,26 @@ async function requireSession(tx: Tx, accountId: string, sessionId: string) {
     requireAutomation(await tx.session.findFirst({ where: { id: sessionId, accountId }, select: { id: true } }), 'session_not_found', 404);
 }
 const defaultMaxRuntime = (action: AutomationCreate['action']) => action.kind === 'script' ? AUTOMATION_SCRIPT_DEFAULT_MAX_RUNTIME_MS : AUTOMATION_DEFAULT_MAX_RUNTIME_MS;
-function nameTaken(error: unknown): boolean {
-    return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
+const uniqueViolation = (error: unknown): boolean => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+const nameTaken = uniqueViolation;
+/** Serializable retries are exhausted inside `inTx`; the caller gets a retryable 409 instead of a 500. */
+function mapConflict(error: unknown): never {
+    if (isRetryableTransactionConflict(error)) throw new AutomationError('transaction_conflict', 409);
+    throw error;
+}
+/** Only the newest run of an automation may set `lastRunStatus`, so late reports on older runs cannot mask a fresher outcome. */
+async function setLastRunStatus(tx: Tx, automationId: string, runId: string, status: string): Promise<void> {
+    const newest = await tx.automationRun.findFirst({ where: { automationId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true } });
+    if (newest?.id === runId) await tx.automation.update({ where: { id: automationId }, data: { lastRunStatus: status } });
 }
 
-/** Keeps the newest 200 rows per automation plus every non-terminal row. */
-async function pruneRuns(tx: Tx, automationId: string): Promise<void> {
-    await tx.$executeRaw`DELETE FROM "AutomationRun" WHERE "automationId"=${automationId} AND "status" IN ('done','failed','skipped','expired','cancelled')
-        AND "id" NOT IN (SELECT "id" FROM "AutomationRun" WHERE "automationId"=${automationId} ORDER BY "createdAt" DESC, "id" DESC LIMIT ${AUTOMATION_RUN_RETENTION})`;
+/** Keeps the newest 200 rows per automation, every non-terminal row, and rows still holding a live dedupe slot. */
+async function pruneRuns(tx: Tx, automationId: string, now: Date): Promise<void> {
+    const keep = await tx.automationRun.findMany({ where: { automationId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: AUTOMATION_RUN_RETENTION, select: { id: true } });
+    await tx.automationRun.deleteMany({ where: {
+        automationId, status: { in: [...TERMINAL] }, id: { notIn: keep.map(k => k.id) },
+        NOT: { dedupeSlot: { not: null }, createdAt: { gte: new Date(now.getTime() - AUTOMATION_DEDUPE_WINDOW_MS) } },
+    } });
 }
 /**
  * Creates one run for an automation. With `concurrency: skip`, an existing
@@ -86,33 +98,41 @@ async function enqueueRun(tx: Tx, automation: AutomationRow, input: { source: Au
     }
     const run = await tx.automationRun.create({ data: {
         id: randomUUID(), automationId: automation.id, accountId: automation.accountId, machineId: automation.machineId, source: input.source,
-        dedupeKey: input.dedupeKey ?? null, payload: input.payload ?? null, status, scheduledFor: input.scheduledFor ?? null,
+        dedupeKey: input.dedupeKey ?? null, dedupeSlot: status === 'queued' ? input.dedupeKey ?? null : null, payload: input.payload ?? null, status, scheduledFor: input.scheduledFor ?? null,
         finishedAt: status === 'skipped' ? now : null, error: status === 'skipped' ? 'previous_run_active' : null, createdAt: now, updatedAt: now,
     } });
     await tx.automation.update({ where: { id: automation.id }, data: { lastRunAt: now, ...(status === 'skipped' ? { lastRunStatus: 'skipped' } : {}) } });
-    await pruneRuns(tx, automation.id);
+    await pruneRuns(tx, automation.id, now);
     return run;
 }
 
 /**
- * Marks leases and runtimes that ran out as `expired` (needsAttention) and
- * flags runs nobody claimed within ten minutes as `machine_offline`, keeping
- * them queued. Called from claim and from run reads.
+ * Marks leases and runtimes that ran out as `expired` (needsAttention). Runs
+ * nobody claimed within ten minutes are flagged `machine_offline` once (kept
+ * queued) — but only while the machine itself has not claimed for ten minutes,
+ * so a healthy machine working through a queue backlog is never flagged.
+ * Called inside the claim transaction and best-effort before reads.
  */
 export async function sweepExpiredRuns(tx: Tx, accountId: string, now: Date): Promise<void> {
-    const expired = await tx.$queryRaw<{ id: string; automationId: string; reason: string }[]>`
-        SELECT r."id", r."automationId", CASE WHEN r."leaseUntil" < ${now} THEN 'lease_expired' ELSE 'max_runtime_exceeded' END AS reason
-        FROM "AutomationRun" r JOIN "Automation" a ON a."id"=r."automationId"
-        WHERE r."accountId"=${accountId} AND r."status" IN ('claimed','running')
-          AND (r."leaseUntil" < ${now} OR r."claimedAt" + (a."maxRuntimeMs" * interval '1 millisecond') < ${now})`;
-    for (const row of expired) {
-        await tx.automationRun.update({ where: { id: row.id }, data: { status: 'expired', needsAttention: true, attentionReason: row.reason, finishedAt: now, updatedAt: now } });
-        await tx.automation.update({ where: { id: row.automationId }, data: { lastRunStatus: 'expired' } });
+    const inFlight = await tx.automationRun.findMany({ where: { accountId, status: { in: ['claimed', 'running'] } }, include: { automation: { select: { maxRuntimeMs: true } } } });
+    for (const run of inFlight) {
+        const reason = run.leaseUntil && run.leaseUntil.getTime() < now.getTime() ? 'lease_expired'
+            : run.claimedAt && run.claimedAt.getTime() + run.automation.maxRuntimeMs < now.getTime() ? 'max_runtime_exceeded' : null;
+        if (!reason) continue;
+        await tx.automationRun.update({ where: { id: run.id }, data: { status: 'expired', needsAttention: true, attentionReason: reason, finishedAt: now, updatedAt: now } });
+        await setLastRunStatus(tx, run.automationId, run.id, 'expired');
     }
+    const stale = new Date(now.getTime() - AUTOMATION_QUEUED_ATTENTION_MS);
+    const cursors = await tx.automationClaimCursor.findMany({ where: { accountId, lastClaimAt: { gte: stale } }, select: { machineId: true } });
     await tx.automationRun.updateMany({
-        where: { accountId, status: 'queued', needsAttention: false, createdAt: { lt: new Date(now.getTime() - AUTOMATION_QUEUED_ATTENTION_MS) } },
-        data: { needsAttention: true, attentionReason: 'machine_offline', updatedAt: now },
+        where: { accountId, status: 'queued', offlineFlaggedAt: null, createdAt: { lt: stale }, machineId: { notIn: cursors.map(c => c.machineId) } },
+        data: { needsAttention: true, attentionReason: 'machine_offline', offlineFlaggedAt: now, updatedAt: now },
     });
+}
+/** Reads must not fail or serialize on housekeeping: sweep in its own transaction and ignore conflicts. */
+async function sweepBestEffort(accountId: string): Promise<void> {
+    try { await inTx(tx => sweepExpiredRuns(tx, accountId, new Date())); }
+    catch (error) { if (!isRetryableTransactionConflict(error)) throw error; }
 }
 
 export async function createAutomation(accountId: string, input: AutomationCreate): Promise<Automation> {
@@ -134,7 +154,7 @@ export async function createAutomation(accountId: string, input: AutomationCreat
         });
     } catch (error) {
         if (nameTaken(error)) throw new AutomationError('automation_name_taken', 409);
-        throw error;
+        return mapConflict(error);
     }
 }
 export async function listAutomations(accountId: string, machineId?: string): Promise<Automation[]> {
@@ -163,6 +183,10 @@ export async function updateAutomation(accountId: string, id: string, input: Aut
             if (input.action?.kind === 'send') await requireSession(tx, accountId, input.action.sessionId);
             const trigger = input.trigger ? normalizeTrigger(input.trigger, now.getTime()) : row.trigger;
             const nextRunAt = input.trigger && row.status === 'active' ? initialRunAt(trigger, now.getTime()) : ms(row.nextRunAt);
+            if (input.machineId && input.machineId !== row.machineId) {
+                // Queued work follows the automation to its new machine; claimed/running runs stay with the machine executing them.
+                await tx.automationRun.updateMany({ where: { automationId: row.id, status: 'queued' }, data: { machineId: input.machineId, updatedAt: now } });
+            }
             const updated = await tx.automation.update({ where: { id: row.id }, data: {
                 ...(input.name !== undefined ? { name: input.name } : {}),
                 ...(input.description !== undefined ? { description: input.description } : {}),
@@ -175,15 +199,16 @@ export async function updateAutomation(accountId: string, id: string, input: Aut
         });
     } catch (error) {
         if (nameTaken(error)) throw new AutomationError('automation_name_taken', 409);
-        throw error;
+        return mapConflict(error);
     }
 }
+/** Cascades runs and stickies. A daemon still executing one of its runs sees `run_not_found` on its next report and stops. */
 export async function deleteAutomation(accountId: string, id: string): Promise<void> {
     assertAutomationsEnabled(accountId);
     await inTx(async tx => {
         const row = await loadAutomation(tx, accountId, id);
         await tx.automation.delete({ where: { id: row.id } });
-    });
+    }).catch(mapConflict);
 }
 /** Pause clears nextRunAt; resume recomputes it from now (missed occurrences are not replayed). */
 export async function setAutomationStatus(accountId: string, id: string, status: 'active' | 'paused'): Promise<Automation> {
@@ -198,20 +223,32 @@ export async function setAutomationStatus(accountId: string, id: string, status:
     });
 }
 
-/** Event entry point: same automation + dedupeKey within 24h returns the original run. */
+/**
+ * Event entry point. A `dedupeKey` occupies a unique per-automation slot
+ * (`dedupeSlot`) for 24h: a repeat within the window returns the original run.
+ * `skipped` runs never hold the slot, so an event that arrived while the
+ * automation was busy is not silenced for a day. Concurrent first fires race
+ * on the unique index; the loser re-reads and returns the winner's run.
+ */
 export async function fireAutomation(accountId: string, name: string, input: AutomationFire): Promise<AutomationFireResponse> {
     assertAutomationsEnabled(accountId);
-    const now = new Date();
-    return inTx(async tx => {
+    const attempt = () => inTx(async tx => {
+        const now = new Date();
         const automation = await loadAutomationByName(tx, accountId, name);
         requireAutomation(automation.status === 'active', 'automation_paused', 409);
         if (input.dedupeKey) {
-            const prior = await tx.automationRun.findFirst({ where: { automationId: automation.id, dedupeKey: input.dedupeKey, createdAt: { gte: new Date(now.getTime() - AUTOMATION_DEDUPE_WINDOW_MS) } }, orderBy: { createdAt: 'desc' } });
-            if (prior) return { run: toRunView(prior, automation.name), deduplicated: true };
+            const prior = await tx.automationRun.findUnique({ where: { automationId_dedupeSlot: { automationId: automation.id, dedupeSlot: input.dedupeKey } } });
+            if (prior && prior.createdAt.getTime() >= now.getTime() - AUTOMATION_DEDUPE_WINDOW_MS) return { run: toRunView(prior, automation.name), deduplicated: true };
+            if (prior) await tx.automationRun.update({ where: { id: prior.id }, data: { dedupeSlot: null } });
         }
         const run = await enqueueRun(tx, automation, { source: 'fire', payload: input.payload, dedupeKey: input.dedupeKey }, now);
         return { run: toRunView(run, automation.name), deduplicated: false };
     });
+    try { return await attempt(); }
+    catch (error) {
+        if (!uniqueViolation(error)) return mapConflict(error);
+        return attempt().catch(mapConflict);
+    }
 }
 /** Explicit "run now"; allowed while paused because it expresses direct user intent. */
 export async function runAutomationNow(accountId: string, id: string, input: AutomationManualRun): Promise<AutomationRun> {
@@ -221,31 +258,31 @@ export async function runAutomationNow(accountId: string, id: string, input: Aut
         const automation = await loadAutomation(tx, accountId, id);
         const run = await enqueueRun(tx, automation, { source: 'manual', payload: input.payload }, now);
         return toRunView(run, automation.name);
-    });
+    }).catch(mapConflict);
 }
 
 export async function listRuns(accountId: string, query: { automationId?: string; name?: string; status?: string; attention?: boolean; limit?: number }): Promise<AutomationRun[]> {
     assertAutomationsEnabled(accountId);
-    return inTx(async tx => {
-        await sweepExpiredRuns(tx, accountId, new Date());
-        let automationId = query.automationId;
-        if (query.name) automationId = (await loadAutomationByName(tx, accountId, query.name)).id;
-        if (query.status !== undefined) requireAutomation((AUTOMATION_RUN_STATUSES as readonly string[]).includes(query.status), 'invalid_status', 400);
-        const rows = await tx.automationRun.findMany({
-            where: { accountId, ...(automationId ? { automationId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.attention ? { needsAttention: true } : {}) },
-            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: query.limit ?? 50, include: { automation: { select: { name: true } } },
-        });
-        return rows.map(row => toRunView(row, row.automation.name));
+    if (query.status !== undefined) requireAutomation((AUTOMATION_RUN_STATUSES as readonly string[]).includes(query.status), 'invalid_status', 400);
+    await sweepBestEffort(accountId);
+    let automationId = query.automationId;
+    if (query.name) {
+        const named = await db.automation.findFirst({ where: { accountId, name: query.name }, select: { id: true } });
+        requireAutomation(named, 'automation_not_found', 404);
+        automationId = named.id;
+    }
+    const rows = await db.automationRun.findMany({
+        where: { accountId, ...(automationId ? { automationId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.attention ? { needsAttention: true } : {}) },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: query.limit ?? 50, include: { automation: { select: { name: true } } },
     });
+    return rows.map(row => toRunView(row, row.automation.name));
 }
 export async function getRun(accountId: string, id: string): Promise<AutomationRun> {
     assertAutomationsEnabled(accountId);
-    return inTx(async tx => {
-        await sweepExpiredRuns(tx, accountId, new Date());
-        const row = await tx.automationRun.findFirst({ where: { id, accountId }, include: { automation: { select: { name: true } } } });
-        requireAutomation(row, 'run_not_found', 404);
-        return toRunView(row, row.automation.name);
-    });
+    await sweepBestEffort(accountId);
+    const row = await db.automationRun.findFirst({ where: { id, accountId }, include: { automation: { select: { name: true } } } });
+    requireAutomation(row, 'run_not_found', 404);
+    return toRunView(row, row.automation.name);
 }
 
 async function upsertSticky(tx: Tx, automationId: string, key: string, sessionId: string, now: Date): Promise<AutomationSticky> {
@@ -270,7 +307,7 @@ export async function reportRun(accountId: string, runId: string, input: Automat
         if (input.sessionId) { await requireSession(tx, accountId, input.sessionId); data.sessionId = input.sessionId; }
         else if (input.sessionId === null) data.sessionId = null;
         if (input.stickyKey) {
-            const sessionId = input.sessionId ?? row.sessionId;
+            const sessionId = input.sessionId === undefined ? row.sessionId : input.sessionId;
             requireAutomation(sessionId, 'sticky_requires_session', 400);
             await upsertSticky(tx, row.automationId, input.stickyKey, sessionId, now);
             data.stickyKey = input.stickyKey;
@@ -283,11 +320,11 @@ export async function reportRun(accountId: string, runId: string, input: Automat
         if (input.status === 'running') { data.status = 'running'; if (!row.startedAt) data.startedAt = now; }
         else if (input.status) {
             data.status = input.status; data.finishedAt = now; if (!row.startedAt) data.startedAt = now;
-            await tx.automation.update({ where: { id: row.automationId }, data: { lastRunStatus: input.status } });
+            await setLastRunStatus(tx, row.automationId, row.id, input.status);
         }
         const updated = await tx.automationRun.update({ where: { id: row.id }, data });
         return toRunView(updated, row.automation.name);
-    });
+    }).catch(mapConflict);
 }
 export async function cancelRun(accountId: string, runId: string): Promise<AutomationRun> {
     assertAutomationsEnabled(accountId);
@@ -297,9 +334,9 @@ export async function cancelRun(accountId: string, runId: string): Promise<Autom
         requireAutomation(row, 'run_not_found', 404);
         requireAutomation(!TERMINAL.includes(row.status), 'run_finished', 409, { status: row.status });
         const updated = await tx.automationRun.update({ where: { id: row.id }, data: { status: 'cancelled', finishedAt: now, updatedAt: now } });
-        await tx.automation.update({ where: { id: row.automationId }, data: { lastRunStatus: 'cancelled' } });
+        await setLastRunStatus(tx, row.automationId, row.id, 'cancelled');
         return toRunView(updated, row.automation.name);
-    });
+    }).catch(mapConflict);
 }
 export async function ackRun(accountId: string, runId: string): Promise<AutomationRun> {
     assertAutomationsEnabled(accountId);
@@ -312,10 +349,12 @@ export async function ackRun(accountId: string, runId: string): Promise<Automati
 }
 
 /**
- * Daemon poll. In one SERIALIZABLE transaction: sweep expiries, materialize
- * due schedule runs for this machine (CAS on nextRunAt; missed periods collapse
- * into one run), then claim up to `limit` queued runs, at most one per
- * automation and none for automations with a claimed/running run.
+ * Daemon poll. In one SERIALIZABLE transaction: record the machine's claim
+ * cursor, sweep expiries, materialize due schedule runs for this machine (CAS
+ * on nextRunAt; missed periods collapse into one run), then claim up to
+ * `limit` runs — the oldest queued run of each automation (so a backlog on one
+ * automation cannot starve the others), skipping automations that already
+ * have a claimed/running run.
  */
 export async function claimRuns(accountId: string, input: AutomationClaim): Promise<AutomationClaimResponse> {
     assertAutomationsEnabled(accountId);
@@ -324,6 +363,7 @@ export async function claimRuns(accountId: string, input: AutomationClaim): Prom
     const limit = input.limit ?? AUTOMATION_CLAIM_MAX_RUNS;
     return inTx(async tx => {
         await requireMachine(tx, accountId, input.machineId);
+        await tx.automationClaimCursor.upsert({ where: { accountId_machineId: { accountId, machineId: input.machineId } }, create: { accountId, machineId: input.machineId, lastClaimAt: now }, update: { lastClaimAt: now } });
         await sweepExpiredRuns(tx, accountId, now);
         const due = await tx.automation.findMany({ where: { accountId, machineId: input.machineId, status: 'active', nextRunAt: { lte: now } }, orderBy: { nextRunAt: 'asc' } });
         for (const automation of due) {
@@ -334,7 +374,12 @@ export async function claimRuns(accountId: string, input: AutomationClaim): Prom
         }
         const active = await tx.automationRun.findMany({ where: { accountId, status: { in: ['claimed', 'running'] } }, select: { automationId: true } });
         const busy = new Set(active.map(r => r.automationId));
-        const queued = await tx.automationRun.findMany({ where: { accountId, machineId: input.machineId, status: 'queued' }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: limit * 4 + 8 });
+        const heads = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM (
+            SELECT DISTINCT ON ("automationId") "id", "createdAt" FROM "AutomationRun"
+            WHERE "accountId"=${accountId} AND "machineId"=${input.machineId} AND "status"='queued'
+            ORDER BY "automationId", "createdAt" ASC, "id" ASC) heads ORDER BY "createdAt" ASC, "id" ASC`;
+        const queued = heads.length ? await tx.automationRun.findMany({ where: { id: { in: heads.map(h => h.id) } } }) : [];
+        queued.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
         const claimed: RunRow[] = [];
         for (const run of queued) {
             if (claimed.length >= limit || busy.has(run.automationId)) continue;
@@ -355,7 +400,7 @@ export async function claimRuns(accountId: string, input: AutomationClaim): Prom
             runs.push({ run: { ...toRunView(run, automation.name), claimId: run.claimId! }, automation: toAutomationView(automation), stickies: stickies.map(stickyView) });
         }
         return { runs, leaseMs };
-    });
+    }).catch(mapConflict);
 }
 
 export async function listStickies(accountId: string, automationId: string, key?: string): Promise<AutomationSticky[]> {

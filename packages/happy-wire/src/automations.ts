@@ -95,7 +95,7 @@ export const AutomationUpdateSchema = z.object({
 });
 export type AutomationUpdate = z.infer<typeof AutomationUpdateSchema>;
 
-const payload = z.string().max(AUTOMATION_PAYLOAD_MAX_BYTES);
+const payload = z.string().max(AUTOMATION_PAYLOAD_MAX_BYTES).refine(v => new TextEncoder().encode(v).length <= AUTOMATION_PAYLOAD_MAX_BYTES, 'payload exceeds 64KB');
 export const AutomationFireSchema = z.object({ payload: payload.optional(), dedupeKey: z.string().min(1).max(256).optional() });
 export type AutomationFire = z.infer<typeof AutomationFireSchema>;
 export const AutomationManualRunSchema = z.object({ payload: payload.optional() });

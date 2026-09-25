@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AutomationActionSchema, AutomationCreateSchema, AutomationNameSchema, AutomationReportSchema, AutomationTriggerSchema, isAutomationRunTerminal } from './automations';
+import { AutomationActionSchema, AutomationCreateSchema, AutomationFireSchema, AutomationNameSchema, AutomationReportSchema, AutomationTriggerSchema, isAutomationRunTerminal } from './automations';
 
 describe('automation wire schemas', () => {
     it('constrains names and interval floors', () => {
@@ -21,6 +21,10 @@ describe('automation wire schemas', () => {
         expect(AutomationReportSchema.safeParse({ status: 'done' }).success).toBe(false);
         expect(AutomationReportSchema.safeParse({ claimId: 'c1', status: 'expired' }).success).toBe(false);
         expect(AutomationCreateSchema.safeParse({ name: 'x', machineId: 'm', trigger: { kind: 'manual' }, action: { kind: 'send', sessionId: 's', prompt: 'p' } }).success).toBe(true);
+    });
+    it('limits payload by UTF-8 bytes, not characters', () => {
+        expect(AutomationFireSchema.safeParse({ payload: 'a'.repeat(65_536) }).success).toBe(true);
+        expect(AutomationFireSchema.safeParse({ payload: '\u4e2d'.repeat(30_000) }).success).toBe(false);
     });
     it('classifies terminal statuses', () => {
         for (const s of ['done', 'failed', 'skipped', 'expired', 'cancelled']) expect(isAutomationRunTerminal(s)).toBe(true);

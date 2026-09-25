@@ -1,5 +1,5 @@
 import type { AutomationTrigger } from '@slopus/happy-wire';
-import { CronParseError, isValidTimeZone, nextCronAfter, parseCron } from './cron';
+import { CronParseError, canonicalTimeZone, nextCronAfter, parseCron } from './cron';
 import { AutomationError } from './errors';
 
 /**
@@ -34,10 +34,11 @@ export function initialRunAt(trigger: AutomationTrigger, nowMs: number): number 
 export function normalizeTrigger(trigger: AutomationTrigger, nowMs: number): AutomationTrigger {
     if (trigger.kind === 'interval') return { ...trigger, anchorAt: trigger.anchorAt ?? nowMs };
     if (trigger.kind !== 'cron') return trigger;
-    if (!isValidTimeZone(trigger.tz)) throw new AutomationError('invalid_timezone', 400);
+    const tz = canonicalTimeZone(trigger.tz);
+    if (!tz) throw new AutomationError('invalid_timezone', 400);
     let fields;
     try { fields = parseCron(trigger.expr); }
     catch (error) { if (error instanceof CronParseError) throw new AutomationError('invalid_cron', 400); throw error; }
-    if (nextCronAfter(fields, trigger.tz, nowMs) === null) throw new AutomationError('invalid_cron', 400);
-    return trigger;
+    if (nextCronAfter(fields, tz, nowMs) === null) throw new AutomationError('invalid_cron', 400);
+    return { ...trigger, expr: trigger.expr.trim(), tz };
 }

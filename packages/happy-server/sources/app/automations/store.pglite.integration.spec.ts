@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -72,8 +72,55 @@ describe('automations store (pglite)', () => {
         expect(paused).toMatchObject({ status: 'paused', nextRunAt: null, version: 3 });
         const resumed = await store.setAutomationStatus(accountId, a.id, 'active');
         expect(resumed.status).toBe('active'); expect(resumed.nextRunAt).toBeGreaterThan(Date.now());
+        const moveTo = crypto.randomUUID();
+        await db.machine.create({ data: { id: moveTo, accountId, metadata: 'metadata' } });
+        const queuedRun = await store.runAutomationNow(accountId, a.id, {});
+        const claimedRun = await store.claimRuns(accountId, { machineId });
+        expect(claimedRun.runs.some(r => r.run.id === queuedRun.id)).toBe(true);
+        const following = await store.runAutomationNow(accountId, a.id, {});
+        const moved = await store.updateAutomation(accountId, a.id, { version: 4, machineId: moveTo });
+        expect(moved.machineId).toBe(moveTo);
+        expect((await store.getRun(accountId, following.id)).machineId).toBe(moveTo);
+        expect((await store.getRun(accountId, queuedRun.id)).machineId).toBe(machineId);
+        // The in-flight run still occupies the automation; once it finishes the moved queue is claimable on the new machine.
+        expect((await store.claimRuns(accountId, { machineId: moveTo })).runs.some(r => r.run.id === following.id)).toBe(false);
+        await store.reportRun(accountId, queuedRun.id, { claimId: claimedRun.runs.find(r => r.run.id === queuedRun.id)!.run.claimId, status: 'done' });
+        expect((await store.claimRuns(accountId, { machineId: moveTo })).runs.some(r => r.run.id === following.id)).toBe(true);
         await store.deleteAutomation(accountId, a.id);
         await expect(store.getAutomation(accountId, a.id)).rejects.toMatchObject({ code: 'automation_not_found' });
+        await expect(store.reportRun(accountId, following.id, { claimId: 'x' })).rejects.toMatchObject({ code: 'run_not_found', status: 404 });
+    });
+
+    it('retries a serialization failure on the first transaction attempt and maps exhaustion to 409', async () => {
+        const { Prisma } = await import('@prisma/client');
+        const conflict = () => new Prisma.PrismaClientKnownRequestError('could not serialize access', { code: 'P2034', clientVersion: 'test' });
+        const original = db.$transaction.bind(db);
+        const spy = vi.spyOn(db, '$transaction');
+        spy.mockImplementationOnce(async () => { throw conflict(); });
+        spy.mockImplementation(original as any);
+        const a = await make();
+        expect(spy).toHaveBeenCalledTimes(2);
+        expect((await store.getAutomation(accountId, a.id)).id).toBe(a.id);
+        spy.mockReset(); spy.mockImplementation(async () => { throw conflict(); });
+        await expect(store.runAutomationNow(accountId, a.id, {})).rejects.toMatchObject({ code: 'transaction_conflict', status: 409 });
+        expect(spy).toHaveBeenCalledTimes(4);
+        // Prisma's client is a Proxy: restoring the spy drops the method, so hand the original back explicitly.
+        spy.mockImplementation(original as any);
+    });
+
+    it('lets only the newest run set lastRunStatus and honours an explicit null sessionId', async () => {
+        const a = await make({ concurrency: 'queue' });
+        const older = await store.runAutomationNow(accountId, a.id, {});
+        const olderClaim = (await store.claimRuns(accountId, { machineId })).runs.find(r => r.run.id === older.id)!;
+        const newer = await store.runAutomationNow(accountId, a.id, {});
+        await store.reportRun(accountId, older.id, { claimId: olderClaim.run.claimId, status: 'done' });
+        expect((await store.getAutomation(accountId, a.id)).lastRunStatus).toBeNull();
+        const newerClaim = (await store.claimRuns(accountId, { machineId })).runs.find(r => r.run.id === newer.id)!;
+        await store.reportRun(accountId, newer.id, { claimId: newerClaim.run.claimId, status: 'running', sessionId });
+        await expect(store.reportRun(accountId, newer.id, { claimId: newerClaim.run.claimId, sessionId: null, stickyKey: 'k' })).rejects.toMatchObject({ code: 'sticky_requires_session' });
+        const detached = await store.reportRun(accountId, newer.id, { claimId: newerClaim.run.claimId, sessionId: null, status: 'failed' });
+        expect(detached.sessionId).toBeNull();
+        expect((await store.getAutomation(accountId, a.id)).lastRunStatus).toBe('failed');
     });
 
     it('fires with payload, deduplicates by key for 24h and refuses paused automations', async () => {
@@ -86,8 +133,14 @@ describe('automations store (pglite)', () => {
         const other = await store.fireAutomation(accountId, 'events', { dedupeKey: 'evt-2' });
         expect(other.run.id).not.toBe(first.run.id);
         await db.automationRun.update({ where: { id: first.run.id }, data: { createdAt: new Date(Date.now() - 25 * 3_600_000) } });
-        expect((await store.fireAutomation(accountId, 'events', { dedupeKey: 'evt-1' })).deduplicated).toBe(false);
+        const reopened = await store.fireAutomation(accountId, 'events', { dedupeKey: 'evt-1' });
+        expect(reopened.deduplicated).toBe(false); expect(reopened.run.id).not.toBe(first.run.id);
+        expect((await db.automationRun.findUnique({ where: { id: first.run.id } }))!.dedupeSlot).toBeNull();
         expect((await store.listRuns(accountId, { name: 'events' })).length).toBe(3);
+        // Many concurrent first fires with one key converge on a single run (unique slot + re-read).
+        const burst = await Promise.all(Array.from({ length: 6 }, () => store.fireAutomation(accountId, 'events', { dedupeKey: 'burst' })));
+        expect(new Set(burst.map(b => b.run.id)).size).toBe(1);
+        expect(burst.filter(b => !b.deduplicated)).toHaveLength(1);
         expect((await store.getAutomation(accountId, a.id)).lastRunAt).not.toBeNull();
         await store.setAutomationStatus(accountId, a.id, 'paused');
         await expect(store.fireAutomation(accountId, 'events', {})).rejects.toMatchObject({ code: 'automation_paused', status: 409 });
@@ -102,6 +155,13 @@ describe('automations store (pglite)', () => {
         expect(second).toMatchObject({ status: 'skipped', error: 'previous_run_active' });
         expect(second.finishedAt).not.toBeNull();
         expect((await store.getAutomation(accountId, a.id)).lastRunStatus).toBe('skipped');
+        // A skipped run does not hold the dedupe slot, so the same event is not silenced for 24h.
+        const busy = await make({ name: 'busy-events' });
+        await store.runAutomationNow(accountId, busy.id, {});
+        const skippedFire = await store.fireAutomation(accountId, 'busy-events', { dedupeKey: 'evt' });
+        expect(skippedFire.run.status).toBe('skipped'); expect(skippedFire.deduplicated).toBe(false);
+        const again = await store.fireAutomation(accountId, 'busy-events', { dedupeKey: 'evt' });
+        expect(again.deduplicated).toBe(false); expect(again.run.id).not.toBe(skippedFire.run.id);
     });
 
     it('materializes one run for many missed periods and never double-claims under concurrent claims', async () => {
@@ -137,8 +197,13 @@ describe('automations store (pglite)', () => {
         await db.machine.create({ data: { id: otherMachine, accountId, metadata: 'metadata' } });
         const b = await make({ machineId: otherMachine, concurrency: 'queue' });
         await store.runAutomationNow(accountId, b.id, {});
+        // A deep backlog on `a` must not starve a newer automation on the same machine.
+        const late = await make({ concurrency: 'queue' });
+        for (let i = 0; i < 40; i++) await store.runAutomationNow(accountId, a.id, { payload: `extra${i}` });
+        await store.runAutomationNow(accountId, late.id, { payload: 'late' });
         const first = await store.claimRuns(accountId, { machineId });
         expect(first.runs.filter(r => r.automation.id === a.id).map(r => r.run.payload)).toEqual(['p0']);
+        expect(first.runs.filter(r => r.automation.id === late.id).map(r => r.run.payload)).toEqual(['late']);
         expect(first.runs.some(r => r.automation.id === b.id)).toBe(false);
         expect((await store.claimRuns(accountId, { machineId })).runs.filter(r => r.automation.id === a.id)).toHaveLength(0);
         await store.reportRun(accountId, first.runs.find(r => r.automation.id === a.id)!.run.id, { claimId: first.runs.find(r => r.automation.id === a.id)!.run.claimId, status: 'done' });
@@ -195,13 +260,31 @@ describe('automations store (pglite)', () => {
         await db.automationRun.update({ where: { id: long.id }, data: { claimedAt: new Date(Date.now() - 61_000) } });
         expect((await store.claimRuns(accountId, { machineId })).runs.some(r => r.run.id === long.id)).toBe(false);
         expect(await store.getRun(accountId, long.id)).toMatchObject({ status: 'expired', attentionReason: 'max_runtime_exceeded' });
+        // Queue backlog on a machine that keeps claiming is never `machine_offline`.
+        const backlog = await make({ concurrency: 'queue' });
+        await store.runAutomationNow(accountId, backlog.id, {});
+        const waiting = await store.runAutomationNow(accountId, backlog.id, {});
+        await store.claimRuns(accountId, { machineId });
+        await db.automationRun.update({ where: { id: waiting.id }, data: { createdAt: new Date(Date.now() - 11 * 60_000) } });
+        expect(await store.getRun(accountId, waiting.id)).toMatchObject({ status: 'queued', needsAttention: false });
+        // The machine stops claiming: the stale queued run is flagged once, ack sticks, and a returning machine clears it.
+        await db.automationClaimCursor.update({ where: { accountId_machineId: { accountId, machineId } }, data: { lastClaimAt: new Date(Date.now() - 11 * 60_000) } });
+        expect(await store.getRun(accountId, waiting.id)).toMatchObject({ status: 'queued', needsAttention: true, attentionReason: 'machine_offline' });
+        expect((await store.ackRun(accountId, waiting.id)).needsAttention).toBe(false);
+        expect(await store.getRun(accountId, waiting.id)).toMatchObject({ needsAttention: false, attentionReason: 'machine_offline' });
         const offline = await store.runAutomationNow(accountId, a.id, {});
         await db.automationRun.update({ where: { id: offline.id }, data: { createdAt: new Date(Date.now() - 11 * 60_000) } });
         expect(await store.getRun(accountId, offline.id)).toMatchObject({ status: 'queued', needsAttention: true, attentionReason: 'machine_offline' });
-        // Still claimable once the machine returns, which clears the offline attention.
         const back = (await store.claimRuns(accountId, { machineId })).runs.find(r => r.run.id === offline.id)!;
         expect(back.run).toMatchObject({ status: 'claimed', needsAttention: false, attentionReason: null });
         expect(await store.getRun(accountId, offline.id)).toMatchObject({ needsAttention: false, attentionReason: null });
+        // A never-seen machine counts as offline.
+        const fresh = crypto.randomUUID();
+        await db.machine.create({ data: { id: fresh, accountId, metadata: 'metadata' } });
+        const never = await make({ machineId: fresh });
+        const orphan = await store.runAutomationNow(accountId, never.id, {});
+        await db.automationRun.update({ where: { id: orphan.id }, data: { createdAt: new Date(Date.now() - 11 * 60_000) } });
+        expect(await store.getRun(accountId, orphan.id)).toMatchObject({ needsAttention: true, attentionReason: 'machine_offline' });
     });
 
     it('manages stickies per automation and returns them with claims', async () => {
@@ -227,6 +310,10 @@ describe('automations store (pglite)', () => {
         expect(remaining[0]).toMatchObject({ id: `${a.id}-0`, status: 'queued' });
         expect(remaining.some(r => r.id === `${a.id}-1`)).toBe(false);
         expect(remaining.some(r => r.id === `${a.id}-6`)).toBe(true);
+        // A terminal row still holding a 24h dedupe slot is retained beyond the 200 newest.
+        await db.automationRun.create({ data: { id: `${a.id}-slot`, automationId: a.id, accountId, machineId, source: 'fire', status: 'done', dedupeKey: 'keep', dedupeSlot: 'keep', createdAt: new Date(base - 1000), updatedAt: new Date(base - 1000) } });
+        await store.runAutomationNow(accountId, a.id, {});
+        expect(await db.automationRun.findUnique({ where: { id: `${a.id}-slot` } })).not.toBeNull();
     });
 
     it('serves the REST surface with gate 404, error bodies and run views', async () => {

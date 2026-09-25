@@ -1,4 +1,4 @@
-import { TZDate } from '@date-fns/tz';
+import { tzOffset } from '@date-fns/tz';
 
 /**
  * Five-field cron (minute hour day-of-month month day-of-week) evaluated in an
@@ -10,6 +10,11 @@ import { TZDate } from '@date-fns/tz';
  * `7` = Sunday, and day-of-month OR day-of-week when both are restricted.
  * Wall-clock times inside a DST gap run at the first instant after the gap;
  * ambiguous fall-back times run once (first occurrence).
+ *
+ * Zone conversion is pure arithmetic over `tzOffset` (Intl with an explicit
+ * `timeZone`). The `TZDate` component constructor is deliberately not used: it
+ * builds `new Date(y, m, d, ...)` in the *process* zone first, so results
+ * depend on `TZ` around DST transitions (Santiago/London regressions in tests).
  */
 export type CronFields = { minute: Set<number>; hour: Set<number>; dom: Set<number>; month: Set<number>; dow: Set<number>; domRestricted: boolean; dowRestricted: boolean };
 
@@ -66,7 +71,37 @@ export function parseCron(expr: string): CronFields {
 }
 
 export function isValidTimeZone(tz: string): boolean {
-    try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; }
+    return canonicalTimeZone(tz) !== null;
+}
+/** Canonical IANA spelling (`asia/singapore` -> `Asia/Singapore`), or null when unknown. */
+export function canonicalTimeZone(tz: string): string | null {
+    try {
+        const resolved = new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone;
+        return Number.isNaN(tzOffset(resolved, new Date(0))) ? null : resolved;
+    } catch { return null; }
+}
+const MIN = 60_000;
+const offsetMs = (tz: string, instant: number) => tzOffset(tz, new Date(instant)) * MIN;
+/** Wall-clock components of an instant in `tz`, encoded as a UTC timestamp. */
+export function wallClockOf(tz: string, instant: number): number {
+    return instant + offsetMs(tz, instant);
+}
+/**
+ * Instant for a wall clock in `tz`. Ambiguous (fall-back) walls resolve to the
+ * first occurrence; walls inside a spring-forward gap resolve to the first
+ * instant after the gap (the transition itself). Pure arithmetic over tzOffset.
+ */
+export function instantOf(tz: string, wallMs: number): number {
+    const day = 86_400_000;
+    const offsets = new Set([offsetMs(tz, wallMs - day), offsetMs(tz, wallMs), offsetMs(tz, wallMs + day)]);
+    const valid: number[] = [];
+    for (const o of offsets) { const instant = wallMs - o; if (offsetMs(tz, instant) === o) valid.push(instant); }
+    if (valid.length) return Math.min(...valid);
+    // Gap: bisect the transition between the offsets before and after it.
+    let lo = wallMs - Math.max(...offsets); let hi = wallMs - Math.min(...offsets);
+    const before = offsetMs(tz, lo);
+    while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (offsetMs(tz, mid) === before) lo = mid; else hi = mid; }
+    return hi;
 }
 
 // Wall-clock components carried as a UTC timestamp so calendar arithmetic can
@@ -87,10 +122,10 @@ function nextInSet(set: Set<number>, from: number): number | null {
 
 /** Next instant (epoch ms) strictly after `afterMs`, or null if none within ~5 years. */
 export function nextCronAfter(fields: CronFields, tz: string, afterMs: number): number | null {
-    const start = new TZDate(afterMs, tz);
-    if (Number.isNaN(start.getTime())) return null;
-    let cursor = wall(start.getFullYear(), start.getMonth(), start.getDate(), start.getHours(), start.getMinutes()) + 60_000;
-    const limitYear = start.getFullYear() + 5;
+    if (Number.isNaN(offsetMs(tz, afterMs))) return null;
+    const startWall = wallClockOf(tz, afterMs);
+    let cursor = Math.floor(startWall / MIN) * MIN + MIN;
+    const limitYear = new Date(startWall).getUTCFullYear() + 5;
     for (let guard = 0; guard < 400_000; guard++) {
         const w = new Date(cursor);
         if (w.getUTCFullYear() > limitYear) return null;
@@ -106,12 +141,11 @@ export function nextCronAfter(fields: CronFields, tz: string, afterMs: number): 
             cursor = mi === null ? wall(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate(), w.getUTCHours() + 1) : wall(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate(), w.getUTCHours(), mi);
             continue;
         }
-        const instant = new TZDate(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate(), w.getUTCHours(), w.getUTCMinutes(), 0, tz).getTime();
-        if (Number.isNaN(instant)) return null;
-        // Fall-back overlap: wall clocks of the repeated hour resolve to the first
-        // occurrence, which may already be behind `afterMs`; keep scanning.
+        const instant = instantOf(tz, cursor);
+        // Fall-back overlap: the repeated hour resolves to its first occurrence,
+        // which may already be behind `afterMs`; keep scanning.
         if (instant > afterMs) return instant;
-        cursor += 60_000;
+        cursor += MIN;
     }
     return null;
 }

@@ -12,8 +12,8 @@ CREATE INDEX "Automation_accountId_machineId_status_nextRunAt_idx" ON "Automatio
 CREATE TABLE "AutomationRun" (
   "id" TEXT PRIMARY KEY, "automationId" TEXT NOT NULL REFERENCES "Automation"("id") ON DELETE CASCADE,
   "accountId" TEXT NOT NULL, "machineId" TEXT NOT NULL, "source" TEXT NOT NULL,
-  "dedupeKey" TEXT, "payload" TEXT, "status" TEXT NOT NULL DEFAULT 'queued',
-  "needsAttention" BOOLEAN NOT NULL DEFAULT false, "attentionReason" TEXT,
+  "dedupeKey" TEXT, "dedupeSlot" TEXT, "payload" TEXT, "status" TEXT NOT NULL DEFAULT 'queued',
+  "needsAttention" BOOLEAN NOT NULL DEFAULT false, "attentionReason" TEXT, "offlineFlaggedAt" TIMESTAMP(3),
   "claimId" TEXT, "sessionId" TEXT, "stickyKey" TEXT, "scheduledFor" TIMESTAMP(3),
   "claimedAt" TIMESTAMP(3), "leaseUntil" TIMESTAMP(3), "startedAt" TIMESTAMP(3), "finishedAt" TIMESTAMP(3),
   "summary" TEXT, "error" TEXT, "exitCode" INTEGER,
@@ -22,6 +22,11 @@ CREATE TABLE "AutomationRun" (
 CREATE INDEX "AutomationRun_automationId_createdAt_idx" ON "AutomationRun"("automationId", "createdAt");
 CREATE INDEX "AutomationRun_accountId_machineId_status_idx" ON "AutomationRun"("accountId", "machineId", "status");
 CREATE INDEX "AutomationRun_automationId_dedupeKey_idx" ON "AutomationRun"("automationId", "dedupeKey");
+CREATE UNIQUE INDEX "AutomationRun_automationId_dedupeSlot_key" ON "AutomationRun"("automationId", "dedupeSlot");
+CREATE TABLE "AutomationClaimCursor" (
+  "accountId" TEXT NOT NULL, "machineId" TEXT NOT NULL, "lastClaimAt" TIMESTAMP(3) NOT NULL,
+  PRIMARY KEY ("accountId", "machineId")
+);
 CREATE TABLE "AutomationSticky" (
   "automationId" TEXT NOT NULL REFERENCES "Automation"("id") ON DELETE CASCADE, "key" TEXT NOT NULL,
   "sessionId" TEXT NOT NULL, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
