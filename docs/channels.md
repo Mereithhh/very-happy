@@ -38,7 +38,7 @@ has the same tool set:
 |---|---|
 | Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
-| Managed Claude (in-process), Codex (stdio bridge, forwarded) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session |
+| Managed Claude (in-process), Codex / Gemini / ACP (the stdio bridge forwards them) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session |
 | Voice Assistant / legacy assistant variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
 | User-scoped `very-happy mcp` **inside a vh web terminal** (`VH_TERMINAL_ID` set by the daemon's tmux terminal) | + `change_title`, `open_preview` (titles/previews for that terminal via authenticated daemon IPC) |
@@ -803,9 +803,11 @@ take `{{payload}}`, `{{payload.a.b}}` (JSON payload), `{{run.id}}`,
 `{{automation.name}}` and `{{now}}`. Spawned sessions carry the `#automation`
 tag and `VH_AUTOMATION_RUN_ID` / `VH_AUTOMATION_NAME` in their environment;
 scripts also get `VH_AUTOMATION_PAYLOAD`. A run finishes when the agent calls
-`automation_report` (exact), or — without one — when the wrapper's turn ends
-(B-466 heartbeat) and the daemon confirms it on the session log, taking the last
-assistant text (4KB) as the summary. Scripts finish on exit (tail 4KB of output;
+`automation_report` (exact; in a continued sticky session pass the runId from
+the latest prompt header — `VH_AUTOMATION_RUN_ID` is the run that started the
+session), or — without one — when the wrapper's turn ends (B-466 heartbeat) and
+the daemon confirms it on the session log anchored on that run's own prompt,
+taking the last assistant text (4KB) as the summary. Scripts finish on exit (tail 4KB of output;
 timeout SIGTERM → SIGKILL). The daemon keeps `~/.happy/automation-receipts.json`
 so a run id is never spawned twice across restarts; an unknown launch outcome is
 reported `failed` with attention instead of retried. Exit codes of `fire --wait`:

@@ -89,12 +89,27 @@ function agentPiece(body: unknown): Piece | null {
     return null
 }
 
+export interface AnalyzeTurnOptions {
+    /**
+     * B-496: anchor on the latest user prompt matching this predicate instead
+     * of the latest prompt overall, and count only the turn markers after it —
+     * a human typing into the same session later must not move the anchor.
+     * Once that anchored turn has ended, a later prompt stops the scan.
+     */
+    anchor?: (body: unknown) => boolean
+}
+
+/** Text of a user prompt body (null when it is not one). */
+export function userPromptText(body: unknown): string | null {
+    return isUserPrompt(body) ? (body as { content: { text: string } }).content.text : null
+}
+
 /** Entries must be in ascending seq order. */
-export function analyzeLatestTurn(entries: LogEntry[]): TurnState {
+export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptions = {}): TurnState {
     const lastSeq = entries.length > 0 ? entries[entries.length - 1].seq : 0
     let userIndex = -1
     for (let i = entries.length - 1; i >= 0; i--) {
-        if (isUserPrompt(entries[i].body)) { userIndex = i; break }
+        if (isUserPrompt(entries[i].body) && (!options.anchor || options.anchor(entries[i].body))) { userIndex = i; break }
     }
 
     let ended = false
@@ -107,6 +122,12 @@ export function analyzeLatestTurn(entries: LogEntry[]): TurnState {
 
     for (let i = userIndex + 1; i < entries.length; i++) {
         const body = entries[i].body
+        if (options.anchor && isUserPrompt(body)) {
+            // Someone else's prompt after ours: our turn is closed if it ended;
+            // otherwise it is still queued behind ours and its markers come later.
+            if (ended) break
+            continue
+        }
         const env = sessionEnvelope(body)
         if (env?.ev?.t === 'turn-start') {
             lastMarker = 'start'

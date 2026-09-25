@@ -55,7 +55,7 @@ export const AUTOMATION_TOOL_SCHEMAS: Record<AutomationToolName, { description: 
     automation_fire: { description: 'Trigger an automation by name as an external event, with an optional payload and dedupe key (the same key within 24h returns the original run).', inputSchema: { name: AutomationNameSchema, payload, dedupeKey: z.string().min(1).max(256).optional() } },
     automation_runs: { description: 'List runs, newest first: status, session, summary, error, attention. Filter by automation, status or attention.', readOnly: true, inputSchema: { ...ref, status: z.string().min(1).max(64).optional(), attention: z.boolean().optional().describe('Only runs flagged for a human'), limit: z.number().int().min(1).max(200).optional() } },
     automation_report: {
-        description: 'Report the result of an automation run. Defaults to the run this session was started for (VH_AUTOMATION_RUN_ID). Use status done with a short summary, or failed with the error; set needsAttention when a human must look.',
+        description: 'Report the result of an automation run. Without runId it targets the run that STARTED this session (VH_AUTOMATION_RUN_ID); in a continued sticky session always pass the runId named in the latest "[Very Happy automation … run <id>; …]" prompt header. Use status done with a short summary, or failed with the error; set needsAttention when a human must look.',
         inputSchema: { runId: id.optional(), status: z.enum(['done', 'failed']), summary: z.string().max(4096).optional(), error: z.string().max(4096).optional(), needsAttention: z.boolean().optional(), attentionReason: z.string().max(512).optional() },
     },
     automation_ack: { description: 'Clear the attention flag of a run after a human handled it.', inputSchema: { runId: id } },
@@ -128,13 +128,13 @@ export async function executeAutomationTool(name: AutomationToolName, args: any,
             const runId = args.runId ?? automationRunIdFromEnv(context.env ?? process.env);
             if (!runId) throw new Error('No run id: pass runId (this session was not started by an automation)');
             // No claimId: the daemon holds it. The server accepts account-level terminal reports.
-            const report = {
+            const report: AutomationReport = {
                 status: args.status,
                 ...(args.summary !== undefined ? { summary: args.summary } : {}),
                 ...(args.error !== undefined ? { error: args.error } : {}),
                 ...(args.needsAttention !== undefined ? { needsAttention: args.needsAttention } : {}),
                 ...(args.attentionReason !== undefined ? { attentionReason: args.attentionReason } : {}),
-            } as AutomationReport;
+            };
             return { run: await client.report(runId, report) };
         }
         case 'automation_ack': return { run: await client.ack(args.runId) };

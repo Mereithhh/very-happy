@@ -25,6 +25,21 @@ describe('automation script runner', () => {
         expect(result.timedOut).toBe(true);
         expect(result.exitCode === null || result.exitCode !== 0).toBe(true);
     }, 15_000);
+    it('kills the whole process group on timeout, including a grandchild holding stdout', async () => {
+        const started = Date.now();
+        // sh spawns a sleeping grandchild that inherits stdout; only a group kill ends the run promptly.
+        const result = await runScript({ command: ['/bin/sh', '-c', 'sleep 30 & echo started; wait'], timeoutMs: 500 });
+        expect(result.timedOut).toBe(true);
+        expect(result.output).toContain('started');
+        expect(Date.now() - started).toBeLessThan(10_000);
+    }, 15_000);
+    it('settles on exit after a bounded drain when a detached grandchild keeps the pipes open', async () => {
+        const started = Date.now();
+        const result = await runScript({ command: ['/bin/sh', '-c', '(sleep 30 &) ; echo parent-done; exit 7'], timeoutMs: 20_000 });
+        expect(result.exitCode).toBe(7);
+        expect(result.output).toContain('parent-done');
+        expect(Date.now() - started).toBeLessThan(6_000);
+    }, 15_000);
     it('surfaces a launch failure instead of hanging', async () => {
         const result = await runScript({ command: ['/definitely/not/a/binary'], timeoutMs: 2_000 });
         expect(result.error).toBeTruthy();

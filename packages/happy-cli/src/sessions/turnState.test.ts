@@ -74,3 +74,23 @@ describe('analyzeLatestTurn (B-492)', () => {
         expect(turn).toMatchObject({ ended: true, answer: 'ok' })
     })
 })
+
+describe('analyzeLatestTurn with an anchor (B-496)', () => {
+    const user = (seq: number, text: string) => ({ seq, body: { role: 'user', content: { type: 'text', text } } })
+    const ev = (seq: number, ev: Record<string, unknown>) => ({ seq, body: { role: 'session', content: { role: 'agent', ev } } })
+    const anchor = (body: unknown) => (body as any)?.content?.text?.startsWith('[run r1]') === true
+    it('anchors on the matching prompt even when a human typed later, and stops once that turn ended', () => {
+        const entries = [
+            user(1, '[run r1] do it'), ev(2, { t: 'turn-start' }), ev(3, { t: 'text', text: 'automation answer' }), ev(4, { t: 'turn-end', status: 'completed' }),
+            user(5, 'hi from a human'), ev(6, { t: 'turn-start' }), ev(7, { t: 'text', text: 'human answer' }), ev(8, { t: 'turn-end', status: 'completed' }),
+        ]
+        expect(analyzeLatestTurn(entries, { anchor })).toMatchObject({ userSeq: 1, ended: true, answer: 'automation answer' })
+        expect(analyzeLatestTurn(entries)).toMatchObject({ userSeq: 5, answer: 'human answer' })
+    })
+    it('keeps waiting while the anchored turn is queued behind a human prompt', () => {
+        const entries = [user(1, 'human first'), ev(2, { t: 'turn-start' }), user(3, '[run r1] do it'), ev(4, { t: 'text', text: 'human answer' }), ev(5, { t: 'turn-end', status: 'completed' })]
+        expect(analyzeLatestTurn(entries, { anchor })).toMatchObject({ userSeq: 3, ended: false })
+        const later = [...entries, ev(6, { t: 'turn-start' }), ev(7, { t: 'text', text: 'ours' }), ev(8, { t: 'turn-end', status: 'completed' })]
+        expect(analyzeLatestTurn(later, { anchor })).toMatchObject({ ended: true, answer: 'ours' })
+    })
+})

@@ -18,7 +18,7 @@ import chalk from 'chalk';
 import { homedir } from 'node:os';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { AUTOMATION_NAME_PATTERN, isAutomationRunTerminal, type Automation, type AutomationAction, type AutomationCreate, type AutomationRun, type AutomationUpdate } from '@slopus/happy-wire';
+import { AUTOMATION_NAME_PATTERN, isAutomationRunTerminal, type Automation, type AutomationAction, type AutomationCreate, type AutomationReport, type AutomationRun, type AutomationUpdate } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
 import { authenticatedAutomationsClient, automationRunIdFromEnv, isAutomationsUnavailable, AUTOMATIONS_UNAVAILABLE_MESSAGE, type AutomationsClient } from '@/automations/client';
 import { describeAction, describeTrigger, parseDuration, triggerFromFlags } from '@/automations/template';
@@ -188,12 +188,14 @@ ${chalk.bold('Options:')}
   --paused                Create paused
   --payload <text> | --payload-json <json> | --payload-file <file>
   --wait                  run/fire: wait for the run to finish (--timeout, default 10m)
+  Inside a continued (sticky) session pass --run <id> from the latest prompt header;
+  $VH_AUTOMATION_RUN_ID is the run that started the session.
   --json                  Machine-readable output
 
 ${chalk.bold('Templates')} in prompts, argv and sticky keys: {{payload}}, {{payload.a.b}}, {{run.id}}, {{automation.name}}, {{now}}.
 Inside an automation-started session \`report\` defaults --run to $VH_AUTOMATION_RUN_ID.
 
-${chalk.bold('Exit codes:')} 0 ok · 1 error · 2 --wait timed out · 3 awaited run ended failed/expired/cancelled/skipped`;
+${chalk.bold('Exit codes:')} 0 ok · 1 error · 2 --wait timed out · 3 run ended (or was created) failed/expired/cancelled/skipped`;
 
 function fmtTime(value: number | null | undefined): string { return typeof value === 'number' ? new Date(value).toISOString().replace('T', ' ').slice(0, 19) : '-'; }
 
@@ -353,7 +355,8 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
                 if (json) { console.log(JSON.stringify({ run, deduplicated })); }
                 else if (command.bools.has('--wait') || isAutomationRunTerminal(run.status)) printRun(run);
                 else if (run.sessionId) console.log(`  session: ${sessionWebUrl(run.sessionId)}`);
-                if (command.bools.has('--wait') && run.status !== 'done') process.exitCode = 3;
+                // A run that is already terminal but not done (skipped while another was active, …) is a failure for scripts.
+                if (isAutomationRunTerminal(run.status) && run.status !== 'done') process.exitCode = 3;
                 return;
             }
             case 'runs': {
@@ -380,12 +383,13 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
                 if (!runId) throw new Error('--run <id> is required outside an automation-started session (VH_AUTOMATION_RUN_ID is not set)');
                 const status = command.flags['--status'];
                 if (status !== 'done' && status !== 'failed') throw new Error('--status must be done or failed');
-                const run = await client.report(runId, {
+                const report: AutomationReport = {
                     status,
                     ...(command.flags['--summary'] !== undefined ? { summary: command.flags['--summary'] } : {}),
                     ...(command.flags['--error'] !== undefined ? { error: command.flags['--error'] } : {}),
                     ...(command.flags['--attention'] !== undefined ? { needsAttention: true, attentionReason: command.flags['--attention'] } : {}),
-                } as Parameters<AutomationsClient['report']>[1]);
+                };
+                const run = await client.report(runId, report);
                 if (json) console.log(JSON.stringify({ run })); else printRun(run);
                 return;
             }

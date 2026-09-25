@@ -1938,7 +1938,8 @@ export async function startDaemon(): Promise<void> {
     const cleanupAndShutdown = async (source: ShutdownSource, errorMessage?: string) => {
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
       teamWorker?.stop();
-      automationRunner?.stop();
+      // Real shutdown: kill live script trees; the next daemon reports them from the receipt, never re-runs them.
+      automationRunner?.stop({ killScripts: true });
 
       // Clear health check interval
       if (restartOnStaleVersionAndHeartbeat) {

@@ -19,6 +19,9 @@ export async function handleTeamsCommand(args: string[]): Promise<void> {
         if (!host || !['claude', 'codex', 'pi'].includes(host)) throw new Error('--host must be claude, codex, or pi');
         const options = { host: host as TeamSkillHost, home: value('--home') ?? homedir(), apply: args.includes('--apply'), uninstall: command === 'uninstall' };
         // B-496: the Automations skill is materialized by the same mechanism (spec §管理面).
+        // Validate both destinations first so an edited/foreign second skill cannot leave the first half-applied.
+        await installTeamSkill({ ...options, apply: false });
+        await installAutomationSkill({ ...options, apply: false });
         const teams = await installTeamSkill(options);
         const automations = await installAutomationSkill(options);
         console.log(JSON.stringify({ ...teams, also: [automations] }));
