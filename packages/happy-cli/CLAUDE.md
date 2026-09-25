@@ -62,6 +62,5 @@ pnpm -C packages/happy-cli test
 HAPPY_HOME_DIR="$(mktemp -d)" node packages/happy-cli/dist/index.mjs --version
 ```
 
-For interactive prompt/TUI changes, also use the repository terminal-emulator
-skill. For release or daemon updates, follow the release skill and verify the
+For release or daemon updates, follow the release skill and verify the
 exact published version in an isolated home before touching mac-office.
