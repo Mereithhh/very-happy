@@ -39,6 +39,12 @@ describe('automations client', () => {
         expect(error.runStatus).toBe('cancelled');
         expect(error.message).not.toContain('do-not-print');
     });
+    it('explains a schema rejection without echoing the body', async () => {
+        const client = createAutomationsClient({ serverUrl: 'http://relay.test', token: 't', fetch: respond(400, { statusCode: 400, error: 'Bad Request', message: 'body must have required property claimId' }) });
+        const error = await client.report('r', { status: 'done' } as any).catch((e) => e);
+        expect(error.message).toContain('HTTP 400');
+        expect(error.message).not.toContain('claimId');
+    });
     it('reports transport failures as unknown outcomes', async () => {
         const client = createAutomationsClient({ serverUrl: 'http://relay.test', token: 't', fetch: vi.fn(async () => { throw new Error('ECONNREFUSED'); }) as any });
         await expect(client.list()).rejects.toThrow('outcome may be unknown');

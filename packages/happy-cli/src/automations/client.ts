@@ -45,7 +45,10 @@ function describeAutomationError(status: number, code: string, runStatus?: strin
         invalid_cron: 'The cron expression is invalid.',
         invalid_timezone: 'The time zone is not a valid IANA zone.',
     };
-    return known[code] ?? `Automations request failed (HTTP ${status}${code ? `, ${code}` : ''}).`;
+    if (known[code]) return known[code];
+    // Schema rejections carry Fastify's generic `error: 'Bad Request'`; never echo the body.
+    if (status === 400) return 'The server rejected the request (HTTP 400): check the arguments, or the server may expect a newer request shape.';
+    return `Automations request failed (HTTP ${status}${code ? `, ${code}` : ''}).`;
 }
 
 export interface AutomationsClientOptions {
