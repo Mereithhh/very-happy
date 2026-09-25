@@ -3,16 +3,23 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { resolve } from 'node:path';
 import { projectPath } from './projectPath';
 import { resolveMcpTerminalId } from './terminal/terminalToolContext';
+import { TERMINAL_TITLE_SUGGEST_METHOD, TerminalTitleSuggestResultSchema } from './terminal/terminalTitleSuggest';
 
 // Structural types keep this extension independent of the user's Pi version.
 type PiContext = { cwd: string };
 type PiApi = {
-    on(event: 'session_start' | 'session_shutdown', handler: (event: unknown, ctx: PiContext) => Promise<void>): void;
+    on(event: 'session_start' | 'session_shutdown' | 'before_agent_start', handler: (event: unknown, ctx: PiContext) => Promise<void>): void;
     registerTool(tool: {
         name: string; label: string; description: string; parameters: unknown;
         execute(id: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>;
     }): void;
+    /** Pi ≥0.8x session naming (`/name`); optional so an older Pi still gets the tools. */
+    getSessionName?(): string | undefined;
+    setSessionName?(name: string): void;
 };
+
+/** Upper bound for the bridge round-trip: the one-shot itself gives up at 30s. */
+const TITLE_SUGGEST_TIMEOUT_MS = 45_000;
 
 /** Auto-discovered native Pi extension. Managed launchers own their own bridge. */
 export default function piTerminalExtension(pi: PiApi): void {
@@ -56,8 +63,21 @@ export default function piTerminalExtension(pi: PiApi): void {
         return connecting;
     }
 
+    // B-500 auto-title: armed per pi session (session_start fires for startup,
+    // /new, /resume, fork and /reload) when the session has no name yet; the
+    // first prompt of that session asks the bridge for a title and names the
+    // pi session with it. Pi then rewrites its OSC title as
+    // `π - <name> - <cwd>` and the daemon follows it into the tab title
+    // (deriveAutoTitle) — unless the user renamed the tab, which pins it.
+    // Fire-and-forget: before_agent_start must never delay the agent loop.
+    // `generation` drops a suggestion that lands after /new or /resume.
+    let titleArmed = false;
+    let generation = 0;
+
     pi.on('session_start', async (_event, ctx) => {
         cwd = ctx.cwd;
+        generation += 1;
+        titleArmed = !!pi.setSessionName && !pi.getSessionName?.();
         const current = await connect();
         const available = await current.listTools({}, { timeout: 10_000 });
         if (stopped) return;
@@ -78,6 +98,23 @@ export default function piTerminalExtension(pi: PiApi): void {
                 },
             });
         }
+    });
+    pi.on('before_agent_start', async (event) => {
+        if (!titleArmed) return;
+        const prompt = (event as { prompt?: unknown } | undefined)?.prompt;
+        if (typeof prompt !== 'string' || !prompt.trim()) return;
+        titleArmed = false;
+        const expected = generation;
+        void (async () => {
+            const active = await connect();
+            const result = await active.request(
+                { method: TERMINAL_TITLE_SUGGEST_METHOD, params: { prompt } },
+                TerminalTitleSuggestResultSchema,
+                { timeout: TITLE_SUGGEST_TIMEOUT_MS },
+            );
+            // Never overwrite a name the user (/name) or the model set meanwhile.
+            if (result.title && expected === generation && !stopped && !pi.getSessionName?.()) pi.setSessionName!(result.title);
+        })().catch(() => { /* keep the current title; the bridge already logged */ });
     });
     pi.on('session_shutdown', async () => {
         stopped = true;

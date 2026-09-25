@@ -866,6 +866,18 @@ Installation adds `~/.pi/agent/extensions/very-happy-terminal-tools.js` (or unde
 and refuses to overwrite an edited loader. The loader points to the installed
 CLI, so rerun installation if you move the CLI installation. For explicit loading,
 use `pi -e ~/.pi/agent/extensions/very-happy-terminal-tools.js` after installation.
+
+The extension also names the terminal tab (B-500). Claude Code writes its task
+summary to the terminal title itself; pi only writes `π - <dir>` until the pi
+session has a name, and never names one. So on the first prompt of an unnamed
+pi session the extension asks its bridge (`very-happy mcp --terminal-tools`,
+a custom JSON-RPC method, not a tool the model sees) for a title — the same
+`claude -p --model haiku` one-shot that titles managed sessions — and sets it
+as the pi session name (`/name`). Pi rewrites its title as `π - <name> - <dir>`
+and the daemon follows the name into the tab title. A tab renamed in the
+sidebar, a session named with `/name`, or a title set through `change_title`
+is never overwritten. The one-shot runs with `HAPPY_MANAGED=1`, so the
+terminal-mirror hook ignores it. `very-happy pi --terminal` behaves the same.
 For temporary loading without installation, `very-happy pi --terminal [pi args]`
 is also available.
 

@@ -15,7 +15,7 @@ vi.mock('node:child_process', () => ({ spawn: mocks.spawn }));
 vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn() } }));
 vi.mock('@/projectPath', () => ({ projectPath: () => '/nonexistent' }));
 
-import { TitleGenerator } from './titleGenerator';
+import { TitleGenerator, suggestTitleForPrompt } from './titleGenerator';
 
 function fakeChild(stdout: string) {
     const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; kill: () => void };
@@ -72,5 +72,36 @@ describe('TitleGenerator', () => {
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledTimes(1));
         await new Promise((resolve) => setTimeout(resolve, 5));
         expect(session.sendClaudeSessionMessage).not.toHaveBeenCalled();
+    });
+});
+
+describe('suggestTitleForPrompt (B-500 terminal bridge)', () => {
+    beforeEach(() => {
+        mocks.spawn.mockReset();
+        mocks.spawn.mockImplementation(() => fakeChild('"Fix terminal auto-title."\n'));
+    });
+
+    it('runs the same haiku one-shot as the session generator and returns the sanitized title', async () => {
+        await expect(suggestTitleForPrompt('please fix the terminal auto title')).resolves.toBe('Fix terminal auto-title');
+        expect(mocks.spawn).toHaveBeenCalledTimes(1);
+        const [, args] = mocks.spawn.mock.calls[0];
+        expect(args.slice(0, 3)).toEqual(['-p', '--model', 'haiku']);
+        expect(args[3]).toContain('please fix the terminal auto title');
+    });
+
+    it('stamps HAPPY_MANAGED=1 on the one-shot so a user-wide terminal-mirror hook ignores it', async () => {
+        // The bridge inherits VH_TERMINAL_ID from the web terminal; without the
+        // stamp the SessionStart hook would bind a mirror session to a one-shot.
+        await suggestTitleForPrompt('hello');
+        const [, , options] = mocks.spawn.mock.calls[0];
+        expect(options.env.HAPPY_MANAGED).toBe('1');
+        expect(options.stdio).toEqual(['ignore', 'pipe', 'ignore']);
+    });
+
+    it('resolves null on garbage or failure instead of inventing a title', async () => {
+        mocks.spawn.mockImplementation(() => fakeChild('New chat\n'));
+        await expect(suggestTitleForPrompt('x')).resolves.toBeNull();
+        mocks.spawn.mockImplementation(() => { throw new Error('ENOENT'); });
+        await expect(suggestTitleForPrompt('x')).resolves.toBeNull();
     });
 });

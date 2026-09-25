@@ -1,4 +1,5 @@
 import { codingAgentFromProcessTree } from './agentProcess';
+import { piSessionNameFromTitle } from './terminalTitleSuggest';
 import { classifyAgentPane, type CodingAgentKind } from './agentStatus';
 /**
  * Web terminal manager (daemon side).
@@ -688,10 +689,19 @@ const JUNK_TITLES = new Set(['tmux', 'claude', 'node', ...SHELL_COMMANDS]);
  * tmux default title (hostname, full or short form) and bare process names,
  * and truncates to TITLE_MAX_CHARS code points. Pure; unit-tested.
  */
-export function deriveAutoTitle(paneTitle: unknown, hostname: string): string | undefined {
+export function deriveAutoTitle(paneTitle: unknown, hostname: string, cwd?: string): string | undefined {
     if (typeof paneTitle !== 'string') return undefined;
     const t = paneTitle.replace(/^[^\p{L}\p{N}]+/u, '').replace(/\s+/g, ' ').trim();
     if (!t) return undefined;
+    // B-500: pi's TUI writes `π - <session name> - <cwd basename>` once the
+    // session is named (the pi extension names it from the first prompt) —
+    // the name alone is the tab title, like Claude's task summary. Unnamed
+    // `π - <dir>` falls through unchanged.
+    const piName = piSessionNameFromTitle(t, cwd);
+    if (piName) {
+        const chars = Array.from(piName);
+        return chars.length > TITLE_MAX_CHARS ? chars.slice(0, TITLE_MAX_CHARS).join('') : piName;
+    }
     const lower = t.toLowerCase();
     const host = (hostname || '').toLowerCase();
     const shortHost = host.split('.')[0];
@@ -2657,7 +2667,7 @@ export class WebTerminalManager {
             // direct shell only has the headless screen's OSC title.
             // Same filter as the tmux pane_title follow (hostname / shell names are not titles).
             created.onTitleChange((title) => {
-                if (created.direct && !created.direct.manual) created.direct.title = deriveAutoTitle(title, os.hostname());
+                if (created.direct && !created.direct.manual) created.direct.title = deriveAutoTitle(title, os.hostname(), created.direct.cwd);
             });
             created.onOutputChunk = (chunk) => {
                 this.emit('terminal-output', { terminalId: id, data: chunk.data, seq: chunk.seq });
@@ -3218,7 +3228,7 @@ export class WebTerminalManager {
                 if (!s || !s.name.startsWith('vh-')) continue;
                 const id = s.name.slice(3);
                 let title = s.vhTitle;
-                const auto = deriveAutoTitle(s.paneTitle, hostname);
+                const auto = deriveAutoTitle(s.paneTitle, hostname, s.cwd);
                 if (auto && !s.manual && auto !== title) {
                     // Follow the pane title into the cross-device truth. Overwrites
                     // any previous AUTO title on purpose (the summary tracks the

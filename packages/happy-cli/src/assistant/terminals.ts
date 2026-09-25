@@ -53,7 +53,7 @@ export function parseVhTerminals(stdout: string, hostname: string = os.hostname(
         if (!s || !s.name.startsWith('vh-')) continue
         out.push({
             id: s.name.slice(3),
-            title: s.vhTitle ?? deriveAutoTitle(s.paneTitle, hostname),
+            title: s.vhTitle ?? deriveAutoTitle(s.paneTitle, hostname, s.cwd),
             cwd: s.cwd,
             createdAt: s.created,
             activityAt: s.activity,

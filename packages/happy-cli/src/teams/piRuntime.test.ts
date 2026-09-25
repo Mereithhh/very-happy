@@ -64,3 +64,55 @@ it('reports current context on runtime events, including unknown after compactio
         if(before.context===undefined)delete process.env.HAPPY_CONTEXT_USAGE_URL;else process.env.HAPPY_CONTEXT_USAGE_URL=before.context;
     }
 });
+
+// B-500: `very-happy pi --terminal` (HAPPY_TERMINAL_MCP_URL only) names the pi
+// session from its first prompt through the bridge's custom method; a managed
+// session (HAPPY_MCP_URL) is titled by TitleGenerator and must not.
+it('names an unnamed pi session from the first prompt on the terminal launcher only', async () => {
+    const before = { mcp: process.env.HAPPY_MCP_URL, terminal: process.env.HAPPY_TERMINAL_MCP_URL };
+    const requests: any[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+        const request = JSON.parse(options.body); requests.push(request);
+        const result = request.method === 'tools/list' ? { tools: [] }
+            : request.method === 'very-happy/terminal-title-suggest' ? { title: request.params.prompt === 'garbage' ? null : 'Fix auth' } : {};
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
+    }));
+    const load = async () => {
+        const handlers: Record<string, any> = {};
+        let name: string | undefined;
+        const pi = { on: (event: string, handler: any) => { handlers[event] = handler; }, registerTool: vi.fn(), getSessionName: () => name, setSessionName: vi.fn((n: string) => { name = n; }) };
+        const factory = new Function('loadModule', PI_TEAMS_EXTENSION.replace('export default ', 'return ').replaceAll('import(', 'loadModule('))((specifier: string) => import(specifier));
+        await factory(pi);
+        return { handlers, pi, rename: (n: string | undefined) => { name = n; } };
+    };
+    try {
+        delete process.env.HAPPY_MCP_URL;
+        process.env.HAPPY_TERMINAL_MCP_URL = 'http://127.0.0.1:12345/terminal-tools/x';
+        const t = await load();
+        expect(Object.keys(t.handlers)).toEqual(['session_start', 'before_agent_start']);
+        await t.handlers.session_start({}, {});
+        await t.handlers.before_agent_start({ prompt: 'fix the auth module' }, {});
+        await vi.waitFor(() => expect(t.pi.setSessionName).toHaveBeenCalledWith('Fix auth'));
+        await t.handlers.before_agent_start({ prompt: 'again' }, {});
+        await new Promise(r => setTimeout(r, 50));
+        expect(requests.filter(r => r.method === 'very-happy/terminal-title-suggest').map(r => r.params)).toEqual([{ prompt: 'fix the auth module' }]);
+        // A named session (/name or resume) is never renamed; a null suggestion leaves it unnamed.
+        t.rename('user name');
+        await t.handlers.session_start({}, {});
+        await t.handlers.before_agent_start({ prompt: 'x' }, {});
+        t.rename(undefined);
+        await t.handlers.session_start({}, {});
+        await t.handlers.before_agent_start({ prompt: 'garbage' }, {});
+        await new Promise(r => setTimeout(r, 50));
+        expect(t.pi.setSessionName).toHaveBeenCalledTimes(1);
+        expect(requests.filter(r => r.method === 'very-happy/terminal-title-suggest')).toHaveLength(2);
+
+        process.env.HAPPY_MCP_URL = 'http://127.0.0.1:12345/mcp';
+        const m = await load();
+        expect(Object.keys(m.handlers)).toEqual(['tool_call']);
+    } finally {
+        vi.unstubAllGlobals();
+        if (before.mcp === undefined) delete process.env.HAPPY_MCP_URL; else process.env.HAPPY_MCP_URL = before.mcp;
+        if (before.terminal === undefined) delete process.env.HAPPY_TERMINAL_MCP_URL; else process.env.HAPPY_TERMINAL_MCP_URL = before.terminal;
+    }
+});

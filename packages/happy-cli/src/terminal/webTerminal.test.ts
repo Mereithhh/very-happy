@@ -416,6 +416,23 @@ describe('deriveAutoTitle', () => {
     it('keeps meaningful shell-set titles (e.g. "dir: cmd" style)', () => {
         expect(deriveAutoTitle('~/code: vim foo.ts', HOST)).toBe('code: vim foo.ts');
     });
+
+    // B-500: pi's TUI writes `π - <dir>` (unnamed) / `π - <name> - <dir>` (named,
+    // verified pi 0.84.4 in a vh-* tmux pane). The named form yields the name
+    // alone — the pi extension names the session from the first prompt, so
+    // this is the pi terminal's auto-title, like Claude's OSC task summary.
+    it('extracts the pi session name from pi\'s named OSC title; unnamed pi keeps today\'s fallback', () => {
+        const cwd = '/Users/me/code/very-happy';
+        expect(deriveAutoTitle('π - Fix terminal auto-title - very-happy', HOST, cwd)).toBe('Fix terminal auto-title');
+        expect(deriveAutoTitle('pi - 修终端标题 - very-happy', HOST, cwd)).toBe('修终端标题');
+        // Names may contain the separator: the cwd basename is matched as a suffix, not split.
+        expect(deriveAutoTitle('π - a - b - very-happy', HOST, cwd)).toBe('a - b');
+        expect(deriveAutoTitle('π - very-happy', HOST, cwd)).toBe('π - very-happy');
+        expect(deriveAutoTitle('π - very-happy', HOST)).toBe('π - very-happy');
+        // Not pi's format: a session name that happens to end like a path is left alone.
+        expect(deriveAutoTitle('✳ deploy - very-happy', HOST, cwd)).toBe('deploy - very-happy');
+        expect(deriveAutoTitle(`π - ${'任'.repeat(80)} - very-happy`, HOST, cwd)).toBe('任'.repeat(60));
+    });
 });
 
 describe('terminalListSignature', () => {

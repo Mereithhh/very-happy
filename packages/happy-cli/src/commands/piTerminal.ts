@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { preparePiTeamsRuntime } from '@/teams/piRuntime';
-import { registerMcpTools } from './mcp';
+import { registerMcpTools, registerTerminalTitleSuggest } from './mcp';
 import { resolveMcpTerminalId } from './mcpToolSurface';
 
 /** The generated extension needs only fetch; the CLI owns daemon credentials and path validation. */
@@ -20,6 +20,7 @@ export async function startPiTerminalTools(terminalId: string): Promise<{ url: s
         }
         const mcp = new McpServer({ name: 'Very Happy Terminal Tools', version: '1.0.0' });
         registerMcpTools(mcp, 'clipboard', terminalId);
+        registerTerminalTitleSuggest(mcp);
         const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
         res.on('close', () => { void transport.close(); void mcp.close(); });
         try {
