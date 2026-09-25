@@ -1,6 +1,6 @@
 # 会话间消息与编辑冲突提示（Session peer messaging）
 
-> 状态：Final（实现随本 spec 同一 PR；合并后回标 Shipped）
+> 状态：Shipped（PR #437 `fd31eeee6`，2026-09-25；发布由主 agent 安排，CLI 随 0.2.155 候选）
 > 日期：2026-09-25 ｜ 关联 backlog：B-497 ｜ 前身：[Automations](2026-09-automations.md)（B-496，同一批工具注入机制）、Teams 消息投递（`daemon/teams/worker.ts`）
 
 ## 背景
