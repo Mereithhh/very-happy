@@ -22,3 +22,13 @@ export type ShutdownSource = 'happy-app' | 'happy-cli' | 'os-signal' | 'exceptio
 export function daemonExitCode(source: ShutdownSource): 0 | 1 {
     return source === 'exception' ? 1 : 0;
 }
+
+/**
+ * B-505 — a systemd-supervised daemon hands over by EXITING with this code
+ * instead of spawning `daemon start`: `Restart=on-failure` restarts the unit
+ * on the freshly installed bundle, and `KillMode=process` leaves the session
+ * wrappers alive for the new daemon to re-adopt. 75 is `EX_TEMPFAIL`
+ * ("try again later"), deliberately distinct from 1 (crash) so a supervisor
+ * log tells the two apart.
+ */
+export const HANDOVER_EXIT_CODE = 75;

@@ -491,17 +491,57 @@ export class ApiClient {
   }
 
   /**
-   * Mark a session as inactive on the server (active=false). Does NOT
-   * change `lifecycleState`, so the session remains visible in the app
-   * and resumable — same effect as the in-app "Archive" button hitting
-   * the /archive endpoint, but without the extra metadata.
+   * B-505: mark a session OFFLINE on the server (active=false, `archivedAt`
+   * untouched) — the same row state a missed keepalive produces, so the web
+   * shows it offline and resumable instead of archived.
    *
-   * Used during graceful shutdown (Ctrl-C / SIGTERM) as a synchronous
-   * fallback for the socket-based session-end signal: even if the
-   * socket emit doesn't drain before the process exits, the HTTP
-   * response confirms the deactivate landed.
+   * Used when the wrapper exits for an infrastructure reason (SIGTERM /
+   * SIGINT: daemon stop, supervisor restart, machine shutdown) as a
+   * synchronous fallback for the socket `session-end` signal: even if the
+   * socket emit doesn't drain before the process exits, the HTTP response
+   * confirms the row went inactive.
+   *
+   * This MUST NOT hit `/archive`: since B-265 that route writes the
+   * server-owned `archivedAt` tombstone (the only thing that distinguishes
+   * "archived" from "offline"), and the server answers it with a
+   * `session-archive` command that makes the wrapper archive itself. That is
+   * exactly how every dev-sg upgrade archived the sessions mid-turn on
+   * 2026-09-25. A server without `/deactivate` returns 404, which is a
+   * compatible no-op: `session-end` already sets active=false there.
    */
   async deactivateSession(sessionId: string): Promise<boolean> {
+    try {
+      const response = await axios.post(
+        `${configuration.serverUrl}/v1/sessions/${sessionId}/deactivate`,
+        {},
+        {
+          headers: {
+            'Authorization': `Bearer ${this.credential.token}`,
+            'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`,
+          },
+          timeout: 3000,
+          validateStatus: (status) => (status >= 200 && status < 300) || status === 404,
+        },
+      );
+      if (response.status === 404) {
+        logger.debug('[API] deactivateSession: server has no /deactivate route; relying on session-end');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      logger.debug('[API] deactivateSession failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Archive a session on the server: writes the `archivedAt` tombstone and
+   * makes the server tell every wrapper of this session to exit. Only for an
+   * intentional end of life — the user's Archive / kill, a crash the wrapper
+   * cannot recover from, a terminal mirror whose pane went back to a shell.
+   * Never call this from a signal handler; see `deactivateSession`.
+   */
+  async archiveSession(sessionId: string): Promise<boolean> {
     try {
       const response = await axios.post(
         `${configuration.serverUrl}/v1/sessions/${sessionId}/archive`,
@@ -516,7 +556,7 @@ export class ApiClient {
       );
       return response.status >= 200 && response.status < 300;
     } catch (error) {
-      logger.debug('[API] deactivateSession failed:', error);
+      logger.debug('[API] archiveSession failed:', error);
       return false;
     }
   }

@@ -66,7 +66,8 @@ import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRe
 import { readSessionLock } from '@/utils/sessionLock';
 import { createTeamWorker } from './teams/worker';
 import { createAutomationRunner } from './automations/runner';
-import { daemonExitCode, type ShutdownSource } from './shutdownExit';
+import { daemonExitCode, HANDOVER_EXIT_CODE, type ShutdownSource } from './shutdownExit';
+import { detectDaemonSupervisor } from './daemonSupervisor';
 
 import { shellescape } from '@/utils/shellescape';
 
@@ -1577,6 +1578,9 @@ export async function startDaemon(): Promise<void> {
       onSessionTurnEvent: (sessionId, event) => turnActivity.apply(sessionId, event),
       onSessionEdit: (edit) => { peerCoordinator.onEdit(edit); },
       listPeers: () => peerCoordinator.list(),
+      // B-505: `daemon list` shows which sessions have a turn in flight, so an
+      // operator can check the WHOLE machine before a supervised restart.
+      isTurnActive: (sessionId: string) => turnActivity.activeSessions().includes(sessionId),
       pushClipboard: (text: string, terminalId?: string) => {
         if (!apiMachineRef) {
           return { delivered: false, truncated: false, totalBytes: 0, error: 'daemon is still starting up' };
@@ -1598,6 +1602,9 @@ export async function startDaemon(): Promise<void> {
 
     // Write initial daemon state (no lock needed for state file)
     const daemonClaudeCredentials = resolveClaudeCredentialReadiness();
+    // B-505: decides how the auto-update handover leaves this process.
+    const daemonSupervisor = detectDaemonSupervisor(process.env);
+    logger.debug(`[DAEMON RUN] Supervisor: ${daemonSupervisor}`);
     let fileState: DaemonLocallyPersistedState = {
       pid: process.pid,
       httpPort: controlPort,
@@ -1608,6 +1615,7 @@ export async function startDaemon(): Promise<void> {
       webappUrl: configuration.webappUrl,
       daemonLogPath: logger.logFilePath,
       claudeCredentialSource: daemonClaudeCredentials.source,
+      supervisor: daemonSupervisor,
     };
     writeDaemonState(fileState);
     logger.debug('[DAEMON RUN] Daemon state written');
@@ -1876,6 +1884,15 @@ export async function startDaemon(): Promise<void> {
         await cleanupDaemonState();
         await releaseDaemonLock(daemonLockHandle);
         await stopCaffeinate();
+
+        // B-505: under systemd the unit restarts us on the new bundle; a daemon
+        // spawned from in here would be unsupervised, and with the default
+        // KillMode the exit below would SIGTERM every wrapper in the cgroup.
+        // See daemonSupervisor.ts and ops/dev-sg/very-happy-daemon.service.
+        if (daemonSupervisor === 'systemd') {
+          logger.debug(`[DAEMON RUN] systemd-supervised: exiting ${HANDOVER_EXIT_CODE} for the unit to restart on the new bundle`);
+          process.exit(HANDOVER_EXIT_CODE);
+        }
 
         try {
           spawnHappyCLI(['daemon', 'start'], {

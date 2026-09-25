@@ -227,10 +227,13 @@ export function createMirrorManager(deps: {
             archivedBy: TERMINAL_MIRROR_FLAVOR,
             archiveReason: reason,
         });
+        // The pane went back to a shell: this session's life is over on
+        // purpose, so it gets the tombstone (B-505: `deactivateSession` is the
+        // offline-only variant and would leave it "resumable" forever).
         try {
-            await deps.api.deactivateSession(binding.happySessionId);
+            await deps.api.archiveSession(binding.happySessionId);
         } catch (error) {
-            logger.debug(`[MIRROR] deactivateSession failed for ${binding.happySessionId}:`, error);
+            logger.debug(`[MIRROR] archiveSession failed for ${binding.happySessionId}:`, error);
         }
         deps.onBindingsChanged?.();
     };

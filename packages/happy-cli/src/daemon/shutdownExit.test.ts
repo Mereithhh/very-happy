@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { daemonExitCode } from './shutdownExit';
+import { daemonExitCode, HANDOVER_EXIT_CODE } from './shutdownExit';
 
 /**
  * B-477 regression: the daemon exited 0 after an unhandled rejection, so
@@ -15,6 +15,13 @@ describe('daemonExitCode', () => {
 
     it.each(['happy-app', 'happy-cli', 'os-signal'] as const)('reports success for a %s shutdown', source => {
         expect(daemonExitCode(source)).toBe(0);
+    });
+
+    // B-505: a supervised handover must be neither "success" (the unit would
+    // stay down) nor "crash" (indistinguishable in the supervisor log).
+    it('reserves a distinct non-zero code for the systemd handover', () => {
+        expect(HANDOVER_EXIT_CODE).not.toBe(0);
+        expect(HANDOVER_EXIT_CODE).not.toBe(daemonExitCode('exception'));
     });
 });
 
