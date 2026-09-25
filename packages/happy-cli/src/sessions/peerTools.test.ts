@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { PeerSessionInfo } from '@/daemon/types'
 import type { PersistedSession } from '@/persistence'
-import { cliPeerSelf, executeSessionPeerTool, listPeerSessions, registerSessionPeerTools, sendPeerMessage, SESSION_PEER_TOOL_NAMES, type PeerToolContext } from './peerTools'
+import { checkPeerSendBudget, cliPeerSelf, executeSessionPeerTool, listPeerSessions, registerSessionPeerTools, sendPeerMessage, SESSION_PEER_TOOL_NAMES, type PeerToolContext } from './peerTools'
+import type { DeliveryResult } from '@/commands/sessionDelivery'
 import { parsePeerMessage } from './peerMessage'
 
 const persisted = (id: string, metadata: Record<string, unknown> = {}): PersistedSession => ({
@@ -25,16 +26,18 @@ const repoOf = (cwd: string) => {
     return { root: null, common: null }
 }
 
-function context(overrides: Partial<PeerToolContext> = {}): PeerToolContext & { send: ReturnType<typeof vi.fn> } {
-    const send = vi.fn(async () => undefined)
+function context(overrides: Partial<PeerToolContext> = {}): PeerToolContext & { deliver: ReturnType<typeof vi.fn> } {
+    const deliver = vi.fn(async (to: string): Promise<DeliveryResult> => ({ sessionId: to, status: 'live', delivered: true, resumed: false, stored: true }))
     return {
         self: () => ({ sessionId: 'me', title: 'Me', flavor: 'claude', cwd: '/repo' }),
         listPeers: async () => peers,
         readPersisted: () => ({ me: persisted('me'), sib: persisted('sib'), wt: persisted('wt'), mirror: persisted('mirror'), dead: persisted('dead') }),
         repoOf,
-        send,
+        deliver,
+        sentTo: new Map(),
+        now: () => 1_000_000,
         ...overrides,
-    } as PeerToolContext & { send: typeof send }
+    } as PeerToolContext & { deliver: typeof deliver }
 }
 
 describe('listPeerSessions (B-497)', () => {
@@ -56,14 +59,13 @@ describe('sendPeerMessage', () => {
     it('formats the message with the sender identity and queues it into the target', async () => {
         const ctx = context()
         const result = await sendPeerMessage(ctx, { to: 'sib', body: ' I am changing a.ts ', replyTo: 'm0' })
-        expect(result).toMatchObject({ delivered: true, to: 'sib' })
+        expect(result).toMatchObject({ delivered: true, stored: true, status: 'live', to: 'sib' })
         expect(result.url).toMatch(/\/session\/sib$/)
-        expect(ctx.send).toHaveBeenCalledTimes(1)
-        const [to, key, text, client, options] = ctx.send.mock.calls[0] as unknown as [string, PersistedSession, string, string, { sentFrom: string; localId: string }]
+        expect(ctx.deliver).toHaveBeenCalledTimes(1)
+        const [to, key, text, localId] = ctx.deliver.mock.calls[0] as unknown as [string, PersistedSession, string, string]
         expect(to).toBe('sib')
         expect(key).toEqual(persisted('sib'))
-        expect(client).toBe('session-message')
-        expect(options).toEqual({ sentFrom: 'session-peer', localId: `session-message-${result.messageId}` })
+        expect(localId).toBe(`session-message-${result.messageId}`)
         expect(parsePeerMessage(text)).toEqual({
             kind: 'message', id: result.messageId, replyTo: 'm0', body: 'I am changing a.ts',
             from: { sessionId: 'me', title: 'Me', flavor: 'claude', cwd: '/repo' },
@@ -78,7 +80,25 @@ describe('sendPeerMessage', () => {
         await expect(sendPeerMessage(ctx, { to: 'other', body: 'x' })).rejects.toThrow(/not on this machine/)
         await expect(sendPeerMessage(ctx, { to: 'dead', body: 'x' })).rejects.toThrow(/not running on this machine/)
         await expect(sendPeerMessage(ctx, { to: 'mirror', body: 'x' })).rejects.toThrow(/terminal mirror/)
-        expect(ctx.send).not.toHaveBeenCalled()
+        expect(ctx.deliver).not.toHaveBeenCalled()
+    })
+
+    it('reports B-501 delivery semantics instead of a blind delivered:true', async () => {
+        const ctx = context({ deliver: async (to): Promise<DeliveryResult> => ({ sessionId: to, status: 'offline', delivered: false, resumed: false, stored: true, error: 'went offline while sending' }) })
+        const result = await sendPeerMessage(ctx, { to: 'sib', body: 'x' })
+        expect(result).toMatchObject({ delivered: false, stored: true, status: 'offline', error: 'went offline while sending' })
+    })
+
+    it('refuses the 9th message to one target inside 10 minutes and says to stop', async () => {
+        let t = 0
+        const ctx = context({ now: () => t })
+        for (let i = 0; i < 8; i++) { t += 1_000; await sendPeerMessage(ctx, { to: 'sib', body: `m${i}` }) }
+        t += 1_000
+        await expect(sendPeerMessage(ctx, { to: 'sib', body: 'm8' })).rejects.toThrow(/already sent 8 messages .* STOP replying/)
+        // Another target has its own budget; the window frees the first one.
+        await expect(sendPeerMessage(ctx, { to: 'wt', body: 'x' })).resolves.toMatchObject({ delivered: true })
+        t += 10 * 60_000
+        await expect(sendPeerMessage(ctx, { to: 'sib', body: 'later' })).resolves.toMatchObject({ delivered: true })
     })
 
     it('surfaces an old daemon precisely', async () => {
@@ -108,11 +128,21 @@ describe('executeSessionPeerTool / registerSessionPeerTools', () => {
     })
 })
 
+describe('checkPeerSendBudget', () => {
+    it('counts only the window and prunes in place', () => {
+        const sentTo = new Map<string, number[]>([['x', [0, 1, 2]]])
+        expect(checkPeerSendBudget(sentTo, 'x', 5, 3, 5)).toEqual({ ok: false, count: 3 })
+        expect(checkPeerSendBudget(sentTo, 'x', 5, 3, 3)).toEqual({ ok: true, count: 1 })
+        expect(sentTo.get('x')).toEqual([2])
+    })
+})
+
 describe('cliPeerSelf', () => {
-    it('is the HAPPY_SESSION_ID session when set, else the CLI user', () => {
+    it('is the VH_PEER_SESSION_ID session when set (never HAPPY_SESSION_ID: that one changes teams behaviour), else the CLI user', () => {
         const store = { s1: persisted('s1', { summary: { text: 'Task', updatedAt: 1 }, flavor: 'codex', path: '/repo/x' }) }
-        expect(cliPeerSelf({ HAPPY_SESSION_ID: 's1' }, '/elsewhere', store)).toEqual({ sessionId: 's1', title: 'Task', flavor: 'codex', cwd: '/repo/x' })
-        expect(cliPeerSelf({ HAPPY_SESSION_ID: 'unknown' }, '/elsewhere', store)).toMatchObject({ sessionId: 'unknown', cwd: '/elsewhere' })
+        expect(cliPeerSelf({ VH_PEER_SESSION_ID: 's1' }, '/elsewhere', store)).toEqual({ sessionId: 's1', title: 'Task', flavor: 'codex', cwd: '/repo/x' })
+        expect(cliPeerSelf({ VH_PEER_SESSION_ID: 'unknown' }, '/elsewhere', store)).toMatchObject({ sessionId: 'unknown', cwd: '/elsewhere' })
+        expect(cliPeerSelf({ HAPPY_SESSION_ID: 's1' }, '/elsewhere', store)).toMatchObject({ sessionId: 'cli' })
         const cli = cliPeerSelf({}, '/here', store)
         expect(cli).toMatchObject({ sessionId: 'cli', flavor: 'cli', cwd: '/here' })
         expect(cli.title).toMatch(/^cli .+@.+/)

@@ -265,7 +265,9 @@ ${chalk.bold('Actions:')}
              the sender (the session named by HAPPY_SESSION_ID when run from a
              managed session's shell, else this CLI) and tells the peer how to
              reply. Refused for sessions that are not running here, not
-             spawned by this machine, or terminal mirrors.
+             spawned by this machine, or terminal mirrors. \`delivered\`
+             follows \`very-happy send\`: true only when a wrapper was attached
+             before and after the POST (\`stored\` = it is on the server anyway).
 
 ${chalk.bold('Options:')}
   --all              list only: account-wide over REST instead of this
@@ -434,8 +436,9 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
             try {
                 const result = await sendPeerMessage(context, { to: target, body: options.text as string, replyTo: options.replyTo })
                 if (options.json) console.log(JSON.stringify(result))
-                else console.log(`Message ${result.messageId} sent to ${target}\n${result.url}`)
-                process.exit(0)
+                else if (result.delivered) console.log(`Message ${result.messageId} delivered to ${target}\n${result.url}`)
+                else console.error(chalk.yellow('Not delivered:'), result.error ?? `session is ${result.status}`, result.stored ? '(stored server-side, unread)' : '')
+                process.exit(result.delivered ? 0 : 1)
             } catch (error) {
                 if (options.json) console.log(JSON.stringify({ delivered: false, to: target, error: error instanceof Error ? error.message : String(error) }))
                 throw error

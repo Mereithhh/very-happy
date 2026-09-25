@@ -10,12 +10,14 @@ const userLine = (uuid: string, text: string) =>
 
 function collector() {
     const messages: RawJSONLines[] = [];
+    const replays: boolean[] = [];
     let truncated = 0;
     return {
         messages,
+        replays,
         get truncatedCount() { return truncated; },
         events: {
-            onMessages: (msgs: RawJSONLines[]) => { messages.push(...msgs); },
+            onMessages: (msgs: RawJSONLines[], context: { replay: boolean }) => { messages.push(...msgs); replays.push(context.replay); },
             onBackfillTruncated: () => { truncated += 1; },
         },
     };
@@ -53,11 +55,14 @@ describe('createMirrorScanner', () => {
         await waitFor(() => c.messages.length >= 3);
         expect(c.messages.map((m) => (m as any).uuid)).toEqual(['u7', 'u8', 'u9']);
         expect(c.truncatedCount).toBe(1);
+        // B-497: the backfill batch is flagged as replay (history, not "now").
+        expect(c.replays).toEqual([true]);
 
-        // Appended lines keep flowing (mode degrades to plain tail).
+        // Appended lines keep flowing (mode degrades to plain tail) and are live.
         appendFileSync(file, userLine('u10', 'late'));
         await waitFor(() => c.messages.length >= 4);
         expect((c.messages[3] as any).uuid).toBe('u10');
+        expect(c.replays).toEqual([true, false]);
     });
 
     it('from-eof skips the on-disk prefix and only emits future appends', async () => {
@@ -109,6 +114,8 @@ describe('createMirrorScanner', () => {
 
         writeFileSync(file, userLine('u3', 'replaced')); // shorter than the old offset
         await waitFor(() => c.messages.some((m) => (m as any).uuid === 'u3'));
+        // B-497: a whole-file re-read after replacement is a replay too.
+        expect(c.replays[c.replays.length - 1]).toBe(true);
     });
 });
 

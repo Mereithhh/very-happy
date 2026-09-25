@@ -497,16 +497,17 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     session.on('claude-session-message', (body) => {
         try {
             for (const edit of editThrottle.take(extractClaudeEditPaths(body))) {
-                reportSessionEditToDaemon({ sessionId: response.id, path: edit.path, tool: edit.tool, cwd: workingDirectory });
+                reportSessionEditToDaemon({ sessionId: response.id, path: edit.path, tool: edit.tool, cwd: workingDirectory, ...(edit.at !== undefined ? { at: edit.at } : {}) });
             }
         } catch (error) {
             logger.debug('[START] edit report failed:', error);
         }
     });
     // B-497: let `very-happy sessions message|peers` run from this session's
-    // shell identify the session (pi children already get it; HAPPY_MANAGED=1
-    // keeps the standalone `very-happy mcp` and the mirror forwarder quiet).
-    options = { ...options, claudeEnvVars: { ...options.claudeEnvVars, HAPPY_SESSION_ID: response.id } };
+    // shell identify the session. A DEDICATED variable: HAPPY_SESSION_ID would
+    // also switch `very-happy teams …` in that shell to session identity and
+    // refuse `teams permissions` (teams/permissions.ts) — not this feature's call.
+    options = { ...options, claudeEnvVars: { ...options.claudeEnvVars, VH_PEER_SESSION_ID: response.id } };
 
     // Remote-mode session scanner: catches user-typed prompts that
     // appeared in the Claude JSONL while we weren't looking — typically

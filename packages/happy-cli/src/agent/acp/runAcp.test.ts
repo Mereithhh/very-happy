@@ -320,6 +320,8 @@ describe('runAcp', () => {
       PI_ACP_PI_COMMAND: 'official-pi-wrapper',
       HAPPY_MCP_URL: 'http://127.0.0.1:9876',
       HAPPY_SESSION_ID: 'happy-session-1',
+      // B-497: dedicated sender identity for `very-happy sessions message|peers`.
+      VH_PEER_SESSION_ID: 'happy-session-1',
       HAPPY_PERMISSION_MODE: 'default',
     });
     // The ACP handoff stays for agents that honour it.

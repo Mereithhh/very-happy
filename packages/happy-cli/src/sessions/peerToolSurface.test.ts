@@ -32,10 +32,18 @@ describe('session peer tool surface across runners', () => {
         expect(PI_TEAMS_EXTENSION).toContain('pi.registerTool({name:tool.name');
     });
     it('every runner reports its edit calls to the daemon', () => {
-        expect(read('../claude/runClaude.ts')).toContain('reportSessionEditToDaemon({ sessionId: response.id, path: edit.path, tool: edit.tool, cwd: workingDirectory });');
+        expect(read('../claude/runClaude.ts')).toContain("reportSessionEditToDaemon({ sessionId: response.id, path: edit.path, tool: edit.tool, cwd: workingDirectory, ...(edit.at !== undefined ? { at: edit.at } : {}) });");
         expect(read('../codex/runCodex.ts')).toContain('editThrottle.take(extractCodexPatchPaths(changes))');
         expect(read('../agent/acp/runAcp.ts')).toContain('editThrottle.take(extractAcpEditPaths(msg.toolName, msg.args))');
-        expect(read('../mirror/mirrorManager.ts')).toContain('deps.onEdit({ sessionId: binding.happySessionId, path: edit.path, tool: edit.tool, cwd: binding.metadata.path });');
+        expect(read('../mirror/mirrorManager.ts')).toContain("if (deps.onEdit && binding.status === 'active' && !context.replay) {");
+    });
+    it('every runner exposes the sender identity through the dedicated variable, never HAPPY_SESSION_ID', () => {
+        expect(read('../claude/runClaude.ts')).toContain('VH_PEER_SESSION_ID: response.id');
+        expect(read('../claude/runClaude.ts')).not.toContain('HAPPY_SESSION_ID: response.id');
+        expect(read('../codex/runCodex.ts')).toContain('process.env.VH_PEER_SESSION_ID = session.sessionId;');
+        expect(read('../agent/acp/runAcp.ts')).toContain('VH_PEER_SESSION_ID: session.sessionId,');
+        expect(read('./peerTools.ts')).toContain('const sessionId = env.VH_PEER_SESSION_ID');
+        expect(read('./peerTools.ts')).not.toContain('env.HAPPY_SESSION_ID');
     });
     it('keeps the documented matrix in sync', () => {
         const channels = readFileSync(new URL('../../../../docs/channels.md', import.meta.url), 'utf8');

@@ -648,6 +648,8 @@ export async function runAcp(opts: {
       HAPPY_MCP_URL: happyServer.url,
       ...(happyServer.contextUsageUrl ? { HAPPY_CONTEXT_USAGE_URL: happyServer.contextUsageUrl } : {}),
       HAPPY_SESSION_ID: session.sessionId,
+      // B-497: sender identity for `very-happy sessions message|peers` in this shell.
+      VH_PEER_SESSION_ID: session.sessionId,
       HAPPY_PERMISSION_MODE: initialPermissionMode,
     },
     mcpServers,

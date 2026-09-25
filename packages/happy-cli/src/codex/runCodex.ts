@@ -786,6 +786,11 @@ export async function runCodex(opts: {
     let first = true;
     let appendSystemPromptInjected = false;
 
+    // B-497: the app-server child (and the MCP bridge it starts) inherit
+    // process.env — a `very-happy sessions message` from a Codex shell names
+    // this session as the sender. Dedicated variable, see runClaude.
+    process.env.VH_PEER_SESSION_ID = session.sessionId;
+
     try {
         logger.debug('[codex]: client.connect begin');
         await client.connect();

@@ -1862,6 +1862,8 @@ export const zhHans: TranslationStructure = {
             },
             scope: { repo: '同一仓库', cwd: '同一目录', machine: '整台机器' },
             messageDelivered: '已送达',
+            messageStoredUnread: '未送达——已存到服务器，但那个会话没人在读',
+            messageNotDelivered: '未送达',
             peerCount: ({ count }: { count: number }) => `${count} 个邻近会话`,
             editedFiles: ({ count }: { count: number }) => `编辑了 ${count} 个文件`,
             attention: { review: '待审阅', blocked: '受阻' },

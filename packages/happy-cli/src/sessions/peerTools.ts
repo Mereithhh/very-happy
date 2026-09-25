@@ -19,6 +19,7 @@ import { listDaemonPeers } from '@/daemon/controlClient'
 import type { PeerSessionInfo } from '@/daemon/types'
 import { readPersistedSessions, type PersistedSession } from '@/persistence'
 import { sendUserMessage, sessionWebUrl } from '@/commands/sessionMessage'
+import { deliverToSession, type DeliveryResult } from '@/commands/sessionDelivery'
 import { CLI_PEER_SENDER_ID, formatSessionPeerMessage, SESSION_PEER_SENT_FROM, type PeerSender } from './peerMessage'
 import { isPeerInScope, PEER_SCOPES, resolveRepoIdentity, type PeerScope, type RepoIdentity } from './repoIdentity'
 
@@ -52,12 +53,20 @@ export interface PeerSelf extends PeerSender {
     cwd: string
 }
 
+/** Per-target send budget: more than this many messages to one session inside the window is a loop, not coordination. */
+export const PEER_MESSAGE_RATE_LIMIT = 8
+export const PEER_MESSAGE_RATE_WINDOW_MS = 10 * 60_000
+
 export interface PeerToolContext {
     self: () => PeerSelf
     listPeers?: () => Promise<PeerSessionInfo[]>
     readPersisted?: () => Record<string, PersistedSession>
-    send?: typeof sendUserMessage
+    /** B-501 semantics: classify, send, re-check; default `deliverToSession` with the peer envelope. */
+    deliver?: (to: string, persisted: PersistedSession, text: string, localId: string) => Promise<DeliveryResult>
     repoOf?: (cwd: string) => RepoIdentity
+    /** Send times per target session (the executor keeps one per session process). */
+    sentTo?: Map<string, number[]>
+    now?: () => number
 }
 
 export interface PeerListing {
@@ -87,10 +96,31 @@ export async function listPeerSessions(context: PeerToolContext, scope: PeerScop
 }
 
 export interface SendPeerMessageResult {
-    delivered: true
+    /** A live wrapper was attached before and after the POST (B-501 semantics). */
+    delivered: boolean
+    /** The message exists server-side even when `delivered` is false. */
+    stored: boolean
+    status: DeliveryResult['status']
     messageId: string
     to: string
     url: string
+    error?: string
+}
+
+function defaultDeliver(to: string, persisted: PersistedSession, text: string, localId: string): Promise<DeliveryResult> {
+    return deliverToSession(to, persisted, text, 'session-message', {
+        sentFrom: SESSION_PEER_SENT_FROM,
+        resumeHint: 'It has to be running to read a peer message; spawn a new session or ask the person.',
+    }, {
+        send: (sessionId, key, body, client, options) => sendUserMessage(sessionId, key, body, client, { ...options, localId }),
+    })
+}
+
+/** Pure: is one more message to `to` inside the budget? Prunes the window in place. */
+export function checkPeerSendBudget(sentTo: Map<string, number[]>, to: string, now: number, limit = PEER_MESSAGE_RATE_LIMIT, windowMs = PEER_MESSAGE_RATE_WINDOW_MS): { ok: boolean; count: number } {
+    const recent = (sentTo.get(to) ?? []).filter((t) => now - t <= windowMs)
+    sentTo.set(to, recent)
+    return { ok: recent.length < limit, count: recent.length }
 }
 
 /**
@@ -111,13 +141,26 @@ export async function sendPeerMessage(context: PeerToolContext, args: { to: stri
     const live = (await (context.listPeers ?? listDaemonPeers)()).find((session) => session.sessionId === args.to)
     if (!live) throw new Error(`Session ${args.to} is not running on this machine; nothing would read the message`)
     if (live.kind === 'mirror') throw new Error(`Session ${args.to} is a terminal mirror (a person typing claude in a terminal); it cannot receive messages`)
+    const now = (context.now ?? Date.now)()
+    if (context.sentTo) {
+        const budget = checkPeerSendBudget(context.sentTo, args.to, now)
+        if (!budget.ok) {
+            throw new Error(`Refused: this session already sent ${budget.count} messages to ${args.to} in the last ${Math.round(PEER_MESSAGE_RATE_WINDOW_MS / 60_000)} minutes. That is a reply loop, not coordination — STOP replying to that session now; do not send acknowledgements or thanks. Continue your own work.`)
+        }
+    }
     const messageId = randomUUID().slice(0, 8)
     const text = formatSessionPeerMessage({ id: messageId, from: self, body, replyTo: args.replyTo })
-    await (context.send ?? sendUserMessage)(args.to, persisted, text, 'session-message', {
-        sentFrom: SESSION_PEER_SENT_FROM,
-        localId: `session-message-${messageId}`,
-    })
-    return { delivered: true, messageId, to: args.to, url: sessionWebUrl(args.to) }
+    const result = await (context.deliver ?? defaultDeliver)(args.to, persisted, text, `session-message-${messageId}`)
+    context.sentTo?.get(args.to)?.push(now)
+    return {
+        delivered: result.delivered,
+        stored: result.stored,
+        status: result.status,
+        messageId,
+        to: args.to,
+        url: sessionWebUrl(args.to),
+        ...(result.error ? { error: result.error } : {}),
+    }
 }
 
 export async function executeSessionPeerTool(name: SessionPeerToolName, args: any, context: PeerToolContext): Promise<unknown> {
@@ -133,9 +176,14 @@ export async function executeSessionPeerTool(name: SessionPeerToolName, args: an
 
 export type SessionPeerToolExecutor = (name: SessionPeerToolName, args: any) => Promise<unknown>
 
-/** The CLI's identity when no session is speaking: `HAPPY_SESSION_ID` if set (a shell inside a managed session), else the user at this host. */
+/**
+ * The CLI's identity when no session is speaking: the session named by
+ * `VH_PEER_SESSION_ID` (every managed runner sets it for its child; dedicated
+ * so it never changes what `very-happy teams …` does — HAPPY_SESSION_ID would),
+ * else the user at this host.
+ */
 export function cliPeerSelf(env: NodeJS.ProcessEnv, cwd: string, persisted: Record<string, PersistedSession>): PeerSelf {
-    const sessionId = env.HAPPY_SESSION_ID
+    const sessionId = env.VH_PEER_SESSION_ID
     if (sessionId && isValidSessionId(sessionId)) {
         const meta = persisted[sessionId]?.metadata
         return { sessionId, title: meta?.summary?.text, flavor: meta?.flavor, cwd: meta?.path ?? cwd }
@@ -152,6 +200,8 @@ export function createSessionPeerToolExecutor(client: { sessionId: string; getMe
             const meta = client.getMetadata()
             return { sessionId: client.sessionId, title: meta?.summary?.text, flavor: meta?.flavor, cwd: meta?.path ?? process.cwd() }
         },
+        // One budget per session process: the reply-loop guard.
+        sentTo: new Map(),
     }
     return (name, args) => executeSessionPeerTool(name, args, context)
 }

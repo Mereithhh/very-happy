@@ -9,7 +9,8 @@
 .peer-message-who { font-size: var(--fs-14); }
 .peer-message-path { display: block; font-family: var(--font-mono); font-size: var(--fs-12); color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
 .peer-message-note { color: var(--text-dim); font-size: var(--fs-12); }
-.peer-message-body { margin: 0; font-size: var(--fs-14); line-height: 1.5; white-space: pre-wrap; }
+/* Long bodies are clamped; the full text stays one click away in the raw source. */
+.peer-message-body { margin: 0; font-size: var(--fs-14); line-height: 1.5; white-space: pre-wrap; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 12; overflow: hidden; }
 .peer-message-link { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; color: var(--text); }
 .peer-message-details { min-width: 0; }
 .peer-message-summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: var(--fs-12); color: var(--text-faint); }

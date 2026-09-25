@@ -1747,6 +1747,8 @@ export const en = {
             },
             scope: { repo: 'same repository', cwd: 'same directory', machine: 'whole machine' },
             messageDelivered: 'Delivered',
+            messageStoredUnread: 'Not delivered — stored, nobody is reading that session',
+            messageNotDelivered: 'Not delivered',
             peerCount: ({ count }: { count: number }) => count === 1 ? '1 peer session' : `${count} peer sessions`,
             editedFiles: ({ count }: { count: number }) => count === 1 ? '1 file edited' : `${count} files edited`,
             attention: { review: 'needs review', blocked: 'blocked' },

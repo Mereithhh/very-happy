@@ -125,7 +125,7 @@ export class EditConflictTracker {
  * the longest EXISTING ancestor is realpath'd (a `Write` targets a file that
  * does not exist yet; symlinked checkouts must still collide). Never throws.
  */
-export function normalizeEditPath(path: string, cwd: string, realpath: (p: string) => string = realpathSync): string {
+export function normalizeEditPath(path: string, cwd: string, realpath: (p: string) => string = realpathSync.native ?? realpathSync): string {
     const absolute = isAbsolute(path) ? resolve(path) : resolve(cwd, path)
     let existing = absolute
     const tail: string[] = []

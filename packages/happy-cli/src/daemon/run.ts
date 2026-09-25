@@ -1675,6 +1675,7 @@ export async function startDaemon(): Promise<void> {
       machineId,
       onBindingsChanged: () => apiMachine.requestTerminalListRefresh(),
       onEdit: (edit) => peerCoordinator.onEdit(edit),
+      onSessionEnded: (sessionId) => peerCoordinator.forget(sessionId),
     });
     mirrorManagerRef = mirrorManager;
     peerCoordinator.setMirrorSource(() => mirrorManager.listActiveMirrors());
