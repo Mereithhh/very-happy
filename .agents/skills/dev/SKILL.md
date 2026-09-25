@@ -128,8 +128,6 @@ not source `.zshrc`, so PATH must explicitly include `~/.local/bin`.
 
 - Protocol/schema changes: update `happy-wire`, build its dist, and document the
   old/new compatibility matrix in a spec.
-- Server changes must add no npm dependency unless the production image/bind-mount
-  deployment is changed deliberately.
 - Synced setting fields never receive Zod `.default()` values; defaults live in
   the settings defaults layer.
 - Repository tools run through `pnpm exec`, never bare `npx`.
@@ -138,6 +136,6 @@ not source `.zshrc`, so PATH must explicitly include `~/.local/bin`.
 
 ## Production is not a dev environment
 
-Do not test local changes by mutating hw-sg or mac-office unless the user asked
-for a deployment. Production topology and recovery commands live in
+Do not test local changes by mutating vh-sg, the relays or the daemon hosts
+(mac-office, dev-sg) unless the user asked for a deployment. Production topology and recovery commands live in
 `docs/operations.md`.
