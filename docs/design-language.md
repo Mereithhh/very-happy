@@ -351,3 +351,12 @@ Pi 框下上下文使用运行时当前估算与真实容量，前缀 ≈；未�
 自动化是侧边栏一级入口，紧接「团队」之下（同属"让多个 Agent 替我工作"的入口组），带 `--danger` 计数徽标表示需要决策的运行数；gate 关闭时整个入口不出现。列表与详情沿用看板的平面材质：1px 分隔、mono 机器层、`--accent` 仅表示 run 正在运行。「需要我决策」区用 `--danger` 标题与计数（与看板「等你处理」同一语义），为空时整块不渲染。列表按「定时」与「触发器」分组，组标题用 eyebrow mono。行内动词用短按钮（立即运行 / 暂停 / 编辑 / 知道了 / 再跑一次 / 取消运行），窄屏 979px 以下单列、coarse 指针 44px，600px 以下详情顶栏动词收成图标以保住自动化名称。
 
 创建/编辑是整页表单而非弹窗（字段多、手机可滚动）：分「基本 / 触发 / 动作 / 限制」四组，每组一条 1px 顶线；触发器与动作类型用胶囊单选（选中为 ink 填充），字段下方一行 hint 或 `--danger` 错误，cron 字段的 hint 就是实时人话预览。输入控件 `--bg-2` 底、`--line` 描边，聚焦只改描边；手机 16px / 44px。「仅触发器」的详情页把触发方式当作内容展示：三条可复制命令，`--bg-1` 命令框 + 统一 CopyButton，不做高亮。未启用时显示说明性空状态，不报错。
+
+### 内置工具行（B-499）
+
+very-happy 自己注入的工具（change_title、copy_to_clipboard、open_preview、report_progress、`team_*`、`automation_*`、assistant 变体的 `sessions_*`/`terminal*`/`memory_update`/`journal_append`）在对话里不显示原始 JSON。识别不依赖运行器的命名形态：Claude 的 `mcp__happy__x`、Gemini 的 `happy__x`、Codex 的 `McpTool`+`{server,tool,arguments}`、pi 的 `other`+`piTool`/`rawInput` 与裸名共用一套身份（`components/tools/builtinTools.ts`）；只认 server 名含 `happy` 的前缀，其他 MCP 服务器的同名工具保持通用视图。
+
+- 行内：工具名位是动词短语（Sans 600），detail 位是人话摘要（Sans，不用 Mono）：「委派任务 · 给 Codex · <目标>」「创建自动化 · <名称> · 每天 09:00 (Asia/Singapore) · 在 <目录> 启动 Codex 会话」「进度 · 待审阅 · <一句话>」。id 只显示前 8 位，长文本压成一行截断。
+- 展开：参数按字段两列排列（窄屏单列），路径/命令/id 用 Mono，其余 Sans；验收标准等列表按项展示。结果区先给结构化摘要（任务 id 与状态、自动化的触发/下次运行、运行状态），再给指向 `/session/<id>`、`/teams/<id>?task=<id>` 的中性按钮（不用 accent；触屏 44px），原始输出折叠在「原始输出」下。自动化详情页路由落地后把 `automationHref` 指向它即可。
+- 失败态用 `.tg-error` 直接显示服务端错误文本，不再显示结果摘要；流式阶段参数不全时只显示已到达的字段，完全没有参数时显示「等待参数…」，任何形状都不能崩。
+- `change_title` 不再隐藏：Claude 路径仍由 `messageToEvent` 转成事件，Codex/pi/Gemini 路径显示「标题改为 · <标题>」一行。已完成的 `open_preview` 保持 B-452 的「文件预览＋可点击路径」行。
