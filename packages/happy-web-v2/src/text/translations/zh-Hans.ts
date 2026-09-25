@@ -2024,6 +2024,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25g: {
+                title: '网页里的自动化',
+                summary: '自动化现在有了自己的页面。账号开启该功能后，侧栏「团队」下方多出「自动化」入口，角标显示需要你决策的运行数。',
+                decide: '看板顶部和自动化页顶部新增「需要我决策」区：agent 在等输入、失败或超时、机器离线的运行都列在这里，可以直接打开会话、确认、再跑一次或取消。',
+                manage: '在浏览器里创建和编辑自动化：计划（带时区的 cron、固定间隔、一次性或仅触发）、动作（启动会话、续接粘性会话或运行脚本）与限制。仅触发型自动化会给出可复制的 `very-happy auto fire` 命令。',
+                docs: '首次使用与帮助页新增自动化入门，另有公开的 /docs/automations 指南。',
+            },
             sep25f: {
                 title: '自动化：按计划或按需运行会话与脚本',
                 summary: '账号现在可以拥有自动化：带时区的 cron 计划、固定间隔、一次性时间或仅手动触发，每条在你的一台机器上启动会话、续接同一会话或运行脚本。目前按账号开启；运行它的机器需要更新 CLI。',

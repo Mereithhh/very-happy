@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-automations-in-the-web-app',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25g.title',
+    summaryKey: 'changelog.releases.sep25g.summary',
+    itemKeys: ['changelog.releases.sep25g.decide', 'changelog.releases.sep25g.manage', 'changelog.releases.sep25g.docs'],
+  },
+  {
     id: '2026-09-25-automations-scheduled-and-triggered-runs',
     cliVersion: '0.2.152',
     date: '2026-09-25',
