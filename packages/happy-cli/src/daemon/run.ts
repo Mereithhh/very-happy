@@ -64,6 +64,7 @@ import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
 import { readSessionLock } from '@/utils/sessionLock';
 import { createTeamWorker } from './teams/worker';
+import { createAutomationRunner } from './automations/runner';
 import { daemonExitCode, type ShutdownSource } from './shutdownExit';
 
 import { shellescape } from '@/utils/shellescape';
@@ -288,6 +289,7 @@ export async function startDaemon(): Promise<void> {
     // Pre-populate from disk so sessions survive daemon restarts.
     const sessionIdToFinishedSession = new Map<string, TrackedSession>();
     let teamWorker: ReturnType<typeof createTeamWorker> | undefined;
+    let automationRunner: ReturnType<typeof createAutomationRunner> | undefined;
     const persisted = readPersistedSessions();
     const liveHappyProcesses = await findAllHappyProcesses();
     for (const [id, s] of Object.entries(persisted)) {
@@ -1464,6 +1466,7 @@ export async function startDaemon(): Promise<void> {
     const onChildExited = (pid: number) => {
       const session = pidToTrackedSession.get(pid);
       if (session?.happySessionId && (session.spawnedBy === 'teams' || teamWorker?.hasSession(session.happySessionId))) teamWorker?.report(session.happySessionId, 'exited');
+      if (session?.happySessionId && automationRunner?.hasSession(session.happySessionId)) automationRunner.report(session.happySessionId, 'exited');
       if (session?.happySessionId) turnActivity.forget(session.happySessionId);
       if (session?.happySessionId && session.encryption) {
         sessionIdToFinishedSession.set(session.happySessionId, session);
@@ -1493,6 +1496,8 @@ export async function startDaemon(): Promise<void> {
       }
     };
     const onSessionStateEvent = (sessionId: string, event: AssistantReportEvent, spawnedByFromSession?: string): void => {
+      // B-496: a run's session blocking on input is an attention signal for that run.
+      if (automationRunner?.hasSession(sessionId)) automationRunner.report(sessionId, event === 'completed' ? 'idle' : 'blocked');
       if (spawnedByFromSession === 'teams' || teamWorker?.hasSession(sessionId) || [...pidToTrackedSession.values()].some(s => s.happySessionId === sessionId && s.spawnedBy === 'teams')) {
         teamWorker?.report(sessionId, event === 'completed' ? 'idle' : 'blocked');
         return; // Teams has its own recipient; never route to the legacy assistant singleton.
@@ -1820,7 +1825,7 @@ export async function startDaemon(): Promise<void> {
           // File temporarily missing (e.g. mid-install) — retry on next heartbeat.
         }
       }
-      if (bundleReplaced && !teamWorker?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn()) {
+      if (bundleReplaced && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn()) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
@@ -1841,10 +1846,11 @@ export async function startDaemon(): Promise<void> {
           // still-finishing install is picked up moments later.
           return;
         }
-        if (teamWorker?.busy || updateController.isRunning() || turnActivity.hasActiveTurn()) return;
+        if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || turnActivity.hasActiveTurn()) return;
         lastHandoverHold = null;
         logger.debug('[DAEMON RUN] Daemon bundle replaced on disk and verified, handing off to new daemon');
         teamWorker?.stop();
+        automationRunner?.stop();
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
         clearInterval(cliUpdateInterval);
@@ -1913,6 +1919,15 @@ export async function startDaemon(): Promise<void> {
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
 
+    // B-496: account automations — its own 5s claim loop; a 404 from an old or
+    // gated server keeps it idle (≤1 debug line / 10 min).
+    automationRunner = createAutomationRunner({
+      machineId, token: credentials.token, spawn: spawnSession,
+      live: id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid)),
+      turnActive: id => turnActivity.activeSessions().includes(id),
+      log: message => logger.debug(`[DAEMON RUN] ${message}`),
+    });
+
     // Existing machine rows retain their original metadata at registration.
     // Publish the executing daemon's capability after the worker is installed.
     void apiMachine.updateMachineMetadata(current => ({
@@ -1923,6 +1938,7 @@ export async function startDaemon(): Promise<void> {
     const cleanupAndShutdown = async (source: ShutdownSource, errorMessage?: string) => {
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
       teamWorker?.stop();
+      automationRunner?.stop();
 
       // Clear health check interval
       if (restartOnStaleVersionAndHeartbeat) {
