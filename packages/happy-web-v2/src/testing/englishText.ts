@@ -19,3 +19,7 @@ export function t(key: string, params?: unknown): string {
     if (typeof value === 'function') return String((value as (p: unknown) => string)(params));
     return typeof value === 'string' ? value : key;
 }
+
+export function getCurrentLanguage(): 'en' {
+    return 'en';
+}

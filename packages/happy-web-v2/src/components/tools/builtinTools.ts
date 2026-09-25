@@ -24,8 +24,10 @@
  * input the SDK streams before a call is complete.
  */
 import type { ToolCall } from '@/sync/typesMessage';
-import { t } from '@/text';
+import { AutomationActionSchema, AutomationTriggerSchema } from '@slopus/happy-wire';
+import { getCurrentLanguage, t } from '@/text';
 import { spawnedSessionIdOf } from '@/screens/session/spawnedSessionId';
+import { describeAction, describeInterval, describeTrigger, fmtAbsolute, fmtSpan, langOf } from '@/screens/automations/automationPresentation';
 
 export const BUILTIN_TOOL_NAMES = [
     'change_title', 'copy_to_clipboard', 'open_preview', 'report_progress',
@@ -104,24 +106,6 @@ function basename(p: string): string {
     const parts = p.replace(/\/+$/, '').split('/');
     return parts[parts.length - 1] || p;
 }
-export function formatDuration(ms: number): string {
-    if (!(ms > 0)) return '0 min';
-    const min = Math.round(ms / 60_000);
-    if (min < 60) return `${min} min`;
-    const h = Math.floor(min / 60);
-    const rest = min % 60;
-    if (h < 24) return rest ? `${h} h ${rest} min` : `${h} h`;
-    const d = Math.floor(h / 24);
-    const hRest = h % 24;
-    return hRest ? `${d} d ${hRest} h` : `${d} d`;
-}
-export function formatWhen(ms: number): string {
-    try {
-        return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-    } catch {
-        return new Date(ms).toISOString();
-    }
-}
 function agentName(agent: string | null): string | null {
     if (!agent) return null;
     if (agent === 'claude') return 'Claude';
@@ -133,74 +117,24 @@ function chars(n: number): string {
     return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
 }
 
-/** Human trigger, e.g. "daily at 09:00 (Asia/Singapore)". Unknown shapes fall back to the raw expression. */
+/** Current UI language for the B-498 presentation helpers (which branch zh/en without t()). */
+function lang() {
+    return langOf(getCurrentLanguage());
+}
+function when(ms: number): string {
+    return fmtAbsolute(ms, lang());
+}
+
+/** Human trigger via B-498's `describeTrigger`, e.g. "Daily at 09:00 · Asia/Singapore"; null for shapes the wire schema rejects (partial input). */
 export function describeAutomationTrigger(trigger: unknown): string | null {
-    const tr = obj(trigger);
-    switch (tr.kind) {
-        case 'manual':
-            return t('tools.builtin.trigger.manual');
-        case 'once': {
-            const at = num(tr.at);
-            return at ? t('tools.builtin.trigger.once', { at: formatWhen(at) }) : t('tools.builtin.trigger.onceUnknown');
-        }
-        case 'interval': {
-            const every = num(tr.everyMs);
-            return every ? t('tools.builtin.trigger.interval', { every: formatDuration(every) }) : t('tools.builtin.trigger.intervalUnknown');
-        }
-        case 'cron': {
-            const expr = str(tr.expr);
-            if (!expr) return t('tools.builtin.trigger.cronUnknown');
-            const tz = str(tr.tz);
-            const text = describeCron(expr.trim());
-            return tz ? `${text} (${tz})` : text;
-        }
-        default:
-            return null;
-    }
+    const parsed = AutomationTriggerSchema.safeParse(trigger);
+    return parsed.success ? describeTrigger(parsed.data, lang()).summary : null;
 }
 
-function describeCron(expr: string): string {
-    const raw = t('tools.builtin.trigger.cron', { expr });
-    if (expr === '@hourly') return t('tools.builtin.trigger.hourly', { minute: '00' });
-    if (expr === '@daily' || expr === '@midnight') return t('tools.builtin.trigger.daily', { time: '00:00' });
-    if (expr === '@weekly') return t('tools.builtin.trigger.weekly', { time: '00:00', day: '0' });
-    if (expr === '@monthly') return t('tools.builtin.trigger.monthly', { time: '00:00', day: '1' });
-    if (expr === '@yearly' || expr === '@annually') return raw;
-    const f = expr.split(/\s+/);
-    if (f.length !== 5) return raw;
-    const [m, h, dom, mon, dow] = f;
-    const mm = /^\d{1,2}$/.test(m) ? m.padStart(2, '0') : null;
-    const hh = /^\d{1,2}$/.test(h) ? h.padStart(2, '0') : null;
-    if (mm && h === '*' && dom === '*' && mon === '*' && dow === '*') return t('tools.builtin.trigger.hourly', { minute: mm });
-    if (!mm || !hh || mon !== '*') return raw;
-    const time = `${hh}:${mm}`;
-    if (dom === '*' && dow === '*') return t('tools.builtin.trigger.daily', { time });
-    if (dom === '*' && (dow === '1-5' || dow === 'MON-FRI' || dow === 'mon-fri')) return t('tools.builtin.trigger.weekdays', { time });
-    if (dom === '*' && /^[0-7]$/.test(dow)) return t('tools.builtin.trigger.weekly', { time, day: dow });
-    if (dow === '*' && /^\d{1,2}$/.test(dom)) return t('tools.builtin.trigger.monthly', { time, day: dom });
-    return raw;
-}
-
-/** Human action, e.g. "start a Codex session in ~/code/app". */
+/** Human action headline via B-498's `describeAction`, e.g. "codex · /home/me/app"; null when the shape is incomplete. */
 export function describeAutomationAction(action: unknown): string | null {
-    const a = obj(action);
-    switch (a.kind) {
-        case 'spawn': {
-            const agent = agentName(str(a.agent)) ?? '…';
-            const dir = str(a.directory);
-            return t('tools.builtin.action.spawn', { agent, dir: dir ? basename(dir) : '…' });
-        }
-        case 'send': {
-            const sessionId = str(a.sessionId);
-            return t('tools.builtin.action.send', { session: sessionId ? shortId(sessionId) : '…' });
-        }
-        case 'script': {
-            const cmd = strList(a.command);
-            return t('tools.builtin.action.script', { cmd: cmd.length ? oneLine(cmd.join(' '), 60) : '…' });
-        }
-        default:
-            return null;
-    }
+    const parsed = AutomationActionSchema.safeParse(action);
+    return parsed.success ? describeAction(parsed.data, lang()).headline : null;
 }
 
 function attentionLabel(v: unknown): string | null {
@@ -259,7 +193,7 @@ export function builtinToolSummary(r: ResolvedBuiltinTool): BuiltinToolSummary {
         case 'team_schedule_create': {
             const runAt = num(i.runAt);
             const every = num(i.intervalMs);
-            detail = join(line(i.name), runAt ? formatWhen(runAt) : null, every ? t('tools.builtin.trigger.interval', { every: formatDuration(every) }) : null);
+            detail = join(line(i.name), runAt ? when(runAt) : null, every ? describeInterval(every, lang()) : null);
             break;
         }
         case 'team_schedule_pause':
@@ -323,7 +257,7 @@ export function builtinToolFields(r: ResolvedBuiltinTool): BuiltinToolField[] {
     const L = (key: keyof typeof FIELD_KEYS) => t(`tools.builtin.fields.${key}` as 'tools.builtin.fields.name');
     const text = (key: keyof typeof FIELD_KEYS, v: unknown, mono = false) => F(key, L(key), str(v), { mono, multiline: (str(v)?.length ?? 0) > 96 || (str(v)?.includes('\n') ?? false) });
     const id = (key: keyof typeof FIELD_KEYS, v: unknown) => F(key, L(key), str(v), { mono: true });
-    const when = (key: keyof typeof FIELD_KEYS, v: unknown) => F(key, L(key), num(v) ? formatWhen(num(v)!) : null, { mono: true });
+    const at = (key: keyof typeof FIELD_KEYS, v: unknown) => F(key, L(key), num(v) ? when(num(v)!) : null, { mono: true });
     switch (r.name) {
         case 'change_title': text('title', i.title); break;
         case 'copy_to_clipboard': text('text', i.text, true); break;
@@ -350,8 +284,8 @@ export function builtinToolFields(r: ResolvedBuiltinTool): BuiltinToolField[] {
         case 'team_cancel': id('task', i.taskId); text('reason', i.reason); break;
         case 'team_handoff': id('task', i.taskId); id('assignee', i.assigneeBotId); break;
         case 'team_schedule_create':
-            text('name', i.name); id('bot', i.botId); when('runAt', i.runAt);
-            F('interval', L('interval'), num(i.intervalMs) ? formatDuration(num(i.intervalMs)!) : null);
+            text('name', i.name); id('bot', i.botId); at('runAt', i.runAt);
+            F('interval', L('interval'), num(i.intervalMs) ? fmtSpan(num(i.intervalMs)!) : null);
             text('body', i.body);
             break;
         case 'team_schedule_pause':
@@ -378,7 +312,7 @@ export function builtinToolFields(r: ResolvedBuiltinTool): BuiltinToolField[] {
                 if (obj(a.sticky).key) F('sticky', L('sticky'), str(obj(a.sticky).key), { mono: true });
             }
             F('concurrency', L('concurrency'), str(i.concurrency));
-            F('maxRuntime', L('maxRuntime'), num(i.maxRuntimeMs) ? formatDuration(num(i.maxRuntimeMs)!) : null);
+            F('maxRuntime', L('maxRuntime'), num(i.maxRuntimeMs) ? fmtSpan(num(i.maxRuntimeMs)!) : null);
             if (i.paused === true) F('status', L('status'), t('tools.builtin.status.paused'));
             break;
         }
@@ -450,9 +384,9 @@ function parseJson(text: string): unknown {
     try { return JSON.parse(s); } catch { return null; }
 }
 
-/** Where the automations UI lives. Returns null until the route exists (B-498 lands it); the card then shows the bare id. */
-export function automationHref(_id: string): string | null {
-    return null;
+/** B-498 detail route. Only reachable by id: a name-only reference (no result yet) shows the name without a link. */
+export function automationHref(id: string): string {
+    return `/automations/${encodeURIComponent(id)}`;
 }
 
 function automationLine(a: Record<string, unknown>): string {
@@ -462,7 +396,7 @@ function automationLine(a: Record<string, unknown>): string {
     const status = str(a.status);
     if (status && status !== 'active') parts.push(t(`tools.builtin.status.${status}` as 'tools.builtin.status.paused'));
     const next = num(a.nextRunAt);
-    if (next && status !== 'paused') parts.push(t('tools.builtin.nextRun', { at: formatWhen(next) }));
+    if (next && status !== 'paused') parts.push(t('tools.builtin.nextRun', { at: when(next) }));
     return parts.join(' · ');
 }
 
@@ -497,10 +431,8 @@ export function builtinToolDigest(r: ResolvedBuiltinTool, tool: Pick<ToolCall, '
         if (taskId) addLink(`/teams/${encodeURIComponent(teamId)}?task=${encodeURIComponent(taskId)}`, t('tools.builtin.openTask'), taskId);
         else addLink(`/teams/${encodeURIComponent(teamId)}`, t('tools.builtin.openTeam'), teamId);
     };
-    const automationLink = (a: Record<string, unknown>) => {
-        const id = str(a.id);
-        const href = id ? automationHref(id) : null;
-        if (id && href) addLink(href, t('tools.builtin.openAutomation'), id);
+    const automationLink = (id: string | null) => {
+        if (id) addLink(automationHref(id), t('tools.builtin.openAutomation'), id);
     };
     const i = r.input;
 
@@ -563,18 +495,20 @@ export function builtinToolDigest(r: ResolvedBuiltinTool, tool: Pick<ToolCall, '
             digest.lines.push(automationLine(a));
             const action = describeAutomationAction(a.action);
             if (action) digest.lines.push(action);
-            automationLink(a);
+            automationLink(str(a.id));
             return digest;
         }
         if (typeof j.run === 'object' && j.run) {
             const run = obj(j.run);
             digest.lines.push(runLine(run));
+            automationLink(str(run.automationId));
             sessionLink(str(run.sessionId));
             return digest;
         }
         // automation_fire returns the run envelope directly.
         if (str(j.status) && str(j.id)) {
             digest.lines.push(runLine(j));
+            automationLink(str(j.automationId));
             sessionLink(str(j.sessionId));
         }
         return digest;

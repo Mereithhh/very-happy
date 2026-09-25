@@ -55,7 +55,8 @@ describe('built-in tool rows', () => {
             arguments: { name: 'daily-inventory', trigger: { kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Singapore' }, action: { kind: 'spawn', agent: 'claude', directory: '/home/me/app', prompt: 'Count the things' } },
         }, 'completed', mcpText({ automation: { id: 'auto-1', name: 'daily-inventory', status: 'active', trigger: { kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Singapore' }, action: { kind: 'spawn', agent: 'claude', directory: '/home/me/app', prompt: 'x' } } })));
         expect(html).toContain('Create automation');
-        expect(html).toContain('daily at 09:00 (Asia/Singapore)');
+        expect(html).toContain('Daily at 09:00 · Asia/Singapore');
+        expect(html).toContain('href="/automations/auto-1"');
         expect(html).toContain('Count the things');
         expect(html).toContain('Raw output');
         expect(html).not.toContain('McpTool');

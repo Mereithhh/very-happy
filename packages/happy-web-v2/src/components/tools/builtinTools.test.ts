@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ToolCall } from '@/sync/typesMessage';
 import {
     BUILTIN_TOOL_NAMES, builtinResultText, builtinToolDigest, builtinToolFields, builtinToolSummary,
-    describeAutomationAction, describeAutomationTrigger, formatDuration, resolveBuiltinTool,
+    describeAutomationAction, describeAutomationTrigger, resolveBuiltinTool,
 } from './builtinTools';
 
 vi.mock('@/text', async () => await import('@/testing/englishText'));
@@ -68,12 +68,13 @@ describe('builtinToolSummary — verb + human detail', () => {
             trigger: { kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Singapore' },
             action: { kind: 'spawn', agent: 'claude', directory: '/home/me/code/app', prompt: 'p' },
         }).detail;
-        expect(detail).toBe('daily-inventory · daily at 09:00 (Asia/Singapore) · start a Claude session in app');
+        // Trigger / action wording is B-498's (automationPresentation), reused rather than duplicated.
+        expect(detail).toBe('daily-inventory · Daily at 09:00 · Asia/Singapore · claude · /home/me/code/app');
     });
 
     it('automation_update lists what changes', () => {
         expect(summary('automation_update', { name: 'nightly', version: 3, trigger: { kind: 'interval', everyMs: 7_200_000 }, concurrency: 'queue' }).detail)
-            .toBe('nightly · Trigger, Concurrency · every 2 h');
+            .toBe('nightly · Trigger, Concurrency · Every 2h');
     });
 
     it('title, clipboard, preview and progress are one-liners', () => {
@@ -112,28 +113,20 @@ describe('builtinToolSummary — verb + human detail', () => {
     });
 });
 
-describe('describeAutomationTrigger / Action / formatDuration', () => {
-    it('reads common cron shapes and falls back to the expression', () => {
-        expect(describeAutomationTrigger({ kind: 'cron', expr: '30 18 * * 1-5', tz: 'Europe/Berlin' })).toBe('weekdays at 18:30 (Europe/Berlin)');
-        expect(describeAutomationTrigger({ kind: 'cron', expr: '15 * * * *', tz: 'UTC' })).toBe('hourly at :15 (UTC)');
-        expect(describeAutomationTrigger({ kind: 'cron', expr: '@daily', tz: 'UTC' })).toBe('daily at 00:00 (UTC)');
-        expect(describeAutomationTrigger({ kind: 'cron', expr: '0 0 1 * *', tz: 'UTC' })).toBe('monthly on the 1 at 00:00 (UTC)');
-        expect(describeAutomationTrigger({ kind: 'cron', expr: '*/5 * * * *', tz: 'UTC' })).toBe('cron */5 * * * * (UTC)');
-        expect(describeAutomationTrigger({ kind: 'interval', everyMs: 90_000 })).toBe('every 2 min');
-        expect(describeAutomationTrigger({ kind: 'manual' })).toBe('manual only');
-        expect(describeAutomationTrigger({ kind: 'once', at: Date.UTC(2026, 8, 25, 1, 0) })).toMatch(/^once at .*2026/);
+describe('describeAutomationTrigger / Action — thin wrappers over B-498 automationPresentation', () => {
+    it('validates against the wire schema, then delegates the wording', () => {
+        expect(describeAutomationTrigger({ kind: 'cron', expr: '30 18 * * 1-5', tz: 'Europe/Berlin' })).toBe('18:30 on weekdays · Europe/Berlin');
+        expect(describeAutomationTrigger({ kind: 'cron', expr: '*/5 * * * *', tz: 'UTC' })).toBe('Every 5 minutes · UTC');
+        expect(describeAutomationTrigger({ kind: 'interval', everyMs: 90_000 })).toBe('Every 2m');
+        expect(describeAutomationTrigger({ kind: 'manual' })).toBe('Trigger only');
+        expect(describeAutomationTrigger({ kind: 'once', at: Date.UTC(2026, 8, 25, 1, 0) })).toMatch(/^Once · .*2026/);
+        // partial / malformed streaming input → null, the caller shows the raw shape
+        expect(describeAutomationTrigger({ kind: 'cron', expr: '0 9 * * *' })).toBeNull();
         expect(describeAutomationTrigger({ kind: 'nope' })).toBeNull();
         expect(describeAutomationTrigger('garbage')).toBeNull();
-    });
-
-    it('describes actions and durations', () => {
-        expect(describeAutomationAction({ kind: 'send', sessionId: 'abcdefghijklmnopq', prompt: 'p' })).toBe('send into session abcdefgh…');
-        expect(describeAutomationAction({ kind: 'script', command: ['node', 'scripts/x.mjs', '--all'] })).toBe('run node scripts/x.mjs --all');
-        expect(describeAutomationAction({ kind: 'spawn' })).toBe('start a … session in …');
-        expect(formatDuration(30 * 60_000)).toBe('30 min');
-        expect(formatDuration(5.5 * 3_600_000)).toBe('5 h 30 min');
-        expect(formatDuration(2 * 86_400_000)).toBe('2 d');
-        expect(formatDuration(0)).toBe('0 min');
+        expect(describeAutomationAction({ kind: 'send', sessionId: 'abcdefghijklmnopq', prompt: 'p' })).toBe('Send to session abcdefghijklmnopq');
+        expect(describeAutomationAction({ kind: 'script', command: ['node', 'scripts/x.mjs', '--all'], cwd: '/srv' })).toBe('cwd /srv');
+        expect(describeAutomationAction({ kind: 'spawn' })).toBeNull();
     });
 });
 
@@ -185,15 +178,17 @@ describe('builtinToolDigest — result lines, links and errors', () => {
     it('digests automation objects, lists, runs and deletions', () => {
         const auto = { id: 'auto-1', name: 'daily', status: 'active', trigger: { kind: 'cron', expr: '0 9 * * *', tz: 'UTC' }, action: { kind: 'spawn', agent: 'codex', directory: '/a/b', prompt: 'p' }, nextRunAt: Date.UTC(2026, 8, 26, 9) };
         const created = builtinToolDigest(resolveBuiltinTool(call('automation_create', { name: 'daily' }))!, { state: 'completed', result: mcpText({ automation: auto }) });
-        expect(created.lines[0]).toMatch(/^daily · daily at 09:00 \(UTC\) · next .*2026/);
-        expect(created.lines[1]).toBe('start a Codex session in b');
-        expect(created.links).toEqual([]); // no automations route yet → id only
+        expect(created.lines[0]).toMatch(/^daily · Daily at 09:00 · UTC · next .*2026/);
+        expect(created.lines[1]).toBe('codex · /a/b');
+        expect(created.links).toEqual([{ to: '/automations/auto-1', label: 'Open automation', id: 'auto-1' }]); // B-498 detail route
         const list = builtinToolDigest(resolveBuiltinTool(call('automation_list', {}))!, { state: 'completed', result: mcpText({ automations: [auto, { ...auto, id: 'a2', name: 'paused-one', status: 'paused' }] }) });
         expect(list.lines[0]).toBe('2 automations');
-        expect(list.lines[2]).toBe('paused-one · daily at 09:00 (UTC) · paused');
-        const run = builtinToolDigest(resolveBuiltinTool(call('automation_run', { name: 'daily' }))!, { state: 'completed', result: mcpText({ run: { id: 'run-1234567890abc', status: 'queued', sessionId: 'sess-1' } }) });
+        expect(list.lines[2]).toBe('paused-one · Daily at 09:00 · UTC · paused');
+        const run = builtinToolDigest(resolveBuiltinTool(call('automation_run', { name: 'daily' }))!, { state: 'completed', result: mcpText({ run: { id: 'run-1234567890abc', status: 'queued', sessionId: 'sess-1', automationId: 'auto-1' } }) });
         expect(run.lines).toEqual(['queued · run-1234…']);
-        expect(run.links).toEqual([{ to: '/session/sess-1', label: 'Open session', id: 'sess-1' }]);
+        expect(run.links).toEqual([{ to: '/automations/auto-1', label: 'Open automation', id: 'auto-1' }, { to: '/session/sess-1', label: 'Open session', id: 'sess-1' }]);
+        // name-only reference without a result: no link to guess at
+        expect(builtinToolDigest(resolveBuiltinTool(call('automation_pause', { name: 'daily' }))!, { state: 'running', result: undefined }).links).toEqual([]);
         const runs = builtinToolDigest(resolveBuiltinTool(call('automation_runs', {}))!, { state: 'completed', result: mcpText({ runs: [{ id: 'r1', status: 'failed', error: 'timeout', needsAttention: true }] }) });
         expect(runs.lines).toEqual(['1 run', 'failed · r1 · timeout · needs review']);
         const deleted = builtinToolDigest(resolveBuiltinTool(call('automation_delete', { name: 'daily' }))!, { state: 'completed', result: mcpText({ deleted: true, id: 'auto-1', name: 'daily' }) });
