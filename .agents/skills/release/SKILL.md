@@ -263,9 +263,14 @@ launchd. Complete the existing re-adoption procedure in
 launchd is `running`, the daemon has the expected version, and a read-only RPC
 works. Do not use `kickstart -k` against a live same-version daemon: the launcher
 can yield and leave neither process supervised. This host-specific re-adoption
-is not the generic user update command. dev-sg follows the same pattern under
-its systemd user unit (`sudo npm i -g …` → `daemon stop` → `systemctl --user
-start very-happy-daemon`); see [ops/dev-sg/README.md](../../../ops/dev-sg/README.md).
+is not the generic user update command. dev-sg (systemd user unit) is
+`sudo npm i -g …` → `systemctl --user restart very-happy-daemon` (B-505: the
+unit's `KillMode=process` restarts the daemon only — session wrappers, their
+turns and tmux terminals survive and are re-adopted; `daemon stop` + `start` or
+a shell `daemon start` are no longer the path, and the CLI refuses the latter
+while the daemon is unit-owned). Check `very-happy daemon list` (`turnActive`
+for every session) if you want to know what is mid-turn first; see
+[ops/dev-sg/README.md](../../../ops/dev-sg/README.md).
 
 Never use `npm publish`, bare `npx`, `--ignore-scripts`,
 or move/force an existing tag.

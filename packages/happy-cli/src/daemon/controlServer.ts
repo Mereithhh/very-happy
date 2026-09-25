@@ -32,7 +32,8 @@ export function startDaemonControlServer({
   onTerminalHook,
   setTerminalTitle,
   onSessionEdit,
-  listPeers
+  listPeers,
+  isTurnActive
 }: {
   /** Fresh per-process bearer token persisted in the private daemon state. */
   controlToken: string;
@@ -72,6 +73,8 @@ export function startDaemonControlServer({
   onSessionEdit?: (edit: { sessionId: string; path: string; tool: string; cwd?: string; at?: number }) => void;
   /** B-497: live sessions (managed + active mirrors) with their recent edits. */
   listPeers?: () => PeerSessionInfo[];
+  /** B-505: whether this session has an agent turn in flight (B-466 tracker). */
+  isTurnActive?: (sessionId: string) => boolean;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -181,7 +184,8 @@ export function startDaemonControlServer({
             children: z.array(z.object({
               startedBy: z.string(),
               happySessionId: z.string(),
-              pid: z.number()
+              pid: z.number(),
+              turnActive: z.boolean()
             }))
           })
         }
@@ -195,7 +199,8 @@ export function startDaemonControlServer({
           .map(child => ({
             startedBy: child.startedBy,
             happySessionId: child.happySessionId!,
-            pid: child.pid
+            pid: child.pid,
+            turnActive: isTurnActive ? isTurnActive(child.happySessionId!) : false
           }))
       }
     });

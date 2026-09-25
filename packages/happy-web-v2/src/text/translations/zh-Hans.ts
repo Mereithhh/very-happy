@@ -2134,6 +2134,13 @@ export const zhHans: TranslationStructure = {
                 recheck: '服务端报告功能关闭时，页面每五分钟重新确认一次，而不是永久放弃；发版期间开关切换不再让「自动化」一直藏到你刷新为止。',
                 teams: '侧栏里的团队分组在打开网页后的第一次请求就加载，不再等第一个 15 秒刷新。',
             },
+            sep25m: {
+                title: 'daemon 重启或升级再也不会归档你的会话',
+                summary: '会话进程被机器而不是被你结束时——daemon 停止或升级、守护进程重启、关机——会话现在只是离线、可恢复。只有归档、kill 或崩溃才会归档。需要更新 CLI；中继侧改动已生效。',
+                offline: 'wrapper 收到 SIGTERM/SIGINT 退出时把会话标为离线（`active=false`），绝不写归档标记；网页里它显示为离线并可「恢复」，和断网一样。网页归档、kill 命令和崩溃仍然归档。',
+                systemd: '由 systemd 用户单元托管的 daemon（dev-sg）升级改用 `systemctl --user restart`，自动升级也交回单元重启（退出码 75）而不再自己换身；配合仓库里的单元（`KillMode=process`），运行中的会话、进行中的 turn 和 tmux 终端都活过重启并被重新接管。`very-happy daemon start` 对单元托管的 daemon 会拒绝并打印重启命令。',
+                list: '`very-happy daemon list` 对本机每个会话显示 `turnActive`，并汇总成一行，重启前一眼看清谁还在跑。',
+            },
             sep25k: {
                 title: '同一台机器上的会话可以互相说话了',
                 summary: '两个 agent 改同一个仓库不再互相看不见。每个托管会话（Claude、Codex、pi）都有 `session_peers` 和 `session_message`；两边改到同一个文件时 daemon 会同时提醒双方。需要更新 CLI；不加锁、不阻止。',

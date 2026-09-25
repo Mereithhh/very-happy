@@ -16,6 +16,7 @@ import packageJson from '../package.json'
 import { z } from 'zod'
 import { startDaemon } from './daemon/run'
 import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './daemon/controlClient'
+import { SYSTEMD_RESTART_HINT } from './daemon/daemonSupervisor'
 import { getLatestDaemonLog } from './ui/logger'
 import { killRunawayHappyProcesses } from './daemon/doctor'
 import { install } from './daemon/install'
@@ -661,6 +662,12 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         } else {
           console.log('Active sessions:')
           console.log(JSON.stringify(sessions, null, 2))
+          // B-505: the whole-machine "is anything mid-turn" answer, so an
+          // operator does not have to open every session before a restart.
+          const busy = sessions.filter((s: { turnActive?: boolean }) => s.turnActive === true)
+          console.log(busy.length === 0
+            ? 'No turn in flight on this machine (wrappers older than 0.2.139 do not report turns).'
+            : `${busy.length} session(s) with a turn in flight: ${busy.map((s: { happySessionId: string }) => s.happySessionId).join(', ')}`)
         }
       } catch (error) {
         console.log('No daemon running')
@@ -694,14 +701,25 @@ Conversation history is preserved on the server, but in-flight tool calls are in
           configuration.webappUrl,
         )
       if (running && !currentDaemonMatches) {
+        // B-505: a systemd-owned daemon must be restarted by its unit. Stopping
+        // it here and spawning a detached replacement would leave the machine
+        // unsupervised, and the default KillMode would take every running
+        // session wrapper down with the old daemon.
+        if (currentState?.supervisor === 'systemd') {
+          console.error(`The running daemon is supervised by systemd; hand over through the unit instead:\n  ${SYSTEMD_RESTART_HINT}`)
+          process.exit(1)
+        }
         console.log('Configured relay or CLI version changed; restarting the existing daemon')
         await stopDaemon()
       }
-      // Spawn detached daemon process
+      // Spawn detached daemon process. B-505: a daemon started from here is
+      // owned by nobody, so it must not inherit a supervisor claim (a wrapper
+      // spawned by a systemd unit carries INVOCATION_ID and the unit's env).
+      const { HAPPY_DAEMON_SUPERVISOR: _supervisor, INVOCATION_ID: _invocation, ...detachedEnv } = process.env;
       const child = spawnHappyCLI(['daemon', 'start-sync'], {
         detached: true,
         stdio: 'ignore',
-        env: process.env
+        env: detachedEnv
       });
       child.unref();
 

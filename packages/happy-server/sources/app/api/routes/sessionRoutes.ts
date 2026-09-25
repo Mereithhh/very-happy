@@ -431,6 +431,39 @@ export function sessionRoutes(app: Fastify) {
         return reply.send({ success: true });
     });
 
+    // B-505: OFFLINE, not archived. A wrapper that exits for an infrastructure
+    // reason (daemon stop, supervisor restart, machine shutdown, Ctrl-C) calls
+    // this as the HTTP fallback for `session-end`: the row goes inactive
+    // exactly like a missed keepalive, `archivedAt` is never written and no
+    // `session-archive` command is issued, so the session stays visible and
+    // resumable in place. Idempotent on an already-archived row (the
+    // tombstone is preserved — this route never unarchives).
+    app.post('/v1/sessions/:sessionId/deactivate', {
+        schema: {
+            params: z.object({ sessionId: z.string() })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const now = new Date();
+        const result = await db.session.updateMany({
+            where: { id: sessionId, accountId: userId },
+            data: { active: false, lastActiveAt: now }
+        });
+        if (result.count === 0) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        sessionActivityRelayGate.forget(sessionId);
+        eventRouter.emitEphemeral({
+            userId,
+            payload: buildSessionActivityEphemeral(sessionId, false, now.getTime(), false),
+            recipientFilter: { type: 'user-scoped-only' }
+        });
+        return reply.send({ success: true });
+    });
+
     // Explicit reverse transition used only by intentional resume flows.
     app.post('/v1/sessions/:sessionId/unarchive', {
         schema: {

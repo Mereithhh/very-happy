@@ -160,6 +160,12 @@ export interface DaemonLocallyPersistedState {
   claudeCredentialSource?: string;
   /** Last successful relay update-policy check; safe to show in doctor output. */
   cliUpdate?: CliUpdateState;
+  /**
+   * B-505: who restarts this daemon. `systemd` = a unit owns it, so a CLI
+   * upgrade must go through the unit (`systemctl --user restart`), never a
+   * shell `daemon start` that would leave the replacement unsupervised.
+   */
+  supervisor?: 'systemd' | 'none';
 }
 
 /**

@@ -134,6 +134,41 @@ describe('server-owned session lifecycle routes', () => {
         await app.close();
     });
 
+    // B-505: a wrapper exiting for an infrastructure reason (daemon stop,
+    // systemd restart, shutdown) must land the row where a dropped link does —
+    // offline and resumable — never on the archive tombstone. 2026-09-25 every
+    // dev-sg upgrade archived the sessions mid-turn through `/archive`.
+    it('deactivate flips active only: no archivedAt, no session-archive command, no update-session', async () => {
+        const app = await createApp();
+        const response = await app.inject({ method: 'POST', url: `/v1/sessions/${row.id}/deactivate` });
+        expect(response.statusCode).toBe(200);
+        expect(row.active).toBe(false);
+        expect(row.archivedAt).toBeNull();
+        expect(row.lastActiveAt.getTime()).toBeGreaterThan(0);
+        expect(emitArchived).not.toHaveBeenCalled();
+        expect(emitUpdate).not.toHaveBeenCalled();
+        expect(discardPending).not.toHaveBeenCalled();
+        expect(emitEphemeral).toHaveBeenCalledTimes(1);
+        expect(emitEphemeral.mock.calls[0][0].payload).toMatchObject({ type: 'activity', id: row.id, active: false, thinking: false });
+
+        const missing = await app.inject({ method: 'POST', url: '/v1/sessions/someone-elses/deactivate' });
+        expect(missing.statusCode).toBe(404);
+        await app.close();
+    });
+
+    it('deactivate keeps an existing tombstone (never unarchives)', async () => {
+        const app = await createApp();
+        await app.inject({ method: 'POST', url: `/v1/sessions/${row.id}/archive` });
+        const stamped = row.archivedAt;
+        expect(stamped).toBeInstanceOf(Date);
+        emitArchived.mockClear();
+        await app.inject({ method: 'POST', url: `/v1/sessions/${row.id}/deactivate` });
+        expect(row.archivedAt).toBe(stamped);
+        expect(row.active).toBe(false);
+        expect(emitArchived).not.toHaveBeenCalled();
+        await app.close();
+    });
+
     it('reports archived ids for daemon reconnect reconciliation and supports explicit resume', async () => {
         const app = await createApp();
         await app.inject({ method: 'POST', url: `/v1/sessions/${row.id}/archive` });

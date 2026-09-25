@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-infra-exit-never-archives',
+    cliVersion: '0.2.156',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25m.title',
+    summaryKey: 'changelog.releases.sep25m.summary',
+    itemKeys: ['changelog.releases.sep25m.offline', 'changelog.releases.sep25m.systemd', 'changelog.releases.sep25m.list'],
+  },
+  {
     id: '2026-09-25-automations-entry-always-there',
     date: '2026-09-25',
     buildVersion: __APP_VERSION__,

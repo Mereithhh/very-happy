@@ -23,6 +23,7 @@ import { EditReportThrottle, extractClaudeEditPaths } from '@/sessions/editPaths
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
+import { SessionExitGate, exitIntentFromArchiveFlag, settleSessionOnExit } from './sessionExitLifecycle';
 import { registerSideQuestionHandler, writeSideQuestionSettingsFile } from './registerSideQuestionHandler';
 import { claudeCheckSession } from '@/claude/utils/claudeCheckSession';
 import { projectPath } from '../projectPath';
@@ -1003,44 +1004,36 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     //
     // Crashes (uncaughtException / unhandledRejection) keep archiving
     // because the session is genuinely toast at that point.
+    //
+    // B-505: the intent is decided ONCE. An `offline` exit (SIGTERM from a
+    // daemon stop / systemd restart / shutdown) must never be escalated to
+    // `archive` by whatever arrives while cleanup is in flight — the server's
+    // `session-archive` echo, or teardown noise from the dying SDK child.
+    const exitGate = new SessionExitGate();
     const cleanup = async (opts: { archive?: boolean } = { archive: true }) => {
-        logger.debug(`[START] Received termination signal, cleaning up (archive=${opts.archive ?? true})...`);
+        const intent = exitGate.claim(exitIntentFromArchiveFlag(opts.archive));
+        if (intent === null) {
+            logger.debug(`[START] Termination (archive=${opts.archive ?? true}) ignored: cleanup already running as ${exitGate.current}`);
+            return;
+        }
+        logger.debug(`[START] Received termination signal, cleaning up (archive=${intent === 'archive'})...`);
 
         try {
-            // Update lifecycle state to archived before closing — only
-            // when explicitly archiving. On Ctrl-C / SIGTERM we leave
-            // lifecycleState alone so the server treats this exactly
-            // like a network blip: active=false via missed keepalives,
-            // but the session stays visible and resumable in the app.
             if (session) {
-                if (opts.archive ?? true) {
-                    session.updateMetadata((currentMetadata) => ({
-                        ...currentMetadata,
-                        lifecycleState: 'archived',
-                        lifecycleStateSince: Date.now(),
-                        archivedBy: 'cli',
-                        archiveReason: 'User terminated'
-                    }));
-                }
-
                 // Cleanup session resources (intervals, callbacks)
                 currentSession?.cleanup();
 
-                // Send session death message
-                session.sendSessionDeath();
-
-                // Belt-and-braces: also POST /v1/sessions/<id>/archive so
-                // the server flips active=false even if the socket emit
-                // didn't drain before close. The HTTP endpoint touches
-                // only `active` and `lastActiveAt` — it doesn't write
-                // archive metadata — so this is safe in the archive=false
-                // case too, and matches the "session goes inactive but
-                // stays resumable" semantics we want for Ctrl-C.
-                try {
-                    await api.deactivateSession(session.sessionId);
-                } catch (err) {
-                    logger.debug('[START] deactivateSession during cleanup failed:', err);
-                }
+                // Server-side lifecycle by intent: `archive` stamps metadata
+                // and POSTs /archive (tombstone); `offline` only sends
+                // session-end + POST /deactivate, so the row lands exactly
+                // where a dropped link leaves it — visible and resumable.
+                await settleSessionOnExit(session.sessionId, intent, {
+                    updateMetadata: (handler) => session.updateMetadata(handler),
+                    sendSessionDeath: () => session.sendSessionDeath(),
+                    archiveSession: (id) => api.archiveSession(id),
+                    deactivateSession: (id) => api.deactivateSession(id),
+                    log: (message, ...args) => logger.debug(message, ...args),
+                });
 
                 await session.flush();
                 await session.close();

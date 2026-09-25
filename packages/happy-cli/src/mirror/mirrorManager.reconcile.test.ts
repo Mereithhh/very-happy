@@ -62,7 +62,8 @@ function makeApi(overrides: Record<string, unknown> = {}) {
         })),
         sessionSyncClient,
         reactivateSession: vi.fn(async () => true),
-        deactivateSession: vi.fn(async () => {}),
+        archiveSession: vi.fn(async () => true),
+        deactivateSession: vi.fn(async () => true),
         ...overrides,
     };
     return { api, sessionSyncClient, clients };
@@ -328,7 +329,10 @@ describe('mirrorManager.reconcile', () => {
         await flush();
 
         expect(mgr.isMirrorInputAllowed('t1')).toBe(false);
-        expect(api.deactivateSession).toHaveBeenCalled();
+        // B-505: an ended mirror is archived on purpose (tombstone), never
+        // merely deactivated — that route is reserved for infra exits.
+        expect(api.archiveSession).toHaveBeenCalled();
+        expect(api.deactivateSession).not.toHaveBeenCalled();
         // resolveMirrorSessionId still returns it (ended, kept in map)
         expect(mgr.resolveMirrorSessionId('t1')).toBeDefined();
     });
