@@ -9,6 +9,7 @@ import { ContextUsageSchema, type ContextUsage } from '@slopus/happy-wire';
 
 import { createTeamAdoption, TEAMS_ADOPT_CAPABILITY } from '@/teams/adopt';
 import { registerTeamsTools, TEAM_TOOL_NAMES } from '@/teams/tools';
+import { registerAutomationTools, AUTOMATION_TOOL_NAMES } from '@/automations/tools';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -61,6 +62,8 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     });
 
     registerTeamsTools(mcp, sessionId);
+    // B-496: account-level automations, same trust level as the session itself.
+    registerAutomationTools(mcp);
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -325,6 +328,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             PREVIEW_TOOL_NAME,
             REPORT_PROGRESS_TOOL_NAME,
             ...TEAM_TOOL_NAMES,
+            ...AUTOMATION_TOOL_NAMES,
             ...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : []),
         ],
         stop: () => {
