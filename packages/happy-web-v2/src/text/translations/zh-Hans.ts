@@ -1855,6 +1855,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25f: {
+                title: '自动化：按计划或按需运行会话与脚本',
+                summary: '账号现在可以拥有自动化：带时区的 cron 计划、固定间隔、一次性时间或仅手动触发，每条在你的一台机器上启动会话、续接同一会话或运行脚本。目前按账号开启；运行它的机器需要更新 CLI。',
+                triggers: '每条自动化指定执行机器和动作：用 prompt 启动新会话（默认值与网页一致）、按模板键（如 {{payload.conversationId}}）续接已有会话，或不经 shell 直接运行命令。',
+                cli: '`very-happy auto` 负责创建、编辑、暂停、恢复、运行与删除；`very-happy auto fire <名称>` 可从本机任意进程带 payload 与去重键触发一次运行，`--wait` 会等到运行结束。',
+                agents: '由 Very Happy 启动的会话（Claude、Codex、pi）获得与账号同权限的 `automation_*` 工具，并随 Teams skill 一起安装 `very-happy-automations` skill。',
+                runs: '每次运行都有记录：会话链接、摘要与结果；失败、超时或因机器离线等待超过十分钟的运行会标记为需要你处理，直到你确认。',
+            },
             sep25e: {
                 title: '后台心跳更少，刷新更快',
                 summary: '以前每个运行中的会话每 2 秒都要向所有打开的标签页报一次「我还在」，哪怕什么都没做——这占了服务器实例间中继流量的约四分之三。',
