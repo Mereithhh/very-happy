@@ -199,7 +199,7 @@ describe("machinesRoutes — GET /v1/machines (B-506 plaintext CLI version)", ()
     it("returns lastHappyClient / lastHappyClientAt so a CLI can skip daemons that predate sessions.* RPCs", async () => {
         const now = new Date("2026-09-25T10:00:00.000Z");
         state.machines = [
-            { id: "m-new", accountId: "user-1", metadata: "enc", metadataVersion: 1, daemonState: null, daemonStateVersion: 0, dataEncryptionKey: null, seq: 1, active: true, lastActiveAt: now, createdAt: now, updatedAt: now, lastHappyClient: "cli-daemon/0.2.156", lastHappyClientAt: now },
+            { id: "m-new", accountId: "user-1", metadata: "enc", metadataVersion: 1, daemonState: null, daemonStateVersion: 0, dataEncryptionKey: null, seq: 1, active: true, lastActiveAt: now, createdAt: now, updatedAt: now, lastHappyClient: "cli-daemon/0.2.157", lastHappyClientAt: now },
             { id: "m-old", accountId: "user-1", metadata: "enc", metadataVersion: 1, daemonState: null, daemonStateVersion: 0, dataEncryptionKey: null, seq: 1, active: false, lastActiveAt: now, createdAt: now, updatedAt: now, lastHappyClient: null, lastHappyClientAt: null },
         ];
         app = await createApp();
@@ -207,7 +207,7 @@ describe("machinesRoutes — GET /v1/machines (B-506 plaintext CLI version)", ()
         expect(response.statusCode).toBe(200);
         const rows = response.json();
         expect(rows.map((r: any) => [r.id, r.active, r.lastHappyClient, r.lastHappyClientAt])).toEqual([
-            ["m-new", true, "cli-daemon/0.2.156", now.getTime()],
+            ["m-new", true, "cli-daemon/0.2.157", now.getTime()],
             ["m-old", false, null, null],
         ]);
     });

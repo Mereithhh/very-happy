@@ -91,10 +91,10 @@ B-337 的路径是让 CLI 在 `auth login` 时取回账号内容私钥、落盘�
 
 - `listAccountMachines()`：`GET /v1/machines` → `{ id, active, activeAt, cliVersion? }`（`cliVersion` 来自新字段 `lastHappyClient`，老 server 没有则 `undefined`）；排除本机（`settings.machineId`）。
 - `callRemote(machineId, method, args)`：一次 socket、一次 `rpc-call`、30 s；ack 分类：
-  - `{ok:false, error:'RPC method not available'}` → `unreachable`：「machine X did not answer: daemon offline, restarting, or its CLI is older than 0.2.156」；
+  - `{ok:false, error:'RPC method not available'}` → `unreachable`：「machine X did not answer: daemon offline, restarting, or its CLI is older than 0.2.157」；
   - 超时/断开 → `unreachable`；
   - `{ok:true}` 但结果 `ok:false` → 用 daemon 给的 code/message。
-- 目标选择：显式 `--machine <id>` / `machineId` 参数；否则**自动定位**：候选 = 在线机器按 `activeAt` 降序（排除本机、排除 `cliVersion` 已知且 < 0.2.156 的），对每台 `sessions.list {ids:[id]}` 直到命中；最多查 8 台。都没命中 → 错误列出查过的机器、跳过的（离线/旧版）机器。显式指定离线机器 → 立即报「machine X is offline (last seen …)」不发 RPC。
+- 目标选择：显式 `--machine <id>` / `machineId` 参数；否则**自动定位**：候选 = 在线机器按 `activeAt` 降序（排除本机、排除 `cliVersion` 已知且 < 0.2.157 的），对每台 `sessions.list {ids:[id]}` 直到命中；最多查 8 台。都没命中 → 错误列出查过的机器、跳过的（离线/旧版）机器。显式指定离线机器 → 立即报「machine X is offline (last seen …)」不发 RPC。
 - `from`：`{ machineId: settings.machineId, host: os.hostname(), cli: currentCliVersion, sessionId: VH_PEER_SESSION_ID }`。
 
 ### 4. 各表面
@@ -110,19 +110,19 @@ B-337 的路径是让 CLI 在 `auth login` 时取回账号内容私钥、落盘�
 
 ### 5. 帮助与文档
 
-`sessions --help`、`send --help` 的 Scope 段改写；`docs/channels.md` `sessions` 与 `peers/message` 段、MCP 矩阵更新；changelog 条目 `sep25l`（cliVersion 0.2.156）。
+`sessions --help`、`send --help` 的 Scope 段改写；`docs/channels.md` `sessions` 与 `peers/message` 段、MCP 矩阵更新；changelog 条目 `sep25l`（cliVersion 0.2.157）。
 
 ## 兼容矩阵与发布顺序
 
 | 组合 | 行为 |
 |---|---|
-| 新 CLI（A）+ 旧 daemon（B ≤0.2.155） | B 没注册方法 → server 等 15 s 回 `RPC method not available` → A 报「did not answer / CLI older than 0.2.156」；有新 server 时按 `cliVersion` 直接跳过/快速失败 |
+| 新 CLI（A）+ 旧 daemon（B ≤0.2.155） | B 没注册方法 → server 等 15 s 回 `RPC method not available` → A 报「did not answer / CLI older than 0.2.157」；有新 server 时按 `cliVersion` 直接跳过/快速失败 |
 | 旧 CLI（A）+ 新 daemon（B） | 无变化（A 不会调这些方法） |
 | 新 CLI + 旧 server | `/v1/machines` 无 `lastHappyClient` → 版本未知，只靠 RPC 结果判断；指标标签归 `other`；功能可用 |
 | 新 server + 旧 CLI | 多一个响应字段，被忽略 |
 | 新 CLI 写的远程 peer 消息 + 旧 Web | 头部多 `machine` 字段被忽略；footer 首句不同 → 显示在正文里（仅外观） |
 
-wire 无改动。发布顺序：server/Web 随本批 switch（只含指标白名单、`/v1/machines` 字段、Web 卡片），CLI 0.2.156 随后；两台 daemon 都升到 0.2.156 后功能才真正可用（一台旧一台新 = 单向可用）。回滚点：CLI 固定 0.2.155；server 回滚不影响 CLI 功能。
+wire 无改动。发布顺序：server/Web 随本批 switch（只含指标白名单、`/v1/machines` 字段、Web 卡片），CLI 0.2.157 随后；两台 daemon 都升到 0.2.157 后功能才真正可用（一台旧一台新 = 单向可用）。回滚点：CLI 固定 0.2.155；server 回滚不影响 CLI 功能。
 
 ## 风险
 

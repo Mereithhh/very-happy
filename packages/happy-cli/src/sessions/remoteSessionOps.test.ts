@@ -10,7 +10,7 @@ import {
     supportsRemoteSessionOps,
 } from './remoteSessionOps'
 
-const from = { machineId: 'mac-A', host: 'mac', cli: '0.2.156' }
+const from = { machineId: 'mac-A', host: 'mac', cli: '0.2.157' }
 
 describe('guardRemoteSessionOpsRequest (B-506)', () => {
     it('refuses everything when the target machine turned the feature off — with a code, not a 15 s silence', () => {
@@ -26,7 +26,7 @@ describe('guardRemoteSessionOpsRequest (B-506)', () => {
 
     it('keeps only the known caller fields, bounded, and validates the optional session id', () => {
         const out = guardRemoteSessionOpsRequest('sessions.list', { v: 1, from: { ...from, sessionId: 'bad id', extra: 1, host: 'h'.repeat(300) }, args: {} }, { enabled: true })
-        expect(out.ok && out.request.from).toEqual({ machineId: 'mac-A', host: 'h'.repeat(128), cli: '0.2.156' })
+        expect(out.ok && out.request.from).toEqual({ machineId: 'mac-A', host: 'h'.repeat(128), cli: '0.2.157' })
     })
 
     it('sessions.list: ids must be session ids, capped; all/tag/limit normalised', () => {
@@ -84,7 +84,7 @@ describe('capRemoteTranscript / audit / versions', () => {
 
     it('writes one audit line naming the claimed caller, the target and the outcome', () => {
         expect(formatRemoteAuditLine({ method: 'sessions.read', from: { ...from, sessionId: 'sA' }, sessionId: 's1', outcome: 'ok', durationMs: 12.6 }))
-            .toBe('[REMOTE SESSION OPS] sessions.read from machine=mac-A host=mac cli=0.2.156 session=sA target=s1 → ok (13ms)')
+            .toBe('[REMOTE SESSION OPS] sessions.read from machine=mac-A host=mac cli=0.2.157 session=sA target=s1 → ok (13ms)')
         expect(formatRemoteAuditLine({ method: 'sessions.send', from: null, outcome: 'bad_request', durationMs: 0 }))
             .toBe('[REMOTE SESSION OPS] sessions.send from machine=? host=? cli=? session=- target=- → bad_request (0ms)')
     })
@@ -92,10 +92,10 @@ describe('capRemoteTranscript / audit / versions', () => {
     it('parses the server\'s plaintext client tag and compares against the minimum', () => {
         expect(parseHappyClientVersion('cli-daemon/0.2.155')).toBe('0.2.155')
         expect(parseHappyClientVersion(null)).toBeNull()
-        expect(compareVersions('0.2.156', '0.2.155')).toBeGreaterThan(0)
+        expect(compareVersions('0.2.157', '0.2.155')).toBeGreaterThan(0)
         expect(compareVersions('0.10.0', '0.9.9')).toBeGreaterThan(0)
         expect(supportsRemoteSessionOps('0.2.155')).toBe(false)
-        expect(supportsRemoteSessionOps('0.2.156')).toBe(true)
+        expect(supportsRemoteSessionOps('0.2.157')).toBe(true)
         expect(supportsRemoteSessionOps(null)).toBeNull()
     })
 })

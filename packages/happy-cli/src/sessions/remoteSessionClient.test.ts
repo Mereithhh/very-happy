@@ -17,9 +17,9 @@ import {
 } from './remoteSessionClient'
 
 const machines: AccountMachine[] = [
-    { id: 'self', active: true, activeAt: 900, cliVersion: '0.2.156' },
-    { id: 'dev-sg', active: true, activeAt: 800, cliVersion: '0.2.156' },
-    { id: 'mac-office', active: false, activeAt: 100, cliVersion: '0.2.156' },
+    { id: 'self', active: true, activeAt: 900, cliVersion: '0.2.157' },
+    { id: 'dev-sg', active: true, activeAt: 800, cliVersion: '0.2.157' },
+    { id: 'mac-office', active: false, activeAt: 100, cliVersion: '0.2.157' },
     { id: 'old-box', active: true, activeAt: 850, cliVersion: '0.2.155' },
     { id: 'unknown-ver', active: true, activeAt: 700, cliVersion: null },
 ]
@@ -46,7 +46,7 @@ function deps(transport: RemoteTransport, overrides: Partial<RemoteClientDeps> =
         listMachines: async () => machines,
         selfMachineId: async () => 'self',
         openTransport: async () => transport,
-        caller: async () => ({ machineId: 'self', host: 'mac', cli: '0.2.156' }),
+        caller: async () => ({ machineId: 'self', host: 'mac', cli: '0.2.157' }),
         sleep: async () => undefined,
         now: () => 1_000,
         ...overrides,
@@ -66,13 +66,13 @@ describe('resolveExplicitMachine', () => {
         const d = deps(fleet({}).transport)
         await expect(resolveExplicitMachine('nope', d)).rejects.toMatchObject({ code: 'unknown_machine' })
         await expect(resolveExplicitMachine('mac-office', d)).rejects.toMatchObject({ code: 'offline', message: expect.stringContaining('offline') })
-        await expect(resolveExplicitMachine('old-box', d)).rejects.toMatchObject({ code: 'too_old', message: expect.stringContaining('0.2.156') })
+        await expect(resolveExplicitMachine('old-box', d)).rejects.toMatchObject({ code: 'too_old', message: expect.stringContaining('0.2.157') })
         await expect(resolveExplicitMachine('dev-sg', d)).resolves.toMatchObject({ id: 'dev-sg' })
     })
 })
 
 describe('callRemoteSessionOp', () => {
-    const from = { host: 'mac', cli: '0.2.156' }
+    const from = { host: 'mac', cli: '0.2.157' }
 
     it('sends the versioned envelope and unwraps a successful result', async () => {
         const { transport, calls } = fleet({ 'dev-sg': { 'sessions.list': (args) => ({ ok: true, result: { host: 'dev-sg', machineId: 'dev-sg', sessions: [], echoed: args } }) } })
@@ -88,7 +88,7 @@ describe('callRemoteSessionOp', () => {
                 'sessions.send': () => ({ error: 'handler blew up' }),
             },
         })
-        await expect(callRemoteSessionOp(transport, 'dev-sg', 'sessions.list', {}, from)).rejects.toMatchObject({ code: 'unreachable', message: expect.stringMatching(/offline, restarting, or runs a CLI older than 0\.2\.156/) })
+        await expect(callRemoteSessionOp(transport, 'dev-sg', 'sessions.list', {}, from)).rejects.toMatchObject({ code: 'unreachable', message: expect.stringMatching(/offline, restarting, or runs a CLI older than 0\.2\.157/) })
         await expect(callRemoteSessionOp(transport, 'dev-sg', 'sessions.read', { sessionId: 's1' }, from)).rejects.toMatchObject({ code: 'no_local_key', message: 'Machine dev-sg: nope' })
         await expect(callRemoteSessionOp(transport, 'dev-sg', 'sessions.send', { sessionId: 's1', text: 'x' }, from)).rejects.toMatchObject({ code: 'internal', message: 'Machine dev-sg: handler blew up' })
         const dead: RemoteTransport = { call: async () => { throw new Error('operation has timed out') }, close: vi.fn() }

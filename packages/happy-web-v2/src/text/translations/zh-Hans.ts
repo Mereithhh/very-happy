@@ -2129,7 +2129,7 @@ export const zhHans: TranslationStructure = {
         releases: {
             sep25n: {
                 title: 'CLI 能操作你其它机器上的会话了',
-                summary: '`very-happy sessions read / message`、`very-happy send` 以及 `session_read` / `session_send` / `session_message` / `session_peers` 工具现在对账号下另一台机器起的会话也有效。操作在那台机器上经它的 daemon 完成；你敲命令的这台机器不会多存任何密钥。两台机器都需要 CLI 0.2.156。',
+                summary: '`very-happy sessions read / message`、`very-happy send` 以及 `session_read` / `session_send` / `session_message` / `session_peers` 工具现在对账号下另一台机器起的会话也有效。操作在那台机器上经它的 daemon 完成；你敲命令的这台机器不会多存任何密钥。两台机器都需要 CLI 0.2.157。',
                 reach: '读或给会话发消息不再止步于机器边界：CLI 会问在线的机器谁持有这个会话，由那台机器的 daemon 用自己的密钥完成并返回结果。`--machine <id>` 可直接指定。对方机器必须在线。',
                 list: '`very-happy sessions list --all` 里原来显示「无法解密」的行现在会补全——标题、目录、agent、待处理请求——并用 `via` 标出回答的机器。',
                 tools: '`session_message` 能发给另一台机器上的会话（消息头带发送方主机名，卡片也会显示）；`session_peers` 接受 `machineId` 列出那台机器的活会话；assistant 的 `session_read` / `session_send` 走同一条路。',

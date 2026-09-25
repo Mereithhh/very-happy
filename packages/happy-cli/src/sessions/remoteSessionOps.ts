@@ -24,7 +24,7 @@ import type { PeerSender } from './peerMessage'
 import type { PeerScope } from './repoIdentity'
 
 /** First CLI whose daemon answers these methods. */
-export const REMOTE_SESSION_OPS_MIN_CLI_VERSION = '0.2.156'
+export const REMOTE_SESSION_OPS_MIN_CLI_VERSION = '0.2.157'
 
 export const REMOTE_SESSION_OPS_METHODS = ['sessions.list', 'sessions.read', 'sessions.send', 'sessions.peers', 'sessions.message'] as const
 export type RemoteSessionOpsMethod = typeof REMOTE_SESSION_OPS_METHODS[number]

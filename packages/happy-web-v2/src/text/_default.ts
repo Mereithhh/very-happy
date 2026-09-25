@@ -2012,7 +2012,7 @@ export const en = {
         releases: {
             sep25n: {
                 title: 'The CLI reaches sessions on your other machines',
-                summary: '`very-happy sessions read / message`, `very-happy send` and the `session_read` / `session_send` / `session_message` / `session_peers` tools now work on sessions another machine of your account spawned. The operation runs on that machine through its daemon; nothing new is stored on the machine you type on. Needs CLI 0.2.156 on both machines.',
+                summary: '`very-happy sessions read / message`, `very-happy send` and the `session_read` / `session_send` / `session_message` / `session_peers` tools now work on sessions another machine of your account spawned. The operation runs on that machine through its daemon; nothing new is stored on the machine you type on. Needs CLI 0.2.157 on both machines.',
                 reach: 'Reading or messaging a session no longer stops at the machine boundary: the CLI asks the online machines which one holds the session and that machine\'s daemon answers with its own keys. `--machine <id>` names it directly. The owning machine must be online.',
                 list: '`very-happy sessions list --all` fills in the rows it used to show as "not decryptable" — title, directory, agent, pending requests — with `via` naming the machine that answered.',
                 tools: '`session_message` reaches a session on another machine (the message header names the sender\'s host, and the card shows it); `session_peers` takes a `machineId` to list that machine\'s live sessions; the assistant\'s `session_read` / `session_send` follow the same route.',

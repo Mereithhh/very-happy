@@ -324,7 +324,7 @@ very-happy sessions peers [--scope repo|cwd|machine] [--cwd <dir>] [--machine <i
 very-happy sessions message <id> <text> [--reply-to <msgId>] [--machine <id>] [--json]
 ```
 
-**Across machines (B-506, CLI ≥ 0.2.156 on both sides;
+**Across machines (B-506, CLI ≥ 0.2.157 on both sides;
 [spec](../specs/2026-09-cross-machine-session-ops.md)).** `read`, `message`,
 `list --all` and `peers --machine` reach sessions another machine of the
 account spawned: the CLI asks the machine that holds the session to run the
@@ -344,11 +344,11 @@ refuses everything with `remoteSessionOps: "off"` in its `~/.happy/settings.json
 Without `--machine` the online machines are asked newest-active first which
 one holds the session (`sessions.list { ids }`); offline machines are skipped
 (no daemon = no plaintext source; their sessions are unreachable until they
-come back), and machines whose daemon reports a CLI older than 0.2.156 are
+come back), and machines whose daemon reports a CLI older than 0.2.157 are
 skipped or refused up front (the server exposes `lastHappyClient` on
 `GET /v1/machines`). A daemon that does not answer surfaces as
 "did not answer: its daemon is offline, restarting, or runs a CLI older than
-0.2.156" rather than a silent 30 s hang. `approve` / `deny` / `stop` /
+0.2.157" rather than a silent 30 s hang. `approve` / `deny` / `stop` /
 `archive` stay local-only.
 
 **Ask and collect (B-492).** `read` reports where the latest turn stands:
@@ -537,7 +537,7 @@ Pushes one user message into a session that is already running. A session
 spawned by **this machine's** daemon (key in `~/.happy/sessions.json`) is sent
 to directly; any other session of the account is sent through the daemon of
 the machine that spawned it (B-506, see `sessions` above — that machine must
-be online and on CLI ≥ 0.2.156; `--machine <id>` names it, `--resume` then
+be online and on CLI ≥ 0.2.157; `--machine <id>` names it, `--resume` then
 resumes on **that** machine; `--json` adds `machine: { id, host }`).
 The POST itself rides the server REST outbox, but the server stores a
 message for **any** session — archived or dead included — so a 2xx never

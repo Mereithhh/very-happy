@@ -340,7 +340,7 @@ ${chalk.bold('Scope:')}
   Sessions this machine's daemon spawned are handled with the local key in
   ~/.happy/sessions.json (pruned after 14 days). Any other session of the
   account is handled by the daemon of the machine that spawned it: that
-  machine must be online and on CLI ≥ 0.2.156, the operation runs there with
+  machine must be online and on CLI ≥ 0.2.157, the operation runs there with
   its keys, and only the result travels back — this CLI never holds the
   account content key or another machine's session key. Without --machine
   the online machines are asked in turn which one holds the session.

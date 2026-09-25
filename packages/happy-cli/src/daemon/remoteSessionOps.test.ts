@@ -9,7 +9,7 @@ const persisted = (id: string, title?: string): PersistedSession => ({
     metadata: { path: '/repo', host: 'h', homeDir: '/', happyHomeDir: '/', happyLibDir: '/', happyToolsDir: '/', flavor: 'claude', ...(title ? { summary: { text: title, updatedAt: 1 } } : {}) } as PersistedSession['metadata'],
 })
 
-const from: RemoteCaller = { machineId: 'mac-A', host: 'mac', cli: '0.2.156' }
+const from: RemoteCaller = { machineId: 'mac-A', host: 'mac', cli: '0.2.157' }
 const req = (args: unknown, caller: RemoteCaller = from) => ({ v: 1, from: caller, args })
 
 function build(overrides: Partial<RemoteSessionOpsDeps> = {}) {
@@ -52,7 +52,7 @@ describe('createRemoteSessionOpsHandlers (B-506, target daemon)', () => {
             { id: 'mine', live: true, pid: 4, url: 'u/mine', title: 'Mine' },
             expect.objectContaining({ id: 'old', live: false, cwd: '/repo', flavor: 'claude', savedAt: 5 }),
         ] } })
-        expect(log).toHaveBeenCalledWith('[REMOTE SESSION OPS] sessions.list from machine=mac-A host=mac cli=0.2.156 session=- target=- → ok (0ms)')
+        expect(log).toHaveBeenCalledWith('[REMOTE SESSION OPS] sessions.list from machine=mac-A host=mac cli=0.2.157 session=- target=- → ok (0ms)')
     })
 
     it('sessions.list with all = the account rows this machine can decrypt, filtered to the asked ids', async () => {

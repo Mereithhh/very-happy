@@ -127,7 +127,7 @@ ${chalk.bold('Behavior:')}
   A session spawned by THIS machine's daemon is sent to directly (its key is
   in ~/.happy/sessions.json). Any other session of the account is sent
   through the daemon of the machine that spawned it: that machine must be
-  online and on CLI ≥ 0.2.156; the CLI here never sees its key. Without
+  online and on CLI ≥ 0.2.157; the CLI here never sees its key. Without
   --machine the online machines are asked in turn which one holds it.
 
   Before sending, the session is classified from its daemon and the server:
