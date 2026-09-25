@@ -587,6 +587,8 @@
 .sb-products > button > svg, .sb-products .sb-nav-btn > svg:first-child { width:18px; flex-shrink:0; }
 .sb-row-tags .vh-tag { border-color:transparent; }
 .sb-products kbd { margin-left:auto; color: var(--text-faint); font-size:var(--fs-10); }
+/* B-498: automation runs waiting for a decision — danger, same semantics as the board's attention count */
+.sb-nav-attn { margin-left:auto; font-size:var(--fs-10); line-height:16px; padding:0 6px; border-radius:var(--r-pill); color:var(--danger); border:1px solid var(--danger); background:var(--danger-dim); }
 @media (pointer:coarse) {
  .sb-brand--button { min-height:44px; }
  .sb-products > button, .sb-products .sb-nav-btn, .sb-row-main, .sb-row-menu { min-height:44px; }

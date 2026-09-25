@@ -7,6 +7,7 @@ import {
   Outlet,
   useLocation,
   useNavigate,
+  useParams,
 } from 'react-router-dom';
 import { TokenStorage, type AuthCredentials } from '@/auth/tokenStorage';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
@@ -53,6 +54,9 @@ const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then(
 const ConnectMachineScreen = lazy(() => import('@/screens/onboarding/ConnectMachineScreen').then((m) => ({ default: m.ConnectMachineScreen })));
 const TeamsScreen = lazy(() => import('@/screens/teams/TeamsScreen').then(m => ({ default: m.TeamsScreen })));
 const TaskBoardScreen = lazy(() => import('@/screens/board/TaskBoardScreen').then((m) => ({ default: m.TaskBoardScreen })));
+const AutomationsScreen = lazy(() => import('@/screens/automations/AutomationsScreen').then((m) => ({ default: m.AutomationsScreen })));
+const AutomationDetailScreen = lazy(() => import('@/screens/automations/AutomationDetailScreen').then((m) => ({ default: m.AutomationDetailScreen })));
+const AutomationFormScreen = lazy(() => import('@/screens/automations/AutomationFormScreen').then((m) => ({ default: m.AutomationFormScreen })));
 const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen').then((m) => ({ default: m.AssistantScreen })));
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
 const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
@@ -144,6 +148,11 @@ function HomeGate() {
     );
   }
   return <EmptyDetail />;
+}
+
+function LegacyAutomationRedirect() {
+  const { id = '' } = useParams();
+  return <Navigate to={`/automations/${encodeURIComponent(id)}`} replace />;
 }
 
 function RedirectIfAuthed({ children }: { children: React.ReactNode }) {
@@ -277,6 +286,14 @@ const router = createBrowserRouter(
             { path: 'teams', element: <Lazy><TeamsScreen /></Lazy> },
             { path: 'teams/:teamId', element: <Lazy><TeamsScreen /></Lazy> },
             { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
+            // B-498: automations — sidebar entry + board band; the first cut lived
+            // under /board/automations, keep those URLs working.
+            { path: 'automations', element: <Lazy><AutomationsScreen /></Lazy> },
+            { path: 'automations/new', element: <Lazy><AutomationFormScreen /></Lazy> },
+            { path: 'automations/:id', element: <Lazy><AutomationDetailScreen /></Lazy> },
+            { path: 'automations/:id/edit', element: <Lazy><AutomationFormScreen /></Lazy> },
+            { path: 'board/automations', element: <Navigate to="/automations" replace /> },
+            { path: 'board/automations/:id', element: <LegacyAutomationRedirect /> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
             { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },

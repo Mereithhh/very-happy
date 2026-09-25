@@ -72,6 +72,28 @@ working as before. Automatic cross-machine routing is not available.
 
 **[Start using Teams](docs/agent-teams.md)** · [Explore the architecture](docs/architecture.md) · [Connect your first machine](#one-command-to-your-first-machine)
 
+## Automations: agents on a schedule or on an event
+
+**Automations** pair a trigger with an action on one of your computers: a cron
+schedule with a time zone, a fixed interval, a single moment, or *trigger only*
+(fired by an event); the action spawns an agent session in a directory, sends a
+prompt into an existing session, or runs a script. Create them from the web
+(**Automations** in the sidebar), the CLI (`very-happy auto create`) or from a
+managed session (`automation_*` MCP tools). Every run is recorded, and the task
+board's **Needs my decision** band collects the ones that failed, expired or
+are waiting for you — open the session, acknowledge, run again or cancel.
+
+```bash
+very-happy auto create --name daily-inventory --cron '0 9 * * 1-5' --tz Asia/Singapore \
+  --spawn-dir ~/work --prompt-file prompts/inventory.md
+very-happy auto fire on-mention --payload-json '{"conversationId":"c9","text":"hi"}' --dedupe-key msg-123
+```
+
+Automations are gated per server (`VH_AUTOMATIONS_ENABLED=true`) and run on the
+one machine you name; there is no automatic cross-machine routing.
+
+**[Automations guide](docs/automations.md)** · [CLI and MCP contract](docs/channels.md#automations-scheduled-and-triggered-runs-feature-gated)
+
 > [!TIP]
 > **Use the Web/PWA as your daily workspace.** Install the CLI once to pair a
 > machine and start its background daemon. Return to the CLI for diagnostics,
@@ -484,4 +506,4 @@ them.
 
 ### Getting started and agent skills
 
-Open **Help & getting started** in the workspace to connect another computer, choose chat or a terminal, and find Teams, files and todos. The guide also links the official team installer, **Todos → My todos → Let AI use my todos**, and the external todo-provider skill. App-created teams receive their instructions automatically; terminal skill installation does not attach an unmanaged terminal or grant account access.
+Open **Help & getting started** in the workspace to connect another computer, choose chat or a terminal, and find Teams, Automations, files and todos. The guide also links the official team installer, **Todos → My todos → Let AI use my todos**, the Automations skill (`very-happy auto skill`) and the external todo-provider skill. App-created teams receive their instructions automatically; terminal skill installation does not attach an unmanaged terminal or grant account access.

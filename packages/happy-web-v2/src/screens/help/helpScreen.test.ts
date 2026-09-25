@@ -30,7 +30,7 @@ describe('compact workspace help screen', () => {
   });
 
   it('covers every requested capability in English and Chinese', () => {
-    for (const key of ['shortcuts', 'files', 'notes', 'todos', 'views', 'fileHandoff', 'clipboard']) expect(screen).toContain(`key: '${key}'`);
+    for (const key of ['shortcuts', 'files', 'notes', 'todos', 'automations', 'views', 'fileHandoff', 'clipboard']) expect(screen).toContain(`key: '${key}'`);
     for (const phrase of ['copy_to_clipboard', 'Terminal ↔ structured text', 'Paste a file into a terminal', 'Scratch notes']) expect(english).toContain(phrase);
     for (const phrase of ['终端 ↔ 结构化文本', '把文件直接粘贴到终端', '临时笔记本', '直接让 AI 复制给你']) expect(chinese).toContain(phrase);
   });

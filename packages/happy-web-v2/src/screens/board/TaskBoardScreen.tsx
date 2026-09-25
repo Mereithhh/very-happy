@@ -21,7 +21,7 @@
 import { DESKTOP_SHELL_MQ } from '@/app/useMediaQuery';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, MessageSquare, MoreHorizontal, Pencil, Plus, Rocket, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, MessageSquare, MoreHorizontal, Pencil, Plus, Rocket, Trash2, Zap } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useLocalSettingMutable, storage } from '@/sync/storage';
@@ -38,6 +38,8 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useBoardItems, useBoardCompleted } from './useBoardItems';
 import { BoardCard, fmtDuration } from './BoardCard';
 import { buildLifecycleColumns, groupBoardItems, type BoardItem, type CompletedEntry } from './boardItems';
+import { AttentionSection } from '@/screens/automations/AttentionSection';
+import { useAutomations } from '@/sync/automationsStore';
 import './board.css';
 
 function Column({
@@ -336,6 +338,10 @@ export function TaskBoardScreen() {
   const [editTask, setEditTask] = useState<BoardTask | null>(null);
   // card rename (chat session / terminal) — same dialog the sidebar uses
   const [renameItem, setRenameItem] = useState<BoardItem | null>(null);
+  // B-498: the Automations entry only shows once the server said the feature
+  // is on (404 automations_disabled → stays hidden, never errors).
+  const automationsEnabled = useAutomations((s) => s.enabled) === true;
+  const automationAttention = useAutomations((s) => s.attention.length);
 
   // Pull the server-backed task list once per board mount (merges into the
   // local cache; cheap — a single KV GET).
@@ -513,6 +519,12 @@ export function TaskBoardScreen() {
           </span>
         )}
         <div className="bd-header-tools">
+          {automationsEnabled && (
+            <button type="button" className="bd-btn" onClick={() => navigate('/automations')}>
+              <Zap size={13} /> {t('automations.boardLink')}
+              {automationAttention > 0 && <span className="bd-btn-count mono">{automationAttention}</span>}
+            </button>
+          )}
           <div className="bd-layout-toggle" role="tablist">
             <button
               type="button"
@@ -540,6 +552,11 @@ export function TaskBoardScreen() {
           )}
         </div>
       </header>
+
+      {/* B-498: automation runs that need the owner — hidden when empty */}
+      <div className="bd-attn-wrap">
+        <AttentionSection />
+      </div>
 
       {lifecycleMode ? (
         <div className="bd-cols">

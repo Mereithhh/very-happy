@@ -4,7 +4,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -33,6 +33,7 @@ import { useActivityOverlay } from '@/sync/activityOverlayStore';
 import { resolveActivityTs } from '@/sync/activityOverlay';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardItems } from '@/screens/board/useBoardItems';
+import { AUTOMATIONS_SIDEBAR_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { openCommandPalette } from '@/screens/command/CommandPalette';
 import { NewSessionModal } from './NewSessionModal';
@@ -138,6 +139,13 @@ export function Sidebar() {
   const teams = useTeamNavigation();
   const teamCopy = useTeamNavigationCopy();
   const happyBotEntryVisible = useLocalSetting('happyBotEntryVisible');
+  // B-498: the Automations entry shows once the server confirmed the feature
+  // (404 automations_disabled keeps it hidden); the badge is the count of runs
+  // waiting for a decision. One slow poll here feeds both.
+  const automationsEnabled = useAutomations((s) => s.enabled) === true;
+  const automationAttention = useAutomations((s) => s.attention.length);
+  const refreshAutomations = useAutomations((s) => s.refreshOverview);
+  useAutomationsPoll(refreshAutomations, AUTOMATIONS_SIDEBAR_POLL_MS);
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(() => new Set());
   const location = useLocation();
   const currentSessionId = /^\/session\/([^/]+)/.exec(location.pathname)?.[1];
@@ -939,6 +947,12 @@ export function Sidebar() {
             </button>
           </ActionDropdownMenu>
         {happyBotEntryVisible && <button onClick={() => navigate('/teams')}><UsersRound size={18} /><span>{teamCopy.title}</span></button>}
+        {automationsEnabled && (
+          <button onClick={() => navigate('/automations')}>
+            <Zap size={18} /><span>{t('automations.sidebarEntry')}</span>
+            {automationAttention > 0 && <span className="sb-nav-attn mono" title={t('automations.decisions')}>{automationAttention}</span>}
+          </button>
+        )}
         <button onClick={() => navigate('/todos')}><ListChecks size={18} /><span>{t('todos.title')}</span></button>
         <button onClick={() => navigate('/help')}><CircleHelp size={17}/><span>{t('sidebar.openHelp')}</span></button>
       </nav>

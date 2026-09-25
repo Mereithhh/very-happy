@@ -80,6 +80,20 @@ Owner 的日常自动化（每日 Tanka 盘点、Tanka→滴答同步、IM 事�
 - 服务端开关 `VH_AUTOMATIONS_ENABLED=true` + 可选 `VH_AUTOMATIONS_ACCOUNT_IDS`；关闭时路由 404，CLI 明确提示。
 - 官方 skill `very-happy-automations`（与 teams skill 同目录机制，`very-happy teams install` 同时物化或新增 `very-happy skills install`）。
 
+### Web 视图（B-498，`packages/happy-web-v2`，PR #427 待合并）
+
+Owner 口径：自己只当决策者——页面回答「全自动任务跑得怎样」和「哪些要我处理」，并能在网页上完整管理（创建/编辑/暂停/立即运行/删除）。
+
+- **入口**：侧边栏一级入口「自动化」，位于「团队」下方（同为"让多个 Agent 替我工作"的协作类入口，紧邻团队；待办/帮助保持其后），带 attention 计数徽标（`--danger`，与看板「等你处理」同语义）。路由 `/automations`（列表）、`/automations/new`、`/automations/:id`、`/automations/:id/edit`；首版的 `/board/automations*` 保留为重定向。`/board` 顶栏按钮与顶部「需要我决策」区保留。gate 关闭（404 `automations_disabled`）→ 侧栏入口与看板按钮隐藏、band 不渲染、直达页显示「未启用」说明，停止轮询，不报错。
+- **需要我决策**（`screens/automations/AttentionSection.tsx`）：`GET /runs?attention=1` 的 run，按 `attentionRank` 排序（agent 等输入 → failed/expired/unknown_outcome/daemon_restarted/invalid_action → machine_offline → 其它；同级新→旧），为空不渲染不占位。每行：状态、原因（`attentionReason` 词表转人话，未知原因原样）、automation 名（→详情）、时间、会话链接、`error`；操作：打开会话、知道了（`/ack`）、再跑一次（`POST /:id/run`）、取消运行（仅未终态，二次确认；server 取消后仍保留 attention 时 Web 补一次 ack）。
+- **列表**：按「定时」（cron/interval/once）与「触发器」（manual）分组；每行名称、描述、trigger 人话（`describeCron` 只翻译能如实成句的形状，否则原始表达式+时区）、机器在线点、下次运行、最近结果；操作：立即运行、暂停/恢复、编辑、删除（确认）。排序：有 attention → 未暂停 → 最近 nextRunAt → 名称。
+- **详情**：触发/机器/下次/最近/最长运行+并发+version；「仅触发器」的自动化多一块「怎么触发」（`very-happy auto fire <name>`、带 `--payload-json`/`--dedupe-key` 的形式、MCP `automation_fire(...)`，均可复制）——把 manual 当作触发器呈现；动作摘要；sticky 列表；最近 50 条 run 时间线。
+- **创建/编辑**（`AutomationFormScreen.tsx` + 纯函数 `automationForm.ts`）：基本（名称、机器、描述）→ 触发（cron+时区，字段实时预览人话 / 间隔 `15m` `1h30m` / 一次性 datetime-local / 仅触发器）→ 动作（spawn：agent、目录、模型、权限模式、worktree、粘性 key、prompt；send：会话 id、prompt；script：argv 一行按 shell 引号拆分不做展开、cwd）→ 限制（并发 skip/queue、最长运行）。提交前用 wire zod schema 校验；编辑只 PATCH 变化字段 + `version` CAS。server 拒绝映射到字段：`automation_name_taken`、`invalid_cron`、`invalid_timezone`、`machine_not_found`、`stale_automation`（提示重开）。
+- **数据层**：`sync/apiAutomations.ts` + `sync/automationsStore.ts`（zustand，独立于 storage/sync 热区）。轮询仅页面可见时：侧栏 60s、看板 20s、列表 15s、详情 10s；恢复只挂 `sync.onResume`（AGENTS #13）。
+- **文档与引导**：Help / 首次使用页新增「自动化 · 定时与触发」区（`onboarding/AutomationsGettingStarted.tsx`，gate 关闭时 CTA 换成说明）、Agent skills 区新增 `very-happy auto skill` 卡、帮助手风琴 `organize` 组加「自动化」；公共文档 `/docs/automations`（en/zh 同结构）；仓库 `docs/automations.md` 用户指南，README（en/zh）、`docs/README.md`、`docs/getting-started.md`、`docs/channels.md` 交叉链接。
+- **状态语义**：`--accent` 只用于 claimed/running；failed/expired 与 attention 用 `--danger`；done/skipped/cancelled/queued 中性。窄屏 979px 以下单列，coarse 指针按钮/输入 44px、输入 16px。
+- 验证：`automationPresentation.test.ts`、`automationForm.test.ts`、`automationsStore.test.ts`、`automationsGettingStarted.test.ts`、公共文档双语结构测试；真浏览器 1280 与 390（coarse）× 明暗截图，无横向溢出。
+
 ## 兼容矩阵与发布顺序
 
 | | 旧 server | 新 server |
@@ -103,4 +117,5 @@ Owner 的日常自动化（每日 Tanka 盘点、Tanka→滴答同步、IM 事�
 - [x] daemon：spawn / sticky 命中与失效 / send / script 成功失败超时；重启不重复 spawn；旧 server 404 降级。
 - [x] CLI 全命令 + `--json`；MCP 三 runner 可见工具列表回归。
 - [x] 本地全栈 e2e：create cron 每分钟 → 自动 spawn → done；fire 带 payload → sticky 同 key 二次续聊同会话。
+- [ ] Web 视图（B-498，PR #427）：侧栏入口 + 看板「需要我决策」+ 分组列表 + 详情（触发方式可复制）+ 创建/编辑表单 + 帮助/引导/公共文档，gate 关闭时隐藏；真浏览器四组截图无溢出。
 - [x] 门禁全绿；spec 状态更新为 Shipped + commit。

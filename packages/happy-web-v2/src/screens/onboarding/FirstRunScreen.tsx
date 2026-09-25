@@ -6,6 +6,7 @@ import { ConnectMachineGuide } from './ConnectMachineGuide';
 import './firstRun.css';
 import { MachineWorkflowGuide, AgentSkillsGuide } from './CapabilityGuide';
 import { TeamGettingStarted } from './TeamGettingStarted';
+import { AutomationsGettingStarted } from './AutomationsGettingStarted';
 
 export function FirstRunScreen() {
   const { t } = useTranslation();
@@ -23,6 +24,7 @@ export function FirstRunScreen() {
       <ConnectMachineGuide />
       <MachineWorkflowGuide />
       <TeamGettingStarted />
+      <AutomationsGettingStarted />
       <AgentSkillsGuide />
 
       <div className="fr-note">

@@ -63,6 +63,20 @@ Very Happy 是一个开源 coding agent 中心，把工作站、笔记本和服�
 
 **[开始使用 Teams](docs/agent-teams.md)** · [了解协作架构](docs/architecture.md) · [连接第一台机器](#一条命令连接第一台机器)
 
+## 自动化：让 Agent 按时或按事件开工
+
+**自动化**把一个触发器和一个动作绑定到你的一台电脑上：触发器可以是带时区的 cron、固定间隔、一次性时刻，或“仅触发器”（由事件触发）；动作可以是在某个目录新建 Agent 会话、把 prompt 发进已有会话，或运行一个脚本。可以在网页（侧边栏「自动化」）、终端（`very-happy auto create`）或托管会话里（`automation_*` MCP 工具）创建。每次运行都有记录，任务看板顶部的「需要我决策」区汇总失败、超时或在等你输入的运行——打开会话、确认、再跑一次或取消。
+
+```bash
+very-happy auto create --name daily-inventory --cron '0 9 * * 1-5' --tz Asia/Singapore \
+  --spawn-dir ~/work --prompt-file prompts/inventory.md
+very-happy auto fire on-mention --payload-json '{"conversationId":"c9","text":"hi"}' --dedupe-key msg-123
+```
+
+自动化按服务器门控（`VH_AUTOMATIONS_ENABLED=true`），只在你指定的那台机器上运行，不会自动跨机器路由。
+
+**[自动化指南](docs/automations.md)** · [CLI 与 MCP 契约](docs/channels.md#automations-scheduled-and-triggered-runs-feature-gated)
+
 > [!TIP]
 > **把 Web/PWA 当作日常工作区。** CLI 只需安装一次，用来配对机器并启动后台 daemon。
 > 之后仅在诊断、自动化、恢复或明确需要本地启动时回到 CLI，而不是被迫维护第二套界面。
@@ -396,4 +410,4 @@ Gemini、OpenCode、OpenClaw 及其他具名 Agent 均是各自所有者的产�
 
 ### 新手引导与 Agent skills
 
-在工作台打开 **帮助与新手入门**，可以连接另一台电脑、选择对话或终端，并找到团队、文件与待办能力。教程提供官方团队安装器、**待办 → 我的待办 → 让 AI 使用我的待办** 和外部 provider skill 的入口。网页创建团队会自动准备协作指引；终端安装 skill 不会接管未托管终端，也不会自动获得账号权限。
+在工作台打开 **帮助与新手入门**，可以连接另一台电脑、选择对话或终端，并找到团队、自动化、文件与待办能力。教程提供官方团队安装器、**待办 → 我的待办 → 让 AI 使用我的待办**、自动化 skill（`very-happy auto skill`）和外部 provider skill 的入口。网页创建团队会自动准备协作指引；终端安装 skill 不会接管未托管终端，也不会自动获得账号权限。
