@@ -380,7 +380,9 @@ export function Sidebar() {
   const boardItems = useBoardItems();
   const creatingChat = useNewChatPending();
   const executionByKey = useMemo(() => new Map(boardItems.map(item => [item.key,
-    item.status === 'working' ? 'running' : item.status === 'attention' ? 'input' : item.status === 'unknown' ? 'unknown' : item.status === 'ended' ? 'offline' : 'idle'] as [string, AgentExecution])), [boardItems]);
+    item.status === 'working' ? (item.backgroundTasks ? 'background' : 'running') : item.status === 'attention' ? 'input' : item.status === 'unknown' ? 'unknown' : item.status === 'ended' ? 'offline' : 'idle'] as [string, AgentExecution])), [boardItems]);
+  // B-507: the count behind a `background` verdict, for the row's status label.
+  const backgroundCountByKey = useMemo(() => new Map(boardItems.flatMap(item => item.backgroundTasks ? [[item.key, item.backgroundTasks] as [string, number]] : [])), [boardItems]);
   // B-465: rows whose status is an estimate from an old daemon get a note.
   const legacyStatusKeys = useMemo(() => new Set(boardItems.filter(item => item.legacyStatus).map(item => item.key)), [boardItems]);
   const attentionCount = boardItems.filter(item => item.status === 'attention').length;
@@ -1088,6 +1090,7 @@ export function Sidebar() {
                         <SidebarRow
                           row={r}
                           execution={executionByKey.get(r.key) ?? (r.session?.presence === 'online' ? 'idle' : 'offline')}
+                          backgroundTasks={backgroundCountByKey.get(r.key)}
                           statusNote={legacyStatusKeys.has(r.key) ? t('sidebar.agentStatusLegacy') : undefined}
                           signal={rowSignalOf({
                             attention: attentionKeys.has(r.key),
@@ -1358,6 +1361,7 @@ function rowMenuItems(opts: {
 function SidebarRow({
   row,
   execution,
+  backgroundTasks,
   statusNote,
   signal,
   badge,
@@ -1368,6 +1372,8 @@ function SidebarRow({
 }: {
   row: Row;
   execution: AgentExecution;
+  /** B-507: in-flight background tasks behind a `background` verdict. */
+  backgroundTasks?: number;
   /** B-465: appended to the status tooltip when the verdict is an estimate. */
   statusNote?: string;
   /** two-level marker (B-085): 'attention' = agent waiting on the user
@@ -1404,7 +1410,9 @@ function SidebarRow({
   const status = agentStatusSignal(execution, signal === 'unread');
   const availabilityLabel = [execution === 'offline' ? t('sidebar.agentStatusOffline') : execution === 'unknown' ? t('sidebar.agentStatusUnknown') : '', statusNote ?? ''].filter(Boolean).join(' · ');
   const withNote = (label: string) => [label, statusNote ?? ''].filter(Boolean).join(' · ');
-  const statusLabel = status === 'running' ? withNote(t('sidebar.groupRunning')) : status === 'input' ? withNote(t('sidebar.rowNeedsAttention'))
+  const statusLabel = status === 'running' ? withNote(t('sidebar.groupRunning'))
+    : status === 'background' ? withNote(t('sidebar.rowBackgroundTasks', { count: backgroundTasks ?? 1 }))
+    : status === 'input' ? withNote(t('sidebar.rowNeedsAttention'))
     : status === 'unread' ? [t('sidebar.rowUnread'), availabilityLabel].filter(Boolean).join(' · ') : status === 'offline' ? t('sidebar.agentStatusOffline') : availabilityLabel || t('sidebar.agentStatusUnknown');
 
   const open = () => navigate(row.href);
@@ -1545,7 +1553,7 @@ function SidebarRow({
           <span className="sb-row-sub mono">{row.subtitle}</span>
         </span>
         <span className={`sb-row-status${status ? ` sb-row-status--${status}` : ''}`} title={status ? `${agentLabel} · ${statusLabel}` : undefined} role={status ? 'img' : undefined} aria-label={status ? `${agentLabel} · ${statusLabel}` : undefined}>
-          {status === 'running' ? <Spinner size={14} /> : status === 'input' ? <CircleAlert size={14} />
+          {status === 'running' || status === 'background' ? <Spinner size={14} /> : status === 'input' ? <CircleAlert size={14} />
             : status === 'unknown' ? <UnknownStatus size={13} /> : status === 'offline' ? <Unplug size={13} />
             : status === 'unread' ? <span className="sb-row-unread-dot" /> : null}
         </span>

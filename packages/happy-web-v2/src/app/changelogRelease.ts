@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-background-task-state',
+    cliVersion: '0.2.157',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25o.title',
+    summaryKey: 'changelog.releases.sep25o.summary',
+    itemKeys: ['changelog.releases.sep25o.status', 'changelog.releases.sep25o.cli', 'changelog.releases.sep25o.automations', 'changelog.releases.sep25o.update'],
+  },
+  {
     id: '2026-09-25-cross-machine-session-ops',
     cliVersion: '0.2.157',
     date: '2026-09-25',

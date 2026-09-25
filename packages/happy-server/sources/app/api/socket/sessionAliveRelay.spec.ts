@@ -16,8 +16,8 @@ vi.mock('@/storage/db', () => ({
 vi.mock('@/app/events/eventRouter', () => ({
     eventRouter: { emitEphemeral, emitUpdate: vi.fn() },
     buildNewMessageUpdate: vi.fn(() => ({})),
-    buildSessionActivityEphemeral: vi.fn((id: string, active: boolean, activeAt: number, thinking?: boolean) =>
-        ({ type: 'activity', id, active, activeAt, thinking })),
+    buildSessionActivityEphemeral: vi.fn((id: string, active: boolean, activeAt: number, thinking?: boolean, backgroundTasks?: number) =>
+        ({ type: 'activity', id, active, activeAt, thinking, ...(backgroundTasks !== undefined ? { backgroundTasks } : {}) })),
     buildUpdateSessionUpdate: vi.fn(() => ({})),
 }));
 vi.mock('@/app/monitoring/metrics2', () => ({
@@ -67,6 +67,28 @@ describe('session-alive fan-out is coalesced (B-484)', () => {
         await h.get('session-alive')!({ sid: 's1', time: Date.now(), thinking: true });
         expect(emitEphemeral).toHaveBeenCalledTimes(2);
         expect(emitEphemeral.mock.calls[1][0].payload.thinking).toBe(true);
+    });
+
+    it('B-507: relays the background-task count as an edge, bounded, and omits it when the wrapper never sent it', async () => {
+        const h = connect();
+        await h.get('session-alive')!({ sid: 's1', time: Date.now(), thinking: false });
+        expect(emitEphemeral.mock.calls[0][0].payload).not.toHaveProperty('backgroundTasks');
+        vi.advanceTimersByTime(2_000);
+        await h.get('session-alive')!({ sid: 's1', time: Date.now(), thinking: false, backgroundTasks: 2 });
+        expect(emitEphemeral).toHaveBeenCalledTimes(2);
+        expect(emitEphemeral.mock.calls[1][0].payload.backgroundTasks).toBe(2);
+        vi.advanceTimersByTime(2_000);
+        await h.get('session-alive')!({ sid: 's1', time: Date.now(), thinking: false, backgroundTasks: 2 });
+        expect(emitEphemeral).toHaveBeenCalledTimes(2); // same count inside the busy spacing: coalesced
+        vi.advanceTimersByTime(2_000);
+        await h.get('session-alive')!({ sid: 's1', time: Date.now(), thinking: false, backgroundTasks: 2 });
+        expect(emitEphemeral).toHaveBeenCalledTimes(3); // busy spacing keeps the web lease fed
+        vi.advanceTimersByTime(2_000);
+        await h.get('session-alive')!({ sid: 's1', time: Date.now(), thinking: false, backgroundTasks: 1e9 });
+        expect(emitEphemeral.mock.calls[3][0].payload.backgroundTasks).toBe(1000);
+        vi.advanceTimersByTime(2_000);
+        await h.get('session-alive')!({ sid: 's1', time: Date.now(), thinking: false, backgroundTasks: 0 });
+        expect(emitEphemeral.mock.calls[4][0].payload.backgroundTasks).toBe(0);
     });
 
     it('broadcasts the first beat after session-end even inside the idle window', async () => {

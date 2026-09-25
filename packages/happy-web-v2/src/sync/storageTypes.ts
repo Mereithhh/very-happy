@@ -135,6 +135,19 @@ export type Metadata = z.infer<typeof MetadataSchema>;
 export const AgentStateSchema = z.object({
     contextUsage: ContextUsageSchema.nullish(),
     controlledByUser: z.boolean().nullish(),
+    /** B-507: the wrapper's in-flight background tasks (renewed every 60s while
+     *  non-empty). Detail only — the live COUNT comes from the heartbeat lease
+     *  (`heartbeatLease.backgroundTaskCount`); this is a cross-machine timestamp
+     *  and never decides whether anything is running. */
+    backgroundTasks: z.object({
+        updatedAt: z.number(),
+        tasks: z.array(z.object({
+            id: z.string(),
+            type: z.string().nullish(),
+            description: z.string().nullish(),
+            startedAt: z.number().nullish(),
+        })),
+    }).nullish(),
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),

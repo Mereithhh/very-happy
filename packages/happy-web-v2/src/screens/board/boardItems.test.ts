@@ -126,6 +126,24 @@ describe('chat session mapping', () => {
     expect(items.find((i) => i.key === 's2')!.status).toBe('idle');
   });
 
+  it('B-507: turn ended + heartbeat-reported background tasks → working with the count (running lane, not 等我看)', () => {
+    const bg = mkSession({ id: 's1' });
+    const quiet = mkSession({ id: 's2' });
+    const stale = mkSession({ id: 's3' });
+    const items = build({ sessions: [bg, quiet, stale], backgroundTasks: { s1: 2, s3: 1 }, sessionFresh: { s1: true, s2: true, s3: false } });
+    const item = items.find((i) => i.key === 's1')!;
+    expect(item).toMatchObject({ status: 'working', lifecycle: 'running', backgroundTasks: 2 });
+    expect(item.waitReason).toBeUndefined();
+    expect(items.find((i) => i.key === 's2')!).toMatchObject({ status: 'idle' });
+    expect(items.find((i) => i.key === 's2')!.backgroundTasks).toBeUndefined();
+    // an expired lease cannot manufacture background work
+    expect(items.find((i) => i.key === 's3')!).toMatchObject({ status: 'unknown' });
+    // a live turn is plain working: the count is not attached
+    const [live] = build({ sessions: [mkSession({ id: 's4', thinking: true })], backgroundTasks: { s4: 1 } });
+    expect(live).toMatchObject({ status: 'working' });
+    expect(live.backgroundTasks).toBeUndefined();
+  });
+
   it('dead-but-unarchived session within 24h → ended; older → dropped', () => {
     // Dead ≠ archived: the process went away (presence stale) but the user
     // has not archived it — `active` stays true until they do.

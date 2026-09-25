@@ -24,7 +24,7 @@ import { useEffect, useState } from 'react';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useTerminalSessions } from '@/sync/terminalSessions';
-import { recordHeartbeat } from '@/sync/heartbeatLease';
+import { recordBackgroundTasks, recordHeartbeat } from '@/sync/heartbeatLease';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { CommandPalette } from '@/screens/command/CommandPalette';
@@ -109,6 +109,8 @@ function seed() {
     fakeSession('s2', 'Bravo perm 30m', 2, { permissionWaitMin: 30 }),
     // 进行中
     fakeSession('s3', 'Charlie building', 3, { thinking: true, flavor: 'codex' }),
+    // B-507: turn ended, background tasks still running → 进行中 with the count
+    fakeSession('s9', 'India background tasks', 3, {}),
     // 等我看 (reap band: idle, most recent first)
     fakeSession('s4', 'Delta idle', 4, { tags: ['web'], flavor:'pi' }),
     fakeSession('s5', 'Echo idle older', 5),
@@ -147,7 +149,8 @@ function seed() {
     { id:'term4', agentKind:'codex', agentState:'idle', agentObservedAt:now },
     { id:'term5', agentKind:'pi', agentState:'working', agentObservedAt:now },
   ]);
-  for (const id of ['s1','s2','s3','s4','s5']) recordHeartbeat(id, id === 's3', now);
+  recordBackgroundTasks('s9', 2);
+  for (const id of ['s1','s2','s3','s4','s5','s9']) recordHeartbeat(id, id === 's3', now);
 
 }
 
@@ -157,7 +160,7 @@ export function SidebarHarness() {
     seed();
     setReady(true);
     const timer = setInterval(() => {
-      for (const id of ['s1','s2','s3','s4','s5']) recordHeartbeat(id, id === 's3');
+      for (const id of ['s1','s2','s3','s4','s5','s9']) recordHeartbeat(id, id === 's3');
       const states = useTerminalAgentStates.getState().states;
       useTerminalAgentStates.getState().ingest('m1', Object.entries(states).map(([id, e]) => ({ id, agentKind:e.agentKind, agentState:e.state, agentObservedAt:Date.now() })));
     }, 2000);

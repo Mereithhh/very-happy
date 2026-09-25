@@ -169,6 +169,8 @@ export type EphemeralEvent = {
     active: boolean;
     activeAt: number;
     thinking?: boolean;
+    /** B-507: in-flight background tasks as the wrapper reported them; absent when it reported none / cannot. */
+    backgroundTasks?: number;
 } | {
     type: 'machine-activity';
     id: string;
@@ -528,13 +530,17 @@ export function buildDeleteMachineUpdate(machineId: string, updateSeq: number, u
     };
 }
 
-export function buildSessionActivityEphemeral(sessionId: string, active: boolean, activeAt: number, thinking?: boolean): EphemeralPayload {
+export function buildSessionActivityEphemeral(sessionId: string, active: boolean, activeAt: number, thinking?: boolean, backgroundTasks?: number): EphemeralPayload {
     return {
         type: 'activity',
         id: sessionId,
         active,
         activeAt,
-        thinking: thinking || false
+        thinking: thinking || false,
+        // B-507: only when the wrapper sent it — an inactive broadcast
+        // (session-end / archive / timeout) never carries it, which is what
+        // lets the web zero its count on those.
+        ...(backgroundTasks !== undefined ? { backgroundTasks } : {}),
     };
 }
 

@@ -15,6 +15,22 @@ import { SPAWN_AGENTS } from '@/utils/spawnAgents';
 import type { AssistantReportEvent } from './assistantReport';
 import { isAuthorizedDaemonControlRequest } from './controlAuth';
 import { checkPreviewPath } from '@/claude/utils/previewPath';
+import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
+import { BACKGROUND_TASKS_MAX, BACKGROUND_TASK_DESCRIPTION_MAX } from '@/claude/backgroundTasks';
+import type { BackgroundTasksReport } from '@/update/backgroundTaskActivity';
+
+const BackgroundTaskInfoSchema = z.object({
+  id: z.string().min(1).max(200),
+  type: z.string().max(64),
+  description: z.string().max(BACKGROUND_TASK_DESCRIPTION_MAX + 1),
+  startedAt: z.number(),
+});
+const BackgroundTasksReportSchema = z.object({
+  count: z.number().int().nonnegative(),
+  tasks: z.array(BackgroundTaskInfoSchema),
+  reportedAt: z.number().optional(),
+  stale: z.boolean().optional(),
+});
 
 export function startDaemonControlServer({
   controlToken,
@@ -27,6 +43,8 @@ export function startDaemonControlServer({
   onSessionStateEvent,
   onClaudeAuthFailed,
   onSessionTurnEvent,
+  onSessionBackgroundTasks,
+  getBackgroundTasks,
   pushClipboard,
   pushFilePreview,
   onTerminalHook,
@@ -54,6 +72,11 @@ export function startDaemonControlServer({
   /** B-466: a wrapper's turn started (also a lease renewal) or ended — feeds
    *  the auto-update "no turn in flight" gate. Optional for older wirings. */
   onSessionTurnEvent?: (sessionId: string, event: 'turn_started' | 'turn_ended') => void;
+  /** B-507: a wrapper published its full set of in-flight background tasks
+   *  (empty = none; also sent as a 60s lease renewal). Optional for older wirings. */
+  onSessionBackgroundTasks?: (sessionId: string, tasks: BackgroundTaskInfo[]) => void;
+  /** B-507: what `/list` reports per child; absent = the daemon does not track it. */
+  getBackgroundTasks?: (sessionId: string) => BackgroundTasksReport;
   pushClipboard: (text: string, terminalId?: string) => { delivered: boolean; truncated: boolean; totalBytes: number; error?: string };
   pushFilePreview?: (terminalId: string, path: string, mode: 'file' | 'diff') => { delivered: boolean; error?: string };
   /** B-105: a claude SessionStart/SessionEnd hook forwarded from inside a vh
@@ -148,8 +171,10 @@ export function startDaemonControlServer({
       schema: {
         body: z.object({
           sessionId: z.string(),
-          event: z.enum(['completed', 'needs_input', 'auth_failed', 'turn_started', 'turn_ended']),
+          event: z.enum(['completed', 'needs_input', 'auth_failed', 'turn_started', 'turn_ended', 'background_tasks']),
           spawnedBy: z.string().optional(),
+          // B-507: only with event 'background_tasks' — the wrapper's full set.
+          backgroundTasks: z.array(BackgroundTaskInfoSchema).max(BACKGROUND_TASKS_MAX).optional(),
         }),
         response: {
           200: z.object({
@@ -160,6 +185,11 @@ export function startDaemonControlServer({
     }, async (request) => {
       const { sessionId, event, spawnedBy } = request.body;
       logger.debug(`[CONTROL SERVER] Session event: ${sessionId} ${event} (spawnedBy=${spawnedBy ?? 'unset'})`);
+      if (event === 'background_tasks') {
+        // B-507: the daemon's own tracker is the only consumer.
+        onSessionBackgroundTasks?.(sessionId, request.body.backgroundTasks ?? []);
+        return { status: 'ok' as const };
+      }
       if (event === 'auth_failed') {
         // B-276: never route into the assistant-report sink (its vocabulary is
         // completed/needs_input); this only re-arms the auth preflight.
@@ -185,7 +215,9 @@ export function startDaemonControlServer({
               startedBy: z.string(),
               happySessionId: z.string(),
               pid: z.number(),
-              turnActive: z.boolean()
+              turnActive: z.boolean(),
+              // B-507: in-flight background tasks per the wrapper's last report (lease-expired = count 0).
+              backgroundTasks: BackgroundTasksReportSchema.optional(),
             }))
           })
         }
@@ -193,14 +225,15 @@ export function startDaemonControlServer({
     }, async () => {
       const children = getChildren();
       logger.debug(`[CONTROL SERVER] Listing ${children.length} sessions`);
-      return { 
+      return {
         children: children
           .filter(child => child.happySessionId !== undefined)
           .map(child => ({
             startedBy: child.startedBy,
             happySessionId: child.happySessionId!,
             pid: child.pid,
-            turnActive: isTurnActive ? isTurnActive(child.happySessionId!) : false
+            turnActive: isTurnActive ? isTurnActive(child.happySessionId!) : false,
+            ...(getBackgroundTasks ? { backgroundTasks: getBackgroundTasks(child.happySessionId!) } : {}),
           }))
       }
     });

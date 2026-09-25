@@ -157,6 +157,10 @@
 .bd-card-tool {
   color: var(--warn);
 }
+/* B-507: turn ended, background tasks still running — live, so accent (the one accent use). */
+.bd-card-background {
+  color: var(--accent);
+}
 .bd-card-offline {
   text-transform: uppercase;
   letter-spacing: 0.06em;

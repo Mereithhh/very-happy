@@ -189,6 +189,10 @@ export const ApiEphemeralActivityUpdateSchema = z.object({
     active: z.boolean(),
     activeAt: z.number(),
     thinking: z.boolean(),
+    /** B-507: background tasks the wrapper still has in flight. Absent on an
+     *  old server / old CLI / a runner with no such notion, and on every
+     *  inactive broadcast — which is what zeroes the count (heartbeatLease). */
+    backgroundTasks: z.number().int().nonnegative().optional(),
 });
 
 export const ApiEphemeralUsageUpdateSchema = z.object({

@@ -55,6 +55,7 @@ import { serialTask } from '@/update/serialTask';
 import { installCliSafely } from '@/update/npmInstall';
 import { createUpdateController } from '@/update/updateController';
 import { TurnActivityTracker } from '@/update/turnActivity';
+import { BackgroundTaskTracker } from '@/update/backgroundTaskActivity';
 import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
@@ -287,6 +288,8 @@ export async function startDaemon(): Promise<void> {
     // B-466: which sessions have a turn in flight (wrapper-reported, TTL'd).
     // The only thing the auto-update install/handover gate waits for.
     const turnActivity = new TurnActivityTracker();
+    // B-507: background tasks still in flight per session (wrapper-reported, lease-expired).
+    const backgroundTasks = new BackgroundTaskTracker();
     // B-497: who edited which real path lately, and the conflict notices.
     const peerCoordinator = createPeerCoordinator({ getChildren: () => Array.from(pidToTrackedSession.values()) });
 
@@ -1473,6 +1476,7 @@ export async function startDaemon(): Promise<void> {
       if (session?.happySessionId && (session.spawnedBy === 'teams' || teamWorker?.hasSession(session.happySessionId))) teamWorker?.report(session.happySessionId, 'exited');
       if (session?.happySessionId && automationRunner?.hasSession(session.happySessionId)) automationRunner.report(session.happySessionId, 'exited');
       if (session?.happySessionId) turnActivity.forget(session.happySessionId);
+      if (session?.happySessionId) backgroundTasks.forget(session.happySessionId);
       if (session?.happySessionId) peerCoordinator.forget(session.happySessionId);
       if (session?.happySessionId && session.encryption) {
         sessionIdToFinishedSession.set(session.happySessionId, session);
@@ -1577,6 +1581,8 @@ export async function startDaemon(): Promise<void> {
       onSessionStateEvent,
       onClaudeAuthFailed: (sessionId: string) => claudeAuthServiceRef?.signalAuthFailed(sessionId),
       onSessionTurnEvent: (sessionId, event) => turnActivity.apply(sessionId, event),
+      onSessionBackgroundTasks: (sessionId, tasks) => backgroundTasks.apply(sessionId, tasks),
+      getBackgroundTasks: (sessionId) => backgroundTasks.report(sessionId),
       onSessionEdit: (edit) => { peerCoordinator.onEdit(edit); },
       listPeers: () => peerCoordinator.list(),
       // B-505: `daemon list` shows which sessions have a turn in flight, so an
@@ -1773,8 +1779,9 @@ export async function startDaemon(): Promise<void> {
       enabled: async () => ((await readSettings()).cliAutoUpdate ?? 'idle') !== 'off',
       // B-466: "idle" = no agent turn in flight. Idle wrappers survive a
       // handover (they talk to the server themselves) and web terminals live
-      // in tmux, so neither is a reason to hold an update.
-      idle: () => !turnActivity.hasActiveTurn(),
+      // in tmux, so neither is a reason to hold an update. B-507: a session
+      // whose turn ended but still has background tasks is busy too.
+      idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny(),
       install: installCliSafely,
       publish: (state) => {
         cliUpdateStateRef = state;
@@ -1848,7 +1855,7 @@ export async function startDaemon(): Promise<void> {
           // File temporarily missing (e.g. mid-install) — retry on next heartbeat.
         }
       }
-      if (bundleReplaced && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn()) {
+      if (bundleReplaced && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
@@ -1869,7 +1876,7 @@ export async function startDaemon(): Promise<void> {
           // still-finishing install is picked up moments later.
           return;
         }
-        if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || turnActivity.hasActiveTurn()) return;
+        if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;
         lastHandoverHold = null;
         logger.debug('[DAEMON RUN] Daemon bundle replaced on disk and verified, handing off to new daemon');
         teamWorker?.stop();
@@ -1957,6 +1964,7 @@ export async function startDaemon(): Promise<void> {
       machineId, token: credentials.token, spawn: spawnSession,
       live: id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid)),
       turnActive: id => turnActivity.activeSessions().includes(id),
+      backgroundTasks: id => backgroundTasks.count(id),
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
 

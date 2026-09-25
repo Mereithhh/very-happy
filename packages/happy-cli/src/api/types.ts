@@ -69,6 +69,8 @@ export interface ClientToServerEvents {
     time: number;
     thinking: boolean;
     mode?: 'local' | 'remote';
+    /** B-507: background tasks still in flight (Claude only). Absent = the runner has no such notion. */
+    backgroundTasks?: number;
   }) => void
   'session-end': (data: { sid: string, time: number }) => void,
   // Clipboard push: session → server → all of the user's web clients.
@@ -623,6 +625,9 @@ export type Metadata = {
 export type AgentState = {
   contextUsage?: import('@slopus/happy-wire').ContextUsage | null
   controlledByUser?: boolean | null | undefined
+  /** B-507: background tasks still in flight, renewed every 60s while non-empty
+   *  (`update/backgroundTaskActivity.ts`). Readers expire it by `updatedAt`. */
+  backgroundTasks?: { updatedAt: number; tasks: import('@/claude/backgroundTasks').BackgroundTaskInfo[] } | null
   requests?: {
     [id: string]: {
       tool: string,

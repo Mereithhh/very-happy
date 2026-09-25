@@ -1,4 +1,4 @@
-import { isHeartbeatFresh, useHeartbeatLeaseBump } from '@/sync/heartbeatLease';
+import { backgroundTaskCount, isHeartbeatFresh, useHeartbeatLeaseBump } from '@/sync/heartbeatLease';
 import { isTerminalStatusFresh } from '@/sync/terminalAgentState';
 import { useShallow } from 'zustand/react/shallow';
 import { storage } from '@/sync/storage';
@@ -56,6 +56,9 @@ export function useBoardItems(): BoardItem[] {
       sessionFresh:Object.fromEntries(sessions.map(s=>[s.id,isHeartbeatFresh(s.id)])),
       terminalFresh:Object.fromEntries(terminals.map(t=>[t.id,isTerminalStatusFresh(t.id,agentStates[t.id])])),
       runningSubagents,
+      // B-507: heartbeat-reported background tasks; leaseBump re-derives on a
+      // count change and on lease expiry (both tick the same store).
+      backgroundTasks:Object.fromEntries(sessions.flatMap(s=>{ const n=backgroundTaskCount(s.id); return n>0 ? [[s.id,n]] : []; })),
       terminalActivity:Object.fromEntries(terminals.flatMap(t=>{ const at=remoteActivity[`t:${t.id}`]; return typeof at==='number' ? [[t.id,at]] : []; })),
     }),
     [sessions, terminals, agentStates, machines, now, leaseBump, runningSubagents, remoteActivity],

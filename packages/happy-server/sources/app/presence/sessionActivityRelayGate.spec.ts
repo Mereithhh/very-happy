@@ -46,6 +46,22 @@ describe('SessionActivityRelayGate (B-484)', () => {
         expect(gate.shouldRelay('s', false, 7_000)).toBe(true);
     });
 
+    it('B-507: a change in the background-task count is an edge, and background work beats at the busy spacing', () => {
+        const gate = new SessionActivityRelayGate();
+        expect(gate.shouldRelay('s', false, 0, 0)).toBe(true);
+        expect(gate.shouldRelay('s', false, 2_000, 0)).toBe(false);
+        expect(gate.shouldRelay('s', false, 4_000, 1)).toBe(true);      // 0 → 1 while idle: immediate
+        expect(gate.shouldRelay('s', false, 6_000, 1)).toBe(false);
+        expect(gate.shouldRelay('s', false, 8_000, 1)).toBe(true);      // busy spacing (4 s), not the 30 s idle spacing
+        expect(gate.shouldRelay('s', false, 10_000, 2)).toBe(true);     // 1 → 2: immediate
+        expect(gate.shouldRelay('s', false, 12_000, 0)).toBe(true);     // 2 → 0: immediate
+        expect(gate.shouldRelay('s', false, 14_000, 0)).toBe(false);    // back to idle spacing
+        // an old CLI that never sends the field is the same as 0
+        expect(gate.shouldRelay('s', false, 16_000)).toBe(false);
+        const relayed = run(new SessionActivityRelayGate(), 'bg', 0, 60_000, () => false);
+        expect(relayed).toEqual([0, 30_000, 60_000]); // control: no background work → idle spacing
+    });
+
     it('treats the beat after an inactive broadcast as an edge', () => {
         const gate = new SessionActivityRelayGate();
         expect(gate.shouldRelay('s', false, 0)).toBe(true);

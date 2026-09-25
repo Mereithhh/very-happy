@@ -1,15 +1,22 @@
 import { isAgentWorkLive } from './agentLiveness';
 
-export type AgentExecution = 'running' | 'input' | 'idle' | 'unknown' | 'offline';
+/** B-507: `background` = the turn ended but the wrapper reports background
+ *  tasks (async sub-agents, backgrounded commands) still in flight — not idle,
+ *  not "waiting for you"; the session will wake itself when they finish. */
+export type AgentExecution = 'running' | 'background' | 'input' | 'idle' | 'unknown' | 'offline';
 export function sessionExecution(input: {
     online: boolean; active: boolean; fresh: boolean; thinking: boolean;
     needsInput: boolean; runningSubagents?: number;
+    /** B-507: heartbeat-reported in-flight background tasks (0 when unknown / lease expired). */
+    backgroundTasks?: number;
 }): AgentExecution {
     if (!input.online || !input.active) return 'offline';
     if (input.fresh && input.needsInput) return 'input';
     const running = isAgentWorkLive({ presence: 'online', thinking: input.thinking,
         heartbeatFresh: input.fresh, runningSubagentsInTurn: input.runningSubagents ?? 0 });
-    return running ? 'running' : input.fresh ? 'idle' : 'unknown';
+    if (running) return 'running';
+    if (input.fresh && (input.backgroundTasks ?? 0) > 0) return 'background';
+    return input.fresh ? 'idle' : 'unknown';
 }
 /** B-465: daemons before 0.2.134 report `agentState` without an observation
  *  stamp, so their receipt lease is never fresh and every terminal read as
@@ -39,7 +46,7 @@ export function terminalExecution(input: {
         : input.state === 'idle' || input.state === 'shell' ? 'idle' : 'unknown';
 }
 export function agentStatusSignal(execution: AgentExecution, unread: boolean): AgentExecution | 'unread' | null {
-    if (execution === 'running' || execution === 'input') return execution;
+    if (execution === 'running' || execution === 'background' || execution === 'input') return execution;
     // Offline/unknown must not hide output the user has not read (B-312).
     return unread ? 'unread' : execution === 'idle' ? null : execution;
 }

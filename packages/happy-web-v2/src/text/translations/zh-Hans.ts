@@ -1627,6 +1627,7 @@ export const zhHans: TranslationStructure = {
         viewStatus: '状态',
         groupWaiting: '等我看',
         groupRunning: '进行中',
+        rowBackgroundTasks: ({ count }: { count: number }) => `后台任务 ${count} 个`,
         groupDoneToday: '已完成·今日',
         empty: '还没有会话',
         noResults: '没有匹配的会话',
@@ -2127,6 +2128,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25o: {
+                title: '会话会说明后台任务还在跑',
+                summary: '一轮结束不等于会话安静了：后台子代理、`run_in_background` 命令或 Monitor 会继续跑，完成后再把会话叫醒。Claude 会话现在会显式上报这些任务，网页、`sessions list`、自动化和 CLI 自动升级都不再把这样的会话当成空闲。wrapper 侧需要更新 CLI；网页与中继部分已经上线。',
+                status: '侧栏和看板里，一轮结束但后台任务还在跑的会话显示「后台任务 N 个」并留在进行中一组，不再算空闲；任务结束或 wrapper 离线后自动清除。',
+                cli: '`very-happy sessions list` / `read --json`（以及 `daemon list`）带上 `backgroundTasks`：数量和每个任务的类型、描述、开始时间，脚本和自动归档能区分「一轮结束」和「真的做完」。字段缺失表示 CLI 或 daemon 太旧还没上报。',
+                automations: '自动化 run 若一轮结束时还有后台任务在跑，会保持运行直到任务完成、被叫醒的那一轮结束，并以那一轮的回答作为摘要。',
+                update: 'CLI 自动升级与 daemon 交接除了等「没有 turn 在飞」，也会等「没有后台任务在飞」。',
+            },
             sep25n: {
                 title: 'CLI 能操作你其它机器上的会话了',
                 summary: '`very-happy sessions read / message`、`very-happy send` 以及 `session_read` / `session_send` / `session_message` / `session_peers` 工具现在对账号下另一台机器起的会话也有效。操作在那台机器上经它的 daemon 完成；你敲命令的这台机器不会多存任何密钥。两台机器都需要 CLI 0.2.157。',

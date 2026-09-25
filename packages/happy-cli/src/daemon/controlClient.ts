@@ -8,6 +8,7 @@ import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import type { PeerSessionInfo } from './types';
+import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 
 function daemonControlHeaders(controlToken?: string): Record<string, string> {
   return {
@@ -229,6 +230,21 @@ export async function notifyDaemonTurnEvent(
   event: 'turn_started' | 'turn_ended',
 ): Promise<{ error?: string } | any> {
   return daemonPost('/session-event', { sessionId, event });
+}
+
+/**
+ * B-507: tell the daemon which background tasks this session still has in
+ * flight (the full set; empty = none). Sent on every change and as a 60s
+ * lease renewal while non-empty (`update/backgroundTaskActivity.ts`), so the
+ * daemon can gate auto-update / handover, hold an Automations run open and
+ * answer `/list` with it. Fire-and-forget: an old daemon rejects the enum
+ * value with 400 and `daemonPost` returns `{error}` without throwing.
+ */
+export async function notifyDaemonBackgroundTasks(
+  sessionId: string,
+  backgroundTasks: readonly BackgroundTaskInfo[],
+): Promise<{ error?: string } | any> {
+  return daemonPost('/session-event', { sessionId, event: 'background_tasks', backgroundTasks });
 }
 
 /**
