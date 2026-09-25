@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-quieter-heartbeats-cached-assets',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25e.title',
+    summaryKey: 'changelog.releases.sep25e.summary',
+    itemKeys: ['changelog.releases.sep25e.heartbeat', 'changelog.releases.sep25e.assets'],
+  },
+  {
     id: '2026-09-25-live-updates-survive-reconnect-storm',
     date: '2026-09-25',
     buildVersion: __APP_VERSION__,

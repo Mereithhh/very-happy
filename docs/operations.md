@@ -17,7 +17,7 @@ commits or tags to it and do not use it as a deployment source.
 | Public endpoint | `https://veryhappy.dev` behind Cloudflare (proxied); Caddy imports `/opt/happy/release/active-upstream.caddy` and switches it atomically. A `?vh_slot=` pin whose slot is down falls back to the other slot (`lb_policy first`) |
 | Production artifact | Complete `ghcr.io/mereithhh/very-happy-server@sha256:<digest>` image (linux/amd64 only — the host must stay x86), including Web V2 |
 | Database | **RDS PostgreSQL 16** `vh-pg` (db.m7g.large, single-AZ, private subnet, 7-day automated backups, deletion protection), reached through **PgBouncer** (`vh-pgbouncer`, transaction pooling, `127.0.0.1:6432`, logical db `happy`). Runtime uses transaction pooling; Prisma migrations use the separate `happy_migrations` alias with session pooling. Neither connects to RDS directly |
-| Redis | **ElastiCache** `vh-redis` (cache.t4g.micro, private subnet), socket.io Redis streams adapter |
+| Redis | **ElastiCache** `vh-redis` (Redis 7.1, cache.m7g.large since B-484, private subnet, parameter group `vh-redis7` = `default.redis7` + `maxmemory-policy allkeys-lru`), socket.io Redis streams adapter |
 | Host base services | `/opt/happy/docker-compose.yml` runs `vh-pgbouncer` only; release slots in `/opt/happy/release/docker-compose.yml` join the same `happy_default` network |
 | Daemon | published `very-happy-cli` on `mac-office` / `mac-main` (launchd) and `dev-sg` (Linux dev machine, systemd user unit — [`ops/dev-sg/README.md`](../ops/dev-sg/README.md)) |
 | Singapore relay | `sg-hw`, `https://relay-sg.veryhappy.dev`, Docker + Caddy on `hw-sg` |
@@ -49,7 +49,11 @@ parses edge headers itself.
   arrives from); otherwise it keeps Fastify's `request.ip`. Rate limits key on
   it (IPv6 per /64), request logs' `remoteAddress` and business audit
   (`ipSource: edge-proxy`) use it. `BUSINESS_AUDIT_TRUST_CLOUDFLARE` only
-  matters when the header is absent and can be turned off.
+  matters when the header is absent; production sets it to `0` since
+  2026-09-25 (was `1`; backup `/opt/happy/.env.bak-*-b484`, rollback = restore
+  the value and deploy `rollout=switch`). Caddy still derives the header from
+  `CF-Connecting-IP` for Cloudflare-range peers, so a DNS rollback to
+  Cloudflare keeps audit IPs correct.
 - Check: `tcpdump -i lo -A 'tcp dst port 3101 or tcp dst port 3102'` on vh-sg
   shows the header Caddy sends; `docker logs happy-server-<slot> | grep
   remoteAddress` shows what the server resolved.
@@ -343,6 +347,14 @@ Web V2 ships inside the complete server image and changes atomically with the
 server container. After deployment, still verify that the entry asset has a
 JavaScript content type; browsers with an older service worker may need a hard
 refresh or service-worker unregister before diagnosing a mixed-version failure.
+
+Cache headers (`sources/app/api/staticCache.ts`): files under `/assets/` are
+named `<name>-<hash>-<commit>` and are served `public, max-age=31536000,
+immutable`, so CloudFront's `/assets/*` behavior (CachingOptimized) and browsers
+keep them. Everything else from the build (`index.html`, `push-sw.js`, icons,
+`install.sh`) keeps `public, max-age=0`, and a missing `/assets/` path is a
+`no-store` 404 (never the SPA shell). Check with two requests for the entry
+asset: the second must say `x-cache: Hit from cloudfront`.
 
 ## mac-office daemon
 
@@ -735,10 +747,36 @@ Metrics (per slot, `/metrics`): `socket_stream_length`,
 `redis_client_errors_total{client,code}` (replaces ioredis' "Unhandled error
 event" log; `code` is ECONNRESET/OOM/timeout/…),
 `socket_recovery_attempts_total{outcome}` and
-`socket_recovery_scanned_entries`. Suggested alerts (not yet wired to a
-receiver): `max(socket_stream_head_age_seconds{job="very-happy"}) > 30` for 1m;
-`sum(rate(redis_client_errors_total{job="very-happy"}[5m])) * 60 > 1`;
-`max(socket_stream_length{job="very-happy"}) > 50000` for 10m.
+`socket_recovery_scanned_entries`. Alerts on these are live since 2026-09-25
+as the `monitoring/very-happy-alerts` PrometheusRule on sy
+([monitoring README](monitoring/README.md#alerts)).
+
+What is in the stream (B-484, sampled 2026-09-25 with `XREVRANGE … COUNT 20000`,
+~91 entries/s): 78% `ephemeral` `activity` (the 2 s `session-alive` of ~150 live
+sessions, 98% of them idle), 11% `terminal-output` (56% of bytes),
+`update-machine` 2.4%, `session-stream` 2.7%, `terminal-activity` only 1.4%
+(already ≤1 frame/s per machine, daemon-side throttle). `session-alive` fan-out
+is therefore coalesced per server process
+(`sources/app/presence/sessionActivityRelayGate.ts`): the first beat, a
+`thinking` flip and the beat after an inactive broadcast go out at once; repeats
+at most every 4 s while thinking and 30 s while idle. The DB presence update
+still sees every beat. Counter: `session_alive_relay_total{outcome}`. Do not
+raise the busy interval above ~10 s: the web lease is 25 s and a handover can
+add 10 s.
+
+Eviction: `maxmemory-policy allkeys-lru` (parameter group `vh-redis7`, was
+`volatile-lru` on `default.redis7`; changed 2026-09-25, immediate, no reboot).
+Every key except the stream carries a TTL (`vh:relay-machine:*` ~75 s,
+`vh:socket-connections:*` ~60 s, `vh:connection-metrics:*` ≤15 min,
+`vh:sio:session:*` 30 s); no business data lives in Redis. So the only extra
+key `allkeys-lru` can evict is `vh:socket.io` itself, and only after the small
+TTL keys: losing it means recovery reports `offset_missing` and clients do their
+full resync, while the adapter poll loop keeps reading from its last id on the
+recreated stream. Under `volatile-lru` the same pressure produced `OOM command
+not allowed` on every XADD (B-484, 2026-09-22). Rollback:
+`aws elasticache modify-cache-cluster --cache-cluster-id vh-redis
+--cache-parameter-group-name default.redis7 --apply-immediately`
+(ap-southeast-1).
 
 Check from the host without redis-cli (the image has ioredis):
 `docker exec -i -w /repo/packages/happy-server happy-server-<slot> node -` with a

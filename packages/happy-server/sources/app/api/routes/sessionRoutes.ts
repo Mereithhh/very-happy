@@ -1,3 +1,4 @@
+import { sessionActivityRelayGate } from "@/app/presence/sessionActivityRelayGate";
 import { eventRouter, buildNewSessionUpdate, buildSessionActivityEphemeral, buildSessionArchivedAtUpdate } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
@@ -419,6 +420,7 @@ export function sessionRoutes(app: Fastify) {
         await emitArchivedAtUpdate(userId, sessionId, archivedAt);
 
         // Notify all clients about the session deactivation
+        sessionActivityRelayGate.forget(sessionId);
         const sessionActivity = buildSessionActivityEphemeral(sessionId, false, Date.now(), false);
         eventRouter.emitEphemeral({
             userId,

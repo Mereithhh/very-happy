@@ -1,0 +1,56 @@
+# Very Happy production alerts (B-484 / B-494).
+# Applied to the sy cluster as monitoring/very-happy-alerts; routed by the
+# existing rancher-monitoring Alertmanager default route (receiver
+# mereith-webhook). See docs/monitoring/README.md "Alerts".
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: very-happy-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: very-happy
+spec:
+  groups:
+    - name: very-happy
+      rules:
+        - alert: VeryHappyMetricsDown
+          # Both slots unscrapeable (an inactive slot being down is expected).
+          expr: max(up{job="very-happy"}) < 1 or absent(up{job="very-happy"})
+          for: 5m
+          labels: { severity: critical, app: very-happy }
+          annotations:
+            summary: Very Happy metrics unreachable on every slot
+            description: No blue/green slot of veryhappy.dev has been scrapeable for 5m (server down, or the vh-metrics tunnel broke).
+        - alert: VeryHappySocketStreamStalled
+          # Nothing reached vh:socket.io for 30s: live pushes are frozen (B-494).
+          expr: max(socket_stream_head_age_seconds{job="very-happy"}) > 30
+          for: 1m
+          labels: { severity: critical, app: very-happy }
+          annotations:
+            summary: socket.io Redis stream head is not advancing
+            description: 'vh:socket.io head age {{ $value | humanize }}s. Live updates are likely frozen; see docs/operations.md "socket.io Redis stream and recovery bounds".'
+        - alert: VeryHappyRedisErrors
+          expr: sum(rate(redis_client_errors_total{job="very-happy"}[5m])) * 60 > 1
+          for: 5m
+          labels: { severity: warning, app: very-happy }
+          annotations:
+            summary: Very Happy server is seeing Redis client errors
+            description: '{{ $value | humanize }} Redis errors/min (ECONNRESET / OOM / timeout). Check redis_client_errors_total by code.'
+        - alert: VeryHappySocketStreamTooLong
+          expr: max(socket_stream_length{job="very-happy"}) > 50000
+          for: 10m
+          labels: { severity: warning, app: very-happy }
+          annotations:
+            summary: vh:socket.io is far above its MAXLEN
+            description: 'Stream length {{ $value | humanize }} (MAXLEN ~ 20000). Trimming is not keeping up or maxLen regressed.'
+        - alert: VeryHappyMachinesDropped
+          # B-484: daemon handshakes failed fleet-wide while /health stayed 200.
+          expr: |
+            sum(websocket_connections_total{job="very-happy",type="machine-scoped"})
+              < 0.8 * sum(websocket_connections_total{job="very-happy",type="machine-scoped"} offset 5m)
+            and sum(websocket_connections_total{job="very-happy",type="machine-scoped"} offset 5m) > 10
+          for: 3m
+          labels: { severity: critical, app: very-happy }
+          annotations:
+            summary: Connected Very Happy daemons dropped more than 20% in 5 minutes
+            description: 'Machine sockets now {{ $value | humanize }}. Check daemon handshakes, Redis and the last release.'

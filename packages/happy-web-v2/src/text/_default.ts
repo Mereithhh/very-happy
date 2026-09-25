@@ -1903,6 +1903,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25e: {
+                title: 'Less background chatter, faster reloads',
+                summary: 'Every running session told every open tab "still here" every two seconds, even when it was doing nothing. That was about three quarters of everything the server relayed between its instances.',
+                heartbeat: 'Idle sessions now refresh at most every 30 seconds and working ones every 4 seconds. Starting or finishing work, going offline and coming back still show up immediately.',
+                assets: 'The app\'s script and style files are now cached long-term by the CDN and your browser (every release uses new file names), so reloads between releases fetch much less from the server.',
+            },
             sep25d: {
                 title: 'Live updates no longer stall after everyone reconnects at once',
                 summary: 'When every open tab and machine reconnected at the same moment, catching each of them up on missed events could jam the server\'s message relay, and live updates stopped for everyone until it cleared (about 25 minutes on 25 September).',

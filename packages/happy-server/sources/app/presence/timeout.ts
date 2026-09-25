@@ -2,6 +2,7 @@ import { db } from "@/storage/db";
 import { delay } from "@/utils/delay";
 import { forever } from "@/utils/forever";
 import { shutdownSignal } from "@/utils/shutdown";
+import { sessionActivityRelayGate } from "./sessionActivityRelayGate";
 import { buildMachineActivityEphemeral, buildSessionActivityEphemeral, eventRouter } from "@/app/events/eventRouter";
 
 export function startTimeout() {
@@ -24,6 +25,7 @@ export function startTimeout() {
                 if (updated.length === 0) {
                     continue;
                 }
+                sessionActivityRelayGate.forget(session.id);
                 eventRouter.emitEphemeral({
                     userId: session.accountId,
                     payload: buildSessionActivityEphemeral(session.id, false, updated[0].lastActiveAt.getTime(), false),

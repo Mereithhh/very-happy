@@ -56,6 +56,14 @@ export const sessionAliveEventsCounter = new Counter({
     registers: [register]
 });
 
+/** B-484: session-alive beats rebroadcast to web vs. coalesced away. */
+export const sessionAliveRelayCounter = new Counter({
+    name: 'session_alive_relay_total',
+    help: 'session-alive beats by relay outcome (relayed = activity ephemeral broadcast, coalesced = skipped)',
+    labelNames: ['outcome'] as const,
+    registers: [register]
+});
+
 export const machineAliveEventsCounter = new Counter({
     name: 'machine_alive_events_total',
     help: 'Total number of machine-alive events',
