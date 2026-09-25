@@ -20,6 +20,8 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-499 | **内置 tool call 特化展示**：very-happy 注入的工具（change_title、report_progress、open_preview、copy_to_clipboard、team_*、automation_*、assistant 变体 sessions_*/terminals_* 等，含 Codex/pi 前缀形态）在聊天里显示一行人话摘要 + 结构化展开 + 相关页面链接，不显示原始 JSON；未知工具回退通用渲染 | ux | Owner 2026-09-25 | doing | — |
+| B-500 | **pi 终端模式不会自动改会话名**：确认是否仍存在，存在则与 Claude 终端一致地自动命名（尊重手动改名） | bug | Owner 2026-09-25 | doing | — |
 | B-497 | **会话间消息与编辑冲突提示**：`session_message`/`sessions peers`（同机同 repo 活会话）；wrapper 记录已编辑路径，第二个会话编辑同一路径时双向提醒并附对方 sessionId，鼓励直接协商；不加锁 | feat | Owner 2026-09-25 | todo | 依赖 B-496 落地后单独 spec |
 | B-498 | **Web 自动化视图**：/board 增「需要我决策」（attention run、失败/超时/离线）、Automations 列表（下次运行、最近结果、暂停/立即运行）、Runs 时间线 | feat | Owner 2026-09-25 | todo | 依赖 B-496 API |
 | B-495 | **`spawn --fork <id> --prompt` 的首条 prompt 没送进 agent，之后 `sessions read --wait` 在这个 fork 上永远等不到回合结束**（0.2.151 发版后 dev-sg 实测，B-492 PR 标注「未实测」的那条链路）：源会话 `cmug103wi00q7qs2krofpru16` 普通 spawn + `read --wait --answer` 正常；fork 出 `cmug10n3k00qzqs2k69piyyw4`，转录里首条 prompt 排在 FORK BACKFILL 重放的 3 条历史**之前**，wrapper 日志 `[MessageQueue2] Waiting for messages...` 之后再没收到它（prompt 在 wrapper socket 连上 05:10:48.701 之前就已写到 server）；随后 `send --session` 的第二条正常被回答（fork 上下文正确），但 `read --wait` 仍超时 exit 2——`turnState` 把那条没被回答的首条 prompt 当成排队中，之后的 turn-end 都不算 | bug | 0.2.151 上线验证 2026-09-25 | todo | 影响面：只有新功能 fork+prompt；普通 spawn/send/read 不受影响，未回滚。排查方向：fork 路径 spawn 返回到 wrapper 开始消费 server 消息之间的竞态（backfill 与首条 prompt 的 seq 顺序、`recordAppPrompt`/scanner 去重是否把它当回显吞掉）；`turnState` 对「永远不会被回答的 prompt」要有兜底 |
