@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { createTeamsClient } from '@/teams/client';
 import { setTeamPermissionMode } from '@/teams/permissions';
 import { installTeamSkill, type TeamSkillHost } from '@/teams/install';
+import { installAutomationSkill } from '@/automations/install';
 
 export async function handleTeamsCommand(args: string[]): Promise<void> {
     const command = args[0];
@@ -16,7 +17,11 @@ export async function handleTeamsCommand(args: string[]): Promise<void> {
     if (command === 'install' || command === 'uninstall') {
         const host = value('--host');
         if (!host || !['claude', 'codex', 'pi'].includes(host)) throw new Error('--host must be claude, codex, or pi');
-        console.log(JSON.stringify(await installTeamSkill({ host: host as TeamSkillHost, home: value('--home') ?? homedir(), apply: args.includes('--apply'), uninstall: command === 'uninstall' })));
+        const options = { host: host as TeamSkillHost, home: value('--home') ?? homedir(), apply: args.includes('--apply'), uninstall: command === 'uninstall' };
+        // B-496: the Automations skill is materialized by the same mechanism (spec §管理面).
+        const teams = await installTeamSkill(options);
+        const automations = await installAutomationSkill(options);
+        console.log(JSON.stringify({ ...teams, also: [automations] }));
         return;
     }
     if (command === 'doctor') {

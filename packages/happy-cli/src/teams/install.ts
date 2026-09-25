@@ -25,8 +25,17 @@ async function publish(path: string, content: string): Promise<void> {
         await rename(temporary, path);
     } finally { await unlink(temporary).catch(() => {}); }
 }
-export async function installTeamSkill(options: { host: TeamSkillHost; home: string; apply?: boolean; uninstall?: boolean }) {
-    const directory = join(resolve(options.home), '.local', 'share', 'very-happy', 'skills', 'very-happy-teams');
+export interface ManagedSkillInstallOptions { host: TeamSkillHost; home: string; apply?: boolean; uninstall?: boolean }
+export interface ManagedSkillInstallResult { host: TeamSkillHost; skill: string; path: string; action: 'unchanged' | 'write' | 'remove'; applied: boolean; discovery: string; managedSessions: string }
+
+/**
+ * Materialize one Very Happy-owned skill under `~/.local/share/very-happy/skills/<name>/SKILL.md`.
+ * Shared by the Teams and Automations skills (B-496): same ownership manifest,
+ * same refusal to touch edited or foreign files, same atomic replacement.
+ */
+export async function installManagedSkill(skill: { name: string; content: string; managedSessions: string }, options: ManagedSkillInstallOptions): Promise<ManagedSkillInstallResult> {
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(skill.name)) throw new Error('Invalid managed skill name');
+    const directory = join(resolve(options.home), '.local', 'share', 'very-happy', 'skills', skill.name);
     await assertPrivateDestination(directory);
     const file = join(directory, 'SKILL.md');
     const manifest = join(directory, '.very-happy-managed.json');
@@ -37,7 +46,7 @@ export async function installTeamSkill(options: { host: TeamSkillHost; home: str
     if (current !== null && (!previous || previous.owner !== 'very-happy' || (previous.sha256 !== digest(current) && previous.pendingSha256 !== digest(current)))) {
         throw new Error('Existing skill is not owned by Very Happy or was edited; preserve it and resolve manually');
     }
-    const action = options.uninstall ? (current === null && managed === null ? 'unchanged' : 'remove') : current === TEAM_SKILL && !previous?.pendingSha256 ? 'unchanged' : 'write';
+    const action = options.uninstall ? (current === null && managed === null ? 'unchanged' : 'remove') : current === skill.content && !previous?.pendingSha256 ? 'unchanged' : 'write';
     if (options.apply && action !== 'unchanged') {
         await assertPrivateDestination(directory);
         if (options.uninstall) { if (current !== null) await unlink(file); if (managed !== null) await unlink(manifest); await rmdir(directory).catch(() => {}); }
@@ -45,11 +54,15 @@ export async function installTeamSkill(options: { host: TeamSkillHost; home: str
             await mkdir(directory, { recursive: true });
             // Publish recoverable ownership first. Atomic replacement means the skill is
             // always either the verified old bytes or the declared new bytes, never partial.
-            const nextHash = digest(TEAM_SKILL);
+            const nextHash = digest(skill.content);
             await publish(manifest, JSON.stringify({ owner: 'very-happy', sha256: current === null ? null : digest(current), pendingSha256: nextHash, version: 1 }));
-            await publish(file, TEAM_SKILL);
+            await publish(file, skill.content);
             await publish(manifest, JSON.stringify({ owner: 'very-happy', sha256: nextHash, version: 1 }));
         }
     }
-    return { host: options.host, path: file, action, applied: !!options.apply, discovery: 'No host skill directories are modified. Read this absolute skill path in a managed session.', managedSessions: 'Team tools are injected by Very Happy. Standalone agents require a managed session connection.' };
+    return { host: options.host, skill: skill.name, path: file, action, applied: !!options.apply, discovery: 'No host skill directories are modified. Read this absolute skill path in a managed session.', managedSessions: skill.managedSessions };
+}
+
+export async function installTeamSkill(options: ManagedSkillInstallOptions) {
+    return installManagedSkill({ name: 'very-happy-teams', content: TEAM_SKILL, managedSessions: 'Team tools are injected by Very Happy. Standalone agents require a managed session connection.' }, options);
 }

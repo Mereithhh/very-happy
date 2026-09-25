@@ -1,4 +1,5 @@
 import { registerTeamsTools } from '@/teams/tools';
+import { registerAutomationTools } from '@/automations/tools';
 /**
  * Happy MCP STDIO Bridge
  *
@@ -166,6 +167,9 @@ async function main() {
       return forwardTeam(`team_${String(type).replaceAll('-', '_')}`, { ...args, requestId });
     },
   });
+  // B-496: automation_* execute in the owning session process too (account
+  // authority lives there); the bridge only forwards by name.
+  registerAutomationTools(server, (name, args) => forwardTeam(name, args));
 
   // Start STDIO transport
   const stdio = new StdioServerTransport();
