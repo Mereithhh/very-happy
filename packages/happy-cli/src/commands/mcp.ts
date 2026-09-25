@@ -36,6 +36,21 @@ import { logger } from '@/ui/logger';
 import { checkPreviewPath } from '@/claude/utils/previewPath';
 import { PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE } from '@/claude/utils/agentGuidance';
 import { resolveMcpTerminalId, resolveMcpToolSurface, TERMINAL_TITLE_TOOL_NAME, type McpToolSurface } from './mcpToolSurface';
+import { TerminalTitleSuggestRequestSchema } from '@/terminal/terminalTitleSuggest';
+import { suggestTitleForPrompt } from '@/claude/utils/titleGenerator';
+
+/**
+ * B-500: the terminal bridges' title suggestion — a custom JSON-RPC method,
+ * deliberately NOT a tool (the model must not see it; see
+ * terminalTitleSuggest.ts). The pi extension calls it with the first prompt
+ * of an unnamed pi session and names the pi session with the result.
+ */
+export function registerTerminalTitleSuggest(server: McpServer): void {
+    server.server.setRequestHandler(TerminalTitleSuggestRequestSchema, async (request) => {
+        logger.debug('[MCP] terminal title suggestion requested');
+        return { title: await suggestTitleForPrompt(request.params.prompt) };
+    });
+}
 
 /** Register every tool of `surface` (+ the terminal row when `terminalId` is set) on `server` (pure over the registrar, unit-tested). */
 export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToolSurface, terminalId: string | null = null): void {
@@ -132,6 +147,7 @@ export async function handleMcpCommand(terminalToolsOnly = false): Promise<void>
     const terminalId = resolveMcpTerminalId(process.env);
     if (terminalToolsOnly && !terminalId) throw new Error('Very Happy terminal context is required');
     registerMcpTools(server, surface, terminalId);
+    if (terminalId) registerTerminalTitleSuggest(server);
     if (!terminalToolsOnly && process.env.HAPPY_MANAGED !== '1' && !process.env.HAPPY_MCP_URL) registerTeamsTools(server, process.env.HAPPY_SESSION_ID);
 
     const transport = new StdioServerTransport();

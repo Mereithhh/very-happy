@@ -55,6 +55,13 @@
 - 本批全量 diff 与直接 pi 补充改动均独立 review；问题已修并补机制测试，复查无剩余 actionable findings；公开文档源码断言 mutation-check 1/1 caught。
 - 临时日志/截图/真实 pi RPC 证据：`~/code/github/skills/tmp/pi-terminal-session-tools/`；server 最终日志：`~/code/github/skills/tmp/pi-terminal-tools/`。
 
+## 自动标题（B-500，2026-09-25）
+
+- 缺口：Claude Code 的 TUI 自己把任务摘要写进 OSC 标题，daemon `listSessions` 跟进 `@vh_title`；pi 的 TUI 只写 `π - <cwd basename>`（有会话名时为 `π - <会话名> - <cwd basename>`，`updateTerminalTitle`，pi 0.84.4 实测），且从不自己起名，模型也没有被要求调 `change_title`（B-493 已否决固定指令）。所以 pi 终端标签永远停在 `π - <目录>`。托管 pi 走 `TitleGenerator`，不受影响。
+- 修法（与 Claude 同形：仍由 OSC 跟随，不直写 tmux）：扩展在 `session_start` 按「会话尚无名字」武装一次，`before_agent_start` 拿首条 prompt 后 fire-and-forget 调桥的自定义 JSON-RPC 方法 `very-happy/terminal-title-suggest`（`terminal/terminalTitleSuggest.ts`；不是 tool，模型看不到、零额外轮次），桥（`very-happy mcp --terminal-tools` / `--terminal` HTTP 桥）用 `suggestTitleForPrompt`（同一 haiku one-shot 与 sanitize）返回标题，扩展 `pi.setSessionName`；pi 重写 OSC，`deriveAutoTitle(paneTitle, hostname, cwd)` 用 cwd basename 作后缀判别把会话名单独抽出。`/new`、`/resume`、fork 重新武装；用户 `/name`、侧栏改名（`@vh_title_manual`）、模型 `change_title` 都不会被覆盖；一次会话只生成一次；迟到结果按 generation 丢弃。one-shot 进程带 `HAPPY_MANAGED=1`，终端 mirror 的 SessionStart hook 对它静默退出（桥继承了 `VH_TERMINAL_ID`，否则会给 one-shot 建镜像会话）。
+- 验收：`webTerminal.piTitle.test.ts` 真 tmux（未命名 `π - <dir>` 原样、命名后只剩名字、`/name` 继续跟随、侧栏改名后不再跟随）；`piExtension.test.ts` 真编译 stdio 桥 + 替身 `claude`（首条 prompt 起名、每会话一次、已命名不覆盖、空 prompt 不消耗、`HAPPY_MANAGED=1`）；`piRuntime.test.ts` 临时 launcher 同样行为、托管不注册；源码断言 6 处 mutation-check 全部抓到。隔离实跑（pi 0.84.4 + zai glm-5.3，私有 tmux socket，`PI_CODING_AGENT_DIR`/`HAPPY_HOME_DIR` 隔离）：首条 prompt 后 ~10 s pane_title 由 `π - cwd-repro` 变为 `π - very-happy terminal auto-title - cwd-repro`，pi 会话文件出现 `session_info` 名字条目，模型未调用 `change_title`。
+- 兼容：旧 CLI 桥没有该方法 → 扩展 catch 后保持原标题；老 pi 没有 `setSessionName` → 不武装，只保留三工具。需要新 CLI + 重新启动 pi 或 `/reload`（loader 指向已安装 CLI 的 dist）。
+
 ## 发布验收（2026-09-18）
 
 - PR [#384](https://github.com/Mereithhh/very-happy/pull/384) 合并为 `4f4d82ec9788216c3a38e8c3367b6ad93cf8f5a3`；合入 main 的 Quality `35304440040` 与 CLI smoke `35304440056` 成功。

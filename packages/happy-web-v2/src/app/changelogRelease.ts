@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-pi-terminal-tabs-name-themselves',
+    cliVersion: '0.2.153',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25h.title',
+    summaryKey: 'changelog.releases.sep25h.summary',
+    itemKeys: ['changelog.releases.sep25h.name', 'changelog.releases.sep25h.manual'],
+  },
+  {
     id: '2026-09-25-automations-in-the-web-app',
     date: '2026-09-25',
     buildVersion: __APP_VERSION__,
