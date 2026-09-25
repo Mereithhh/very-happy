@@ -15,10 +15,12 @@
  *   a web terminal lives in tmux, so the only thing worth waiting for is an
  *   agent mid-answer; wrappers report that from their keepAlive heartbeat
  *   (`update/turnActivity.ts`).
- * - **To the explicitly approved auto-update version, never `latest`.** The operator pins
- *   that after validating a release, so nothing reaches a user's machine that
- *   has not been deliberately promoted — the blast radius is a decision, not a
- *   publish.
+ * - **To the relay's `autoUpdateVersion`, never a dist-tag the daemon looks up
+ *   itself.** The relay decides that value (B-503: by default the npm `latest`
+ *   that `publish.yml` promotes only after the 3-OS smoke matrix is green; an
+ *   operator may pin an exact version instead), so nothing reaches a user's
+ *   machine that has not been deliberately promoted — the blast radius is a
+ *   decision, not a publish.
  * - **One attempt per version.** A version that fails to install is not retried
  *   in a loop; the next attempt needs an explicit retry, a newer approved target, or a restart. npm
  *   has already left a half-written tree in production once, and hammering it is
@@ -36,11 +38,10 @@ export interface AutoUpdateContext {
     /** What the daemon is running right now. */
     currentVersion: string;
     /**
-     * B-351: the version an operator has approved for unattended install —
-     * deliberately NOT `recommendedVersion`, which may track the registry.
-     * Telling someone a release exists and installing it on their machine while
-     * they are away are different decisions, and only the second one needs a
-     * person to have said yes. `null` means nothing has been approved.
+     * B-351/B-503: the version the relay approves for unattended install —
+     * a separate field from `recommendedVersion` even though production now
+     * resolves both from the promoted `latest`; an operator hold keeps them
+     * apart. `null` means nothing has been approved.
      */
     autoUpdateVersion: string | null;
     /** No session wrappers and no live web terminals. */

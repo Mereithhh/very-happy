@@ -9,10 +9,9 @@ import { reduceTeam, requireTeam, teamView, type TeamActor } from './reducer';
 
 type Principal = { accountId: string; actor: TeamActor; credentialId?: string };
 type Row = { id: string; accountId: string; version: number; state: TeamState };
-export function assertTeamsEnabled(accountId: string) {
+/** B-502: `VH_AGENT_TEAMS_ENABLED` is the only gate; the former `VH_AGENT_TEAMS_ACCOUNT_IDS` allowlist is ignored. */
+export function assertTeamsEnabled(_accountId: string) {
     requireTeam(process.env.VH_AGENT_TEAMS_ENABLED === 'true', 'teams_disabled', 404);
-    const allowlist = process.env.VH_AGENT_TEAMS_ACCOUNT_IDS?.split(',').map(s => s.trim()).filter(Boolean);
-    requireTeam(!allowlist?.length || allowlist.includes(accountId), 'teams_disabled', 404);
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const path = (teamId: string, botId: string) => ['teams', teamId, botId, 'credential'];

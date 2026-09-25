@@ -9,6 +9,7 @@ import {
 } from '@slopus/happy-wire';
 import { db } from '@/storage/db';
 import { inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
+import { configuredResourceLimit } from '@/app/api/resourceLimits';
 import { AutomationError, requireAutomation } from './errors';
 import { initialRunAt, nextRunAfter, normalizeTrigger } from './schedule';
 
@@ -22,11 +23,27 @@ type RunRow = Prisma.AutomationRunGetPayload<{}>;
 const TERMINAL: readonly string[] = AUTOMATION_RUN_TERMINAL_STATUSES;
 const ACTIVE_RUN: readonly string[] = ['queued', 'claimed', 'running'];
 const MAX_STICKIES = 256;
+/** B-502: active + paused automations one account may hold; `0` disables the cap. */
+const DEFAULT_MAX_AUTOMATIONS_PER_ACCOUNT = 100;
 
-export function assertAutomationsEnabled(accountId: string) {
+/**
+ * B-502: one server-wide switch, no per-account allowlist. `VH_AUTOMATIONS_ENABLED`
+ * is the only gate; the former `VH_AUTOMATIONS_ACCOUNT_IDS` is ignored, so a
+ * stale value cannot hide the feature from everyone else again. Abuse is
+ * bounded by the per-account cap below, not by who is allowed in.
+ */
+export function assertAutomationsEnabled(_accountId: string) {
     requireAutomation(process.env.VH_AUTOMATIONS_ENABLED === 'true', 'automations_disabled', 404);
-    const allowlist = process.env.VH_AUTOMATIONS_ACCOUNT_IDS?.split(',').map(s => s.trim()).filter(Boolean);
-    requireAutomation(!allowlist?.length || allowlist.includes(accountId), 'automations_disabled', 404);
+}
+export function maxAutomationsPerAccount(): number {
+    return configuredResourceLimit('MAX_AUTOMATIONS_PER_ACCOUNT', DEFAULT_MAX_AUTOMATIONS_PER_ACCOUNT);
+}
+/** Counted inside the create transaction (SERIALIZABLE), so two concurrent creates cannot both squeeze under the cap. */
+async function requireAutomationCapacity(tx: Tx, accountId: string): Promise<void> {
+    const limit = maxAutomationsPerAccount();
+    if (limit <= 0) return;
+    const count = await tx.automation.count({ where: { accountId } });
+    requireAutomation(count < limit, 'automation_count_quota_exceeded', 429, { limit, count });
 }
 const ms = (d: Date | null | undefined) => d ? d.getTime() : null;
 export function toAutomationView(row: AutomationRow): Automation {
@@ -142,6 +159,7 @@ export async function createAutomation(accountId: string, input: AutomationCreat
     try {
         return await inTx(async tx => {
             await requireMachine(tx, accountId, input.machineId);
+            await requireAutomationCapacity(tx, accountId);
             if (input.action.kind === 'send') await requireSession(tx, accountId, input.action.sessionId);
             const status = input.status ?? 'active';
             const nextRunAt = status === 'active' ? initialRunAt(trigger, now.getTime()) : null;

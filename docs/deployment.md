@@ -100,6 +100,10 @@ dependency surface. Do not install the upstream-owned
 - Feed guards: `MAX_FEED_WRITES_PER_ACCOUNT_PER_MINUTE` (`120`),
   `MAX_FEED_ITEMS_PER_ACCOUNT` (`10000`), and `MAX_FEED_BYTES_PER_ACCOUNT`
   (`67108864`).
+- Automations guard: `MAX_AUTOMATIONS_PER_ACCOUNT` (`100`, active + paused;
+  `0` disables). Teams and Automations themselves are server-wide switches
+  (`VH_AGENT_TEAMS_ENABLED` / `VH_AUTOMATIONS_ENABLED`) with no per-account
+  allowlist.
 - Social graph guards: `MAX_RELATIONSHIP_WRITES_PER_ACCOUNT_PER_MINUTE` (`60`)
   and `MAX_RELATIONSHIPS_PER_ACCOUNT` (`2000`). Two-sided mutations lock both
   accounts in stable order; existing relationships remain updatable at capacity.

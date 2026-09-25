@@ -6,26 +6,39 @@ export interface CliVersionPolicy {
     recommendedVersion: string | null;
     minimumVersion: string | null;
     /**
-     * B-351: the version machines may install by themselves, which is NOT the
-     * same question as the version to recommend.
+     * The version machines may install by themselves (B-351), which is a
+     * separate question from the version to recommend.
      *
-     * `recommendedVersion` can track the registry, because telling someone a
-     * newer release exists costs nothing if it turns out to be bad. Installing
-     * it unattended on every idle machine does: it would make `npm publish`
-     * the moment a release reaches everyone, with no human between the two.
-     *
-     * So this is pinned separately and never derived. Unset means no machine
-     * auto-installs anything — the safe default, and the one that holds while
-     * an operator is still deciding.
+     * B-503 (Owner 2026-09-25): the default policy is `CLI_AUTO_UPDATE_VERSION=latest`
+     * — follow npm's `latest` dist-tag, which `publish.yml` moves only after the
+     * Linux/macOS/Windows × Node 20/24 smoke matrix for that exact tag is green.
+     * The human gate moved from "pin a version by hand" to "promote latest";
+     * an explicit exact pin remains the brake/rollback, and unset still means
+     * no machine auto-installs anything. Never `next`, never an unverified
+     * publish: this value is resolved from the same registry lookup as
+     * `recommendedVersion`, so it is null while the registry is unavailable
+     * and nothing has been cached.
      */
     autoUpdateVersion: string | null;
+    /**
+     * B-503: how `autoUpdateVersion` was decided. `pinned` = exact
+     * `CLI_AUTO_UPDATE_VERSION`; `latest` = follows the promoted npm `latest`
+     * (or an explicit `CLI_RECOMMENDED_VERSION` hold, which caps it); `off` =
+     * unset. Older CLIs ignore the field (iron rule 4).
+     */
+    autoUpdatePolicy: CliAutoUpdatePolicy;
     checkedAt: number;
     source: CliVersionPolicySource;
 }
 
+export type CliAutoUpdatePolicy = 'off' | 'pinned' | 'latest';
+
 export interface CliVersionPolicyConfig {
     recommendedVersion: string | null;
+    /** Exact pin, or null when unset / following latest. */
     autoUpdateVersion: string | null;
+    /** B-503: `CLI_AUTO_UPDATE_VERSION=latest`. */
+    autoUpdateFollowsLatest: boolean;
     minimumVersion: string | null;
     registryLookup: boolean;
 }
@@ -54,15 +67,25 @@ function optionalBoolean(raw: string | undefined, name: string): boolean {
 export function resolveCliVersionPolicyConfig(env: NodeJS.ProcessEnv = process.env): CliVersionPolicyConfig {
     const recommendedVersion = optionalExactVersion(env.CLI_RECOMMENDED_VERSION, 'CLI_RECOMMENDED_VERSION');
     const minimumVersion = optionalExactVersion(env.CLI_MINIMUM_VERSION, 'CLI_MINIMUM_VERSION');
-    const autoUpdateVersion = optionalExactVersion(env.CLI_AUTO_UPDATE_VERSION, 'CLI_AUTO_UPDATE_VERSION');
+    const autoUpdateFollowsLatest = env.CLI_AUTO_UPDATE_VERSION?.trim().toLowerCase() === 'latest';
+    const autoUpdateVersion = autoUpdateFollowsLatest
+        ? null
+        : optionalExactVersion(env.CLI_AUTO_UPDATE_VERSION, 'CLI_AUTO_UPDATE_VERSION');
     if (recommendedVersion && minimumVersion && semver.gt(minimumVersion, recommendedVersion)) {
         throw new Error('CLI_MINIMUM_VERSION must not be newer than CLI_RECOMMENDED_VERSION');
+    }
+    const registryLookup = optionalBoolean(env.CLI_VERSION_REGISTRY_LOOKUP, 'CLI_VERSION_REGISTRY_LOOKUP');
+    if (autoUpdateFollowsLatest && !registryLookup && !recommendedVersion) {
+        // "latest" has nothing to follow without the lookup; failing at startup
+        // beats a fleet that silently never updates.
+        throw new Error('CLI_AUTO_UPDATE_VERSION=latest requires CLI_VERSION_REGISTRY_LOOKUP=true (or an explicit CLI_RECOMMENDED_VERSION hold)');
     }
     return {
         recommendedVersion,
         minimumVersion,
         autoUpdateVersion,
-        registryLookup: optionalBoolean(env.CLI_VERSION_REGISTRY_LOOKUP, 'CLI_VERSION_REGISTRY_LOOKUP'),
+        autoUpdateFollowsLatest,
+        registryLookup,
     };
 }
 
@@ -84,12 +107,30 @@ export class CliVersionPolicyProvider {
         private readonly now: () => number = Date.now,
     ) {}
 
+    private get autoUpdatePolicy(): CliAutoUpdatePolicy {
+        if (this.config.autoUpdateFollowsLatest) return 'latest';
+        return this.config.autoUpdateVersion ? 'pinned' : 'off';
+    }
+
+    /**
+     * B-503: the unattended-install target for one resolution. `discovered` is
+     * the registry's `latest` (already promote-gated) or null when unknown.
+     * An explicit `CLI_RECOMMENDED_VERSION` hold caps "latest" as well: the
+     * brake must stop installs, not only banners.
+     */
+    private autoUpdateVersionFor(discovered: string | null): string | null {
+        if (!this.config.autoUpdateFollowsLatest) return this.config.autoUpdateVersion;
+        if (this.config.recommendedVersion) return this.config.recommendedVersion;
+        return discovered;
+    }
+
     async get(): Promise<CliVersionPolicy> {
         if (this.config.recommendedVersion) {
             return {
                 recommendedVersion: this.config.recommendedVersion,
                 minimumVersion: this.config.minimumVersion,
-                autoUpdateVersion: this.config.autoUpdateVersion,
+                autoUpdateVersion: this.autoUpdateVersionFor(null),
+                autoUpdatePolicy: this.autoUpdatePolicy,
                 checkedAt: this.now(),
                 source: 'configured',
             };
@@ -98,7 +139,8 @@ export class CliVersionPolicyProvider {
             return {
                 recommendedVersion: null,
                 minimumVersion: this.config.minimumVersion,
-                autoUpdateVersion: this.config.autoUpdateVersion,
+                autoUpdateVersion: this.autoUpdateVersionFor(null),
+                autoUpdatePolicy: this.autoUpdatePolicy,
                 checkedAt: this.now(),
                 source: 'unavailable',
             };
@@ -131,7 +173,11 @@ export class CliVersionPolicyProvider {
             this.cached = {
                 recommendedVersion,
                 minimumVersion: this.config.minimumVersion,
-                autoUpdateVersion: this.config.autoUpdateVersion,
+                // Exactly what npm calls `latest`, not `max(minimum, latest)`:
+                // a minimum above the registry would otherwise ask machines to
+                // install a version that does not exist.
+                autoUpdateVersion: this.autoUpdateVersionFor(discovered),
+                autoUpdatePolicy: this.autoUpdatePolicy,
                 checkedAt: this.now(),
                 source: 'registry',
             };
@@ -143,7 +189,10 @@ export class CliVersionPolicyProvider {
             this.cached = {
                 recommendedVersion: null,
                 minimumVersion: this.config.minimumVersion,
-                autoUpdateVersion: this.config.autoUpdateVersion,
+                // Following latest with no registry answer and no cache means
+                // nothing is approved yet — fail closed, never guess.
+                autoUpdateVersion: this.autoUpdateVersionFor(null),
+                autoUpdatePolicy: this.autoUpdatePolicy,
                 checkedAt: this.now(),
                 source: 'unavailable',
             };

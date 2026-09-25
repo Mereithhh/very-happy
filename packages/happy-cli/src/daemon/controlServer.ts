@@ -21,6 +21,7 @@ export function startDaemonControlServer({
   getChildren,
   stopSession,
   spawnSession,
+  resumeSession,
   requestShutdown,
   onHappySessionWebhook,
   onSessionStateEvent,
@@ -36,6 +37,10 @@ export function startDaemonControlServer({
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
+  /** B-501: the same in-place resume the `resume-happy-session` machine RPC
+   *  runs (`very-happy send --resume`). Optional so older wirings/tests keep
+   *  working (→ 503). */
+  resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
   /** B-069: a session reported a stable state transition (turn done /
@@ -299,6 +304,54 @@ export function startDaemonControlServer({
             success: false,
             error: result.errorMessage
           };
+      }
+    });
+
+    // B-501: resume an archived / offline session on THIS machine — local IPC
+    // twin of the `resume-happy-session` machine RPC, for `very-happy send
+    // --resume` and the assistant's session_send { resume: true }. The daemon
+    // handler already serialises per session (B-265 gate) and answers
+    // `resume-precheck:<reason>` strings the caller passes through verbatim.
+    typed.post('/resume-session', {
+      schema: {
+        body: z.object({
+          sessionId: z.string().min(1).max(200),
+          model: z.string().optional(),
+          permissionMode: z.string().optional(),
+        }),
+        response: {
+          200: z.object({
+            success: z.boolean(),
+            sessionId: z.string().optional(),
+            error: z.string().optional()
+          }),
+          500: z.object({
+            success: z.boolean(),
+            error: z.string().optional()
+          }),
+          503: z.object({
+            success: z.boolean(),
+            error: z.string().optional()
+          })
+        }
+      }
+    }, async (request, reply) => {
+      const { sessionId, model, permissionMode } = request.body;
+      if (!resumeSession) {
+        reply.code(503);
+        return { success: false, error: 'daemon is still starting up' };
+      }
+      logger.debug(`[CONTROL SERVER] Resume session request: ${sessionId} (model=${model ?? 'unset'}, permissionMode=${permissionMode ?? 'unset'})`);
+      const result = await resumeSession(sessionId, { model, permissionMode });
+      switch (result.type) {
+        case 'success':
+          return { success: true, sessionId: result.sessionId };
+        case 'requestToApproveDirectoryCreation':
+          reply.code(500);
+          return { success: false, error: `Cannot resume: working directory ${result.directory} needs to be created first` };
+        case 'error':
+          reply.code(500);
+          return { success: false, error: result.errorMessage };
       }
     });
 

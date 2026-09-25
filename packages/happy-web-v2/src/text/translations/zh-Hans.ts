@@ -208,7 +208,9 @@ export const zhHans: TranslationStructure = {
         paused: '已暂停',
         resumed: '已恢复',
         deleted: '已删除自动化',
-        actionFailed: ({ code }: { code: string }) => `自动化请求失败：${code}`,
+        actionFailed: ({ code }: { code: string }) => code === 'automation_count_quota_exceeded'
+            ? '这个账号的自动化数量（进行中 + 已暂停）已达上限，先删除不再需要的自动化再创建。'
+            : `自动化请求失败：${code}`,
         disabledTitle: '这台服务器没有启用自动化',
         disabledBody: '在服务器设置 VH_AUTOMATIONS_ENABLED=true，CLI、MCP 工具和本页会一起启用。',
         emptyTitle: '还没有自动化',
@@ -2108,6 +2110,15 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25j: {
+                title: '团队与自动化全员开放；send 不再谎报送达；CLI 自动保持最新',
+                summary: 'Agent Teams 与自动化对本服务器所有账号开放。`very-happy send` 在没有人接收时不再报告已送达，并可先把会话恢复回来。机器会自动跟进最新通过验证的 CLI 版本。',
+                send: '`very-happy send` 发送前后都会核对会话状态：已归档、离线或不存在的会话会被明确拒绝（退出码 3，--json 带 `"status"`），不再返回假的 `delivered: true`。会话内的 `session_send` 工具同样如此。',
+                resume: '`very-happy send --resume`（以及 `session_send` 的 `resume: true`）会先在本机恢复已归档/离线的会话——与网页「恢复」走同一条路径——等它上线后再投递。',
+                open: '团队与自动化不再需要按账号白名单开放：运维打开开关后，所有账号都能用。',
+                cap: '每个账号最多 100 条自动化（进行中与已暂停合计）；超出时网页和 CLI 都会用一句话说明原因。',
+                auto: 'CLI 自动升级现在跟随最新通过跨平台检查的版本，空闲的机器不再等人逐版批准；运维仍可固定版本用于 hold 或回滚。',
+            },
             sep25i: {
                 title: 'Very Happy 内置工具调用改为可读的一句话',
                 summary: 'Agent 使用 Very Happy 自带工具（委派团队任务、创建自动化、汇报进度、新建会话、复制到剪贴板等）时，对话里不再显示一整块原始 JSON。',

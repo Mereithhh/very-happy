@@ -5,8 +5,10 @@ you choose, and report back so you only look at what needs a decision. One
 automation is **one trigger + one action + one machine**; every execution is a
 **run** with a status, a session link, a summary and an attention flag.
 
-The feature is gated per server (`VH_AUTOMATIONS_ENABLED=true`, optionally
-`VH_AUTOMATIONS_ACCOUNT_IDS`). When it is off, the sidebar entry stays hidden,
+The feature is gated per server (`VH_AUTOMATIONS_ENABLED=true`); once on, every
+account can use it, and each account holds at most `MAX_AUTOMATIONS_PER_ACCOUNT`
+automations (default 100, active and paused together — a create beyond that is
+refused with `automation_count_quota_exceeded`). When it is off, the sidebar entry stays hidden,
 `very-happy auto` prints a one-line hint, and ordinary chats, terminals and
 teams keep working. The wire/REST contract lives in
 [channels.md](channels.md#automations-scheduled-and-triggered-runs-feature-gated);

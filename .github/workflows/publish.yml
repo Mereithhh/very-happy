@@ -151,8 +151,8 @@ jobs:
             npm pack ./packages/happy-cli --pack-destination "$RUNNER_TEMP"
             # --tag next, NOT latest (B-348). `latest` is what the relay
             # advertises as `recommendedVersion` once
-            # CLI_VERSION_REGISTRY_LOOKUP is on. Automatic installation has
-            # a separate CLI_AUTO_UPDATE_VERSION pin. `latest` means "the 3-OS smoke
+            # CLI_VERSION_REGISTRY_LOOKUP is on, and (B-503) what production's
+            # CLI_AUTO_UPDATE_VERSION=latest lets idle daemons install. `latest` means "the 3-OS smoke
             # matrix went green", not "npm accepted the tarball". The `promote`
             # job below moves it. Publishing itself stays unconditional and
             # unblocked: the emergency channel above is untouched, only the

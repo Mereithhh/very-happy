@@ -1565,6 +1565,7 @@ export async function startDaemon(): Promise<void> {
       getChildren: getCurrentChildren,
       stopSession,
       spawnSession,
+      resumeSession, // B-501: `very-happy send --resume`
       requestShutdown: () => requestShutdown('happy-cli'),
       onHappySessionWebhook,
       onSessionStateEvent,

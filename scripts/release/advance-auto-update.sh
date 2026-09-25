@@ -1,27 +1,31 @@
 #!/bin/bash
-# advance-auto-update.sh <X.Y.Z> [--dry-run]
+# advance-auto-update.sh <X.Y.Z|latest> [--dry-run]
 #
-# Advance the fleet's unattended-install version (`CLI_AUTO_UPDATE_VERSION`, B-351)
-# to an already-promoted CLI release, and make production actually read it.
-# This is the second of the two release decisions in the release skill —
-# "recommend" moves by itself via npm `latest`; "install for people" is this
-# script, invoked by a human on purpose. It does not publish anything.
+# Set the fleet's unattended-install version (`CLI_AUTO_UPDATE_VERSION`, B-351)
+# on production and make production actually read it. Since B-503 the default
+# is `latest` (the relay follows the promoted npm `latest` by itself), so this
+# script is only needed to HOLD / ROLL BACK the fleet at an exact version, or to
+# return to `latest` afterwards. It does not publish anything.
 #
 # Steps (each one was hand-typed for 0.2.134 → 0.2.138 before this existed):
-#   1. refuse unless npm `latest` already equals <X.Y.Z> (promote ran, smoke green);
-#   2. on vh-sg: back up /opt/happy/.env, set CLI_AUTO_UPDATE_VERSION=<X.Y.Z>;
+#   1. for X.Y.Z: refuse unless npm `latest` already equals it (never pin an
+#      unpromoted tarball); for `latest`: nothing to check;
+#   2. on vh-sg: back up /opt/happy/.env, set CLI_AUTO_UPDATE_VERSION=<value>;
 #   3. dispatch deploy-hwsg.yml rollout=switch on main (restart does not reread
 #      env_file; only a candidate reads the new value), wait, check headSha;
-#   4. verify https://veryhappy.dev/v1/version/cli reports autoUpdateVersion=<X.Y.Z>.
+#   4. verify https://veryhappy.dev/v1/version/cli reports autoUpdateVersion=<X.Y.Z>
+#      (or autoUpdatePolicy=latest).
 #
 # Rollback: ssh vh-sg 'cp /opt/happy/.env.bak-<stamp> /opt/happy/.env' and run
-# the same deploy again — the backup path is printed below.
+# the same deploy again — the backup path is printed below. Needs an `ssh vh-sg`
+# alias (VH_SSH_HOST overrides it); from a workstation without one run it on
+# dev-sg.
 set -euo pipefail
 
-VERSION="${1:?usage: advance-auto-update.sh <X.Y.Z> [--dry-run]}"
+VERSION="${1:?usage: advance-auto-update.sh <X.Y.Z|latest> [--dry-run]}"
 DRY_RUN=""
 [[ "${2:-}" == "--dry-run" ]] && DRY_RUN=1
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a X.Y.Z version: $VERSION" >&2; exit 2; }
+[[ "$VERSION" == "latest" || "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a X.Y.Z version or 'latest': $VERSION" >&2; exit 2; }
 
 HOST="${VH_SSH_HOST:-vh-sg}"
 ENV_FILE=/opt/happy/.env
@@ -30,11 +34,15 @@ API="https://veryhappy.dev/v1/version/cli"
 
 say() { printf '%s\n' "$*"; }
 
-say "== 1/4 npm latest must already be $VERSION"
-LATEST=$(npm view very-happy-cli dist-tags.latest 2>/dev/null)
-if [[ "$LATEST" != "$VERSION" ]]; then
-  say "refusing: npm latest is '$LATEST', not $VERSION. promote has not moved the tag (smoke red, or still running) — read the publish run first." >&2
-  exit 1
+if [[ "$VERSION" == "latest" ]]; then
+  say "== 1/4 following the promoted npm latest (B-503 default) — nothing to pre-check"
+else
+  say "== 1/4 npm latest must already be $VERSION"
+  LATEST=$(npm view very-happy-cli dist-tags.latest 2>/dev/null)
+  if [[ "$LATEST" != "$VERSION" ]]; then
+    say "refusing: npm latest is '$LATEST', not $VERSION. promote has not moved the tag (smoke red, or still running) — read the publish run first." >&2
+    exit 1
+  fi
 fi
 CURRENT=$(curl -fsS "$API")
 say "   live: $CURRENT"
@@ -77,5 +85,10 @@ say "   deploy: $STATUS"
 say "== 4/4 verify the relay advertises it"
 AFTER=$(curl -fsS "$API")
 say "   live: $AFTER"
-echo "$AFTER" | grep -q "\"autoUpdateVersion\":\"$VERSION\"" || { say "autoUpdateVersion is not $VERSION after deploy" >&2; exit 1; }
-say "done: machines will install $VERSION when idle. Running session wrappers are not replaced (铁律 7)."
+if [[ "$VERSION" == "latest" ]]; then
+  echo "$AFTER" | grep -q '"autoUpdatePolicy":"latest"' || { say "autoUpdatePolicy is not latest after deploy" >&2; exit 1; }
+  say "done: machines will install whatever npm latest is (promote-gated) when idle. Running session wrappers are not replaced (铁律 7)."
+else
+  echo "$AFTER" | grep -q "\"autoUpdateVersion\":\"$VERSION\"" || { say "autoUpdateVersion is not $VERSION after deploy" >&2; exit 1; }
+  say "done: machines will install $VERSION when idle (machines already ahead stay put). Running session wrappers are not replaced (铁律 7)."
+fi

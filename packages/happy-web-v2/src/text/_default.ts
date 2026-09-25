@@ -1991,6 +1991,15 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25j: {
+                title: 'Teams and Automations for everyone; `send` tells the truth; the CLI keeps itself current',
+                summary: 'Agent Teams and Automations are open to every account on this server. `very-happy send` no longer reports a message as delivered when nobody is listening, and can bring a session back first. Machines now follow the newest verified CLI automatically.',
+                send: '`very-happy send` checks the session before and after sending: an archived, offline or unknown session is refused with a clear status (exit code 3, `"status"` in --json) instead of a false `delivered: true`. The in-session `session_send` tool answers the same way.',
+                resume: '`very-happy send --resume` (and `session_send` with `resume: true`) brings an archived or offline session back on this machine — the same path as the web\'s Restore — waits for it to come online, then delivers.',
+                open: 'Teams and Automations no longer need a per-account allowlist: when the operator turns the feature on, every account has it.',
+                cap: 'Each account holds at most 100 automations (active and paused together); one more is refused with a one-line explanation in the web and the CLI.',
+                auto: 'Automatic CLI updates now follow the newest release that passed the cross-platform checks, so an idle machine no longer waits for someone to approve each version by hand. Operators can still pin a version to hold or roll back.',
+            },
             sep25i: {
                 title: 'Very Happy tool calls read like sentences',
                 summary: 'When an agent uses one of Very Happy\'s own tools — delegating to a team member, creating an automation, reporting progress, spawning a session, copying to your clipboard — the chat no longer shows a block of raw JSON.',
@@ -3127,7 +3136,9 @@ export const en = {
         paused: 'Paused',
         resumed: 'Resumed',
         deleted: 'Automation deleted',
-        actionFailed: ({ code }: { code: string }) => `Automations request failed: ${code}`,
+        actionFailed: ({ code }: { code: string }) => code === 'automation_count_quota_exceeded'
+            ? 'This account already holds the maximum number of automations (active + paused). Delete one you no longer need before creating another.'
+            : `Automations request failed: ${code}`,
         // ---- states ----
         disabledTitle: 'Automations are not enabled on this server',
         disabledBody: 'Set VH_AUTOMATIONS_ENABLED=true on the server and the CLI, MCP tools and this page turn on together.',

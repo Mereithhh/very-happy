@@ -31,14 +31,38 @@ describe('automations store (pglite)', () => {
     }, 60000);
     afterAll(async () => { await db?.$disconnect(); rmSync(root, { recursive: true, force: true }); });
 
-    it('is disabled by default and honours the account allowlist', async () => {
+    it('is disabled by default; B-502: the switch is server-wide and a leftover account allowlist is ignored', async () => {
         delete process.env.VH_AUTOMATIONS_ENABLED;
         await expect(store.listAutomations(accountId)).rejects.toMatchObject({ code: 'automations_disabled', status: 404 });
         process.env.VH_AUTOMATIONS_ENABLED = 'true'; process.env.VH_AUTOMATIONS_ACCOUNT_IDS = 'someone-else';
-        await expect(store.listAutomations(accountId)).rejects.toMatchObject({ code: 'automations_disabled', status: 404 });
-        process.env.VH_AUTOMATIONS_ACCOUNT_IDS = `x, ${accountId}`;
         expect(await store.listAutomations(accountId)).toEqual([]);
         delete process.env.VH_AUTOMATIONS_ACCOUNT_IDS;
+    });
+
+    it('B-502: caps active + paused automations per account with a 429 the clients can name', async () => {
+        const previous = process.env.MAX_AUTOMATIONS_PER_ACCOUNT;
+        process.env.MAX_AUTOMATIONS_PER_ACCOUNT = '2';
+        try {
+            const capped = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
+            const cappedMachine = crypto.randomUUID();
+            await db.machine.create({ data: { id: cappedMachine, accountId: capped, metadata: 'metadata' } });
+            const create = (name: string, status?: 'active' | 'paused') => store.createAutomation(capped, { name, machineId: cappedMachine, trigger: { kind: 'manual' }, action: spawn, ...(status ? { status } : {}) });
+            await create('cap-1');
+            const paused = await create('cap-2', 'paused');
+            await expect(create('cap-3')).rejects.toMatchObject({ code: 'automation_count_quota_exceeded', status: 429, details: { limit: 2, count: 2 } });
+            // Paused rows count; deleting one frees a slot; pause/resume never changes the count.
+            await store.deleteAutomation(capped, paused.id);
+            const third = await create('cap-3');
+            await store.setAutomationStatus(capped, third.id, 'paused');
+            await store.setAutomationStatus(capped, third.id, 'active');
+            await expect(create('cap-4')).rejects.toMatchObject({ code: 'automation_count_quota_exceeded', status: 429 });
+            // Other accounts are unaffected; `0` disables the cap.
+            await make();
+            process.env.MAX_AUTOMATIONS_PER_ACCOUNT = '0';
+            await create('cap-4');
+        } finally {
+            if (previous === undefined) delete process.env.MAX_AUTOMATIONS_PER_ACCOUNT; else process.env.MAX_AUTOMATIONS_PER_ACCOUNT = previous;
+        }
     });
 
     it('creates with computed nextRunAt, enforces unique names, machine ownership and account isolation', async () => {

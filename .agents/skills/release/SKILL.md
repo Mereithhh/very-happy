@@ -186,10 +186,12 @@ timeout or a mismatching explicit pin fails verification without undoing npm or
 overwriting the pin. Rerun after resolving the cause. So there is no
 per-release env edit. `CLI_RECOMMENDED_VERSION` must be unset for the registry
 to drive recommendations; reserve that pin for an explicit hold or rollback.
-The independent `CLI_AUTO_UPDATE_VERSION` remains unchanged by CI. Confirm it landed:
+Production's `CLI_AUTO_UPDATE_VERSION=latest` (B-503) follows the same promoted
+tag, so promotion is also the moment idle machines are allowed to install it.
+Confirm it landed:
 
 ```sh
-curl -fsS https://veryhappy.dev/v1/version/cli   # source:"registry", recommendedVersion = X.Y.Z
+curl -fsS https://veryhappy.dev/v1/version/cli   # source:"registry", recommendedVersion = autoUpdateVersion = X.Y.Z, autoUpdatePolicy:"latest"
 npm view very-happy-cli version                  # the promoted latest
 npm view very-happy-cli dist-tags                # `next` may be ahead if smoke failed
 ```
@@ -198,23 +200,34 @@ npm view very-happy-cli dist-tags                # `next` may be ahead if smoke 
 promote — read its log before doing anything by hand; the usual cause is a red
 smoke run, and that is the gate working.
 
-**Recommending a release and installing it for people are two decisions**
-(B-351). The step above only advances `recommendedVersion` — the banners. The
-version machines may install unattended is `CLI_AUTO_UPDATE_VERSION`, pinned
-separately and never derived from the registry: **unset, nothing auto-installs.**
-That manual step is deliberate — following the dist-tag here would make
-`npm publish` the moment a release reaches every machine, with no human in
-between. Advance it once the release has actually been used:
+**Recommending a release and installing it for people are two variables**
+(B-351) **with one default since B-503: both follow the promoted `latest`.**
+The Owner's standing decision (2026-09-25) is that the fleet always runs the
+newest promoted CLI, so a release needs no second env edit: once `promote`
+moves `latest`, `/v1/version/cli` reports `autoUpdateVersion = X.Y.Z` within
+a minute and idle daemons install it on their next policy check (hourly).
+`npm publish` alone still reaches nobody — `next` is never followed, and a red
+smoke run leaves `latest` (and therefore the fleet) where it was.
+
+Holding or rolling back the automatic install is the only time the variable
+is touched by hand:
 
 ```sh
-scripts/release/advance-auto-update.sh X.Y.Z            # add --dry-run to only print the plan
+scripts/release/advance-auto-update.sh X.Y.Z            # pin: hold the fleet at / roll back to X.Y.Z
+scripts/release/advance-auto-update.sh latest           # return to the default
+# add --dry-run to only print the plan
 ```
 
-It refuses unless npm `latest` already is `X.Y.Z`, backs up `/opt/happy/.env` on
-vh-sg before pinning, dispatches `deploy-hwsg.yml rollout=switch` on `main`
-(a `restart` would not reread `env_file`), waits for that exact headSha, and
-fails unless `/v1/version/cli` then reports `autoUpdateVersion = X.Y.Z`. It
-prints the backup path — rollback is restoring it and running the same deploy.
+For an exact version it refuses unless npm `latest` already is `X.Y.Z` (never
+pin an unpromoted tarball); it backs up `/opt/happy/.env` on vh-sg, dispatches
+`deploy-hwsg.yml rollout=switch` on `main` (a `restart` would not reread
+`env_file`), waits for that exact headSha, and fails unless `/v1/version/cli`
+then reports the expected `autoUpdateVersion` / `autoUpdatePolicy`. It prints
+the backup path — rollback is restoring it and running the same deploy. A pin
+older than what machines already run does not downgrade them (the daemon never
+installs backwards); it stops them advancing. The script needs an `ssh vh-sg`
+alias; from a workstation without one, run it on dev-sg or do its steps by hand
+through `ssh dev-sg 'ssh vh-sg "…"'`.
 
 To **hold or roll back the recommendation** without touching npm, pin it (the
 pin always beats the lookup), then deploy so the candidate reads the new env
@@ -236,9 +249,13 @@ back is legitimate, but you will not silently forget again.
 `CLI_MINIMUM_VERSION` is separate: it makes the update banner non-dismissible.
 Raise it only when older clients are actually incompatible. With registry lookup
 working, removing `CLI_RECOMMENDED_VERSION` does not silence recommendations;
-removing `CLI_AUTO_UPDATE_VERSION` disables unattended installation only.
+pinning it also caps `CLI_AUTO_UPDATE_VERSION=latest` (the brake stops installs,
+not only banners). Removing `CLI_AUTO_UPDATE_VERSION` disables unattended
+installation only.
 
-Then update mac-office with `vh-update` (repository fallback:
+Daemon hosts still need their supervised handover: with `latest` in force they
+install by themselves when idle, but confirm the running version and the
+supervisor afterwards (or update them at once). Update mac-office with `vh-update` (repository fallback:
 `bash scripts/update-daemon.sh`) and confirm the running daemon version,
 not only npm metadata. On mac-office, handover starts the replacement outside
 launchd. Complete the existing re-adoption procedure in

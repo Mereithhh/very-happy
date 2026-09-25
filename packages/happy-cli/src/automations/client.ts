@@ -38,6 +38,7 @@ function describeAutomationError(status: number, code: string, runStatus?: strin
         machine_not_found: 'That machine is not registered on this account.',
         session_not_found: 'That session does not belong to this account.',
         automation_name_taken: 'An automation with that name already exists.',
+        automation_count_quota_exceeded: 'This account already holds the maximum number of automations (active + paused). Delete one you no longer need (`very-happy auto delete <name>`) before creating another.',
         automation_paused: 'That automation is paused; resume it before firing.',
         stale_automation: 'The automation changed since you read it; read it again and retry with the new version.',
         run_finished: `The run already reached a terminal state${runStatus ? ` (${runStatus})` : ''}. In a continued (sticky) session, pass the runId named in the latest prompt header — the environment default is the run that started the session.`,
