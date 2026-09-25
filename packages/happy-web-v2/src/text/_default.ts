@@ -2010,6 +2010,15 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25n: {
+                title: 'The CLI reaches sessions on your other machines',
+                summary: '`very-happy sessions read / message`, `very-happy send` and the `session_read` / `session_send` / `session_message` / `session_peers` tools now work on sessions another machine of your account spawned. The operation runs on that machine through its daemon; nothing new is stored on the machine you type on. Needs CLI 0.2.156 on both machines.',
+                reach: 'Reading or messaging a session no longer stops at the machine boundary: the CLI asks the online machines which one holds the session and that machine\'s daemon answers with its own keys. `--machine <id>` names it directly. The owning machine must be online.',
+                list: '`very-happy sessions list --all` fills in the rows it used to show as "not decryptable" — title, directory, agent, pending requests — with `via` naming the machine that answered.',
+                tools: '`session_message` reaches a session on another machine (the message header names the sender\'s host, and the card shows it); `session_peers` takes a `machineId` to list that machine\'s live sessions; the assistant\'s `session_read` / `session_send` follow the same route.',
+                keys: 'The calling machine never holds your account content key or the other machine\'s session keys — only the result travels back. That is the deliberate alternative to giving the CLI the account key.',
+                guard: 'Only five whitelisted operations are answered, only for the same account, with a per-machine rate limit and an audit line in the answering daemon\'s log. `remoteSessionOps: "off"` in that machine\'s `~/.happy/settings.json` turns it off.',
+            },
             sep25l: {
                 title: 'The Automations entry no longer goes missing',
                 summary: 'The sidebar and board entry for Automations could stay hidden after opening the web app — for a minute in a visible tab, indefinitely in a background tab — although the feature was on. It is now always there; only an operator turning the feature off hides it.',

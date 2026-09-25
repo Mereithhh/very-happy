@@ -16,7 +16,8 @@ export function SessionPeerMessageCard({ content, createdAt }: { content: Presen
     const { t, lang } = useTranslation();
     const conflict = content.kind === 'conflict';
     const agent = peerAgentName(content.agent);
-    const who = [content.fromTitle ?? content.fromSessionId, agent].filter(Boolean).join(' · ');
+    // B-506: a message that crossed machines names the sender's host.
+    const who = [content.fromTitle ?? content.fromSessionId, agent, content.machine ? `@${content.machine}` : null].filter(Boolean).join(' · ');
     return <div className={`msg msg--peer${conflict ? ' msg--peer-conflict' : ''}`} title={messageTimestamp(createdAt, lang)}>
         <div className="peer-message" title="">
             <div className="peer-message-heading">

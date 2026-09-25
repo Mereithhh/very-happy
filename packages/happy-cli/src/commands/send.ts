@@ -35,9 +35,9 @@ import chalk from 'chalk'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { readPersistedSessions } from '@/persistence'
-import { configuration } from '@/configuration'
 import { sessionWebUrl } from './sessionMessage'
 import { deliverToSession, type DeliveryResult } from './sessionDelivery'
+import { sendRemoteMessage } from '@/sessions/remoteSessionClient'
 
 /** Exit code: the session has no live wrapper (or could not be resumed); nothing was delivered. */
 export const EXIT_SESSION_NOT_LIVE = 3
@@ -50,9 +50,13 @@ export interface SendCommandOptions {
     model?: string
     /** B-501: bring an archived / offline session back on this machine before sending. */
     resume: boolean
+    /** B-506: the machine the session runs on (skips the account-wide lookup; forces the proxy path). */
+    machine?: string
     json: boolean
     help: boolean
 }
+
+const MACHINE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/
 
 /** Pure argv parser (exported for tests). Throws on malformed input. */
 export function parseSendArgs(args: string[]): SendCommandOptions {
@@ -77,6 +81,10 @@ export function parseSendArgs(args: string[]): SendCommandOptions {
             options.model = value
         } else if (arg === '--resume') {
             options.resume = true
+        } else if (arg === '--machine') {
+            const value = args[++i]
+            if (value === undefined || !MACHINE_ID_RE.test(value)) throw new Error('--machine requires a machine id')
+            options.machine = value
         } else if (arg === '--json') {
             options.json = true
         } else if (arg === '--help' || arg === '-h') {
@@ -97,7 +105,7 @@ ${chalk.bold('very-happy send')} - Send a message into an existing session (for 
 
 ${chalk.bold('Usage:')}
   very-happy send --session <id> (--prompt <text> | --prompt-file <file>)
-                  [--model <id>] [--resume] [--json]
+                  [--model <id>] [--resume] [--machine <id>] [--json]
 
 ${chalk.bold('Options:')}
   --session, -s <id>     Target session id (required)
@@ -107,24 +115,30 @@ ${chalk.bold('Options:')}
                             ('default' = the machine default). Without it the
                             session keeps whatever model it is on.
   --resume               If the session is archived or offline, bring it back
-                            on THIS machine first (same as the web's Restore),
+                            on its machine first (same as the web's Restore),
                             wait until it is live, then send.
+  --machine <id>         The machine the session runs on. Skips the lookup
+                            across the account's machines and always goes
+                            through that machine's daemon.
   --json                 Machine-readable output (see below)
   -h, --help             Show this help
 
 ${chalk.bold('Behavior:')}
-  The session must have been spawned by THIS machine's daemon (its
-  encryption key must be in ${configuration.sessionsFile}); sessions from
-  other machines or from daemons too old to persist keys cannot be reached.
+  A session spawned by THIS machine's daemon is sent to directly (its key is
+  in ~/.happy/sessions.json). Any other session of the account is sent
+  through the daemon of the machine that spawned it: that machine must be
+  online and on CLI ≥ 0.2.156; the CLI here never sees its key. Without
+  --machine the online machines are asked in turn which one holds it.
 
-  Before sending, the session is classified from the local daemon and the
-  server: live (a wrapper is attached, here or on another machine), archived,
-  offline (wrapper exited / presence timed out) or not_found. The server
-  stores messages for any session, so only "live" means someone will read it;
-  anything else is refused with exit 3 unless --resume is given.
+  Before sending, the session is classified from its daemon and the server:
+  live (a wrapper is attached), archived, offline (wrapper exited / presence
+  timed out) or not_found. The server stores messages for any session, so
+  only "live" means someone will read it; anything else is refused with exit
+  3 unless --resume is given (a remote session is resumed on ITS machine).
 
 ${chalk.bold('JSON output:')}
-  delivered  {"sessionId","url","delivered":true,"status":"live","resumed":false|true}
+  delivered  {"sessionId","url","delivered":true,"status":"live","resumed":false|true,
+              "machine":{"id","host"}}                                (machine only when proxied)
   refused    {"sessionId","url","delivered":false,"status":"archived"|"offline"|"not_found",
               "error":"...","resume":{"ok":false,"error":"..."}}   (resume only with --resume)
   dropped    {"delivered":false,"stored":true,...}  the POST succeeded but the wrapper
@@ -132,7 +146,8 @@ ${chalk.bold('JSON output:')}
 
 ${chalk.bold('Exit codes:')}
   0  message delivered to a live wrapper
-  1  bad arguments, unknown session, or transport failure
+  1  bad arguments, unknown session (no machine of the account holds it, or
+     its machine is offline), or transport failure
   3  session not live (archived / offline / not found) or resume failed
 `)
 }
@@ -192,44 +207,46 @@ export async function handleSendCommand(args: string[]): Promise<never> {
 
     // The key must ALREADY be persisted — this is an existing session, so
     // there is nothing to wait for. Missing key ⇒ not spawned by this
-    // machine's daemon, or the daemon was too old to persist keys.
-    const persisted = readPersistedSessions()[sessionId]
-    if (!persisted) {
-        fail(options, sessionId,
-            `Session ${sessionId} has no encryption key in ${configuration.sessionsFile}. ` +
-            `It was not spawned by this machine's daemon, or the daemon is too old to persist session keys.`)
-    }
+    // machine's daemon: B-506 hands it to the machine that did.
+    const persisted = options.machine ? undefined : readPersistedSessions()[sessionId]
+    const model = options.model !== undefined ? { model: options.model === 'default' ? null : options.model } : {}
 
     let result: DeliveryResult
+    let machine: { id: string; host: string } | undefined
     try {
-        result = await deliverToSession(sessionId, persisted, prompt, 'cli-send', {
-            resume: options.resume,
-            ...(options.model !== undefined ? { model: options.model === 'default' ? null : options.model } : {}),
-        })
+        if (persisted) {
+            result = await deliverToSession(sessionId, persisted, prompt, 'cli-send', { resume: options.resume, ...model })
+        } else {
+            const remote = await sendRemoteMessage(sessionId, prompt, { resume: options.resume, ...model, ...(options.machine ? { machineId: options.machine } : {}) })
+            result = remote
+            machine = remote.machine
+        }
     } catch (error) {
         fail(options, sessionId, `Failed to send message: ${error instanceof Error ? error.message : String(error)}`)
     }
 
     const url = sessionWebUrl(sessionId)
+    const where = machine ? ` on ${machine.host}` : ''
     if (!result.delivered) {
         if (options.json) {
             console.log(JSON.stringify({
                 sessionId, url, delivered: false, status: result.status, resumed: result.resumed, stored: result.stored,
                 error: result.error,
                 ...(result.resume ? { resume: result.resume } : {}),
+                ...(machine ? { machine } : {}),
             }))
         } else {
-            console.error(chalk.red('Not delivered:'), result.error ?? `session is ${result.status}`)
+            console.error(chalk.red('Not delivered:'), result.error ?? `session${where} is ${result.status}`)
             if (result.stored) console.error(chalk.yellow('The message is stored server-side; nothing is reading it.'))
         }
         process.exit(EXIT_SESSION_NOT_LIVE)
     }
     if (options.json) {
-        console.log(JSON.stringify({ sessionId, url, delivered: true, status: 'live', resumed: result.resumed }))
+        console.log(JSON.stringify({ sessionId, url, delivered: true, status: 'live', resumed: result.resumed, ...(machine ? { machine } : {}) }))
     } else {
-        console.log(`${chalk.bold('Session:')} ${sessionId}`)
+        console.log(`${chalk.bold('Session:')} ${sessionId}${machine ? chalk.dim(` (machine ${machine.host})`) : ''}`)
         console.log(`${chalk.bold('URL:')}     ${url}`)
-        if (result.resumed) console.log(chalk.green('Session resumed on this machine.'))
+        if (result.resumed) console.log(chalk.green(`Session resumed on ${machine ? machine.host : 'this machine'}.`))
         console.log(chalk.green('Message sent.'))
     }
     process.exit(0)

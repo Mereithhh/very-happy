@@ -186,6 +186,7 @@ describe('summarizeAccountSession (sessions list --all)', () => {
             live: true,
             url: out.url,
             decryptable: false,
+            readable: false,
             active: true,
             archived: true,
             activeAt: 900,
@@ -217,7 +218,7 @@ describe('summarizeAccountSession (sessions list --all)', () => {
 
 describe('orderAccountSessions', () => {
     const summary = (id: string, overrides: Partial<AccountSessionSummary> = {}): AccountSessionSummary => ({
-        id, url: `u/${id}`, live: false, decryptable: true, active: false, archived: false, attention: false, updatedAt: 0, ...overrides,
+        id, url: `u/${id}`, live: false, decryptable: true, readable: true, active: false, archived: false, attention: false, updatedAt: 0, ...overrides,
     })
 
     it('attention first (longest wait first), then running here, then the rest newest-first', () => {

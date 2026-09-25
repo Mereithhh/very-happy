@@ -268,3 +268,55 @@ describe('RPC socket boundaries', () => {
         }));
     });
 });
+
+describe('cross-machine session ops (B-506)', () => {
+    beforeEach(() => {
+        vi.mocked(log).mockClear();
+        delete process.env.RPC_MAX_PAYLOAD_BYTES;
+        delete process.env.RPC_MAX_CALLS_PER_MINUTE;
+    });
+
+    it('routes sessions.* only into the CALLER account\'s room, so another account\'s daemon is unreachable by construction', async () => {
+        vi.useFakeTimers();
+        try {
+            // Machine `machine-B` belongs to account-Y and registered `machine-B:sessions.read`
+            // in ITS room. Account-X calls the same method name: the lookup goes to
+            // account-X's room, which is empty — the daemon is never emitted to.
+            const rooms = new Map<string, any[]>([
+                ['rpc:account-Y:machine-B:sessions.read', [{ id: 'daemon-B', timeout: () => ({ emitWithAck: vi.fn() }) }]],
+            ]);
+            const looked: string[] = [];
+            const io = { in: (room: string) => { looked.push(room); return { timeout: () => ({ fetchSockets: async () => rooms.get(room) ?? [] }) }; } };
+            const { socket, handlers } = fakeSocket('cli-on-account-X');
+            rpcHandler('account-X', socket, io as any);
+            const callback = vi.fn();
+            const call = handlers.get('rpc-call')!({ method: 'machine-B:sessions.read', params: '{"v":1}' }, callback);
+            await vi.advanceTimersByTimeAsync(20_000);
+            await call;
+            expect(callback).toHaveBeenCalledWith({ ok: false, error: 'RPC method not available' });
+            expect(new Set(looked)).toEqual(new Set(['rpc:account-X:machine-B:sessions.read']));
+            expect(rooms.get('rpc:account-Y:machine-B:sessions.read')![0].timeout().emitWithAck).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('delivers sessions.* to the same-account daemon and passes the plaintext ack back untouched', async () => {
+        const daemon = { id: 'daemon-B', timeout: () => ({ emitWithAck: async (_event: string, payload: any) => JSON.stringify({ ok: true, result: { echoed: payload } }) }) };
+        const io = { in: () => ({ timeout: () => ({ fetchSockets: async () => [daemon] }) }) };
+        const { socket, handlers } = fakeSocket('cli-on-account-X');
+        rpcHandler('account-X', socket, io as any);
+        const callback = vi.fn();
+        await handlers.get('rpc-call')!({ method: 'machine-B:sessions.list', params: '{"v":1,"args":{"ids":["s1"]}}' }, callback);
+        const ack = callback.mock.calls[0][0];
+        expect(ack.ok).toBe(true);
+        expect(JSON.parse(ack.result)).toEqual({ ok: true, result: { echoed: { method: 'machine-B:sessions.list', params: '{"v":1,"args":{"ids":["s1"]}}' } } });
+    });
+
+    it('labels the five methods in metrics instead of collapsing them to other', () => {
+        for (const method of ['sessions.list', 'sessions.read', 'sessions.send', 'sessions.peers', 'sessions.message']) {
+            expect(rpcMetricMethod(`machine-B:${method}`)).toBe(method);
+        }
+        expect(rpcMetricMethod('machine-B:sessions.stop')).toBe('other');
+    });
+});

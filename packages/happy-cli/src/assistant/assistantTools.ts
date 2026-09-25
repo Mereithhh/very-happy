@@ -33,6 +33,7 @@ import { readPersistedSessions, type PersistedSession } from '@/persistence'
 import { spawnDaemonSession } from '@/daemon/controlClient'
 import { sendUserMessage, sessionWebUrl, waitForSessionKey } from '@/commands/sessionMessage'
 import { deliverToSession } from '@/commands/sessionDelivery'
+import { readRemoteTranscript, sendRemoteMessage, RemoteSessionOpsError } from '@/sessions/remoteSessionClient'
 import {
     archiveSession,
     listSessions,
@@ -139,20 +140,30 @@ export function registerAssistantSessionTools(mcp: AssistantToolRegistrar): void
 
     // ── session_read ─────────────────────────────────────────────────────────
     mcp.registerTool('session_read', {
-        description: 'Read the latest messages of a session as a compact role-tagged transcript (user / assistant / tool summaries; large payloads truncated). Only works for sessions spawned by this machine (their keys live in ~/.happy/sessions.json).',
+        description: 'Read the latest messages of a session as a compact role-tagged transcript (user / assistant / tool summaries; large payloads truncated). Sessions spawned by this machine are read directly; a session spawned by another machine of this account is read through that machine\'s daemon (it must be online).',
         title: 'Read Session Transcript',
         inputSchema: {
             sessionId: z.string().describe('The Happy session id to read'),
             limit: z.number().optional().describe('How many recent messages to fetch (default 20, max 100)'),
+            machineId: z.string().optional().describe('Machine id the session runs on, when known (skips the lookup across the account\'s machines)'),
         },
     }, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
         try {
-            const result = await readSessionTranscript(args.sessionId, args.limit ?? 20)
+            const local = readPersistedSessions()[args.sessionId]
+            if (local && !args.machineId) {
+                const result = await readSessionTranscript(args.sessionId, args.limit ?? 20)
+                const body = result.transcript.length > 0
+                    ? result.transcript
+                    : '(no readable conversation content in this range)'
+                return ok(`${describeSummary(result.summary)}\n--- last ${result.messageCount} message(s) ---\n${body}`)
+            }
+            // B-506: not ours — the owning machine's daemon reads it for us.
+            const result = await readRemoteTranscript(args.sessionId, { limit: args.limit ?? 20, ...(args.machineId ? { machineId: args.machineId } : {}) })
             const body = result.transcript.length > 0
                 ? result.transcript
                 : '(no readable conversation content in this range)'
-            return ok(`${describeSummary(result.summary)}\n--- last ${result.messageCount} message(s) ---\n${body}`)
+            return ok(`${describeSummary(result.summary)} machine=${result.host} (${result.machineId})\n--- last ${result.messageCount} message(s)${result.truncated ? ', truncated to fit' : ''} ---\n${body}`)
         } catch (error) {
             return fail(`Failed to read session: ${error instanceof Error ? error.message : String(error)}`)
         }
@@ -160,17 +171,27 @@ export function registerAssistantSessionTools(mcp: AssistantToolRegistrar): void
 
     // ── session_send ─────────────────────────────────────────────────────────
     mcp.registerTool('session_send', {
-        description: 'Send a user message into an existing session on this machine. Only delivers when a live wrapper will read it: an archived / offline session is refused (the server would store the message unread) unless resume:true brings it back on this machine first. Returns immediately after delivery — it does NOT wait for the session to respond; use session_read later to check progress.',
+        description: 'Send a user message into an existing session. Only delivers when a live wrapper will read it: an archived / offline session is refused (the server would store the message unread) unless resume:true brings it back on its machine first. A session spawned by another machine of this account is delivered through that machine\'s daemon (it must be online). Returns immediately after delivery — it does NOT wait for the session to respond; use session_read later to check progress.',
         title: 'Send Message to Session',
         inputSchema: {
             sessionId: z.string().describe('The Happy session id to message'),
             text: z.string().describe('The message text to send'),
-            resume: z.boolean().optional().describe('If the session is archived or offline, resume it on this machine (like the web Restore button) and wait until it is live before sending'),
+            resume: z.boolean().optional().describe('If the session is archived or offline, resume it on its machine (like the web Restore button) and wait until it is live before sending'),
+            machineId: z.string().optional().describe('Machine id the session runs on, when known (skips the lookup across the account\'s machines)'),
         },
     }, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
         if (typeof args.text !== 'string' || args.text.trim().length === 0) return fail('text must be non-empty')
         try {
+            if (!readPersistedSessions()[args.sessionId] || args.machineId) {
+                // B-506: the owning machine's daemon classifies, (resumes,) sends and re-checks.
+                const remote = await sendRemoteMessage(args.sessionId, args.text, { resume: args.resume === true, sentFrom: 'assistant', ...(args.machineId ? { machineId: args.machineId } : {}) })
+                if (!remote.delivered) {
+                    const detail = remote.error ?? `session is ${remote.status}`
+                    return fail(remote.stored ? `Not delivered (via ${remote.machine.host}): ${detail}` : `Session ${args.sessionId} on ${remote.machine.host} is ${remote.status}: ${detail}`)
+                }
+                return ok(`Message delivered${remote.resumed ? ` (session resumed on ${remote.machine.host})` : ''} to ${args.sessionId} on machine ${remote.machine.host} (${remote.machine.id}) ${sessionWebUrl(args.sessionId)}`)
+            }
             const persisted = await waitForSessionKey(args.sessionId, 0)
             // B-501: shared with `very-happy send` — classify, (resume,) send, re-check.
             const result = await deliverToSession(args.sessionId, persisted, args.text, MCP_CLIENT_TAG, {
@@ -185,6 +206,7 @@ export function registerAssistantSessionTools(mcp: AssistantToolRegistrar): void
             }
             return ok(`Message delivered${result.resumed ? ' (session resumed on this machine)' : ''} to ${describeSession(args.sessionId, persisted, { live: true })}`)
         } catch (error) {
+            if (error instanceof RemoteSessionOpsError) return fail(`Failed to send (${error.code}): ${error.message}`)
             return fail(`Failed to send: ${error instanceof Error ? error.message : String(error)}`)
         }
     })

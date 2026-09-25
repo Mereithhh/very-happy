@@ -114,7 +114,13 @@ export function machinesRoutes(app: Fastify) {
             active: m.active,
             activeAt: m.lastActiveAt.getTime(),
             createdAt: m.createdAt.getTime(),
-            updatedAt: m.updatedAt.getTime()
+            updatedAt: m.updatedAt.getTime(),
+            // B-506: the daemon's self-reported CLI version (plaintext, B-297).
+            // A CLI routing a cross-machine session op reads it to skip
+            // daemons that predate the `sessions.*` RPCs instead of waiting
+            // out the server's 15 s "not available" grace on each.
+            lastHappyClient: m.lastHappyClient ?? null,
+            lastHappyClientAt: m.lastHappyClientAt ? m.lastHappyClientAt.getTime() : null,
         }));
     });
 

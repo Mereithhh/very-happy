@@ -77,6 +77,13 @@ interface Settings {
    */
   cliAutoUpdate?: 'off' | 'idle'
   /**
+   * B-506: answer `sessions.*` RPCs from the account's OTHER machines (a CLI
+   * there reading / messaging a session this daemon spawned, with this
+   * machine's keys). Absent/`on` = answer; `off` = refuse with a clear error.
+   * Machine-local: it is this machine's own exposure decision.
+   */
+  remoteSessionOps?: 'on' | 'off'
+  /**
    * B-007: external todo provider — a user-supplied command that speaks the
    * contract in docs/channels.md (`<command> list|complete <id>|create <title>`).
    *

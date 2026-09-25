@@ -23,6 +23,8 @@ export interface PresentedPeerMessage {
     fromTitle: string | null;
     agent: string | null;
     cwd: string | null;
+    /** B-506: hostname of the sender's machine when the message crossed machines. */
+    machine?: string;
     /** Conflict only: the real path both sessions edited (first of `paths`). */
     path?: string;
     /** Conflict only: every file in a coalesced notice. */
@@ -37,10 +39,11 @@ export interface PresentedPeerMessage {
     raw: string;
 }
 
-const MESSAGE_FOOTER = 'This message comes from another agent session on this machine, not from the user.';
+/** Prefix shared by the local footer ("… on this machine, …") and the cross-machine one ("… on machine <host>, …", B-506). */
+const MESSAGE_FOOTER_PREFIX = 'This message comes from another agent session';
 const MESSAGE_HEADER = /^\[Very Happy session message (\S+) from "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/;
 const CONFLICT_HEADER = /^\[Very Happy edit conflict (\S+); file ([^;\]]+)(?:; more (\d+))?; peer "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/;
-const FIELD_KEYS = new Set(['agent', 'cwd', 're', 'peer', 'more']);
+const FIELD_KEYS = new Set(['agent', 'cwd', 're', 'peer', 'more', 'machine']);
 
 /** Inverse of the CLI's sanitizeHeaderValue (percent-encoded `"`, `;`, `]`, `%`). */
 function decodeHeaderValue(value: string): string {
@@ -86,7 +89,7 @@ export function presentSessionPeerMessage(message: Pick<UserTextMessage, 'text' 
     if (asMessage) {
         const fields = parseFields(asMessage[4]);
         let body = rest;
-        const footerAt = body.lastIndexOf(`\n\n${MESSAGE_FOOTER}`);
+        const footerAt = body.lastIndexOf(`\n\n${MESSAGE_FOOTER_PREFIX}`);
         if (footerAt !== -1) body = body.slice(0, footerAt);
         return {
             kind: 'message',
@@ -95,6 +98,7 @@ export function presentSessionPeerMessage(message: Pick<UserTextMessage, 'text' 
             fromTitle: decodeHeaderValue(asMessage[2]) || null,
             agent: fields.agent ?? null,
             cwd: fields.cwd ?? null,
+            ...(fields.machine ? { machine: fields.machine } : {}),
             ...(fields.re ? { replyTo: fields.re } : {}),
             body: body.trim(),
             raw,

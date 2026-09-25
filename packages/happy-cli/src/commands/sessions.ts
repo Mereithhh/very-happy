@@ -21,12 +21,14 @@
  * them that arrives tagged with the sender. Inside a managed session's shell
  * `HAPPY_SESSION_ID` makes that session the sender; otherwise the CLI is.
  *
- * Everything is scoped to this machine (the daemon's children plus the keys in
- * ~/.happy/sessions.json). Reading another machine's session is not a
- * permission error, it is simply not possible from here. `list --all` widens
- * the *listing* to the account over REST, and marks every row with
- * `decryptable` so a script can tell "readable" from "someone else's" — see
- * `@/sessions/sessionOps` for why the boundary sits exactly there.
+ * Local first: the daemon's children plus the keys in ~/.happy/sessions.json.
+ * A session another machine of the account spawned is reached through THAT
+ * machine's daemon (B-506, `@/sessions/remoteSessionClient`): `read`,
+ * `message`, `list --all` (foreign rows get filled in) and `peers --machine`
+ * proxy the operation and this CLI never sees the key. The owning machine
+ * must be online; `--machine <id>` names it, otherwise the online machines
+ * are asked in turn. `list --all` still marks `decryptable` (this machine's
+ * own key) and adds `readable` / `via` / `machine` for proxied rows.
  *
  * `approve` / `deny` answer a pending permission request the way the web's
  * permission card does (same RPC, same payload — `@/sessions/permissionOps`).
@@ -60,6 +62,16 @@ import { cliPeerSelf, listPeerSessions, sendPeerMessage, type PeerToolContext } 
 import { PEER_SCOPES, type PeerScope } from '@/sessions/repoIdentity'
 import { readPersistedSessions } from '@/persistence'
 import { resolve as resolvePath } from 'node:path'
+import {
+    fillForeignAccountRows,
+    listRemotePeers,
+    listRemoteSessions,
+    readRemoteTranscript,
+    waitForRemoteTurnEnd,
+} from '@/sessions/remoteSessionClient'
+
+/** Machine ids are UUIDs the CLI minted (`randomUUID()`); accept the same URL-safe charset as session ids. */
+const MACHINE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/
 
 export type SessionsAction = 'list' | 'read' | 'stop' | 'archive' | 'approve' | 'deny' | 'peers' | 'message' | 'help'
 
@@ -94,6 +106,12 @@ export interface SessionsCommandOptions {
     text?: string
     /** message: id of the peer message being answered. */
     replyTo?: string
+    /**
+     * B-506: list / read / peers / message — the account machine to go
+     * through. list: that machine's local listing; read / message: skip the
+     * lookup and force the proxy path; peers: that machine's live sessions.
+     */
+    machine?: string
     json: boolean
 }
 
@@ -155,6 +173,10 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
             const value = args[++i]
             if (value === undefined || value.trim() === '') throw new Error('--reply-to requires a value')
             options.replyTo = value
+        } else if (arg === '--machine') {
+            const value = args[++i]
+            if (value === undefined || !MACHINE_ID_RE.test(value)) throw new Error('--machine requires a machine id')
+            options.machine = value
         } else if (arg === '--tag') {
             const value = args[++i]
             if (value === undefined) throw new Error('--tag requires a value')
@@ -225,32 +247,43 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
         if (options.cwd !== undefined) throw new Error('--cwd only applies to `sessions peers`')
     }
     if (options.replyTo !== undefined && options.action !== 'message') throw new Error('--reply-to only applies to `sessions message`')
+    if (options.machine !== undefined) {
+        if (!MACHINE_ACTIONS.has(options.action)) throw new Error('--machine only applies to `sessions list|read|peers|message`')
+        if (options.all) throw new Error('--machine cannot be combined with --all (--all already asks every online machine)')
+    }
     return options
 }
 
+const MACHINE_ACTIONS: ReadonlySet<SessionsAction> = new Set(['list', 'read', 'peers', 'message'])
+
 export const SESSIONS_HELP = `
-${chalk.bold('very-happy sessions')} - Inspect and control sessions on this machine (for automation)
+${chalk.bold('very-happy sessions')} - Inspect and control sessions on this machine and, through their daemons, on the account's other machines (for automation)
 
 ${chalk.bold('Usage:')}
-  very-happy sessions list [--all [--include-archived]] [--tag <name>] [--limit <n>] [--json]
-  very-happy sessions read <id> [--limit <n>] [--full] [--answer]
+  very-happy sessions list [--all [--include-archived]] [--machine <id>] [--tag <name>] [--limit <n>] [--json]
+  very-happy sessions read <id> [--machine <id>] [--limit <n>] [--full] [--answer]
                           [--wait [--timeout <s>]] [--json]
   very-happy sessions stop <id> [--json]
   very-happy sessions archive <id> [--json]
   very-happy sessions approve <id> <requestId> [--for-session] [--json]
   very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
-  very-happy sessions peers [--scope repo|cwd|machine] [--cwd <dir>] [--json]
-  very-happy sessions message <id> <text> [--reply-to <msgId>] [--json]
+  very-happy sessions peers [--scope repo|cwd|machine] [--cwd <dir>] [--machine <id>] [--json]
+  very-happy sessions message <id> <text> [--reply-to <msgId>] [--machine <id>] [--json]
 
 ${chalk.bold('Actions:')}
   list       Running sessions plus recently seen ones, newest first.
              With --all: every session on the account (newest 150, server
-             REST), attention first. Each row says whether this machine could
-             decrypt it (\`decryptable\`); rows from other machines show only
+             REST), attention first. Rows this machine cannot decrypt are
+             filled in by the online machine that spawned them (\`readable\`,
+             \`via\`, \`machine\` in --json; \`decryptable\` stays "this
+             machine's own key"); what no online machine holds shows only
              id / active / archived / timestamps / url.
+             With --machine <id>: that machine's own listing (its daemon's
+             children plus what it saw lately).
   read       The tail of a session as a role-tagged transcript, plus where
              the latest turn stands (\`turn\` in --json: ended, status and
-             \`answer\` = the agent's reply to the latest prompt).
+             \`answer\` = the agent's reply to the latest prompt). A session
+             another machine spawned is read through that machine's daemon.
   stop       SIGTERM the session's process via the local daemon.
   archive    Mark the session inactive server-side (it stays resumable).
   approve    Answer a pending permission request \`requestId\` with approve —
@@ -261,13 +294,17 @@ ${chalk.bold('Actions:')}
              the last 30 minutes. Default scope \`repo\`: same git repository,
              including its other worktrees (\`sameWorktree\` says which share
              your checkout); \`cwd\`: same directory; \`machine\`: everything.
-  message    Send <text> into a running session here. It arrives tagged with
-             the sender (the session named by HAPPY_SESSION_ID when run from a
+             With --machine <id>: the live sessions on that machine (scope
+             \`machine\` unless --cwd names a directory there).
+  message    Send <text> into a running session. It arrives tagged with the
+             sender (the session named by VH_PEER_SESSION_ID when run from a
              managed session's shell, else this CLI) and tells the peer how to
-             reply. Refused for sessions that are not running here, not
-             spawned by this machine, or terminal mirrors. \`delivered\`
-             follows \`very-happy send\`: true only when a wrapper was attached
-             before and after the POST (\`stored\` = it is on the server anyway).
+             reply. A session another machine spawned is delivered through
+             that machine's daemon, with this host named in the header.
+             Refused for sessions that are not running, or terminal mirrors.
+             \`delivered\` follows \`very-happy send\`: true only when a
+             wrapper was attached before and after the POST (\`stored\` = it
+             is on the server anyway).
 
 ${chalk.bold('Options:')}
   --all              list only: account-wide over REST instead of this
@@ -293,26 +330,31 @@ ${chalk.bold('Options:')}
   --cwd <dir>        peers only: directory the scope is computed from
                      (default: the process cwd, or HAPPY_SESSION_ID's cwd).
   --reply-to <id>    message only: the peer message id being answered.
+  --machine <id>     list / read / peers / message: go through this account
+                     machine's daemon (its id as the web's machine list shows
+                     it). read / message: skip the lookup across machines.
   --json             Machine-readable output.
   -h, --help         Show this help
 
 ${chalk.bold('Scope:')}
-  read / approve / deny need the session key from ~/.happy/sessions.json,
-  which exists for sessions this machine's daemon spawned and is pruned after
-  14 days (the message payloads and the permission RPC are encrypted with it).
-  \`list --all\` sees every session on the account but can only decrypt those
-  same ones; the rest come back with decryptable=false. Reading, listing in
-  full and answering another machine's session from here needs the CLI to hold
-  the account content key — a credentials change, not a flag.
+  Sessions this machine's daemon spawned are handled with the local key in
+  ~/.happy/sessions.json (pruned after 14 days). Any other session of the
+  account is handled by the daemon of the machine that spawned it: that
+  machine must be online and on CLI ≥ 0.2.156, the operation runs there with
+  its keys, and only the result travels back — this CLI never holds the
+  account content key or another machine's session key. Without --machine
+  the online machines are asked in turn which one holds the session.
+  approve / deny / stop / archive remain local-only.
 
 ${chalk.bold('Exit codes:')}
   2  read --wait: the turn had not ended when --timeout ran out (the
      partial state is still printed)
   0  success (approve/deny: the wrapper acknowledged the verdict; check
      \`settled\` in --json to see whether the request has left the pending set)
-  1  bad arguments, unknown session, no local key, request not pending,
-     session not online, or the operation failed (including \`stop\` on a
-     session the daemon is not running)
+  1  bad arguments, unknown session, no machine of the account holds it (or
+     its machine is offline / too old), request not pending, session not
+     online, or the operation failed (including \`stop\` on a session the
+     daemon is not running)
 `
 
 function formatWait(ms: number): string {
@@ -325,11 +367,12 @@ function formatWait(ms: number): string {
 function formatAccountSummaryLine(summary: AccountSessionSummary): string {
     const state = summary.attention
         ? '[attention]'
-        : summary.live ? '[running here]' : summary.active ? '[active elsewhere]' : summary.archived ? '[archived]' : '[idle]'
+        : summary.live ? (summary.machine ? `[running on ${summary.machine.host}]` : '[running here]') : summary.active ? '[active elsewhere]' : summary.archived ? '[archived]' : '[idle]'
     const parts = [summary.id, state]
-    if (!summary.decryptable) {
-        parts.push('(not decryptable from this machine)')
+    if (!summary.readable) {
+        parts.push('(not readable: no online machine holds its key)')
     } else {
+        if (summary.machine) parts.push(`via=${summary.machine.host}`)
         if (summary.title) parts.push(`title="${summary.title}"`)
         if (summary.flavor) parts.push(`agent=${summary.flavor}`)
         if (summary.tags?.length) parts.push(`tags=${summary.tags.join(',')}`)
@@ -382,17 +425,49 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
 
     try {
         if (options.action === 'list' && options.all) {
-            const sessions = await listAccountSessions({ tag: options.tag, recentLimit: options.limit, includeArchived: options.includeArchived })
+            // B-506: --tag is applied AFTER the foreign rows are filled in, so
+            // a tag on another machine's session can match; the idle cap stays
+            // the local listing's.
+            const listed = await listAccountSessions({ recentLimit: options.tag ? 150 : options.limit, includeArchived: options.includeArchived })
+            const fill = await fillForeignAccountRows(listed)
+            let sessions = fill.rows
+            if (options.tag) {
+                const wanted = options.tag
+                sessions = sessions.filter((summary) => summary.tags?.includes(wanted) === true)
+                const recentLimit = Math.max(0, options.limit ?? DEFAULT_RECENT_LIMIT)
+                let idleKept = 0
+                sessions = sessions.filter((summary) => summary.attention || summary.live || idleKept++ < recentLimit)
+            }
             if (options.json) {
-                console.log(JSON.stringify({ sessions, scope: 'account' }))
+                console.log(JSON.stringify({ sessions, scope: 'account', machines: { asked: fill.asked, skipped: fill.skipped } }))
             } else if (sessions.length === 0) {
-                console.log(options.tag ? `No decryptable sessions tagged "${options.tag}" on this account.` : 'No sessions found on this account.')
+                console.log(options.tag ? `No readable sessions tagged "${options.tag}" on this account.` : 'No sessions found on this account.')
             } else {
                 for (const summary of sessions) console.log(formatAccountSummaryLine(summary))
-                const foreign = sessions.filter((summary) => !summary.decryptable).length
-                if (foreign > 0) {
-                    console.log(chalk.dim(`${foreign} session(s) belong to another machine and cannot be decrypted here (no local key).`))
+                const foreign = sessions.filter((summary) => !summary.readable).length
+                const filled = fill.asked.reduce((n, a) => n + a.filled, 0)
+                if (filled > 0) {
+                    console.log(chalk.dim(`${filled} session(s) read through their own machine's daemon (${fill.asked.filter((a) => a.filled > 0).map((a) => a.host ?? a.machineId).join(', ')}).`))
                 }
+                for (const asked of fill.asked.filter((a) => a.error)) console.log(chalk.dim(`machine ${asked.machineId}: ${asked.error}`))
+                if (foreign > 0) {
+                    const why = fill.skipped.length > 0 ? ` (${fill.skipped.map((s) => `${s.machineId}: ${s.reason}`).join('; ')})` : ''
+                    console.log(chalk.dim(`${foreign} session(s) belong to a machine that is not reachable right now${why}.`))
+                }
+            }
+            process.exit(0)
+        }
+
+        if (options.action === 'list' && options.machine) {
+            const listing = await listRemoteSessions(options.machine, { tag: options.tag, limit: options.limit })
+            const sessions = listing.sessions as SessionSummary[]
+            if (options.json) {
+                console.log(JSON.stringify({ sessions, machine: { id: listing.machineId, host: listing.host } }))
+            } else if (sessions.length === 0) {
+                console.log(options.tag ? `No sessions tagged "${options.tag}" on ${listing.host}.` : `No sessions found on ${listing.host}.`)
+            } else {
+                console.log(chalk.dim(`machine ${listing.host} (${listing.machineId})`))
+                for (const summary of sessions) console.log(formatSummaryLine(summary))
             }
             process.exit(0)
         }
@@ -414,12 +489,15 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
             const persisted = readPersistedSessions()
             const context: PeerToolContext = { self: () => cliPeerSelf(process.env, cwd, persisted), readPersisted: () => persisted }
             if (options.action === 'peers') {
-                const listing = await listPeerSessions(context, options.scope ?? 'repo')
+                const listing = options.machine
+                    ? await listRemotePeers(options.machine, { ...(options.scope ? { scope: options.scope } : {}), ...(options.cwd ? { cwd: options.cwd } : {}) })
+                    : await listPeerSessions(context, options.scope ?? 'repo')
                 if (options.json) {
                     console.log(JSON.stringify(listing))
                 } else if (listing.peers.length === 0) {
-                    console.log(`No other live sessions in scope "${listing.scope}"${listing.self.repoRoot ? ` (repo ${listing.self.repoRoot})` : ''}.`)
+                    console.log(`No other live sessions in scope "${listing.scope}"${listing.self.repoRoot ? ` (repo ${listing.self.repoRoot})` : ''}${'host' in listing ? ` on ${listing.host}` : ''}.`)
                 } else {
+                    if ('host' in listing) console.log(chalk.dim(`machine ${String(listing.host)} (${String((listing as { machineId?: string }).machineId)})`))
                     for (const peer of listing.peers) {
                         const parts = [peer.sessionId, `[${peer.kind === 'mirror' ? 'terminal' : 'running'}]`]
                         if (peer.title) parts.push(`title="${peer.title}"`)
@@ -434,9 +512,9 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
             }
             const target = options.sessionId as string
             try {
-                const result = await sendPeerMessage(context, { to: target, body: options.text as string, replyTo: options.replyTo })
+                const result = await sendPeerMessage(context, { to: target, body: options.text as string, replyTo: options.replyTo, ...(options.machine ? { machineId: options.machine } : {}) })
                 if (options.json) console.log(JSON.stringify(result))
-                else if (result.delivered) console.log(`Message ${result.messageId} delivered to ${target}\n${result.url}`)
+                else if (result.delivered) console.log(`Message ${result.messageId} delivered to ${target}${result.machine ? ` on ${result.machine.host}` : ''}\n${result.url}`)
                 else console.error(chalk.yellow('Not delivered:'), result.error ?? `session is ${result.status}`, result.stored ? '(stored server-side, unread)' : '')
                 process.exit(result.delivered ? 0 : 1)
             } catch (error) {
@@ -449,24 +527,45 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
 
         if (options.action === 'read') {
             let timedOut = false
-            if (options.wait) {
-                try {
-                    await waitForTurnEnd(sessionId, { timeoutMs: (options.timeoutSec ?? 600) * 1000 })
-                } catch (error) {
-                    if (!(error instanceof TurnWaitTimeoutError)) throw error
-                    timedOut = true
-                    console.error(chalk.yellow('Timeout:'), error.message)
+            const local = !options.machine && readPersistedSessions()[sessionId] !== undefined
+            let result: Awaited<ReturnType<typeof readSessionTranscript>> & { machine?: { id: string; host: string }; truncated?: boolean }
+            if (local) {
+                if (options.wait) {
+                    try {
+                        await waitForTurnEnd(sessionId, { timeoutMs: (options.timeoutSec ?? 600) * 1000 })
+                    } catch (error) {
+                        if (!(error instanceof TurnWaitTimeoutError)) throw error
+                        timedOut = true
+                        console.error(chalk.yellow('Timeout:'), error.message)
+                    }
                 }
+                result = await readSessionTranscript(sessionId, options.limit ?? 20, { full: options.full })
+            } else {
+                // B-506: the owning machine's daemon reads (and, with --wait, is polled).
+                const readOptions = { limit: options.limit ?? 20, full: options.full, ...(options.machine ? { machineId: options.machine } : {}) }
+                let remote: Awaited<ReturnType<typeof readRemoteTranscript>>
+                if (options.wait) {
+                    const timeoutMs = (options.timeoutSec ?? 600) * 1000
+                    const waited = await waitForRemoteTurnEnd(sessionId, { ...readOptions, timeoutMs })
+                    remote = waited.read
+                    if (waited.timedOut) {
+                        timedOut = true
+                        console.error(chalk.yellow('Timeout:'), `Session ${sessionId} on ${remote.host}: the latest turn did not end within ${Math.round(timeoutMs / 1000)}s`)
+                    }
+                } else {
+                    remote = await readRemoteTranscript(sessionId, readOptions)
+                }
+                const { machineId, host, ...rest } = remote
+                result = { ...rest, machine: { id: machineId, host } }
             }
-            const result = await readSessionTranscript(sessionId, options.limit ?? 20, { full: options.full })
             if (options.json) {
-                console.log(JSON.stringify(options.answer ? { sessionId, turn: result.turn } : result))
+                console.log(JSON.stringify(options.answer ? { sessionId, turn: result.turn, ...(result.machine ? { machine: result.machine } : {}) } : result))
             } else if (options.answer) {
                 if (result.turn.answer.length > 0) console.log(result.turn.answer)
                 else console.error(chalk.dim('(the agent has not replied to the latest prompt yet)'))
             } else {
-                console.log(formatSummaryLine(result.summary))
-                console.log(`--- last ${result.messageCount} message(s) ---`)
+                console.log(formatSummaryLine(result.summary) + (result.machine ? chalk.dim(` machine=${result.machine.host}`) : ''))
+                console.log(`--- last ${result.messageCount} message(s)${result.truncated ? ' (truncated to fit the RPC budget)' : ''} ---`)
                 console.log(result.transcript.length > 0 ? result.transcript : '(no readable conversation content in this range)')
                 const turn = result.turn
                 console.log(chalk.dim(`--- latest turn: ${turn.ended ? `ended (${turn.status ?? 'unknown'})` : 'running'}${turn.error ? ` — ${turn.error}` : ''} ---`))

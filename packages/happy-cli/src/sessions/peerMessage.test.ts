@@ -76,3 +76,12 @@ describe('session peer message format (B-497)', () => {
         expect(parsePeerMessage('[Very Happy session message m from "t" ]\nbody')).toBeNull()
     })
 })
+
+describe('cross-machine sender (B-506)', () => {
+    it('names the sender\'s machine in the header and the footer, and parses it back', () => {
+        const text = formatSessionPeerMessage({ id: 'm7', from: { sessionId: 'sess_a', title: 'Fix', flavor: 'claude', cwd: '/repo', machine: 'dev-sg' }, body: 'hello' })
+        expect(text.split('\n')[0]).toBe('[Very Happy session message m7 from "Fix" sess_a; agent claude; cwd /repo; machine dev-sg]')
+        expect(text).toContain('This message comes from another agent session on machine dev-sg, not from the user. Reply with session_message(to: "sess_a") (it is routed to that machine for you)')
+        expect(parsePeerMessage(text)).toEqual({ kind: 'message', id: 'm7', body: 'hello', from: { sessionId: 'sess_a', title: 'Fix', flavor: 'claude', cwd: '/repo', machine: 'dev-sg' } })
+    })
+})
