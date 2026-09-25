@@ -1905,6 +1905,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25g: {
+                title: 'Automations in the web app',
+                summary: 'Automations now have their own page. "Automations" sits in the sidebar right below Teams once your account has the feature, with a badge for runs that need a decision.',
+                decide: 'A "Needs my decision" band at the top of the board and of the Automations page lists runs whose agent is waiting for input, failed or timed out, or whose machine is offline, with open-session, acknowledge, run-again and cancel actions.',
+                manage: 'Create and edit automations from the browser: schedule (cron with time zone, interval, one time, or trigger only), what to do (start a session, continue a sticky session, or run a script) and limits. Trigger-only automations show the exact `very-happy auto fire` command to copy.',
+                docs: 'A getting-started section on first run and in Help, plus a public /docs/automations guide.',
+            },
             sep25f: {
                 title: 'Automations: run sessions and scripts on a schedule or on demand',
                 summary: 'Your account can now hold automations: a cron schedule with a time zone, a fixed interval, a one-off time, or manual only, each starting a session, continuing a sticky session, or running a script on one of your machines. Currently enabled per account; needs the CLI update on the machine that runs them.',
