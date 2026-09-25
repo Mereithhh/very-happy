@@ -2125,6 +2125,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25k: {
+                title: '同一台机器上的会话可以互相说话了',
+                summary: '两个 agent 改同一个仓库不再互相看不见。每个托管会话（Claude、Codex、pi）都有 `session_peers` 和 `session_message`；两边改到同一个文件时 daemon 会同时提醒双方。需要更新 CLI；不加锁、不阻止。',
+                message: '`session_message`（或在 shell 里 `very-happy sessions message <id> <text>`）把一条消息投进本机另一个会话。对方收到时带发送方的标题、会话 id 和目录，并说明怎么回复，两个 agent 可以直接商量谁改什么。',
+                peers: '`session_peers`（或 `very-happy sessions peers`）列出同一仓库里其它活着的会话——包括别的 worktree——以及各自最近 30 分钟改过的文件。',
+                conflict: '第二个会话编辑了另一个活会话 30 分钟内碰过的文件时，双方各收到一条提示，写明对方会话和文件，并建议用 `session_message` 协商。同一对会话同一文件只提示一次；在 Very Happy 终端里手敲的 `claude` 也算编辑者。',
+                cards: '聊天里，会话消息和冲突提示显示为卡片：发送方、文件、一键打开对方会话；两个工具的调用也像其它 Very Happy 工具一样显示成人话。',
+            },
             sep25j: {
                 title: '团队与自动化全员开放；send 不再谎报送达；CLI 自动保持最新',
                 summary: 'Agent Teams 与自动化对本服务器所有账号开放。`very-happy send` 在没有人接收时不再报告已送达，并可先把会话恢复回来。机器会自动跟进最新通过验证的 CLI 版本。',

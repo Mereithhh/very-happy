@@ -2008,6 +2008,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25k: {
+                title: 'Sessions on one machine can talk to each other',
+                summary: 'Two agents editing the same repository no longer work blind. Every managed session (Claude, Codex, pi) gets `session_peers` and `session_message`; the daemon warns both sides when they touch the same file. Needs the CLI update; nothing is locked or blocked.',
+                message: '`session_message` (or `very-happy sessions message <id> <text>` from a shell) drops a note into another session on this machine. It arrives with the sender\'s title, session id and directory and says how to reply, so two agents can agree on who changes what.',
+                peers: '`session_peers` (or `very-happy sessions peers`) lists the other live sessions in the same repository — other worktrees included — with the files each edited in the last 30 minutes.',
+                conflict: 'When a second session edits a file another live session touched within 30 minutes, both get one notice naming the other session and the file, and are nudged to coordinate through `session_message`. One notice per pair of sessions per file; a `claude` typed into a Very Happy terminal counts as an editor too.',
+                cards: 'In the chat, a peer message or conflict notice shows as a card with the sender, the file and a button to open that session; the two tools render like the other Very Happy tools.',
+            },
             sep25j: {
                 title: 'Teams and Automations for everyone; `send` tells the truth; the CLI keeps itself current',
                 summary: 'Agent Teams and Automations are open to every account on this server. `very-happy send` no longer reports a message as delivered when nobody is listening, and can bring a session back first. Machines now follow the newest verified CLI automatically.',

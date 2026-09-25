@@ -1,6 +1,6 @@
 # 会话间消息与编辑冲突提示（Session peer messaging）
 
-> 状态：Draft
+> 状态：Final（实现随本 spec 同一 PR；合并后回标 Shipped）
 > 日期：2026-09-25 ｜ 关联 backlog：B-497 ｜ 前身：[Automations](2026-09-automations.md)（B-496，同一批工具注入机制）、Teams 消息投递（`daemon/teams/worker.ts`）
 
 ## 背景
@@ -75,7 +75,8 @@ Another session on this machine edited the same file within the last 30 minutes.
   1. `to` 通过 `isValidSessionId`，且 ≠ 自己；
   2. `readPersistedSessions()[to]` 不存在 → 错误 `Session <id> is not on this machine (no local key); messaging sessions on other machines is not supported yet`；
   3. daemon `/peers` 里必须是活会话：不活 → 错误 `Session <id> is not running on this machine; nothing would read the message`；`kind: 'mirror'` → 错误 `terminal mirror sessions cannot receive messages`；
-  4. 组装正文（发送方：`client.sessionId`、`getMetadata().summary?.text`、`.path`、`.flavor`），`sendUserMessage(to, persisted, text, 'session-message', { sentFrom: 'session-peer', localId: 'session-message-<msgId>' })`；
+  4. 组装正文（发送方：`client.sessionId`、`getMetadata().summary?.text`（实时标题）、`.path`、`.flavor`），`sendUserMessage(to, persisted, text, 'session-message', { sentFrom: 'session-peer', localId: 'session-message-<msgId>' })`；
+     footer 只在「有新增内容」时鼓励回复，明确「不要为致谢/确认而回」（e2e 里两个按「收到就回」提示词的会话曾互相致谢 4 个来回）；发送方为 CLI（sessionId 固定 `cli`）时 footer 改为「命令行发的，无会话可回」，Web 卡片不给链接；
   5. 返回 `{ delivered: true, messageId, to, url }`。
 - `session_peers({ scope?: 'repo' | 'cwd' | 'machine' })`（默认 `repo`）：daemon `/peers` → 每个活会话 `{ sessionId, kind: 'managed'|'mirror', pid?, cwd, flavor, title, variant?, url, edits: [{ path, tool, at }] }`；按 `resolveRepoIdentity(cwd)` 过滤：`repo` = git common dir 相同（主仓与其 worktree 互为邻居，`sameWorktree` 标注是否同一 toplevel）、`cwd` = 同一 cwd、`machine` = 全部；输出 `{ self, scope, peers }`。
 - 注册：`startHappyServer` 里 `registerSessionPeerTools(mcp, createSessionPeerToolExecutor(client))`，`toolNames` 追加 `SESSION_PEER_TOOL_NAMES`；Codex bridge `registerSessionPeerTools(server, (name, args) => forwardTeam(name, args))`；pi 自动。assistant 变体沿用同一注册（工具对所有托管会话可用，与 B-496 同一信任层）。
@@ -104,7 +105,8 @@ very-happy sessions message <id> <text> [--reply-to <msgId>] [--json]
 
 - `EditConflictTracker({ windowMs = 30min })`：`record({ sessionId, path, tool, at }, isLive)` → 保存 `(path → Map<sessionId, {tool, at}>)`，返回窗口内、仍活着、且 `(pair, path)` 未在窗口内提示过的其它会话；`editsOf(sessionId, now)`、`forget(sessionId)`、`prune(now)`。
 - 活会话判定 = daemon 子进程表里的 `happySessionId` ∪ 镜像 active binding。子进程退出 / 镜像 end 时 `forget`。
-- 通知：对每个冲突，daemon 向**双方**各投一条冲突提示（`sendUserMessage`，`sentFrom: 'session-peer'`，`delivery: 'steer'`，`localId: 'edit-conflict-<noticeId>-<recipient>'`）；镜像会话跳过投递（正文里告知另一方）。投递失败只记日志。
+- 通知：对每个冲突，daemon 向**双方**各投一条冲突提示（`sendUserMessage`，`sentFrom: 'session-peer'`，`delivery: 'steer'`（`sendUserMessage` 新增可选 `delivery` 透传），`localId: 'edit-conflict-<noticeId>-<recipient>'`）；镜像会话跳过投递（正文里告知另一方）。投递失败只记日志。
+  daemon 的 metadata 快照是 spawn 时的（无标题），投递前用 `readSessionMetadata` 取对方实时标题（best-effort）。
 - `/peers` 响应带 `edits`（窗口内、按时间倒序、最多 20 条）。
 
 ### 6. Web
@@ -131,17 +133,18 @@ wire 无改动。发布顺序：server/Web 随下一次 switch（只含展示）
 3. **daemon 在自身进程内发 REST**：与 assistant 汇报同一路径，失败只记日志，不影响会话。
 4. **路径归一失败**（文件不存在、权限）：退化为 `path.resolve(cwd, p)`，不抛错。
 5. **`HAPPY_SESSION_ID` 注入 Claude 子进程**：只有 teams/todo 客户端读它且均在 `HAPPY_MANAGED=1` 下不注册；已核对 `commands/mcp.ts:151`。
-6. **与 B-501（`send` 对失效会话误报 delivered）并行**：本 spec 不改 `commands/send.ts`、`commands/sessionMessage.ts`，只 import `sendUserMessage`；活性检查自带。
+6. **与 B-501（`send` 对失效会话误报 delivered，已合入 #436）**：本 spec 不改 `commands/send.ts`；`commands/sessionMessage.ts` 只加可选 `delivery` 字段。`session_message` 的活性判定走 daemon `/peers`（需要区分镜像），与 B-501 的 `sessionDelivery.deliverToSession`（daemon `/list` + server 状态）并存；后续可让 `sendPeerMessage` 复用 `deliverToSession` 的发后复核。
 
 ## 验收标准
 
-- [ ] `session_message` / `session_peers` 在 Claude（进程内）、Codex（bridge 转发）、pi（tools/list）三路可见；源码断言回归测试 + `docs/channels.md` 矩阵。
-- [ ] `very-happy sessions peers|message` 解析、帮助、退出码有单测。
-- [ ] `EditConflictTracker`：窗口、去重、活会话过滤、forget、prune 单测；`normalizeEditPath`、`resolveRepoIdentity`（普通 repo、worktree `.git` 文件、非 repo）单测；三 runner 的路径提取纯函数单测。
-- [ ] daemon `/session-edit`、`/peers` 路由测试（token 门 + 载荷）。
-- [ ] Web：`presentSessionPeerMessage` 解析/回退单测；builtinTools 覆盖新工具；vitest / vite build / tsc 全绿。
-- [ ] 隔离 `HAPPY_HOME_DIR` + standalone server：两个真 Claude 会话同 repo 编辑同一文件 → 双方收到冲突提示，其中一方用 `session_message` 回信、对方收到；证据 `~/code/github/skills/tmp/vh-automation/b497-e2e.md`。
+- [x] `session_message` / `session_peers` 在 Claude（进程内）、Codex（bridge 转发）、pi（tools/list）三路可见；源码断言回归测试 + `docs/channels.md` 矩阵。
+- [x] `very-happy sessions peers|message` 解析、帮助、退出码有单测。
+- [x] `EditConflictTracker`：窗口、去重、活会话过滤、forget、prune 单测；`normalizeEditPath`、`resolveRepoIdentity`（普通 repo、worktree `.git` 文件、非 repo）单测；三 runner 的路径提取纯函数单测。
+- [x] daemon `/session-edit`、`/peers` 路由测试（token 门 + 载荷）。
+- [x] Web：`presentSessionPeerMessage` 解析/回退单测；builtinTools 覆盖新工具；vitest / vite build / tsc 全绿。
+- [x] 隔离 `HAPPY_HOME_DIR` + standalone server：两个真 Claude 会话同 repo 编辑同一文件 → 双方收到冲突提示，其中一方用 `session_message` 回信、对方收到；证据 `~/code/github/skills/tmp/vh-automation/b497-e2e.md`。
 
 ## 留真机验证项
 
-- Web 卡片在手机宽度下的折叠与链接可点（浏览器可验，不进 verify queue）。
+- Web 卡片（会话消息 / 冲突提示）只做了 happy-dom 渲染测试，未在真浏览器按窄屏/主题采像素；生产上线后在真实会话里看一眼即可。
+- Codex / pi 的编辑上报与镜像终端编辑源只有纯函数与源码断言，未实跑。
