@@ -198,8 +198,9 @@ export const CliUpdateStateSchema = z.object({
   recommendedVersion: z.string().nullable(),
   minimumVersion: z.string().nullable(),
   status: z.enum(['current', 'available', 'required']),
-  /** B-351: the version this machine may install by itself. Pinned separately
-   *  from `recommendedVersion`; null means no unattended install. */
+  /** B-351/B-503: the version this machine may install by itself, as decided
+   *  by the relay (exact pin or the promoted `latest`); null means no
+   *  unattended install. */
   autoUpdateVersion: z.string().nullable().optional(),
   retrySupported: z.boolean().optional(),
   manualUpdateSupported: z.boolean().optional(),

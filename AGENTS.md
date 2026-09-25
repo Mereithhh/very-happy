@@ -79,7 +79,7 @@ CLI 改动也会影响 Web `src/screens/public` 的契约测试，不能只跑 C
 4. **协议必须双向兼容**，旧端忽略新字段；spec 写兼容矩阵与发布顺序。
 5. **server/Web 随同一个完整不可变镜像发布**，不得分别覆盖 source、migration、Prisma Client 或 Web。当前 rollout phase 以 operations 为准；正常 server/Web 切换不更新 daemon，默认先 server/Web 后 CLI，协议变更按兼容矩阵。
 6. **CLI tag/npm 包不可变，平台包先于主包**；失败后递增版本，不移动旧 tag。主包发 `next`，CI 核对同仓库/tag/SHA/push run 当前 attempt 的 Linux/macOS/Windows × Node 20/24 六个 job 全部成功，才 promote `latest`；缺格或 skipped 不算通过。
-   推荐默认随 registry（缓存 1 分钟，查询失败退避 5 分钟），`CLI_RECOMMENDED_VERSION` 仅作显式 pin；**自动安装只认独立 `CLI_AUTO_UPDATE_VERSION`**，不从 registry 推导、不设就不自动装。见 [configuration](docs/configuration.md) 与 release skill。
+   推荐默认随 registry（缓存 1 分钟，查询失败退避 5 分钟），`CLI_RECOMMENDED_VERSION` 仅作显式 pin，pin 同时封顶自动安装；**自动安装只认独立 `CLI_AUTO_UPDATE_VERSION`**：生产默认 `latest`（B-503，Owner 口径「以后都用最新版」——由同一 registry 查询解析、只认 promote 后的 `latest`，绝不装 `next`），精确版本 = 手动 hold/回滚，不设就不自动装。见 [configuration](docs/configuration.md) 与 release skill。
 7. **用户更新固定版本并窄放行脚本**：`npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@<version> && very-happy daemon start`。`start` 幂等接管，没有 `daemon restart`，不换成 `stop && start`。
    daemon 主机按 operations 交回守护（mac-office Re-adopt launchd，dev-sg `systemctl --user start`）并验 running/版本/RPC。handover 不热替换存量 wrapper，新 CLI 能力用新建或明确重启的会话验。
    安装修复只动经核验的包/bin，网络失败不删包；保留失败状态，安装与接管预检互斥。见 [更新恢复 spec](specs/2026-09-cli-update-recovery.md)。

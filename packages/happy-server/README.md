@@ -97,6 +97,9 @@ guides.
 | `CLI_RECOMMENDED_VERSION` | No | unset | Exact CLI version advertised to connected daemons; pin for an operator-reviewed rollout |
 | `CLI_MINIMUM_VERSION` | No | - | Exact compatibility/security floor; older daemons show a required-update warning |
 | `CLI_VERSION_REGISTRY_LOOKUP` | No | `false` | Set `true` to opt into outbound npm version discovery when no recommended version is pinned |
+| `CLI_AUTO_UPDATE_VERSION` | No | unset | Version idle daemons may install unattended: an exact version (pin), or `latest` to follow the promoted npm `latest` (requires the registry lookup; an explicit `CLI_RECOMMENDED_VERSION` hold caps it). Unset = no unattended installs |
+| `VH_AGENT_TEAMS_ENABLED` / `VH_AUTOMATIONS_ENABLED` | No | `false` | Server-wide switches for Agent Teams / Automations; `true` opens the feature to every account (no per-account allowlist) |
+| `MAX_AUTOMATIONS_PER_ACCOUNT` | No | `100` | Automations (active + paused) one account may hold; `0` disables the cap |
 | `MAX_PENDING_AUTH_PAIRINGS` | No | `1000` | Global outstanding pairing cap across both pairing tables |
 | `GOOGLE_CLIENT_ID` | No | - | Enables Google Identity Services account login |
 | `GOOGLE_ALLOWED_ORIGINS` | With Google | - | Comma-separated exact Web origins allowed to request/consume Google login challenges |

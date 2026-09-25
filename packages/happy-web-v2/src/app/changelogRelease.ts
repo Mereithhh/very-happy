@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-send-status-open-gates-auto-latest',
+    cliVersion: '0.2.154',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25j.title',
+    summaryKey: 'changelog.releases.sep25j.summary',
+    itemKeys: ['changelog.releases.sep25j.send', 'changelog.releases.sep25j.resume', 'changelog.releases.sep25j.open', 'changelog.releases.sep25j.cap', 'changelog.releases.sep25j.auto'],
+  },
+  {
     id: '2026-09-25-builtin-tool-cards',
     date: '2026-09-25',
     buildVersion: __APP_VERSION__,

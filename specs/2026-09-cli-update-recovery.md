@@ -173,8 +173,9 @@ is limited to one minute. No timer or extra endpoint is introduced.
 A mismatching explicit pin fails verification with a hold explanation, without
 overwriting configuration. Unavailable/stale/network responses retry within the
 bound; timeout fails the release job after publication (npm artifacts and latest
-are not rolled back). Rerunning is idempotent. The independent auto-install pin
-is unchanged. Existing clients and response schema remain compatible; deploy
+are not rolled back). Rerunning is idempotent. The independent auto-install
+variable is not edited by CI; since B-503 production sets it to `latest`, so it
+follows the promoted tag by resolution rather than by an env edit. Existing clients and response schema remain compatible; deploy
 server/Web before relying on the new publish check.
 
 Verification: release-check behavior tests cover stale policy, registry mismatch,

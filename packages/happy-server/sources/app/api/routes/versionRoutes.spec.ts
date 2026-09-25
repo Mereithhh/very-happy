@@ -6,18 +6,22 @@ import type { Fastify } from '../types';
 
 const previousRecommended = process.env.CLI_RECOMMENDED_VERSION;
 const previousMinimum = process.env.CLI_MINIMUM_VERSION;
+const previousAuto = process.env.CLI_AUTO_UPDATE_VERSION;
 
 afterEach(() => {
     if (previousRecommended === undefined) delete process.env.CLI_RECOMMENDED_VERSION;
     else process.env.CLI_RECOMMENDED_VERSION = previousRecommended;
     if (previousMinimum === undefined) delete process.env.CLI_MINIMUM_VERSION;
     else process.env.CLI_MINIMUM_VERSION = previousMinimum;
+    if (previousAuto === undefined) delete process.env.CLI_AUTO_UPDATE_VERSION;
+    else process.env.CLI_AUTO_UPDATE_VERSION = previousAuto;
 });
 
 describe('GET /v1/version/cli', () => {
     it('is anonymous and returns only inert version policy data', async () => {
         process.env.CLI_RECOMMENDED_VERSION = '0.2.68';
         process.env.CLI_MINIMUM_VERSION = '0.2.34';
+        process.env.CLI_AUTO_UPDATE_VERSION = 'latest';
         const app = fastify();
         app.setValidatorCompiler(validatorCompiler);
         app.setSerializerCompiler(serializerCompiler);
@@ -28,6 +32,9 @@ describe('GET /v1/version/cli', () => {
         expect(response.json()).toMatchObject({
             recommendedVersion: '0.2.68',
             minimumVersion: '0.2.34',
+            // B-503: `latest` under an explicit hold follows the hold.
+            autoUpdateVersion: '0.2.68',
+            autoUpdatePolicy: 'latest',
             source: 'configured',
         });
         expect(response.json()).not.toHaveProperty('installCommand');

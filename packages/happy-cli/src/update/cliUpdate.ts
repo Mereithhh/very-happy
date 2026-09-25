@@ -3,9 +3,10 @@ import type { CliUpdateState, DaemonState } from '@/api/types';
 export interface CliVersionPolicyResponse {
   recommendedVersion: string | null;
   minimumVersion: string | null;
-  /** B-351: the version a machine may install unattended, pinned separately
-   *  from `recommendedVersion` and never derived from the registry. Absent from
-   *  older relays, which simply means no machine auto-installs anything. */
+  /** B-351/B-503: the version a machine may install unattended — decided by
+   *  the relay (an exact pin, or the promoted npm `latest`), never looked up by
+   *  the daemon itself. Absent from older relays, which simply means no machine
+   *  auto-installs anything. */
   autoUpdateVersion?: string | null;
   checkedAt: number;
   source: 'configured' | 'registry' | 'unavailable';

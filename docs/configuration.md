@@ -20,7 +20,7 @@ state. Never commit production values.
 | `AUTH_ALLOW_LEGACY_PAIRING` | Temporarily accept pairing without a one-time claim secret | Unset/`false`; enable only during the documented CLI rollout |
 | `AUTH_PAIRING_TTL_MINUTES` | Pairing request lifetime, bounded to 1–60 minutes | `10` |
 | `CLI_RECOMMENDED_VERSION` | Pin the exact `very-happy-cli` version advertised to daemons | The last fully approved release, or unset |
-| `CLI_AUTO_UPDATE_VERSION` | Exact version a machine may install **by itself** while no agent turn is in flight (B-466: idle wrappers and web terminals no longer hold it back). Never derived from the registry, and unset means no machine auto-installs anything | Unset until a release has been out long enough to trust unattended |
+| `CLI_AUTO_UPDATE_VERSION` | What a machine may install **by itself** while no agent turn is in flight (B-466: idle wrappers and web terminals no longer hold it back). `latest` follows the promoted npm `latest` dist-tag through the same registry lookup as the recommendation (B-503); an exact version is a pin/brake; unset means no machine auto-installs anything | `latest` (requires `CLI_VERSION_REGISTRY_LOOKUP=true`); pin an exact version only to hold or roll back |
 | `CLI_MINIMUM_VERSION` | Optional exact version below which Web/CLI show a required-update warning | Unset until an actual compatibility/security floor exists |
 | `CLI_VERSION_REGISTRY_LOOKUP` | Allow the relay to discover `very-happy-cli/latest` when no recommended version is pinned | `true` since B-348 — `latest` is now promoted only after the 3-OS smoke matrix passes, so following it is the reviewed default. Set `CLI_RECOMMENDED_VERSION` to override it (that pin always wins) |
 | `MAX_PENDING_AUTH_PAIRINGS` | Global unclaimed Terminal + Account pairing rows retained inside the TTL window | `1000` |
@@ -67,6 +67,8 @@ state. Never commit production values.
 | `RPC_RELAY_BYTES_PER_SECOND` / `RPC_RELAY_BURST_BYTES` | Shared per-account RPC byte token bucket, per process | `2097152` / `20971520` |
 | `RPC_RELAY_EVENTS_PER_SECOND` / `RPC_RELAY_BURST_EVENTS` | Shared per-account RPC event token bucket, per process (central server and each relay hold their own instance) | `5` / `300` |
 | `VOICE_EXTRA_LIMIT_ACCOUNT_IDS` | Optional comma-separated account IDs that receive the legacy extra voice allowance | Unset/empty; configure only for an operator-managed migration |
+| `VH_AGENT_TEAMS_ENABLED` / `VH_AUTOMATIONS_ENABLED` | Server-wide switches for Agent Teams / Automations. `true` opens the feature to every account; there is no per-account allowlist (B-502 removed `*_ACCOUNT_IDS`; a leftover value is ignored) | `false` until the daemons are current |
+| `MAX_AUTOMATIONS_PER_ACCOUNT` | Automations one account may hold, active and paused together; a create beyond it fails with 429 `automation_count_quota_exceeded` | `100`; `0` disables the cap |
 
 `SIGNUP_CLOSED` remains a legacy fallback only. Prefer explicit `SIGNUP_MODE`.
 
@@ -77,9 +79,9 @@ fail-open without affecting normal API traffic. Daemons check this policy on
 startup and every six hours, then publish it inside their encrypted machine
 state.
 
-**Which of the two to use (B-348).** `recommendedVersion` is what B-327's
-auto-update installs on a machine with no turn in flight, so whatever feeds it is the fleet's
-blast radius.
+**Which of the two to use (B-348).** `recommendedVersion` is the banner;
+`autoUpdateVersion` is what B-327's auto-update installs on a machine with no
+turn in flight, so whatever feeds it is the fleet's blast radius.
 
 - `CLI_VERSION_REGISTRY_LOOKUP=true` follows npm's `latest` dist-tag. This is
   safe **because `publish.yml` publishes under `next` and only promotes `latest`
@@ -93,17 +95,27 @@ blast radius.
   the recommendation back) without touching npm.
 
 `CLI_AUTO_UPDATE_VERSION` answers a different question and is therefore a
-different variable (B-351). Recommending a release costs nothing if it later
-turns out to be bad — the worst case is someone reads a banner. Installing it
-unattended on every idle machine is not reversible in the same way, and letting
-it follow the registry would make `npm publish` the moment a release reaches the
-entire fleet, with no person in between.
+different variable (B-351): recommending a release costs a banner, installing
+it unattended on every idle machine does not undo itself. **Since B-503
+(Owner, 2026-09-25) the default is `latest`**: the server resolves it from the
+same registry lookup as the recommendation, and npm's `latest` only moves when
+`publish.yml`'s `promote` job has seen all six Linux/macOS/Windows × Node 20/24
+smoke jobs for that exact tag succeed. The human decision therefore lives in
+the release itself (tag → smoke → promote), not in a second env edit per
+release. `/v1/version/cli` reports `autoUpdatePolicy: "latest" | "pinned" |
+"off"` next to the resolved `autoUpdateVersion` so an operator can see which
+mode is live.
 
-So it is pinned by hand, always, and unset means no machine auto-installs
-anything. That manual step is deliberate: it is the only place a human decides
-that a release is safe to push onto other people's machines while they are away.
-If it ever feels like friction worth removing, re-read this paragraph — removing
-it is exactly the change it exists to prevent.
+What `latest` never does: it never installs `next` or an unpromoted publish;
+while the registry is unreachable and nothing is cached it reports `null`
+(nothing installs) rather than guessing; and it never exceeds an explicit
+`CLI_RECOMMENDED_VERSION` hold — pinning the recommendation caps the automatic
+install too, so the brake stops installs, not only banners. To roll the fleet's
+automatic install back, or hold it, set `CLI_AUTO_UPDATE_VERSION` to the exact
+version (an older pin does not downgrade machines already ahead of it; it stops
+them advancing) and deploy with `rollout=switch`; unset it to stop unattended
+installs entirely. `scripts/release/advance-auto-update.sh <X.Y.Z|latest>`
+performs that env edit with a backup and verifies the relay.
 
 A user may explicitly request the freshly recommended exact version for one
 machine from the pending-rollout banner (B-442, CLI 0.2.133+). This does not
