@@ -32,6 +32,7 @@ import { logger } from '@/ui/logger'
 import { readPersistedSessions, type PersistedSession } from '@/persistence'
 import { spawnDaemonSession } from '@/daemon/controlClient'
 import { sendUserMessage, sessionWebUrl, waitForSessionKey } from '@/commands/sessionMessage'
+import { deliverToSession } from '@/commands/sessionDelivery'
 import {
     archiveSession,
     listSessions,
@@ -159,19 +160,30 @@ export function registerAssistantSessionTools(mcp: AssistantToolRegistrar): void
 
     // ── session_send ─────────────────────────────────────────────────────────
     mcp.registerTool('session_send', {
-        description: 'Send a user message into an existing session on this machine. Returns immediately after delivery — it does NOT wait for the session to respond; use session_read later to check progress.',
+        description: 'Send a user message into an existing session on this machine. Only delivers when a live wrapper will read it: an archived / offline session is refused (the server would store the message unread) unless resume:true brings it back on this machine first. Returns immediately after delivery — it does NOT wait for the session to respond; use session_read later to check progress.',
         title: 'Send Message to Session',
         inputSchema: {
             sessionId: z.string().describe('The Happy session id to message'),
             text: z.string().describe('The message text to send'),
+            resume: z.boolean().optional().describe('If the session is archived or offline, resume it on this machine (like the web Restore button) and wait until it is live before sending'),
         },
     }, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
         if (typeof args.text !== 'string' || args.text.trim().length === 0) return fail('text must be non-empty')
         try {
             const persisted = await waitForSessionKey(args.sessionId, 0)
-            await sendUserMessage(args.sessionId, persisted, args.text, MCP_CLIENT_TAG)
-            return ok(`Message delivered to ${describeSession(args.sessionId, persisted)}`)
+            // B-501: shared with `very-happy send` — classify, (resume,) send, re-check.
+            const result = await deliverToSession(args.sessionId, persisted, args.text, MCP_CLIENT_TAG, {
+                resume: args.resume === true,
+                resumeHint: 'Pass resume:true to bring it back on this machine, or spawn a new session.',
+            })
+            if (!result.delivered) {
+                const detail = result.error ?? `session is ${result.status}`
+                return fail(result.stored
+                    ? `Not delivered: ${detail}`
+                    : `Session ${args.sessionId} is ${result.status}: ${detail}`)
+            }
+            return ok(`Message delivered${result.resumed ? ' (session resumed on this machine)' : ''} to ${describeSession(args.sessionId, persisted, { live: true })}`)
         } catch (error) {
             return fail(`Failed to send: ${error instanceof Error ? error.message : String(error)}`)
         }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSendArgs } from './send'
+import { EXIT_SESSION_NOT_LIVE, parseSendArgs } from './send'
 
 describe('parseSendArgs', () => {
     it('parses --session with a prompt', () => {
@@ -49,6 +49,19 @@ describe('parseSendArgs', () => {
         expect(options.session).toBeUndefined()
         expect(options.prompt).toBeUndefined()
         expect(options.promptFile).toBeUndefined()
+    })
+})
+
+describe('parseSendArgs — B-501 --resume', () => {
+    it('defaults to no resume and parses --resume', () => {
+        expect(parseSendArgs(['-s', 's', '-p', 'p']).resume).toBe(false)
+        expect(parseSendArgs(['-s', 's', '-p', 'p', '--resume']).resume).toBe(true)
+        expect(parseSendArgs(['--resume', '--session', 's', '--prompt-file', '/tmp/p.txt', '--json']))
+            .toMatchObject({ resume: true, json: true, session: 's', promptFile: '/tmp/p.txt' })
+    })
+
+    it('exports exit code 3 for "session not live"', () => {
+        expect(EXIT_SESSION_NOT_LIVE).toBe(3)
     })
 })
 

@@ -156,6 +156,40 @@ export async function spawnDaemonSession(
   return result;
 }
 
+/** What an old daemon (no `/resume-session` route) makes fastify answer. */
+const ROUTE_NOT_FOUND_RE = /, (Not Found|HTTP 404)$/;
+
+/**
+ * B-501: resume an archived / offline session in place on THIS machine via
+ * the local daemon (`/resume-session` — the control-server twin of the
+ * `resume-happy-session` machine RPC). Never throws: `{ success: false,
+ * error }` for no daemon, an old daemon without the route, and every
+ * `resume-precheck:*` refusal (passed through verbatim).
+ */
+export async function resumeDaemonSession(
+  sessionId: string,
+  opts?: { model?: string; permissionMode?: string },
+): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+  const result = await daemonPost('/resume-session', {
+    sessionId,
+    ...(opts?.model !== undefined ? { model: opts.model } : {}),
+    ...(opts?.permissionMode !== undefined ? { permissionMode: opts.permissionMode } : {}),
+  });
+  if (result?.error) {
+    const raw: string = String(result.error);
+    // daemonPost wraps the daemon's own `error` body; unwrap it so a
+    // `resume-precheck:<reason>` string reaches the caller verbatim.
+    const error = ROUTE_NOT_FOUND_RE.test(raw)
+      ? 'daemon too old to resume sessions (no /resume-session route); upgrade very-happy-cli and run `very-happy daemon start`'
+      : raw.replace(/^Request failed: \/resume-session, /, '');
+    return { success: false, error };
+  }
+  if (result?.success === true && typeof result.sessionId === 'string') {
+    return { success: true, sessionId: result.sessionId };
+  }
+  return { success: false, error: typeof result?.error === 'string' ? result.error : 'unexpected daemon response' };
+}
+
 /**
  * B-069: report a stable session state transition to the local daemon
  * (`completed` = turn ended and idle, `needs_input` = blocked on a permission

@@ -426,6 +426,61 @@ export async function readSessionMetadata(sessionId: string, persisted: Persiste
     return decrypt(decodeBase64(persisted.encryptionKey), persisted.encryptionVariant, decodeBase64(ciphertext)) as Metadata | null
 }
 
+/**
+ * B-501: the server's plaintext lifecycle columns for one session — what
+ * `deliverToSession` classifies as live / archived / offline / not_found.
+ * `found: false` is the 404 (not on this account, or deleted); it is a state,
+ * not an exception, because a caller wants to report it, not crash on it.
+ */
+export interface SessionServerState {
+    found: boolean
+    /** Server-side `active` flag (a wrapper is attached; presence timeout clears it after 10 min). */
+    active: boolean
+    /** `lastActiveAt` (ms). */
+    activeAt?: number
+    /** Set when the session is archived (the explicit lifecycle end). */
+    archivedAt?: number | null
+    updatedAt?: number
+    /** Owning daemon, from the decrypted metadata — only when `persisted` was given. */
+    machineId?: string
+}
+
+/**
+ * `GET /v1/sessions/:id` narrowed to lifecycle columns. Same bearer / client
+ * tag as `readSessionMetadata`; decrypts `metadata.machineId` only when the
+ * local key is passed. Throws on transport / auth errors, NOT on 404.
+ */
+export async function readSessionState(sessionId: string, persisted?: PersistedSession): Promise<SessionServerState> {
+    const token = await bearerToken()
+    const response = await axios.get(`${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'X-Happy-Client': `${SESSION_OPS_CLIENT}/${configuration.currentCliVersion}`,
+        },
+        timeout: 15_000,
+        validateStatus: (status) => (status >= 200 && status < 300) || status === 404,
+    })
+    if (response.status === 404) return { found: false, active: false }
+    const row = response.data?.session as Partial<AccountSessionRow> | undefined
+    if (!row || typeof row.id !== 'string') throw new Error(`Server returned no session row for ${sessionId}`)
+    const state: SessionServerState = {
+        found: true,
+        active: row.active === true,
+        ...(typeof row.activeAt === 'number' ? { activeAt: row.activeAt } : {}),
+        archivedAt: typeof row.archivedAt === 'number' ? row.archivedAt : null,
+        ...(typeof row.updatedAt === 'number' ? { updatedAt: row.updatedAt } : {}),
+    }
+    if (persisted && typeof row.metadata === 'string' && row.metadata.length > 0) {
+        try {
+            const metadata = decrypt(decodeBase64(persisted.encryptionKey), persisted.encryptionVariant, decodeBase64(row.metadata)) as Metadata | null
+            if (metadata?.machineId) state.machineId = metadata.machineId
+        } catch {
+            // Undecryptable metadata does not change the lifecycle answer.
+        }
+    }
+    return state
+}
+
 export class TurnWaitTimeoutError extends Error {
     constructor(readonly sessionId: string, readonly timeoutMs: number, readonly turn: TurnState) {
         super(`Session ${sessionId}: the latest turn did not end within ${Math.round(timeoutMs / 1000)}s`)
@@ -463,6 +518,27 @@ export async function archiveSession(sessionId: string): Promise<void> {
     const token = await bearerToken()
     await axios.post(
         `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}/archive`,
+        {},
+        {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'X-Happy-Client': `${SESSION_OPS_CLIENT}/${configuration.currentCliVersion}`,
+            },
+            timeout: 10_000,
+        },
+    )
+}
+
+/**
+ * B-501: clear `archivedAt` so a wrapper may attach again (the server rejects
+ * the socket of an archived session). Same route the web's 「恢复」 uses before
+ * `resume-happy-session`; the session stays `active: false` until the resumed
+ * wrapper reactivates it.
+ */
+export async function unarchiveSession(sessionId: string): Promise<void> {
+    const token = await bearerToken()
+    await axios.post(
+        `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}/unarchive`,
         {},
         {
             headers: {

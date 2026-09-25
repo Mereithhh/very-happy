@@ -10,7 +10,7 @@ vi.mock('@/persistence', () => ({
   clearDaemonState: mocks.clearDaemonState,
 }));
 
-import { checkIfDaemonRunningAndCleanupStaleState, listDaemonSessions, setTerminalTitleViaDaemon, spawnDaemonSession } from './controlClient';
+import { checkIfDaemonRunningAndCleanupStaleState, listDaemonSessions, resumeDaemonSession, setTerminalTitleViaDaemon, spawnDaemonSession } from './controlClient';
 
 const baseState = {
   pid: 4242,
@@ -115,5 +115,32 @@ describe('daemon control client authentication', () => {
       'Content-Type': 'application/json',
       Authorization: 'Bearer probe-secret',
     });
+  });
+
+  // B-501: `very-happy send --resume` → /resume-session. Never throws; an old
+  // daemon (fastify 404 "Not Found") is named as such, and the daemon's own
+  // `resume-precheck:*` error reaches the caller without the transport prefix.
+  it('resumeDaemonSession maps success / precheck 500 / old-daemon 404 / no daemon', async () => {
+    mocks.readDaemonState.mockResolvedValue({ ...baseState, controlToken: 'state-secret' });
+    vi.spyOn(process, 'kill').mockImplementation(() => true);
+    const json = (body: unknown, status: number) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ success: true, sessionId: 'sess-1' }, 200))
+      .mockResolvedValueOnce(json({ success: false, error: 'resume-precheck:not-tracked: Session sess-1 is not tracked by this daemon.' }, 500))
+      .mockResolvedValueOnce(json({ message: 'Route POST:/resume-session not found', error: 'Not Found', statusCode: 404 }, 404));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(resumeDaemonSession('sess-1', { model: 'claude-opus-5-5' })).resolves.toEqual({ success: true, sessionId: 'sess-1' });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://127.0.0.1:9999/resume-session');
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body)).toEqual({ sessionId: 'sess-1', model: 'claude-opus-5-5' });
+
+    await expect(resumeDaemonSession('sess-1')).resolves.toEqual({ success: false, error: 'resume-precheck:not-tracked: Session sess-1 is not tracked by this daemon.' });
+
+    const old = await resumeDaemonSession('sess-1');
+    expect(old.success).toBe(false);
+    expect(old.error).toMatch(/daemon too old to resume sessions .* upgrade very-happy-cli/);
+
+    mocks.readDaemonState.mockResolvedValue(null);
+    await expect(resumeDaemonSession('sess-1')).resolves.toEqual({ success: false, error: 'No daemon running, no state file found' });
   });
 });
