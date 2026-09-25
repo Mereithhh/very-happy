@@ -434,7 +434,7 @@ or in the `permission` webhook.
 ### `very-happy send` — message an existing session
 
 ```bash
-very-happy send --session <id> (--prompt <text> | --prompt-file <file>) [--model <id>] [--json]
+very-happy send --session <id> (--prompt <text> | --prompt-file <file>) [--model <id>] [--resume] [--json]
 ```
 
 `--model` switches the session's model with this message (`default` = machine
@@ -443,11 +443,43 @@ default); without it the session keeps its current model.
 Pushes one user message into a session that is already running. The session
 key must be present in `~/.happy/sessions.json`, i.e. the session must have
 been spawned by **this machine's** daemon (recent enough to persist keys).
-Unlike spawn, `send` does not need the daemon to be alive — delivery goes
-through the server REST outbox directly.
+The POST itself rides the server REST outbox, but the server stores a
+message for **any** session — archived or dead included — so a 2xx never
+meant a wrapper would read it (B-501). `send` therefore classifies the
+session first, from the local daemon's `/list` and `GET /v1/sessions/:id`:
 
-Exit codes: `0` delivered, `1` anything else (bad args, unknown session /
-missing key, send failed).
+| `status` | meaning | `send` does |
+| --- | --- | --- |
+| `live` | a wrapper is attached: tracked by this daemon, or server `active` with `activeAt` within 15 min (another machine) | send, then re-check |
+| `archived` | `archivedAt` set (Ctrl-C, `sessions archive`, web archive) | refuse (exit 3) unless `--resume` |
+| `offline` | not archived, no live wrapper (exited, or presence timed out after 10 min) | refuse (exit 3) unless `--resume` |
+| `not_found` | server 404 — not on this account | refuse (exit 3); cannot be resumed |
+
+`--resume` brings an archived / offline session back on **this machine** the
+same way the web's Restore does: unarchive (archived only) → daemon
+`/resume-session` (the local twin of the `resume-happy-session` RPC; `resume-precheck:*`
+reasons are passed through) → wait up to 30 s until it is live → send. If the
+daemon refuses, an unarchived session is re-archived again; a merely offline
+one is left alone. A daemon older than this route answers "daemon too old to
+resume sessions" — upgrade `very-happy-cli` and `very-happy daemon start`.
+
+After a successful POST the state is re-checked; a wrapper that vanished in
+between is reported as not delivered with `stored: true` (the message sits on
+the server, unread). The same logic backs the assistant's `session_send`
+(`resume: true` there).
+
+`--json` on stdout:
+
+```json
+{"sessionId":"…","url":"…","delivered":true,"status":"live","resumed":false}
+{"sessionId":"…","url":"…","delivered":false,"status":"archived","resumed":false,"stored":false,"error":"Session … is archived — …"}
+{"sessionId":"…","url":"…","delivered":false,"status":"archived","resumed":false,"stored":false,"error":"…","resume":{"ok":false,"error":"resume-precheck:cwd-missing: …"}}
+{"sessionId":"…","url":"…","delivered":false,"status":"offline","resumed":false,"stored":true,"error":"Session … went offline while sending: …"}
+```
+
+Exit codes: `0` delivered to a live wrapper, `1` bad args / unknown session /
+missing key / transport failure, `3` session not live (archived, offline,
+not found) or resume failed — nothing was delivered.
 
 ## Inbound: Web Assistant / meta-agent
 
@@ -464,7 +496,8 @@ IM adapter and currently spawns **Claude sessions on one selected machine**.
 
 The assistant uses `session_spawn` to return a new session immediately; it does
 not wait for that worker to finish. Use `sessions_list`, `session_read`, and
-`session_send` to follow up. `~` may be expanded, but explicit absolute paths
+`session_send` to follow up (`session_send` refuses an archived / offline
+session unless `resume: true`, same rules as `very-happy send` above). `~` may be expanded, but explicit absolute paths
 are the least ambiguous. Automatic cross-machine or cross-provider routing is
 not shipped today.
 
@@ -782,9 +815,12 @@ action on one machine: spawn a session (optionally *sticky*: repeated events wit
 the same rendered key continue one conversation), send into a fixed session, or
 run a script (argv, no shell). Every execution is an `AutomationRun` with a
 status, session link, summary and attention flag. The server must enable
-`VH_AUTOMATIONS_ENABLED=true` (optionally `VH_AUTOMATIONS_ACCOUNT_IDS`); a
-daemon talking to an old or gated server logs one debug line per ten minutes and
-does nothing else, and the CLI says so in one line.
+`VH_AUTOMATIONS_ENABLED=true` (server-wide; no per-account allowlist since
+B-502). Each account holds at most `MAX_AUTOMATIONS_PER_ACCOUNT` automations
+(default 100, active + paused): a create beyond that answers 429
+`{ error: 'automation_count_quota_exceeded', limit, count }`, which the CLI and
+Web explain in one line. A daemon talking to an old or gated server logs one
+debug line per ten minutes and does nothing else, and the CLI says so in one line.
 
 ```bash
 very-happy auto create --name daily-tanka --cron '0 9 * * 1-5' --tz Asia/Singapore \
@@ -824,8 +860,8 @@ auto install` does only this one), with the same ownership checks.
 
 Teams use the same `team_*` tools in managed Claude HTTP MCP, Codex stdio MCP,
 and the official pi runtime bridge. No assistant session variant is required.
-The server must enable `VH_AGENT_TEAMS_ENABLED=true`; optionally restrict it via
-`VH_AGENT_TEAMS_ACCOUNT_IDS`. A new daemon advertises `teamsVersion:1`; the Web
+The server must enable `VH_AGENT_TEAMS_ENABLED=true` (server-wide; no
+per-account allowlist since B-502). A new daemon advertises `teamsVersion:1`; the Web
 Teams page disables dispatch when that capability or a live machine is absent.
 
 `very-happy teams install --host claude|codex|pi` previews the official skill at
