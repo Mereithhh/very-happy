@@ -1,6 +1,11 @@
 import type { ToolCall } from '@/sync/typesMessage';
+import { builtinToolSummary, resolveBuiltinTool } from '@/components/tools/builtinTools';
+
 /** A short, human-friendly subtitle/detail for a tool call (path, command, etc). */
 export function toolDetail(tool: ToolCall): string | null {
+    // B-499: very-happy's own tools (any name shape) get a human one-liner.
+    const builtin = resolveBuiltinTool(tool);
+    if (builtin) return builtinToolSummary(builtin).detail;
     const input = tool.input ?? {};
     switch (tool.name) {
         case 'Bash':
@@ -49,6 +54,8 @@ export function toolDetail(tool: ToolCall): string | null {
 
 /** The short label shown in the tool-call header (left of the detail). */
 export function toolLabel(tool: ToolCall): string {
+    const builtin = resolveBuiltinTool(tool);
+    if (builtin) return builtinToolSummary(builtin).label;
     switch (tool.name) {
         case 'Bash':
             return 'Terminal';
@@ -61,6 +68,11 @@ export function toolLabel(tool: ToolCall): string {
         default:
             return prettyToolName(tool.name);
     }
+}
+
+/** B-499: a built-in tool's detail is prose (sans), not a command/path (mono). */
+export function toolDetailIsProse(tool: ToolCall): boolean {
+    return resolveBuiltinTool(tool) !== null;
 }
 
 /** Full single-line title (label + detail) — used where only one string fits. */

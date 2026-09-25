@@ -579,10 +579,12 @@ export const knownTools = {
             return t('tools.names.reasoning');
         }
     },
+    // B-499: visible as a one-line "Title changed · …" row. A Claude session never
+    // gets here (messageToEvent turns mcp__happy__change_title into an event);
+    // this is what Codex / pi / Gemini sessions show instead of raw JSON.
     'change_title': {
         title: 'Change Title',
         icon: ICON_EDIT,
-        hidden: true,
         minimal: true,
         noStatus: true,
         input: z.object({
