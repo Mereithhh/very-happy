@@ -520,7 +520,7 @@ export function TaskBoardScreen() {
         )}
         <div className="bd-header-tools">
           {automationsEnabled && (
-            <button type="button" className="bd-btn" onClick={() => navigate('/board/automations')}>
+            <button type="button" className="bd-btn" onClick={() => navigate('/automations')}>
               <Zap size={13} /> {t('automations.boardLink')}
               {automationAttention > 0 && <span className="bd-btn-count mono">{automationAttention}</span>}
             </button>

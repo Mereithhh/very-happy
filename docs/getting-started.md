@@ -302,6 +302,12 @@ The guide also points to the everyday tools that are easy to miss:
 - Keep temporary prompts and context in the notes dock. Open **Todo** from the
   sidebar or command palette to read the provider configured on a machine and
   group its items by list or priority.
+- Open **Automations** from the sidebar to schedule or trigger agent sessions
+  and scripts on one machine (cron with time zone, interval, once, or fired by
+  `very-happy auto fire`). Runs that fail, expire or wait for you appear under
+  **Needs my decision** at the top of the task board. See
+  [automations.md](automations.md); the entry only shows when the server has
+  the feature enabled.
 - After installing the optional Claude terminal hooks, a Claude process started
   inside a Very Happy Web terminal can switch between the native terminal TUI
   and its structured text transcript. This toggle is Claude-specific; a generic

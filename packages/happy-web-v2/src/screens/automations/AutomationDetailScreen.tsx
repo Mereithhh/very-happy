@@ -1,16 +1,16 @@
 /**
- * B-498 /board/automations/:id — one automation: the action it performs,
+ * B-498 /automations/:id — one automation: the action it performs,
  * its sticky sessions and the timeline of its recent runs (status, source,
  * duration, expandable summary, session link, ack/cancel on runs that
  * still want a decision).
  */
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Check, Pause, Play, Trash2, X, Zap } from 'lucide-react';
+import { Check, Pause, Pencil, Play, Trash2, X, Zap } from 'lucide-react';
 import type { Automation, AutomationRun } from '@slopus/happy-wire';
 import { BackButton } from '@/app/BackButton';
 import { Modal } from '@/modal';
-import { EmptyState, Spinner, toast } from '@/ui';
+import { CopyButton, EmptyState, Spinner, toast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { AUTOMATIONS_DETAIL_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import {
@@ -25,6 +25,7 @@ import {
   runDurationMs,
   runMoment,
 } from './automationPresentation';
+import { fireSnippets } from './automationForm';
 import { MachineTag, reportAutomationError, RunStatusBadge, SessionLink, useAttentionReason, useNow, useSourceLabel } from './AutomationShared';
 import './automations.css';
 
@@ -53,6 +54,33 @@ function ActionCard({ automation }: { automation: Automation }) {
           {full ? t('automations.promptCollapse') : t('automations.promptTruncated')}
         </button>
       )}
+    </section>
+  );
+}
+
+/** A manual automation IS a trigger: show the ways to fire it, copyable. */
+function FireCard({ name }: { name: string }) {
+  const { t } = useTranslation();
+  const snippets = fireSnippets(name);
+  const rows: Array<[string, string]> = [
+    [t('automations.fireCli') as string, snippets.cli],
+    [t('automations.fireCliPayload') as string, snippets.cliPayload],
+    [t('automations.fireMcp') as string, snippets.mcp],
+  ];
+  return (
+    <section className="au-section au-fire">
+      <h2 className="au-section-title">{t('automations.fireTitle')}</h2>
+      <p className="au-muted au-section-empty">{t('automations.fireBody')}</p>
+      {rows.map(([label, cmd]) => (
+        <div key={label} className="au-fire-row">
+          <span className="au-fire-label">{label}</span>
+          <div className="au-fire-cmd">
+            <code>{cmd}</code>
+            <CopyButton text={cmd} />
+          </div>
+        </div>
+      ))}
+      <p className="au-field-hint">{t('automations.fireRunNowHint')}</p>
     </section>
   );
 }
@@ -200,7 +228,7 @@ export function AutomationDetailScreen() {
               title={t('automations.notFound') as string}
               icon={<Zap size={28} />}
               actions={
-                <button type="button" className="au-btn" onClick={() => navigate('/board/automations')}>
+                <button type="button" className="au-btn" onClick={() => navigate('/automations')}>
                   {t('automations.backToList')}
                 </button>
               }
@@ -254,6 +282,15 @@ export function AutomationDetailScreen() {
           </button>
           <button
             type="button"
+            className="au-btn au-btn--icon"
+            aria-label={t('automations.editAutomation') as string}
+            title={t('automations.editAutomation') as string}
+            onClick={() => navigate(`/automations/${encodeURIComponent(automation.id)}/edit`)}
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            type="button"
             className="au-btn au-btn--danger au-btn--icon"
             aria-label={t('automations.deleteAutomation') as string}
             title={t('automations.deleteAutomation') as string}
@@ -264,7 +301,7 @@ export function AutomationDetailScreen() {
                 if (!ok) return;
                 await remove(automation.id);
                 toast.success(t('automations.deleted') as string);
-                navigate('/board/automations', { replace: true });
+                navigate('/automations', { replace: true });
               })
             }
           >
@@ -316,6 +353,8 @@ export function AutomationDetailScreen() {
             </dd>
           </div>
         </dl>
+
+        {automation.trigger.kind === 'manual' && <FireCard name={automation.name} />}
 
         <ActionCard automation={automation} />
 

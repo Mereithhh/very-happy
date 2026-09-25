@@ -1,5 +1,5 @@
 /**
- * B-498 /board/automations — the account's automations as a compact table:
+ * B-498 /automations — the account's automations as a compact table:
  * name, trigger in words, target machine (online?), next run, last result,
  * and the owner's three verbs (run now, pause/resume, delete). The
  * "needs my decision" band sits above the table, same component as /board.
@@ -9,7 +9,7 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MoreHorizontal, Pause, Play, Trash2, Zap } from 'lucide-react';
+import { MoreHorizontal, Pause, Pencil, Play, Plus, Trash2, Zap } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { Modal } from '@/modal';
 import { ActionDropdownMenu, EmptyState, Spinner, toast, type MenuItemDef } from '@/ui';
@@ -45,9 +45,10 @@ function AutomationRow({
   const l = langOf(lang);
   const trigger = describeTrigger(automation.trigger, l);
   const paused = automation.status === 'paused';
-  const href = `/board/automations/${encodeURIComponent(automation.id)}`;
+  const href = `/automations/${encodeURIComponent(automation.id)}`;
   const menu: MenuItemDef[] = [
     { key: 'run', label: t('automations.runNow') as string, icon: Zap, disabled: busy, onSelect: onRun },
+    { key: 'edit', label: t('automations.editAutomation') as string, icon: Pencil, disabled: busy, onSelect: () => navigate(`${href}/edit`) },
     paused
       ? { key: 'resume', label: t('automations.resume') as string, icon: Play, disabled: busy, onSelect: onResume }
       : { key: 'pause', label: t('automations.pause') as string, icon: Pause, disabled: busy, onSelect: onPause },
@@ -120,6 +121,7 @@ function AutomationRow({
 
 export function AutomationsScreen() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const enabled = useAutomations((s) => s.enabled);
   const automations = useAutomations((s) => s.automations);
   const attention = useAutomations((s) => s.attention);
@@ -140,6 +142,14 @@ export function AutomationsScreen() {
     return counts;
   }, [attention]);
   const rows = useMemo(() => sortAutomations(automations, attentionByAutomation), [automations, attentionByAutomation]);
+  // scheduled (cron / interval / once) vs. triggers (manual = fired by an event)
+  const groups = useMemo(
+    () => [
+      { key: 'scheduled' as const, rows: rows.filter((a) => a.trigger.kind !== 'manual') },
+      { key: 'triggered' as const, rows: rows.filter((a) => a.trigger.kind === 'manual') },
+    ],
+    [rows],
+  );
 
   const guard = useCallback(
     async (id: string, work: () => Promise<void>) => {
@@ -176,25 +186,47 @@ export function AutomationsScreen() {
       </div>
     );
   } else if (rows.length === 0) {
-    body = <EmptyState compact title={t('automations.emptyTitle') as string} description={<code className="au-empty-code">{t('automations.emptyBody')}</code>} icon={<Zap size={28} />} />;
-  } else {
     body = (
-      <ul className="au-list">
-        {rows.map((automation) => (
-          <AutomationRow
-            key={automation.id}
-            automation={automation}
-            attentionCount={attentionByAutomation[automation.id] ?? 0}
-            now={now}
-            busy={busyId === automation.id}
-            onRun={() => void guard(automation.id, async () => { await rerun(automation.id); toast.success(t('automations.runQueued', { name: automation.name }) as string); })}
-            onPause={() => void guard(automation.id, async () => { await pause(automation.id); toast.success(t('automations.paused') as string); })}
-            onResume={() => void guard(automation.id, async () => { await resume(automation.id); toast.success(t('automations.resumed') as string); })}
-            onDelete={() => onDelete(automation)}
-          />
-        ))}
-      </ul>
+      <EmptyState
+        compact
+        title={t('automations.emptyTitle') as string}
+        description={<code className="au-empty-code">{t('automations.emptyBody')}</code>}
+        icon={<Zap size={28} />}
+        actions={
+          <button type="button" className="au-btn au-btn--primary" onClick={() => navigate('/automations/new')}>
+            <Plus size={13} /> {t('automations.newAutomation')}
+          </button>
+        }
+      />
     );
+  } else {
+    body = groups
+      .filter((g) => g.rows.length > 0)
+      .map((g) => (
+        <section key={g.key} aria-labelledby={`au-group-${g.key}`}>
+          <header className="au-group-head">
+            <span id={`au-group-${g.key}`} className="au-group-title">
+              {t(g.key === 'scheduled' ? 'automations.groupScheduled' : 'automations.groupTriggered')} · {g.rows.length}
+            </span>
+            <span className="au-group-hint">{t(g.key === 'scheduled' ? 'automations.groupScheduledHint' : 'automations.groupTriggeredHint')}</span>
+          </header>
+          <ul className="au-list">
+            {g.rows.map((automation) => (
+              <AutomationRow
+                key={automation.id}
+                automation={automation}
+                attentionCount={attentionByAutomation[automation.id] ?? 0}
+                now={now}
+                busy={busyId === automation.id}
+                onRun={() => void guard(automation.id, async () => { await rerun(automation.id); toast.success(t('automations.runQueued', { name: automation.name }) as string); })}
+                onPause={() => void guard(automation.id, async () => { await pause(automation.id); toast.success(t('automations.paused') as string); })}
+                onResume={() => void guard(automation.id, async () => { await resume(automation.id); toast.success(t('automations.resumed') as string); })}
+                onDelete={() => onDelete(automation)}
+              />
+            ))}
+          </ul>
+        </section>
+      ));
   }
 
   return (
@@ -203,6 +235,13 @@ export function AutomationsScreen() {
         <BackButton />
         <span className="au-title">{t('automations.title')}</span>
         {rows.length > 0 && <span className="au-count mono">{rows.length}</span>}
+        {enabled === true && (
+          <div className="au-header-tools">
+            <button type="button" className="au-btn au-btn--primary" onClick={() => navigate('/automations/new')}>
+              <Plus size={13} /> <span className="au-btn-label">{t('automations.newAutomation')}</span>
+            </button>
+          </div>
+        )}
       </header>
       <div className="au-body">
         {error && loadedAt && <div className="au-error">{t('automations.loadFailed', { code: error })}</div>}

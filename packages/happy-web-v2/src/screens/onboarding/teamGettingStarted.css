@@ -16,3 +16,6 @@
 .team-start__install .fr-command code { overflow-wrap: anywhere; white-space: pre-wrap; }
 .team-start__limit { font-size: var(--fs-12); }
 @media (max-width: 599px) { .team-start__features { grid-template-columns: 1fr; gap: 0; } }
+
+.team-start__list { margin: 0 0 var(--sp-3); padding-left: 1.2em; color: var(--text-dim); font-size: var(--fs-13); line-height: 1.55; }
+.team-start__list li { margin-bottom: 4px; overflow-wrap: anywhere; }

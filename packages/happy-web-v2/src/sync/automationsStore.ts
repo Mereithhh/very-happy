@@ -12,13 +12,15 @@
  *   true  — data is live
  */
 import { create } from 'zustand';
-import type { Automation, AutomationRun, AutomationSticky } from '@slopus/happy-wire';
+import type { Automation, AutomationCreate, AutomationRun, AutomationSticky, AutomationUpdate } from '@slopus/happy-wire';
 import { useEffect } from 'react';
 import { sync } from '@/sync/sync';
 import {
   ackRun,
   cancelRun,
+  createAutomation,
   deleteAutomation,
+  updateAutomation,
   getAutomation,
   isAutomationsDisabled,
   listAutomations,
@@ -33,6 +35,7 @@ import {
 export const AUTOMATIONS_OVERVIEW_POLL_MS = 15_000;
 export const AUTOMATIONS_DETAIL_POLL_MS = 10_000;
 export const AUTOMATIONS_BOARD_POLL_MS = 20_000;
+export const AUTOMATIONS_SIDEBAR_POLL_MS = 60_000;
 
 export interface AutomationsState {
   enabled: boolean | null;
@@ -52,6 +55,8 @@ export interface AutomationsState {
   pause: (automationId: string) => Promise<void>;
   resume: (automationId: string) => Promise<void>;
   remove: (automationId: string) => Promise<void>;
+  create: (body: AutomationCreate) => Promise<Automation>;
+  update: (automationId: string, body: AutomationUpdate) => Promise<Automation>;
 }
 
 function upsertAutomation(list: Automation[], next: Automation): Automation[] {
@@ -164,6 +169,16 @@ export const useAutomations = create<AutomationsState>((set, get) => {
     async resume(automationId) {
       const { automation } = await resumeAutomation(automationId).catch(fail);
       set({ automations: upsertAutomation(get().automations, automation) });
+    },
+    async create(body) {
+      const { automation } = await createAutomation(body).catch(fail);
+      set({ enabled: true, automations: upsertAutomation(get().automations, automation) });
+      return automation;
+    },
+    async update(automationId, body) {
+      const { automation } = await updateAutomation(automationId, body).catch(fail);
+      set({ automations: upsertAutomation(get().automations, automation) });
+      return automation;
     },
     async remove(automationId) {
       await deleteAutomation(automationId).catch(fail);

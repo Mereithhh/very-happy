@@ -179,7 +179,7 @@ export function describeTrigger(trigger: AutomationTrigger, lang: Lang): Trigger
       };
     case 'manual':
     default:
-      return { summary: zh ? '仅手动' : 'Manual only', detail: 'manual' };
+      return { summary: zh ? '仅触发器' : 'Trigger only', detail: 'manual' };
   }
 }
 

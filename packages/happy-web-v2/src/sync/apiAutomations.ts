@@ -6,7 +6,7 @@
  * `VH_AUTOMATIONS_ENABLED` is off — callers treat that as "feature hidden",
  * never as a failure (see automationsStore.ts).
  */
-import type { Automation, AutomationRun, AutomationSticky } from '@slopus/happy-wire';
+import type { Automation, AutomationCreate, AutomationRun, AutomationSticky, AutomationUpdate } from '@slopus/happy-wire';
 import { getCurrentAuth } from '@/auth/AuthContext';
 import { assertNotAuthFailure } from '@/auth/authLatch';
 import { getServerUrl } from './serverConfig';
@@ -80,4 +80,7 @@ export const resumeAutomation = (id: string) => request<{ automation: Automation
 /** manual run — allowed on paused automations too (explicit user intent) */
 export const runAutomationNow = (id: string) => request<{ run: AutomationRun }>(`/${encodeURIComponent(id)}/run`, { body: {} });
 export const deleteAutomation = (id: string) => request<{ ok: true }>(`/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const createAutomation = (body: AutomationCreate) => request<{ automation: Automation }>('', { body });
+/** PATCH with the version the form was opened on — 409 `stale_automation` when it moved */
+export const updateAutomation = (id: string, body: AutomationUpdate) => request<{ automation: Automation }>(`/${encodeURIComponent(id)}`, { method: 'PATCH', body });
 export const listStickies = (id: string) => request<{ stickies: AutomationSticky[] }>(`/${encodeURIComponent(id)}/stickies`);

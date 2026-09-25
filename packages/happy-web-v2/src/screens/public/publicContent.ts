@@ -415,6 +415,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'p', text: 'Help & getting started links the team installer and official todo skills. Teams created in the app receive collaboration instructions automatically. For terminal setup, select your agent in the guide, install the shared skill and ask the managed conversation to read the returned path; installation does not change host discovery settings.' },
         { type: 'p', text: 'In Todos → My todos, choose Let AI use my todos to copy the complete instructions and current server address. You can also run very-happy todo skill on the connected computer. Reading instructions grants no account access; verify the CLI login and server before reading existing todos.' },
         { type: 'link', href: '/skills/very-happy-todo-provider/SKILL.md', label: 'Preview external todo-provider skill' },
+        { type: 'link', href: '/docs/automations', label: 'Schedule or trigger sessions with Automations' },
       ] },
       { heading: 'MCP handoffs into the Web workspace', blocks: [
         { type: 'p', text: 'Base managed Claude sessions receive change_title, copy_to_clipboard, open_preview, and report_progress. The managed Codex, Gemini, and ACP bridge exposes change_title, copy_to_clipboard, and open_preview. These handoffs let an agent turn local work into visible Web state instead of merely printing another terminal line.' },
@@ -451,6 +452,31 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       ] },
       { heading: 'Personal agent systems', blocks: [
         { type: 'p', text: 'A useful agent system separates durable operating rules from credentials and company-specific knowledge. Keep small, reviewable skills and routing policy in version control; render secrets only at runtime; connect them to Very Happy through documented adapters. We plan to publish a scrubbed reference kit, not a dump of a private operator environment.' },
+      ] },
+    ],
+  },
+  {
+    slug: 'automations', label: 'Automations', summary: 'Schedule or trigger agent sessions and scripts on one machine, and decide on what needs you from the task board.',
+    sections: [
+      { heading: 'One trigger, one action, one machine', blocks: [
+        { type: 'p', text: 'An automation pairs a trigger with an action on one execution computer. Triggers: a cron schedule with an IANA time zone, a fixed interval (1 minute or more), a single moment, or trigger only (fired by an event). Actions: spawn a new agent session in a directory (Claude Code, Codex, pi, Gemini or OpenClaw), send a prompt into an existing session, or run a script as argv without a shell.' },
+        { type: 'list', items: ['Every execution is a run with a status (queued → claimed → running → done / failed / skipped / expired / cancelled), a session link, a summary and an attention flag.', 'A spawned session carries the #automation tag and VH_AUTOMATION_RUN_ID / VH_AUTOMATION_NAME in its environment; scripts also receive VH_AUTOMATION_PAYLOAD.', 'Prompts, argv and sticky keys accept {{payload}}, {{payload.field}} (JSON payload), {{run.id}}, {{automation.name}} and {{now}}.'] },
+        { type: 'note', text: 'Automations are feature gated: the server sets VH_AUTOMATIONS_ENABLED=true (optionally VH_AUTOMATIONS_ACCOUNT_IDS). When the gate is off, the sidebar entry stays hidden, the CLI says so in one line and ordinary chat is unaffected. Each automation runs on the one machine you choose; there is no automatic cross-machine routing.' },
+      ] },
+      { heading: 'Create one from the web, the CLI or a session', blocks: [
+        { type: 'p', text: 'In the app, open Automations in the sidebar and choose New automation: name, machine, trigger, action and limits (what to do when the previous run is still going, maximum runtime). The cron field previews its wording as you type; the machine list shows which computers are online. Edit, pause, resume, run now and delete live on the same pages.' },
+        { type: 'code', code: "very-happy auto create --name daily-inventory --cron '0 9 * * 1-5' --tz Asia/Singapore \\\n  --spawn-dir ~/work --prompt-file prompts/inventory.md\nvery-happy auto create --name backup --every 6h --script -- /usr/bin/env bash -lc 'restic backup ~/notes'\nvery-happy auto list; very-happy auto show daily-inventory; very-happy auto pause daily-inventory" },
+        { type: 'p', text: 'Managed Claude, Codex and pi sessions carry the automation_* MCP tools (automation_create, automation_update, automation_run, automation_fire, automation_runs, automation_report, …) with the same account permissions as the CLI. An agent started from a plain terminal can read the official skill printed by very-happy auto skill; very-happy teams install --apply installs it next to the Teams skill.' },
+      ] },
+      { heading: 'Triggers: fire an automation from an event', blocks: [
+        { type: 'p', text: 'A trigger-only automation has no schedule. Anything that can run a command on a connected computer fires it: an IM bot, a file watcher, a systemd unit or another agent. The detail page shows the copyable commands. Fire is the only event entry point; there is no inbound webhook.' },
+        { type: 'code', code: "very-happy auto fire on-mention --payload-json '{\"conversationId\":\"c9\",\"text\":\"hi\"}' --dedupe-key msg-123 --wait" },
+        { type: 'list', items: ['The payload is available to the prompt as {{payload}} or {{payload.field}}.', 'The same --dedupe-key within 24 hours returns the original run instead of starting another.', 'A sticky key template such as conv-{{payload.conversationId}} makes events with the same rendered key continue one conversation instead of spawning a new session.', 'Run now on the web page (and very-happy auto run) queues a run without a payload; a paused automation ignores fire but still accepts run now.'] },
+      ] },
+      { heading: 'Needs my decision', blocks: [
+        { type: 'p', text: 'The top of the task board lists runs that need you, most urgent first: an agent waiting for input, a failed or expired run, a run nobody picked up because the machine is offline. Each row opens the session, acknowledges the run, runs the automation again, or cancels a run that is still open. The band renders nothing when nothing needs you.' },
+        { type: 'list', items: ['A run finishes when the agent reports it (automation_report or very-happy auto report --status done|failed) or, without a report, when the session’s turn ends; the last assistant text becomes the summary.', 'Scripts finish on exit: exit 0 is done, anything else is failed with the output tail as the summary.', 'A queued run that no daemon claims for ten minutes is flagged machine offline; it runs when the machine comes back.', 'The automation page shows the last result and next run per automation; the detail page keeps the recent run timeline with summaries and session links.'] },
+        { type: 'link', href: `${GITHUB_URL}/blob/main/docs/automations.md`, label: 'Read the full Automations guide ↗' },
       ] },
     ],
   },

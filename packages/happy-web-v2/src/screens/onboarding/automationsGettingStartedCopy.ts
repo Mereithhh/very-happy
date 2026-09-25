@@ -1,0 +1,36 @@
+/** B-498: onboarding / help copy for Automations, same en/zh shape as teams. */
+export function automationsGettingStartedCopy(lang: string) {
+  return lang.startsWith('zh') ? {
+    title: '自动化 · 定时与触发', eyebrow: '让 Agent 按时或按事件自己开工',
+    intro: '一条自动化 = 一个触发器 + 一个动作 + 一台执行电脑。触发器可以是定时（cron + 时区）、固定间隔、一次性，或者只由事件触发；动作可以是在某个目录起一个 Agent 会话、把 prompt 发进已有会话，或者直接跑一个脚本。',
+    steps: ['选触发器', '选动作与机器', '在看板上决策'],
+    example: '每个工作日 09:00，在 ~/work 起一个 Claude 会话，盘点昨天的消息并整理今天的清单；跑完把摘要报回来。',
+    decisions: '需要我决策',
+    decisionsNote: '每次运行都有记录：完成、失败、超时、机器离线，或 Agent 在等你输入。这些会出现在任务看板顶部的「需要我决策」区，你可以打开会话、确认、再跑一次或取消；没有需要处理的事情时，这一区不会出现。',
+    createTitle: '三种创建方式',
+    createWeb: '网页：自动化 → 新建自动化，填触发器、动作和机器。',
+    createCli: '终端：在已连接的电脑运行 very-happy auto create。',
+    createSession: '会话里：托管的 Claude / Codex / pi 会话直接调用 automation_create 等 MCP 工具。',
+    triggerTitle: '触发器怎么用',
+    triggerNote: '选「仅触发器」的自动化没有时间表，由事件触发：IM 机器人、文件监听或任何脚本运行 very-happy auto fire <name>，可带 JSON payload（prompt 里用 {{payload.field}}）和 dedupe key（24 小时内同一 key 不重复跑）；托管会话里用 automation_fire。带粘性 key 时，同一 key 的事件会续用同一个会话。',
+    open: '新建自动化', docs: '自动化教程', cli: '终端命令',
+    gate: '这台服务器尚未启用自动化（VH_AUTOMATIONS_ENABLED）。启用后网页、CLI 和会话里的工具一起可用；普通对话不受影响。',
+    limit: '自动化在你选定的一台电脑上执行，电脑离线时运行会排队并提醒你；不会自动跨机器路由。',
+  } : {
+    title: 'Automations · Schedules and triggers', eyebrow: 'Let agents start on a schedule or on an event',
+    intro: 'An automation is one trigger, one action and one execution computer. The trigger is a schedule (cron with a time zone), a fixed interval, a single moment, or an event only; the action starts an agent session in a directory, sends a prompt into an existing session, or runs a script.',
+    steps: ['Pick a trigger', 'Pick an action and machine', 'Decide on the board'],
+    example: 'Every weekday at 09:00, start a Claude session in ~/work that reviews yesterday’s messages and writes today’s list; report a summary when done.',
+    decisions: 'Needs my decision',
+    decisionsNote: 'Every run leaves a record: done, failed, expired, machine offline, or the agent waiting for your input. Those land in the “Needs my decision” band at the top of the task board where you open the session, acknowledge, run again or cancel. The band stays hidden when nothing needs you.',
+    createTitle: 'Three ways to create one',
+    createWeb: 'Web: Automations → New automation — trigger, action and machine.',
+    createCli: 'Terminal: very-happy auto create on a connected computer.',
+    createSession: 'In a session: managed Claude / Codex / pi sessions call the automation_create MCP tool directly.',
+    triggerTitle: 'Using triggers',
+    triggerNote: 'A “trigger only” automation has no schedule; an event fires it: an IM bot, a file watcher or any script runs very-happy auto fire <name>, optionally with a JSON payload ({{payload.field}} in the prompt) and a dedupe key (the same key within 24h does not run twice). Inside a managed session use automation_fire. With a sticky key, events sharing that key continue the same conversation.',
+    open: 'New automation', docs: 'Automations guide', cli: 'Terminal commands',
+    gate: 'Automations are not enabled on this server yet (VH_AUTOMATIONS_ENABLED). Once enabled, the web page, the CLI and the in-session tools turn on together; ordinary chat is unaffected.',
+    limit: 'An automation runs on the one computer you choose; while it is offline the run queues and flags you. There is no automatic cross-machine routing.',
+  };
+}

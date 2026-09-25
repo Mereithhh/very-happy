@@ -19,6 +19,8 @@ const api = vi.hoisted(() => ({
   pauseAutomation: vi.fn(),
   resumeAutomation: vi.fn(),
   deleteAutomation: vi.fn(),
+  createAutomation: vi.fn(),
+  updateAutomation: vi.fn(),
 }));
 vi.mock('@/sync/sync', () => ({ sync: { onResume: () => () => {} } }));
 vi.mock('@/sync/apiAutomations', () => api);
@@ -128,6 +130,18 @@ describe('automationsStore', () => {
     expect(s.attention.map((r) => r.id)).toEqual(['rb']);
     expect(Object.keys(s.runsByAutomation)).toEqual(['b']);
     expect(s.stickiesByAutomation).toEqual({});
+  });
+
+  it('create/update upsert the returned automation', async () => {
+    useAutomations.setState({ enabled: true, automations: [auto('a')] });
+    api.createAutomation.mockResolvedValue({ automation: auto('b') });
+    await useAutomations.getState().create({ name: 'b', machineId: 'm', trigger: { kind: 'manual' }, action: { kind: 'script', command: ['true'] } });
+    api.updateAutomation.mockResolvedValue({ automation: auto('a', { version: 2, description: 'x' }) });
+    await useAutomations.getState().update('a', { version: 1, description: 'x' });
+    const s = useAutomations.getState();
+    expect(s.automations.map((a) => `${a.id}:${a.version}`)).toEqual(['a:2', 'b:1']);
+    api.updateAutomation.mockRejectedValue(new AutomationsApiError(409, 'stale_automation', { version: 3 }));
+    await expect(useAutomations.getState().update('a', { version: 1 })).rejects.toMatchObject({ code: 'stale_automation', details: { version: 3 } });
   });
 
   it('refreshAutomation on a plain 404 drops the automation locally (deleted elsewhere)', async () => {

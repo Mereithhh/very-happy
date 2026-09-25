@@ -774,6 +774,8 @@ Design notes:
 
 ## Automations: scheduled and triggered runs (feature gated)
 
+User guide (web, CLI, MCP, triggers, the board's decision band): [automations.md](automations.md).
+
 Account-level automations (B-496, [spec](../specs/2026-09-automations.md)): a
 trigger — cron with time zone, fixed interval, one time, or manual only — and an
 action on one machine: spawn a session (optionally *sticky*: repeated events with

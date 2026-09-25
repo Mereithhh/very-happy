@@ -93,8 +93,8 @@ describe('describeTrigger', () => {
     expect(describeInterval(5 * 60_000, 'en')).toBe('Every 5m');
     expect(describeInterval(90 * 60_000, 'zh')).toBe('每 1h 30m');
     expect(describeTrigger({ kind: 'interval', everyMs: 86_400_000 }, 'en').summary).toBe('Every 1d');
-    expect(describeTrigger({ kind: 'manual' }, 'zh')).toEqual({ summary: '仅手动', detail: 'manual' });
-    expect(describeTrigger({ kind: 'manual' }, 'en').summary).toBe('Manual only');
+    expect(describeTrigger({ kind: 'manual' }, 'zh')).toEqual({ summary: '仅触发器', detail: 'manual' });
+    expect(describeTrigger({ kind: 'manual' }, 'en').summary).toBe('Trigger only');
     const once = describeTrigger({ kind: 'once', at: Date.UTC(2026, 8, 30, 1, 0) }, 'en');
     expect(once.summary.startsWith('Once · ')).toBe(true);
     expect(once.detail).toBe('2026-09-30T01:00:00.000Z');

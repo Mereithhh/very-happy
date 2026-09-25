@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, ChevronDown, Clipboard, FileUp, FolderOpen, Keyboard, PlusCircle,
-  Layers3, ListChecks, MessageSquarePlus, Settings, StickyNote, TerminalSquare, Text,
+  Layers3, ListChecks, MessageSquarePlus, Settings, StickyNote, TerminalSquare, Text, Zap,
 } from 'lucide-react';
 import { Button } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -13,10 +13,11 @@ import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import './helpScreen.css';
 import { MachineWorkflowGuide, AgentSkillsGuide } from '@/screens/onboarding/CapabilityGuide';
 import { TeamGettingStarted } from '@/screens/onboarding/TeamGettingStarted';
+import { AutomationsGettingStarted } from '@/screens/onboarding/AutomationsGettingStarted';
 
 const GROUPS = [
   { key: 'navigate', icon: Keyboard, capabilities: [{ key: 'shortcuts', icon: Keyboard, badge: '⌘ / Ctrl K' }, { key: 'files', icon: FolderOpen }] },
-  { key: 'organize', icon: Layers3, capabilities: [{ key: 'notes', icon: StickyNote, badge: '⌘ / Ctrl J' }, { key: 'todos', icon: ListChecks }] },
+  { key: 'organize', icon: Layers3, capabilities: [{ key: 'notes', icon: StickyNote, badge: '⌘ / Ctrl J' }, { key: 'todos', icon: ListChecks }, { key: 'automations', icon: Zap }] },
   { key: 'handoff', icon: Clipboard, capabilities: [{ key: 'views', icon: Text }, { key: 'fileHandoff', icon: FileUp }, { key: 'clipboard', icon: Clipboard }] },
 ] as const;
 
@@ -44,6 +45,7 @@ export function HelpScreen() {
 
         <MachineWorkflowGuide />
         <TeamGettingStarted />
+        <AutomationsGettingStarted />
         <AgentSkillsGuide />
 
         <section className="help-screen__topics" aria-labelledby="help-topics-title">

@@ -10,6 +10,8 @@ computer, phone, or tablet. Teams adds coordinated parallel work to that same hu
   create the first session.
 - [Very Happy Teams](agent-teams.md): give a goal to a lead, delegate parallel
   tasks, inspect member conversations, and review results.
+- [Automations](automations.md): schedule or trigger agent sessions and scripts
+  on one machine, and decide on failed, expired or waiting runs from the board.
 - [Keyboard and touch](keyboard-shortcuts.md): command palette, fast navigation,
   PWA/browser shortcut boundaries, and mobile equivalents.
 - [Public Cloud](public-server.md): hosted-instance trust, registration, capacity,

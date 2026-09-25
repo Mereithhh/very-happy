@@ -570,6 +570,191 @@ a.au-machine:hover {
   margin-top: 6px;
 }
 
+/* ---- list groups (scheduled / triggers) ---- */
+.au-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: var(--sp-4) 0 var(--sp-2);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.au-group-title {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-faint);
+}
+.au-group-hint {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.au-list + .au-group-head {
+  padding-top: var(--sp-5);
+}
+
+/* ---- "how to trigger" (manual automations) ---- */
+.au-fire {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.au-fire-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.au-fire-label {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.au-fire-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 6px 8px 6px 10px;
+}
+.au-fire-cmd code {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+/* ---- create / edit form ---- */
+.au-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 880px;
+}
+.au-fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3) var(--sp-5);
+  margin: 0;
+  padding: var(--sp-3) 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.au-legend {
+  grid-column: 1 / -1;
+  padding: 0;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.au-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.au-field--wide {
+  grid-column: 1 / -1;
+}
+.au-field-label {
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.au-field-hint,
+.au-field-error {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.au-field-error {
+  color: var(--danger);
+}
+.au-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--fs-13);
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 7px 10px;
+  min-height: 34px;
+}
+.au-input.mono {
+  font-family: var(--font-mono);
+}
+.au-input:focus-visible {
+  outline: none;
+  border-color: var(--text-dim);
+}
+.au-field.is-error .au-input {
+  border-color: var(--danger);
+}
+.au-textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}
+.au-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-13);
+  color: var(--text);
+  min-height: 34px;
+  align-self: end;
+}
+.au-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--text);
+}
+.au-choice {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.au-choice-btn {
+  font-size: var(--fs-12);
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--text-dim);
+  background: var(--bg-1);
+  cursor: pointer;
+}
+.au-choice-btn:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.au-choice-btn.is-on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg-0);
+}
+.au-choice-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--text-faint);
+}
+.au-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
 /* ---- narrow / touch ---- */
 @media (max-width: 979px) {
   .au-body {
@@ -614,6 +799,24 @@ a.au-machine:hover {
   .au-header-tools .au-btn {
     padding-left: 8px;
     padding-right: 8px;
+  }
+}
+@media (max-width: 979px) {
+  .au-fieldset {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (pointer: coarse), (max-width: 600px) {
+  .au-input {
+    font-size: var(--fs-16);
+    min-height: 44px;
+  }
+  .au-choice-btn {
+    min-height: 44px;
+    padding: 0 14px;
+  }
+  .au-check {
+    min-height: 44px;
   }
 }
 @media (pointer: coarse) {

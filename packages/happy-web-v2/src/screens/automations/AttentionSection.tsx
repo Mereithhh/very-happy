@@ -73,7 +73,7 @@ export function AttentionSection({ poll = true, linkAutomation = true }: { poll?
                 </div>
                 <div className="au-attn-meta">
                   {linkAutomation ? (
-                    <button type="button" className="au-link mono" onClick={() => navigate(`/board/automations/${encodeURIComponent(run.automationId)}`)}>
+                    <button type="button" className="au-link mono" onClick={() => navigate(`/automations/${encodeURIComponent(run.automationId)}`)}>
                       {run.automationName}
                     </button>
                   ) : (

@@ -680,3 +680,18 @@ it('documents Teams setup and migration in both languages without claiming bare-
  expect(text).toContain('migration-preview');
  expect(text).toContain('cannot recall a message');
 });
+
+it('documents Automations in both languages as a gated, single-machine feature with fire as the only event entry', () => {
+ const en = getPublicDocs('en').find(doc => doc.slug === 'automations')!;
+ const zh = getPublicDocs('zh-Hans').find(doc => doc.slug === 'automations')!;
+ expect(en.sections.length).toBe(zh.sections.length);
+ expect(zh.sections.map(section => section.heading)).not.toEqual(en.sections.map(section => section.heading));
+ const text = JSON.stringify(en);
+ expect(text).toContain('VH_AUTOMATIONS_ENABLED');
+ expect(text).toContain('no automatic cross-machine routing');
+ expect(text).toContain('very-happy auto fire');
+ expect(text).toContain('there is no inbound webhook');
+ expect(text).toContain('Needs my decision');
+ expect(JSON.stringify(zh)).toContain('需要我决策');
+ expect(getPublicDocs('en').find(doc => doc.slug === 'integrations')!.sections[0].blocks.some(block => block.type === 'link' && block.href === '/docs/automations')).toBe(true);
+});
