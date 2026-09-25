@@ -85,11 +85,25 @@ does not work.
 Backtest over 2026-09-22..25: `MachinesDropped` would have fired for the B-484
 incident (09-22 08:35, 09-22 09:44), the 09-23 16:41 and 09-24 20:35 outages and
 once during a switch deploy (09-24 21:41, 5 min); stream-stall never crossed
-30 s in 7 days. Known gaps: the receiver has had DNS lookup failures from the
-cluster (`alertmanager_notifications_failed_total{integration="webhook"}`
-346/356 over the 24 h before 2026-09-25; resolving again at setup), the
-pre-existing `TargetDown` for the stopped slot is noise on the same route, and
-ElastiCache memory has no alert (CloudWatch, no SNS receiver).
+30 s in 7 days. Known gap: ElastiCache memory has no alert (CloudWatch, no SNS
+receiver).
+
+Receiver DNS (fixed 2026-09-25): every webhook notification failed from
+2026-09-23 08:41 to 2026-09-24 21:15 UTC with `lookup webhook.mereith.com on
+10.43.0.10:53: server misbehaving`. The sy gateway (sy-op, `100.100.0.251`)
+dropped LAN DNS in that window (tailscale netfilter, fixed and guarded on the
+gateway), and CoreDNS's only other upstream is an IPv6 address pods cannot
+reach. `kube-system/coredns-custom` now adds a `mereith.com` server block that
+forwards to sy-op first, then `223.5.5.5` and `119.29.29.29` (`policy
+sequential`; public answers match sy-op's). Remove that ConfigMap to roll back.
+
+Inactive-slot `TargetDown`: the rancher `TargetDown` rule groups by `service`,
+so the stopped slot's Service is always 100% down. The Alertmanager config
+Secret routes `alertname="TargetDown", job="very-happy"` to the `null`
+receiver; `VeryHappyMetricsDown` is the paging signal for both slots down. It
+still shows as firing in Prometheus. Rollback: remove that route from
+`cattle-monitoring-system/alertmanager-rancher-monitoring-alertmanager`
+(`alertmanager.yaml` key); the config reloader applies it in about 10 s.
 
 To remove: `kubectl -n monitoring delete prometheusrule very-happy-alerts`.
 
