@@ -4,6 +4,12 @@ import { EditReportThrottle, extractAcpEditPaths, extractClaudeEditPaths, extrac
 describe('extractClaudeEditPaths (B-497)', () => {
     const line = (content: unknown[]) => ({ type: 'assistant', message: { role: 'assistant', content } })
 
+    it('keeps the transcript line timestamp so replayed history is not "now"', () => {
+        const stamped = { ...line([{ type: 'tool_use', id: '1', name: 'Edit', input: { file_path: '/r/a.ts' } }]), timestamp: '2026-09-25T10:00:00.000Z' }
+        expect(extractClaudeEditPaths(stamped)).toEqual([{ path: '/r/a.ts', tool: 'Edit', at: Date.parse('2026-09-25T10:00:00.000Z') }])
+        expect(extractClaudeEditPaths({ ...stamped, timestamp: 'garbage' })[0].at).toBeUndefined()
+    })
+
     it('takes file_path / notebook_path from the four write tools only', () => {
         expect(extractClaudeEditPaths(line([
             { type: 'text', text: 'hi' },

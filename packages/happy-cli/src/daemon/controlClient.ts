@@ -236,7 +236,7 @@ export async function notifyDaemonTurnEvent(
  * Fire-and-forget: the caller never awaits the conflict decision, and an old
  * daemon (404) or no daemon at all is silently fine.
  */
-export function reportSessionEditToDaemon(edit: { sessionId: string; path: string; tool: string; cwd?: string }): void {
+export function reportSessionEditToDaemon(edit: { sessionId: string; path: string; tool: string; cwd?: string; at?: number }): void {
   void daemonPost('/session-edit', edit).then((result) => {
     if (result?.error) logger.debug(`[CONTROL CLIENT] session-edit not recorded: ${result.error}`);
   }).catch((error) => {

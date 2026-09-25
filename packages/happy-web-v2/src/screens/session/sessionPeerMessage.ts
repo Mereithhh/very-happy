@@ -23,8 +23,10 @@ export interface PresentedPeerMessage {
     fromTitle: string | null;
     agent: string | null;
     cwd: string | null;
-    /** Conflict only: the real path both sessions edited. */
+    /** Conflict only: the real path both sessions edited (first of `paths`). */
     path?: string;
+    /** Conflict only: every file in a coalesced notice. */
+    paths?: string[];
     /** Message only: the id of the message this one answers. */
     replyTo?: string;
     /** Conflict only: how long before the notice the peer edited the file. */
@@ -37,18 +39,34 @@ export interface PresentedPeerMessage {
 
 const MESSAGE_FOOTER = 'This message comes from another agent session on this machine, not from the user.';
 const MESSAGE_HEADER = /^\[Very Happy session message (\S+) from "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/;
-const CONFLICT_HEADER = /^\[Very Happy edit conflict (\S+); file ([^;\]]+); peer "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/;
+const CONFLICT_HEADER = /^\[Very Happy edit conflict (\S+); file ([^;\]]+)(?:; more (\d+))?; peer "([^"]*)" (\S+?)((?:; [^\]]*)?)\]$/;
+const FIELD_KEYS = new Set(['agent', 'cwd', 're', 'peer', 'more']);
+
+/** Inverse of the CLI's sanitizeHeaderValue (percent-encoded `"`, `;`, `]`, `%`). */
+function decodeHeaderValue(value: string): string {
+    return value.replace(/%[0-9A-Fa-f]{2}/g, (hex) => String.fromCharCode(parseInt(hex.slice(1), 16)));
+}
 
 function parseFields(tail: string): Record<string, string> {
-    const fields: Record<string, string> = {};
+    const fields: Record<string, string> = Object.create(null);
     for (const part of tail.split('; ')) {
         const trimmed = part.trim();
         if (!trimmed) continue;
         const space = trimmed.indexOf(' ');
         if (space <= 0) continue;
-        fields[trimmed.slice(0, space)] = trimmed.slice(space + 1).trim();
+        const key = trimmed.slice(0, space);
+        if (!FIELD_KEYS.has(key)) continue;
+        fields[key] = decodeHeaderValue(trimmed.slice(space + 1).trim());
     }
     return fields;
+}
+
+/** Coalesced notices list every file under `Files:`; the header carries the first one. */
+function parsePathList(body: string, first: string): string[] {
+    const at = body.lastIndexOf('\nFiles:\n');
+    if (at === -1) return [first];
+    const listed = body.slice(at + '\nFiles:\n'.length).split('\n').map((l) => l.replace(/^- /, '').trim()).filter(Boolean);
+    return listed.length > 0 ? listed : [first];
 }
 
 function parseAgo(value: string | undefined): number {
@@ -74,7 +92,7 @@ export function presentSessionPeerMessage(message: Pick<UserTextMessage, 'text' 
             kind: 'message',
             id: asMessage[1],
             fromSessionId: asMessage[3],
-            fromTitle: asMessage[2] || null,
+            fromTitle: decodeHeaderValue(asMessage[2]) || null,
             agent: fields.agent ?? null,
             cwd: fields.cwd ?? null,
             ...(fields.re ? { replyTo: fields.re } : {}),
@@ -84,17 +102,20 @@ export function presentSessionPeerMessage(message: Pick<UserTextMessage, 'text' 
     }
     const asConflict = header.match(CONFLICT_HEADER);
     if (asConflict) {
-        const fields = parseFields(asConflict[5]);
+        const fields = parseFields(asConflict[6]);
+        const path = decodeHeaderValue(asConflict[2].trim());
+        const body = rest.trim();
         return {
             kind: 'conflict',
             id: asConflict[1],
-            fromSessionId: asConflict[4],
-            fromTitle: asConflict[3] || null,
+            fromSessionId: asConflict[5],
+            fromTitle: decodeHeaderValue(asConflict[4]) || null,
             agent: fields.agent ?? null,
             cwd: fields.cwd ?? null,
-            path: asConflict[2].trim(),
+            path,
+            paths: parsePathList(body, path),
             peerEditedAgoMs: parseAgo(fields.peer),
-            body: rest.trim(),
+            body,
             raw,
         };
     }

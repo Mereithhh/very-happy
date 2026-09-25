@@ -64,7 +64,10 @@ interface FileTail {
 }
 
 export interface MirrorScannerEvents {
-    onMessages: (messages: RawJSONLines[]) => void;
+    /** `replay` = these lines are history being (re)read — first-bind backfill
+     *  or a whole-file re-read after replacement — not something claude just
+     *  did. Consumers that treat lines as "now" (B-497 edit tap) skip them. */
+    onMessages: (messages: RawJSONLines[], context: { replay: boolean }) => void;
     /** First-bind backfill was truncated — the caller inserts the
      *  "更早内容看终端" notice BEFORE the replayed tail. */
     onBackfillTruncated?: () => void;
@@ -123,13 +126,16 @@ export function createMirrorScanner(opts: {
             tail.offset = 0; // backfill-tail: read everything once below
         }
 
+        let replaced = false;
         if (tail.offset > size) {
             logger.debug(`[MIRROR SCANNER] ${tail.path}: offset ${tail.offset} > size ${size} — file replaced, resetting (localId idempotency absorbs replays)`);
             tail.offset = 0;
+            replaced = true;
         }
         if (tail.offset === size) return;
 
         const isFirstBackfillRead = tail.mode === 'backfill-tail' && tail.offset === 0;
+        const replay = isFirstBackfillRead || replaced;
         const handle = await open(tail.path, 'r');
         let buf: Buffer;
         try {
@@ -153,7 +159,7 @@ export function createMirrorScanner(opts: {
             tail.mode = 'from-eof';
         }
 
-        if (messages.length > 0) opts.events.onMessages(messages);
+        if (messages.length > 0) opts.events.onMessages(messages, { replay });
     };
 
     const sync = new InvalidateSync(async () => {

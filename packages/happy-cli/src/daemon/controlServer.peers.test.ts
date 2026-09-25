@@ -41,6 +41,9 @@ describe('control server /session-edit and /peers (B-497)', () => {
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ status: 'ok' });
         expect(onSessionEdit).toHaveBeenCalledWith({ sessionId: 's1', path: 'src/a.ts', tool: 'Edit', cwd: '/repo' });
+        expect((await post('/session-edit', { sessionId: 's1', path: 'b.ts', tool: 'Write', at: 1_700_000_000_000 })).status).toBe(200);
+        expect(onSessionEdit).toHaveBeenLastCalledWith({ sessionId: 's1', path: 'b.ts', tool: 'Write', at: 1_700_000_000_000 });
+        expect((await post('/session-edit', { sessionId: 's1', path: 'b.ts', tool: 'Write', at: -5 })).status).toBe(400);
     });
 
     it('rejects malformed reports and unauthenticated calls', async () => {

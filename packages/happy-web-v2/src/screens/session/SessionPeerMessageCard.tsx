@@ -27,9 +27,9 @@ export function SessionPeerMessageCard({ content, createdAt }: { content: Presen
                 )}
             </div>
             <strong className="peer-message-who">{who}</strong>
-            {conflict && content.path && <code className="peer-message-path">{content.path}</code>}
+            {conflict && (content.paths ?? (content.path ? [content.path] : [])).map((p) => <code key={p} className="peer-message-path">{p}</code>)}
             {content.agent === 'terminal-mirror' && <span className="peer-message-note">{t('session.peerMessage.fromTerminal')}</span>}
-            {content.body && <p className="peer-message-body">{content.body}</p>}
+            {content.body && <p className="peer-message-body">{conflict ? content.body.replace(/\nFiles:\n[\s\S]*$/, '') : content.body}</p>}
             {content.fromSessionId !== 'cli' && (
                 <Link to={`/session/${encodeURIComponent(content.fromSessionId)}`} className="peer-message-link" title={content.fromSessionId}>
                     {t('session.peerMessage.openSession')}<ArrowUpRight size={15} aria-hidden />

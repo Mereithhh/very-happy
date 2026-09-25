@@ -111,8 +111,11 @@ export function createMirrorManager(deps: {
      *  the web learns about the toggle without waiting for the next tick. */
     onBindingsChanged?: () => void;
     /** B-497: an Edit/Write call seen in a mirrored transcript (sessionId is
-     *  the shadow session; cwd the terminal's). Same table as managed wrappers. */
-    onEdit?: (edit: { sessionId: string; path: string; tool: string; cwd?: string }) => void;
+     *  the shadow session; cwd the terminal's; `at` the transcript line's own
+     *  time). Same table as managed wrappers. */
+    onEdit?: (edit: { sessionId: string; path: string; tool: string; cwd?: string; at?: number }) => void;
+    /** B-497: the mirror ended (claude exited / terminal closed) — its edits no longer count. */
+    onSessionEnded?: (sessionId: string) => void;
 }): MirrorManager {
     const backfillLines = deps.backfillLines ?? MIRROR_BACKFILL_LINES_DEFAULT;
     const bindings = new Map<string, MirrorBinding>();
@@ -165,12 +168,14 @@ export function createMirrorManager(deps: {
         persistBinding(binding);
     };
 
-    const sendMessages = (binding: MirrorBinding, messages: RawJSONLines[]): void => {
+    const sendMessages = (binding: MirrorBinding, messages: RawJSONLines[], context: { replay: boolean } = { replay: false }): void => {
         for (const message of messages) {
-            if (deps.onEdit && binding.status === 'active') {
+            // Replayed history (backfill / file re-read) is not an edit happening
+            // now; live lines still carry their own timestamp for the daemon to clamp.
+            if (deps.onEdit && binding.status === 'active' && !context.replay) {
                 for (const edit of extractClaudeEditPaths(message)) {
                     try {
-                        deps.onEdit({ sessionId: binding.happySessionId, path: edit.path, tool: edit.tool, cwd: binding.metadata.path });
+                        deps.onEdit({ sessionId: binding.happySessionId, path: edit.path, tool: edit.tool, cwd: binding.metadata.path, ...(edit.at !== undefined ? { at: edit.at } : {}) });
                     } catch (error) {
                         logger.debug(`[MIRROR] edit tap failed for terminal ${binding.terminalId}:`, error);
                     }
@@ -187,7 +192,7 @@ export function createMirrorManager(deps: {
         const scanner = createMirrorScanner({
             backfillLines,
             events: {
-                onMessages: (messages) => sendMessages(binding, messages),
+                onMessages: (messages, context) => sendMessages(binding, messages, context),
                 onBackfillTruncated: opts.withTruncationNotice
                     ? () => binding.client.sendSessionEvent({
                         type: 'message',
@@ -215,6 +220,7 @@ export function createMirrorManager(deps: {
         await binding.scanner?.cleanup();
         binding.scanner = null;
         binding.client.closeClaudeSessionTurn('completed');
+        try { deps.onSessionEnded?.(binding.happySessionId); } catch { /* advisory */ }
         updateBindingMetadata(binding, {
             lifecycleState: 'archived',
             lifecycleStateSince: Date.now(),

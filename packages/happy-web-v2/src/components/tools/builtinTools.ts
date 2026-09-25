@@ -540,6 +540,7 @@ export function builtinToolDigest(r: ResolvedBuiltinTool, tool: Pick<ToolCall, '
         // B-497: `{ delivered, messageId, to, url }` — link the recipient either way.
         case 'session_message':
             if (json !== null && j.delivered === true) digest.lines.push(t('tools.builtin.messageDelivered'));
+            else if (json !== null && j.delivered === false) digest.lines.push([j.stored === true ? t('tools.builtin.messageStoredUnread') : t('tools.builtin.messageNotDelivered'), str(j.error)].filter(Boolean).join(' · '));
             sessionLink(str(j.to) ?? str(i.to));
             break;
         // B-497: `{ self, scope, peers: [{ sessionId, kind, cwd, flavor, title, edits }] }`.

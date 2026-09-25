@@ -69,7 +69,7 @@ export function startDaemonControlServer({
   /** B-497: a wrapper reports one edit call (path as the runner saw it, cwd
    *  for relative paths). The daemon normalises, records and notifies; the
    *  wrapper never waits on that. Optional so older wirings/tests keep working. */
-  onSessionEdit?: (edit: { sessionId: string; path: string; tool: string; cwd?: string }) => void;
+  onSessionEdit?: (edit: { sessionId: string; path: string; tool: string; cwd?: string; at?: number }) => void;
   /** B-497: live sessions (managed + active mirrors) with their recent edits. */
   listPeers?: () => PeerSessionInfo[];
 }): Promise<{ port: number; stop: () => Promise<void> }> {
@@ -464,6 +464,9 @@ export function startDaemonControlServer({
           path: z.string().min(1).max(4096),
           tool: z.string().min(1).max(64),
           cwd: z.string().max(4096).optional(),
+          /** When the runner saw the call (ms). Clamped to now by the daemon;
+           *  older than the conflict window = ignored (replayed history). */
+          at: z.number().int().nonnegative().optional(),
         }),
         response: { 200: z.object({ status: z.literal('ok') }) },
       },

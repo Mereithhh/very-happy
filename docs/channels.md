@@ -453,13 +453,23 @@ coordinate directly — no lock, no permission change.
 - `message <id> <text>` — the text lands in that session's chat as a user
   message headed `[Very Happy session message <msgId> from "<title>" <sessionId>; agent …; cwd …]`
   and ending with how to reply. The sender is the session named by
-  `HAPPY_SESSION_ID` when the command runs from a managed session's shell
-  (every managed runner sets it), otherwise `cli <user>@<host>`. `--reply-to`
-  quotes the peer's message id. Refused, exit 1, with the reason on stderr
-  (and `{delivered:false,error}` on stdout under `--json`) when the target is
-  not spawned by this machine (no local key — cross-machine messaging waits
-  on the account content key, B-337), is not running here, or is a terminal
-  mirror (nothing reads a mirror's queue; the person at that terminal does).
+  `VH_PEER_SESSION_ID` when the command runs from a managed session's shell
+  (every managed runner — Claude, Codex, pi — sets it for its child; it is a
+  dedicated variable so `very-happy teams …` in that shell keeps behaving as
+  before), otherwise `cli <user>@<host>` (then the footer says there is no
+  session to reply to). `--reply-to` quotes the peer's message id. Refused,
+  exit 1, with the reason on stderr (and `{delivered:false,error}` on stdout
+  under `--json`) when the target is not spawned by this machine (no local
+  key — cross-machine messaging waits on the account content key, B-337), is
+  not running here, or is a terminal mirror (nothing reads a mirror's queue;
+  the person at that terminal does). `delivered` follows `very-happy send`
+  (B-501): the message goes through `deliverToSession`, so `true` means a
+  wrapper was attached before and after the POST; otherwise `--json` carries
+  `delivered:false`, `stored` (it is on the server, unread) and `status`.
+- **Reply-loop guard.** Inside a session, `session_message` refuses the 9th
+  message to the same target within 10 minutes with an error that tells the
+  agent to stop replying (the footer already says not to reply just to
+  acknowledge). The CLI form has no budget: a person is typing.
 
 **Edit conflicts.** The daemon keeps a 30-minute table of real path → sessions
 that edited it. When a second live session edits a path another one touched in
@@ -467,8 +477,14 @@ the window, **both** get a notice headed
 `[Very Happy edit conflict <id>; file <path>; peer "<title>" <sessionId>; …; peer edited <n>s ago]`
 that names the other session and suggests `session_message` — once per pair
 of sessions per file per window, delivered as a steer into a running turn
-(queued otherwise). Nothing is blocked: it is a heads-up, and the Web shows it
-as a card linking to the other session.
+(queued otherwise). Conflicts on several files between the same two sessions
+within 10 s are coalesced into ONE notice listing every file (`; more <n>` in
+the header, `Files:` in the body), and a pair gets at most 5 notices per
+window. Each edit report carries the time the runner saw the call; the daemon
+ignores anything older than the window, so replayed transcript history (a
+terminal mirror's backfill, a re-read after the file was replaced, a daemon
+restart re-adopting a terminal) never produces a notice. Nothing is blocked:
+it is a heads-up, and the Web shows it as a card linking to the other session.
 
 ### `very-happy send` — message an existing session
 

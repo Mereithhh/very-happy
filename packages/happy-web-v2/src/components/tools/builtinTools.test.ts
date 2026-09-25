@@ -156,6 +156,11 @@ describe('B-497 session peer tools', () => {
             state: 'completed', result: mcpText({ delivered: true, messageId: 'm-9', to: 's-2', url: 'https://veryhappy.dev/session/s-2' }),
         });
         expect(delivered.lines).toEqual(['Delivered']);
+        const unread = builtinToolDigest(resolveBuiltinTool(call('session_message', { to: 's-2', body: 'x' }))!, {
+            state: 'completed', result: mcpText({ delivered: false, stored: true, status: 'offline', messageId: 'm', to: 's-2', url: 'u', error: 'went offline' }),
+        });
+        expect(unread.lines).toEqual(['Not delivered — stored, nobody is reading that session · went offline']);
+        expect(unread.links[0].to).toBe('/session/s-2');
         expect(delivered.links).toEqual([{ to: '/session/s-2', label: 'Open session', id: 's-2' }]);
         // still links the recipient while running / on a prose result; nothing when the call failed
         expect(builtinToolDigest(resolveBuiltinTool(call('session_message', { to: 's-2' }))!, { state: 'running', result: undefined }).links[0].to).toBe('/session/s-2');

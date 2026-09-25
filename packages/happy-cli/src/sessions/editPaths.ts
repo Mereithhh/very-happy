@@ -14,6 +14,8 @@ export const CLAUDE_EDIT_TOOLS: ReadonlySet<string> = new Set(['Edit', 'Write', 
 export interface ObservedEdit {
     path: string
     tool: string
+    /** When the runner recorded the call (transcript line timestamp); absent = now. */
+    at?: number
 }
 
 function pathOf(input: unknown): string | null {
@@ -33,13 +35,18 @@ export function extractClaudeEditPaths(body: unknown): ObservedEdit[] {
     if (line.type !== 'assistant') return []
     const content = line.message?.content
     if (!Array.isArray(content)) return []
+    // Transcript lines carry an ISO timestamp; a replayed line (mirror backfill,
+    // file re-read after replacement) must keep its ORIGINAL time so the daemon
+    // can tell an old edit from a fresh one.
+    const stamp = (line as { timestamp?: unknown }).timestamp
+    const at = typeof stamp === 'string' ? Date.parse(stamp) : typeof stamp === 'number' ? stamp : NaN
     const edits: ObservedEdit[] = []
     for (const block of content) {
         if (!block || typeof block !== 'object') continue
         const b = block as { type?: unknown; name?: unknown; input?: unknown }
         if (b.type !== 'tool_use' || typeof b.name !== 'string' || !CLAUDE_EDIT_TOOLS.has(b.name)) continue
         const path = pathOf(b.input)
-        if (path) edits.push({ path, tool: b.name })
+        if (path) edits.push({ path, tool: b.name, ...(Number.isFinite(at) ? { at } : {}) })
     }
     return edits
 }

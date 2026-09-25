@@ -115,6 +115,15 @@ very-happy sessions message <id> <text> [--reply-to <msgId>] [--json]
 - `builtinTools.ts`：`BUILTIN_TOOL_NAMES` 增 `session_message`、`session_peers`；summary：`session_message` = `to <shortId> · <body>`，`session_peers` = scope；fields：to / replyTo / body、scope；digest：`session_message` 链接目标会话，`session_peers` 列出邻居行（标题 · agent · cwd · 最近编辑 n 个文件）并逐个链接。
 - i18n：`_default.ts` 与 `zh-Hans.ts` 增 labels/fields/卡片文案。
 
+### 7. 评审后修订（2026-09-25 对抗评审，follow-up PR）
+
+- **回灌不是「现在」**：`/session-edit` 接受可选 `at`（runner 看到调用的时间，Claude 取 transcript 行 `timestamp`），daemon clamp 到 now，超窗口的直接丢弃；mirror scanner 的 `onMessages` 带 `{ replay }`（首次 backfill、文件替换整读），mirror tap 在 replay 批次上跳过。
+- **提示风暴**：同一对会话的冲突按 pair 合并 10s 后一条通知列出全部文件（头 `; more <n>`，正文 `Files:` 列表）；每 pair 每窗口最多 5 条。
+- **回信循环**：会话进程内按目标计数，10 分钟内第 9 条拒发，错误文案明确「停止回复」；CLI 形态不限。
+- **身份变量**：`HAPPY_SESSION_ID` 会改变 `very-happy teams …` 的行为（`teams/permissions.ts` 拒绝、client 改用会话身份），peer 发送方改读专用 `VH_PEER_SESSION_ID`；Claude/Codex/pi 子进程均注入。
+- **delivered 语义对齐 B-501**：`sendPeerMessage` 经 `deliverToSession`（发前分类、发后复核），返回 `{ delivered, stored, status, error? }`；Web digest 区分「已送达 / 未送达但已存 / 未送达」。
+- 其它：头部值百分号编码而非替换字符（`"`、`;`、`]`、`%`），解析只认白名单字段且用 null-prototype 对象；`normalizeEditPath` 默认 `realpathSync.native`；mirror 结束时 `forget`；Web 卡片正文 12 行 clamp（原文在折叠区）。
+
 ## 兼容矩阵与发布顺序
 
 | 组合 | 行为 |

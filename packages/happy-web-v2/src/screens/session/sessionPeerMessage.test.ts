@@ -29,10 +29,18 @@ describe('session peer message presentation (B-497)', () => {
         const text = `[Very Happy edit conflict c1; file /repo/src/auth.ts; peer "Terminal claude" ${from}; agent terminal-mirror; cwd /repo; peer edited 3m ago]\nAnother session on this machine edited the same file.`;
         expect(presentSessionPeerMessage({ text, meta: { sentFrom: 'session-peer' } })).toEqual({
             kind: 'conflict', id: 'c1', fromSessionId: from, fromTitle: 'Terminal claude', agent: 'terminal-mirror', cwd: '/repo',
-            path: '/repo/src/auth.ts', peerEditedAgoMs: 180_000, body: 'Another session on this machine edited the same file.', raw: text,
+            path: '/repo/src/auth.ts', paths: ['/repo/src/auth.ts'], peerEditedAgoMs: 180_000, body: 'Another session on this machine edited the same file.', raw: text,
         });
         expect(presentSessionPeerMessage({ text: text.replace('3m ago', '40s ago'), meta: { sentFrom: 'session-peer' } })?.peerEditedAgoMs).toBe(40_000);
         expect(presentSessionPeerMessage({ text: text.replace('3m ago', '2h ago'), meta: { sentFrom: 'session-peer' } })?.peerEditedAgoMs).toBe(7_200_000);
+    });
+
+    it('decodes percent-encoded header values and reads a coalesced file list', () => {
+        const text = '[Very Happy edit conflict c3; file /r/we%3Brd%20%22x%22.ts; more 1; peer "T%22itle" p1; agent claude; peer edited 5s ago]\nAnother session on this machine edited the same 2 files within the last 30m.\nFiles:\n- /r/we;rd "x".ts\n- /r/b.ts';
+        const parsed = presentSessionPeerMessage({ text, meta: { sentFrom: 'session-peer' } });
+        expect(parsed).toMatchObject({ kind: 'conflict', path: '/r/we;rd "x".ts', paths: ['/r/we;rd "x".ts', '/r/b.ts'], fromTitle: 'T"itle', fromSessionId: 'p1', peerEditedAgoMs: 5_000 });
+        const forged = presentSessionPeerMessage({ text: '[Very Happy session message m from "t" s; __proto__ x; constructor y]\nbody', meta: { sentFrom: 'session-peer' } });
+        expect(forged?.agent).toBeNull();
     });
 
     it('falls back to the ordinary bubble when the first line is not ours', () => {
