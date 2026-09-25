@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-25-automations-scheduled-and-triggered-runs',
+    cliVersion: '0.2.152',
+    date: '2026-09-25',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep25f.title',
+    summaryKey: 'changelog.releases.sep25f.summary',
+    itemKeys: ['changelog.releases.sep25f.triggers', 'changelog.releases.sep25f.cli', 'changelog.releases.sep25f.agents', 'changelog.releases.sep25f.runs'],
+  },
+  {
     id: '2026-09-25-quieter-heartbeats-cached-assets',
     date: '2026-09-25',
     buildVersion: __APP_VERSION__,

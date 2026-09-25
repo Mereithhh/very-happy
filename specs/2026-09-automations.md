@@ -1,6 +1,6 @@
 # Automations：账号级定时 / 触发任务
 
-> 状态：Draft（Owner 2026-09-25 批准方向，进入实现）
+> 状态：Shipped（server PR #424 `2099afca4`、CLI PR #425 `672766458`，随 CLI 0.2.152 发布；首批迁移 dev-sg `daily-work-inventory` / `tanka-dida-sync`，发布与迁移记录见 backlog B-496）
 > 日期：2026-09-25 ｜ 关联 backlog：B-496（核心）、B-497（会话间消息与编辑冲突提示）、B-498（Web 自动化视图）
 > 前身：[Team schedules](2026-09-team-schedules.md)（只服务 Teams，保持不变）
 
@@ -98,9 +98,9 @@ Owner 的日常自动化（每日 Tanka 盘点、Tanka→滴答同步、IM 事�
 
 ## 验收标准
 
-- [ ] cron+tz / interval / once / manual 的到期计算单测（含 DST、错过多轮合并、anchor 相位）。
-- [ ] claim 并发幂等（两个并发 claim 不重复物化/领取）、lease 过期、fencing、终态不可回退、dedupeKey 幂等。
-- [ ] daemon：spawn / sticky 命中与失效 / send / script 成功失败超时；重启不重复 spawn；旧 server 404 降级。
-- [ ] CLI 全命令 + `--json`；MCP 三 runner 可见工具列表回归。
-- [ ] 本地全栈 e2e：create cron 每分钟 → 自动 spawn → done；fire 带 payload → sticky 同 key 二次续聊同会话。
-- [ ] 门禁全绿；spec 状态更新为 Shipped + commit。
+- [x] cron+tz / interval / once / manual 的到期计算单测（含 DST、错过多轮合并、anchor 相位）。
+- [x] claim 并发幂等（两个并发 claim 不重复物化/领取）、lease 过期、fencing、终态不可回退、dedupeKey 幂等。
+- [x] daemon：spawn / sticky 命中与失效 / send / script 成功失败超时；重启不重复 spawn；旧 server 404 降级。
+- [x] CLI 全命令 + `--json`；MCP 三 runner 可见工具列表回归。
+- [x] 本地全栈 e2e：create cron 每分钟 → 自动 spawn → done；fire 带 payload → sticky 同 key 二次续聊同会话。
+- [x] 门禁全绿；spec 状态更新为 Shipped + commit。

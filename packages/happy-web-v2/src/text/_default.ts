@@ -1903,6 +1903,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25f: {
+                title: 'Automations: run sessions and scripts on a schedule or on demand',
+                summary: 'Your account can now hold automations: a cron schedule with a time zone, a fixed interval, a one-off time, or manual only, each starting a session, continuing a sticky session, or running a script on one of your machines. Currently enabled per account; needs the CLI update on the machine that runs them.',
+                triggers: 'Each automation names its machine and what to do there: start a new session with a prompt (with the same defaults as the web app), continue an existing session keyed by a template such as {{payload.conversationId}}, or run a command without a shell.',
+                cli: '`very-happy auto` creates, edits, pauses, resumes, runs and removes automations; `very-happy auto fire <name>` triggers one from any local process with a payload and a de-duplication key, and `--wait` blocks until the run ends.',
+                agents: 'Sessions started by Very Happy (Claude, Codex, pi) get `automation_*` tools with the same rights as the account, plus a `very-happy-automations` skill installed alongside the Teams skill.',
+                runs: 'Every run is recorded with its session link, summary and outcome; a run that fails, times out, or waits more than ten minutes because its machine is offline is flagged for your attention until you acknowledge it.',
+            },
             sep25e: {
                 title: 'Less background chatter, faster reloads',
                 summary: 'Every running session told every open tab "still here" every two seconds, even when it was doing nothing. That was about three quarters of everything the server relayed between its instances.',
