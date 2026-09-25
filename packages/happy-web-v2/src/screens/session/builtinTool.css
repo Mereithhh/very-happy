@@ -1,0 +1,133 @@
+/* B-499: expanded card of a very-happy built-in tool call. Sans for labels
+ * and human values, mono only for ids / paths / commands; one surface, no
+ * nested cards (docs/design-language.md §5.3). */
+.bt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-family: var(--font-sans);
+  font-size: var(--conversation-size);
+  line-height: var(--conversation-leading);
+}
+.bt-fields {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: var(--sp-3);
+  row-gap: 2px;
+  min-width: 0;
+}
+.bt-field {
+  display: contents;
+}
+.bt-k {
+  color: var(--text-faint);
+  white-space: nowrap;
+  padding-top: 0;
+}
+.bt-v {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.bt-v--mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  word-break: break-all;
+}
+.bt-v--multiline {
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow: auto;
+}
+.bt-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bt-waiting {
+  color: var(--text-faint);
+}
+.bt-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: var(--sp-2);
+  color: var(--text-dim);
+}
+.bt-line--first {
+  color: var(--text);
+}
+.bt-prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+}
+.bt-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding-top: 2px;
+}
+/* Neutral chip (accent is reserved for live state); the arrow says "leaves this view". */
+.bt-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--text);
+  text-decoration: none;
+  font-size: var(--fs-13);
+}
+.bt-link:hover {
+  background: var(--bg-3);
+  border-color: var(--line-2);
+}
+.bt-raw {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.bt-raw-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  align-self: flex-start;
+  min-height: 30px;
+  padding: 2px var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.bt-raw-head:hover {
+  color: var(--text-dim);
+}
+@media (max-width: 480px) {
+  .bt-fields {
+    grid-template-columns: 1fr;
+    row-gap: 0;
+  }
+  .bt-field:not(:first-child) .bt-k {
+    padding-top: var(--sp-1);
+  }
+}
+@media (pointer: coarse) {
+  .bt-link {
+    min-height: 44px;
+  }
+}

@@ -13,7 +13,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { previewToolPath } from './previewTools';
 import { StatusDot, Spinner } from '@/ui';
 import { ToolView } from './ToolView';
-import { toolLabel, toolDetail } from './toolInfo';
+import { toolLabel, toolDetail, toolDetailIsProse } from './toolInfo';
 import { toolFilePathOf } from './toolFilePath';
 import { FilePathLink } from './FilePathLink';
 import { useElapsedSeconds } from './useElapsed';
@@ -114,6 +114,8 @@ function ToolRow({
         : tool.state === 'running' ? 'thinking' : tool.state === 'error' ? 'permission' : 'connected';
     const label = toolLabel(tool);
     const detail = toolDetail(tool);
+    // B-499: built-in tool details are human sentences, so they drop the mono face.
+    const detailClass = `tg-tool-detail${toolDetailIsProse(tool) ? ' tg-tool-detail--prose' : ''}`;
     // A live or failed operation must surface itself even when the mobile
     // overview initially collapsed this row. Turn activity rows fold exactly
     // once on running→completed; legacy tool groups preserve their old state.
@@ -180,7 +182,7 @@ function ToolRow({
                         ? subagentGlyph(subagentStatus, tool.state, isAborted)
                         : <StatusDot status={status as any} size={7} pulse={tool.state === 'running' && !isStalled} />}
                     <span className="tg-tool-label">{label}</span>
-                    {detail && detail !== label && !filePath && <span className="tg-tool-detail">{detail}</span>}
+                    {detail && detail !== label && !filePath && <span className={detailClass}>{detail}</span>}
                 </button>
                 {detail && detail !== label && filePath && sessionId && (
                     <FilePathLink path={filePath} sessionId={sessionId} label={detail} className="tg-tool-detail" />

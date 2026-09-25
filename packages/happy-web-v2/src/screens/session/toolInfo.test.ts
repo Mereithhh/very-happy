@@ -3,7 +3,10 @@
  * command copy) rely on these returning the FULL raw text for every result
  * shape, so lock the shapes down.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+// B-499: toolInfo now resolves built-in tool labels through @/text, which reads settings at import time.
+vi.mock('@/text', async () => await import('@/testing/englishText'));
+
 import type { ToolCall } from '@/sync/typesMessage';
 import { asCommand, commandOutputText, extractError, resultToText, toolDetail } from './toolInfo';
 

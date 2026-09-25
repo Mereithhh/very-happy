@@ -196,6 +196,9 @@ const ToolHistoryHarness = import.meta.env.DEV
 const SubagentHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/SubagentHarness').then((m) => ({ default: m.SubagentHarness })))
   : null;
+const BuiltinToolsHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/BuiltinToolsHarness').then((m) => ({ default: m.BuiltinToolsHarness })))
+  : null;
 const TerminalKeyboardHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/TerminalKeyboardHarness').then((m) => ({ default: m.TerminalKeyboardHarness })))
   : null;
@@ -237,6 +240,9 @@ const router = createBrowserRouter(
     ...(ToolHistoryHarness ? [{path:'/dev/tool-history',element:<Lazy><ToolHistoryHarness /></Lazy>}] : []),
     ...(SubagentHarness
       ? [{ path: '/dev/subagent/:id', element: <Lazy><SubagentHarness /></Lazy> }]
+      : []),
+    ...(BuiltinToolsHarness
+      ? [{ path: '/dev/builtin-tools/:id', element: <Lazy><BuiltinToolsHarness /></Lazy> }]
       : []),
     ...(TerminalKeyboardHarness
       ? [{ path: '/dev/terminal-keyboard', element: <Lazy><TerminalKeyboardHarness /></Lazy> }]

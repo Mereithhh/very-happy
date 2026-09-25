@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+// B-499: toolInfo now resolves built-in tool labels through @/text, which reads settings at import time.
+vi.mock('@/text', async () => await import('@/testing/englishText'));
+
 import { buildSubagentSummary, isSubagentToolName } from './subagentSummary';
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 
