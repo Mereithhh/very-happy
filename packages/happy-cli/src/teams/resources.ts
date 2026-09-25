@@ -89,6 +89,20 @@ export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport
     return data.result;
   }
   await rpc('initialize', {protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'very-happy-pi-teams',version:'1'}});
+  if (!managed && pi.setSessionName) {
+    // B-500: name the pi session from its first prompt (managed sessions are titled by TitleGenerator).
+    let titleArmed = false, generation = 0;
+    pi.on('session_start', async () => { generation += 1; titleArmed = !pi.getSessionName?.(); });
+    pi.on('before_agent_start', async (event) => {
+      const prompt = event && typeof event.prompt === 'string' ? event.prompt : '';
+      if (!titleArmed || !prompt.trim()) return;
+      titleArmed = false;
+      const expected = generation;
+      rpc('very-happy/terminal-title-suggest', {prompt}).then(result => {
+        if (result && result.title && expected === generation && !pi.getSessionName?.()) pi.setSessionName(result.title);
+      }).catch(() => {});
+    });
+  }
   const available = await rpc('tools/list', {});
   for (const tool of available.tools || []) {
     pi.registerTool({name:tool.name,label:tool.name,description:tool.description || tool.name,parameters:tool.inputSchema,

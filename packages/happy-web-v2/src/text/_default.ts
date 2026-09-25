@@ -1905,6 +1905,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25h: {
+                title: 'Pi terminals name their own tab',
+                summary: 'A pi you run yourself inside a Very Happy terminal now gets a tab title from its first prompt, the same way Claude Code terminals do. Needs the CLI update and `very-happy install-pi-tools` (already installed copies pick it up on the next pi start or /reload).',
+                name: 'The title is generated from the first message of an unnamed pi session and set as the pi session name, so it also shows in pi\'s own session list; the terminal tab follows it. The model is not asked to do anything extra.',
+                manual: 'A title you set yourself stays: renaming the tab in the sidebar, `/name` in pi, or the agent calling `change_title` is never overwritten by the generated one.',
+            },
             sep25g: {
                 title: 'Automations in the web app',
                 summary: 'Automations now have their own page. "Automations" sits in the sidebar right below Teams once your account has the feature, with a badge for runs that need a decision.',

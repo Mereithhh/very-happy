@@ -2024,6 +2024,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep25h: {
+                title: 'Pi 终端会自动命名标签页',
+                summary: '在 Very Happy 终端里自己运行的 pi，现在会像 Claude Code 终端一样，从第一条消息生成标签页标题。需要更新 CLI 并执行过 `very-happy install-pi-tools`（已安装的下次启动 pi 或 /reload 后生效）。',
+                name: '标题由未命名 pi 会话的第一条消息生成，并写为 pi 的会话名，因此 pi 自己的会话列表也会显示；终端标签页跟随该名字。不会让模型多做任何事。',
+                manual: '你自己设置的标题不会被覆盖：侧栏改名、pi 里 /name，或 agent 调用 change_title 都优先于生成的标题。',
+            },
             sep25g: {
                 title: '网页里的自动化',
                 summary: '自动化现在有了自己的页面。账号开启该功能后，侧栏「团队」下方多出「自动化」入口，角标显示需要你决策的运行数。',

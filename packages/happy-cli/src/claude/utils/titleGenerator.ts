@@ -114,7 +114,12 @@ export function runClaudeOneShot(binary: string, prompt: string): Promise<string
         try {
             child = spawn(binary, ['-p', '--model', 'haiku', prompt], {
                 stdio: ['ignore', 'pipe', 'ignore'],
-                env: process.env,
+                // HAPPY_MANAGED=1: this claude is run BY happy. The user-wide
+                // terminal-mirror SessionStart hook exits on it, so a one-shot
+                // spawned from inside a vh web terminal (VH_TERMINAL_ID
+                // inherited — B-500's pi terminal bridge, or `very-happy` typed
+                // in a terminal) never binds a mirror session to itself.
+                env: { ...process.env, HAPPY_MANAGED: '1' },
             });
         } catch (error) {
             logger.debug('[titleGenerator] spawn failed', { error: String(error) });
@@ -150,6 +155,26 @@ export function runClaudeOneShot(binary: string, prompt: string): Promise<string
 }
 
 /**
+ * One-shot title for a user prompt: locate the local claude binary, run the
+ * haiku one-shot, sanitize. Resolves null on any failure/garbage (callers keep
+ * whatever title they had). Shared by the session TitleGenerator below and the
+ * terminal bridge (`very-happy mcp --terminal-tools`), which titles a hand-run
+ * pi's tab from the same prompt sample (B-500).
+ */
+export async function suggestTitleForPrompt(prompt: string): Promise<string | null> {
+    const binary = resolveClaudeBinary();
+    if (!binary) {
+        logger.debug('[titleGenerator] no claude binary; skipping auto-title');
+        return null;
+    }
+    const stdout = await runClaudeOneShot(binary, buildPrompt(prompt));
+    if (stdout == null) return null;
+    const title = sanitizeTitle(stdout);
+    if (!title) logger.debug('[titleGenerator] empty/unusable title output; skipping');
+    return title;
+}
+
+/**
  * Per-session auto-title hook. Construct once per session and call
  * `maybeGenerate(text)` on every observed user message — it self-gates so
  * only the first message of a title-less session actually triggers work.
@@ -181,27 +206,14 @@ export class TitleGenerator {
     }
 
     private async generate(firstUserMessage: string): Promise<void> {
-        const binary = resolveClaudeBinary();
-        if (!binary) {
-            logger.debug('[titleGenerator] no claude binary; skipping auto-title');
-            return;
-        }
-
         // Re-check: a title may have been set between the gate and now.
         if (this.session.getMetadata()?.summary?.text) {
             logger.debug('[titleGenerator] summary appeared before generation; skipping');
             return;
         }
 
-        const prompt = buildPrompt(firstUserMessage);
-        const stdout = await runClaudeOneShot(binary, prompt);
-        if (stdout == null) return;
-
-        const title = sanitizeTitle(stdout);
-        if (!title) {
-            logger.debug('[titleGenerator] empty/unusable title output; skipping');
-            return;
-        }
+        const title = await suggestTitleForPrompt(firstUserMessage);
+        if (!title) return;
 
         // Final guard against a race with MCP/manual title.
         if (this.session.getMetadata()?.summary?.text) {
