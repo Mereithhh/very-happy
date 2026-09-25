@@ -80,6 +80,18 @@ Owner 的日常自动化（每日 Tanka 盘点、Tanka→滴答同步、IM 事�
 - 服务端开关 `VH_AUTOMATIONS_ENABLED=true` + 可选 `VH_AUTOMATIONS_ACCOUNT_IDS`；关闭时路由 404，CLI 明确提示。
 - 官方 skill `very-happy-automations`（与 teams skill 同目录机制，`very-happy teams install` 同时物化或新增 `very-happy skills install`）。
 
+### Web 视图（B-498，`packages/happy-web-v2`，PR #427 待合并）
+
+Owner 口径：自己只当决策者——页面回答「全自动任务跑得怎样」和「哪些要我处理」，创建/编辑留给 CLI / MCP（本批不做表单）。
+
+- **入口**：`/board` 顶栏「自动化」按钮（带 attention 计数）→ `/board/automations`（列表）→ `/board/automations/:id`（详情）。放在看板之下而不是侧栏常驻导航：设计契约已把主导航收敛为新建/搜索/团队/待办/帮助，运行概览类入口归 `/board`。
+- **需要我决策**（`screens/automations/AttentionSection.tsx`）：`GET /runs?attention=1` 的 run，按 `attentionRank` 排序（agent 等输入 → failed/expired/unknown_outcome/daemon_restarted/invalid_action → machine_offline → 其它；同级新→旧），置于 `/board` 顶部与列表页顶部；为空时不渲染、不占位。每行：状态、原因（`attentionReason` 词表转人话，未知原因原样显示）、automation 名（→详情）、时间、会话链接、`error`；操作：打开会话（有 sessionId 时）、知道了（`/ack`）、再跑一次（`POST /:id/run`，paused 也允许）、取消运行（仅 queued/claimed/running，二次确认）。
+- **列表**：名称、描述、trigger 人话（`describeCron` 只翻译能如实成句的形状，否则显示原始表达式+时区）、机器（store 里的 `Machine.active` 决定在线点）、下次运行、最近结果（`lastRunStatus/lastRunAt`）；操作：立即运行、暂停/恢复、删除（确认，级联删 runs）。排序：有 attention → 未暂停 → 最近 nextRunAt → 名称。
+- **详情**：触发/机器/下次/最近/最长运行+并发+version；动作摘要（spawn：agent·目录·model·worktree·sticky + prompt 前 3 行可展开；send：目标会话；script：argv 引号化）；sticky 列表（key → 会话链接）；最近 50 条 run 时间线（状态、来源、时间、耗时、exit code、会话链接、attention 原因与 ack/cancel、summary/error 可展开）。
+- **数据层**：`sync/apiAutomations.ts`（REST）+ `sync/automationsStore.ts`（zustand，独立于 storage/sync 热区）。轮询：看板 20s、列表 15s、详情 10s，仅在页面可见时；恢复只挂 `sync.onResume`（AGENTS #13）。gate 关闭（404 `automations_disabled`）→ `enabled=false`：看板入口隐藏、attention 不渲染、直达列表/详情显示「未启用」说明，不报错、停止轮询。其它错误保留旧数据并显示一行「刷新失败」。
+- **状态语义**：`--accent` 只用于 claimed/running；failed/expired 与 attention 用 `--danger`（与看板「等你处理」同一语义）；done/skipped/cancelled/queued 中性。窄屏 979px 以下单列，coarse 指针按钮 44px。
+- 验证：`automationPresentation.test.ts`（cron/interval/once/manual 文案、状态→tone、attention 排序、动作摘要）、`automationsStore.test.ts`（gate 404、错误保留数据、ack/rerun/remove）；真浏览器 1280 与 390（coarse）× 明暗四组截图，无横向溢出。
+
 ## 兼容矩阵与发布顺序
 
 | | 旧 server | 新 server |
@@ -103,4 +115,5 @@ Owner 的日常自动化（每日 Tanka 盘点、Tanka→滴答同步、IM 事�
 - [x] daemon：spawn / sticky 命中与失效 / send / script 成功失败超时；重启不重复 spawn；旧 server 404 降级。
 - [x] CLI 全命令 + `--json`；MCP 三 runner 可见工具列表回归。
 - [x] 本地全栈 e2e：create cron 每分钟 → 自动 spawn → done；fire 带 payload → sticky 同 key 二次续聊同会话。
+- [ ] Web 视图（B-498，PR #427）：看板「需要我决策」+ 列表 + 详情，gate 关闭时隐藏；真浏览器四组截图无溢出。
 - [x] 门禁全绿；spec 状态更新为 Shipped + commit。

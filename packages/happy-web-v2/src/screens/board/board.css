@@ -471,6 +471,23 @@
   gap: var(--sp-3);
 }
 
+/* ---- B-498: automations band above the columns; empty → collapses to 0 ---- */
+.bd-attn-wrap {
+  flex-shrink: 0;
+}
+.bd-attn-wrap > .au-attn {
+  margin: var(--sp-4) var(--sp-5) 0;
+}
+.bd-btn-count {
+  color: var(--danger);
+  font-size: var(--fs-10);
+}
+@media (max-width: 979px) {
+  .bd-attn-wrap > .au-attn {
+    margin: var(--sp-3) var(--sp-4) 0;
+  }
+}
+
 /* mobile: one stacked column */
 @media (max-width: 979px) {
   .bd-header {

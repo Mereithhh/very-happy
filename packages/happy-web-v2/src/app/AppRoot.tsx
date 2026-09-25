@@ -53,6 +53,8 @@ const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then(
 const ConnectMachineScreen = lazy(() => import('@/screens/onboarding/ConnectMachineScreen').then((m) => ({ default: m.ConnectMachineScreen })));
 const TeamsScreen = lazy(() => import('@/screens/teams/TeamsScreen').then(m => ({ default: m.TeamsScreen })));
 const TaskBoardScreen = lazy(() => import('@/screens/board/TaskBoardScreen').then((m) => ({ default: m.TaskBoardScreen })));
+const AutomationsScreen = lazy(() => import('@/screens/automations/AutomationsScreen').then((m) => ({ default: m.AutomationsScreen })));
+const AutomationDetailScreen = lazy(() => import('@/screens/automations/AutomationDetailScreen').then((m) => ({ default: m.AutomationDetailScreen })));
 const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen').then((m) => ({ default: m.AssistantScreen })));
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
 const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
@@ -277,6 +279,9 @@ const router = createBrowserRouter(
             { path: 'teams', element: <Lazy><TeamsScreen /></Lazy> },
             { path: 'teams/:teamId', element: <Lazy><TeamsScreen /></Lazy> },
             { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
+            // B-498: automations live under the board (owner's decision surface)
+            { path: 'board/automations', element: <Lazy><AutomationsScreen /></Lazy> },
+            { path: 'board/automations/:id', element: <Lazy><AutomationDetailScreen /></Lazy> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
             { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
