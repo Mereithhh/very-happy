@@ -60,6 +60,7 @@ model Account {
     AccountSecret       AccountSecret?
     AccountIdentity     AccountIdentity[]
     AccountLoginSession AccountLoginSession[]
+    Automation          Automation[]
     AgentTeams AgentTeam[]
 }
 
@@ -549,4 +550,73 @@ model TeamMessage {
     state Json
     createdAt DateTime @default(now())
     @@index([teamId])
+}
+
+//
+// Automations (B-496): account-level scheduled / triggered runs.
+//
+
+model Automation {
+    id            String          @id
+    accountId     String
+    account       Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    name          String
+    description   String?
+    machineId     String
+    status        String          @default("active")
+    /// [AutomationTrigger]
+    trigger       Json
+    /// [AutomationAction]
+    action        Json
+    concurrency   String          @default("skip")
+    maxRuntimeMs  Int
+    nextRunAt     DateTime?
+    version       Int             @default(1)
+    lastRunAt     DateTime?
+    lastRunStatus String?
+    createdAt     DateTime        @default(now())
+    updatedAt     DateTime        @default(now())
+    runs          AutomationRun[]
+    stickies      AutomationSticky[]
+    @@unique([accountId, name])
+    @@index([accountId, machineId, status, nextRunAt])
+}
+
+model AutomationRun {
+    id              String     @id
+    automationId    String
+    automation      Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+    accountId       String
+    machineId       String
+    source          String
+    dedupeKey       String?
+    payload         String?
+    status          String     @default("queued")
+    needsAttention  Boolean    @default(false)
+    attentionReason String?
+    claimId         String?
+    sessionId       String?
+    stickyKey       String?
+    scheduledFor    DateTime?
+    claimedAt       DateTime?
+    leaseUntil      DateTime?
+    startedAt       DateTime?
+    finishedAt      DateTime?
+    summary         String?
+    error           String?
+    exitCode        Int?
+    createdAt       DateTime   @default(now())
+    updatedAt       DateTime   @default(now())
+    @@index([automationId, createdAt])
+    @@index([accountId, machineId, status])
+    @@index([automationId, dedupeKey])
+}
+
+model AutomationSticky {
+    automationId String
+    automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+    key          String
+    sessionId    String
+    updatedAt    DateTime   @default(now())
+    @@id([automationId, key])
 }

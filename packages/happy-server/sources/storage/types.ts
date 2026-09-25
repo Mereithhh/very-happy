@@ -1,6 +1,6 @@
 import { GitHubProfile as GitHubProfileType, GitHubOrg as GitHubOrgType } from "../app/api/types";
 import { ImageRef as ImageRefType } from "./files";
-import type { SessionMessageContent as WireSessionMessageContent } from "@slopus/happy-wire";
+import type { SessionMessageContent as WireSessionMessageContent, AutomationTrigger as WireAutomationTrigger, AutomationAction as WireAutomationAction } from "@slopus/happy-wire";
 declare global {
     namespace PrismaJson {
         // Session message content types
@@ -88,6 +88,10 @@ declare global {
             };
             activeAt?: number;
         };
+
+        // B-496 automations
+        type AutomationTrigger = WireAutomationTrigger;
+        type AutomationAction = WireAutomationAction;
 
         type GitHubProfile = GitHubProfileType;
         type GitHubOrg = GitHubOrgType;
