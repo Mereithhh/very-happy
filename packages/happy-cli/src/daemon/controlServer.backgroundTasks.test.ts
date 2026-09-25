@@ -58,8 +58,8 @@ describe('control server background tasks (B-507)', () => {
     it('/list carries the daemon-side report per child', async () => {
         const body = await (await post('/list', {})).json();
         expect(body.children).toEqual([
-            { startedBy: 'daemon', happySessionId: 's1', pid: 11, backgroundTasks: reports.s1 },
-            { startedBy: 'daemon', happySessionId: 's2', pid: 12, backgroundTasks: { count: 0, tasks: [] } },
+            { startedBy: 'daemon', happySessionId: 's1', pid: 11, turnActive: false, backgroundTasks: reports.s1 },
+            { startedBy: 'daemon', happySessionId: 's2', pid: 12, turnActive: false, backgroundTasks: { count: 0, tasks: [] } },
         ]);
     });
 });

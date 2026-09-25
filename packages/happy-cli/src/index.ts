@@ -668,6 +668,12 @@ Conversation history is preserved on the server, but in-flight tool calls are in
           console.log(busy.length === 0
             ? 'No turn in flight on this machine (wrappers older than 0.2.139 do not report turns).'
             : `${busy.length} session(s) with a turn in flight: ${busy.map((s: { happySessionId: string }) => s.happySessionId).join(', ')}`)
+          // B-507: and the other reason a machine is not idle — background
+          // tasks (async sub-agents, backgrounded commands) after a turn ended.
+          const background = sessions.filter((s: { backgroundTasks?: { count?: number } }) => (s.backgroundTasks?.count ?? 0) > 0)
+          console.log(background.length === 0
+            ? 'No background tasks in flight (wrappers older than 0.2.157 do not report them).'
+            : `${background.length} session(s) with background tasks in flight: ${background.map((s: { happySessionId: string; backgroundTasks?: { count?: number } }) => `${s.happySessionId} (${s.backgroundTasks?.count})`).join(', ')}`)
         }
       } catch (error) {
         console.log('No daemon running')

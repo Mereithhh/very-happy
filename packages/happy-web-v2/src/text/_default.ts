@@ -1492,9 +1492,6 @@ export const en = {
         viewStatus: 'Status',
         groupWaiting: 'Waiting on me',
         groupRunning: 'Running',
-        // B-507: the turn ended but background tasks (async sub-agents,
-        // backgrounded commands) are still running — the session is not idle.
-        rowBackgroundTasks: ({ count }: { count: number }) => `${count} background task${count === 1 ? '' : 's'} running`,
         groupDoneToday: 'Done today',
         empty: 'No sessions yet',
         noResults: 'No matching sessions',
@@ -2013,6 +2010,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep25o: {
+                title: 'Sessions say when background work is still running',
+                summary: 'A turn ending is not the session going quiet: a background sub-agent, a `run_in_background` command or a Monitor keeps running and wakes the session later. Claude sessions now report those tasks explicitly, so nothing — the web, `sessions list`, Automations, the automatic CLI update — treats such a session as idle. Needs the CLI update for the wrapper side; the web and relay changes are live now.',
+                status: 'In the sidebar and on the board a session whose turn ended with background tasks still running shows 「N background tasks running」 in the running lane instead of idle, and clears itself when they finish or the wrapper goes away.',
+                cli: '`very-happy sessions list` / `read --json` (and `daemon list`) carry `backgroundTasks` — the count and each task\'s type, description and start time — so a script or an auto-archiver can tell 「turn ended」 from 「done」. Absent means the CLI or daemon is too old to report it.',
+                automations: 'An Automations run whose turn ended while background tasks were still running stays running until they finish and the wake-up turn ends, and takes that later turn\'s answer as its summary.',
+                update: 'The automatic CLI update and daemon handover wait for 「no background task in flight」 as well as 「no turn in flight」.',
+            },
             sep25n: {
                 title: 'The CLI reaches sessions on your other machines',
                 summary: '`very-happy sessions read / message`, `very-happy send` and the `session_read` / `session_send` / `session_message` / `session_peers` tools now work on sessions another machine of your account spawned. The operation runs on that machine through its daemon; nothing new is stored on the machine you type on. Needs CLI 0.2.157 on both machines.',
