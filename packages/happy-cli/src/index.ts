@@ -610,6 +610,18 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exitCode = 1;
     }
     return;
+  } else if (subcommand === 'auto') {
+    try {
+      const { handleAutoCommand } = await import('./commands/auto');
+      await handleAutoCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Automation command failed');
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exitCode = 1;
+    }
+    return;
   } else if (subcommand === 'mcp' && (args.length === 1 || (args.length === 2 && args[1] === '--terminal-tools'))) {
     // Standalone stdio MCP server for the real claude CLI (web terminal path).
     // Register once with: claude mcp add --scope user very-happy-clipboard -- very-happy mcp
@@ -886,6 +898,8 @@ ${chalk.bold('Usage:')}
                             conversations on this machine (agent-home --help)
   very-happy connect           Connect AI vendor API keys
   very-happy todo              Built-in Todos and official agent skill (todo --help)
+  very-happy auto              Scheduled / triggered automations: spawn, sticky
+                            sessions or scripts with tracked runs (auto --help)
   very-happy sandbox           Configure and manage OS-level sandboxing
   very-happy notify            Send push notification
   very-happy mcp               Stdio MCP server exposing copy_to_clipboard for a

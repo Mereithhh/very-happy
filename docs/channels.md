@@ -27,6 +27,7 @@ There are two directions:
 | Let Very Happy's coordinator dispatch Claude sessions | [Web Assistant / meta-agent](#inbound-web-assistant--meta-agent) |
 | Add clipboard handoff to a plain local Claude | [`very-happy mcp`](#very-happy-mcp--clipboard-tool-for-a-plain-claude) |
 | Organize Claude, Codex, and managed pi as a team | [Agent Teams getting started and migration](agent-teams.md) |
+| Run something on a schedule, or start / continue a session from an external event | [`very-happy auto` — Automations](#automations-scheduled-and-triggered-runs-feature-gated) |
 
 ## MCP capability matrix
 
@@ -37,6 +38,7 @@ has the same tool set:
 |---|---|
 | Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
+| Managed Claude (in-process), Codex (stdio bridge, forwarded) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session |
 | Voice Assistant / legacy assistant variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
 | User-scoped `very-happy mcp` **inside a vh web terminal** (`VH_TERMINAL_ID` set by the daemon's tmux terminal) | + `change_title`, `open_preview` (titles/previews for that terminal via authenticated daemon IPC) |
@@ -769,6 +771,50 @@ Design notes:
   workspaces. Never expose the daemon's loopback control server to a network.
 - Webhook delivery is best-effort; treat notifications as hints, not a queue.
 
+
+## Automations: scheduled and triggered runs (feature gated)
+
+Account-level automations (B-496, [spec](../specs/2026-09-automations.md)): a
+trigger — cron with time zone, fixed interval, one time, or manual only — and an
+action on one machine: spawn a session (optionally *sticky*: repeated events with
+the same rendered key continue one conversation), send into a fixed session, or
+run a script (argv, no shell). Every execution is an `AutomationRun` with a
+status, session link, summary and attention flag. The server must enable
+`VH_AUTOMATIONS_ENABLED=true` (optionally `VH_AUTOMATIONS_ACCOUNT_IDS`); a
+daemon talking to an old or gated server logs one debug line per ten minutes and
+does nothing else, and the CLI says so in one line.
+
+```bash
+very-happy auto create --name daily-tanka --cron '0 9 * * 1-5' --tz Asia/Singapore \
+  --spawn-dir ~/work/ops --prompt-file prompts/tanka.md          # spawn claude, web-launcher defaults
+very-happy auto create --name on-mention --manual \
+  --spawn-dir ~/work/ops --prompt 'Reply to: {{payload.text}}' --agent codex \
+  --sticky-key '{{payload.conversationId}}'                      # same conversation → same session
+very-happy auto create --name backup --every 6h --script -- /usr/bin/env bash -lc 'restic backup ~/notes'
+very-happy auto fire on-mention --payload-json '{"conversationId":"c9","text":"hi"}' --dedupe-key msg-123 --wait
+very-happy auto runs --attention; very-happy auto ack <runId>
+very-happy auto report --status done --summary 'synced 12 items'   # inside a run's session: --run defaults to $VH_AUTOMATION_RUN_ID
+```
+
+Fire is the only event entry point (no inbound webhook): an IM bot, watcher or
+systemd unit shells out to `very-happy auto fire <name>` with a payload; the same
+`--dedupe-key` within 24h returns the original run. Prompts, argv and sticky keys
+take `{{payload}}`, `{{payload.a.b}}` (JSON payload), `{{run.id}}`,
+`{{automation.name}}` and `{{now}}`. Spawned sessions carry the `#automation`
+tag and `VH_AUTOMATION_RUN_ID` / `VH_AUTOMATION_NAME` in their environment;
+scripts also get `VH_AUTOMATION_PAYLOAD`. A run finishes when the agent calls
+`automation_report` (exact), or — without one — when the wrapper's turn ends
+(B-466 heartbeat) and the daemon confirms it on the session log, taking the last
+assistant text (4KB) as the summary. Scripts finish on exit (tail 4KB of output;
+timeout SIGTERM → SIGKILL). The daemon keeps `~/.happy/automation-receipts.json`
+so a run id is never spawned twice across restarts; an unknown launch outcome is
+reported `failed` with attention instead of retried. Exit codes of `fire --wait`:
+`0` done, `2` wait timed out, `3` failed / expired / cancelled / skipped.
+
+`very-happy auto skill` prints the official skill; `very-happy teams install
+--host … --apply` materializes it next to the Teams skill at
+`~/.local/share/very-happy/skills/very-happy-automations/SKILL.md` (`very-happy
+auto install` does only this one), with the same ownership checks.
 
 ## Agent Teams (local development; feature gated)
 
