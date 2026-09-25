@@ -32,10 +32,12 @@ import type { PeerListing, SendPeerMessageResult } from './peerTools'
 import type { PeerSender } from './peerMessage'
 import type { PeerScope } from './repoIdentity'
 import type { RemoteListResult, RemoteReadResult } from '@/daemon/remoteSessionOps'
+import { randomUUID } from 'node:crypto'
 import {
     parseHappyClientVersion,
     REMOTE_OPS_PROTOCOL_VERSION,
     REMOTE_SESSION_OPS_MIN_CLI_VERSION,
+    REMOTE_WAIT_POLL_MS,
     supportsRemoteSessionOps,
     type RemoteArgsOf,
     type RemoteCaller,
@@ -61,7 +63,13 @@ export interface AccountMachine {
 export type RemoteClientErrorCode = 'offline' | 'too_old' | 'unreachable' | 'not_located' | 'unknown_machine' | RemoteOpsErrorCode
 
 export class RemoteSessionOpsError extends Error {
-    constructor(readonly code: RemoteClientErrorCode, message: string, readonly machineId?: string) {
+    constructor(
+        readonly code: RemoteClientErrorCode,
+        message: string,
+        readonly machineId?: string,
+        /** True when the RPC may have reached the daemon (transport timeout / disconnect) — as opposed to a definite "not there". */
+        readonly ambiguous = false,
+    ) {
         super(message)
     }
 }
@@ -192,14 +200,15 @@ export async function callRemoteSessionOp<M extends RemoteSessionOpsMethod, T = 
         ack = await transport.call(`${machineId}:${method}`, params)
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
-        throw new RemoteSessionOpsError('unreachable', `Machine ${machineId} did not answer ${method} (${reason})`, machineId)
+        throw new RemoteSessionOpsError('unreachable', `Machine ${machineId} did not answer ${method} (${reason})`, machineId, true)
     }
     if (!ack?.ok) {
         const reason = ack?.error ?? 'no ack'
         if (/not available/i.test(reason)) {
             throw new RemoteSessionOpsError('unreachable', `Machine ${machineId} did not answer ${method}: its daemon is offline, restarting, or runs a CLI older than ${REMOTE_SESSION_OPS_MIN_CLI_VERSION}`, machineId)
         }
-        throw new RemoteSessionOpsError('unreachable', `Machine ${machineId}: ${reason}`, machineId)
+        // "RPC target disconnected" / "operation has timed out": the daemon may have run it.
+        throw new RemoteSessionOpsError('unreachable', `Machine ${machineId}: ${reason}`, machineId, true)
     }
     let envelope: RemoteOpsResponse<T> | { error?: string }
     try {
@@ -291,7 +300,8 @@ export async function waitForRemoteTurnEnd(
     overrides: Partial<RemoteClientDeps> = {},
 ): Promise<{ read: RemoteReadResult; timedOut: boolean }> {
     const deps = withDefaults(overrides)
-    const pollMs = options.pollMs ?? 3_000
+    // Slower than the local 3 s: every poll is a budgeted RPC on the target.
+    const pollMs = options.pollMs ?? REMOTE_WAIT_POLL_MS
     return withRemoteTransport(deps, async (transport) => {
         const located = await locateRemoteSession(transport, sessionId, { machineId: options.machineId }, deps)
         const from = await deps.caller()
@@ -311,18 +321,34 @@ export interface RemoteDeliveryResult extends DeliveryResult { machine: { id: st
 export async function sendRemoteMessage(
     sessionId: string,
     text: string,
-    options: { machineId?: string; resume?: boolean; model?: string | null; sentFrom?: string } = {},
+    options: { machineId?: string; resume?: boolean; model?: string | null; sentFrom?: string; localId?: string } = {},
     overrides: Partial<RemoteClientDeps> = {},
 ): Promise<RemoteDeliveryResult> {
     const deps = withDefaults(overrides)
     return withRemoteTransport(deps, async (transport) => {
         const located = await locateRemoteSession(transport, sessionId, { machineId: options.machineId }, deps)
-        const result = await callRemoteSessionOp<'sessions.send', DeliveryResult>(transport, located.machine.id, 'sessions.send', {
-            sessionId, text,
+        const from = await deps.caller()
+        // One localId for the whole attempt: the server stores one message per
+        // (session, localId), so the retry below can never double-deliver.
+        const localId = options.localId ?? `remote-send-${randomUUID()}`
+        const args = {
+            sessionId, text, localId,
             ...(options.resume ? { resume: true } : {}),
             ...(options.model !== undefined ? { model: options.model } : {}),
             ...(options.sentFrom !== undefined ? { sentFrom: options.sentFrom } : {}),
-        }, await deps.caller())
+        }
+        const attempt = () => callRemoteSessionOp<'sessions.send', DeliveryResult>(transport, located.machine.id, 'sessions.send', args, from)
+        let result: DeliveryResult
+        try {
+            result = await attempt()
+        } catch (error) {
+            // Retry exactly once when the outcome is unknown (transport timeout /
+            // disconnect) or when the daemon says it stopped BEFORE the POST
+            // (`timeout`); a definite refusal is not retried.
+            const retryable = error instanceof RemoteSessionOpsError && (error.ambiguous || error.code === 'timeout')
+            if (!retryable) throw error
+            result = await attempt()
+        }
         return { ...result, machine: { id: located.machine.id, host: located.host } }
     })
 }

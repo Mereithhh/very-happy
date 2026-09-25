@@ -4,6 +4,9 @@ import type { DeliveryResult } from '@/commands/sessionDelivery'
 import { RemoteCallBudget, type RemoteCaller } from '@/sessions/remoteSessionOps'
 import { createRemoteSessionOpsHandlers, type RemoteSessionOpsDeps } from './remoteSessionOps'
 
+const { sendUserMessageMock } = vi.hoisted(() => ({ sendUserMessageMock: vi.fn(async () => undefined) }))
+vi.mock('@/commands/sessionMessage', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/commands/sessionMessage')>()), sendUserMessage: sendUserMessageMock }))
+
 const persisted = (id: string, title?: string): PersistedSession => ({
     encryptionKey: 'k', encryptionVariant: 'dataKey', seq: 0, metadataVersion: 0, agentStateVersion: 0, savedAt: 5,
     metadata: { path: '/repo', host: 'h', homeDir: '/', happyHomeDir: '/', happyLibDir: '/', happyToolsDir: '/', flavor: 'claude', ...(title ? { summary: { text: title, updatedAt: 1 } } : {}) } as PersistedSession['metadata'],
@@ -75,7 +78,7 @@ describe('createRemoteSessionOpsHandlers (B-506, target daemon)', () => {
         const { handlers, deps } = build()
         const out = await handlers['sessions.send'](req({ sessionId: 'mine', text: 'hello', resume: true, model: null }))
         expect(out).toMatchObject({ ok: true, result: { delivered: true, status: 'live' } })
-        expect(deps.deliver).toHaveBeenCalledWith('mine', expect.objectContaining({ encryptionKey: 'k' }), 'hello', 'cli-send-remote', { resume: true, model: null })
+        expect(deps.deliver).toHaveBeenCalledWith('mine', expect.objectContaining({ encryptionKey: 'k' }), 'hello', 'cli-send-remote', { resume: true, model: null, waitMs: 10_000, pollMs: 1_000 }, { send: expect.any(Function) })
     })
 
     it('sessions.peers computes the scope on this machine from the caller\'s cwd; no cwd = machine scope', async () => {
@@ -100,5 +103,59 @@ describe('createRemoteSessionOpsHandlers (B-506, target daemon)', () => {
         const { handlers } = build({ budget: new RemoteCallBudget(1, () => 0), listLocal: async () => { throw new Error('daemon exploded') } })
         expect(await handlers['sessions.list'](req({}))).toMatchObject({ ok: false, error: { code: 'internal', message: 'daemon exploded' } })
         expect(await handlers['sessions.list'](req({}))).toMatchObject({ ok: false, error: { code: 'rate_limited' } })
+    })
+})
+
+describe('review follow-up: fail-closed switch, deadlines, split budgets, caps', () => {
+    it('a setting that cannot be read means OFF (fail closed), with the audit line', async () => {
+        const { handlers, log } = build({ enabled: async () => { throw new Error('settings unreadable') } })
+        expect(await handlers['sessions.read'](req({ sessionId: 'mine' }))).toMatchObject({ ok: false, error: { code: 'disabled' } })
+        expect(log).toHaveBeenCalledWith(expect.stringMatching(/sessions\.read .* → disabled/))
+    })
+
+    it('send/message and list/read/peers draw from separate buckets', async () => {
+        const { handlers } = build({ budget: new RemoteCallBudget(1, () => 0), writeBudget: new RemoteCallBudget(1, () => 0) })
+        expect(await handlers['sessions.read'](req({ sessionId: 'mine' }))).toMatchObject({ ok: true })
+        expect(await handlers['sessions.read'](req({ sessionId: 'mine' }))).toMatchObject({ ok: false, error: { code: 'rate_limited', message: expect.stringContaining('list/read/peers') } })
+        expect(await handlers['sessions.send'](req({ sessionId: 'mine', text: 'x' }))).toMatchObject({ ok: true })
+        expect(await handlers['sessions.send'](req({ sessionId: 'mine', text: 'x' }))).toMatchObject({ ok: false, error: { code: 'rate_limited', message: expect.stringContaining('send/message') } })
+    })
+
+    it('an op that outlives the deadline is answered with timeout instead of the server\'s 30 s silence', async () => {
+        const { handlers } = build({ deadlineMs: 30, readTranscript: () => new Promise(() => undefined) })
+        expect(await handlers['sessions.read'](req({ sessionId: 'mine' }))).toMatchObject({ ok: false, error: { code: 'timeout', message: expect.stringContaining('did not finish') } })
+    })
+
+    it('send: bounded resume wait, the caller\'s localId is used for the POST, and no POST after the commit deadline', async () => {
+        let t = 0
+        const deliver = vi.fn(async (sessionId: string, _p: PersistedSession, text: string, client: string, options: any, d: any): Promise<DeliveryResult> => {
+            t += 1_000
+            await d.send(sessionId, _p, text, client, { sentFrom: options.sentFrom })
+            return { sessionId, status: 'live', delivered: true, resumed: false, stored: true }
+        })
+        const { handlers } = build({ deliver, now: () => t, sendCommitDeadlineMs: 5_000, resumeWaitMs: 4_000 })
+        const out = await handlers['sessions.send'](req({ sessionId: 'mine', text: 'hi', resume: true, localId: 'remote-send-abc', sentFrom: 'assistant' }))
+        expect(out).toMatchObject({ ok: true, result: { delivered: true } })
+        expect(deliver.mock.calls[0][4]).toMatchObject({ resume: true, waitMs: 4_000, pollMs: 1_000, sentFrom: 'assistant' })
+        expect(sendUserMessageMock).toHaveBeenCalledWith('mine', expect.anything(), 'hi', 'cli-send-remote', { sentFrom: 'assistant', localId: 'remote-send-abc' })
+        sendUserMessageMock.mockClear()
+        // Same op, but the resume wait ate the whole commit window: the POST is refused.
+        t = 0
+        const slow = vi.fn(async (sessionId: string, _p: PersistedSession, text: string, client: string, options: any, d: any): Promise<DeliveryResult> => {
+            t += 6_000
+            await d.send(sessionId, _p, text, client, options)
+            return { sessionId, status: 'live', delivered: true, resumed: true, stored: true }
+        })
+        const late = build({ deliver: slow, now: () => t, sendCommitDeadlineMs: 5_000 })
+        expect(await late.handlers['sessions.send'](req({ sessionId: 'mine', text: 'hi', resume: true }))).toMatchObject({ ok: false, error: { code: 'timeout', message: expect.stringContaining('nothing was sent') } })
+        expect(sendUserMessageMock).not.toHaveBeenCalled()
+    })
+
+    it('read: answer and title are capped so the ack stays small', async () => {
+        const { handlers } = build({ readTranscript: async (sessionId) => ({ summary: { id: sessionId, live: true, url: 'u', title: 't'.repeat(5_000) }, messageCount: 1, transcript: 'x', turn: { ended: true, answer: 'a'.repeat(70 * 1024), userSeq: 1, lastSeq: 2 } as any }) })
+        const out = await handlers['sessions.read'](req({ sessionId: 'mine' })) as { ok: true; result: any }
+        expect(Buffer.byteLength(out.result.turn.answer)).toBeLessThanOrEqual(64 * 1024)
+        expect(out.result.turn.answer.startsWith('…')).toBe(true)
+        expect(Buffer.byteLength(out.result.summary.title)).toBeLessThanOrEqual(1024)
     })
 })
