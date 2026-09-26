@@ -11,7 +11,11 @@ vi.mock('@/app/events/eventRouter', async (importOriginal) => {
     return { ...actual, eventRouter: { emitUpdate } };
 });
 
-const flushBroadcasts = () => new Promise((resolve) => setTimeout(resolve, 20));
+/** Broadcasts run after commit through an async seq allocation: wait for a count, never a fixed delay. */
+const flushBroadcasts = async (expectedCalls = emitUpdate.mock.calls.length) => {
+    for (let index = 0; index < 200 && emitUpdate.mock.calls.length < expectedCalls; index += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+};
 
 describe('B-509 prompt queue store (pglite)', () => {
     const parent = join(homedir(), 'code/github/skills/tmp/prompt-queue-tests');
@@ -48,7 +52,7 @@ describe('B-509 prompt queue store (pglite)', () => {
         expect(again.item.content.c).toBe(first.item.content.c);
         expect(second.items.map((item) => item.position)).toEqual([1, 2]);
         expect((await store.listPromptQueue(accountId, sessionId)).map((item) => item.localId)).toEqual(['same', second.item.localId]);
-        await flushBroadcasts();
+        await flushBroadcasts(2);
         // Two created items → two broadcasts; the idempotent retry emits nothing.
         expect(emitUpdate).toHaveBeenCalledTimes(2);
         const last = emitUpdate.mock.calls[1][0];
@@ -92,7 +96,7 @@ describe('B-509 prompt queue store (pglite)', () => {
     it('dispatch pops the head into a SessionMessage with the same localId, atomically, one per call, and never twice', async () => {
         const first = (await enqueue('first', 'lid-first')).item;
         await enqueue('second', 'lid-second');
-        await flushBroadcasts();
+        await flushBroadcasts(2);
         emitUpdate.mockClear();
         const one = await store.dispatchPromptQueueHead(accountId, sessionId);
         expect(one.dispatched).toMatchObject({ itemId: first.id, localId: 'lid-first' });
@@ -102,7 +106,7 @@ describe('B-509 prompt queue store (pglite)', () => {
         expect(message!.seq).toBe(one.dispatched!.seq);
         expect((message!.content as { c: string }).c).toBe(first.content.c);
         expect(await db.sessionPromptQueueItem.findFirst({ where: { id: first.id } })).toBeNull();
-        await flushBroadcasts();
+        await flushBroadcasts(2);
         // The message reaches the wrapper the way every user message does (new-message
         // to everyone interested in the session), and the queue snapshot shrinks.
         const bodies = emitUpdate.mock.calls.map((call) => call[0].payload.body.t).sort();
