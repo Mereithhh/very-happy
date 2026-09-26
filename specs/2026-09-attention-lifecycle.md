@@ -1,6 +1,6 @@
 # Attention lifecycle：「需要我决策」的自动关联与自动消解
 
-> 状态：Final
+> 状态：Shipped（PR #449 `4a8e91e96`，server/Web deploy 36270422278，CLI v0.2.158）
 > 日期：2026-09-27 ｜ 关联 backlog：B-508 ｜ 前身：[Automations](2026-09-automations.md)（B-496/B-498）
 
 ## 背景
@@ -111,11 +111,11 @@ payload 为合法 JSON 时取 `sessions[]`（元素为字符串或 `{id}`）、`
 
 ## 验收标准
 
-- [ ] server pglite 集成：payload 关联解析；Owner 消息（v3 `web/`、`cli-coding-session/` 头；socket user-scoped）清除、自动化前缀/标签不清除；done 报告清除、failed 不清；归档清除；`ackedBy/ackedAt/attentionAt` 视图字段；ack body `by`。
-- [ ] `isOwnerAuthoredMessage` / `linkedSessionIds` 单测；mutation-check 覆盖源码断言。
-- [ ] CLI：`parseAutoArgs(['ack','--all'])`、`ack --all --name`；runner idle 复位后再次 blocked 会再报。
-- [ ] Web：`automationPresentation` 纯函数单测；store `ackAll`；带 `flex-shrink:0` 源码断言；1280 与 390（coarse）× 明暗四组截图（/automations、/board、会话横幅、侧栏标记），无横向溢出，勾选控件 ≥44px。
-- [ ] 门禁全绿；backlog B-508、changelog `sep27`、docs/automations.md、docs/channels.md 同步；spec 回标 Shipped。
+- [x] server pglite 集成：payload 关联解析；Owner 消息（v3 `web/`、`cli-coding-session/` 头；socket user-scoped）清除、自动化前缀/标签不清除；done 报告清除、failed 不清；归档清除；`ackedBy/ackedAt/attentionAt` 视图字段；ack body `by`。
+- [x] `isOwnerAuthoredMessage` / `linkedSessionIds` 单测；mutation-check 覆盖源码断言。
+- [x] CLI：`parseAutoArgs(['ack','--all'])`、`ack --all --name`；runner idle 复位后再次 blocked 会再报。
+- [x] Web：`automationPresentation` 纯函数单测；store `ackAll`；带 `flex-shrink:0` 源码断言；1280 与 390（coarse）× 明暗四组截图（/automations、/board、会话横幅、侧栏标记），无横向溢出，勾选控件 ≥44px。
+- [x] 门禁全绿；backlog B-508、changelog `sep27`、docs/automations.md、docs/channels.md 同步；spec 回标 Shipped。
 
 ## 留真机验证项
 
