@@ -1,6 +1,6 @@
 # CLI 跨机器会话操作（Cross-machine session ops via daemon proxy）
 
-> 状态：Final
+> 状态：Shipped（PR #444 `7e7db8080` + follow-up #447 `018c4ab6c`；CLI v0.2.157，server/web gen 172；2026-09-27 两机实测通过）
 > 日期：2026-09-25 ｜ 关联 backlog：B-506 ｜ 前身：B-304（`sessions` CLI）、B-497（`session_message`/`session_peers`）、B-501（`deliverToSession`）、B-337（被本 spec 替代的方案：CLI 持账号内容密钥）
 
 ## 背景

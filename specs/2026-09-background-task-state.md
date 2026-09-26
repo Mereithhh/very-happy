@@ -1,6 +1,6 @@
 # 会话后台任务状态显式上报（Background task state）
 
-> 状态：Final（实现随本 spec 同 PR）
+> 状态：Shipped（PR #446 `20bffc178`；CLI v0.2.157，server/web gen 172；2026-09-27 dev-sg 实测通过）
 > 日期：2026-09-25 ｜ 关联 backlog：B-507 ｜ 前身：[活性租约](2026-09-agent-liveness-lease.md)（B-320/B-322）、[子代理生命周期](2026-09-subagent-lifecycle.md)（B-260-P2）、[统一状态](2026-09-unified-agent-status.md)（B-452）、B-466（turn 在飞闸门）、B-471（Stop 停后台任务）、[Automations](2026-09-automations.md)（B-496 完成判定）
 
 ## 背景
