@@ -112,9 +112,24 @@ very-happy auto fire on-mention --payload-json '{"conversationId":"c9","text":"h
 
 The top of the **task board** (`/board`) lists runs that need you, most urgent
 first: an agent waiting for input, a failed or expired run, a run nobody picked
-up because the machine is offline. Each row can open the session, acknowledge
-the run, run the automation again, or cancel a run that is still open. The band
+up because the machine is offline. Each row starts with a round check —
+tap it to acknowledge — and can open the session, run the automation again, or
+cancel a run that is still open; the header offers **Acknowledge all**. The band
 renders nothing when nothing needs you; the sidebar entry carries the count.
+
+A flagged run is tied to the sessions it is about: its own session plus the
+ones a JSON payload names (`sessions[].id`, `sessions[]`, `sessionId`,
+`sessionIds[]`). Those sessions show a strip under the chat header (automation,
+reason, **Acknowledge**) and a marker on their sidebar row. The flag also clears
+itself — the run records who or what did (`ackedBy`):
+
+- `owner-replied` — you sent a message in a linked session (web, app, or
+  `very-happy send`; messages an automation, Teams or a peer session sent do
+  not count);
+- `run-done` — the run later reported `done` without asking for attention;
+- `session-archived` — you archived a linked session;
+- `owner` — you acknowledged it by hand (`very-happy auto ack <runId>` or
+  `auto ack --all [--name <automation>]`).
 
 How a run ends:
 

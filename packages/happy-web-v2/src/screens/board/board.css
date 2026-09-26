@@ -482,6 +482,11 @@
 .bd-attn-wrap > .au-attn {
   margin: var(--sp-4) var(--sp-5) 0;
 }
+/* B-508: many decisions must not push the lanes off screen — the band scrolls itself */
+.bd-attn-wrap > .au-attn .au-attn-list {
+  max-height: 40vh;
+  overflow-y: auto;
+}
 .bd-btn-count {
   color: var(--danger);
   font-size: var(--fs-10);

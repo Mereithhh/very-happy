@@ -190,10 +190,15 @@ a.au-machine:hover {
 
 /* ---- "needs my decision" band ---- */
 .au-attn {
+  /* B-508: never shrink inside a flex column (.au-body) — it used to clip to its first row */
+  flex-shrink: 0;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-1);
   overflow: hidden;
+}
+.au-attn-all {
+  margin-left: auto;
 }
 .au-attn-head {
   display: flex;
@@ -231,17 +236,48 @@ a.au-machine:hover {
   padding: 0;
 }
 .au-attn-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'check main actions';
   align-items: center;
-  gap: var(--sp-4);
+  gap: var(--sp-3) var(--sp-4);
   padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--line);
   min-width: 0;
+}
+/* B-508: the round check is the 「知道了」 of the row */
+.au-attn-check {
+  grid-area: check;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--bg-0);
+  color: var(--text-dim);
+  cursor: pointer;
+  flex: none;
+}
+.au-attn-check:hover {
+  border-color: var(--text);
+  color: var(--text);
+  background: var(--bg-2);
+}
+.au-attn-check:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.au-attn-check:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--text-faint);
 }
 .au-attn-row:last-child {
   border-bottom: none;
 }
 .au-attn-main {
+  grid-area: main;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -277,6 +313,7 @@ a.au-machine:hover {
   max-width: 100%;
 }
 .au-attn-actions {
+  grid-area: actions;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -781,8 +818,11 @@ a.au-machine:hover {
     justify-content: flex-start;
   }
   .au-attn-row {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      'check main'
+      'actions actions';
+    align-items: start;
   }
   .au-attn-actions {
     justify-content: flex-start;
@@ -828,6 +868,10 @@ a.au-machine:hover {
   .au-btn--icon {
     min-width: 44px;
     justify-content: center;
+  }
+  .au-attn-check {
+    width: 44px;
+    height: 44px;
   }
   .au-run-summary-toggle {
     min-height: 44px;

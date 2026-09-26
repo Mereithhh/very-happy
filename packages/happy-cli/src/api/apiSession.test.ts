@@ -1059,6 +1059,8 @@ describe('ApiSessionClient v3 messages API migration', () => {
         }, ack);
 
         expect(mockAxiosPost).toHaveBeenCalledBefore(onUserMessage);
+        // B-508: relay-delivered CLIENT messages are stamped so the server can tell them from this wrapper's own output.
+        expect(mockAxiosPost).toHaveBeenLastCalledWith(expect.stringContaining('/v3/sessions/'), { messages: [{ localId: 'local-relay', content: encrypted }] }, expect.objectContaining({ headers: expect.objectContaining({ 'X-Happy-Message-Origin': 'relay-client', 'X-Happy-Client': expect.stringMatching(/^cli-coding-session\//) }) }));
         expect(onUserMessage).toHaveBeenCalledTimes(1);
         expect(ack).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
 

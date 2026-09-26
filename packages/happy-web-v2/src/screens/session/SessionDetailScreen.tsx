@@ -27,6 +27,7 @@ import { MirrorInputBar } from './MirrorInputBar';
 import { SessionArchivedBanner } from './SessionArchivedBanner';
 import { StaleWrapperBanner } from './StaleWrapperBanner';
 import { ModelSupportBanner } from './ModelSupportBanner';
+import { AutomationAttentionBanner } from './AutomationAttentionBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
@@ -177,6 +178,8 @@ export function SessionDetailScreen() {
                 />
                 <SessionTeamContext sessionId={id} />
                 {mirror && <MirrorBanner sessionId={id} />}
+                {/* B-508: an automation run is waiting on this session → say which and offer 「知道了」 */}
+                {!mirror && <AutomationAttentionBanner key={id} sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}
                 {!mirror && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
                 {/* B-462: live session still on an older wrapper than the machine runs → offer a restart */}

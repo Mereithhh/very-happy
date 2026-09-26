@@ -93,12 +93,21 @@ describe('automationsStore', () => {
     expect(s.runsByAutomation.a[0].needsAttention).toBe(false);
   });
 
+  it('B-508: ackAll clears every flagged run one by one and reports the count', async () => {
+    useAutomations.setState({ attention: [run('r1'), run('r2')], runsByAutomation: {} });
+    api.ackRun.mockImplementation(async (id: string) => ({ run: run(id, { needsAttention: false }) }));
+    expect(await useAutomations.getState().ackAll()).toBe(2);
+    expect(api.ackRun).toHaveBeenCalledWith('r1', 'owner');
+    expect(api.ackRun).toHaveBeenCalledWith('r2', 'owner');
+    expect(useAutomations.getState().attention).toEqual([]);
+    api.ackRun.mockReset();
+  });
   it('cancel also acknowledges when the server leaves needsAttention on the cancelled run', async () => {
     useAutomations.setState({ enabled: true, attention: [run('r1', { status: 'running', attentionReason: 'needs_input' })] });
     api.cancelRun.mockResolvedValue({ run: run('r1', { status: 'cancelled', attentionReason: 'needs_input' }) });
     api.ackRun.mockResolvedValue({ run: run('r1', { status: 'cancelled', needsAttention: false, attentionReason: 'needs_input' }) });
     await useAutomations.getState().cancel('r1');
-    expect(api.ackRun).toHaveBeenCalledWith('r1');
+    expect(api.ackRun).toHaveBeenCalledWith('r1', 'cancelled');
     expect(useAutomations.getState().attention).toEqual([]);
     // already clear → no extra ack
     api.cancelRun.mockResolvedValue({ run: run('r2', { status: 'cancelled', needsAttention: false }) });

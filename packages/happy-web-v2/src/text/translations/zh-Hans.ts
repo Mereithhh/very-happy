@@ -173,6 +173,12 @@ export const zhHans: TranslationStructure = {
         boardLink: '自动化',
         decisions: '需要我决策',
         decisionsHint: '失败、超时、等待输入或没人领取的运行',
+        ackAll: '全部已读',
+        ackAllDone: ({ count }: { count: number }) => `已确认 ${count} 条`,
+        bannerMore: ({ count }: { count: number }) => `还有 ${count} 条`,
+        bannerHint: '在这里回复也会自动标为已处理',
+        bannerDismiss: '先收起',
+        sessionMarker: '有自动化运行在等你决策',
         backToBoard: '看板',
         backToList: '全部自动化',
         trigger: '触发',
@@ -2128,6 +2134,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep27: {
+                title: '「需要我决策」会自己消掉，手动也只要点一下',
+                summary: '等你决策的自动化运行现在和它相关的会话绑定——自己的会话，加上 payload 里点名的会话——你在那里动手它就自动标为已处理。带本身也不再藏行：自动化页上它曾把好几条裁到只剩第一条。',
+                auto: '在关联会话里回复、这次运行随后报 done、或把会话归档，都会把它标为已处理（运行记录里保留是谁或什么消掉的：owner、owner-replied、run-done、session-archived）。',
+                session: '有运行在等的会话，头部下方多一条横幅——自动化名、原因、「知道了」——侧栏那一行也带标记。',
+                band: '「需要我决策」每一行最左是一个圆形勾选（触屏 44px）即「知道了」，头部有「全部已读」，看板上带太长会自己滚动、不再把泳道顶出屏幕。',
+                cli: '`very-happy auto ack --all [--name <自动化>]` 在终端一次确认全部。需要更新 CLI；网页与服务端部分已上线。',
+            },
             sep25o: {
                 title: '会话会说明后台任务还在跑',
                 summary: '一轮结束不等于会话安静了：后台子代理、`run_in_background` 命令或 Monitor 会继续跑，完成后再把会话叫醒。Claude 会话现在会显式上报这些任务，网页、`sessions list`、自动化和 CLI 自动升级都不再把这样的会话当成空闲。wrapper 侧需要更新 CLI；网页与中继部分已经上线。',

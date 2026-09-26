@@ -129,6 +129,14 @@ export const AutomationReportSchema = z.object({
 });
 export type AutomationReport = z.infer<typeof AutomationReportSchema>;
 
+// B-508: who / what cleared the attention flag. `owner` is the explicit
+// 「知道了」; the server also clears on the owner's own reply in a linked
+// session, on a later `done` report, and on a user-intent archive.
+export const AUTOMATION_ACK_BY = ['owner', 'owner-replied', 'run-done', 'report', 'session-archived', 'cancelled', 'machine-back'] as const;
+export type AutomationAckBy = typeof AUTOMATION_ACK_BY[number];
+export const AutomationAckSchema = z.object({ by: z.string().min(1).max(64).optional() });
+export type AutomationAck = z.infer<typeof AutomationAckSchema>;
+
 export const AutomationStickyPutSchema = z.object({ key: z.string().min(1).max(512), sessionId: id });
 export const AutomationStickyDeleteSchema = z.object({ key: z.string().min(1).max(512) });
 export const AutomationRunsQuerySchema = z.object({
@@ -168,6 +176,13 @@ export type AutomationRun = {
     status: AutomationRunStatus;
     needsAttention: boolean;
     attentionReason: string | null;
+    /** B-508: when `needsAttention` last became true; absent on older servers. */
+    attentionAt?: number | null;
+    ackedAt?: number | null;
+    /** B-508: `AutomationAckBy` vocabulary (or a newer value); absent on older servers. */
+    ackedBy?: string | null;
+    /** B-508: sessions this run is about — `sessionId` plus the ones its payload names. Absent on older servers. */
+    linkedSessionIds?: string[];
     sessionId: string | null;
     stickyKey: string | null;
     scheduledFor: number | null;

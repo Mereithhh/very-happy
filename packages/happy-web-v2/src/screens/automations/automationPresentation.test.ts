@@ -3,6 +3,10 @@ import type { Automation, AutomationRun } from '@slopus/happy-wire';
 import {
   attentionKind,
   attentionRank,
+  attentionRunsForSession,
+  attentionSessionIds,
+  isOwnerAuthoredUserMessage,
+  runSessionIds,
   describeAction,
   describeCron,
   describeInterval,
@@ -228,5 +232,37 @@ describe('fmtRelative', () => {
     expect(fmtRelative(0, 5 * 60_000, 'en')).toBe('5m ago');
     expect(fmtRelative(2 * 3_600_000, 0, 'zh')).toBe('2h 后');
     expect(fmtRelative(0, 3 * 86_400_000, 'zh')).toBe('3d 前');
+  });
+});
+
+describe('B-508 session linkage', () => {
+  const flagged = (id: string, over: Partial<AutomationRun> = {}): AutomationRun => ({
+    id, automationId: 'a', automationName: 'a', machineId: 'm', source: 'fire', dedupeKey: null, payload: null,
+    status: 'done', needsAttention: true, attentionReason: 'needs_decision', sessionId: null, stickyKey: null, scheduledFor: null,
+    claimedAt: null, leaseUntil: null, startedAt: null, finishedAt: null, summary: null, error: null, exitCode: null,
+    createdAt: 0, updatedAt: 0, ...over,
+  });
+  it('unions the own session with the server-linked ones and tolerates old servers', () => {
+    expect(runSessionIds(flagged('r', { sessionId: 's1', linkedSessionIds: ['s1', 's2'] }))).toEqual(['s1', 's2']);
+    expect(runSessionIds(flagged('r', { sessionId: 's1' }))).toEqual(['s1']);
+    expect(runSessionIds(flagged('r'))).toEqual([]);
+  });
+  it('selects flagged runs about one session, urgent first, and lists every marked session', () => {
+    const runs = [
+      flagged('old', { sessionId: 's1', updatedAt: 1 }),
+      flagged('cleared', { sessionId: 's1', needsAttention: false, updatedAt: 9 }),
+      flagged('urgent', { status: 'running', attentionReason: 'needs_input', linkedSessionIds: ['s9', 's1'], updatedAt: 2 }),
+      flagged('other', { sessionId: 's3', updatedAt: 3 }),
+    ];
+    expect(attentionRunsForSession(runs, 's1').map((r) => r.id)).toEqual(['urgent', 'old']);
+    expect(attentionRunsForSession(runs, 'nope')).toEqual([]);
+    expect([...attentionSessionIds(runs)].sort()).toEqual(['s1', 's3', 's9']);
+  });
+  it('treats user messages without an automated sentFrom as the owner speaking', () => {
+    expect(isOwnerAuthoredUserMessage({ kind: 'user-text' })).toBe(true);
+    expect(isOwnerAuthoredUserMessage({ kind: 'user-text', meta: { sentFrom: 'web' } })).toBe(true);
+    expect(isOwnerAuthoredUserMessage({ kind: 'user-text', meta: { sentFrom: 'cli' } })).toBe(true);
+    for (const sentFrom of ['automation', 'team', 'session-peer', 'assistant']) expect(isOwnerAuthoredUserMessage({ kind: 'user-text', meta: { sentFrom } }), sentFrom).toBe(false);
+    expect(isOwnerAuthoredUserMessage({ kind: 'agent-text', meta: {} })).toBe(false);
   });
 });

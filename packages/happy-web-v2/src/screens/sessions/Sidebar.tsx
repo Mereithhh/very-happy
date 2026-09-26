@@ -53,6 +53,7 @@ import {
 } from './sidebarRecentSort';
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention';
+import { attentionSessionIds } from '@/screens/automations/automationPresentation';
 import { rowRenameMenuTranslationKeys } from './sidebarRowMenu';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
@@ -144,7 +145,10 @@ export function Sidebar() {
   // 404 automations_disabled (the feature is open to everyone); the badge is
   // the count of runs waiting for a decision. One slow poll here feeds both.
   const automationsEnabled = useAutomations((s) => automationsEntryVisible(s.enabled));
-  const automationAttention = useAutomations((s) => s.attention.length);
+  const automationAttentionRuns = useAutomations((s) => s.attention);
+  const automationAttention = automationAttentionRuns.length;
+  // B-508: sessions some flagged run is about (its own or payload-named) get a marker on their row.
+  const automationAttentionKeys = useMemo(() => attentionSessionIds(automationAttentionRuns), [automationAttentionRuns]);
   const refreshAutomations = useAutomations((s) => s.refreshOverview);
   useAutomationsPoll(refreshAutomations, AUTOMATIONS_SIDEBAR_POLL_MS);
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(() => new Set());
@@ -1092,6 +1096,7 @@ export function Sidebar() {
                           execution={executionByKey.get(r.key) ?? (r.session?.presence === 'online' ? 'idle' : 'offline')}
                           backgroundTasks={backgroundCountByKey.get(r.key)}
                           statusNote={legacyStatusKeys.has(r.key) ? t('sidebar.agentStatusLegacy') : undefined}
+                          automationAttention={r.kind === 'session' && automationAttentionKeys.has(r.key)}
                           signal={rowSignalOf({
                             attention: attentionKeys.has(r.key),
                             // Sessions: the flag stays out of the archived view
@@ -1363,6 +1368,7 @@ function SidebarRow({
   execution,
   backgroundTasks,
   statusNote,
+  automationAttention,
   signal,
   badge,
   canMoveUp,
@@ -1376,6 +1382,8 @@ function SidebarRow({
   backgroundTasks?: number;
   /** B-465: appended to the status tooltip when the verdict is an estimate. */
   statusNote?: string;
+  /** B-508: an automation run waits for the owner's decision about this session. */
+  automationAttention?: boolean;
   /** two-level marker (B-085): 'attention' = agent waiting on the user
    *  (accent rail + badge dot), 'unread' = finished-while-away (text-stage
    *  dot). Decided in the parent via rowSignalOf. */
@@ -1539,6 +1547,11 @@ function SidebarRow({
             {row.direct && (
               <span className="sb-row-restored" title={t('sidebar.terminalDirectHint')}>
                 {t('sidebar.terminalDirect')}
+              </span>
+            )}
+            {automationAttention && (
+              <span className="sb-row-auto-attn" title={t('automations.sessionMarker')} aria-label={t('automations.sessionMarker')} role="img">
+                <Zap size={11} />
               </span>
             )}
             {row.tags && row.tags.length > 0 && (

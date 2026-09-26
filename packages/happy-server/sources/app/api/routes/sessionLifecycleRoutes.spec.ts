@@ -60,6 +60,8 @@ vi.mock('@/app/events/eventRouter', async (importOriginal) => {
 vi.mock('@/app/presence/sessionCache', () => ({
     activityCache: { discardSessionUpdate: discardPending },
 }));
+const noteSessionArchived = vi.hoisted(() => vi.fn(async () => []));
+vi.mock('@/app/automations/attentionLifecycle', () => ({ noteSessionArchived }));
 let userSeq = 100;
 vi.mock('@/storage/seq', () => ({
     allocateUserSeq: vi.fn(async () => ++userSeq),
@@ -100,7 +102,11 @@ describe('server-owned session lifecycle routes', () => {
         expect(archived.payload.body).toEqual({ t: 'update-session', id: row.id, archivedAt: row.archivedAt!.getTime() });
         expect(archived.payload.seq).toBe(101);
 
+        // B-508: archiving is user intent → attention runs about the session resolve; unarchive/deactivate never call it.
+        expect(noteSessionArchived).toHaveBeenCalledWith('account-1', row.id);
+        noteSessionArchived.mockClear();
         await app.inject({ method: 'POST', url: `/v1/sessions/${row.id}/unarchive` });
+        expect(noteSessionArchived).not.toHaveBeenCalled();
         expect(emitUpdate).toHaveBeenCalledTimes(2);
         expect(emitUpdate.mock.calls[1][0].payload.body).toEqual({ t: 'update-session', id: row.id, archivedAt: null });
         expect(emitUpdate.mock.calls[1][0].payload.seq).toBe(102);

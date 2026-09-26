@@ -391,6 +391,8 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         for (const item of tracked.values()) {
             if (item.sessionId !== sessionId) continue;
             if (event === 'exited') item.exited = true;
+            // B-508: the server clears needs_input when the owner replies; a later block must raise it again.
+            if (event === 'idle') item.attentionReported = false;
             if (event === 'blocked' && !item.attentionReported) {
                 item.attentionReported = true;
                 void client.report(item.runId, { claimId: item.claimId, needsAttention: true, attentionReason: 'needs_input' }).catch(() => deps.log(`Automation run ${item.runId} attention report failed`));

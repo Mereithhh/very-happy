@@ -74,7 +74,8 @@ export const listRuns = (query: RunsQuery = {}) => {
 };
 export const getRun = (id: string) => request<{ run: AutomationRun }>(`/runs/${encodeURIComponent(id)}`);
 export const cancelRun = (id: string) => request<{ run: AutomationRun }>(`/runs/${encodeURIComponent(id)}/cancel`, { body: {} });
-export const ackRun = (id: string) => request<{ run: AutomationRun }>(`/runs/${encodeURIComponent(id)}/ack`, { body: {} });
+/** B-508: `by` records what resolved the flag (server default `owner`; older servers ignore the body). */
+export const ackRun = (id: string, by?: string) => request<{ run: AutomationRun }>(`/runs/${encodeURIComponent(id)}/ack`, { body: by === undefined ? {} : { by } });
 export const pauseAutomation = (id: string) => request<{ automation: Automation }>(`/${encodeURIComponent(id)}/pause`, { body: {} });
 export const resumeAutomation = (id: string) => request<{ automation: Automation }>(`/${encodeURIComponent(id)}/resume`, { body: {} });
 /** manual run — allowed on paused automations too (explicit user intent) */

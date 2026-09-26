@@ -192,6 +192,31 @@
   overflow-wrap: anywhere;
 }
 
+/* B-508: automation decision strip — --danger family (board 「需要我决策」), no accent. */
+.mrb[data-kind="automation-attention"] .mrb-note {
+  background: var(--danger-dim);
+  color: var(--text);
+  flex-wrap: wrap;
+}
+.mrb[data-kind="automation-attention"] .mrb-note > svg:first-child { color: var(--danger); flex: none; }
+.mrb-note--decision .mrb-note-text { display: inline; overflow-wrap: anywhere; }
+.mrb-inline-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.mrb-inline-link:hover { color: var(--danger); }
+.mrb-note-sep { color: var(--text-faint); }
+.mrb-note-more { margin-left: 6px; color: var(--danger); }
+.mrb-note-hint { margin-left: 8px; color: var(--text-faint); font-size: 11px; }
+@media (max-width: 600px) {
+  .mrb-note-hint { display: none; }
+}
 @media (pointer: coarse) {
   .mrb-term-btn, .mrb-needs { min-height: 44px; }
   .mrb-dismiss { width: 44px; height: 44px; }

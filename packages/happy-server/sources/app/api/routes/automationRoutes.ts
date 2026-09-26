@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-    AutomationClaimSchema, AutomationCreateSchema, AutomationFireSchema, AutomationListQuerySchema, AutomationManualRunSchema, AutomationNameSchema,
+    AutomationAckSchema, AutomationClaimSchema, AutomationCreateSchema, AutomationFireSchema, AutomationListQuerySchema, AutomationManualRunSchema, AutomationNameSchema,
     AutomationReportSchema, AutomationRunsQuerySchema, AutomationStickyDeleteSchema, AutomationStickyPutSchema, AutomationUpdateSchema,
 } from '@slopus/happy-wire';
 import type { Fastify } from '../types';
@@ -39,7 +39,8 @@ export function automationRoutes(app: Fastify) {
     app.get('/v1/automations/runs/:id', { ...auth, schema: { params } }, async (request, reply) => handle(reply, async () => ({ run: await getRun(request.userId, request.params.id) })));
     app.post('/v1/automations/runs/:id/report', { ...auth, schema: { params, body: AutomationReportSchema } }, async (request, reply) => handle(reply, async () => ({ run: await reportRun(request.userId, request.params.id, request.body) })));
     app.post('/v1/automations/runs/:id/cancel', { ...auth, schema: { params } }, async (request, reply) => handle(reply, async () => ({ run: await cancelRun(request.userId, request.params.id) })));
-    app.post('/v1/automations/runs/:id/ack', { ...auth, schema: { params } }, async (request, reply) => handle(reply, async () => ({ run: await ackRun(request.userId, request.params.id) })));
+    // B-508: `by` records what resolved the flag (default `owner`); old clients send no body.
+    app.post('/v1/automations/runs/:id/ack', { ...auth, schema: { params, body: AutomationAckSchema.nullish() } }, async (request, reply) => handle(reply, async () => ({ run: await ackRun(request.userId, request.params.id, request.body?.by ?? 'owner') })));
     app.get('/v1/automations/by-name/:name', { ...auth, schema: { params: nameParams } }, async (request, reply) => handle(reply, async () => ({ automation: await getAutomationByName(request.userId, request.params.name) })));
     app.post('/v1/automations/by-name/:name/fire', { ...auth, schema: { params: nameParams, body: AutomationFireSchema } }, async (request, reply) => handle(reply, () => fireAutomation(request.userId, request.params.name, request.body)));
     app.get('/v1/automations/:id', { ...auth, schema: { params } }, async (request, reply) => handle(reply, async () => ({ automation: await getAutomation(request.userId, request.params.id) })));

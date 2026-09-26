@@ -254,6 +254,18 @@
 }
 /* B-150: "restored after a restart" marker. Deliberately quiet — it is context,
    not a status the user must act on, and it disappears on first open. */
+/* B-508: automation decision marker — --danger like the nav badge and the board band */
+.sb-row-auto-attn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: var(--danger);
+  background: var(--danger-dim);
+}
 .sb-row-restored {
   flex: none;
   font-size: var(--fs-11);
