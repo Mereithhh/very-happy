@@ -35,3 +35,14 @@ describe('ApiNewFeedPostSchema repeatKey tolerance', () => {
         if (parsed.success) expect(parsed.data.t).toBe('new-feed-post');
     });
 });
+
+describe('B-509 prompt-queue update', () => {
+    it('validates the server snapshot shape so the sync loop routes it', async () => {
+        const { ApiUpdateContainerSchema } = await import('./apiTypes');
+        const parsed = ApiUpdateContainerSchema.safeParse({
+            id: 'u1', seq: 1, createdAt: 1,
+            body: { t: 'prompt-queue', sid: 's1', items: [{ id: 'i', localId: 'l', position: 1, content: { t: 'encrypted', c: 'x' }, createdAt: 1, updatedAt: 1 }] },
+        });
+        expect(parsed.success).toBe(true);
+    });
+});
