@@ -217,6 +217,7 @@ model Session {
     messages          SessionMessage[]
     usageReports      UsageReport[]
     accessKeys        AccessKey[]
+    promptQueue       SessionPromptQueueItem[]
 
     @@unique([accountId, tag])
     @@index([accountId, updatedAt(sort: Desc)])
@@ -236,6 +237,25 @@ model SessionMessage {
 
     @@unique([sessionId, localId])
     @@index([sessionId, seq])
+}
+
+/// B-509 server-side prompt queue: prompts queued from a client while the
+/// session is busy. `content` is the same opaque encrypted user record a
+/// SessionMessage carries; the wrapper dispatches the head item into a
+/// SessionMessage with the same localId when it is idle.
+model SessionPromptQueueItem {
+    id        String   @id @default(cuid())
+    sessionId String
+    session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    localId   String
+    position  Int
+    /// [SessionMessageContent]
+    content   Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([sessionId, localId])
+    @@index([sessionId, position])
 }
 
 //

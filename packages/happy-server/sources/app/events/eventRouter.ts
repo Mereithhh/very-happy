@@ -153,6 +153,11 @@ export type UpdateEvent = {
     cursor: string;
     createdAt: number;
 } | {
+    /** B-509: full snapshot of a session's server-side prompt queue after a mutation. */
+    type: 'prompt-queue';
+    sessionId: string;
+    items: unknown[];
+} | {
     type: 'kv-batch-update';
     changes: Array<{
         key: string;
@@ -680,6 +685,19 @@ export function buildNewFeedPostUpdate(feedItem: {
             body: feedItem.body,
             cursor: feedItem.cursor,
             createdAt: feedItem.createdAt
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildPromptQueueUpdate(sessionId: string, items: unknown[], updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'prompt-queue',
+            sid: sessionId,
+            items
         },
         createdAt: Date.now()
     };
