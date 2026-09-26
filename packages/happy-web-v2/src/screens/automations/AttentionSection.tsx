@@ -4,12 +4,19 @@
  * Sits at the top of /board (and above the automations list); renders
  * NOTHING when there is nothing to decide, so it never reserves space.
  *
- * Actions per run: open its session, acknowledge (clears the flag), run the
- * automation again, cancel (only while the run is still open).
+ * B-508: the leading round check IS the 「知道了」 (one tap per row, 44px on
+ * coarse pointers), the header offers 「全部已读」, and the band no longer
+ * shrinks inside a flex column (it used to clip to its first row on
+ * /automations). Runs also resolve themselves server-side when the owner
+ * replies in a linked session, when the run later reports done, or when the
+ * session is archived — see specs/2026-09-attention-lifecycle.md.
+ *
+ * Other actions per run: open its session, run the automation again, cancel
+ * (only while the run is still open).
  */
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUpRight, Check, RotateCw, X } from 'lucide-react';
+import { ArrowUpRight, Check, ListChecks, RotateCw, X } from 'lucide-react';
 import { Modal } from '@/modal';
 import { toast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -25,6 +32,7 @@ export function AttentionSection({ poll = true, linkAutomation = true }: { poll?
   const enabled = useAutomations((s) => s.enabled);
   const refreshOverview = useAutomations((s) => s.refreshOverview);
   const ack = useAutomations((s) => s.ack);
+  const ackAll = useAutomations((s) => s.ackAll);
   const cancel = useAutomations((s) => s.cancel);
   const rerun = useAutomations((s) => s.rerun);
   const reason = useAttentionReason();
@@ -53,19 +61,39 @@ export function AttentionSection({ poll = true, linkAutomation = true }: { poll?
   const l = langOf(lang);
 
   return (
-    <section className="au-attn" aria-labelledby="au-attn-title">
+    <section className="au-attn" aria-labelledby="au-attn-title" data-testid="attention-band">
       <header className="au-attn-head">
         <span id="au-attn-title" className="au-attn-title">
           {t('automations.decisions')}
           <span className="au-attn-count mono">{runs.length}</span>
         </span>
         <span className="au-attn-hint">{t('automations.decisionsHint')}</span>
+        {runs.length > 1 && (
+          <button
+            type="button"
+            className="au-btn au-attn-all"
+            disabled={busy === 'ack:all'}
+            onClick={() => void guard('ack:all', async () => { const n = await ackAll(); toast.success(t('automations.ackAllDone', { count: n }) as string); })}
+          >
+            <ListChecks size={13} /> {t('automations.ackAll')}
+          </button>
+        )}
       </header>
       <ul className="au-attn-list">
         {runs.map((run) => {
           const at = run.finishedAt ?? run.updatedAt;
           return (
-            <li key={run.id} className="au-attn-row">
+            <li key={run.id} className="au-attn-row" data-run-id={run.id}>
+              <button
+                type="button"
+                className="au-attn-check"
+                aria-label={t('automations.ack') as string}
+                title={t('automations.ack') as string}
+                disabled={busy === `ack:${run.id}`}
+                onClick={() => void guard(`ack:${run.id}`, async () => { await ack(run.id, 'owner'); toast.success(t('automations.acked') as string); })}
+              >
+                <Check size={14} />
+              </button>
               <div className="au-attn-main">
                 <div className="au-attn-line">
                   <RunStatusBadge status={run.status} />
@@ -98,9 +126,6 @@ export function AttentionSection({ poll = true, linkAutomation = true }: { poll?
                     <ArrowUpRight size={13} /> {t('automations.openSession')}
                   </button>
                 )}
-                <button type="button" className="au-btn" disabled={busy === `ack:${run.id}`} onClick={() => void guard(`ack:${run.id}`, async () => { await ack(run.id); toast.success(t('automations.acked') as string); })}>
-                  <Check size={13} /> {t('automations.ack')}
-                </button>
                 <button type="button" className="au-btn" disabled={busy === `rerun:${run.id}`} onClick={() => void guard(`rerun:${run.id}`, async () => { await rerun(run.automationId); toast.success(t('automations.runQueued', { name: run.automationName }) as string); })}>
                   <RotateCw size={13} /> {t('automations.rerun')}
                 </button>

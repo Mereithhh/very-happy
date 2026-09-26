@@ -2013,6 +2013,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep27: {
+                title: '「Needs my decision」 clears itself, and is one tap to clear by hand',
+                summary: 'An automation run that waits for you is now tied to the sessions it is about — its own session plus the ones its payload names — and resolves on its own when you act there. And the band no longer hides its rows: on the Automations page it used to clip to the first of several runs.',
+                auto: 'Replying in a linked session, the run later reporting done, or archiving the session marks the run handled (the run keeps who or what cleared it: owner, owner-replied, run-done, session-archived).',
+                session: 'A session some run is waiting on shows a strip under its header — automation name, reason, 「Acknowledge」 — and its sidebar row carries a marker.',
+                band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
+                cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
+            },
             sep25o: {
                 title: 'Sessions say when background work is still running',
                 summary: 'A turn ending is not the session going quiet: a background sub-agent, a `run_in_background` command or a Monitor keeps running and wakes the session later. Claude sessions now report those tasks explicitly, so nothing — the web, `sessions list`, Automations, the automatic CLI update — treats such a session as idle. Needs the CLI update for the wrapper side; the web and relay changes are live now.',
@@ -3159,6 +3167,13 @@ export const en = {
         boardLink: 'Automations',
         decisions: 'Needs my decision',
         decisionsHint: 'Runs that ended badly, wait for input, or nobody picked up',
+        // B-508: one-tap acknowledge, bulk acknowledge, the in-session strip and the sidebar marker.
+        ackAll: 'Acknowledge all',
+        ackAllDone: ({ count }: { count: number }) => `Acknowledged ${count} run${count === 1 ? '' : 's'}`,
+        bannerMore: ({ count }: { count: number }) => `+${count} more`,
+        bannerHint: 'Replying here clears it too',
+        bannerDismiss: 'Hide for now',
+        sessionMarker: 'An automation run is waiting for your decision',
         backToBoard: 'Board',
         backToList: 'All automations',
         // ---- row / detail fields ----

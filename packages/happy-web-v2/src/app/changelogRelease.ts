@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-27-attention-lifecycle',
+    cliVersion: '0.2.158',
+    date: '2026-09-27',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep27.title',
+    summaryKey: 'changelog.releases.sep27.summary',
+    itemKeys: ['changelog.releases.sep27.auto', 'changelog.releases.sep27.session', 'changelog.releases.sep27.band', 'changelog.releases.sep27.cli'],
+  },
+  {
     id: '2026-09-25-background-task-state',
     cliVersion: '0.2.157',
     date: '2026-09-25',

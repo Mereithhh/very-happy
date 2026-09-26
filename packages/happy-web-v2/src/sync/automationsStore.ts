@@ -54,7 +54,9 @@ export interface AutomationsState {
   loadedAt: number | null;
   refreshOverview: () => Promise<void>;
   refreshAutomation: (id: string) => Promise<void>;
-  ack: (runId: string) => Promise<void>;
+  ack: (runId: string, by?: string) => Promise<void>;
+  /** B-508 「全部已读」: every flagged run (or the given ids), through the per-run route. Resolves to the count cleared. */
+  ackAll: (runIds?: string[]) => Promise<number>;
   cancel: (runId: string) => Promise<void>;
   rerun: (automationId: string) => Promise<AutomationRun>;
   pause: (automationId: string) => Promise<void>;
@@ -150,16 +152,26 @@ export const useAutomations = create<AutomationsState>((set, get) => {
       }
     },
 
-    async ack(runId) {
-      const { run } = await ackRun(runId).catch(fail);
+    async ack(runId, by) {
+      const { run } = await ackRun(runId, by).catch(fail);
       applyRun(run);
+    },
+    async ackAll(runIds) {
+      const ids = runIds ?? get().attention.map((r) => r.id);
+      let cleared = 0;
+      for (const id of ids) {
+        const { run } = await ackRun(id, 'owner').catch(fail);
+        applyRun(run);
+        cleared += 1;
+      }
+      return cleared;
     },
     async cancel(runId) {
       let { run } = await cancelRun(runId).catch(fail);
       // The server keeps needsAttention (and its reason, e.g. needs_input) on a
       // cancelled run; cancelling IS the owner's decision, so clear it here
       // instead of leaving a stale "agent is waiting" row in the band.
-      if (run.needsAttention) ({ run } = await ackRun(runId).catch(fail));
+      if (run.needsAttention) ({ run } = await ackRun(runId, 'cancelled').catch(fail));
       applyRun(run);
     },
     async rerun(automationId) {

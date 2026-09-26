@@ -355,3 +355,34 @@ export function sortAutomations(list: Automation[], attentionByAutomation: Recor
     return a.name.localeCompare(b.name);
   });
 }
+
+// ---- B-508: which sessions a flagged run is about, and what counts as the owner speaking ----
+
+/** Sessions a run is about: the server's `linkedSessionIds` (own session + payload-named ones); older servers → just `sessionId`. */
+export function runSessionIds(run: Pick<AutomationRun, 'sessionId' | 'linkedSessionIds'>): string[] {
+  const ids = new Set<string>();
+  if (run.sessionId) ids.add(run.sessionId);
+  for (const id of run.linkedSessionIds ?? []) if (typeof id === 'string' && id) ids.add(id);
+  return [...ids];
+}
+
+/** Flagged runs about `sessionId`, most urgent first. */
+export function attentionRunsForSession<T extends Pick<AutomationRun, 'status' | 'attentionReason' | 'updatedAt' | 'needsAttention' | 'sessionId' | 'linkedSessionIds'>>(runs: T[], sessionId: string): T[] {
+  return sortAttentionRuns(runs.filter((run) => run.needsAttention && runSessionIds(run).includes(sessionId)));
+}
+
+/** Every session some flagged run is about (sidebar marker). */
+export function attentionSessionIds(runs: Array<Pick<AutomationRun, 'needsAttention' | 'sessionId' | 'linkedSessionIds'>>): Set<string> {
+  const out = new Set<string>();
+  for (const run of runs) if (run.needsAttention) for (const id of runSessionIds(run)) out.add(id);
+  return out;
+}
+
+/** `meta.sentFrom` values of user messages that are NOT the owner (automation dispatch, Teams, peer sessions, the assistant runner). */
+export const AUTOMATED_SENT_FROM = new Set(['automation', 'team', 'session-peer', 'assistant']);
+/** A user-role message the owner authored (any client) — mirrors the server's plaintext rule on the decrypted side. */
+export function isOwnerAuthoredUserMessage(message: { kind: string; meta?: { sentFrom?: string } | null }): boolean {
+  if (message.kind !== 'user-text') return false;
+  const from = message.meta?.sentFrom;
+  return typeof from !== 'string' || !AUTOMATED_SENT_FROM.has(from);
+}
