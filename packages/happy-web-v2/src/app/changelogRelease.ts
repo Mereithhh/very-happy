@@ -24,7 +24,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     summaryKey: 'changelog.releases.sep27.summary',
     itemKeys: ['changelog.releases.sep27.auto', 'changelog.releases.sep27.session', 'changelog.releases.sep27.band', 'changelog.releases.sep27.cli'],
     id: '2026-09-27-server-prompt-queue',
-    cliVersion: '0.2.158',
+    cliVersion: '0.2.159',
     date: '2026-09-27',
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.sep27b.title',
