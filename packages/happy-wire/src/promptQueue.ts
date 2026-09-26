@@ -51,6 +51,7 @@ export const UpdatePromptQueueBodySchema = z.object({
 export type UpdatePromptQueueBody = z.infer<typeof UpdatePromptQueueBodySchema>;
 
 export type PromptQueueDispatchResponse = {
-    dispatched: { itemId: string; localId: string; messageId: string; seq: number } | null;
+    /** `created:false` = the message row pre-existed (replayed localId); older servers omit it (treat as true). */
+    dispatched: { itemId: string; localId: string; messageId: string; seq: number; created?: boolean } | null;
     remaining: number;
 };

@@ -659,7 +659,9 @@ export async function claudeRemoteLauncher(
                             closeFailed: (error) => session.client.closeClaudeSessionTurn('failed', { error }),
                             onFailed: (error) => session.onSessionError(error),
                             onCompleted: () => {
-                                const idle = !modeGate.hasParked && session.queue.size() === 0;
+                                // B-509: prompts still queued on the server are work
+                                // this process is about to pull — not "waiting for the user".
+                                const idle = !modeGate.hasParked && session.queue.size() === 0 && !session.client.promptQueueHasPending();
                                 // Account-encrypted feed notification on turn end:
                                 // reply_done if Claude produced output, else input_needed
                                 // when the session is idle awaiting the user (best-effort).

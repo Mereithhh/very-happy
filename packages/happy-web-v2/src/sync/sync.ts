@@ -3083,7 +3083,7 @@ class Sync {
             }
         } else if (updateData.body.t === 'prompt-queue') {
             // B-509: server-side prompt queue snapshot for one session.
-            applyPromptQueueUpdate(updateData.body);
+            applyPromptQueueUpdate(updateData.body, updateData.seq);
         } else if (updateData.body.t === 'kv-batch-update') {
             // Realtime account-KV changes (the server has always broadcast
             // these). Fanned out to the KV-backed stores — e.g. the synced

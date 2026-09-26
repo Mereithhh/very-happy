@@ -21,7 +21,9 @@ const mocks = vi.hoisted(() => {
     onUserMessage: vi.fn((handler: (message: any) => void) => {
       userMessageHandler = handler;
     }),
-    attachPromptQueueDrain: vi.fn(() => ({ onIdle: vi.fn(), onQueueChanged: vi.fn(), onInbound: vi.fn(), close: vi.fn(), maybeDispatch: vi.fn(async () => false) })),
+    attachPromptQueueDrain: vi.fn(() => ({ onIdle: vi.fn(), onQueueChanged: vi.fn(), onInbound: vi.fn(), close: vi.fn(), hasPending: () => false, maybeDispatch: vi.fn(async () => false) })),
+            promptQueueHasPending: vi.fn(() => false),
+            closePromptQueueDrain: vi.fn(),
     keepAlive: vi.fn(),
     sendSessionProtocolMessage: vi.fn(),
     sendStreamFrame: vi.fn(),

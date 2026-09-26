@@ -929,7 +929,8 @@ export async function runCodex(opts: {
                 });
                 emitReadyIfIdle({
                     pending,
-                    queueSize: () => messageQueue.size(),
+                    // B-509: server-queued prompts count as pending input (no ready/push per item).
+                    queueSize: () => messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
                     shouldExit,
                     sendReady,
                 });
@@ -1026,7 +1027,8 @@ export async function runCodex(opts: {
                 session.keepAlive(thinking, 'remote');
                 emitReadyIfIdle({
                     pending,
-                    queueSize: () => messageQueue.size(),
+                    // B-509: server-queued prompts count as pending input (no ready/push per item).
+                    queueSize: () => messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
                     shouldExit,
                     sendReady,
                 });
@@ -1039,6 +1041,7 @@ export async function runCodex(opts: {
     } finally {
         // Clean up resources when main loop exits
         disposeTermination?.();
+        session.closePromptQueueDrain(); // B-509: no more pops into a process that is leaving
         logger.debug('[codex]: Final cleanup start');
         logActiveHandles('cleanup-start');
 

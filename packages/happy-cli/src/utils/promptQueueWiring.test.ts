@@ -47,4 +47,15 @@ describe('B-509 server prompt queue wiring', () => {
         expect(source).toContain("if (response.status === 404) return { kind: 'unsupported' };");
         expect(source).toContain("/prompt-queue/dispatch`");
     });
+
+    it('B-509 review: a turn that ends with server-queued prompts behind it is not 「idle」 (no per-item notification), and a leaving process stops popping first', () => {
+        expect(read('claude/claudeRemoteLauncher.ts')).toContain('const idle = !modeGate.hasParked && session.queue.size() === 0 && !session.client.promptQueueHasPending();');
+        expect(read('codex/runCodex.ts')).toContain('queueSize: () => messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),');
+        const claude = read('claude/runClaude.ts');
+        const cleanupAt = claude.indexOf('Received termination signal, cleaning up');
+        expect(claude.slice(cleanupAt, cleanupAt + 400)).toContain('promptQueueDrain.close();');
+        const codex = read('codex/runCodex.ts');
+        expect(codex.indexOf('session.closePromptQueueDrain();')).toBeLessThan(codex.indexOf("logger.debug('[codex]: Final cleanup start');"));
+        expect(read('agent/acp/runAcp.ts')).toContain('session.closePromptQueueDrain(); // B-509');
+    });
 });

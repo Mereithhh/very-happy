@@ -36,6 +36,8 @@ export type PromptQueueStatus = 'idle' | 'loading' | 'ready' | 'unsupported' | '
 export type PromptQueueSessionState = {
     items: PromptQueueEntry[];
     status: PromptQueueStatus;
+    /** Highest socket-update seq applied; snapshots arriving out of order are dropped. */
+    snapshotSeq?: number;
 };
 
 export type PromptQueueWireItem = ApiPromptQueueUpdate['items'][number];
@@ -50,11 +52,13 @@ export type PromptQueueDeps = {
 interface PromptQueueStoreState {
     sessions: Record<string, PromptQueueSessionState>;
     load: (sessionId: string) => Promise<void>;
-    enqueue: (sessionId: string, text: string, modeMeta: MessageModeMeta) => Promise<'queued' | 'unsupported'>;
+    /** `localId` (optional) makes a retry / a second tab's migration of the same item idempotent on the server. */
+    enqueue: (sessionId: string, text: string, modeMeta: MessageModeMeta, localId?: string) => Promise<'queued' | 'unsupported'>;
     updateText: (sessionId: string, id: string, text: string) => Promise<boolean>;
     remove: (sessionId: string, id: string) => Promise<boolean>;
     move: (sessionId: string, id: string, delta: -1 | 1) => Promise<void>;
-    applySnapshot: (sessionId: string, items: PromptQueueWireItem[]) => Promise<void>;
+    /** `seq` = the socket update's account seq; an older snapshot than one already applied is ignored. */
+    applySnapshot: (sessionId: string, items: PromptQueueWireItem[], seq?: number) => Promise<void>;
 }
 
 export const EMPTY_PROMPT_QUEUE: PromptQueueSessionState = Object.freeze({ items: [], status: 'idle' }) as PromptQueueSessionState;
@@ -72,6 +76,11 @@ export function movedOrder(ids: string[], id: string, delta: -1 | 1): string[] {
     const next = [...ids];
     [next[index], next[target]] = [next[target], next[index]];
     return next;
+}
+
+/** Error codes the prompt-queue routes themselves answer with (store.ts PromptQueueError). */
+export function isPromptQueueErrorCode(code: string | null): boolean {
+    return code !== null && (code.startsWith('prompt_queue_') || code === 'session_not_found');
 }
 
 function isWireItem(value: unknown): value is PromptQueueWireItem {
@@ -115,11 +124,12 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
             if (response.status < 200 || response.status >= 300) {
                 let code: string | null = null;
                 try { const body = await response.json() as { error?: unknown }; if (typeof body?.error === 'string') code = body.error; } catch { /* no body */ }
-                // A bare 404 (Fastify's "Not Found", no error code of ours) is an
-                // old server without the route: this session falls back to the
-                // tab-local queue. Our own 404s (item gone, session gone) are
-                // ordinary errors the caller handles.
-                if (response.status === 404 && (code === null || code === 'Not Found')) {
+                // A 404 that is not one of OUR codes is an old server without the
+                // route (production's SPA fallback answers `{error:'Not found'}`,
+                // a bare Fastify 404 answers `Not Found`): this session falls
+                // back to the tab-local queue. Our own 404s (item gone, session
+                // gone) are ordinary errors the caller handles.
+                if (response.status === 404 && !isPromptQueueErrorCode(code)) {
                     patch(sessionId, { status: 'unsupported' });
                     return null;
                 }
@@ -140,11 +150,11 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                     patch(sessionId, { status: get().sessions[sessionId]?.items.length ? 'ready' : 'error' });
                 }
             },
-            enqueue: async (sessionId, text, modeMeta) => {
+            enqueue: async (sessionId, text, modeMeta, localId) => {
                 if (get().sessions[sessionId]?.status === 'unsupported') return 'unsupported';
                 const content = await deps.encrypt(sessionId, text, modeMeta);
                 if (!content) throw new Error('Session encryption is not ready');
-                const body = await call(sessionId, '', { method: 'POST', body: JSON.stringify({ localId: deps.newLocalId(), content }) });
+                const body = await call(sessionId, '', { method: 'POST', body: JSON.stringify({ localId: localId ?? deps.newLocalId(), content }) });
                 if (!body) return 'unsupported';
                 await applyItems(sessionId, body.items);
                 return 'queued';
@@ -177,8 +187,13 @@ export function createPromptQueueStore(deps: PromptQueueDeps) {
                 const body = await call(sessionId, '/order', { method: 'PUT', body: JSON.stringify({ ids: next }) });
                 if (body) await applyItems(sessionId, body.items);
             },
-            applySnapshot: async (sessionId, items) => {
-                if (get().sessions[sessionId]?.status === 'unsupported') return;
+            applySnapshot: async (sessionId, items, seq) => {
+                const current = get().sessions[sessionId];
+                if (current?.status === 'unsupported') return;
+                if (typeof seq === 'number') {
+                    if (typeof current?.snapshotSeq === 'number' && seq < current.snapshotSeq) return;
+                    patch(sessionId, { snapshotSeq: seq });
+                }
                 await applyItems(sessionId, items);
             },
         };
@@ -204,12 +219,12 @@ export function usePromptQueue(sessionId: string): PromptQueueSessionState {
 }
 
 export const loadPromptQueue = (sessionId: string) => promptQueueStore.getState().load(sessionId);
-export const enqueuePrompt = (sessionId: string, text: string, modeMeta: MessageModeMeta) => promptQueueStore.getState().enqueue(sessionId, text, modeMeta);
+export const enqueuePrompt = (sessionId: string, text: string, modeMeta: MessageModeMeta, localId?: string) => promptQueueStore.getState().enqueue(sessionId, text, modeMeta, localId);
 export const updatePromptText = (sessionId: string, id: string, text: string) => promptQueueStore.getState().updateText(sessionId, id, text);
 export const removePrompt = (sessionId: string, id: string) => promptQueueStore.getState().remove(sessionId, id);
 export const movePrompt = (sessionId: string, id: string, delta: -1 | 1) => promptQueueStore.getState().move(sessionId, id, delta);
 
 /** Socket `update` `t:'prompt-queue'` → this session's mirror. */
-export function applyPromptQueueUpdate(body: { sid: string; items: PromptQueueWireItem[] }): void {
-    void promptQueueStore.getState().applySnapshot(body.sid, body.items);
+export function applyPromptQueueUpdate(body: { sid: string; items: PromptQueueWireItem[] }, seq?: number): void {
+    void promptQueueStore.getState().applySnapshot(body.sid, body.items, seq);
 }

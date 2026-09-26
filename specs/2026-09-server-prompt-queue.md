@@ -99,6 +99,12 @@ model SessionPromptQueueItem {
 `storeSessionMessages` 拆成 `storeSessionMessagesInTx(tx, options)` + 外层 `inTx` 壳，外部
 行为不变（现有 v3/socket 调用方零改动），dispatch 复用同一段落库逻辑（去重、计费、seq）。
 
+**锁序（评审阻断 1）**：仓库统一 Account → Session；队列每个写入（含 dispatch）先 `lockAccountResources`
+再 Session `FOR UPDATE`，与 `storeSessionMessagesInTx` 一致，不与并发的 turn-end / assistant 消息写入形成反向
+持锁。`inTx` 额外把 `40P01`（deadlock detected）当可重试冲突（P2010 meta.code / message），作为兜底。
+dispatch 返回 `dispatched.created`：`false` = 消息行已存在（重放的 localId），wrapper 不等新 echo。
+dispatch 任何账号客户端都可调（它只是对自己数据的 pop）；正常路径只有 wrapper 调，web 不调。
+
 每次变更（POST/PATCH/DELETE/PUT/dispatch）广播一条 `update`：
 
 ```ts
@@ -123,6 +129,16 @@ class PromptQueueDrain {
 - 触发点三个：① runner 在空队列上等（`MessageQueue2.setOnWait`，Claude remote 的 `nextMessage`、
   Codex/ACP 主循环都经过它）；② `update.t==='prompt-queue'`；③ 启动后 socket 首次 `connect`
   （resume 后立即续跑）。
+- **`hasPending()`**（评审 3）：drain 用快照条数 / dispatch 返回的 `remaining` 记录服务端还有几条；
+  Claude `onCompleted` 的 `idle = !parked && queue.size()===0 && !client.promptQueueHasPending()`，
+  Codex `emitReadyIfIdle` 的 `queueSize` 并入它——队列后面还有项时不发 reply_done/input_needed、不推 `done`、
+  不向 daemon 报 `completed`（Automations run 也不会因中间项被判 done）。ACP 没有空闲通知（`ready` 事件是
+  web 的 turn 边界，必须每 turn 发），无需门。
+- **退出窗口**（评审 5）：Claude `cleanup` 第一行、Codex 主循环退出的 final cleanup 第一行、ACP 关闭前
+  `closePromptQueueDrain()`；此后不再 pop。剩余窗口 = 一次 dispatch HTTP 在飞时进程被硬杀（SIGKILL / Codex、ACP
+  没有 SIGTERM 处理器时的默认终止）：该项已成消息但没跑，新进程按 seeded cursor 跳过，且记录不带 `queuedAt`
+  所以不会打 `restarted` 墓碑——它在 transcript 里看起来像一条没有回复的用户消息。接受（与同一瞬间手敲一条
+  消息完全相同）；不给队列项加 `queuedAt`，否则派发后的正常处理 turn 会被 web 画成「排队中」。
 - 守卫：`isIdle()`（`messageQueue.size()===0 && messageQueue.isWaiting()`）、无 inflight、未被
   404 禁用。派发成功后记 `inflight={localId}`，直到 `onInbound(localId)`（消息经 socket/catch-up
   路由进 `MessageQueue2`）或 20 s 超时才允许下一次。消息进队列后 `size()>0`，自然不 idle；turn
@@ -151,9 +167,18 @@ class PromptQueueDrain {
 - `sync/outboundUserRecord.ts`（新纯函数）：把 `sync.sendMessage` 里构造用户 `RawRecord` 的那段
   抽出来，`sendMessage` 与 `enqueuePrompt` 共用（保证派发后与手敲消息同形）。
 - `sync/sync.ts`：`handleUpdate` 加一分支 `prompt-queue` → `applyPromptQueueUpdate`。
+- 老 server 判定（评审 2）：生产 `spaFallback` 对未知 `/v1` 路径回 404 `{error:'Not found'}`，裸 Fastify 回
+  `Not Found`；规则是「404 且 error 不是我们自己的码（`prompt_queue_*` / `session_not_found`）」→ `unsupported`。
+- 快照按 socket update `seq` 拒旧（乱序到达的旧快照丢弃）；GET / 变更响应无 seq，直接应用。
 - `AgentInput.tsx`：
   - `serverQueue = supportsServerPromptQueue(session) && status !== 'unsupported'`
     （`metadata.capabilities` 含 `prompt-queue-v1`，关键约束 14）。
+  - **wrapper 未取走保护**（评审 4）：`!isWorking && 服务端有项` 持续 30 s（`PROMPT_QUEUE_STALE_MS`）→ 队列区
+    显示「agent 已空闲但没有取走队列」+「现在发送第一条」（先 DELETE 成功再普通 `sendMessage`，避免 wrapper
+    醒来后重复执行）。覆盖 CLI 回滚后 capability 残留、wrapper 卡死两种情况。
+  - **Stop 提示**：abort 成功且服务端仍有 N 条 → toast「已停止，队列里还有 N 条会接着执行」；不做
+    pausedUntilUserInput（Stop 语义保持「停当前 turn」，和 tab-local 时代一致，用户删项即暂停）。
+  - 本地→服务端迁移用旧项 `id` 作 `localId`：两个标签页同时迁移走幂等路径不重复。
   - 提交：`serverQueue && !attachments && (isWorking || gate==='restore-first')` → `enqueuePrompt`
     （失败 toast + 保留草稿）；否则走原路径。`restore-first` 时照旧触发 `restoreSession`。
   - 队列区：`serverQueue` 时渲染 store 的 items（编辑 → PATCH、删除 → DELETE、上移/下移 → PUT
@@ -190,7 +215,13 @@ class PromptQueueDrain {
 | 任意 | 老 | 新 | dispatch 404 → drain 禁用，其余不变 |
 
 发布顺序：server → web → CLI（默认顺序即可：capability 由新 wrapper 才发；server 先上使路由存在）。
-回滚点：server/Web 回 blue 槽；CLI `advance-auto-update.sh <上一版>`。表在回滚后闲置无害。
+回滚点：server/Web 回上一槽；CLI `advance-auto-update.sh <上一版>`。表在回滚后闲置无害。
+
+**CLI 回滚的处置**（评审 4）：会话 `metadata.capabilities` 由 wrapper 启动时写入并随会话保留；回滚 CLI 后
+存量会话若被老 wrapper resume，老 wrapper 不会重写 capabilities（它不认识该字段则原样合并）→ web 仍走服务端
+队列，而没有人 pop。缓解：① web 30 s「未取走」提示 + 「现在发送」（上文）；② 回滚时对仍在用的会话新建会话
+（新 wrapper 写自己的 capabilities）；③ 服务端表里残留的项可由 web 删除或用「现在发送」逐条发出。不做服务端
+自动回落（server 不知道 wrapper 版本，关键约束 14 不按版本判能力）。
 
 migration 新增表：发布前在 vh-sg 设置 `VH_RELEASE_MIGRATIONS_REVIEWED=<目标 commit>`（纯 expand）。
 

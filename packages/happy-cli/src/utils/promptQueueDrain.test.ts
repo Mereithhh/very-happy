@@ -159,4 +159,32 @@ describe('B-509 PromptQueueDrain', () => {
         expect(await drain.maybeDispatch('idle')).toBe(false);
         expect(calls).toBe(1);
     });
+
+    it('hasPending mirrors what the server still holds (snapshot count, dispatch remaining, empty, disabled)', async () => {
+        const h = harness({ outcomes: [{ kind: 'dispatched', localId: 'a', remaining: 2 }, { kind: 'dispatched', localId: 'b', remaining: 0 }, { kind: 'empty' }] });
+        expect(h.drain.hasPending()).toBe(false);
+        h.drain.onQueueChanged(3);
+        await Promise.resolve(); await Promise.resolve();
+        expect(h.drain.hasPending()).toBe(true);          // dispatch a: remaining 2
+        h.drain.onInbound('a');
+        await h.drain.maybeDispatch('idle');              // dispatch b: remaining 0
+        expect(h.drain.hasPending()).toBe(false);
+        h.drain.onQueueChanged(1);
+        expect(h.drain.hasPending()).toBe(true);
+        h.drain.onInbound('b');
+        await h.drain.maybeDispatch('idle');              // empty
+        expect(h.drain.hasPending()).toBe(false);
+        const off = harness({ outcomes: [{ kind: 'unsupported' }] });
+        off.drain.onQueueChanged(5);
+        await Promise.resolve(); await Promise.resolve();
+        expect(off.drain.hasPending()).toBe(false);       // disabled: nobody will consume it here
+    });
+
+    it('a replayed localId (created:false) arms no inflight: the message was routed long ago and will not echo again', async () => {
+        const h = harness({ outcomes: [{ kind: 'dispatched', localId: 'old', created: false, remaining: 1 }, { kind: 'dispatched', localId: 'new', remaining: 0 }] });
+        await h.drain.maybeDispatch('idle');
+        expect(h.drain.state().inflight).toBeNull();
+        expect(await h.drain.maybeDispatch('idle')).toBe(true);
+        expect(h.drain.state().inflight?.localId).toBe('new');
+    });
 });

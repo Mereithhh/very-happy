@@ -15,7 +15,8 @@ function harness(opts?: { status?: number; items?: () => PromptQueueWireItem[] }
             const method = init?.method ?? 'GET';
             const body = init?.body ? JSON.parse(init.body) : undefined;
             calls.push({ path, method, body });
-            if (opts?.status) return { status: opts.status, json: async () => ({ error: opts.status === 404 ? 'Not Found' : 'nope' }) };
+            // Production's SPA fallback answers an unknown /v1 path with `{error:'Not found'}` (spaFallback.ts) — the exact body.
+            if (opts?.status) return { status: opts.status, json: async () => ({ error: opts.status === 404 ? 'Not found' : 'nope' }) };
             if (method === 'POST' && path.endsWith('/prompt-queue')) {
                 items = [...items, wire(body.localId, String(body.content).replace(/^enc:/, ''), items.length + 1)];
                 return { status: 200, json: async () => ({ item: items[items.length - 1], items }) };
@@ -80,6 +81,20 @@ describe('B-509 prompt queue store', () => {
         expect(h.store.getState().sessions.s1.status).toBe('unsupported');
     });
 
+    it('a 404 carrying one of OUR codes (item gone / session gone) is an ordinary error, never a fallback', async () => {
+        const { isPromptQueueErrorCode } = await import('./promptQueue');
+        expect(isPromptQueueErrorCode('prompt_queue_item_gone')).toBe(true);
+        expect(isPromptQueueErrorCode('session_not_found')).toBe(true);
+        expect(isPromptQueueErrorCode('Not found')).toBe(false);
+        expect(isPromptQueueErrorCode('Not Found')).toBe(false);
+        expect(isPromptQueueErrorCode(null)).toBe(false);
+        const h = harness();
+        await h.store.getState().enqueue('s1', 'a', {});
+        h.setItems([]);
+        expect(await h.store.getState().updateText('s1', 'id-local-1', 'x')).toBe(false); // PATCH → 404 prompt_queue_item_gone
+        expect(h.store.getState().sessions.s1.status).toBe('ready');
+    });
+
     it('other server errors surface as the server\'s error code', async () => {
         const h = harness({ status: 409 });
         await expect(h.store.getState().enqueue('s1', 'x', {})).rejects.toThrow('nope');
@@ -123,5 +138,23 @@ describe('B-509 prompt queue store', () => {
         h.setItems([]);
         expect(await h.store.getState().updateText('s1', 'id-local-1', 'again')).toBe(false);
         expect(h.store.getState().sessions.s1.items).toEqual([]);
+    });
+
+    it('an out-of-order socket snapshot (lower seq) is dropped; GET/mutation results are always applied', async () => {
+        const h = harness();
+        await h.store.getState().applySnapshot('s1', [h.wire('a', 'a', 1)], 10);
+        await h.store.getState().applySnapshot('s1', [], 9);
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['a']);
+        await h.store.getState().applySnapshot('s1', [], 11);
+        expect(h.store.getState().sessions.s1.items).toEqual([]);
+        await h.store.getState().applySnapshot('s1', [h.wire('b', 'b', 1)]); // no seq: legacy / GET path
+        expect(h.store.getState().sessions.s1.items.map((item) => item.text)).toEqual(['b']);
+    });
+
+    it('enqueue with a caller-supplied localId is idempotent on the server (second tab migrating the same legacy item)', async () => {
+        const h = harness();
+        await h.store.getState().enqueue('s1', 'legacy', {}, 'legacy-id');
+        await h.store.getState().enqueue('s1', 'legacy', {}, 'legacy-id');
+        expect(h.calls.filter((call) => call.method === 'POST').map((call) => (call.body as { localId: string }).localId)).toEqual(['legacy-id', 'legacy-id']);
     });
 });

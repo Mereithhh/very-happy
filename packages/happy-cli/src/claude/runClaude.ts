@@ -1025,6 +1025,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             return;
         }
         logger.debug(`[START] Received termination signal, cleaning up (archive=${intent === 'archive'})...`);
+        // B-509: first thing — never pop another server-queued prompt into a
+        // process that is leaving (a popped item is a message the next wrapper
+        // will not run; see spec §5 「派发后退出窗口」).
+        promptQueueDrain.close();
 
         try {
             if (session) {

@@ -68,6 +68,9 @@ import {
     usePromptQueue,
 } from '@/sync/promptQueue';
 
+/** B-509: idle + server-queued items for this long = the wrapper is not popping. */
+export const PROMPT_QUEUE_STALE_MS = 30_000;
+
 // Sentinel key for the「默认」effort entry — not a real SDK effort level
 // (the CLI validates against low/medium/high/xhigh/max, so this can never
 // collide); picking it clears effortLevel and the wire carries effort:null.
@@ -627,6 +630,40 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
+    // B-509 review: a wrapper that never pops the queue (CLI rolled back but the
+    // session's capability stayed; wrapper wedged) would leave prompts sitting
+    // on the server forever while the agent shows idle. After 30 s of
+    // 「idle + items」 the composer says so and offers to send the head now.
+    const [serverQueueStale, setServerQueueStale] = useState(false);
+    const serverQueueHasItems = serverQueue && serverQueueState.items.length > 0;
+    useEffect(() => {
+        if (!serverQueueHasItems || isWorking || gate === 'restore-first') {
+            setServerQueueStale(false);
+            return;
+        }
+        const timer = setTimeout(() => setServerQueueStale(true), PROMPT_QUEUE_STALE_MS);
+        return () => clearTimeout(timer);
+    }, [serverQueueHasItems, isWorking, gate, serverQueueState.items[0]?.id]);
+    const sendServerHeadNow = async () => {
+        const entry = serverQueueState.items[0];
+        if (!entry || serverBusyId !== null || sendingRef.current) return;
+        setServerBusyId(entry.id);
+        try {
+            // Off the server FIRST (a wrapper that wakes up must not run it too), then a plain send.
+            const removed = await removePrompt(sessionId, entry.id);
+            if (!removed) return;
+            await deliverQueuedMessage(() => sync.sendMessage(sessionId, entry.text, {
+                source: 'chat',
+                delivery: 'queue',
+                modeMeta: entry.modeMeta,
+            }), () => {});
+        } catch {
+            toast.error(t('session.chat.queueDeliveryFailed'));
+        } finally {
+            setServerBusyId(null);
+        }
+    };
+
     // B-509: a session that just gained the server queue moves its tab-local
     // text items over once (attachment items stay local: not persisted anyway).
     useEffect(() => {
@@ -636,7 +673,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         void (async () => {
             for (const item of legacy) {
                 try {
-                    if (await enqueuePrompt(sessionId, item.text, item.modeMeta) !== 'queued') return;
+                    // The legacy item's id is the server localId: a second tab
+                    // migrating the same item hits the idempotent path, not a duplicate.
+                    if (await enqueuePrompt(sessionId, item.text, item.modeMeta, item.id) !== 'queued') return;
                 } catch {
                     return;
                 }
@@ -871,6 +910,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         <span>{t('session.chat.queueDeliveryFailed')}</span>
                         <button type="button" className="ci-queue-action ci-queue-action--retry" onClick={() => { deliveryPhaseRef.current = 'idle'; setStuckTick(value => value + 1); }}>{t('common.retry')}</button>
                     </div>}
+                    {serverQueueStale && <div className="ci-queue-failure" role="status" data-queue-stale>
+                        <span>{t('session.chat.queueNotConsumed')}</span>
+                        <button type="button" className="ci-queue-action ci-queue-action--retry" disabled={serverBusyId !== null} onClick={() => void sendServerHeadNow()}>{t('session.chat.queueSendNow')}</button>
+                    </div>}
                     <div className="ci-queue-list">
                         {queueRows.map((row, index) => {
                             const busy = row.source === 'server' && serverBusyId === row.id;
@@ -1061,6 +1104,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                     void doAbort().then((outcome) => {
                                         if (outcome === 'timeout') toast.error(t('session.chat.stopStillSettling'));
                                         else if (outcome === 'failed') toast.error(t('session.chat.stopFailed'));
+                                        // B-509: Stop does not clear the server queue — say so, the
+                                        // next item goes out as soon as the wrapper is idle.
+                                        else if (serverQueue && serverQueueState.items.length > 0) toast.show(t('session.chat.queueStillPending', { count: serverQueueState.items.length }), 'info');
                                     });
                                 }}
                                 disabled={aborting}

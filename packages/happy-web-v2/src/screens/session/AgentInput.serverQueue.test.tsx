@@ -19,11 +19,11 @@ const mocks = vi.hoisted(() => ({
     gate: 'send' as 'send' | 'restore-first',
     queues: {} as Record<string, unknown>,
     queueState: { items: [] as Array<{ id: string; localId: string; position: number; text: string; modeMeta: object; createdAt: number }>, status: 'ready' as string },
-    send: vi.fn(), paint: vi.fn(), restoreSession: vi.fn(), draft: vi.fn(), toast: vi.fn(), saveQueue: vi.fn(),
+    send: vi.fn(), paint: vi.fn(), restoreSession: vi.fn(), draft: vi.fn(), toast: vi.fn(), toastShow: vi.fn(), abort: vi.fn(), saveQueue: vi.fn(),
     enqueue: vi.fn(), load: vi.fn(), remove: vi.fn(), move: vi.fn(), updateText: vi.fn(),
 }));
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: mocks.send } }));
-vi.mock('@/sync/ops', () => ({ sessionAbort: vi.fn(), sessionSetPermissionMode: vi.fn() }));
+vi.mock('@/sync/ops', () => ({ sessionAbort: mocks.abort, sessionSetPermissionMode: vi.fn() }));
 vi.mock('@/sync/storage', () => ({
     useSession: () => mocks.session,
     useSessionUsage: () => null,
@@ -37,7 +37,7 @@ vi.mock('@/sync/heartbeatLease', () => ({ useHeartbeatFresh: () => true }));
 vi.mock('@/sync/agentLiveness', () => ({ isAgentWorkLive: () => mocks.working }));
 vi.mock('@/app/sessionRestore', () => ({ composerGate: () => mocks.gate, restoreSession: mocks.restoreSession, useRestoreState: () => null }));
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock('@/ui', async () => ({ ...await vi.importActual<typeof import('@/ui/Spinner')>('@/ui/Spinner'), useToast: () => ({ error: mocks.toast }) }));
+vi.mock('@/ui', async () => ({ ...await vi.importActual<typeof import('@/ui/Spinner')>('@/ui/Spinner'), useToast: () => ({ error: mocks.toast, show: mocks.toastShow }) }));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
 vi.mock('./ModeMenu', () => ({ ModeMenu: () => null }));
 vi.mock('./ModelEffortMenu', () => ({ ModelEffortMenu: () => null }));
@@ -174,8 +174,46 @@ describe('AgentInput server-side prompt queue (B-509)', () => {
         render();
         await act(async () => { await Promise.resolve(); await Promise.resolve(); });
         expect(mocks.send).not.toHaveBeenCalled();
-        expect(mocks.enqueue).toHaveBeenCalledExactlyOnceWith('session', 'left over', { model: null });
+        expect(mocks.enqueue).toHaveBeenCalledExactlyOnceWith('session', 'left over', { model: null }, 'old');
         expect(localQueue()).toEqual([]);
+    });
+
+    it('B-509 review: idle + server items for 30 s = 「wrapper not picking it up」 with a send-now that removes the head from the server first', async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.working = false;
+            mocks.queueState = { status: 'ready', items: [
+                { id: 'q1', localId: 'l1', position: 1, text: 'stuck', modeMeta: { model: 'x' }, createdAt: 1 },
+                { id: 'q2', localId: 'l2', position: 2, text: 'next', modeMeta: {}, createdAt: 2 },
+            ] };
+            render();
+            expect(host.querySelector('[data-queue-stale]')).toBeNull();
+            await act(async () => { vi.advanceTimersByTime(29_000); });
+            expect(host.querySelector('[data-queue-stale]')).toBeNull();
+            await act(async () => { vi.advanceTimersByTime(1_500); });
+            expect(host.querySelector('[data-queue-stale]')).not.toBeNull();
+            await act(async () => { host.querySelector<HTMLButtonElement>('[data-queue-stale] button')!.click(); });
+            expect(mocks.remove).toHaveBeenCalledExactlyOnceWith('session', 'q1');
+            expect(mocks.send).toHaveBeenCalledExactlyOnceWith('session', 'stuck', { source: 'chat', delivery: 'queue', modeMeta: { model: 'x' } });
+            // Working again → the notice goes away; it never shows while the agent runs.
+            mocks.working = true;
+            await act(async () => root.render(<AgentInput sessionId="session" />));
+            expect(host.querySelector('[data-queue-stale]')).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('B-509 review: Stop does not clear the server queue and says how many items will still run', async () => {
+        mocks.queueState = { status: 'ready', items: [{ id: 'q1', localId: 'l1', position: 1, text: 'a', modeMeta: {}, createdAt: 1 }] };
+        mocks.session.draft = '';
+        mocks.abort.mockResolvedValue(undefined);
+        render();
+        await act(async () => { host.querySelector<HTMLButtonElement>('.ci-send--abort')!.click(); });
+        await act(async () => { await Promise.resolve(); await new Promise((resolve) => setTimeout(resolve, 320)); });
+        expect(mocks.abort).toHaveBeenCalledTimes(1);
+        expect(mocks.remove).not.toHaveBeenCalled();
+        expect(mocks.toastShow).toHaveBeenCalledWith('session.chat.queueStillPending', 'info');
     });
 
     it('an archived session enqueues on the server and still asks for the restore', async () => {

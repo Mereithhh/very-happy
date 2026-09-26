@@ -552,6 +552,16 @@ export class ApiSessionClient extends EventEmitter {
         return drain;
     }
 
+    /** B-509: the server still holds queued prompts for this session (see PromptQueueDrain.hasPending). */
+    promptQueueHasPending(): boolean {
+        return this.promptQueueDrain?.hasPending() === true;
+    }
+
+    /** B-509: stop draining before the process winds down (cleanup's first line). */
+    closePromptQueueDrain(): void {
+        this.promptQueueDrain?.close();
+    }
+
     private async dispatchPromptQueueHead(): Promise<PromptQueueDispatchOutcome> {
         try {
             const response = await axios.post<PromptQueueDispatchResponse>(
@@ -562,7 +572,10 @@ export class ApiSessionClient extends EventEmitter {
             if (response.status === 404) return { kind: 'unsupported' };
             if (response.status !== 200) return { kind: 'error', message: `HTTP ${response.status}` };
             const dispatched = response.data?.dispatched;
-            if (dispatched && typeof dispatched.localId === 'string') return { kind: 'dispatched', localId: dispatched.localId };
+            const remaining = typeof response.data?.remaining === 'number' ? response.data.remaining : undefined;
+            if (dispatched && typeof dispatched.localId === 'string') {
+                return { kind: 'dispatched', localId: dispatched.localId, remaining, created: dispatched.created !== false };
+            }
             return { kind: 'empty' };
         } catch (error) {
             return { kind: 'error', message: error instanceof Error ? error.message : String(error) };

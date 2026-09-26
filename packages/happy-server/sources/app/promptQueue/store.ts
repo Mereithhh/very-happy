@@ -1,5 +1,6 @@
 import { PROMPT_QUEUE_MAX_ITEMS, type PromptQueueItem } from '@slopus/happy-wire';
 import { SESSION_MESSAGE_CONTENT_MAX_BYTES, storeSessionMessagesInTx } from '@/app/api/sessionMessageStore';
+import { lockAccountResources } from '@/app/api/resourceLimits';
 import { buildNewMessageUpdate, buildPromptQueueUpdate, eventRouter } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
 import { afterTx, inTx, type Tx } from '@/storage/inTx';
@@ -46,6 +47,17 @@ async function requireSession(tx: Tx, accountId: string, sessionId: string): Pro
     if (!session) throw new PromptQueueError('session_not_found', 404);
 }
 
+/**
+ * Repository-wide lock order is Account → Session (sessionMessageStore,
+ * every other writer). dispatch continues into storeSessionMessagesInTx,
+ * which takes the same two locks in that order, so taking Session first here
+ * would invert it against a concurrent message write (deadlock 40P01).
+ */
+async function lockQueue(tx: Tx, accountId: string, sessionId: string): Promise<void> {
+    await lockAccountResources(tx, accountId);
+    await tx.$queryRawUnsafe(`SELECT "id" FROM "Session" WHERE "id" = $1 FOR UPDATE`, sessionId);
+}
+
 async function listRows(tx: Tx, sessionId: string): Promise<Row[]> {
     return tx.sessionPromptQueueItem.findMany({
         where: { sessionId },
@@ -83,7 +95,7 @@ export async function enqueuePrompt(accountId: string, sessionId: string, input:
     return inTx(async (tx) => {
         await requireSession(tx, accountId, sessionId);
         // Serialize per session: the account row is the repository-wide lock root.
-        await tx.$queryRawUnsafe(`SELECT "id" FROM "Session" WHERE "id" = $1 FOR UPDATE`, sessionId);
+        await lockQueue(tx, accountId, sessionId);
         const rows = await listRows(tx, sessionId);
         const existing = rows.find((row) => row.localId === input.localId);
         if (existing) return { item: toItem(existing), items: rows.map(toItem), created: false };
@@ -106,7 +118,7 @@ export async function updatePromptContent(accountId: string, sessionId: string, 
     }
     return inTx(async (tx) => {
         await requireSession(tx, accountId, sessionId);
-        await tx.$queryRawUnsafe(`SELECT "id" FROM "Session" WHERE "id" = $1 FOR UPDATE`, sessionId);
+        await lockQueue(tx, accountId, sessionId);
         const target = await tx.sessionPromptQueueItem.findFirst({ where: { id: itemId, sessionId } });
         if (!target) throw new PromptQueueError('prompt_queue_item_gone', 404);
         const updated = await tx.sessionPromptQueueItem.update({
@@ -122,7 +134,7 @@ export async function updatePromptContent(accountId: string, sessionId: string, 
 export async function removePrompt(accountId: string, sessionId: string, itemId: string): Promise<{ removed: boolean; items: PromptQueueItem[] }> {
     return inTx(async (tx) => {
         await requireSession(tx, accountId, sessionId);
-        await tx.$queryRawUnsafe(`SELECT "id" FROM "Session" WHERE "id" = $1 FOR UPDATE`, sessionId);
+        await lockQueue(tx, accountId, sessionId);
         const deleted = await tx.sessionPromptQueueItem.deleteMany({ where: { id: itemId, sessionId } });
         const rows = await listRows(tx, sessionId);
         if (deleted.count > 0) broadcastAfterTx(tx, accountId, sessionId, rows);
@@ -147,7 +159,7 @@ export function reorderedRows<T extends { id: string }>(rows: T[], ids: string[]
 export async function reorderPromptQueue(accountId: string, sessionId: string, ids: string[]): Promise<{ items: PromptQueueItem[] }> {
     return inTx(async (tx) => {
         await requireSession(tx, accountId, sessionId);
-        await tx.$queryRawUnsafe(`SELECT "id" FROM "Session" WHERE "id" = $1 FOR UPDATE`, sessionId);
+        await lockQueue(tx, accountId, sessionId);
         const rows = await listRows(tx, sessionId);
         const ordered = reorderedRows(rows, ids);
         for (let index = 0; index < ordered.length; index += 1) {
@@ -162,14 +174,16 @@ export async function reorderPromptQueue(accountId: string, sessionId: string, i
 }
 
 export async function dispatchPromptQueueHead(accountId: string, sessionId: string): Promise<{
-    dispatched: { itemId: string; localId: string; messageId: string; seq: number } | null;
+    /** `created:false` = the message row already existed (replayed localId); the wrapper has seen it before. */
+    dispatched: { itemId: string; localId: string; messageId: string; seq: number; created: boolean } | null;
     remaining: number;
 }> {
     return inTx(async (tx) => {
         await requireSession(tx, accountId, sessionId);
-        // storeSessionMessagesInTx takes the Session row lock itself (FOR UPDATE);
-        // take it first here so the head read and the message write see one queue.
-        await tx.$queryRawUnsafe(`SELECT "id" FROM "Session" WHERE "id" = $1 FOR UPDATE`, sessionId);
+        // Same lock order as storeSessionMessagesInTx (Account → Session), so the
+        // head read and the message write see one queue and never deadlock a
+        // concurrent message write.
+        await lockQueue(tx, accountId, sessionId);
         const rows = await listRows(tx, sessionId);
         const head = rows[0];
         if (!head) return { dispatched: null, remaining: 0 };
@@ -201,7 +215,10 @@ export async function dispatchPromptQueueHead(accountId: string, sessionId: stri
         }
         broadcastAfterTx(tx, accountId, sessionId, rest);
         return {
-            dispatched: { itemId: head.id, localId: head.localId, messageId: message.id, seq: message.seq },
+            dispatched: {
+                itemId: head.id, localId: head.localId, messageId: message.id, seq: message.seq,
+                created: stored.createdMessages.some((created) => created.localId === head.localId),
+            },
             remaining: rest.length,
         };
     });

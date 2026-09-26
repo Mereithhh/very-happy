@@ -121,6 +121,26 @@ describe('B-509 prompt queue store (pglite)', () => {
         await enqueue('replay', 'lid-first');
         const replay = await store.dispatchPromptQueueHead(accountId, sessionId);
         expect(replay.dispatched?.messageId).toBe(message!.id);
+        expect(replay.dispatched?.created).toBe(false);
+        expect(one.dispatched?.created).toBe(true);
         expect(await db.sessionMessage.count({ where: { sessionId, localId: 'lid-first' } })).toBe(1);
+    });
+
+    it('B-509 review: dispatch and a concurrent message write (turn-end / assistant text) both commit — lock order Account → Session, no deadlock', async () => {
+        const { storeSessionMessages } = await import('@/app/api/sessionMessageStore');
+        await enqueue('c1', 'lid-c1');
+        await enqueue('c2', 'lid-c2');
+        const rounds = await Promise.all([
+            store.dispatchPromptQueueHead(accountId, sessionId),
+            storeSessionMessages({ accountId, sessionId, messages: [{ localId: 'wrapper-turn-end', content: 'ZW5k' }] }),
+            store.dispatchPromptQueueHead(accountId, sessionId),
+            storeSessionMessages({ accountId, sessionId, messages: [{ localId: 'wrapper-assistant', content: 'YXNzaXN0YW50' }] }),
+        ]);
+        const dispatched = [rounds[0], rounds[2]].map((round) => round.dispatched?.localId).sort();
+        expect(dispatched).toEqual(['lid-c1', 'lid-c2']);
+        const rows = await db.sessionMessage.findMany({ where: { sessionId, localId: { in: ['lid-c1', 'lid-c2', 'wrapper-turn-end', 'wrapper-assistant'] } }, orderBy: { seq: 'asc' } });
+        expect(rows).toHaveLength(4);
+        expect(new Set(rows.map((row) => row.seq)).size).toBe(4);
+        expect(await db.sessionPromptQueueItem.count({ where: { sessionId } })).toBe(0);
     });
 });

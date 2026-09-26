@@ -20,7 +20,8 @@
  *   - `isIdle()` false.
  */
 export type PromptQueueDispatchOutcome =
-    | { kind: 'dispatched'; localId: string }
+    /** `remaining` = items still queued after this pop; `created:false` = the message row pre-existed (replayed localId) — nothing new will be routed. */
+    | { kind: 'dispatched'; localId: string; remaining?: number; created?: boolean }
     | { kind: 'empty' }
     | { kind: 'unsupported' }
     | { kind: 'error'; message: string };
@@ -49,6 +50,8 @@ export class PromptQueueDrain {
      * until the timeout — observed in the first isolated e2e run.
      */
     private arrivedDuringDispatch = new Set<string>();
+    /** Items the server still holds, from the last snapshot / dispatch response. */
+    private pending = 0;
     private disabled = false;
     private closed = false;
     private busy = false;
@@ -77,7 +80,18 @@ export class PromptQueueDrain {
 
     /** A `prompt-queue` snapshot arrived; only a non-empty queue is worth a call. */
     onQueueChanged(count: number): void {
+        this.pending = Math.max(0, count);
         if (count > 0) void this.maybeDispatch('queue-changed');
+    }
+
+    /**
+     * True while the server still holds queued prompts for this session. The
+     * runners fold it into their "idle, waiting for the user" judgement so a
+     * turn that ends with more queue behind it raises no reply_done /
+     * input_needed notification and no daemon `completed` report per item.
+     */
+    hasPending(): boolean {
+        return !this.disabled && !this.closed && this.pending > 0;
     }
 
     /** A user message with this localId was routed into the runner's queue. */
@@ -97,7 +111,7 @@ export class PromptQueueDrain {
     }
 
     state() {
-        return { inflight: this.inflight, disabled: this.disabled, busy: this.busy, failures: this.failures, retryAt: this.retryAt };
+        return { inflight: this.inflight, disabled: this.disabled, busy: this.busy, failures: this.failures, retryAt: this.retryAt, pending: this.pending };
     }
 
     async maybeDispatch(reason: string): Promise<boolean> {
@@ -120,7 +134,10 @@ export class PromptQueueDrain {
             switch (outcome.kind) {
                 case 'dispatched': {
                     this.failures = 0;
-                    const alreadyRouted = this.arrivedDuringDispatch.delete(outcome.localId);
+                    if (typeof outcome.remaining === 'number') this.pending = Math.max(0, outcome.remaining);
+                    // A replayed localId (created:false) never produces a new
+                    // socket echo — the wrapper routed that message long ago.
+                    const alreadyRouted = this.arrivedDuringDispatch.delete(outcome.localId) || outcome.created === false;
                     if (!alreadyRouted) {
                         this.inflight = { localId: outcome.localId, since: this.now() };
                         // A lost socket must not leave the queue parked: re-check at expiry.
@@ -131,6 +148,7 @@ export class PromptQueueDrain {
                 }
                 case 'empty':
                     this.failures = 0;
+                    this.pending = 0;
                     return false;
                 case 'unsupported':
                     this.disabled = true;

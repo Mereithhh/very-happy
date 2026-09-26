@@ -1263,6 +1263,7 @@ export async function runAcp(opts: {
     }
 
     try {
+      session.closePromptQueueDrain(); // B-509: no more pops into a process that is leaving
       session.updateMetadata((currentMetadata) => ({
         ...currentMetadata,
         lifecycleState: 'archived',
