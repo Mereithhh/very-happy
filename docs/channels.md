@@ -952,7 +952,7 @@ very-happy auto create --name on-mention --manual \
   --sticky-key '{{payload.conversationId}}'                      # same conversation → same session
 very-happy auto create --name backup --every 6h --script -- /usr/bin/env bash -lc 'restic backup ~/notes'
 very-happy auto fire on-mention --payload-json '{"conversationId":"c9","text":"hi"}' --dedupe-key msg-123 --wait
-very-happy auto runs --attention; very-happy auto ack <runId>
+very-happy auto runs --attention; very-happy auto ack <runId>; very-happy auto ack --all [--name <name>]   # B-508: bulk acknowledge
 very-happy auto report --status done --summary 'synced 12 items'   # inside a run's session: --run defaults to $VH_AUTOMATION_RUN_ID
 ```
 
@@ -967,7 +967,14 @@ scripts also get `VH_AUTOMATION_PAYLOAD`. A run finishes when the agent calls
 the latest prompt header — `VH_AUTOMATION_RUN_ID` is the run that started the
 session), or — without one — when the wrapper's turn ends (B-466 heartbeat) and
 the daemon confirms it on the session log anchored on that run's own prompt,
-taking the last assistant text (4KB) as the summary. Scripts finish on exit (tail 4KB of output;
+taking the last assistant text (4KB) as the summary. A run flagged for attention is tied
+to its own session plus the sessions a JSON payload names (`sessions[].id` / `sessions[]` /
+`sessionId` / `sessionIds[]`); the server clears the flag itself when the owner sends a message
+in one of them (`ackedBy: owner-replied` — judged on the plaintext `X-Happy-Client` tag, the
+`X-Happy-Message-Origin: relay-client` header a wrapper ≥ 0.2.158 stamps on relay-delivered client
+messages, and the localId prefixes automated senders stamp), when the run later reports `done` without attention
+(`run-done`), or when such a session is archived (`session-archived`); `POST …/runs/:id/ack`
+takes an optional `{ by }` (default `owner`). Scripts finish on exit (tail 4KB of output;
 timeout SIGTERM → SIGKILL). The daemon keeps `~/.happy/automation-receipts.json`
 so a run id is never spawned twice across restarts; an unknown launch outcome is
 reported `failed` with attention instead of retried. Exit codes of `fire --wait`:
