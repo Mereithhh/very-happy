@@ -3,7 +3,7 @@
  *
  *   very-happy auto list | show <name> | create … | edit <name> … | pause | resume | rm
  *   very-happy auto run <name> | fire <name> [--payload…] [--dedupe-key] [--wait]
- *   very-happy auto runs [--name] [--status] [--attention] | runs <runId> | cancel <runId> | ack <runId>
+ *   very-happy auto runs [--name] [--status] [--attention] | runs <runId> | cancel <runId> | ack <runId> | ack --all [--name]
  *   very-happy auto report [--run <id>] --status done|failed [--summary] [--error] [--attention <reason>]
  *   very-happy auto skill | install --host … [--apply]
  *
@@ -33,7 +33,7 @@ export const AUTO_ACTIONS = ['list', 'show', 'create', 'edit', 'pause', 'resume'
 export type AutoAction = typeof AUTO_ACTIONS[number];
 
 const VALUE_FLAGS = ['--name', '--rename', '--description', '--machine', '--cron', '--tz', '--every', '--at', '--spawn-dir', '--prompt', '--prompt-file', '--agent', '--model', '--permission-mode', '--sticky-key', '--send-session', '--cwd', '--env', '--timeout', '--concurrency', '--max-runtime', '--payload', '--payload-json', '--payload-file', '--dedupe-key', '--status', '--limit', '--run', '--summary', '--error', '--attention', '--host', '--home'] as const;
-const BOOL_FLAGS = ['--manual', '--script', '--worktree', '--paused', '--wait', '--json', '--apply', '--all-machines', '--attention', '--help', '-h'] as const;
+const BOOL_FLAGS = ['--manual', '--script', '--worktree', '--paused', '--wait', '--json', '--apply', '--all-machines', '--all', '--attention', '--help', '-h'] as const;
 type ValueFlag = typeof VALUE_FLAGS[number];
 type BoolFlag = typeof BOOL_FLAGS[number];
 
@@ -163,7 +163,7 @@ ${chalk.bold('Usage:')}
   very-happy auto fire <name> [--payload…] [--dedupe-key <key>] [--wait [--timeout <dur>]]
   very-happy auto runs [--name <name>] [--status <s>] [--attention] [--limit <n>] [--json]
   very-happy auto runs <runId> [--json]
-  very-happy auto cancel <runId> | ack <runId>
+  very-happy auto cancel <runId> | ack <runId> | ack --all [--name <name>]
   very-happy auto report [--run <id>] --status done|failed [--summary <text>] [--error <text>] [--attention <reason>]
   very-happy auto skill | install|uninstall --host claude|codex|pi [--home <path>] [--apply]
 
@@ -252,7 +252,7 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
     const needsName: AutoAction[] = ['show', 'edit', 'pause', 'resume', 'rm', 'run', 'fire'];
     const needsRunId: AutoAction[] = ['cancel', 'ack'];
     if (needsName.includes(command.action) && !command.target) throw new Error(`${command.action} needs an automation name`);
-    if (needsRunId.includes(command.action) && !command.target) throw new Error(`${command.action} needs a run id`);
+    if (needsRunId.includes(command.action) && !command.target && !(command.action === 'ack' && command.bools.has('--all'))) throw new Error(`${command.action} needs a run id (or ack --all)`);
     if (command.action === 'create' && !command.flags['--name']) throw new Error('create needs --name <name>');
     for (const name of [command.flags['--name'], command.flags['--rename'], needsName.includes(command.action) ? command.target : undefined]) {
         if (name !== undefined && !AUTOMATION_NAME_PATTERN.test(name)) throw new Error(`Invalid automation name "${name}": use [a-z0-9][a-z0-9-_.]{0,63}`);
@@ -374,7 +374,17 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
                 return;
             }
             case 'cancel': case 'ack': {
-                const run = command.action === 'cancel' ? await client.cancel(command.target!) : await client.ack(command.target!);
+                if (command.action === 'ack' && command.bools.has('--all')) {
+                    // B-508: 「全部已读」 — every flagged run (optionally one automation's), through the per-run route so old servers work too.
+                    if (command.target) throw new Error('ack --all takes no run id (use --name to limit to one automation)');
+                    const flagged = await client.runs({ name: command.flags['--name'], attention: true, limit: 200 });
+                    const runs: AutomationRun[] = [];
+                    for (const run of flagged) runs.push(await client.ack(run.id, 'owner'));
+                    if (json) console.log(JSON.stringify({ acked: runs.length, runs }));
+                    else console.log(runs.length === 0 ? 'Nothing needs your decision.' : `Acknowledged ${runs.length} run(s).`);
+                    return;
+                }
+                const run = command.action === 'cancel' ? await client.cancel(command.target!) : await client.ack(command.target!, 'owner');
                 if (json) console.log(JSON.stringify({ run })); else printRun(run);
                 return;
             }

@@ -109,7 +109,8 @@ export function createAutomationsClient(options: AutomationsClientOptions) {
             }).then(r => r.runs),
         getRun: (id: string) => request<{ run: AutomationRun }>('GET', `/v1/automations/runs/${enc(id)}`).then(r => r.run),
         cancel: (id: string) => request<{ run: AutomationRun }>('POST', `/v1/automations/runs/${enc(id)}/cancel`).then(r => r.run),
-        ack: (id: string) => request<{ run: AutomationRun }>('POST', `/v1/automations/runs/${enc(id)}/ack`).then(r => r.run),
+        /** B-508: `by` records what resolved the flag (server default `owner`; older servers ignore the body). */
+        ack: (id: string, by?: string) => request<{ run: AutomationRun }>('POST', `/v1/automations/runs/${enc(id)}/ack`, by === undefined ? undefined : { by }).then(r => r.run),
         report: (id: string, input: AutomationReport) => request<{ run: AutomationRun }>('POST', `/v1/automations/runs/${enc(id)}/report`, input).then(r => r.run),
         claim: (input: AutomationClaim) => request<AutomationClaimResponse>('POST', '/v1/automations/claim', input),
         stickies: (id: string, key?: string) => request<{ stickies: AutomationSticky[] }>('GET', `/v1/automations/${enc(id)}/stickies`, undefined, { key }).then(r => r.stickies),

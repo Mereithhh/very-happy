@@ -175,6 +175,12 @@ describe('automation runner: spawn runs', () => {
         const runner = start(client); await settled(runner);
         runner.report('s1', 'blocked'); await flush();
         expect(client.report).toHaveBeenLastCalledWith('r1', { claimId: 'claim-1', needsAttention: true, attentionReason: 'needs_input' });
+        // B-508: blocked again without an idle in between is not re-reported; after an idle (owner replied, server cleared) it is.
+        client.report.mockClear();
+        runner.report('s1', 'blocked'); await flush();
+        expect(client.report).not.toHaveBeenCalled();
+        runner.report('s1', 'idle'); runner.report('s1', 'blocked'); await flush();
+        expect(client.report).toHaveBeenLastCalledWith('r1', { claimId: 'claim-1', needsAttention: true, attentionReason: 'needs_input' });
         client.report.mockResolvedValueOnce(run({ status: 'done' }));
         clock += AUTOMATION_LEASE_RENEW_MS;
         await runner.renewAll();

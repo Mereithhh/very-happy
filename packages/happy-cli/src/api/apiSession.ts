@@ -744,10 +744,12 @@ export class ApiSessionClient extends EventEmitter {
                 const batch = Array.from(unique.values());
                 for (const item of batch) this.rememberDirectInbound(item.localId);
                 try {
+                    // B-508: these are the CLIENT's messages (web/app via the relay), not this wrapper's own
+                    // output — the origin header lets the server count them as the owner speaking.
                     const persisted = await axios.post<V3PostSessionMessagesResponse>(
                         `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
                         { messages: batch },
-                        { headers: this.authHeaders(), timeout: 60_000 },
+                        { headers: { ...this.authHeaders(), 'X-Happy-Message-Origin': 'relay-client' }, timeout: 60_000 },
                     );
                     const stored = Array.isArray(persisted.data.messages) ? persisted.data.messages : [];
                     const storedLocalIds = new Set(stored.map((message) => message.localId));

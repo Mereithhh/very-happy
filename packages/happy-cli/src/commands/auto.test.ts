@@ -15,6 +15,12 @@ describe('very-happy auto argv parsing', () => {
         expect(parseAutoArgs([]).action).toBe('help');
         expect(parseAutoArgs(['runs', '--help']).action).toBe('help');
     });
+    it('B-508: ack --all needs no run id and may be limited to one automation', () => {
+        const all = parseAutoArgs(['ack', '--all', '--name', 'daily', '--json']);
+        expect(all.action).toBe('ack'); expect(all.bools.has('--all')).toBe(true); expect(all.flags['--name']).toBe('daily'); expect(all.target).toBeUndefined();
+        expect(parseAutoArgs(['ack', 'r1']).target).toBe('r1');
+        expect(AUTO_HELP).toContain('ack --all [--name <name>]');
+    });
     it('treats --attention as a filter for runs and as a reason for report', () => {
         expect(parseAutoArgs(['runs', '--attention']).bools.has('--attention')).toBe(true);
         expect(parseAutoArgs(['report', '--run', 'r1', '--status', 'done', '--attention', 'needs review']).flags['--attention']).toBe('needs review');
