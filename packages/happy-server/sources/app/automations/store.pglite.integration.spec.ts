@@ -4,12 +4,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { PrismaClient } from '@prisma/client';
 import type * as Store from './store';
+import type * as Lifecycle from './attentionLifecycle';
 
 describe('automations store (pglite)', () => {
     const parent = join(homedir(), 'code/github/skills/tmp/automations-tests');
     mkdirSync(parent, { recursive: true });
     const root = mkdtempSync(join(parent, 'db-'));
-    let db: PrismaClient; let store: typeof Store; let accountId: string; let otherAccountId: string; let machineId: string; let sessionId: string;
+    let db: PrismaClient; let store: typeof Store; let lifecycle: typeof Lifecycle; let accountId: string; let otherAccountId: string; let machineId: string; let sessionId: string;
     let counter = 0;
     const spawn = { kind: 'spawn' as const, agent: 'claude', directory: '/repo', prompt: 'do {{payload}}' };
     const make = (overrides: Partial<Parameters<typeof Store.createAutomation>[1]> = {}) => store.createAutomation(accountId, { name: `auto-${++counter}`, machineId, trigger: { kind: 'manual' }, action: spawn, ...overrides });
@@ -23,6 +24,7 @@ describe('automations store (pglite)', () => {
         await runMigrations({ pgliteDir: process.env.PGLITE_DIR, migrationsDir: join(process.cwd(), 'prisma/migrations') });
         ({ db } = await import('@/storage/db'));
         store = await import('./store');
+        lifecycle = await import('./attentionLifecycle');
         accountId = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
         otherAccountId = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
         machineId = crypto.randomUUID();
@@ -362,6 +364,51 @@ describe('automations store (pglite)', () => {
         expect(await db.automationRun.findUnique({ where: { id: `${a.id}-slot` } })).not.toBeNull();
     });
 
+    it('B-508: attention records when it was raised, and resolves itself on the owner\'s reply, on a done report and on archive', async () => {
+        const linked = (await db.session.create({ data: { accountId, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
+        const a = await make();
+        const payload = JSON.stringify({ batchId: 'b1', sessions: [{ id: linked, url: `https://x/session/${linked}` }] });
+        const fired = (await store.fireAutomation(accountId, a.name, { payload })).run;
+        const claimed = (await store.claimRuns(accountId, { machineId })).runs.find(r => r.run.id === fired.id)!;
+        const flagged = await store.reportRun(accountId, fired.id, { claimId: claimed.run.claimId, status: 'running', sessionId, needsAttention: true, attentionReason: 'needs_input' });
+        expect(flagged).toMatchObject({ needsAttention: true, attentionReason: 'needs_input', ackedAt: null, ackedBy: null, linkedSessionIds: [sessionId, linked] });
+        expect(flagged.attentionAt).toBeGreaterThan(0);
+        // Automated senders never resolve it: wrapper socket, stamped localId, automated client tag.
+        expect(await lifecycle.noteSessionMessage({ accountId, sessionId, localId: 'x', connectionType: 'session-scoped' })).toEqual([]);
+        expect(await lifecycle.noteSessionMessage({ accountId, sessionId, localId: `automation-${fired.id}`, client: 'automation/0.2.157' })).toEqual([]);
+        expect(await lifecycle.noteSessionMessage({ accountId, sessionId: 'unrelated-session-id', localId: null, client: 'web/1.0.0' })).toEqual([]);
+        expect((await store.getRun(accountId, fired.id)).needsAttention).toBe(true);
+        // The owner replies in a payload-linked session (relay path: wrapper persists with cli-coding-session and the web\'s random localId).
+        expect(await lifecycle.noteSessionMessage({ accountId, sessionId: linked, localId: crypto.randomUUID(), client: 'cli-coding-session/0.2.158' })).toEqual([]); // the wrapper's own output
+        expect(await lifecycle.noteSessionMessage({ accountId, sessionId: linked, localId: crypto.randomUUID(), client: 'cli-coding-session/0.2.158', origin: 'relay-client' })).toEqual([fired.id]);
+        const replied = await store.getRun(accountId, fired.id);
+        expect(replied).toMatchObject({ needsAttention: false, attentionReason: 'needs_input', ackedBy: 'owner-replied' });
+        expect(replied.ackedAt).toBeGreaterThan(0);
+        // Other accounts cannot resolve it, and a cleared run stays cleared with its first resolution.
+        expect(await lifecycle.noteSessionMessage({ accountId: otherAccountId, sessionId: linked, localId: null, client: 'web/1.0.0' })).toEqual([]);
+        expect((await store.ackRun(accountId, fired.id, 'owner')).ackedBy).toBe('owner-replied');
+        // Raised again by the daemon (idle reset, B-508 runner) → a done report without attention resolves it as run-done; failed keeps it.
+        await store.reportRun(accountId, fired.id, { claimId: claimed.run.claimId, needsAttention: true, attentionReason: 'needs_input' });
+        expect((await store.getRun(accountId, fired.id)).needsAttention).toBe(true);
+        const done = await store.reportRun(accountId, fired.id, { claimId: claimed.run.claimId, status: 'done', summary: 'answered' });
+        expect(done).toMatchObject({ status: 'done', needsAttention: false, ackedBy: 'run-done', attentionReason: 'needs_input' });
+        const failing = (await store.runAutomationNow(accountId, a.id, {})).id;
+        const failClaim = (await store.claimRuns(accountId, { machineId })).runs.find(r => r.run.id === failing)!;
+        await store.reportRun(accountId, failing, { claimId: failClaim.run.claimId, needsAttention: true, attentionReason: 'needs_input' });
+        expect(await store.reportRun(accountId, failing, { claimId: failClaim.run.claimId, status: 'failed', error: 'x' })).toMatchObject({ needsAttention: true, ackedBy: null });
+        // Explicit ack records who; archive of the run\'s own session resolves a flagged run.
+        expect(await store.ackRun(accountId, failing, 'owner')).toMatchObject({ needsAttention: false, ackedBy: 'owner' });
+        const archived = (await store.runAutomationNow(accountId, a.id, {})).id;
+        const archClaim = (await store.claimRuns(accountId, { machineId })).runs.find(r => r.run.id === archived)!;
+        await store.reportRun(accountId, archived, { claimId: archClaim.run.claimId, status: 'failed', sessionId: linked, error: 'boom', needsAttention: true, attentionReason: 'turn_failed' });
+        expect(await lifecycle.noteSessionArchived(accountId, linked)).toEqual([archived]);
+        expect(await store.getRun(accountId, archived)).toMatchObject({ needsAttention: false, ackedBy: 'session-archived' });
+        // Gate off: hooks are inert.
+        delete process.env.VH_AUTOMATIONS_ENABLED;
+        expect(await lifecycle.noteSessionArchived(accountId, linked)).toEqual([]);
+        process.env.VH_AUTOMATIONS_ENABLED = 'true';
+    });
+
     it('serves the REST surface with gate 404, error bodies and run views', async () => {
         const { default: fastify } = await import('fastify');
         const { serializerCompiler, validatorCompiler } = await import('fastify-type-provider-zod');
@@ -388,6 +435,13 @@ describe('automations store (pglite)', () => {
         const runs = await app.inject({ method: 'GET', url: `/v1/automations/runs?name=rest&status=done&limit=5` });
         expect(runs.json().runs.map((r: any) => r.id)).toEqual([mine.run.id]);
         expect(runs.json().runs[0].claimId).toBeUndefined();
+        // B-508: ack takes an optional `by`; no body (old clients) means `owner`.
+        const flaggedRun = (await app.inject({ method: 'POST', url: `/v1/automations/${automation.id}/run`, payload: {} })).json().run;
+        const flaggedClaim = (await app.inject({ method: 'POST', url: '/v1/automations/claim', payload: { machineId } })).json().runs.find((r: any) => r.run.id === flaggedRun.id);
+        await app.inject({ method: 'POST', url: `/v1/automations/runs/${flaggedRun.id}/report`, payload: { claimId: flaggedClaim.run.claimId, status: 'failed', needsAttention: true, attentionReason: 'x' } });
+        expect((await app.inject({ method: 'POST', url: `/v1/automations/runs/${flaggedRun.id}/ack`, payload: { by: 'cancelled' } })).json().run).toMatchObject({ needsAttention: false, ackedBy: 'cancelled' });
+        expect((await app.inject({ method: 'POST', url: `/v1/automations/runs/${flaggedRun.id}/ack`, payload: { by: '' } })).statusCode).toBe(400);
+        expect((await app.inject({ method: 'POST', url: `/v1/automations/runs/${flaggedRun.id}/ack` })).json().run).toMatchObject({ needsAttention: false, ackedBy: 'cancelled' });
         expect((await app.inject({ method: 'PUT', url: `/v1/automations/${automation.id}/stickies`, payload: { key: 'k1', sessionId } })).json().sticky).toMatchObject({ key: 'k1', sessionId });
         expect((await app.inject({ method: 'GET', url: `/v1/automations/${automation.id}/stickies?key=k1` })).json().stickies).toHaveLength(1);
         expect((await app.inject({ method: 'DELETE', url: `/v1/automations/${automation.id}/stickies`, payload: { key: 'k1' } })).json()).toEqual({ removed: true });

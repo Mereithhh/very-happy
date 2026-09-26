@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AutomationActionSchema, AutomationCreateSchema, AutomationFireSchema, AutomationNameSchema, AutomationReportSchema, AutomationTriggerSchema, isAutomationRunTerminal } from './automations';
+import { AUTOMATION_ACK_BY, AutomationAckSchema, AutomationActionSchema, AutomationCreateSchema, AutomationFireSchema, AutomationNameSchema, AutomationReportSchema, AutomationTriggerSchema, isAutomationRunTerminal } from './automations';
 
 describe('automation wire schemas', () => {
     it('constrains names and interval floors', () => {
@@ -29,5 +29,11 @@ describe('automation wire schemas', () => {
     it('classifies terminal statuses', () => {
         for (const s of ['done', 'failed', 'skipped', 'expired', 'cancelled']) expect(isAutomationRunTerminal(s)).toBe(true);
         for (const s of ['queued', 'claimed', 'running', 'unknown']) expect(isAutomationRunTerminal(s)).toBe(false);
+    });
+    it('B-508: ack body is optional and open (newer servers may add ackedBy values)', () => {
+        expect(AutomationAckSchema.parse({})).toEqual({});
+        expect(AutomationAckSchema.parse({ by: 'owner-replied' })).toEqual({ by: 'owner-replied' });
+        expect(AutomationAckSchema.safeParse({ by: '' }).success).toBe(false);
+        expect(AUTOMATION_ACK_BY).toContain('owner');
     });
 });

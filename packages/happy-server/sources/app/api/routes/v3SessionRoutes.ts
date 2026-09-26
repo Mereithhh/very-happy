@@ -1,4 +1,5 @@
 import { buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
+import { noteSessionMessage } from '@/app/automations/attentionLifecycle';
 import { isAccountResourceLimitError } from "@/app/api/resourceLimits";
 import { utf8StringSchema } from "@/app/api/resourceSchemas";
 import {
@@ -173,6 +174,9 @@ export function v3SessionRoutes(app: Fastify) {
             throw error;
         }
 
+        // B-508: owner-authored messages (judged on client tag + localId prefix) resolve attention runs about this session.
+        const firstCreated = stored.createdMessages[0];
+        if (firstCreated) void noteSessionMessage({ accountId: userId, sessionId, localId: firstCreated.localId, client: request.headers['x-happy-client'] as string | undefined, origin: request.headers['x-happy-message-origin'] as string | undefined });
         for (const message of stored.createdMessages) {
             const { updateSeq, ...storedMessage } = message;
             const updatePayload = buildNewMessageUpdate(

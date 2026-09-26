@@ -325,6 +325,8 @@ vi.mock("@/app/presence/sessionCache", () => ({
     activityCache: { isSessionValid: vi.fn(async () => true), queueSessionUpdate: vi.fn() },
 }));
 vi.mock("@/utils/log", () => ({ log: vi.fn() }));
+const noteSessionMessageMock = vi.hoisted(() => vi.fn(async () => []));
+vi.mock("@/app/automations/attentionLifecycle", () => ({ noteSessionMessage: noteSessionMessageMock }));
 
 import { v3SessionRoutes } from "./v3SessionRoutes";
 import { sessionUpdateHandler } from "../socket/sessionUpdateHandler";
@@ -542,7 +544,7 @@ describe("v3SessionRoutes", () => {
         const response = await app.inject({
             method: "POST",
             url: "/v3/sessions/session-1/messages",
-            headers: { "x-user-id": "user-1" },
+            headers: { "x-user-id": "user-1", "x-happy-client": "cli-coding-session/0.2.158", "x-happy-message-origin": "relay-client" },
             payload: {
                 messages: [
                     { localId: "l1", content: "enc-content-1" }
@@ -559,6 +561,11 @@ describe("v3SessionRoutes", () => {
         expect(state.messages).toHaveLength(1);
         expect(state.messages[0].content).toEqual({ t: "encrypted", c: "enc-content-1" });
         expect(emitUpdateMock).toHaveBeenCalledTimes(1);
+        // B-508: the attention hook sees the stored message's origin (client tag + localId); a replayed localId stores nothing and calls nothing.
+        expect(noteSessionMessageMock).toHaveBeenCalledWith({ accountId: "user-1", sessionId: "session-1", localId: "l1", client: "cli-coding-session/0.2.158", origin: "relay-client" });
+        noteSessionMessageMock.mockClear();
+        await app.inject({ method: "POST", url: "/v3/sessions/session-1/messages", headers: { "x-user-id": "user-1" }, payload: { messages: [{ localId: "l1", content: "enc-content-1" }] } });
+        expect(noteSessionMessageMock).not.toHaveBeenCalled();
     });
 
     it("sends multiple messages with sequential seq numbers", async () => {

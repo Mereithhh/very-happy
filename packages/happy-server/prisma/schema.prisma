@@ -596,6 +596,10 @@ model AutomationRun {
     status          String     @default("queued")
     needsAttention  Boolean    @default(false)
     attentionReason String?
+    /// B-508: when needsAttention last became true / was cleared, and by what (AutomationAckBy vocabulary).
+    attentionAt     DateTime?
+    ackedAt         DateTime?
+    ackedBy         String?
     offlineFlaggedAt DateTime?
     claimId         String?
     sessionId       String?
@@ -612,6 +616,7 @@ model AutomationRun {
     updatedAt       DateTime   @default(now())
     @@index([automationId, createdAt])
     @@index([accountId, machineId, status])
+    @@index([accountId, needsAttention])
     @@index([automationId, dedupeKey])
     @@unique([automationId, dedupeSlot])
 }

@@ -11,6 +11,7 @@ import { isAccountResourceLimitError } from '../resourceLimits';
 import { createSessionWithQuota, sessionCreateSchema } from '@/app/state/accountStateStore';
 import { activityCache } from '@/app/presence/sessionCache';
 import { allocateUserSeq } from '@/storage/seq';
+import { noteSessionArchived } from '@/app/automations/attentionLifecycle';
 
 /** B-265: one projection for the list and the by-id read, so the web sees the
  *  same shape (incl. the server-owned `archivedAt`) on both paths. */
@@ -418,6 +419,8 @@ export function sessionRoutes(app: Fastify) {
         activityCache.discardSessionUpdate(sessionId);
         eventRouter.emitSessionArchived(userId, sessionId);
         await emitArchivedAtUpdate(userId, sessionId, archivedAt);
+        // B-508: archiving is user intent (B-505) — attention runs about this session are resolved.
+        void noteSessionArchived(userId, sessionId);
 
         // Notify all clients about the session deactivation
         sessionActivityRelayGate.forget(sessionId);

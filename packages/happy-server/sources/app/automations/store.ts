@@ -11,6 +11,7 @@ import { db } from '@/storage/db';
 import { inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
 import { configuredResourceLimit } from '@/app/api/resourceLimits';
 import { AutomationError, requireAutomation } from './errors';
+import { linkedSessionIds } from './attentionLifecycle';
 import { initialRunAt, nextRunAfter, normalizeTrigger } from './schedule';
 
 /**
@@ -58,10 +59,18 @@ export function toRunView(row: RunRow, automationName: string): AutomationRun {
     return {
         id: row.id, automationId: row.automationId, automationName, machineId: row.machineId, source: row.source as AutomationRun['source'],
         dedupeKey: row.dedupeKey, payload: row.payload, status: row.status as AutomationRunStatus, needsAttention: row.needsAttention, attentionReason: row.attentionReason,
+        attentionAt: ms(row.attentionAt), ackedAt: ms(row.ackedAt), ackedBy: row.ackedBy ?? null, linkedSessionIds: linkedSessionIds(row),
         sessionId: row.sessionId, stickyKey: row.stickyKey, scheduledFor: ms(row.scheduledFor), claimedAt: ms(row.claimedAt), leaseUntil: ms(row.leaseUntil),
         startedAt: ms(row.startedAt), finishedAt: ms(row.finishedAt), summary: row.summary, error: row.error, exitCode: row.exitCode,
         createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(),
     };
+}
+/** B-508: the two attention transitions, so every raise records `attentionAt` and every clear records who/what cleared it. */
+function raiseAttention(reason: string | null, now: Date): Pick<Prisma.AutomationRunUpdateInput, 'needsAttention' | 'attentionReason' | 'attentionAt'> {
+    return { needsAttention: true, attentionReason: reason, attentionAt: now };
+}
+function clearAttention(by: string, now: Date): Pick<Prisma.AutomationRunUpdateInput, 'needsAttention' | 'ackedAt' | 'ackedBy'> {
+    return { needsAttention: false, ackedAt: now, ackedBy: by };
 }
 const stickyView = (s: { key: string; sessionId: string; updatedAt: Date }): AutomationSticky => ({ key: s.key, sessionId: s.sessionId, updatedAt: s.updatedAt.getTime() });
 
@@ -136,14 +145,14 @@ export async function sweepExpiredRuns(tx: Tx, accountId: string, now: Date): Pr
         const reason = run.leaseUntil && run.leaseUntil.getTime() < now.getTime() ? 'lease_expired'
             : run.claimedAt && run.claimedAt.getTime() + run.automation.maxRuntimeMs < now.getTime() ? 'max_runtime_exceeded' : null;
         if (!reason) continue;
-        await tx.automationRun.update({ where: { id: run.id }, data: { status: 'expired', needsAttention: true, attentionReason: reason, finishedAt: now, updatedAt: now } });
+        await tx.automationRun.update({ where: { id: run.id }, data: { status: 'expired', ...raiseAttention(reason, now), finishedAt: now, updatedAt: now } });
         await setLastRunStatus(tx, run.automationId, run.id, 'expired');
     }
     const stale = new Date(now.getTime() - AUTOMATION_QUEUED_ATTENTION_MS);
     const cursors = await tx.automationClaimCursor.findMany({ where: { accountId, lastClaimAt: { gte: stale } }, select: { machineId: true } });
     await tx.automationRun.updateMany({
         where: { accountId, status: 'queued', offlineFlaggedAt: null, createdAt: { lt: stale }, machineId: { notIn: cursors.map(c => c.machineId) } },
-        data: { needsAttention: true, attentionReason: 'machine_offline', offlineFlaggedAt: now, updatedAt: now },
+        data: { ...raiseAttention('machine_offline', now), offlineFlaggedAt: now, updatedAt: now },
     });
 }
 /** Reads must not fail or serialize on housekeeping: sweep in its own transaction and ignore conflicts. */
@@ -341,7 +350,10 @@ export async function reportRun(accountId: string, runId: string, input: Automat
             await upsertSticky(tx, row.automationId, input.stickyKey, sessionId, now);
             data.stickyKey = input.stickyKey;
         }
-        if (input.needsAttention !== undefined) { data.needsAttention = input.needsAttention; data.attentionReason = input.needsAttention ? input.attentionReason ?? row.attentionReason ?? 'reported' : null; }
+        if (input.needsAttention === true) Object.assign(data, raiseAttention(input.attentionReason ?? row.attentionReason ?? 'reported', now));
+        else if (input.needsAttention === false) Object.assign(data, clearAttention('report', now), { attentionReason: null });
+        // B-508: a run reported done without attention has resolved whatever it was waiting on (e.g. the owner answered a permission prompt).
+        else if (input.status === 'done' && row.needsAttention) Object.assign(data, clearAttention('run-done', now));
         else if (input.attentionReason !== undefined) data.attentionReason = input.attentionReason;
         if (input.summary !== undefined) data.summary = input.summary;
         if (input.error !== undefined) data.error = input.error;
@@ -367,12 +379,16 @@ export async function cancelRun(accountId: string, runId: string): Promise<Autom
         return toRunView(updated, row.automation.name);
     }).catch(mapConflict);
 }
-export async function ackRun(accountId: string, runId: string): Promise<AutomationRun> {
+export async function ackRun(accountId: string, runId: string, by: string = 'owner'): Promise<AutomationRun> {
     assertAutomationsEnabled(accountId);
+    const now = new Date();
     return inTx(async tx => {
         const row = await tx.automationRun.findFirst({ where: { id: runId, accountId }, include: { automation: { select: { name: true } } } });
         requireAutomation(row, 'run_not_found', 404);
-        const updated = await tx.automationRun.update({ where: { id: row.id }, data: { needsAttention: false, updatedAt: new Date() } });
+        // Already clear: idempotent, keep the recorded ackedBy (the first resolution is the truthful one).
+        const updated = row.needsAttention
+            ? await tx.automationRun.update({ where: { id: row.id }, data: { ...clearAttention(by, now), updatedAt: now } })
+            : row;
         return toRunView(updated, row.automation.name);
     });
 }
@@ -414,7 +430,7 @@ export async function claimRuns(accountId: string, input: AutomationClaim): Prom
             if (claimed.length >= limit || busy.has(run.automationId)) continue;
             const claimId = randomUUID();
             // A machine that comes back resolves its own `machine_offline` attention.
-            const attention = run.attentionReason === 'machine_offline' ? { needsAttention: false, attentionReason: null } : {};
+            const attention = run.attentionReason === 'machine_offline' && run.needsAttention ? { ...clearAttention('machine-back', now), attentionReason: null } : {};
             const patch = { status: 'claimed', claimId, claimedAt: now, leaseUntil: new Date(now.getTime() + leaseMs), updatedAt: now, ...attention };
             const updated = await tx.automationRun.updateMany({ where: { id: run.id, status: 'queued' }, data: patch });
             if (updated.count !== 1) continue;
