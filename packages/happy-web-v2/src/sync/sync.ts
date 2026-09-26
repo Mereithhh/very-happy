@@ -32,6 +32,8 @@ import { syncWebPush } from './webPush';
 import { getNotificationPrefs } from './notificationPrefs';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
+import { buildOutboundUserRecord } from './outboundUserRecord';
+import { applyPromptQueueUpdate } from './promptQueue';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { migrateTerminalCommands } from './shortcutPresets';
@@ -125,6 +127,15 @@ type SendMessageOptions = {
     /** Internal composer queue override: preserve the mode selected at enqueue time. */
     modeMeta?: MessageModeMeta;
 };
+
+/** Which client sent this message — the same answer for a direct send and a queued prompt (B-509). */
+function resolveSentFrom(): string {
+    if (Platform.OS === 'web') return 'web';
+    if (Platform.OS === 'android') return 'android';
+    // Check if running on Mac (Catalyst or Designed for iPad on Mac)
+    if (Platform.OS === 'ios') return isRunningOnMac() ? 'mac' : 'ios';
+    return 'web'; // fallback
+}
 
 class Sync {
     private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
@@ -706,6 +717,20 @@ class Sync {
         return { uploaded, failed };
     }
 
+    /** B-509: encrypt the exact user record a typed prompt would carry, for the server-side prompt queue. */
+    async encryptQueuedPrompt(sessionId: string, text: string, modeMeta: MessageModeMeta): Promise<string | null> {
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) return null;
+        return encryption.encryptRawRecord(buildOutboundUserRecord({ text, sentFrom: resolveSentFrom(), appendSystemPrompt: systemPrompt, modeMeta }));
+    }
+
+    /** B-509: decrypt a queued prompt record for display / editing. */
+    async decryptQueuedPrompt(sessionId: string, encrypted: string): Promise<unknown | null> {
+        const encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) return null;
+        return encryption.decryptRaw(encrypted);
+    }
+
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
         // Realtime sidebar ordering, layer 1: "I just talked to this session".
         // Stamped at ENTRY, before the encryption/session awaits below — the
@@ -856,41 +881,19 @@ class Sync {
         // Generate local ID
         const localId = randomUUID();
 
-        // Determine sentFrom based on platform
-        let sentFrom: string;
-        if (Platform.OS === 'web') {
-            sentFrom = 'web';
-        } else if (Platform.OS === 'android') {
-            sentFrom = 'android';
-        } else if (Platform.OS === 'ios') {
-            // Check if running on Mac (Catalyst or Designed for iPad on Mac)
-            if (isRunningOnMac()) {
-                sentFrom = 'mac';
-            } else {
-                sentFrom = 'ios';
-            }
-        } else {
-            sentFrom = 'web'; // fallback
-        }
+        const sentFrom = resolveSentFrom();
 
-        // Create user message content with metadata
-        const content: RawRecord = {
-            role: 'user',
-            content: {
-                type: 'text',
-                text
-            },
-            meta: {
-                sentFrom,
-                appendSystemPrompt: systemPrompt,
-                ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
-                ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),
-                ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
-                ...(delivery === 'steer' ? { delivery } : {}),
-                ...(displayText && { displayText }), // Add displayText if provided
-                ...(queuedAt !== undefined ? { queuedAt } : {})
-            }
-        };
+        // Create user message content with metadata (B-509: one builder shared
+        // with the server-side prompt queue, so a queued prompt is the same record).
+        const content: RawRecord = buildOutboundUserRecord({
+            text,
+            sentFrom,
+            appendSystemPrompt: systemPrompt,
+            modeMeta,
+            delivery,
+            displayText,
+            queuedAt,
+        });
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
         // Add to messages - normalize the raw record
@@ -3078,6 +3081,9 @@ class Sync {
                     error: feedItem.body.notifType === 'error',
                 });
             }
+        } else if (updateData.body.t === 'prompt-queue') {
+            // B-509: server-side prompt queue snapshot for one session.
+            applyPromptQueueUpdate(updateData.body, updateData.seq);
         } else if (updateData.body.t === 'kv-batch-update') {
             // Realtime account-KV changes (the server has always broadcast
             // these). Fanned out to the KV-backed stores — e.g. the synced

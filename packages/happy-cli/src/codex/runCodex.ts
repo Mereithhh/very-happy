@@ -1,3 +1,4 @@
+import { PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
 import { readChildThread } from './readChildThread';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
 import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
@@ -141,6 +142,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
+        capabilities: [PROMPT_QUEUE_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -226,6 +228,7 @@ export async function runCodex(opts: {
             if (permissionHandler) {
                 permissionHandler.updateSession(newSession);
             }
+            attachPromptQueueDrain(newSession);
         }
     });
     session = initialSession;
@@ -263,6 +266,15 @@ export async function runCodex(opts: {
     }
 
     const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
+    // B-509: server-side prompt queue — one item per turn, only while idle.
+    // Re-attached on every session-client swap (offline reconnection).
+    function attachPromptQueueDrain(client: ApiSessionClient) {
+        const drain = client.attachPromptQueueDrain({
+            isIdle: () => messageQueue.size() === 0 && messageQueue.isWaiting(),
+        });
+        messageQueue.setOnWait(() => drain.onIdle());
+    }
+    attachPromptQueueDrain(session);
     // B-332: `/clear` (pushIsolateAndClear) destroys whatever was queued — tell
     // the web, or those messages stay「排队中」and later render as delivered.
     messageQueue.setOnDiscard((entries) => {
@@ -917,7 +929,8 @@ export async function runCodex(opts: {
                 });
                 emitReadyIfIdle({
                     pending,
-                    queueSize: () => messageQueue.size(),
+                    // B-509: server-queued prompts count as pending input (no ready/push per item).
+                    queueSize: () => messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
                     shouldExit,
                     sendReady,
                 });
@@ -1014,7 +1027,8 @@ export async function runCodex(opts: {
                 session.keepAlive(thinking, 'remote');
                 emitReadyIfIdle({
                     pending,
-                    queueSize: () => messageQueue.size(),
+                    // B-509: server-queued prompts count as pending input (no ready/push per item).
+                    queueSize: () => messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
                     shouldExit,
                     sendReady,
                 });
@@ -1027,6 +1041,7 @@ export async function runCodex(opts: {
     } finally {
         // Clean up resources when main loop exits
         disposeTermination?.();
+        session.closePromptQueueDrain(); // B-509: no more pops into a process that is leaving
         logger.debug('[codex]: Final cleanup start');
         logActiveHandles('cleanup-start');
 

@@ -31,6 +31,8 @@ import { normalizeAgentUsage, usageAgentKey } from './usageReport';
 import { MAX_CHAT_ATTACHMENT_ENCRYPTED_BYTES } from '@/utils/attachmentLimits';
 import { TurnReporter } from '@/update/turnActivity';
 import { BackgroundTaskReporter } from '@/update/backgroundTaskActivity';
+import { PromptQueueDrain, type PromptQueueDispatchOutcome } from '@/utils/promptQueueDrain';
+import type { PromptQueueDispatchResponse } from '@slopus/happy-wire';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 import { notifyDaemonBackgroundTasks, notifyDaemonTurnEvent } from '@/daemon/controlClient';
 
@@ -149,6 +151,8 @@ export class ApiSessionClient extends EventEmitter {
      *  must wait for the first fetch, otherwise a message that lands between
      *  the seed and the first fetch is routed twice (socket + fetch). */
     private awaitingInitialFetch = false;
+    /** B-509: server-side prompt queue drain, attached by the runner. */
+    private promptQueueDrain: PromptQueueDrain | null = null;
 
     constructor(token: string, session: Session, opts?: { initialSeq?: number }) {
         super()
@@ -196,6 +200,9 @@ export class ApiSessionClient extends EventEmitter {
             this.rpcHandlerManager.onSocketConnect(controlSocket);
             this.receiveSync.invalidate();
             void this.connectSessionRelay();
+            // B-509: a wrapper that comes back (start / resume / reconnect) with
+            // nothing to do continues the server-side queue right away.
+            void this.promptQueueDrain?.maybeDispatch('connect');
         })
 
         // Set up global RPC request handler
@@ -242,6 +249,13 @@ export class ApiSessionClient extends EventEmitter {
 
                 if (!data.body) {
                     logger.debug('[SOCKET] [UPDATE] [ERROR] No body in update!');
+                    return;
+                }
+
+                // B-509: queue snapshot (full item list) — only the count matters here.
+                if ((data.body as { t?: string }).t === 'prompt-queue') {
+                    const items = (data.body as { items?: unknown }).items;
+                    this.promptQueueDrain?.onQueueChanged(Array.isArray(items) ? items.length : 0);
                     return;
                 }
 
@@ -521,7 +535,55 @@ export class ApiSessionClient extends EventEmitter {
         };
     }
 
+    /**
+     * B-509: attach the server-side prompt queue drain. `isIdle` is the
+     * runner's own notion (input queue empty + blocked waiting); dispatching is
+     * `POST /v1/sessions/:id/prompt-queue/dispatch`, whose message then comes
+     * back through the ordinary socket / catch-up path and is routed below.
+     */
+    attachPromptQueueDrain(opts: { isIdle: () => boolean }): PromptQueueDrain {
+        this.promptQueueDrain?.close();
+        const drain = new PromptQueueDrain({
+            isIdle: opts.isIdle,
+            dispatch: () => this.dispatchPromptQueueHead(),
+            log: (message) => logger.debug(`[API] ${message}`),
+        });
+        this.promptQueueDrain = drain;
+        return drain;
+    }
+
+    /** B-509: the server still holds queued prompts for this session (see PromptQueueDrain.hasPending). */
+    promptQueueHasPending(): boolean {
+        return this.promptQueueDrain?.hasPending() === true;
+    }
+
+    /** B-509: stop draining before the process winds down (cleanup's first line). */
+    closePromptQueueDrain(): void {
+        this.promptQueueDrain?.close();
+    }
+
+    private async dispatchPromptQueueHead(): Promise<PromptQueueDispatchOutcome> {
+        try {
+            const response = await axios.post<PromptQueueDispatchResponse>(
+                `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(this.sessionId)}/prompt-queue/dispatch`,
+                {},
+                { headers: this.authHeaders(), timeout: 30_000, validateStatus: () => true },
+            );
+            if (response.status === 404) return { kind: 'unsupported' };
+            if (response.status !== 200) return { kind: 'error', message: `HTTP ${response.status}` };
+            const dispatched = response.data?.dispatched;
+            const remaining = typeof response.data?.remaining === 'number' ? response.data.remaining : undefined;
+            if (dispatched && typeof dispatched.localId === 'string') {
+                return { kind: 'dispatched', localId: dispatched.localId, remaining, created: dispatched.created !== false };
+            }
+            return { kind: 'empty' };
+        } catch (error) {
+            return { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+        }
+    }
+
     private routeIncomingMessage(message: unknown, sourceLocalId?: string | null) {
+        if (sourceLocalId) this.promptQueueDrain?.onInbound(sourceLocalId);
         const messageWithSource = sourceLocalId && typeof message === 'object' && message !== null
             ? { ...message, localKey: (message as { localKey?: unknown }).localKey ?? sourceLocalId }
             : message;
@@ -1340,6 +1402,7 @@ export class ApiSessionClient extends EventEmitter {
 
     async close() {
         logger.debug('[API] socket.close() called');
+        this.promptQueueDrain?.close();
         this.sendSync.stop();
         this.receiveSync.stop();
         if (this.reconnectInterval) {

@@ -12,6 +12,7 @@ import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { claudeModeHash } from './claudeModeHash';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
+import { PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
@@ -195,7 +196,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1'],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY],
         // Effective mode this process enforces. Kept current by
         // publishPermissionMode below; the web renders it instead of guessing.
         permissionMode: mapToClaudeMode(initialPermissionMode ?? 'default'),
@@ -601,6 +602,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Import MessageQueue2 and create message queue
     const messageQueue = new MessageQueue2<EnhancedMode>(claudeModeHash);
+    // B-509: the server-side prompt queue drains through this process only
+    // when its own input queue is empty AND the runner is blocked waiting for
+    // the next message (= the turn is over, nothing parked, nothing pending).
+    const promptQueueDrain = session.attachPromptQueueDrain({
+        isIdle: () => messageQueue.size() === 0 && messageQueue.isWaiting(),
+    });
+    messageQueue.setOnWait(() => promptQueueDrain.onIdle());
     // B-332: every item the queue destroys on its own (`/clear`/`/compact`
     // via pushIsolateAndClear, local-mode abort via reset) gets a tombstone, so
     // the web stops showing it as 「排队中」 and later as delivered. Items
@@ -1017,6 +1025,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             return;
         }
         logger.debug(`[START] Received termination signal, cleaning up (archive=${intent === 'archive'})...`);
+        // B-509: first thing — never pop another server-queued prompt into a
+        // process that is leaving (a popped item is a message the next wrapper
+        // will not run; see spec §5 「派发后退出窗口」).
+        promptQueueDrain.close();
 
         try {
             if (session) {

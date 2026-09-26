@@ -35,4 +35,10 @@ describe('isRetryableTransactionConflict', () => {
         }))).toBe(false);
         expect(isRetryableTransactionConflict(new Error('could not serialize access'))).toBe(false);
     });
+
+    it('B-509: retries PostgreSQL deadlocks (40P01) wrapped by raw-query P2010', () => {
+        expect(isRetryableTransactionConflict(new Prisma.PrismaClientKnownRequestError('deadlock', { code: 'P2010', clientVersion: 'x', meta: { code: '40P01', message: 'deadlock detected' } }))).toBe(true);
+        expect(isRetryableTransactionConflict(new Prisma.PrismaClientKnownRequestError('deadlock', { code: 'P2010', clientVersion: 'x', meta: { message: 'deadlock detected' } }))).toBe(true);
+        expect(isRetryableTransactionConflict(new Prisma.PrismaClientKnownRequestError('other', { code: 'P2010', clientVersion: 'x', meta: { code: '23505' } }))).toBe(false);
+    });
 });

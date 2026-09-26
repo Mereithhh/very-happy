@@ -2,8 +2,7 @@ import { businessAuditEnabled } from '@/app/audit/producer';
 import { auditStoredMessages } from '@/app/audit/sessionAudit';
 import { enforceAccountWriteRate, lockAccountResources, reserveAccountMessages } from '@/app/api/resourceLimits';
 import { utf8StringSchema } from '@/app/api/resourceSchemas';
-import { db } from '@/storage/db';
-import { inTx, afterTx } from '@/storage/inTx';
+import { inTx, afterTx, type Tx } from '@/storage/inTx';
 import { allocateSessionSeqBatch } from '@/storage/seq';
 import { z } from 'zod';
 
@@ -38,14 +37,28 @@ export type StoredSessionMessageWithUpdate = StoredSessionMessage & { updateSeq:
  * The one persistent message writer for HTTP and Socket.IO ingress.
  * Duplicate localIds are idempotent and do not consume storage quota.
  */
-export async function storeSessionMessages(options: {
+export type StoreSessionMessagesOptions = {
     accountId: string;
     sessionId: string;
     messages: SessionMessageWrite[];
-}): Promise<{
+};
+
+export type StoreSessionMessagesResult = {
     messages: StoredSessionMessage[];
     createdMessages: StoredSessionMessageWithUpdate[];
-}> {
+};
+
+export async function storeSessionMessages(options: StoreSessionMessagesOptions): Promise<StoreSessionMessagesResult> {
+    return inTx((tx) => storeSessionMessagesInTx(tx, options));
+}
+
+/**
+ * B-509: the same writer, callable from a caller-owned `inTx` so a composite
+ * write (prompt-queue dispatch = pop the head item + create its message) is
+ * one serializable transaction. `inTx` does not nest; everything the outer
+ * transaction needs after commit goes through `afterTx` on the same `tx`.
+ */
+export async function storeSessionMessagesInTx(tx: Tx, options: StoreSessionMessagesOptions): Promise<StoreSessionMessagesResult> {
     const parsedMessages = sessionMessageWritesSchema.parse(options.messages);
     const auditEnabled = businessAuditEnabled();
     const firstByLocalId = new Map<string, SessionMessageWrite>();
@@ -56,7 +69,7 @@ export async function storeSessionMessages(options: {
     }
     const uniqueMessages = [...firstByLocalId.values(), ...messagesWithoutLocalId];
 
-    return inTx(async (tx) => {
+    {
         // Use the repository-wide Account → child-row lock order. The Account
         // lock is O(1): quota reads counters maintained by a database trigger,
         // never an aggregate scan of the account's message history.
@@ -131,5 +144,5 @@ export async function storeSessionMessages(options: {
             messages: [...existing, ...createdMessages].sort((left, right) => left.seq - right.seq) as StoredSessionMessage[],
             createdMessages,
         };
-    });
+    }
 }

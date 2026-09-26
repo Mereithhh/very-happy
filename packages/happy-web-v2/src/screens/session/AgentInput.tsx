@@ -11,7 +11,7 @@ import { appendMessageQuote } from './messageActionsModel';
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, CornerDownRight, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, CornerDownRight, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
@@ -58,6 +58,18 @@ import {
     type QueueDeliveryPhase,
 } from './queuedMessages';
 import { composerGate, restoreSession, useRestoreState } from '@/app/sessionRestore';
+import {
+    enqueuePrompt,
+    loadPromptQueue,
+    movePrompt,
+    removePrompt,
+    supportsServerPromptQueue,
+    updatePromptText,
+    usePromptQueue,
+} from '@/sync/promptQueue';
+
+/** B-509: idle + server-queued items for this long = the wrapper is not popping. */
+export const PROMPT_QUEUE_STALE_MS = 30_000;
 
 // Sentinel key for the「默认」effort entry — not a real SDK effort level
 // (the CLI validates against low/medium/high/xhigh/max, so this can never
@@ -178,6 +190,16 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     // queue releases once the session is back (archivedAt cleared + online).
     const gate = composerGate(session);
     const restoreState = useRestoreState(sessionId);
+    // B-509: prompts queued while the agent works live on the SERVER when the
+    // wrapper advertises `prompt-queue-v1` and the server has the route; the
+    // wrapper pops them one per turn, so closing every tab changes nothing.
+    // Otherwise (old wrapper / old server / attachments) the tab-local queue
+    // below keeps working exactly as before.
+    const serverQueueState = usePromptQueue(sessionId);
+    const serverQueue = supportsServerPromptQueue(metadata) && serverQueueState.status !== 'unsupported';
+    useEffect(() => {
+        if (serverQueue) void loadPromptQueue(sessionId);
+    }, [serverQueue, sessionId]);
     const hasPendingPermission = Object.keys(session?.agentState?.requests ?? {}).length > 0;
     // B-283: `/btw` is a WEB command (never sent to the CLI) — list it first on
     // any Claude session; the panel itself explains when the wrapper is too old.
@@ -457,19 +479,47 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 modeMeta: resolveMessageModeMeta(session, storage.getState().settings),
                 attachments: takenAttachments,
             });
+            let serverQueueOwnsItem = false;
             if (gate === 'restore-first' || (isWorking && delivery === 'queue')) {
-                // Queue ownership must transfer in the click stack: navigating
-                // away during the frame must not lose an accepted submission.
-                const next = [...queuedRef.current, makeItem()];
-                persistSessionQueue(sessionId, next);
-                queuedRef.current = next;
-                setQueued(next);
-                queueOwnsItem = true;
+                if (serverQueue && !takenAttachments) {
+                    // B-509: durable from the server's acceptance on; until then
+                    // the draft is restored by the catch below like any failed send.
+                    serverQueueOwnsItem = true;
+                } else {
+                    // Queue ownership must transfer in the click stack: navigating
+                    // away during the frame must not lose an accepted submission.
+                    const next = [...queuedRef.current, makeItem()];
+                    persistSessionQueue(sessionId, next);
+                    queuedRef.current = next;
+                    setQueued(next);
+                    queueOwnsItem = true;
+                }
             }
             // A resolved promise / one rAF resumes before paint. Yield through
             // the frame instead, so busy is visible before relay/restore work.
             // The release effect also waits for this submission's feedback.
             await yieldForSendFeedback();
+
+            if (serverQueueOwnsItem) {
+                const item = makeItem();
+                let outcome: 'queued' | 'unsupported';
+                try {
+                    outcome = await enqueuePrompt(sessionId, item.text, item.modeMeta);
+                } catch (error) {
+                    toast.error(t('session.chat.queueDeliveryFailed'));
+                    throw error;
+                }
+                if (outcome === 'unsupported') {
+                    // Old server: this session falls back to the tab-local queue.
+                    const next = [...queuedRef.current, item];
+                    persistSessionQueue(sessionId, next);
+                    queuedRef.current = next;
+                    setQueued(next);
+                }
+                queueOwnsItem = true;
+                if (gate === 'restore-first') void restoreSession(sessionId);
+                return;
+            }
 
             if (queueOwnsItem) {
                 // Its existing restore/idle gate owns eventual queue delivery.
@@ -518,6 +568,122 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
+    // B-509 server-queue actions. Steer = take the item off the server FIRST
+    // (an item the wrapper already popped is a message now; steering it again
+    // would run it twice), then send it into the live turn.
+    const [serverBusyId, setServerBusyId] = useState<string | null>(null);
+    const interveneServerQueued = async (id: string) => {
+        if (!supportsSteer || !isWorking || editingId === id || serverBusyId !== null || sendingRef.current) return;
+        const entry = serverQueueState.items.find((item) => item.id === id);
+        if (!entry) return;
+        setServerBusyId(id);
+        try {
+            const removed = await removePrompt(sessionId, id);
+            if (!removed) {
+                toast.error(t('session.chat.queueCancelTooLate'));
+                return;
+            }
+            await deliverQueuedMessage(() => sync.sendMessage(sessionId, entry.text, {
+                source: 'chat',
+                delivery: 'steer',
+                modeMeta: entry.modeMeta,
+            }), () => {});
+        } catch {
+            toast.error(t('session.chat.queueDeliveryFailed'));
+        } finally {
+            setServerBusyId(null);
+        }
+    };
+    const saveServerEdit = async (id: string, text: string) => {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        setServerBusyId(id);
+        try {
+            const updated = await updatePromptText(sessionId, id, trimmed);
+            if (!updated) toast.error(t('session.chat.queueCancelTooLate'));
+        } catch {
+            toast.error(t('session.chat.queueEditFailed'));
+        } finally {
+            setServerBusyId(null);
+            setEditingId(null);
+        }
+    };
+    const deleteServerQueued = async (id: string) => {
+        setServerBusyId(id);
+        try {
+            await removePrompt(sessionId, id);
+        } catch {
+            toast.error(t('session.chat.queueCancelFailed'));
+        } finally {
+            setServerBusyId(null);
+            if (editingId === id) setEditingId(null);
+        }
+    };
+    const moveServerQueued = async (id: string, delta: -1 | 1) => {
+        setServerBusyId(id);
+        try {
+            await movePrompt(sessionId, id, delta);
+        } catch {
+            toast.error(t('session.chat.queueEditFailed'));
+        } finally {
+            setServerBusyId(null);
+        }
+    };
+
+    // B-509 review: a wrapper that never pops the queue (CLI rolled back but the
+    // session's capability stayed; wrapper wedged) would leave prompts sitting
+    // on the server forever while the agent shows idle. After 30 s of
+    // 「idle + items」 the composer says so and offers to send the head now.
+    const [serverQueueStale, setServerQueueStale] = useState(false);
+    const serverQueueHasItems = serverQueue && serverQueueState.items.length > 0;
+    useEffect(() => {
+        if (!serverQueueHasItems || isWorking || gate === 'restore-first') {
+            setServerQueueStale(false);
+            return;
+        }
+        const timer = setTimeout(() => setServerQueueStale(true), PROMPT_QUEUE_STALE_MS);
+        return () => clearTimeout(timer);
+    }, [serverQueueHasItems, isWorking, gate, serverQueueState.items[0]?.id]);
+    const sendServerHeadNow = async () => {
+        const entry = serverQueueState.items[0];
+        if (!entry || serverBusyId !== null || sendingRef.current) return;
+        setServerBusyId(entry.id);
+        try {
+            // Off the server FIRST (a wrapper that wakes up must not run it too), then a plain send.
+            const removed = await removePrompt(sessionId, entry.id);
+            if (!removed) return;
+            await deliverQueuedMessage(() => sync.sendMessage(sessionId, entry.text, {
+                source: 'chat',
+                delivery: 'queue',
+                modeMeta: entry.modeMeta,
+            }), () => {});
+        } catch {
+            toast.error(t('session.chat.queueDeliveryFailed'));
+        } finally {
+            setServerBusyId(null);
+        }
+    };
+
+    // B-509: a session that just gained the server queue moves its tab-local
+    // text items over once (attachment items stay local: not persisted anyway).
+    useEffect(() => {
+        if (!serverQueue || serverQueueState.status !== 'ready') return;
+        const legacy = queuedRef.current.filter((item) => !item.attachments?.length);
+        if (legacy.length === 0) return;
+        void (async () => {
+            for (const item of legacy) {
+                try {
+                    // The legacy item's id is the server localId: a second tab
+                    // migrating the same item hits the idempotent path, not a duplicate.
+                    if (await enqueuePrompt(sessionId, item.text, item.modeMeta, item.id) !== 'queued') return;
+                } catch {
+                    return;
+                }
+                setQueued((current) => removeQueuedMessage(current, item.id));
+            }
+        })();
+    }, [serverQueue, serverQueueState.status, sessionId]);
+
     const deleteQueued = (id: string) => {
         const item = queuedRef.current.find((candidate) => candidate.id === id);
         if (item) releaseQueuedAttachments(item);
@@ -543,6 +709,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         if (!canReleaseQueuedMessage(deliveryPhaseRef.current, isWorking, releaseGate, editingId !== null) || queued.length === 0) return;
 
         const item = queued[0];
+        // B-509: with the server queue on, text items are migrated there (effect
+        // above) and released by the wrapper — never from this tab.
+        if (serverQueue && !item.attachments?.length) return;
         deliveryPhaseRef.current = 'waiting-start';
         waitingStartSinceRef.current = Date.now();
         setQueued((current) => current.slice(1));
@@ -551,7 +720,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             setQueued((current) => [item, ...current]);
             toast.error(t('session.chat.queueDeliveryFailed'));
         });
-    }, [isWorking, queued, sessionId, gate, restoreState, stuckTick, editingId, sending]);
+    }, [isWorking, queued, sessionId, gate, restoreState, stuckTick, editingId, sending, serverQueue]);
 
     // B-322: the timeout above needs a clock of its own. Being stuck in
     // `waiting-start` is by definition the case where nothing changes, so
@@ -562,6 +731,15 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         const timer = setTimeout(() => setStuckTick((n) => n + 1), QUEUE_START_TIMEOUT_MS);
         return () => clearTimeout(timer);
     }, [queued, stuckTick, isWorking]);
+
+    // B-509: one list for the composer. Server items first (the wrapper runs
+    // them in this order); tab-local items (old wrapper, or attachments) after.
+    const queueRows: Array<{ id: string; text: string; source: 'server' | 'local' }> = serverQueue
+        ? [
+            ...serverQueueState.items.map((item) => ({ id: item.id, text: item.text, source: 'server' as const })),
+            ...queued.filter((item) => !!item.attachments?.length).map((item) => ({ id: item.id, text: item.text, source: 'local' as const })),
+        ]
+        : queued.map((item) => ({ id: item.id, text: item.text, source: 'local' as const }));
 
     const insertPreset = (presetText: string) => {
         setText((prev) => (prev.trim().length === 0 ? presetText : `${prev.replace(/\s*$/, '')}\n${presetText}`));
@@ -721,22 +899,36 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 <p className="ci-attachment-hint">{t('imageUpload.visionModelHint')}</p>
             )}
 
-            {queued.length > 0 && (
-                <section className="ci-queue" aria-label={t('session.chat.queueTitle')}>
+            {queueRows.length > 0 && (
+                <section className="ci-queue" aria-label={t('session.chat.queueTitle')} data-queue-source={serverQueue ? 'server' : 'local'}>
                     <div className="ci-queue-head sr-only">
                         <span>{t('session.chat.queueTitle')}</span>
-                        <span className="ci-queue-count">{queued.length}</span>
-                        <span className="ci-queue-device">{t('session.chat.queueDeviceHint')}</span>
+                        <span className="ci-queue-count">{queueRows.length}</span>
+                        <span className="ci-queue-device">{serverQueue ? t('session.chat.queueServerHint') : t('session.chat.queueDeviceHint')}</span>
                     </div>
                     {deliveryPhaseRef.current === 'failed' && <div className="ci-queue-failure" role="status">
                         <span>{t('session.chat.queueDeliveryFailed')}</span>
                         <button type="button" className="ci-queue-action ci-queue-action--retry" onClick={() => { deliveryPhaseRef.current = 'idle'; setStuckTick(value => value + 1); }}>{t('common.retry')}</button>
                     </div>}
+                    {serverQueueStale && <div className="ci-queue-failure" role="status" data-queue-stale>
+                        <span>{t('session.chat.queueNotConsumed')}</span>
+                        <button type="button" className="ci-queue-action ci-queue-action--retry" disabled={serverBusyId !== null} onClick={() => void sendServerHeadNow()}>{t('session.chat.queueSendNow')}</button>
+                    </div>}
                     <div className="ci-queue-list">
-                        {queued.map((item) => (
-                            <div className="ci-queue-item" key={item.id}>
+                        {queueRows.map((row, index) => {
+                            const busy = row.source === 'server' && serverBusyId === row.id;
+                            const saveEdit = () => {
+                                if (!editingText.trim()) return;
+                                if (row.source === 'server') void saveServerEdit(row.id, editingText);
+                                else {
+                                    setQueued((current) => updateQueuedMessage(current, row.id, editingText));
+                                    setEditingId(null);
+                                }
+                            };
+                            return (
+                            <div className="ci-queue-item" key={`${row.source}:${row.id}`} data-queue-item-source={row.source} aria-busy={busy}>
                                 <ListEnd className="ci-queue-index" size={17} aria-hidden />
-                                {editingId === item.id ? (
+                                {editingId === row.id ? (
                                     <textarea
                                         className="ci-queue-edit"
                                         value={editingText}
@@ -748,37 +940,37 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                         onKeyDown={(event) => {
                                             if (event.nativeEvent.isComposing || event.keyCode === 229) return;
                                             if (event.key === 'Escape') setEditingId(null);
-                                            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && editingText.trim()) {
-                                                setQueued((current) => updateQueuedMessage(current, item.id, editingText));
-                                                setEditingId(null);
-                                            }
+                                            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && editingText.trim()) saveEdit();
                                         }}
                                     />
                                 ) : (
-                                    <span className="ci-queue-text">{item.text || t('session.chat.attachmentOnly')}</span>
+                                    <span className="ci-queue-text">{row.text || t('session.chat.attachmentOnly')}</span>
                                 )}
                                 <div className="ci-queue-actions">
-                                    {editingId === item.id ? (
+                                    {editingId === row.id ? (
                                         <button
                                             type="button"
                                             className="ci-queue-action"
-                                            disabled={!editingText.trim()}
-                                            onClick={() => {
-                                                setQueued((current) => updateQueuedMessage(current, item.id, editingText));
-                                                setEditingId(null);
-                                            }}
+                                            disabled={!editingText.trim() || busy}
+                                            onClick={saveEdit}
                                             aria-label={t('session.chat.queueSave')}
                                             title={t('session.chat.queueSave')}
-                                        ><Check size={15} /></button>
+                                        >{busy ? <Spinner size={14} /> : <Check size={15} />}</button>
                                     ) : (
                                         <DropdownMenu.Root>
                                             <DropdownMenu.Trigger asChild>
-                                                <button type="button" className="ci-queue-action" aria-label={t('session.chat.queueMore')} title={t('session.chat.queueMore')}><MoreHorizontal size={16} /></button>
+                                                <button type="button" className="ci-queue-action" disabled={busy} aria-label={t('session.chat.queueMore')} title={t('session.chat.queueMore')}>{busy ? <Spinner size={14} /> : <MoreHorizontal size={16} />}</button>
                                             </DropdownMenu.Trigger>
                                             <DropdownMenu.Portal>
                                                 <DropdownMenu.Content className="pm-content" side="top" align="end" sideOffset={8}>
-                                                    <DropdownMenu.Item className="pm-item" onSelect={() => { setEditingId(item.id); setEditingText(item.text); }}><Pencil size={14} />{t('session.chat.queueEdit')}</DropdownMenu.Item>
-                                                    <DropdownMenu.Label className="pm-head">{t('session.chat.queueDeviceHint')}</DropdownMenu.Label>
+                                                    <DropdownMenu.Item className="pm-item" onSelect={() => { setEditingId(row.id); setEditingText(row.text); }}><Pencil size={14} />{t('session.chat.queueEdit')}</DropdownMenu.Item>
+                                                    {row.source === 'server' && index > 0 && (
+                                                        <DropdownMenu.Item className="pm-item" onSelect={() => void moveServerQueued(row.id, -1)}><ChevronUp size={14} />{t('session.chat.queueMoveUp')}</DropdownMenu.Item>
+                                                    )}
+                                                    {row.source === 'server' && index < serverQueueState.items.length - 1 && (
+                                                        <DropdownMenu.Item className="pm-item" onSelect={() => void moveServerQueued(row.id, 1)}><ChevronDown size={14} />{t('session.chat.queueMoveDown')}</DropdownMenu.Item>
+                                                    )}
+                                                    <DropdownMenu.Label className="pm-head">{row.source === 'server' ? t('session.chat.queueServerHint') : t('session.chat.queueDeviceHint')}</DropdownMenu.Label>
                                                 </DropdownMenu.Content>
                                             </DropdownMenu.Portal>
                                         </DropdownMenu.Root>
@@ -786,25 +978,27 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                     <button
                                         type="button"
                                         className="ci-queue-action"
-                                        onClick={() => deleteQueued(item.id)}
+                                        disabled={busy}
+                                        onClick={() => { if (row.source === 'server') void deleteServerQueued(row.id); else deleteQueued(row.id); }}
                                         aria-label={t('session.chat.queueDelete')}
                                         title={t('session.chat.queueDelete')}
                                     ><Trash2 size={15} /></button>
-                                    {editingId === item.id && <button type="button" className="ci-queue-action" aria-label={t('common.cancel')} title={t('common.cancel')} onClick={() => setEditingId(null)}><X size={16} /></button>}
-                                    {supportsSteer && isWorking && editingId !== item.id && (
+                                    {editingId === row.id && <button type="button" className="ci-queue-action" aria-label={t('common.cancel')} title={t('common.cancel')} onClick={() => setEditingId(null)}><X size={16} /></button>}
+                                    {supportsSteer && isWorking && editingId !== row.id && (
                                         <button
                                             type="button"
                                             className="ci-queue-action ci-queue-action--intervene"
-                                            onClick={() => void interveneQueued(item.id)}
-                                            disabled={interveningId !== null}
-                                            aria-busy={interveningId === item.id}
+                                            onClick={() => { if (row.source === 'server') void interveneServerQueued(row.id); else void interveneQueued(row.id); }}
+                                            disabled={interveningId !== null || serverBusyId !== null}
+                                            aria-busy={interveningId === row.id || busy}
                                             aria-label={t('session.chat.queueIntervene')}
                                             title={t('session.chat.queueIntervene')}
-                                        >{interveningId === item.id ? <Spinner size={14} /> : <CornerDownRight size={16} />}<span>{t('session.chat.queueIntervene')}</span></button>
+                                        >{interveningId === row.id || busy ? <Spinner size={14} /> : <CornerDownRight size={16} />}<span>{t('session.chat.queueIntervene')}</span></button>
                                     )}
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </section>
             )}
@@ -910,6 +1104,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                     void doAbort().then((outcome) => {
                                         if (outcome === 'timeout') toast.error(t('session.chat.stopStillSettling'));
                                         else if (outcome === 'failed') toast.error(t('session.chat.stopFailed'));
+                                        // B-509: Stop does not clear the server queue — say so, the
+                                        // next item goes out as soon as the wrapper is idle.
+                                        else if (serverQueue && serverQueueState.items.length > 0) toast.show(t('session.chat.queueStillPending', { count: serverQueueState.items.length }), 'info');
                                     });
                                 }}
                                 disabled={aborting}

@@ -142,6 +142,21 @@ export const ApiKvBatchUpdateSchema = z.object({
     }))
 });
 
+// B-509 server-side prompt queue snapshot (see specs/2026-09-server-prompt-queue.md).
+export const ApiPromptQueueUpdateSchema = z.object({
+    t: z.literal('prompt-queue'),
+    sid: z.string(),
+    items: z.array(z.object({
+        id: z.string(),
+        localId: z.string(),
+        position: z.number(),
+        content: z.object({ t: z.literal('encrypted'), c: z.string() }),
+        createdAt: z.number(),
+        updatedAt: z.number(),
+    })),
+});
+export type ApiPromptQueueUpdate = z.infer<typeof ApiPromptQueueUpdateSchema>;
+
 // Use a plain union here to avoid runtime discriminator extraction issues
 // when some schemas come from shared package exports.
 export const ApiUpdateSchema = z.union([
@@ -158,7 +173,8 @@ export const ApiUpdateSchema = z.union([
     ApiDeleteArtifactSchema,
     ApiRelationshipUpdatedSchema,
     ApiNewFeedPostSchema,
-    ApiKvBatchUpdateSchema
+    ApiKvBatchUpdateSchema,
+    ApiPromptQueueUpdateSchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;

@@ -39,6 +39,8 @@ export interface CreateSessionMetadataOptions {
     dangerouslySkipPermissions?: boolean;
     /** Happy session id this session was forked from. */
     parentSessionId?: string;
+    /** B-509: wrapper capabilities the web gates features on (AGENTS #14). */
+    capabilities?: string[];
     /** Happy message id used as the fork rewind point. */
     forkedFromMessageId?: string;
 }
@@ -152,6 +154,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
         ...(opts.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
         ...(opts.forkedFromMessageId ? { forkedFromMessageId: opts.forkedFromMessageId } : {}),
+        ...(opts.capabilities ? { capabilities: [...opts.capabilities] } : {}),
         // B-091/B-303: dispatched sessions carry their spawn origin as a tag
         // from birth (see spawnOriginTags) — applies to every flavor the daemon
         // can spawn, since HAPPY_SPAWNED_BY is exported flavor-independently.

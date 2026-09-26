@@ -4,6 +4,7 @@ import { startBusinessAudit, stopBusinessAudit } from '@/app/audit/producer';
 import { auditLoginFailure } from '@/app/audit/requestAudit';
 import { teamRoutes } from './routes/teamRoutes';
 import { automationRoutes } from './routes/automationRoutes';
+import { promptQueueRoutes } from './routes/promptQueueRoutes';
 import fastify from "fastify";
 import { log, logger } from "@/utils/log";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
@@ -129,6 +130,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     sessionRoutes(typed);
     teamRoutes(typed);
     automationRoutes(typed);
+    promptQueueRoutes(typed);
     accountRoutes(typed);
     connectRoutes(typed);
     machinesRoutes(typed);

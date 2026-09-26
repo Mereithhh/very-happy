@@ -18,8 +18,11 @@ export function isRetryableTransactionConflict(error: unknown): boolean {
     if (error.code !== 'P2010') return false;
 
     const meta = error.meta as { code?: unknown; message?: unknown } | undefined;
-    return meta?.code === '40001'
-        || (typeof meta?.message === 'string' && meta.message.includes('could not serialize access'));
+    // 40001 serialization failure; 40P01 deadlock detected (B-509 review: two
+    // writers taking Account/Session row locks in different orders — the retry
+    // is the safety net, the lock order Account → Session is the rule).
+    return meta?.code === '40001' || meta?.code === '40P01'
+        || (typeof meta?.message === 'string' && (meta.message.includes('could not serialize access') || meta.message.includes('deadlock detected')));
 }
 
 export function afterTx(tx: Tx, callback: () => void) {
