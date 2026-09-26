@@ -2024,6 +2024,7 @@ export const en = {
                 session: 'A session some run is waiting on shows a strip under its header — automation name, reason, 「Acknowledge」 — and its sidebar row carries a marker.',
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
+            },
             sep27b: {
                 title: 'Queued prompts now live on the server',
                 summary: 'A prompt you queue while the agent is busy used to live only in that browser tab: close it and the rest of the queue never went out. It is now stored on the server the moment you queue it, and the session\'s wrapper sends the next one itself when its turn ends — with every tab closed, from any device. Needs the CLI update on the machine; until then that session keeps the old tab-local queue.',
