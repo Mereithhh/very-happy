@@ -570,3 +570,24 @@ describe('MessageQueue2 discard hook (B-332)', () => {
         expect(fired).toBe(0);
     });
 });
+
+describe('MessageQueue2 idle edge (B-509)', () => {
+    it('fires onWait only when a consumer blocks on an EMPTY queue, and isWaiting tracks the block', async () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        let waits = 0;
+        queue.setOnWait(() => { waits += 1; });
+        expect(queue.isWaiting()).toBe(false);
+        // A non-empty queue is consumed without waiting: no idle edge.
+        queue.push('ready', 'mode');
+        expect((await queue.waitForMessagesAndGetAsString())?.message).toBe('ready');
+        expect(waits).toBe(0);
+        // Empty queue: the consumer blocks → exactly one idle edge, isWaiting true.
+        const pending = queue.waitForMessagesAndGetAsString();
+        expect(waits).toBe(1);
+        expect(queue.isWaiting()).toBe(true);
+        queue.push('later', 'mode');
+        expect((await pending)?.message).toBe('later');
+        expect(queue.isWaiting()).toBe(false);
+        expect(waits).toBe(1);
+    });
+});

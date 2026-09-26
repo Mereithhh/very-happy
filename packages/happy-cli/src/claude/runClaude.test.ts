@@ -159,6 +159,7 @@ describe('runClaude remote JSONL scanner', () => {
     it('does not forward terminal JSONL messages while local mode owns the transcript', async () => {
         const sentMessages: unknown[] = [];
         const sessionClient = {
+            attachPromptQueueDrain: vi.fn(() => ({ onIdle: vi.fn(), onQueueChanged: vi.fn(), onInbound: vi.fn(), close: vi.fn(), maybeDispatch: vi.fn(async () => false) })),
             sessionId: 'happy-session-1',
             suppressNextArchiveSignal: vi.fn(),
             skipExistingMessages: vi.fn(),
@@ -262,6 +263,7 @@ describe('runClaude remote JSONL scanner', () => {
     it('routes delivery=steer to the live Session and does not enqueue it', async () => {
         let userMessageHandler!: (message: any) => Promise<void>;
         const sessionClient = {
+            attachPromptQueueDrain: vi.fn(() => ({ onIdle: vi.fn(), onQueueChanged: vi.fn(), onInbound: vi.fn(), close: vi.fn(), maybeDispatch: vi.fn(async () => false) })),
             sessionId: 'happy-session-steer',
             suppressNextArchiveSignal: vi.fn(),
             skipExistingMessages: vi.fn(),
@@ -314,7 +316,7 @@ describe('runClaude remote JSONL scanner', () => {
         });
         expect(api.getOrCreateSession).toHaveBeenCalledWith(expect.objectContaining({
             metadata: expect.objectContaining({
-                capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1'],
+                capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', 'prompt-queue-v1'],
             }),
         }));
 

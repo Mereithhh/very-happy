@@ -11,7 +11,7 @@ import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
-import type { SessionEnvelope } from '@slopus/happy-wire';
+import { PROMPT_QUEUE_CAPABILITY, type SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
@@ -515,6 +515,7 @@ export async function runAcp(opts: {
     machineId: settings.machineId,
     startedBy: opts.startedBy,
     sandbox: settings.sandboxConfig,
+    capabilities: [PROMPT_QUEUE_CAPABILITY],
   });
   metadata.attachmentKinds = [];
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
@@ -535,6 +536,7 @@ export async function runAcp(opts: {
       if (permissionHandler) {
         permissionHandler.updateSession(newSession);
       }
+      attachPromptQueueDrain(newSession);
     },
   });
   session = initialSession;
@@ -570,6 +572,15 @@ export async function runAcp(opts: {
   });
   const sessionManager = new AcpSessionManager(streamingEnabled ? { stream: streamRelay } : {});
   const messageQueue = new MessageQueue2<AcpSwitchMode>((mode) => hashObject(mode));
+  // B-509: server-side prompt queue — one item per turn, only while idle.
+  // Re-attached on every session-client swap (offline reconnection).
+  function attachPromptQueueDrain(client: ApiSessionClient) {
+    const drain = client.attachPromptQueueDrain({
+      isIdle: () => messageQueue.size() === 0 && messageQueue.isWaiting(),
+    });
+    messageQueue.setOnWait(() => drain.onIdle());
+  }
+  attachPromptQueueDrain(session);
   let currentPermissionMode: string | undefined;
   let currentModel: string | null | undefined;
   let modeSelector: AcpConfigSelector | null = null;

@@ -32,6 +32,12 @@ export class MessageQueue2<T> {
      * so the web stops painting a silently-lost message as "queued".
      */
     private onDiscardHandler: ((entries: QueueDiscardEntry[]) => void) | null = null;
+    /**
+     * B-509: fired when a consumer starts waiting on an EMPTY queue — the
+     * runner has finished its turn and has nothing to run. The server-side
+     * prompt queue drain uses it as its "idle" edge (utils/promptQueueDrain.ts).
+     */
+    private onWaitHandler: (() => void) | null = null;
     modeHasher: (mode: T) => string;
 
     constructor(
@@ -58,6 +64,16 @@ export class MessageQueue2<T> {
      */
     setOnDiscard(handler: ((entries: QueueDiscardEntry[]) => void) | null): void {
         this.onDiscardHandler = handler;
+    }
+
+    /** B-509: observe the consumer blocking on an empty queue. */
+    setOnWait(handler: (() => void) | null): void {
+        this.onWaitHandler = handler;
+    }
+
+    /** B-509: true while a consumer is blocked waiting for the next message. */
+    isWaiting(): boolean {
+        return this.waiter !== null;
     }
 
     /** Report the current items as destroyed for `reason` (caller clears next). */
@@ -402,6 +418,7 @@ export class MessageQueue2<T> {
             // Set the waiter
             this.waiter = waiterFunc;
             logger.debug('[MessageQueue2] Waiting for messages...');
+            this.onWaitHandler?.();
         });
     }
 }
