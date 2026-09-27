@@ -1,6 +1,6 @@
 # 服务端 prompt 队列（Server-side prompt queue）
 
-> 状态：Final
+> 状态：Shipped（commit `902f43cb3`，PR #450）
 > 日期：2026-09-27 ｜ 关联 backlog：B-509 ｜ 出处/前身：B-322（tab-local 队列无出口）、B-332（queue-cancel 墓碑）、`c04d26a41` 原生 Claude Queue/Steer（#82）
 
 ## 背景
