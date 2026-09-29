@@ -432,11 +432,14 @@ export async function startDaemon(): Promise<void> {
       const timer = createSpawnTimer();
       await refreshAgentHomes(Date.now(), { allowStale: true });
       timer.mark('agentHome');
-      const result = assistantSpawnMode(options) !== 'claude-singleton'
-        ? await spawnSessionImpl(options, timer)
-        : await (options.forceNew
+      let result: SpawnSessionResult;
+      if (assistantSpawnMode(options) !== 'claude-singleton') {
+        result = await spawnSessionImpl(options, timer);
+      } else {
+        result = await (options.forceNew
           ? assistantSpawnGate.replace(() => spawnSessionImpl(options, timer))
           : assistantSpawnGate.join(() => spawnSessionImpl(options, timer)));
+      }
       logger.debug(timer.format({ agent: options.agent ?? 'claude', outcome: result.type }));
       return result;
     };
