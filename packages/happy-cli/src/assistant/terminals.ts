@@ -21,7 +21,7 @@ import {
     LIST_SESSIONS_FORMAT,
     parseSessionListLine,
     deriveAutoTitle,
-} from '@/terminal/webTerminal'
+} from '@/terminal/sessionListFormat'
 import { scrubTmuxClientEnv, tmuxArgs } from '@/terminal/tmuxSocket'
 
 const TMUX_TIMEOUT_MS = 3000

@@ -134,8 +134,8 @@ vi.mock('@/api/api', () => ({
   },
 }));
 
-vi.mock('@/daemon/run', () => ({
-  initialMachineMetadata: { host: 'host', platform: 'darwin', happyCliVersion: 'test', homeDir: '/tmp', happyHomeDir: '/tmp/.happy', happyLibDir: '/tmp/happy' },
+vi.mock('@/daemon/machineMetadata', () => ({
+  getInitialMachineMetadata: () => ({ host: 'host', platform: 'darwin', happyCliVersion: 'test', homeDir: '/tmp', happyHomeDir: '/tmp/.happy', happyLibDir: '/tmp/happy' }),
 }));
 
 vi.mock('@/utils/setupOfflineReconnection', () => ({

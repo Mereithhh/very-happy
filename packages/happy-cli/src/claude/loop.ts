@@ -2,7 +2,9 @@ import { ApiSessionClient } from "@/api/apiSession"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
 import { logger } from "@/ui/logger"
 import { Session } from "./session"
-import { claudeLocalLauncher, LauncherResult } from "./claudeLocalLauncher"
+// B-512: the local launcher (claudeLocal → sandbox runtime) is imported only
+// when local mode actually runs; daemon-spawned remote sessions never load it.
+import type { LauncherResult } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
@@ -90,7 +92,8 @@ export async function loop(opts: LoopOptions): Promise<number> {
 
         switch (mode) {
             case 'local': {
-                const result = await claudeLocalLauncher(session);
+                const { claudeLocalLauncher } = await import("./claudeLocalLauncher");
+                const result: LauncherResult = await claudeLocalLauncher(session);
                 switch (result.type ) {
                     case 'switch':
                         mode = 'remote';

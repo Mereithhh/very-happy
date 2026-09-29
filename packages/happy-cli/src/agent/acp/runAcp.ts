@@ -16,7 +16,7 @@ import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { Credentials, readSettings } from '@/persistence';
-import { initialMachineMetadata } from '@/daemon/run';
+import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
@@ -506,7 +506,7 @@ export async function runAcp(opts: {
 
   await api.getOrCreateMachine({
     machineId: settings.machineId,
-    metadata: initialMachineMetadata,
+    metadata: getInitialMachineMetadata(),
   });
 
   const { state, metadata } = createSessionMetadata({

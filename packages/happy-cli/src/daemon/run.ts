@@ -13,6 +13,7 @@ import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/regist
 import { isSpawnAgent } from '@/utils/spawnAgents';
 import { logger } from '@/ui/logger';
 import { pruneLogsDir } from '@/ui/logPrune';
+import { pruneStaleCompileCaches } from '@/utils/compileCache';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
@@ -35,8 +36,8 @@ import { createPeerCoordinator } from './peerCoordinator';
 import { createRemoteSessionOpsHandlers } from './remoteSessionOps';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { refreshAgentHomes, agentHomeSpawnEnv, locateClaudeConversation, describeAgentHome } from '@/agentHome';
-import { existsSync, mkdtempSync, rmSync, statSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'fs';
+import { dirname, join } from 'path';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { projectPath } from '@/projectPath';
@@ -45,12 +46,12 @@ import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { daemonEndpointsMatch, resolveClaudeCredentialReadiness } from '@/ui/doctorReadiness';
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
 import { spawnAgentUnavailableError } from '@/daemon/spawnAgentAvailability';
-import { detectCLIAvailability, type CLIAvailability } from '@/utils/detectCLI';
+import type { CLIAvailability } from '@/utils/detectCLI';
+import { getInitialMachineMetadata, getStartupCliAvailability } from './machineMetadata';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
-import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { readSettings, writeSettings } from '@/persistence';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
-import { decideHandover, type HandoverPreflight } from './handoverPreflight';
+import { decideHandover, preflightProbeArg, type HandoverPreflight, type PreflightProbe } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
 import { installCliSafely } from '@/update/npmInstall';
 import { createUpdateController } from '@/update/updateController';
@@ -86,32 +87,20 @@ export function sanitizeImportTitle(value: unknown): string | null {
   return collapsed.length > 200 ? `${collapsed.slice(0, 199)}…` : collapsed;
 }
 
-// Prepare initial metadata
-// Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
-// is visually distinct from the stable one in the machine list (they otherwise
-// share the same hostname and look identical).
-const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
-const startupCliAvailability = detectCLIAvailability();
-export const initialMachineMetadata: MachineMetadata = {
-  teamsVersion: 1, teamLaunchVersion: 1,
-  host: os.hostname() + hostSuffix,
-  platform: os.platform(),
-  happyCliVersion: packageJson.version,
-  homeDir: os.homedir(),
-  happyHomeDir: configuration.happyHomeDir,
-  happyLibDir: projectPath(),
-  cliAvailability: startupCliAvailability,
-  resumeSupport: { ...detectResumeSupport(), rpcAvailable: true },
-};
 
 /**
- * B-321: run the replacement bundle before trusting it. `--version` exercises
- * the module graph and the native addons that a half-finished npm install
+ * B-321: run the replacement bundle before trusting it. `--self-check` (B-512;
+ * `--version` for bundles that predate it, see preflightProbeArg) loads the
+ * module graph and the native addons that a half-finished npm install
  * breaks, in an isolated HAPPY_HOME_DIR so it cannot disturb the daemon's own
  * state. Never throws: any failure is a reason to hold, not to crash.
  */
 async function preflightNewBundle(bundlePath: string): Promise<HandoverPreflight> {
   const home = mkdtempSync(join(tmpdir(), 'vh-preflight-'));
+  let probe: PreflightProbe = '--version';
+  try {
+    probe = preflightProbeArg(readdirSync(dirname(bundlePath)));
+  } catch { /* unreadable dist: the spawn below reports the real problem */ }
   try {
     return await new Promise<HandoverPreflight>((resolve) => {
       let stdout = '';
@@ -119,11 +108,11 @@ async function preflightNewBundle(bundlePath: string): Promise<HandoverPreflight
       const done = (run: Parameters<typeof decideHandover>[0]) => {
         if (settled) return;
         settled = true;
-        resolve(decideHandover(run));
+        resolve(decideHandover({ ...run, probe }));
       };
       let child: ReturnType<typeof spawn>;
       try {
-        child = spawn(process.execPath, ['--no-warnings', '--no-deprecation', bundlePath, '--version'], {
+        child = spawn(process.execPath, ['--no-warnings', '--no-deprecation', bundlePath, probe], {
           env: { ...process.env, HAPPY_HOME_DIR: home },
           stdio: ['ignore', 'pipe', 'ignore'],
         });
@@ -146,6 +135,10 @@ async function preflightNewBundle(bundlePath: string): Promise<HandoverPreflight
 
 const HANDOVER_PREFLIGHT_TIMEOUT_MS = 30_000;
 export async function startDaemon(): Promise<void> {
+  // B-512: computed here (not at module load) so importing this module is free
+  // of the CLI availability `execSync` probes.
+  const initialMachineMetadata = getInitialMachineMetadata();
+  const startupCliAvailability = getStartupCliAvailability();
   // B-276: hoisted so spawnSession (defined below, called later) never hits the TDZ.
   let claudeAuthServiceRef: ClaudeAuthService | null = null;
   // B-321: the last published update policy, so a handover hold can be attached
@@ -218,6 +211,11 @@ export async function startDaemon(): Promise<void> {
   if (prunedLogs > 0) {
     logger.debug(`[DAEMON RUN] Pruned ${prunedLogs} old log file(s) from ${configuration.logsDir}`);
   }
+  // B-512: compile caches of previous CLI versions (~10 MB each). Background,
+  // never throws (pruneStaleCompileCaches catches everything itself).
+  void pruneStaleCompileCaches(configuration.happyHomeDir, packageJson.version)
+    .then((removed) => { if (removed.length > 0) logger.debug(`[DAEMON RUN] Pruned compile caches: ${removed.join(', ')}`); })
+    .catch(() => { /* best effort */ });
 
   process.on('unhandledRejection', (reason, promise) => {
     logger.debug('[DAEMON RUN] FATAL: Unhandled promise rejection', reason);
@@ -1677,7 +1675,7 @@ export async function startDaemon(): Promise<void> {
     }
 
     // Create realtime machine session
-    const apiMachine = api.machineSyncClient(machine);
+    const apiMachine = await api.machineSyncClient(machine);
     apiMachineRef = apiMachine;
 
     // ── B-105: terminal mirror ──────────────────────────────────────────────
