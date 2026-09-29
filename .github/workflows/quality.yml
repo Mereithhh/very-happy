@@ -151,8 +151,12 @@ jobs:
 
       # 运行冒烟：build 绿 ≠ 运行不崩（CJS/ESM 装配有过事故先例）。
       # HAPPY_HOME_DIR 指到 job 级 temp：self-hosted 上别把状态写进 runner 的 ~/.happy。
-      - name: 'Gate: happy-cli runtime smoke (node dist/index.mjs --version)'
+      # B-512: --version answers from the entry stub; --self-check loads every
+      # lazily imported module (the actual module-graph smoke).
+      - name: 'Gate: happy-cli runtime smoke (node dist/index.mjs --version / --self-check)'
         if: ${{ !cancelled() && steps.cli_build.outcome == 'success' }}
         env:
           HAPPY_HOME_DIR: ${{ runner.temp }}/happy-home
-        run: node packages/happy-cli/dist/index.mjs --version
+        run: |
+          node packages/happy-cli/dist/index.mjs --version
+          node packages/happy-cli/dist/index.mjs --self-check

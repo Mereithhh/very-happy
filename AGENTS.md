@@ -46,6 +46,7 @@ pnpm -C packages/happy-web-v2 exec tsc --noEmit
 # tmux 中运行前 unset TMUX；同机只跑一份 CLI 测试。
 pnpm -C packages/happy-cli test
 node packages/happy-cli/dist/index.mjs --version
+node packages/happy-cli/dist/index.mjs --self-check
 
 pnpm -C packages/happy-server exec tsc --noEmit
 pnpm -C packages/happy-server exec vitest run
@@ -74,7 +75,7 @@ CLI 改动也会影响 Web `src/screens/public` 的契约测试，不能只跑 C
 ## 关键约束（保留原编号，避免已有引用失效）
 
 1. **synced settings 不加 zod `.default()`**：默认值会被 `loadPendingSettings` 当 pending 上传覆盖服务器。
-2. **daemon 的纯 JS CJS 依赖放 `devDependencies`**，让 pkgroll inline；build 通过仍须跑生成产物的 `--version`，防止 external ESM 具名 import 运行时崩溃。
+2. **daemon 的纯 JS CJS 依赖放 `devDependencies`**，让 pkgroll inline；build 通过仍须跑生成产物的 `--self-check`（B-512 起 `--version` 不加载模块图），防止 external ESM 具名 import 运行时崩溃；新增 `import()` 须登记 `src/lazyModules.ts`。
 3. **工具按锁定依赖解析**：见上方门禁；不要为一次性工具改 package.json/lockfile。
 4. **协议必须双向兼容**，旧端忽略新字段；spec 写兼容矩阵与发布顺序。
 5. **server/Web 随同一个完整不可变镜像发布**，不得分别覆盖 source、migration、Prisma Client 或 Web。当前 rollout phase 以 operations 为准；正常 server/Web 切换不更新 daemon，默认先 server/Web 后 CLI，协议变更按兼容矩阵。
