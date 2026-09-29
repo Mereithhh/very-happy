@@ -29,6 +29,19 @@ export function useSendSpinnerReset(status: TurnSendStatus | null, localId: stri
     }, [sending, localId]);
 }
 
+/**
+ * The queue dock renders rows in a loop, so it cannot call the per-row hook:
+ * forget the spinner start of every listed item that is not sending (review
+ * B-513 — otherwise a retried row shows its spinner at once, and entries leak).
+ */
+export function useSendSpinnerResetAll(items: readonly { localId?: string | null; sendState?: string }[]) {
+    useEffect(() => {
+        for (const item of items) {
+            if (item.localId && item.sendState !== 'sending') clearSendSpinner(item.localId);
+        }
+    }, [items]);
+}
+
 /** 「发送失败 · 重试 · 放回输入框」 — replaces the message time on a failed turn. */
 export function SendFailedActions({ sessionId, status }: { sessionId: string; status: TurnSendStatus }) {
     const { t } = useTranslation();

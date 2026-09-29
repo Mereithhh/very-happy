@@ -37,7 +37,7 @@ import { MessageTimeTooltip } from './MessageTimeTooltip';
 import './chatlist.css';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { isTranscriptVisibleInput } from './discardedInput';
-import { SendFailedActions, SendingIndicator } from './SendStatusView';
+import { SendFailedActions, SendingIndicator, useSendSpinnerResetAll } from './SendStatusView';
 import { turnSendStatus } from './sendStatusModel';
 
 export function ChatList({
@@ -72,6 +72,7 @@ export function ChatList({
             .filter((message) => message.inputState === 'queued'),
         [messages],
     );
+    useSendSpinnerResetAll(queuedMessages as readonly { localId?: string | null; sendState?: string }[]);
     const chronological = useMemo(
         // B-355: the CLI's JSONL scanner used to forward a second copy of any
         // message that carried an attachment. It has to be dropped HERE and not
