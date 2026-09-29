@@ -9,17 +9,16 @@ import { ArrowUpRight, MessageSquareShare, TriangleAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
 import { formatAgo, peerAgentName, type PresentedPeerMessage } from './sessionPeerMessage';
-import { messageTimestamp } from './messageTimestamp';
 import './sessionPeerMessage.css';
 
-export function SessionPeerMessageCard({ content, createdAt }: { content: PresentedPeerMessage; createdAt?: number }) {
-    const { t, lang } = useTranslation();
+export function SessionPeerMessageCard({ content }: { content: PresentedPeerMessage }) {
+    const { t } = useTranslation();
     const conflict = content.kind === 'conflict';
     const agent = peerAgentName(content.agent);
     // B-506: a message that crossed machines names the sender's host.
     const who = [content.fromTitle ?? content.fromSessionId, agent, content.machine ? `@${content.machine}` : null].filter(Boolean).join(' · ');
-    return <div className={`msg msg--peer${conflict ? ' msg--peer-conflict' : ''}`} title={messageTimestamp(createdAt, lang)}>
-        <div className="peer-message" title="">
+    return <div className={`msg msg--peer${conflict ? ' msg--peer-conflict' : ''}`}>
+        <div className="peer-message">
             <div className="peer-message-heading">
                 {conflict ? <TriangleAlert size={16} aria-hidden /> : <MessageSquareShare size={16} aria-hidden />}
                 <span>{conflict ? t('session.peerMessage.conflict') : t('session.peerMessage.messageFrom')}</span>

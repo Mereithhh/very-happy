@@ -44,6 +44,7 @@ import { withSessionPermissionMode } from './sessionPermissionPreference';
 import { collectYoloDecisions, newPermissionRequests, type YoloEnforcementDecision } from './yoloEnforcement';
 import { sanitizeSessionPermissionModes } from './permissionModeOutbound';
 import { forgetHeartbeat } from './heartbeatLease';
+import { keepNewerSessionVersions } from './sessionSnapshot';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -447,8 +448,11 @@ export const storage = create<StorageState>()((set, get) => {
             set((state) => {
             // Drop sessions that were already deleted — a raced update/fetch
             // must not resurrect them (see deletedSessionTombstones above).
+            // B-512: a stale snapshot never rolls back versioned metadata /
+            // agentState (see keepNewerSessionVersions).
             const sessions = incomingSessions
                 .filter(session => !deletedSessionTombstones.has(session.id))
+                .map(session => keepNewerSessionVersions(session, state.sessions[session.id]))
                 .map(session => applySessionInactiveHold(session));
 
             // Load drafts and permission modes if sessions are empty (initial load)

@@ -10,6 +10,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { RecentMachinePath } from '@/utils/quickChat';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { newSessionTimingCancel, newSessionTimingRpcReturned, newSessionTimingRpcSent, newSessionTimingStart } from './newSessionTiming';
 
 /**
  * The ONE quick "new chat" entry point (chat sibling of newTerminal.ts's
@@ -67,6 +68,7 @@ export async function createChatOrConfigure(
         return;
     }
     setPending(true);
+    newSessionTimingStart('quick');
     try {
         const agent = normalizeAgentKey(state.settings.newSessionAgent);
         const permissionMode = resolveNewSessionPermissionMode(
@@ -74,12 +76,15 @@ export async function createChatOrConfigure(
             agent,
             state.localSettings.newSessionReviewFirst,
         );
+        newSessionTimingRpcSent();
         const res = await machineSpawnNewSession({
             machineId: decision.machineId,
             directory: decision.directory,
             agent,
             permissionMode,
         });
+        if (res.type !== 'success') newSessionTimingCancel();
+        else newSessionTimingRpcReturned(res.sessionId);
         if (res.type === 'requestToApproveDirectoryCreation') {
             // The remembered directory vanished — never silently mkdir from the
             // quick path; hand over to the dialog where creation is explicit.
@@ -94,6 +99,7 @@ export async function createChatOrConfigure(
         recordRecentMachinePath(decision.machineId, decision.directory);
         navigate(`/session/${res.sessionId}`);
     } catch (e) {
+        newSessionTimingCancel();
         Modal.alert(t('common.error'), e instanceof Error ? e.message : t('errors.networkError'));
     } finally {
         setPending(false);

@@ -30,6 +30,7 @@ import { ModelSupportBanner } from './ModelSupportBanner';
 import { AutomationAttentionBanner } from './AutomationAttentionBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { isMirrorSession } from '@/assistant/assistantSession';
+import { newSessionTimingComposerMounted, newSessionTimingInStore } from '@/app/newSessionTiming';
 import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
 import './session.css';
 
@@ -53,6 +54,17 @@ export function SessionDetailScreen() {
     // mirror, pasted URL) is ignored rather than mounting a dead panel.
     const btwAllowed = !!session && !isMirrorSession(session) && canOfferBtw(session);
     const btwOpen = panelTab === 'btw' && btwAllowed;
+    // B-512 timing: store arrival (fallback when the update path didn't mark
+    // it) and composer mount end a pending new-session trace. Effects run
+    // after children mount, so AgentInput is on screen here. No-ops unless a
+    // new-session trace for this id is open.
+    const composerShown = !!session && !isMirrorSession(session);
+    useEffect(() => {
+        if (!id || !session) return;
+        newSessionTimingInStore(id);
+        if (composerShown) newSessionTimingComposerMounted(id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only the presence edge matters
+    }, [id, !!session, composerShown]);
     // B-317: the sub-agent drawer is a third tenant. It is only ever opened by
     // clicking a card, so a `?panel=agent` without a target is not a panel.
     const subagentTarget = panelTab === 'subagent' ? readSubagentTarget(searchParams) : null;

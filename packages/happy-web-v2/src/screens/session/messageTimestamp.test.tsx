@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { compactMessageTime, messageTimestamp, messageTimestampRange } from './messageTimestamp';
+import { hoverTimeTargetFrom } from './messageHoverTime';
 
 let MessageView: typeof import('./MessageView').MessageView;
 let ToolGroupView: typeof import('./ToolGroupView').ToolGroupView;
@@ -72,19 +73,36 @@ describe('message timestamps', () => {
         text('user-text'), text('agent-text'),
         { ...text('agent-text'), isThinking: true },
         { ...text('user-text'), meta: { sentFrom: 'team' } },
+        { ...text('user-text'), text: '<command-name>/status</command-name>' },
+        { ...text('user-text'), text: '<task-notification><summary>Done</summary><status>completed</status></task-notification>' },
         { kind: 'agent-event', id: 'event', createdAt: T0, event: { type: 'switch', mode: 'local' } },
         { kind: 'agent-event', id: 'auth', createdAt: T0, event: { type: 'message', kind: 'claude-auth-failed', message: 'Authentication failed' } },
-    ] satisfies Message[])('shows the creation time for the $kind leaf without a new layout wrapper', message => {
+        { kind: 'agent-event', id: 'sub', createdAt: T0, event: { type: 'subagent', id: 'sa1', status: 'running', title: 'Explore' } },
+    ] satisfies Message[])('B-514: the $kind row carries no hover timestamp anywhere but its footer time', message => {
         const host = render(<MessageView message={message} sessionId="s1" showMeta={false} />);
         expect(host.firstElementChild?.classList.contains('msg')).toBe(true);
-        expect(host.firstElementChild?.getAttribute('title')).toBe(messageTimestamp(T0, 'en'));
+        const stamp = messageTimestamp(T0, 'en');
+        // no element in the row carries the full time except the visible footer <time>
+        const titled = [...host.querySelectorAll('[title]')].filter(node => node.getAttribute('title') === stamp);
+        expect(titled.every(node => node.matches('time.msg-time'))).toBe(true);
+        // …and nothing is left behind to block a parent title that no longer exists
+        expect(host.querySelector('[title=""]')).toBeNull();
         const copy = host.querySelector<HTMLButtonElement>('button.vh-copy');
         if (copy) expect(copy.title).toBe('Copy message');
     });
 
-    it('leaves unavailable times absent and does not make hidden events visible', () => {
-        const host = render(<MessageView message={text('agent-text', 0)} sessionId="s1" showMeta={false} />);
-        expect(host.querySelector('.msg')?.hasAttribute('title')).toBe(false);
+    it('B-514: the hover bubble never targets a message row, only its footer time', () => {
+        const host = render(<MessageView message={text('agent-text')} sessionId="s1" showMeta={false} />);
+        document.body.appendChild(host);
+        const prose = host.querySelector('.msg p') ?? host.querySelector('.msg');
+        expect(hoverTimeTargetFrom(prose, host)).toBeNull();
+        const time = host.querySelector('time.msg-time');
+        expect(time).not.toBeNull();
+        expect(hoverTimeTargetFrom(time, host)).toBe(time);
+        host.remove();
+    });
+
+    it('does not make hidden events visible', () => {
         expect(render(<MessageView message={{ kind: 'agent-event', id: 'ready', createdAt: T0, event: { type: 'ready' } }} sessionId="s1" showMeta={false} />).innerHTML).toBe('');
     });
 
@@ -125,8 +143,9 @@ describe('message timestamps', () => {
         expect(expanded.querySelector('.tg-subagent-open')).not.toBeNull();
         expect(details.querySelector('.sa')?.getAttribute('title')).toBe('');
         expect(details.querySelector('.sa-brief')?.getAttribute('title')).toBe(messageTimestamp(T0, 'en'));
+        // B-514: message rows inside the sub-agent log carry no hover time either
         expect([...details.querySelectorAll('.sa-log .msg')].map(node => node.getAttribute('title')))
-            .toEqual([null, messageTimestamp(T0 + 10_000, 'en')]);
+            .toEqual([null, null]);
         expect(details.querySelector('.sa-log .tg-row')?.getAttribute('title')).toBe(messageTimestamp(T0 + 20_000, 'en'));
         expect(details.querySelector('.sa-result')?.textContent).toContain('Earlier result');
         expect(details.querySelector('.sa-result')?.hasAttribute('title')).toBe(false);
