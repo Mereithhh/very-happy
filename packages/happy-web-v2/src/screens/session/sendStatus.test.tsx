@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +11,7 @@ vi.mock('@/sync/sync', () => ({ sync: { sendMessage: vi.fn(), retrySend: mocks.r
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ lang: 'en', t: (key: string) => key }) }));
 vi.mock('@/ui/Toast', () => ({ toast: { success: vi.fn() } }));
 import { MessageActions } from './MessageActions';
+import { useSendSpinnerResetAll } from './SendStatusView';
 import { onComposerRestore } from './composerRestore';
 import { clearSendSpinner, SEND_SPINNER_DELAY_MS, sendSpinnerRemaining, turnSendStatus } from './sendStatusModel';
 
@@ -101,4 +104,30 @@ describe('MessageActions send states', () => {
         expect(labels()).toEqual(['message.copyMessage', 'Quote', 'Edit']);
         expect(host.querySelector('.msg-send-failed, .msg-sending')).toBeNull();
     });
+});
+
+describe('queue dock spinner reset (review #5)', () => {
+    it('forgets the spinner start of listed rows that stopped sending, so a retry waits 150ms again', () => {
+        (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+        const host = document.createElement('div');
+        document.body.append(host);
+        const root = createRoot(host);
+        function Dock({ items }: { items: { localId: string; sendState?: 'sending' | 'failed' }[] }) {
+            useSendSpinnerResetAll(items);
+            return null;
+        }
+        clearSendSpinner('q1');
+        sendSpinnerRemaining('q1', 0); // was sending since t=0
+        act(() => root.render(<Dock items={[{ localId: 'q1', sendState: 'sending' }]} />));
+        expect(sendSpinnerRemaining('q1', 1_000)).toBe(0);
+        act(() => root.render(<Dock items={[{ localId: 'q1', sendState: 'failed' }]} />));
+        // Retried at t=5000: a fresh delay, not an instant spinner.
+        expect(sendSpinnerRemaining('q1', 5_000)).toBe(SEND_SPINNER_DELAY_MS);
+        act(() => root.unmount());
+        host.remove();
+    });
+});
+
+it('the queue dock wires the reset for its rows', () => {
+    expect(readFileSync(resolve(__dirname, 'ChatList.tsx'), 'utf8')).toMatch(/useSendSpinnerResetAll\(queuedMessages/);
 });

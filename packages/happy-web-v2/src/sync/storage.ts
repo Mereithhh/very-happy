@@ -846,7 +846,10 @@ export const storage = create<StorageState>()((set, get) => {
                             messages: messagesArray,
                             messagesMap: mergedMessagesMap,
                             reducerState: existingSession.reducerState, // Explicitly include the mutated reducer state
-                            isLoaded: true
+                            // B-513 review: an optimistic send is not a history load —
+                            // it must not flip a still-loading session to loaded
+                            // (TTS baselines / the chat loader key off this).
+                            isLoaded: options?.sendingLocalIds?.length ? existingSession.isLoaded : true
                         }
                     }
                 };
