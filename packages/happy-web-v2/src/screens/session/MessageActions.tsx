@@ -9,6 +9,8 @@ import type { UserTextMessage } from '@/sync/typesMessage';
 import { quoteMessage } from './messageQuote';
 import { messageActionsCopy } from './messageActionsCopy';
 import { MessageTime } from './MessageTime';
+import { SendFailedActions, SendingIndicator } from './SendStatusView';
+import type { TurnSendStatus } from './sendStatusModel';
 import './messageActions.css';
 
 /**
@@ -21,8 +23,11 @@ import './messageActions.css';
  * navigation. (The earlier flow forked a new session at a rewind point; the
  * owner asked for the simple resend instead.)
  */
-export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, children }: {
-    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments?: boolean; children?: ReactNode;
+export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, send = null, children }: {
+    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments?: boolean;
+    /** B-513: not yet confirmed by the server — copy only; a failed turn shows its recovery actions instead of the time. */
+    send?: TurnSendStatus | null;
+    children?: ReactNode;
 }) {
     const { t, lang } = useTranslation();
     const copy = messageActionsCopy(lang);
@@ -69,10 +74,15 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
         {!open && <div className="msg-actions" role={text ? 'group' : undefined} aria-label={text ? copy.actions : undefined}>
             {text && <div className="msg-actions-items">
                 <CopyButton text={text} size={14} label={t('message.copyMessage')} />
-                <button type="button" className="msg-action" aria-label={copy.quote} title={copy.quote} onClick={() => quoteMessage(sessionId, text)}><Quote size={14} aria-hidden /></button>
-                {userMessage && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
+                {!send && <button type="button" className="msg-action" aria-label={copy.quote} title={copy.quote} onClick={() => quoteMessage(sessionId, text)}><Quote size={14} aria-hidden /></button>}
+                {userMessage && !send && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
             </div>}
-            <MessageTime createdAt={createdAt} />
+            {send?.state === 'failed'
+                ? <SendFailedActions sessionId={sessionId} status={send} />
+                : <>
+                    {send?.state === 'sending' && <SendingIndicator localId={userMessage?.localId ?? send.localId} />}
+                    <MessageTime createdAt={createdAt} />
+                </>}
         </div>}
         {userMessage && open && <section className="msg-edit-inline" aria-labelledby={editId} onKeyDown={event => {
             if (event.key === 'Escape' && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); closeEditor(); }

@@ -658,6 +658,9 @@ export const en = {
             queueCancel: 'Remove from queue',
             queueCancelTooLate: 'This message has already started and can no longer be removed.',
             queueCancelFailed: 'Could not remove this queued message. Please try again.',
+            sendFailed: 'Not sent',
+            sendRetry: 'Retry',
+            sendRestore: 'Back to input',
             discarded: {
                 cleared: 'Not run — dropped by /clear or /compact',
                 aborted: 'Not run — dropped when the turn was stopped',

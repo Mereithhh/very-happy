@@ -132,6 +132,23 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+/* B-513: queued input not yet confirmed — dimmed; a failed row trades the
+   remove button for its recovery actions (wraps under the text when narrow). */
+.cl-queue-item--sending .cl-queue-text,
+.cl-queue-item--failed .cl-queue-text {
+  opacity: 0.55;
+}
+.cl-queue-item--failed {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+}
+@media (max-width: 480px) {
+  .cl-queue-item--failed {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+  .cl-queue-item--failed .msg-send-failed {
+    grid-column: 2;
+  }
+}
 .cl-queue-cancel {
   display: inline-flex;
   align-items: center;

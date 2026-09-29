@@ -832,6 +832,9 @@ export const zhHans: TranslationStructure = {
             queueCancel: '从队列移除',
             queueCancelTooLate: '这条消息已经开始执行，无法再从队列移除。',
             queueCancelFailed: '移除待处理消息失败，请重试。',
+            sendFailed: '发送失败',
+            sendRetry: '重试',
+            sendRestore: '放回输入框',
             discarded: {
                 cleared: '未执行 · 被 /clear 或 /compact 清掉了',
                 aborted: '未执行 · 停止时被丢弃',

@@ -24,6 +24,8 @@ import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, ty
 import { discardedReasonKey } from './discardedInput';
 import { MessageActions } from './MessageActions';
 import { MessageTime } from './MessageTime';
+import { SendFailedActions, SendingIndicator, useSendSpinnerReset } from './SendStatusView';
+import { turnSendStatus } from './sendStatusModel';
 import './message.css';
 import { presentTeamMessage } from './teamMessage';
 import { TeamMessageCard } from './TeamMessageCard';
@@ -37,6 +39,9 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     // the old 40dvh nested scroll area (wheel must bubble to the transcript).
     const [expanded, setExpanded] = useState(false);
     const contentId = useId();
+    // B-513: failed > sending across the text and its attachments.
+    const send = turnSendStatus(message, attachments);
+    useSendSpinnerReset(send, message.localId);
     const teamContent = presentTeamMessage(message);
     if (teamContent) return <TeamMessageCard content={teamContent} sessionId={sessionId} localId={message.localId} createdAt={message.createdAt} />;
     // B-497: a message from another session on the same machine, or the
@@ -73,12 +78,19 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     if (parsed.kind === 'command-run') {
         return (
             <div className="msg msg--user" title={messageTimestamp(message.createdAt, lang)}>
-                <div className="msg-bubble msg-bubble--cmd">
+                <div className={`msg-bubble msg-bubble--cmd${send ? ' msg-bubble--unsent' : ''}`}>
                     <Terminal size={13} />
                     <span className="msg-cmd-name">/{parsed.commandName}</span>
                     {parsed.args && <span className="msg-cmd-args">{parsed.args}</span>}
                 </div>
-                <div className="msg-actions"><MessageTime createdAt={message.createdAt} /></div>
+                <div className="msg-actions">
+                    {send?.state === 'failed'
+                        ? <SendFailedActions sessionId={sessionId} status={send} />
+                        : <>
+                            {send?.state === 'sending' && <SendingIndicator localId={message.localId ?? send.localId} />}
+                            <MessageTime createdAt={message.createdAt} />
+                        </>}
+                </div>
             </div>
         );
     }
@@ -96,8 +108,8 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     return (
         <div className="msg msg--user" title={messageTimestamp(message.createdAt, lang)}>
             <UserAttachments sessionId={sessionId} items={attachmentItems} />
-            <div className="msg-bubble-wrap vh-copyhost">
-                <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0}>
+            <div className={`msg-bubble-wrap vh-copyhost${send ? ' msg-bubble-wrap--unsent' : ''}`}>
+                <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0} send={send}>
                 {text && <div className="msg-bubble">
                     <div id={contentId} className={`msg-bubble-text${clamped ? ' msg-bubble-text--clamped' : ''}`}>
                         {text}
