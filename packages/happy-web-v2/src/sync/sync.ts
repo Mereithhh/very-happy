@@ -89,6 +89,15 @@ import {
     shouldAnnounceFirstMachine,
 } from '@/screens/onboarding/firstMachineWelcome';
 import { queuedAtForSend } from './queuedInput';
+import { subscribeAuthLatch } from '@/auth/authLatch';
+import {
+    advanceLastSeq,
+    assertResponseOk,
+    classifySendError,
+    mapWithConcurrency,
+    removeByLocalId,
+    SendDeadlines,
+} from './outbox';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -115,7 +124,33 @@ type V3PostSessionMessagesResponse = {
 type OutboxMessage = {
     localId: string;
     content: string;
+    /** B-513: a user retry — skip the regional relay (a restarted wrapper could route it twice). */
+    httpOnly?: boolean;
 };
+
+/**
+ * B-513: a user/file input this client sent, kept until the server confirms it
+ * so a failed item can be retried with the same localId (server-side dedupe).
+ */
+type OutboxRecord = {
+    sessionId: string;
+    localId: string;
+    content: string;
+    /** One sendMessage call (attachments + text) — retried together, in order. */
+    group: string;
+    order: number;
+    /** Some earlier attempt may have stored it (timeout, 5xx, lost relay ack…). */
+    mayHaveStored: boolean;
+    /** An attempt is on the wire right now. */
+    attemptInFlight: boolean;
+};
+
+const SEND_DEADLINE_TICK_MS = 500;
+const ATTACHMENT_UPLOAD_CONCURRENCY = 3;
+
+function isBrowserOnline(): boolean {
+    return typeof navigator === 'undefined' || navigator.onLine !== false;
+}
 
 type SendMessageOptions = {
     displayText?: string;
@@ -156,6 +191,12 @@ class Sync {
     // advanced downward by loadOlderMessages.
     private sessionOldestSeq = new Map<string, number>();
     private pendingOutbox = new Map<string, OutboxMessage[]>();
+    private outboxRecords = new Map<string, OutboxRecord>();
+    private outboxOrder = 0;
+    private sendDeadlines = new SendDeadlines();
+    private sendDeadlineTimer: ReturnType<typeof setInterval> | null = null;
+    /** localIds of the request currently on the wire, per session. */
+    private inFlightOutbox = new Map<string, ReadonlySet<string>>();
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
     private sessionMessageLocks = new Map<string, AsyncLock>();
@@ -197,6 +238,10 @@ class Sync {
         }
         this.pushTokenSync = new InvalidateSync(registerPushToken);
         this.activityAccumulator = new ActivityUpdateAccumulator(this.flushActivityUpdates.bind(this), 2000);
+
+        // B-513: a latched account stops every sync loop for good, so nothing
+        // would ever flush the outbox again — say so instead of spinning.
+        subscribeAuthLatch(() => this.failAllOutbox());
 
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
@@ -467,6 +512,17 @@ class Sync {
         this.scheduleQueuedMessagesProcessing(sessionId);
     }
 
+    /**
+     * B-513: an optimistic input is reduced synchronously, marked `sending`.
+     * It must not queue behind the per-session lock — `fetchMessages` holds
+     * that across a network round trip, which is what made a send appear
+     * seconds late. The reducer is synchronous, so this cannot interleave with
+     * another apply; a single optimistic item keeps arrival order (铁律 15).
+     */
+    private applyOptimistic(sessionId: string, message: NormalizedMessage) {
+        this.applyMessages(sessionId, [message], message.localId ? [message.localId] : undefined);
+    }
+
     private getSessionMessageLock(sessionId: string): AsyncLock {
         let lock = this.sessionMessageLocks.get(sessionId);
         if (!lock) {
@@ -591,21 +647,8 @@ class Sync {
     }
 
     private failPendingOutboxMessages(reasonText: string) {
-        for (const controller of this.sendAbortControllers.values()) {
-            controller.abort();
-        }
-        this.sendAbortControllers.clear();
-
+        const sessionIds = this.failAllOutbox();
         const now = Date.now();
-        const sessionIds: string[] = [];
-        for (const [sessionId, pending] of this.pendingOutbox) {
-            if (pending.length === 0) {
-                continue;
-            }
-            pending.length = 0;
-            this.pendingOutbox.delete(sessionId);
-            sessionIds.push(sessionId);
-        }
 
         for (const sessionId of sessionIds) {
             this.enqueueMessages(sessionId, [{
@@ -620,6 +663,141 @@ class Sync {
                 }
             }]);
         }
+    }
+
+    /** Abort every in-flight send and fail everything still queued. Returns the affected sessions. */
+    private failAllOutbox(): string[] {
+        for (const controller of this.sendAbortControllers.values()) {
+            controller.abort();
+        }
+        this.sendAbortControllers.clear();
+        const sessionIds: string[] = [];
+        for (const [sessionId, pending] of [...this.pendingOutbox]) {
+            if (pending.length === 0) continue;
+            this.failOutboxItems(sessionId, pending.map((item) => item.localId));
+            this.pendingOutbox.delete(sessionId);
+            sessionIds.push(sessionId);
+        }
+        return sessionIds;
+    }
+
+    /**
+     * B-513: the single per-message fail path (deadline, non-retryable answer,
+     * auth latch, native background watchdog). Removes the items from the
+     * queue by localId and shows tracked ones as failed. Invisible items (queue
+     * tombstones) are just dropped.
+     */
+    private failOutboxItems(sessionId: string, localIds: readonly string[]) {
+        if (localIds.length === 0) return;
+        const pending = this.pendingOutbox.get(sessionId);
+        if (pending) {
+            removeByLocalId(pending, new Set(localIds));
+            if (pending.length === 0) this.pendingOutbox.delete(sessionId);
+        }
+        const failures: { localId: string; restorable: boolean }[] = [];
+        for (const localId of localIds) {
+            this.sendDeadlines.delete(localId);
+            const record = this.outboxRecords.get(localId);
+            if (!record) continue;
+            const groupSize = [...this.outboxRecords.values()].filter((other) => other.group === record.group).length;
+            failures.push({
+                localId,
+                // Only text can go back into the composer (attachments are
+                // released after sending), and only if nothing could have
+                // stored it — otherwise a re-send would duplicate it.
+                restorable: groupSize === 1 && !record.mayHaveStored && !record.attemptInFlight,
+            });
+        }
+        if (failures.length > 0) storage.getState().applyOutboxResult(sessionId, { failures });
+    }
+
+    private trackOutboxItems(sessionId: string, localIds: readonly string[], contents: readonly string[], group: string) {
+        localIds.forEach((localId, index) => {
+            this.outboxRecords.set(localId, {
+                sessionId,
+                localId,
+                content: contents[index],
+                group,
+                order: this.outboxOrder++,
+                mayHaveStored: false,
+                attemptInFlight: false,
+            });
+        });
+        this.sendDeadlines.start(localIds, Date.now());
+        this.ensureSendDeadlineTicker();
+    }
+
+    private ensureSendDeadlineTicker() {
+        if (this.sendDeadlineTimer || this.sendDeadlines.size === 0) return;
+        this.sendDeadlineTimer = setInterval(this.tickSendDeadlines, SEND_DEADLINE_TICK_MS);
+    }
+
+    private tickSendDeadlines = () => {
+        const expired = this.sendDeadlines.tick(Date.now(), isBrowserOnline());
+        const bySession = new Map<string, string[]>();
+        for (const localId of expired) {
+            const sessionId = this.outboxRecords.get(localId)?.sessionId;
+            if (!sessionId) continue;
+            bySession.set(sessionId, [...(bySession.get(sessionId) ?? []), localId]);
+        }
+        for (const [sessionId, localIds] of bySession) {
+            // Fail first (the in-flight attempt still counts as maybe-stored),
+            // then abort the request that carries them.
+            this.failOutboxItems(sessionId, localIds);
+            const inFlight = this.inFlightOutbox.get(sessionId);
+            if (inFlight && localIds.some((localId) => inFlight.has(localId))) {
+                this.sendAbortControllers.get(sessionId)?.abort();
+            }
+        }
+        if (this.sendDeadlines.size === 0 && this.sendDeadlineTimer) {
+            clearInterval(this.sendDeadlineTimer);
+            this.sendDeadlineTimer = null;
+        }
+    };
+
+    /**
+     * B-513: re-send a failed input — with the SAME localId(s), so a copy the
+     * server did store is deduplicated — together with every failed item of
+     * the same user turn (attachments + text) in their original order. HTTP only.
+     */
+    retrySend(sessionId: string, localId: string): boolean {
+        const record = this.outboxRecords.get(localId);
+        const reducerState = storage.getState().sessionMessages[sessionId]?.reducerState;
+        if (!record || record.sessionId !== sessionId || !reducerState) return false;
+        const members = [...this.outboxRecords.values()]
+            .filter((other) => other.group === record.group && reducerState.sendStates.get(other.localId) === 'failed')
+            .sort((a, b) => a.order - b.order);
+        if (members.length === 0) return false;
+        let pending = this.pendingOutbox.get(sessionId);
+        if (!pending) {
+            pending = [];
+            this.pendingOutbox.set(sessionId, pending);
+        }
+        const localIds = members.map((member) => member.localId);
+        removeByLocalId(pending, new Set(localIds));
+        for (const member of members) {
+            pending.push({ localId: member.localId, content: member.content, httpOnly: true });
+        }
+        storage.getState().applyOutboxResult(sessionId, { sending: localIds });
+        this.sendDeadlines.start(localIds, Date.now());
+        this.ensureSendDeadlineTicker();
+        this.getSendSync(sessionId).invalidate();
+        return true;
+    }
+
+    /**
+     * B-513: take a failed text message back for the composer. Only when
+     * `sendRestorable` (no attempt could have stored it); the row disappears
+     * but the localId stays known, so a late echo would bring it back.
+     * Returns the text, or null when not allowed.
+     */
+    takeBackFailedMessage(sessionId: string, localId: string): string | null {
+        const sessionMessages = storage.getState().sessionMessages[sessionId];
+        const message = sessionMessages?.messages.find((m) => m.kind === 'user-text' && m.localId === localId);
+        if (!message || message.kind !== 'user-text' || message.sendState !== 'failed' || !message.sendRestorable) return null;
+        storage.getState().applyOutboxResult(sessionId, { withdraw: [localId] });
+        this.outboxRecords.delete(localId);
+        return message.text;
     }
 
     private async handleBackgroundSendTimeout() {
@@ -680,10 +858,9 @@ class Sync {
             return { uploaded: [], failed: attachments.length };
         }
 
-        const uploaded: UploadedAttachment[] = [];
-        let failed = 0;
-
-        for (const attachment of attachments) {
+        // B-513: up to 3 PUTs in parallel; results keep the picked order and a
+        // failed file is skipped without aborting the others.
+        const results = await mapWithConcurrency(attachments, ATTACHMENT_UPLOAD_CONCURRENCY, async (attachment): Promise<UploadedAttachment | null> => {
             try {
                 const bytes = await readFileBytes(attachment.uri);
                 const encrypted = encryptBlob(bytes, blobKey);
@@ -695,10 +872,10 @@ class Sync {
                     encrypted.length,
                 );
 
-                await uploadEncryptedBlob(upload, encrypted, this.credentials);
+                await uploadEncryptedBlob(upload, encrypted, this.credentials!);
                 const { ref } = upload;
 
-                uploaded.push({
+                return {
                     ref,
                     name: attachment.name,
                     size: attachment.size,
@@ -706,15 +883,16 @@ class Sync {
                     width: attachment.width,
                     height: attachment.height,
                     thumbhash: attachment.thumbhash,
-                });
+                };
             } catch (err) {
                 console.error(`[attachments] Failed to upload ${attachment.name}:`, err);
-                failed++;
                 // Skip this attachment; do not abort the whole message send.
+                return null;
             }
-        }
+        });
 
-        return { uploaded, failed };
+        const uploaded = results.filter((result): result is UploadedAttachment => result !== null);
+        return { uploaded, failed: results.length - uploaded.length };
     }
 
     /** B-509: encrypt the exact user record a typed prompt would carry, for the server-side prompt queue. */
@@ -809,6 +987,11 @@ class Sync {
             }
         }
 
+        // B-513: one user turn = one retry group (attachments + text).
+        const group = randomUUID();
+        const trackedLocalIds: string[] = [];
+        const trackedContents: string[] = [];
+
         // Upload attachments and queue file events before the text message.
         if (effectiveAttachments && effectiveAttachments.length > 0) {
             const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
@@ -871,9 +1054,11 @@ class Sync {
                     const fileLocalId = randomUUID();
                     const fileNormalized = normalizeRawMessage(fileLocalId, fileLocalId, Date.now(), fileRecord);
                     if (fileNormalized) {
-                        this.enqueueMessages(sessionId, [fileNormalized]);
+                        this.applyOptimistic(sessionId, fileNormalized);
                     }
                     pending.push({ localId: fileLocalId, content: encryptedFileRecord });
+                    trackedLocalIds.push(fileLocalId);
+                    trackedContents.push(encryptedFileRecord);
                 }
             }
         }
@@ -900,7 +1085,7 @@ class Sync {
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
         if (normalizedMessage) {
-            this.enqueueMessages(sessionId, [normalizedMessage]);
+            this.applyOptimistic(sessionId, normalizedMessage);
         }
 
         let pending = this.pendingOutbox.get(sessionId);
@@ -912,6 +1097,9 @@ class Sync {
             localId,
             content: encryptedRawRecord
         });
+        trackedLocalIds.push(localId);
+        trackedContents.push(encryptedRawRecord);
+        this.trackOutboxItems(sessionId, trackedLocalIds, trackedContents, group);
         trackMessageSent(source, session.metadata);
 
         this.getSendSync(sessionId).invalidate();
@@ -1288,6 +1476,14 @@ class Sync {
         this.messagesSync.delete(sessionId);
         this.sendSync.delete(sessionId);
         this.pendingOutbox.delete(sessionId);
+        // B-513: send states die with the reducer state deleteSession dropped;
+        // drop the retry records and deadlines too.
+        this.sendAbortControllers.get(sessionId)?.abort();
+        for (const [localId, record] of [...this.outboxRecords]) {
+            if (record.sessionId !== sessionId) continue;
+            this.outboxRecords.delete(localId);
+            this.sendDeadlines.delete(localId);
+        }
         this.sessionLastSeq.delete(sessionId);
         this.sessionOldestSeq.delete(sessionId);
         this.sessionMessageLocks.delete(sessionId);
@@ -2074,6 +2270,18 @@ class Sync {
         }
     }
 
+    /**
+     * B-513: advance `sessionLastSeq` through a contiguous run only. A gap
+     * (e.g. our ack is N+2 while agent message N+1 is still in flight) would
+     * otherwise make the live-update path drop N+1 as "already reduced" —
+     * fetch the history instead.
+     */
+    private advanceSessionLastSeq(sessionId: string, seqs: readonly number[]) {
+        const { next, gap } = advanceLastSeq(this.sessionLastSeq.get(sessionId), seqs);
+        if (next !== undefined) this.sessionLastSeq.set(sessionId, next);
+        if (gap) this.getMessagesSync(sessionId).invalidate();
+    }
+
     private flushOutbox = async (sessionId: string) => {
         const pending = this.pendingOutbox.get(sessionId);
         if (!pending || pending.length === 0) {
@@ -2086,18 +2294,32 @@ class Sync {
         }
 
         const batch = pending.slice();
+        const batchIds = new Set(batch.map((message) => message.localId));
+        const records = batch
+            .map((message) => this.outboxRecords.get(message.localId))
+            .filter((record): record is OutboxRecord => !!record);
         const controller = new AbortController();
         this.sendAbortControllers.set(sessionId, controller);
+        this.inFlightOutbox.set(sessionId, batchIds);
+        const markDispatched = () => {
+            for (const record of records) record.attemptInFlight = true;
+        };
+        let data: V3PostSessionMessagesResponse;
         try {
             const session = storage.getState().sessions[sessionId];
             const machineId = session?.metadata?.machineId;
-            const relayResult = machineId
-                ? await apiSocket.deliverSessionMessages(machineId, sessionId, batch)
+            const relayResult = machineId && !batch.some((message) => message.httpOnly)
+                ? await apiSocket.deliverSessionMessages(machineId, sessionId, batch.map(({ localId, content }) => ({ localId, content })), { onEmit: markDispatched })
                 : null;
-            let data: V3PostSessionMessagesResponse;
             if (relayResult?.messages) {
                 data = { messages: relayResult.messages };
             } else {
+                if (controller.signal.aborted) throw new DOMException('Send deadline reached', 'AbortError');
+                // A relay attempt that got no ack may still have stored it.
+                for (const record of records) {
+                    if (record.attemptInFlight) record.mayHaveStored = true;
+                }
+                markDispatched();
                 const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
                     method: 'POST',
                     body: JSON.stringify({
@@ -2111,28 +2333,43 @@ class Sync {
                     },
                     signal: controller.signal
                 });
-                if (!response.ok) {
-                    throw new Error(`Failed to send messages for ${sessionId}: ${response.status}`);
-                }
+                await assertResponseOk(response, `Failed to send messages for ${sessionId}`);
                 data = await response.json() as V3PostSessionMessagesResponse;
             }
-            pending.splice(0, batch.length);
-            if (Array.isArray(data.messages) && data.messages.length > 0) {
-                const currentLastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
-                let maxSeq = currentLastSeq;
-                for (const message of data.messages) {
-                    if (message.seq > maxSeq) {
-                        maxSeq = message.seq;
-                    }
-                }
-                this.sessionLastSeq.set(sessionId, maxSeq);
-            }
         } catch (error) {
+            const outcome = classifySendError(error, isBrowserOnline());
+            for (const record of records) {
+                if (outcome.mayHaveStored && record.attemptInFlight) record.mayHaveStored = true;
+                record.attemptInFlight = false;
+            }
+            if (outcome.kind !== 'retry') {
+                // Final answer from the server: retrying the same batch is
+                // pointless. Show it as failed instead of spinning forever.
+                log.log(`📨 send to ${sessionId} rejected (${error instanceof Error ? error.message : String(error)})`);
+                this.failOutboxItems(sessionId, [...batchIds].filter((localId) => pending.some((message) => message.localId === localId)));
+                return;
+            }
             this.maybeStartBackgroundSendWatchdog();
             throw error;
         } finally {
+            for (const record of records) record.attemptInFlight = false;
             this.sendAbortControllers.delete(sessionId);
+            this.inFlightOutbox.delete(sessionId);
         }
+
+        const stored = Array.isArray(data.messages) ? data.messages : [];
+        // Remove exactly what the server acknowledged, by localId.
+        const ackedIds = new Set(stored.flatMap((message) => typeof message.localId === 'string' ? [message.localId] : []));
+        removeByLocalId(pending, ackedIds);
+        const acks = stored.flatMap((message) => typeof message.localId === 'string' && this.outboxRecords.has(message.localId)
+            ? [{ localId: message.localId, seq: message.seq, id: message.id }]
+            : []);
+        for (const ack of acks) {
+            this.outboxRecords.delete(ack.localId);
+            this.sendDeadlines.delete(ack.localId);
+        }
+        if (acks.length > 0) storage.getState().applyOutboxResult(sessionId, { acks });
+        if (stored.length > 0) this.advanceSessionLastSeq(sessionId, stored.map((message) => message.seq));
 
         if (pending.length === 0) {
             this.pendingOutbox.delete(sessionId);
@@ -2505,8 +2742,7 @@ class Sync {
         }
         if (messages.length === 0) return;
         await this.applyFetchedMessages(payload.sessionId, encryption, messages);
-        const current = this.sessionLastSeq.get(payload.sessionId) ?? 0;
-        this.sessionLastSeq.set(payload.sessionId, messages.reduce((max, message) => Math.max(max, message.seq), current));
+        this.advanceSessionLastSeq(payload.sessionId, messages.map((message) => message.seq));
     }
 
     private handleUpdate = async (update: unknown) => {
@@ -3197,8 +3433,8 @@ class Sync {
     // Apply store
     //
 
-    private applyMessages = (sessionId: string, messages: NormalizedMessage[]) => {
-        const result = storage.getState().applyMessages(sessionId, messages);
+    private applyMessages = (sessionId: string, messages: NormalizedMessage[], sendingLocalIds?: readonly string[]) => {
+        const result = storage.getState().applyMessages(sessionId, messages, sendingLocalIds ? { sendingLocalIds } : undefined);
         let m: Message[] = [];
         for (let messageId of result.changed) {
             const message = storage.getState().sessionMessages[sessionId].messagesMap[messageId];
