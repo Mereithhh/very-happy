@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
-import { initialMachineMetadata } from '@/daemon/run';
+import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
@@ -121,7 +121,7 @@ export async function runCodex(opts: {
     logger.debug(`Using machineId: ${machineId}`);
     await api.getOrCreateMachine({
         machineId,
-        metadata: initialMachineMetadata
+        metadata: getInitialMachineMetadata()
     });
 
     //

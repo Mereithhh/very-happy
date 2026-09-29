@@ -115,6 +115,8 @@ jobs:
           fi
           echo "very-happy --version"
           timeout 30 very-happy --version || { echo "FAIL: --version"; exit 1; }
+          echo "very-happy --self-check"
+          timeout 60 very-happy --self-check || { echo "FAIL: --self-check"; exit 1; }
           echo "very-happy --help"
           timeout 30 very-happy --help || { echo "FAIL: --help"; exit 1; }
           echo "very-happy doctor"
@@ -203,6 +205,8 @@ jobs:
           fi
           echo "very-happy --version"
           timeout 30 very-happy --version || { echo "FAIL: --version"; exit 1; }
+          echo "very-happy --self-check"
+          timeout 60 very-happy --self-check || { echo "FAIL: --self-check"; exit 1; }
           echo "very-happy --help"
           timeout 30 very-happy --help || { echo "FAIL: --help"; exit 1; }
           echo "very-happy doctor"
@@ -282,6 +286,8 @@ jobs:
         run: |
           echo "very-happy --version"
           timeout 30 very-happy --version || { echo "FAIL: --version"; exit 1; }
+          echo "very-happy --self-check"
+          timeout 60 very-happy --self-check || { echo "FAIL: --self-check"; exit 1; }
           echo "very-happy --help"
           timeout 30 very-happy --help || { echo "FAIL: --help"; exit 1; }
           echo "very-happy doctor"

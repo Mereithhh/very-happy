@@ -1,11 +1,8 @@
 import { createRuntimeControls, isRuntimeCheckpointReplay } from './runtimeControls';
 import { createBackgroundTaskTracker } from './backgroundTasks';
 import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
-import { render } from "ink";
 import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
-import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
-import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { rewriteQueuedPermissionMode } from "./utils/queuedPermissionMode";
@@ -63,6 +60,13 @@ export async function claudeRemoteLauncher(
     let inkInstance: any = null;
 
     if (hasTTY) {
+        // B-512: ink/react are imported only with a TTY — daemon-spawned
+        // wrappers (no TTY) never load them.
+        const [{ render }, { default: React }, { RemoteModeDisplay }] = await Promise.all([
+            import("ink"),
+            import("react"),
+            import("@/ui/ink/RemoteModeDisplay"),
+        ]);
         console.clear();
         inkInstance = render(React.createElement(RemoteModeDisplay, {
             messageBuffer,

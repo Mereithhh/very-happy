@@ -32,7 +32,7 @@ describe('detectDaemonSupervisor', () => {
 
 describe('daemon run wiring (B-505 systemd handover)', () => {
     const run = readFileSync(join(__dirname, 'run.ts'), 'utf8');
-    const index = readFileSync(join(__dirname, '..', 'index.ts'), 'utf8');
+    const index = readFileSync(join(__dirname, '..', 'main.ts'), 'utf8');
     const unit = readFileSync(join(__dirname, '..', '..', '..', '..', 'ops', 'dev-sg', 'very-happy-daemon.service'), 'utf8');
 
     it('detects the supervisor once and records it in the daemon state', () => {

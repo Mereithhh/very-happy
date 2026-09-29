@@ -36,15 +36,42 @@ export { probeLoginShellEnv } from './loginShellEnv';
 export const AGENT_HOME_CACHE_MS = 60_000;
 /** A shell that could not be probed is not retried on every spawn. */
 export const AGENT_HOME_FAILURE_CACHE_MS = 5 * 60_000;
+/**
+ * B-512: a new-session spawn serves an expired login-shell answer (and
+ * re-probes in the background) instead of waiting up to 3 s for the shell —
+ * but never one older than this; then it waits like every other caller.
+ */
+export const AGENT_HOME_MAX_STALE_MS = 10 * 60_000;
 
-interface CacheEntry {
-    input: ResolveAgentHomesInput;
-    homes: AgentHomes;
-    expiresAt: number;
+interface ShellProbeEntry {
+    env: EnvLike | null;
+    probedAt: number;
+    ttlMs: number;
 }
 
-let cache: CacheEntry | null = null;
-let inFlight: Promise<CacheEntry> | null = null;
+export type ShellProbeDecision = 'use-cached' | 'use-stale-and-revalidate' | 'await-probe';
+
+/**
+ * B-512: what a caller does with the cached login-shell probe. Pure.
+ * `allowStale` is only for new-session spawns; daemon start and the
+ * resume/restart paths keep the old contract (cached within the TTL, else wait).
+ */
+export function decideShellProbe(
+    entry: { probedAt: number; ttlMs: number } | null,
+    now: number,
+    allowStale: boolean,
+): ShellProbeDecision {
+    if (!entry) return 'await-probe';
+    const age = now - entry.probedAt;
+    if (age < entry.ttlMs) return 'use-cached';
+    if (allowStale && age < AGENT_HOME_MAX_STALE_MS) return 'use-stale-and-revalidate';
+    return 'await-probe';
+}
+
+let shellProbe: ShellProbeEntry | null = null;
+let shellProbeInFlight: Promise<ShellProbeEntry> | null = null;
+/** The last resolution: its inputs (for the conversation lookups) and answer. */
+let last: { input: ResolveAgentHomesInput; homes: AgentHomes } | null = null;
 /** The daemon env BEFORE this module ever touched it — the real "source 3". */
 let originalDaemonEnv: EnvLike | null = null;
 
@@ -56,64 +83,80 @@ function snapshotDaemonEnv(): EnvLike {
     return originalDaemonEnv;
 }
 
-async function load(now: number): Promise<CacheEntry> {
-    const settings = await readSettings();
-    const loginShellEnv = await probeLoginShellEnv(AGENT_HOME_ENV_NAMES);
-    const input: ResolveAgentHomesInput = {
-        settings: { claudeConfigDir: settings.claudeConfigDir, codexHome: settings.codexHome },
-        daemonEnv: snapshotDaemonEnv(),
-        loginShellEnv,
-        homeDir: homedir(),
-    };
-    const homes = resolveAgentHomes(input);
-    return {
-        input,
-        homes,
-        expiresAt: now + (loginShellEnv ? AGENT_HOME_CACHE_MS : AGENT_HOME_FAILURE_CACHE_MS),
-    };
+/** One probe at a time; concurrent callers (and the background refresh) share it. */
+function probeShell(now: number): Promise<ShellProbeEntry> {
+    if (!shellProbeInFlight) {
+        const run = probeLoginShellEnv(AGENT_HOME_ENV_NAMES).then((env) => {
+            const entry: ShellProbeEntry = { env, probedAt: now, ttlMs: env ? AGENT_HOME_CACHE_MS : AGENT_HOME_FAILURE_CACHE_MS };
+            shellProbe = entry;
+            return entry;
+        });
+        shellProbeInFlight = run;
+        void run.finally(() => { if (shellProbeInFlight === run) shellProbeInFlight = null; }).catch(() => { /* surfaced to awaiting callers */ });
+    }
+    return shellProbeInFlight;
+}
+
+async function loginShellEnvFor(now: number, allowStale: boolean): Promise<EnvLike | null> {
+    const decision = decideShellProbe(shellProbe, now, allowStale);
+    if (decision === 'await-probe') return (await probeShell(now)).env;
+    if (decision === 'use-stale-and-revalidate') {
+        // Background refresh with its own catch: an unhandled rejection in the
+        // daemon must never be the price of a faster spawn.
+        probeShell(now).catch((error) => logger.debug('[AGENT HOME] background login-shell probe failed', error));
+    }
+    return shellProbe!.env;
 }
 
 /**
- * Resolve (cached) and apply to `process.env`. Call at daemon start and right
- * before every spawn; the second and later calls are free within the cache
- * window. Logs only when the answer changes.
+ * Resolve and apply to `process.env`. Call at daemon start and right before
+ * every spawn. Settings are re-read on every call (a `claudeConfigDir` change
+ * applies to the next spawn); only the login-shell probe is cached — within
+ * the TTL for everyone, and additionally stale-while-revalidate (up to
+ * AGENT_HOME_MAX_STALE_MS) for callers passing `allowStale` (new-session
+ * spawns, B-512). Logs only when the answer changes.
  */
-export async function refreshAgentHomes(now: number = Date.now()): Promise<AgentHomes> {
-    if (cache && cache.expiresAt > now) return cache.homes;
-    if (!inFlight) {
-        inFlight = load(now).finally(() => { inFlight = null; });
-    }
-    let entry: CacheEntry;
+export async function refreshAgentHomes(now: number = Date.now(), opts: { allowStale?: boolean } = {}): Promise<AgentHomes> {
+    let input: ResolveAgentHomesInput;
+    let homes: AgentHomes;
     try {
-        entry = await inFlight;
+        const loginShellEnv = await loginShellEnvFor(now, opts.allowStale === true);
+        const settings = await readSettings();
+        input = {
+            settings: { claudeConfigDir: settings.claudeConfigDir, codexHome: settings.codexHome },
+            daemonEnv: snapshotDaemonEnv(),
+            loginShellEnv,
+            homeDir: homedir(),
+        };
+        homes = resolveAgentHomes(input);
     } catch (error) {
         // Never let a probe problem block a spawn: keep the previous answer,
         // or behave exactly like before this module existed (daemon env only).
         logger.debug('[AGENT HOME] resolve failed, falling back', error);
-        if (cache) return cache.homes;
-        const input: ResolveAgentHomesInput = { settings: {}, daemonEnv: snapshotDaemonEnv(), loginShellEnv: null, homeDir: homedir() };
-        return resolveAgentHomes(input);
+        if (last) return last.homes;
+        return resolveAgentHomes({ settings: {}, daemonEnv: snapshotDaemonEnv(), loginShellEnv: null, homeDir: homedir() });
     }
-    const previous = cache?.homes;
-    cache = entry;
-    applyAgentHomesToProcessEnv(entry.homes);
+    const previous = last?.homes;
+    last = { input, homes };
+    applyAgentHomesToProcessEnv(homes);
     if (!previous
-        || previous.claudeConfigDir.path !== entry.homes.claudeConfigDir.path
-        || previous.codexHome.path !== entry.homes.codexHome.path) {
-        logger.debug(`[AGENT HOME] Claude config dir: ${describeAgentHome(entry.homes.claudeConfigDir)}; Codex home: ${describeAgentHome(entry.homes.codexHome)}`);
+        || previous.claudeConfigDir.path !== homes.claudeConfigDir.path
+        || previous.codexHome.path !== homes.codexHome.path) {
+        logger.debug(`[AGENT HOME] Claude config dir: ${describeAgentHome(homes.claudeConfigDir)}; Codex home: ${describeAgentHome(homes.codexHome)}`);
     }
-    return entry.homes;
+    return homes;
 }
 
 /** The last resolved answer without probing; `null` before the first refresh. */
 export function currentAgentHomes(): AgentHomes | null {
-    return cache?.homes ?? null;
+    return last?.homes ?? null;
 }
 
 /** Drop the cache and the daemon-env snapshot (settings changed, tests). */
 export function resetAgentHomesCache(): void {
-    cache = null;
-    inFlight = null;
+    shellProbe = null;
+    shellProbeInFlight = null;
+    last = null;
     originalDaemonEnv = null;
 }
 
@@ -150,7 +193,7 @@ function fileSizeSafe(path: string): number | null {
  * existing `conversationExists` prechecks can use it as a drop-in.
  */
 export function locateClaudeConversation(workingDirectory: string, claudeSessionId: string): ConversationHit | null {
-    const entry = cache;
+    const entry = last;
     if (!entry) {
         // Before the first refresh only the daemon env is known — same answer
         // `getProjectPath` would give.
@@ -161,7 +204,7 @@ export function locateClaudeConversation(workingDirectory: string, claudeSession
 }
 
 export function locateCodexThread(codexThreadId: string): ConversationHit | null {
-    const entry = cache;
+    const entry = last;
     const input: ResolveAgentHomesInput = entry?.input
         ?? { settings: {}, daemonEnv: process.env, loginShellEnv: null, homeDir: homedir() };
     return findCodexThread(codexThreadId, agentHomeCandidates('codex', input, entry?.homes), listDirSafe);

@@ -48,8 +48,8 @@ vi.mock('@/daemon/controlClient', () => ({
     notifyDaemonSessionStarted: mockNotifyDaemonSessionStarted,
 }));
 
-vi.mock('@/daemon/run', () => ({
-    initialMachineMetadata: {},
+vi.mock('@/daemon/machineMetadata', () => ({
+    getInitialMachineMetadata: () => ({}),
 }));
 
 vi.mock('@/claude/utils/startHappyServer', () => ({
@@ -373,5 +373,135 @@ describe('runClaude remote JSONL scanner', () => {
         }) as never);
         await expect(runPromise).rejects.toThrow('process.exit');
         exitSpy.mockRestore();
+    });
+});
+
+describe('runClaude startup order (B-512)', () => {
+    const processEvents = ['SIGTERM', 'SIGINT', 'uncaughtException', 'unhandledRejection'] as const;
+    const originalListeners = new Map<string, Array<(...args: any[]) => void>>();
+    const reconnectEnv = [
+        'HAPPY_RECONNECT_SESSION_ID', 'HAPPY_RECONNECT_ENCRYPTION_KEY', 'HAPPY_RECONNECT_ENCRYPTION_VARIANT',
+        'HAPPY_RECONNECT_SEQ', 'HAPPY_RECONNECT_METADATA_VERSION', 'HAPPY_RECONNECT_AGENT_STATE_VERSION',
+    ];
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        for (const event of processEvents) {
+            originalListeners.set(event, process.listeners(event as any) as Array<(...args: any[]) => void>);
+        }
+        for (const key of reconnectEnv) delete process.env[key];
+        delete process.env.HAPPY_FORK_CLAUDE_SESSION_ID;
+        mockReadSettings.mockResolvedValue({ machineId: 'machine-1', sandboxConfig: undefined });
+        mockNotifyDaemonSessionStarted.mockResolvedValue({});
+        mockStartHappyServer.mockResolvedValue({ url: 'http://127.0.0.1:12345', toolNames: [], stop: vi.fn() });
+        mockStartHookServer.mockResolvedValue({ port: 23456, stop: vi.fn() });
+        mockCreateSessionScanner.mockResolvedValue({ onNewSession: vi.fn(), cleanup: vi.fn() });
+    });
+
+    afterEach(() => {
+        for (const key of reconnectEnv) delete process.env[key];
+        for (const [event, listeners] of originalListeners) {
+            process.removeAllListeners(event as any);
+            for (const listener of listeners) process.on(event as any, listener);
+        }
+        originalListeners.clear();
+    });
+
+    function fixtures() {
+        const sessionClient = {
+            attachPromptQueueDrain: vi.fn(() => ({ onIdle: vi.fn(), onQueueChanged: vi.fn(), onInbound: vi.fn(), close: vi.fn(), hasPending: () => false, maybeDispatch: vi.fn(async () => false) })),
+            promptQueueHasPending: vi.fn(() => false),
+            closePromptQueueDrain: vi.fn(),
+            sessionId: 'happy-session-order',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            cancelUndeliveredQueuedInputs: vi.fn(async () => {}),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn(),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(),
+            getMetadata: vi.fn(() => ({})),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: { registerHandler: vi.fn() },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-order', seq: 0, metadata: {}, metadataVersion: 0,
+                agentState: {}, agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' as const,
+            })),
+            reactivateSession: vi.fn(async () => true),
+            getSession: vi.fn(async () => ({ ok: false, reason: 'test' })),
+            sessionSyncClient: vi.fn((..._args: unknown[]) => sessionClient),
+            deactivateSession: vi.fn(async () => {}),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+        const loopDeferred = createDeferred<number>();
+        mockLoop.mockReturnValue(loopDeferred.promise);
+        return { api, sessionClient, loopDeferred };
+    }
+
+    async function finish(runPromise: Promise<void>, loopDeferred: { resolve: (v: number) => void }) {
+        loopDeferred.resolve(0);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+    }
+
+    const credentials = { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } } as any;
+
+    it('a daemon spawn skips getOrCreateMachine and opens the session socket before the webhook', async () => {
+        const { api, loopDeferred } = fixtures();
+        const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
+        await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+
+        expect(api.getOrCreateMachine).not.toHaveBeenCalled();
+        expect(api.sessionSyncClient).toHaveBeenCalledTimes(1);
+        expect(api.sessionSyncClient.mock.calls[0]).toHaveLength(1); // fresh: no seeded cursor
+        expect(api.sessionSyncClient.mock.invocationCallOrder[0])
+            .toBeLessThan(mockNotifyDaemonSessionStarted.mock.invocationCallOrder[0]);
+        await finish(runPromise, loopDeferred);
+    });
+
+    it('a terminal launch still registers the machine', async () => {
+        const { api, loopDeferred } = fixtures();
+        const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'terminal' });
+        await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+
+        expect(api.getOrCreateMachine).toHaveBeenCalledTimes(1);
+        expect(api.getOrCreateMachine.mock.invocationCallOrder[0])
+            .toBeLessThan(api.getOrCreateSession.mock.invocationCallOrder[0]);
+        await finish(runPromise, loopDeferred);
+    });
+
+    it('a reconnect keeps reactivate → snapshot → webhook → socket', async () => {
+        const { api, sessionClient, loopDeferred } = fixtures();
+        process.env.HAPPY_RECONNECT_SESSION_ID = 'happy-session-order';
+        process.env.HAPPY_RECONNECT_ENCRYPTION_KEY = Buffer.from(new Uint8Array(32)).toString('base64');
+        process.env.HAPPY_RECONNECT_ENCRYPTION_VARIANT = 'legacy';
+        const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
+        await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+
+        expect(api.getOrCreateSession).not.toHaveBeenCalled();
+        const reactivate = api.reactivateSession.mock.invocationCallOrder[0];
+        const snapshot = api.getSession.mock.invocationCallOrder[0];
+        const webhook = mockNotifyDaemonSessionStarted.mock.invocationCallOrder[0];
+        const socket = api.sessionSyncClient.mock.invocationCallOrder[0];
+        expect(reactivate).toBeLessThan(snapshot);
+        expect(snapshot).toBeLessThan(webhook);
+        expect(webhook).toBeLessThan(socket);
+        expect(sessionClient.skipExistingMessages).toHaveBeenCalled();
+        await finish(runPromise, loopDeferred);
     });
 });

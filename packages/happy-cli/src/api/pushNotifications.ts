@@ -1,6 +1,8 @@
 import axios from 'axios'
 import { logger } from '@/ui/logger'
-import { Expo, ExpoPushMessage } from 'expo-server-sdk'
+// B-512: expo-server-sdk is loaded on the first send, not at startup — the
+// wrapper's cold start must not pay for it (it is only needed once a turn ends).
+import type { Expo, ExpoPushMessage } from 'expo-server-sdk'
 import type { Metadata } from './types'
 import { configuration } from '@/configuration'
 import { contentLogMetadata } from '@/utils/contentLogMetadata'
@@ -75,12 +77,21 @@ export function getSessionNotificationCopy(
 export class PushNotificationClient {
     private readonly token: string
     private readonly baseUrl: string
-    private readonly expo: Expo
+    private expoLoad: Promise<{ Expo: typeof Expo; expo: Expo }> | null = null
 
     constructor(token: string, baseUrl: string = 'https://api.cluster-fluster.com') {
         this.token = token
         this.baseUrl = baseUrl
-        this.expo = new Expo()
+    }
+
+    private loadExpo(): Promise<{ Expo: typeof Expo; expo: Expo }> {
+        if (!this.expoLoad) {
+            const load = import('expo-server-sdk').then(({ Expo }) => ({ Expo, expo: new Expo() }))
+            // A failed load must be retried on the next send, not cached forever.
+            load.catch(() => { if (this.expoLoad === load) this.expoLoad = null })
+            this.expoLoad = load
+        }
+        return this.expoLoad
     }
 
     /**
@@ -128,6 +139,7 @@ export class PushNotificationClient {
      */
     async sendPushNotifications(messages: ExpoPushMessage[]): Promise<void> {
         logger.debug(`Sending ${messages.length} push notifications`)
+        const { Expo, expo } = await this.loadExpo()
 
         // Filter out invalid push tokens
         const validMessages = messages.filter(message => {
@@ -143,7 +155,7 @@ export class PushNotificationClient {
         }
 
         // Create chunks to respect Expo's rate limits
-        const chunks = this.expo.chunkPushNotifications(validMessages)
+        const chunks = expo.chunkPushNotifications(validMessages)
 
         for (const chunk of chunks) {
             // Retry with exponential backoff for 5 minutes
@@ -153,7 +165,7 @@ export class PushNotificationClient {
             
             while (true) {
                 try {
-                    const ticketChunk = await this.expo.sendPushNotificationsAsync(chunk)
+                    const ticketChunk = await expo.sendPushNotificationsAsync(chunk)
                     
                     // Log any errors but don't throw
                     const errors = ticketChunk.filter(ticket => ticket.status === 'error')

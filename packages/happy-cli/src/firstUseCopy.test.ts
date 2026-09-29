@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
 import { localMachineIdentityStatus } from './ui/authStatusFacts'
 
-const cliEntry = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
+const cliEntry = readFileSync(new URL('./main.ts', import.meta.url), 'utf8')
 const authCommand = readFileSync(new URL('./commands/auth.ts', import.meta.url), 'utf8')
 const troubleshooting = readFileSync(new URL('../../../docs/troubleshooting.md', import.meta.url), 'utf8')
 
