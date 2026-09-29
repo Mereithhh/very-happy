@@ -88,6 +88,25 @@ type V3PostSessionMessagesResponse = {
 };
 
 export class ApiSessionClient extends EventEmitter {
+    /**
+     * B-512: the session socket now connects before the runner has attached its
+     * `archived` listener (registerKillSessionHandler). An archive signal that
+     * fires in that window must not be lost: remember it and replay it to any
+     * listener attached later.
+     */
+    private archiveSignalled = false;
+
+    override emit(event: string | symbol, ...args: any[]): boolean {
+        if (event === 'archived') this.archiveSignalled = true;
+        return super.emit(event, ...args);
+    }
+
+    override on(event: string | symbol, listener: (...args: any[]) => void): this {
+        super.on(event, listener);
+        if (event === 'archived' && this.archiveSignalled) queueMicrotask(() => listener());
+        return this;
+    }
+
     private readonly token: string;
     readonly sessionId: string;
     private metadata: Metadata | null;

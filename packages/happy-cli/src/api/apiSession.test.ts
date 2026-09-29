@@ -192,6 +192,28 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
     });
 
+    it('B-512: replays an archive signal to a listener attached after it fired (early socket)', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const early = vi.fn();
+        client.on('archived', early);
+        emitSocketEvent('session-archive', { sessionId: 'test-session-id' });
+        expect(early).toHaveBeenCalledTimes(1);
+
+        const late = vi.fn();
+        client.on('archived', late);
+        await Promise.resolve();
+        expect(late).toHaveBeenCalledTimes(1);
+        expect(early).toHaveBeenCalledTimes(1);
+    });
+
+    it('B-512: does not replay anything before an archive signal', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const late = vi.fn();
+        client.on('archived', late);
+        await Promise.resolve();
+        expect(late).not.toHaveBeenCalled();
+    });
+
     it('retries a hard agent-state error instead of dropping the update', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockSocket.emitWithAck

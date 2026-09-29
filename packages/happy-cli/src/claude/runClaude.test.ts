@@ -74,6 +74,7 @@ vi.mock('@/ui/logger', () => ({
         debug: vi.fn(),
         debugLargeJson: vi.fn(),
         infoDeveloper: vi.fn(),
+        warn: vi.fn(),
     },
 }));
 
@@ -461,17 +462,39 @@ describe('runClaude startup order (B-512)', () => {
 
     const credentials = { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } } as any;
 
-    it('a daemon spawn skips getOrCreateMachine and opens the session socket before the webhook', async () => {
+    it('a daemon spawn registers the machine only after the webhook and opens the session socket before it', async () => {
         const { api, loopDeferred } = fixtures();
         const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
         await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
 
-        expect(api.getOrCreateMachine).not.toHaveBeenCalled();
+        // B-512 review: still registered (daemon may have started offline), but off the critical path
+        expect(api.getOrCreateMachine).toHaveBeenCalledTimes(1);
+        expect(api.getOrCreateMachine.mock.invocationCallOrder[0])
+            .toBeGreaterThan(mockNotifyDaemonSessionStarted.mock.invocationCallOrder[0]);
+        expect(api.getOrCreateSession.mock.invocationCallOrder[0])
+            .toBeLessThan(api.getOrCreateMachine.mock.invocationCallOrder[0]);
         expect(api.sessionSyncClient).toHaveBeenCalledTimes(1);
         expect(api.sessionSyncClient.mock.calls[0]).toHaveLength(1); // fresh: no seeded cursor
         expect(api.sessionSyncClient.mock.invocationCallOrder[0])
             .toBeLessThan(mockNotifyDaemonSessionStarted.mock.invocationCallOrder[0]);
         await finish(runPromise, loopDeferred);
+    });
+
+    it('a failing background machine registration never becomes an unhandled rejection', async () => {
+        const { api, loopDeferred } = fixtures();
+        api.getOrCreateMachine.mockRejectedValue(new Error('server down'));
+        const unhandled = vi.fn();
+        process.on('unhandledRejection', unhandled);
+        try {
+            const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
+            await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+            await vi.waitFor(() => expect(api.getOrCreateMachine).toHaveBeenCalled());
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(unhandled).not.toHaveBeenCalled();
+            await finish(runPromise, loopDeferred);
+        } finally {
+            process.off('unhandledRejection', unhandled);
+        }
     });
 
     it('a terminal launch still registers the machine', async () => {
