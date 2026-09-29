@@ -3,9 +3,9 @@ export function isStandaloneVersionRequest(args: readonly string[]): boolean {
 }
 
 /**
- * B-512: hidden `--self-check` — loads every lazily imported module (see
- * lazyModules.ts). `--version` no longer touches the module graph, so this is
- * the smoke test for a built/installed bundle (handover preflight, release).
+ * B-512: hidden alias of `--version` — both import every lazily loaded module
+ * (see lazyModules.ts / selfCheck.ts) before printing the version; this
+ * spelling also prints a summary line.
  */
 export const SELF_CHECK_FLAG = '--self-check'
 

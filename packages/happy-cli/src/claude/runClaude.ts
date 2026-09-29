@@ -350,7 +350,30 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // SDK metadata (tools, slash commands) is now extracted from the
     // system.init message in claudeRemote.ts via onSDKMetadata callback
 
-    // Post-webhook half, prefetched above.
+    // B-512 review: the daemon-spawned wrapper skipped getOrCreateMachine before
+    // the session create, but it used to be what (re)created the machine row
+    // when the daemon had started offline (createMinimalMachine fallback, no
+    // server row → the machine socket is rejected with "Machine not found").
+    // Register it now, off the critical path; never an unhandled rejection.
+    if (!startupPlan.registerMachine) {
+        void Promise.resolve()
+            .then(() => api.getOrCreateMachine({ machineId: machineId!, metadata: getInitialMachineMetadata() }))
+            .catch((error) => logger.debug('[START] Background machine registration failed:', error));
+    }
+
+    // Post-webhook half, prefetched above. B-512 review: if it cannot load, the
+    // session row exists and the daemon was told it started — do not leave it
+    // looking alive. Mark it offline (deactivate, never archive: this is an
+    // infrastructure failure, AGENTS constraint 7) and exit non-zero.
+    let deps: Awaited<typeof depsLoad>;
+    try {
+        deps = await depsLoad;
+    } catch (error) {
+        logger.warn(`[START] Failed to load the Claude runner modules for session ${response.id}; marking it offline and exiting: ${error instanceof Error ? error.message : String(error)}`);
+        try { await earlySession?.close(); } catch { /* best effort */ }
+        try { await api.deactivateSession(response.id); } catch { /* best effort */ }
+        process.exit(1);
+    }
     const {
         loop, MessageQueue2, claudeModeHash, parseSpecialCommand, getEnvironmentInfo,
         startHappyServer, startHookServer, EditReportThrottle, extractClaudeEditPaths,
@@ -359,7 +382,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         registerSideQuestionHandler, writeSideQuestionSettingsFile, claudeCheckSession,
         createSessionScanner, getProjectPath, RawJSONLinesSchema, TitleGenerator, BoardAnalyzer,
         FileRateLimiter, createSelfReportState, withAssistantDenylist, contentLogMetadata,
-    } = await depsLoad;
+    } = deps;
 
     // Log environment info (moved off the pre-webhook path, B-512)
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());

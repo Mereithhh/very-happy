@@ -37,8 +37,8 @@ import { createPeerCoordinator } from './peerCoordinator';
 import { createRemoteSessionOpsHandlers } from './remoteSessionOps';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { refreshAgentHomes, agentHomeSpawnEnv, locateClaudeConversation, describeAgentHome } from '@/agentHome';
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'fs';
-import { dirname, join } from 'path';
+import { existsSync, mkdtempSync, rmSync, statSync } from 'fs';
+import { join } from 'path';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { projectPath } from '@/projectPath';
@@ -52,7 +52,7 @@ import { getInitialMachineMetadata, getStartupCliAvailability } from './machineM
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { readSettings, writeSettings } from '@/persistence';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
-import { decideHandover, preflightProbeArg, type HandoverPreflight, type PreflightProbe } from './handoverPreflight';
+import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
 import { installCliSafely } from '@/update/npmInstall';
 import { createUpdateController } from '@/update/updateController';
@@ -90,18 +90,15 @@ export function sanitizeImportTitle(value: unknown): string | null {
 
 
 /**
- * B-321: run the replacement bundle before trusting it. `--self-check` (B-512;
- * `--version` for bundles that predate it, see preflightProbeArg) loads the
- * module graph and the native addons that a half-finished npm install
- * breaks, in an isolated HAPPY_HOME_DIR so it cannot disturb the daemon's own
- * state. Never throws: any failure is a reason to hold, not to crash.
+ * B-321: run the replacement bundle before trusting it. `--version` exercises
+ * the module graph and the native addons that a half-finished npm install
+ * breaks (B-512: the entry stub answers it by importing every lazily loaded
+ * module — see src/selfCheck.ts), in an isolated HAPPY_HOME_DIR so it cannot
+ * disturb the daemon's own state. Never throws: any failure is a reason to
+ * hold, not to crash.
  */
 async function preflightNewBundle(bundlePath: string): Promise<HandoverPreflight> {
   const home = mkdtempSync(join(tmpdir(), 'vh-preflight-'));
-  let probe: PreflightProbe = '--version';
-  try {
-    probe = preflightProbeArg(readdirSync(dirname(bundlePath)));
-  } catch { /* unreadable dist: the spawn below reports the real problem */ }
   try {
     return await new Promise<HandoverPreflight>((resolve) => {
       let stdout = '';
@@ -109,11 +106,11 @@ async function preflightNewBundle(bundlePath: string): Promise<HandoverPreflight
       const done = (run: Parameters<typeof decideHandover>[0]) => {
         if (settled) return;
         settled = true;
-        resolve(decideHandover({ ...run, probe }));
+        resolve(decideHandover(run));
       };
       let child: ReturnType<typeof spawn>;
       try {
-        child = spawn(process.execPath, ['--no-warnings', '--no-deprecation', bundlePath, probe], {
+        child = spawn(process.execPath, ['--no-warnings', '--no-deprecation', bundlePath, '--version'], {
           env: { ...process.env, HAPPY_HOME_DIR: home },
           stdio: ['ignore', 'pipe', 'ignore'],
         });
