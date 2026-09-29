@@ -2371,7 +2371,9 @@ class Sync {
         if (acks.length > 0) storage.getState().applyOutboxResult(sessionId, { acks });
         if (stored.length > 0) this.advanceSessionLastSeq(sessionId, stored.map((message) => message.seq));
 
-        if (pending.length === 0) {
+        // Only drop the queue this request drained: a deadline may have removed
+        // it meanwhile and a new send created a fresh one under the same key.
+        if (pending.length === 0 && this.pendingOutbox.get(sessionId) === pending) {
             this.pendingOutbox.delete(sessionId);
         }
         if (!this.hasPendingOutboxMessages()) {
