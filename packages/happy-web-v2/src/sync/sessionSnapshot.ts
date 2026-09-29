@@ -23,3 +23,27 @@ export function preserveSessionBatchActivityFromStore<T extends { id: string; th
 ): T[] {
     return snapshots.map((snapshot) => preserveSessionActivityFromStore(snapshot, currentById[snapshot.id]));
 }
+
+/**
+ * B-512: `metadata` / `agentState` are versioned by the server and only move
+ * forward. A snapshot computed before a realtime `update-session` (a slow
+ * /v1/sessions refetch, the `new-session` backstop refetch, a reordered
+ * update) must not roll them back. Each pair is guarded independently; every
+ * other field of the incoming snapshot is left exactly as it is.
+ */
+export function keepNewerSessionVersions<T extends {
+    metadata: unknown; metadataVersion: number; agentState: unknown; agentStateVersion: number;
+}>(
+    incoming: T,
+    existing: { metadata: unknown; metadataVersion: number; agentState: unknown; agentStateVersion: number } | undefined,
+): T {
+    if (!existing) return incoming;
+    const staleMetadata = existing.metadataVersion > incoming.metadataVersion;
+    const staleAgentState = existing.agentStateVersion > incoming.agentStateVersion;
+    if (!staleMetadata && !staleAgentState) return incoming;
+    return {
+        ...incoming,
+        ...(staleMetadata ? { metadata: existing.metadata, metadataVersion: existing.metadataVersion } : {}),
+        ...(staleAgentState ? { agentState: existing.agentState, agentStateVersion: existing.agentStateVersion } : {}),
+    };
+}

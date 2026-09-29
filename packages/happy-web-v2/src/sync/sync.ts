@@ -78,6 +78,9 @@ import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta, type MessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { preserveSessionBatchActivityFromStore } from './sessionSnapshot';
+import { decodeSessionRows } from './sessionDecode';
+import { applyNewSessionUpdate } from './newSessionUpdate';
+import { newSessionTimingInStore } from '@/app/newSessionTiming';
 import { downloadEncryptedAttachment, requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { decryptBlob } from '@/encryption/blob';
 import { encryptBlob } from '@/encryption/blob';
@@ -1184,71 +1187,10 @@ class Sync {
             lastMessage: ApiMessage | null;
         }>;
 
-        // Initialize all session encryptions first.
-        //
-        // Resilience (mirrors fetchMachines): ONE session with malformed
-        // crypto material (bad base64 metadata/key, foreign key format) must
-        // NOT reject the whole fetch — InvalidateSync would retry forever
-        // (~1/s atob-throw loop) and session sync would be wedged for every
-        // client until the bad row is deleted server-side. Skip the bad
-        // session, keep the rest.
-        const sessionKeys = new Map<string, Uint8Array | null>();
-        for (const session of sessions) {
-            if (session.dataEncryptionKey) {
-                let decrypted: Uint8Array | null = null;
-                try {
-                    decrypted = await this.encryption.decryptEncryptionKey(session.dataEncryptionKey);
-                } catch (error) {
-                    console.error(`Failed to decrypt data encryption key for session ${session.id}:`, error);
-                }
-                if (!decrypted) {
-                    console.error(`Failed to decrypt data encryption key for session ${session.id}`);
-                    continue;
-                }
-                sessionKeys.set(session.id, decrypted);
-            } else {
-                sessionKeys.set(session.id, null);
-            }
-        }
-        try {
-            await this.encryption.initializeSessions(sessionKeys);
-        } catch (error) {
-            console.error('Failed to initialize session encryptions:', error);
-        }
-
-        // Decrypt sessions
-        let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
-        for (const session of sessions) {
-            // Get session encryption (should always exist after initialization)
-            const sessionEncryption = this.encryption.getSessionEncryption(session.id);
-            if (!sessionEncryption) {
-                console.error(`Session encryption not found for ${session.id} - this should never happen`);
-                continue;
-            }
-
-            // Decrypt metadata + agent state using session-specific
-            // encryption. A throw (malformed base64 from a corrupt row) must
-            // only skip THIS session — see resilience note above.
-            let metadata: Awaited<ReturnType<typeof sessionEncryption.decryptMetadata>>;
-            let agentState: Awaited<ReturnType<typeof sessionEncryption.decryptAgentState>>;
-            try {
-                metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
-                agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
-            } catch (error) {
-                console.error(`Failed to decrypt session ${session.id} - skipping`, error);
-                continue;
-            }
-
-            // Put it all together
-            const processedSession = {
-                ...session,
-                thinking: false,
-                thinkingAt: 0,
-                metadata,
-                agentState
-            };
-            decryptedSessions.push(processedSession);
-        }
+        // Key init + metadata/agentState decryption (one bad row is skipped,
+        // never wedging the batch) — shared with the new-session update (B-512).
+        const decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] =
+            await decodeSessionRows(this.encryption, sessions);
 
         // Take exactly one current snapshot immediately before the synchronous
         // apply. Reading inside the decrypt loop can resurrect an activity
@@ -2628,6 +2570,23 @@ class Sync {
 
         } else if (updateData.body.t === 'new-session') {
             log.log('🆕 New session update received');
+            // B-512: the update carries the full row — land it now instead of
+            // making the session page wait for a full /v1/sessions refetch.
+            // Old servers (id/createdAt/updatedAt only) return false here and
+            // behave exactly as before.
+            try {
+                const applied = await applyNewSessionUpdate(updateData.body, {
+                    encryption: this.encryption,
+                    getSession: (id) => storage.getState().sessions[id],
+                    isDeleted: isSessionDeleted,
+                    applySessions: (sessions) => this.applySessions(sessions),
+                });
+                if (applied) newSessionTimingInStore(updateData.body.id);
+            } catch (error) {
+                console.error(`Failed to apply new-session ${updateData.body.id} directly:`, error);
+            }
+            // Backstop: the authoritative list (and anything the update does
+            // not carry, e.g. archivedAt / lastMessage) still converges.
             this.sessionsSync.invalidate();
         } else if (updateData.body.t === 'delete-session') {
             log.log('🗑️ Delete session update received');

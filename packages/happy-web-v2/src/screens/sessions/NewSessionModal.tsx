@@ -6,6 +6,7 @@ import { isMachineOnline, pickDefaultMachineId } from '@/utils/machineUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import type { RecentMachinePath } from '@/utils/quickChat';
 import { recordRecentMachinePath } from '@/app/newChat';
+import { newSessionTimingCancel, newSessionTimingRpcReturned, newSessionTimingRpcSent, newSessionTimingStart } from '@/app/newSessionTiming';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { Button, useToast } from '@/ui';
@@ -170,6 +171,7 @@ export function NewSessionModal({
 
   async function spawn(approve = false) {
     const permissionMode = resolveNewSessionPermissionMode(agentDefaultOverrides, agent, reviewFirst);
+    newSessionTimingRpcSent();
     const res = await machineSpawnNewSession({
       machineId,
       directory: resolveDir(trimmed),
@@ -177,6 +179,7 @@ export function NewSessionModal({
       permissionMode,
       approvedNewDirectoryCreation: approve,
     });
+    if (res.type === 'success') newSessionTimingRpcReturned(res.sessionId);
     if (res.type === 'requestToApproveDirectoryCreation') {
       const ok = await Modal.confirm(
         t('newSession.createDirTitle'),
@@ -197,8 +200,10 @@ export function NewSessionModal({
   async function onCreate() {
     if (!canCreate) return;
     setBusy(true);
+    newSessionTimingStart('dialog');
     try {
       const sessionId = await spawn(false);
+      if (!sessionId) newSessionTimingCancel();
       if (sessionId) {
         // Teach the quick "+" path: the next new chat reuses this
         // machine+directory directly, without this dialog.
@@ -214,6 +219,7 @@ export function NewSessionModal({
         navigate(`/session/${sessionId}`);
       }
     } catch (e: any) {
+      newSessionTimingCancel();
       toast.error(e?.message || t('errors.networkError'));
     } finally {
       setBusy(false);
