@@ -52,10 +52,14 @@ function isAbortError(error: unknown): boolean {
  * gone), 413 (byte quota), 429 `message_count_quota_exceeded` (count quota —
  * a plain 429 rate limit is retried), and 401/403. Any of these answers means
  * the server did not store the batch. Everything else is retried, and an
- * attempt that may have reached the server (timeout, abort, 5xx, a network
- * error while the browser believed it was online) counts as maybe-stored.
+ * attempt that may have reached the server (timeout, abort, 5xx, or a network
+ * error on a request dispatched while online) counts as maybe-stored.
+ *
+ * `onlineAtDispatch` is the browser's online state when the request was sent,
+ * NOT when it failed: a request that left while online and failed because the
+ * device dropped offline mid-flight may well have been stored (review B-513).
  */
-export function classifySendError(error: unknown, online: boolean): SendOutcome {
+export function classifySendError(error: unknown, onlineAtDispatch: boolean): SendOutcome {
     if (isAuthFailure(error)) return { kind: 'auth', mayHaveStored: false };
     if (error instanceof ApiRequestError) {
         const { status, code } = error;
@@ -68,9 +72,18 @@ export function classifySendError(error: unknown, online: boolean): SendOutcome 
         return { kind: 'retry', mayHaveStored: status >= 500 };
     }
     if (isAbortError(error)) return { kind: 'retry', mayHaveStored: true };
-    // fetch rejects with a TypeError when the request never completed. While the
-    // browser reports offline it could not have been sent at all.
-    return { kind: 'retry', mayHaveStored: online };
+    // fetch rejects with a TypeError when the request never completed. Only a
+    // request issued while the browser already reported offline never left.
+    return { kind: 'retry', mayHaveStored: onlineAtDispatch };
+}
+
+/**
+ * Start one send attempt: snapshot the online state at dispatch time, so the
+ * later failure is judged by whether the request could have left at all.
+ */
+export function beginSendAttempt(isOnline: () => boolean): { classify: (error: unknown) => SendOutcome } {
+    const onlineAtDispatch = isOnline();
+    return { classify: (error) => classifySendError(error, onlineAtDispatch) };
 }
 
 /**
@@ -91,6 +104,10 @@ export class SendDeadlines {
 
     delete(localId: string): void {
         this.items.delete(localId);
+    }
+
+    has(localId: string): boolean {
+        return this.items.has(localId);
     }
 
     get size(): number {
@@ -140,6 +157,57 @@ export function advanceLastSeq(current: number | undefined, seqs: readonly numbe
         ahead.delete(next);
     }
     return { next, gap: ahead.size > 0 };
+}
+
+/**
+ * What a successful send response means locally. `trackedIds` are the batch's
+ * user/file items as of dispatch (they must be confirmed from their ack, even
+ * if their record was dropped meanwhile — a taken-back item must re-surface).
+ * `lastSeq` may only move over seqs whose messages are reflected locally:
+ * confirmed tracked items, and untracked batch items (tombstones, reduced when
+ * enqueued). A seq we did not apply must not be skipped over, or its echo is
+ * dropped as "already reduced" (review B-513).
+ */
+export function interpretSendResponse(
+    stored: readonly { id: string; seq: number; localId: string | null }[],
+    batchIds: ReadonlySet<string>,
+    trackedIds: ReadonlySet<string>,
+): {
+    ackedIds: Set<string>;
+    acks: { localId: string; seq: number; id: string }[];
+    lastSeqCandidates: number[];
+} {
+    const ackedIds = new Set<string>();
+    const acks: { localId: string; seq: number; id: string }[] = [];
+    const lastSeqCandidates: number[] = [];
+    for (const message of stored) {
+        if (typeof message.localId !== 'string' || !batchIds.has(message.localId)) continue;
+        ackedIds.add(message.localId);
+        if (trackedIds.has(message.localId)) acks.push({ localId: message.localId, seq: message.seq, id: message.id });
+        lastSeqCandidates.push(message.seq);
+    }
+    return { ackedIds, acks, lastSeqCandidates };
+}
+
+/**
+ * Retry records (they hold the encrypted content) that are no longer needed:
+ * the reducer shows no send state (confirmed — typically by an echo after a
+ * deadline failure, which never produces an ack), no deadline is running and
+ * the item is not queued. A `failed` item keeps its record for Retry.
+ */
+export function settledOutboxRecords(
+    records: Iterable<{ localId: string; sessionId: string }>,
+    sessionId: string,
+    sendStates: ReadonlyMap<string, unknown>,
+    isActive: (localId: string) => boolean,
+): string[] {
+    const settled: string[] = [];
+    for (const record of records) {
+        if (record.sessionId !== sessionId) continue;
+        if (sendStates.has(record.localId) || isActive(record.localId)) continue;
+        settled.push(record.localId);
+    }
+    return settled;
 }
 
 /**

@@ -4,10 +4,13 @@ import {
     advanceLastSeq,
     ApiRequestError,
     assertResponseOk,
+    beginSendAttempt,
     classifySendError,
+    interpretSendResponse,
     mapWithConcurrency,
     removeByLocalId,
     SendDeadlines,
+    settledOutboxRecords,
 } from './outbox';
 
 describe('B-513 advanceLastSeq', () => {
@@ -76,6 +79,20 @@ describe('B-513 classifySendError', () => {
     it('a network error while offline could not have been sent', () => {
         expect(classifySendError(new TypeError('Failed to fetch'), false)).toEqual({ kind: 'retry', mayHaveStored: false });
         expect(classifySendError(new TypeError('Failed to fetch'), true)).toEqual({ kind: 'retry', mayHaveStored: true });
+    });
+
+    it('review: a request sent online that fails after the device went offline may have been stored', () => {
+        let online = true;
+        const attempt = beginSendAttempt(() => online);
+        online = false; // dropped offline mid-flight
+        expect(attempt.classify(new TypeError('Failed to fetch'))).toEqual({ kind: 'retry', mayHaveStored: true });
+    });
+
+    it('review: a request issued while already offline never left', () => {
+        let online = false;
+        const attempt = beginSendAttempt(() => online);
+        online = true;
+        expect(attempt.classify(new TypeError('Failed to fetch'))).toEqual({ kind: 'retry', mayHaveStored: false });
     });
 
     it('assertResponseOk carries status and server code', async () => {
@@ -154,5 +171,53 @@ describe('B-513 mapWithConcurrency', () => {
             return item;
         });
         expect(results).toEqual(['a', null, 'c']);
+    });
+});
+
+describe('B-513 review: interpretSendResponse', () => {
+    const stored = [
+        { id: 's-file', seq: 11, localId: 'file' },
+        { id: 's-text', seq: 12, localId: 'text' },
+        { id: 's-tomb', seq: 13, localId: 'tomb' },
+    ];
+
+    it('acks tracked items, removes every batch item, advances over applied seqs only', () => {
+        const out = interpretSendResponse(stored, new Set(['file', 'text', 'tomb']), new Set(['file', 'text']));
+        expect([...out.ackedIds]).toEqual(['file', 'text', 'tomb']);
+        expect(out.acks.map((a) => a.localId)).toEqual(['file', 'text']);
+        expect(out.lastSeqCandidates).toEqual([11, 12, 13]);
+    });
+
+    it('never advances lastSeq over a message that was not in the batch (its echo must still apply)', () => {
+        const out = interpretSendResponse(stored, new Set(['text']), new Set(['text']));
+        expect(out.lastSeqCandidates).toEqual([12]);
+        expect(out.acks.map((a) => a.localId)).toEqual(['text']);
+        expect(advanceLastSeq(10, out.lastSeqCandidates)).toEqual({ next: 10, gap: true });
+    });
+
+    it('acks a batch item tracked at dispatch even if its record is gone now (taken back → re-surfaces)', () => {
+        const out = interpretSendResponse(stored, new Set(['text']), new Set(['text']));
+        expect(out.acks).toEqual([{ localId: 'text', seq: 12, id: 's-text' }]);
+    });
+});
+
+describe('B-513 review: settledOutboxRecords', () => {
+    const records = [
+        { localId: 'confirmed', sessionId: 's1' },
+        { localId: 'failed', sessionId: 's1' },
+        { localId: 'sending', sessionId: 's1' },
+        { localId: 'queued', sessionId: 's1' },
+        { localId: 'other', sessionId: 's2' },
+    ];
+    it('drops only records the reducer confirmed and nothing still needs', () => {
+        const sendStates = new Map([['failed', 'failed'], ['sending', 'sending']]);
+        expect(settledOutboxRecords(records, 's1', sendStates, (id) => id === 'queued')).toEqual(['confirmed']);
+    });
+    it('SendDeadlines.has reflects a running deadline', () => {
+        const d = new SendDeadlines();
+        d.start(['a'], 0);
+        expect(d.has('a')).toBe(true);
+        d.tick(20_000, true);
+        expect(d.has('a')).toBe(false);
     });
 });

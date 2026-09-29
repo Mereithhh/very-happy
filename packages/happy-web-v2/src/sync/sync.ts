@@ -93,9 +93,11 @@ import { subscribeAuthLatch } from '@/auth/authLatch';
 import {
     advanceLastSeq,
     assertResponseOk,
-    classifySendError,
+    beginSendAttempt,
+    interpretSendResponse,
     mapWithConcurrency,
     removeByLocalId,
+    settledOutboxRecords,
     SendDeadlines,
 } from './outbox';
 
@@ -727,6 +729,16 @@ class Sync {
         this.ensureSendDeadlineTicker();
     }
 
+    /** B-513 review: drop retry records the reducer has confirmed (e.g. an echo after a deadline failure). */
+    private pruneOutboxRecords(sessionId: string) {
+        const reducerState = storage.getState().sessionMessages[sessionId]?.reducerState;
+        if (!reducerState) return;
+        const pending = this.pendingOutbox.get(sessionId) ?? [];
+        const settled = settledOutboxRecords(this.outboxRecords.values(), sessionId, reducerState.sendStates,
+            (localId) => this.sendDeadlines.has(localId) || pending.some((item) => item.localId === localId));
+        for (const localId of settled) this.outboxRecords.delete(localId);
+    }
+
     private ensureSendDeadlineTicker() {
         if (this.sendDeadlineTimer || this.sendDeadlines.size === 0) return;
         this.sendDeadlineTimer = setInterval(this.tickSendDeadlines, SEND_DEADLINE_TICK_MS);
@@ -781,7 +793,8 @@ class Sync {
         storage.getState().applyOutboxResult(sessionId, { sending: localIds });
         this.sendDeadlines.start(localIds, Date.now());
         this.ensureSendDeadlineTicker();
-        this.getSendSync(sessionId).invalidate();
+        // The fresh 15s budget must not be spent sleeping off an old backoff.
+        this.getSendSync(sessionId).invalidateNow();
         return true;
     }
 
@@ -988,9 +1001,12 @@ class Sync {
         }
 
         // B-513: one user turn = one retry group (attachments + text).
+        // Items enter the outbox together, after every record is encrypted: a
+        // flush running during an await must never see a half-built turn.
+        // Each item is tracked (record + deadline) BEFORE it is shown, so one
+        // that never reaches the outbox (a later throw) still fails visibly.
         const group = randomUUID();
-        const trackedLocalIds: string[] = [];
-        const trackedContents: string[] = [];
+        const turnItems: OutboxMessage[] = [];
 
         // Upload attachments and queue file events before the text message.
         if (effectiveAttachments && effectiveAttachments.length > 0) {
@@ -1009,11 +1025,6 @@ class Sync {
             }
 
             if (uploaded.length > 0) {
-                let pending = this.pendingOutbox.get(sessionId);
-                if (!pending) {
-                    pending = [];
-                    this.pendingOutbox.set(sessionId, pending);
-                }
 
                 for (const att of uploaded) {
                     const fileRecord: RawRecord = {
@@ -1053,12 +1064,11 @@ class Sync {
                     const encryptedFileRecord = await encryption.encryptRawRecord(fileRecord);
                     const fileLocalId = randomUUID();
                     const fileNormalized = normalizeRawMessage(fileLocalId, fileLocalId, Date.now(), fileRecord);
+                    this.trackOutboxItems(sessionId, [fileLocalId], [encryptedFileRecord], group);
                     if (fileNormalized) {
                         this.applyOptimistic(sessionId, fileNormalized);
                     }
-                    pending.push({ localId: fileLocalId, content: encryptedFileRecord });
-                    trackedLocalIds.push(fileLocalId);
-                    trackedContents.push(encryptedFileRecord);
+                    turnItems.push({ localId: fileLocalId, content: encryptedFileRecord });
                 }
             }
         }
@@ -1084,25 +1094,22 @@ class Sync {
         // Add to messages - normalize the raw record
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
+        this.trackOutboxItems(sessionId, [localId], [encryptedRawRecord], group);
         if (normalizedMessage) {
             this.applyOptimistic(sessionId, normalizedMessage);
         }
+        turnItems.push({ localId, content: encryptedRawRecord });
 
+        // Synchronous from here: the whole turn enters the outbox at once.
         let pending = this.pendingOutbox.get(sessionId);
         if (!pending) {
             pending = [];
             this.pendingOutbox.set(sessionId, pending);
         }
-        pending.push({
-            localId,
-            content: encryptedRawRecord
-        });
-        trackedLocalIds.push(localId);
-        trackedContents.push(encryptedRawRecord);
-        this.trackOutboxItems(sessionId, trackedLocalIds, trackedContents, group);
+        pending.push(...turnItems);
         trackMessageSent(source, session.metadata);
 
-        this.getSendSync(sessionId).invalidate();
+        this.getSendSync(sessionId).invalidateNow();
         this.maybeStartBackgroundSendWatchdog();
         return localId; // Receipt: accepted into the local outbox, not server delivery.
     }
@@ -1141,7 +1148,7 @@ class Sync {
             this.pendingOutbox.set(sessionId, pending);
         }
         pending.push({ localId, content: encrypted });
-        this.getSendSync(sessionId).invalidate();
+        this.getSendSync(sessionId).invalidateNow();
         this.maybeStartBackgroundSendWatchdog();
     }
 
@@ -2305,6 +2312,7 @@ class Sync {
             for (const record of records) record.attemptInFlight = true;
         };
         let data: V3PostSessionMessagesResponse;
+        let attempt = beginSendAttempt(isBrowserOnline);
         try {
             const session = storage.getState().sessions[sessionId];
             const machineId = session?.metadata?.machineId;
@@ -2320,6 +2328,8 @@ class Sync {
                     if (record.attemptInFlight) record.mayHaveStored = true;
                 }
                 markDispatched();
+                // Judge a later network error by the state the request LEFT in.
+                attempt = beginSendAttempt(isBrowserOnline);
                 const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
                     method: 'POST',
                     body: JSON.stringify({
@@ -2337,7 +2347,7 @@ class Sync {
                 data = await response.json() as V3PostSessionMessagesResponse;
             }
         } catch (error) {
-            const outcome = classifySendError(error, isBrowserOnline());
+            const outcome = attempt.classify(error);
             for (const record of records) {
                 if (outcome.mayHaveStored && record.attemptInFlight) record.mayHaveStored = true;
                 record.attemptInFlight = false;
@@ -2357,19 +2367,19 @@ class Sync {
             this.inFlightOutbox.delete(sessionId);
         }
 
-        const stored = Array.isArray(data.messages) ? data.messages : [];
+        const outcome = interpretSendResponse(
+            Array.isArray(data.messages) ? data.messages : [],
+            batchIds,
+            new Set(records.map((record) => record.localId)),
+        );
         // Remove exactly what the server acknowledged, by localId.
-        const ackedIds = new Set(stored.flatMap((message) => typeof message.localId === 'string' ? [message.localId] : []));
-        removeByLocalId(pending, ackedIds);
-        const acks = stored.flatMap((message) => typeof message.localId === 'string' && this.outboxRecords.has(message.localId)
-            ? [{ localId: message.localId, seq: message.seq, id: message.id }]
-            : []);
-        for (const ack of acks) {
+        removeByLocalId(pending, outcome.ackedIds);
+        for (const ack of outcome.acks) {
             this.outboxRecords.delete(ack.localId);
             this.sendDeadlines.delete(ack.localId);
         }
-        if (acks.length > 0) storage.getState().applyOutboxResult(sessionId, { acks });
-        if (stored.length > 0) this.advanceSessionLastSeq(sessionId, stored.map((message) => message.seq));
+        if (outcome.acks.length > 0) storage.getState().applyOutboxResult(sessionId, { acks: outcome.acks });
+        if (outcome.lastSeqCandidates.length > 0) this.advanceSessionLastSeq(sessionId, outcome.lastSeqCandidates);
 
         // Only drop the queue this request drained: a deadline may have removed
         // it meanwhile and a new send created a fresh one under the same key.
@@ -3437,6 +3447,7 @@ class Sync {
 
     private applyMessages = (sessionId: string, messages: NormalizedMessage[], sendingLocalIds?: readonly string[]) => {
         const result = storage.getState().applyMessages(sessionId, messages, sendingLocalIds ? { sendingLocalIds } : undefined);
+        if (this.outboxRecords.size > 0) this.pruneOutboxRecords(sessionId);
         let m: Message[] = [];
         for (let messageId of result.changed) {
             const message = storage.getState().sessionMessages[sessionId].messagesMap[messageId];
