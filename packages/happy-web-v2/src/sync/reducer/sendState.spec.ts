@@ -182,9 +182,12 @@ describe('B-513 send state in the reducer', () => {
         // A later reducer pass (e.g. a turn-end) must not resurrect it.
         view.reduce([turnEnd('te', 5000, 20)]);
         expect(view.byLocalId('l1')).toBeUndefined();
+        // Nor a pass that does re-convert its reducer row.
+        view.reduce([{ id: 'qc', localId: null, createdAt: 5001, seq: 21, role: 'event', isSidechain: false, content: { type: 'queue-cancel', targetLocalKeys: ['l1'], reason: 'restarted' } } as NormalizedMessage]);
+        expect(view.byLocalId('l1')).toBeUndefined();
 
-        view.reduce([userMessage('l1', { id: 'srv', seq: 21 })]);
-        expect(view.byLocalId('l1')).toMatchObject({ kind: 'user-text', seq: 21 });
+        view.reduce([userMessage('l1', { id: 'srv', seq: 22 })]);
+        expect(view.byLocalId('l1')).toMatchObject({ kind: 'user-text', seq: 22 });
         expect(view.byLocalId('l1')).not.toHaveProperty('sendState');
     });
 
