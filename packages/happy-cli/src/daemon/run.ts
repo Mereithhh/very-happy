@@ -14,6 +14,7 @@ import { isSpawnAgent } from '@/utils/spawnAgents';
 import { logger } from '@/ui/logger';
 import { pruneLogsDir } from '@/ui/logPrune';
 import { pruneStaleCompileCaches } from '@/utils/compileCache';
+import { createSpawnTimer, type SpawnTimer } from './spawnTiming';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
@@ -425,13 +426,19 @@ export async function startDaemon(): Promise<void> {
       // B-478: re-read where Claude/Codex keep their state before every spawn
       // (cached; a login-shell probe at most once a minute) so a directory the
       // user moved after `daemon start` is honoured without a daemon restart.
-      await refreshAgentHomes();
-      if (assistantSpawnMode(options) !== 'claude-singleton') {
-        return spawnSessionImpl(options);
-      }
-      return options.forceNew
-        ? assistantSpawnGate.replace(() => spawnSessionImpl(options))
-        : assistantSpawnGate.join(() => spawnSessionImpl(options));
+      // B-512: settings are re-read every time; an expired login-shell answer
+      // (< 10 min) is served while it re-probes in the background — resume
+      // and restart below keep waiting for a fresh one.
+      const timer = createSpawnTimer();
+      await refreshAgentHomes(Date.now(), { allowStale: true });
+      timer.mark('agentHome');
+      const result = assistantSpawnMode(options) !== 'claude-singleton'
+        ? await spawnSessionImpl(options, timer)
+        : await (options.forceNew
+          ? assistantSpawnGate.replace(() => spawnSessionImpl(options, timer))
+          : assistantSpawnGate.join(() => spawnSessionImpl(options, timer)));
+      logger.debug(timer.format({ agent: options.agent ?? 'claude', outcome: result.type }));
+      return result;
     };
 
     // The same availability the machine metadata advertises: keep-alive
@@ -439,7 +446,7 @@ export async function startDaemon(): Promise<void> {
     const currentCliAvailability = (): CLIAvailability =>
       apiMachineRef?.getCLIAvailability() ?? startupCliAvailability;
 
-    const spawnSessionImpl = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+    const spawnSessionImpl = async (options: SpawnSessionOptions, timer?: SpawnTimer): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', summarizeSpawnSessionForLog(options));
 
       // Client-requested permission mode (allowlist-validated; used by the
@@ -567,6 +574,7 @@ export async function startDaemon(): Promise<void> {
               ...(canResumeClaude ? ['--resume', claudeSessionId!] : []),
             ],
             cwd: assistantHome(),
+            timer,
             env: {
               ...process.env,
               // B-297: see the resume/restart paths — every spawn carries the
@@ -748,13 +756,15 @@ export async function startDaemon(): Promise<void> {
           };
         }
 
-        // Check if tmux is available and should be used
-        const tmuxAvailable = await isTmuxAvailable();
-        let useTmux = tmuxAvailable;
-
         // Get tmux session name from environment variables (now set by profile system)
         // Empty string means "use current/most recent session" (tmux default behavior)
         let tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
+
+        // Check if tmux is available and should be used. B-512: only probed
+        // when a session name asks for tmux — web spawns never set one, and
+        // the probe is a child process on the spawn's critical path.
+        const tmuxAvailable = tmuxSessionName !== undefined && await isTmuxAvailable();
+        let useTmux = tmuxAvailable;
 
         // If tmux is not available or session name is explicitly undefined, fall back to regular spawning
         // Note: Empty string is valid (means use current/most recent tmux session)
@@ -825,6 +835,7 @@ export async function startDaemon(): Promise<void> {
           }, tmuxEnv);  // Pass complete environment for tmux session
 
           if (tmuxResult.success) {
+            timer?.mark('spawned');
             logger.debug(`[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}, PID: ${tmuxResult.pid}`);
 
             // Validate we got a PID from tmux
@@ -933,6 +944,7 @@ export async function startDaemon(): Promise<void> {
           return spawnTrackedHappyProcess({
             args,
             cwd: directory,
+            timer,
             env: {
               ...process.env,
               // B-478: a fork/duplicate resumes a transcript that may live in
@@ -970,10 +982,13 @@ export async function startDaemon(): Promise<void> {
       message,
       variant,
       spawnedBy,
+      timer,
     }: {
       args: string[];
       cwd: string;
       env: NodeJS.ProcessEnv;
+      /** B-512: `[SPAWN TIMING]` of a new-session request (not resume/restart). */
+      timer?: SpawnTimer;
       directoryCreated?: boolean;
       message?: string;
       /** C2b (B-051): tag the TrackedSession as assistant AT SPAWN TIME, not
@@ -998,6 +1013,7 @@ export async function startDaemon(): Promise<void> {
         });
       }
 
+      timer?.mark('spawned');
       logger.debug(`[DAEMON RUN] Spawned process with PID ${happyProcess.pid}`);
 
       const trackedSession: TrackedSession = {
