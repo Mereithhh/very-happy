@@ -47,7 +47,17 @@ export type MessageOrdering = {
      * the wire; render unknown values generically.
      */
     cancelReason?: string;
+    /**
+     * B-513: this client's own input the server has not confirmed yet
+     * (`sending`) or gave up on (`failed`). Absent once confirmed by an ack
+     * or the server echo, and on every message from history or other devices.
+     */
+    sendState?: SendState;
+    /** B-513: failed, and no attempt could have stored it — safe to take back into the composer. */
+    sendRestorable?: true;
 }
+
+export type SendState = 'sending' | 'failed';
 
 // Flattened message types - each message represents a single block
 export type UserTextMessage = MessageOrdering & {

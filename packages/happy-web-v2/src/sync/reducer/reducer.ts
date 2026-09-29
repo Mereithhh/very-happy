@@ -110,7 +110,7 @@
  * - Updated internal state for future processing
  */
 
-import { Message, ToolCall } from "../typesMessage";
+import { Message, SendState, ToolCall } from "../typesMessage";
 import { AgentEvent, NormalizedMessage, UsageData } from "../typesRaw";
 import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState, TodoItem, TodoItemsSchema } from "../storageTypes";
@@ -220,6 +220,18 @@ export type ReducerState = {
     canceledQueuedLocalKeys: Set<string>;
     /** B-332: tombstone reasons by localKey. Only CLI-originated tombstones carry one. */
     canceledQueuedReasons: Map<string, string>;
+    /**
+     * B-513: delivery state of this client's own outbox items (user text and
+     * `file` inputs) by localId. Absent = confirmed (or never ours). Lives here,
+     * not in storage, because storage rebuilds every Message from the reducer.
+     */
+    sendStates: Map<string, SendState>;
+    /** B-513: failed localIds whose attempts provably never stored the message. */
+    sendRestorable: Set<string>;
+    /** B-513: acks that arrived before their optimistic message reached the reducer. */
+    acked: Map<string, { seq: number; realID: string | null }>;
+    /** B-513: failed items the user took back into the composer; a late echo re-surfaces them. */
+    withdrawn: Set<string>;
     latestTodos?: {
         todos: TodoItem[];
         timestamp: number;
@@ -253,6 +265,10 @@ export function createReducer(): ReducerState {
         turnEnds: [],
         canceledQueuedLocalKeys: new Set(),
         canceledQueuedReasons: new Map(),
+        sendStates: new Map(),
+        sendRestorable: new Set(),
+        acked: new Map(),
+        withdrawn: new Set(),
     }
 };
 
@@ -471,6 +487,15 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
     // Turn-end metadata (cost/duration/turns/usage) from ready events, applied
     // after Phase 1 so it lands on the turn's final agent-text message.
     const pendingTurnMeta: { createdAt: number; turnMeta: NonNullable<Extract<AgentEvent, { type: 'ready' }>['turnMeta']> }[] = [];
+
+    // B-513: the server echo of one of our optimistic inputs confirms it. Done
+    // before tracing: the tracer drops a `file` echo outright (it reuses the
+    // optimistic copy's envelope id), and Phase 0.5 skips a user echo by localId.
+    for (const msg of messages) {
+        if (msg.localId && typeof msg.seq === 'number' && msg.role !== 'event' && state.localIds.has(msg.localId)) {
+            confirmLocalId(state, msg.localId, msg.seq, msg.role === 'user' ? msg.id : null, changed);
+        }
+    }
 
     // First, trace all messages to identify sidechains
     const tracedMessages = traceMessages(state.tracerState, messages);
@@ -925,6 +950,7 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
             // Track both localId and messageId
             if (msg.localId) {
                 state.localIds.set(msg.localId, mid);
+                adoptEarlyAck(state, msg.localId, state.messages.get(mid)!);
             }
             state.messageIds.set(msg.id, mid);
 
@@ -1014,6 +1040,12 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
                             if (message.seq === undefined || message.seq === null) {
                                 message.seq = msg.seq;
                             }
+                            // B-513: an echo reaching this path confirms the input.
+                            if (msg.localId && typeof msg.seq === 'number') {
+                                state.sendStates.delete(msg.localId);
+                                state.sendRestorable.delete(msg.localId);
+                                state.withdrawn.delete(msg.localId);
+                            }
                             if (c.name === 'CodexCollaboration') {
                                 const updatedAt = state.codexCollaborationUpdatedAt.get(c.id) ?? message.tool.startedAt ?? 0;
                                 message.tool.input = mergeCodexCollaborationInput(message.tool.input, c.input, msg.createdAt >= updatedAt);
@@ -1090,7 +1122,10 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
                         });
 
                         state.toolIdToMessageId.set(c.id, mid);
-                        if (msg.localId) state.localIds.set(msg.localId, mid);
+                        if (msg.localId) {
+                            state.localIds.set(msg.localId, mid);
+                            adoptEarlyAck(state, msg.localId, state.messages.get(mid)!);
+                        }
                         changed.add(mid);
 
                     }
@@ -1457,33 +1492,7 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
     // turn-end. History pages arrive newest-first, so a later backfill may
     // reveal an earlier boundary and must be allowed to reposition the item.
     for (const message of state.messages.values()) {
-        const queuedAt = message.meta?.queuedAt;
-        const isInputItem = message.role === 'user' || message.tool?.name === 'file';
-        if (!isInputItem || typeof queuedAt !== 'number') continue;
-        const boundary = firstTurnEndForQueuedInput(
-            { queuedAt, seq: message.seq },
-            state.turnEnds,
-        );
-        const nextInputState = message.localId && state.canceledQueuedLocalKeys.has(message.localId)
-            ? 'canceled'
-            : boundary ? undefined : 'queued';
-        const nextCancelReason = nextInputState === 'canceled' && message.localId
-            ? state.canceledQueuedReasons.get(message.localId)
-            : undefined;
-        const nextDisplaySeq = boundary?.seq;
-        const nextDisplayAt = boundary?.createdAt;
-        if (
-            message.inputState !== nextInputState
-            || message.cancelReason !== nextCancelReason
-            || message.displaySeq !== nextDisplaySeq
-            || message.displayAt !== nextDisplayAt
-        ) {
-            message.inputState = nextInputState;
-            message.cancelReason = nextCancelReason;
-            message.displaySeq = nextDisplaySeq;
-            message.displayAt = nextDisplayAt;
-            changed.add(message.id);
-        }
+        reconcileQueuedInput(state, message, changed);
     }
 
     //
@@ -1549,7 +1558,168 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
 }
 
 
+function reconcileQueuedInput(state: ReducerState, message: ReducerMessage, changed: Set<string>): void {
+    const queuedAt = message.meta?.queuedAt;
+    const isInputItem = message.role === 'user' || message.tool?.name === 'file';
+    if (!isInputItem || typeof queuedAt !== 'number') return;
+    // B-513: an unconfirmed input stays in the queue dock. Releasing it by
+    // timestamp would move it into the transcript before the server has it.
+    const unconfirmed = !!message.localId && state.sendStates.has(message.localId);
+    const boundary = unconfirmed ? undefined : firstTurnEndForQueuedInput(
+        { queuedAt, seq: message.seq },
+        state.turnEnds,
+    );
+    const nextInputState = message.localId && state.canceledQueuedLocalKeys.has(message.localId)
+        ? 'canceled'
+        : boundary ? undefined : 'queued';
+    const nextCancelReason = nextInputState === 'canceled' && message.localId
+        ? state.canceledQueuedReasons.get(message.localId)
+        : undefined;
+    const nextDisplaySeq = boundary?.seq;
+    const nextDisplayAt = boundary?.createdAt;
+    if (
+        message.inputState !== nextInputState
+        || message.cancelReason !== nextCancelReason
+        || message.displaySeq !== nextDisplaySeq
+        || message.displayAt !== nextDisplayAt
+    ) {
+        message.inputState = nextInputState;
+        message.cancelReason = nextCancelReason;
+        message.displaySeq = nextDisplaySeq;
+        message.displayAt = nextDisplayAt;
+        changed.add(message.id);
+    }
+}
+
+/**
+ * B-513: write back what the server assigned. Only `seq` (and a user
+ * message's `realID`) — never `id`/`createdAt`, so the row keeps its React key
+ * and its displayed time.
+ */
+function writeBackAck(message: ReducerMessage, seq: number, realID: string | null): boolean {
+    let touched = false;
+    if (message.seq === undefined || message.seq === null) {
+        message.seq = seq;
+        touched = true;
+    }
+    if (message.role === 'user' && realID && message.realID !== realID) {
+        message.realID = realID;
+        touched = true;
+    }
+    return touched;
+}
+
+function confirmLocalId(state: ReducerState, localId: string, seq: number, realID: string | null, changed: Set<string>): void {
+    const hadState = state.sendStates.delete(localId);
+    state.sendRestorable.delete(localId);
+    const mid = state.localIds.get(localId);
+    const message = mid ? state.messages.get(mid) : undefined;
+    if (!message) {
+        // Not in the reducer yet: remember it, so the message is created confirmed.
+        if (!mid) state.acked.set(localId, { seq, realID });
+        return;
+    }
+    const wasWithdrawn = state.withdrawn.delete(localId);
+    const wroteBack = writeBackAck(message, seq, realID);
+    if (realID && message.role === 'user') state.messageIds.set(realID, message.id);
+    if (hadState || wasWithdrawn || wroteBack) {
+        changed.add(message.id);
+        reconcileQueuedInput(state, message, changed);
+    }
+}
+
+function adoptEarlyAck(state: ReducerState, localId: string, message: ReducerMessage): void {
+    const ack = state.acked.get(localId);
+    if (ack) {
+        state.acked.delete(localId);
+        writeBackAck(message, ack.seq, ack.realID);
+        if (ack.realID && message.role === 'user') state.messageIds.set(ack.realID, message.id);
+    }
+    if (ack || typeof message.seq === 'number') {
+        state.sendStates.delete(localId);
+        state.sendRestorable.delete(localId);
+    }
+}
+
+export type SendStateUpdate = {
+    /** Newly enqueued (not yet in the reducer) or retried localIds. */
+    sending?: readonly string[];
+    acks?: readonly { localId: string; seq: number; id: string | null }[];
+    failures?: readonly { localId: string; restorable: boolean }[];
+    /** Failed items taken back into the composer. */
+    withdraw?: readonly string[];
+};
+
+/**
+ * B-513: mark localIds as sending. A brand-new optimistic item is not in the
+ * reducer yet; a retried one is currently `failed`. Anything else (already
+ * confirmed, or its echo came first) is left alone.
+ */
+function markSending(state: ReducerState, localIds: readonly string[], changed: Set<string>): void {
+    for (const localId of localIds) {
+        if (state.acked.has(localId)) continue;
+        const mid = state.localIds.get(localId);
+        if (mid && state.sendStates.get(localId) !== 'failed') continue;
+        state.sendStates.set(localId, 'sending');
+        state.sendRestorable.delete(localId);
+        const message = mid ? state.messages.get(mid) : undefined;
+        if (message) {
+            changed.add(message.id);
+            reconcileQueuedInput(state, message, changed);
+        }
+    }
+}
+
+/** B-513: apply outbox outcomes; returns the re-converted rows plus ids to drop from the view. */
+export function applySendStateUpdate(state: ReducerState, update: SendStateUpdate): { messages: Message[]; removed: string[] } {
+    const changed = new Set<string>();
+    const removed: string[] = [];
+    if (update.sending) markSending(state, update.sending, changed);
+    for (const ack of update.acks ?? []) {
+        confirmLocalId(state, ack.localId, ack.seq, ack.id, changed);
+    }
+    for (const failure of update.failures ?? []) {
+        // Only an in-flight item can fail: an echo or ack may already have won.
+        if (state.sendStates.get(failure.localId) !== 'sending') continue;
+        state.sendStates.set(failure.localId, 'failed');
+        if (failure.restorable) state.sendRestorable.add(failure.localId);
+        const mid = state.localIds.get(failure.localId);
+        if (mid && state.messages.has(mid)) changed.add(mid);
+    }
+    for (const localId of update.withdraw ?? []) {
+        if (state.sendStates.get(localId) !== 'failed') continue;
+        state.sendStates.delete(localId);
+        state.sendRestorable.delete(localId);
+        state.withdrawn.add(localId);
+        const mid = state.localIds.get(localId);
+        if (mid && state.messages.has(mid)) {
+            changed.delete(mid);
+            removed.push(mid);
+        }
+    }
+    const messages: Message[] = [];
+    for (const id of changed) {
+        const existing = state.messages.get(id);
+        if (!existing) continue;
+        const message = convertReducerMessageToMessage(existing, state);
+        if (message) messages.push(message);
+    }
+    return { messages, removed };
+}
+
+function sendStateFields(reducerMsg: ReducerMessage, state: ReducerState): { sendState?: SendState; sendRestorable?: true } {
+    const localId = reducerMsg.localId;
+    if (!localId) return {};
+    const sendState = state.sendStates.get(localId);
+    if (!sendState) return {};
+    return sendState === 'failed' && state.sendRestorable.has(localId)
+        ? { sendState, sendRestorable: true }
+        : { sendState };
+}
+
 function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: ReducerState): Message | null {
+    // B-513: taken back into the composer — hidden until a late echo proves it landed.
+    if (reducerMsg.localId && state.withdrawn.has(reducerMsg.localId)) return null;
     if (reducerMsg.role === 'user' && reducerMsg.text !== null) {
         return {
             id: reducerMsg.id,
@@ -1566,6 +1736,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             ...(reducerMsg.cancelReason ? { cancelReason: reducerMsg.cancelReason } : {}),
             ...(reducerMsg.claudeUuid && { claudeUuid: reducerMsg.claudeUuid }),
             ...(reducerMsg.codexItemId && { codexItemId: reducerMsg.codexItemId }),
+            ...sendStateFields(reducerMsg, state),
             meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {
@@ -1610,6 +1781,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             meta: reducerMsg.meta,
             ...(reducerMsg.inputState ? { inputState: reducerMsg.inputState } : {}),
             ...(reducerMsg.cancelReason ? { cancelReason: reducerMsg.cancelReason } : {}),
+            ...sendStateFields(reducerMsg, state),
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.event !== null) {
         return {
