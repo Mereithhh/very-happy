@@ -114,9 +114,37 @@ describe('ApiSocket regional session fast lane', () => {
         apiSocket.disconnect();
     });
 
+    async function warmRelay(apiSocket: Awaited<ReturnType<typeof load>>['apiSocket']) {
+        apiSocket.prepareMachineRelay('m1');
+        await vi.waitFor(() => expect(apiSocket.getMachineRelayStatus('m1').state).toBe('connected'));
+    }
+
+    it('B-513: a send never waits for the relay to connect — central now, relay warmed for next time', async () => {
+        const { apiSocket, relay } = await load();
+        const onEmit = vi.fn();
+        await expect(apiSocket.deliverSessionMessages('m1', 's1', [{ localId: 'l1', content: 'cipher-body' }], { onEmit }))
+            .resolves.toBeNull();
+        expect(onEmit).not.toHaveBeenCalled();
+        expect(state.relayAck).not.toHaveBeenCalledWith('session-message-deliver', expect.anything());
+        await vi.waitFor(() => expect(relay.connected).toBe(true));
+        apiSocket.disconnect();
+    });
+
+    it('B-513: relay delivery ack times out after 1.5s', async () => {
+        const { apiSocket, relay } = await load();
+        await warmRelay(apiSocket);
+        relay.timeout.mockClear();
+        await apiSocket.deliverSessionMessages('m1', 's1', [{ localId: 'l1', content: 'cipher-body' }]);
+        expect(relay.timeout).toHaveBeenCalledWith(1_500);
+        apiSocket.disconnect();
+    });
+
     it('delivers structured input via relay and returns authoritative persistence metadata', async () => {
         const { apiSocket, control } = await load();
-        const result = await apiSocket.deliverSessionMessages('m1', 's1', [{ localId: 'l1', content: 'cipher-body' }]);
+        await warmRelay(apiSocket);
+        const onEmit = vi.fn();
+        const result = await apiSocket.deliverSessionMessages('m1', 's1', [{ localId: 'l1', content: 'cipher-body' }], { onEmit });
+        expect(onEmit).toHaveBeenCalledTimes(1);
         expect(result).toMatchObject({ ok: true, messages: [{ id: 'stored', seq: 1, localId: 'l1' }] });
         expect(state.relayAck).toHaveBeenCalledWith('session-message-deliver', {
             sessionId: 's1', messages: [{ localId: 'l1', content: 'cipher-body' }],
@@ -141,6 +169,7 @@ describe('ApiSocket regional session fast lane', () => {
             if (event === 'relay-ping') return { serverAt: Date.now() };
             return { ok: false, error: 'Session unavailable' };
         });
+        await warmRelay(apiSocket);
         await expect(apiSocket.deliverSessionMessages('m1', 's1', [{ localId: 'l1', content: 'cipher' }]))
             .resolves.toBeNull();
         const callsAfterFailure = state.relayAck.mock.calls.length;

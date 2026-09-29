@@ -19,6 +19,8 @@ import { rpcDedupKey, RpcRateGate, RpcRateLimitedError } from './rpcRateGate';
  * not to wait — one relay RTT is sub-100ms in practice, so 3s is generous.
  */
 const RELAY_PREFLIGHT_MS = 3_000;
+/** B-513: a relay delivery ack slower than this falls back to central HTTP (localId dedupes). */
+const SESSION_DELIVERY_ACK_MS = 1_500;
 
 export function getHappyClientId(): string {
     let platform: string = Platform.OS; // 'ios' | 'android' | 'web'
@@ -357,12 +359,19 @@ class ApiSocket {
         machineId: string,
         sessionId: string,
         messages: Array<{ localId: string; content: string }>,
+        opts?: { onEmit?: () => void },
     ): Promise<SessionDeliveryResult | null> {
         if ((this.sessionRelayRetryAfter.get(sessionId) ?? 0) > Date.now()) return null;
-        const relaySocket = await this.ensureMachineRelaySoon(machineId, 800);
-        if (!relaySocket) return null;
+        // B-513: never make a send wait for a relay to connect. Use it only if
+        // it is already up; otherwise go central now and warm it for next time.
+        const relaySocket = this.relaySockets.get(machineId);
+        if (!relaySocket?.connected) {
+            this.prepareMachineRelay(machineId);
+            return null;
+        }
         try {
-            const result = await relaySocket.timeout(3_000).emitWithAck('session-message-deliver', {
+            opts?.onEmit?.();
+            const result = await relaySocket.timeout(SESSION_DELIVERY_ACK_MS).emitWithAck('session-message-deliver', {
                 sessionId,
                 messages,
             }) as SessionDeliveryResult;
@@ -733,16 +742,6 @@ class ApiSocket {
         const connecting = this.connectMachineRelay(machineId, opts).finally(() => this.relayConnecting.delete(machineId));
         this.relayConnecting.set(machineId, connecting);
         return connecting;
-    }
-
-    private async ensureMachineRelaySoon(machineId: string, timeoutMs: number): Promise<Socket | null> {
-        const existing = this.relaySockets.get(machineId);
-        if (existing?.connected) return existing;
-        const connecting = this.ensureMachineRelay(machineId);
-        return await Promise.race([
-            connecting,
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
-        ]);
     }
 
     private async connectMachineRelay(machineId: string, opts?: { strictPing?: boolean; diagnosticAttemptId?: string; diagnosticEpoch?: number }): Promise<Socket | null> {
