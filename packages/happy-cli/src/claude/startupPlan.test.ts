@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { planClaudeStartup } from './startupPlan';
 
@@ -16,6 +18,12 @@ describe('planClaudeStartup (B-512)', () => {
             expect(plan.registerMachine).toBe(true);
             expect(plan.ensureDaemonRunning).toBe(true);
         }
+    });
+
+    it('main() gates the claude path\'s ensureDaemonRunning on the plan', () => {
+        const main = readFileSync(join(__dirname, '..', 'main.ts'), 'utf8');
+        const claudePath = main.slice(main.lastIndexOf('await authAndSetupMachineIfNeeded();'));
+        expect(claudePath).toMatch(/if \(planClaudeStartup\(\{ startedBy: options\.startedBy, reconnect: false \}\)\.ensureDaemonRunning\) \{\s+await ensureDaemonRunning\(\)\s+\}/);
     });
 
     it('only fresh sessions open the socket before the webhook', () => {
