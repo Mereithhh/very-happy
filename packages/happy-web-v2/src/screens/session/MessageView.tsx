@@ -29,20 +29,19 @@ import { presentTeamMessage } from './teamMessage';
 import { TeamMessageCard } from './TeamMessageCard';
 import { presentSessionPeerMessage } from './sessionPeerMessage';
 import { SessionPeerMessageCard } from './SessionPeerMessageCard';
-import { messageTimestamp } from './messageTimestamp';
 
 function UserText({ message, sessionId, attachments }: { message: UserTextMessage; sessionId: string; attachments?: ToolCallMessage[] }) {
-    const { t, lang } = useTranslation();
+    const { t } = useTranslation();
     // Long-message collapse (B-102): clamp + fade + explicit expand replaces
     // the old 40dvh nested scroll area (wheel must bubble to the transcript).
     const [expanded, setExpanded] = useState(false);
     const contentId = useId();
     const teamContent = presentTeamMessage(message);
-    if (teamContent) return <TeamMessageCard content={teamContent} sessionId={sessionId} localId={message.localId} createdAt={message.createdAt} />;
+    if (teamContent) return <TeamMessageCard content={teamContent} sessionId={sessionId} localId={message.localId} />;
     // B-497: a message from another session on the same machine, or the
     // daemon's edit-conflict notice — a source card with a link to that session.
     const peerContent = presentSessionPeerMessage(message);
-    if (peerContent) return <SessionPeerMessageCard content={peerContent} createdAt={message.createdAt} />;
+    if (peerContent) return <SessionPeerMessageCard content={peerContent} />;
     const raw = message.displayText ?? message.text;
     // B-260: a background-task notification is a machine-facing user message.
     // Stripping used to leave an invisible empty bubble; render the one useful
@@ -52,7 +51,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
         const label = notification.summary ?? t('message.taskNotificationGeneric');
         const failed = notification.status === 'failed';
         return (
-            <div className="msg msg--event" title={messageTimestamp(message.createdAt, lang)}>
+            <div className="msg msg--event">
                 <span className={`msg-event-line msg-event-line--subtle msg-event-line--notification${failed ? ' msg-event-line--error' : ''}`}>
                     <Bot size={13} />
                     {failed ? t('message.taskNotificationFailed', { summary: label }) : label}
@@ -72,7 +71,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     if (parsed.kind === 'caveat') return null;
     if (parsed.kind === 'command-run') {
         return (
-            <div className="msg msg--user" title={messageTimestamp(message.createdAt, lang)}>
+            <div className="msg msg--user">
                 <div className="msg-bubble msg-bubble--cmd">
                     <Terminal size={13} />
                     <span className="msg-cmd-name">/{parsed.commandName}</span>
@@ -94,7 +93,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     // under the bubble instead of letting it pass for a delivered prompt.
     const discarded = discardedReasonKey(message);
     return (
-        <div className="msg msg--user" title={messageTimestamp(message.createdAt, lang)}>
+        <div className="msg msg--user">
             <UserAttachments sessionId={sessionId} items={attachmentItems} />
             <div className="msg-bubble-wrap vh-copyhost">
                 <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0}>
@@ -141,7 +140,7 @@ function AgentText({
     sessionId: string;
     thinkingDurationMs?: number;
 }) {
-    const { t, lang } = useTranslation();
+    const { t } = useTranslation();
     // Live-thinking auto-expand (B-101): while the session is working and no
     // message follows this thinking block yet, it's the one being streamed —
     // open it. When it stops being live (turn ended / next message arrived),
@@ -183,7 +182,7 @@ function AgentText({
         const durationLabel = formatThoughtFor(thinkingDurationMs, t);
         const preview = thinkingPreview(content);
         return (
-            <div className="msg msg--agent" title={messageTimestamp(message.createdAt, lang)}>
+            <div className="msg msg--agent">
                 <div className="msg-thinking">
                     <button type="button" className="msg-thinking-head vh-disclosure-trigger" onClick={toggleOpen} aria-expanded={open} aria-controls={thinkingId}>
                         <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
@@ -207,7 +206,7 @@ function AgentText({
     if (!text && !showMeta) return null;
     const prose = text;
     return (
-        <div className="msg msg--agent" title={messageTimestamp(message.createdAt, lang)}>
+        <div className="msg msg--agent">
             {prose && (
                 <div className="msg-agent-text vh-copyhost">
                     <Markdown text={prose} onOption={onOption} />
@@ -286,10 +285,10 @@ function MachineAuthLink({ sessionId }: { sessionId: string }) {
  *  `claude-auth-failed` event (CLI ≥ v0.2.97) and from the raw SDK text that
  *  older wrappers emit. Restart is not repeated here — on the old-CLI path the
  *  adjacent `Process exited unexpectedly` event already carries it. */
-function ClaudeAuthFailedBlock({ sessionId, createdAt }: { sessionId: string; createdAt: number }) {
-    const { t, lang } = useTranslation();
+function ClaudeAuthFailedBlock({ sessionId }: { sessionId: string }) {
+    const { t } = useTranslation();
     return (
-        <div className="msg msg--event" title={messageTimestamp(createdAt, lang)}>
+        <div className="msg msg--event">
             <span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t('session.chat.claudeAuthFailed')}</span>
             <MachineAuthLink sessionId={sessionId} />
         </div>
@@ -297,7 +296,7 @@ function ClaudeAuthFailedBlock({ sessionId, createdAt }: { sessionId: string; cr
 }
 
 function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; sessionId: string }) {
-    const { t, lang } = useTranslation();
+    const { t } = useTranslation();
     const ev = message.event;
     let label: string;
     let subtle = false;
@@ -308,27 +307,27 @@ function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; s
         case 'message':
             {
                 if (ev.kind === 'claude-auth-failed') {
-                    return <ClaudeAuthFailedBlock sessionId={sessionId} createdAt={message.createdAt} />;
+                    return <ClaudeAuthFailedBlock sessionId={sessionId} />;
                 }
                 const presentation = presentServiceEvent(ev.message);
                 if (presentation.kind === 'hidden') return null;
                 // B-297: same card for CLIs too old to tag the event structurally.
                 if (presentation.kind === 'claude-auth') {
-                    return <ClaudeAuthFailedBlock sessionId={sessionId} createdAt={message.createdAt} />;
+                    return <ClaudeAuthFailedBlock sessionId={sessionId} />;
                 }
                 if (presentation.kind === 'stopped') {
-                    return <div className="msg msg--event" title={messageTimestamp(message.createdAt, lang)}><span className="msg-event-line msg-event-line--stopped"><Square size={11} fill="currentColor" />{t(presentation.textKey)}</span></div>;
+                    return <div className="msg msg--event"><span className="msg-event-line msg-event-line--stopped"><Square size={11} fill="currentColor" />{t(presentation.textKey)}</span></div>;
                 }
                 if (presentation.kind === 'error') {
                     return (
-                        <div className="msg msg--event" title={messageTimestamp(message.createdAt, lang)}>
+                        <div className="msg msg--event">
                             <span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t(presentation.textKey)}</span>
                             <RestartAction sessionId={sessionId} />
                         </div>
                     );
                 }
                 if (presentation.kind === 'agent-error') {
-                    return <div className="msg msg--event" title={messageTimestamp(message.createdAt, lang)}><span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{presentation.text}</span></div>;
+                    return <div className="msg msg--event"><span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{presentation.text}</span></div>;
                 }
                 label = presentation.text;
                 subtle = true;
@@ -345,7 +344,7 @@ function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; s
             return null;
         case 'subagent':
             return (
-                <div className="msg msg--event" title={messageTimestamp(message.createdAt, lang)}>
+                <div className="msg msg--event">
                     <span className={`msg-event-line msg-event-line--subagent msg-event-line--${ev.status}`}>
                         {ev.status === 'running' ? <Bot size={13} /> : <Check size={13} />}
                         {ev.status === 'running'
@@ -358,7 +357,7 @@ function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; s
             label = t('message.unknownEvent');
     }
     return (
-        <div className="msg msg--event" title={messageTimestamp(message.createdAt, lang)}>
+        <div className="msg msg--event">
             <span className={`msg-event-line${subtle ? ' msg-event-line--subtle' : ''}`}>{label}</span>
         </div>
     );
@@ -398,7 +397,6 @@ export const MessageView = memo(function MessageView({
     /** B-355: `file` events the user sent with this message. */
     attachments?: ToolCallMessage[];
 }) {
-    const { lang } = useTranslation();
     switch (message.kind) {
         case 'user-text':
             return <UserText message={message} sessionId={sessionId} attachments={attachments} />;
@@ -417,7 +415,7 @@ export const MessageView = memo(function MessageView({
         default:
             // Never silently drop an unknown kind — show a subtle fallback line.
             return (
-                <div className="msg msg--event" title={messageTimestamp(message.createdAt, lang)}>
+                <div className="msg msg--event">
                     <span className="msg-event-line msg-event-line--subtle">
                         {(message as any)?.kind ?? 'message'}
                     </span>

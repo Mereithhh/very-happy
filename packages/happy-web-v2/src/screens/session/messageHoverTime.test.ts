@@ -23,16 +23,19 @@ describe('B-473 transcript hover time', () => {
         const root = html(`
             <div class="msg" title="2026/09/11 20:34:56 (GMT+8)">
                 <div class="md"><p id="prose">body</p></div>
-                <div class="msg-actions"><button id="copy" class="vh-copy" title="Copy message"></button></div>
+                <div class="msg-actions"><button id="copy" class="vh-copy" title="Copy message"></button>
+                    <time id="time" class="msg-time" title="2026/09/11 20:34:56 (GMT+8)">20:34</time></div>
             </div>
-            <div class="tg-row" id="tool" title="2026/09/11 20:35:00 (GMT+8)"></div>
-            <div class="msg" id="untimed"></div>`);
-        const outside = html('<div class="msg" id="stray" title="2026/09/11 20:00:00 (GMT+8)"></div>');
+            <div class="tg-row" id="tool" title="2026/09/11 20:35:00 (GMT+8)"><span id="tool-label">Bash</span></div>
+            <div class="tg-row" id="untimed"></div>`);
+        const outside = html('<div class="tg-row" id="stray" title="2026/09/11 20:00:00 (GMT+8)"></div>');
 
-        expect(hoverTimeTargetFrom(root.querySelector('#prose'), root)?.className).toBe('msg');
-        // a button inside the row still resolves to the row: one bubble, the row's time
-        expect(hoverTimeTargetFrom(root.querySelector('#copy'), root)?.className).toBe('msg');
-        expect(hoverTimeTargetFrom(root.querySelector('#tool'), root)?.id).toBe('tool');
+        // B-514: message body rows never show a hover time, even if one still carries a title
+        expect(hoverTimeTargetFrom(root.querySelector('#prose'), root)).toBeNull();
+        expect(hoverTimeTargetFrom(root.querySelector('#copy'), root)).toBeNull();
+        // the visible footer time keeps its full-time bubble
+        expect(hoverTimeTargetFrom(root.querySelector('#time'), root)?.id).toBe('time');
+        expect(hoverTimeTargetFrom(root.querySelector('#tool-label'), root)?.id).toBe('tool');
         // a row with no timestamp yet has nothing to show
         expect(hoverTimeTargetFrom(root.querySelector('#untimed'), root)).toBeNull();
         // a row outside the given transcript never matches
@@ -41,9 +44,15 @@ describe('B-473 transcript hover time', () => {
         expect(hoverTimeTargetFrom(root.querySelector('#prose'), null)).toBeNull();
     });
 
+    it('B-514: message rows are not hover-time targets; tool rows and the footer time are', () => {
+        const parts = HOVER_TIME_ROW_SELECTOR.split(',');
+        expect(parts).not.toContain('.msg');
+        expect(parts).toEqual(expect.arrayContaining(['.msg-time', '.tg-row', '.tg-head', '.tg-preview-row', '.sa-brief']));
+    });
+
     it('reads a parked title so a re-hover of the same row still has its time', () => {
         const row = document.createElement('div');
-        row.className = 'msg';
+        row.className = 'tg-row';
         expect(hoverTimeTextOf(row)).toBeNull();
         row.setAttribute('title', '   ');
         expect(hoverTimeTextOf(row)).toBeNull();
