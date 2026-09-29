@@ -2031,6 +2031,14 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            sep30: {
+                title: 'New sessions open faster; messages show when they are really sent',
+                summary: 'Starting a Claude session from the web no longer waits for the whole CLI to load or for a login-shell probe, and the session page opens as soon as the server announces it. A message you send now stays dimmed until the server has stored it, and tells you when it could not be sent. Faster session start needs the CLI update on the machine; the web part is live now.',
+                start: 'The session wrapper loads only what it needs before reporting in, the daemon reuses its last agent-home probe, and the web opens the new session straight from the server announcement instead of refetching the session list.',
+                sending: 'A sent message is dimmed (with a spinner if it takes a moment) until the server confirms it, then turns into a normal message. Sending no longer waits for history to load or for the regional relay to connect.',
+                failed: 'If it is not confirmed within 15 seconds it shows 「Not sent · Retry」; when the server certainly did not store it you can also put the text back in the composer. Retrying never duplicates a message.',
+                hover: 'Hovering a message body no longer pops up its time; the time under the message and on tool rows still does.',
+            },
             sep27b: {
                 title: 'Queued prompts now live on the server',
                 summary: 'A prompt you queue while the agent is busy used to live only in that browser tab: close it and the rest of the queue never went out. It is now stored on the server the moment you queue it, and the session\'s wrapper sends the next one itself when its turn ends — with every tab closed, from any device. Needs the CLI update on the machine; until then that session keeps the old tab-local queue.',
