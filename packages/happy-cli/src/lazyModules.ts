@@ -2,10 +2,11 @@
  * B-512: every module the CLI loads with a dynamic `import()`.
  *
  * The entry (./index.ts) is a small stub and most of the CLI is imported on
- * demand, so a plain `--version` no longer proves that the bundle's module
+ * demand, so loading the entry alone no longer proves that the bundle's module
  * graph loads (broken npm install, missing chunk, external ESM named-import
- * mismatch — iron rule 2). `very-happy --self-check` imports everything listed
- * here instead; the handover preflight, CI and release smoke run it.
+ * mismatch — iron rule 2). `very-happy --version` (alias `--self-check`)
+ * therefore imports everything listed here before answering; the handover
+ * preflight of every daemon version, CI and release smoke run it.
  *
  * lazyModules.test.ts fails when an `import()` anywhere under src/ is missing
  * from this list — add new dynamic imports here in the same change.

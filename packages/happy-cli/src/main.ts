@@ -7,7 +7,7 @@
  * top — every static import here is paid by every process start, including
  * each daemon-spawned session wrapper. Every `import()` target must also be
  * listed in ./lazyModules.ts (enforced by lazyModules.test.ts) so
- * `--self-check` loads it.
+ * `--version` (the bundle self-check) loads it.
  */
 
 

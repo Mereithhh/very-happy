@@ -52,7 +52,6 @@ Build and gate:
 ```bash
 pnpm -C packages/happy-cli test
 node packages/happy-cli/dist/index.mjs --version
-node packages/happy-cli/dist/index.mjs --self-check
 ```
 
 Run against the local server in a disposable home:

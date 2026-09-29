@@ -16,6 +16,10 @@ describe('daemon spawn path (B-512)', () => {
         expect(spawnSession).toContain('await refreshAgentHomes(Date.now(), { allowStale: true });');
     });
 
+    it('handover preflight always probes with --version (the full self-check since B-512; old bundles answer it too)', () => {
+        expect(run).toContain("spawn(process.execPath, ['--no-warnings', '--no-deprecation', bundlePath, '--version'], {");
+    });
+
     it('does not probe tmux unless a session name asks for it', () => {
         expect(run).toContain('const tmuxAvailable = tmuxSessionName !== undefined && await isTmuxAvailable();');
     });

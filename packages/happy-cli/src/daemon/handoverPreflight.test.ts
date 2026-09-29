@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { decideHandover, preflightProbeArg, preflightVersion } from './handoverPreflight';
+import { decideHandover, preflightVersion } from './handoverPreflight';
 
 const ok = { exitCode: 0, stdout: 'very-happy version: 0.2.120\n', timedOut: false };
 
@@ -35,25 +33,5 @@ describe('decideHandover', () => {
     it('reads the version out for the report', () => {
         expect(preflightVersion(ok.stdout)).toBe('0.2.120');
         expect(preflightVersion('nothing here')).toBeNull();
-    });
-});
-
-describe('preflightProbeArg (B-512)', () => {
-    it('probes a bundle that ships the self-check chunk with --self-check', () => {
-        expect(preflightProbeArg(['index.mjs', 'main-DXwqQcmX.mjs', 'selfCheck-C4ivD7IW.mjs'])).toBe('--self-check');
-    });
-
-    it('keeps --version for a pre-B-512 bundle (rollback): it would read --self-check as a Claude arg', () => {
-        expect(preflightProbeArg(['index.mjs', 'index-CwPks96w.mjs', 'types-C7CxJkmD.mjs'])).toBe('--version');
-        expect(preflightProbeArg(['selfCheck.ts', 'selfCheck-x.cjs'])).toBe('--version');
-    });
-
-    it('the chunk it looks for is named after src/selfCheck.ts', () => {
-        expect(existsSync(join(__dirname, '..', 'selfCheck.ts'))).toBe(true);
-    });
-
-    it('names the probe in the hold reason', () => {
-        const held = decideHandover({ exitCode: 1, stdout: '', timedOut: false, probe: '--self-check' });
-        expect(held.action === 'hold' && held.reason).toBe('new bundle exited 1 on --self-check');
     });
 });

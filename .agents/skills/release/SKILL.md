@@ -48,9 +48,6 @@ Run the exact gates in `AGENTS.md`. For CLI also run the built artifact:
 
 ```bash
 HAPPY_HOME_DIR=$(mktemp -d) node packages/happy-cli/dist/index.mjs --version
-# B-512: --version no longer loads the module graph; --self-check imports every
-# lazily loaded module (and native addons) and must print the version.
-HAPPY_HOME_DIR=$(mktemp -d) node packages/happy-cli/dist/index.mjs --self-check
 ```
 
 Never release from a failing gate unless the user explicitly authorizes an

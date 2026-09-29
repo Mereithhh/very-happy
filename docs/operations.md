@@ -380,11 +380,8 @@ online. Recover by discarding the tree instead of retrying npm on top of it:
 ps -p <daemon pid> -o command   # confirm the old process is still serving
 rm -rf /opt/homebrew/lib/node_modules/very-happy-cli
 npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@<version>
-very-happy --self-check && very-happy daemon start
+very-happy --version && very-happy daemon start
 ```
-
-(`--self-check` loads every module; since B-512 a bare `--version` answers from
-the entry stub and no longer proves the tree is intact.)
 
 Then re-adopt launchd as below — a recovery handover leaves the daemon outside
 launchd exactly like a normal one.
