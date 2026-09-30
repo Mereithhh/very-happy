@@ -2031,6 +2031,14 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            sep30b: {
+                title: 'New chats open instantly',
+                summary: 'Clicking New chat now opens the session page at once — you can type and send while the machine is still starting the session, and your messages go out, in order, the moment it is ready.',
+                instant: 'The page and composer appear immediately; the header shows 「Starting…」 until the session is up, then the page turns into the real session without losing what you were typing.',
+                queue: 'Messages sent while it starts are shown as waiting and delivered exactly once, in order. Attachments and /btw become available once the session is up.',
+                mode: 'A permission mode, model or effort you pick while it starts applies to your first message.',
+                failure: 'If starting fails your text goes back to the input box with Retry; creating a missing directory is confirmed right on the page. Leaving the page does not pull you back, and another open tab shows the same start read-only.',
+            },
             sep30a: {
                 title: 'The first reply in a new session comes about a second sooner',
                 summary: 'When you open a new Claude session from the web, the machine now starts Claude in the background right away instead of waiting for your first message, so that message no longer pays for Claude starting up. Needs the CLI update on the machine.',
@@ -4074,6 +4082,36 @@ export const en = {
     },
 
     // Diagnostics / health screen.
+    // B-516: optimistic new-session page (sync/pendingSessions.ts)
+    pendingSession: {
+        starting: 'Starting…',
+        connecting: 'Connecting…',
+        outboxTitle: 'Waiting to send',
+        sendAfterStart: 'Sends when the session starts',
+        removeQueued: 'Remove',
+        attachmentsLater: 'Attachments can be added once the session has started',
+        btwLater: '/btw is available once the session has started',
+        needsApprovalTitle: 'Directory does not exist',
+        needsApprovalMessage: ({ directory }: { directory: string }) => `${directory} doesn't exist yet. Create it and start the session?`,
+        createAndStart: 'Create and start',
+        failedTitle: 'The new session failed to start',
+        interruptedTitle: 'Start was interrupted',
+        interruptedMessage: 'The page reloaded before the session started. It may still have been created — check the sidebar, or retry.',
+        declinedTitle: 'Directory not created',
+        textKept: 'Your text is in the input box.',
+        adoptFound: 'A matching session was created meanwhile.',
+        adopt: 'Open this session',
+        failedToast: 'New session failed to start · Open',
+        goneTitle: 'This new session no longer exists',
+        discardTitle: 'Discard this new session?',
+        discardMessage: 'Text that has not been sent will be lost.',
+        sidebarStarting: 'Starting…',
+        sidebarNeedsApproval: 'Confirm directory',
+        sidebarFailed: 'Failed to start',
+        retryFirst: 'Retry starting the session first — your text stays here.',
+        otherTab: 'This new session is being started in another tab.',
+    },
+
     diagnostics: {
         webBuild: 'Web build',
         webBuildVersion: 'Build',

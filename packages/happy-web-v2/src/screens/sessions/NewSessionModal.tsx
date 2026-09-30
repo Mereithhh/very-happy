@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bookmark, Check, X } from 'lucide-react';
-import { storage, useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
+import { useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
 import { isMachineOnline, pickDefaultMachineId } from '@/utils/machineUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import type { RecentMachinePath } from '@/utils/quickChat';
-import { recordRecentMachinePath } from '@/app/newChat';
-import { newSessionTimingCancel, newSessionTimingRpcReturned, newSessionTimingRpcSent, newSessionTimingStart } from '@/app/newSessionTiming';
-import { machineSpawnNewSession } from '@/sync/ops';
-import { sync } from '@/sync/sync';
-import { Button, useToast } from '@/ui';
-import { Modal } from '@/modal';
+import { newSessionTimingStart } from '@/app/newSessionTiming';
+import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
+import { pendingSessions } from '@/sync/pendingSessionsRuntime';
+import { Button } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ConnectMachineLink, NoMachinesNotice } from './NoMachinesNotice';
 import { claudeAuthNotice, hasClaudeAuthNotice } from './claudeAuthNotice';
@@ -42,19 +40,19 @@ export function NewSessionModal({
   onClose,
   initialCommandDefault,
   initialLocation,
-  onSpawned,
+  spawnedTaskId,
 }: {
   onClose: () => void;
   initialLocation?: RecentMachinePath;
   /** Prefill for the initial-instruction field (Task Board dispatch passes
    *  the task description so it becomes the session's first message). */
   initialCommandDefault?: string;
-  /** Called with the new sessionId right after a successful spawn (before
-   *  navigation) — Task Board uses it to record the task→session mapping. */
-  onSpawned?: (sessionId: string) => void;
+  /** Task Board dispatch: the pending-session store attaches the new session
+   *  to this task once the spawn succeeds (B-516 — it may land after this
+   *  dialog and even the board are gone). */
+  spawnedTaskId?: string;
 }) {
   const navigate = useNavigate();
-  const toast = useToast();
   const { t, lang } = useTranslation();
   const machines = useAllMachines({ includeOffline: true });
   const online = useMemo(() => machines.filter(isMachineOnline), [machines]);
@@ -71,7 +69,6 @@ export function NewSessionModal({
   const [agent, setAgent] = useState<SessionAgent>(() => normalizeAgentKey(defaultAgent));
   const [initialCommand, setInitialCommand] = useState(initialCommandDefault ?? '');
   const ime = useImeGuard();
-  const [busy, setBusy] = useState(false);
 
   // ── B-147: nothing derived from the stores may live in a useState initializer.
   // `useAllMachines` answers [] until the store is hydrated (storage.ts's
@@ -132,8 +129,7 @@ export function NewSessionModal({
   const selectedClaudeAuth = claudeAuthNotice(selectedMachine, agent);
   const canCreate = !!selectedMachine
     && trimmed.length > 0
-    && selectedAgentAvailability.available
-    && !busy;
+    && selectedAgentAvailability.available;
 
   // Availability can change when a machine is selected or a daemon refreshes
   // its metadata. Never leave the modal pointing at a known-missing external
@@ -169,61 +165,24 @@ export function NewSessionModal({
     if (editingId === id) setEditingId(null);
   }
 
-  async function spawn(approve = false) {
-    const permissionMode = resolveNewSessionPermissionMode(agentDefaultOverrides, agent, reviewFirst);
-    newSessionTimingRpcSent();
-    const res = await machineSpawnNewSession({
-      machineId,
-      directory: resolveDir(trimmed),
-      agent,
-      permissionMode,
-      approvedNewDirectoryCreation: approve,
-    });
-    if (res.type === 'success') newSessionTimingRpcReturned(res.sessionId);
-    if (res.type === 'requestToApproveDirectoryCreation') {
-      const ok = await Modal.confirm(
-        t('newSession.createDirTitle'),
-        t('newSession.createDirMessage', { directory: res.directory }),
-        { confirmText: t('common.create') },
-      );
-      if (ok) return spawn(true);
-      return null;
-    }
-    if (res.type === 'error') {
-      toast.error(res.errorMessage || t('errors.networkError'));
-      return null;
-    }
-    storage.getState().updateSessionPermissionMode(res.sessionId, permissionMode);
-    return res.sessionId;
-  }
-
-  async function onCreate() {
+  // B-516: optimistic open. The pending page owns the spawn, a directory
+  // creation approval, the first message (queued in its outbox) and failure;
+  // recent-path memory and the Task Board mapping happen on success there.
+  function onCreate() {
     if (!canCreate) return;
-    setBusy(true);
     newSessionTimingStart('dialog');
-    try {
-      const sessionId = await spawn(false);
-      if (!sessionId) newSessionTimingCancel();
-      if (sessionId) {
-        // Teach the quick "+" path: the next new chat reuses this
-        // machine+directory directly, without this dialog.
-        recordRecentMachinePath(machineId, resolveDir(trimmed));
-        onSpawned?.(sessionId);
-        // Optional initial instruction: fire it as the first chat message once
-        // the session exists. sendMessage awaits the sessions-sync queue, so it
-        // safely waits for the just-spawned session's encryption/storage to land
-        // before sending — no need to block navigation on it.
-        const first = initialCommand.trim();
-        if (first) void sync.sendMessage(sessionId, first, { source: 'chat' });
-        onClose();
-        navigate(`/session/${sessionId}`);
-      }
-    } catch (e: any) {
-      newSessionTimingCancel();
-      toast.error(e?.message || t('errors.networkError'));
-    } finally {
-      setBusy(false);
-    }
+    prefetchSessionDetail();
+    const record = pendingSessions.create({
+      machineId,
+      path: resolveDir(trimmed),
+      agent,
+      permissionMode: resolveNewSessionPermissionMode(agentDefaultOverrides, agent, reviewFirst),
+      source: 'dialog',
+      firstMessage: initialCommand,
+      ...(spawnedTaskId ? { onSpawnedTask: { taskId: spawnedTaskId } } : {}),
+    });
+    onClose();
+    navigate(`/session/${record.pendingId}`);
   }
 
   return (
@@ -378,7 +337,7 @@ export function NewSessionModal({
                 // ⌘/Ctrl+Enter from the field = create, matching the send gesture.
                 // IME guard: a composition-committing Enter must not create.
                 if (ime.isGuarded(e)) return;
-                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void onCreate(); }
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); onCreate(); }
               }}
             />
           </>
@@ -388,7 +347,7 @@ export function NewSessionModal({
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button variant="primary" loading={busy} disabled={!canCreate} onClick={onCreate}>
+          <Button variant="primary" disabled={!canCreate} onPointerDown={prefetchSessionDetail} onClick={onCreate}>
             {t('common.create')}
           </Button>
         </div>

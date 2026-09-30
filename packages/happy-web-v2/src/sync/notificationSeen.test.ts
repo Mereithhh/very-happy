@@ -430,6 +430,8 @@ describe('parseSeenMap', () => {
 describe('targetKeyOfPath', () => {
     it('maps a session route to its id', () => {
         expect(targetKeyOfPath('/session/abc123', '')).toBe('abc123');
+        // B-516: an optimistic pending page is not a notification target
+        expect(targetKeyOfPath('/session/pending-abc', '')).toBeNull();
     });
 
     it('maps a terminal route to the tid-namespaced key', () => {

@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-30-optimistic-new-session',
+    date: '2026-09-30',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep30b.title',
+    summaryKey: 'changelog.releases.sep30b.summary',
+    itemKeys: ['changelog.releases.sep30b.instant', 'changelog.releases.sep30b.queue', 'changelog.releases.sep30b.mode', 'changelog.releases.sep30b.failure'],
+  },
+  {
     id: '2026-09-30-claude-prewarm',
     cliVersion: '0.2.161',
     date: '2026-09-30',

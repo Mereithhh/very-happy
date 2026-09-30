@@ -1,8 +1,8 @@
 import { SessionPreviews } from './SessionPreviews';
 import { SubagentDock } from './SubagentDock';
 import { messageActionsCopy } from './messageActionsCopy';
-import { useEffect, useRef } from 'react';
-import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef } from 'react';
+import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useSession, useMessage, useLocalSetting, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
@@ -13,7 +13,10 @@ import { EmptyState, Button, OrbitLoader } from '@/ui';
 import { SessionTeamContext } from './SessionTeamContext';
 import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
-import { AgentInput } from './AgentInput';
+import { AgentInput, type PendingComposer } from './AgentInput';
+import { PendingSessionBody, PendingSessionHeader } from './PendingSessionParts';
+import { composerKey, isPendingSessionId, landingRedirect } from '@/sync/pendingSessions';
+import { clearPendingSessionKeys, pendingDraft, pendingSessions, usePendingRecord } from '@/sync/pendingSessionsRuntime';
 import { notesPanelTransition, type NotesPanelSnapshot } from './notesPanelTransition';
 import { setNotesPanelOpen } from '../notes/notesPanelState';
 import { SessionWorkspacePanel } from './SessionWorkspacePanel';
@@ -30,14 +33,25 @@ import { ModelSupportBanner } from './ModelSupportBanner';
 import { AutomationAttentionBanner } from './AutomationAttentionBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { isMirrorSession } from '@/assistant/assistantSession';
-import { newSessionTimingComposerMounted, newSessionTimingInStore } from '@/app/newSessionTiming';
+import { newSessionTimingComposerMounted, newSessionTimingInStore, newSessionTimingPendingShown } from '@/app/newSessionTiming';
 import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
 import './session.css';
 
 export function SessionDetailScreen() {
-    const { id } = useParams();
+    const { id: routeId } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const { t, lang } = useTranslation();
+    // B-516 single tree: a pending record (optimistic new session) renders this
+    // same layout. `id` is the effective id — the pending id until the outbox
+    // is flushed, then its real id (the composer only switches then, so a new
+    // message can never overtake the outbox).
+    const pending = usePendingRecord(routeId);
+    const pendingMode = !!pending && pending.state !== 'landed';
+    const id = pending
+        ? (pending.state === 'landed' && pending.realId ? pending.realId : pending.pendingId)
+        : routeId;
+    const pendingId = pendingMode ? pending!.pendingId : null;
     const session = useSession(id ?? '');
     const branchOrigin = useMessage(session?.metadata?.parentSessionId ?? '', session?.metadata?.forkedFromMessageId ?? '');
     const bannerMachine = storage((s) => {
@@ -60,7 +74,7 @@ export function SessionDetailScreen() {
     // new-session trace for this id is open.
     const composerShown = !!session && !isMirrorSession(session);
     useEffect(() => {
-        if (!id || !session) return;
+        if (!id || !session || pendingMode) return;
         newSessionTimingInStore(id);
         if (composerShown) newSessionTimingComposerMounted(id);
         // eslint-disable-next-line react-hooks/exhaustive-deps -- only the presence edge matters
@@ -136,10 +150,44 @@ export function SessionDetailScreen() {
     const sdRef = useRef<HTMLDivElement>(null);
     useKeyboardViewportPin(sdRef);
 
+    // B-516: the pending page is on screen → end the global new-chat lock
+    // and record the pending-shown mark; failures while here need no toast.
+    useEffect(() => {
+        if (!pendingId) return;
+        pendingSessions.markShown(pendingId);
+        newSessionTimingPendingShown();
+        pendingSessions.setViewing(pendingId);
+        return () => pendingSessions.setViewing(null);
+    }, [pendingId]);
+    // Only THIS page, while it still shows the pending id, moves on to the
+    // real session (replace, search kept). A user who left is never pulled back.
+    const redirectTo = landingRedirect(routeId, pending);
+    useEffect(() => {
+        if (redirectTo) navigate(`/session/${redirectTo}${location.search}`, { replace: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- fire on the landing edge only
+    }, [redirectTo]);
+    // pendingId -> its realId: the composer instance is kept (same key); drop
+    // what it left under the pending id (runs after the composer's own cleanup).
+    const previousId = useRef(id);
+    useEffect(() => {
+        const previous = previousId.current;
+        previousId.current = id;
+        if (previous && previous !== id && isPendingSessionId(previous) && id && pendingSessions.aliasOf(id) === previous) {
+            clearPendingSessionKeys(previous);
+        }
+    }, [id]);
+    // A record another tab owns is read-only here; if that tab is gone, take it over.
+    const foreignPending = pendingMode && !pendingSessions.isOwnedHere(pending!.pendingId);
+    useEffect(() => {
+        if (foreignPending) void pendingSessions.resume();
+    }, [foreignPending]);
+    const pendingInitialDraft = useMemo(() => (pendingId ? pendingDraft(pendingId) : ''), [pendingId]);
+
     // Trigger the initial message fetch + mark this session as the one being
     // viewed (drives message sync, read state, and web-resume refresh).
+    // Skipped while pending: there is no session to fetch or mark read.
     useEffect(() => {
-        if (!id) return;
+        if (!id || pendingMode) return;
         storage.getState().setCurrentViewingSession(id);
         sync.onSessionVisible(id);
         return () => {
@@ -147,7 +195,7 @@ export function SessionDetailScreen() {
                 storage.getState().setCurrentViewingSession(null);
             }
         };
-    }, [id]);
+    }, [id, pendingMode]);
 
     if (!id) {
         return (
@@ -158,8 +206,18 @@ export function SessionDetailScreen() {
         );
     }
 
+    // A pending id without a record: discarded, or opened in another browser.
+    if (isPendingSessionId(routeId) && !pending) {
+        return (
+            <EmptyState
+                title={t('pendingSession.goneTitle')}
+                actions={<Button onClick={() => navigate('/')}>{t('common.back')}</Button>}
+            />
+        );
+    }
+
     // Session not yet in storage (still syncing or unknown id).
-    if (!session) {
+    if (!session && !pending) {
         return (
             <div className="sd-loading">
                 <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
@@ -173,13 +231,25 @@ export function SessionDetailScreen() {
     // not disabled — (AgentInput.canSend ignores presence, a live composer on
     // a daemon-hosted mirror WILL misfire), which also makes the model /
     // permission / effort menus unreachable. Banners replace the foot's role.
-    const mirror = isMirrorSession(session);
+    const mirror = !!session && isMirrorSession(session);
+    const pendingComposer: PendingComposer | undefined = pendingMode && pending ? {
+        onSend: (text) => pendingSessions.append(pending.pendingId, text),
+        permissionMode: pending.permissionMode,
+        modelMode: pending.modelMode,
+        effortLevel: pending.effortLevel,
+        onMode: (field, value) => pendingSessions.setMode(pending.pendingId, field, value),
+        initialDraft: pendingInitialDraft,
+        isGone: () => !pendingSessions.get(pending.pendingId),
+        blockedHint: foreignPending
+            ? t('pendingSession.otherTab')
+            : pending.state === 'failed' ? t('pendingSession.retryFirst') : undefined,
+    } : undefined;
 
     return (
-        <div className={`sd${panelOpen ? ' sd--files-open' : ''}`} ref={sdRef}>
+        <div className={`sd${panelOpen && session ? ' sd--files-open' : ''}`} ref={sdRef} data-pending={pending && !session ? pending.state : undefined}>
             <div className="sd-main">
-                {session.metadata?.parentSessionId && <div className="msg-branch-context"><span>{messageActionsCopy(lang).branchContext}</span>{branchOrigin?.kind === 'user-text' && <q className="msg-branch-preview" title={branchOrigin.text}>{branchOrigin.text}</q>}<Link className="msg-parent-link" to={`/session/${session.metadata.parentSessionId}`}>{messageActionsCopy(lang).parent}</Link></div>}
-                <ChatHeader
+                {session?.metadata?.parentSessionId && <div className="msg-branch-context"><span>{messageActionsCopy(lang).branchContext}</span>{branchOrigin?.kind === 'user-text' && <q className="msg-branch-preview" title={branchOrigin.text}>{branchOrigin.text}</q>}<Link className="msg-parent-link" to={`/session/${session.metadata.parentSessionId}`}>{messageActionsCopy(lang).parent}</Link></div>}
+                {!session ? <PendingSessionHeader record={pending!} /> : <ChatHeader
                     sessionId={id}
                     filesOpen={filesOpen}
                     onToggleFiles={() => panelTab === 'browse' ? setPanel(null, true) : setPanel('browse')}
@@ -187,28 +257,35 @@ export function SessionDetailScreen() {
                     onToggleBtw={btwAllowed
                         ? () => (btwOpen ? setPanel(null, true) : setPanel('btw'))
                         : undefined}
-                />
-                <SessionTeamContext sessionId={id} />
+                />}
+                {session && <SessionTeamContext sessionId={id} />}
                 {mirror && <MirrorBanner sessionId={id} />}
                 {/* B-508: an automation run is waiting on this session → say which and offer 「知道了」 */}
-                {!mirror && <AutomationAttentionBanner key={id} sessionId={id} />}
+                {session && !mirror && <AutomationAttentionBanner key={id} sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}
-                {!mirror && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
+                {session && !mirror && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
                 {/* B-462: live session still on an older wrapper than the machine runs → offer a restart */}
-                {!mirror && !canOfferRestore(session, bannerMachine) && <StaleWrapperBanner sessionId={id} />}
+                {session && !mirror && !canOfferRestore(session, bannerMachine) && <StaleWrapperBanner sessionId={id} />}
                 {/* B-487: the wanted model cannot run on this wrapper / agent CLI → say so and offer the fix */}
-                {!mirror && !canOfferRestore(session, bannerMachine) && <ModelSupportBanner sessionId={id} />}
+                {session && !mirror && !canOfferRestore(session, bannerMachine) && <ModelSupportBanner sessionId={id} />}
                 <div className="sd-body">
-                    <ChatList key={id} sessionId={id} showLiveStatus={!mirror} />
+                    {session ? <ChatList key={id} sessionId={id} showLiveStatus={!mirror} /> : <PendingSessionBody record={pending!} />}
                 </div>
                 {!mirror && (
                     <div className="sd-foot">
-                        <SessionPreviews sessionId={id} />
-                        <SubagentDock sessionId={id} />
+                        {session && <SessionPreviews sessionId={id} />}
+                        {session && <SubagentDock sessionId={id} />}
                         {/* Queue/draft/attachment ownership is session-scoped.
-                            Force a clean composer instance when route params change so
-                            an unsent item can never cross into another session. */}
-                        <AgentInput key={id} sessionId={id} />
+                            Force a clean composer instance when the session changes so
+                            an unsent item can never cross into another session. The one
+                            allowed id change without remount is a pending id -> its own
+                            real id (B-516), keyed by the pending alias. */}
+                        <AgentInput
+                            key={composerKey(id, pendingSessions.aliasOf)}
+                            sessionId={id}
+                            agentFlavor={session ? undefined : pending?.agent}
+                            pending={pendingComposer}
+                        />
                     </div>
                 )}
                 {/* B-107: the mirror's only interactive surface — a pty-channel
@@ -217,7 +294,7 @@ export function SessionDetailScreen() {
                     self-hides when the terminal is gone or claude exited. */}
                 {mirror && <MirrorInputBar sessionId={id} />}
             </div>
-            {retainedPanel && (
+            {retainedPanel && session && (
                 <>
                     {panelOpen && <div className="sd-files-scrim" onClick={() => setPanel(null, true)} aria-hidden />}
                     {panelOpen && filesResizable && (
