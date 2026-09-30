@@ -397,6 +397,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         registerSideQuestionHandler, writeSideQuestionSettingsFile, claudeCheckSession,
         createSessionScanner, getProjectPath, RawJSONLinesSchema, TitleGenerator, BoardAnalyzer,
         FileRateLimiter, createSelfReportState, withAssistantDenylist, contentLogMetadata,
+        resolveMessageMode, claudePrewarmEligibility, prewarmCacheFile, readPrewarmSystemPromptCache,
+        writePrewarmSystemPromptCache, acquirePrewarmSlot, prewarmSlotDir, PrewarmHookGate,
+        createClaudePrewarmLease, disposeAllClaudePrewarms, formatPrewarmLine,
     } = deps;
 
     // Log environment info (moved off the pre-webhook path, B-512)
@@ -617,25 +620,46 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Used by hook server to notify Session when Claude changes session ID
     let currentSession: Session | null = null;
 
+    // B-515: SessionStart hooks from a warm (prewarmed, not yet adopted)
+    // Claude process arrive tagged `?source=prewarm-…` and are ignored until
+    // that process is adopted — see claudePrewarm.ts.
+    const prewarmHookGate = new PrewarmHookGate();
+
+    // Tell the remote scanner which JSONL to watch. Every path that learns a
+    // Claude session id comes through here — the SessionStart hook AND the
+    // system/init path (Session.onSessionFound → callback below; before B-515
+    // the init path never told the scanner, B-355). Deduped: both paths
+    // usually report the same id.
+    let scannerAnnouncedSessionId: string | null = null;
+    const announceSessionToScanner = (sessionId: string) => {
+        if (sessionId === scannerAnnouncedSessionId) return;
+        scannerAnnouncedSessionId = sessionId;
+        // In remote mode every user prompt arrives via the SDK or the
+        // app channel — both of which already deliver their messages
+        // to the server before they hit disk. Anything the scanner
+        // finds in the JSONL at the moment it learns the session id
+        // is therefore already on the server; treating it as fresh
+        // (the previous behavior) replayed the whole history back to
+        // the chat on reconnect. The scanner's real job is forwarding
+        // *future* JSONL writes from a parallel `claude --resume`
+        // terminal, which the file watcher will pick up.
+        void Promise.resolve(remoteScanner.onNewSession(sessionId, { treatExistingAsProcessed: true }))
+            .catch((error) => logger.debug('[START] remote scanner onNewSession failed:', error));
+    };
+
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({
-        onSessionHook: (sessionId, data) => {
+        onSessionHook: (sessionId, data, hookMeta) => {
+            if (!prewarmHookGate.accepts(hookMeta?.source)) {
+                logger.debug(`[START] Session hook from an unadopted warm Claude process ignored (${hookMeta?.source})`);
+                return;
+            }
             logger.debug(`[START] Session hook received: ${sessionId}`, contentLogMetadata(data));
 
             // Tell the remote scanner about this sessionId so it knows
             // which JSONL to watch (and so it can fire onNewSession for
             // claude --resume hand-offs that mint a fresh session id).
-            //
-            // In remote mode every user prompt arrives via the SDK or the
-            // app channel — both of which already deliver their messages
-            // to the server before they hit disk. Anything the scanner
-            // finds in the JSONL at the moment it learns the session id
-            // is therefore already on the server; treating it as fresh
-            // (the previous behavior) replayed the whole history back to
-            // the chat on reconnect. The scanner's real job is forwarding
-            // *future* JSONL writes from a parallel `claude --resume`
-            // terminal, which the file watcher will pick up.
-            remoteScanner.onNewSession(sessionId, { treatExistingAsProcessed: true });
+            announceSessionToScanner(sessionId);
 
             // Update session ID in the Session instance
             if (currentSession) {
@@ -780,6 +804,87 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         logger.debug('[loop] Reset current mode defaults after abort');
     };
 
+    const currentModeState = () => ({
+        permissionMode: currentPermissionMode,
+        model: currentModel,
+        fallbackModel: currentFallbackModel,
+        customSystemPrompt: currentCustomSystemPrompt,
+        appendSystemPrompt: currentAppendSystemPrompt,
+        allowedTools: currentAllowedTools,
+        disallowedTools: currentDisallowedTools,
+        effort: currentEffort,
+    });
+
+    // B-515 phase 1: Claude prewarm. The prediction for the first message is
+    // the CLI's own state plus the last web `appendSystemPrompt` this machine
+    // saw (cached under HAPPY_HOME_DIR; the web sends a constant that only
+    // changes on a web deploy). Without a cache there is no prewarm.
+    const prewarmCachePath = prewarmCacheFile(configuration.happyHomeDir);
+    let cachedAppendSystemPrompt = readPrewarmSystemPromptCache(prewarmCachePath);
+    const rememberWebAppendSystemPrompt = (value: unknown) => {
+        if (typeof value !== 'string' || value.length === 0 || value === cachedAppendSystemPrompt) return;
+        if (writePrewarmSystemPromptCache(prewarmCachePath, value)) cachedAppendSystemPrompt = value;
+    };
+    let userMessageSeen = false;
+    const prewarmTagFiles = new Set<string>();
+    const createPrewarm = () => {
+        const eligibility = claudePrewarmEligibility({
+            env: process.env,
+            startedBy: options.startedBy,
+            startingMode: options.startingMode,
+            claudeArgs: options.claudeArgs,
+            setting: settings?.claudePrewarm,
+            cachedAppendSystemPrompt,
+        });
+        if (!eligibility.eligible) {
+            logger.debug(formatPrewarmLine('skipped', eligibility.reason));
+            return null;
+        }
+        // A message is already on its way: a warm process would only race it.
+        if (userMessageSeen) {
+            logger.debug(formatPrewarmLine('skipped', 'message-already-received'));
+            return null;
+        }
+        const slot = acquirePrewarmSlot(prewarmSlotDir(configuration.happyHomeDir));
+        if (!slot) {
+            logger.debug(formatPrewarmLine('skipped', 'concurrency-limit'));
+            return null;
+        }
+        const predicted = resolveMessageMode(currentModeState(), { appendSystemPrompt: cachedAppendSystemPrompt }, {
+            sandboxEnabled, isAssistantVariant, staleModeSnapshot: false,
+        }).mode;
+        const tag = prewarmHookGate.newTag();
+        let tagHookSettingsPath: string;
+        try {
+            tagHookSettingsPath = generateHookSettingsFile(hookServer.port, tag);
+        } catch (error) {
+            slot.release();
+            logger.debug(formatPrewarmLine('skipped', 'hook-settings'));
+            return null;
+        }
+        prewarmTagFiles.add(tagHookSettingsPath);
+        return createClaudePrewarmLease({
+            mode: predicted,
+            hookSettingsPath: tagHookSettingsPath,
+            tag,
+            gate: prewarmHookGate,
+            slot,
+            // Only removed on discard: an adopted process keeps reading its
+            // settings file (later SessionStart events, e.g. /compact); it goes
+            // with the other hook files at exit.
+            cleanupHookSettings: () => {
+                cleanupHookSettingsFile(tagHookSettingsPath);
+                prewarmTagFiles.delete(tagHookSettingsPath);
+            },
+            log: (line) => logger.debug(line),
+        });
+    };
+    const cleanupPrewarm = () => {
+        disposeAllClaudePrewarms('shutdown');
+        for (const file of prewarmTagFiles) cleanupHookSettingsFile(file);
+        prewarmTagFiles.clear();
+    };
+
     // Handle file events — each download promise resolves to its own decoded
     // attachment (or null). drainAttachmentsForUserMessage on the next text
     // claims the in-flight set atomically; later file events go into a fresh
@@ -805,6 +910,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     });
 
     session.onUserMessage(async (message) => {
+        userMessageSeen = true;
 
         // NOTE: the JSONL-scanner dedupe is NOT stamped here any more (B-355).
         // What the SDK writes to disk is the FINALISED prompt: the queue batches
@@ -824,134 +930,49 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // New file events from this point on belong to the next user message.
         const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
 
-        // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
-        let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
+        // B-515: one pure resolver (claude/messageMode.ts) — the prewarm
+        // predicts the first message's mode with the same function.
         const messageCreatedAt = (message as { createdAt?: number }).createdAt;
         const staleModeSnapshot = message.meta?.permissionMode !== undefined
             && typeof messageCreatedAt === 'number'
             && messageCreatedAt < lastExplicitModeSwitchAt;
         if (staleModeSnapshot) {
             logger.debug(`[loop] Ignoring stale meta.permissionMode=${message.meta?.permissionMode} (message ${messageCreatedAt} predates explicit switch ${lastExplicitModeSwitchAt}); keeping ${currentPermissionMode}`);
-        } else if (message.meta?.permissionMode) {
-            const previousPermissionMode = currentPermissionMode;
-            messagePermissionMode = resolveRemoteClaudePermissionMode(
-                currentPermissionMode,
-                message.meta.permissionMode,
-                sandboxEnabled,
-            );
-            publishPermissionMode(messagePermissionMode);
+        }
+        const previousPermissionMode = currentPermissionMode;
+        const resolved = resolveMessageMode(currentModeState(), message.meta, { sandboxEnabled, isAssistantVariant, staleModeSnapshot });
+        if ('publishPermissionMode' in resolved) {
+            publishPermissionMode(resolved.publishPermissionMode);
             const ignoredDefaultDowngrade =
                 (previousPermissionMode === 'bypassPermissions' || previousPermissionMode === 'yolo')
-                && message.meta.permissionMode === 'default'
+                && message.meta?.permissionMode === 'default'
                 && currentPermissionMode === previousPermissionMode;
-            if (ignoredDefaultDowngrade) {
-                logger.debug(`[loop] Ignoring permission mode downgrade from ${previousPermissionMode} to default`);
-            } else {
-                logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
-            }
-        } else {
-            logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
+            logger.debug(ignoredDefaultDowngrade
+                ? `[loop] Ignoring permission mode downgrade from ${previousPermissionMode} to default`
+                : `[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
         }
-
-        // Resolve model - use message.meta.model if provided, otherwise use current model
-        let messageModel = currentModel;
-        if (message.meta?.hasOwnProperty('model')) {
-            messageModel = message.meta.model || undefined; // null becomes undefined
-            currentModel = messageModel;
-            logger.debug(`[loop] Model updated from user message: ${messageModel || 'reset to default'}`);
-        } else {
-            logger.debug(`[loop] User message received with no model override, using current: ${currentModel || 'default'}`);
+        currentModel = resolved.next.model;
+        currentFallbackModel = resolved.next.fallbackModel;
+        currentCustomSystemPrompt = resolved.next.customSystemPrompt;
+        currentAppendSystemPrompt = resolved.next.appendSystemPrompt;
+        currentAllowedTools = resolved.next.allowedTools;
+        currentDisallowedTools = resolved.next.disallowedTools;
+        currentEffort = resolved.next.effort;
+        if (resolved.ignoredEffort !== undefined) {
+            logger.debug(`[loop] Ignoring invalid effort from user message: ${resolved.ignoredEffort}`);
         }
-
-        // Resolve custom system prompt - use message.meta.customSystemPrompt if provided, otherwise use current
-        let messageCustomSystemPrompt = currentCustomSystemPrompt;
-        if (message.meta?.hasOwnProperty('customSystemPrompt')) {
-            messageCustomSystemPrompt = message.meta.customSystemPrompt || undefined; // null becomes undefined
-            currentCustomSystemPrompt = messageCustomSystemPrompt;
-            logger.debug(`[loop] Custom system prompt updated from user message: ${messageCustomSystemPrompt ? 'set' : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no custom system prompt override, using current: ${currentCustomSystemPrompt ? 'set' : 'none'}`);
-        }
-
-        // Resolve fallback model - use message.meta.fallbackModel if provided, otherwise use current fallback model
-        let messageFallbackModel = currentFallbackModel;
-        if (message.meta?.hasOwnProperty('fallbackModel')) {
-            messageFallbackModel = message.meta.fallbackModel || undefined; // null becomes undefined
-            currentFallbackModel = messageFallbackModel;
-            logger.debug(`[loop] Fallback model updated from user message: ${messageFallbackModel || 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no fallback model override, using current: ${currentFallbackModel || 'none'}`);
-        }
-
-        // Resolve append system prompt - use message.meta.appendSystemPrompt if provided, otherwise use current
-        let messageAppendSystemPrompt = currentAppendSystemPrompt;
-        if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
-            messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined; // null becomes undefined
-            currentAppendSystemPrompt = messageAppendSystemPrompt;
-            logger.debug(`[loop] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
-        }
-
-        // Resolve allowed tools - use message.meta.allowedTools if provided, otherwise use current
-        let messageAllowedTools = currentAllowedTools;
-        if (message.meta?.hasOwnProperty('allowedTools')) {
-            messageAllowedTools = message.meta.allowedTools || undefined; // null becomes undefined
-            currentAllowedTools = messageAllowedTools;
-            logger.debug(`[loop] Allowed tools updated from user message: ${messageAllowedTools ? messageAllowedTools.join(', ') : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no allowed tools override, using current: ${currentAllowedTools ? currentAllowedTools.join(', ') : 'none'}`);
-        }
-
-        // Resolve disallowed tools - use message.meta.disallowedTools if provided, otherwise use current
-        let messageDisallowedTools = currentDisallowedTools;
-        if (message.meta?.hasOwnProperty('disallowedTools')) {
-            // B-063: a per-message override may deny MORE, never lift the
-            // assistant's dispatcher denylist.
-            messageDisallowedTools = withAssistantDenylist(message.meta.disallowedTools || undefined, isAssistantVariant);
-            currentDisallowedTools = messageDisallowedTools;
-            logger.debug(`[loop] Disallowed tools updated from user message: ${messageDisallowedTools ? messageDisallowedTools.join(', ') : 'reset to none'}`);
-        } else {
-            logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
-        }
-
-        // Resolve effort — pass through to Claude SDK as the `effort` option.
-        // Validate against the SDK's accepted set so a stale/garbage value
-        // from the wire doesn't poison the session.
-        let messageEffort = currentEffort;
-        const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
-        if (message.meta?.hasOwnProperty('effort')) {
-            const incoming = (message.meta as Record<string, unknown>).effort;
-            if (incoming === null || incoming === undefined) {
-                messageEffort = undefined;
-                currentEffort = undefined;
-                logger.debug(`[loop] Effort reset to default`);
-            } else if (typeof incoming === 'string' && VALID_EFFORTS.has(incoming)) {
-                messageEffort = incoming as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-                currentEffort = messageEffort;
-                logger.debug(`[loop] Effort updated from user message: ${messageEffort}`);
-            } else {
-                logger.debug(`[loop] Ignoring invalid effort from user message: ${String(incoming)}`);
-            }
-        } else {
-            logger.debug(`[loop] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
-        }
+        logger.debug(`[loop] Message mode: permission=${resolved.mode.permissionMode} model=${resolved.mode.model || 'default'} effort=${resolved.mode.effort ?? 'default'} appendSystemPrompt=${resolved.mode.appendSystemPrompt ? 'set' : 'none'} customSystemPrompt=${resolved.mode.customSystemPrompt ? 'set' : 'none'}`);
+        // B-515: remember the web's system prompt — it is what the next fresh
+        // session's prewarm predicts with (it only changes on a web deploy).
+        rememberWebAppendSystemPrompt(message.meta?.appendSystemPrompt);
+        const resolvedMode = resolved.mode;
 
         // Check for special commands before processing
         const specialCommand = parseSpecialCommand(message.content.text);
 
         if (specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools,
-                effort: messageEffort,
-            };
+            const enhancedMode: EnhancedMode = resolvedMode;
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage, message.localKey);
             logger.debug('[start] /compact command pushed to queue:', {
                 ...contentLogMetadata(message.content.text),
@@ -963,16 +984,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         if (specialCommand.type === 'clear') {
             logger.debug('[start] Detected /clear command');
-            const enhancedMode: EnhancedMode = {
-                permissionMode: messagePermissionMode || 'default',
-                model: messageModel,
-                fallbackModel: messageFallbackModel,
-                customSystemPrompt: messageCustomSystemPrompt,
-                appendSystemPrompt: messageAppendSystemPrompt,
-                allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools,
-                effort: messageEffort,
-            };
+            const enhancedMode: EnhancedMode = resolvedMode;
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage, message.localKey);
             logger.debug('[start] /clear command pushed to queue:', {
                 ...contentLogMetadata(message.content.text),
@@ -1025,16 +1037,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
 
         // Push with resolved permission mode, model, system prompts, and tools
-        const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
-            fallbackModel: messageFallbackModel,
-            customSystemPrompt: messageCustomSystemPrompt,
-            appendSystemPrompt: messageAppendSystemPrompt,
-            allowedTools: messageAllowedTools,
-            disallowedTools: messageDisallowedTools,
-            effort: messageEffort,
-        };
+        const enhancedMode: EnhancedMode = resolvedMode;
 
         if (message.meta?.delivery === 'steer' && currentRunMode === 'remote') {
             const accepted = await currentSession?.trySteer({
@@ -1093,6 +1096,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // process that is leaving (a popped item is a message the next wrapper
         // will not run; see spec §5 「派发后退出窗口」).
         promptQueueDrain.close();
+        // B-515: a warm Claude process never outlives the wrapper.
+        cleanupPrewarm();
 
         try {
             if (session) {
@@ -1192,7 +1197,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         onSessionReady: (sessionInstance) => {
             // Store reference for hook server callback
             currentSession = sessionInstance;
+            // B-515: the system/init path (an adopted warm process, whose
+            // SessionStart hook was ignored) must reach the scanner too.
+            sessionInstance.addSessionFoundCallback?.(announceSessionToScanner);
         },
+        // B-515: lease for a warm Claude process, taken once by the first
+        // remote launch (null when not eligible).
+        claudePrewarm: createPrewarm,
         // B-355: remember exactly what the SDK is about to write to the Claude
         // transcript, so the JSONL scanner below recognises it as ours.
         onPromptFinalized: recordAppPrompt,
@@ -1220,6 +1231,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
     // Note: currentSession is set by onSessionReady callback during loop()
     (currentSession as Session | null)?.cleanup();
+    cleanupPrewarm();
 
     // Send session death message
     session.sendSessionDeath();

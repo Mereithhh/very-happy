@@ -8,6 +8,7 @@ import type { SandboxConfig } from "@/persistence";
 import { NotificationProducer } from "./notificationProducer";
 import { notifyDaemonSessionEvent } from "@/daemon/controlClient";
 import { sameBackgroundTasks, type BackgroundTaskInfo } from "./backgroundTasks";
+import type { ClaudePrewarmLease } from "./claudePrewarm";
 
 export type ClaudeSteerInput = {
     message: string;
@@ -76,6 +77,22 @@ export class Session {
     /** B-482: the live remote Query's in-process side-question entry; null between Queries and in local mode. */
     private sideQuestionLive: SideQuestionLiveQuery | null = null;
 
+    /** B-515: consumed by the first remote launch; later launches never prewarm. */
+    private claudePrewarm: (() => ClaudePrewarmLease | null) | null = null;
+
+    /** Hand the prewarm lease to the first remote launch — once per process. */
+    takeClaudePrewarm = (): ClaudePrewarmLease | null => {
+        const factory = this.claudePrewarm;
+        this.claudePrewarm = null;
+        if (!factory || this.sessionId) return null;
+        try {
+            return factory();
+        } catch (error) {
+            logger.debug('[Session] Claude prewarm setup failed:', error);
+            return null;
+        }
+    }
+
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
     
@@ -100,6 +117,8 @@ export class Session {
         hookSettingsPath: string,
         /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
         jsRuntime?: JsRuntime,
+        /** B-515: warm Claude process lease factory, taken once (first remote launch). */
+        claudePrewarm?: () => ClaudePrewarmLease | null,
     }) {
         this.path = opts.path;
         this.api = opts.api;
@@ -116,6 +135,7 @@ export class Session {
         this._onAbort = opts.onAbort;
         this.hookSettingsPath = opts.hookSettingsPath;
         this.jsRuntime = opts.jsRuntime ?? 'node';
+        this.claudePrewarm = opts.claudePrewarm ?? null;
 
         // Set up the account-encrypted notification producer. Bound to the
         // server session id (client.sessionId) — the id notifications reference

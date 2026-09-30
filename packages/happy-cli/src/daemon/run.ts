@@ -717,6 +717,14 @@ export async function startDaemon(): Promise<void> {
         if (options.spawnedBy) {
           extraEnv.HAPPY_SPAWNED_BY = options.spawnedBy;
         }
+        // B-515: the wrapper cannot see daemonState.claudeAuth (constraint 16);
+        // hand it the daemon's last verdict so a fresh Claude session does not
+        // prewarm a process that is known to be unable to authenticate. An old
+        // daemon sets nothing (the wrapper then prewarms as if 'ok').
+        const claudeAuthStatus = claudeAuthServiceRef?.current()?.status;
+        if ((options.agent ?? 'claude') === 'claude' && claudeAuthStatus) {
+          extraEnv.HAPPY_CLAUDE_AUTH_STATUS = claudeAuthStatus;
+        }
         logger.debug(`[DAEMON RUN] Environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
         // Expand ${VAR} references from daemon's process.env

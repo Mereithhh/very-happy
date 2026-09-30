@@ -95,6 +95,19 @@ vi.mock('@/claude/claudeLocal', () => ({
     claudeLocal: vi.fn(),
 }));
 
+// B-515: keep the prewarm cache and slot files off the real happy home.
+const prewarmMocks = vi.hoisted(() => ({
+    readCache: vi.fn((): string | null => null),
+    writeCache: vi.fn((_file: string, _value: string) => true),
+    acquireSlot: vi.fn(() => ({ path: '/slot', release: vi.fn() })),
+}));
+vi.mock('@/claude/claudePrewarm', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('./claudePrewarm')>()),
+    readPrewarmSystemPromptCache: prewarmMocks.readCache,
+    writePrewarmSystemPromptCache: prewarmMocks.writeCache,
+    acquirePrewarmSlot: prewarmMocks.acquireSlot,
+}));
+
 import { runClaude } from './runClaude';
 
 function createDeferred<T>() {
@@ -526,5 +539,110 @@ describe('runClaude startup order (B-512)', () => {
         expect(webhook).toBeLessThan(socket);
         expect(sessionClient.skipExistingMessages).toHaveBeenCalled();
         await finish(runPromise, loopDeferred);
+    });
+
+    describe('B-515 prewarm wiring', () => {
+        const prewarmEnv = ['HAPPY_CLAUDE_PREWARM', 'HAPPY_SPAWNED_BY', 'HAPPY_CLAUDE_AUTH_STATUS'];
+        beforeEach(() => {
+            for (const key of prewarmEnv) delete process.env[key];
+            prewarmMocks.readCache.mockReset().mockReturnValue(null);
+            prewarmMocks.writeCache.mockReset().mockReturnValue(true);
+            prewarmMocks.acquireSlot.mockReset().mockImplementation(() => ({ path: '/slot', release: vi.fn() }));
+        });
+
+        const fakeClaudeSession = () => {
+            const callbacks: Array<(id: string) => void> = [];
+            return {
+                callbacks,
+                sessionId: null as string | null,
+                onSessionFound: vi.fn(),
+                addSessionFoundCallback: vi.fn((cb: (id: string) => void) => { callbacks.push(cb); }),
+                cleanup: vi.fn(),
+                trySteer: vi.fn(async () => false),
+            };
+        };
+
+        it('ignores SessionStart hooks from an unadopted warm process; untagged hooks still land', async () => {
+            const { loopDeferred } = fixtures();
+            const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
+            await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+            const scanner = await mockCreateSessionScanner.mock.results[0].value;
+            const { onSessionHook } = mockStartHookServer.mock.calls[0][0];
+            const claudeSession = fakeClaudeSession();
+            mockLoop.mock.calls[0][0].onSessionReady(claudeSession);
+
+            onSessionHook('warm-claude-id', { session_id: 'warm-claude-id' }, { source: 'prewarm-1-0' });
+            expect(scanner.onNewSession).not.toHaveBeenCalled();
+            expect(claudeSession.onSessionFound).not.toHaveBeenCalled();
+
+            onSessionHook('live-claude-id', { session_id: 'live-claude-id' }, {});
+            expect(scanner.onNewSession).toHaveBeenCalledWith('live-claude-id', { treatExistingAsProcessed: true });
+            expect(claudeSession.onSessionFound).toHaveBeenCalledWith('live-claude-id');
+            await finish(runPromise, loopDeferred);
+        });
+
+        it('the system/init path announces the Claude session id to the remote scanner (once)', async () => {
+            const { loopDeferred } = fixtures();
+            const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
+            await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+            const scanner = await mockCreateSessionScanner.mock.results[0].value;
+            const claudeSession = fakeClaudeSession();
+            mockLoop.mock.calls[0][0].onSessionReady(claudeSession);
+            expect(claudeSession.callbacks).toHaveLength(1);
+
+            claudeSession.callbacks[0]('adopted-claude-id');
+            claudeSession.callbacks[0]('adopted-claude-id');
+            expect(scanner.onNewSession).toHaveBeenCalledTimes(1);
+            expect(scanner.onNewSession).toHaveBeenCalledWith('adopted-claude-id', { treatExistingAsProcessed: true });
+            await finish(runPromise, loopDeferred);
+        });
+
+        it('caches the web appendSystemPrompt and predicts the first message with it', async () => {
+            const { sessionClient, loopDeferred } = fixtures();
+            let userMessageHandler!: (message: any) => Promise<void>;
+            sessionClient.onUserMessage.mockImplementation((handler: any) => { userMessageHandler = handler; });
+            prewarmMocks.readCache.mockReturnValue('WEB PROMPT v1');
+            const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon', permissionMode: 'acceptEdits' });
+            await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+            const loopOptions = mockLoop.mock.calls[0][0];
+
+            const lease = loopOptions.claudePrewarm();
+            expect(lease).not.toBeNull();
+            expect(lease.mode).toEqual(expect.objectContaining({ permissionMode: 'acceptEdits', appendSystemPrompt: 'WEB PROMPT v1' }));
+            expect(lease.tag).toMatch(/^prewarm-/);
+            lease.discard('test');
+
+            await userMessageHandler({ role: 'user', content: { type: 'text', text: 'hi' }, meta: { sentFrom: 'web', appendSystemPrompt: 'WEB PROMPT v2' } });
+            await userMessageHandler({ role: 'user', content: { type: 'text', text: 'again' }, meta: { sentFrom: 'web', appendSystemPrompt: 'WEB PROMPT v2' } });
+            expect(prewarmMocks.writeCache).toHaveBeenCalledTimes(1);
+            expect(prewarmMocks.writeCache.mock.calls[0][1]).toBe('WEB PROMPT v2');
+            // A message already arrived: no warm process for this wrapper any more.
+            expect(loopOptions.claudePrewarm()).toBeNull();
+            await finish(runPromise, loopDeferred);
+        });
+
+        it('no lease without a cached prompt, when switched off, or for a dispatched session', async () => {
+            const { loopDeferred } = fixtures();
+            const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
+            await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+            const loopOptions = mockLoop.mock.calls[0][0];
+            expect(loopOptions.claudePrewarm()).toBeNull(); // no cache
+            await finish(runPromise, loopDeferred);
+
+            mockLoop.mockClear();
+            const second = fixtures();
+            prewarmMocks.readCache.mockReturnValue('WEB');
+            process.env.HAPPY_CLAUDE_PREWARM = '0';
+            const run2 = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
+            await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+            expect(mockLoop.mock.calls[0][0].claudePrewarm()).toBeNull();
+            delete process.env.HAPPY_CLAUDE_PREWARM;
+            process.env.HAPPY_SPAWNED_BY = 'assistant';
+            expect(mockLoop.mock.calls[0][0].claudePrewarm()).toBeNull();
+            delete process.env.HAPPY_SPAWNED_BY;
+            prewarmMocks.acquireSlot.mockReturnValue(null as any);
+            expect(mockLoop.mock.calls[0][0].claudePrewarm()).toBeNull(); // concurrency limit
+            await finish(run2, second.loopDeferred);
+        });
     });
 });
