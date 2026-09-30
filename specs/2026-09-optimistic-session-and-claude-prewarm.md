@@ -1,6 +1,6 @@
 # 新会话乐观打开 + Claude 预热
 
-> 状态：Draft
+> 状态：Shipped（B-515 `c194b28b` + B-516 `9bf8ec097`，CLI v0.2.161）
 > 日期：2026-09-30 ｜ 关联 backlog：B-515（Claude 预热）、B-516（新会话乐观打开）｜ 前身：`specs/2026-09-fast-session-and-send.md`（B-512）
 
 ## 背景
