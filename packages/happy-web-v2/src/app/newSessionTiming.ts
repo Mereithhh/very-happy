@@ -2,7 +2,11 @@
  * newSessionTiming (B-512) — cheap instrumentation of "click new → composer
  * usable", the path the spec's ≤1.5 s target is measured on.
  *
- *   click → rpcSent → rpcReturned → inStore → composer
+ *   click → pendingShown → rpcSent → rpcReturned → inStore → composer
+ *
+ * B-516: `pendingShown` = the optimistic pending page rendered (the ≤100 ms
+ * target). `composer` stays the REAL session's composer — it never fires for
+ * a pending id.
  *
  * Each stage drops a `performance.mark('vh:new-session:<stage>')` (visible in
  * the DevTools Performance panel), and when the composer mounts ONE summary
@@ -17,7 +21,7 @@
  */
 import { storage } from '@/sync/storage';
 
-export type NewSessionStage = 'click' | 'rpcSent' | 'rpcReturned' | 'inStore' | 'composer';
+export type NewSessionStage = 'click' | 'pendingShown' | 'rpcSent' | 'rpcReturned' | 'inStore' | 'composer';
 
 interface Trace {
     source: string;
@@ -61,6 +65,12 @@ export function newSessionTimingStart(source: string): void {
     trace.at.click = mark('click');
 }
 
+/** The optimistic pending page is on screen (B-516). */
+export function newSessionTimingPendingShown(): void {
+    const t = live();
+    if (t && t.at.pendingShown === undefined) t.at.pendingShown = mark('pendingShown');
+}
+
 export function newSessionTimingRpcSent(): void {
     const t = live();
     if (t && t.at.rpcSent === undefined) t.at.rpcSent = mark('rpcSent');
@@ -93,6 +103,7 @@ export function newSessionTimingInStore(sessionId: string): void {
 
 /** The session page rendered its composer for `sessionId`. Ends the trace. */
 export function newSessionTimingComposerMounted(sessionId: string): void {
+    if (sessionId.startsWith('pending-')) return;
     const t = live();
     if (!t || t.sessionId !== sessionId) return;
     t.at.composer = mark('composer');
@@ -107,6 +118,7 @@ const ms = (a?: number, b?: number) => (a === undefined || b === undefined ? '?'
 /** One line: total plus each stage's delta from the click. */
 export function formatNewSessionTiming(source: string, sessionId: string, at: Partial<Record<NewSessionStage, number>>): string {
     return `[new-session timing] ${source} ${sessionId} total=${ms(at.click, at.composer)}`
+        + ` pendingShown=${ms(at.click, at.pendingShown)}`
         + ` rpcSent=${ms(at.click, at.rpcSent)} rpc=${ms(at.rpcSent, at.rpcReturned)}`
         + ` inStore=${ms(at.click, at.inStore)} composer=${ms(at.click, at.composer)}`;
 }

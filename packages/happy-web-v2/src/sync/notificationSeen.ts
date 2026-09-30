@@ -264,11 +264,16 @@ export function targetKeyOfPath(pathname: string, search: string = ''): string |
     const parts = pathname.split('/').filter(Boolean);
     if (parts.length !== 2) return null;
     if (parts[0] === 'session') {
+        let id: string;
         try {
-            return decodeURIComponent(parts[1]) || null;
+            id = decodeURIComponent(parts[1]);
         } catch {
-            return parts[1] || null;
+            id = parts[1];
         }
+        // B-516: an optimistic pending page has no notifications and must not
+        // add a synced seen-key for an id that never exists server-side.
+        if (id.startsWith('pending-')) return null;
+        return id || null;
     }
     if (parts[0] === 'terminal') {
         const tid = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search).get('tid');

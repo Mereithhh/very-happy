@@ -166,6 +166,24 @@ export function saveQueuedMessages(queues: Record<string, unknown>) {
     mmkv.set(QUEUED_MESSAGES_KEY, JSON.stringify(queues));
 }
 
+// B-516: optimistic new sessions (sync/pendingSessions.ts) — survive a reload.
+const PENDING_SESSIONS_KEY = 'pending-sessions-v1';
+
+export function loadPendingSessions(): unknown {
+    const raw = mmkv.getString(PENDING_SESSIONS_KEY);
+    if (!raw) return [];
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return [];
+    }
+}
+
+export function savePendingSessions(records: unknown[]) {
+    if (records.length === 0) mmkv.delete(PENDING_SESSIONS_KEY);
+    else mmkv.set(PENDING_SESSIONS_KEY, JSON.stringify(records));
+}
+
 export function loadNewSessionDraft(): NewSessionDraft | null {
     const raw = mmkv.getString(NEW_SESSION_DRAFT_KEY);
     if (!raw) {
