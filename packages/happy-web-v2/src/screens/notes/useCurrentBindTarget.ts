@@ -9,17 +9,24 @@ import { useSession } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { getSessionName } from '@/utils/sessionUtils';
 import type { NoteBinding } from '@/sync/notes';
+import { isPendingSessionId } from '@/sync/pendingSessions';
+import { usePendingRecord } from '@/sync/pendingSessionsRuntime';
 
 export function useCurrentBindTarget(): NoteBinding | null {
     const location = useLocation();
     const sessionMatch = location.pathname.match(/^\/session\/([^/]+)/);
-    const sessionId = sessionMatch?.[1] ?? '';
+    const routeSessionId = sessionMatch?.[1] ?? '';
+    // B-516: a pending page binds to its real session once the spawn succeeded;
+    // before that there is nothing durable to bind to.
+    const pending = usePendingRecord(isPendingSessionId(routeSessionId) ? routeSessionId : undefined);
+    const sessionId = isPendingSessionId(routeSessionId) ? pending?.realId ?? '' : routeSessionId;
     const session = useSession(sessionId);
     const terminalMatch = location.pathname.match(/^\/terminal\/([^/]+)/);
     const machineId = terminalMatch?.[1];
     const tid = new URLSearchParams(location.search).get('tid');
     const terminals = useTerminalSessions((s) => s.terminals);
 
+    if (isPendingSessionId(routeSessionId) && !sessionId) return null;
     if (sessionId) {
         return {
             kind: 'session',

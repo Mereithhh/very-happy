@@ -45,6 +45,7 @@ import { TERM_INPUT_SELECTOR } from '@/screens/terminal/termInputElement';
 import { Modal } from '@/modal';
 import { t } from '@/i18n/useTranslation';
 import { storage, useLocalSetting } from '@/sync/storage';
+import { pendingSessions } from '@/sync/pendingSessionsRuntime';
 import {
   closeViewAction,
   closeViewTarget,
@@ -106,6 +107,25 @@ async function archiveOrCloseTarget(
   const captured = (document.activeElement as HTMLElement | null) ?? null;
   openRef.current = true;
   try {
+    if (target.kind === 'session' && pendingSessions.get(target.sessionId)) {
+      // B-516: ⌘W on an optimistic pending page = cancel it. Once the spawn
+      // succeeded (real id known) there is nothing to cancel — its outbox is
+      // being delivered; the chord waits for the real session page.
+      const record = pendingSessions.get(target.sessionId)!;
+      if (record.realId) return;
+      if (confirmFirst) {
+        const ok = await Modal.confirm(t('pendingSession.discardTitle'), t('pendingSession.discardMessage'), {
+          confirmText: t('common.discard'),
+          destructive: true,
+        });
+        if (!ok) {
+          restoreFocusAfterCancel(captured);
+          return;
+        }
+      }
+      if (pendingSessions.discard(target.sessionId)) navigate('/');
+      return;
+    }
     if (target.kind === 'session') {
       const session = storage.getState().sessions[target.sessionId];
       if (!session) return; // stale route / not loaded yet — nothing to archive

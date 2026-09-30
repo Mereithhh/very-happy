@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
+import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { createChatOrConfigure, useNewChatPending } from '@/app/newChat';
 import { createTerminalOrPick } from '@/app/newTerminal';
 import { BackButton } from '@/app/BackButton';
@@ -38,7 +39,7 @@ export function HelpScreen() {
           <p>{t('workspaceGuide.compactIntro')}</p>
           <div className="help-screen__actions" aria-label={t('workspaceGuide.stepsLabel')}>
             <Button variant="primary" onClick={() => navigate('/machine/connect')} leftIcon={<PlusCircle size={16} />}>{t('connectMachine.title')}</Button>
-            <Button variant="secondary" loading={creatingChat} onClick={() => void createChatOrConfigure(navigate, () => setShowNewChat(true))} leftIcon={<MessageSquarePlus size={16} />}>{t('workspaceGuide.createChat')}</Button>
+            <Button variant="secondary" loading={creatingChat} onPointerDown={prefetchSessionDetail} onClick={() => void createChatOrConfigure(navigate, () => setShowNewChat(true))} leftIcon={<MessageSquarePlus size={16} />}>{t('workspaceGuide.createChat')}</Button>
             <Button variant="secondary" onClick={() => createTerminalOrPick(navigate)} leftIcon={<TerminalSquare size={16} />}>{t('workspaceGuide.createTerminal')}</Button>
           </div>
         </section>

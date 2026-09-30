@@ -61,6 +61,12 @@ Owner 2026-09-30：「按照你的顺序来」（先发 B-512，再做乐观跳�
 8. **任务看板**：`onSpawned → attachSession` 移入 pending store 成功回调。`recordRecentMachinePath` 只在成功时。
 9. **打点**：新增 `pending-shown`；composer-mounted 标记不对 pendingId 触发。
 
+**实现落点（B-516）**：状态机 `happy-web-v2/src/sync/pendingSessions.ts`（依赖注入，纯单测），实例与 React 绑定 `sync/pendingSessionsRuntime.ts`，页面 `screens/session/SessionDetailScreen.tsx` + `PendingSessionParts.tsx`，侧栏 `screens/sessions/PendingSessionRows.tsx`。与上文的细化：
+- 状态多一个 `landed`（outbox 已送完或已转草稿）；输入框只在 `landed` 时切到 realId。
+- 刷新后 `landing` 记录先续送 outbox 再跳转（不是立即跳），保证新消息不越过 outbox；`spawning` 记录转「启动已中断」，不自动重发 spawn。
+- ⌘W 在 pending 页 = 放弃该记录（按 `closeViewConfirm` 先确认），已拿到 realId 后不可放弃；侧栏失败/待确认行可 ✕ 放弃；outbox 行可删除。
+- pending 页不写通知 seen-key（`targetKeyOfPath` 忽略 `pending-` id）；笔记在拿到 realId 前不绑定。
+
 ### B-515 Claude 预热（先量后做，CLI 内部，无协议变更）
 
 **阶段 0（本批必做）测量**：首轮 result 消息自带 `time_to_request_ms` / `time_to_request_from_spawn_ms` / `ttft_ms`（`sdk.d.ts:5530-5555`）——wrapper 日志里记录冷启动首轮这三项；并在隔离 HAPPY_HOME_DIR 下探测空闲进程调用 `mcpServerStatus()` 能否提前完成延迟启动。**只有测得可省 ≥0.8 s（在 B-516 立即发送场景下）才进入阶段 1**，否则 B-515 关闭为「不做」并记录数据。

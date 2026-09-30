@@ -333,7 +333,6 @@ export function TaskBoardScreen() {
   const [layout, setLayout] = useLocalSettingMutable('boardLayout');
   const tasks = useBoardTasks((s) => s.tasks);
   const initializeTasks = useBoardTasks((s) => s.initialize);
-  const attachSession = useBoardTasks((s) => s.attachSession);
   const [showNewTask, setShowNewTask] = useState(false);
   const [dispatchTask, setDispatchTask] = useState<BoardTask | null>(null);
   const [editTask, setEditTask] = useState<BoardTask | null>(null);
@@ -633,7 +632,7 @@ export function TaskBoardScreen() {
         <NewSessionModal
           onClose={() => setDispatchTask(null)}
           initialCommandDefault={dispatchTask.description || dispatchTask.title}
-          onSpawned={(sessionId) => attachSession(dispatchTask.id, sessionId)}
+          spawnedTaskId={dispatchTask.id}
         />
       )}
       {renameItem && (
