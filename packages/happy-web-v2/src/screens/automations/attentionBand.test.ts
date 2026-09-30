@@ -32,7 +32,7 @@ describe('B-508 attention band and session strip wiring', () => {
   });
   it('the session page mounts the strip per visit and the sidebar row gets the marker', () => {
     const detail = read('../session/SessionDetailScreen.tsx');
-    expect(detail).toContain('{!mirror && <AutomationAttentionBanner key={id} sessionId={id} />}');
+    expect(detail).toContain('{session && !mirror && <AutomationAttentionBanner key={id} sessionId={id} />}');
     const banner = read('../session/AutomationAttentionBanner.tsx');
     expect(banner).toContain("for (const id of replied) await ack(id, 'owner-replied').catch(() => undefined);");
     const sidebar = read('../sessions/Sidebar.tsx');
