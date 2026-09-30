@@ -96,6 +96,15 @@ describe('AgentInput on a pending page (B-516)', () => {
         expect(input().value).toBe('/btw what is this?');
     });
 
+    it('says why a send was not accepted (failed start / other tab) and keeps the text', async () => {
+        pending.onSend = vi.fn(() => false);
+        pending.blockedHint = 'pendingSession.retryFirst';
+        render();
+        await enter();
+        expect(mocks.show).toHaveBeenCalledWith('pendingSession.retryFirst', 'info');
+        expect(input().value).toBe('typed before reload');
+    });
+
     it('writes mode choices to the pending record and the chosen agent defaults slot, not a session or Claude', () => {
         render();
         const menu = mocks.modeMenus.at(-1)!;

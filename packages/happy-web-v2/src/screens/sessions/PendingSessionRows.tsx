@@ -50,7 +50,7 @@ export function PendingSessionRows() {
                                 {r.state === 'spawning' ? <Spinner size={14} /> : <CircleAlert size={14} />}
                             </span>
                         </button>
-                        {r.state !== 'spawning' && (
+                        {r.state !== 'spawning' && pendingSessions.isOwnedHere(r.pendingId) && (
                             <button
                                 type="button"
                                 className="sb-closed-reopen"

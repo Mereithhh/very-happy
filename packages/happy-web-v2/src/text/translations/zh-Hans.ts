@@ -3960,6 +3960,8 @@ export const zhHans: TranslationStructure = {
         sidebarStarting: '正在启动…',
         sidebarNeedsApproval: '待确认目录',
         sidebarFailed: '启动失败',
+        retryFirst: '请先重试启动会话，文本会留在这里。',
+        otherTab: '这个新会话正在另一个标签页中启动。',
     },
 
     diagnostics: {

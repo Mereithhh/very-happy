@@ -4092,6 +4092,8 @@ export const en = {
         sidebarStarting: 'Starting…',
         sidebarNeedsApproval: 'Confirm directory',
         sidebarFailed: 'Failed to start',
+        retryFirst: 'Retry starting the session first — your text stays here.',
+        otherTab: 'This new session is being started in another tab.',
     },
 
     diagnostics: {

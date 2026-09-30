@@ -129,6 +129,8 @@ function persistSessionQueue(sessionId: string, queue: QueuedMessage[]) {
 export interface PendingComposer {
     /** Append to the outbox. False = not accepted; the text stays in the composer. */
     onSend: (text: string) => boolean;
+    /** Why a send is not accepted right now (failed start, owned by another tab). */
+    blockedHint?: string;
     permissionMode: string | null;
     modelMode?: string | null;
     effortLevel?: string | null;
@@ -475,7 +477,10 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                 toast.show(t('pendingSession.btwLater'), 'info');
                 return;
             }
-            if (!pending.onSend(value)) return;
+            if (!pending.onSend(value)) {
+                if (pending.blockedHint) toast.show(pending.blockedHint, 'info');
+                return;
+            }
             draftRef.current = '';
             setText('');
             storage.getState().updateSessionDraft(sessionId, null);
