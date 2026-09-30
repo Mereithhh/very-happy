@@ -56,6 +56,8 @@ export interface StartOptions {
 const DEFAULT_CLAUDE_MODEL: string | undefined = undefined;
 const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = undefined;
 
+const importRunClaudeDeps = () => import('./runClaudeDeps');
+
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
     logger.debug(`[CLAUDE] ===== CLAUDE MODE STARTING =====`);
     logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
@@ -102,12 +104,22 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         throw new Error('Daemon-spawned sessions cannot use local/interactive mode. Use --happy-starting-mode remote or spawn sessions directly from terminal.');
     }
 
-    // B-512: load the post-webhook half (SDK loop, MCP + hook servers, scanners)
-    // while the session is being created. The `.catch` only marks the promise
-    // handled — an unhandled rejection runs the archive-on-crash cleanup; the
-    // real error still surfaces where it is awaited after the webhook.
-    const depsLoad = import('./runClaudeDeps');
-    depsLoad.catch(() => { /* awaited (and rethrown) after the webhook */ });
+    // B-512: the post-webhook half (SDK loop, MCP + hook servers, scanners) is
+    // loaded lazily. It is NOT prefetched before the webhook: evaluating those
+    // modules is CPU-bound on the only thread and, on a loaded dev-sg, pushed
+    // the webhook back by ~0.6 s (spawned→webhook 1.5–2.2 s in production
+    // 0.2.160 logs). `loadDeps()` starts it right after the daemon is told the
+    // session exists. The `.catch` only marks the promise handled — an
+    // unhandled rejection runs the archive-on-crash cleanup; the real error
+    // still surfaces where it is awaited.
+    let depsLoadPromise: ReturnType<typeof importRunClaudeDeps> | null = null;
+    const loadDeps = () => {
+        if (!depsLoadPromise) {
+            depsLoadPromise = importRunClaudeDeps();
+            depsLoadPromise.catch(() => { /* awaited (and rethrown) by the caller */ });
+        }
+        return depsLoadPromise;
+    };
 
     const reconnectRequested = Boolean(
         process.env.HAPPY_RECONNECT_SESSION_ID
@@ -249,7 +261,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     if (!response) {
         let offlineSessionId: string | null = null;
         const { claudeLocal } = await import('@/claude/claudeLocal');
-        const { createSessionScanner } = await depsLoad;
+        const { createSessionScanner } = await loadDeps();
 
         const reconnection = startOfflineReconnection({
             serverUrl: configuration.serverUrl,
@@ -346,6 +358,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     } catch (error) {
         logger.debug('[START] Failed to report to daemon (may not be running):', error);
     }
+    // Start loading the post-webhook half now that the daemon (and the web) know
+    // the session exists.
+    loadDeps();
 
     // SDK metadata (tools, slash commands) is now extracted from the
     // system.init message in claudeRemote.ts via onSDKMetadata callback
@@ -365,9 +380,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // session row exists and the daemon was told it started — do not leave it
     // looking alive. Mark it offline (deactivate, never archive: this is an
     // infrastructure failure, AGENTS constraint 7) and exit non-zero.
-    let deps: Awaited<typeof depsLoad>;
+    let deps: Awaited<ReturnType<typeof loadDeps>>;
     try {
-        deps = await depsLoad;
+        deps = await loadDeps();
     } catch (error) {
         logger.warn(`[START] Failed to load the Claude runner modules for session ${response.id}; marking it offline and exiting: ${error instanceof Error ? error.message : String(error)}`);
         try { await earlySession?.close(); } catch { /* best effort */ }
