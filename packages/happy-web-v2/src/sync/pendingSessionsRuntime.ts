@@ -104,7 +104,9 @@ export const pendingSessions = createPendingSessionStore({
         if (record.onSpawnedTask) useBoardTasks.getState().attachSession(record.onSpawnedTask.taskId, realId);
     },
     notifyFailure(record) {
-        toast.action(t('pendingSession.failedToast'), () => navigator?.(`/session/${record.pendingId}`));
+        // Not sticky: on a phone a lingering toast covers the header. The
+        // sidebar row keeps the failure reachable after it fades.
+        toast.show(t('pendingSession.failedToast'), 'error', { onAction: () => navigator?.(`/session/${record.pendingId}`) });
     },
     load: loadPendingSessions,
     save: savePendingSessions,

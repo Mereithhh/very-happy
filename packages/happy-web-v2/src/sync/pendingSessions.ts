@@ -75,6 +75,8 @@ export interface PendingSessionRecord {
     /** Directory the daemon asked to create (needs-approval). */
     approvalDirectory?: string;
     approvedNewDirectoryCreation?: boolean;
+    /** failure put outbox text back into the composer (the card says so) */
+    textReturned?: boolean;
     /** landed via the draft fallback instead of real sends */
     deliveredAsDraft?: boolean;
     landedAt?: number;
@@ -324,7 +326,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
         const current = records.get(pendingId);
         if (!current || current.realId) return; // never after success
         const text = outboxText(current.outbox);
-        const next = patch(pendingId, { state: 'failed', failure, error, outbox: [] });
+        const next = patch(pendingId, { state: 'failed', failure, error, outbox: [], textReturned: !!text || current.textReturned === true });
         if (text) deps.restoreText(pendingId, text);
         // Interrupted = found after a reload; the sidebar row says so, no toast.
         if (next && failure !== 'interrupted' && viewing !== pendingId) deps.notifyFailure(next);
