@@ -9,6 +9,8 @@ import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAl
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
 import { createChatOrConfigure, useNewChatPending } from '@/app/newChat';
+import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
+import { PendingSessionRows } from './PendingSessionRows';
 import { getSessionName, getSessionSidebarSubtitle, formatLastSeen } from '@/utils/sessionUtils';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { buildClosedTerminalRows, closedTerminalsOf, killAttachedSupported } from '@/sync/closedTerminals';
@@ -949,7 +951,7 @@ export function Sidebar() {
               },
             ]}
           >
-            <button className="sb-nav-btn" disabled={creatingChat} aria-busy={creatingChat} title={t('sidebar.newSession')}>
+            <button className="sb-nav-btn" disabled={creatingChat} aria-busy={creatingChat} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail}>
               {creatingChat ? <Spinner size={17} /> : <Plus size={17} />}<span>{creatingChat ? (lang.startsWith('zh') ? '正在创建…' : 'Creating…') : t('sidebar.newSession')}</span><ChevronDown size={14} className="sb-new-chevron"/>
             </button>
           </ActionDropdownMenu>
@@ -1020,6 +1022,7 @@ export function Sidebar() {
       {showOrderHint && orderable && !teamHistory && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
 
       <div className={`sb-list${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
+        <PendingSessionRows />
         {displayRows === null ? (
           <div className="sb-loading">
             <StatusDot status="thinking" pulse /> {t('common.loading')}
@@ -1059,6 +1062,7 @@ export function Sidebar() {
                           type="button" className="sb-workspace-new" disabled={creatingChat}
                           title={lang.startsWith('zh') ? `在此目录新建会话：${sec.createLocation.path}` : `New chat here: ${sec.createLocation.path}`}
                           aria-label={lang.startsWith('zh') ? `在此目录新建会话：${sec.label}` : `New chat here: ${sec.label}`}
+                          onPointerDown={prefetchSessionDetail}
                           onClick={() => void createChatOrConfigure(navigate, configureNew, { target: sec.createLocation })}
                         ><Plus size={14} /></button>}
 

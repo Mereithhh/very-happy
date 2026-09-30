@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { PanelLeft } from 'lucide-react';
 import { useIsDesktop } from '@/app/useMediaQuery';
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
@@ -14,6 +14,8 @@ import { useNewTerminalShortcuts } from '@/app/newTerminal';
 import { useCloseViewShortcuts, useUnloadGuard } from '@/app/viewShortcuts';
 import { useNotificationGenerator } from '@/app/useNotificationGenerator';
 import { useSeenTracker } from '@/app/useSeenTracker';
+import { usePendingSessionBridge } from '@/sync/pendingSessionsRuntime';
+import { prefetchSessionDetailWhenIdle } from '@/app/prefetchSessionDetail';
 import { useAllMachines, useIsDataReady, useSessions } from '@/sync/storage';
 import { shouldShowFirstRun, shouldShowWorkspaceGuide } from '@/screens/onboarding/firstRun';
 import { useTerminalSessions } from '@/sync/terminalSessions';
@@ -40,6 +42,12 @@ export function AppLayout() {
   // Synced read state: watching a session/terminal retires its notifications
   // on every device (writer side; the store owns the KV sync).
   useSeenTracker();
+  // B-516: optimistic new sessions — failure toasts get a navigator, records
+  // from before a reload resume (landing) or turn interrupted (spawning).
+  const navigate = useNavigate();
+  usePendingSessionBridge(navigate);
+  // …and the session page chunk is warm before the first "new chat".
+  useEffect(() => prefetchSessionDetailWhenIdle(), []);
   const isDesktop = useIsDesktop();
   const location = useLocation();
   const atRoot = location.pathname === '/' || location.pathname === '';
