@@ -3942,6 +3942,34 @@ export const zhHans: TranslationStructure = {
     },
 
     // Diagnostics / health screen.
+    // B-516: optimistic new-session page (sync/pendingSessions.ts)
+    pendingSession: {
+        starting: '正在启动…',
+        connecting: '正在连接…',
+        outboxTitle: '待发送',
+        sendAfterStart: '会话启动后发送',
+        removeQueued: '移除',
+        attachmentsLater: '会话启动后可添加附件',
+        btwLater: '会话启动后可用 /btw',
+        needsApprovalTitle: '目录不存在',
+        needsApprovalMessage: ({ directory }: { directory: string }) => `目录 ${directory} 还不存在，要创建并启动吗？`,
+        createAndStart: '创建并启动',
+        failedTitle: '新会话启动失败',
+        interruptedTitle: '启动已中断',
+        interruptedMessage: '会话启动前页面已刷新。会话可能已经建好——可在侧栏查看，或重试。',
+        declinedTitle: '未创建目录',
+        textKept: '文本在输入框中。',
+        adoptFound: '发现一个刚建好的匹配会话。',
+        adopt: '进入这个会话',
+        failedToast: '新会话启动失败 · 打开',
+        goneTitle: '这个新会话已不存在',
+        discardTitle: '放弃这个新会话？',
+        discardMessage: '还没发送的内容会丢失。',
+        sidebarStarting: '正在启动…',
+        sidebarNeedsApproval: '待确认目录',
+        sidebarFailed: '启动失败',
+    },
+
     diagnostics: {
         webBuild: 'Web 构建',
         webBuildVersion: '构建版本',

@@ -4074,6 +4074,34 @@ export const en = {
     },
 
     // Diagnostics / health screen.
+    // B-516: optimistic new-session page (sync/pendingSessions.ts)
+    pendingSession: {
+        starting: 'Starting…',
+        connecting: 'Connecting…',
+        outboxTitle: 'Waiting to send',
+        sendAfterStart: 'Sends when the session starts',
+        removeQueued: 'Remove',
+        attachmentsLater: 'Attachments can be added once the session has started',
+        btwLater: '/btw is available once the session has started',
+        needsApprovalTitle: 'Directory does not exist',
+        needsApprovalMessage: ({ directory }: { directory: string }) => `${directory} doesn't exist yet. Create it and start the session?`,
+        createAndStart: 'Create and start',
+        failedTitle: 'The new session failed to start',
+        interruptedTitle: 'Start was interrupted',
+        interruptedMessage: 'The page reloaded before the session started. It may still have been created — check the sidebar, or retry.',
+        declinedTitle: 'Directory not created',
+        textKept: 'Your text is in the input box.',
+        adoptFound: 'A matching session was created meanwhile.',
+        adopt: 'Open this session',
+        failedToast: 'New session failed to start · Open',
+        goneTitle: 'This new session no longer exists',
+        discardTitle: 'Discard this new session?',
+        discardMessage: 'Text that has not been sent will be lost.',
+        sidebarStarting: 'Starting…',
+        sidebarNeedsApproval: 'Confirm directory',
+        sidebarFailed: 'Failed to start',
+    },
+
     diagnostics: {
         webBuild: 'Web build',
         webBuildVersion: 'Build',
