@@ -120,7 +120,7 @@ describe('auto-discovered native Pi tools', () => {
         await writeFile(join(home, 'daemon.state.json'), JSON.stringify({ pid: process.pid, httpPort: daemon.port, controlToken: token }));
         // Stand-in claude: records argv + env, answers with a quoted, trailing-period title.
         const fakeClaude = join(home, 'claude');
-        await writeFile(fakeClaude, `#!/bin/sh\nprintf '%s\\n' "$4" > "${join(home, 'prompt.txt')}"\nenv > "${join(home, 'env.txt')}"\nprintf '"Fix terminal auto-title."\\n'\n`);
+        await writeFile(fakeClaude, `#!/bin/sh\nfor a; do last="$a"; done; printf '%s\\n' "$last" > "${join(home, 'prompt.txt')}"\nenv > "${join(home, 'env.txt')}"\nprintf '"Fix terminal auto-title."\\n'\n`);
         await chmod(fakeClaude, 0o755);
         vi.stubEnv('VH_HAPPY_HOME_DIR', home);
         vi.stubEnv('HAPPY_CLAUDE_PATH', fakeClaude);
