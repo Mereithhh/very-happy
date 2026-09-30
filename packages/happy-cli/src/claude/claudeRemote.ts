@@ -18,6 +18,20 @@ import type { JsRuntime } from "./runClaude";
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import type { ClaudeSdkMetadata } from './claudeSdkMetadata';
 import { modelSwitchFailureNotice, modelTarget, needsModelSwitch } from './claudeLiveModel';
+import { formatClaudeTimingLine, type ClaudeTurnMarks } from './claudeTiming';
+import { decideWarmAdoption, formatPrewarmLine, type ClaudePrewarmLease, type WarmAdoptionDecision } from './claudePrewarm';
+
+type Query = ReturnType<typeof query>;
+
+/** Race `promise` against a timer; a late rejection of the loser stays handled. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    promise.catch(() => { /* handled by the race below or deliberately dropped after a timeout */ });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer); });
+}
 
 export async function claudeRemote(opts: {
 
@@ -49,7 +63,8 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
+    /** `enqueuedAt` (optional) only feeds the B-515 timing log. */
+    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number } | null>,
     onReady: (result?: SDKResultMessage) => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -65,7 +80,13 @@ export async function claudeRemote(opts: {
     /** B-276: the turn ended with an auth failure that poisons this Query. */
     onAuthFailure?: (reason: string) => void,
     onSessionReset?: () => void,
-    onSDKMetadata?: (metadata: ClaudeSdkMetadata) => void
+    onSDKMetadata?: (metadata: ClaudeSdkMetadata) => void,
+    /**
+     * B-515: start a warm Query with this lease's predicted mode BEFORE the
+     * first message; adopted when the first message matches, closed otherwise.
+     * Only passed for a fresh session's first launch (claudePrewarm.ts).
+     */
+    prewarm?: ClaudePrewarmLease,
 }) {
 
     // Check if session is valid
@@ -107,11 +128,172 @@ export async function claudeRemote(opts: {
         });
     }
 
+    // Track thinking state
+    let thinking = false;
+    const updateThinking = (newThinking: boolean) => {
+        if (thinking !== newThinking) {
+            thinking = newThinking;
+            logger.debug(`[claudeRemote] Thinking state changed to: ${thinking}`);
+            if (opts.onThinkingChange) {
+                opts.onThinkingChange(thinking);
+            }
+        }
+    };
+
+    let callbackDepth = 0;
+    const guardCallback = <T extends (...args:any[])=>Promise<any>>(callback:T):T => (async (...args:Parameters<T>) => {
+        callbackDepth++;
+        try { return await callback(...args); } finally { setImmediate(()=>{callbackDepth--;}); }
+    }) as T;
+
+    // The mode canCallTool enforces. A warm Query is created with the
+    // predicted mode and moves to the first message's mode on adoption.
+    let mode: EnhancedMode = opts.prewarm?.mode ?? { permissionMode: 'default' };
+
+    // Everything query() fixes at creation, from ONE mode. The cold path and
+    // the warm Query both come through here — see claudePrewarm.ts.
+    const buildSdkOptions = (creationMode: EnhancedMode, io: { settingsPath: string; abort?: AbortSignal }): QueryOptions => {
+        const sdkOptions: QueryOptions = {
+            cwd: opts.path,
+            resume: startFrom ?? undefined,
+            mcpServers: opts.mcpServers,
+            permissionMode: mapToClaudeMode(creationMode.permissionMode),
+            // This is only the SDK safety opt-in; permissionMode/canUseTool still
+            // enforce the selected policy. It must be enabled at Query creation so
+            // a later explicit live switch to bypassPermissions can succeed.
+            allowDangerouslySkipPermissions: true,
+            model: creationMode.model,
+            fallbackModel: creationMode.fallbackModel,
+            customSystemPrompt: creationMode.customSystemPrompt ? creationMode.customSystemPrompt + '\n\n' + systemPrompt : undefined,
+            appendSystemPrompt: creationMode.appendSystemPrompt ? creationMode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
+            allowedTools: creationMode.allowedTools ? creationMode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
+            additionalDirectories: opts.additionalDirectories,
+            disallowedTools: creationMode.disallowedTools,
+            effort: creationMode.effort,
+            canCallTool: (toolName, input, options) => opts.canCallTool(toolName, input, mode, options),
+            onElicitation: opts.onElicitation,
+            onUserDialog: opts.onUserDialog,
+            supportedDialogKinds: opts.onUserDialog ? ['refusal_fallback_prompt'] : undefined,
+            abort: io.abort,
+            settingsPath: io.settingsPath,
+            // B-309: token-level partials. Without this the SDK emits nothing
+            // between "turn started" and "entire assistant message", which is
+            // exactly why the web used to show a spinner where the terminal shows
+            // the model thinking out loud. The partials do NOT enter the
+            // transcript; they are split off below and relayed on a side channel.
+            // Only pay for them when someone is listening.
+            includePartialMessages: opts.onStreamFrame ? true : undefined,
+        };
+        if(sdkOptions.canCallTool) sdkOptions.canCallTool=guardCallback(sdkOptions.canCallTool);
+        if(sdkOptions.onElicitation) sdkOptions.onElicitation=guardCallback(sdkOptions.onElicitation);
+        if(sdkOptions.onUserDialog) sdkOptions.onUserDialog=guardCallback(sdkOptions.onUserDialog);
+        return sdkOptions;
+    };
+
+    // Discover once before handing the Query to approval callbacks. Never issue
+    // nested control requests from inside a permission callback. Rejects when
+    // the initialize handshake fails.
+    const discoverModels = async (q: Query): Promise<ClaudeSdkMetadata['models']> => {
+        if (typeof q.supportedModels !== 'function') return undefined;
+        return (await q.supportedModels()).map((model) => ({
+            code: model.value, value: model.displayName, description: model.description,
+            resolvedModel: model.resolvedModel,
+            ...(model.supportsEffort === false ? { reasoningEfforts: [] }
+                : model.supportedEffortLevels ? { reasoningEfforts: model.supportedEffortLevels } : {}),
+        }));
+    };
+
+    // B-515 phase 1: the warm Query. Started with an EMPTY input iterable, so
+    // Claude Code spawns and answers the initialize handshake while the user
+    // is still typing; nothing is iterated (and nothing reaches onMessage,
+    // onQueryReady or onSessionFound) until the first message adopts it.
+    type WarmQuery = {
+        response: Query;
+        messages: PushableAsyncIterable<SDKUserMessage>;
+        lease: ClaudePrewarmLease;
+        startedAt: number;
+        /** Never rejects — `.then` both ways at creation (an unhandled rejection archives the session). */
+        handshake: Promise<{ ok: true; models: ClaudeSdkMetadata['models']; at: number } | { ok: false; at: number }>;
+        idleTimer?: ReturnType<typeof setTimeout>;
+        /** Unsubscribe from the child's exit (while warm only). */
+        offExit?: () => void;
+    };
+    let warm: WarmQuery | null = null;
+    if (opts.prewarm && startFrom) {
+        opts.prewarm.discard('resume');
+    } else if (opts.prewarm && opts.signal?.aborted) {
+        opts.prewarm.discard('aborted');
+    } else if (opts.prewarm) {
+        const lease = opts.prewarm;
+        const abort = new AbortController();
+        const onOuterAbort = () => abort.abort();
+        // The launcher's abort (stop/switch/exit) reaches the warm process too —
+        // before AND after adoption.
+        opts.signal?.addEventListener('abort', onOuterAbort, { once: true });
+        const messages = new PushableAsyncIterable<SDKUserMessage>();
+        const startedAt = Date.now();
+        try {
+            const response = query({
+                prompt: messages,
+                options: buildSdkOptions(lease.mode, { settingsPath: lease.hookSettingsPath, abort: abort.signal }),
+            });
+            const handshake = discoverModels(response).then(
+                (models) => ({ ok: true as const, models, at: Date.now() }),
+                () => ({ ok: false as const, at: Date.now() }),
+            );
+            const w: WarmQuery = { response, messages, lease, startedAt, handshake };
+            lease.setTeardown(() => {
+                if (w.idleTimer) clearTimeout(w.idleTimer);
+                try { w.offExit?.(); } catch { /* ignore */ }
+                opts.signal?.removeEventListener('abort', onOuterAbort);
+                if (warm === w) warm = null;
+                messages.end();
+                abort.abort();
+            });
+            w.idleTimer = setTimeout(() => lease.discard('idle'), lease.idleMs);
+            w.idleTimer.unref?.();
+            // A warm child that dies while idle frees its slot now, not at the
+            // idle limit. `transport.onExit` is ProcessTransport's (SDK
+            // 0.3.x, not in the public types); only present once spawned, so
+            // it is attached after the handshake. Absent → the adoption-time
+            // liveness probe still catches it.
+            void handshake.then((result) => {
+                if (!result.ok) {
+                    lease.discard('handshake-failed');
+                    return;
+                }
+                if (warm !== w) return;
+                try {
+                    const transport = (response as unknown as { transport?: { onExit?: (cb: (error?: unknown) => void) => unknown } }).transport;
+                    const off = transport?.onExit?.(() => { if (warm === w) lease.discard('exited'); });
+                    if (typeof off === 'function') w.offExit = off as () => void;
+                } catch { /* diagnostics only */ }
+            });
+            warm = w;
+            logger.debug(formatPrewarmLine('started', { tag: lease.tag }));
+        } catch (error) {
+            opts.signal?.removeEventListener('abort', onOuterAbort);
+            logger.debug(`[claudeRemote] prewarm query() threw: ${error instanceof Error ? error.message : String(error)}`);
+            lease.discard('spawn-failed');
+        }
+    }
+    const discardWarm = (reason: string) => { warm?.lease.discard(reason); };
+
     // Get initial message
-    const initial = await opts.nextMessage();
+    let initial: Awaited<ReturnType<typeof opts.nextMessage>>;
+    try {
+        initial = await opts.nextMessage();
+    } catch (error) {
+        discardWarm('error');
+        throw error;
+    }
     if (!initial) { // No initial message - exit
+        discardWarm('exit');
         return;
     }
+    // B-515 phase 0: per-turn latency marks, logged once per result.
+    let timingTurn = 1;
+    let timingMarks: ClaudeTurnMarks = { pushedAt: initial.enqueuedAt ?? Date.now() };
 
     // Handle special commands (extract text for parsing when content is a block array)
     const initialText = typeof initial.message === 'string'
@@ -121,6 +303,7 @@ export async function claudeRemote(opts: {
 
     // Handle /clear command
     if (specialCommand.type === 'clear') {
+        discardWarm('clear');
         if (opts.onCompletionEvent) {
             opts.onCompletionEvent('Context was reset');
         }
@@ -141,55 +324,68 @@ export async function claudeRemote(opts: {
         }
     }
 
-    // Prepare SDK options
-    let mode = initial.mode;
-    const sdkOptions: QueryOptions = {
-        cwd: opts.path,
-        resume: startFrom ?? undefined,
-        mcpServers: opts.mcpServers,
-        permissionMode: mapToClaudeMode(initial.mode.permissionMode),
-        // This is only the SDK safety opt-in; permissionMode/canUseTool still
-        // enforce the selected policy. It must be enabled at Query creation so
-        // a later explicit live switch to bypassPermissions can succeed.
-        allowDangerouslySkipPermissions: true,
-        model: initial.mode.model,
-        fallbackModel: initial.mode.fallbackModel,
-        customSystemPrompt: initial.mode.customSystemPrompt ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt : undefined,
-        appendSystemPrompt: initial.mode.appendSystemPrompt ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
-        allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
-        additionalDirectories: opts.additionalDirectories,
-        disallowedTools: initial.mode.disallowedTools,
-        effort: initial.mode.effort,
-        canCallTool: (toolName, input, options) => opts.canCallTool(toolName, input, mode, options),
-        onElicitation: opts.onElicitation,
-        onUserDialog: opts.onUserDialog,
-        supportedDialogKinds: opts.onUserDialog ? ['refusal_fallback_prompt'] : undefined,
-        abort: opts.signal,
-        settingsPath: opts.hookSettingsPath,
-        // B-309: token-level partials. Without this the SDK emits nothing
-        // between "turn started" and "entire assistant message", which is
-        // exactly why the web used to show a spinner where the terminal shows
-        // the model thinking out loud. The partials do NOT enter the
-        // transcript; they are split off below and relayed on a side channel.
-        // Only pay for them when someone is listening.
-        includePartialMessages: opts.onStreamFrame ? true : undefined,
-    }
-
-    // Track thinking state
-    let thinking = false;
-    const updateThinking = (newThinking: boolean) => {
-        if (thinking !== newThinking) {
-            thinking = newThinking;
-            logger.debug(`[claudeRemote] Thinking state changed to: ${thinking}`);
-            if (opts.onThinkingChange) {
-                opts.onThinkingChange(thinking);
+    // B-515: adopt the warm Query when it was built for exactly this message,
+    // otherwise close it and take the cold path below — never both.
+    let adopted: { response: Query; messages: PushableAsyncIterable<SDKUserMessage>; models: ClaudeSdkMetadata['models'] } | null = null;
+    if (warm) {
+        const w: WarmQuery = warm;
+        const adoptStart = Date.now();
+        // Decide first (pure): a predicted miss is closed at once and goes
+        // cold without waiting for a handshake it will never use.
+        const decision: WarmAdoptionDecision = decideWarmAdoption({ predicted: w.lease.mode, actual: initial.mode, specialCommand: specialCommand.type });
+        let reason: string | null = decision.adopt ? null : decision.reason;
+        // Predicted hit with the handshake still in flight: WAIT for it — a
+        // second (cold) process would only start the same work from scratch.
+        const hs = reason ? null : await w.handshake;
+        if (!reason) {
+            if (warm !== w) {
+                reason = 'closed';
+            } else if (!hs?.ok) {
+                reason = 'handshake-failed';
+            } else if (decision.adopt) {
+                // Exact permission mode before the prompt; this control round
+                // trip doubles as the liveness probe (a warm child that died
+                // while idle rejects here). Otherwise a ~1 ms mcpServerStatus.
+                try {
+                    if (decision.setPermissionMode) {
+                        await withTimeout(w.response.setPermissionMode(decision.setPermissionMode), w.lease.adoptTimeoutMs);
+                    } else {
+                        await withTimeout(w.response.mcpServerStatus(), w.lease.adoptTimeoutMs);
+                    }
+                } catch {
+                    reason = decision.setPermissionMode ? 'set-permission-failed' : 'not-alive';
+                }
+                if (!reason && decision.switchModel) {
+                    try {
+                        await withTimeout(w.response.setModel(modelTarget(initial.mode.model)), w.lease.adoptTimeoutMs);
+                    } catch {
+                        reason = 'set-model-failed';
+                    }
+                }
+                if (!reason && warm !== w) reason = 'closed';
             }
         }
-    };
+        if (reason || !hs?.ok) {
+            w.lease.discard(reason ?? 'handshake-failed');
+            warm = null;
+        } else {
+            if (w.idleTimer) clearTimeout(w.idleTimer);
+            try { w.offExit?.(); } catch { /* ignore */ }
+            warm = null;
+            w.lease.adopt();
+            adopted = { response: w.response, messages: w.messages, models: hs.models };
+            logger.debug(formatPrewarmLine('adopted', {
+                warmForMs: adoptStart - w.startedAt,
+                handshakeWaitMs: Math.max(0, hs.at - adoptStart),
+                adoptMs: Date.now() - adoptStart,
+                setPermissionMode: decision.adopt ? decision.setPermissionMode : undefined,
+                setModel: decision.adopt && decision.switchModel ? true : undefined,
+            }));
+        }
+    }
 
-    // Push initial message
-    let messages = new PushableAsyncIterable<SDKUserMessage>();
-    messages.push({
+    mode = initial.mode;
+    const initialUserMessage: SDKUserMessage = {
         type: 'user',
         parent_tool_use_id: null,
         origin: { kind: 'human' },
@@ -197,39 +393,39 @@ export async function claudeRemote(opts: {
             role: 'user',
             content: initial.message,
         },
-    });
+    };
 
-    // Start the loop
-    let callbackDepth = 0;
-    const guardCallback = <T extends (...args:any[])=>Promise<any>>(callback:T):T => (async (...args:Parameters<T>) => {
-        callbackDepth++;
-        try { return await callback(...args); } finally { setImmediate(()=>{callbackDepth--;}); }
-    }) as T;
-    if(sdkOptions.canCallTool) sdkOptions.canCallTool=guardCallback(sdkOptions.canCallTool);
-    if(sdkOptions.onElicitation) sdkOptions.onElicitation=guardCallback(sdkOptions.onElicitation);
-    if(sdkOptions.onUserDialog) sdkOptions.onUserDialog=guardCallback(sdkOptions.onUserDialog);
-    const response = query({
-        prompt: messages,
-        options: sdkOptions,
-    });
-
-    // Discover once before handing the Query to approval callbacks. Never issue
-    // nested control requests from inside a permission callback.
+    let messages: PushableAsyncIterable<SDKUserMessage>;
+    let response: Query;
     let models: ClaudeSdkMetadata['models'];
-    if (typeof response.supportedModels === 'function') {
+    if (adopted) {
+        messages = adopted.messages;
+        response = adopted.response;
+        models = adopted.models;
+        // The process is already past its handshake: measure from the push.
+        timingMarks.handshakeAt = Date.now();
+        messages.push(initialUserMessage);
+    } else {
+        // Push initial message
+        messages = new PushableAsyncIterable<SDKUserMessage>();
+        messages.push(initialUserMessage);
+        timingMarks.spawnAt = Date.now();
+        response = query({
+            prompt: messages,
+            options: buildSdkOptions(initial.mode, { settingsPath: opts.hookSettingsPath, abort: opts.signal }),
+        });
         try {
-            models = (await response.supportedModels()).map((model) => ({
-                code: model.value, value: model.displayName, description: model.description,
-                resolvedModel: model.resolvedModel,
-                ...(model.supportsEffort === false ? { reasoningEfforts: [] }
-                    : model.supportedEffortLevels ? { reasoningEfforts: model.supportedEffortLevels } : {}),
-            }));
+            models = await discoverModels(response);
         } catch (error) {
             logger.debug('[claudeRemote] Model capability discovery unavailable');
         }
+        timingMarks.handshakeAt = Date.now();
     }
+    const prewarmTiming = adopted ? 'adopted' as const : undefined;
 
-    // Expose query control methods to permission handler
+    // Expose query control methods to permission handler. B-515: a warm Query
+    // only gets here once adopted — /btw and runtime controls never bind to a
+    // process that has no transcript.
     if (opts.onQueryReady) {
         opts.onQueryReady({
             canControl: () => callbackDepth === 0,
@@ -305,6 +501,11 @@ export async function claudeRemote(opts: {
 
             if (message.type === 'assistant' && message.error) {
                 lastAssistantError = message.error;
+            }
+            if (message.type === 'assistant' && timingMarks.firstAssistantAt === undefined) {
+                timingMarks.firstAssistantAt = Date.now();
+            } else if (message.type === 'system' && message.subtype === 'init' && timingMarks.initAt === undefined) {
+                timingMarks.initAt = Date.now();
             }
 
             // Progress-bearing system frames. Unlike stream_event these are
@@ -386,6 +587,15 @@ export async function claudeRemote(opts: {
             if (message.type === 'result') {
                 updateThinking(false);
                 logger.debug('[claudeRemote] Result received');
+                logger.debug(formatClaudeTimingLine({
+                    turn: timingTurn,
+                    firstTurnOfProcess: timingTurn === 1,
+                    marks: timingMarks,
+                    result: message,
+                    prewarm: timingTurn === 1 ? prewarmTiming : undefined,
+                }));
+                timingTurn++;
+                timingMarks = {};
                 // Authoritative record of tools Claude Code denied without a
                 // prompt (deny rules, dontAsk/auto, hook denies). Invisible
                 // otherwise — surface it so "yolo still refused X" is diagnosable.
@@ -449,6 +659,7 @@ export async function claudeRemote(opts: {
                     }
                     mode = next.mode;
                     updateThinking(true);
+                    timingMarks = { pushedAt: next.enqueuedAt ?? Date.now() };
                     messages.push({
                         type: 'user',
                         parent_tool_use_id: null,

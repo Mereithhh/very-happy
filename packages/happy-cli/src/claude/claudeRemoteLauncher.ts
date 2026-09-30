@@ -29,6 +29,7 @@ import { ensurePrivateDirectory } from '@/utils/secureFiles';
 import { isClaudeEdeOnlySdkError, isClaudeInterruptSentinelContent } from './utils/interruptNoise';
 import { parseClaudePermissionMode, type ClaudeSdkPermissionMode } from './utils/permissionMode';
 import { LaunchModeGate } from './launchModeGate';
+import type { ClaudePrewarmLease } from './claudePrewarm';
 
 interface PermissionsField {
     date: number;
@@ -472,10 +473,15 @@ export async function claudeRemoteLauncher(
             };
             idlePermissionModeHandler = commitPermissionMode;
             permissionHandler.setOnModeChanged((nextMode) => { commitPermissionMode(nextMode); });
+            let launchPrewarm: ClaudePrewarmLease | null = null;
             try {
                 const attachmentDirectory = chatAttachmentDirectory(configuration.happyHomeDir, session.client.sessionId);
                 await ensurePrivateDirectory(attachmentDirectory);
+                // B-515: only the process's first remote launch may prewarm
+                // (take() hands the lease out once).
+                launchPrewarm = session.takeClaudePrewarm();
                 const remoteResult = await claudeRemote({
+                    prewarm: launchPrewarm ?? undefined,
                     sessionId: session.sessionId,
                     path: session.path,
                     additionalDirectories: [attachmentDirectory],
@@ -547,13 +553,15 @@ export async function claudeRemoteLauncher(
                                 return {
                                     message: withAttachments,
                                     mode: msg.mode,
+                                    enqueuedAt: msg.enqueuedAt,
                                 };
                             }
 
                             onPromptFinalized?.(msg.message);
                             return {
                                 message: msg.message,
-                                mode: msg.mode
+                                mode: msg.mode,
+                                enqueuedAt: msg.enqueuedAt,
                             }
                         }
 
@@ -708,6 +716,9 @@ export async function claudeRemoteLauncher(
                     continue;
                 }
             } finally {
+                // Never leave a warm process behind a launch that ended
+                // (no-op once adopted or already discarded).
+                launchPrewarm?.discard('launch-ended');
 
                 runtimeControls.setQuery(null);
                 backgroundTasks.reset();

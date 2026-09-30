@@ -15,19 +15,27 @@ import { projectPath } from '@/projectPath';
  * Generate a temporary settings file with SessionStart hook configuration
  * 
  * @param port - The port where Happy server is listening
+ * @param source - Optional tag the forwarder reports as `?source=` (B-515 prewarm)
  * @returns Path to the generated settings file
  */
-export function generateHookSettingsFile(port: number): string {
+export function generateHookSettingsFile(port: number, source?: string): string {
     const hooksDir = join(configuration.happyHomeDir, 'tmp', 'hooks');
     mkdirSync(hooksDir, { recursive: true });
 
-    // Unique filename per process to avoid conflicts
-    const filename = `session-hook-${process.pid}.json`;
+    // Unique filename per process (and per tagged source) to avoid conflicts
+    const filename = source ? `session-hook-${process.pid}-${source}.json` : `session-hook-${process.pid}.json`;
     const filepath = join(hooksDir, filename);
 
-    // Path to the hook forwarder script
+    // Path to the hook forwarder script. B-515: a tagged file makes the
+    // forwarder post `?source=<source>` so the hook server can tell a
+    // prewarmed Claude process's SessionStart apart from the live one's.
     const forwarderScript = resolve(projectPath(), 'scripts', 'session_hook_forwarder.cjs');
-    const hookCommand = `node "${forwarderScript}" ${port}`;
+    if (source !== undefined && !/^[A-Za-z0-9_.-]{1,64}$/.test(source)) {
+        throw new Error('invalid hook source tag');
+    }
+    const hookCommand = source
+        ? `node "${forwarderScript}" ${port} ${source}`
+        : `node "${forwarderScript}" ${port}`;
 
     const settings = {
         hooks: {

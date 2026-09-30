@@ -2031,6 +2031,14 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            sep30a: {
+                title: 'The first reply in a new session comes about a second sooner',
+                summary: 'When you open a new Claude session from the web, the machine now starts Claude in the background right away instead of waiting for your first message, so that message no longer pays for Claude starting up. Needs the CLI update on the machine.',
+                prewarm: 'A fresh web session starts Claude as soon as it is created; your first message goes straight to it (about 1 s saved on a Mac, more on a busy machine).',
+                fallback: 'If your first message needs different settings (plan mode, a different effort or system prompt), the early process is dropped and Claude starts as before — never slower than before. Resumed, forked, automation and team sessions are not pre-started.',
+                off: 'At most two sessions per machine are pre-started, an unused one is stopped after 15 minutes, and `"claudePrewarm": "off"` in `~/.happy/settings.json` turns it off. Your Claude SessionStart hooks run when the early process starts.',
+                start: 'The session wrapper also reports in earlier: it loads the Claude runner only after the session is registered.',
+            },
             sep30: {
                 title: 'New sessions open faster; messages show when they are really sent',
                 summary: 'Starting a Claude session from the web no longer waits for the whole CLI to load or for a login-shell probe, and the session page opens as soon as the server announces it. A message you send now stays dimmed until the server has stored it, and tells you when it could not be sent. Faster session start needs the CLI update on the machine; the web part is live now.',

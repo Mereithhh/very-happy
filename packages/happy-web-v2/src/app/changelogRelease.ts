@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-30-claude-prewarm',
+    cliVersion: '0.2.161',
+    date: '2026-09-30',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep30a.title',
+    summaryKey: 'changelog.releases.sep30a.summary',
+    itemKeys: ['changelog.releases.sep30a.prewarm', 'changelog.releases.sep30a.fallback', 'changelog.releases.sep30a.off', 'changelog.releases.sep30a.start'],
+  },
+  {
     id: '2026-09-30-fast-session-and-send',
     cliVersion: '0.2.160',
     date: '2026-09-30',

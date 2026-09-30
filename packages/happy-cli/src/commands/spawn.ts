@@ -54,6 +54,15 @@ import { logger } from '@/ui/logger'
 // shared sessionMessage module).
 export { sessionWebUrl } from './sessionMessage'
 
+/**
+ * B-515: env for the spawned session. With --prompt the first message is this
+ * CLI's, not a web message — the wrapper must not prewarm a Claude process
+ * for a web prediction (it reads and removes the flag at startup).
+ */
+export function spawnEnvironmentVariables(env: Record<string, string> | undefined, hasPrompt: boolean): Record<string, string> | undefined {
+    return hasPrompt ? { ...env, HAPPY_FIRST_MESSAGE_FROM_CLI: '1' } : env
+}
+
 export interface SpawnCommandOptions {
     dir?: string
     prompt?: string
@@ -346,7 +355,11 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         spawnedBy: options.spawnedBy,
         permissionMode,
         agent,
-        environmentVariables: options.env,
+        // B-515: the first message is this CLI's --prompt, not a web message —
+        // tell the wrapper not to prewarm a Claude process for a web prediction
+        // (read and removed from its env at startup; an old daemon passes it
+        // through, an old wrapper ignores it).
+        environmentVariables: spawnEnvironmentVariables(options.env, prompt !== undefined),
         ...resumeIds,
         ...(forkSource ? { parentSessionId: forkSource.parentSessionId } : {}),
     })

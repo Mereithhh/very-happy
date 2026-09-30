@@ -124,6 +124,13 @@ interface Settings {
    */
   claudeConfigDir?: string
   codexHome?: string
+  /**
+   * B-515: start the Claude process of a fresh web session before its first
+   * message (one extra idle `claude` per unsent new session, closed after
+   * 15 min). Absent/`on` = enabled; `off` = never. Env `HAPPY_CLAUDE_PREWARM=0`
+   * also disables it. Machine-local: a memory trade-off of THIS machine.
+   */
+  claudePrewarm?: 'on' | 'off'
 }
 
 const defaultSettings: Settings = {

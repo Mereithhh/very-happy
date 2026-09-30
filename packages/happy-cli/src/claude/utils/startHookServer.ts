@@ -73,9 +73,33 @@ export interface SessionHookData {
     [key: string]: unknown;
 }
 
+/** Transport-level facts about a hook request (not from the hook body). */
+export interface SessionHookMeta {
+    /**
+     * `?source=` of the forwarder that posted it — set only by a tagged hook
+     * settings file (B-515: a prewarmed Claude process). Absent for the
+     * ordinary per-process settings file.
+     */
+    source?: string;
+}
+
 export interface HookServerOptions {
     /** Called when a session hook is received with a valid session ID */
-    onSessionHook: (sessionId: string, data: SessionHookData) => void;
+    onSessionHook: (sessionId: string, data: SessionHookData, meta: SessionHookMeta) => void;
+}
+
+/** Parse the hook request target; null when it is not the session-start route. */
+export function parseSessionHookTarget(url: string | undefined): SessionHookMeta | null {
+    if (!url) return null;
+    let parsed: URL;
+    try {
+        parsed = new URL(url, 'http://127.0.0.1');
+    } catch {
+        return null;
+    }
+    if (parsed.pathname !== '/hook/session-start') return null;
+    const source = parsed.searchParams.get('source');
+    return source && /^[A-Za-z0-9_.-]{1,64}$/.test(source) ? { source } : {};
 }
 
 export interface HookServer {
@@ -126,7 +150,8 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
     return new Promise((resolve, reject) => {
         const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
             // Only handle POST to /hook/session-start
-            if (req.method === 'POST' && req.url === '/hook/session-start') {
+            const hookMeta = req.method === 'POST' ? parseSessionHookTarget(req.url) : null;
+            if (hookMeta) {
                 // Set timeout to prevent hanging if Claude doesn't close stdin
                 const timeout = setTimeout(() => {
                     if (!res.headersSent) {
@@ -156,7 +181,7 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
                     const sessionId = data?.session_id || data?.sessionId;
                     if (sessionId && data) {
                         logger.debug(`[hookServer] Session hook received session ID: ${sessionId}`);
-                        onSessionHook(sessionId, data);
+                        onSessionHook(sessionId, data, hookMeta);
                     } else {
                         logger.debug('[hookServer] Session hook received but no session_id found in data');
                     }

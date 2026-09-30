@@ -2152,6 +2152,14 @@ export const zhHans: TranslationStructure = {
                 band: '「需要我决策」每一行最左是一个圆形勾选（触屏 44px）即「知道了」，头部有「全部已读」，看板上带太长会自己滚动、不再把泳道顶出屏幕。',
                 cli: '`very-happy auto ack --all [--name <自动化>]` 在终端一次确认全部。需要更新 CLI；网页与服务端部分已上线。',
             },
+            sep30a: {
+                title: '新会话的第一条回复快了约 1 秒',
+                summary: '从网页新建 Claude 会话后，机器会立即在后台启动 Claude，而不是等你发出第一条消息，第一条消息不再承担 Claude 的启动时间。需要机器上的 CLI 更新。',
+                prewarm: '网页新建的全新会话一创建就启动 Claude，第一条消息直接交给它（Mac 上约省 1 秒，繁忙的机器更多）。',
+                fallback: '如果第一条消息需要不同设置（计划模式、不同的推理强度或系统提示），提前启动的进程会被丢弃、照旧启动 Claude，不会比以前慢。恢复、分叉、自动化与团队会话不预热。',
+                off: '每台机器最多同时预热两个会话，闲置 15 分钟自动停止；在 `~/.happy/settings.json` 写 `"claudePrewarm": "off"` 可关闭。你的 Claude SessionStart hook 会在预热时运行。',
+                start: '会话 wrapper 也更早报到：会话登记完成后才加载 Claude 运行模块。',
+            },
             sep30: {
                 title: '新会话打开更快；消息真正发出才上屏',
                 summary: '从网页新建 Claude 会话不再等整个 CLI 加载完、也不再等登录 shell 探测，服务端一通知会话页就打开。发出的消息在服务端落库前保持变淡，发不出去会明确告诉你。新会话提速需要机器上的 CLI 更新；网页部分已上线。',
