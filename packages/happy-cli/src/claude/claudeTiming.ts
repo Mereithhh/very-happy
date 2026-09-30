@@ -11,7 +11,8 @@ export type ClaudeTurnMarks = {
     pushedAt?: number;
     /** `query()` called — Claude Code process spawned. First turn only. */
     spawnAt?: number;
-    /** Initialize handshake answered (`supportedModels()` resolved) — first turn only. */
+    /** Initialize handshake answered (`supportedModels()` resolved) — first turn only.
+     *  B-515: for an adopted warm process, the moment the prompt was pushed into it. */
     handshakeAt?: number;
     /** First `system/init` of this turn. */
     initAt?: number;
@@ -38,6 +39,8 @@ export function formatClaudeTimingLine(input: {
     marks: ClaudeTurnMarks;
     /** The SDK result message of this turn (only its numeric timing fields are read). */
     result?: unknown;
+    /** B-515: the turn ran in a prewarmed process (no spawn/handshake after the push). */
+    prewarm?: 'adopted';
 }): string {
     const m = input.marks;
     const sdk = SDK_TIMING_FIELDS.map((key) => `${key}=${sdkField(input.result, key)}`).join(',');
@@ -51,5 +54,6 @@ export function formatClaudeTimingLine(input: {
         `init→firstAssistant=${delta(m.initAt, m.firstAssistantAt)}`,
         `pushed→firstAssistant=${delta(m.pushedAt, m.firstAssistantAt)}`,
         `sdk{${sdk}}`,
+        ...(input.prewarm ? [`prewarm=${input.prewarm}`] : []),
     ].join(' ');
 }

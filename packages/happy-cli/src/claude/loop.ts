@@ -10,6 +10,7 @@ import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
 import type { SandboxConfig } from "@/persistence"
 import type { ClaudeSdkPermissionMode } from './utils/permissionMode'
+import type { ClaudePrewarmLease } from './claudePrewarm'
 
 // Re-export permission mode type from api/types
 // Single unified type with 7 modes - Codex modes mapped at SDK boundary
@@ -60,6 +61,8 @@ interface LoopOptions {
     hookSettingsPath: string
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+    /** B-515: warm Claude process lease for the first remote launch (claudePrewarm.ts). */
+    claudePrewarm?: () => ClaudePrewarmLease | null
 }
 
 export async function loop(opts: LoopOptions): Promise<number> {
@@ -81,7 +84,8 @@ export async function loop(opts: LoopOptions): Promise<number> {
         onModeChange: opts.onModeChange,
         onAbort: opts.onAbort,
         hookSettingsPath: opts.hookSettingsPath,
-        jsRuntime: opts.jsRuntime
+        jsRuntime: opts.jsRuntime,
+        claudePrewarm: opts.claudePrewarm,
     });
 
     opts.onSessionReady?.(session)
