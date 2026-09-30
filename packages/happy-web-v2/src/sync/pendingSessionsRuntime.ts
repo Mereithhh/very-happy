@@ -7,7 +7,8 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { randomUUID } from 'expo-crypto';
 import { storage } from './storage';
 import { sync } from './sync';
-import { machineSpawnNewSession } from './ops';
+import { machineSpawnNewSession, sessionArchive, sessionKill } from './ops';
+import { holdTabLiveness, isTabAlive, withTabLock } from './tabLiveness';
 import { loadPendingSessions, loadQueuedMessages, loadSessionDrafts, savePendingSessions, saveQueuedMessages } from './persistence';
 import { useBoardTasks } from './boardTasks';
 import { normalizeAgentKey } from './agentDefaults';
@@ -15,9 +16,10 @@ import {
     createPendingSessionStore,
     findAdoptableSession,
     isPendingSessionId,
+    migratePendingDraft,
     type PendingSessionRecord,
 } from './pendingSessions';
-import { mergeRestoredDraft, restoreToComposer } from '@/screens/session/composerRestore';
+import { hasComposer, mergeRestoredDraft, restoreToComposer } from '@/screens/session/composerRestore';
 import { recordRecentMachinePath } from '@/app/recentMachinePath';
 import { newSessionTimingCancel, newSessionTimingRpcReturned, newSessionTimingRpcSent } from '@/app/newSessionTiming';
 import { toast } from '@/ui/Toast';
@@ -25,6 +27,13 @@ import { t } from '@/text';
 
 /** Spawn is ~1 s; a real session that has not reached the store after this goes to its draft. */
 const SESSION_WAIT_MS = 30_000;
+/** How often a tab looks for pending records whose owner tab has gone away. */
+const RECLAIM_INTERVAL_MS = 30_000;
+const PENDING_STORAGE_SUFFIX = ':pending-sessions-v1';
+
+/** This page load's identity; records it creates are owned by it. */
+const TAB_ID = randomUUID();
+holdTabLiveness(TAB_ID);
 
 let navigator: ((to: string) => void) | null = null;
 
@@ -46,9 +55,19 @@ export function clearPendingSessionKeys(pendingId: string): void {
 }
 
 export const pendingSessions = createPendingSessionStore({
+    tabId: TAB_ID,
+    isOwnerAlive: isTabAlive,
+    withClaimLock: (fn) => withTabLock('vh-pending-sessions-claim', fn),
     async spawn(options) {
         newSessionTimingRpcSent();
-        const result = await machineSpawnNewSession(options);
+        let result = await machineSpawnNewSession(options);
+        // 铁律 17: an RPC can resolve with `{ error }` — that is a transport
+        // failure (the daemon may still have spawned), not a daemon answer.
+        const known = result?.type === 'success' || result?.type === 'error' || result?.type === 'requestToApproveDirectoryCreation';
+        if (!known) {
+            const raw = result as unknown as { error?: unknown };
+            result = { type: 'error', errorMessage: typeof raw?.error === 'string' ? raw.error : 'Failed to spawn session', transport: true };
+        }
         if (result.type === 'success') newSessionTimingRpcReturned(result.sessionId);
         else newSessionTimingCancel();
         return result;
@@ -64,7 +83,22 @@ export const pendingSessions = createPendingSessionStore({
         if (restoreToComposer(id, text)) return;
         storage.getState().updateSessionDraft(id, mergeRestoredDraft(text, readDraft(id)));
     },
+    migrateDraft(pendingId, realId) {
+        migratePendingDraft(pendingId, realId, {
+            hasComposer,
+            readDraft,
+            restoreToComposer,
+            writeDraft: (id, text) => storage.getState().updateSessionDraft(id, text),
+            clearKeys: clearPendingSessionKeys,
+        });
+    },
     clearKeys: clearPendingSessionKeys,
+    killSession(sessionId) {
+        void (async () => {
+            const killed = await sessionKill(sessionId);
+            if (!killed.success) await sessionArchive(sessionId);
+        })().catch((error) => console.warn('[pending-session] could not stop a cancelled session', error));
+    },
     onSpawned(record, realId) {
         recordRecentMachinePath(record.machineId, record.path);
         if (record.onSpawnedTask) useBoardTasks.getState().attachSession(record.onSpawnedTask.taskId, realId);
@@ -117,6 +151,17 @@ export function usePendingSessionBridge(navigate: (to: string) => void): void {
         return () => { if (navigator === navigate) navigator = null; };
     }, [navigate]);
     useEffect(() => {
-        pendingSessions.resume();
+        void pendingSessions.resume();
+        // Other tabs' writes (create / land / discard) — refresh memory, then
+        // pick up anything a closed tab left behind.
+        const onStorage = (event: StorageEvent) => {
+            if (event.key === null || event.key.endsWith(PENDING_STORAGE_SUFFIX)) pendingSessions.refresh();
+        };
+        window.addEventListener('storage', onStorage);
+        const timer = setInterval(() => { void pendingSessions.resume(); }, RECLAIM_INTERVAL_MS);
+        return () => {
+            window.removeEventListener('storage', onStorage);
+            clearInterval(timer);
+        };
     }, []);
 }

@@ -3,6 +3,9 @@ import {
     composerKey,
     createPendingSessionStore,
     findAdoptableSession,
+    migratePendingDraft,
+    ADOPT_SKEW_MS,
+    ADOPT_WINDOW_MS,
     landingRedirect,
     type PendingSessionDeps,
     type PendingSessionRecord,
@@ -18,14 +21,22 @@ function deferred<T>() {
 
 const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 
-function harness(saved: unknown = []) {
+interface Backing { table: unknown; lock: Promise<void> }
+
+function harness(opts: { saved?: unknown; backing?: Backing; tabId?: string; alive?: Set<string> } = {}) {
+    const backing: Backing = opts.backing ?? { table: opts.saved ?? [], lock: Promise.resolve() };
+    const alive = opts.alive ?? new Set<string>();
     const sessions = new Set<string>();
     const sessionListeners = new Set<() => void>();
     const spawns: Array<{ options: Parameters<PendingSessionDeps['spawn']>[0]; result: ReturnType<typeof deferred<SpawnSessionResult>> }> = [];
     const events: string[] = [];
-    let persisted: PendingSessionRecord[] = [];
     let seq = 0;
+    const tabId = opts.tabId ?? 'tab-a';
+    alive.add(tabId);
     const deps: PendingSessionDeps = {
+        tabId,
+        isOwnerAlive: async (owner) => alive.has(owner),
+        withClaimLock: (fn) => { const run = backing.lock.then(fn); backing.lock = run.catch(() => {}); return run; },
         spawn: vi.fn((options) => {
             const result = deferred<SpawnSessionResult>();
             spawns.push({ options, result });
@@ -38,20 +49,22 @@ function harness(saved: unknown = []) {
         writeModelMode: vi.fn((id: string, mode: string | null) => { events.push(`model:${id}:${mode}`); }),
         writeEffortLevel: vi.fn((id: string, level: string | null) => { events.push(`effort:${id}:${level}`); }),
         restoreText: vi.fn(),
+        migrateDraft: vi.fn(),
         clearKeys: vi.fn(),
+        killSession: vi.fn(),
         onSpawned: vi.fn(),
         notifyFailure: vi.fn(),
-        load: () => saved,
-        save: (records) => { persisted = structuredClone(records); },
+        load: () => structuredClone(backing.table),
+        save: (records) => { backing.table = structuredClone(records); },
         now: () => 1_000 + seq,
-        newId: () => `id${++seq}`,
+        newId: () => `${tabId}-id${++seq}`,
         sessionWaitMs: 5_000,
     };
     const store = createPendingSessionStore(deps);
     const addSession = (id: string) => { sessions.add(id); sessionListeners.forEach((l) => l()); };
     const states: string[] = [];
     store.subscribe(() => { for (const r of store.list()) states.push(`${r.pendingId}:${r.state}`); });
-    return { store, deps, spawns, events, addSession, states, persisted: () => persisted };
+    return { store, deps, spawns, events, addSession, states, backing, alive, persisted: () => backing.table as PendingSessionRecord[] };
 }
 
 const input = { machineId: 'm1', path: '/repo', agent: 'claude' as const, permissionMode: 'default', source: 'quick' };
@@ -80,6 +93,8 @@ describe('pending session store (B-516)', () => {
         h.addSession('real1');
         await flush();
         expect(h.store.get(record.pendingId)).toMatchObject({ state: 'landed', outbox: [] });
+        // the pending draft follows the session (merged unless its composer is still mounted)
+        expect(h.deps.migrateDraft).toHaveBeenCalledWith(record.pendingId, 'real1');
         const firstSend = h.events.indexOf('send:real1:first');
         expect(h.events.indexOf('perm:real1:bypassPermissions')).toBeGreaterThanOrEqual(0);
         expect(h.events.indexOf('perm:real1:bypassPermissions')).toBeLessThan(firstSend);
@@ -179,6 +194,8 @@ describe('pending session store (B-516)', () => {
         await flush();
         expect(h.store.get(record.pendingId)).toBeUndefined();
         expect(h.deps.onSpawned).not.toHaveBeenCalled();
+        // review: the cancelled spawn still created a session — it is stopped
+        expect(h.deps.killSession).toHaveBeenCalledExactlyOnceWith('orphan');
         expect(h.deps.writePermissionMode).not.toHaveBeenCalled();
 
         const failed = h.store.create({ ...input });
@@ -202,10 +219,20 @@ describe('pending session store (B-516)', () => {
         const saved = first.persisted();
         expect(saved.map((r) => r.state)).toEqual(['spawning', 'landing']);
 
-        const second = harness([...saved, { ...saved[0], pendingId: 'pending-old', state: 'landed', landedAt: -10 * 24 * 3600 * 1000 }, { junk: true }]);
+        // reload = a new tab id; the old page load's tab is gone
+        const second = harness({ tabId: 'tab-reloaded', saved: [
+            ...saved,
+            { ...saved[0], pendingId: 'pending-old', state: 'landed', landedAt: -10 * 24 * 3600 * 1000 },
+            { ...saved[0], pendingId: 'pending-stale-approval', state: 'needs-approval', createdAt: -2 * 24 * 3600 * 1000 },
+            { junk: true },
+        ] });
         expect(second.store.list().map((r) => r.pendingId)).toEqual([interrupted.pendingId, landing.pendingId]);
+        // expired records are dropped from storage together with their keys
+        expect(second.deps.clearKeys).toHaveBeenCalledWith('pending-old');
+        expect(second.deps.clearKeys).toHaveBeenCalledWith('pending-stale-approval');
+        expect(second.persisted().map((r) => r.pendingId)).not.toContain('pending-stale-approval');
         expect(second.store.aliasOf('real2')).toBe(landing.pendingId);
-        second.store.resume();
+        await second.store.resume();
         expect(second.store.get(interrupted.pendingId)).toMatchObject({ state: 'failed', failure: 'interrupted', outbox: [] });
         expect(second.deps.restoreText).toHaveBeenCalledWith(interrupted.pendingId, 'draft 1');
         expect(second.deps.notifyFailure).not.toHaveBeenCalled();
@@ -214,34 +241,98 @@ describe('pending session store (B-516)', () => {
         await flush();
         expect(second.events).toContain('send:real2:draft 2');
         expect(second.store.get(landing.pendingId)?.state).toBe('landed');
-        second.store.resume(); // idempotent
+        await second.store.resume(); // idempotent
         expect(second.deps.sendMessage).toHaveBeenCalledTimes(1);
+        expect(second.deps.migrateDraft).toHaveBeenCalledWith(landing.pendingId, 'real2');
     });
 
-    it('adopts a session created despite a lost spawn ack', async () => {
+    it('adopts only after a possibly lost ack, within a short window around the dispatch, without touching its mode', async () => {
         const h = harness();
-        const record = h.store.create({ ...input, firstMessage: 'go' });
+        const record = h.store.create({ ...input, path: '/repo/', firstMessage: 'go' });
         h.spawns[0].result.reject(new Error('timeout'));
         await flush();
         const failed = h.store.get(record.pendingId)!;
+        expect(failed.failure).toBe('lost-ack');
+        const at = failed.spawnDispatchedAt!;
         const norm = (f: string | null | undefined) => (f ?? 'claude');
+        const meta = { machineId: 'm1', path: '/repo', flavor: 'claude' };
         const sessions = [
-            { id: 'older', createdAt: failed.createdAt - 1, metadata: { machineId: 'm1', path: '/repo', flavor: 'claude' } },
-            { id: 'other-path', createdAt: failed.createdAt + 5, metadata: { machineId: 'm1', path: '/elsewhere', flavor: 'claude' } },
-            { id: 'codex', createdAt: failed.createdAt + 6, metadata: { machineId: 'm1', path: '/repo', flavor: 'codex' } },
-            { id: 'match', createdAt: failed.createdAt + 2, metadata: { machineId: 'm1', path: '/repo', flavor: 'claude' } },
-            { id: 'claimed', createdAt: failed.createdAt + 9, metadata: { machineId: 'm1', path: '/repo', flavor: 'claude' } },
+            { id: 'before-window', createdAt: at - ADOPT_SKEW_MS - 1, metadata: meta },
+            { id: 'after-window', createdAt: at + ADOPT_WINDOW_MS + ADOPT_SKEW_MS + 1, metadata: meta },
+            { id: 'other-path', createdAt: at + 5, metadata: { ...meta, path: '/elsewhere' } },
+            { id: 'codex', createdAt: at + 6, metadata: { ...meta, flavor: 'codex' } },
+            { id: 'match', createdAt: at - 3_000, metadata: meta }, // server clock a bit behind
+            { id: 'claimed', createdAt: at + 9, metadata: meta },
         ];
         expect(findAdoptableSession(failed, sessions, norm, new Set(['claimed']))).toBe('match');
+        // a daemon that ANSWERED with an error did not create anything
+        expect(findAdoptableSession({ ...failed, failure: 'spawn-error' }, sessions, norm, new Set())).toBeNull();
         expect(findAdoptableSession({ ...failed, failure: 'directory-declined' }, sessions, norm, new Set())).toBeNull();
+        expect(findAdoptableSession({ ...failed, failure: 'interrupted' }, sessions, norm, new Set(['claimed']))).toBe('match');
         expect(findAdoptableSession({ ...failed, state: 'spawning' }, sessions, norm, new Set())).toBeNull();
-        h.addSession('match');
         h.store.adopt(record.pendingId, 'match');
         await flush();
-        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'landed', realId: 'match' });
-        // the text went back to the composer on failure; nothing re-sent from an empty outbox
+        h.addSession('match');
+        await flush();
+        expect(h.store.get(record.pendingId)).toMatchObject({ state: 'landed', realId: 'match', adopted: true });
+        // never writes the pending page's mode onto a session that may be someone else's
+        expect(h.deps.writePermissionMode).not.toHaveBeenCalled();
         expect(h.deps.sendMessage).not.toHaveBeenCalled();
         expect(h.deps.onSpawned).toHaveBeenCalledWith(expect.anything(), 'match');
+    });
+
+    it('a daemon error is not adoptable; a transport error is', async () => {
+        const h = harness();
+        const a = h.store.create({ ...input });
+        h.spawns[0].result.resolve({ type: 'error', errorMessage: 'no such agent' });
+        const b = h.store.create({ ...input });
+        h.spawns[1].result.resolve({ type: 'error', errorMessage: 'relay dropped', transport: true });
+        await flush();
+        expect(h.store.get(a.pendingId)?.failure).toBe('spawn-error');
+        expect(h.store.get(b.pendingId)?.failure).toBe('lost-ack');
+        h.store.adopt(a.pendingId, 'x');
+        expect(h.store.get(a.pendingId)?.state).toBe('failed');
+    });
+
+    it('multi-tab: a loading tab never re-delivers or interrupts a live tab\'s records, and saves merge per record', async () => {
+        const backing: Backing = { table: [], lock: Promise.resolve() };
+        const alive = new Set<string>();
+        const a = harness({ backing, alive, tabId: 'tab-a' });
+        const landing = a.store.create({ ...input, firstMessage: 'once' });
+        const starting = a.store.create({ ...input });
+        a.spawns[0].result.resolve({ type: 'success', sessionId: 'real-a' });
+        await flush();
+
+        const b = harness({ backing, alive, tabId: 'tab-b' });
+        b.addSession('real-a');
+        await b.store.resume();
+        await flush();
+        expect(b.deps.sendMessage).not.toHaveBeenCalled();
+        expect(b.store.get(starting.pendingId)?.state).toBe('spawning');
+        // read-only for B
+        expect(b.store.append(starting.pendingId, 'from b')).toBe(false);
+        expect(b.store.discard(starting.pendingId)).toBe(false);
+
+        // B creates its own; A's next write must not drop it (no whole-table overwrite)
+        const mineB = b.store.create({ ...input });
+        a.addSession('real-a');
+        await flush();
+        expect(a.store.get(landing.pendingId)?.state).toBe('landed');
+        expect(a.events.filter((e) => e.startsWith('send:'))).toEqual(['send:real-a:once']);
+        expect(b.persisted().map((r) => r.pendingId)).toEqual(expect.arrayContaining([landing.pendingId, starting.pendingId, mineB.pendingId]));
+        // B's memory picks up A's writes
+        b.store.refresh();
+        expect(b.store.get(landing.pendingId)?.state).toBe('landed');
+
+        // A goes away: exactly one surviving tab takes its in-flight record over
+        alive.delete('tab-a');
+        const c = harness({ backing, alive, tabId: 'tab-c' });
+        await Promise.all([b.store.resume(), c.store.resume()]);
+        b.store.refresh();
+        c.store.refresh();
+        const owners = [b, c].filter((t) => t.store.isOwnedHere(starting.pendingId));
+        expect(owners).toHaveLength(1);
+        expect(owners[0].store.get(starting.pendingId)).toMatchObject({ state: 'failed', failure: 'interrupted' });
     });
 
     it('releases waiters when the pending page is shown, with a timeout fallback', async () => {
@@ -255,6 +346,7 @@ describe('pending session store (B-516)', () => {
         void h.store.waitShown('pending-b', 1_000).then(late);
         await vi.advanceTimersByTimeAsync(1_000);
         expect(late).toHaveBeenCalledTimes(1);
+        expect(h.store.waiterCount()).toBe(0); // no empty lists left behind
     });
 });
 
@@ -274,5 +366,32 @@ describe('pending page routing guards (B-516)', () => {
         expect(composerKey('pending-1', alias)).toBe('pending-1');
         expect(composerKey('real1', alias)).toBe('pending-1');
         expect(composerKey('real2', alias)).toBe('real2');
+    });
+});
+
+describe('pending draft migration on landing (B-516 review)', () => {
+    function io(drafts: Record<string, string>, mounted: string[] = []) {
+        return {
+            drafts,
+            hasComposer: (id: string) => mounted.includes(id),
+            readDraft: (id: string) => drafts[id] ?? '',
+            restoreToComposer: vi.fn(() => false),
+            writeDraft: vi.fn((id: string, text: string) => { drafts[id] = text; }),
+            clearKeys: vi.fn((id: string) => { delete drafts[id]; }),
+        };
+    }
+
+    it('moves an unmounted pending draft into the real session and clears the pending keys', () => {
+        const x = io({ 'pending-1': 'typed while starting', real1: 'outbox fallback' });
+        migratePendingDraft('pending-1', 'real1', x);
+        expect(x.drafts).toEqual({ real1: 'outbox fallback\ntyped while starting' });
+        expect(x.clearKeys).toHaveBeenCalledWith('pending-1');
+    });
+
+    it('leaves a mounted pending composer alone (it carries its text over itself)', () => {
+        const x = io({ 'pending-1': 'still editing' }, ['pending-1']);
+        migratePendingDraft('pending-1', 'real1', x);
+        expect(x.drafts).toEqual({ 'pending-1': 'still editing' });
+        expect(x.clearKeys).not.toHaveBeenCalled();
     });
 });

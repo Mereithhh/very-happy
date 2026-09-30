@@ -142,7 +142,9 @@ interface SessionKillResponse {
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
-    | { type: 'error'; errorMessage: string };
+    /** `transport`: the RPC itself failed (timeout / relay) — the daemon may
+     *  still have created the session (B-516 lost-ack adoption). */
+    | { type: 'error'; errorMessage: string; transport?: boolean };
 
 // Options for spawning a session
 export interface SpawnSessionOptions {
@@ -328,7 +330,8 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
         // Handle RPC errors
         return {
             type: 'error',
-            errorMessage: error instanceof Error ? error.message : 'Failed to spawn session'
+            errorMessage: error instanceof Error ? error.message : 'Failed to spawn session',
+            transport: true,
         };
     }
 }
