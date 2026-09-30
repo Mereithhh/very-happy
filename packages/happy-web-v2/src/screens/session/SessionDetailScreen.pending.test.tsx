@@ -19,6 +19,7 @@ const h = vi.hoisted(() => {
         setViewing: vi.fn(), visible: vi.fn(), clearKeys: vi.fn(), sent: [] as string[],
         composer: { mounts: 0, unmounts: 0, props: [] as Array<{ sessionId: string; pending?: unknown; agentFlavor?: string }> },
         spawn: null as null | ((r: SpawnSessionResult) => void),
+        table: [] as unknown[],
     };
 });
 
@@ -43,7 +44,7 @@ vi.mock('@/sync/pendingSessionsRuntime', async () => {
     const core = await vi.importActual<typeof import('@/sync/pendingSessions')>('@/sync/pendingSessions');
     let n = 0;
     const pendingSessions = core.createPendingSessionStore({
-        tabId: 'tab', isOwnerAlive: async () => false, withClaimLock: (fn) => fn(),
+        tabId: 'tab', isOwnerAlive: async (owner) => owner === 'other-tab', withClaimLock: (fn) => fn(),
         migrateDraft: () => {}, killSession: () => {},
         spawn: () => new Promise<SpawnSessionResult>((resolve) => { h.spawn = resolve; }),
         hasSession: (id) => !!h.sessions[id],
@@ -51,7 +52,7 @@ vi.mock('@/sync/pendingSessionsRuntime', async () => {
         sendMessage: async (_id, text) => { h.sent.push(text); return 'receipt'; },
         writePermissionMode: () => {}, writeModelMode: () => {}, writeEffortLevel: () => {},
         restoreText: () => {}, clearKeys: () => {}, onSpawned: () => {}, notifyFailure: () => {},
-        load: () => [], save: () => {}, now: () => 1, newId: () => `n${++n}`, sessionWaitMs: 60_000,
+        load: () => structuredClone(h.table), save: (records) => { h.table = structuredClone(records); }, now: () => 1, newId: () => `n${++n}`, sessionWaitMs: 60_000,
     });
     return {
         pendingSessions,
@@ -192,6 +193,22 @@ describe('SessionDetailScreen pending page (B-516)', () => {
         await flush();
         expect(pendingSessions.get(record.pendingId)?.state).toBe('landed');
         expect(where).toBe('/session/elsewhere');
+    });
+
+    it('a spawning page owned by another tab refuses sends without clearing the composer (e2e regression)', async () => {
+        h.table = [...h.table, {
+            pendingId: 'pending-foreign', ownerTab: 'other-tab', machineId: 'm', path: '/repo', agent: 'claude',
+            permissionMode: null, source: 'quick', createdAt: 1, state: 'spawning', outbox: [{ id: 'o1', text: 'from A' }],
+        }];
+        act(() => pendingSessions.refresh());
+        renderAt('/session/pending-foreign');
+        await flush();
+        const props = h.composer.props.at(-1) as { pending?: { onSend(t: string): boolean; blockedHint?: string } };
+        expect(props.pending).toBeDefined();
+        expect(props.pending!.blockedHint).toBe('pendingSession.otherTab');
+        // refused → AgentInput keeps the text (AgentInput.pending.test.tsx) and says why
+        expect(props.pending!.onSend('from B')).toBe(false);
+        expect(pendingSessions.get('pending-foreign')?.outbox.map((o) => o.text)).toEqual(['from A']);
     });
 
     it('shows a gone state for a pending id without a record', async () => {
