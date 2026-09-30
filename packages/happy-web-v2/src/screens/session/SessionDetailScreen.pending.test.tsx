@@ -43,6 +43,8 @@ vi.mock('@/sync/pendingSessionsRuntime', async () => {
     const core = await vi.importActual<typeof import('@/sync/pendingSessions')>('@/sync/pendingSessions');
     let n = 0;
     const pendingSessions = core.createPendingSessionStore({
+        tabId: 'tab', isOwnerAlive: async () => false, withClaimLock: (fn) => fn(),
+        migrateDraft: () => {}, killSession: () => {},
         spawn: () => new Promise<SpawnSessionResult>((resolve) => { h.spawn = resolve; }),
         hasSession: (id) => !!h.sessions[id],
         subscribeSessions: h.subscribe,

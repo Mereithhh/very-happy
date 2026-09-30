@@ -65,6 +65,9 @@ Owner 2026-09-30：「按照你的顺序来」（先发 B-512，再做乐观跳�
 - 状态多一个 `landed`（outbox 已送完或已转草稿）；输入框只在 `landed` 时切到 realId。
 - 刷新后 `landing` 记录先续送 outbox 再跳转（不是立即跳），保证新消息不越过 outbox；`spawning` 记录转「启动已中断」，不自动重发 spawn。
 - ⌘W 在 pending 页 = 放弃该记录（按 `closeViewConfirm` 先确认），已拿到 realId 后不可放弃；侧栏失败/待确认行可 ✕ 放弃；outbox 行可删除。
+- 多标签页（review）：记录带 `ownerTab`，只有属主标签页跑 spawn/投递并接受操作，其他标签页只读；属主存活用 Web Locks 判定（退化为 BroadcastChannel ping），属主消失的记录在跨标签锁内被恰好一个标签页接管；保存是按记录读-改-写合并，`storage` 事件刷新内存。
+- lost-ack 接管（review）：只对 RPC 传输失败（`transport` 错误/超时）和「中断」提供；只匹配 spawn 发出时刻 −15 s～+105 s 内创建、同机器/同路径（去尾斜杠）/同 agent 的会话；接管的会话不写 pending 页的权限/模型/effort。
+- 落地时 pending 页未挂载：pending 草稿并入 realId 草稿并清 pending 键；过期记录（landed 24 h、needs-approval 24 h、failed 7 d）加载时连同键一起清掉；spawn 进行中放弃 → 若随后成功则 kill（失败则 archive）该会话。
 - pending 页不写通知 seen-key（`targetKeyOfPath` 忽略 `pending-` id）；笔记在拿到 realId 前不绑定。
 
 ### B-515 Claude 预热（先量后做，CLI 内部，无协议变更）
