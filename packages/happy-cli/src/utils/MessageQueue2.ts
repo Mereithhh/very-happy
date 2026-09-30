@@ -11,6 +11,8 @@ interface QueueItem<T> {
     attachments?: PendingAttachment[];
     /** Stable source message id supplied by the session transport. */
     sourceId?: string;
+    /** B-515 phase 0: Date.now() when the item entered the queue (latency measurement only). */
+    enqueuedAt?: number;
 }
 
 export type QueueDiscardReason = 'cleared' | 'aborted' | 'restarted';
@@ -102,6 +104,7 @@ export class MessageQueue2<T> {
             isolate: false,
             attachments,
             sourceId,
+            enqueuedAt: Date.now(),
         });
 
         // Trigger message handler if set
@@ -136,7 +139,8 @@ export class MessageQueue2<T> {
             message,
             mode,
             modeHash,
-            isolate: false
+            isolate: false,
+            enqueuedAt: Date.now(),
         });
 
         // Trigger message handler if set
@@ -179,6 +183,7 @@ export class MessageQueue2<T> {
             isolate: true,
             attachments,
             sourceId,
+            enqueuedAt: Date.now(),
         });
 
         // Trigger message handler if set
@@ -295,7 +300,7 @@ export class MessageQueue2<T> {
      * Wait for messages and return all messages with the same mode as a single string
      * Returns { message: string, mode: T } or null if aborted/closed
      */
-    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, attachments?: PendingAttachment[] } | null> {
+    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, attachments?: PendingAttachment[], enqueuedAt?: number } | null> {
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
             return this.collectBatch();
@@ -319,7 +324,7 @@ export class MessageQueue2<T> {
     /**
      * Collect a batch of messages with the same mode, respecting isolation requirements
      */
-    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, attachments?: PendingAttachment[] } | null {
+    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, attachments?: PendingAttachment[], enqueuedAt?: number } | null {
         if (this.queue.length === 0) {
             return null;
         }
@@ -330,6 +335,8 @@ export class MessageQueue2<T> {
         let mode = firstItem.mode;
         let isolate = firstItem.isolate ?? false;
         const targetModeHash = firstItem.modeHash;
+        // Earliest item of the batch = how long the user has been waiting.
+        const enqueuedAt = firstItem.enqueuedAt;
 
         // If the first message requires isolation, only process it alone
         if (firstItem.isolate) {
@@ -367,6 +374,7 @@ export class MessageQueue2<T> {
             hash: targetModeHash,
             isolate,
             attachments: collectedAttachments.length > 0 ? collectedAttachments : undefined,
+            ...(enqueuedAt !== undefined ? { enqueuedAt } : {}),
         };
     }
 
