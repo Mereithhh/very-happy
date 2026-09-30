@@ -105,6 +105,22 @@ describe('AgentInput on a pending page (B-516)', () => {
         expect(input().value).toBe('typed before reload');
     });
 
+    it('does not write a discarded pending page\'s draft back on unmount', () => {
+        let gone = false;
+        pending.isGone = () => gone;
+        render();
+        changeDraft('half typed');
+        gone = true; // sidebar ✕ / ⌘W discarded the record and cleared its keys
+        act(() => root.render(<div />));
+        expect(mocks.draft).not.toHaveBeenCalledWith('pending-1', 'half typed');
+        // a live pending page still flushes
+        gone = false;
+        render();
+        changeDraft('keep me');
+        act(() => root.render(<div />));
+        expect(mocks.draft).toHaveBeenCalledWith('pending-1', 'keep me');
+    });
+
     it('writes mode choices to the pending record and the chosen agent defaults slot, not a session or Claude', () => {
         render();
         const menu = mocks.modeMenus.at(-1)!;

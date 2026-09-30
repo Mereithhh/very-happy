@@ -95,7 +95,7 @@ export function PendingSessionBody({ record }: { record: PendingSessionRecord })
                 <section className="ps-card ps-card--failed" role="alert">
                     <div className="ps-card-title">{title}</div>
                     {detail && <p className="ps-card-text ps-card-error">{detail}</p>}
-                    <p className="ps-card-text">{t('pendingSession.textKept')}</p>
+                    {record.textReturned && <p className="ps-card-text">{t('pendingSession.textKept')}</p>}
                     {adoptable && (
                         <div className="ps-adopt">
                             <span>{t('pendingSession.adoptFound')}</span>

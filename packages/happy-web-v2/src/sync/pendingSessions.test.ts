@@ -153,7 +153,7 @@ describe('pending session store (B-516)', () => {
         h.store.setViewing(viewed.pendingId);
         h.spawns[0].result.resolve({ type: 'error', errorMessage: 'machine offline' });
         await flush();
-        expect(h.store.get(viewed.pendingId)).toMatchObject({ state: 'failed', failure: 'spawn-error', error: 'machine offline', outbox: [] });
+        expect(h.store.get(viewed.pendingId)).toMatchObject({ state: 'failed', failure: 'spawn-error', error: 'machine offline', outbox: [], textReturned: true });
         expect(h.deps.restoreText).toHaveBeenCalledWith(viewed.pendingId, 'keep me');
         expect(h.deps.notifyFailure).not.toHaveBeenCalled();
 
@@ -162,6 +162,8 @@ describe('pending session store (B-516)', () => {
         h.spawns[1].result.reject(new Error('RPC timeout'));
         await flush();
         expect(h.store.get(left.pendingId)).toMatchObject({ state: 'failed', error: 'RPC timeout' });
+        // nothing was queued → the card must not claim text was put back
+        expect(h.store.get(left.pendingId)?.textReturned).toBe(false);
         expect(h.deps.notifyFailure).toHaveBeenCalledTimes(1);
         expect(h.deps.onSpawned).not.toHaveBeenCalled();
     });

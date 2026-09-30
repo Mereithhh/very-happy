@@ -137,6 +137,8 @@ export interface PendingComposer {
     onMode: (field: AgentDefaultField, value: string | null) => void;
     /** A pending id has no session to carry `draft`. */
     initialDraft: string;
+    /** The record was discarded: the unmount flush must not re-create its draft. */
+    isGone?: () => boolean;
 }
 
 export function AgentInput({ sessionId, agentFlavor, pending }: {
@@ -400,21 +402,34 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
 
     // persist draft (debounced via storage's own normalization)
     useEffect(() => {
-        const id = setTimeout(() => storage.getState().updateSessionDraft(sessionId, text), 400);
+        const id = setTimeout(() => {
+            if (!pendingRef.current?.isGone?.()) storage.getState().updateSessionDraft(sessionId, text);
+        }, 400);
         return () => clearTimeout(id);
     }, [text, sessionId]);
+
+    // B-516: a discarded pending page must not get its draft written back by
+    // the flushes below after discard() cleared its keys.
+    const pendingRef = useRef(pending);
+    pendingRef.current = pending;
+    const flushDraft = () => {
+        if (pendingRef.current?.isGone?.()) return;
+        storage.getState().updateSessionDraft(sessionId, draftRef.current || null);
+    };
 
     // Route switches remount the composer by session id. Flush the latest
     // value before unmount so a sub-debounce draft stays with its own session.
     useEffect(() => () => {
-        storage.getState().updateSessionDraft(sessionId, draftRef.current || null);
+        flushDraft();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- flushDraft reads refs
     }, [sessionId]);
 
     // B-315: a background auto-update reloads the page without unmounting
     // anything, so the cleanup above never runs. Register the same flush for
     // the update path to call on its way out.
     useEffect(() => registerDraftFlush(() => {
-        storage.getState().updateSessionDraft(sessionId, draftRef.current || null);
+        flushDraft();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- flushDraft reads refs
     }), [sessionId]);
 
     const releaseQueuedAttachments = (item: QueuedMessage) => {

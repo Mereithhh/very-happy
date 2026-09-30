@@ -239,6 +239,7 @@ export function SessionDetailScreen() {
         effortLevel: pending.effortLevel,
         onMode: (field, value) => pendingSessions.setMode(pending.pendingId, field, value),
         initialDraft: pendingInitialDraft,
+        isGone: () => !pendingSessions.get(pending.pendingId),
         blockedHint: foreignPending
             ? t('pendingSession.otherTab')
             : pending.state === 'failed' ? t('pendingSession.retryFirst') : undefined,
