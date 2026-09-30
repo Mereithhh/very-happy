@@ -11,6 +11,7 @@ import { AgentState, Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import type { EnhancedMode, PermissionMode } from './loop';
+import type { MessageMeta } from '@/api/types';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
 import { PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
@@ -70,6 +71,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // claudeRemote copies it into process.env which the SDK spawn inherits.
     // Patching only the local path would leak double uploads on remote mode.
     options = { ...options, claudeEnvVars: { ...options.claudeEnvVars, HAPPY_MANAGED: '1' } };
+
+    // B-515: spawn-time prewarm facts (daemon claudeAuth verdict, `very-happy
+    // spawn --prompt`). Read once and removed from process.env so they never
+    // reach Claude / MCP / Bash or a daemon started from inside the session.
+    const prewarmSpawnEnv: Record<string, string | undefined> = {};
+    for (const key of ['HAPPY_CLAUDE_AUTH_STATUS', 'HAPPY_FIRST_MESSAGE_FROM_CLI'] as const) {
+        prewarmSpawnEnv[key] = process.env[key];
+        delete process.env[key];
+    }
 
     const workingDirectory = process.cwd();
 
@@ -397,8 +407,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         registerSideQuestionHandler, writeSideQuestionSettingsFile, claudeCheckSession,
         createSessionScanner, getProjectPath, RawJSONLinesSchema, TitleGenerator, BoardAnalyzer,
         FileRateLimiter, createSelfReportState, withAssistantDenylist, contentLogMetadata,
-        resolveMessageMode, claudePrewarmEligibility, prewarmCacheFile, readPrewarmSystemPromptCache,
-        writePrewarmSystemPromptCache, acquirePrewarmSlot, prewarmSlotDir, PrewarmHookGate,
+        resolveMessageMode, claudePrewarmEligibility, claudePrewarmSessionEligibility, prewarmCacheFile,
+        readPrewarmCache, writePrewarmCache, prewarmPredictionMeta, evaluatePrewarmPrediction,
+        acquirePrewarmSlot, prewarmSlotDir, PrewarmHookGate,
         createClaudePrewarmLease, disposeAllClaudePrewarms, formatPrewarmLine,
     } = deps;
 
@@ -816,25 +827,47 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     });
 
     // B-515 phase 1: Claude prewarm. The prediction for the first message is
-    // the CLI's own state plus the last web `appendSystemPrompt` this machine
-    // saw (cached under HAPPY_HOME_DIR; the web sends a constant that only
-    // changes on a web deploy). Without a cache there is no prewarm.
+    // the CLI's own state plus what the last web first message of an eligible
+    // session on this machine carried (appendSystemPrompt — a constant that
+    // only changes on a web deploy — and the web's effort default), cached
+    // under HAPPY_HOME_DIR. Without a cache there is no prewarm.
     const prewarmCachePath = prewarmCacheFile(configuration.happyHomeDir);
-    let cachedAppendSystemPrompt = readPrewarmSystemPromptCache(prewarmCachePath);
-    const rememberWebAppendSystemPrompt = (value: unknown) => {
-        if (typeof value !== 'string' || value.length === 0 || value === cachedAppendSystemPrompt) return;
-        if (writePrewarmSystemPromptCache(prewarmCachePath, value)) cachedAppendSystemPrompt = value;
+    let prewarmCache = readPrewarmCache(prewarmCachePath);
+    const prewarmSessionInput = {
+        env: { ...process.env, ...prewarmSpawnEnv },
+        startedBy: options.startedBy,
+        startingMode: options.startingMode,
+        claudeArgs: options.claudeArgs,
+        setting: settings?.claudePrewarm,
+    };
+    const prewarmCtx = () => ({ sandboxEnabled, isAssistantVariant, staleModeSnapshot: false });
+    const predictFirstMessageMode = () => prewarmCache
+        ? resolveMessageMode(currentModeState(), prewarmPredictionMeta(prewarmCache), prewarmCtx()).mode
+        : null;
+    /**
+     * Only an eligible session's FIRST message, and only when it came from the
+     * web, may teach the cache — assistant/teams/automation/CLI traffic would
+     * poison the prediction. Also scores the prediction (hit/miss) whether or
+     * not a warm process ran, so an auto-disabled machine re-enables itself as
+     * soon as a prediction would have hit.
+     */
+    let firstMessageScored = false;
+    const scoreFirstMessage = (meta: MessageMeta | undefined, predicted: EnhancedMode | null, actual: EnhancedMode) => {
+        if (firstMessageScored) return;
+        firstMessageScored = true;
+        if (meta?.sentFrom !== 'web') return;
+        if (!claudePrewarmSessionEligibility({ ...prewarmSessionInput, env: { ...process.env, ...prewarmSpawnEnv } }).eligible) return;
+        const { outcome, next } = evaluatePrewarmPrediction({ predicted, actual, meta, previous: prewarmCache });
+        logger.debug(`[CLAUDE PREWARM] prediction ${outcome}${next ? ` consecutiveMisses=${next.consecutiveMisses}` : ''}`);
+        if (next && writePrewarmCache(prewarmCachePath, next)) prewarmCache = next;
     };
     let userMessageSeen = false;
     const prewarmTagFiles = new Set<string>();
     const createPrewarm = () => {
         const eligibility = claudePrewarmEligibility({
-            env: process.env,
-            startedBy: options.startedBy,
-            startingMode: options.startingMode,
-            claudeArgs: options.claudeArgs,
-            setting: settings?.claudePrewarm,
-            cachedAppendSystemPrompt,
+            ...prewarmSessionInput,
+            env: { ...process.env, ...prewarmSpawnEnv },
+            cache: prewarmCache,
         });
         if (!eligibility.eligible) {
             logger.debug(formatPrewarmLine('skipped', eligibility.reason));
@@ -850,9 +883,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(formatPrewarmLine('skipped', 'concurrency-limit'));
             return null;
         }
-        const predicted = resolveMessageMode(currentModeState(), { appendSystemPrompt: cachedAppendSystemPrompt }, {
-            sandboxEnabled, isAssistantVariant, staleModeSnapshot: false,
-        }).mode;
+        const predicted = predictFirstMessageMode();
+        if (!predicted) {
+            slot.release();
+            return null;
+        }
         const tag = prewarmHookGate.newTag();
         let tagHookSettingsPath: string;
         try {
@@ -940,6 +975,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[loop] Ignoring stale meta.permissionMode=${message.meta?.permissionMode} (message ${messageCreatedAt} predates explicit switch ${lastExplicitModeSwitchAt}); keeping ${currentPermissionMode}`);
         }
         const previousPermissionMode = currentPermissionMode;
+        const predictedFirstMode = firstMessageScored ? null : predictFirstMessageMode();
         const resolved = resolveMessageMode(currentModeState(), message.meta, { sandboxEnabled, isAssistantVariant, staleModeSnapshot });
         if ('publishPermissionMode' in resolved) {
             publishPermissionMode(resolved.publishPermissionMode);
@@ -962,9 +998,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[loop] Ignoring invalid effort from user message: ${resolved.ignoredEffort}`);
         }
         logger.debug(`[loop] Message mode: permission=${resolved.mode.permissionMode} model=${resolved.mode.model || 'default'} effort=${resolved.mode.effort ?? 'default'} appendSystemPrompt=${resolved.mode.appendSystemPrompt ? 'set' : 'none'} customSystemPrompt=${resolved.mode.customSystemPrompt ? 'set' : 'none'}`);
-        // B-515: remember the web's system prompt — it is what the next fresh
-        // session's prewarm predicts with (it only changes on a web deploy).
-        rememberWebAppendSystemPrompt(message.meta?.appendSystemPrompt);
+        // B-515: score the prediction and teach the cache (first web message
+        // of an eligible session only).
+        scoreFirstMessage(message.meta, predictedFirstMode, resolved.mode);
         const resolvedMode = resolved.mode;
 
         // Check for special commands before processing

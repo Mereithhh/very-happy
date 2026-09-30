@@ -34,7 +34,7 @@ export { withAssistantDenylist } from '@/assistant/dispatcherTools';
 export { contentLogMetadata } from '@/utils/contentLogMetadata';
 export { resolveMessageMode } from './messageMode';
 export {
-    claudePrewarmEligibility, prewarmCacheFile, readPrewarmSystemPromptCache, writePrewarmSystemPromptCache,
-    acquirePrewarmSlot, prewarmSlotDir, PrewarmHookGate, createClaudePrewarmLease, disposeAllClaudePrewarms,
-    formatPrewarmLine,
+    claudePrewarmEligibility, claudePrewarmSessionEligibility, prewarmCacheFile, readPrewarmCache, writePrewarmCache,
+    prewarmPredictionMeta, evaluatePrewarmPrediction, acquirePrewarmSlot, prewarmSlotDir, PrewarmHookGate,
+    createClaudePrewarmLease, disposeAllClaudePrewarms, formatPrewarmLine,
 } from './claudePrewarm';

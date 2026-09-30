@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import { claudeModeHash } from './claudeModeHash';
 import { needsModelSwitch } from './claudeLiveModel';
 import type { EnhancedMode } from './loop';
+import type { MessageMeta } from '@/api/types';
 import { mapToClaudeMode, type ClaudeSdkPermissionMode } from './utils/permissionMode';
 
 /** A warm process nobody used for this long is closed (spec: 15 min). */
@@ -37,28 +38,34 @@ export const PREWARM_HOOK_SOURCE_PREFIX = 'prewarm-';
 const BAD_AUTH_STATUSES: ReadonlySet<string> = new Set(['not-logged-in', 'error', 'claude-missing']);
 /** Claude args that make the first Query resume/continue something (never "fresh"). */
 const RESUME_ARGS: ReadonlySet<string> = new Set(['--resume', '-r', '--continue', '-c', '--fork-session', '--session-id']);
+/** This many consecutive first-message mispredictions on this machine switch the prewarm off until a would-be hit. */
+export const CLAUDE_PREWARM_MAX_CONSECUTIVE_MISSES = 5;
 
-export type ClaudePrewarmEligibilityInput = {
+export type ClaudePrewarmSessionInput = {
     env: Record<string, string | undefined>;
     startedBy?: string;
     startingMode?: string;
     claudeArgs?: string[];
     /** Raw `claudePrewarm` from ~/.happy/settings.json (no schema default — AGENTS constraint 1). */
     setting: unknown;
-    /** Last web `appendSystemPrompt` seen on this machine, or null. */
-    cachedAppendSystemPrompt: string | null;
+};
+
+export type ClaudePrewarmEligibilityInput = ClaudePrewarmSessionInput & {
+    /** The machine's prediction cache, or null. */
+    cache: PrewarmCache | null;
 };
 
 export type ClaudePrewarmEligibility = { eligible: true } | { eligible: false; reason: string };
 
 /**
- * Only a FRESH Claude remote session a daemon spawned for the web: no
- * resume/fork/import/reconnect, not the assistant singleton, not a
- * teams/automation/assistant-dispatched session (their first message is not a
- * web message, so the prediction would miss), Claude auth not known-broken,
- * and a cached web system prompt to predict with.
+ * Is THIS session the kind a prewarm is for? Only a FRESH Claude remote
+ * session a daemon spawned for the web: no resume/fork/import/reconnect, not
+ * the assistant singleton, not a teams/automation/assistant-dispatched session
+ * or a `very-happy spawn --prompt` (their first message is not a web message,
+ * so the prediction would miss), Claude auth not known-broken. Also decides
+ * whether this session's first message may update the prediction cache.
  */
-export function claudePrewarmEligibility(input: ClaudePrewarmEligibilityInput): ClaudePrewarmEligibility {
+export function claudePrewarmSessionEligibility(input: ClaudePrewarmSessionInput): ClaudePrewarmEligibility {
     const { env } = input;
     const no = (reason: string): ClaudePrewarmEligibility => ({ eligible: false, reason });
     if (env.HAPPY_CLAUDE_PREWARM === '0') return no('env-off');
@@ -72,38 +79,100 @@ export function claudePrewarmEligibility(input: ClaudePrewarmEligibilityInput): 
     if (env.VH_TEAM_OPERATION_ID) return no('teams');
     if (env.VH_AUTOMATION_RUN_ID) return no('automation');
     if (env.HAPPY_SPAWNED_BY) return no('spawned-by');
+    if (env.HAPPY_FIRST_MESSAGE_FROM_CLI === '1') return no('cli-first-message');
     if (input.claudeArgs?.some((arg) => RESUME_ARGS.has(arg))) return no('resume-args');
     if (env.HAPPY_CLAUDE_AUTH_STATUS && BAD_AUTH_STATUSES.has(env.HAPPY_CLAUDE_AUTH_STATUS)) return no('claude-auth');
-    if (!input.cachedAppendSystemPrompt) return no('no-cached-system-prompt');
+    return { eligible: true };
+}
+
+/** Session eligibility + a usable prediction (cached web prompt, not auto-disabled by misses). */
+export function claudePrewarmEligibility(input: ClaudePrewarmEligibilityInput): ClaudePrewarmEligibility {
+    const session = claudePrewarmSessionEligibility(input);
+    if (!session.eligible) return session;
+    if (!input.cache?.appendSystemPrompt) return { eligible: false, reason: 'no-cached-system-prompt' };
+    if (input.cache.consecutiveMisses >= CLAUDE_PREWARM_MAX_CONSECUTIVE_MISSES) return { eligible: false, reason: 'recent-misses' };
     return { eligible: true };
 }
 
 // ---------------------------------------------------------------------------
-// Predicted system prompt cache (~/.happy/claude-prewarm.json)
+// Prediction cache (~/.happy/claude-prewarm.json): what the last web first
+// message of an eligible session carried, and how often the prediction missed.
+
+export type PrewarmCache = {
+    appendSystemPrompt: string;
+    /** The web's `effort` meta (agent default override); absent = the web did not send one. */
+    effort?: string | null;
+    consecutiveMisses: number;
+};
 
 export function prewarmCacheFile(happyHomeDir: string): string {
     return join(happyHomeDir, 'claude-prewarm.json');
 }
 
-export function readPrewarmSystemPromptCache(file: string): string | null {
+export function readPrewarmCache(file: string): PrewarmCache | null {
     try {
-        const raw = JSON.parse(readFileSync(file, 'utf8')) as { appendSystemPrompt?: unknown };
-        return typeof raw?.appendSystemPrompt === 'string' && raw.appendSystemPrompt.length > 0 ? raw.appendSystemPrompt : null;
+        const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+        if (typeof raw?.appendSystemPrompt !== 'string' || raw.appendSystemPrompt.length === 0) return null;
+        const misses = typeof raw.consecutiveMisses === 'number' && Number.isFinite(raw.consecutiveMisses) && raw.consecutiveMisses > 0
+            ? Math.floor(raw.consecutiveMisses) : 0;
+        return {
+            appendSystemPrompt: raw.appendSystemPrompt,
+            ...(typeof raw.effort === 'string' || raw.effort === null ? { effort: raw.effort as string | null } : {}),
+            consecutiveMisses: misses,
+        };
     } catch {
         return null;
     }
 }
 
 /** Atomic (tmp + rename), private. Best-effort: never throws. */
-export function writePrewarmSystemPromptCache(file: string, appendSystemPrompt: string): boolean {
+export function writePrewarmCache(file: string, cache: PrewarmCache): boolean {
     try {
         const tmp = `${file}.${process.pid}.tmp`;
-        writeFileSync(tmp, JSON.stringify({ appendSystemPrompt, updatedAt: Date.now() }), { mode: 0o600 });
+        writeFileSync(tmp, JSON.stringify({ ...cache, updatedAt: Date.now() }), { mode: 0o600 });
         renameSync(tmp, file);
         return true;
     } catch {
         return false;
     }
+}
+
+/** The meta the prediction assumes the web's first message will carry. */
+export function prewarmPredictionMeta(cache: PrewarmCache): MessageMeta {
+    return {
+        appendSystemPrompt: cache.appendSystemPrompt,
+        ...(cache.effort !== undefined ? { effort: cache.effort } : {}),
+    };
+}
+
+/**
+ * The first web message of an eligible session arrived: was the prediction
+ * right (by the adoption rule — the relaunch hash), and what to cache next.
+ * `predicted` is null when there was no cache to predict with.
+ */
+export function evaluatePrewarmPrediction(input: {
+    predicted: EnhancedMode | null;
+    actual: EnhancedMode;
+    meta: MessageMeta | undefined;
+    previous: PrewarmCache | null;
+}): { outcome: 'hit' | 'miss' | 'no-prediction'; next: PrewarmCache | null } {
+    const outcome = input.predicted === null ? 'no-prediction'
+        : claudeModeHash(input.predicted) === claudeModeHash(input.actual) ? 'hit' : 'miss';
+    const append = input.meta?.appendSystemPrompt;
+    const misses = outcome === 'miss' ? (input.previous?.consecutiveMisses ?? 0) + 1 : 0;
+    if (typeof append !== 'string' || append.length === 0) {
+        // Nothing to predict the next session with; keep the old cache but still count the miss.
+        return { outcome, next: input.previous ? { ...input.previous, consecutiveMisses: misses } : null };
+    }
+    const hasEffort = !!input.meta && Object.prototype.hasOwnProperty.call(input.meta, 'effort');
+    return {
+        outcome,
+        next: {
+            appendSystemPrompt: append,
+            ...(hasEffort ? { effort: (input.meta as { effort?: string | null }).effort ?? null } : {}),
+            consecutiveMisses: misses,
+        },
+    };
 }
 
 // ---------------------------------------------------------------------------

@@ -32,11 +32,14 @@ describe('claudeRemote prewarm (B-515)', () => {
     let events: string[];
     let perCall: FakeOpts[];
     let unhandled: unknown[];
+    /** Simulate the warm child's exit (ProcessTransport.onExit listeners). */
+    let exits: Array<() => void>;
     const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
 
     beforeEach(() => {
         events = [];
         perCall = [];
+        exits = [];
         unhandled = [];
         process.on('unhandledRejection', onUnhandled);
         vi.mocked(query).mockReset();
@@ -44,7 +47,10 @@ describe('claudeRemote prewarm (B-515)', () => {
             const index = vi.mocked(query).mock.calls.length - 1;
             const o = perCall[index] ?? {};
             events.push(`query#${index}`);
+            const exitListeners: Array<(error?: unknown) => void> = [];
+            exits[index] = () => { for (const cb of exitListeners) cb({ signal: 'SIGKILL' }); };
             return {
+                transport: { onExit: (cb: (error?: unknown) => void) => { exitListeners.push(cb); return () => { exitListeners.splice(exitListeners.indexOf(cb), 1); }; } },
                 supportedModels: o.supportedModels ?? (async () => [{ value: 'default', displayName: 'Default', description: '' }]),
                 mcpServerStatus: vi.fn(o.mcpServerStatus ?? (async () => { events.push(`mcpServerStatus#${index}`); return []; })),
                 setPermissionMode: vi.fn(async (mode: string) => { events.push(`setPermissionMode#${index}:${mode}`); await o.setPermissionMode?.(mode); }),
@@ -152,6 +158,43 @@ describe('claudeRemote prewarm (B-515)', () => {
         expect(log).toHaveBeenCalledWith('[CLAUDE PREWARM] discarded(mode-mismatch)');
         expect(slot.release).toHaveBeenCalledOnce();
         expect(cleanupHookSettings).toHaveBeenCalledOnce();
+    });
+
+    it('review: a predicted miss goes cold at once, without waiting for a pending handshake', async () => {
+        const handshake = deferred<unknown>();
+        perCall[0] = { supportedModels: () => handshake.promise };
+        const { lease, log } = makeLease();
+        const { promise } = run(lease, Promise.resolve({ message: 'cli prompt', mode: { permissionMode: 'default' } }));
+        await tick(20);
+        // Handshake still pending, yet the cold Query is already running.
+        expect(query).toHaveBeenCalledTimes(2);
+        expect(log).toHaveBeenCalledWith('[CLAUDE PREWARM] discarded(mode-mismatch)');
+        await promise;
+        expect(events).toEqual(['query#0', 'query#1', 'prompt#1:cli prompt']);
+        handshake.resolve([]);
+        await tick(5);
+        expect(unhandled).toEqual([]);
+    });
+
+    it('review: a warm child that exits while idle releases its lease at once', async () => {
+        const { lease, log, slot } = makeLease();
+        const first = deferred<{ message: string; mode: EnhancedMode }>();
+        const { promise } = run(lease, first.promise);
+        await tick(10);
+        exits[0]();
+        expect(log).toHaveBeenCalledWith('[CLAUDE PREWARM] discarded(exited)');
+        expect(slot.release).toHaveBeenCalledOnce();
+        first.resolve({ message: 'go', mode: { ...WEB } });
+        await promise;
+        expect(events).toEqual(['query#0', 'query#1', 'prompt#1:go']);
+    });
+
+    it('review: an adopted process exiting later is not a prewarm discard', async () => {
+        const { lease, log } = makeLease();
+        const { promise } = run(lease, Promise.resolve({ message: 'go', mode: { ...WEB } }));
+        await promise;
+        exits[0]();
+        expect(log).not.toHaveBeenCalled();
     });
 
     it('waits for a handshake still in flight instead of cold-starting', async () => {

@@ -215,6 +215,8 @@ export async function claudeRemote(opts: {
         /** Never rejects — `.then` both ways at creation (an unhandled rejection archives the session). */
         handshake: Promise<{ ok: true; models: ClaudeSdkMetadata['models']; at: number } | { ok: false; at: number }>;
         idleTimer?: ReturnType<typeof setTimeout>;
+        /** Unsubscribe from the child's exit (while warm only). */
+        offExit?: () => void;
     };
     let warm: WarmQuery | null = null;
     if (opts.prewarm && startFrom) {
@@ -242,6 +244,7 @@ export async function claudeRemote(opts: {
             const w: WarmQuery = { response, messages, lease, startedAt, handshake };
             lease.setTeardown(() => {
                 if (w.idleTimer) clearTimeout(w.idleTimer);
+                try { w.offExit?.(); } catch { /* ignore */ }
                 opts.signal?.removeEventListener('abort', onOuterAbort);
                 if (warm === w) warm = null;
                 messages.end();
@@ -249,7 +252,23 @@ export async function claudeRemote(opts: {
             });
             w.idleTimer = setTimeout(() => lease.discard('idle'), lease.idleMs);
             w.idleTimer.unref?.();
-            void handshake.then((result) => { if (!result.ok) lease.discard('handshake-failed'); });
+            // A warm child that dies while idle frees its slot now, not at the
+            // idle limit. `transport.onExit` is ProcessTransport's (SDK
+            // 0.3.x, not in the public types); only present once spawned, so
+            // it is attached after the handshake. Absent → the adoption-time
+            // liveness probe still catches it.
+            void handshake.then((result) => {
+                if (!result.ok) {
+                    lease.discard('handshake-failed');
+                    return;
+                }
+                if (warm !== w) return;
+                try {
+                    const transport = (response as unknown as { transport?: { onExit?: (cb: (error?: unknown) => void) => unknown } }).transport;
+                    const off = transport?.onExit?.(() => { if (warm === w) lease.discard('exited'); });
+                    if (typeof off === 'function') w.offExit = off as () => void;
+                } catch { /* diagnostics only */ }
+            });
             warm = w;
             logger.debug(formatPrewarmLine('started', { tag: lease.tag }));
         } catch (error) {
@@ -311,20 +330,19 @@ export async function claudeRemote(opts: {
     if (warm) {
         const w: WarmQuery = warm;
         const adoptStart = Date.now();
-        // Handshake still in flight: WAIT for it — a second (cold) process
-        // would only start the same work from scratch.
-        const hs = await w.handshake;
-        let reason: string | null = null;
-        let decision: WarmAdoptionDecision | null = null;
-        if (warm !== w) {
-            reason = 'closed';
-        } else if (!hs.ok) {
-            reason = 'handshake-failed';
-        } else {
-            decision = decideWarmAdoption({ predicted: w.lease.mode, actual: initial.mode, specialCommand: specialCommand.type });
-            if (!decision.adopt) {
-                reason = decision.reason;
-            } else {
+        // Decide first (pure): a predicted miss is closed at once and goes
+        // cold without waiting for a handshake it will never use.
+        const decision: WarmAdoptionDecision = decideWarmAdoption({ predicted: w.lease.mode, actual: initial.mode, specialCommand: specialCommand.type });
+        let reason: string | null = decision.adopt ? null : decision.reason;
+        // Predicted hit with the handshake still in flight: WAIT for it — a
+        // second (cold) process would only start the same work from scratch.
+        const hs = reason ? null : await w.handshake;
+        if (!reason) {
+            if (warm !== w) {
+                reason = 'closed';
+            } else if (!hs?.ok) {
+                reason = 'handshake-failed';
+            } else if (decision.adopt) {
                 // Exact permission mode before the prompt; this control round
                 // trip doubles as the liveness probe (a warm child that died
                 // while idle rejects here). Otherwise a ~1 ms mcpServerStatus.
@@ -347,11 +365,12 @@ export async function claudeRemote(opts: {
                 if (!reason && warm !== w) reason = 'closed';
             }
         }
-        if (reason || !hs.ok) {
+        if (reason || !hs?.ok) {
             w.lease.discard(reason ?? 'handshake-failed');
             warm = null;
         } else {
             if (w.idleTimer) clearTimeout(w.idleTimer);
+            try { w.offExit?.(); } catch { /* ignore */ }
             warm = null;
             w.lease.adopt();
             adopted = { response: w.response, messages: w.messages, models: hs.models };
@@ -359,8 +378,8 @@ export async function claudeRemote(opts: {
                 warmForMs: adoptStart - w.startedAt,
                 handshakeWaitMs: Math.max(0, hs.at - adoptStart),
                 adoptMs: Date.now() - adoptStart,
-                setPermissionMode: decision?.adopt ? decision.setPermissionMode : undefined,
-                setModel: decision?.adopt && decision.switchModel ? true : undefined,
+                setPermissionMode: decision.adopt ? decision.setPermissionMode : undefined,
+                setModel: decision.adopt && decision.switchModel ? true : undefined,
             }));
         }
     }
