@@ -121,7 +121,29 @@ function persistSessionQueue(sessionId: string, queue: QueuedMessage[]) {
     saveQueuedMessages(all);
 }
 
-export function AgentInput({ sessionId }: { sessionId: string }) {
+/**
+ * B-516: the composer on an optimistic pending page. There is no session yet,
+ * so sends go to the pending record's outbox and mode choices to the record
+ * (the pending store writes them to the real session before anything is sent).
+ */
+export interface PendingComposer {
+    /** Append to the outbox. False = not accepted; the text stays in the composer. */
+    onSend: (text: string) => boolean;
+    permissionMode: string | null;
+    modelMode?: string | null;
+    effortLevel?: string | null;
+    onMode: (field: AgentDefaultField, value: string | null) => void;
+    /** A pending id has no session to carry `draft`. */
+    initialDraft: string;
+}
+
+export function AgentInput({ sessionId, agentFlavor, pending }: {
+    sessionId: string;
+    /** Used while `session` is null (pending page): options and default overrides
+     *  must follow the chosen agent, not fall back to Claude's slot. */
+    agentFlavor?: string;
+    pending?: PendingComposer;
+}) {
     const { t } = useTranslation();
     const toast = useToast();
     const session = useSession(sessionId);
@@ -132,7 +154,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const taRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const ime = useImeGuard();
-    const [text, setText] = useState(session?.draft ?? '');
+    const [text, setText] = useState(session?.draft ?? pending?.initialDraft ?? '');
     const draftRef = useRef(text);
     draftRef.current = text;
     const [sending, setSending] = useState(false);
@@ -169,7 +191,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     const supportsAttachments = supportsSessionAttachments(session?.metadata);
 
-    const flavor = session?.metadata?.flavor as any;
+    const flavor = (session?.metadata?.flavor ?? agentFlavor) as any;
     const metadata = session?.metadata ?? null;
     const attachmentKinds = metadata?.attachmentKinds ?? [];
     const supportsAnyAttachments = attachmentKinds.includes('*/*');
@@ -223,7 +245,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     // selectors
     const agentDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, flavor);
-    const modelKey = session?.modelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, session ? (metadata ?? {}) : null);
+    const modelKey = pending?.modelMode ?? session?.modelMode ?? resolveDefaultModelMode(agentDefaultOverrides, flavor, session ? (metadata ?? {}) : null);
     const resolvedDefaultModel = metadata?.defaultModelCode
         ?? (modelKey === 'default' ? usage?.model : undefined);
     const defaultModelLabel = resolvedDefaultModel
@@ -235,8 +257,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     );
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
     const efforts = getEffortLevelsForModel(flavor, modelKey ?? 'default', metadata);
-    const permKey = session?.permissionMode ?? agentDefaults.permissionMode;
-    const effortKey = session?.effortLevel ?? agentDefaults.effortLevel;
+    const permKey = (pending ? pending.permissionMode : session?.permissionMode) ?? agentDefaults.permissionMode;
+    const effortKey = (pending ? pending.effortLevel : session?.effortLevel) ?? agentDefaults.effortLevel;
     // claude-ish flavors (incl. no flavor) support the explicit「默认」effort
     const isClaudeFlavor = normalizeAgentKey(flavor) === 'claude';
     // pi (flavor 'acp') is its own agent key (B-370) but shares two Claude traits: the
@@ -444,7 +466,23 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const doSend = async (delivery: 'queue' | 'steer' = 'queue') => {
         const draft = draftRef.current;
         const value = draft.trim();
-        if ((!value && attachments.length === 0) || sendingRef.current || processingAttachments || !session) return;
+        if ((!value && attachments.length === 0) || sendingRef.current || processingAttachments) return;
+        if (pending) {
+            // B-516: no session yet — queue into the pending outbox. Attachments
+            // and `/btw` need a live session; the text stays put for them.
+            if (!value || attachments.length > 0) return;
+            if (parseBtwCommand(value)) {
+                toast.show(t('pendingSession.btwLater'), 'info');
+                return;
+            }
+            if (!pending.onSend(value)) return;
+            draftRef.current = '';
+            setText('');
+            storage.getState().updateSessionDraft(sessionId, null);
+            requestAnimationFrame(() => taRef.current?.focus());
+            return;
+        }
+        if (!session) return;
         // B-283: `/btw [question]` opens the side-question panel and NEVER
         // reaches the main conversation (attachments stay in the composer).
         // Non-Claude sessions keep sending the text verbatim.
@@ -799,7 +837,13 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     };
 
     const onPaste = (e: React.ClipboardEvent) => {
-        if (!supportsAttachments) return;
+        if (!supportsAttachments) {
+            if (pending && getFilesFromClipboard(e.nativeEvent).length > 0) {
+                e.preventDefault();
+                toast.show(t('pendingSession.attachmentsLater'), 'info');
+            }
+            return;
+        }
         const files = getFilesFromClipboard(e.nativeEvent);
         if (files.length) {
             e.preventDefault();
@@ -812,6 +856,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         const hasFiles = Array.from(e.dataTransfer.types).includes('Files');
         if (hasFiles) {
             e.preventDefault();
+            if (pending) {
+                toast.show(t('pendingSession.attachmentsLater'), 'info');
+                return;
+            }
             if (!supportsAttachments) {
                 Modal.alert(t('imageUpload.notSupportedTitle'), t('imageUpload.notSupportedMessage'));
                 return;
@@ -860,7 +908,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         field: AgentDefaultField,
         key: string | null,
     ) => {
-        storage.getState()[fn](sessionId, key);
+        if (pending) pending.onMode(field, key);
+        else storage.getState()[fn](sessionId, key);
         const currentOverrides = storage.getState().settings.agentDefaultOverrides;
         sync.applySettings({
             agentDefaultOverrides: setAgentDefaultOverride(currentOverrides, flavor, field, key),

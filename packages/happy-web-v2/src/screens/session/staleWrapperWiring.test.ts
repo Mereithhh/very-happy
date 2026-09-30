@@ -12,6 +12,6 @@ const screen = readFileSync(new URL('./SessionDetailScreen.tsx', import.meta.url
 describe('SessionDetailScreen mounts the stale-wrapper banner', () => {
     it('renders it for a live, non-mirror session', () => {
         expect(screen).toContain("import { StaleWrapperBanner } from './StaleWrapperBanner';");
-        expect(screen).toContain('{!mirror && !canOfferRestore(session, bannerMachine) && <StaleWrapperBanner sessionId={id} />}');
+        expect(screen).toContain('{session && !mirror && !canOfferRestore(session, bannerMachine) && <StaleWrapperBanner sessionId={id} />}');
     });
 });
