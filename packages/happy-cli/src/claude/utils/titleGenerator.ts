@@ -101,6 +101,24 @@ function sanitizeTitle(raw: string): string | null {
  * Exported for other LLM-bypass utilities (boardAnalyzer) — same contract:
  * one-shot subprocess, 30s timeout, failures swallowed into null.
  */
+/**
+ * The one-shot needs no tools, MCP servers, hooks, skills or a saved
+ * transcript. Without these flags every new session's title generation also
+ * started the user's whole stdio MCP set (e.g. `npx … @latest` servers) and ran
+ * their SessionStart/SessionEnd hooks, next to the session's own Claude start
+ * (dev-sg 2026-09-30: 3 runs 6.3/7.6/6.8 s plain vs 4.8/5.7/6.2 s lean). Flags
+ * exist since Claude Code 2.x; an unknown flag only makes this best-effort
+ * call return null.
+ */
+export const ONE_SHOT_ARGS: readonly string[] = [
+    '-p',
+    '--model', 'haiku',
+    '--strict-mcp-config',
+    '--settings', '{"disableAllHooks":true}',
+    '--no-session-persistence',
+    '--disable-slash-commands',
+];
+
 export function runClaudeOneShot(binary: string, prompt: string): Promise<string | null> {
     return new Promise((resolve) => {
         let settled = false;
@@ -112,7 +130,7 @@ export function runClaudeOneShot(binary: string, prompt: string): Promise<string
 
         let child: ReturnType<typeof spawn>;
         try {
-            child = spawn(binary, ['-p', '--model', 'haiku', prompt], {
+            child = spawn(binary, [...ONE_SHOT_ARGS, prompt], {
                 stdio: ['ignore', 'pipe', 'ignore'],
                 // HAPPY_MANAGED=1: this claude is run BY happy. The user-wide
                 // terminal-mirror SessionStart hook exits on it, so a one-shot

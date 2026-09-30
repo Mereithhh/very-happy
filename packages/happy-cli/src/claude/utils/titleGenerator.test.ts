@@ -86,7 +86,8 @@ describe('suggestTitleForPrompt (B-500 terminal bridge)', () => {
         expect(mocks.spawn).toHaveBeenCalledTimes(1);
         const [, args] = mocks.spawn.mock.calls[0];
         expect(args.slice(0, 3)).toEqual(['-p', '--model', 'haiku']);
-        expect(args[3]).toContain('please fix the terminal auto title');
+        expect(args[args.length - 1]).toContain('please fix the terminal auto title');
+        expect(args).toContain('--strict-mcp-config');
     });
 
     it('stamps HAPPY_MANAGED=1 on the one-shot so a user-wide terminal-mirror hook ignores it', async () => {
@@ -103,5 +104,15 @@ describe('suggestTitleForPrompt (B-500 terminal bridge)', () => {
         await expect(suggestTitleForPrompt('x')).resolves.toBeNull();
         mocks.spawn.mockImplementation(() => { throw new Error('ENOENT'); });
         await expect(suggestTitleForPrompt('x')).resolves.toBeNull();
+    });
+});
+
+describe('runClaudeOneShot arguments', () => {
+    it('keeps the one-shot lean: no MCP servers, hooks, skills or saved transcript', async () => {
+        const { ONE_SHOT_ARGS } = await import('./titleGenerator');
+        expect(ONE_SHOT_ARGS).toEqual(expect.arrayContaining(['-p', '--strict-mcp-config', '--no-session-persistence', '--disable-slash-commands']));
+        const settings = ONE_SHOT_ARGS[ONE_SHOT_ARGS.indexOf('--settings') + 1];
+        expect(JSON.parse(settings)).toEqual({ disableAllHooks: true });
+        expect(ONE_SHOT_ARGS.slice(ONE_SHOT_ARGS.indexOf('--model'), ONE_SHOT_ARGS.indexOf('--model') + 2)).toEqual(['--model', 'haiku']);
     });
 });
