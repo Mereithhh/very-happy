@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseEnvAssignment, parseSpawnArgs, sessionWebUrl } from './spawn'
+import { parseEnvAssignment, parseSpawnArgs, sessionWebUrl, spawnEnvironmentVariables } from './spawn'
 import { configuration } from '@/configuration'
 
 describe('parseSpawnArgs', () => {
@@ -134,5 +134,14 @@ describe('parseSpawnArgs — B-492 --model / --fork', () => {
         expect(parseSpawnArgs(['--fork', 'cmabc123', '--prompt', 'go']).fork).toBe('cmabc123')
         expect(() => parseSpawnArgs(['--fork'])).toThrow(/--fork requires/)
         expect(() => parseSpawnArgs(['--fork', '../etc'])).toThrow(/Invalid session id/)
+    })
+})
+
+describe('spawnEnvironmentVariables (B-515)', () => {
+    it('marks a --prompt spawn so the wrapper skips the Claude prewarm', () => {
+        expect(spawnEnvironmentVariables(undefined, true)).toEqual({ HAPPY_FIRST_MESSAGE_FROM_CLI: '1' })
+        expect(spawnEnvironmentVariables({ A: 'b' }, true)).toEqual({ A: 'b', HAPPY_FIRST_MESSAGE_FROM_CLI: '1' })
+        expect(spawnEnvironmentVariables({ A: 'b' }, false)).toEqual({ A: 'b' })
+        expect(spawnEnvironmentVariables(undefined, false)).toBeUndefined()
     })
 })

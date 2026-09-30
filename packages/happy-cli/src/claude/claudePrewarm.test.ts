@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
     acquirePrewarmSlot, claudePrewarmEligibility, createClaudePrewarmLease, decideWarmAdoption,
-    disposeAllClaudePrewarms, formatPrewarmLine, PrewarmHookGate, readPrewarmSystemPromptCache,
-    writePrewarmSystemPromptCache, type ClaudePrewarmEligibilityInput,
+    disposeAllClaudePrewarms, evaluatePrewarmPrediction, formatPrewarmLine, PrewarmHookGate, prewarmPredictionMeta,
+    readPrewarmCache, writePrewarmCache, type ClaudePrewarmEligibilityInput,
 } from './claudePrewarm';
 import type { EnhancedMode } from './loop';
 
@@ -15,7 +15,7 @@ const fresh = (over: Partial<ClaudePrewarmEligibilityInput> = {}): ClaudePrewarm
     startingMode: 'remote',
     claudeArgs: undefined,
     setting: undefined,
-    cachedAppendSystemPrompt: 'WEB PROMPT',
+    cache: { appendSystemPrompt: 'WEB PROMPT', consecutiveMisses: 0 },
     ...over,
 });
 
@@ -46,31 +46,63 @@ describe('claudePrewarmEligibility (B-515)', () => {
         ['resume-args', fresh({ claudeArgs: ['--continue'] })],
         ['claude-auth', fresh({ env: { HAPPY_CLAUDE_AUTH_STATUS: 'not-logged-in' } })],
         ['claude-auth', fresh({ env: { HAPPY_CLAUDE_AUTH_STATUS: 'claude-missing' } })],
-        ['no-cached-system-prompt', fresh({ cachedAppendSystemPrompt: null })],
-        ['no-cached-system-prompt', fresh({ cachedAppendSystemPrompt: '' })],
+        ['cli-first-message', fresh({ env: { HAPPY_FIRST_MESSAGE_FROM_CLI: '1' } })],
+        ['no-cached-system-prompt', fresh({ cache: null })],
+        ['no-cached-system-prompt', fresh({ cache: { appendSystemPrompt: '', consecutiveMisses: 0 } })],
+        ['recent-misses', fresh({ cache: { appendSystemPrompt: 'WEB PROMPT', consecutiveMisses: 5 } })],
     ])('is not eligible: %s', (reason, input) => {
         expect(claudePrewarmEligibility(input)).toEqual({ eligible: false, reason });
     });
 });
 
-describe('prewarm system prompt cache', () => {
+describe('prewarm prediction cache', () => {
     let dir: string;
     beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'b515-cache-')); });
     afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-    it('round-trips, and reads garbage/missing as null', () => {
+    it('round-trips (with and without effort), and reads garbage/missing as null', () => {
         const file = join(dir, 'claude-prewarm.json');
-        expect(readPrewarmSystemPromptCache(file)).toBeNull();
-        expect(writePrewarmSystemPromptCache(file, 'WEB PROMPT')).toBe(true);
-        expect(readPrewarmSystemPromptCache(file)).toBe('WEB PROMPT');
+        expect(readPrewarmCache(file)).toBeNull();
+        expect(writePrewarmCache(file, { appendSystemPrompt: 'WEB PROMPT', effort: 'high', consecutiveMisses: 2 })).toBe(true);
+        expect(readPrewarmCache(file)).toEqual({ appendSystemPrompt: 'WEB PROMPT', effort: 'high', consecutiveMisses: 2 });
+        writePrewarmCache(file, { appendSystemPrompt: 'P', effort: null, consecutiveMisses: 0 });
+        expect(readPrewarmCache(file)).toEqual({ appendSystemPrompt: 'P', effort: null, consecutiveMisses: 0 });
+        writeFileSync(file, JSON.stringify({ appendSystemPrompt: 'old format' })); // phase-1 file
+        expect(readPrewarmCache(file)).toEqual({ appendSystemPrompt: 'old format', consecutiveMisses: 0 });
         writeFileSync(file, '{not json');
-        expect(readPrewarmSystemPromptCache(file)).toBeNull();
+        expect(readPrewarmCache(file)).toBeNull();
         writeFileSync(file, JSON.stringify({ appendSystemPrompt: 42 }));
-        expect(readPrewarmSystemPromptCache(file)).toBeNull();
+        expect(readPrewarmCache(file)).toBeNull();
     });
 
     it('never throws on an unwritable location', () => {
-        expect(writePrewarmSystemPromptCache(join(dir, 'missing', 'deeper', 'x.json'), 'p')).toBe(false);
+        expect(writePrewarmCache(join(dir, 'missing', 'deeper', 'x.json'), { appendSystemPrompt: 'p', consecutiveMisses: 0 })).toBe(false);
+    });
+
+    it('predicts the cached web effort too (users with a default effort can hit)', () => {
+        expect(prewarmPredictionMeta({ appendSystemPrompt: 'W', effort: 'high', consecutiveMisses: 0 })).toEqual({ appendSystemPrompt: 'W', effort: 'high' });
+        expect(prewarmPredictionMeta({ appendSystemPrompt: 'W', effort: null, consecutiveMisses: 0 })).toEqual({ appendSystemPrompt: 'W', effort: null });
+        expect(prewarmPredictionMeta({ appendSystemPrompt: 'W', consecutiveMisses: 0 })).toEqual({ appendSystemPrompt: 'W' });
+    });
+});
+
+describe('evaluatePrewarmPrediction', () => {
+    const actual: EnhancedMode = { permissionMode: 'bypassPermissions', appendSystemPrompt: 'W2', effort: 'high' };
+    const meta = { sentFrom: 'web', appendSystemPrompt: 'W2', effort: 'high' };
+
+    it('a hit resets the miss counter; the web meta becomes the next prediction', () => {
+        expect(evaluatePrewarmPrediction({ predicted: { ...actual, permissionMode: 'default' }, actual, meta, previous: { appendSystemPrompt: 'W2', effort: 'high', consecutiveMisses: 4 } }))
+            .toEqual({ outcome: 'hit', next: { appendSystemPrompt: 'W2', effort: 'high', consecutiveMisses: 0 } });
+    });
+
+    it('a miss counts up and learns the new web values', () => {
+        expect(evaluatePrewarmPrediction({ predicted: { permissionMode: 'default', appendSystemPrompt: 'W1' }, actual, meta, previous: { appendSystemPrompt: 'W1', consecutiveMisses: 4 } }))
+            .toEqual({ outcome: 'miss', next: { appendSystemPrompt: 'W2', effort: 'high', consecutiveMisses: 5 } });
+    });
+
+    it('no cache yet: seeds it without counting a miss', () => {
+        expect(evaluatePrewarmPrediction({ predicted: null, actual, meta: { ...meta, effort: null }, previous: null }))
+            .toEqual({ outcome: 'no-prediction', next: { appendSystemPrompt: 'W2', effort: null, consecutiveMisses: 0 } });
     });
 });
 

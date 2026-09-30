@@ -97,14 +97,14 @@ vi.mock('@/claude/claudeLocal', () => ({
 
 // B-515: keep the prewarm cache and slot files off the real happy home.
 const prewarmMocks = vi.hoisted(() => ({
-    readCache: vi.fn((): string | null => null),
-    writeCache: vi.fn((_file: string, _value: string) => true),
+    readCache: vi.fn((): { appendSystemPrompt: string; effort?: string | null; consecutiveMisses: number } | null => null),
+    writeCache: vi.fn((_file: string, _value: unknown) => true),
     acquireSlot: vi.fn(() => ({ path: '/slot', release: vi.fn() })),
 }));
 vi.mock('@/claude/claudePrewarm', async (importOriginal) => ({
     ...(await importOriginal<typeof import('./claudePrewarm')>()),
-    readPrewarmSystemPromptCache: prewarmMocks.readCache,
-    writePrewarmSystemPromptCache: prewarmMocks.writeCache,
+    readPrewarmCache: prewarmMocks.readCache,
+    writePrewarmCache: prewarmMocks.writeCache,
     acquirePrewarmSlot: prewarmMocks.acquireSlot,
 }));
 
@@ -542,7 +542,7 @@ describe('runClaude startup order (B-512)', () => {
     });
 
     describe('B-515 prewarm wiring', () => {
-        const prewarmEnv = ['HAPPY_CLAUDE_PREWARM', 'HAPPY_SPAWNED_BY', 'HAPPY_CLAUDE_AUTH_STATUS'];
+        const prewarmEnv = ['HAPPY_CLAUDE_PREWARM', 'HAPPY_SPAWNED_BY', 'HAPPY_CLAUDE_AUTH_STATUS', 'HAPPY_FIRST_MESSAGE_FROM_CLI'];
         beforeEach(() => {
             for (const key of prewarmEnv) delete process.env[key];
             prewarmMocks.readCache.mockReset().mockReturnValue(null);
@@ -597,27 +597,67 @@ describe('runClaude startup order (B-512)', () => {
             await finish(runPromise, loopDeferred);
         });
 
-        it('caches the web appendSystemPrompt and predicts the first message with it', async () => {
+        it('predicts with the cached web prompt + effort; only the first web message scores and teaches the cache', async () => {
             const { sessionClient, loopDeferred } = fixtures();
             let userMessageHandler!: (message: any) => Promise<void>;
             sessionClient.onUserMessage.mockImplementation((handler: any) => { userMessageHandler = handler; });
-            prewarmMocks.readCache.mockReturnValue('WEB PROMPT v1');
+            prewarmMocks.readCache.mockReturnValue({ appendSystemPrompt: 'WEB PROMPT v1', effort: 'high', consecutiveMisses: 3 });
+            const debug = vi.mocked((await import('@/ui/logger')).logger.debug);
             const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon', permissionMode: 'acceptEdits' });
             await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
             const loopOptions = mockLoop.mock.calls[0][0];
 
             const lease = loopOptions.claudePrewarm();
             expect(lease).not.toBeNull();
-            expect(lease.mode).toEqual(expect.objectContaining({ permissionMode: 'acceptEdits', appendSystemPrompt: 'WEB PROMPT v1' }));
+            expect(lease.mode).toEqual(expect.objectContaining({ permissionMode: 'acceptEdits', appendSystemPrompt: 'WEB PROMPT v1', effort: 'high' }));
             expect(lease.tag).toMatch(/^prewarm-/);
             lease.discard('test');
 
-            await userMessageHandler({ role: 'user', content: { type: 'text', text: 'hi' }, meta: { sentFrom: 'web', appendSystemPrompt: 'WEB PROMPT v2' } });
-            await userMessageHandler({ role: 'user', content: { type: 'text', text: 'again' }, meta: { sentFrom: 'web', appendSystemPrompt: 'WEB PROMPT v2' } });
+            await userMessageHandler({ role: 'user', content: { type: 'text', text: 'hi' }, meta: { sentFrom: 'web', appendSystemPrompt: 'WEB PROMPT v1', effort: 'high' } });
+            await userMessageHandler({ role: 'user', content: { type: 'text', text: 'again' }, meta: { sentFrom: 'web', appendSystemPrompt: 'WEB PROMPT v2', effort: null } });
             expect(prewarmMocks.writeCache).toHaveBeenCalledTimes(1);
-            expect(prewarmMocks.writeCache.mock.calls[0][1]).toBe('WEB PROMPT v2');
+            expect(prewarmMocks.writeCache.mock.calls[0][1]).toEqual({ appendSystemPrompt: 'WEB PROMPT v1', effort: 'high', consecutiveMisses: 0 });
+            expect(debug.mock.calls.some((c) => String(c[0]).startsWith('[CLAUDE PREWARM] prediction hit'))).toBe(true);
             // A message already arrived: no warm process for this wrapper any more.
             expect(loopOptions.claudePrewarm()).toBeNull();
+            await finish(runPromise, loopDeferred);
+        });
+
+        it('a non-web first message, or an ineligible session, never touches the cache', async () => {
+            const { sessionClient, loopDeferred } = fixtures();
+            let userMessageHandler!: (message: any) => Promise<void>;
+            sessionClient.onUserMessage.mockImplementation((handler: any) => { userMessageHandler = handler; });
+            const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
+            await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+            await userMessageHandler({ role: 'user', content: { type: 'text', text: 'from cli' }, meta: { sentFrom: 'cli' } });
+            await userMessageHandler({ role: 'user', content: { type: 'text', text: 'later web' }, meta: { sentFrom: 'web', appendSystemPrompt: 'W' } });
+            expect(prewarmMocks.writeCache).not.toHaveBeenCalled();
+            await finish(runPromise, loopDeferred);
+
+            mockLoop.mockClear();
+            const second = fixtures();
+            let handler2!: (message: any) => Promise<void>;
+            second.sessionClient.onUserMessage.mockImplementation((handler: any) => { handler2 = handler; });
+            process.env.HAPPY_SPAWNED_BY = 'assistant';
+            const run2 = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
+            await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+            await handler2({ role: 'user', content: { type: 'text', text: 'x' }, meta: { sentFrom: 'web', appendSystemPrompt: 'W' } });
+            expect(prewarmMocks.writeCache).not.toHaveBeenCalled();
+            await finish(run2, second.loopDeferred);
+        });
+
+        it('reads the spawn-time prewarm env once and removes it from process.env (no leak into Claude/MCP/Bash)', async () => {
+            const { loopDeferred } = fixtures();
+            process.env.HAPPY_CLAUDE_AUTH_STATUS = 'not-logged-in';
+            process.env.HAPPY_FIRST_MESSAGE_FROM_CLI = '1';
+            prewarmMocks.readCache.mockReturnValue({ appendSystemPrompt: 'W', consecutiveMisses: 0 });
+            const debug = vi.mocked((await import('@/ui/logger')).logger.debug);
+            const runPromise = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
+            await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
+            expect(process.env.HAPPY_CLAUDE_AUTH_STATUS).toBeUndefined();
+            expect(process.env.HAPPY_FIRST_MESSAGE_FROM_CLI).toBeUndefined();
+            expect(mockLoop.mock.calls[0][0].claudePrewarm()).toBeNull();
+            expect(debug.mock.calls.some((c) => String(c[0]) === '[CLAUDE PREWARM] skipped(cli-first-message)')).toBe(true);
             await finish(runPromise, loopDeferred);
         });
 
@@ -631,7 +671,7 @@ describe('runClaude startup order (B-512)', () => {
 
             mockLoop.mockClear();
             const second = fixtures();
-            prewarmMocks.readCache.mockReturnValue('WEB');
+            prewarmMocks.readCache.mockReturnValue({ appendSystemPrompt: 'WEB', consecutiveMisses: 0 });
             process.env.HAPPY_CLAUDE_PREWARM = '0';
             const run2 = runClaude(credentials, { startingMode: 'remote', startedBy: 'daemon' });
             await vi.waitFor(() => expect(mockLoop).toHaveBeenCalled());
