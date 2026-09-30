@@ -547,13 +547,15 @@ export async function claudeRemoteLauncher(
                                 return {
                                     message: withAttachments,
                                     mode: msg.mode,
+                                    enqueuedAt: msg.enqueuedAt,
                                 };
                             }
 
                             onPromptFinalized?.(msg.message);
                             return {
                                 message: msg.message,
-                                mode: msg.mode
+                                mode: msg.mode,
+                                enqueuedAt: msg.enqueuedAt,
                             }
                         }
 

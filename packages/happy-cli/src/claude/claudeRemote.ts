@@ -18,6 +18,7 @@ import type { JsRuntime } from "./runClaude";
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import type { ClaudeSdkMetadata } from './claudeSdkMetadata';
 import { modelSwitchFailureNotice, modelTarget, needsModelSwitch } from './claudeLiveModel';
+import { formatClaudeTimingLine, type ClaudeTurnMarks } from './claudeTiming';
 
 export async function claudeRemote(opts: {
 
@@ -49,7 +50,8 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
+    /** `enqueuedAt` (optional) only feeds the B-515 timing log. */
+    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number } | null>,
     onReady: (result?: SDKResultMessage) => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -112,6 +114,9 @@ export async function claudeRemote(opts: {
     if (!initial) { // No initial message - exit
         return;
     }
+    // B-515 phase 0: per-turn latency marks, logged once per result.
+    let timingTurn = 1;
+    let timingMarks: ClaudeTurnMarks = { pushedAt: initial.enqueuedAt ?? Date.now() };
 
     // Handle special commands (extract text for parsing when content is a block array)
     const initialText = typeof initial.message === 'string'
@@ -208,6 +213,7 @@ export async function claudeRemote(opts: {
     if(sdkOptions.canCallTool) sdkOptions.canCallTool=guardCallback(sdkOptions.canCallTool);
     if(sdkOptions.onElicitation) sdkOptions.onElicitation=guardCallback(sdkOptions.onElicitation);
     if(sdkOptions.onUserDialog) sdkOptions.onUserDialog=guardCallback(sdkOptions.onUserDialog);
+    timingMarks.spawnAt = Date.now();
     const response = query({
         prompt: messages,
         options: sdkOptions,
@@ -277,6 +283,7 @@ export async function claudeRemote(opts: {
 
     updateThinking(true);
     try {
+        timingMarks.handshakeAt = Date.now();
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
         for await (const message of response) {
@@ -305,6 +312,11 @@ export async function claudeRemote(opts: {
 
             if (message.type === 'assistant' && message.error) {
                 lastAssistantError = message.error;
+            }
+            if (message.type === 'assistant' && timingMarks.firstAssistantAt === undefined) {
+                timingMarks.firstAssistantAt = Date.now();
+            } else if (message.type === 'system' && message.subtype === 'init' && timingMarks.initAt === undefined) {
+                timingMarks.initAt = Date.now();
             }
 
             // Progress-bearing system frames. Unlike stream_event these are
@@ -386,6 +398,14 @@ export async function claudeRemote(opts: {
             if (message.type === 'result') {
                 updateThinking(false);
                 logger.debug('[claudeRemote] Result received');
+                logger.debug(formatClaudeTimingLine({
+                    turn: timingTurn,
+                    firstTurnOfProcess: timingTurn === 1,
+                    marks: timingMarks,
+                    result: message,
+                }));
+                timingTurn++;
+                timingMarks = {};
                 // Authoritative record of tools Claude Code denied without a
                 // prompt (deny rules, dontAsk/auto, hook denies). Invisible
                 // otherwise — surface it so "yolo still refused X" is diagnosable.
@@ -449,6 +469,7 @@ export async function claudeRemote(opts: {
                     }
                     mode = next.mode;
                     updateThinking(true);
+                    timingMarks = { pushedAt: next.enqueuedAt ?? Date.now() };
                     messages.push({
                         type: 'user',
                         parent_tool_use_id: null,
