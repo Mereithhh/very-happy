@@ -2,6 +2,7 @@ import { selectDisplayedEffortKey } from './effortSelection';
 import { supportsSessionAttachments } from '@/sync/attachmentCapabilities';
 import { ModelEffortMenu } from './ModelEffortMenu';
 import { onMessageQuote } from './messageQuote';
+import { mergeRestoredDraft, onComposerRestore } from './composerRestore';
 import { appendMessageQuote } from './messageActionsModel';
 /**
  * AgentInput — the composer. A rounded auto-growing textarea + circular send
@@ -365,6 +366,14 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         requestAnimationFrame(() => taRef.current?.focus());
     }), [sessionId]);
 
+    // B-513: a failed message taken back from the transcript.
+    useEffect(() => onComposerRestore(sessionId, (restored) => {
+        const next = mergeRestoredDraft(restored, draftRef.current);
+        draftRef.current = next;
+        setText(next);
+        requestAnimationFrame(() => taRef.current?.focus());
+    }), [sessionId]);
+
     // persist draft (debounced via storage's own normalization)
     useEffect(() => {
         const id = setTimeout(() => storage.getState().updateSessionDraft(sessionId, text), 400);
@@ -533,7 +542,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             // meanwhile, including attachment-only sends and preflight errors.
             if (draftTaken && !queueOwnsItem) {
                 const current = draftRef.current;
-                const restoredDraft = draft && current ? `${draft}\n${current}` : draft || current;
+                const restoredDraft = mergeRestoredDraft(draft, current);
                 draftRef.current = restoredDraft;
                 setText(restoredDraft);
             }

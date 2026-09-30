@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-30-fast-session-and-send',
+    cliVersion: '0.2.160',
+    date: '2026-09-30',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep30.title',
+    summaryKey: 'changelog.releases.sep30.summary',
+    itemKeys: ['changelog.releases.sep30.start', 'changelog.releases.sep30.sending', 'changelog.releases.sep30.failed', 'changelog.releases.sep30.hover'],
+  },
+  {
     id: '2026-09-27-server-prompt-queue',
     cliVersion: '0.2.159',
     date: '2026-09-27',

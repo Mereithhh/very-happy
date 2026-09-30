@@ -832,6 +832,9 @@ export const zhHans: TranslationStructure = {
             queueCancel: '从队列移除',
             queueCancelTooLate: '这条消息已经开始执行，无法再从队列移除。',
             queueCancelFailed: '移除待处理消息失败，请重试。',
+            sendFailed: '发送失败',
+            sendRetry: '重试',
+            sendRestore: '放回输入框',
             discarded: {
                 cleared: '未执行 · 被 /clear 或 /compact 清掉了',
                 aborted: '未执行 · 停止时被丢弃',
@@ -2148,6 +2151,14 @@ export const zhHans: TranslationStructure = {
                 session: '有运行在等的会话，头部下方多一条横幅——自动化名、原因、「知道了」——侧栏那一行也带标记。',
                 band: '「需要我决策」每一行最左是一个圆形勾选（触屏 44px）即「知道了」，头部有「全部已读」，看板上带太长会自己滚动、不再把泳道顶出屏幕。',
                 cli: '`very-happy auto ack --all [--name <自动化>]` 在终端一次确认全部。需要更新 CLI；网页与服务端部分已上线。',
+            },
+            sep30: {
+                title: '新会话打开更快；消息真正发出才上屏',
+                summary: '从网页新建 Claude 会话不再等整个 CLI 加载完、也不再等登录 shell 探测，服务端一通知会话页就打开。发出的消息在服务端落库前保持变淡，发不出去会明确告诉你。新会话提速需要机器上的 CLI 更新；网页部分已上线。',
+                start: '会话 wrapper 回报前只加载必需模块，daemon 复用上次的 agent 配置目录探测结果，网页直接用服务端通知打开新会话、不再重拉会话列表。',
+                sending: '发出的消息先变淡（稍慢时出现转圈），服务端确认后才变成正常消息；发送不再排在历史加载后面，也不再等区域中继连上。',
+                failed: '15 秒内未确认即显示「发送失败 · 重试」；确定服务端没存下时还能「放回输入框」。重试不会产生重复消息。',
+                hover: '鼠标悬停消息正文不再弹出时间；消息下方的时间与工具行悬停照旧。',
             },
             sep27b: {
                 title: '排队的 prompt 现在存在服务端',

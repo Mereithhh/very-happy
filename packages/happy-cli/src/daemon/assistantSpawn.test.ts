@@ -214,7 +214,7 @@ describe('assistantSpawnMode', () => {
     it('run.ts keys the gate, the singleton block and the tracked tag on the mode — not on variant alone', () => {
         const run = readFileSync(new URL('./run.ts', import.meta.url), 'utf8')
         // the serializing gate only wraps Claude singleton spawns
-        expect(run).toContain("if (assistantSpawnMode(options) !== 'claude-singleton') {\n        return spawnSessionImpl(options);")
+        expect(run).toContain("if (assistantSpawnMode(options) !== 'claude-singleton') {\n        result = await spawnSessionImpl(options, timer);")
         // the forced-cwd / live-singleton / re-attach block is entered by mode
         expect(run).toContain('const assistantMode = assistantSpawnMode(options);')
         expect(run).toContain("if (assistantMode === 'claude-singleton') {\n        options = { ...options, directory: assistantHome() };")

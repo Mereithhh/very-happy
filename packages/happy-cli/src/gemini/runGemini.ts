@@ -17,7 +17,7 @@ import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { contentLogMetadata, errorLogMetadata } from '@/utils/contentLogMetadata';
-import { initialMachineMetadata } from '@/daemon/run';
+import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
@@ -88,7 +88,7 @@ export async function runGemini(opts: {
   logger.debug(`Using machineId: ${machineId}`);
   await api.getOrCreateMachine({
     machineId,
-    metadata: initialMachineMetadata
+    metadata: getInitialMachineMetadata()
   });
 
   //

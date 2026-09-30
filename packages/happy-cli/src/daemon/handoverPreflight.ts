@@ -17,7 +17,10 @@
  * So: run the new bundle first. `--version` is the same smoke the release
  * process already mandates for exactly this class of breakage (iron rule 2:
  * a green build is not a running binary), it is cheap, and it exercises the
- * module graph and the native addons that a half-install breaks.
+ * module graph and the native addons that a half-install breaks. (B-512: the
+ * entry became a stub; its `--version` deliberately imports every lazily
+ * loaded module before answering, so this stays true for new bundles, and old
+ * bundles — a rollback — answer it the way they always did.)
  *
  * A failed preflight is not fatal — the daemon simply keeps serving on the code
  * it already has and reports why. The mtime watcher fires again on the next

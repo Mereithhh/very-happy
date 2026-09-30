@@ -41,3 +41,19 @@
 @media (pointer: coarse), (max-width: 600px) {
   .msg-edit-label textarea, .msg-edit-points select { font-size: var(--fs-16); }
 }
+
+/* B-513: not yet confirmed by the server. Dimmed at once (only the spinner
+   waits 150ms); the bubble keeps its colors and layout. */
+.msg-bubble-wrap--unsent > .msg-bubble,
+.msg-bubble--unsent,
+.msg--user:has(> .msg-bubble-wrap--unsent) > .ua { opacity: 0.55; }
+.msg-sending { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; min-height: 32px; color: var(--text-faint); }
+.msg-send-failed { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--sp-1); min-height: 32px; padding-inline: var(--sp-1); color: var(--danger); font: var(--fs-12)/1.4 var(--font-sans); }
+.msg-send-sep { color: var(--text-faint); }
+.msg-send-action { display: inline-flex; align-items: center; min-height: 32px; padding: 0 var(--sp-1); border-radius: var(--r-sm); background: transparent; color: var(--text); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.msg-send-action:hover { background: var(--bg-2); }
+.msg-send-action:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint); }
+@media (pointer: coarse) {
+  .msg-sending, .msg-send-failed, .msg-send-action { min-height: 44px; }
+  .msg-send-action { padding-inline: var(--sp-2); }
+}

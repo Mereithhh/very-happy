@@ -20,9 +20,13 @@
  */
 
 /** Row containers that carry a message timestamp. Buttons are deliberately
- *  absent: their titles are action labels ("Copy message"), not times. */
+ *  absent: their titles are action labels ("Copy message"), not times.
+ *
+ *  B-514: `.msg` (user / agent / thinking / event / team / peer rows) is
+ *  deliberately absent too — Owner: 「消息正文鼠标 hover 会展示时间，这个逻辑
+ *  去掉」. A message's full time lives only on its visible footer `.msg-time`;
+ *  tool rows keep theirs because they have no visible time at all. */
 export const HOVER_TIME_ROW_SELECTOR = [
-    '.msg',            // chat message (user / agent / event / thinking)
     '.tg-row',         // one tool call inside an activity group
     '.tg-head',        // a collapsed tool group (its own time range)
     '.tg-preview-row', // file-preview pointer row

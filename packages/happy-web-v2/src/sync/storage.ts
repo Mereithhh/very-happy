@@ -12,7 +12,7 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
 import { Session, Machine } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
-import { createReducer, reducer, ReducerState } from "./reducer/reducer";
+import { applySendStateUpdate, createReducer, reducer, ReducerState, type SendStateUpdate } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { compareMessagesNewestFirst, sortIncomingBySeq } from "./messageOrder";
 import { claimLiveStreamKeys } from '@/sync/liveStreamStore';
@@ -44,6 +44,7 @@ import { withSessionPermissionMode } from './sessionPermissionPreference';
 import { collectYoloDecisions, newPermissionRequests, type YoloEnforcementDecision } from './yoloEnforcement';
 import { sanitizeSessionPermissionModes } from './permissionModeOutbound';
 import { forgetHeartbeat } from './heartbeatLease';
+import { keepNewerSessionVersions } from './sessionSnapshot';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -212,7 +213,10 @@ interface StorageState {
     deleteMachine: (machineId: string) => void;
     applyLoaded: () => void;
     applyReady: () => void;
-    applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
+    /** `sendingLocalIds` (B-513): this client's optimistic inputs in the batch, marked sending before they are reduced. */
+    applyMessages: (sessionId: string, messages: NormalizedMessage[], options?: { sendingLocalIds?: readonly string[] }) => { changed: string[], hasReadyEvent: boolean };
+    /** B-513: outbox outcomes (acks / failures / retries / take-backs) re-convert only the affected rows. */
+    applyOutboxResult: (sessionId: string, update: SendStateUpdate) => void;
     applyMessagesLoaded: (sessionId: string) => void;
     applyOlderMessagesPagination: (sessionId: string, info: { hasMore: boolean }) => void;
     applyOlderMessagesLoading: (sessionId: string, isLoading: boolean) => void;
@@ -444,8 +448,11 @@ export const storage = create<StorageState>()((set, get) => {
             set((state) => {
             // Drop sessions that were already deleted — a raced update/fetch
             // must not resurrect them (see deletedSessionTombstones above).
+            // B-512: a stale snapshot never rolls back versioned metadata /
+            // agentState (see keepNewerSessionVersions).
             const sessions = incomingSessions
                 .filter(session => !deletedSessionTombstones.has(session.id))
+                .map(session => keepNewerSessionVersions(session, state.sessions[session.id]))
                 .map(session => applySessionInactiveHold(session));
 
             // Load drafts and permission modes if sessions are empty (initial load)
@@ -735,7 +742,7 @@ export const storage = create<StorageState>()((set, get) => {
             ...state,
             isDataReady: true
         })),
-        applyMessages: (sessionId: string, rawMessages: NormalizedMessage[]) => {
+        applyMessages: (sessionId: string, rawMessages: NormalizedMessage[], options?: { sendingLocalIds?: readonly string[] }) => {
             let changed = new Set<string>();
             let hasReadyEvent = false;
             let appliedPermissionMode: string | undefined;
@@ -776,6 +783,11 @@ export const storage = create<StorageState>()((set, get) => {
                 // Messages are already normalized, no need to process them again
                 const normalizedMessages = messages;
                 const incomingPermissionMode = resolveIncomingPermissionMode(existingSession.messages, normalizedMessages);
+
+                // B-513: mark before reducing, so the optimistic row is created sending.
+                if (options?.sendingLocalIds && options.sendingLocalIds.length > 0) {
+                    applySendStateUpdate(existingSession.reducerState, { sending: options.sendingLocalIds });
+                }
 
                 // Run reducer with agentState
                 const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
@@ -834,7 +846,10 @@ export const storage = create<StorageState>()((set, get) => {
                             messages: messagesArray,
                             messagesMap: mergedMessagesMap,
                             reducerState: existingSession.reducerState, // Explicitly include the mutated reducer state
-                            isLoaded: true
+                            // B-513 review: an optimistic send is not a history load —
+                            // it must not flip a still-loading session to loaded
+                            // (TTS baselines / the chat loader key off this).
+                            isLoaded: options?.sendingLocalIds?.length ? existingSession.isLoaded : true
                         }
                     }
                 };
@@ -855,6 +870,27 @@ export const storage = create<StorageState>()((set, get) => {
 
             return { changed: Array.from(changed), hasReadyEvent };
         },
+        applyOutboxResult: (sessionId: string, update: SendStateUpdate) => set((state) => {
+            const existing = state.sessionMessages[sessionId];
+            // No reducer state (never loaded, or deleted): nothing is on screen.
+            if (!existing) return state;
+            const { messages, removed } = applySendStateUpdate(existing.reducerState, update);
+            if (messages.length === 0 && removed.length === 0) return state;
+            const messagesMap = { ...existing.messagesMap };
+            for (const id of removed) delete messagesMap[id];
+            for (const message of messages) messagesMap[message.id] = message;
+            return {
+                ...state,
+                sessionMessages: {
+                    ...state.sessionMessages,
+                    [sessionId]: {
+                        ...existing,
+                        messages: Object.values(messagesMap).sort(compareMessagesNewestFirst),
+                        messagesMap,
+                    },
+                },
+            };
+        }),
         applyMessagesLoaded: (sessionId: string) => set((state) => {
             const existingSession = state.sessionMessages[sessionId];
             let result: StorageState;

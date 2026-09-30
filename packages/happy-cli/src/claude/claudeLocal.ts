@@ -30,7 +30,10 @@ export class ExitCodeError extends Error {
 
 
 // Get Claude CLI path from project root
-export const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'))
+// B-512: defined in ./claudeCliPath so callers that only need the path (help
+// output) do not load this module and its sandbox runtime.
+import { claudeCliPath } from "./claudeCliPath";
+export { claudeCliPath };
 
 function quoteShellArg(value: string): string {
     return `'${value.replace(/'/g, `'\\''`)}'`;

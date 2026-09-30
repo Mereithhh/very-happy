@@ -22,12 +22,26 @@ export type { ApiMessage };
 // Updates
 //
 
+// B-512: the server's buildNewSessionUpdate() has always carried the full
+// session row (seq, encrypted metadata/agentState, data key, activity); the
+// web used to strip it and refetch /v1/sessions. The extra fields are optional
+// so an older/other server that sends only {id, createdAt, updatedAt} still
+// parses and falls back to that refetch (newSessionUpdate.ts).
 export const ApiUpdateNewSessionSchema = z.object({
     t: z.literal('new-session'),
     id: z.string(), // Session ID
     createdAt: z.number(),
     updatedAt: z.number(),
+    seq: z.number().optional(),
+    metadata: z.string().optional(),
+    metadataVersion: z.number().optional(),
+    agentState: z.string().nullish(),
+    agentStateVersion: z.number().optional(),
+    dataEncryptionKey: z.string().nullish(),
+    active: z.boolean().optional(),
+    activeAt: z.number().optional(),
 });
+export type ApiUpdateNewSession = z.infer<typeof ApiUpdateNewSessionSchema>;
 
 export const ApiDeleteSessionSchema = z.object({
     t: z.literal('delete-session'),

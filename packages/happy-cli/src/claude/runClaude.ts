@@ -2,53 +2,35 @@ import os from 'node:os';
 import { applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
 import { randomUUID } from 'node:crypto';
 
+// B-512: only what the pre-webhook half needs is imported statically. The
+// post-webhook half (SDK loop, MCP/hook servers, scanners…) comes from
+// ./runClaudeDeps, prefetched while the session is being created — see there.
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
-import { loop } from '@/claude/loop';
 import { AgentState, Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
-import { EnhancedMode, PermissionMode } from './loop';
-import { MessageQueue2 } from '@/utils/MessageQueue2';
-import { claudeModeHash } from './claudeModeHash';
+import type { EnhancedMode, PermissionMode } from './loop';
 import { spawnOriginTags } from '@/utils/createSessionMetadata';
 import { PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
-import { parseSpecialCommand } from '@/parsers/specialCommands';
-import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
-import { initialMachineMetadata } from '@/daemon/run';
-import { startHappyServer } from '@/claude/utils/startHappyServer';
-import { startHookServer } from '@/claude/utils/startHookServer';
-import { EditReportThrottle, extractClaudeEditPaths } from '@/sessions/editPaths';
-import { reportSessionEditToDaemon } from '@/daemon/controlClient';
-import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
-import { registerKillSessionHandler } from './registerKillSessionHandler';
-import { SessionExitGate, exitIntentFromArchiveFlag, settleSessionOnExit } from './sessionExitLifecycle';
-import { registerSideQuestionHandler, writeSideQuestionSettingsFile } from './registerSideQuestionHandler';
-import { claudeCheckSession } from '@/claude/utils/claudeCheckSession';
+import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
-import { claudeLocal } from '@/claude/claudeLocal';
-import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { claimSessionOrExit } from '@/utils/sessionLock';
-import { Session } from './session';
+import type { Session } from './session';
 import { applySandboxPermissionPolicy, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode, reconcilePublishedPermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
-import { getProjectPath } from './utils/path';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { RawJSONLinesSchema, type RawJSONLines } from './types';
-import { TitleGenerator } from './utils/titleGenerator';
-import { BoardAnalyzer, FileRateLimiter, type BoardTaskRef } from './utils/boardAnalyzer';
-import { createSelfReportState } from './utils/boardReport';
-import { bootstrapAssistantHome } from '@/assistant/bootstrap';
-import { withAssistantDenylist } from '@/assistant/dispatcherTools';
+import type { RawJSONLines } from './types';
+import type { BoardTaskRef } from './utils/boardAnalyzer';
 import { DEFAULT_CLAUDE_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
-import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import { CLAUDE_ATTACHMENT_KINDS, stripAttachmentManifest } from './utils/attachmentContent';
+import { planClaudeStartup } from './startupPlan';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -102,20 +84,37 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // very-happy claude) should not start with a missing CLAUDE.md. Never
         // overwrites existing files.
         try {
+            const { bootstrapAssistantHome } = await import('@/assistant/bootstrap');
             await bootstrapAssistantHome();
         } catch (error) {
             logger.debug('[START] Assistant home bootstrap failed:', error);
         }
     }
 
-    // Log environment info at startup
-    logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
+    // B-512: the full environment dump (getEnvironmentInfo) is logged after the
+    // daemon webhook — it pulls the doctor module graph and is not needed to
+    // create the session.
+    logger.debug(`[START] Happy process started pid=${process.pid} node=${process.version} cwd=${workingDirectory}`);
     logger.debug(`[START] Options: startedBy=${options.startedBy}, startingMode=${options.startingMode}`);
 
     // Validate daemon spawn requirements - fail fast on invalid config
     if (options.startedBy === 'daemon' && options.startingMode === 'local') {
         throw new Error('Daemon-spawned sessions cannot use local/interactive mode. Use --happy-starting-mode remote or spawn sessions directly from terminal.');
     }
+
+    // B-512: load the post-webhook half (SDK loop, MCP + hook servers, scanners)
+    // while the session is being created. The `.catch` only marks the promise
+    // handled — an unhandled rejection runs the archive-on-crash cleanup; the
+    // real error still surfaces where it is awaited after the webhook.
+    const depsLoad = import('./runClaudeDeps');
+    depsLoad.catch(() => { /* awaited (and rethrown) after the webhook */ });
+
+    const reconnectRequested = Boolean(
+        process.env.HAPPY_RECONNECT_SESSION_ID
+        && process.env.HAPPY_RECONNECT_ENCRYPTION_KEY
+        && process.env.HAPPY_RECONNECT_ENCRYPTION_VARIANT,
+    );
+    const startupPlan = planClaudeStartup({ startedBy: options.startedBy, reconnect: reconnectRequested });
 
     // Set backend for offline warnings (before any API calls)
     connectionState.setBackend('Claude');
@@ -156,11 +155,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // onto the old tag produced a session row the client could not decrypt.
     const sessionTag = randomUUID();
 
-    // Create machine if it doesn't exist
-    await api.getOrCreateMachine({
-        machineId,
-        metadata: initialMachineMetadata
-    });
+    // Create machine if it doesn't exist. B-512: skipped for daemon spawns —
+    // the daemon registered this machine before it could spawn us, and the
+    // result is unused (see startupPlan.ts).
+    if (startupPlan.registerMachine) {
+        await api.getOrCreateMachine({
+            machineId,
+            metadata: getInitialMachineMetadata()
+        });
+    }
 
     // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
     const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
@@ -245,6 +248,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Note: connectionState.notifyOffline() was already called by api.ts with error details
     if (!response) {
         let offlineSessionId: string | null = null;
+        const { claudeLocal } = await import('@/claude/claudeLocal');
+        const { createSessionScanner } = await depsLoad;
 
         const reconnection = startOfflineReconnection({
             serverUrl: configuration.serverUrl,
@@ -316,6 +321,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
     }
 
+    // B-512: a fresh session opens its socket now, so the connect handshake
+    // overlaps the webhook and the post-webhook setup (the first message used
+    // to wait for it). Reconnects keep the original order (socket after the
+    // webhook, seeded from the snapshot above). Messages that arrive before the
+    // handlers are registered are buffered by ApiSessionClient.
+    const earlySession = startupPlan.sessionClientBeforeWebhook ? api.sessionSyncClient(response) : null;
+
     // Always report to daemon if it exists
     try {
         logger.debug(`[START] Reporting session ${response.id} to daemon`);
@@ -338,8 +350,45 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // SDK metadata (tools, slash commands) is now extracted from the
     // system.init message in claudeRemote.ts via onSDKMetadata callback
 
+    // B-512 review: the daemon-spawned wrapper skipped getOrCreateMachine before
+    // the session create, but it used to be what (re)created the machine row
+    // when the daemon had started offline (createMinimalMachine fallback, no
+    // server row → the machine socket is rejected with "Machine not found").
+    // Register it now, off the critical path; never an unhandled rejection.
+    if (!startupPlan.registerMachine) {
+        void Promise.resolve()
+            .then(() => api.getOrCreateMachine({ machineId: machineId!, metadata: getInitialMachineMetadata() }))
+            .catch((error) => logger.debug('[START] Background machine registration failed:', error));
+    }
+
+    // Post-webhook half, prefetched above. B-512 review: if it cannot load, the
+    // session row exists and the daemon was told it started — do not leave it
+    // looking alive. Mark it offline (deactivate, never archive: this is an
+    // infrastructure failure, AGENTS constraint 7) and exit non-zero.
+    let deps: Awaited<typeof depsLoad>;
+    try {
+        deps = await depsLoad;
+    } catch (error) {
+        logger.warn(`[START] Failed to load the Claude runner modules for session ${response.id}; marking it offline and exiting: ${error instanceof Error ? error.message : String(error)}`);
+        try { await earlySession?.close(); } catch { /* best effort */ }
+        try { await api.deactivateSession(response.id); } catch { /* best effort */ }
+        process.exit(1);
+    }
+    const {
+        loop, MessageQueue2, claudeModeHash, parseSpecialCommand, getEnvironmentInfo,
+        startHappyServer, startHookServer, EditReportThrottle, extractClaudeEditPaths,
+        reportSessionEditToDaemon, generateHookSettingsFile, cleanupHookSettingsFile,
+        registerKillSessionHandler, SessionExitGate, exitIntentFromArchiveFlag, settleSessionOnExit,
+        registerSideQuestionHandler, writeSideQuestionSettingsFile, claudeCheckSession,
+        createSessionScanner, getProjectPath, RawJSONLinesSchema, TitleGenerator, BoardAnalyzer,
+        FileRateLimiter, createSelfReportState, withAssistantDenylist, contentLogMetadata,
+    } = deps;
+
+    // Log environment info (moved off the pre-webhook path, B-512)
+    logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
+
     // Create realtime session
-    const session = api.sessionSyncClient(response, reconnectSeeded ? { initialSeq: response.seq } : undefined);
+    const session = earlySession ?? api.sessionSyncClient(response, reconnectSeeded ? { initialSeq: response.seq } : undefined);
 
     // On reconnect, un-archive the session; with a server-seeded cursor the
     // history needs neither replay nor skip, otherwise skip it wholesale.

@@ -37,6 +37,8 @@ import { MessageTimeTooltip } from './MessageTimeTooltip';
 import './chatlist.css';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { isTranscriptVisibleInput } from './discardedInput';
+import { SendFailedActions, SendingIndicator, useSendSpinnerResetAll } from './SendStatusView';
+import { turnSendStatus } from './sendStatusModel';
 
 export function ChatList({
     sessionId,
@@ -70,6 +72,7 @@ export function ChatList({
             .filter((message) => message.inputState === 'queued'),
         [messages],
     );
+    useSendSpinnerResetAll(queuedMessages as readonly { localId?: string | null; sendState?: string }[]);
     const chronological = useMemo(
         // B-355: the CLI's JSONL scanner used to forward a second copy of any
         // message that carried an attachment. It has to be dropped HERE and not
@@ -401,8 +404,11 @@ export function ChatList({
                         )}
                     </div>
                     <div className="cl-queue-items">
-                        {queuedMessages.map((message, index) => (
-                            <div className="cl-queue-item" key={('localId' in message ? message.localId : null) ?? message.id}>
+                        {queuedMessages.map((message, index) => {
+                            // B-513: failed > sending > queued.
+                            const send = message.kind === 'user-text' || message.kind === 'tool-call' ? turnSendStatus(message) : null;
+                            return (
+                            <div className={`cl-queue-item${send ? ` cl-queue-item--${send.state}` : ''}`} key={('localId' in message ? message.localId : null) ?? message.id}>
                                 <span className="cl-queue-index">{index + 1}</span>
                                 <span className="cl-queue-text">
                                     {message.kind === 'user-text'
@@ -411,7 +417,9 @@ export function ChatList({
                                             ? t('session.chat.queuedFile', { name: String(message.tool.input?.name ?? '') })
                                             : ''}
                                 </span>
-                                {session?.metadata?.queueCancellation === true && message.kind === 'user-text' && message.localId && (
+                                {send?.state === 'sending' && <SendingIndicator localId={send.localId} />}
+                                {send?.state === 'failed' && <SendFailedActions sessionId={sessionId} status={send} />}
+                                {!send && session?.metadata?.queueCancellation === true && message.kind === 'user-text' && message.localId && (
                                     <button
                                         type="button"
                                         className="cl-queue-cancel"
@@ -425,7 +433,8 @@ export function ChatList({
                                     </button>
                                 )}
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </section>
             )}

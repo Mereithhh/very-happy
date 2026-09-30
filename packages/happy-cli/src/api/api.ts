@@ -2,7 +2,9 @@ import axios from 'axios'
 import { logger } from '@/ui/logger'
 import type { AgentState, CreateSessionResponse, Metadata, Session, Machine, MachineMetadata, DaemonState } from '@/api/types'
 import { ApiSessionClient } from './apiSession';
-import { ApiMachineClient } from './apiMachine';
+// B-512: type-only — the machine client drags node-pty/xterm/sandbox-runtime/codex
+// and is only used by the daemon, so it is loaded on demand (machineSyncClient).
+import type { ApiMachineClient } from './apiMachine';
 import { decodeBase64, encodeBase64, getRandomBytes, encrypt, decrypt, libsodiumEncryptForPublicKey } from './encryption';
 import { PushNotificationClient } from './pushNotifications';
 import { configuration } from '@/configuration';
@@ -325,7 +327,8 @@ export class ApiClient {
     return new ApiSessionClient(this.credential.token, session, opts);
   }
 
-  machineSyncClient(machine: Machine): ApiMachineClient {
+  async machineSyncClient(machine: Machine): Promise<ApiMachineClient> {
+    const { ApiMachineClient } = await import('./apiMachine');
     return new ApiMachineClient(this.credential.token, machine);
   }
 
