@@ -2031,6 +2031,14 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            sep30b: {
+                title: 'New chats open instantly',
+                summary: 'Clicking New chat now opens the session page at once — you can type and send while the machine is still starting the session, and your messages go out, in order, the moment it is ready.',
+                instant: 'The page and composer appear immediately; the header shows 「Starting…」 until the session is up, then the page turns into the real session without losing what you were typing.',
+                queue: 'Messages sent while it starts are shown as waiting and delivered exactly once, in order. Attachments and /btw become available once the session is up.',
+                mode: 'A permission mode, model or effort you pick while it starts applies to your first message.',
+                failure: 'If starting fails your text goes back to the input box with Retry; creating a missing directory is confirmed right on the page. Leaving the page does not pull you back, and another open tab shows the same start read-only.',
+            },
             sep30a: {
                 title: 'The first reply in a new session comes about a second sooner',
                 summary: 'When you open a new Claude session from the web, the machine now starts Claude in the background right away instead of waiting for your first message, so that message no longer pays for Claude starting up. Needs the CLI update on the machine.',
