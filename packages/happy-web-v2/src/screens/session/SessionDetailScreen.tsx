@@ -176,6 +176,11 @@ export function SessionDetailScreen() {
             clearPendingSessionKeys(previous);
         }
     }, [id]);
+    // A record another tab owns is read-only here; if that tab is gone, take it over.
+    const foreignPending = pendingMode && !pendingSessions.isOwnedHere(pending!.pendingId);
+    useEffect(() => {
+        if (foreignPending) void pendingSessions.resume();
+    }, [foreignPending]);
     const pendingInitialDraft = useMemo(() => (pendingId ? pendingDraft(pendingId) : ''), [pendingId]);
 
     // Trigger the initial message fetch + mark this session as the one being
@@ -234,6 +239,9 @@ export function SessionDetailScreen() {
         effortLevel: pending.effortLevel,
         onMode: (field, value) => pendingSessions.setMode(pending.pendingId, field, value),
         initialDraft: pendingInitialDraft,
+        blockedHint: foreignPending
+            ? t('pendingSession.otherTab')
+            : pending.state === 'failed' ? t('pendingSession.retryFirst') : undefined,
     } : undefined;
 
     return (

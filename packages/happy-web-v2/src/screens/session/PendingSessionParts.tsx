@@ -55,6 +55,18 @@ export function PendingSessionBody({ record }: { record: PendingSessionRecord })
     const adoptable = useAdoptableSession(record);
     const id = record.pendingId;
 
+    // Another tab owns this record (and runs its spawn): show, don't act.
+    if (!pendingSessions.isOwnedHere(id) && record.state !== 'landed') {
+        return (
+            <div className="ps-body">
+                <section className="ps-card" role="status">
+                    <p className="ps-card-text">{t('pendingSession.otherTab')}</p>
+                </section>
+                <PendingOutbox record={record} />
+            </div>
+        );
+    }
+
     if (record.state === 'needs-approval') {
         return (
             <div className="ps-body">
@@ -110,7 +122,7 @@ export function PendingSessionBody({ record }: { record: PendingSessionRecord })
 function PendingOutbox({ record }: { record: PendingSessionRecord }) {
     const { t } = useTranslation();
     if (record.outbox.length === 0) return null;
-    const removable = record.state === 'spawning' || record.state === 'needs-approval';
+    const removable = (record.state === 'spawning' || record.state === 'needs-approval') && pendingSessions.isOwnedHere(record.pendingId);
     return (
         <section className="ci-queue ps-outbox" aria-label={t('pendingSession.outboxTitle')}>
             <div className="ci-queue-list">
