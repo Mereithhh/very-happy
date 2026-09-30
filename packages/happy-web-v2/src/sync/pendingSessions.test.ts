@@ -337,6 +337,28 @@ describe('pending session store (B-516)', () => {
         expect(owners[0].store.get(starting.pendingId)).toMatchObject({ state: 'failed', failure: 'interrupted' });
     });
 
+    it('refuses sends it cannot deliver in every state, so the composer keeps the text', async () => {
+        const backing: Backing = { table: [], lock: Promise.resolve() };
+        const alive = new Set<string>();
+        const a = harness({ backing, alive, tabId: 'tab-a' });
+        const b = harness({ backing, alive, tabId: 'tab-b' });
+        const spawning = a.store.create({ ...input });
+        const approval = a.store.create({ ...input });
+        a.spawns[1].result.resolve({ type: 'requestToApproveDirectoryCreation', directory: '/x' });
+        const failed = a.store.create({ ...input });
+        a.spawns[2].result.resolve({ type: 'error', errorMessage: 'no' });
+        const landing = a.store.create({ ...input });
+        a.spawns[3].result.resolve({ type: 'success', sessionId: 'r-landing' }); // session never arrives: stays landing
+        await flush();
+        b.store.refresh();
+        const states = [spawning, approval, failed, landing].map((r) => b.store.get(r.pendingId)?.state);
+        expect(states).toEqual(['spawning', 'needs-approval', 'failed', 'landing']);
+        for (const r of [spawning, approval, failed, landing]) expect(b.store.append(r.pendingId, 'from B')).toBe(false);
+        // the owner itself: a failed record takes nothing (retry first)
+        expect(a.store.append(failed.pendingId, 'x')).toBe(false);
+        expect(a.store.append(spawning.pendingId, 'x')).toBe(true);
+    });
+
     it('releases waiters when the pending page is shown, with a timeout fallback', async () => {
         const h = harness();
         const shown = vi.fn();
