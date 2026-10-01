@@ -42,7 +42,7 @@ describe('message timestamps', () => {
     ] satisfies Message[])('places a visible time in the $kind footer', message => {
         const host = render(<MessageView message={message} sessionId="s1" showMeta={false} />);
         const time = host.querySelector('.msg-actions time');
-        expect(time?.textContent).toBe(compactMessageTime(T0, 'en'));
+        expect(time?.textContent).toBe(compactMessageTime(T0, 'en', undefined, Date.now()));
         expect(time?.getAttribute('datetime')).toBe(new Date(T0).toISOString());
         expect(time?.getAttribute('title')).toBe(messageTimestamp(T0, 'en'));
     });

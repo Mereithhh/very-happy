@@ -30,7 +30,7 @@ import type { TerminalSession } from '@/sync/terminalPushOps';
 import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
 import { compareTaskOrder, type BoardTask } from '@/sync/boardTaskOps';
 import { isHiddenSession } from '@/assistant/assistantSession';
-import { hasPriorityTag } from '@/utils/tags';
+import { priorityLevel } from '@/utils/tags';
 
 export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended' | 'unknown';
 
@@ -106,6 +106,8 @@ export interface BoardItem {
   /** B-091: session carries the priority tag — floats first WITHIN its
    *  status band (never above the urgent/attention band; 优先 ≠ 紧急). */
   priority?: boolean;
+  /** B-522: 0 = P0 (highest). Set together with `priority`. */
+  priorityLevel?: number;
   /** B-465: terminal status came from an old daemon (no observation stamp)
    *  and was estimated from its reported state + tmux activity. */
   legacyStatus?: true;
@@ -271,7 +273,8 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       href: `/session/${s.id}`,
       lifecycle: 'running', // placeholder — assigned by lifecycleOf below
     };
-    if (hasPriorityTag(s.metadata?.tags)) item.priority = true;
+    const level = priorityLevel(s.metadata?.tags);
+    if (level !== null) { item.priority = true; item.priorityLevel = level; }
     if (cls.backgroundTasks) item.backgroundTasks = cls.backgroundTasks;
     const board = s.metadata?.board;
     if (board?.progress) item.progress = board.progress;
@@ -338,7 +341,8 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       machineId: tm.machineId,
       lifecycle: 'running', // placeholder — assigned by lifecycleOf below
     };
-    if (hasPriorityTag(tm.tags)) termItem.priority = true;
+    const termLevel = priorityLevel(tm.tags);
+    if (termLevel !== null) { termItem.priority = true; termItem.priorityLevel = termLevel; }
     if (legacy && online) termItem.legacyStatus = true;
     const lc = lifecycleOf(termItem);
     termItem.lifecycle = lc.lifecycle;
@@ -357,7 +361,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
   items.sort((a, b) => {
     const r = RANK[a.status] - RANK[b.status];
     if (r !== 0) return r;
-    const p = (b.priority ? 1 : 0) - (a.priority ? 1 : 0);
+    const p = (a.priorityLevel ?? (a.priority ? 0 : 3)) - (b.priorityLevel ?? (b.priority ? 0 : 3));
     if (p !== 0) return p;
     const d =
       a.status === 'attention'

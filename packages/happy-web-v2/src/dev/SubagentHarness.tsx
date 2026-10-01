@@ -9,6 +9,7 @@ import { SubagentDock } from '@/screens/session/SubagentDock';
  *  real drawer path instead of the no-session inline fallback. */
 import { useEffect, useState } from 'react';
 import { storage } from '@/sync/storage';
+import { recordBackgroundTasks, recordHeartbeat } from '@/sync/heartbeatLease';
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { ToolGroupView } from '@/screens/session/ToolGroupView';
 import { SubagentPanel } from '@/screens/session/SubagentPanel';
@@ -78,7 +79,12 @@ export function SubagentHarness() {
     const [open, setOpen] = useState<string | null>(null);
     useEffect(() => {
         storage.setState((state) => ({
-            sessions: {...state.sessions,[SESSION_ID]:{id:SESSION_ID,presence:'online',thinking:true,metadata:{machineId:'dev-machine',path:'/workspace'}} as never},
+            sessions: {...state.sessions,[SESSION_ID]:{id:SESSION_ID,presence:'online',thinking:true,metadata:{machineId:'dev-machine',path:'/workspace',capabilities:['claude-runtime-controls-v1']},
+                // B-518: two long-running background commands from an earlier turn (kimi session shape).
+                agentState:{backgroundTasks:{updatedAt:NOW,tasks:[
+                    {id:'bd9fkcvlp',type:'local_bash',description:'Wait for all test runs to finish',startedAt:NOW-34*3600_000},
+                    {id:'mon1',type:'monitor',description:'kimi long-reasoning test results (ch37 non-stream, ch12 stream)',startedAt:NOW-12*60_000},
+                ]}}} as never},
             sessionMessages: {
                 ...state.sessionMessages,
                 [SESSION_ID]: {
@@ -90,7 +96,11 @@ export function SubagentHarness() {
                 } as never,
             },
         }));
-        return onSubagentOpen((detail) => setOpen(detail.messageId));
+        recordBackgroundTasks(SESSION_ID, 2);
+        recordHeartbeat(SESSION_ID, true);
+        const beat = setInterval(() => { recordBackgroundTasks(SESSION_ID, 2); recordHeartbeat(SESSION_ID, true); }, 10_000);
+        const off = onSubagentOpen((detail) => setOpen(detail.messageId));
+        return () => { clearInterval(beat); off(); };
     }, []);
     return (
         <div className={`sd${open ? ' sd--files-open' : ''}`}>
@@ -100,6 +110,8 @@ export function SubagentHarness() {
                     <ActivityMessages sessionId={SESSION_ID} messages={[{kind:'agent-text',id:'main-example',localId:null,createdAt:NOW,text:'先核对配置，再汇总检查结果。'}]} />
                     <div data-testid="activity-alignment" style={{display:'flex',flexDirection:'column',gap:'var(--sp-3)'}}>
                         <TurnActivityView messages={ALIGNMENT_MESSAGES} sessionId={SESSION_ID} live />
+                        <TurnActivityView messages={ALIGNMENT_MESSAGES} sessionId={SESSION_ID} live={false} durationSeconds={613}
+                            trigger={{kind:'user-text',id:'trig',localId:null,createdAt:NOW,text:'<task-notification>\n<status>completed</status>\n<summary>Monitor event: "kimi long-reasoning test results (ch37 non-stream, ch12 stream)"</summary>\n</task-notification>'}} />
                         <LiveStreamBlocks blocks={[{key:'align-draft',kind:'thinking',text:'继续核对实时思考状态。',done:false,doneAt:null}]} />
                         <LiveStatusRow phase="requesting" label="请求中" elapsed={87} metrics={[{kind:'input',value:'1.2k'},{kind:'output',value:'864'}]} />
                     </div>

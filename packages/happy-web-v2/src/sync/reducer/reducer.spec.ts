@@ -41,9 +41,10 @@ describe('reducer', () => {
         reducer(state, [stop]);
         const result = reducer(state, [start]);
         expect(result.messages).toHaveLength(1);
+        // B-519: status from the newest event, position from the earliest one.
         expect(result.messages[0]).toMatchObject({
-            createdAt: 2000,
-            seq: 20,
+            createdAt: 1000,
+            seq: 10,
             kind: 'agent-event',
             event: { type: 'subagent', id: 'worker-2', title: 'Audit history', status: 'completed' },
         });
@@ -110,6 +111,43 @@ describe('reducer', () => {
             });
             expect(ended.messages[0]).not.toHaveProperty('inputState');
             expect(ended.messages[0]).toMatchObject({ displayAt: 2100 });
+        });
+
+        it('B-521: input stamped queued after the turn had already ended is not held behind its own reply', () => {
+            const state = createReducer();
+            const agent = (id: string, seq: number, text: string): NormalizedMessage => ({
+                id, localId: null, createdAt: seq * 100, seq, role: 'agent', isSidechain: false,
+                content: [{ type: 'text', text, uuid: id, parentUUID: null }],
+            } as NormalizedMessage);
+            const end = (id: string, seq: number): NormalizedMessage => ({
+                id, localId: null, createdAt: seq * 100, seq, role: 'event', isSidechain: false, content: { type: 'ready' },
+            });
+            reducer(state, [agent('a1', 1, 'answer'), end('e1', 2)]);
+            // Tapped a suggestion while this client still believed the turn was live.
+            const tapped = reducer(state, [{
+                id: 'u2', localId: 'local-u2', createdAt: 300, seq: 3, role: 'user', isSidechain: false,
+                content: { type: 'text', text: 'next' }, meta: { queuedAt: 250 },
+            }]);
+            const user = () => tapped.messages.find((m) => m.kind === 'user-text');
+            expect(user()).not.toHaveProperty('inputState');
+            const replied = reducer(state, [agent('a2', 4, 'reply'), end('e2', 5)]);
+            const placed = replied.messages.find((m) => m.kind === 'user-text') ?? user();
+            expect(placed).not.toHaveProperty('inputState');
+            expect(placed?.displaySeq ?? undefined).toBeUndefined();
+        });
+
+        it('B-521: input that landed while the turn was still producing stays queued until that turn ends', () => {
+            const state = createReducer();
+            const agent = (id: string, seq: number): NormalizedMessage => ({
+                id, localId: null, createdAt: seq * 100, seq, role: 'agent', isSidechain: false,
+                content: [{ type: 'text', text: id, uuid: id, parentUUID: null }],
+            } as NormalizedMessage);
+            reducer(state, [{ id: 'e0', localId: null, createdAt: 50, seq: 1, role: 'event', isSidechain: false, content: { type: 'ready' } }, agent('a1', 2)]);
+            const r = reducer(state, [{
+                id: 'u3', localId: 'local-u3', createdAt: 300, seq: 3, role: 'user', isSidechain: false,
+                content: { type: 'text', text: 'also' }, meta: { queuedAt: 290 },
+            }]);
+            expect(r.messages.find((m) => m.kind === 'user-text')).toMatchObject({ inputState: 'queued' });
         });
 
         it('derives the same consumed state when history includes user input and turn-end together', () => {
@@ -3917,6 +3955,23 @@ describe('B-260-P2: sub-agent lifecycle on the Agent card', () => {
         expect(card(r)?.subagent).toMatchObject({ status: 'running', result: { text: 'done' } });
         r = reducer(state, [ev(1, { status: 'completed' })]);
         expect(card(r)?.subagent?.status).toBe('running');
+    });
+
+    it('B-519: the status row stays anchored where the sub-agent started; later events update it in place', () => {
+        const state = createReducer();
+        reducer(state, [agentCard(1)]);
+        reducer(state, [ev(2, { status: 'running', description: 'Review', subagentType: 'Explore' })]);
+        reducer(state, [ev(30, { status: 'running', progress: { toolUses: 4 } })]);
+        const r = reducer(state, [ev(90, { status: 'completed', result: { text: 'done' } })]);
+        const row = [...state.messages.values()].find((m) => m.event?.type === 'subagent')!;
+        expect(row.seq).toBe(2);
+        expect(row.createdAt).toBe(200);
+        expect(row.event).toMatchObject({ status: 'completed' });
+        expect(card(r)?.subagent).toMatchObject({ status: 'completed', updatedAt: 9000 });
+        // An older backfilled event still loses on status, and may only move the anchor earlier.
+        reducer(state, [ev(1, { status: 'running' })]);
+        expect(row.seq).toBe(1);
+        expect(row.event).toMatchObject({ status: 'completed' });
     });
 
     it("an old CLI's bare running/completed pills carry no lifecycle payload → the card stays honest (no lifecycle)", () => {

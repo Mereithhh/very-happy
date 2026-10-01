@@ -29,3 +29,18 @@ describe('compact message time', () => {
         expect(compactMessageTime(timestamp + 1000, 'en', 'UTC')).toBe('03:06');
     });
 });
+
+describe('compact message time older than a day (Owner 2026-10-02)', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    it('stays a bare clock within a day', () => {
+        expect(compactMessageTime(timestamp, 'zh-Hans', 'UTC', timestamp + DAY - 1)).toBe('03:05');
+    });
+    it.each(['en', 'zh-Hans', 'ja'])('prefixes YYYY-MM-DD from one day on (%s)', locale => {
+        expect(compactMessageTime(timestamp, locale, 'UTC', timestamp + DAY)).toBe('2026-09-11 03:05');
+        expect(compactMessageTime(timestamp, locale, 'Asia/Singapore', timestamp + 3 * DAY)).toBe('2026-09-11 11:05');
+    });
+    it('uses the date in the selected timezone', () => {
+        const late = Date.UTC(2026, 8, 11, 20, 0, 0);
+        expect(compactMessageTime(late, 'en', 'Asia/Singapore', late + 2 * DAY)).toBe('2026-09-12 04:00');
+    });
+});

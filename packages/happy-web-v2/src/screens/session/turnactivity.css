@@ -53,3 +53,19 @@
 .ta-detail .tg-spine {
   display: none;
 }
+
+/* B-519: a turn the agent started on a background task's report names that
+   report in its header (one row, not a free-floating line + a bare duration). */
+.ta-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  flex: 0 1 auto;
+  color: var(--text-dim);
+}
+.ta-trigger > svg { flex: none; }
+.ta-trigger-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ta-trigger--error { color: var(--danger); }
+.ta--triggered .ta-title { color: var(--text-faint); font-weight: 400; }
+.ta--triggered .ta-title::before { content: '·'; margin-right: var(--sp-2); }

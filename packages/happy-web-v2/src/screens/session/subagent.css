@@ -207,3 +207,13 @@
 .sa-brief-actions { display:flex; justify-content:flex-end; margin-top:var(--sp-2); }
 .sa-kind { color:var(--text-dim); }
 .sa-model { min-width:0; overflow-wrap:anywhere; color:var(--text-dim); }
+/* B-518: background task chips — same chip, plus a kind glyph, its age and a stop button. */
+.sa-dock-item--task { padding:0; gap:0; }
+.sa-dock-open { display:flex; align-items:center; gap:var(--sp-2); min-width:0; min-height:inherit; padding:var(--sp-1) var(--sp-2); border:0; background:transparent; color:inherit; font:inherit; text-align:left; }
+button.sa-dock-open:hover { background:var(--bg-2); }
+.sa-dock-kind { flex:none; color:var(--text-faint); }
+.sa-dock-age { font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:var(--text-faint); }
+.sa-dock-stop { display:inline-flex; align-items:center; justify-content:center; flex:none; align-self:stretch; min-width:28px; border:0; border-left:1px solid var(--line); background:transparent; color:var(--text-faint); }
+.sa-dock-stop:hover:not(:disabled) { color:var(--text); background:var(--bg-2); }
+.sa-dock-item--task.is-stopping { opacity:.6; }
+@media(pointer:coarse) { .sa-dock-stop { min-width:44px; } }

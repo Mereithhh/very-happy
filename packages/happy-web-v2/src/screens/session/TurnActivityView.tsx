@@ -1,5 +1,6 @@
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { Bot, ChevronRight } from 'lucide-react';
+import { parseTaskNotification } from './harness';
 import type { Message } from '@/sync/typesMessage';
 import { sameItems } from './rowMemo';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -21,11 +22,14 @@ function TurnActivityViewImpl({
     live,
     sessionId,
     durationSeconds,
+    trigger,
 }: {
     messages: Message[];
     live: boolean;
     sessionId: string;
     durationSeconds?: number;
+    /** B-519: the task notification that started this turn. */
+    trigger?: Message;
 }) {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(live);
@@ -49,9 +53,11 @@ function TurnActivityViewImpl({
 
     const elapsed = useElapsedSeconds(live ? activityStart(messages) : null);
     const duration = live ? elapsed : durationSeconds ?? activityDurationSeconds(messages);
+    const notification = trigger?.kind === 'user-text' ? parseTaskNotification(trigger.displayText ?? trigger.text) : null;
+    const triggerLabel = notification ? notification.summary ?? t('message.taskNotificationGeneric') : null;
 
     return (
-        <section className={`ta${live ? ' ta--live' : ''}`}>
+        <section className={`ta${live ? ' ta--live' : ''}${notification ? ' ta--triggered' : ''}`}>
             <button
                 type="button"
                 className="ta-head vh-disclosure-trigger"
@@ -59,6 +65,14 @@ function TurnActivityViewImpl({
                 aria-expanded={expanded}
                 aria-controls={detailId}
             >
+                {triggerLabel !== null && (
+                    <span className={`ta-trigger${notification?.status === 'failed' ? ' ta-trigger--error' : ''}`} title={triggerLabel}>
+                        <Bot size={13} aria-hidden />
+                        <span className="ta-trigger-text">
+                            {notification?.status === 'failed' ? t('message.taskNotificationFailed', { summary: triggerLabel }) : triggerLabel}
+                        </span>
+                    </span>
+                )}
                 <span className="ta-title">
                     {t('session.chat.activityElapsed', { seconds: duration })}
                 </span>
@@ -88,4 +102,5 @@ export const TurnActivityView = memo(TurnActivityViewImpl, (prev, next) => (
     && prev.live === next.live
     && prev.sessionId === next.sessionId
     && prev.durationSeconds === next.durationSeconds
+    && prev.trigger === next.trigger
 ));

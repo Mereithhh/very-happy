@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-02-chat-order-and-background-tasks',
+    date: '2026-10-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct02.title',
+    summaryKey: 'changelog.releases.oct02.summary',
+    itemKeys: ['changelog.releases.oct02.background', 'changelog.releases.oct02.order', 'changelog.releases.oct02.queue', 'changelog.releases.oct02.suggestions', 'changelog.releases.oct02.priority', 'changelog.releases.oct02.date'],
+  },
+  {
     id: '2026-09-30-optimistic-new-session',
     date: '2026-09-30',
     buildVersion: __APP_VERSION__,

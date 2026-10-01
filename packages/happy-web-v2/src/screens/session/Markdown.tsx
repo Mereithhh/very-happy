@@ -290,9 +290,11 @@ function useThrottledText(text: string, enabled: boolean): string {
 
 /* ── public component ───────────────────────────────────────────────────── */
 
-export function Markdown({ text, onOption, plainCode = false, streaming = false, trustContent = false }: {
+export function Markdown({ text, onOption, hideOptions = false, plainCode = false, streaming = false, trustContent = false }: {
     text: string;
     onOption?: (option: string) => void;
+    /** B-520: drop `<options>` blocks entirely (answered / superseded suggestions). */
+    hideOptions?: boolean;
     /** B-309: render fenced code without highlighting (streaming drafts). */
     plainCode?: boolean;
     /** Live draft: throttle re-parse (react-markdown has no parse cache). */
@@ -314,6 +316,7 @@ export function Markdown({ text, onOption, plainCode = false, streaming = false,
         <div className="md">
             {segments.map((segment, index) => {
                 if (segment.kind === 'options') {
+                    if (hideOptions) return null;
                     return (
                         <div key={index} className="md-options">
                             {segment.items.map((item, j) => (onOption ? (
@@ -339,7 +342,7 @@ export function Markdown({ text, onOption, plainCode = false, streaming = false,
                 );
             })}
         </div>
-    ), [segments, components, onOption]);
+    ), [segments, components, onOption, hideOptions]);
 }
 
 /**

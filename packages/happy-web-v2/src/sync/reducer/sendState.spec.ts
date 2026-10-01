@@ -227,13 +227,16 @@ describe('B-513 send state in the reducer', () => {
         view.reduce([turnEnd('te-1', 2100, 10)]);
         expect(view.byLocalId('l1')).toMatchObject({ inputState: 'queued', sendState: 'sending' });
 
-        // Confirmed at seq 11: the turn-end at seq 10 precedes it, so it still waits.
+        // Confirmed at seq 11, right after the turn-end at seq 10 with nothing in
+        // between: the agent was idle when it landed, so it was consumed at once
+        // (B-521) — released at its own seq, NOT held until its own reply's
+        // turn-end (seq 12), which used to place it after that reply.
         view.update({ acks: [{ localId: 'l1', seq: 11, id: 'srv' }] });
-        expect(view.byLocalId('l1')).toMatchObject({ inputState: 'queued', seq: 11 });
+        expect(view.byLocalId('l1')).not.toHaveProperty('inputState');
         view.reduce([turnEnd('te-2', 2200, 12)]);
         const released = view.byLocalId('l1')!;
         expect(released).not.toHaveProperty('inputState');
-        expect(released.displaySeq).toBe(12);
+        expect(released.displaySeq ?? undefined).toBeUndefined();
     });
 
     it('a failed queued input stays in the queue dock', () => {

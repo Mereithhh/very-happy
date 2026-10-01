@@ -35,7 +35,7 @@ describe('streaming throttle + parse memo wiring', () => {
 
     it('the rendered tree is memoised, and onOption is part of that memo', () => {
         expect(markdown).toContain('return React.useMemo(() => (');
-        expect(markdown).toContain('[segments, components, onOption]');
+        expect(markdown).toContain('[segments, components, onOption, hideOptions]');
     });
 
     it('AgentText passes a STABLE onOption', () => {
