@@ -14,6 +14,8 @@ export interface FsPreviewRequest {
     path: string;
     /** 'diff' is a placeholder — the overlay renders a plain preview and says so. */
     mode: 'file' | 'diff';
+    /** B-526: pushed by a session's `open_preview` (not opened by the user here). */
+    fromPush?: boolean;
 }
 
 const OPEN_EVENT = 'vh:fs-preview-open';

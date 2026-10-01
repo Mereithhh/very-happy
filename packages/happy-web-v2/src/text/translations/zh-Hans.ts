@@ -2169,6 +2169,7 @@ export const zhHans: TranslationStructure = {
                 suggestions: '点了建议回复，建议立即消失并滚到底部；任何发送都会滚到底部。只有最新一条回答显示建议。',
                 priority: '优先级分档：在会话菜单里标 P0 / P1 / P2，侧栏和看板按 P0 → P1 → P2 排序；以前标过的「优先」算 P0。',
                 date: '超过一天的消息时间带上日期（YYYY-MM-DD HH:mm）。',
+                preview: 'Claude 弹出的预览（open_preview）会先带你回到发起它的那个对话。',
                 chime: '一轮结束只响一次：「完成」提示音和随后的待查看判定不再各响一遍，多个标签页也只有一个响。',
             },
             sep30b: {

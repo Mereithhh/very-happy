@@ -20,6 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-526 | **open_preview 弹出时自动跳回发起预览的会话**：Claude 推送的预览在用户当前所在页面上弹出，和那个对话脱节；改为先跳到来源会话再显示预览。只对推送生效，用户自己打开的预览不跳；已在该会话或本端不认识该会话时不动 | ux | Owner 2026-10-02（「preview 弹出来的时候，自动跳转回 preview 的那个对话」） | doing | `previewPinTarget.previewFollowTarget` + `FsPreviewRequest.fromPush`（`filePreviewPush` 设置）；推送发往账号所有 web 端，每个端都会跳 |
 | B-525 | **一轮结束响两次几乎一样的提示音**：①feed 的 `reply_done`（done）与看板跃迁在 daemon 分析器判完后落到 review/blocked（question）是两个事件，各响一次、间隔常超 5 s 冷却；②每个打开的标签页/PWA 各自响 | bug | Owner 2026-10-02（「完成的时候，听到两个几乎重复的通知音效」） | doing | `notificationChime`：同一目标的 done/question 30 s 内合并为一次，permission 仍独立；Web Lock `vh-chime:<slot>` 跨标签页只响一个。主力mac 上跑的会话另有 Peon Ping 的 Stop hook 也会响（个人配置，未改） |
 | B-524 | **发消息后运行计时从很久以前算起（几百分钟）**：底部实时状态条取「全会话最新的 running 工具」作计时起点，早先 turn 里 wrapper 重启后永不关闭的工具调用（B-295 形状）在新消息下被当成「正在执行」；另一来源是 B-521 的假排队（消息留在队列，上一轮被当成仍在运行的当前轮） | bug | Owner 2026-10-02（「它显示运行的时间，从会话最开始开始算，几百个分钟」） | doing | `sync/runningTool.currentRunningTool` 只看当前轮（排队消息、任务通知不算轮边界）；假排队见 B-521 |
 | B-523 | **消息时间超过一天带日期**：消息底部 `HH:mm` 在消息早于 24 h 时显示 `YYYY-MM-DD HH:mm`（ISO 顺序、各语言一致，悬停仍是完整时间） | ux | Owner 2026-10-02（「对话消息如果时间大于1天，在显示消息时间的时候带上 YYYY-MM-DD」） | doing | `messageTimestamp.compactMessageTime(..., now)`；`MessageTime` 传 `Date.now()` |

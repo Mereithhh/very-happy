@@ -25,7 +25,7 @@ import { createPortal } from 'react-dom';
 import { Maximize2, Minimize2, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { previewPinTarget } from './previewPinTarget';
+import { previewFollowTarget, previewPinTarget } from './previewPinTarget';
 import { storage, useMachine } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { onFsPreviewOpen, type FsPreviewRequest } from '@/sync/filePreviewOpen';
@@ -122,12 +122,18 @@ export function FsPreviewOverlay() {
         setFullscreen(false);
     }, []);
 
+    const pathnameRef = useRef(location.pathname);
+    pathnameRef.current = location.pathname;
     useEffect(() => onFsPreviewOpen((next) => {
+        // B-526: a pushed preview brings you to its session first (the overlay
+        // is app-level, so it survives the route change).
+        const follow = previewFollowTarget(next, pathnameRef.current, (id) => !!storage.getState().sessions[id]);
+        if (follow) navigate(follow);
         // A second push replaces the first (one overlay, newest wins) and resets
         // the geometry so a stale fullscreen doesn't carry over.
         setRequest(next);
         setFullscreen(false);
-    }), []);
+    }), [navigate]);
 
     /**
      * 焦点与 Esc（B-131 的一处设计修正）。

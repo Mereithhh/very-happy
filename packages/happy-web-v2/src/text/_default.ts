@@ -2048,6 +2048,7 @@ export const en = {
                 suggestions: 'Tapping a suggested reply removes the suggestions at once and scrolls to the bottom; sending anything scrolls to the bottom. Only the latest answer offers suggestions.',
                 priority: 'Priority has levels: mark a session P0, P1 or P2 from its menu; the sidebar and board order P0 → P1 → P2. Sessions marked before count as P0.',
                 date: 'Message times older than a day show their date (YYYY-MM-DD HH:mm).',
+                preview: 'A preview Claude opens (open_preview) now takes you to the conversation it came from before it pops up.',
                 chime: 'A finished turn rings once: the 「done」 sound and the later review verdict no longer both play, and only one open tab rings.',
             },
             sep30b: {
