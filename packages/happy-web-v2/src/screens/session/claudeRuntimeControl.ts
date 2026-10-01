@@ -7,7 +7,9 @@ export type RuntimeStatus = {
     tasks:RuntimeTask[]; checkpoints:{id:string;title:string}[]; operations:RuntimeOperation[];
 };
 export async function claudeRuntimeRequest(sessionId:string, request:Record<string,unknown>, opts?:{timeoutMs?:number}): Promise<any> {
-    const response=await apiSocket.sessionRPC<any,Record<string,unknown>>(sessionId,'claude-runtime-control',request,opts);
+    const response=opts
+        ? await apiSocket.sessionRPC<any,Record<string,unknown>>(sessionId,'claude-runtime-control',request,opts)
+        : await apiSocket.sessionRPC<any,Record<string,unknown>>(sessionId,'claude-runtime-control',request);
     if(!response || typeof response!=='object') throw Error('Invalid runtime response');
     if(response.error) throw Error(String(response.error));
     return response;
