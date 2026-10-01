@@ -283,7 +283,16 @@ class ApiSocket {
         // ping-expired close) would park the packet in its sendBuffer forever
         // (`reconnection: false`) until the ack timer fires. Nothing has been
         // sent yet, so routing to control instead cannot double-execute.
-        const relaySocket = relayCandidate?.connected ? relayCandidate : null;
+        let relaySocket = relayCandidate?.connected ? relayCandidate : null;
+        // B-527: the same preflight as machineRPC. A relay socket can be
+        // `connected` yet dead end-to-end; without the probe a session RPC
+        // parked there for the full SESSION_RPC_TIMEOUT_MS (5 min) — the
+        // background-task × and the runtime dialog just spun (2026-10-02, the
+        // tab's relay socket died one-way after the release; a fresh tab
+        // worked at once). Nothing is emitted yet, so central cannot double-run.
+        if (relaySocket && typeof machineId === 'string' && !(await this.relayPreflightOk(machineId, relaySocket))) {
+            relaySocket = null;
+        }
         const scopedMethod = `${sessionId}:${method}`;
         const callCentral = () => this.rpcGate.run(
             ApiSocket.CONTROL_ROUTE,
