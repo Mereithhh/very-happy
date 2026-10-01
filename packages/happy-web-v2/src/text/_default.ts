@@ -2044,7 +2044,7 @@ export const en = {
                 summary: 'Work that keeps running after a reply — background commands, monitors, background sub-agents — now shows above the input box with a stop button, so a session marked running in the sidebar always shows what is running. Messages and sub-agent updates no longer land out of order.',
                 background: 'Each background task is a chip above the input with its kind, description and age; × stops it. The sidebar and the page now tell the same story.',
                 order: 'A sub-agent\'s status stays where it started and updates in place instead of jumping down into the current conversation. A task report that arrives mid-reply stays inside that reply; one that arrives later heads the follow-up it caused.',
-                queue: 'A message sent right as a reply finished is no longer stuck in the queue while being answered, and no longer shows up after its own reply.',
+                queue: 'A message sent right as a reply finished is no longer stuck in the queue while being answered, and no longer shows up after its own reply. The running timer under it starts from that message, not from an old unfinished tool call.',
                 suggestions: 'Tapping a suggested reply removes the suggestions at once and scrolls to the bottom; sending anything scrolls to the bottom. Only the latest answer offers suggestions.',
                 priority: 'Priority has levels: mark a session P0, P1 or P2 from its menu; the sidebar and board order P0 → P1 → P2. Sessions marked before count as P0.',
                 date: 'Message times older than a day show their date (YYYY-MM-DD HH:mm).',

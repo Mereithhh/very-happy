@@ -20,6 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-524 | **发消息后运行计时从很久以前算起（几百分钟）**：底部实时状态条取「全会话最新的 running 工具」作计时起点，早先 turn 里 wrapper 重启后永不关闭的工具调用（B-295 形状）在新消息下被当成「正在执行」；另一来源是 B-521 的假排队（消息留在队列，上一轮被当成仍在运行的当前轮） | bug | Owner 2026-10-02（「它显示运行的时间，从会话最开始开始算，几百个分钟」） | doing | `sync/runningTool.currentRunningTool` 只看当前轮（排队消息、任务通知不算轮边界）；假排队见 B-521 |
 | B-523 | **消息时间超过一天带日期**：消息底部 `HH:mm` 在消息早于 24 h 时显示 `YYYY-MM-DD HH:mm`（ISO 顺序、各语言一致，悬停仍是完整时间） | ux | Owner 2026-10-02（「对话消息如果时间大于1天，在显示消息时间的时候带上 YYYY-MM-DD」） | doing | `messageTimestamp.compactMessageTime(..., now)`；`MessageTime` 传 `Date.now()` |
 | B-522 | **优先级分档 P0/P1/P2**：会话菜单可标 P0/P1/P2（再点当前档取消），侧栏列表/分组与看板按 P0→P1→P2 排序；旧 `priority` 标签算 P0，分组标签统一显示 `Pn` | feat | Owner 2026-10-02（「优先级可以排 P0, P1，P2」；推翻 B-091「只要一个 priority 标签」的取舍） | doing | 仍是 tag 约定不加 schema 字段；`utils/tags` `priorityLevel/setPriorityLevel/sortByPriority` |
 | B-521 | **假排队：回复刚结束时发的消息被当排队、显示在自己的回复之后**：发送端按自己滞后的活性（心跳租约/移动端）盖 `queuedAt`，但消息落库时上一轮已结束，CLI 立刻处理它；web 以「queuedAt 之后第一个 turn-end」释放它，那恰是它自己回复的 turn-end——回复期间卡在队列（取消提示「已发出」），最后排在两条回复之后 | bug | Owner 2026-10-02（移动端点建议回复的实报） | doing | reducer `landedOnIdleAgent`：落库 seq 与它之前最后一个 turn-end 之间没有任何消息 = 落地时空闲 → 立刻按自身 seq 进 transcript；要求该 turn-end 与消息 seq 连续（只允许同一次发送的附件夹在中间，live 缺口不误判）且该 turn-end 没有释放别的排队消息；判不出保持旧语义 |
