@@ -150,6 +150,36 @@ describe('reducer', () => {
             expect(r.messages.find((m) => m.kind === 'user-text')).toMatchObject({ inputState: 'queued' });
         });
 
+        it('B-521: a second input sent while the agent starts on a just-released queued one stays queued', () => {
+            const state = createReducer();
+            const agent = (id: string, seq: number): NormalizedMessage => ({
+                id, localId: null, createdAt: seq * 100, seq, role: 'agent', isSidechain: false,
+                content: [{ type: 'text', text: id, uuid: id, parentUUID: null }],
+            } as NormalizedMessage);
+            const input = (id: string, seq: number): NormalizedMessage => ({
+                id, localId: `l-${id}`, createdAt: seq * 100, seq, role: 'user', isSidechain: false,
+                content: { type: 'text', text: id }, meta: { queuedAt: seq * 100 - 10 },
+            });
+            const end = (id: string, seq: number): NormalizedMessage => ({ id, localId: null, createdAt: seq * 100, seq, role: 'event', isSidechain: false, content: { type: 'ready' } });
+            reducer(state, [input('u1', 1), agent('a1', 2), input('A', 3), end('e1', 4)]);
+            const r = reducer(state, [input('C', 5)]);
+            expect(r.messages.find((m) => m.kind === 'user-text' && m.text === 'C')).toMatchObject({ inputState: 'queued' });
+        });
+
+        it('B-521: a seq gap before the input leaves it queued until the gap fills', () => {
+            const state = createReducer();
+            const end = (id: string, seq: number): NormalizedMessage => ({ id, localId: null, createdAt: seq * 100, seq, role: 'event', isSidechain: false, content: { type: 'ready' } });
+            reducer(state, [end('e1', 2)]);
+            const early = reducer(state, [{ id: 'B', localId: 'l-B', createdAt: 500, seq: 5, role: 'user', isSidechain: false, content: { type: 'text', text: 'B' }, meta: { queuedAt: 490 } }]);
+            expect(early.messages.find((m) => m.kind === 'user-text')).toMatchObject({ inputState: 'queued' });
+            const filled = reducer(state, [
+                { id: 'uX', localId: null, createdAt: 300, seq: 3, role: 'user', isSidechain: false, content: { type: 'text', text: 'other device' } },
+                { id: 'a4', localId: null, createdAt: 400, seq: 4, role: 'agent', isSidechain: false, content: [{ type: 'text', text: 'working', uuid: 'a4', parentUUID: null }] } as NormalizedMessage,
+            ]);
+            const b = filled.messages.find((m) => m.kind === 'user-text' && m.text === 'B');
+            expect(b ?? { inputState: 'queued' }).toMatchObject({ inputState: 'queued' });
+        });
+
         it('derives the same consumed state when history includes user input and turn-end together', () => {
             const state = createReducer();
             const result = reducer(state, [{

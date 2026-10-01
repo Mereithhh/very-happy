@@ -365,3 +365,30 @@ describe('B-520 live suggestions', () => {
         expect(active(buildChatRows([user('u1', 1), withOptions('a1', 2), user('u2', 3)], false))).toEqual([]);
     });
 });
+
+describe('B-519 opensTurn time evidence', () => {
+    const notify = (id: string, createdAt: number): Message => ({
+        kind: 'user-text', id, localId: null, createdAt, text: '<task-notification>\n<summary>done</summary>\n</task-notification>',
+    });
+    it('a notification long after a turn that ended on a tool call opens a new turn', () => {
+        const rows = buildChatRows([user('u1', 1), tool('denied', 2), notify('n1', 2 + 10 * 60_000), finalAgent('a2', 3 + 10 * 60_000, 1)], false);
+        expect(rows.map((row) => row.key)).toEqual(['u1', 'activity-u1', 'n1', 'a2']);
+    });
+    it('currentTurnMessages agrees with the transcript about mid-turn notifications', async () => {
+        const { currentTurnMessages } = await import('@/sync/agentLiveness');
+        const messages = [user('u1', 1), tool('spawn', 2), notify('n1', 20), tool('read', 21)];
+        expect(currentTurnMessages(messages).map((m) => m.id)).toEqual(['spawn', 'n1', 'read']);
+    });
+});
+
+describe('B-519 back-to-back notifications (Owner screenshot 2026-10-02 02:36)', () => {
+    const notify = (id: string, createdAt: number): Message => ({
+        kind: 'user-text', id, localId: null, createdAt, text: `<task-notification>\n<status>failed</status>\n<summary>${id}</summary>\n</task-notification>`,
+    });
+    it('shows both notification lines, then the answer; only that answer offers suggestions', () => {
+        const opts = (id: string, t: number): Message => ({ kind: 'agent-text', id, localId: null, createdAt: t, text: `${id}\n<options>\n<option>x</option>\n</options>` });
+        const rows = buildChatRows([user('u1', 1), opts('a1', 2), notify('n1', 300_000), notify('n2', 300_001), opts('a2', 305_000)], false);
+        expect(rows.map((row) => row.key)).toEqual(['u1', 'a1', 'n1', 'n2', 'a2']);
+        expect(rows.filter((row) => row.type === 'message' && row.optionsActive).map((row) => row.key)).toEqual(['a2']);
+    });
+});

@@ -29,6 +29,7 @@
  * preserveSessionActivityFromStore），所以冷启动只能接受最多约 2s 的
  * 「先当作不活、keepAlive 到了再转活」——方向是安全的（宁可晚亮，不可长亮）。
  */
+import { opensTurn } from '@/screens/session/chatTurns';
 import type { Message } from './typesMessage';
 
 export type AgentLivenessInput = {
@@ -56,12 +57,13 @@ export function isAgentWorkLive(input: AgentLivenessInput): boolean {
 }
 
 /**
- * 当前 turn = 最后一条用户消息之后的所有消息（入参须为**时间升序**）。
- * 没有任何用户消息时整段都算当前 turn。
+ * 当前 turn = 最后一条**开启 turn** 的用户消息之后的所有消息（入参须为**时间升序**）。
+ * 没有任何用户消息时整段都算当前 turn。B-519：轮中注入的后台任务通知不开启新 turn
+ * （判据与 transcript 共用 `chatTurns.opensTurn`），否则通知之前起的子代理会从活性里漏掉。
  */
 export function currentTurnMessages(messages: Message[]): Message[] {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
-        if (messages[i].kind === 'user-text') return messages.slice(i + 1);
+        if (messages[i].kind === 'user-text' && opensTurn(messages, i)) return messages.slice(i + 1);
     }
     return messages;
 }

@@ -1599,11 +1599,16 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
  * while being answered (cancel said "already sent") and was finally placed
  * after its own replies.
  *
- * Server order settles it: if nothing at all lies between the last turn-end
- * before the input and the input itself, no turn was running when it landed.
- * Undecidable (no earlier turn-end loaded, or no seq yet) → keep the queued
- * semantics. Once decided the verdict is cached: history pages are seq-
- * contiguous, so a backfill cannot insert anything into that gap.
+ * Idle on landing, by server order, needs all of:
+ *  - the record right after the last turn-end before it is this send (only
+ *    this send's own attachments may sit between) — seq-contiguous, so a
+ *    record not yet received (live delivery can run ahead of a gap) can never
+ *    hide in there;
+ *  - that turn-end did not itself release a queued input — the agent starts
+ *    on that one at once, before producing anything.
+ * Undecidable (no earlier turn-end loaded, no seq yet, a gap) → keep the
+ * queued semantics and decide again on the next reduce. A decided verdict is
+ * cached: nothing can be inserted into a contiguous range.
  */
 function landedOnIdleAgent(state: ReducerState, message: ReducerMessage, queuedAt: number): boolean {
     if (message.landedIdle !== undefined) return message.landedIdle;
@@ -1614,16 +1619,26 @@ function landedOnIdleAgent(state: ReducerState, message: ReducerMessage, queuedA
         if (typeof end.seq === 'number' && end.seq < seq && end.seq > previousEnd) previousEnd = end.seq;
     }
     if (previousEnd === -Infinity) return false;
-    let idle = true;
+    let between = 0;
     for (const other of state.messages.values()) {
         if (other === message || typeof other.seq !== 'number' || other.seq <= previousEnd || other.seq >= seq) continue;
-        // The same send's attachments travel with it.
-        if (other.tool?.name === 'file' && other.meta?.queuedAt === queuedAt) continue;
-        idle = false;
-        break;
+        if (other.tool?.name === 'file' && other.meta?.queuedAt === queuedAt) { between += 1; continue; }
+        message.landedIdle = false;
+        return false;
     }
-    message.landedIdle = idle;
-    return idle;
+    if (between !== seq - previousEnd - 1) return false; // a gap: undecided
+    for (const other of state.messages.values()) {
+        const otherQueuedAt = other.meta?.queuedAt;
+        if (other === message || typeof other.seq !== 'number' || other.seq >= previousEnd || typeof otherQueuedAt !== 'number') continue;
+        if (other.role !== 'user' && other.tool?.name !== 'file') continue;
+        if (landedOnIdleAgent(state, other, otherQueuedAt)) continue;
+        if (firstTurnEndForQueuedInput({ queuedAt: otherQueuedAt, seq: other.seq }, state.turnEnds)?.seq === previousEnd) {
+            message.landedIdle = false;
+            return false;
+        }
+    }
+    message.landedIdle = true;
+    return true;
 }
 
 function reconcileQueuedInput(state: ReducerState, message: ReducerMessage, changed: Set<string>): void {
