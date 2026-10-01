@@ -21,7 +21,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.oct02.title',
     summaryKey: 'changelog.releases.oct02.summary',
-    itemKeys: ['changelog.releases.oct02.background', 'changelog.releases.oct02.order', 'changelog.releases.oct02.queue', 'changelog.releases.oct02.suggestions', 'changelog.releases.oct02.priority', 'changelog.releases.oct02.date'],
+    itemKeys: ['changelog.releases.oct02.background', 'changelog.releases.oct02.order', 'changelog.releases.oct02.queue', 'changelog.releases.oct02.suggestions', 'changelog.releases.oct02.priority', 'changelog.releases.oct02.date', 'changelog.releases.oct02.chime'],
   },
   {
     id: '2026-09-30-optimistic-new-session',
