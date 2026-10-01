@@ -1626,7 +1626,14 @@ function landedOnIdleAgent(state: ReducerState, message: ReducerMessage, queuedA
         message.landedIdle = false;
         return false;
     }
-    if (between !== seq - previousEnd - 1) return false; // a gap: undecided
+    if (between !== seq - previousEnd - 1) {
+        // A gap: undecided while live delivery may still fill it. Once a later
+        // turn-end exists the range is history — settle on the old semantics
+        // instead of rescanning every reduce (some records never become
+        // messages, so such a gap can be permanent).
+        if (state.turnEnds.some((end) => typeof end.seq === 'number' && end.seq > seq)) message.landedIdle = false;
+        return false;
+    }
     for (const other of state.messages.values()) {
         const otherQueuedAt = other.meta?.queuedAt;
         if (other === message || typeof other.seq !== 'number' || other.seq >= previousEnd || typeof otherQueuedAt !== 'number') continue;
