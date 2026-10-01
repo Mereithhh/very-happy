@@ -2039,6 +2039,12 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct02a: {
+                title: 'Stopping a background task always answers',
+                summary: 'The × on a background task now waits for the session to confirm the stop and tells you when it could not, instead of spinning silently.',
+                stop: 'A stop that fails or cannot reach the session shows why within about 15 seconds; the chip disappears once the task has ended.',
+                route: 'Session controls no longer hang for minutes on a regional relay link that went dead: the link is checked first and the request takes the direct route instead.',
+            },
             oct02: {
                 title: 'Background tasks you can see, a conversation that stays in order',
                 summary: 'Work that keeps running after a reply — background commands, monitors, background sub-agents — now shows above the input box with a stop button, so a session marked running in the sidebar always shows what is running. Messages and sub-agent updates no longer land out of order.',

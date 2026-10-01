@@ -190,6 +190,18 @@ describe('ApiSocket regional session fast lane', () => {
         apiSocket.disconnect();
     });
 
+    it('B-527: a relay that fails its ping is skipped before the session RPC is sent', async () => {
+        const { apiSocket } = await load();
+        state.relayAck.mockImplementation(async (event: string) => {
+            if (event === 'relay-ping') throw new Error('operation has timed out');
+            throw new Error('must not be sent on a dead relay');
+        });
+        state.centralAck.mockResolvedValueOnce({ ok: true, result: 'central-cipher' });
+        await expect(apiSocket.sessionRPC('s1', 'claude-runtime-control', {})).resolves.toBe('plain:central-cipher');
+        expect(state.relayAck.mock.calls.map((call) => call[0])).not.toContain('session-rpc-call');
+        apiSocket.disconnect();
+    });
+
     it('uses central RPC when relay proves that an old runner is unavailable', async () => {
         const { apiSocket } = await load();
         state.relayAck.mockImplementation(async (event: string) => {

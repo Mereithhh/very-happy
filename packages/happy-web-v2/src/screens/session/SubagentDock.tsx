@@ -10,7 +10,7 @@ import { buildSubagentSummary, isSubagentToolName } from './subagentSummary';
 import { presentedSubagentStatus, userAbortedAt } from './subagentAbort';
 import { openSubagentPanel } from './subagentPanelState';
 import { backgroundTaskEntries, formatTaskAge, type BackgroundTaskEntry } from './backgroundTaskDock';
-import { claudeRuntimeRequest } from './claudeRuntimeControl';
+import { stopBackgroundTask } from './claudeRuntimeControl';
 import './subagent.css';
 
 /** Uses the same lifecycle as the transcript; an async launch stub is not completion. */
@@ -98,7 +98,9 @@ function BackgroundTaskChip({ sessionId, task, now, canStop, messages }: {
         if (stopping) return;
         setStopping(true);
         try {
-            await claudeRuntimeRequest(sessionId, { action: 'stop-task', taskId: task.id });
+            // Resolves once the runner reports the stop done; the chip then
+            // leaves with the next heartbeat (STOP_TIMEOUT_MS re-arms the button).
+            await stopBackgroundTask(sessionId, task.id);
         } catch (e) {
             setStopping(false);
             toast.error(t('session.chat.stopBackgroundTaskFailed', { error: e instanceof Error ? e.message : String(e) }));

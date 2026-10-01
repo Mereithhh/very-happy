@@ -6,8 +6,8 @@ export type RuntimeStatus = {
     queryGeneration:number; active:boolean; busy:boolean; isRunning:boolean; canRewind:boolean;
     tasks:RuntimeTask[]; checkpoints:{id:string;title:string}[]; operations:RuntimeOperation[];
 };
-export async function claudeRuntimeRequest(sessionId:string, request:Record<string,unknown>): Promise<any> {
-    const response=await apiSocket.sessionRPC<any,Record<string,unknown>>(sessionId,'claude-runtime-control',request);
+export async function claudeRuntimeRequest(sessionId:string, request:Record<string,unknown>, opts?:{timeoutMs?:number}): Promise<any> {
+    const response=await apiSocket.sessionRPC<any,Record<string,unknown>>(sessionId,'claude-runtime-control',request,opts);
     if(!response || typeof response!=='object') throw Error('Invalid runtime response');
     if(response.error) throw Error(String(response.error));
     return response;
@@ -27,4 +27,28 @@ export function runtimeOutcome(operation:RuntimeOperation): {key:'done'|'nothing
         if(typeof result.skippedLinks==='number' && result.skippedLinks>0) return {key:'rewindPartial',skipped:result.skippedLinks};
     }
     return {key:'done'};
+}
+
+/**
+ * B-527: stop one background task and wait for the runner's verdict. The RPC
+ * only returns an operation id; the stop itself runs afterwards and may fail.
+ * Short timeouts: this is a button press, not a long job — an unreachable
+ * runner must say so in seconds, not after the 5-minute session-RPC default.
+ */
+export async function stopBackgroundTask(sessionId:string, taskId:string, opts:{timeoutMs?:number;pollMs?:number;sleep?:(ms:number)=>Promise<void>}={}): Promise<void> {
+    const timeoutMs=opts.timeoutMs ?? 15_000, pollMs=opts.pollMs ?? 700;
+    const sleep=opts.sleep ?? ((ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms)));
+    const deadline=Date.now()+timeoutMs;
+    const started=await claudeRuntimeRequest(sessionId,{action:'stop-task',taskId},{timeoutMs});
+    if(typeof started.operationId!=='string') throw Error('Missing operation id');
+    while(Date.now()<deadline) {
+        await sleep(pollMs);
+        const op=await claudeRuntimeRequest(sessionId,{action:'operation',operationId:started.operationId},{timeoutMs:Math.max(1000,deadline-Date.now())}).catch((e:unknown)=>{
+            if(e instanceof Error && /Operation not found/.test(e.message)) return {status:'running'};
+            throw e;
+        });
+        if(op.status==='completed') return;
+        if(op.status==='failed') throw Error(typeof op.error==='string' ? op.error : 'Stop failed');
+    }
+    throw Error('Timed out waiting for the session to stop the task');
 }
