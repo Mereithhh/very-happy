@@ -39,6 +39,7 @@ import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { isTranscriptVisibleInput } from './discardedInput';
 import { SendFailedActions, SendingIndicator, useSendSpinnerResetAll } from './SendStatusView';
 import { turnSendStatus } from './sendStatusModel';
+import { latestOwnSendKey, onChatFollowRequest } from './chatFollowRequest';
 
 export function ChatList({
     sessionId,
@@ -201,6 +202,24 @@ export function ChatList({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rows.length, lastContentLen]);
 
+    // B-520: sending is joining the live end — override a scrolled-back view.
+    // atBottom=true also arms the growth/row followers for the reply.
+    const followNow = () => {
+        atBottomRef.current = true;
+        awaySnapshotRef.current = null;
+        setShowJump(false);
+        scrollToBottom(false);
+    };
+    const ownSendKey = useMemo(() => latestOwnSendKey(messages), [messages]);
+    const lastOwnSendKeyRef = useRef(ownSendKey);
+    useLayoutEffect(() => {
+        if (ownSendKey !== null && ownSendKey !== lastOwnSendKeyRef.current) followNow();
+        lastOwnSendKeyRef.current = ownSendKey;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ownSendKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => onChatFollowRequest(sessionId, followNow), [sessionId]);
+
     // B-099 ①：工具输出原地增长（同一条 tool-call 的 stdout 变长、running→done
     // 展开）时 rows.length 与 lastContentLen 都不变，上面的 effect 不触发——用
     // ResizeObserver 盯内容 wrapper（.cl-inner）补住：高度增长且仍贴底才跟随
@@ -351,6 +370,7 @@ export function ChatList({
                                 live={row.live}
                                 sessionId={sessionId}
                                 durationSeconds={row.durationSeconds}
+                                trigger={row.trigger}
                             />
                         ) : row.type === 'toolgroup' ? (
                             <ToolGroupView
@@ -368,6 +388,7 @@ export function ChatList({
                                 sessionId={sessionId}
                                 thinkingDurationMs={row.thinkingDurationMs}
                                 attachments={row.attachments}
+                                optionsActive={row.optionsActive}
                             />
                         ),
                     )}

@@ -41,10 +41,26 @@ describe('groupRowsByTag (B-091)', () => {
       row('d'),
     ]);
     expect(keysOf(groups)).toEqual([
-      ['Priority', ['b']],
+      ['P0', ['b']], // B-522: legacy `priority` is P0
       ['deploy', ['a']],
       ['infra', ['c']],
       [null, ['d']],
+    ]);
+  });
+
+  it('B-522: priority groups P0 → P1 → P2 first, legacy and Pn spellings merged', () => {
+    const groups = groupRowsByTag([
+      row('a', ['P2']),
+      row('b', ['deploy']),
+      row('c', ['p1']),
+      row('d', ['priority']),
+      row('e', ['P0']),
+    ]);
+    expect(keysOf(groups)).toEqual([
+      ['P0', ['d', 'e']],
+      ['P1', ['c']],
+      ['P2', ['a']],
+      ['deploy', ['b']],
     ]);
   });
 

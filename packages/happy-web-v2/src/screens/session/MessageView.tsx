@@ -24,6 +24,7 @@ import { attachmentsFromFileEvents, attachmentsFromManifest, UserAttachments, ty
 import { discardedReasonKey } from './discardedInput';
 import { MessageActions } from './MessageActions';
 import { MessageTime } from './MessageTime';
+import { requestChatFollow } from './chatFollowRequest';
 import { SendFailedActions, SendingIndicator, useSendSpinnerReset } from './SendStatusView';
 import { turnSendStatus } from './sendStatusModel';
 import './message.css';
@@ -145,12 +146,14 @@ function AgentText({
     showActions = true,
     sessionId,
     thinkingDurationMs,
+    optionsActive = false,
 }: {
     message: AgentTextMessage;
     showMeta: boolean;
     showActions?: boolean;
     sessionId: string;
     thinkingDurationMs?: number;
+    optionsActive?: boolean;
 }) {
     const { t } = useTranslation();
     // Live-thinking auto-expand (B-101): while the session is working and no
@@ -184,9 +187,16 @@ function AgentText({
     // `session.thinking` flip (twice per turn). With an inline arrow, every one
     // of those re-parsed EVERY agent message in the transcript — measured at
     // +1 full parse per re-render, ~300ms for 100 messages on desktop.
+    // B-520: a picked suggestion disappears at once — the user message it
+    // sends may take an encryption round before it lands in the transcript
+    // (which is what retires `optionsActive`).
+    const [picked, setPicked] = useState(false);
     const onOption = useCallback((option: string) => {
-        void sync.sendMessage(sessionId, option, { source: 'chat' });
+        setPicked(true);
+        requestChatFollow(sessionId);
+        void sync.sendMessage(sessionId, option, { source: 'chat' }).catch(() => setPicked(false));
     }, [sessionId]);
+    const offerOptions = optionsActive && !picked;
 
     if (message.isThinking) {
         const content = stripThinkingWrapper(stripHarnessBlocks(message.text));
@@ -221,7 +231,7 @@ function AgentText({
         <div className="msg msg--agent">
             {prose && (
                 <div className="msg-agent-text vh-copyhost">
-                    <Markdown text={prose} onOption={onOption} />
+                    <Markdown text={prose} onOption={offerOptions ? onOption : undefined} hideOptions={!offerOptions} />
                     {showActions && <MessageActions text={text} sessionId={sessionId} createdAt={message.createdAt} />}
                 </div>
             )}
@@ -400,6 +410,7 @@ export const MessageView = memo(function MessageView({
     sessionId,
     thinkingDurationMs,
     attachments,
+    optionsActive = false,
 }: {
     message: Message;
     showMeta: boolean;
@@ -408,6 +419,8 @@ export const MessageView = memo(function MessageView({
     thinkingDurationMs?: number;
     /** B-355: `file` events the user sent with this message. */
     attachments?: ToolCallMessage[];
+    /** B-520: this answer's `<options>` are the live suggestions (see chatTurns). */
+    optionsActive?: boolean;
 }) {
     switch (message.kind) {
         case 'user-text':
@@ -420,6 +433,7 @@ export const MessageView = memo(function MessageView({
                     showActions={showActions}
                     sessionId={sessionId}
                     thinkingDurationMs={thinkingDurationMs}
+                    optionsActive={optionsActive}
                 />
             );
         case 'agent-event':
@@ -440,5 +454,6 @@ export const MessageView = memo(function MessageView({
     && prev.showMeta === next.showMeta
     && prev.sessionId === next.sessionId
     && prev.thinkingDurationMs === next.thinkingDurationMs
+    && prev.optionsActive === next.optionsActive
     && sameTools(prev.attachments, next.attachments)
 ));

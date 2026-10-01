@@ -16,3 +16,19 @@ export function previewPinTarget(request: FsPreviewRequest, location: { pathname
     }
     return null;
 }
+
+/**
+ * B-526: a preview Claude pushed (`open_preview`) takes you to the session it
+ * came from (Owner 2026-10-02: 「preview 弹出来的时候，自动跳转回 preview 的那个
+ * 对话」) — the preview is about that conversation, and reading it over an
+ * unrelated page left no way to answer it. Only pushes follow; a preview you
+ * opened yourself never moves you. Already there, or the session is not in
+ * this client's list → stay.
+ */
+export function previewFollowTarget(request: FsPreviewRequest, pathname: string, sessionKnown: (id: string) => boolean): string | null {
+    if (!request.fromPush || !request.sessionId || !sessionKnown(request.sessionId)) return null;
+    const match = pathname.match(/^\/session\/([^/]+)\/?$/);
+    let current: string | undefined;
+    try { current = match ? decodeURIComponent(match[1]) : undefined; } catch { current = undefined; }
+    return current === request.sessionId ? null : `/session/${encodeURIComponent(request.sessionId)}`;
+}

@@ -16,6 +16,8 @@ export type LeafRow =
         thinkingDurationMs?: number;
         /** B-355: the `file` events the user sent WITH this message. */
         attachments?: ToolCallMessage[];
+        /** B-520: this answer's `<options>` are still the live suggestions. */
+        optionsActive?: boolean;
     }
     | { type: 'toolgroup'; key: string; tools: ToolCallMessage[] };
 
@@ -25,6 +27,8 @@ export type ChatRow = LeafRow | {
     messages: Message[];
     live: boolean;
     durationSeconds?: number;
+    /** B-519: the task notification that started this turn (shown as the header). */
+    trigger?: Message;
 };
 
 /**
@@ -227,6 +231,46 @@ export function buildLeafRows(
     return rows;
 }
 
+export function isTaskNotification(message: Message): boolean {
+    return message.kind === 'user-text' && parseTaskNotification(message.displayText ?? message.text) !== null;
+}
+
+/** A mid-turn notification is injected at the next step, right after a tool finished. */
+export const MID_TURN_NOTIFICATION_WINDOW_MS = 60_000;
+
+/**
+ * B-519: does `messages[index]` start a new turn? Every real user message
+ * does. A background task's notification does only when the running turn had
+ * already finished. The SDK also delivers notifications MID-turn, at a tool
+ * boundary; splitting there cut one piece of work into two half-turns with the
+ * notification wedged between them (the first half folded as if it were done,
+ * its answer under someone else's header). Such a notification stays inside
+ * the turn instead.
+ *
+ * Mid-turn = the last thing before it is a tool call (or another notification)
+ * that settled within MID_TURN_NOTIFICATION_WINDOW_MS of it. An answer before
+ * it, or a long silence (a turn that ended on a tool call, e.g. a denied
+ * permission), means the turn was over. Turn-end events are not in the
+ * message list, so time is the evidence. `sync/agentLiveness.currentTurnMessages`
+ * uses this same predicate — the transcript and liveness must cut turns alike.
+ */
+export function opensTurn(messages: readonly Message[], index: number, turnStart = 0): boolean {
+    const message = messages[index];
+    if (message.kind !== 'user-text') return false;
+    if (!isTaskNotification(message)) return true;
+    for (let j = index - 1; j >= turnStart; j--) {
+        const previous = messages[j];
+        if (!isRenderableActivityMessage(previous)) continue;
+        if (previous.kind === 'agent-text') return !previous.isThinking;
+        const settledAt = previous.kind === 'tool-call' ? previous.tool.completedAt ?? previous.createdAt : previous.createdAt;
+        const recent = message.createdAt - settledAt <= MID_TURN_NOTIFICATION_WINDOW_MS;
+        if (previous.kind === 'tool-call' || isTaskNotification(previous)) return !recent;
+        return true;
+    }
+    // Nothing since the turn opened (e.g. two notifications back to back).
+    return true;
+}
+
 /**
  * Group each user turn's intermediate agent work into one activity row.
  *
@@ -254,12 +298,18 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean): Cha
             continue;
         }
 
-        rows.push(...buildLeafRows([message], finalAgentId, true, true, userAttachments));
         const turnStart = i + 1;
         let turnEnd = turnStart;
-        while (turnEnd < messages.length && messages[turnEnd].kind !== 'user-text') turnEnd++;
+        while (turnEnd < messages.length && !opensTurn(messages, turnEnd, turnStart)) turnEnd++;
         const turnMessages = messages.slice(turnStart, turnEnd);
         const live = sessionLive && turnEnd === messages.length;
+        // B-519: a turn started by a background task's notification reads as
+        // the agent following up on that task — its activity row carries the
+        // notification as its header instead of a free-floating line above a
+        // bare 「耗时」 row.
+        const trigger = isTaskNotification(message) ? message : undefined;
+        const turnRowsStart = rows.length;
+        if (!trigger) rows.push(...buildLeafRows([message], finalAgentId, true, true, userAttachments));
 
         if (live) {
             const activity = turnMessages.filter(isRenderableActivityMessage);
@@ -269,6 +319,7 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean): Cha
                     key: `activity-${message.id}`,
                     messages: activity,
                     live: true,
+                    ...(trigger ? { trigger } : {}),
                 });
                 rows.push(...askAnswerRows(turnMessages));
             }
@@ -296,6 +347,7 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean): Cha
                         messages: activity,
                         live: false,
                         durationSeconds: activityDurationSeconds(renderable),
+                        ...(trigger ? { trigger } : {}),
                     });
                     rows.push(...askAnswerRows(turnMessages));
                 }
@@ -315,14 +367,51 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean): Cha
                         messages: activity,
                         live: false,
                         durationSeconds,
+                        ...(trigger ? { trigger } : {}),
                     });
                     rows.push(...askAnswerRows(activity));
                 }
                 rows.push(...buildLeafRows(turnMessages.slice(finalIndex), finalAgentId));
             }
         }
+        // Back-to-back notifications with no work between them: an activity
+        // row would fold the later ones away behind a 「0 秒」 header — show
+        // them all as lines instead.
+        if (trigger) {
+            const index = rows.findIndex((row, k) => k >= turnRowsStart && row.type === 'activity' && row.trigger === trigger);
+            const row = rows[index];
+            if (row?.type === 'activity' && !row.live && row.messages.every(isTaskNotification)) {
+                rows.splice(index, 1, ...buildLeafRows(row.messages, finalAgentId));
+            }
+        }
+        // No activity row took the notification as its header (a follow-up
+        // with no work): keep it as its own line, where it always was.
+        if (trigger && !rows.slice(turnRowsStart).some((row) => row.type === 'activity' && row.trigger === trigger)) {
+            rows.splice(turnRowsStart, 0, ...buildLeafRows([message], finalAgentId, true, true, userAttachments));
+        }
         i = turnEnd;
     }
 
+    const optionsId = liveSuggestionsMessageId(messages, finalAgentId);
+    if (optionsId) {
+        const index = rows.findIndex((row) => row.type === 'message' && row.message.id === optionsId);
+        if (index >= 0) rows[index] = { ...(rows[index] as Extract<LeafRow, { type: 'message' }>), optionsActive: true };
+    }
     return rows;
+}
+
+/**
+ * B-520: suggestions (`<options>`) belong to the latest answer only, and only
+ * until anything user-side follows it — a picked suggestion, a typed reply or
+ * a task notification all supersede them. Older answers' options are dropped,
+ * not left as stale clickable buttons in history.
+ */
+export function liveSuggestionsMessageId(messages: Message[], finalAgentId: string | null): string | null {
+    if (!finalAgentId) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i];
+        if (message.id === finalAgentId) return message.id;
+        if (message.kind === 'user-text') return null;
+    }
+    return null;
 }

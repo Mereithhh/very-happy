@@ -18,7 +18,7 @@ import { restoreClosedTerminal } from '@/app/rowActions';
 import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, confirmKillAttachedTerminal, saveRowRename, collectAllTags, restoreSessionOrAlert } from '@/app/rowActions';
 import { canOfferRestore, useRestoreState } from '@/app/sessionRestore';
 import { sessionUpdateTitleTags } from '@/sync/ops';
-import { hasPriorityTag, togglePriorityTag, sortPriorityFirst } from '@/utils/tags';
+import { priorityLevel, setPriorityLevel, sortByPriority, PRIORITY_LEVELS, priorityTag, type PriorityLevel } from '@/utils/tags';
 import { visibleSidebarSessions } from './sidebarRows';
 import { groupRowsByTag } from './sidebarTagGroups';
 import { groupRowsByWorkspace, resolveSidebarGroupMode, type SidebarGroupMode, type SidebarWorkspaceGroup } from './sidebarWorkspaceGroups';
@@ -462,7 +462,7 @@ export function Sidebar() {
     // as a stable partition (B-091) — an explicit user marker outranks both
     // the activity sort and the manual arrangement. (状态 gets the same
     // effect via the board's comparator; 归档 stays plain history.)
-    const priorityFirst = (list: Row[]) => sortPriorityFirst(list, (r) => hasPriorityTag(r.tags));
+    const priorityFirst = (list: Row[]) => sortByPriority(list, (r) => priorityLevel(r.tags));
     // recent mode: one mixed sequence by last activity, hold applied.
     if (sortMode === 'recent') return applyReorderHold(heldKeys, priorityFirst(sortRowsByRecent(rows)));
     if ((orderSetting ?? []).length > 0) return priorityFirst(sortRowsByManualOrder(rows, orderSetting!));
@@ -1294,9 +1294,9 @@ function rowMenuItems(opts: {
   onRename: () => void;
   onMove?: (dir: -1 | 1) => void;
   onArchiveOrClose: () => void;
-  /** B-091 priority marker; undefined hides it on old terminal daemons. */
-  isPriority?: boolean;
-  onTogglePriority?: () => void;
+  /** B-091/B-522 priority level (null = none); `onSetPriority` undefined hides it on old terminal daemons. */
+  priorityLevel?: PriorityLevel | null;
+  onSetPriority?: (level: PriorityLevel | null) => void;
   /** B-265/recoverability: inactive session (archived OR offline) → restore in
    *  place (undefined hides it). */
   onRestore?: () => void;
@@ -1319,13 +1319,20 @@ function rowMenuItems(opts: {
   if (opts.onRestore) {
     items.push({ key: 'restore', label: t('restore.restore'), icon: RotateCcw, disabled: opts.restoreDisabled, onSelect: opts.onRestore });
   }
-  if (opts.onTogglePriority) {
-    items.push({
-      key: 'priority',
-      label: t(opts.isPriority ? 'sidebar.unmarkPriority' : 'sidebar.markPriority'),
-      icon: Flag,
-      onSelect: opts.onTogglePriority,
-    });
+  if (opts.onSetPriority) {
+    // B-522: P0/P1/P2 as checkable items; the current one unchecks (clears).
+    const setPriority = opts.onSetPriority;
+    for (const level of PRIORITY_LEVELS) {
+      const current = opts.priorityLevel === level;
+      items.push({
+        key: `priority-${level}`,
+        label: t('sidebar.markPriorityLevel', { level: priorityTag(level) }),
+        icon: Flag,
+        checked: current,
+        separatorBefore: level === 0,
+        onSelect: () => setPriority(current ? null : level),
+      });
+    }
   }
   if (opts.onMove) {
     // Full-list adjacent swap — the reorder path for coarse pointers (no
@@ -1483,18 +1490,18 @@ function SidebarRow({
     restoreDisabled: restoreBlockedOffline,
     canArchiveOrClose,
     // B-091 标记优先/取消优先 — writes metadata.tags through the same
-    // update-metadata op as the rename dialog (togglePriorityTag prepends the
+    // update-metadata op as the rename dialog (setPriorityLevel prepends the
     // tag, so the row also lands in the priority group when grouping is on).
-    isPriority: hasPriorityTag(row.tags),
-    onTogglePriority: isTerminal
+    priorityLevel: priorityLevel(row.tags),
+    onSetPriority: isTerminal
       ? row.tags === undefined
         ? undefined
-        : () =>
+        : (level) =>
             useTerminalSessions
               .getState()
-              .update(row.terminalId!, { tags: togglePriorityTag(row.tags) })
-      : () => {
-          void sessionUpdateTitleTags(s!.id, { tags: togglePriorityTag(s!.metadata?.tags) }).catch(
+              .update(row.terminalId!, { tags: setPriorityLevel(row.tags, level) })
+      : (level) => {
+          void sessionUpdateTitleTags(s!.id, { tags: setPriorityLevel(s!.metadata?.tags, level) }).catch(
             () => {},
           );
         },

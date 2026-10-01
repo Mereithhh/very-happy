@@ -44,10 +44,22 @@ export function messageTimestamp(createdAt: number | null | undefined, locale?: 
     return zone ? `${date} ${clock} (${zone})` : `${date} ${clock}`;
 }
 
-/** Always-visible message action time; the complete date remains available in the hover hint. */
-export function compactMessageTime(createdAt: number | null | undefined, locale?: string, timeZone?: string): string | undefined {
+/** Older than this, the visible label carries its date (Owner 2026-10-02). */
+export const MESSAGE_DATE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Always-visible message action time; the complete date remains available in
+ * the hover hint. With `now`, a message more than a day old reads
+ * `YYYY-MM-DD HH:mm` — a bare clock time on a days-old message is ambiguous.
+ * The date is fixed ISO order in every locale (the label is machine-layer mono).
+ */
+export function compactMessageTime(createdAt: number | null | undefined, locale?: string, timeZone?: string, now?: number): string | undefined {
     if (!validTimestamp(createdAt)) return undefined;
-    return timeFormatter('compact', locale, timeZone).format(createdAt);
+    const clock = timeFormatter('compact', locale, timeZone).format(createdAt);
+    if (now === undefined || now - createdAt < MESSAGE_DATE_AFTER_MS) return clock;
+    const parts = timeFormatter('date', 'en-US', timeZone).formatToParts(createdAt);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
+    return `${part('year')}-${part('month')}-${part('day')} ${clock}`;
 }
 
 /** A collapsed tool group represents several messages, so show their real range. */

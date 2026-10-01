@@ -151,6 +151,17 @@ type ReducerMessage = {
     cancelReason?: string;
     displaySeq?: number | null;
     displayAt?: number;
+    /**
+     * B-521: verdict of `landedOnIdleAgent`, cached once decidable — true means
+     * the input was stamped queued but the agent was idle when it landed.
+     */
+    landedIdle?: boolean;
+    /**
+     * B-519: a sub-agent status row's NEWEST event (seq/time). The row itself
+     * stays anchored at its earliest event; only these advance.
+     */
+    lifecycleSeq?: number | null;
+    lifecycleAt?: number;
     text: string | null;
     isThinking?: boolean;
     event: AgentEvent | null;
@@ -464,7 +475,7 @@ function subagentLifecycleFor(state: ReducerState, tool: ToolCall): ToolCallMess
         ...(event.progress ? { progress: event.progress } : {}),
         ...(event.result ? { result: event.result } : {}),
         ...(event.usage ? { usage: event.usage } : {}),
-        updatedAt: eventMessage.createdAt,
+        updatedAt: eventMessage.lifecycleAt ?? eventMessage.createdAt,
     };
 }
 type ToolCallMessageLifecycle = NonNullable<Extract<Message, { kind: 'tool-call' }>['subagent']>;
@@ -1401,9 +1412,11 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
                 const existing = existingId ? state.messages.get(existingId) : undefined;
                 if (existing?.event?.type === 'subagent') {
                     const existingEvent = existing.event;
-                    const isNewer = msg.seq != null && existing.seq != null
-                        ? msg.seq >= existing.seq
-                        : msg.createdAt >= existing.createdAt;
+                    const latestSeq = existing.lifecycleSeq ?? existing.seq;
+                    const latestAt = existing.lifecycleAt ?? existing.createdAt;
+                    const isNewer = msg.seq != null && latestSeq != null
+                        ? msg.seq >= latestSeq
+                        : msg.createdAt >= latestAt;
                     const incoming = msg.content;
                     // B-260-P2: the NEWER event decides status (a resumed
                     // sub-agent legitimately goes completed → running again);
@@ -1422,10 +1435,27 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
                         usage: pick(existingEvent.usage, incoming.usage),
                         status: isNewer ? incoming.status : existingEvent.status,
                     };
+                    // B-519: the row is a status, not an event stream — it
+                    // stays where the sub-agent started (an earlier event from
+                    // a backfill page may move it EARLIER, never later). It
+                    // used to jump to every newer event's seq, so a background
+                    // sub-agent's progress dragged its row into whatever
+                    // conversation was happening now, re-sorting every few
+                    // seconds.
                     if (isNewer) {
-                        existing.createdAt = msg.createdAt;
-                        existing.seq = msg.seq;
+                        existing.lifecycleSeq = msg.seq;
+                        existing.lifecycleAt = msg.createdAt;
                         existing.meta = msg.meta;
+                    } else {
+                        existing.lifecycleSeq = latestSeq;
+                        existing.lifecycleAt = latestAt;
+                        const earlier = msg.seq != null && existing.seq != null
+                            ? msg.seq < existing.seq
+                            : msg.createdAt < existing.createdAt;
+                        if (earlier) {
+                            existing.createdAt = msg.createdAt;
+                            existing.seq = msg.seq;
+                        }
                     }
                     changed.add(existing.id);
                     markSubagentCardChanged(state, incoming.id, changed);
@@ -1558,6 +1588,66 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
 }
 
 
+/**
+ * B-521: was this "queued" input actually consumed right away?
+ *
+ * `queuedAt` is stamped by the sender from ITS view of liveness, which lags:
+ * a suggestion tapped the moment an answer finishes (mobile, the thinking
+ * lease still fresh) is stamped queued although the turn had already ended.
+ * The agent then answers it at once, and the first turn-end after it — the
+ * one releasing it — is its OWN reply's: the message sat in the queue dock
+ * while being answered (cancel said "already sent") and was finally placed
+ * after its own replies.
+ *
+ * Idle on landing, by server order, needs all of:
+ *  - the record right after the last turn-end before it is this send (only
+ *    this send's own attachments may sit between) — seq-contiguous, so a
+ *    record not yet received (live delivery can run ahead of a gap) can never
+ *    hide in there;
+ *  - that turn-end did not itself release a queued input — the agent starts
+ *    on that one at once, before producing anything.
+ * Undecidable (no earlier turn-end loaded, no seq yet, a gap) → keep the
+ * queued semantics and decide again on the next reduce. A decided verdict is
+ * cached: nothing can be inserted into a contiguous range.
+ */
+function landedOnIdleAgent(state: ReducerState, message: ReducerMessage, queuedAt: number): boolean {
+    if (message.landedIdle !== undefined) return message.landedIdle;
+    const seq = message.seq;
+    if (typeof seq !== 'number') return false;
+    let previousEnd = -Infinity;
+    for (const end of state.turnEnds) {
+        if (typeof end.seq === 'number' && end.seq < seq && end.seq > previousEnd) previousEnd = end.seq;
+    }
+    if (previousEnd === -Infinity) return false;
+    let between = 0;
+    for (const other of state.messages.values()) {
+        if (other === message || typeof other.seq !== 'number' || other.seq <= previousEnd || other.seq >= seq) continue;
+        if (other.tool?.name === 'file' && other.meta?.queuedAt === queuedAt) { between += 1; continue; }
+        message.landedIdle = false;
+        return false;
+    }
+    if (between !== seq - previousEnd - 1) {
+        // A gap: undecided while live delivery may still fill it. Once a later
+        // turn-end exists the range is history — settle on the old semantics
+        // instead of rescanning every reduce (some records never become
+        // messages, so such a gap can be permanent).
+        if (state.turnEnds.some((end) => typeof end.seq === 'number' && end.seq > seq)) message.landedIdle = false;
+        return false;
+    }
+    for (const other of state.messages.values()) {
+        const otherQueuedAt = other.meta?.queuedAt;
+        if (other === message || typeof other.seq !== 'number' || other.seq >= previousEnd || typeof otherQueuedAt !== 'number') continue;
+        if (other.role !== 'user' && other.tool?.name !== 'file') continue;
+        if (landedOnIdleAgent(state, other, otherQueuedAt)) continue;
+        if (firstTurnEndForQueuedInput({ queuedAt: otherQueuedAt, seq: other.seq }, state.turnEnds)?.seq === previousEnd) {
+            message.landedIdle = false;
+            return false;
+        }
+    }
+    message.landedIdle = true;
+    return true;
+}
+
 function reconcileQueuedInput(state: ReducerState, message: ReducerMessage, changed: Set<string>): void {
     const queuedAt = message.meta?.queuedAt;
     const isInputItem = message.role === 'user' || message.tool?.name === 'file';
@@ -1565,13 +1655,15 @@ function reconcileQueuedInput(state: ReducerState, message: ReducerMessage, chan
     // B-513: an unconfirmed input stays in the queue dock. Releasing it by
     // timestamp would move it into the transcript before the server has it.
     const unconfirmed = !!message.localId && state.sendStates.has(message.localId);
-    const boundary = unconfirmed ? undefined : firstTurnEndForQueuedInput(
+    // B-521: consumed on landing — in the transcript at its own seq, no boundary.
+    const landedIdle = !unconfirmed && landedOnIdleAgent(state, message, queuedAt);
+    const boundary = unconfirmed || landedIdle ? undefined : firstTurnEndForQueuedInput(
         { queuedAt, seq: message.seq },
         state.turnEnds,
     );
     const nextInputState = message.localId && state.canceledQueuedLocalKeys.has(message.localId)
         ? 'canceled'
-        : boundary ? undefined : 'queued';
+        : boundary || landedIdle ? undefined : 'queued';
     const nextCancelReason = nextInputState === 'canceled' && message.localId
         ? state.canceledQueuedReasons.get(message.localId)
         : undefined;

@@ -54,14 +54,14 @@ describe('persistent message action row', () => {
         act(() => root.render(<MessageActions text="original" sessionId="parent" userMessage={message} createdAt={CREATED_AT} />));
         const time = host.querySelector('time');
         expect(time?.closest('.msg-actions')).not.toBeNull();
-        expect(time?.textContent).toBe(compactMessageTime(CREATED_AT, 'en'));
+        expect(time?.textContent).toBe(compactMessageTime(CREATED_AT, 'en', undefined, Date.now()));
         expect(time?.getAttribute('datetime')).toBe(new Date(CREATED_AT).toISOString());
         expect(time?.title).toBe(messageTimestamp(CREATED_AT, 'en'));
     });
 
     it('falls back to the user message creation time when no explicit time is supplied', () => {
         render({ ...message, createdAt: CREATED_AT });
-        expect(host.querySelector('time')?.textContent).toBe(compactMessageTime(CREATED_AT, 'en'));
+        expect(host.querySelector('time')?.textContent).toBe(compactMessageTime(CREATED_AT, 'en', undefined, Date.now()));
         expect(host.querySelector('time')?.title).toBe(messageTimestamp(CREATED_AT, 'en'));
     });
 
@@ -73,7 +73,7 @@ describe('persistent message action row', () => {
 
     it('renders only the time for an attachment-only message instead of copying or quoting empty text', () => {
         act(() => root.render(<MessageActions text="" sessionId="parent" userMessage={{ ...message, createdAt: CREATED_AT }} hasAttachments />));
-        expect(host.querySelector('time')?.textContent).toBe(compactMessageTime(CREATED_AT, 'en'));
+        expect(host.querySelector('time')?.textContent).toBe(compactMessageTime(CREATED_AT, 'en', undefined, Date.now()));
         expect(host.querySelectorAll('.msg-actions button')).toHaveLength(0);
     });
 

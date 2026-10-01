@@ -14,6 +14,7 @@ import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
 import { applySendStateUpdate, createReducer, reducer, ReducerState, type SendStateUpdate } from "./reducer/reducer";
 import { Message } from "./typesMessage";
+import { currentRunningTool } from "./runningTool";
 import { compareMessagesNewestFirst, sortIncomingBySeq } from "./messageOrder";
 import { claimLiveStreamKeys } from '@/sync/liveStreamStore';
 import { streamKeysOf } from '@/sync/liveStream';
@@ -1770,16 +1771,7 @@ export function useSessionRunningTool(sessionId: string): { name: string; starte
         if (!session) return null;
         const cached = runningToolCache.get(session.messages);
         if (cached !== undefined) return cached;
-        let best: { name: string; startedAt: number } | null = null;
-        for (const message of session.messages) {
-            if (message.kind !== 'tool-call') continue;
-            const tool = message.tool;
-            if (tool.state !== 'running') continue;
-            const startedAt = tool.startedAt ?? tool.createdAt;
-            if (!best || startedAt > best.startedAt) {
-                best = { name: tool.name, startedAt };
-            }
-        }
+        const best = currentRunningTool(session.messages);
         runningToolCache.set(session.messages, best);
         return best;
     }));

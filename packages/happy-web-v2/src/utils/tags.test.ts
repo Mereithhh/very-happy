@@ -9,6 +9,9 @@ import {
   isPriorityTag,
   hasPriorityTag,
   togglePriorityTag,
+  priorityLevel,
+  setPriorityLevel,
+  sortByPriority,
   sortPriorityFirst,
 } from './tags';
 
@@ -64,15 +67,16 @@ describe('priority tag (B-091)', () => {
   it('matches the convention tag case-insensitively', () => {
     expect(isPriorityTag(PRIORITY_TAG)).toBe(true);
     expect(isPriorityTag('Priority')).toBe(true);
-    expect(isPriorityTag('p0')).toBe(false);
+    expect(isPriorityTag('p0')).toBe(true); // B-522 levels
+    expect(isPriorityTag('p3')).toBe(false);
     expect(hasPriorityTag(['deploy', 'PRIORITY'])).toBe(true);
     expect(hasPriorityTag(['deploy'])).toBe(false);
     expect(hasPriorityTag(undefined)).toBe(false);
   });
 
   it('togglePriorityTag prepends when absent (first tag = grouping tag)', () => {
-    expect(togglePriorityTag(['deploy'])).toEqual([PRIORITY_TAG, 'deploy']);
-    expect(togglePriorityTag(undefined)).toEqual([PRIORITY_TAG]);
+    expect(togglePriorityTag(['deploy'])).toEqual(['P0', 'deploy']);
+    expect(togglePriorityTag(undefined)).toEqual(['P0']);
   });
 
   it('togglePriorityTag strips every case variant when present', () => {
@@ -103,5 +107,26 @@ describe('sortPriorityFirst', () => {
     expect(sortPriorityFirst(none, (r) => r.priority)).toBe(none);
     const all = [item('a', true), item('b', true)];
     expect(sortPriorityFirst(all, (r) => r.priority)).toBe(all);
+  });
+});
+
+describe('priority levels (B-522)', () => {
+  it('reads P0/P1/P2 case-insensitively; legacy `priority` is P0; the highest wins', () => {
+    expect(priorityLevel(['P2'])).toBe(2);
+    expect(priorityLevel(['deploy', 'p1'])).toBe(1);
+    expect(priorityLevel(['priority'])).toBe(0);
+    expect(priorityLevel(['P2', 'P1'])).toBe(1);
+    expect(priorityLevel(['deploy'])).toBeNull();
+  });
+  it('setPriorityLevel replaces every priority spelling and puts the new level first', () => {
+    expect(setPriorityLevel(['deploy', 'priority', 'p2'], 1)).toEqual(['P1', 'deploy']);
+    expect(setPriorityLevel(['P0', 'deploy'], null)).toEqual(['deploy']);
+    expect(setPriorityLevel(undefined, 2)).toEqual(['P2']);
+  });
+  it('sortByPriority bands P0, P1, P2, rest — stable within each band', () => {
+    const rows = [{ k: 'a', l: null }, { k: 'b', l: 2 }, { k: 'c', l: 0 }, { k: 'd', l: 2 }, { k: 'e', l: 1 }];
+    expect(sortByPriority(rows, (r) => r.l).map((r) => r.k)).toEqual(['c', 'e', 'b', 'd', 'a']);
+    const sorted = [{ l: 0 }, { l: 1 }, { l: null }];
+    expect(sortByPriority(sorted, (r) => r.l)).toBe(sorted);
   });
 });
