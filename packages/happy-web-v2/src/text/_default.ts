@@ -2039,6 +2039,11 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct03a: {
+                title: 'Context meter on 1M models',
+                summary: 'The context meter no longer shows a 1M-context session as “100% of 200k”.',
+                window: 'The meter sizes the window by the model of the latest reply or the one currently running, never an older one, and a context already past 200k is measured against 1M.',
+            },
             oct03: {
                 title: 'Edit and delete messages in place',
                 summary: 'Editing a message now replaces it and everything after it, like Claude Desktop — and the agent forgets the old version too.',

@@ -22,7 +22,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentState } from '@/sync/terminalAgentState';
 import { TERMINAL_FACE_NAVIGATION_OPTIONS, withTerminalViewOverride } from '@/sync/terminalViewPref';
 import { useTranslation } from '@/i18n/useTranslation';
-import { contextPercentOf, contextWindowFor } from './contextWindow';
+import { contextPercentOf, contextWindowFor, windowHolding } from './contextWindow';
 import { formatTokens } from './format';
 import './mirror.css';
 
@@ -46,7 +46,7 @@ export function MirrorBanner({ sessionId }: { sessionId: string }) {
     const contextSize = usage?.contextSize ?? 0;
     // 与 AgentInput 的 meter 同源（B-135）：分母按真实模型，模型未知只给 token 数
     const percentUsed = contextSize > 0
-        ? contextPercentOf(contextSize, contextWindowFor(usage?.model))
+        ? contextPercentOf(contextSize, windowHolding(contextWindowFor(usage?.model), contextSize))
         : null;
     const contextTokens = contextSize > 0 ? formatTokens(contextSize) : null;
 

@@ -39,6 +39,16 @@ export function contextWindowFor(model: string | null | undefined): number | nul
 }
 
 /**
+ * A context that already holds more tokens than the window cannot be in that
+ * window: the model id behind it was stale or a 200k guess (2026-10-03, Owner on
+ * Opus 5.5: "已用 100% · 294.6k / 200.0k"). Claude's only larger window is 1M.
+ */
+export function windowHolding(window: number | null, tokens: number | null | undefined): number | null {
+    if (window === null || typeof tokens !== 'number' || tokens <= window) return window;
+    return window < LONG_CONTEXT_WINDOW ? LONG_CONTEXT_WINDOW : window;
+}
+
+/**
  * 已用百分比（0..100，clamp）。窗口未知时返回 null——调用方不要退回一个写死的分母，
  * 那正是 B-135 的成因。
  */
@@ -61,5 +71,6 @@ export function composerContextUsage(
     runningModel?: string | null,
 ) {
     if (isPi) return { tokens: runtime?.tokens ?? null, window: runtime?.contextWindow ?? null, estimated: true };
-    return { tokens: message?.contextSize ?? null, window: contextWindowFor(message?.model ?? runningModel), estimated: false };
+    const tokens = message?.contextSize ?? null;
+    return { tokens, window: windowHolding(contextWindowFor(message?.model ?? runningModel), tokens), estimated: false };
 }

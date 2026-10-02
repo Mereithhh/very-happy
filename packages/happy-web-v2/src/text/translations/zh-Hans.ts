@@ -2160,6 +2160,11 @@ export const zhHans: TranslationStructure = {
                 band: '「需要我决策」每一行最左是一个圆形勾选（触屏 44px）即「知道了」，头部有「全部已读」，看板上带太长会自己滚动、不再把泳道顶出屏幕。',
                 cli: '`very-happy auto ack --all [--name <自动化>]` 在终端一次确认全部。需要更新 CLI；网页与服务端部分已上线。',
             },
+            oct03a: {
+                title: '1M 模型的上下文用量',
+                summary: '1M 上下文的会话不再显示成「200k 已用 100%」。',
+                window: '上下文窗口按最新回复或当前运行的模型计算，不再沿用旧消息的模型；已经超过 200k 的上下文按 1M 计。',
+            },
             oct03: {
                 title: '就地编辑和删除消息',
                 summary: '编辑消息会替换它和之后的对话，和 Claude Desktop 一样——Agent 也会忘掉旧版本。',

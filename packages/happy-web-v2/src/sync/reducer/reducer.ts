@@ -1604,8 +1604,11 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
             cacheCreation: usage.cache_creation_input_tokens || 0,
             cacheRead: usage.cache_read_input_tokens || 0,
             contextSize: (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0) + usage.input_tokens,
-            // 模型缺失时保留上一次已知的：单条消息漏了不该让分母退回默认值
-            model: model ?? state.latestUsage?.model,
+            // Only THIS message's model: carrying an earlier one forward sized a
+            // later context by a model that was no longer running (294.6k /
+            // 200k on Opus 5.5). No model → the composer falls back to the
+            // running model (metadata.currentModelCode).
+            model,
             timestamp: timestamp
         };
     }
