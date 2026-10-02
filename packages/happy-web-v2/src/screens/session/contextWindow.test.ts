@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     composerContextUsage,
+    windowHolding,
     DEFAULT_CONTEXT_WINDOW,
     LONG_CONTEXT_WINDOW,
     contextPercentOf,
@@ -87,4 +88,10 @@ it('uses pi runtime occupancy, including unknown after compaction, without falli
     expect(composerContextUsage(false, undefined, {contextSize:1234}, 'claude-sonnet-5')).toMatchObject({window:200000});
     expect(composerContextUsage(false, undefined, {contextSize:1234,model:'claude-sonnet-5'}, 'claude-opus-5[1m]')).toMatchObject({window:200000});
     expect(composerContextUsage(false, undefined, {contextSize:1234}, null)).toMatchObject({window:null});
+    // A context larger than the guessed window cannot fit it: 1M, not "100% of 200k".
+    expect(composerContextUsage(false, undefined, {contextSize:294_600,model:'claude-opus-5'}, 'claude-opus-5-5')).toMatchObject({window:1000000});
+    expect(composerContextUsage(false, undefined, {contextSize:294_600}, 'claude-sonnet-5')).toMatchObject({window:1000000});
+    expect(windowHolding(200000, 150000)).toBe(200000);
+    expect(windowHolding(null, 5)).toBeNull();
+    expect(windowHolding(1000000, 1200000)).toBe(1000000);
 });

@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-03-context-window-1m',
+    date: '2026-10-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct03a.title',
+    summaryKey: 'changelog.releases.oct03a.summary',
+    itemKeys: ['changelog.releases.oct03a.window'],
+  },
+  {
     id: '2026-10-03-edit-delete-in-place',
     cliVersion: '0.2.162',
     date: '2026-10-03',
