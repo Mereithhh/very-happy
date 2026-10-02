@@ -1,27 +1,30 @@
-import { useId, useRef, useState, type ReactNode } from 'react';
-import { Pencil, Quote, X } from 'lucide-react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Pencil, Quote, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { Button } from '@/ui/Button';
-import { toast } from '@/ui/Toast';
-import { sync } from '@/sync/sync';
+import { useSession, useSetting } from '@/sync/storage';
 import type { UserTextMessage } from '@/sync/typesMessage';
+import { useImeGuard } from '@/utils/ime';
 import { quoteMessage } from './messageQuote';
 import { messageActionsCopy } from './messageActionsCopy';
 import { MessageTime } from './MessageTime';
 import { SendFailedActions, SendingIndicator } from './SendStatusView';
 import type { TurnSendStatus } from './sendStatusModel';
+import { RewindFailure, rewindConversation } from './conversationRewind';
 import './messageActions.css';
 
 /**
- * MessageActions — copy / quote / edit row under a message, plus the inline
- * editor the Edit button opens.
+ * MessageActions — copy / quote / edit / delete row under a message, plus the
+ * in-place editor and delete confirmation.
  *
- * Edit is a plain in-place resend: prefill the editor with the message, and on
- * submit send the edited text as a NEW message in THIS session — the same path
- * as typing in the composer. No branch/fork, no rewind-point selection, no
- * navigation. (The earlier flow forked a new session at a rewind point; the
- * owner asked for the simple resend instead.)
+ * B-528: edit and delete REPLACE history like Claude Desktop / Codex. Edit
+ * turns the bubble itself into an editor; sending it drops this prompt and
+ * everything after it — from the screen AND from the agent's memory — and
+ * sends the new text as the next prompt. Delete drops just this prompt's turn
+ * (the prompt and its replies). Both stop a running turn first. File changes
+ * are not rolled back. Claude sessions only: the runner rewinds its own
+ * transcript (conversationRewind.ts).
  */
 export function MessageActions({ text, sessionId, userMessage, createdAt = userMessage?.createdAt, send = null, children }: {
     text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; hasAttachments?: boolean;
@@ -31,89 +34,133 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
 }) {
     const { t, lang } = useTranslation();
     const copy = messageActionsCopy(lang);
-    const editId = useId();
+    const session = useSession(sessionId);
+    const enterToSend = useSetting('agentInputEnterToSend');
+    const ime = useImeGuard();
+    const hintId = useId();
     const editButton = useRef<HTMLButtonElement>(null);
-    const [open, setOpen] = useState(false);
+    const deleteButton = useRef<HTMLButtonElement>(null);
+    const textarea = useRef<HTMLTextAreaElement>(null);
+    const [mode, setMode] = useState<'idle' | 'edit' | 'delete'>('idle');
     const [edited, setEdited] = useState(text);
     const [busy, setBusy] = useState(false);
     const busyRef = useRef(false);
     const [error, setError] = useState<string | null>(null);
 
-    const closeEditor = () => {
+    // Only a Claude runner can rewind its own conversation; mirrors are read-only.
+    const flavor = session?.metadata?.flavor ?? 'claude';
+    const canRewind = !!userMessage && !send && flavor === 'claude' && typeof userMessage.seq === 'number';
+
+    // Grow with the text, like the bubble it replaces.
+    useLayoutEffect(() => {
+        const el = textarea.current;
+        if (!el || mode !== 'edit') return;
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+    }, [edited, mode]);
+
+    const close = (focus: 'edit' | 'delete') => {
         if (busyRef.current) return;
-        setOpen(false);
+        setMode('idle');
         setError(null);
-        requestAnimationFrame(() => editButton.current?.focus());
+        requestAnimationFrame(() => (focus === 'edit' ? editButton : deleteButton).current?.focus());
     };
     const openEditor = () => {
         setEdited(text);
         setError(null);
-        setOpen(true);
+        setMode('edit');
+        requestAnimationFrame(() => {
+            const el = textarea.current;
+            if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+        });
     };
-    const submit = async () => {
-        if (busyRef.current || !edited.trim()) return;
+    const failureText = (cause: unknown) => {
+        if (cause instanceof RewindFailure) {
+            if (cause.kind === 'unsupported') return copy.unsupported;
+            if (cause.kind === 'unsent') return copy.unsent;
+            if (cause.kind === 'send') return copy.sendFailed;
+            if (cause.kind === 'record') return copy.recordFailed;
+            return `${copy.failed} ${cause.message}`;
+        }
+        return copy.failed;
+    };
+    const run = async (request: { action: 'delete' } | { action: 'edit'; text: string }) => {
+        if (busyRef.current || !userMessage) return;
         busyRef.current = true;
         setBusy(true);
         setError(null);
         try {
-            const receipt = await sync.sendMessage(sessionId, edited, { source: 'chat' });
-            if (!receipt) throw new Error(copy.failed);
-            toast.success(copy.queued);
-            setOpen(false);
-            requestAnimationFrame(() => editButton.current?.focus());
+            await rewindConversation(sessionId, userMessage, request);
+            busyRef.current = false;
+            setMode('idle');
         } catch (cause) {
-            setError(cause instanceof Error && cause.message ? cause.message : copy.failed);
+            setError(failureText(cause));
         } finally {
             busyRef.current = false;
             setBusy(false);
         }
     };
+    const submitEdit = () => {
+        const next = edited.trim();
+        if (!next) return;
+        if (next === text.trim()) { close('edit'); return; }
+        void run({ action: 'edit', text: edited });
+    };
 
-    return <>
-        {!open && children}
-        {!open && <div className="msg-actions" role={text ? 'group' : undefined} aria-label={text ? copy.actions : undefined}>
-            {text && <div className="msg-actions-items">
-                <CopyButton text={text} size={14} label={t('message.copyMessage')} />
-                {!send && <button type="button" className="msg-action" aria-label={copy.quote} title={copy.quote} onClick={() => quoteMessage(sessionId, text)}><Quote size={14} aria-hidden /></button>}
-                {userMessage && !send && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
-            </div>}
-            {send?.state === 'failed'
-                ? <SendFailedActions sessionId={sessionId} status={send} />
-                : <>
-                    {send?.state === 'sending' && <SendingIndicator localId={userMessage?.localId ?? send.localId} />}
-                    <MessageTime createdAt={createdAt} />
-                </>}
-        </div>}
-        {userMessage && open && <section className="msg-edit-inline" aria-labelledby={editId} onKeyDown={event => {
-            if (event.key === 'Escape' && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); closeEditor(); }
+    if (userMessage && mode === 'edit') {
+        return <section className="msg-edit-inline" aria-label={copy.edit} onKeyDown={event => {
+            if (event.key === 'Escape' && !ime.isGuarded(event)) { event.preventDefault(); close('edit'); }
         }}>
-            <div className="msg-edit-head">
-                <h2 id={editId}>{copy.title}</h2>
-                <button className="msg-action" type="button" disabled={busy} aria-label={copy.cancel} onClick={closeEditor}><X size={18} /></button>
-            </div>
-            <label className="msg-edit-label">
-                <span className="sr-only">{copy.text}</span>
-                <textarea
-                    autoFocus
-                    value={edited}
-                    disabled={busy}
-                    onChange={(event) => setEdited(event.target.value)}
-                    onKeyDown={event => {
-                        // ⌘/Ctrl+Enter resends; plain Enter keeps a newline so
-                        // multi-line edits are not cut off mid-thought.
-                        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) {
-                            event.preventDefault();
-                            void submit();
-                        }
-                    }}
-                />
-            </label>
-            <p className="msg-edit-description">{copy.description}</p>
+            <textarea
+                ref={textarea}
+                rows={1}
+                value={edited}
+                disabled={busy}
+                aria-label={copy.text}
+                aria-describedby={hintId}
+                onChange={(event) => setEdited(event.target.value)}
+                onCompositionStart={ime.onCompositionStart}
+                onCompositionEnd={ime.onCompositionEnd}
+                onKeyDown={event => {
+                    if (event.key !== 'Enter' || event.shiftKey || ime.isGuarded(event)) return;
+                    if (enterToSend || event.metaKey || event.ctrlKey) { event.preventDefault(); submitEdit(); }
+                }}
+            />
             {error && <p role="alert" className="msg-edit-error">{error}</p>}
             <div className="msg-edit-footer">
-                <Button onClick={closeEditor} disabled={busy}>{copy.cancel}</Button>
-                <Button variant="primary" loading={busy} disabled={!edited.trim()} onClick={() => void submit()}>{busy ? copy.busy : copy.submit}</Button>
+                <p id={hintId} className="msg-edit-hint">{copy.editHint}</p>
+                <Button size="sm" onClick={() => close('edit')} disabled={busy}>{copy.cancel}</Button>
+                <Button size="sm" variant="primary" loading={busy} disabled={!edited.trim()} onClick={submitEdit}>{copy.submit}</Button>
             </div>
-        </section>}
+        </section>;
+    }
+
+    return <>
+        {children}
+        {mode === 'delete' && userMessage
+            ? <div className="msg-delete-confirm" role="group" aria-label={copy.deleteTitle} onKeyDown={event => {
+                if (event.key === 'Escape') { event.preventDefault(); close('delete'); }
+            }}>
+                <p className="msg-delete-text"><strong>{copy.deleteTitle}</strong> {copy.deleteHint}</p>
+                {error && <p role="alert" className="msg-edit-error">{error}</p>}
+                <div className="msg-edit-footer">
+                    <Button size="sm" onClick={() => close('delete')} disabled={busy} autoFocus>{copy.cancel}</Button>
+                    <Button size="sm" variant="danger" loading={busy} onClick={() => void run({ action: 'delete' })}>{copy.delete}</Button>
+                </div>
+            </div>
+            : <div className="msg-actions" role={text ? 'group' : undefined} aria-label={text ? copy.actions : undefined}>
+                {text && <div className="msg-actions-items">
+                    <CopyButton text={text} size={14} label={t('message.copyMessage')} />
+                    {!send && <button type="button" className="msg-action" aria-label={copy.quote} title={copy.quote} onClick={() => quoteMessage(sessionId, text)}><Quote size={14} aria-hidden /></button>}
+                    {canRewind && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
+                    {canRewind && <button ref={deleteButton} type="button" className="msg-action" aria-label={copy.delete} title={copy.delete} onClick={() => { setError(null); setMode('delete'); }}><Trash2 size={14} aria-hidden /></button>}
+                </div>}
+                {send?.state === 'failed'
+                    ? <SendFailedActions sessionId={sessionId} status={send} />
+                    : <>
+                        {send?.state === 'sending' && <SendingIndicator localId={userMessage?.localId ?? send.localId} />}
+                        <MessageTime createdAt={createdAt} />
+                    </>}
+            </div>}
     </>;
 }

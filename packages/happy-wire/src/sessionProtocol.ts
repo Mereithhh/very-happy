@@ -158,6 +158,19 @@ export const sessionQueueCancelEventSchema = z.object({
   reason: z.string().min(1).optional(),
 });
 
+/**
+ * B-528: hide the conversation range [fromSeq, toSeq) after the agent rewound
+ * (in-place edit / delete of a user prompt). `toSeq` absent = up to this
+ * tombstone's own seq. Role `user`, like queue-cancel. Old clients fail to
+ * parse it and keep showing the range — display-only, never data loss.
+ */
+export const sessionTranscriptDropEventSchema = z.object({
+  t: z.literal('transcript-drop'),
+  fromSeq: z.number().int().nonnegative(),
+  toSeq: z.number().int().nonnegative().optional(),
+  reason: z.string().min(1).optional(),
+});
+
 export const sessionEventSchema = z.discriminatedUnion('t', [
   sessionTextEventSchema,
   sessionServiceMessageEventSchema,
@@ -170,6 +183,7 @@ export const sessionEventSchema = z.discriminatedUnion('t', [
   sessionStopEventSchema,
   sessionProgressEventSchema,
   sessionQueueCancelEventSchema,
+  sessionTranscriptDropEventSchema,
 ]);
 
 export type SessionEvent = z.infer<typeof sessionEventSchema>;

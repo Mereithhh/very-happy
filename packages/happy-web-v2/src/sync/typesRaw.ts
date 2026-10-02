@@ -70,6 +70,13 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
     // B-332: who destroyed it — absent on web-originated tombstones (the user
     // pressed cancel). Plain string, never an enum (铁律 14).
     reason: z.string().min(1).optional(),
+}), z.object({
+    // B-528: hide the conversation range [fromSeq, toSeq) — toSeq absent means
+    // "up to this tombstone's own seq". Written after the agent rewound.
+    type: z.literal('transcript-drop'),
+    fromSeq: z.number().int().nonnegative(),
+    toSeq: z.number().int().nonnegative().optional(),
+    reason: z.string().min(1).optional(),
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 
@@ -176,6 +183,13 @@ const sessionQueueCancelEventSchema = z.object({
     reason: z.string().min(1).optional(),
 });
 
+const sessionTranscriptDropEventSchema = z.object({
+    t: z.literal('transcript-drop'),
+    fromSeq: z.number().int().nonnegative(),
+    toSeq: z.number().int().nonnegative().optional(),
+    reason: z.string().min(1).optional(),
+});
+
 const sessionEventSchema = z.discriminatedUnion('t', [
     sessionTextEventSchema,
     sessionServiceMessageEventSchema,
@@ -187,6 +201,7 @@ const sessionEventSchema = z.discriminatedUnion('t', [
     sessionTurnEndEventSchema,
     sessionStopEventSchema,
     sessionQueueCancelEventSchema,
+    sessionTranscriptDropEventSchema,
     sessionProgressEventSchema,
 ]);
 
@@ -231,6 +246,7 @@ const sessionEnvelopeSchema = z.object({
     }
 });
 type SessionEnvelope = z.infer<typeof sessionEnvelopeSchema>;
+export type SessionEventPayload = SessionEnvelope['ev'];
 
 const rawTextContentSchema = z.object({
     type: z.literal('text'),
@@ -671,6 +687,23 @@ function normalizeSessionEnvelope(
             content: {
                 type: 'queue-cancel',
                 targetLocalKeys: envelope.ev.targetLocalKeys,
+                ...(envelope.ev.reason ? { reason: envelope.ev.reason } : {}),
+            },
+            meta,
+        } satisfies NormalizedMessage;
+    }
+
+    if (envelope.ev.t === 'transcript-drop') {
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'event',
+            isSidechain: false,
+            content: {
+                type: 'transcript-drop',
+                fromSeq: envelope.ev.fromSeq,
+                ...(typeof envelope.ev.toSeq === 'number' ? { toSeq: envelope.ev.toSeq } : {}),
                 ...(envelope.ev.reason ? { reason: envelope.ev.reason } : {}),
             },
             meta,

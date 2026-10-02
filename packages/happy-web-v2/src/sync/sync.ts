@@ -34,7 +34,7 @@ import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { buildOutboundUserRecord } from './outboundUserRecord';
 import { applyPromptQueueUpdate } from './promptQueue';
-import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
+import { NormalizedMessage, normalizeRawMessage, RawRecord, type SessionEventPayload } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { migrateTerminalCommands } from './shortcutPresets';
 import { Profile, profileParse } from './profile';
@@ -1119,12 +1119,30 @@ class Sync {
 
     /** Persist an invisible queue-cancel tombstone after the CLI removed it. */
     async recordQueueCancellation(sessionId: string, targetLocalKeys: string[]): Promise<void> {
+        if (targetLocalKeys.length === 0) throw new Error('Session encryption unavailable');
+        await this.recordUserSessionEvent(sessionId, { t: 'queue-cancel', targetLocalKeys });
+    }
+
+    /**
+     * B-528: hide [fromSeq, toSeq) after the agent rewound its conversation
+     * (in-place edit / delete). `toSeq` omitted = up to this tombstone.
+     */
+    async recordTranscriptDrop(sessionId: string, drop: { fromSeq: number; toSeq?: number; reason: 'edit' | 'delete' }): Promise<void> {
+        await this.recordUserSessionEvent(sessionId, {
+            t: 'transcript-drop',
+            fromSeq: drop.fromSeq,
+            ...(typeof drop.toSeq === 'number' ? { toSeq: drop.toSeq } : {}),
+            reason: drop.reason,
+        });
+    }
+
+    private async recordUserSessionEvent(sessionId: string, ev: SessionEventPayload): Promise<void> {
         let encryption = this.encryption.getSessionEncryption(sessionId);
         if (!encryption) {
             await this.sessionsSync.awaitQueue();
             encryption = this.encryption.getSessionEncryption(sessionId);
         }
-        if (!encryption || targetLocalKeys.length === 0) {
+        if (!encryption) {
             throw new Error('Session encryption unavailable');
         }
 
@@ -1138,7 +1156,7 @@ class Sync {
                     id: randomUUID(),
                     time: now,
                     role: 'user',
-                    ev: { t: 'queue-cancel', targetLocalKeys },
+                    ev,
                 },
             },
         };

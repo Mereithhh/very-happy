@@ -60,10 +60,10 @@ export async function importCodexThread(opts: {
         });
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to import Codex thread ${opts.threadId}: ${reason}`);
+        throw failVisibly(opts.session, `Failed to import Codex thread ${opts.threadId}: ${reason}`);
     }
     if (!forked.threadId || forked.threadId === opts.threadId) {
-        throw new Error(`Failed to import Codex thread ${opts.threadId}: Codex did not create an independent copy`);
+        throw failVisibly(opts.session, `Failed to import Codex thread ${opts.threadId}: Codex did not create an independent copy`);
     }
 
     // Record the lineage before replaying: a crash mid-replay must still leave
@@ -89,7 +89,20 @@ export async function importCodexThread(opts: {
     opts.messageBuffer.addMessage(`Imported thread ${trimIdent(opts.threadId)} as ${trimIdent(forked.threadId)}`, 'status');
     opts.session.sendSessionEvent({
         type: 'message',
-        message: `Imported Codex thread ${opts.threadId} (continuing as ${forked.threadId})`,
+        // B-529: an empty fork used to look like "the content never loaded".
+        message: envelopes.length > 0
+            ? `Imported Codex thread ${opts.threadId} (continuing as ${forked.threadId})`
+            : `Imported Codex thread ${opts.threadId} (continuing as ${forked.threadId}), but Codex returned no history for it`,
     });
     return { threadId: forked.threadId, model: forked.model, replayed: envelopes.length };
+}
+
+/**
+ * B-529: the wrapper exits after a failed import, and the web used to get an
+ * empty, ended session with no word on why. Say it in the transcript first —
+ * runCodex flushes queued messages before the session dies.
+ */
+function failVisibly(session: ImportThreadSession, message: string): Error {
+    session.sendSessionEvent({ type: 'message', message });
+    return new Error(message);
 }

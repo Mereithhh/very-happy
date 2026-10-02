@@ -30,6 +30,8 @@ import { isClaudeEdeOnlySdkError, isClaudeInterruptSentinelContent } from './uti
 import { parseClaudePermissionMode, type ClaudeSdkPermissionMode } from './utils/permissionMode';
 import { LaunchModeGate } from './launchModeGate';
 import type { ClaudePrewarmLease } from './claudePrewarm';
+import { createConversationRewind } from './conversationRewind';
+import { getProjectPath } from './utils/path';
 
 interface PermissionsField {
     date: number;
@@ -185,6 +187,36 @@ export async function claudeRemoteLauncher(
         await turnSteering.steer();
     });
     session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When switch clicked
+
+    // B-528: in-place edit/delete of a user prompt. Each prompt is sent with
+    // the web message's localId as its transcript uuid (nextMessage below);
+    // the later ids of a batched prompt alias to the first.
+    const promptAliases = new Map<string, string>();
+    const promptUuidFor = (sourceIds: readonly string[] | undefined): string | undefined => {
+        const [first, ...rest] = sourceIds ?? [];
+        if (first) for (const id of rest) promptAliases.set(id, first);
+        if (promptAliases.size > 2000) promptAliases.delete(promptAliases.keys().next().value!);
+        return first;
+    };
+    // Set while a rewind relaunches the query: that abort is not the user's.
+    let silentRelaunch = false;
+    session.client.rpcHandlerManager.registerHandler('conversation-rewind', createConversationRewind({
+        claudeSessionId: () => session.sessionId,
+        projectDir: () => getProjectPath(session.path),
+        isThinking: () => session.thinking,
+        stopTurn: doAbort,
+        waitIdle: waitForThinkingToStop,
+        aliases: (sourceId) => {
+            const alias = promptAliases.get(sourceId);
+            return alias ? [alias] : [];
+        },
+        switchConversation: async (claudeSessionId) => {
+            if (claudeSessionId) session.onSessionFound(claudeSessionId);
+            else session.clearSessionId();
+            silentRelaunch = true;
+            await abort();
+        },
+    }));
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
     let livePermissionModeHandler: ((mode: ClaudeSdkPermissionMode) => Promise<ClaudeSdkPermissionMode>) | null = null;
@@ -419,6 +451,7 @@ export async function claudeRemoteLauncher(
     type ParkedMessage = {
         message: MessageParam['content'];
         mode: EnhancedMode;
+        uuid?: string;
     };
 
     try {
@@ -532,6 +565,7 @@ export async function claudeRemoteLauncher(
                                         ? appendStagedAttachmentsToPrompt(msg.message, parkedStaged)
                                         : msg.message,
                                     mode: msg.mode,
+                                    uuid: promptUuidFor(msg.sourceIds),
                                 });
                                 return null;
                             }
@@ -554,6 +588,7 @@ export async function claudeRemoteLauncher(
                                     message: withAttachments,
                                     mode: msg.mode,
                                     enqueuedAt: msg.enqueuedAt,
+                                    uuid: promptUuidFor(msg.sourceIds),
                                 };
                             }
 
@@ -562,6 +597,7 @@ export async function claudeRemoteLauncher(
                                 message: msg.message,
                                 mode: msg.mode,
                                 enqueuedAt: msg.enqueuedAt,
+                                uuid: promptUuidFor(msg.sourceIds),
                             }
                         }
 
@@ -698,7 +734,7 @@ export async function claudeRemoteLauncher(
                 // Consume one-time Claude flags after spawn
                 session.consumeOneTimeFlags();
                 
-                if (!exitReason && abortController.signal.aborted) {
+                if (!exitReason && abortController.signal.aborted && !silentRelaunch) {
                     session.client.closeClaudeSessionTurn('cancelled');
                     session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
@@ -758,6 +794,7 @@ export async function claudeRemoteLauncher(
 
                 // Reset abort controller and future
                 abortController = null;
+                silentRelaunch = false;
                 abortFuture?.resolve(undefined);
                 abortFuture = null;
                 logger.debug('[remote]: launch done');

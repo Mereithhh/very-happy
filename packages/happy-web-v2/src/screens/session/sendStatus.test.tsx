@@ -15,7 +15,7 @@ import { useSendSpinnerResetAll } from './SendStatusView';
 import { onComposerRestore } from './composerRestore';
 import { clearSendSpinner, SEND_SPINNER_DELAY_MS, sendSpinnerRemaining, turnSendStatus } from './sendStatusModel';
 
-const base = { kind: 'user-text', id: 'msg', localId: 'l1', text: 'hello', createdAt: Date.UTC(2026, 8, 30, 1, 2, 3) } satisfies UserTextMessage;
+const base = { kind: 'user-text', id: 'msg', localId: 'l1', seq: 7, text: 'hello', createdAt: Date.UTC(2026, 8, 30, 1, 2, 3) } satisfies UserTextMessage;
 
 describe('turnSendStatus', () => {
     it('failed beats sending across text and attachments', () => {
@@ -101,7 +101,7 @@ describe('MessageActions send states', () => {
 
     it('a confirmed message shows the normal actions again', () => {
         render(base);
-        expect(labels()).toEqual(['message.copyMessage', 'Quote', 'Edit']);
+        expect(labels()).toEqual(['message.copyMessage', 'Quote', 'Edit', 'Delete']);
         expect(host.querySelector('.msg-send-failed, .msg-sending')).toBeNull();
     });
 });

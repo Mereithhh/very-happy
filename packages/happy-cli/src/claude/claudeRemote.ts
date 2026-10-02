@@ -33,6 +33,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer); });
 }
 
+const PROMPT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Only a real UUID may become a transcript uuid; anything else keeps Claude's own. */
+function promptUuid(uuid: string | undefined): { uuid?: SDKUserMessage['uuid'] } {
+    return uuid && PROMPT_UUID_RE.test(uuid) ? { uuid: uuid as SDKUserMessage['uuid'] } : {};
+}
+
 export async function claudeRemote(opts: {
 
     // Fixed parameters
@@ -63,8 +69,11 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    /** `enqueuedAt` (optional) only feeds the B-515 timing log. */
-    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number } | null>,
+    /**
+     * `enqueuedAt` (optional) only feeds the B-515 timing log. `uuid` (B-528)
+     * becomes the prompt's transcript uuid so a web edit/delete can find it.
+     */
+    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode, enqueuedAt?: number, uuid?: string } | null>,
     onReady: (result?: SDKResultMessage) => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -389,6 +398,7 @@ export async function claudeRemote(opts: {
         type: 'user',
         parent_tool_use_id: null,
         origin: { kind: 'human' },
+        ...promptUuid(initial.uuid),
         message: {
             role: 'user',
             content: initial.message,
@@ -664,6 +674,7 @@ export async function claudeRemote(opts: {
                         type: 'user',
                         parent_tool_use_id: null,
                         origin: { kind: 'human' },
+                        ...promptUuid(next.uuid),
                         message: { role: 'user', content: next.message },
                     });
                 }).catch(() => {

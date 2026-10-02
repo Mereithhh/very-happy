@@ -32,6 +32,6 @@ describe('queued input UI wiring', () => {
         expect(chatList).toContain('sessionCancelQueuedMessage');
         expect(chatList).toContain('className="cl-queue-cancel"');
         expect(chatList).toContain('cancelingLocalKey === message.localId ? <Spinner');
-        expect(syncSource).toContain("ev: { t: 'queue-cancel', targetLocalKeys }");
+        expect(syncSource).toContain("recordUserSessionEvent(sessionId, { t: 'queue-cancel', targetLocalKeys })");
     });
 });
