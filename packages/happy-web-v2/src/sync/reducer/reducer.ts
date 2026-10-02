@@ -229,6 +229,12 @@ export type ReducerState = {
     turnEnds: TurnEndBoundary[];
     /** Durable queue-cancel tombstones; independent of history page order. */
     canceledQueuedLocalKeys: Set<string>;
+    /**
+     * B-528: conversation ranges hidden by `transcript-drop` tombstones, by
+     * tombstone id. `toSeq: null` = open-ended until the tombstone's own echo
+     * brings its seq (the optimistic local copy has none).
+     */
+    dropRanges: Map<string, { fromSeq: number; toSeq: number | null }>;
     /** B-332: tombstone reasons by localKey. Only CLI-originated tombstones carry one. */
     canceledQueuedReasons: Map<string, string>;
     /**
@@ -275,6 +281,7 @@ export function createReducer(): ReducerState {
         nextSortOrder: 0,
         turnEnds: [],
         canceledQueuedLocalKeys: new Set(),
+        dropRanges: new Map(),
         canceledQueuedReasons: new Map(),
         sendStates: new Map(),
         sendRestorable: new Set(),
@@ -508,6 +515,17 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
         }
     }
 
+    // B-528: transcript-drop ranges, before tracing and every dedupe — the
+    // echo of our own optimistic tombstone (same envelope id) is what closes
+    // its open-ended range with the server seq.
+    for (const msg of messages) {
+        if (msg.role !== 'event' || msg.content.type !== 'transcript-drop') continue;
+        const toSeq = msg.content.toSeq ?? (typeof msg.seq === 'number' ? msg.seq : null);
+        const previous = state.dropRanges.get(msg.id);
+        if (previous && previous.toSeq !== null && toSeq === null) continue;
+        state.dropRanges.set(msg.id, { fromSeq: msg.content.fromSeq, toSeq });
+    }
+
     // First, trace all messages to identify sidechains
     const tracedMessages = traceMessages(state.tracerState, messages);
 
@@ -528,6 +546,12 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
     const convertedEvents: { message: NormalizedMessage, event: AgentEvent }[] = [];
 
     for (const msg of nonSidechainMessages) {
+        // B-528: applied before tracing (above); never a visible row.
+        if (msg.role === 'event' && msg.content.type === 'transcript-drop') {
+            state.messageIds.set(msg.id, msg.id);
+            continue;
+        }
+
         // Check if we've already processed this message
         if (msg.role === 'user' && msg.localId && state.localIds.has(msg.localId)) {
             continue;
@@ -1888,4 +1912,17 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
     }
 
     return null;
+}
+
+/**
+ * B-528: true when a `transcript-drop` tombstone hides this message. Only
+ * server-ordered messages can be hidden — an optimistic message (no seq) is
+ * always newer than any tombstone the user could have written.
+ */
+export function isDroppedBySeq(state: Pick<ReducerState, 'dropRanges'>, seq: number | null | undefined): boolean {
+    if (typeof seq !== 'number' || state.dropRanges.size === 0) return false;
+    for (const range of state.dropRanges.values()) {
+        if (seq >= range.fromSeq && (range.toSeq === null || seq < range.toSeq)) return true;
+    }
+    return false;
 }

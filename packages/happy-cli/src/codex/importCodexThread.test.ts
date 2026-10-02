@@ -88,6 +88,18 @@ describe('importCodexThread (B-464)', () => {
         await expect(importCodexThread({ ...failing, threadId: source, cwd: '/tmp', mcpServers: {} }))
             .rejects.toThrow(`Failed to import Codex thread ${source}: thread not found`);
         expect(failing.session.sendSessionProtocolMessage).not.toHaveBeenCalled();
+        // B-529: the reason lands in the transcript before the wrapper exits.
+        expect(failing.session.sendSessionEvent).toHaveBeenCalledWith({
+            type: 'message', message: `Failed to import Codex thread ${source}: thread not found`,
+        });
+        expect(same.session.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: expect.stringMatching(/independent copy/) });
+    });
+
+    it('says so when Codex returns a fork with no history (B-529)', async () => {
+        const h = harness({ threadId: fork, model: 'gpt-5.4', thread: forkedThread([]) });
+        const result = await importCodexThread({ ...h, threadId: source, cwd: '/tmp', mcpServers: {} });
+        expect(result.replayed).toBe(0);
+        expect(h.session.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: expect.stringContaining('returned no history') });
     });
 
     it('is wired into runCodex before the fork backfill and only on a fresh spawn', () => {

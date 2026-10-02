@@ -175,12 +175,13 @@ function isHarnessUserText(text: string): boolean {
     return t.startsWith('# AGENTS.md instructions')
         || t.startsWith('<environment_context>')
         || t.startsWith('<user_instructions>')
-        || t.startsWith('<INSTRUCTIONS>');
+        || t.startsWith('<INSTRUCTIONS>')
+        || t.startsWith('<recommended_plugins>');
 }
 
 function stripHarnessBlocks(text: string): string {
     return text
-        .replace(/<(environment_context|user_instructions|INSTRUCTIONS|turn_aborted|system-reminder)>[\s\S]*?<\/\1>/g, ' ')
+        .replace(/<(environment_context|user_instructions|INSTRUCTIONS|turn_aborted|system-reminder|recommended_plugins)>[\s\S]*?<\/\1>/g, ' ')
         .replace(/^# AGENTS\.md instructions[^\n]*\n/m, ' ');
 }
 
@@ -195,6 +196,13 @@ function textFromUserContent(content: unknown): string | null {
         if ((type === 'input_text' || type === 'text') && typeof text === 'string') parts.push(text);
     }
     return parts.length > 0 ? parts.join('\n') : null;
+}
+
+/** `session_meta` of a thread Codex started for itself (guardian review, spawned sub-agent). */
+export function isCodexSubThread(meta: { thread_source?: unknown; source?: unknown }): boolean {
+    if (meta.thread_source === 'subagent') return true;
+    const source = meta.source;
+    return !!source && typeof source === 'object' && 'subagent' in source;
 }
 
 /**
@@ -226,6 +234,11 @@ export function parseCodexHistoryHead(
         const payload = parsed.payload;
 
         if (parsed.type === 'session_meta' && payload && typeof payload === 'object') {
+            // Codex's own sub-threads — the approval reviewer ("guardian", first
+            // prompt "The following is the Codex agent history…") and agents a
+            // thread spawned — are internal: their fork carries no turns and the
+            // import came up empty (Xu CHEN 2026-10-02). Only user threads.
+            if (isCodexSubThread(payload)) return null;
             sawMeta = true;
             if (typeof payload.id === 'string' && UUID_RE.test(payload.id)) id = payload.id.toLowerCase();
             if (typeof payload.cwd === 'string' && payload.cwd) cwd = payload.cwd;

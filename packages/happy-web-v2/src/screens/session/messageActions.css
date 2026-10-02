@@ -3,14 +3,7 @@
 .msg-time { display: inline-flex; align-items: center; min-height: 32px; padding-inline: var(--sp-1); color: var(--text-faint); font: var(--fs-12)/1.4 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .msg-action:hover, .msg-actions .vh-copy:hover { background: var(--bg-2); color: var(--text); }
 .msg-action:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
-.msg-edit-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
-.msg-edit-head h2 { margin: 0; font-size: var(--fs-16); }
-.msg-edit-description { color: var(--text-dim); font-size: var(--fs-13); line-height: 1.6; }
-.msg-edit-label { display: grid; gap: var(--sp-2); font-size: var(--fs-13); }
-.msg-edit-label textarea { resize: vertical; width: 100%; min-height: 160px; max-height: 40dvh; padding: var(--sp-3); font: 16px/1.55 var(--font-sans); background: var(--bg-0); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-md); }
-.msg-edit-label textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
 .msg-edit-error { color: var(--danger); overflow-wrap: anywhere; font-size: var(--fs-13); }
-.msg-edit-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
 /* B-473: the transcript's own hover time bubble. Fixed to the viewport (the
    scroll container clips) and inert, so it can never eat a click meant for the
    message under it. Above the chat, below modals/toasts. */
@@ -21,26 +14,15 @@
   .msg-action, .msg-actions .vh-copy, .msg-edit-footer .vh-btn, .msg-parent-link { min-height: 44px; min-width: 44px; }
   .msg-time { min-height: 44px; }
 }
-.msg-edit-points label { display: grid; gap: var(--sp-2); font-size: var(--fs-13); }
-.msg-edit-points select { width: 100%; min-width: 0; min-height: 44px; font-size: 16px; background: var(--bg-0); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--sp-2); }
 
 .msg--user .msg-actions { justify-content: flex-end; }
 .msg-actions-items { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
-.msg-edit-inline { width: min(620px, 100%); min-width: 0; padding: var(--sp-3); background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-lg); }
-.msg-bubble-wrap:has(.msg-edit-inline) { width: min(100%, 640px); max-width: 100%; }
-.msg-edit-inline .msg-edit-description { margin: var(--sp-2) 0; }
-.msg-edit-inline .msg-edit-label textarea { margin-top: var(--sp-2); min-height: 120px; max-height: 50dvh; }
-.msg-edit-inline .msg-edit-footer { margin-top: var(--sp-2); }
 .msg-branch-context { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); padding: 0 var(--sp-4); font: var(--fs-12)/1.5 var(--font-sans); color: var(--text-dim); }
 .msg-branch-context .msg-parent-link { margin-left: auto; padding-inline: 0; }
 
-.msg-edit-label > .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .msg-branch-preview { min-width: 0; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-@media (pointer: coarse), (max-width: 600px) {
-  .msg-edit-label textarea, .msg-edit-points select { font-size: var(--fs-16); }
-}
 
 /* B-513: not yet confirmed by the server. Dimmed at once (only the spinner
    waits 150ms); the bubble keeps its colors and layout. */
@@ -56,4 +38,24 @@
 @media (pointer: coarse) {
   .msg-sending, .msg-send-failed, .msg-send-action { min-height: 44px; }
   .msg-send-action { padding-inline: var(--sp-2); }
+}
+
+/* B-528: in-place edit. The bubble itself becomes the editor — same surface,
+   same type, wider so a long prompt has room — with its controls inside. */
+.msg-bubble-wrap:has(> .msg-edit-inline) { width: min(100%, 680px); max-width: 100%; }
+.msg-edit-inline { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; min-width: 0; padding: 12px 14px 10px 18px; background: var(--message-user-bg); color: var(--message-user-text); border-radius: 20px; box-shadow: inset 0 0 0 1px var(--line-2); }
+.msg-edit-inline:focus-within { box-shadow: inset 0 0 0 1px var(--text-faint); }
+.msg-edit-inline textarea, .msg-edit-inline textarea:focus, .msg-edit-inline textarea:focus-visible { box-shadow: none; }
+.msg-edit-inline textarea { display: block; width: 100%; min-height: calc(var(--conversation-leading) * 1em); max-height: 50dvh; padding: 0; resize: none; overflow-y: auto; background: transparent; color: inherit; border: 0; outline: none; font: inherit; font-size: var(--conversation-size); line-height: var(--conversation-leading); }
+.msg-edit-footer { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--sp-2); }
+.msg-edit-hint { flex: 1 1 16ch; min-width: 0; margin: 0; color: var(--text-dim); font: var(--fs-12)/1.5 var(--font-sans); }
+.msg-edit-error { margin: 0; }
+
+/* B-528: delete confirmation replaces the action row under the bubble. */
+.msg-delete-confirm { display: flex; flex-direction: column; gap: var(--sp-2); width: min(100%, 420px); margin-top: var(--sp-1); padding: var(--sp-3); background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-md); }
+.msg-delete-text { margin: 0; color: var(--text-dim); font: var(--fs-13)/1.55 var(--font-sans); }
+.msg-delete-text strong { display: block; color: var(--text); font-weight: 600; }
+
+@media (pointer: coarse), (max-width: 600px) {
+  .msg-edit-inline textarea { font-size: max(16px, var(--conversation-size)); }
 }

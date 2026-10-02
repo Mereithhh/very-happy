@@ -12,10 +12,21 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
 import { Session, Machine } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
-import { applySendStateUpdate, createReducer, reducer, ReducerState, type SendStateUpdate } from "./reducer/reducer";
+import { applySendStateUpdate, createReducer, isDroppedBySeq, reducer, ReducerState, type SendStateUpdate } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { currentRunningTool } from "./runningTool";
 import { compareMessagesNewestFirst, sortIncomingBySeq } from "./messageOrder";
+
+/**
+ * The chat list: newest-first, minus ranges a `transcript-drop` tombstone hid
+ * (B-528). The map keeps hidden messages so a range that narrows (optimistic
+ * tombstone → its echo) brings them back on the next rebuild.
+ */
+function visibleMessagesNewestFirst(messagesMap: Record<string, Message>, reducerState: ReducerState): Message[] {
+    return Object.values(messagesMap)
+        .filter((message) => !isDroppedBySeq(reducerState, message.seq))
+        .sort(compareMessagesNewestFirst);
+}
 import { claimLiveStreamKeys } from '@/sync/liveStreamStore';
 import { streamKeysOf } from '@/sync/liveStream';
 import { resolvePlanModeFromBatch } from "./planModeBatch";
@@ -661,8 +672,7 @@ export const storage = create<StorageState>()((set, get) => {
                         mergedMessagesMap[message.id] = message;
                     });
 
-                    const messagesArray = Object.values(mergedMessagesMap)
-                        .sort(compareMessagesNewestFirst);
+                    const messagesArray = visibleMessagesNewestFirst(mergedMessagesMap, existingSessionMessages.reducerState);
 
                     updatedSessionMessages[session.id] = {
                         messages: messagesArray,
@@ -810,8 +820,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // History backfill pages arrive newest-first and batched
                 // writes tie on createdAt, so plain createdAt + insertion
                 // order rendered long sessions out of order.
-                const messagesArray = Object.values(mergedMessagesMap)
-                    .sort(compareMessagesNewestFirst);
+                const messagesArray = visibleMessagesNewestFirst(mergedMessagesMap, existingSession.reducerState);
 
                 // Update session with todos and latestUsage
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
@@ -886,7 +895,7 @@ export const storage = create<StorageState>()((set, get) => {
                     ...state.sessionMessages,
                     [sessionId]: {
                         ...existing,
-                        messages: Object.values(messagesMap).sort(compareMessagesNewestFirst),
+                        messages: visibleMessagesNewestFirst(messagesMap, existing.reducerState),
                         messagesMap,
                     },
                 },
@@ -917,8 +926,7 @@ export const storage = create<StorageState>()((set, get) => {
                         messagesMap[message.id] = message;
                     });
 
-                    messages = Object.values(messagesMap)
-                        .sort(compareMessagesNewestFirst);
+                    messages = visibleMessagesNewestFirst(messagesMap, reducerState);
                 }
 
                 // Extract latestUsage from reducerState if available and update session

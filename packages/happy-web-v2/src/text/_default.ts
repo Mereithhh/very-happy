@@ -2039,6 +2039,14 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct03: {
+                title: 'Edit and delete messages in place',
+                summary: 'Editing a message now replaces it and everything after it, like Claude Desktop — and the agent forgets the old version too.',
+                edit: 'Edit turns your message bubble into an editor; sending replaces that message and the rest of the conversation after it, instead of adding a new message below.',
+                delete: 'A new Delete action removes one message and its replies from the conversation and from the agent’s memory.',
+                limits: 'Claude Code sessions only, and the machine needs the latest CLI. Running turns are stopped first; file changes are not undone.',
+                codexImport: 'Importing Codex conversations no longer lists Codex’s internal review and sub-agent threads, and a failed import says why in the session instead of ending up empty.',
+            },
             oct02a: {
                 title: 'Stopping a background task always answers',
                 summary: 'The × on a background task now waits for the session to confirm the stop and tells you when it could not, instead of spinning silently.',

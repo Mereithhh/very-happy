@@ -110,6 +110,24 @@ describe('codexSessionHistory', () => {
             expect(parsed?.firstPrompt.endsWith('…')).toBe(true);
         });
 
+        it('skips Codex\'s own sub-threads: the guardian reviewer and spawned agents (B-529)', () => {
+            const guardian = [meta(idA, { source: { subagent: { other: 'guardian' } }, thread_source: 'subagent', originator: 'Codex Desktop' }),
+                userItem('The following is the Codex agent history whose request action you are assessing.')];
+            const spawned = [meta(idB, { source: { subagent: { thread_spawn: { parent_thread_id: idC, depth: 1 } } } }), userEvent('look into it')];
+            const legacy = [meta(idC, { thread_source: 'subagent' }), userEvent('child')];
+            for (const lines of [guardian, spawned, legacy]) {
+                expect(parseCodexHistoryHead(lines.map((l) => JSON.stringify(l)).join('\n'), 200)).toBeNull();
+            }
+            const user = [meta(idD, { source: 'vscode', thread_source: 'user' }), userEvent('mine')];
+            expect(parseCodexHistoryHead(user.map((l) => JSON.stringify(l)).join('\n'), 200)?.firstPrompt).toBe('mine');
+        });
+
+        it('does not title a Codex Desktop thread with its <recommended_plugins> preamble', () => {
+            const head = [meta(idA, { source: 'vscode' }), userItem('<recommended_plugins>\nHere is a list of plugins\n- Box\n</recommended_plugins>'), userItem('real ask')]
+                .map((l) => JSON.stringify(l)).join('\n');
+            expect(parseCodexHistoryHead(head, 200)?.firstPrompt).toBe('real ask');
+        });
+
         it('rejects files that are not rollouts, have no cwd, or have no prompt', () => {
             expect(parseCodexHistoryHead(JSON.stringify(userEvent('x')), 200)).toBeNull();
             expect(parseCodexHistoryHead([meta(idA, { cwd: '' }), userEvent('x')].map((l) => JSON.stringify(l)).join('\n'), 200)).toBeNull();

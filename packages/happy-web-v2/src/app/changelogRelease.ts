@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-03-edit-delete-in-place',
+    cliVersion: '0.2.162',
+    date: '2026-10-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct03.title',
+    summaryKey: 'changelog.releases.oct03.summary',
+    itemKeys: ['changelog.releases.oct03.edit', 'changelog.releases.oct03.delete', 'changelog.releases.oct03.limits', 'changelog.releases.oct03.codexImport'],
+  },
+  {
     id: '2026-10-02-stop-background-task',
     date: '2026-10-02',
     buildVersion: __APP_VERSION__,
