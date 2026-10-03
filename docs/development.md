@@ -71,6 +71,31 @@ reuse the production `~/.happy` while testing.
 the real daemon. It is useful for intentional local installation, not an isolated
 test command.
 
+## End-to-end against a real daemon (local, disposable)
+
+For changes that span CLI + Web (a real Claude/Codex turn, an RPC, a tombstone):
+
+1. `SIGNUP_MODE=open pnpm -C packages/happy-server standalone:dev` — standalone
+   defaults to `closed`, and the login form never creates accounts; register at
+   `/signup` (B-528, 2026-10-03).
+2. Web as above (`VH_SERVER_URL=http://127.0.0.1:3005 … dev --port <free port>`).
+3. `HAPPY_HOME_DIR=<tmp> HAPPY_SERVER_URL=… HAPPY_WEBAPP_URL=… node packages/happy-cli/dist/index.mjs auth login`,
+   approve the printed `/terminal/connect#key=…` link in the logged-in browser,
+   then `daemon start` with the same env. Rebuild `dist` first — the daemon runs
+   the built CLI, not your sources. A daemon started before login holds the lock:
+   kill it before starting again.
+4. `node … spawn --dir <dir> --permission-mode default --json` gives a session URL.
+5. In Vite dev the app's own module instances are importable from the page, so
+   state can be inspected without debug hooks:
+   `const {storage} = await import('/src/sync/storage.ts'); storage.getState().sessionMessages[id]`.
+   Programmatic reload past the tab-close guard:
+   `(await import('/src/app/programmaticReload.ts')).markProgrammaticReload(); location.reload()`.
+6. Claude transcripts land in `~/.claude/projects/<dir-slug>/*.jsonl` (the real
+   home, not `HAPPY_HOME_DIR`) — check what the agent actually holds there.
+
+Stop the daemon, server and Vite when done; the account lives only in the
+standalone PGlite store.
+
 ## Checking narrow / mobile viewports in the local browser
 
 The Chrome automation tools ignore `resize_window` on this machine. Load the
