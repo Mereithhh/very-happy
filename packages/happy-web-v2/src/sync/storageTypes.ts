@@ -90,6 +90,19 @@ export const MetadataSchema = z.object({
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
     /**
+     * B-531: the fork's wrapper writes this once the server accepted its
+     * replayed history; `very-happy spawn --fork --prompt` waits for it. The
+     * web never reads it — it is declared only so a web metadata write (rename,
+     * priority) does not strip it while a CLI is still waiting. Lenient on
+     * purpose: a shape mismatch must not fail the whole metadata parse.
+     */
+    forkBackfill: z.object({
+        done: z.boolean().optional(),
+        count: z.number().optional(),
+        failed: z.boolean().optional(),
+        completedAt: z.number().optional(),
+    }).passthrough().optional().catch(undefined),
+    /**
      * B-290: the Claude conversation (claude CLI / desktop / claude.ai
      * transcript) this session was imported from. Written by the CLI at
      * spawn; the import picker hides originals that already have a copy.

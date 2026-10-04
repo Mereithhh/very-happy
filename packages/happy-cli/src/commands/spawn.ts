@@ -40,7 +40,7 @@ import chalk from 'chalk'
 import { readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession, stopDaemonSession } from '@/daemon/controlClient'
-import { readPersistedSessions } from '@/persistence'
+import { readPersistedSessions, type PersistedSession } from '@/persistence'
 import { resolveFirstMessageMeta, resolveSpawnPermissionMode, type FirstMessageMeta } from './spawnDefaults'
 import { forkProviderConversation, resolveForkSource, type ForkSource } from './spawnFork'
 import { readSessionMetadata } from '@/sessions/sessionOps'
@@ -48,6 +48,7 @@ import { sendUserMessage, sessionWebUrl, waitForSessionKey } from './sessionMess
 import { isValidSpawnOrigin } from '@/utils/createSessionMetadata'
 import { ALLOWED_SPAWN_PERMISSION_MODES, sanitizeSpawnPermissionMode } from '@/daemon/spawnPermissionMode'
 import { logger } from '@/ui/logger'
+import { waitForForkBackfill } from '@/utils/forkBackfill'
 
 // Re-exported for back-compat (tests and external imports historically used
 // `spawn.ts` as the home of this helper; the implementation now lives in the
@@ -220,23 +221,60 @@ ${chalk.bold('Behavior:')}
 ${chalk.bold('Exit codes:')}
   0  success
   1  spawn failed (no session created)
-  2  session spawned but first message failed (session URL still printed)
+  2  session spawned but first message failed (session URL still printed).
+     For --fork this includes: the forked history was not confirmed uploaded
+     within 120s — the message is then NOT sent, so it cannot land inside
+     that history; send it later with \`very-happy send\`.
 `)
+}
+
+export interface FirstMessageDeps {
+    waitForSessionKey: typeof waitForSessionKey
+    readSessionMetadata: (sessionId: string, persisted: PersistedSession) => Promise<unknown>
+    sendUserMessage: typeof sendUserMessage
+    /** B-531 knobs, injectable for the ordering test. */
+    forkWait?: { timeoutMs?: number; pollMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number }
+    warn?: (message: string) => void
+}
+
+const defaultFirstMessageDeps: FirstMessageDeps = {
+    waitForSessionKey,
+    readSessionMetadata,
+    sendUserMessage,
+    warn: (message) => console.error(chalk.yellow('Warning:'), message),
 }
 
 /**
  * Send the first user message to a spawned session: wait (bounded) for the
  * daemon to persist the fresh session's key, then push via the shared
  * sessionMessage primitive.
+ *
+ * B-531: for a fork, first wait until the wrapper confirms its history replay
+ * is committed on the server (`metadata.forkBackfill`) — otherwise the prompt
+ * gets a seq in the middle of the replay. Throws ForkBackfillTimeoutError
+ * (message NOT sent) if a capable wrapper never confirms; a wrapper without
+ * the capability gets the old immediate send plus a warning.
  */
-async function sendFirstMessage(
+export async function sendFirstMessage(
     sessionId: string,
     text: string,
     metaFor: (capabilities: string[] | null) => FirstMessageMeta,
+    opts: { fork: boolean },
+    deps: FirstMessageDeps = defaultFirstMessageDeps,
 ): Promise<FirstMessageMeta> {
-    const persisted = await waitForSessionKey(sessionId, 15_000)
+    const persisted = await deps.waitForSessionKey(sessionId, 15_000)
+    if (opts.fork) {
+        const gate = await waitForForkBackfill({
+            capabilities: persisted.metadata?.capabilities,
+            readMetadata: () => deps.readSessionMetadata(sessionId, persisted),
+            ...deps.forkWait,
+        })
+        if (gate.kind === 'legacy-wrapper') {
+            deps.warn?.('the forked session runs an older wrapper that cannot confirm its replayed history is uploaded; sending now, so the first message may appear inside that history. Restart the daemon on this CLI version to fix.')
+        }
+    }
     const meta = metaFor(persisted.metadata?.capabilities ?? null)
-    await sendUserMessage(sessionId, persisted, text, 'cli-spawn', meta)
+    await deps.sendUserMessage(sessionId, persisted, text, 'cli-spawn', meta)
     return meta
 }
 
@@ -386,7 +424,7 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         try {
             sentMeta = await sendFirstMessage(sessionId, prompt, (capabilities) => resolveFirstMessageMeta({
                 agent, permissionMode, explicitModel: options.model, capabilities,
-            }))
+            }), { fork: forkSource !== null })
         } catch (error) {
             promptError = error instanceof Error ? error.message : String(error)
         }

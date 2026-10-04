@@ -31,8 +31,8 @@ describe('B-509 server prompt queue wiring', () => {
     });
 
     it('every runner advertises the capability the web gates the server queue on', () => {
-        expect(read('claude/runClaude.ts')).toContain("'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY]");
-        expect(read('codex/runCodex.ts')).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY],');
+        expect(read('claude/runClaude.ts')).toContain("'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY]");
+        expect(read('codex/runCodex.ts')).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY],');
         expect(read('agent/acp/runAcp.ts')).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY],');
         expect(read('utils/createSessionMetadata.ts')).toContain('...(opts.capabilities ? { capabilities: [...opts.capabilities] } : {}),');
     });

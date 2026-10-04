@@ -2160,6 +2160,12 @@ export const zhHans: TranslationStructure = {
                 band: '「需要我决策」每一行最左是一个圆形勾选（触屏 44px）即「知道了」，头部有「全部已读」，看板上带太长会自己滚动、不再把泳道顶出屏幕。',
                 cli: '`very-happy auto ack --all [--name <自动化>]` 在终端一次确认全部。需要更新 CLI；网页与服务端部分已上线。',
             },
+            oct04: {
+                title: '分叉会话的首条消息不再错位',
+                summary: '`very-happy spawn --fork <id> --prompt …` 的新提示不会再插进复制过来的历史中间。',
+                order: 'CLI 会等分叉会话把历史全部上传完再发提示，所以提示总在历史之后（Claude 与 Codex 都适用）。',
+                timeout: '如果 2 分钟内仍未确认历史上传完成，提示不会发出，命令以退出码 2 结束——之后用 `very-happy send` 再发。需要运行该会话的机器更新 CLI。',
+            },
             oct03a: {
                 title: '1M 模型的上下文用量',
                 summary: '1M 上下文的会话不再显示成「200k 已用 100%」。',
