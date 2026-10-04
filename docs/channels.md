@@ -290,6 +290,13 @@ with the account content key, which `dataKey` CLI credentials do not hold.
   `resumed: true` from `/spawn-session`; an older daemon strips the resume
   fields and starts a fresh session, which `spawn --fork` then stops and
   reports as an error (the copied conversation file stays behind).
+  With a prompt, the CLI first waits until the fork's wrapper reports its
+  replayed history committed on the server (`metadata.forkBackfill`, B-531),
+  so the prompt is always ordered after that history. If a wrapper that
+  advertises `fork-backfill-ack-v1` does not confirm within 120 s, the prompt is
+  **not** sent (exit 2, `promptDelivered: false`); an older wrapper without the
+  capability gets the old immediate send plus a stderr warning. See
+  [the spec](../specs/2026-10-fork-first-message-order.md).
 - `--env KEY=VALUE` — extra environment for the session process; repeatable.
   A `${VAR}` reference is expanded against the daemon's own environment, and an
   unresolved reference fails the spawn rather than starting a session with a
