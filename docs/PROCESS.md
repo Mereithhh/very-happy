@@ -29,6 +29,8 @@
   text block、表格按分隔行逐张锚定），因为这两条我各错过一次，方向相反。
 - **编号分配（多会话并行）**：`node scripts/dev/check-ids.mjs` 报下一个可用的 B-/V-/changelog key，
   `--claim B-xxx --claim V-xxx --claim <key>` 验号（撞了就非 0 退出）；**每次 rebase 后、开 PR 前都要再验一次**。
+  **它只看 origin/main，看不到还开着的 PR**：2026-10-05 #468 与 #469 都验过 B-531 且都 ok，合并顺序决定后者重编号。
+  合并前再扫一眼开着的 PR：`gh pr list --json number,title --jq '.[]|"\(.number) \(.title)"' | grep -E 'B-[0-9]+'`。
   下面是这条纪律的来历与手工做法（脚本挂了或要改它时看）：新开 B-/V- 编号前先 `git fetch origin main`，取 **origin/main** 上的最大号 +1，
   不要拿本地分支或记忆里的号；rebase 遇到同号先到者优先，后到者在整个分支上重编号（代码注释、测试名、spec、
   verify-queue、PR 标题都要改）。2026-09-02 一天内 B-279、B-282 各被两个会话撞号，各多花一轮 rebase+CI。
