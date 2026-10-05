@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-05-codex-import-retry',
+    cliVersion: '0.2.163',
+    date: '2026-10-05',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct05c.title',
+    summaryKey: 'changelog.releases.oct05c.summary',
+    itemKeys: ['changelog.releases.oct05c.retry'],
+  },
+  {
     id: '2026-10-03-context-window-1m',
     date: '2026-10-03',
     buildVersion: __APP_VERSION__,

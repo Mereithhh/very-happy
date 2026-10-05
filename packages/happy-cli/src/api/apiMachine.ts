@@ -27,7 +27,8 @@ import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
 import { getClaudeProjectsRoot, getProjectPath } from '@/claude/utils/path';
-import { readTrackedClaudeSessionIds, readTrackedCodexThreadIds } from '@/persistence';
+import { readAllPersistedSessionRecords, readTrackedClaudeSessionIds } from '@/persistence';
+import { resolveTrackedCodexThreadIds, serverCodexImportProbe } from '@/codex/codexImportTracking';
 import { listClaudeProjectDirs, listClaudeSessionHistory } from '@/claude/utils/claudeSessionHistory';
 import {
     forkBeforeUserMessage,
@@ -841,7 +842,10 @@ export class ApiMachineClient {
                 ...(Array.isArray(exclude)
                     ? exclude.filter((id: unknown): id is string => typeof id === 'string' && UUID_RE.test(id))
                     : []),
-                ...readTrackedCodexThreadIds(),
+                // B-537: an import's original only while the import holds it
+                // (fork succeeded, or the wrapper is still running) — a failed
+                // fork must not hide the thread from a retry forever.
+                ...await resolveTrackedCodexThreadIds(readAllPersistedSessionRecords(), serverCodexImportProbe(this.token)),
             ];
             const result = await listCodexSessionHistory({
                 sessionsRoot: getCodexSessionsRoot(),

@@ -1,7 +1,7 @@
 # 导入 Codex 对话（codex TUI / `codex exec` / Codex 桌面版 thread → very-happy 会话）
 
 > 状态：Shipped（PR #368 → `main@90ab515a`，web/server 2026-09-14 blue 槽 generation 139；CLI v0.2.139 npm latest 已 promote、六平台 smoke 全绿）
-> 日期：2026-09-14 ｜ 关联 backlog：B-464 ｜ 出处：Owner 2026-09-14「需要支持 codex 对话导入功能」｜ 前身：`2026-09-claude-history-import.md`（B-290）
+> 日期：2026-09-14（2026-10-05 B-537 修订「去重」） ｜ 关联 backlog：B-464、B-537 ｜ 出处：Owner 2026-09-14「需要支持 codex 对话导入功能」｜ 前身：`2026-09-claude-history-import.md`（B-290）
 
 ## 背景
 
@@ -48,7 +48,7 @@ very-happy 已经会「接着一条 thread 聊」：`thread/fork` + `thread/resu
    时 fork 没人回收，而 Codex 删了 rollout 文件 sqlite 行还在，没有干净的「discard」。放进 wrapper 后：spawn 被拒 = 什么都没创建；fork 失败 = 会话失败，
    与 `--resume` 失败同形。
 4. **wrapper**：`daemon/run.ts` 把 `importCodexThreadId`（只认 UUID）导出为 `HAPPY_IMPORT_CODEX_THREAD_ID`；`runCodex.ts` 建 metadata 时就写
-   `importedFromCodexThreadId`（fork 失败也能被列表排除）和 `summary`（`HAPPY_IMPORT_TITLE`，同 B-294）；connect 后、FORK BACKFILL 前调
+   `importedFromCodexThreadId`（导入进行中就能被列表排除；B-537 起 fork 失败的空壳**不再**排除原件，见设计 6）和 `summary`（`HAPPY_IMPORT_TITLE`，同 B-294）；connect 后、FORK BACKFILL 前调
    `codex/importCodexThread.ts`：`client.forkThread({ threadId, cwd, mcpServers })` → 校验拿到的是新 id → metadata `codexThreadId = fork` →
    回放 fork 的 turns（fork 响应没带 turns 才 `readThread(fork)`，**永不读原件**）→ 状态消息。reconnect（daemon 重启接管）不走这段：metadata 里已是 fork，
    daemon 用 `--resume <fork>` 恢复。
@@ -56,8 +56,18 @@ very-happy 已经会「接着一条 thread 聊」：`thread/fork` + `thread/resu
    切换即重新拉列表、清选择；行的来源标签按 `originator`（`codex-tui`→codex CLI、`codex_exec`→codex exec、`Codex Desktop`）回退到 `source`；
    机器上没装 Codex 时列表照常显示但导入按钮禁用并提示。纯逻辑在 `claudeHistoryImport.ts`：条目统一成 `{ id, agent, … }`，多选/进度/汇总不分 agent。
    入口：侧栏「+」菜单、⌘K、机器页（按 `codexHistorySupported` 出现）。
-6. **去重**：daemon 合并 `readTrackedCodexThreadIds()`（`sessions.json` 里每个会话的 `codexThreadId` + `importedFromCodexThreadId`，不套 14 天剪枝）与 web 传来的
-   `exclude`（`trackedCodexThreadIds` 读 raw `storage.sessions`）；加上 `happy-codex` originator 过滤，very-happy 自己 fork 出来的副本天然不进列表。
+6. **去重**：daemon 合并自己的记录（`sessions.json`，不套 14 天剪枝）与 web 传来的 `exclude`（`trackedCodexThreadIds` 读 raw `storage.sessions`）；
+   加上 `happy-codex` originator 过滤，very-happy 自己 fork 出来的副本天然不进列表。
+   **B-537 修订——原件只在导入「占着」它时才算 tracked**：会话自己的 `codexThreadId` 永远 tracked；`importedFromCodexThreadId` 只在
+   ①fork 成功（会话有自己的 `codexThreadId`）或 ②wrapper 仍在运行（导入进行中，防并发重复导入）时 tracked。
+   原设计把所有带 `importedFromCodexThreadId` 的会话都算，而它在 fork 前就打上：一次 fork 失败 = 原件永久从列表消失，留下的空壳又没有 thread 可恢复
+   （`canOfferRestore` 需要 `codexThreadId`）→ 用户既不能续聊也不能重导。
+   - web：`trackedCodexThreadIds` 按 `metadata.codexThreadId` / `session.active` 判。
+   - daemon：`sessions.json` 只存 wrapper 出生时的 metadata（`/session-started` webhook 一次），fork 成功后的 `codexThreadId` 不会写进去（只有 restore 会重写），
+     本地无法区分成功与失败。故 `codex/codexImportTracking.ts` 对「有原件、无自身 thread」的记录问 server `GET /v1/sessions/:id`，用记录里的 key 解密 metadata：
+     有 `codexThreadId` → tracked（结果进程内缓存，fork id 不会消失）；无但 `active` → tracked；否则不 tracked；`{ error: 'Session not found' }` → 已删，不 tracked。
+     server 不可达、鉴权失败、解不开、旧 server 无 by-id 路由（Fastify 自己的 404） → **仍隐藏**（等同修订前，宁可漏列不重复导入）。
+   - Claude 导入不受影响、未改：副本由 daemon 在 spawn 前 fork 好、spawn 失败即删（B-290 设计 3），`importedFromClaudeSessionId` 只在 spawn 成功后出现。
 
 否掉的方案：`--resume` 原件不 fork——与 Codex 桌面版共用一条 thread 会双写者；daemon 侧 `withCodexAppServerClient` fork——见设计 3。
 
@@ -68,6 +78,9 @@ very-happy 已经会「接着一条 thread 聊」：`thread/fork` + `thread/resu
 | daemon → web | `daemonState.codexHistory` | 旧 web 忽略；新 web 见不到标志只显示升级提示，不调 RPC |
 | web → daemon | `codex-list-history`、`codex-import-session`、`spawn-happy-session.importCodexThreadId` | 旧 daemon 无标志故不会被调；即使被调也忽略未知字段 |
 | CLI → server/web | `metadata.importedFromCodexThreadId` | 旧 web schema 剥掉该字段（只影响去重展示） |
+| B-537 web × 旧 daemon | web 不再排除失败空壳的原件 | 旧 daemon 仍按 `sessions.json` 排除，原件照旧不出现——要升级原件所在机器的 CLI |
+| B-537 新 daemon × 旧 web | daemon 不再排除失败空壳的原件 | 旧 web 仍把它放进 `exclude`，原件照旧不出现——web/CLI 都升级后才生效 |
+| B-537 新 daemon × 旧 server | by-id 路由不存在 | 404 非 `Session not found` → 视为答不了，仍隐藏（等同修订前） |
 
 顺序：server/web（同镜像）→ CLI tag v0.2.139 → 机器升级 daemon。回滚点：上一 live SHA / v0.2.138。
 
@@ -88,3 +101,6 @@ very-happy 已经会「接着一条 thread 聊」：`thread/fork` + `thread/resu
 - [x] 门禁：PR #368 全绿；本地 wire/web/cli/server 门禁通过（web 4 个文件在未改动 main 上同样失败：Node 26.7 无 `localStorage`，CI 绿）。
 - [x] 线上：`check-shipped` 命中 `2026-09-14-codex-history-import` / `codex-list-history`；health ok。
 - [ ] 真机：机器升级后在 veryhappy.dev 导入一条 codex CLI thread 并继续（V-153，Owner 清账）。
+- [x] B-537：web `trackedCodexThreadIds` 单测（失败空壳不隐藏 / 进行中隐藏 / 成功后离线仍隐藏）；daemon `codexImportTracking` 单测 ×5 与
+  `codex-list-history` RPC 级测试（出生快照 + server 回答）；mutation-check 全部 CAUGHT。
+- [ ] B-537 真机：失败导入留下的原 thread 能重新导入（V-168）。

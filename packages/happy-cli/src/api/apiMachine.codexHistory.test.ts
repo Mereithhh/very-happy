@@ -31,7 +31,8 @@ describe('ApiMachineClient codex-list-history RPC (B-464)', () => {
 
     beforeEach(async () => {
         codexHome = join(tmpdir(), `vh-codex-history-rpc-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        process.env = { ...originalEnv, CODEX_HOME: codexHome };
+        // Never the real ~/.happy/sessions.json: B-537 asks the server about import records.
+        process.env = { ...originalEnv, CODEX_HOME: codexHome, HAPPY_HOME_DIR: join(codexHome, 'happy-home-empty') };
         const day = join(codexHome, 'sessions', '2026', '09', '01');
         await mkdir(day, { recursive: true });
         await writeFile(join(day, `rollout-2026-09-01T00-00-00-${id}.jsonl`), rollout(id, 'hello'));
@@ -41,6 +42,7 @@ describe('ApiMachineClient codex-list-history RPC (B-464)', () => {
 
     afterEach(async () => {
         process.env = { ...originalEnv };
+        vi.unstubAllGlobals();
         await rm(codexHome, { recursive: true, force: true });
     });
 
@@ -50,6 +52,7 @@ describe('ApiMachineClient codex-list-history RPC (B-464)', () => {
         await writeFile(join(happyHome, 'sessions.json'), JSON.stringify({
             sessions: {
                 'happy-1': { savedAt: 0, metadata: { codexThreadId: id.toUpperCase() } },
+                // No local key → the server cannot be asked → keep hiding (B-537 fails closed).
                 'happy-2': { savedAt: 0, metadata: { importedFromCodexThreadId: other } },
                 'happy-3': { savedAt: 0, metadata: {} },
             },
@@ -64,6 +67,45 @@ describe('ApiMachineClient codex-list-history RPC (B-464)', () => {
 
         const result = await handler({});
         expect(result.entries).toEqual([]);
+    });
+
+    it('B-537 lists the original of a failed import again; keeps a successful or running import hidden', async () => {
+        const happyHome = join(codexHome, 'happy-home');
+        await mkdir(happyHome, { recursive: true });
+        const { encodeBase64, encrypt, getRandomBytes } = await import('./encryption');
+        const key = getRandomBytes(32);
+        const fork = '01a0637f-0000-7000-8000-000000000001';
+        // What the daemon persists: the wrapper's birth metadata — original
+        // stamped, fork id not yet known — for BOTH outcomes.
+        const birth = (source: string) => ({ savedAt: 0, encryptionKey: encodeBase64(key), encryptionVariant: 'legacy', seq: 0, metadataVersion: 0, agentStateVersion: 0, metadata: { flavor: 'codex', importedFromCodexThreadId: source } });
+        await writeFile(join(happyHome, 'sessions.json'), JSON.stringify({ sessions: { 'shell-1': birth(id), 'import-2': birth(other) } }));
+        process.env.HAPPY_HOME_DIR = happyHome;
+        vi.resetModules();
+
+        const server: Record<string, { active: boolean; metadata: object }> = {
+            // fork failed, wrapper exited, row archived: empty shell
+            'shell-1': { active: false, metadata: { flavor: 'codex', importedFromCodexThreadId: id } },
+            // fork succeeded, session since went offline
+            'import-2': { active: false, metadata: { flavor: 'codex', importedFromCodexThreadId: other, codexThreadId: fork } },
+        };
+        const fetchMock = vi.fn(async (url: string | URL) => {
+            const sessionId = decodeURIComponent(String(url).split('/').pop()!);
+            const row = server[sessionId];
+            return new Response(JSON.stringify({ session: { id: sessionId, active: row.active, metadata: encodeBase64(encrypt(key, 'legacy', row.metadata)) } }), { status: 200 });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const { ApiMachineClient } = await import('./apiMachine');
+        const client = new ApiMachineClient('token', machineClient());
+        client.setRPCHandlers({ spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn() });
+        const handler = handlersFrom(client).get('machine-1:codex-list-history')!;
+
+        expect((await handler({})).entries.map((e: any) => e.codexThreadId)).toEqual([id]);
+
+        // The retry is now running: hidden again while it is in flight.
+        server['shell-1'].active = true;
+        expect((await handler({})).entries).toEqual([]);
+        expect(fetchMock.mock.calls.map(([url]) => String(url).split('/').pop()).sort()).toEqual(['import-2', 'shell-1', 'shell-1']);
     });
 
     it('lists rollouts machine-wide with index names, honours exclude, limit and directory, validates directory', async () => {

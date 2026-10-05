@@ -2039,6 +2039,11 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct05c: {
+                title: 'Retry a failed Codex import',
+                summary: 'A Codex conversation whose import failed shows up in the import list again, so you can import it once more.',
+                retry: 'Only a finished import (or one still running) hides the original conversation. Needs the CLI update on the machine that holds the conversation.',
+            },
             oct03a: {
                 title: 'Context meter on 1M models',
                 summary: 'The context meter no longer shows a 1M-context session as “100% of 200k”.',

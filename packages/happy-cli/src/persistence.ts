@@ -627,25 +627,19 @@ export function readTrackedClaudeSessionIds(): string[] {
 }
 
 /**
- * Codex twin of `readTrackedClaudeSessionIds` (B-464): every Codex thread id
- * this machine has driven for a Happy session, plus the originals imports
- * were forked from. Same no-prune rule: "already taken over" never expires.
+ * Every record in `sessions.json`, WITHOUT the 14-day prune
+ * `readPersistedSessions` applies (same reasoning as
+ * `readTrackedClaudeSessionIds`). Input to the Codex import picker's exclusion
+ * set — see `codex/codexImportTracking.ts` (B-464, B-537). Never throws.
  */
-export function readTrackedCodexThreadIds(): string[] {
+export function readAllPersistedSessionRecords(): Record<string, PersistedSession> {
   try {
-    if (!existsSync(configuration.sessionsFile)) return [];
+    if (!existsSync(configuration.sessionsFile)) return {};
     const data = JSON.parse(readFileSync(configuration.sessionsFile, 'utf-8')) as SessionsFile;
-    if (!data?.sessions || typeof data.sessions !== 'object') return [];
-    const ids = new Set<string>();
-    for (const session of Object.values(data.sessions)) {
-      const metadata = (session ?? {}).metadata as (Metadata & { importedFromCodexThreadId?: string }) | undefined;
-      for (const id of [metadata?.codexThreadId, metadata?.importedFromCodexThreadId]) {
-        if (typeof id === 'string' && id.length > 0) ids.add(id.toLowerCase());
-      }
-    }
-    return [...ids];
+    if (!data?.sessions || typeof data.sessions !== 'object') return {};
+    return data.sessions;
   } catch {
-    return [];
+    return {};
   }
 }
 
