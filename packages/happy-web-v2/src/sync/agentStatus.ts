@@ -9,6 +9,11 @@ export function sessionExecution(input: {
     needsInput: boolean; runningSubagents?: number;
     /** B-507: heartbeat-reported in-flight background tasks (0 when unknown / lease expired). */
     backgroundTasks?: number;
+    /** B-538: the daemon's turn-end LLM verdict (review/blocked). Unlike a
+     *  pending request (`needsInput`) it is advisory: while the agent is still
+     *  working — a new turn, a running sub-agent, background tasks after the
+     *  main turn ended — the row shows that work, not 等我看. */
+    llmAttention?: boolean;
 }): AgentExecution {
     if (!input.online || !input.active) return 'offline';
     if (input.fresh && input.needsInput) return 'input';
@@ -16,6 +21,7 @@ export function sessionExecution(input: {
         heartbeatFresh: input.fresh, runningSubagentsInTurn: input.runningSubagents ?? 0 });
     if (running) return 'running';
     if (input.fresh && (input.backgroundTasks ?? 0) > 0) return 'background';
+    if (input.fresh && input.llmAttention) return 'input';
     return input.fresh ? 'idle' : 'unknown';
 }
 /** B-465: daemons before 0.2.134 report `agentState` without an observation

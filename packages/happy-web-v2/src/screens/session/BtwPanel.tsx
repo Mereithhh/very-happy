@@ -18,7 +18,7 @@ import { useImeGuard } from '@/utils/ime';
 import { Markdown, MarkdownPathProvider } from './Markdown';
 import { useElapsedSeconds } from './useElapsed';
 import { supportsBtw } from './btwCommand';
-import { resolveBtwComposerKey } from './btwSubmitKey';
+import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import './btw.css';
 
 function clock(ms: number): string {
@@ -106,15 +106,13 @@ export function BtwPanel({ sessionId, onClose, embedded = false, active = true }
         requestAnimationFrame(() => taRef.current?.focus());
     };
     const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        const action = resolveBtwComposerKey({
-            key: e.key,
-            shiftKey: e.shiftKey,
-            guarded: ime.isGuarded(e),
-            enterToSend,
-        });
-        if (action === 'submit') {
+        const action = resolveComposerEnter(e, { guarded: ime.isGuarded(e), enterToSend, softKeyboard: isSoftKeyboardDevice() });
+        if (action === 'send') {
             e.preventDefault();
             submit();
+        } else if (action === 'newline') {
+            e.preventDefault();
+            insertComposerNewline(e.currentTarget);
         }
     };
 
@@ -167,7 +165,7 @@ export function BtwPanel({ sessionId, onClose, embedded = false, active = true }
                         rows={2}
                         value={draftLocal}
                         disabled={!supported}
-                        placeholder={enterToSend ? t('session.btw.placeholder') : t('session.btw.placeholderShiftEnter')}
+                        placeholder={isSoftKeyboardDevice() ? t('session.btw.placeholderTouch') : enterToSend ? t('session.btw.placeholder') : t('session.btw.placeholderShiftEnter')}
                         onChange={(e) => setDraftLocal(e.target.value)}
                         onKeyDown={onKeyDown}
                         onCompositionStart={ime.onCompositionStart}

@@ -6,6 +6,7 @@ import { Button } from '@/ui/Button';
 import { useSession, useSetting } from '@/sync/storage';
 import type { UserTextMessage } from '@/sync/typesMessage';
 import { useImeGuard } from '@/utils/ime';
+import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import { quoteMessage } from './messageQuote';
 import { messageActionsCopy } from './messageActionsCopy';
 import { MessageTime } from './MessageTime';
@@ -122,8 +123,9 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
                 onCompositionStart={ime.onCompositionStart}
                 onCompositionEnd={ime.onCompositionEnd}
                 onKeyDown={event => {
-                    if (event.key !== 'Enter' || event.shiftKey || ime.isGuarded(event)) return;
-                    if (enterToSend || event.metaKey || event.ctrlKey) { event.preventDefault(); submitEdit(); }
+                    const action = resolveComposerEnter(event, { guarded: ime.isGuarded(event), enterToSend, softKeyboard: isSoftKeyboardDevice() });
+                    if (action === 'send') { event.preventDefault(); submitEdit(); }
+                    else if (action === 'newline') { event.preventDefault(); insertComposerNewline(event.currentTarget); }
                 }}
             />
             {error && <p role="alert" className="msg-edit-error">{error}</p>}

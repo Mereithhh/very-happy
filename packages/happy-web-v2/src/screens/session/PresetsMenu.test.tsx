@@ -46,4 +46,23 @@ describe('composer plus menu', () => {
         expect(document.querySelector('[role=menu]')?.textContent).toContain('session.chat.attach');
         expect(document.querySelector('[role=menu]')?.textContent).not.toContain('session.chat.presets');
     });
+    it.each([
+        ['digit', async () => { await act(async () => document.querySelector('[role=menu]')!.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }))); }],
+        ['Enter on the item', async () => {
+            const item = [...document.querySelectorAll<HTMLElement>('[role=menuitem]')].find(el => el.textContent?.includes('Review'))!;
+            await act(async () => { item.focus(); item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+        }],
+    ] as const)('after a ⌘. → %s pick, focus returns to the composer instead of the trigger', async (_label, pickIt) => {
+        const ta = document.createElement('textarea'); document.body.append(ta);
+        const onCancel = vi.fn(() => ta.focus());
+        await act(async () => root.render(<PresetsMenu onPick={mocks.pick} onCancel={onCancel} onAttach={() => {}} />));
+        await chord();
+        await pickIt();
+        await act(async () => { await new Promise(r => setTimeout(r, 20)); });
+        expect(mocks.pick).toHaveBeenCalledExactlyOnceWith('Review the changes');
+        expect(document.querySelector('[role=menu]')).toBeNull();
+        expect(onCancel).toHaveBeenCalledOnce();
+        expect(document.activeElement).toBe(ta);
+        ta.remove();
+    });
 });

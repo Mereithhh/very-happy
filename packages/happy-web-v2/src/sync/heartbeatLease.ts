@@ -46,7 +46,18 @@ import { create } from 'zustand';
 /** 见约束 ①。不要往下调；调之前先重新量那四个数。 */
 export const HEARTBEAT_LEASE_TTL_MS = 25_000;
 
+/**
+ * B-538：**空闲**心跳的租约。server 的 B-484 relay gate 把空闲会话的 activity 扇出
+ * 合并到每 30s 一次（busy = thinking 或有后台任务时才是 4s），所以 25s 的租约对空闲
+ * 会话每 30s 必然过期约 5s：侧栏在「空闲」和「状态未知」之间闪，LLM 判定的
+ * 「等我看」在 unknown ↔ input 间来回进出，通知中心每进一次就响一次（B-536 实报）。
+ * 取 relay 间隔 30s + 发版 handover 10s + 余量。busy 租约不变——那才是要抓死进程的。
+ */
+export const IDLE_HEARTBEAT_LEASE_TTL_MS = 45_000;
+
 const lastBeatAt = new Map<string, number>();
+/** B-538：最后一拍是否 busy（thinking 或带后台任务）——决定用哪个 TTL。 */
+const lastBeatBusy = new Map<string, boolean>();
 const expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** B-507：心跳上带来的在飞后台任务计数；只在会话 id 下、只由 activity ephemeral 写。 */
 const backgroundTasks = new Map<string, number>();
@@ -106,6 +117,7 @@ export function setHeartbeatSocketStatusReader(reader: () => string): void {
  */
 export function recordHeartbeat(sessionId: string, thinking: boolean, now = Date.now(), ttlMs = HEARTBEAT_LEASE_TTL_MS): void {
     lastBeatAt.set(sessionId, now);
+    lastBeatBusy.set(sessionId, thinking || (backgroundTasks.get(sessionId) ?? 0) > 0);
     const existing = expiryTimers.get(sessionId);
     if (existing) clearTimeout(existing);
     expiryTimers.delete(sessionId);
@@ -122,7 +134,7 @@ export function recordHeartbeat(sessionId: string, thinking: boolean, now = Date
 }
 
 /** 当前会话的心跳是否新鲜。停表时会顺带把计时起点推到当前（见约束 ②）。 */
-export function isHeartbeatFresh(sessionId: string, now = Date.now(), ttlMs = HEARTBEAT_LEASE_TTL_MS): boolean {
+export function isHeartbeatFresh(sessionId: string, now = Date.now(), ttlMs = defaultTtl(sessionId)): boolean {
     const verdict = leaseVerdict({ lastBeatAt: lastBeatAt.get(sessionId), now, suspended: isSuspended(), ttlMs });
     if (verdict.nextLastBeatAt === undefined) lastBeatAt.delete(sessionId);
     else lastBeatAt.set(sessionId, verdict.nextLastBeatAt);
@@ -145,10 +157,14 @@ export function recordBackgroundTasks(sessionId: string, count: number | undefin
 }
 
 /** B-507：此刻可声称的在飞后台任务数——心跳租约过期即 0（同 `isHeartbeatFresh` 的停表规则）。 */
-export function backgroundTaskCount(sessionId: string, now = Date.now(), ttlMs = HEARTBEAT_LEASE_TTL_MS): number {
+export function backgroundTaskCount(sessionId: string, now = Date.now(), ttlMs = defaultTtl(sessionId)): number {
     const count = backgroundTasks.get(sessionId) ?? 0;
     if (count === 0) return 0;
     return isHeartbeatFresh(sessionId, now, ttlMs) ? count : 0;
+}
+
+function defaultTtl(sessionId: string): number {
+    return lastBeatBusy.get(sessionId) === false ? IDLE_HEARTBEAT_LEASE_TTL_MS : HEARTBEAT_LEASE_TTL_MS;
 }
 
 /** 会话被删除时清理，别把 Map 和 timer 漏在这里（B-312 的红点泄漏同形）。 */
@@ -157,6 +173,7 @@ export function forgetHeartbeat(sessionId: string): void {
     if (timer) clearTimeout(timer);
     expiryTimers.delete(sessionId);
     lastBeatAt.delete(sessionId);
+    lastBeatBusy.delete(sessionId);
     backgroundTasks.delete(sessionId);
 }
 
@@ -164,6 +181,7 @@ export function resetHeartbeatLeaseForTest(): void {
     for (const timer of expiryTimers.values()) clearTimeout(timer);
     expiryTimers.clear();
     lastBeatAt.clear();
+    lastBeatBusy.clear();
     backgroundTasks.clear();
     currentSocketStatus = () => 'connected';
 }

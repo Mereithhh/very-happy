@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
     HEARTBEAT_LEASE_TTL_MS,
+    IDLE_HEARTBEAT_LEASE_TTL_MS,
     backgroundTaskCount,
     forgetHeartbeat,
     isHeartbeatFresh,
@@ -45,7 +46,19 @@ describe('recordHeartbeat / isHeartbeatFresh (B-322)', () => {
         // they must not each hold a timer — that is the whole reason this is a
         // per-session one-shot instead of a global ticker.
         recordHeartbeat('s1', false, 0);
-        expect(isHeartbeatFresh('s1', HEARTBEAT_LEASE_TTL_MS + 1)).toBe(false);
+        expect(isHeartbeatFresh('s1', IDLE_HEARTBEAT_LEASE_TTL_MS + 1)).toBe(false);
+    });
+
+    it('B-538: an idle session stays fresh across the server\'s 30s idle relay spacing', () => {
+        // The relay gate forwards idle beats every 30s; a 25s lease made every
+        // idle session read 'unknown' for ~5s of each 30s.
+        recordHeartbeat('idle', false, 0);
+        expect(isHeartbeatFresh('idle', 30_000 + 10_000)).toBe(true);
+        recordHeartbeat('idle', false, 40_000);
+        expect(isHeartbeatFresh('idle', 40_000 + IDLE_HEARTBEAT_LEASE_TTL_MS - 1)).toBe(true);
+        // …but a busy beat is still held to the short lease.
+        recordHeartbeat('busy', true, 0);
+        expect(isHeartbeatFresh('busy', HEARTBEAT_LEASE_TTL_MS + 1)).toBe(false);
     });
 
     it('a live session stays fresh inside the TTL and goes stale past it', () => {

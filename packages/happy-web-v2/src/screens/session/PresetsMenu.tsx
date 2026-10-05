@@ -29,8 +29,9 @@ export function PresetsMenu({
     onAttach, attachAnyFile = true, onExpand, expanded,
 }: {
     onPick: (text: string) => void;
-    /** Keyboard cancel (Esc / ⌘. while open) — refocus the composer textarea
-     *  so the keyboard-only flow never strands focus on the trigger button. */
+    /** Return focus to the composer textarea after a keyboard cancel (Esc / ⌘.
+     *  while open) or after a pick, so ⌘. → pick → Enter sends without ever
+     *  stranding focus on the trigger button. */
     onCancel?: () => void;
     onAttach?: () => void;
     /** B-472: this session accepts any file (the wildcard entry in
@@ -48,6 +49,9 @@ export function PresetsMenu({
     // consumed (and reset) in onCloseAutoFocus. Pointer closes (click outside,
     // item click) keep Radix's default focus handling.
     const kbCancelRef = useRef(false);
+    // True while the pending close follows a pick/expand — focus belongs back
+    // in the composer, not on the trigger Radix would otherwise restore it to.
+    const toComposerRef = useRef(false);
     const contentRef = useRef<HTMLDivElement>(null);
     const [page, setPage] = useState<'tools' | 'presets'>('tools');
     const hasTools = presets.length > 0 || !!onAttach || !!onExpand;
@@ -57,7 +61,10 @@ export function PresetsMenu({
     useEffect(() => { if (!open) setPage('tools'); }, [open]);
     if (!hasTools) return null;
 
-    const pick = (text: string) => onPick(text);
+    const pick = (text: string) => {
+        toComposerRef.current = true;
+        onPick(text);
+    };
     const changePage = (next: 'tools' | 'presets') => {
         setPage(next);
         requestAnimationFrame(() => contentRef.current?.querySelector<HTMLElement>('[role=menuitem]')?.focus());
@@ -103,18 +110,21 @@ export function PresetsMenu({
                     onKeyDown={onMenuKeyDown}
                     onEscapeKeyDown={() => { kbCancelRef.current = true; }}
                     onCloseAutoFocus={(e) => {
-                        // Keyboard cancel → back to the textarea. Everything
-                        // else (pick, pointer-outside) keeps Radix's default;
-                        // after a pick, insertPreset's rAF refocus wins anyway.
-                        if (kbCancelRef.current) {
+                        // Keyboard cancel or pick/expand → back to the
+                        // textarea. Radix's default (refocus the trigger) runs
+                        // AFTER the close animation, i.e. after any rAF refocus
+                        // the composer schedules — so it must be prevented
+                        // here. Pointer-outside and attach keep the default.
+                        if (kbCancelRef.current || toComposerRef.current) {
                             kbCancelRef.current = false;
+                            toComposerRef.current = false;
                             e.preventDefault();
                             onCancel?.();
                         }
                     }}
                 >
                     {page === 'tools' && onAttach && <DropdownMenu.Item className="pm-item pm-tool" onSelect={onAttach}><Paperclip size={16} aria-hidden /><span>{t(attachAnyFile ? 'session.chat.attach' : 'session.chat.attachImage')}</span></DropdownMenu.Item>}
-                    {page === 'tools' && onExpand && <DropdownMenu.Item className="pm-item pm-tool" onSelect={onExpand}>{expanded ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}<span>{expanded ? t('session.input.collapse') : t('session.input.expand')}</span></DropdownMenu.Item>}
+                    {page === 'tools' && onExpand && <DropdownMenu.Item className="pm-item pm-tool" onSelect={() => { toComposerRef.current = true; onExpand(); }}>{expanded ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}<span>{expanded ? t('session.input.collapse') : t('session.input.expand')}</span></DropdownMenu.Item>}
                     {page === 'tools' && presets.length > 0 && <DropdownMenu.Item className="pm-item pm-tool" onSelect={event => { event.preventDefault(); changePage('presets'); }}><BookMarked size={16} aria-hidden /><span>{t('session.chat.presets')}</span><ChevronRight size={14} aria-hidden /></DropdownMenu.Item>}
                     {page === 'presets' && <DropdownMenu.Item className="pm-item pm-tool" onSelect={event => { event.preventDefault(); changePage('tools'); }}><ArrowLeft size={16} aria-hidden /><span>{t('common.back')}</span></DropdownMenu.Item>}
                     {page === 'presets' && <div className="pm-head">
