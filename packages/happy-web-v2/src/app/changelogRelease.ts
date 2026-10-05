@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-04-fork-first-message-order',
+    cliVersion: '0.2.163',
+    date: '2026-10-04',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct04.title',
+    summaryKey: 'changelog.releases.oct04.summary',
+    itemKeys: ['changelog.releases.oct04.order', 'changelog.releases.oct04.timeout'],
+  },
+  {
     id: '2026-10-03-context-window-1m',
     date: '2026-10-03',
     buildVersion: __APP_VERSION__,

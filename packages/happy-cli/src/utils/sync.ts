@@ -36,6 +36,11 @@ export class InvalidateSync {
         });
     }
 
+    /** B-531: after stop() no pending invalidateAndAwait() can mean "synced". */
+    get stopped(): boolean {
+        return this._stopped;
+    }
+
     stop() {
         if (this._stopped) {
             return;

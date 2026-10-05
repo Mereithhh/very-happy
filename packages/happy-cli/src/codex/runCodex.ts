@@ -1,4 +1,5 @@
 import { PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
+import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { readChildThread } from './readChildThread';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
 import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
@@ -142,7 +143,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -869,8 +870,12 @@ export async function runCodex(opts: {
                     codexThreadId: forkCodexThreadId,
                 }));
                 logger.debug(`[CODEX FORK BACKFILL] Replayed ${envelopes.length} historical envelopes from thread ${forkCodexThreadId}`);
+                // B-531: same contract as the Claude replay (runClaude) — the
+                // marker goes out only after the server committed the replay.
+                void publishForkBackfillWhenCommitted(session, { count: envelopes.length });
             } catch (error) {
                 logger.debug(`[CODEX FORK BACKFILL] Failed to read thread ${forkCodexThreadId}`, safeCodexErrorMetadata(error));
+                void publishForkBackfillWhenCommitted(session, { count: 0, failed: true });
             }
         }
 

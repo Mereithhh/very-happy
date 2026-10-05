@@ -2039,6 +2039,12 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct04: {
+                title: 'Forks keep their first message in place',
+                summary: '`very-happy spawn --fork <id> --prompt …` no longer drops the new prompt into the middle of the copied conversation.',
+                order: 'The CLI now waits until the forked session has finished uploading its history, then sends the prompt, so it always appears after that history (Claude and Codex).',
+                timeout: 'If the history is not confirmed within 2 minutes, the prompt is not sent and the command exits with code 2 — send it later with `very-happy send`. Needs the CLI update on the machine that runs the session.',
+            },
             oct03a: {
                 title: 'Context meter on 1M models',
                 summary: 'The context meter no longer shows a 1M-context session as “100% of 200k”.',

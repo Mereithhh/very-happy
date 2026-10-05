@@ -579,6 +579,13 @@ export type Metadata = {
   parentSessionId?: string
   forkedFromMessageId?: string
   /**
+   * B-531: written by a fork's wrapper once the server accepted every replayed
+   * history message (capability fork-backfill-ack-v1). `very-happy spawn
+   * --fork --prompt` waits for it before sending, so the prompt cannot get a
+   * seq inside the replay. Absent on non-fork sessions and old wrappers.
+   */
+  forkBackfill?: { done: true; count: number; failed?: boolean; completedAt: number }
+  /**
    * B-290: the Claude conversation this session was imported from (the
    * on-disk transcript written by claude CLI / desktop / claude.ai that was
    * copied by `claude-fork-session`). Lets the import picker hide originals

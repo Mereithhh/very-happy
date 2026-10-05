@@ -754,6 +754,23 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    /**
+     * B-531: resolve once the server has accepted (POST answered, seq assigned)
+     * every message that was in the outbox when this was called. Messages
+     * enqueued later do not extend the wait. Returns false when the client was
+     * closed first — the caller must not treat that as "committed". Retries are
+     * the outbox's own (InvalidateSync backoff), so a server that keeps failing
+     * keeps this pending rather than resolving early.
+     */
+    async drainOutbox(): Promise<boolean> {
+        const target = new Set(this.pendingOutbox);
+        while (this.pendingOutbox.some((item) => target.has(item))) {
+            if (this.sendSync.stopped) return false;
+            await this.sendSync.invalidateAndAwait();
+        }
+        return true;
+    }
+
     private rememberRoutedInbound(localId: string) {
         this.routedInboundLocalIds.add(localId);
         if (this.routedInboundLocalIds.size > 2_000) {
