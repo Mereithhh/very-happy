@@ -36,6 +36,9 @@ export interface SessionActivityRelayLimits {
 
 export const DEFAULT_SESSION_ACTIVITY_RELAY_LIMITS: SessionActivityRelayLimits = {
     busyIntervalMs: 4_000,
+    // Coupled to web `IDLE_HEARTBEAT_LEASE_TTL_MS` (45s, B-538): the idle lease
+    // must stay above this spacing + the 10s handover, or every idle session
+    // blinks to 'unknown' between relays.
     idleIntervalMs: 30_000,
 };
 
