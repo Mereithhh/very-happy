@@ -97,6 +97,23 @@ describe('B-290 / B-464 history import helpers', () => {
         expect(historySourceLabel(claude(A, { cwd: '/w', firstPrompt: 'p', startedAt: 0, updatedAt: 0, sizeBytes: 0, entrypoint: 'remote_mobile' }))).toBe('claude.ai');
     });
 
+    it('B-537 a failed Codex import stops hiding its original; a live or successful one keeps it hidden', () => {
+        const D = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+        const sessions = [
+            // Fork failed, wrapper gone: the empty archived shell must not hold the original.
+            { active: false, metadata: { flavor: 'codex', importedFromCodexThreadId: A } },
+            // Import in flight (fork not answered yet): a second import would race it.
+            { active: true, metadata: { flavor: 'codex', importedFromCodexThreadId: B } },
+            // Import succeeded, session since went offline / archived: still owned.
+            { active: false, metadata: { flavor: 'codex', codexThreadId: D, importedFromCodexThreadId: C } },
+        ] as any[];
+        expect(trackedCodexThreadIds(sessions).sort()).toEqual([B, C, D].sort());
+        expect(trackedHistoryIds('codex', sessions)).not.toContain(A);
+
+        const rows = [A, B, C].map((id, i) => ({ id, agent: 'codex' as const, codexThreadId: id, cwd: '/w', firstPrompt: `p${i}`, startedAt: 0, updatedAt: i, sizeBytes: 0 }));
+        expect(filterImportableHistory(rows, trackedCodexThreadIds(sessions)).map((r) => r.id)).toEqual([A]);
+    });
+
     it('hides tracked conversations, searches, and sorts newest first', () => {
         const entries = [
             claude(A, { cwd: '/w/app', firstPrompt: 'fix login', startedAt: 0, updatedAt: 1, sizeBytes: 1 }),

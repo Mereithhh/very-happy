@@ -2160,6 +2160,11 @@ export const zhHans: TranslationStructure = {
                 band: '「需要我决策」每一行最左是一个圆形勾选（触屏 44px）即「知道了」，头部有「全部已读」，看板上带太长会自己滚动、不再把泳道顶出屏幕。',
                 cli: '`very-happy auto ack --all [--name <自动化>]` 在终端一次确认全部。需要更新 CLI；网页与服务端部分已上线。',
             },
+            oct05c: {
+                title: '导入失败的 Codex 对话可以重新导入',
+                summary: '导入失败的 Codex 对话会重新出现在导入列表里，可以再导入一次。',
+                retry: '只有导入成功（或仍在进行中）的会话才会把原对话从列表里隐藏。需要更新原对话所在机器的 CLI。',
+            },
             oct03a: {
                 title: '1M 模型的上下文用量',
                 summary: '1M 上下文的会话不再显示成「200k 已用 100%」。',

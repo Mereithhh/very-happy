@@ -123,19 +123,28 @@ export function trackedClaudeSessionIds(sessions: ReadonlyArray<Pick<Session, 'm
 }
 
 /** Codex twin (B-464): a session's own thread (the fork, for imports) plus the
- *  original the import was forked from. */
-export function trackedCodexThreadIds(sessions: ReadonlyArray<Pick<Session, 'metadata'>>): string[] {
+ *  original the import was forked from.
+ *
+ *  B-537: the original only counts while the import holds it — the fork
+ *  succeeded (the session has its own `codexThreadId`) or the wrapper is still
+ *  running (`active`: the fork may be in flight, a second import would race
+ *  it). `importedFromCodexThreadId` is stamped at birth, so a failed fork left
+ *  an empty, unrestorable shell that hid the original forever and the user
+ *  could never retry the import. */
+export function trackedCodexThreadIds(sessions: ReadonlyArray<Pick<Session, 'metadata' | 'active'>>): string[] {
     const ids = new Set<string>();
     for (const s of sessions) {
         const own = s.metadata?.codexThreadId;
-        if (typeof own === 'string' && UUID_RE.test(own)) ids.add(own.toLowerCase());
+        const ownValid = typeof own === 'string' && UUID_RE.test(own);
+        if (ownValid) ids.add(own.toLowerCase());
         const source = s.metadata?.importedFromCodexThreadId;
-        if (typeof source === 'string' && UUID_RE.test(source)) ids.add(source.toLowerCase());
+        const holdsSource = ownValid || s.active === true;
+        if (holdsSource && typeof source === 'string' && UUID_RE.test(source)) ids.add(source.toLowerCase());
     }
     return [...ids];
 }
 
-export function trackedHistoryIds(agent: HistoryAgent, sessions: ReadonlyArray<Pick<Session, 'metadata'>>): string[] {
+export function trackedHistoryIds(agent: HistoryAgent, sessions: ReadonlyArray<Pick<Session, 'metadata' | 'active'>>): string[] {
     return agent === 'claude' ? trackedClaudeSessionIds(sessions) : trackedCodexThreadIds(sessions);
 }
 
