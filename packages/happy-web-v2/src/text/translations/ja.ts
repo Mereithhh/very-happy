@@ -193,7 +193,7 @@ export const ja: PartialTranslationStructure = {
         webFeatures: 'Web機能',
         webFeaturesDescription: 'Webバージョンでのみ利用可能な機能。',
         enterToSend: 'Enterで送信',
-        enterToSendEnabled: 'Enterで送信（Shift+Enterで改行）',
+        enterToSendEnabled: 'Enterで送信（Cmd/Ctrl/Shift+Enterで改行）',
         enterToSendDisabled: 'Enterで改行',
         commandPalette: 'コマンドパレット',
         commandPaletteEnabled: '⌘Kで開く',

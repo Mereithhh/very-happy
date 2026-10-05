@@ -204,17 +204,35 @@ describe('AgentInput immediate send feedback', () => {
         await act(async () => { request.resolve(); });
     });
 
-    it('preserves explicit steer and never routes it through Stop or the local queue', async () => {
+    it('Cmd/Ctrl+Enter inserts a newline at the caret instead of sending or steering', async () => {
         mocks.working = true;
         render();
+        input().setSelectionRange(input().value.length, input().value.length);
         await enter({ metaKey: true });
-        expect(sendButton().getAttribute('aria-busy')).toBe('true');
-        await finishPaint();
-        expect(mocks.send).toHaveBeenCalledTimes(1);
-        expect(mocks.send.mock.calls[0][2].delivery).toBe('steer');
+        await enter({ ctrlKey: true });
+        expect(input().value).toBe('  Send this draft  \n\n');
+        expect(mocks.send).not.toHaveBeenCalled();
         expect(host.querySelector('.ci-queue-item')).toBeNull();
         expect(mocks.abort).not.toHaveBeenCalled();
-        await act(async () => { request.resolve(); });
+    });
+
+    it('on a soft-keyboard device Return is a newline; only the send button sends', async () => {
+        const original = window.matchMedia;
+        window.matchMedia = ((q: string) => ({ matches: q === '(hover: none) and (pointer: coarse)', addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+        try {
+            render();
+            const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+            await act(async () => { input().dispatchEvent(event); });
+            expect(event.defaultPrevented).toBe(false);
+            expect(sendButton().getAttribute('aria-busy')).toBe('false');
+            await clickSend();
+            expect(sendButton().getAttribute('aria-busy')).toBe('true');
+            await finishPaint();
+            expect(mocks.send).toHaveBeenCalledTimes(1);
+            await act(async () => { request.resolve(); });
+        } finally {
+            window.matchMedia = original;
+        }
     });
 
     it.each(['queue', 'restore'] as const)('retains an accepted %s submission when unmounted before feedback paints', async (path) => {

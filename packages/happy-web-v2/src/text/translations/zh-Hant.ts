@@ -257,7 +257,7 @@ export const zhHant: PartialTranslationStructure = {
         webFeatures: 'Web 功能',
         webFeaturesDescription: '僅在應用程式的 Web 版本中可用的功能。',
         enterToSend: 'Enter 鍵傳送',
-        enterToSendEnabled: '按 Enter 傳送（Shift+Enter 換行）',
+        enterToSendEnabled: '按 Enter 傳送（Cmd/Ctrl/Shift+Enter 換行）',
         enterToSendDisabled: 'Enter 鍵插入換行',
         commandPalette: '命令面板',
         commandPaletteEnabled: '按 ⌘K 開啟',

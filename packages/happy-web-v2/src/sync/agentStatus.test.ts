@@ -12,6 +12,14 @@ describe('one status vocabulary for all agent transports', () => {
             expect(terminalExecution({ online:true, fresh:true, state })).toBe(expected);
         }
     });
+    it('B-538: the LLM verdict is input only when no work is live; pending requests always are', () => {
+        expect(sessionExecution({ ...ready, llmAttention:true })).toBe('input');
+        expect(sessionExecution({ ...ready, llmAttention:true, backgroundTasks:1 })).toBe('background');
+        expect(sessionExecution({ ...ready, llmAttention:true, runningSubagents:1 })).toBe('running');
+        expect(sessionExecution({ ...ready, llmAttention:true, thinking:true })).toBe('running');
+        expect(sessionExecution({ ...ready, needsInput:true, backgroundTasks:1 })).toBe('input');
+        expect(sessionExecution({ ...ready, fresh:false, llmAttention:true })).toBe('unknown');
+    });
     it('stale work/requests are unknown, and disconnected owners are offline', () => {
         expect(sessionExecution({ ...ready, fresh:false, thinking:true, needsInput:true })).toBe('unknown');
         expect(terminalExecution({ online:true, fresh:false, state:'working' })).toBe('unknown');

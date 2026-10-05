@@ -12,6 +12,7 @@ import {
     filterByRetention,
     countUnread,
     isSameTarget,
+    STALE_VERDICT_MS,
     type LifecycleSnapshot,
     type LocalNotifEntry,
     type InboxEntry,
@@ -297,5 +298,51 @@ describe('isSameTarget', () => {
         expect(isSameTarget('/terminal/m1?tid=t1', '/terminal/m1', '?tid=t2')).toBe(false);
         expect(isSameTarget('/terminal/m1?tid=t1', '/terminal/m1', '')).toBe(false);
         expect(isSameTarget('/terminal/m1?tid=t1', '/terminal/m2', '?tid=t1')).toBe(false);
+    });
+});
+
+describe('B-536: an old verdict on a flickering session notifies at most once', () => {
+    const verdictAt = 1_000_000;
+    const review = snap({ key: 's1', lifecycle: 'waiting', waitReason: 'review', attentionSince: verdictAt });
+    const unknown = snap({ key: 's1', lifecycle: 'waiting', waitReason: 'unknown', attentionSince: undefined });
+
+    it('re-entering review with the same verdict after a liveness flicker does not notify again', () => {
+        let stored: LocalNotifEntry[] = [];
+        const fired: number[] = [];
+        // unknown → review → unknown → review … one minute apart, like the lease lapse
+        for (let i = 0; i < 5; i++) {
+            const now = verdictAt + 1000 + i * 61_000;
+            const events = deriveLocalNotifications(toSnapshotMap([unknown]), [review], now);
+            const appended = dedupeAppend(stored, events, 60_000);
+            stored = [...stored, ...appended];
+            if (appended.length) fired.push(now);
+        }
+        expect(fired).toHaveLength(1);
+        expect(stored[0].since).toBe(verdictAt);
+    });
+
+    it('a NEW verdict (new analyzedAt) still notifies', () => {
+        const first = deriveLocalNotifications(toSnapshotMap([unknown]), [review], verdictAt + 1000);
+        const stored = dedupeAppend([], first, 60_000);
+        const later = snap({ ...review, attentionSince: verdictAt + 600_000 });
+        const second = deriveLocalNotifications(toSnapshotMap([unknown]), [later], verdictAt + 601_000);
+        expect(dedupeAppend(stored, second, 60_000)).toHaveLength(1);
+    });
+
+    it('a review/blocked verdict older than STALE_VERDICT_MS never notifies', () => {
+        for (const waitReason of ['review', 'blocked'] as const) {
+            const old = snap({ key: 's1', lifecycle: 'waiting', waitReason, attentionSince: verdictAt });
+            expect(deriveLocalNotifications(toSnapshotMap([unknown]), [old], verdictAt + STALE_VERDICT_MS + 1)).toEqual([]);
+            expect(deriveLocalNotifications(toSnapshotMap([unknown]), [old], verdictAt + STALE_VERDICT_MS - 1)).toHaveLength(1);
+        }
+    });
+
+    it('an old pending permission request is not suppressed by the staleness rule, only deduped by identity', () => {
+        const perm = snap({ key: 's1', lifecycle: 'waiting', waitReason: 'permission', attentionSince: verdictAt });
+        const now = verdictAt + STALE_VERDICT_MS * 4;
+        const first = deriveLocalNotifications(toSnapshotMap([unknown]), [perm], now);
+        expect(first).toHaveLength(1);
+        const again = deriveLocalNotifications(toSnapshotMap([unknown]), [perm], now + 120_000);
+        expect(dedupeAppend(first, again, 60_000)).toEqual([]);
     });
 });

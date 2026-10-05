@@ -78,7 +78,7 @@ export function soundEventOfLocalKind(kind: LocalNotifKind): SoundEvent {
 /** The board facts the generator diffs — a snapshot row per board item. */
 export type LifecycleSnapshot = Pick<
     BoardItem,
-    'key' | 'kind' | 'lifecycle' | 'waitReason' | 'href' | 'title'
+    'key' | 'kind' | 'lifecycle' | 'waitReason' | 'href' | 'title' | 'attentionSince'
 >;
 
 /** A locally generated notification entry (persisted in MMKV). */
@@ -92,7 +92,17 @@ export interface LocalNotifEntry {
     title: string;
     createdAt: number;
     read: boolean;
+    /** B-536: identity of the underlying event — the board's attentionSince
+     *  (permission request time / LLM verdict analyzedAt / terminal wait
+     *  start). One event notifies once, however often the item re-enters the
+     *  state. Absent on entries written before B-536. */
+    since?: number;
 }
+
+/** B-536: an LLM review/blocked verdict older than this is history, not
+ *  news — an old session whose liveness flickers back must not announce a
+ *  verdict from days ago. */
+export const STALE_VERDICT_MS = 30 * 60 * 1000;
 
 const URGENT_KIND_BY_REASON: Partial<Record<WaitReason, LocalNotifKind>> = {
     permission: 'permission',
@@ -139,7 +149,9 @@ export function deriveLocalNotifications(
         if (urgentKind) {
             const wasSameState =
                 before?.lifecycle === 'waiting' && before.waitReason === item.waitReason;
-            if (!wasSameState) kind = urgentKind;
+            const staleVerdict = (urgentKind === 'review' || urgentKind === 'blocked')
+                && item.attentionSince !== undefined && now - item.attentionSince > STALE_VERDICT_MS;
+            if (!wasSameState && !staleVerdict) kind = urgentKind;
         } else if (item.waitReason === 'idle') {
             if (before?.lifecycle === 'running') kind = 'turnDone';
         }
@@ -154,6 +166,7 @@ export function deriveLocalNotifications(
             title: item.title,
             createdAt: now,
             read: false,
+            ...(kind !== 'turnDone' && item.attentionSince !== undefined ? { since: item.attentionSince } : {}),
         });
     }
     return out;
@@ -161,25 +174,34 @@ export function deriveLocalNotifications(
 
 /** Suppress repeats: an incoming entry is dropped when an entry with the same
  *  key+kind already exists within `windowMs` (covers rapid state flapping,
- *  e.g. a permission request re-posted while the user is answering). Returns
- *  only the entries that should actually be appended. */
+ *  e.g. a permission request re-posted while the user is answering), or —
+ *  B-536 — when one with the same key+kind+since was ever recorded: the same
+ *  verdict/request re-entering after a liveness flicker (heartbeat lease
+ *  lapse → 'unknown' → fresh again, roughly once a minute on an idle session)
+ *  used to slip past the 60s window and notify forever. Returns only the
+ *  entries that should actually be appended. */
 export function dedupeAppend(
     existing: ReadonlyArray<LocalNotifEntry>,
     incoming: ReadonlyArray<LocalNotifEntry>,
     windowMs: number,
 ): LocalNotifEntry[] {
     const lastAt = new Map<string, number>();
+    const seen = new Set<string>();
+    const identity = (e: LocalNotifEntry) => `${e.key}:${e.kind}:${e.since}`;
     for (const e of existing) {
         const k = `${e.key}:${e.kind}`;
         const cur = lastAt.get(k);
         if (cur === undefined || e.createdAt > cur) lastAt.set(k, e.createdAt);
+        if (e.since !== undefined) seen.add(identity(e));
     }
     const out: LocalNotifEntry[] = [];
     for (const e of incoming) {
         const k = `${e.key}:${e.kind}`;
         const last = lastAt.get(k);
         if (last !== undefined && e.createdAt - last < windowMs) continue;
+        if (e.since !== undefined && seen.has(identity(e))) continue;
         lastAt.set(k, e.createdAt);
+        if (e.since !== undefined) seen.add(identity(e));
         out.push(e);
     }
     return out;

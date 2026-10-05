@@ -431,6 +431,22 @@ describe('V2: metadata.board (LLM analysis) on session items', () => {
     expect(item.detail).toEqual({ kind: 'tool', name: 'Bash' });
   });
 
+  it('B-538: background tasks or a running sub-agent outrank the turn-end LLM verdict', () => {
+    const verdict = { attention: 'review' as const, progress: 'x', analyzedAt: NOW - 5_000 };
+    const [bg] = build({ sessions: [withBoard('s1', verdict)], backgroundTasks: { s1: 2 } });
+    expect(bg).toMatchObject({ status: 'working', lifecycle: 'running', backgroundTasks: 2 });
+    const [sub] = build({ sessions: [withBoard('s2', verdict)], runningSubagents: { s2: 1 } });
+    expect(sub).toMatchObject({ status: 'working', lifecycle: 'running' });
+    const [turn] = build({ sessions: [withBoard('s3', verdict, { thinking: true })] });
+    expect(turn).toMatchObject({ status: 'working', lifecycle: 'running' });
+    // a real pending request still needs the human, background work or not
+    const [req] = build({
+      sessions: [withBoard('s4', verdict, { agentState: { requests: { r: { tool: 'Bash', arguments: {}, createdAt: NOW - 1_000 } } } })],
+      backgroundTasks: { s4: 1 },
+    });
+    expect(req).toMatchObject({ status: 'attention', waitReason: 'permission' });
+  });
+
   it('V1 gate unchanged: a stale LLM verdict cannot park a DEAD session in attention', () => {
     const s = withBoard(
       's1',

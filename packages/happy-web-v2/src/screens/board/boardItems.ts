@@ -191,7 +191,7 @@ function llmAttentionOf(s: Session): 'review' | 'blocked' | undefined {
 
 function classifySession(s: Session, now: number, fresh: boolean, runningSubagents = 0, backgroundTasks = 0): { status: BoardStatus; backgroundTasks?: number } | null {
   const execution = sessionExecution({ online:s.presence === 'online', active:s.active, fresh,
-    thinking:s.thinking, needsInput:sessionHasPendingRequests(s) || !!llmAttentionOf(s), runningSubagents, backgroundTasks });
+    thinking:s.thinking, needsInput:sessionHasPendingRequests(s), llmAttention:!!llmAttentionOf(s), runningSubagents, backgroundTasks });
   if (execution === 'input') return { status:'attention' };
   if (execution === 'running') return { status:'working' };
   // B-507: background work after the turn ended is still the agent working —

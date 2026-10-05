@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-05-composer-keys-and-status',
+    date: '2026-10-05',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct05.title',
+    summaryKey: 'changelog.releases.oct05.summary',
+    itemKeys: ['changelog.releases.oct05.enter', 'changelog.releases.oct05.presets', 'changelog.releases.oct05.notifications', 'changelog.releases.oct05.background'],
+  },
+  {
     id: '2026-10-04-fork-first-message-order',
     cliVersion: '0.2.163',
     date: '2026-10-04',

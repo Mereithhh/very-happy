@@ -15,11 +15,12 @@
  */
 import { useState, useRef } from 'react';
 import { SendHorizontal } from 'lucide-react';
-import { useSession } from '@/sync/storage';
+import { useSession, useSetting } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentState } from '@/sync/terminalAgentState';
 import { machineMirrorTerminalSend } from '@/sync/ops';
 import { useImeGuard } from '@/utils/ime';
+import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import { Spinner, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import './mirror.css';
@@ -35,6 +36,7 @@ export function MirrorInputBar({ sessionId }: { sessionId: string }) {
         (s) => !!terminalId && s.terminals.some((x) => x.id === terminalId),
     );
     const ime = useImeGuard();
+    const enterToSend = useSetting('agentInputEnterToSend');
     const taRef = useRef<HTMLTextAreaElement>(null);
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
@@ -68,9 +70,13 @@ export function MirrorInputBar({ sessionId }: { sessionId: string }) {
     };
 
     const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey && !ime.isGuarded(e)) {
+        const action = resolveComposerEnter(e, { guarded: ime.isGuarded(e), enterToSend, softKeyboard: isSoftKeyboardDevice() });
+        if (action === 'send') {
             e.preventDefault();
             void send();
+        } else if (action === 'newline') {
+            e.preventDefault();
+            insertComposerNewline(e.currentTarget);
         }
     };
 

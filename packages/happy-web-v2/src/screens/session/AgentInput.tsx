@@ -8,8 +8,8 @@ import { appendMessageQuote } from './messageActionsModel';
  * AgentInput — the composer. A rounded auto-growing textarea + circular send
  * button, with permissions and model in one row; context sits below.
  *
- * Sending: Enter sends (configurable via agentInputEnterToSend), Shift+Enter
- * inserts a newline. IME-safe: never sends while a composition is active.
+ * Sending: see utils/composerEnter (desktop Enter sends, Cmd/Ctrl/Shift+Enter
+ * newline; soft keyboards newline). IME-safe: never sends mid-composition.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, CornerDownRight, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
@@ -32,7 +32,8 @@ import {
     compactResolvedModelCode,
     relabelDefaultModel,
 } from '@/components/modelModeOptions';
-import { useImeGuard } from '@/utils/ime';
+import { isImeGuardedEvent, useImeGuard } from '@/utils/ime';
+import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import { onInsertToInput } from '@/app/insertToInput';
 import {
     isPiAgent,
@@ -808,9 +809,18 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         ]
         : queued.map((item) => ({ id: item.id, text: item.text, source: 'local' as const }));
 
+    // Focus the textarea with the caret at the end — after an insert the next
+    // keystroke (Enter to send, or more typing) must land after the new text.
+    const focusComposerEnd = () => {
+        const ta = taRef.current;
+        if (!ta) return;
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+    };
+
     const insertPreset = (presetText: string) => {
         setText((prev) => (prev.trim().length === 0 ? presetText : `${prev.replace(/\s*$/, '')}\n${presetText}`));
-        requestAnimationFrame(() => taRef.current?.focus());
+        requestAnimationFrame(focusComposerEnd);
     };
 
     // Insert target for the notes dock (vh:insert-to-input) — same semantics
@@ -906,7 +916,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                 setDismissedSlashText(text);
                 return;
             }
-            if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+            if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey)) {
                 e.preventDefault();
                 const next = slashCommandText(slashSuggestions[slashIndex] ?? slashSuggestions[0]);
                 setText(next);
@@ -915,11 +925,16 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                 return;
             }
         }
-        if (e.key === 'Enter' && !e.shiftKey && !ime.isGuarded(e)) {
-            if (enterToSend) {
-                e.preventDefault();
-                void doSend(isWorking && supportsSteer && (e.metaKey || e.ctrlKey) ? 'steer' : 'queue');
-            }
+        // Enter policy (desktop Enter sends / Cmd·Ctrl·Shift+Enter newline;
+        // soft keyboards always newline) lives in resolveComposerEnter.
+        // Steering stays on the queued message's own action.
+        const action = resolveComposerEnter(e, { guarded: ime.isGuarded(e), enterToSend, softKeyboard: isSoftKeyboardDevice() });
+        if (action === 'send') {
+            e.preventDefault();
+            void doSend('queue');
+        } else if (action === 'newline') {
+            e.preventDefault();
+            insertComposerNewline(e.currentTarget);
         }
     };
 
@@ -1016,9 +1031,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                                         placeholder={t('session.chat.queueEditingPlaceholder')}
                                         onChange={(event) => setEditingText(event.target.value)}
                                         onKeyDown={(event) => {
-                                            if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-                                            if (event.key === 'Escape') setEditingId(null);
-                                            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && editingText.trim()) saveEdit();
+                                            if (isImeGuardedEvent(event)) return;
+                                            if (event.key === 'Escape') { setEditingId(null); return; }
+                                            const action = resolveComposerEnter(event, { guarded: false, enterToSend, softKeyboard: isSoftKeyboardDevice() });
+                                            if (action === 'send') { event.preventDefault(); if (editingText.trim()) saveEdit(); }
+                                            else if (action === 'newline') { event.preventDefault(); insertComposerNewline(event.currentTarget); }
                                         }}
                                     />
                                 ) : (
@@ -1218,6 +1235,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                 <span className="ci-hint">
                     {isWorking
                         ? supportsSteer ? t('session.chat.queueSteerHint') : t('session.chat.queueHint')
+                        : isSoftKeyboardDevice() ? t('session.chat.touchEnterHint')
                         : enterToSend ? t('session.chat.enterToSend') : t('session.chat.shiftEnterToSend')}
                 </span>
             </div>
