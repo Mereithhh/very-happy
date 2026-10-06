@@ -5,6 +5,7 @@ import { askUserQuestionDisplayAnswer, type AskQuestion } from './askUserQuestio
 import { parseLocalCommandMessage, parseTaskNotification, stripHarnessBlocks } from './harness';
 import { GENERIC_TURN_FAILURE, presentServiceEvent } from './serviceEvent';
 import { stripThinkingWrapper } from './thinking';
+import { summarizeCompactionTurn, type CompactionSummary } from './compaction';
 
 export type LeafRow =
     | {
@@ -21,7 +22,7 @@ export type LeafRow =
     }
     | { type: 'toolgroup'; key: string; tools: ToolCallMessage[] };
 
-export type ChatRow = LeafRow | {
+export type ChatRow = LeafRow | ({ type: 'compaction'; key: string } & CompactionSummary) | {
     type: 'activity';
     key: string;
     messages: Message[];
@@ -311,7 +312,12 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean): Cha
         const turnRowsStart = rows.length;
         if (!trigger) rows.push(...buildLeafRows([message], finalAgentId, true, true, userAttachments));
 
-        if (live) {
+        // B-540: a `/compact` turn is one boundary line, not a 「耗时」 activity
+        // holding two raw service events.
+        const compaction = trigger ? null : summarizeCompactionTurn(turnMessages.filter(isRenderableActivityMessage), live);
+        if (compaction) {
+            rows.push({ type: 'compaction', key: `compaction-${message.id}`, ...compaction });
+        } else if (live) {
             const activity = turnMessages.filter(isRenderableActivityMessage);
             if (activity.length > 0) {
                 rows.push({

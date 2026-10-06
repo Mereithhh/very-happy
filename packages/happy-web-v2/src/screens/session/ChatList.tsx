@@ -19,6 +19,8 @@ import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 import { LiveStreamView } from './LiveStreamView';
 import { endLiveStreamTurn } from '@/sync/liveStreamStore';
 import { TurnActivityView } from './TurnActivityView';
+import { CompactionDivider } from './CompactionDivider';
+import { dropSlashCommandEchoes } from './compaction';
 import { buildChatRows } from './chatTurns';
 import {
     nextAwaySnapshot,
@@ -85,9 +87,9 @@ export function ChatList({
         // the transcript, marked — the user's text must not vanish because a
         // restart/clear ate it. A web-side cancel (no reason) is the user's own
         // removal and stays hidden, as before.
-        () => dropDuplicateAttachmentEchoes(suppressSubagentPills([...messages].reverse().filter((message) =>
+        () => dropSlashCommandEchoes(dropDuplicateAttachmentEchoes(suppressSubagentPills([...messages].reverse().filter((message) =>
             isTranscriptVisibleInput(message) &&
-            (message.kind !== 'tool-call' || !isHiddenToolCall(message.tool))))),
+            (message.kind !== 'tool-call' || !isHiddenToolCall(message.tool)))))),
         [messages],
     );
     // B-260-P2: a background sub-agent keeps the turn live after the main
@@ -372,6 +374,9 @@ export function ChatList({
                                 durationSeconds={row.durationSeconds}
                                 trigger={row.trigger}
                             />
+                        ) : row.type === 'compaction' ? (
+                            <CompactionDivider key={row.key} state={row.state} startedAt={row.startedAt}
+                                durationSeconds={row.durationSeconds} error={row.error} />
                         ) : row.type === 'toolgroup' ? (
                             <ToolGroupView
                                 key={row.key}
