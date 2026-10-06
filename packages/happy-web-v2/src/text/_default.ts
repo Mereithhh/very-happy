@@ -2041,6 +2041,11 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct06: {
+                title: 'Preview beside the chat',
+                summary: 'File previews open in the right side panel instead of covering the conversation.',
+                dock: 'Files Claude opens with open_preview, and file paths you click, now open in the resizable right panel of the session or terminal, so you can read and keep typing. Drag its edge to resize. Outside a session (e.g. the board) the floating preview is still used.',
+            },
             oct05: {
                 title: 'Enter to send, steadier status',
                 summary: 'Composer keys work the same everywhere, and the sidebar and notifications stop flickering.',

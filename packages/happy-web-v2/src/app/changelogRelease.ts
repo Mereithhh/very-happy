@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-06-preview-side-panel',
+    date: '2026-10-06',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct06.title',
+    summaryKey: 'changelog.releases.oct06.summary',
+    itemKeys: ['changelog.releases.oct06.dock'],
+  },
+  {
     id: '2026-10-05-composer-keys-and-status',
     date: '2026-10-05',
     buildVersion: __APP_VERSION__,
