@@ -933,6 +933,12 @@ export const zhHans: TranslationStructure = {
             subagentLog: '执行过程',
             subagentNoActivity: '这个子代理还没有任何回报。',
             subagentGone: '这张子代理卡不在当前已加载的对话里。',
+            compactionRunning: '正在压缩上下文…',
+            compactionDone: '上下文已压缩',
+            compactionFailed: '上下文压缩失败',
+            compactionFailedWith: ({ error }: { error: string }) => `上下文压缩失败：${error}`,
+            compactionInterrupted: '上下文压缩未完成',
+            compactionHint: '上面的消息仍可查看；智能体之后只基于它们的摘要继续。',
             activityElapsed: ({ seconds }: { seconds: number }) => {
                 if (seconds < 60) return `耗时 ${seconds} 秒`;
                 const minutes = Math.floor(seconds / 60);
@@ -2161,6 +2167,11 @@ export const zhHans: TranslationStructure = {
                 session: '有运行在等的会话，头部下方多一条横幅——自动化名、原因、「知道了」——侧栏那一行也带标记。',
                 band: '「需要我决策」每一行最左是一个圆形勾选（触屏 44px）即「知道了」，头部有「全部已读」，看板上带太长会自己滚动、不再把泳道顶出屏幕。',
                 cli: '`very-happy auto ack --all [--name <自动化>]` 在终端一次确认全部。需要更新 CLI；网页与服务端部分已上线。',
+            },
+            oct07: {
+                title: '/compact 更清爽',
+                summary: '压缩上下文在对话里只占一行。',
+                compact: '/compact 现在显示为一条「上下文已压缩 · 耗时」分隔线（进行中带转圈，失败时写明原因），不再出现耗时面板、两行英文状态和重复的 /compact 气泡。',
             },
             oct06: {
                 title: '边预览边聊天',

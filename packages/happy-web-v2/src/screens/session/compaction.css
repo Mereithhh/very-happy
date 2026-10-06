@@ -1,0 +1,42 @@
+/* B-540: compaction boundary — a 1px rule with a centred label (design
+   language §5.3: separators, not cards). Faint by default; accent only while
+   it is actually running (live), danger when it failed. */
+.msg-compaction {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+}
+.msg-compaction::before,
+.msg-compaction::after {
+  content: '';
+  flex: 1 1 0;
+  min-width: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+.msg-compaction-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  max-width: 80%;
+}
+.msg-compaction-text {
+  min-width: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.msg-compaction-time {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+}
+.msg-compaction-time::before {
+  content: '·';
+  margin-right: var(--sp-2);
+}
+.msg-compaction--running { color: var(--text-dim); }
+.msg-compaction--running .vh-spinner { color: var(--accent); border-color: var(--accent); border-top-color: transparent; }
+.msg-compaction--failed { color: var(--danger); }

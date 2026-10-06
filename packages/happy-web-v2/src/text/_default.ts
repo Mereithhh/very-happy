@@ -759,6 +759,12 @@ export const en = {
             subagentLog: 'process',
             subagentNoActivity: 'This sub-agent has not reported anything yet.',
             subagentGone: 'That sub-agent card is not loaded in this transcript.',
+            compactionRunning: 'Compacting context…',
+            compactionDone: 'Context compacted',
+            compactionFailed: 'Compaction failed',
+            compactionFailedWith: ({ error }: { error: string }) => `Compaction failed: ${error}`,
+            compactionInterrupted: 'Compaction did not finish',
+            compactionHint: 'Messages above stay visible here; the agent now continues from a summary of them.',
             activityElapsed: ({ seconds }: { seconds: number }) => {
                 if (seconds < 60) return `Elapsed ${seconds}s`;
                 const minutes = Math.floor(seconds / 60);
@@ -2040,6 +2046,11 @@ export const en = {
                 session: 'A session some run is waiting on shows a strip under its header — automation name, reason, 「Acknowledge」 — and its sidebar row carries a marker.',
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
+            },
+            oct07: {
+                title: 'Cleaner /compact',
+                summary: 'A compaction is now one line in the conversation.',
+                compact: '/compact shows a single “Context compacted · elapsed” divider (a live spinner while it runs, the reason if it fails) instead of an elapsed-time panel with two English status lines and a second /compact bubble.',
             },
             oct06: {
                 title: 'Preview beside the chat',
