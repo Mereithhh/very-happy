@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { previewPinTarget } from './previewPinTarget';
+import { previewDockTarget, previewPinTarget } from './previewPinTarget';
 const request={machineId:'m',sessionId:'source',path:'/dir/中文 #.xlsx',mode:'file' as const};
 const machine=(id:string)=>id==='source'||id==='current'?'m':'other';
 it('pins into the current matching context and URL-encodes file paths',()=>{
@@ -11,4 +11,10 @@ it('preserves terminal identity and falls back only to the verified source sessi
  expect(previewPinTarget(request,{pathname:'/terminal/m',search:'?tid=t'},machine)).toContain('tid=t');
  expect(previewPinTarget(request,{pathname:'/session/foreign',search:''},machine)).toContain('/session/source?');
  expect(previewPinTarget({...request,sessionId:undefined},{pathname:'/session/foreign',search:''},machine)).toBeNull();
+});
+it('docks pushes into the source session, user-opened previews only into the current context',()=>{
+ expect(previewDockTarget({...request,fromPush:true},{pathname:'/board',search:''},machine)).toContain('/session/source?');
+ expect(previewDockTarget(request,{pathname:'/board',search:''},machine)).toBeNull();
+ expect(previewDockTarget(request,{pathname:'/session/current',search:''},machine)).toContain('/session/current?');
+ expect(previewDockTarget({...request,fromPush:true},{pathname:'/board',search:''},()=>undefined)).toBeNull();
 });

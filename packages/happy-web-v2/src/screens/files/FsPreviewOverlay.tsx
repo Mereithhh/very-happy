@@ -10,6 +10,9 @@
  * so are the two existing viewer hosts (terminal drawer, session FilesPanel).
  *
  * Deliberate behaviours:
+ *  - when the preview belongs to a session / terminal context it docks into
+ *    that page's resizable side panel instead (`previewDockTarget`), so you
+ *    can read it and keep chatting; this overlay is the fallback only.
  *  - it does NOT steal focus (nothing is autofocused / .focus()'d): a push may
  *    land while the user is typing in a terminal or composer. Esc or a backdrop
  *    click closes it.
@@ -25,7 +28,7 @@ import { createPortal } from 'react-dom';
 import { Maximize2, Minimize2, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { previewFollowTarget, previewPinTarget } from './previewPinTarget';
+import { previewDockTarget, previewFollowTarget, previewPinTarget } from './previewPinTarget';
 import { storage, useMachine } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { onFsPreviewOpen, type FsPreviewRequest } from '@/sync/filePreviewOpen';
@@ -122,12 +125,25 @@ export function FsPreviewOverlay() {
         setFullscreen(false);
     }, []);
 
-    const pathnameRef = useRef(location.pathname);
-    pathnameRef.current = location.pathname;
+    const locationRef = useRef(location);
+    locationRef.current = location;
     useEffect(() => onFsPreviewOpen((next) => {
+        // Dock into the resizable side panel when there is a verified context,
+        // so the conversation stays usable next to the preview. The panel does
+        // not take focus: typing in the composer keeps working. The modal below
+        // is only the fallback for contexts without a panel (/board, unknown
+        // session, other machine).
+        const sessions = storage.getState().sessions;
+        const dock = previewDockTarget(next, locationRef.current, id => sessions[id]?.metadata?.machineId);
+        if (dock) {
+            setRequest(null);
+            setFullscreen(false);
+            navigate(dock);
+            return;
+        }
         // B-526: a pushed preview brings you to its session first (the overlay
         // is app-level, so it survives the route change).
-        const follow = previewFollowTarget(next, pathnameRef.current, (id) => !!storage.getState().sessions[id]);
+        const follow = previewFollowTarget(next, locationRef.current.pathname, (id) => !!storage.getState().sessions[id]);
         if (follow) navigate(follow);
         // A second push replaces the first (one overlay, newest wins) and resets
         // the geometry so a stale fullscreen doesn't carry over.

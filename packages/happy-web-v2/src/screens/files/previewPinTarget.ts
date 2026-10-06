@@ -32,3 +32,18 @@ export function previewFollowTarget(request: FsPreviewRequest, pathname: string,
     try { current = match ? decodeURIComponent(match[1]) : undefined; } catch { current = undefined; }
     return current === request.sessionId ? null : `/session/${encodeURIComponent(request.sessionId)}`;
 }
+
+/**
+ * Where an incoming preview docks as the resizable side panel instead of the
+ * modal, so the user can keep chatting next to it (Owner 2026-10-05:「preview
+ * 应该改成侧边栏的（可以 resize），这样可以边预览边聊天」).
+ *
+ * A push may dock into its verified source session (that is where B-526 sends
+ * you anyway); a preview you opened yourself only docks into the context you
+ * are already in — it never moves you. null → keep the modal fallback (/board,
+ * unknown session, machine mismatch).
+ */
+export function previewDockTarget(request: FsPreviewRequest, location: { pathname: string; search: string }, sessionMachine: (id: string) => string | undefined): string | null {
+    if (request.fromPush) return previewPinTarget(request, location, sessionMachine);
+    return previewPinTarget({ ...request, sessionId: undefined }, location, sessionMachine);
+}
