@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-10-unseen-badge',
+    date: '2026-10-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct10.title',
+    summaryKey: 'changelog.releases.oct10.summary',
+    itemKeys: ['changelog.releases.oct10.badge'],
+  },
+  {
     id: '2026-10-07-compact-boundary',
     date: '2026-10-07',
     buildVersion: __APP_VERSION__,

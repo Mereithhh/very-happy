@@ -2047,6 +2047,11 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct10: {
+                title: 'Accurate new-message count',
+                summary: 'The jump-to-latest badge counts only new messages.',
+                badge: 'While you read earlier in a long conversation, the number on the jump-to-latest button no longer climbs to 99+ as older history loads in the background; it counts only messages that arrived after you scrolled away.',
+            },
             oct07: {
                 title: 'Cleaner /compact',
                 summary: 'A compaction is now one line in the conversation.',
