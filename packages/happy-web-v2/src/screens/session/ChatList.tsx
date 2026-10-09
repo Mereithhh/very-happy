@@ -60,9 +60,9 @@ export function ChatList({
     const [showJump, setShowJump] = useState(false);
     const [cancelingLocalKey, setCancelingLocalKey] = useState<string | null>(null);
     const prevHeightRef = useRef(0);
-    // B-099 ②：离底时刻的 rows.length 快照（贴底时为 null）。之后新到的 row 数
-    // = rows.length - 快照，渲染成 .cl-jump 上的数字 badge；回底清零。
-    const awaySnapshotRef = useRef<number | null>(null);
+    // B-099 ②：离底时刻最新一行的 key（贴底时为 null）。排在它后面的 row 数
+    // 渲染成 .cl-jump 上的数字 badge；回底清零。顶部插入的旧历史不计。
+    const awaySnapshotRef = useRef<string | null>(null);
 
     // storage keeps messages sorted NEWEST-FIRST (compareMessagesNewestFirst,
     // used by the sidebar's latest-message needs). The transcript reads top→
@@ -115,6 +115,7 @@ export function ChatList({
         () => buildChatRows(chronological, sessionLive),
         [chronological, sessionLive],
     );
+    const rowKeys = useMemo(() => rows.map((row) => row.key), [rows]);
 
     const cancelQueued = async (index: number) => {
         const message = queuedMessages[index];
@@ -186,13 +187,13 @@ export function ChatList({
         const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
         const atBottom = distance < 80;
         atBottomRef.current = atBottom;
-        awaySnapshotRef.current = nextAwaySnapshot(awaySnapshotRef.current, atBottom, rows.length);
+        awaySnapshotRef.current = nextAwaySnapshot(awaySnapshotRef.current, atBottom, rowKeys[rowKeys.length - 1] ?? null);
         setShowJump(!atBottom);
     };
 
-    // 未读增量在渲染时现算：离底后快照不动，rows.length 变化本身就触发重渲染；
+    // 未读增量在渲染时现算：离底后快照不动，rows 变化本身就触发重渲染；
     // 回底由 onScroll 清快照并 setShowJump(false) 触发重渲染，badge 随之消失。
-    const unseenLabel = formatUnseen(unseenRows(awaySnapshotRef.current, rows.length));
+    const unseenLabel = formatUnseen(unseenRows(awaySnapshotRef.current, rowKeys));
 
     // Auto-stick to bottom on new content when already near the bottom. Keyed on
     // both row count (new messages) and the streaming message's growing length

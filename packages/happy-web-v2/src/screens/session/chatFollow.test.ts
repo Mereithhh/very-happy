@@ -10,31 +10,40 @@ import {
 
 describe('nextAwaySnapshot', () => {
     it('贴底时永远没有快照', () => {
-        expect(nextAwaySnapshot(null, true, 10)).toBeNull();
-        expect(nextAwaySnapshot(7, true, 10)).toBeNull(); // 回底清零
+        expect(nextAwaySnapshot(null, true, 'r9')).toBeNull();
+        expect(nextAwaySnapshot('r6', true, 'r9')).toBeNull(); // 回底清零
     });
 
-    it('离底那一刻记下当前 row 数', () => {
-        expect(nextAwaySnapshot(null, false, 10)).toBe(10);
+    it('离底那一刻记下最新一行的 key', () => {
+        expect(nextAwaySnapshot(null, false, 'r9')).toBe('r9');
     });
 
-    it('持续离底时快照保持不变（增量以离底时刻为基准）', () => {
-        expect(nextAwaySnapshot(10, false, 15)).toBe(10);
+    it('持续离底时快照保持不变（增量以离底时刻为界）', () => {
+        expect(nextAwaySnapshot('r9', false, 'r14')).toBe('r9');
     });
 });
 
+const keys = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `r${from + i}`);
+
 describe('unseenRows', () => {
     it('贴底（无快照）恒为 0', () => {
-        expect(unseenRows(null, 42)).toBe(0);
+        expect(unseenRows(null, keys(0, 41))).toBe(0);
     });
 
     it('离底后新增的 row 数', () => {
-        expect(unseenRows(10, 10)).toBe(0);
-        expect(unseenRows(10, 13)).toBe(3);
+        expect(unseenRows('r9', keys(0, 9))).toBe(0);
+        expect(unseenRows('r9', keys(0, 12))).toBe(3);
     });
 
-    it('row 数收缩（消息被替换/重建）不出负数', () => {
-        expect(unseenRows(10, 8)).toBe(0);
+    it('顶部插入的旧历史不算新消息（后台预取，Xu CHEN 实报 99+）', () => {
+        // 离底时 r100..r159；预取三页把 r-20..r99 插到前面，底部没有新行
+        expect(unseenRows('r159', keys(-20, 159))).toBe(0);
+        // 同时底部真的来了 2 行
+        expect(unseenRows('r159', keys(-20, 161))).toBe(2);
+    });
+
+    it('快照行不在了（重建换 key）不乱报', () => {
+        expect(unseenRows('gone', keys(0, 7))).toBe(0);
     });
 });
 
