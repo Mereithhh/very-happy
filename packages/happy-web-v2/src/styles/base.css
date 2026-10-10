@@ -12,6 +12,27 @@ body,
   height: 100%;
 }
 
+/* Full-screen shells size against --app-h, never a bare 100dvh/100%.
+   iOS 26 home-screen web apps (viewport-fit=cover + black-translucent) report
+   100dvh / 100svh / 100% / innerHeight short by the TOP safe-area inset
+   (~47–59pt), so the app ends that far above the screen edge: a blank band
+   under the composer (Xu CHEN 2026-10-10, iOS 26.5, present before any
+   keyboard). Only 100lvh reads the full height there. Scoped to standalone
+   WebKit so Safari tabs and Android keep the dynamic viewport. */
+:root {
+  --app-h: 100dvh;
+}
+@media (display-mode: standalone) {
+  @supports (-webkit-touch-callout: none) {
+    :root {
+      --app-h: 100lvh;
+    }
+    html {
+      height: var(--app-h);
+    }
+  }
+}
+
 /* iOS: no rubber-band. The app shell never scrolls (inner containers do), so
    body overscroll is pure bounce noise — kill it at the root, and stop inner
    scrollers from CHAINING their edge-scroll into the body (that chaining is
@@ -32,7 +53,7 @@ body {
 
 /* iOS: use dynamic viewport so the keyboard/toolbar doesn't clip the composer */
 #root {
-  min-height: 100dvh;
+  min-height: var(--app-h);
 }
 
 body {

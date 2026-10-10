@@ -10,7 +10,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: var(--app-h);
   background: var(--bg-0);
   color: var(--text);
   overflow: hidden;

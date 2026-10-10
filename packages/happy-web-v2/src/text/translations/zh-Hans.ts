@@ -2168,6 +2168,11 @@ export const zhHans: TranslationStructure = {
                 band: '「需要我决策」每一行最左是一个圆形勾选（触屏 44px）即「知道了」，头部有「全部已读」，看板上带太长会自己滚动、不再把泳道顶出屏幕。',
                 cli: '`very-happy auto ack --all [--name <自动化>]` 在终端一次确认全部。需要更新 CLI；网页与服务端部分已上线。',
             },
+            oct10a: {
+                title: 'iPhone 主屏幕打开铺满全屏',
+                summary: 'iOS 26 上输入框下方不再空出一条白边。',
+                height: '在 iOS 26 上从主屏幕图标打开时，页面铺满到屏幕底边，不再在输入框下面留一条空白；输入框也会让开底部的横条。',
+            },
             oct10: {
                 title: '新消息计数更准',
                 summary: '「回到最新」按钮上的数字只数新消息。',

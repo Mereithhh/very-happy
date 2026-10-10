@@ -1,5 +1,5 @@
 .tc-page {
-  min-height: 100dvh;
+  min-height: var(--app-h);
   display: grid;
   place-items: center;
   padding: var(--sp-5);
