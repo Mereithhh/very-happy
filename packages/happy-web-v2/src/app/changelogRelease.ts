@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-11-edit-stays-in-sync',
+    cliVersion: '0.2.164',
+    date: '2026-10-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct11a.title',
+    summaryKey: 'changelog.releases.oct11a.summary',
+    itemKeys: ['changelog.releases.oct11a.edit', 'changelog.releases.oct11a.sdk'],
+  },
+  {
     id: '2026-10-11-rpc-duplicate-socket',
     cliVersion: '0.2.164',
     date: '2026-10-11',

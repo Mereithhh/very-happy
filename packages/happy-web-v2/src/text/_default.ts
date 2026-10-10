@@ -2047,6 +2047,12 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct11a: {
+                title: 'Edits keep the agent and the chat in sync',
+                summary: 'A lost confirmation no longer leaves an edit half-applied; Claude Code 2.1.296.',
+                edit: 'Editing or deleting a message no longer leaves the agent and the chat out of sync when the confirmation is lost: the edit completes from the saved state or is undone automatically, and conversations split by older versions are repaired when the session restarts.',
+                sdk: 'Claude sessions now run Claude Code 2.1.296.',
+            },
             oct11: {
                 title: 'Session actions no longer stall after an update',
                 summary: 'Editing a message or running a terminal command could keep timing out after a service update; fixed.',
