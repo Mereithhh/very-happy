@@ -32,6 +32,10 @@ import { LaunchModeGate } from './launchModeGate';
 import type { ClaudePrewarmLease } from './claudePrewarm';
 import { createConversationRewind } from './conversationRewind';
 import { getProjectPath } from './utils/path';
+import { persistRewindRecord, RewindReconciler } from './rewindReconciler';
+import { pendingResumeId } from './rewindReconcile';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 interface PermissionsField {
     date: number;
@@ -43,6 +47,10 @@ interface PermissionsField {
 /** How long the stop button waits for a graceful `interrupt()` to actually
  *  stop the turn before escalating to the hard AbortController abort. */
 const ABORT_INTERRUPT_GRACE_MS = 4000;
+/** B-544: records read when reconciling a rewind against the server log. */
+const REWIND_LOG_WINDOW = 500;
+/** B-544: how long the first launch waits for the startup reconcile. */
+const REWIND_STARTUP_BUDGET_MS = 15_000;
 
 export async function claudeRemoteLauncher(
     session: Session,
@@ -200,8 +208,40 @@ export async function claudeRemoteLauncher(
     };
     // Set while a rewind relaunches the query: that abort is not the user's.
     let silentRelaunch = false;
+    // B-544: a restarted wrapper has no Session.sessionId until the first
+    // spawn; the conversation it will resume is still in `--resume <id>`.
+    const agentConversationId = () => session.sessionId ?? pendingResumeId(session.claudeArgs);
+    const switchConversation = async (claudeSessionId: string | null) => {
+        if (claudeSessionId) session.onSessionFound(claudeSessionId);
+        else session.clearSessionId();
+        // No live query (startup reconcile runs before the first launch):
+        // the next launch simply resumes the new id.
+        if (!abortController || abortController.signal.aborted) return;
+        silentRelaunch = true;
+        await abort();
+    };
+    // B-544: a rewind is provisional until the durable log confirms it.
+    const rewindReconciler = new RewindReconciler({
+        now: Date.now,
+        readRecord: () => session.client.getMetadata()?.rewind,
+        writeRecord: (record) => persistRewindRecord(session.client, record),
+        readLog: () => session.client.readLogTail(REWIND_LOG_WINDOW),
+        currentClaudeSessionId: () => agentConversationId(),
+        readTranscript: async (claudeSessionId) => {
+            try {
+                return (await readFile(join(getProjectPath(session.path), `${claudeSessionId}.jsonl`), 'utf-8')).split('\n');
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+                throw error;
+            }
+        },
+        switchConversation,
+        log: (message, data) => logger.debug(message, data),
+    });
+    const observeSessionRecord = (body: unknown) => rewindReconciler.observe(body);
+    session.client.on('message', observeSessionRecord);
     session.client.rpcHandlerManager.registerHandler('conversation-rewind', createConversationRewind({
-        claudeSessionId: () => session.sessionId,
+        claudeSessionId: () => agentConversationId(),
         projectDir: () => getProjectPath(session.path),
         isThinking: () => session.thinking,
         stopTurn: doAbort,
@@ -210,12 +250,8 @@ export async function claudeRemoteLauncher(
             const alias = promptAliases.get(sourceId);
             return alias ? [alias] : [];
         },
-        switchConversation: async (claudeSessionId) => {
-            if (claudeSessionId) session.onSessionFound(claudeSessionId);
-            else session.clearSessionId();
-            silentRelaunch = true;
-            await abort();
-        },
+        switchConversation,
+        beginPending: (record) => rewindReconciler.begin(record),
     }));
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
@@ -468,6 +504,13 @@ export async function claudeRemoteLauncher(
         // actually changes (e.g., new session started or /clear command used).
         // See: https://github.com/anthropics/happy-cli/issues/143
         let previousSessionId: string | null = null;
+        // B-544: before the first prompt runs, settle what an earlier process
+        // left behind (pending rewind, or a legacy unconfirmed rewound copy).
+        // Bounded: a slow server must not hold the session hostage.
+        await Promise.race([
+            rewindReconciler.startup().catch((error) => logger.debug('[rewind] startup reconcile failed', error)),
+            new Promise((resolve) => setTimeout(resolve, REWIND_STARTUP_BUDGET_MS).unref?.()),
+        ]);
         while (!exitReason) {
             logger.debug('[remote]: launch');
             messageBuffer.addMessage('═'.repeat(40), 'status');
@@ -539,6 +582,11 @@ export async function claudeRemoteLauncher(
                             return parked;
                         }
 
+                        // B-544: while a rewind is pending, prompts wait for the
+                        // verdict (confirm keeps the copy, revert relaunches on
+                        // the source) — the edited prompt never runs on the
+                        // wrong conversation.
+                        await rewindReconciler.settled(controller.signal);
                         let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
 
                         // Check if mode has changed
@@ -803,6 +851,8 @@ export async function claudeRemoteLauncher(
             }
         }
     } finally {
+        session.client.off('message', observeSessionRecord);
+        rewindReconciler.dispose();
 
         // Clean up permission handler
         permissionHandler.reset();

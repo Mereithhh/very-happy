@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ConversationRewindError, rewindClaudeTranscript, rewindTranscriptLines } from './claudeTranscriptRewind';
+import { ConversationRewindError, rewindAcrossLineage, rewindClaudeTranscript, rewindTranscriptLines, transcriptSourceId } from './claudeTranscriptRewind';
 
 const u = (uuid: string, content: unknown, parentUuid: string | null, extra: object = {}) => ({ type: 'user', uuid, parentUuid, message: { role: 'user', content }, ...extra });
 const a = (uuid: string, parentUuid: string, text = 'answer') => ({ type: 'assistant', uuid, parentUuid, message: { role: 'assistant', content: [{ type: 'text', text }] } });
@@ -79,4 +79,46 @@ describe('rewindClaudeTranscript', () => {
         expect(await readFile(source, 'utf-8')).toBe(lines.join('\n') + '\n');
         expect(await rewindClaudeTranscript(dir, 'src', 'edit', { uuids: ['p1'] })).toBeNull();
     });
+
+    it('B-544: rewinds from the source file when the current copy lacks the target', async () => {
+        const src = lines.map((line) => JSON.stringify({ ...JSON.parse(line), sessionId: 'src' }));
+        await writeFile(join(dir, 'src.jsonl'), src.join('\n') + '\n');
+        await writeFile(join(dir, 'copy.jsonl'), src.slice(0, 3).join('\n') + '\n');
+        const id = await rewindClaudeTranscript(dir, 'copy', 'edit', { uuids: ['p3'] });
+        const written = (await readFile(join(dir, `${id}.jsonl`), 'utf-8')).trim().split('\n').map((line) => JSON.parse(line));
+        expect(written.map((entry) => entry.uuid)).toEqual([undefined, 'p1', 'a1', 'p2', 'a2', 'r2', 'a2b']);
+    });
 });
+
+describe('rewind target across lineage (B-544)', () => {
+    // SRC is the original; COPY is an unconfirmed rewound copy made from it
+    // (copied rows keep sessionId SRC) that lost p2 and p3.
+    const src = conversation.map((entry) => JSON.stringify({ ...entry, sessionId: 'SRC' }));
+    const copy = src.slice(0, 3);
+    const files: Record<string, string[]> = { SRC: src, COPY: copy };
+    const load = async (id: string) => files[id] ?? null;
+
+    it('finds the source of a rewound copy from the copied rows', () => {
+        expect(transcriptSourceId(copy, 'COPY')).toBe('SRC');
+        expect(transcriptSourceId(src, 'SRC')).toBeNull();
+        expect(transcriptSourceId([...copy, JSON.stringify({ ...u('p9', 'later', 'a1'), sessionId: 'COPY' })], 'COPY')).toBe('SRC');
+    });
+
+    it('a target missing from the current file is rewound from its source', async () => {
+        const result = await rewindAcrossLineage(load, 'COPY', 'edit', { uuids: ['p3'] });
+        expect(result.from).toBe('SRC');
+        expect(parse(result.kept)?.map((entry) => entry.uuid)).toEqual([undefined, 'p1', 'a1', 'p2', 'a2', 'r2', 'a2b']);
+        // text-only targets (pre-uuid prompts) follow the same lineage
+        expect((await rewindAcrossLineage(load, 'COPY', 'edit', { uuids: [], text: 'third' })).from).toBe('SRC');
+    });
+
+    it('a target in the current file never consults the source', async () => {
+        expect((await rewindAcrossLineage(load, 'COPY', 'edit', { uuids: ['p1'] })).from).toBe('COPY');
+    });
+
+    it('still not found anywhere (or the source file is gone) → not-found', async () => {
+        await expect(rewindAcrossLineage(load, 'COPY', 'edit', { uuids: ['nope'] })).rejects.toMatchObject({ code: 'not-found' });
+        await expect(rewindAcrossLineage(async (id) => (id === 'COPY' ? copy : null), 'COPY', 'edit', { uuids: ['p3'] })).rejects.toBeInstanceOf(ConversationRewindError);
+    });
+});
+

@@ -58,4 +58,29 @@ describe('conversation-rewind', () => {
         release();
         expect(await first).toMatchObject({ ok: true });
     });
+
+    it('B-544: with a requestId, marks pending BEFORE the switch and acks only after the record is persisted', async () => {
+        const order: string[] = [];
+        let persist!: () => void;
+        const beginPending = vi.fn(() => { order.push('begin'); return new Promise<void>((resolve) => { persist = () => { order.push('persisted'); resolve(); }; }); });
+        const d = deps({ beginPending, now: () => 42, switchConversation: vi.fn(async () => { order.push('switch'); }) });
+        const pending = createConversationRewind(d)({ action: 'edit', sourceId: 'web-1', requestId: 'req_1-a' });
+        await vi.waitFor(() => expect(order).toEqual(['begin', 'switch']));
+        let acked = false;
+        void pending.then(() => { acked = true; });
+        await Promise.resolve();
+        expect(acked).toBe(false);
+        persist();
+        expect(await pending).toEqual({ ok: true, action: 'edit', freshConversation: false });
+        expect(order).toEqual(['begin', 'switch', 'persisted']);
+        expect(beginPending).toHaveBeenCalledWith({ requestId: 'req_1-a', action: 'edit', sourceClaudeSessionId: 'claude-1', claudeSessionId: 'claude-2', at: 42 });
+    });
+
+    it('B-544: old web (no requestId) keeps B-528 semantics — nothing pending', async () => {
+        const beginPending = vi.fn(async () => {});
+        const d = deps({ beginPending });
+        expect(await createConversationRewind(d)({ action: 'delete', sourceId: 'web-1' })).toMatchObject({ ok: true });
+        expect(await createConversationRewind(d)({ action: 'delete', sourceId: 'web-1', requestId: 'bad id with spaces' })).toMatchObject({ ok: true });
+        expect(beginPending).not.toHaveBeenCalled();
+    });
 });

@@ -586,6 +586,21 @@ export type Metadata = {
    */
   forkBackfill?: { done: true; count: number; failed?: boolean; completedAt: number }
   /**
+   * B-544: the newest in-place rewind (conversation-rewind with a requestId).
+   * `pending` until the web's transcript-drop tombstone with the same
+   * requestId confirms it; otherwise the wrapper switches back to
+   * `sourceClaudeSessionId` (`reverted`). The web reads `requestId` when the
+   * RPC ack was lost. Plain strings throughout; old web/CLI ignore it.
+   */
+  rewind?: {
+    requestId: string
+    action: string
+    sourceClaudeSessionId: string
+    claudeSessionId: string | null
+    at: number
+    state: string
+  } | null
+  /**
    * B-290: the Claude conversation this session was imported from (the
    * on-disk transcript written by claude CLI / desktop / claude.ai that was
    * copied by `claude-fork-session`). Lets the import picker hide originals

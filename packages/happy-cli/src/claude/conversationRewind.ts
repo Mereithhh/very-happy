@@ -4,6 +4,12 @@
  * the Claude transcript (utils/claudeTranscriptRewind.ts), points the session
  * at it and relaunches the query silently; the next prompt resumes from the
  * rewound history. The web hides the dropped messages with its own tombstone.
+ *
+ * B-544: a request with a `requestId` (new web) is provisional — before the
+ * ack the wrapper records `metadata.rewind` (state pending) through
+ * `beginPending`; the web's tombstone carrying the same id confirms it, and no
+ * tombstone within REWIND_CONFIRM_MS switches back (rewindReconciler.ts).
+ * Without a requestId (old web) nothing is pending: B-528 semantics.
  */
 
 import { ConversationRewindError, rewindClaudeTranscript, type ConversationRewindAction } from './utils/claudeTranscriptRewind';
@@ -25,8 +31,17 @@ export type ConversationRewindDeps = {
     aliases: (sourceId: string) => string[];
     /** Point the session at `claudeSessionId` (null = fresh) and relaunch without a user-visible abort. */
     switchConversation: (claudeSessionId: string | null) => Promise<void>;
+    /**
+     * B-544: mark the rewind pending (synchronously, before the switch, so the
+     * relaunched query already holds prompts back) and persist the record;
+     * the returned promise is awaited before the ack.
+     */
+    beginPending?: (record: { requestId: string; action: ConversationRewindAction; sourceClaudeSessionId: string; claudeSessionId: string | null; at: number }) => Promise<void>;
+    now?: () => number;
     rewrite?: typeof rewindClaudeTranscript;
 };
+
+const REQUEST_ID = /^[A-Za-z0-9_-]{1,100}$/;
 
 const STOP_WAIT_MS = 8000;
 
@@ -38,6 +53,7 @@ export function createConversationRewind(deps: ConversationRewindDeps) {
         const action = request.action;
         const sourceId = typeof request.sourceId === 'string' && request.sourceId.length > 0 && request.sourceId.length <= 200 ? request.sourceId : undefined;
         const text = typeof request.text === 'string' && request.text.length <= 200_000 ? request.text : undefined;
+        const requestId = typeof request.requestId === 'string' && REQUEST_ID.test(request.requestId) ? request.requestId : undefined;
         if ((action !== 'edit' && action !== 'delete') || (!sourceId && !text?.trim())) {
             return { ok: false, code: 'invalid', error: 'Invalid rewind request' };
         }
@@ -54,7 +70,13 @@ export function createConversationRewind(deps: ConversationRewindDeps) {
             if (!current) return { ok: false, code: 'no-conversation', error: 'The agent has no conversation to change yet' };
             const uuids = sourceId ? [sourceId, ...deps.aliases(sourceId)] : [];
             const next = await rewrite(deps.projectDir(), current, action, { uuids, text });
+            const recorded = requestId && deps.beginPending
+                ? deps.beginPending({ requestId, action, sourceClaudeSessionId: current, claudeSessionId: next, at: (deps.now ?? Date.now)() })
+                : null;
             await deps.switchConversation(next);
+            // The record must reach the server before the ack: the ack may be
+            // lost, the record is what the web falls back to.
+            if (recorded) await recorded;
             return { ok: true, action, freshConversation: next === null };
         } catch (error) {
             if (error instanceof ConversationRewindError) return { ok: false, code: error.code, error: error.message };

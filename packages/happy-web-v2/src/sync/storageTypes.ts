@@ -103,6 +103,21 @@ export const MetadataSchema = z.object({
         completedAt: z.number().optional(),
     }).passthrough().optional().catch(undefined),
     /**
+     * B-544: the wrapper's newest in-place rewind. Written by the wrapper
+     * before it acks `conversation-rewind`; when the ack is lost the web
+     * continues only if `requestId` is its own. Declared so a web metadata
+     * write keeps it (a stripped field is deleted). Lenient, plain strings,
+     * no defaults (铁律 1/14).
+     */
+    rewind: z.object({
+        requestId: z.string(),
+        action: z.string().optional(),
+        sourceClaudeSessionId: z.string().nullable().optional(),
+        claudeSessionId: z.string().nullable().optional(),
+        at: z.number().optional(),
+        state: z.string().optional(),
+    }).passthrough().nullable().optional().catch(undefined),
+    /**
      * B-290: the Claude conversation (claude CLI / desktop / claude.ai
      * transcript) this session was imported from. Written by the CLI at
      * spawn; the import picker hides originals that already have a copy.

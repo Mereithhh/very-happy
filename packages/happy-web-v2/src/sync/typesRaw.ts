@@ -77,6 +77,8 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
     fromSeq: z.number().int().nonnegative(),
     toSeq: z.number().int().nonnegative().optional(),
     reason: z.string().min(1).optional(),
+    // B-544: the edit/delete request this tombstone confirms (wrapper side).
+    requestId: z.string().min(1).optional(),
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 
@@ -188,6 +190,9 @@ const sessionTranscriptDropEventSchema = z.object({
     fromSeq: z.number().int().nonnegative(),
     toSeq: z.number().int().nonnegative().optional(),
     reason: z.string().min(1).optional(),
+    // B-544: echoes the conversation-rewind requestId; the wrapper confirms
+    // its provisional rewind when it sees it. Old clients ignore it.
+    requestId: z.string().min(1).optional(),
 });
 
 const sessionEventSchema = z.discriminatedUnion('t', [
@@ -705,6 +710,7 @@ function normalizeSessionEnvelope(
                 fromSeq: envelope.ev.fromSeq,
                 ...(typeof envelope.ev.toSeq === 'number' ? { toSeq: envelope.ev.toSeq } : {}),
                 ...(envelope.ev.reason ? { reason: envelope.ev.reason } : {}),
+                ...(envelope.ev.requestId ? { requestId: envelope.ev.requestId } : {}),
             },
             meta,
         } satisfies NormalizedMessage;

@@ -38,6 +38,9 @@ describe('session protocol schemas', () => {
       { t: 'stop' },
       { t: 'queue-cancel', targetLocalKeys: ['local-1'] },
       { t: 'queue-cancel', targetLocalKeys: ['local-1', 'local-2'], reason: 'cleared' },
+      { t: 'transcript-drop', fromSeq: 3, reason: 'edit' },
+      // B-544: the tombstone echoes the conversation-rewind requestId
+      { t: 'transcript-drop', fromSeq: 3, toSeq: 7, reason: 'delete', requestId: 'req-1' },
     ];
 
     for (const event of events) {
@@ -58,6 +61,12 @@ describe('session protocol schemas', () => {
     // reject the whole envelope (it travels to a client that may be older).
     expect(sessionEventSchema.safeParse({ t: 'queue-cancel', targetLocalKeys: [] }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'queue-cancel', targetLocalKeys: ['k'], reason: 'anything-new' }).success).toBe(true);
+    expect(sessionEventSchema.safeParse({ t: 'transcript-drop', fromSeq: 1, requestId: '' }).success).toBe(false);
+  });
+
+  it('keeps the transcript-drop requestId (B-544)', () => {
+    const parsed = sessionEventSchema.parse({ t: 'transcript-drop', fromSeq: 1, requestId: 'req-1' });
+    expect(parsed).toEqual({ t: 'transcript-drop', fromSeq: 1, requestId: 'req-1' });
   });
 
   it('validates envelopes that include turn/subagent', () => {

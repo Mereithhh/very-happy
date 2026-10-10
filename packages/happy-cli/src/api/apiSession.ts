@@ -1339,6 +1339,26 @@ export class ApiSessionClient extends EventEmitter {
         this.skipInitialMessages = true;
     }
 
+    /**
+     * B-544: the newest `limit` session records, decrypted, ascending seq.
+     * Read-only (no routing, no lastSeq change) — rewind reconcile reads the
+     * durable log with it. Undecryptable records come back with `body: null`.
+     */
+    async readLogTail(limit: number): Promise<Array<{ seq: number; localId: string | null; body: unknown }>> {
+        const response = await axios.get<V3GetSessionMessagesResponse>(
+            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+            { params: { before_seq: 2147483647, limit }, headers: this.authHeaders(), timeout: 30_000 },
+        );
+        const messages = Array.isArray(response.data.messages) ? [...response.data.messages].reverse() : [];
+        return messages.map((message) => {
+            let body: unknown = null;
+            if (message.content?.t === 'encrypted') {
+                try { body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c)); } catch { body = null; }
+            }
+            return { seq: message.seq, localId: message.localId ?? null, body };
+        });
+    }
+
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
         this.metadataLock.inLock(async () => {
             // B-307: consecutive RATE refusals for this one write. The enclosing
