@@ -1,4 +1,5 @@
 import { logger } from '@/ui/logger'
+import { connectGuarded, socketConnectGuard } from './socketConnectGuard'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
@@ -35,6 +36,8 @@ import { PromptQueueDrain, type PromptQueueDispatchOutcome } from '@/utils/promp
 import type { PromptQueueDispatchResponse } from '@slopus/happy-wire';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 import { notifyDaemonBackgroundTasks, notifyDaemonTurnEvent } from '@/daemon/controlClient';
+
+const guardOptions = { log: (message: string) => logger.debug(message) };
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -358,11 +361,12 @@ export class ApiSessionClient extends EventEmitter {
         // Connect (after short delay to give a time to add handlers)
         //
 
-        this.socket.connect();
+        connectGuarded(this.socket, 'initial', guardOptions);
     }
 
     private createControlSocket(handover?: ReleaseDrainNotice): Socket<ServerToClientEvents, ClientToServerEvents> {
-        return io(configuration.serverUrl, {
+        // B-543: the connect guard must observe the socket from birth.
+        const socket = io(configuration.serverUrl, {
             auth: {
                 token: this.token,
                 clientType: 'session-scoped' as const,
@@ -377,6 +381,8 @@ export class ApiSessionClient extends EventEmitter {
             withCredentials: true,
             autoConnect: false,
         });
+        socketConnectGuard(socket, guardOptions);
+        return socket;
     }
 
     private startReleaseHandover(notice: ReleaseDrainNotice): Promise<void> {
@@ -398,7 +404,7 @@ export class ApiSessionClient extends EventEmitter {
                 const timer = setTimeout(() => reject(new Error('release handover timeout')), timeoutMs);
                 candidate.once('connect', () => { clearTimeout(timer); resolve(); });
                 candidate.once('connect_error', (error) => { clearTimeout(timer); reject(error); });
-                candidate.connect();
+                connectGuarded(candidate, 'release-handover', guardOptions);
             });
             await this.rpcHandlerManager.onSocketConnectAndWait(candidate, timeoutMs);
             if (this.socket !== previous) {
@@ -1464,12 +1470,13 @@ export class ApiSessionClient extends EventEmitter {
                 return;
             }
             logger.debug('[API] Attempting reconnect');
-            this.socket.connect();
+            // B-543: never stack a second CONNECT on a pending one.
+            connectGuarded(this.socket, 'reconnect-interval', guardOptions);
         }, 3000);
 
         if (shouldReconnect()) {
             logger.debug('[API] Network up + lid open — reconnecting in 1s');
-            setTimeout(() => { if (!this.socket.connected) this.socket.connect() }, 1000);
+            setTimeout(() => { connectGuarded(this.socket, 'reconnect-soon', guardOptions); }, 1000);
         }
     }
 }

@@ -161,6 +161,15 @@ export const releaseHandoverCounter = new Counter({
     registers: [register]
 });
 
+// B-543: a second CONNECT on the same engine connection leaves an orphan
+// Socket in every room; it is evicted on the next connection or by the sweeper.
+export const socketOrphansEvictedCounter = new Counter({
+    name: 'socket_orphans_evicted_total',
+    help: 'Orphan sockets (same engine client + namespace as a newer socket) evicted, by trigger',
+    labelNames: ['trigger', 'client_type'] as const,
+    registers: [register]
+});
+
 export const releaseHandoverDuration = new Histogram({
     name: 'release_handover_duration_seconds',
     help: 'Client-observed make-before-break handover duration',

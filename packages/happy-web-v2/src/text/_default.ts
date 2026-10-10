@@ -2047,6 +2047,11 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct11: {
+                title: 'Session actions no longer stall after an update',
+                summary: 'Editing a message or running a terminal command could keep timing out after a service update; fixed.',
+                rpc: 'After a service update, some sessions could get stuck so that every action on them (editing and resending a message, terminal commands and other session actions) ended with "operation has timed out", even though the agent had actually done the work. The server now repairs these connections on its own; the CLI update also stops the reconnect pattern that caused it.',
+            },
             oct10a: {
                 title: 'Full screen on iPhone home screen',
                 summary: 'No more blank band under the composer on iOS 26.',
