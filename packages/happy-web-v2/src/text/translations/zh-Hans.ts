@@ -2168,6 +2168,11 @@ export const zhHans: TranslationStructure = {
                 band: '「需要我决策」每一行最左是一个圆形勾选（触屏 44px）即「知道了」，头部有「全部已读」，看板上带太长会自己滚动、不再把泳道顶出屏幕。',
                 cli: '`very-happy auto ack --all [--name <自动化>]` 在终端一次确认全部。需要更新 CLI；网页与服务端部分已上线。',
             },
+            oct11b: {
+                title: '重启会话不会丢掉你的编辑',
+                summary: '重启和恢复会话都从当前的对话继续。',
+                restart: '重启或恢复会话时，现在从对话的当前状态继续。之前可能会回到会话刚启动时的版本，把你编辑或删除过的轮次又带回来。',
+            },
             oct11a: {
                 title: '编辑消息后 agent 与对话保持一致',
                 summary: '确认丢失也不会只改一半；Claude Code 升级到 2.1.296。',
