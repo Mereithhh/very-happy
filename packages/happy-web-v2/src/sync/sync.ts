@@ -1127,12 +1127,14 @@ class Sync {
      * B-528: hide [fromSeq, toSeq) after the agent rewound its conversation
      * (in-place edit / delete). `toSeq` omitted = up to this tombstone.
      */
-    async recordTranscriptDrop(sessionId: string, drop: { fromSeq: number; toSeq?: number; reason: 'edit' | 'delete' }): Promise<void> {
+    async recordTranscriptDrop(sessionId: string, drop: { fromSeq: number; toSeq?: number; reason: 'edit' | 'delete'; requestId?: string }): Promise<void> {
         await this.recordUserSessionEvent(sessionId, {
             t: 'transcript-drop',
             fromSeq: drop.fromSeq,
             ...(typeof drop.toSeq === 'number' ? { toSeq: drop.toSeq } : {}),
             reason: drop.reason,
+            // B-544: confirms the wrapper's provisional rewind.
+            ...(drop.requestId ? { requestId: drop.requestId } : {}),
         });
     }
 

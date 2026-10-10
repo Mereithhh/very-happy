@@ -169,6 +169,11 @@ export const sessionTranscriptDropEventSchema = z.object({
   fromSeq: z.number().int().nonnegative(),
   toSeq: z.number().int().nonnegative().optional(),
   reason: z.string().min(1).optional(),
+  /**
+   * B-544: the `conversation-rewind` requestId this tombstone answers. The
+   * wrapper keeps a rewind provisional until it sees it; absent from old web.
+   */
+  requestId: z.string().min(1).optional(),
 });
 
 export const sessionEventSchema = z.discriminatedUnion('t', [

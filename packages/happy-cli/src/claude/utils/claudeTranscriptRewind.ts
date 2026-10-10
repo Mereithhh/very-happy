@@ -19,6 +19,10 @@
  * message's localId as the SDK user-message `uuid`, so the prompt entry's
  * `uuid` IS the web localId. Older prompts (sent before that) fall back to a
  * UNIQUE exact text match; anything ambiguous fails instead of guessing.
+ *
+ * B-544 lineage: when the target is not in the current file but is in the file
+ * it was copied from (an earlier rewind the web never confirmed), rewind from
+ * that source instead — a retried edit succeeds from any leftover state.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -121,6 +125,62 @@ export function rewindTranscriptLines(lines: readonly string[], action: Conversa
 }
 
 /**
+ * The file a rewound copy was made from: copied rows keep their original
+ * `sessionId`, so the newest row naming another id is the source. Null for an
+ * original conversation.
+ */
+export function transcriptSourceId(lines: readonly string[], claudeSessionId: string): string | null {
+    let source: string | null = null;
+    for (const line of lines) {
+        if (!line || !line.includes('"sessionId"')) continue;
+        let parsed: any;
+        try { parsed = JSON.parse(line); } catch { continue; }
+        if (typeof parsed?.sessionId === 'string' && parsed.sessionId && parsed.sessionId !== claudeSessionId) source = parsed.sessionId;
+    }
+    return source;
+}
+
+/** How many copies back a rewind target is looked up (B-544). */
+const MAX_LINEAGE_DEPTH = 4;
+
+async function readTranscriptLines(projectDir: string, claudeSessionId: string): Promise<string[]> {
+    const path = join(projectDir, `${claudeSessionId}.jsonl`);
+    try {
+        return (await readFile(path, 'utf-8')).split('\n');
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ForkSourceMissingError(path);
+        throw error;
+    }
+}
+
+/**
+ * Pure lineage walk: the kept lines from the newest file in the chain that
+ * contains the target. `load(id)` returns a file's lines or null when missing.
+ */
+export async function rewindAcrossLineage(
+    load: (claudeSessionId: string) => Promise<string[] | null>,
+    claudeSessionId: string,
+    action: ConversationRewindAction,
+    target: { uuids: readonly string[]; text?: string },
+): Promise<{ kept: string[] | null; from: string }> {
+    let id = claudeSessionId;
+    let lines = await load(id);
+    if (!lines) throw new ForkSourceMissingError(id);
+    for (let depth = 0; ; depth++) {
+        try {
+            return { kept: rewindTranscriptLines(lines, action, target), from: id };
+        } catch (error) {
+            if (!(error instanceof ConversationRewindError) || error.code !== 'not-found' || depth >= MAX_LINEAGE_DEPTH) throw error;
+            const source = transcriptSourceId(lines, id);
+            const sourceLines = source ? await load(source) : null;
+            if (!source || !sourceLines) throw error;
+            id = source;
+            lines = sourceLines;
+        }
+    }
+}
+
+/**
  * Write the rewound conversation as a new Claude session file. Returns its id,
  * or null when nothing would remain (the caller starts a fresh conversation).
  */
@@ -130,13 +190,13 @@ export async function rewindClaudeTranscript(
     action: ConversationRewindAction,
     target: { uuids: readonly string[]; text?: string },
 ): Promise<string | null> {
-    const source = join(projectDir, `${claudeSessionId}.jsonl`);
-    let raw: string;
-    try { raw = await readFile(source, 'utf-8'); } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ForkSourceMissingError(source);
-        throw error;
-    }
-    const kept = rewindTranscriptLines(raw.split('\n'), action, target);
+    const { kept } = await rewindAcrossLineage(async (id) => {
+        if (id === claudeSessionId) return readTranscriptLines(projectDir, id);
+        return readTranscriptLines(projectDir, id).catch((error) => {
+            if (error instanceof ForkSourceMissingError) return null;
+            throw error;
+        });
+    }, claudeSessionId, action, target);
     if (kept === null) return null;
     const newId = randomUUID();
     const destination = join(projectDir, `${newId}.jsonl`);

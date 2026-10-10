@@ -53,6 +53,14 @@
    - **旧版本留下的分裂**（无 `rewind` 记录）：拉取服务端可见（未被 tombstone 覆盖）的用户消息 localId；若其中有 localId 在当前 JSONL 里找不到、却出现在当前 JSONL 所复制自的源 JSONL（行内 `sessionId` 指向的文件）里 ⇒ 当前文件是未确认的截断副本 → 切回源。只比较带 uuid（B-528 之后）的 prompt。
 6. **定位跨 lineage**：若目标 prompt 不在当前 JSONL、但在其源 JSONL 中，rewind 从源出发（用户重试编辑在任何残留状态下都能成功）。
 
+**B 实现备注（B-544 PR）**：纯规则在 CLI `claude/rewindReconcile.ts`，I/O 在 `claude/rewindReconciler.ts`（launcher 接线：`session.client.on('message')` 观察 tombstone、`nextMessage` 先 `settled()`、首次 launch 前有界 15 s 启动对账）。在上文之外：
+- 判定前一律重读服务端日志尾部（500 条，`ApiSessionClient.readLogTail`）；读不到日志不回滚、继续等。暂定期间每 15 s 轮询一次。
+- 回滚后（本进程内，或启动时 metadata 为 `reverted`）若日志里出现同 `requestId` 的 tombstone（web 发件箱迟到），重新切到改写副本并记 `confirmed`——以日志为准。
+- 暂定中再次改写：新记录的 `sourceClaudeSessionId` 继承上一条未确认记录的源（回滚回到最后确认的对话）。
+- 到期但 agent 已不在该副本上（`claudeSessionId` 不符）→ 不切换，记 `superseded`。`state` 为普通字符串。
+- web 回退只认 `rewind.requestId` 相同且 `state` 不是 `reverted`/`superseded`；只有抛错（超时/断线）走回退，wrapper 明确拒绝（`ok:false`）与「方法不存在」不走。
+- 启动 lineage 对账：当前 JSONL 行内最新的他者 `sessionId` = 源；仅当某可见 prompt 的 uuid 在源而不在当前时切回源；切回会忘掉分裂后只在副本里的 prompt（日志记录）。
+
 ## 兼容
 
 | Web | CLI | 行为 |
