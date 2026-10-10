@@ -31,6 +31,15 @@
 .sd[data-keyboard-open='true'] {
   overflow: hidden;
 }
+/* The shell reaches the physical bottom edge in a home-screen app, so the
+   composer keeps its last line above the home indicator. Not while the
+   keyboard is up: the pinned layout ends at the keyboard, not the edge. */
+.sd-foot {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.sd[data-keyboard-open='true'] .sd-foot {
+  padding-bottom: 0;
+}
 .sd-loading {
   width: 100%;
   height: 100%;

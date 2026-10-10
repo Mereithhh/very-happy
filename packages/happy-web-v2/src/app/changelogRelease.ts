@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-10-ios-home-screen-height',
+    date: '2026-10-10',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct10a.title',
+    summaryKey: 'changelog.releases.oct10a.summary',
+    itemKeys: ['changelog.releases.oct10a.height'],
+  },
+  {
     id: '2026-10-10-unseen-badge',
     date: '2026-10-10',
     buildVersion: __APP_VERSION__,

@@ -20,7 +20,7 @@ export function RouteLoading({
         inset: fullViewport ? 0 : undefined,
         zIndex: fullViewport ? 20 : undefined,
         width: fullViewport ? '100vw' : '100%',
-        height: fullViewport ? '100dvh' : undefined,
+        height: fullViewport ? 'var(--app-h)' : undefined,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

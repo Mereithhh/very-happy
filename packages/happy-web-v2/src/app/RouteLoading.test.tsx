@@ -8,7 +8,7 @@ describe('RouteLoading', () => {
   it('fills the viewport for chromeless full-screen routes', () => {
     const html = renderToStaticMarkup(<RouteLoading fullViewport />);
 
-    expect(html).toContain('height:100dvh');
+    expect(html).toContain('height:var(--app-h)');
     expect(html).toContain('width:100vw');
     expect(html).toContain('position:fixed');
     expect(html).toContain('inset:0');
@@ -22,7 +22,7 @@ describe('RouteLoading', () => {
   it('keeps the parent-flex sizing used by regular app routes', () => {
     const html = renderToStaticMarkup(<RouteLoading />);
 
-    expect(html).not.toContain('height:100dvh');
+    expect(html).not.toContain('height:var(--app-h)');
     expect(html).not.toContain('position:fixed');
     expect(html).toContain('width:100%');
     expect(html).toContain('flex:1');

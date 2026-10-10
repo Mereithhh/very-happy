@@ -2047,6 +2047,11 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct10a: {
+                title: 'Full screen on iPhone home screen',
+                summary: 'No more blank band under the composer on iOS 26.',
+                height: 'Opened from the iPhone home screen on iOS 26, the app now reaches the bottom edge instead of leaving a blank band under the composer, and the composer stays clear of the home indicator.',
+            },
             oct10: {
                 title: 'Accurate new-message count',
                 summary: 'The jump-to-latest badge counts only new messages.',

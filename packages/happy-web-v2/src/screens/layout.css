@@ -1,7 +1,7 @@
 .app-shell {
   display: grid;
   grid-template-columns: 260px 6px 1fr;
-  height: 100dvh;
+  height: var(--app-h);
   background: var(--bg-0);
 }
 .app-shell--mobile,
