@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-11-rpc-duplicate-socket',
+    cliVersion: '0.2.164',
+    date: '2026-10-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct11.title',
+    summaryKey: 'changelog.releases.oct11.summary',
+    itemKeys: ['changelog.releases.oct11.rpc'],
+  },
+  {
     id: '2026-10-10-ios-home-screen-height',
     date: '2026-10-10',
     buildVersion: __APP_VERSION__,

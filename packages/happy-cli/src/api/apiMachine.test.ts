@@ -145,6 +145,12 @@ describe('ApiMachineClient socket reconnection', () => {
         await vi.advanceTimersByTimeAsync(1000);
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
 
+        // B-543: the retry's CONNECT is still unanswered — the interval must not
+        // stack a second CONNECT on the same engine connection.
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
         await vi.advanceTimersByTimeAsync(3000);
         expect(mockSocket.connect).toHaveBeenCalledTimes(2);
 
@@ -243,7 +249,7 @@ describe('ApiMachineClient socket reconnection', () => {
         const makeHandoverSocket = () => {
             const handlers: SocketHandlers = {};
             const socket: any = {
-                connected: true,
+                connected: false,
                 on: vi.fn((event: string, handler: SocketHandler) => {
                     (handlers[event] ||= []).push(handler);
                     return socket;
@@ -262,6 +268,7 @@ describe('ApiMachineClient socket reconnection', () => {
                     return socket;
                 }),
                 connect: vi.fn(() => {
+                    socket.connected = true;
                     for (const handler of [...(handlers.connect || [])]) handler();
                     return socket;
                 }),

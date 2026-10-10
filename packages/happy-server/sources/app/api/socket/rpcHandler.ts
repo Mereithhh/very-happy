@@ -4,6 +4,7 @@ import type { RemoteSocket } from "socket.io";
 import type { DefaultEventsMap } from "socket.io/dist/typed-events";
 import { Counter, Histogram, register } from 'prom-client';
 import { AccountTerminalRateLimiter, relayPayloadBytes, rpcRateLimitAck } from './terminalRateLimit';
+import { isLocalOrphan } from './socketOrphans';
 
 // RPC routing uses Socket.IO rooms. A daemon registering method M for user U
 // joins room `rpc:U:M`. Callers look the daemon up cross-replica via
@@ -176,6 +177,46 @@ async function waitForRoomMember(io: Server, room: string, maxMs: number, metric
     }
 }
 
+function handoverEpochOf(socket: { data?: any }): string {
+    return typeof socket.data?.handoverEpoch === 'string' ? socket.data.handoverEpoch : '';
+}
+
+function connectedAtOf(socket: { handshake?: { issued?: unknown } }): number {
+    const issued = socket.handshake?.issued;
+    return typeof issued === 'number' && Number.isFinite(issued) ? issued : 0;
+}
+
+export type RpcTargetSelectionKind = 'single' | 'handover' | 'same-epoch-duplicate';
+
+/**
+ * Pick ONE socket from an RPC room (B-543):
+ *  1. drop LOCAL orphans — a socket whose engine client routes inbound packets
+ *     to another socket can deliver the request but never receive the ack
+ *     (`socketOrphans.ts`); only if every candidate is an orphan are they kept;
+ *  2. highest `handoverEpoch` first (make-before-break release handover);
+ *  3. newest connection first (`handshake.issued`).
+ * `kind` separates a real handover (different epochs) from a same-epoch
+ * duplicate, which is an anomaly worth its own log line.
+ */
+export function selectRpcTarget<T extends { data?: any; handshake?: { issued?: unknown } }>(targets: readonly T[]): {
+    target: T;
+    kind: RpcTargetSelectionKind;
+    orphansDropped: number;
+} {
+    const live = targets.filter((socket) => !isLocalOrphan(socket));
+    const candidates = live.length > 0 ? live : [...targets];
+    const ordered = [...candidates].sort((left, right) => {
+        const byEpoch = handoverEpochOf(right).localeCompare(handoverEpochOf(left));
+        if (byEpoch !== 0) return byEpoch;
+        return connectedAtOf(right) - connectedAtOf(left);
+    });
+    let kind: RpcTargetSelectionKind = 'single';
+    if (ordered.length > 1) {
+        kind = new Set(ordered.map(handoverEpochOf)).size > 1 ? 'handover' : 'same-epoch-duplicate';
+    }
+    return { target: ordered[0], kind, orphansDropped: live.length > 0 ? targets.length - live.length : 0 };
+}
+
 export function rpcHandler(
     userId: string,
     socket: Socket,
@@ -332,16 +373,18 @@ export function rpcHandler(
                 callback?.({ ok: false, error: 'RPC method not available' });
                 return;
             }
-            if (targets.length > 1) {
-                log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length },
-                    'Multiple RPC sockets found during handover; preferring the epoch owner');
+            const selection = selectRpcTarget(targets);
+            if (selection.kind === 'handover') {
+                log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length, orphansDropped: selection.orphansDropped },
+                    'Multiple RPC sockets found during handover (different epochs); preferring the epoch owner');
+            } else if (selection.kind === 'same-epoch-duplicate') {
+                log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length, orphansDropped: selection.orphansDropped },
+                    'Same-epoch duplicate RPC sockets (anomaly); preferring the newest connection');
+            } else if (selection.orphansDropped > 0) {
+                log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length, orphansDropped: selection.orphansDropped },
+                    'Dropped orphan RPC sockets (B-543) before routing');
             }
-
-            const target = [...targets].sort((left, right) => {
-                const leftEpoch = typeof left.data?.handoverEpoch === 'string' ? left.data.handoverEpoch : '';
-                const rightEpoch = typeof right.data?.handoverEpoch === 'string' ? right.data.handoverEpoch : '';
-                return rightEpoch.localeCompare(leftEpoch);
-            })[0];
+            const target = selection.target;
             if (target.id === socket.id) {
                 finish('self_call');
                 callback?.({ ok: false, error: 'Cannot call RPC on the same socket' });

@@ -2168,6 +2168,11 @@ export const zhHans: TranslationStructure = {
                 band: '「需要我决策」每一行最左是一个圆形勾选（触屏 44px）即「知道了」，头部有「全部已读」，看板上带太长会自己滚动、不再把泳道顶出屏幕。',
                 cli: '`very-happy auto ack --all [--name <自动化>]` 在终端一次确认全部。需要更新 CLI；网页与服务端部分已上线。',
             },
+            oct11: {
+                title: '服务更新后会话操作不再一直超时',
+                summary: '会话里的操作（编辑消息、终端命令等）在服务更新后可能一直超时，已修复。',
+                rpc: '服务更新后，部分会话里的所有操作（编辑消息再发送、终端命令等）可能一直提示「operation has timed out」，实际上 agent 已经执行了。服务端现在会自动修复这类连接；更新 CLI 后也不会再产生导致它的重复重连。',
+            },
             oct10a: {
                 title: 'iPhone 主屏幕打开铺满全屏',
                 summary: 'iOS 26 上输入框下方不再空出一条白边。',

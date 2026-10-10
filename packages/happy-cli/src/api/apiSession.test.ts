@@ -184,6 +184,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     it('registers core socket handlers and connects', () => {
+        mockSocket.connected = false;
         new ApiSessionClient('fake-token', session);
 
         expect(mockSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
@@ -268,6 +269,12 @@ describe('ApiSessionClient v3 messages API migration', () => {
         await vi.advanceTimersByTimeAsync(1000);
         expect(mockSocket.connect).toHaveBeenCalledTimes(2);
 
+        // B-543: the retry's CONNECT is still unanswered — the interval must not
+        // stack a second CONNECT on the same engine connection.
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
         await vi.advanceTimersByTimeAsync(3000);
         expect(mockSocket.connect).toHaveBeenCalledTimes(3);
 

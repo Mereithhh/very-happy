@@ -4,7 +4,8 @@
  */
 
 import { io, Socket } from 'socket.io-client';
-import { logger } from '@/ui/logger';
+import { logger } from '@/ui/logger'
+import { connectGuarded, socketConnectGuard } from './socketConnectGuard';
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
 import { configuration } from '@/configuration';
 import { ClaudeAuthState, MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, type CliUpdateState } from './types';
@@ -48,6 +49,8 @@ import {
     forkCodexThread,
     listCodexRewindPoints,
 } from '@/codex/codexThreadFork';
+
+const guardOptions = { log: (message: string) => logger.debug(message) };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -1248,7 +1251,7 @@ export class ApiMachineClient {
 
     private createControlSocket(handover?: ReleaseDrainNotice): Socket<ServerToDaemonEvents, DaemonToServerEvents> {
         const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
-        return io(serverUrl, {
+        const socket = io(serverUrl, {
             transports: ['websocket'],
             auth: {
                 token: this.token,
@@ -1262,6 +1265,10 @@ export class ApiMachineClient {
             reconnection: false,
             ...(handover ? { autoConnect: false } : {}),
         });
+        // B-543: attach right away — without handover the socket autoConnects,
+        // so the guard records that CONNECT as already pending.
+        socketConnectGuard(socket, guardOptions);
+        return socket;
     }
 
     private activateControlSocket(socket: Socket<ServerToDaemonEvents, DaemonToServerEvents>, rpcAlreadyRegistered = false) {
@@ -1386,7 +1393,7 @@ export class ApiMachineClient {
                 const timer = setTimeout(() => reject(new Error('release handover timeout')), timeoutMs);
                 candidate.once('connect', () => { clearTimeout(timer); resolve(); });
                 candidate.once('connect_error', (error) => { clearTimeout(timer); reject(error); });
-                candidate.connect();
+                connectGuarded(candidate, 'release-handover', guardOptions);
             });
             await this.rpcHandlerManager.onSocketConnectAndWait(candidate, timeoutMs);
             if (this.socket !== previous) {
@@ -1623,12 +1630,13 @@ export class ApiMachineClient {
                 return;
             }
             logger.debug('[API MACHINE] Attempting reconnect');
-            this.socket.connect();
+            // B-543: never stack a second CONNECT on a pending one.
+            connectGuarded(this.socket, 'reconnect-interval', guardOptions);
         }, 3000);
 
         if (shouldReconnect()) {
             logger.debug('[API MACHINE] Network up + lid open — reconnecting in 1s');
-            setTimeout(() => { if (!this.socket.connected) this.socket.connect() }, 1000);
+            setTimeout(() => { connectGuarded(this.socket, 'reconnect-soon', guardOptions); }, 1000);
         }
     }
 

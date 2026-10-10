@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { rpcHandler, rpcMetricMethod } from './rpcHandler';
+import { rpcHandler, rpcMetricMethod, selectRpcTarget } from './rpcHandler';
 import { AccountTerminalRateLimiter, relayPayloadBytes } from './terminalRateLimit';
 import { log } from '@/utils/log';
 import { sanitizeLogValue, stableLogRef } from '@/utils/logSafety';
@@ -318,5 +318,57 @@ describe('cross-machine session ops (B-506)', () => {
             expect(rpcMetricMethod(`machine-B:${method}`)).toBe(method);
         }
         expect(rpcMetricMethod('machine-B:sessions.stop')).toBe('other');
+    });
+});
+
+describe('selectRpcTarget (B-543)', () => {
+    // A local socket whose engine client routes '/' to `routedTo` (itself when live).
+    function local(id: string, opts: { epoch?: string; issued: number; orphan?: boolean }) {
+        const socket: any = {
+            id,
+            connected: true,
+            nsp: { name: '/' },
+            data: opts.epoch ? { handoverEpoch: opts.epoch } : {},
+            handshake: { issued: opts.issued },
+        };
+        socket.client = { sockets: new Map([[id, socket]]), nsps: new Map([['/', opts.orphan ? { id: 'other' } : socket]]) };
+        return socket;
+    }
+    // A socket on another replica: no engine client visible here.
+    const remote = (id: string, issued: number, epoch?: string) => ({ id, data: epoch ? { handoverEpoch: epoch } : {}, handshake: { issued } });
+
+    it('incident shape: same epoch, the OLDER socket is a local orphan → the live one is picked', () => {
+        const orphan = local('orphan', { issued: 1000, orphan: true });
+        const live = local('live', { issued: 2000 });
+        const selection = selectRpcTarget([orphan, live]);
+        expect(selection.target).toBe(live);
+        expect(selection).toMatchObject({ kind: 'single', orphansDropped: 1 });
+    });
+
+    it('drops the orphan even when it is the newer connection', () => {
+        const live = local('live', { issued: 1000 });
+        const orphan = local('orphan', { issued: 2000, orphan: true });
+        expect(selectRpcTarget([live, orphan]).target).toBe(live);
+    });
+
+    it('prefers the highest handover epoch over a newer connection', () => {
+        const owner = local('owner', { issued: 1000, epoch: '0000000002' });
+        const newer = remote('newer', 2000, '0000000001');
+        const selection = selectRpcTarget([newer, owner]);
+        expect(selection.target).toBe(owner);
+        expect(selection.kind).toBe('handover');
+    });
+
+    it('same epoch, no orphans: newest connection first, flagged as an anomaly', () => {
+        const older = remote('older', 1000);
+        const newer = remote('newer', 2000);
+        const selection = selectRpcTarget([older, newer]);
+        expect(selection.target).toBe(newer);
+        expect(selection).toMatchObject({ kind: 'same-epoch-duplicate', orphansDropped: 0 });
+    });
+
+    it('keeps the candidates when every one is an orphan', () => {
+        const only = local('only', { issued: 1000, orphan: true });
+        expect(selectRpcTarget([only])).toMatchObject({ target: only, kind: 'single', orphansDropped: 0 });
     });
 });

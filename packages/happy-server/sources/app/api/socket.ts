@@ -7,7 +7,7 @@ import { decode as msgpackDecode } from "@msgpack/msgpack";
 import { log, warn } from "@/utils/log";
 import { attachSocketDiagnostics } from "@/utils/socketDiagnostics";
 import { auth } from "@/app/auth/auth";
-import { getMetricsLabelsFromSocket, redisClientErrorsCounter, redisStreamLagMsGauge, socketRecoveryCounter, socketRecoveryScannedEntries, socketStreamHeadAgeSeconds, socketStreamLengthGauge, releaseHandoverCounter, releaseHandoverDuration, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
+import { getMetricsLabelsFromSocket, redisClientErrorsCounter, redisStreamLagMsGauge, socketRecoveryCounter, socketRecoveryScannedEntries, socketStreamHeadAgeSeconds, socketStreamLengthGauge, releaseHandoverCounter, releaseHandoverDuration, socketOrphansEvictedCounter, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
 import { pingHandler } from "./socket/pingHandler";
@@ -27,6 +27,7 @@ import { resolveReleaseConfig } from '@/app/release/releaseConfig';
 import { ReleaseCoordinator } from '@/app/release/releaseCoordinator';
 import { closeCoordinationRedis, initializeCoordinationRedis } from '@/app/release/redisCoordination';
 import { DistributedSocketConnectionLimiter } from './socket/distributedSocketLimit';
+import { evictOrphansOf, ORPHAN_SWEEP_INTERVAL_MS, sweepOrphans, type OrphanEviction } from './socket/socketOrphans';
 import { createBoundedStreamsAdapter, defaultRecoveryLimits, SOCKET_STREAM_MAX_LEN, type AdapterConnections } from './socket/boundedStreamsAdapter';
 
 export const SOCKET_STREAM_NAME = 'vh:socket.io';
@@ -275,8 +276,32 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         next();
     });
 
+    // B-543: one engine connection + one namespace = at most one Socket.
+    // Eviction runs the orphan's normal `disconnect` bookkeeping below
+    // (eventRouter, connection count, limiter lease) without a DISCONNECT packet.
+    const recordOrphanEviction = (eviction: OrphanEviction) => {
+        const labels = getMetricsLabelsFromSocket(eviction.orphan);
+        socketOrphansEvictedCounter.inc({ trigger: eviction.trigger, client_type: labels.client_type });
+        warn({
+            module: 'websocket', event: 'socket-orphan-evicted', trigger: eviction.trigger,
+            userId: eviction.orphan.data?.userId, clientType: eviction.orphan.data?.clientType,
+            sessionId: eviction.orphan.data?.sessionId, machineId: eviction.orphan.data?.machineId,
+            orphanSocketId: eviction.orphan.id, liveSocketId: eviction.live?.id,
+            transferredAcks: eviction.transferredAcks, happyClient: eviction.orphan.data?.happyClient,
+        }, 'Evicted orphan socket (second CONNECT on the same engine connection)');
+    };
+    const orphanSweep = setInterval(() => {
+        try {
+            sweepOrphans(io.of('/'), recordOrphanEviction);
+        } catch (error) {
+            log({ module: 'websocket', error }, 'Orphan socket sweep failed');
+        }
+    }, ORPHAN_SWEEP_INTERVAL_MS);
+    orphanSweep.unref?.();
+
     const activeByUser = new Map<string, number>();
     io.on("connection", (socket) => {
+        evictOrphansOf(socket, recordOrphanEviction);
         const userId = socket.data.userId as string;
         const clientType = socket.data.clientType as 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined;
         const sessionId = socket.data.sessionId as string | undefined;
@@ -456,6 +481,7 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
 
     onShutdown('api', async () => {
         if (streamLagTimer) clearInterval(streamLagTimer);
+        clearInterval(orphanSweep);
         await io.close();
         for (const client of adapterConnections ? Object.values(adapterConnections) : []) {
             try { await client.quit(); } catch { client.disconnect(); }
