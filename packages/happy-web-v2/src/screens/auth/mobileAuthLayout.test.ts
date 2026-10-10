@@ -14,8 +14,8 @@ describe('mobile auth layout', () => {
   });
 
   it('keeps the full card scrollable inside the dynamic iOS viewport', () => {
-    expect(styles).toMatch(/\.auth-page \{[\s\S]*height: 100dvh;/);
-    expect(styles).toMatch(/\.auth-page \{[\s\S]*min-height: 100dvh;/);
+    expect(styles).toMatch(/\.auth-page \{[\s\S]*height: var\(--app-h\);/);
+    expect(styles).toMatch(/\.auth-page \{[\s\S]*min-height: var\(--app-h\);/);
     expect(styles).toMatch(/\.auth-page \{[\s\S]*overflow-y: auto;/);
     expect(styles).toContain('-webkit-overflow-scrolling: touch;');
   });
