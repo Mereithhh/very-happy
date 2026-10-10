@@ -2047,6 +2047,11 @@ export const en = {
                 band: 'Every row of 「Needs my decision」 starts with a round check that acknowledges it (44px on touch), the header offers 「Acknowledge all」, and the board keeps its lanes visible by scrolling a long band.',
                 cli: '`very-happy auto ack --all [--name <automation>]` acknowledges every flagged run from a terminal. Needs the CLI update; the web and server parts are live now.',
             },
+            oct11b: {
+                title: 'Restarting a session keeps your edits',
+                summary: 'Restart and resume continue the conversation as it is now.',
+                restart: 'Restarting or resuming a session now continues from the conversation as it currently is. Before, it could pick up the version from when the session first started, bringing back turns you had edited or deleted.',
+            },
             oct11a: {
                 title: 'Edits keep the agent and the chat in sync',
                 summary: 'A lost confirmation no longer leaves an edit half-applied; Claude Code 2.1.296.',

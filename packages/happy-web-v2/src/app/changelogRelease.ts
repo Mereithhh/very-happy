@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-11-restart-keeps-edits',
+    cliVersion: '0.2.165',
+    date: '2026-10-11',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct11b.title',
+    summaryKey: 'changelog.releases.oct11b.summary',
+    itemKeys: ['changelog.releases.oct11b.restart'],
+  },
+  {
     id: '2026-10-11-edit-stays-in-sync',
     cliVersion: '0.2.164',
     date: '2026-10-11',

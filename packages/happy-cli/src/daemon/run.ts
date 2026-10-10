@@ -1,4 +1,5 @@
 import { startAgentVersionChecks } from './agentVersions';
+import { resolveRelaunchMetadata } from './relaunchMetadata';
 import { sanitizeSpawnModel } from './spawnModel';
 import fs from 'fs/promises';
 import os from 'os';
@@ -1196,19 +1197,13 @@ export async function startDaemon(): Promise<void> {
           return { type: 'error', errorMessage: `resume-precheck:no-encryption: Session ${happySessionId} has no stored encryption data. It was likely started before this feature was available. Restart the daemon and start a new session to enable resume.` };
         }
 
-        // Webhook metadata may be stale (missing claudeSessionId/codexThreadId set after startup).
-        // Fetch fresh metadata from server if needed.
-        let metadata = tracked.happySessionMetadataFromLocalWebhook;
-        const needsFetch = (!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
-          || (!metadata.codexThreadId && metadata.flavor === 'codex');
-        if (needsFetch) {
-          logger.debug(`[DAEMON RUN] Session ${happySessionId} missing agent session ID in webhook metadata, fetching from server`);
-          const serverMetadata = await fetchServerSessionMetadata(happySessionId, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant);
-          if (serverMetadata) {
-            metadata = serverMetadata;
-            tracked.happySessionMetadataFromLocalWebhook = serverMetadata;
-          }
-        }
+        // The server copy is authoritative (see relaunchMetadata.ts).
+        const encryption = tracked.encryption;
+        const relaunch = await resolveRelaunchMetadata(tracked.happySessionMetadataFromLocalWebhook,
+          () => fetchServerSessionMetadata(happySessionId, encryption.encryptionKey, encryption.encryptionVariant));
+        const metadata = relaunch.metadata;
+        tracked.happySessionMetadataFromLocalWebhook = metadata;
+        logger.debug(`[DAEMON RUN] Session ${happySessionId} relaunch metadata from ${relaunch.source}`);
 
         const precheck = resumePrecheck(metadata, {
           cwdExists: (p) => existsSync(p),
@@ -1370,19 +1365,13 @@ export async function startDaemon(): Promise<void> {
           return { type: 'error', errorMessage: `restart-precheck:no-encryption: Session ${happySessionId} has no stored encryption data. Restart the daemon and start a new session.` };
         }
 
-        // Server metadata may carry the agent session id the webhook snapshot
-        // lacks (the id only ever reaches the server). Fetch if the local copy
-        // is missing it — same as resume.
-        let metadata = tracked.happySessionMetadataFromLocalWebhook;
-        const needsFetch = (!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
-          || (!metadata.codexThreadId && metadata.flavor === 'codex');
-        if (needsFetch) {
-          const serverMetadata = await fetchServerSessionMetadata(happySessionId, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant);
-          if (serverMetadata) {
-            metadata = serverMetadata;
-            tracked.happySessionMetadataFromLocalWebhook = serverMetadata;
-          }
-        }
+        // The server copy is authoritative (see relaunchMetadata.ts).
+        const encryption = tracked.encryption;
+        const relaunch = await resolveRelaunchMetadata(tracked.happySessionMetadataFromLocalWebhook,
+          () => fetchServerSessionMetadata(happySessionId, encryption.encryptionKey, encryption.encryptionVariant));
+        const metadata = relaunch.metadata;
+        tracked.happySessionMetadataFromLocalWebhook = metadata;
+        logger.debug(`[DAEMON RUN] Session ${happySessionId} relaunch metadata from ${relaunch.source}`);
 
         // Build the relaunch. Guarded: --resume only when the agent conversation
         // is genuinely resumable (id present + transcript on disk). A B-266
