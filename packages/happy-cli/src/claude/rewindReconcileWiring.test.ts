@@ -34,4 +34,10 @@ describe('rewind reconcile wiring (B-544)', () => {
     it('the reconciler reads the durable server log, not only the live stream', () => {
         expect(launcher).toContain('readLog: () => session.client.readLogTail(REWIND_LOG_WINDOW),');
     });
+
+    it('a restarted wrapper reconciles the conversation it is about to resume (--resume), not null', () => {
+        expect(launcher).toContain('const agentConversationId = () => session.sessionId ?? pendingResumeId(session.claudeArgs);');
+        expect(launcher).toContain('currentClaudeSessionId: () => agentConversationId(),');
+        expect(launcher).toContain('claudeSessionId: () => agentConversationId(),');
+    });
 });

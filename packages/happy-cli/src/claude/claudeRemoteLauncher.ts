@@ -33,6 +33,7 @@ import type { ClaudePrewarmLease } from './claudePrewarm';
 import { createConversationRewind } from './conversationRewind';
 import { getProjectPath } from './utils/path';
 import { persistRewindRecord, RewindReconciler } from './rewindReconciler';
+import { pendingResumeId } from './rewindReconcile';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -207,6 +208,9 @@ export async function claudeRemoteLauncher(
     };
     // Set while a rewind relaunches the query: that abort is not the user's.
     let silentRelaunch = false;
+    // B-544: a restarted wrapper has no Session.sessionId until the first
+    // spawn; the conversation it will resume is still in `--resume <id>`.
+    const agentConversationId = () => session.sessionId ?? pendingResumeId(session.claudeArgs);
     const switchConversation = async (claudeSessionId: string | null) => {
         if (claudeSessionId) session.onSessionFound(claudeSessionId);
         else session.clearSessionId();
@@ -222,7 +226,7 @@ export async function claudeRemoteLauncher(
         readRecord: () => session.client.getMetadata()?.rewind,
         writeRecord: (record) => persistRewindRecord(session.client, record),
         readLog: () => session.client.readLogTail(REWIND_LOG_WINDOW),
-        currentClaudeSessionId: () => session.sessionId,
+        currentClaudeSessionId: () => agentConversationId(),
         readTranscript: async (claudeSessionId) => {
             try {
                 return (await readFile(join(getProjectPath(session.path), `${claudeSessionId}.jsonl`), 'utf-8')).split('\n');
@@ -237,7 +241,7 @@ export async function claudeRemoteLauncher(
     const observeSessionRecord = (body: unknown) => rewindReconciler.observe(body);
     session.client.on('message', observeSessionRecord);
     session.client.rpcHandlerManager.registerHandler('conversation-rewind', createConversationRewind({
-        claudeSessionId: () => session.sessionId,
+        claudeSessionId: () => agentConversationId(),
         projectDir: () => getProjectPath(session.path),
         isThinking: () => session.thinking,
         stopTurn: doAbort,

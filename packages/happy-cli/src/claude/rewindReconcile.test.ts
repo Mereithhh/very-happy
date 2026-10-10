@@ -4,6 +4,7 @@ import {
     decideLineageRepair,
     decideRewind,
     parseRewindRecord,
+    pendingResumeId,
     REWIND_CONFIRM_MS,
     tombstoneRequestIds,
     transcriptLineage,
@@ -138,3 +139,14 @@ describe('legacy split repair (startup, no pending record)', () => {
         })).toMatchObject({ kind: 'revert', to: 'SRC', onlyInCurrent: ['t9'] });
     });
 });
+
+describe('pendingResumeId', () => {
+    it('reads the conversation a restarted wrapper will resume from --resume <id>', () => {
+        expect(pendingResumeId(['--resume', '4a931804-0000-4000-8000-000000000000'])).toBe('4a931804-0000-4000-8000-000000000000');
+        expect(pendingResumeId(['--model', 'x', '--resume', 'a-b'])).toBe('a-b');
+        expect(pendingResumeId(['--resume'])).toBeNull();
+        expect(pendingResumeId(['--resume', '--model'])).toBeNull();
+        expect(pendingResumeId(undefined)).toBeNull();
+    });
+});
+

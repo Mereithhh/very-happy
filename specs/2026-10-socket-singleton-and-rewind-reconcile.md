@@ -59,6 +59,7 @@
 - 暂定中再次改写：新记录的 `sourceClaudeSessionId` 继承上一条未确认记录的源（回滚回到最后确认的对话）。
 - 到期但 agent 已不在该副本上（`claudeSessionId` 不符）→ 不切换，记 `superseded`。`state` 为普通字符串。
 - web 回退只认 `rewind.requestId` 相同且 `state` 不是 `reverted`/`superseded`；只有抛错（超时/断线）走回退，wrapper 明确拒绝（`ok:false`）与「方法不存在」不走。
+- 重启的 wrapper 在首次 spawn 前 `Session.sessionId` 为空，「当前对话」取 `--resume <id>`（启动对账与 rewind RPC 都用它）。
 - 启动 lineage 对账：当前 JSONL 行内最新的他者 `sessionId` = 源；仅当某可见 prompt 的 uuid 在源而不在当前时切回源；切回会忘掉分裂后只在副本里的 prompt（日志记录）。
 
 ## 兼容

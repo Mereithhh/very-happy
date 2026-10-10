@@ -59,6 +59,18 @@ export function parseRewindRecord(raw: unknown): RewindRecord | null {
     };
 }
 
+/**
+ * The conversation a restarted wrapper is about to resume: before the first
+ * spawn `Session.sessionId` is still null and the id only lives in the
+ * `--resume <id>` arg (consumed after that spawn). Same rule as claudeRemote.
+ */
+export function pendingResumeId(claudeArgs: readonly string[] | undefined): string | null {
+    if (!claudeArgs) return null;
+    const index = claudeArgs.indexOf('--resume');
+    const next = index >= 0 ? claudeArgs[index + 1] : undefined;
+    return next && !next.startsWith('-') && next.includes('-') ? next : null;
+}
+
 export type RewindDecision =
     | { kind: 'none' }
     | { kind: 'confirm' }
