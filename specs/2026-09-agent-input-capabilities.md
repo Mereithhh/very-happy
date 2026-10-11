@@ -1,7 +1,7 @@
 # UI agent inputs and reasoning controls
 
 Status: Shipped — PR #308, 6a5f73dc1ea96bc9ee908477151d19021de9b0a1, CLI 0.2.129
-Backlog: B-428
+Backlog: B-428, B-429
 
 ## Baseline before implementation
 
@@ -17,6 +17,14 @@ Advertise attachment support only after the runner can consume it. Reuse encrypt
 Model and effort discovery are authoritative per session/model; preserve exact backend identifiers. GPT-6 Astra fallback is based on official documentation, not guessed aliases. Unsupported stored effort must not be sent as an apparently valid selection. pi thinking remains independent of file-backed permission mode. Codex yolo retains its native approval/sandbox mapping; pi exposes only actually implemented ask/bypass modes.
 
 All conversation effort controls use a discrete accessible slider, with explicit default where supported. Highest supported level triggers a brief monochrome burst/sweep, respecting reduced motion. Both themes, coarse-pointer mobile, keyboard and overflow are browser-verified.
+
+## Maintenance rules from verified behavior
+
+- Keep model and effort in one `ModelEffortMenu` popup, with permissions as the second composer entry on desktop and mobile. Do not restore an exposed third slider or treat pi ACP thinking modes as permissions. Empty effort options hide the control; an unsupported saved value must not become an invented backend level.
+- Discover model IDs and effort stops from the running backend, including all Codex `model/list` pages. CLI version and API model documentation are not substitutes for that catalog. The Astra levels below are a dated 0.153.4 observation, not a permanent global list. Re-probe after backend upgrades, including approval/sandbox acceptance.
+- A selected model label does not prove the next session uses it. Preserve the exact provider/model ID through account defaults → spawn RPC → daemon arguments → ACP initialization, and verify fresh `currentModelCode` before the first prompt. Never make one account's private provider ID the public default.
+- Attachment transport support and model vision support are separate. Verify runner capability metadata plus actual file/image consumption; encrypted upload success alone does not prove the model received usable content.
+- UI regression coverage must exercise changing models with different effort sets, keyboard stops, repeated maximum animation, reduced motion, both themes and coarse-pointer mobile. Measure rendered animation pixels and viewport bounds; source assertions and CSS classes alone are insufficient.
 
 ## Compatibility and delivery
 
