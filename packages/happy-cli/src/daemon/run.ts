@@ -1993,6 +1993,9 @@ export async function startDaemon(): Promise<void> {
     // Setup signal handlers
     const cleanupAndShutdown = async (source: ShutdownSource, errorMessage?: string) => {
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
+      // B-550: last scrollback checkpoint — async + bounded (~300ms), overlapping
+      // the daemon-state update below; awaited before teardown, cannot block it.
+      const scrollbackFlush = apiMachine.flushTerminalScrollback();
       teamWorker?.stop();
       // Real shutdown: kill live script trees; the next daemon reports them from the receipt, never re-runs them.
       automationRunner?.stop({ killScripts: true });
@@ -2015,6 +2018,7 @@ export async function startDaemon(): Promise<void> {
 
       // Give time for metadata update to send
       await new Promise(resolve => setTimeout(resolve, 100));
+      await scrollbackFlush;
 
       // Flush mirror outboxes and close their sockets — WITHOUT archiving
       // (a restart re-adopts live mirrors via restore()).

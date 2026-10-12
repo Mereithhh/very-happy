@@ -120,6 +120,8 @@ import {
 } from './closedTerminals';
 import { scrubTmuxClientEnv, tmuxArgs } from './tmuxSocket';
 import { directTerminalItems, type DirectTerminalInfo } from './directTerminals';
+import { ScrollbackCheckpointer } from './scrollbackCheckpoint';
+import { withArchivedScrollback } from './scrollbackArchive';
 
 // ── Kill tombstones ──────────────────────────────────────────────────────────
 // A deleted terminal's id is remembered here so that a STALE CLIENT (an old
@@ -1442,6 +1444,8 @@ export class WebTerminalManager {
      *  refreshes and notifications into a process that is exiting. */
     private shuttingDown = false;
     private onAutoRestoreSummaryCb: ((line: string) => void) | null = null;
+    /** B-550: scrollback checkpoints across rebuilds (scrollbackCheckpoint.ts). */
+    private scrollback = new ScrollbackCheckpointer({ homeDir: () => configuration.happyHomeDir, env: ptyEnv });
 
     /** Report line for the account notification (wired by apiMachine). */
     setOnAutoRestoreSummary(fn: (line: string) => void): void {
@@ -1648,6 +1652,11 @@ export class WebTerminalManager {
         this.interruptTimers.clear();
     }
 
+    /** B-550: last scrollback checkpoint before the daemon exits (async, ~300ms, never throws). */
+    flushScrollbackForShutdown(): Promise<void> {
+        return this.scrollback.flushOnShutdown();
+    }
+
     /**
      * One pty chunk arrived → make sure a realtime activity frame goes out
      * soon. Leading edge (emit NOW when the last frame is older than the
@@ -1796,6 +1805,7 @@ export class WebTerminalManager {
             // B-547: records of terminals that no longer exist. An empty list is
             // indistinguishable from a failed tmux read — skip rather than wipe.
             if (list.length > 0) this.agentHooks.prune([...list.map((t) => t.id), ...this.terminals.keys()]);
+            this.scrollback.tick(this.closedTerminals.map((r) => r.id)); // B-550
             this.trackNotifications(list);
             // Realtime lane, BEFORE the signature short-circuit: this tick is
             // the only place a COLD session's tmux `#{session_activity}` is
@@ -2067,6 +2077,9 @@ export class WebTerminalManager {
         const exists = spawnSync('tmux', tmuxArgs(['has-session', '-t', `=${name}:`]),
             { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
         if (exists) return false;
+        // B-550: the life that ended becomes the archive replayed above the
+        // rebuilt session — before new-session, so no checkpoint slips between.
+        const undoPromote = plan.attachTmux ? undefined : this.scrollback.promote(plan.terminalId);
         const envFlags = tmuxSupportsEnvFlag() ? [
             '-e', CLAUDE_CLASSIC_RENDERER_ENV,
             '-e', `VH_TERMINAL_ID=${plan.terminalId}`,
@@ -2086,6 +2099,7 @@ export class WebTerminalManager {
         const live = created.status === 0 && spawnSync('tmux', tmuxArgs(['has-session', '-t', `=${name}:`]),
             { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
         if (!live) {
+            undoPromote?.(); // B-550: not rebuilt (e.g. duplicate after a has-session timeout) → no archive
             logger.debug(`[WEB TERMINAL] auto-restore: tmux create failed for ${plan.terminalId}`);
             return false;
         }
@@ -2833,7 +2847,11 @@ export class WebTerminalManager {
         if (paneState) session.paneId = paneState.paneId;
         // `-C` octal-escapes the unfinished-escape tail; the decoder owns that
         // primitive, this is its only other consumer.
-        const payload = assembleRestore({ ...byKey, tail: unescapeOctal(byKey.tail ?? Buffer.alloc(0)) }, paneState);
+        // B-550: a rebuilt terminal's earlier output goes ABOVE the capture (display only, never stdin).
+        const payload = withArchivedScrollback(
+            assembleRestore({ ...byKey, tail: unescapeOctal(byKey.tail ?? Buffer.alloc(0)) }, paneState),
+            this.scrollback.replayFor(session.id),
+        );
         if (fresh) {
             // Prime the daemon's authoritative screen: agentState's zero-
             // subprocess path and an old web's serialize() snapshot both read it.
@@ -3082,6 +3100,7 @@ export class WebTerminalManager {
         // spawnSync returning is not enough: the old implementation ignored a
         // non-zero exit code and acknowledged kills that never happened.
         const target = `=vh-${terminalId}:`;
+        this.scrollback.checkpointSync(terminalId); // B-550: keep its last output for a ↻ restore
         const killed = spawnSync('tmux', tmuxArgs(['kill-session', '-t', target]), { stdio: 'ignore', env: ptyEnv() });
         const verified = spawnSync('tmux', tmuxArgs(['has-session', '-t', target]), { stdio: 'ignore', env: ptyEnv() });
         if (!tmuxKillVerified(killed, verified)) {
