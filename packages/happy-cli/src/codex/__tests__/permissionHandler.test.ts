@@ -44,6 +44,16 @@ describe('CodexPermissionHandler', () => {
         });
     });
 
+    it('B-556: auto-approves report_progress (own board line), not look-alikes', async () => {
+        const { session } = createSessionMock();
+        const handler = new CodexPermissionHandler(session as any);
+        await expect(handler.handleToolCall('call_1', 'mcp__happy__report_progress', { progress: 'tests' })).resolves.toEqual({ decision: 'approved' });
+        await expect(handler.handleToolCall('report_progress-17', 'unknown', {})).resolves.toEqual({ decision: 'approved' });
+        const pending = handler.handleToolCall('call_2', 'report_progress_and_exec', {});
+        handler.abortAll();
+        await expect(pending).resolves.toEqual({ decision: 'abort' });
+    });
+
     it('keeps non-safe tools pending for user approval', async () => {
         const { session, getState } = createSessionMock();
         const handler = new CodexPermissionHandler(session as any);

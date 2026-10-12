@@ -1,6 +1,8 @@
 import { registerTeamsTools } from '@/teams/tools';
 import { registerAutomationTools } from '@/automations/tools';
 import { registerSessionPeerTools } from '@/sessions/peerTools';
+import { registerReportProgressTool } from '@/claude/utils/reportProgressTool';
+import { REPORT_PROGRESS_TOOL_NAME } from '@/claude/utils/agentGuidance';
 /**
  * Happy MCP STDIO Bridge
  *
@@ -174,6 +176,9 @@ async function main() {
   // B-497: session peers execute in the owning session process too (it is the
   // identity the peer sees); the bridge only forwards by name.
   registerSessionPeerTools(server, (name, args) => forwardTeam(name, args));
+  // B-556: report_progress writes the owning session's metadata.board (throttle
+  // included); the bridge only forwards by name, same schema as the HTTP server.
+  registerReportProgressTool(server, async (args) => (await ensureHttpClient()).callTool({ name: REPORT_PROGRESS_TOOL_NAME, arguments: args }) as any);
 
   // Start STDIO transport
   const stdio = new StdioServerTransport();

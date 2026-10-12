@@ -8,6 +8,7 @@ import {
     normalizeAttention,
     normalizeProgress,
     shouldAcceptSelfReport,
+    normalizePhase,
 } from './boardReport';
 
 describe('自报节流', () => {
@@ -102,5 +103,21 @@ describe('attention 跃迁绕过节流（review finding 4 的回归）', () => {
 
     it('首次自报无论 attention 都接受', () => {
         expect(shouldAcceptSelfReport(createSelfReportState(), 1, 'none')).toBe(true);
+    });
+});
+
+describe('B-556 phase', () => {
+    it('a new phase bypasses the throttle; an omitted or repeated one does not (V-072 ③ stays throttled)', () => {
+        const state = { lastAcceptedAt: 100_000, lastAttention: 'none' as const, lastPhase: 'implementing' as const };
+        expect(shouldAcceptSelfReport(state, 100_001, 'none', 'testing')).toBe(true);
+        expect(shouldAcceptSelfReport(state, 100_001, 'none', 'implementing')).toBe(false);
+        expect(shouldAcceptSelfReport(state, 100_001, 'none')).toBe(false);
+        // attention transitions still win regardless of phase (V-076)
+        expect(shouldAcceptSelfReport(state, 100_001, 'blocked', 'implementing')).toBe(true);
+    });
+    it('normalizePhase keeps only known phases', () => {
+        expect(normalizePhase('testing')).toBe('testing');
+        expect(normalizePhase('deploying')).toBeUndefined();
+        expect(normalizePhase(3)).toBeUndefined();
     });
 });

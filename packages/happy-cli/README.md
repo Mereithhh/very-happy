@@ -161,7 +161,7 @@ The web client URL follows the same precedence (`HAPPY_WEBAPP_URL`, then
 
 Base managed Claude sessions receive `change_title`, `copy_to_clipboard`,
 `open_preview`, and `report_progress`. The managed Codex, Gemini, and ACP bridge
-exposes the first three except progress. For a plain `claude`, the standalone
+exposes the same four. For a plain `claude`, the standalone
 command is intentionally clipboard-only:
 
 ```bash

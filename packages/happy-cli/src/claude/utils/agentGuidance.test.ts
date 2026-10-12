@@ -20,6 +20,7 @@ const REGISTRATION_POINTS = [
     'claude/utils/startHappyServer.ts',  // http MCP —— 范围内
     'codex/happyMcpStdioBridge.ts',      // codex/gemini/acp 的 stdio bridge —— 范围内
     'commands/mcp.ts',                   // 裸终端的 stdio MCP —— 出范围，但共用常量以免漂移
+    'claude/utils/reportProgressTool.ts', // B-556: report_progress 的共享注册（http MCP + bridge）
 ];
 
 describe('AGENT_GUIDANCE', () => {
@@ -62,7 +63,8 @@ describe('工具描述同源（B-130 D2）', () => {
     it('每个注册点引用的都是常量标识符', () => {
         const httpMcp = read('claude/utils/startHappyServer.ts');
         expect(httpMcp).toContain('PREVIEW_TOOL_DESCRIPTION');
-        expect(httpMcp).toContain('REPORT_PROGRESS_TOOL_DESCRIPTION');
+        expect(read('claude/utils/reportProgressTool.ts')).toContain('description: REPORT_PROGRESS_TOOL_DESCRIPTION,');
+        expect(httpMcp).toContain('registerReportProgressTool(mcp, async (args) => {');
         expect(httpMcp).toContain('CLIPBOARD_TOOL_DESCRIPTION');
 
         const bridge = read('codex/happyMcpStdioBridge.ts');
