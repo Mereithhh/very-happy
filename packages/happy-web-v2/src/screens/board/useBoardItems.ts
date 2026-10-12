@@ -2,8 +2,7 @@ import { backgroundTaskCount, heartbeatLastHeardAt, isHeartbeatFresh, useHeartbe
 import { isTerminalStatusFresh } from '@/sync/terminalAgentState';
 import { useShallow } from 'zustand/react/shallow';
 import { storage } from '@/sync/storage';
-import { currentTurnMessages } from '@/sync/agentLiveness';
-import { countRunningSubagentCards } from '@/screens/session/subagentPills';
+import { runningSubagentsInCurrentTurn } from '@/screens/session/transcriptMessages';
 /**
  * Store-facing hooks for the Task Board. The mapping itself lives in
  * boardItems.ts (pure, unit-tested); these hooks only wire the existing
@@ -23,12 +22,15 @@ import { sessionPreview, type SessionPreview } from './sessionPreview';
 /** re-derive "waiting 4m" / the 24h ended cutoff even with no store activity */
 const TICK_MS = 30_000;
 const backgroundCounts = new WeakMap<object, number>();
-function runningBackgroundCounts(state: ReturnType<typeof storage.getState>): Record<string, number> {
+/** Exported for the B-561 regression test only. */
+export function runningBackgroundCounts(state: ReturnType<typeof storage.getState>): Record<string, number> {
   const result: Record<string, number> = {};
   for (const [id, entry] of Object.entries(state.sessionMessages)) {
     let count = backgroundCounts.get(entry);
     if (count === undefined) {
-      count = countRunningSubagentCards(currentTurnMessages(entry.messages));
+      // B-561: entry.messages is newest-first; the helper reverses it into the
+      // transcript's oldest-first view before cutting the current turn.
+      count = runningSubagentsInCurrentTurn(entry.messages);
       backgroundCounts.set(entry, count);
     }
     if (count > 0) result[id] = count;

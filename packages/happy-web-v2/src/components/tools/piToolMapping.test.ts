@@ -78,7 +78,8 @@ describe('normalizePiToolCall wiring', () => {
         expect(src('../../screens/session/toolRunSummary.ts')).toContain('const tool = normalizePiToolCall(rawTool);');
         expect(src('../../screens/session/toolFilePath.ts')).toContain('const tool = normalizePiToolCall(rawTool);');
         expect(src('../../screens/session/toolVisibility.ts')).toContain('isHiddenToolName(normalizePiToolCall(tool).name)');
-        expect(src('../../screens/session/ChatList.tsx')).toContain('!isHiddenToolCall(message.tool)');
+        // B-561: ChatList's transcript filter moved to transcriptMessages.ts (shared with the board).
+        expect(src('../../screens/session/transcriptMessages.ts')).toContain('!isHiddenToolCall(message.tool)');
     });
 });
 

@@ -20,7 +20,6 @@ import { LiveStreamView } from './LiveStreamView';
 import { endLiveStreamTurn } from '@/sync/liveStreamStore';
 import { TurnActivityView } from './TurnActivityView';
 import { CompactionDivider } from './CompactionDivider';
-import { dropSlashCommandEchoes } from './compaction';
 import { buildChatRows } from './chatTurns';
 import {
     nextAwaySnapshot,
@@ -30,15 +29,13 @@ import {
     shouldFollowShrink,
     shouldSmoothJumpToLatest,
 } from './chatFollow';
-import { isHiddenToolCall } from './toolVisibility';
-import { dropDuplicateAttachmentEchoes } from './attachedFiles';
-import { countRunningSubagentCards, suppressSubagentPills } from './subagentPills';
+import { countRunningSubagentCards } from './subagentPills';
+import { transcriptChronological } from './transcriptMessages';
 import { userAbortedAt } from './subagentAbort';
 import { currentTurnMessages, isAgentWorkLive } from '@/sync/agentLiveness';
 import { MessageTimeTooltip } from './MessageTimeTooltip';
 import './chatlist.css';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
-import { isTranscriptVisibleInput } from './discardedInput';
 import { SendFailedActions, SendingIndicator, useSendSpinnerResetAll } from './SendStatusView';
 import { turnSendStatus } from './sendStatusModel';
 import { latestOwnSendKey, onChatFollowRequest } from './chatFollowRequest';
@@ -76,22 +73,9 @@ export function ChatList({
         [messages],
     );
     useSendSpinnerResetAll(queuedMessages as readonly { localId?: string | null; sendState?: string }[]);
-    const chronological = useMemo(
-        // B-355: the CLI's JSONL scanner used to forward a second copy of any
-        // message that carried an attachment. It has to be dropped HERE and not
-        // in the renderer: `buildChatRows` splits turns on `kind === 'user-text'`
-        // regardless of what renders, so leaving it in would still open an empty
-        // turn, inflate `rows.length` (unseen badge) and move the liveness
-        // window's start.
-        // B-332: a message the CLI discarded (tombstone WITH a reason) stays in
-        // the transcript, marked — the user's text must not vanish because a
-        // restart/clear ate it. A web-side cancel (no reason) is the user's own
-        // removal and stays hidden, as before.
-        () => dropSlashCommandEchoes(dropDuplicateAttachmentEchoes(suppressSubagentPills([...messages].reverse().filter((message) =>
-            isTranscriptVisibleInput(message) &&
-            (message.kind !== 'tool-call' || !isHiddenToolCall(message.tool)))))),
-        [messages],
-    );
+    // B-561: one derivation shared with the board/sidebar (transcriptMessages.ts)
+    // — the filters below decide where a turn starts, so both must agree.
+    const chronological = useMemo(() => transcriptChronological(messages), [messages]);
     // B-260-P2: a background sub-agent keeps the turn live after the main
     // agent's stub tool_result — the CLI publishes its lifecycle.
     // B-295: only the CURRENT turn's sub-agents vote, and a `running` tool call

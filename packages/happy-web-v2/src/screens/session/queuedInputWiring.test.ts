@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const chatList = readFileSync(new URL('./ChatList.tsx', import.meta.url), 'utf8');
+// B-561: the transcript filter lives in transcriptMessages.ts, shared with the board.
+const transcript = readFileSync(new URL('./transcriptMessages.ts', import.meta.url), 'utf8');
 const css = readFileSync(new URL('./chatlist.css', import.meta.url), 'utf8');
 const syncSource = readFileSync(new URL('../../sync/sync.ts', import.meta.url), 'utf8');
 
@@ -11,7 +13,8 @@ describe('queued input UI wiring', () => {
         // B-332: the transcript filter is the shared judgement in discardedInput.ts —
         // a CLI-discarded message (tombstone with reason) stays visible and marked;
         // a bare `inputState === undefined` check here would hide it again.
-        expect(chatList).toContain('isTranscriptVisibleInput(message)');
+        expect(transcript).toContain('isTranscriptVisibleInput(message)');
+        expect(transcript).not.toContain('message.inputState === undefined');
         expect(chatList).not.toContain('message.inputState === undefined');
         expect(chatList).toContain('className="cl-queue"');
         expect(chatList).toContain("t('session.chat.queuedHint')");
