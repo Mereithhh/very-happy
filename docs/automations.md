@@ -45,7 +45,9 @@ automation**.
      prompt.
    - **Run a script**: the command as argv (shell-style quoting, no expansion),
      optional working directory.
-4. **Limits** — what to do when the previous run is still going (skip this run
+4. **Precheck (optional)** — a cheap check the machine runs before the action
+   (see [Precheck](#precheck-only-run-when-there-is-something-to-do)).
+5. **Limits** — what to do when the previous run is still going (skip this run
    or queue it) and the maximum runtime (default 6h, scripts 30m).
 
 The list groups automations into **Scheduled** and **Triggers**, and shows the
@@ -83,6 +85,51 @@ started from a plain terminal can read the official skill:
 very-happy auto skill                       # print the skill
 very-happy teams install --host claude --apply   # installs the Teams and Automations skills together
 ```
+
+## Precheck: only run when there is something to do
+
+A schedule that spawns an agent every five minutes burns quota even when there
+is nothing new. Give the automation a **precheck**: a command the executing
+machine runs first. Exit code `0` runs the action; any other exit records the
+run as **skipped** and nothing is spawned or sent.
+
+```bash
+# only start a session when the inbox file is non-empty; pass the check's output to the agent
+very-happy auto create --name inbox-triage --every 5m --spawn-dir ~/work/ops \
+  --prompt 'Triage the new messages below.' \
+  --precheck-shell 'test -s ~/inbox/new.json && jq -r ".[].subject" ~/inbox/new.json' --precheck-output
+very-happy auto edit inbox-triage --precheck-timeout 2m     # adjust the existing check
+very-happy auto edit inbox-triage --no-precheck             # remove it
+```
+
+- **Command** — either one shell line (`--precheck-shell`, run by the
+  machine's shell) or an argv (`--precheck-argv '["./has-new","--since","5m"]'`,
+  no shell). A shell line is not template-rendered — read the payload from
+  `$VH_AUTOMATION_PAYLOAD`; argv accepts the same templates as scripts.
+- **Directory** — `--precheck-cwd`; by default the spawn directory or the
+  script's working directory, otherwise the home directory.
+- **Timeout** — `--precheck-timeout` (default 60s, at most 10m). On timeout the
+  whole process group is killed.
+- **Output** — the last 4,000 characters are kept. With `--precheck-output`
+  ("Append the check's output to the prompt" in the app) its stdout is added to
+  the end of the spawn/send prompt under `[precheck output]`; a script action
+  always gets it as `$VH_AUTOMATION_PRECHECK_OUTPUT`.
+- **Skips** — a non-zero exit is skipped quietly (`precheck: nothing to do`).
+  A timeout or a check that cannot start is skipped **and** shown in *Needs my
+  decision*. Consecutive skips for the same reason fold into one row marked
+  **×N** in the run history (a run in between, or a different reason, starts a
+  new count), so the history and the decision list do not fill up; a repeated
+  reason asks for your decision only once.
+- **Older CLIs** — a machine whose very-happy CLI predates prechecks never runs
+  the action of an automation that has one: those runs are skipped as *CLI too
+  old for the precheck* and flagged once. Upgrade the CLI on that machine.
+- In the app the check lives in its own **Precheck (optional)** section of the
+  form; MCP tools take `precheck: { shell | command, cwd?, timeoutMs?,
+  includeOutput? }` on `automation_create` / `automation_update` (`null`
+  removes it).
+- A one-time (`--at`) automation created with a precheck in the past will not
+  fire: it is created paused and resumed after the server confirms the check
+  was stored, and resuming never replays a past time.
 
 ## Triggers: fire an automation from an event
 
@@ -141,6 +188,8 @@ How a run ends:
   session log; the last assistant text (4 KB) becomes the summary.
 - Scripts end on exit: `0` is done, anything else is failed, with the output
   tail as the summary. Timeouts get SIGTERM, then SIGKILL.
+- A precheck that does not pass ends the run as **skipped** before the action
+  starts; the check's output tail is the summary.
 - Runs whose daemon stops reporting, or that exceed the maximum runtime, are
   marked **expired** and flagged. A daemon restart before the outcome is known
   reports **failed** with attention instead of retrying.
