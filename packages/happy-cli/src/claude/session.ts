@@ -1,3 +1,4 @@
+import type { TranscriptPathHints } from './utils/transcriptCursor';
 import { ApiClient, ApiSessionClient } from "@/lib";
 import type { SideQuestionLiveQuery } from './sideQuestion';
 import { MessageQueue2, type PendingAttachment } from "@/utils/MessageQueue2";
@@ -92,6 +93,10 @@ export class Session {
             return null;
         }
     }
+
+    /** B-551: transcript paths reported by Claude's SessionStart hook (set by
+     *  runClaude); scanners prefer them over the cwd-derived path. */
+    transcriptPathHints: TranscriptPathHints | null = null;
 
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];

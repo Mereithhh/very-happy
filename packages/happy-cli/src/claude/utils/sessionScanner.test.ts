@@ -180,4 +180,112 @@ describe('sessionScanner', () => {
     expect(collectedMessages).toHaveLength(1)
     expect(collectedMessages[0].type).toBe('user')
   })
+
+  // ── B-551: hook transcript path + rewrite-aware incremental reads ─────────
+  describe('transcript path hints and rewrites (B-551)', () => {
+    const realId = '93a9705e-bc6a-406d-8dce-8acc014dedbd'
+    let fixtureLines: string[]
+    let hintDir: string
+
+    beforeEach(async () => {
+      const fixture = await readFile(join(__dirname, '__fixtures__', '1-continue-run-ls-tool.jsonl'), 'utf-8')
+      // Skip the leading summary line: user/assistant lines only (unique uuids).
+      fixtureLines = fixture.split('\n').filter((l) => l.trim()).slice(1)
+      // Somewhere the cwd-derived path would never look (e.g. CLAUDE_CONFIG_DIR).
+      hintDir = join(testDir, 'other-config', 'projects', 'x')
+      await mkdir(hintDir, { recursive: true })
+    })
+
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+    it('reads the hook-reported transcript path instead of the derived one', async () => {
+      const hinted = join(hintDir, `${realId}.jsonl`)
+      await writeFile(hinted, fixtureLines[0] + '\n')
+      scanner = await createSessionScanner({
+        sessionId: null,
+        workingDirectory: testDir,
+        onMessage: (msg) => collectedMessages.push(msg),
+        resolveTranscriptPath: (id) => (id === realId ? hinted : undefined),
+      })
+      await scanner.onNewSession(realId)
+      await wait(300)
+      expect(collectedMessages).toHaveLength(1)
+      await appendFile(hinted, fixtureLines[1] + '\n')
+      await wait(3500)
+      expect(collectedMessages).toHaveLength(2)
+      expect(existsSync(join(projectDir, `${realId}.jsonl`))).toBe(false)
+    })
+
+    it('ignores an invalid hint and falls back to the derived path', async () => {
+      await writeFile(join(projectDir, `${realId}.jsonl`), fixtureLines[0] + '\n')
+      scanner = await createSessionScanner({
+        sessionId: null,
+        workingDirectory: testDir,
+        onMessage: (msg) => collectedMessages.push(msg),
+        resolveTranscriptPath: () => join(hintDir, 'someone-else.jsonl'),
+      })
+      await scanner.onNewSession(realId)
+      await wait(300)
+      expect(collectedMessages).toHaveLength(1)
+    })
+
+    it('switches to a hint that arrives after the session was announced', async () => {
+      const hinted = join(hintDir, `${realId}.jsonl`)
+      let hint: string | undefined
+      await writeFile(hinted, fixtureLines[0] + '\n')
+      scanner = await createSessionScanner({
+        sessionId: null,
+        workingDirectory: testDir,
+        onMessage: (msg) => collectedMessages.push(msg),
+        resolveTranscriptPath: () => hint,
+      })
+      await scanner.onNewSession(realId)
+      await wait(300)
+      expect(collectedMessages).toHaveLength(0)
+      hint = hinted
+      await wait(3500)
+      expect(collectedMessages).toHaveLength(1)
+    })
+
+    it('a late hint for the pre-marked initial session does not replay its history', { timeout: 15_000 }, async () => {
+      // Reconnect shape: the scanner is built with the session id before any
+      // hook, the derived path does not exist (e.g. CLAUDE_CONFIG_DIR), and
+      // the SessionStart hook then reports where the transcript really is.
+      const hinted = join(hintDir, `${realId}.jsonl`)
+      let hint: string | undefined
+      await writeFile(hinted, fixtureLines.slice(0, 2).join('\n') + '\n')
+      scanner = await createSessionScanner({
+        sessionId: realId,
+        workingDirectory: testDir,
+        onMessage: (msg) => collectedMessages.push(msg),
+        resolveTranscriptPath: () => hint,
+      })
+      hint = hinted
+      await wait(3500)
+      expect(collectedMessages).toHaveLength(0)
+      // Genuinely new lines after the switch are delivered.
+      await appendFile(hinted, fixtureLines[2] + '\n')
+      await wait(3500)
+      expect(collectedMessages).toHaveLength(1)
+    })
+
+    it('a rewritten transcript is re-read without duplicating already-sent messages', async () => {
+      const file = join(projectDir, `${realId}.jsonl`)
+      await writeFile(file, fixtureLines.slice(0, 2).join('\n') + '\n')
+      scanner = await createSessionScanner({
+        sessionId: null,
+        workingDirectory: testDir,
+        onMessage: (msg) => collectedMessages.push(msg),
+      })
+      await scanner.onNewSession(realId)
+      await wait(300)
+      expect(collectedMessages).toHaveLength(2)
+      // Truncate-and-rewrite in place: the first line again plus a new one.
+      await writeFile(file, [fixtureLines[0], fixtureLines[2]].join('\n') + '\n')
+      await wait(3500)
+      expect(collectedMessages).toHaveLength(3)
+      const uuids = collectedMessages.map((m) => (m as { uuid?: string }).uuid)
+      expect(new Set(uuids).size).toBe(3)
+    })
+  })
 })
