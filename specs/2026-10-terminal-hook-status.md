@@ -50,7 +50,7 @@
 ### 1. 注入（daemon 拼的命令才注入）
 
 - 纯函数 `injectClaudeSettingsFlag(command, settingsPath)`：仅当命令的第一个 token 恰为 `claude` 且全文不含 `--settings` 时，改写为 `claude --settings '<path>' <其余>`；否则原样返回（`cd x && claude`、别名、用户自己带 `--settings` 都不碰）。路径只允许 `[A-Za-z0-9_./@:+-]`（单引号在 sh/bash/zsh/fish 下语义一致）；不满足就不注入。
-- 每终端一个 settings 文件 `<happyHome>/tmp/terminal-hooks/<terminalId>.json`，在注入前写好；终端被 kill / 记为 closed 时删除。daemon 重启不删（tmux 里的 claude 仍在读它）。
+- 每终端一个 settings 文件 `<happyHome>/tmp/terminal-hooks/<terminalId>.json`，在注入前写好；终端被 kill / 记为 closed 时删除；daemon 启动（首次 list tracking）时按 id 逐个 `has-session` 清理无对应 tmux 会话的残留文件，有会话的不删（tmux 里的 claude 仍在读它）。内存记录在每个 list tick 按列表 prune（空列表与 tmux 读取失败无法区分，跳过）。
 - hook 命令（每个事件同一条）：
   `[ -f '<forwarder>' ] && node '<forwarder>' '<terminalId>' '<happyHome>' "$PPID" || true`
   ——`$PPID` 在 hook 的 `sh -c` 里就是 claude 进程 pid，daemon 用来判这条记录的 claude 是否还活着。条目 `timeout: 10`。
@@ -71,7 +71,8 @@
 | UserPromptSubmit | phase=working，seq+1，turnId=`prompt_id` ‖ prompt hash，confirmedTurn=true |
 | PostToolUse（主线程或 subagent） | phase∈{done,needs_input}→working（seq+1）；working→只续 `updatedAt` |
 | PermissionRequest；Notification 且 `notification_type`∈{permission_prompt, elicitation_dialog}（缺类型时 message 含 permission） | phase=needs_input，seq+1 |
-| Notification 其它类型（idle_prompt 等） | 只续 `updatedAt` |
+| Notification `idle_prompt` | phase=done（锁定版 2.1.296 二进制核实：仅在 `!isLoading`、已有完成的 query、屏幕无对话框、无后台 agent / loop wakeup / 配额恢复、且完成后无输入达到空闲阈值时发出——确为空闲等待；也能收敛 web 外按 Esc 打断、没有 Stop 的回合） |
+| Notification 其它类型 | 只续 `updatedAt` |
 | Stop / StopFailure（`agent_id` 存在即 subagent，忽略） | phase=done，seq+1 |
 | PostCompact | `trigger=manual` → done；auto → 续期 |
 | SessionEnd | 删除记录 |
@@ -85,17 +86,17 @@
 | 屏幕 \ hook | working | needs_input | done |
 |---|---|---|---|
 | `shell` / 其它 agent | 屏幕 | 屏幕 | 屏幕 |
-| 探测失败 / claude 但无状态 | working | needs_input | idle |
+| 探测失败 / claude 但无状态 | working（`updatedAt` 超 10 min → 屏幕） | needs_input（同样超时 → 屏幕） | idle |
 | `working` | working | **working**（对话框已消失） | working（如后台任务唤醒、未触发 UserPromptSubmit 的 slash 命令） |
 | `needs_input` | needs_input（对话框标记精确；也覆盖 hook 计划里没有 PermissionRequest 的情况） | needs_input | needs_input |
-| `idle` | working；但若 `updatedAt` 早于 10 min（HOOK_WORKING_STALE_MS）→ idle | needs_input（Claude 的模式行 `⏵⏵ …` / `bypass permissions on` 会被截屏当成 idle 标记，而它在未识别的对话框下仍可见）；同样 10 min 过期 → idle | idle |
+| `idle` | working；但若 `updatedAt` 早于 10 min（HOOK_WORKING_STALE_MS）→ 屏幕 | needs_input（Claude 的模式行 `⏵⏵ …` / `bypass permissions on` 会被截屏当成 idle 标记，而它在未识别的对话框下仍可见）；同样 10 min 过期 → 屏幕 | idle |
 
-即：hook 的 **working** 不被屏幕的「看不到 spinner」降级（这正是截屏的主要误判），但屏幕的正向证据（spinner、对话框）总是被采纳。`agentKind` 固定为 `claude`，`agentObservedAt` 仍是本次探测时间（web 租约语义不变）。manager 内部另记「哪些终端最近一次判定来自 hook」（`hookSourced`，只给通知用，不进推送、不进签名）。`claudeConfident`（mirror 输入闸门）始终取屏幕判定，hook 不会打开它。
+即：hook 的 **working** 不被屏幕的「看不到 spinner」降级（这正是截屏的主要误判），但屏幕的正向证据（spinner、对话框）总是被采纳——且算作**屏幕**判定（source=screen），保留截屏的两次观测去抖：只有状态由 hook 记录的 phase 决定时才算 hook 来源、跳过去抖。`agentKind` 固定为 `claude`，`agentObservedAt` 仍是本次探测时间（web 租约语义不变）。manager 内部另记「哪些终端最近一次判定来自 hook」（`hookSourced`，只给通知用，不进推送、不进签名）。`claudeConfident`（mirror 输入闸门）始终取屏幕判定，hook 不会打开它。
 
 ### 4. 中断推断（Orca 规则）
 
 - `write()` 看到整块输入恰为 `\x1b`（或 kitty `CSI 27 u` 按下）或 `\x03` 且记录 phase∈{working, needs_input}；或恰为 Enter 且 phase=needs_input（在对话框上选「No / 告诉 Claude 怎么做」同样结束回合且不触发 Stop）→ 记下 pending `{ seq, phaseStartedAt, claudeSessionId, turnId, at }`。选「Yes」时屏幕转为 spinner → 本检查 `wait` 到窗口过期放弃，而融合表的「屏幕 working」行把状态更新为 working。
-- 600 ms、2 s、5 s 各复查一次（对该终端单独探测屏幕）。合成 done（`interrupted: true`，seq+1）的**全部**条件：记录仍是同一 claude session、`confirmedTurn`、seq / phaseStartedAt / turnId 与 pending 完全一致、`now - updatedAt ≤ HOOK_WORKING_STALE_MS`、`now - pending.at ≤ 5 s`、屏幕判定为 claude `idle`（不是 working / needs_input / 未知）。屏幕仍在 working/needs_input → 等下一次；窗口过了 → 放弃，保持原状。Esc 关菜单、Ctrl+C 清输入框都不会改变屏幕到 idle-with-same-baseline 之外的结果，因此不会误判。
+- 600 ms、2 s、5 s 各复查一次（对该终端单独探测屏幕）。合成 done（`interrupted: true`，seq+1）的**全部**条件：记录仍是同一 claude session、`confirmedTurn`、seq / phaseStartedAt / turnId 与 pending 完全一致、`now - updatedAt ≤ HOOK_WORKING_STALE_MS`、`now - pending.at ≤ 6.5 s`（最后一次计划复查 5 s + 1.5 s 余量，容纳定时器延迟与 tmux 探测耗时）、屏幕判定为 claude `idle`（不是 working / needs_input / 未知）。屏幕仍在 working/needs_input → 等下一次；窗口过了 → 放弃，保持原状。Esc 关菜单、Ctrl+C 清输入框都不会改变屏幕到 idle-with-same-baseline 之外的结果，因此不会误判。
 - 合成后立即 kick 推送。
 
 ### 5. 推送与通知
@@ -138,7 +139,7 @@ wire / server / web **零改动**：推送的 `TerminalListItem` 字段与 `agen
 3. **Stop 丢失**（daemon 正在重启、forwarder 失败）→ working 卡住。缓解：屏幕 idle + 10 min 无 hook 事件即回退屏幕；daemon 重启本身清空记录。
 4. **pid 复用**：claude 退出后同 pid 被别的进程复用 → 记录看似存活。缓解：屏幕判为 shell / 其它 agent 时屏幕优先；SessionEnd 正常删除记录。
 5. **增量读取不再读取无换行结尾的最后一行**。Claude 的 JSONL 每行以 `\n` 结尾；半行等下一次写入。接受。
-6. **settings 文件残留**：daemon 被硬杀时未清理。文件极小、按 terminalId 覆盖；kill/close 时删除。接受。
+6. **settings 文件残留**：daemon 被硬杀时未清理。下次 daemon 启动清扫；kill/close 时删除。
 
 ## 验收标准
 

@@ -195,6 +195,15 @@ export interface TerminalHookRecord {
 }
 
 const NEEDS_INPUT_NOTIFICATIONS = new Set(['permission_prompt', 'elicitation_dialog']);
+/**
+ * `idle_prompt` means Claude is idle at its prompt. Verified in the locked
+ * 2.1.296 binary: sendIdleNotification fires only when !isLoading, a query
+ * has completed, no dialog is on screen, no background agents / loop wakeup /
+ * quota resume is pending, and nothing was typed since the completion for
+ * the idle threshold. So it is a done — it also settles a turn whose Stop
+ * never came (an interrupt typed outside the web terminal).
+ */
+const IDLE_NOTIFICATIONS = new Set(['idle_prompt']);
 
 function phaseTo(prev: TerminalHookRecord, phase: HookPhase, now: number, extra: Partial<TerminalHookRecord> = {}): TerminalHookRecord {
     const { interrupted: _drop, ...rest } = prev;
@@ -258,6 +267,10 @@ export function reduceHookRecord(
         case 'PermissionRequest':
             return { record: phaseTo(withPid, 'needs_input', now), changed: withPid.phase !== 'needs_input' || fresh };
         case 'Notification': {
+            if (ev.notificationType && IDLE_NOTIFICATIONS.has(ev.notificationType)) {
+                if (withPid.phase === 'done') return renew();
+                return { record: phaseTo(withPid, 'done', now), changed: true };
+            }
             const needsInput = ev.notificationType ? NEEDS_INPUT_NOTIFICATIONS.has(ev.notificationType) : ev.permissionHint === true;
             if (!needsInput) return renew();
             return { record: phaseTo(withPid, 'needs_input', now), changed: withPid.phase !== 'needs_input' || fresh };
@@ -301,19 +314,22 @@ export function fuseAgentState(
     if (s === 'shell') return screenOnly;
     if (screen?.agentKind && screen.agentKind !== 'claude') return screenOnly;
     const hook = (agentState: AgentState): FusedAgentState => ({ agentKind: 'claude', agentState, source: 'hook' });
-    if (s === 'needs_input') return hook('needs_input');
-    if (s === 'working') return hook('working');
+    // Positive screen evidence decides — and it is the SCREEN's verdict
+    // (source 'screen'), so it keeps the screen's notification debounce: a
+    // single misread frame over a hook `done` must not notify at once.
+    if (s === 'needs_input' || s === 'working') return { agentKind: 'claude', agentState: s, source: 'screen' };
     switch (record.phase) {
         case 'working':
-            if (s === 'idle' && now - record.updatedAt > HOOK_WORKING_STALE_MS) return hook('idle');
-            return hook('working');
         case 'needs_input':
-            // Not cleared by an idle-looking screen: Claude's mode line
-            // (`⏵⏵ …`, `bypass permissions on`) can stay visible under an
-            // unrecognized dialog. A keypress-armed check, a later hook or
-            // staleness clears it.
-            if (s === 'idle' && now - record.updatedAt > HOOK_WORKING_STALE_MS) return hook('idle');
-            return hook('needs_input');
+            // A stale working / needs_input (no hook for HOOK_WORKING_STALE_MS:
+            // a lost Stop, an interrupt typed outside the web) no longer
+            // outvotes the screen — idle, unrecognized or failed probe alike.
+            if (now - record.updatedAt > HOOK_WORKING_STALE_MS) return screenOnly;
+            // needs_input is not cleared by an idle-looking screen: Claude's
+            // mode line (`⏵⏵ …`, `bypass permissions on`) can stay visible
+            // under an unrecognized dialog. A keypress-armed check or a later
+            // hook clears it.
+            return hook(record.phase);
         case 'done':
             return hook('idle');
     }
@@ -321,10 +337,12 @@ export function fuseAgentState(
 
 // ── Interrupt inference (Esc / Ctrl+C never fire Stop) ──────────────────────
 
-/** Window in which the screen must confirm the interrupt. */
-export const INTERRUPT_CONFIRM_WINDOW_MS = 5_000;
 /** When to re-probe after the keypress (ms after it). */
 export const INTERRUPT_CHECK_DELAYS_MS: readonly number[] = [600, 2_000, 5_000];
+/** Window in which the screen must confirm the interrupt: the last planned
+ *  re-check plus slack for timer lateness / a slow tmux probe — otherwise the
+ *  last check would always land just outside it. */
+export const INTERRUPT_CONFIRM_WINDOW_MS = INTERRUPT_CHECK_DELAYS_MS[INTERRUPT_CHECK_DELAYS_MS.length - 1] + 1_500;
 
 // eslint-disable-next-line no-control-regex
 const KITTY_ESCAPE_PRESS_RE = /^\x1b\[27(?:;1(?::1)?)?u$/;

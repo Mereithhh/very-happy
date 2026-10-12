@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { TerminalNotifyTracker } from './terminalNotify';
 import {
     HOOK_WORKING_STALE_MS,
     armsInterruptCheck,
     INTERRUPT_CONFIRM_WINDOW_MS,
+    INTERRUPT_CHECK_DELAYS_MS,
     buildTerminalHookSettings,
     decideInterrupt,
     fuseAgentState,
@@ -140,8 +142,19 @@ describe('reduceHookRecord (B-547)', () => {
         expect(reduceHookRecord(working, ev('Notification', { notificationType: 'permission_prompt' }), T0 + 1).record?.phase).toBe('needs_input');
         expect(reduceHookRecord(working, ev('Notification', { notificationType: 'elicitation_dialog' }), T0 + 1).record?.phase).toBe('needs_input');
         expect(reduceHookRecord(working, ev('Notification', { permissionHint: true }), T0 + 1).record?.phase).toBe('needs_input');
-        const idle = reduceHookRecord(working, ev('Notification', { notificationType: 'idle_prompt' }), T0 + 1);
-        expect(idle).toMatchObject({ changed: false, record: { phase: 'working', updatedAt: T0 + 1 } });
+        const other = reduceHookRecord(working, ev('Notification', { notificationType: 'auth_success' }), T0 + 1);
+        expect(other).toMatchObject({ changed: false, record: { phase: 'working', updatedAt: T0 + 1 } });
+    });
+
+    it('idle_prompt (Claude idle at its prompt, no dialog, no loading) settles to done', () => {
+        const working = run([[ev('UserPromptSubmit'), T0]])!;
+        expect(reduceHookRecord(working, ev('Notification', { notificationType: 'idle_prompt' }), T0 + 60_000))
+            .toMatchObject({ changed: true, record: { phase: 'done' } });
+        const asking = reduceHookRecord(working, ev('PermissionRequest'), T0 + 1).record!;
+        expect(reduceHookRecord(asking, ev('Notification', { notificationType: 'idle_prompt' }), T0 + 60_000).record?.phase).toBe('done');
+        const done = reduceHookRecord(working, ev('Stop'), T0 + 2).record!;
+        expect(reduceHookRecord(done, ev('Notification', { notificationType: 'idle_prompt' }), T0 + 60_000))
+            .toMatchObject({ changed: false, record: { phase: 'done', seq: done.seq } });
     });
 
     it('ignores a subagent Stop and an auto compaction', () => {
@@ -189,17 +202,34 @@ describe('fuseAgentState (B-547)', () => {
         expect(fuseAgentState(undefined, rec('working'), T0 + 1).agentState).toBe('working');
     });
 
-    it('a stale hook working yields to a confident idle screen only', () => {
+    it('a stale hook working / needs_input yields to the screen entirely (incl. no state)', () => {
         const later = T0 + HOOK_WORKING_STALE_MS + 1;
-        expect(fuseAgentState(claude('idle'), rec('working'), later).agentState).toBe('idle');
-        expect(fuseAgentState(claude(), rec('working'), later).agentState).toBe('working');
+        expect(fuseAgentState(claude('idle'), rec('working'), later)).toEqual({ agentKind: 'claude', agentState: 'idle', source: 'screen' });
+        expect(fuseAgentState(claude(), rec('working'), later)).toEqual({ agentKind: 'claude', agentState: undefined, source: 'screen' });
+        expect(fuseAgentState(undefined, rec('working'), later)).toEqual({ source: 'screen' });
+        expect(fuseAgentState(claude(), rec('needs_input'), later).source).toBe('screen');
+        // Fresh: still the hook.
+        expect(fuseAgentState(claude(), rec('working'), T0 + 1)).toEqual({ agentKind: 'claude', agentState: 'working', source: 'hook' });
     });
 
-    it('positive screen evidence is always taken', () => {
-        expect(fuseAgentState(claude('needs_input'), rec('working'), T0).agentState).toBe('needs_input');
-        expect(fuseAgentState(claude('working'), rec('needs_input'), T0).agentState).toBe('working');
-        expect(fuseAgentState(claude('working'), rec('done'), T0).agentState).toBe('working');
-        expect(fuseAgentState(claude('needs_input'), rec('done'), T0).agentState).toBe('needs_input');
+    it('positive screen evidence is taken as the SCREEN\'s verdict (keeps its debounce)', () => {
+        expect(fuseAgentState(claude('needs_input'), rec('working'), T0)).toEqual({ agentKind: 'claude', agentState: 'needs_input', source: 'screen' });
+        expect(fuseAgentState(claude('working'), rec('needs_input'), T0)).toEqual({ agentKind: 'claude', agentState: 'working', source: 'screen' });
+        expect(fuseAgentState(claude('working'), rec('done'), T0)).toEqual({ agentKind: 'claude', agentState: 'working', source: 'screen' });
+        expect(fuseAgentState(claude('needs_input'), rec('done'), T0)).toEqual({ agentKind: 'claude', agentState: 'needs_input', source: 'screen' });
+    });
+
+    it('regression: a done record + one misread needs_input frame does not notify immediately', () => {
+        const tracker = new TerminalNotifyTracker();
+        const observe = (screen: ReturnType<typeof claude>, record: TerminalHookRecord, at: number) => {
+            const f = fuseAgentState(screen, record, at);
+            return tracker.observe('t', f.agentState, at, f.agentKind, { authoritative: f.source === 'hook' });
+        };
+        // Armed: the hook says the turn is running.
+        expect(observe(claude('idle'), rec('working', T0), T0)).toBeNull();
+        // The turn ended (hook done) but one frame misreads as a dialog:
+        // screen-sourced → needs a second sighting, no permission push now.
+        expect(observe(claude('needs_input'), rec('done', T0 + 500), T0 + 1_000)).toBeNull();
     });
 
     it('hook needs_input holds even on an idle-looking screen (mode line under a dialog) until stale', () => {
@@ -273,6 +303,16 @@ describe('interrupt inference (B-547, Orca rule)', () => {
         expect(decideInterrupt(undefined, pending, idleScreen, T0 + 700)).toBe('drop');
         expect(decideInterrupt(turn, pending, idleScreen, T0 + 10 + INTERRUPT_CONFIRM_WINDOW_MS + 1)).toBe('drop');
         expect(decideInterrupt(turn, { ...pending, at: T0 + HOOK_WORKING_STALE_MS + 10 }, idleScreen, T0 + HOOK_WORKING_STALE_MS + 20)).toBe('drop');
+    });
+
+    it('the third re-check (5 s after the key, timer a bit late) can still synthesize', () => {
+        const pending = pendingInterruptFor(turn, T0 + 10)!;
+        const working = { agentKind: 'claude' as const, agentState: 'working' as const };
+        const delays = INTERRUPT_CHECK_DELAYS_MS;
+        expect(decideInterrupt(turn, pending, working, pending.at + delays[0])).toBe('wait');
+        expect(decideInterrupt(turn, pending, working, pending.at + delays[1])).toBe('wait');
+        expect(decideInterrupt(turn, pending, idleScreen, pending.at + delays[2] + 200)).toBe('synthesize');
+        expect(INTERRUPT_CONFIRM_WINDOW_MS).toBeGreaterThan(delays[delays.length - 1]);
     });
 
     it('a renewal (PostToolUse) does not break the baseline', () => {
