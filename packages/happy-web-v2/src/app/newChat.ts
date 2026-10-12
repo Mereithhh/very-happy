@@ -55,7 +55,14 @@ export function useNewChatPending() {
 export async function createChatOrConfigure(
     navigate: NavigateFunction,
     openConfigure: (target?: RecentMachinePath) => void,
-    context?: { target?: RecentMachinePath; location?: { pathname: string; search?: string } },
+    context?: {
+        target?: RecentMachinePath;
+        location?: { pathname: string; search?: string };
+        /** B-552: prefill the new chat's composer (never sent automatically).
+         *  Only the quick path consumes it; a caller that opens the configure
+         *  dialog prefills that dialog itself. */
+        draft?: string;
+    },
 ): Promise<void> {
     if (inFlight) return;
     const state = storage.getState();
@@ -89,6 +96,9 @@ export async function createChatOrConfigure(
             permissionMode,
             source: 'quick',
         });
+        // The pending page reads its initial composer text from the draft
+        // store (pendingDraft), and migrateDraft carries it to the real id.
+        if (context?.draft?.trim()) state.updateSessionDraft(record.pendingId, context.draft);
         navigate(`/session/${record.pendingId}`);
         await pendingSessions.waitShown(record.pendingId, SHOWN_LOCK_MAX_MS);
     } finally {
