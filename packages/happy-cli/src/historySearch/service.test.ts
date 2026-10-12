@@ -110,6 +110,38 @@ describe('HistorySearchService (B-549)', () => {
         expect(s.status().state).toBe('idle');
     });
 
+    it('a search arriving while clear waits for the old pass neither reloads the old index nor rebuilds it (review B-549)', async () => {
+        let resolveCalls = 0;
+        let hold: Promise<void> | null = null;
+        let release!: () => void;
+        const s = service({
+            refreshIntervalMs: 0,
+            resolveRoots: async () => { resolveCalls += 1; if (hold) await hold; return roots; },
+        });
+        // A complete index on disk first.
+        await s.handle({ query: 'relay' });
+        await s.whenIdle();
+        expect((await stat(indexFilePath(indexDir))).size).toBeGreaterThan(0);
+
+        // The next pass is in flight (held before it can finish)…
+        hold = new Promise((resolve) => { release = resolve; });
+        await s.handle({ query: 'relay' });
+        const callsBeforeClear = resolveCalls;
+        // …when the user clears, and a poll lands while clear waits for that pass.
+        const clearing = s.handle({ op: 'clear' });
+        const poll = s.handle({ query: 'relay' });
+        release();
+        const [cleared, polled] = await Promise.all([clearing, poll]);
+        await s.whenIdle();
+
+        expect(cleared.status.state).toBe('idle');
+        expect(polled.results).toEqual([]);
+        expect(polled.status).toMatchObject({ state: 'idle', sessions: 0, textChars: 0 });
+        expect(resolveCalls).toBe(callsBeforeClear); // the poll started no new pass
+        await expect(stat(indexDir)).rejects.toThrow();
+        expect(s.status()).toMatchObject({ state: 'idle', sessions: 0, textChars: 0 });
+    });
+
     it('reports a failed pass as error but keeps answering', async () => {
         const s = service({ resolveRoots: async () => { throw new Error('boom'); } });
         await s.handle({ query: 'relay' });

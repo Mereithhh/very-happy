@@ -205,9 +205,10 @@ export function splitHighlights(text: string, ranges: ReadonlyArray<[number, num
     return out;
 }
 
-/** Keep polling while the daemon reports a pass in progress. */
-export function shouldPollHistorySearch(status: HistorySearchStatus): boolean {
-    return status.state === 'indexing';
+/** Keep polling while the daemon reports a pass in progress — but never
+ *  while the index is being cleared (a poll then would rebuild it). */
+export function shouldPollHistorySearch(status: HistorySearchStatus, opts: { clearing?: boolean } = {}): boolean {
+    return !opts.clearing && status.state === 'indexing';
 }
 
 /** Interval between polls while indexing. */

@@ -65,6 +65,9 @@ export function HistorySearchPanel({ machineId, agent, homeDir, sessions, rowSta
   const trimmed = query.trim();
 
   useEffect(() => {
+    // While the index is being cleared nothing goes out: a search landing
+    // mid-clear would only ask the daemon to rebuild what is being deleted.
+    if (clearing) return;
     if (!trimmed) {
       seq.current += 1;
       setHits([]);
@@ -90,25 +93,35 @@ export function HistorySearchPanel({ machineId, agent, homeDir, sessions, rowSta
       });
     }, delay);
     return () => clearTimeout(timer);
-  }, [machineId, agent, trimmed, pollTick]);
+  }, [machineId, agent, trimmed, pollTick, clearing]);
 
   // While the daemon is still indexing, ask again so results fill in.
   useEffect(() => {
-    if (!trimmed || !status || !shouldPollHistorySearch(status)) return;
+    if (!trimmed || !status || !shouldPollHistorySearch(status, { clearing })) return;
     const timer = setTimeout(() => setPollTick((n) => n + 1), HISTORY_SEARCH_POLL_MS);
     return () => clearTimeout(timer);
-  }, [status, trimmed]);
+  }, [status, trimmed, clearing]);
 
   async function clearIndex() {
     const ok = await Modal.confirm(t('historySearch.clearConfirmTitle'), t('historySearch.clearConfirmMessage'), { confirmText: t('historySearch.clear') });
     if (!ok) return;
-    setClearing(true);
-    const res = await machineHistorySearch(machineId, { op: 'clear' });
-    setClearing(false);
-    if (!res.ok) { toast.error(t('historySearch.failed')); return; }
+    // Pause first: drop any in-flight answer and stop the poll loop.
     seq.current += 1;
+    setClearing(true);
+    setStatus(null);
+    const res = await machineHistorySearch(machineId, { op: 'clear' });
+    if (!res.ok) {
+      setClearing(false);
+      toast.error(t('historySearch.failed'));
+      return;
+    }
+    // Empty the box too: re-running the same query right away would rebuild
+    // the index the user just asked to delete. The next search they type does.
+    setQuery('');
+    lastSent.current = '';
     setHits([]);
     setStatus(res.status);
+    setClearing(false);
     toast.success(t('historySearch.cleared'));
   }
 

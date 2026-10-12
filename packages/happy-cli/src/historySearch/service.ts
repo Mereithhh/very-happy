@@ -65,6 +65,9 @@ export class HistorySearchService {
     private error: string | undefined;
     /** Bumped by `clear`; a pass started under an older generation stops. */
     private generation = 0;
+    /** A `clear` in progress. Searches arriving meanwhile neither load the
+     *  old file back nor start a pass that would recreate the directory. */
+    private clearing: Promise<void> | null = null;
     private idleTimer: NodeJS.Timeout | null = null;
     private readonly opts: Required<Omit<HistorySearchServiceOptions, 'indexDir' | 'resolveRoots'>> & Pick<HistorySearchServiceOptions, 'indexDir' | 'resolveRoots'>;
 
@@ -96,6 +99,13 @@ export class HistorySearchService {
     }
 
     async search(query: unknown, options: { agent?: HistorySearchAgent; limit?: number } = {}): Promise<HistorySearchResponse> {
+        if (this.clearing) {
+            // Asked while the index is being deleted (a poll that was already
+            // in flight): answer "nothing indexed" and do not rebuild. The next
+            // search after the clear finished rebuilds, as the user expects.
+            await this.clearing;
+            return { type: 'success', status: this.status(), results: [], truncated: false };
+        }
         this.touch();
         await this.ensureLoaded();
         this.maybeRefresh();
@@ -138,6 +148,13 @@ export class HistorySearchService {
     }
 
     async clear(): Promise<void> {
+        if (this.clearing) return this.clearing;
+        const run = this.doClear().finally(() => { if (this.clearing === run) this.clearing = null; });
+        this.clearing = run;
+        return run;
+    }
+
+    private async doClear(): Promise<void> {
         // Let a running pass reach its next cancellation point first, so a
         // checkpoint save cannot land after the directory is gone.
         const running = this.refreshing;
@@ -176,6 +193,7 @@ export class HistorySearchService {
     }
 
     private async ensureLoaded(): Promise<void> {
+        if (this.clearing) await this.clearing;
         if (this.records) return;
         if (!this.loading) {
             const gen = this.generation;
@@ -203,13 +221,18 @@ export class HistorySearchService {
     }
 
     private maybeRefresh(): void {
-        if (this.refreshing || !this.records) return;
+        if (this.clearing || this.refreshing || !this.records) return;
         const now = this.opts.now();
         if (this.lastRefreshStartedAt && now - this.lastRefreshStartedAt < this.opts.refreshIntervalMs) return;
         this.lastRefreshStartedAt = now;
         const gen = this.generation;
         const records = this.records;
-        const save = () => saveIndex(this.opts.indexDir, records.values(), this.opts.now());
+        // A pass from before a clear must never write: the generation check is
+        // the last gate before the file is (re)created.
+        const save = async () => {
+            if (gen !== this.generation || this.clearing) return;
+            await saveIndex(this.opts.indexDir, records.values(), this.opts.now());
+        };
         const run = (async () => {
             const roots = await this.opts.resolveRoots();
             if (gen !== this.generation) return;

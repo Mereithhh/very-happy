@@ -58,6 +58,8 @@ describe('parseHistorySearch (B-549)', () => {
         expect(shouldPollHistorySearch(parseHistorySearchStatus({ state: 'indexing' }))).toBe(true);
         expect(shouldPollHistorySearch(parseHistorySearchStatus({ state: 'ready' }))).toBe(false);
         expect(shouldPollHistorySearch(parseHistorySearchStatus({ state: 'error', error: 'x' }))).toBe(false);
+        // Review B-549: no poll while a clear is in progress.
+        expect(shouldPollHistorySearch(parseHistorySearchStatus({ state: 'indexing' }), { clearing: true })).toBe(false);
     });
 });
 
@@ -95,6 +97,17 @@ describe('history search wiring (B-549)', () => {
         expect(modal).toContain('const searchSupported = !!machine && historySearchSupported(daemonState);');
         expect(modal).toMatch(/!searchSupported \? \(\s*<div className="ns-hint">\{t\('historySearch\.needsCli'\)\}<\/div>/);
     });
+    it('the panel sends nothing and stops polling while the index is being cleared (review B-549)', () => {
+        const panel = read('HistorySearchPanel.tsx').replace(/\/\/.*$/gm, '');
+        const search = panel.slice(panel.indexOf('useEffect(() => {'), panel.indexOf('}, [machineId, agent, trimmed, pollTick, clearing]);'));
+        const firstStatement = search.split('\n').slice(1).map((l) => l.trim()).find(Boolean);
+        expect(firstStatement).toBe('if (clearing) return;');
+        expect(panel).toContain('shouldPollHistorySearch(status, { clearing })');
+        const clear = panel.slice(panel.indexOf('async function clearIndex()'));
+        expect(clear.indexOf("setQuery('');")).toBeGreaterThan(clear.indexOf("machineHistorySearch(machineId, { op: 'clear' })"));
+        expect(clear.indexOf('setClearing(true);')).toBeLessThan(clear.indexOf("machineHistorySearch(machineId, { op: 'clear' })"));
+    });
+
     it('the RPC wrapper checks `{ error }` before reading the payload (iron rule 17)', () => {
         const ops = readFileSync(join(__dirname, '../../sync/ops.ts'), 'utf-8');
         const fn = ops.slice(ops.indexOf('export async function machineHistorySearch'));
