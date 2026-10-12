@@ -3337,6 +3337,9 @@ export const en = {
         // LLM attention badges (metadata.board.attention)
         llmReview: 'review',
         llmBlocked: 'blocked',
+        // B-553: latest-round preview on a session card
+        previewYou: 'You',
+        questionLabel: 'Waiting for your answer',
     },
 
     automations: {

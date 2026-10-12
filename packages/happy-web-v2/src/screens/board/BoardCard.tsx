@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { ArrowUpRight, ArrowUpToLine, Archive, Check, MessageSquare, Pencil, TerminalSquare, X } from 'lucide-react';
+import { ArrowUpRight, ArrowUpToLine, Archive, Check, CircleHelp, MessageSquare, Pencil, TerminalSquare, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { StatusDot, ActionContextMenu, type MenuItemDef, type Status } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -9,6 +9,8 @@ import { upsertPinAt } from '@/screens/sessions/sidebarPins';
 import { moveEntryToTop } from '@/screens/sessions/sidebarOrder';
 import { confirmArchiveSession, confirmCloseTerminal, markSessionDone } from '@/app/rowActions';
 import type { BoardItem } from './boardItems';
+import { useSessionPreview } from './useBoardItems';
+import { codingAgentLabel } from '@/sync/agentStatus';
 
 /** compact duration — mono console style, deliberately locale-neutral */
 export function fmtDuration(ms: number): string {
@@ -44,6 +46,8 @@ export function BoardCard({
   const dot = DOT[item.status];
   const title = item.title || t('session.newChat');
   const KindIcon = item.kind === 'terminal' ? TerminalSquare : MessageSquare;
+  // B-553: latest round from messages this tab already holds (never fetches).
+  const preview = useSessionPreview(item.kind === 'session' ? item.key : null);
 
   // Move to the top of the sidebar's manual order — board item keys are the
   // SAME keys the sidebar uses (session id / `t:<terminalId>`), so this just
@@ -168,6 +172,26 @@ export function BoardCard({
           {item.cwd && <span className="bd-card-cwd">{item.cwd}</span>}
         </div>
         {item.progress && <div className="bd-card-progress">{item.progress}</div>}
+        {item.question && (
+          <div className="bd-card-question" title={t('board.questionLabel')}>
+            <CircleHelp size={12} aria-label={t('board.questionLabel')} className="bd-card-question-icon" />
+            <span className="bd-card-question-text">{item.question}</span>
+          </div>
+        )}
+        {(preview?.user || preview?.agent) && (
+          <div className="bd-card-preview">
+            {preview.user && (
+              <div className="bd-card-preview-user">
+                <span className="bd-card-preview-who">{t('board.previewYou')}</span> {preview.user}
+              </div>
+            )}
+            {preview.agent && (
+              <div className="bd-card-preview-agent">
+                <span className="bd-card-preview-who">{codingAgentLabel(item.agentKind)}</span> {preview.agent}
+              </div>
+            )}
+          </div>
+        )}
         <div className="bd-card-foot mono">
           {item.llmAttention && (
             <span className={`bd-card-llm bd-card-llm--${item.llmAttention}`}>

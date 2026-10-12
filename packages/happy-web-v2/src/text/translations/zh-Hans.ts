@@ -167,6 +167,8 @@ export const zhHans: TranslationStructure = {
         noTasks: '还没有任务——创建一个再往里下发会话',
         llmReview: '待查看',
         llmBlocked: '被卡住',
+        previewYou: '你',
+        questionLabel: '等你回答',
     },
     automations: {
         title: '自动化',

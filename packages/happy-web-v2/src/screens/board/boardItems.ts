@@ -31,6 +31,7 @@ import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
 import { compareTaskOrder, type BoardTask } from '@/sync/boardTaskOps';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { priorityLevel } from '@/utils/tags';
+import { pendingQuestionSummary } from './sessionPreview';
 
 export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended' | 'unknown';
 
@@ -114,6 +115,12 @@ export interface BoardItem {
   /** B-507: sessions only — `working` because background tasks are still
    *  running after the turn ended (the count), not because of a live turn. */
   backgroundTasks?: number;
+  /** B-553: sessions only — one-line summary of the earliest pending
+   *  permission request / AskUserQuestion (set iff a real request drives
+   *  the attention status). */
+  question?: string;
+  /** B-553: sessions only — `metadata.flavor` (labels the agent's reply). */
+  agentKind?: string;
 }
 
 /** ended items older than this fall off the board entirely */
@@ -278,6 +285,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     if (cls.backgroundTasks) item.backgroundTasks = cls.backgroundTasks;
     const board = s.metadata?.board;
     if (board?.progress) item.progress = board.progress;
+    if (s.metadata?.flavor) item.agentKind = s.metadata.flavor;
     if (board?.taskId) item.llmTaskId = board.taskId;
     item.llmAttention = llmAttentionOf(s);
     if (cls.status === 'attention') {
@@ -285,6 +293,8 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
         const req = earliestRequest(s, lastActivityAt);
         item.attentionSince = req.at;
         if (req.tool) item.detail = { kind: 'tool', name: req.tool };
+        const question = pendingQuestionSummary(s.agentState?.requests);
+        if (question) item.question = question;
       } else {
         // LLM-flagged only: waiting since the verdict was produced.
         item.attentionSince = board?.analyzedAt ?? lastActivityAt;

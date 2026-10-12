@@ -173,6 +173,20 @@ describe('chat session mapping', () => {
     });
     const [item] = build({ sessions: [s] });
     expect(item.status).toBe('ended');
+    expect(item.question).toBeUndefined();
+  });
+
+  it('B-553: an attention item carries a summary of its earliest pending question', () => {
+    const s = mkSession({
+      id: 's1',
+      agentState: { requests: { r: { tool: 'AskUserQuestion', arguments: { questions: [{ question: 'Ship it?' }] }, createdAt: NOW - 5_000 } } },
+    });
+    const [item] = build({ sessions: [s] });
+    expect(item).toMatchObject({ status: 'attention', question: 'Ship it?' });
+    // LLM-only attention (no real request) has no question block
+    const [llm] = build({ sessions: [mkSession({ id: 's2', metadata: { ...mkSession({ id: 'x' }).metadata!, board: { attention: 'review', analyzedAt: NOW } } })] });
+    expect(llm.status).toBe('attention');
+    expect(llm.question).toBeUndefined();
   });
 });
 
