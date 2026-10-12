@@ -484,6 +484,14 @@ a.au-machine:hover {
 .au-action-head {
   overflow-wrap: anywhere;
 }
+/* B-560: precheck cwd / timeout / output on their own line — inline after the
+   mode they wrapped on phones and left a dangling "·" at the end of the line */
+.au-precheck-details {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
 .au-pre {
   margin: 0;
   font-size: var(--fs-12);
@@ -878,7 +886,9 @@ a.au-machine:hover {
     padding: 0 12px;
     font-size: var(--fs-12);
   }
-  .au-btn--icon {
+  .au-btn--icon,
+  .au-header-tools .au-btn {
+    /* B-560: header verbs go icon-only on phones (≤600px) — keep them a 44px square */
     min-width: 44px;
     justify-content: center;
   }
@@ -890,6 +900,7 @@ a.au-machine:hover {
     min-height: 44px;
   }
   .au-row-name {
-    min-height: 32px;
+    /* B-560: the name is the row's open-detail target */
+    min-height: 44px;
   }
 }
