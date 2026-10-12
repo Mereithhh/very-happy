@@ -370,8 +370,30 @@ export function resetVoiceLocalCounters() {
     mmkv.delete(VOICE_MESSAGE_COUNT_KEY);
 }
 
+/**
+ * B-554: diff line-comment drafts live in their own MMKV namespace (one key
+ * per session, owned by screens/session/diffComments/diffCommentsStore.ts).
+ * The namespace is declared here so logout and session deletion can clear it
+ * without the data layer importing a UI module.
+ */
+export const DIFF_COMMENTS_MMKV_ID = 'diff-comments';
+export const diffCommentsKey = (sessionId: string) => `s.${sessionId}`;
+
+/** Drop one session's comment drafts, or (no id) the whole namespace. Never throws. */
+export function clearDiffCommentDrafts(sessionId?: string) {
+    try {
+        const store = new MMKV({ id: DIFF_COMMENTS_MMKV_ID });
+        if (sessionId) store.delete(diffCommentsKey(sessionId));
+        else store.clearAll();
+    } catch {
+        // storage unavailable: nothing persisted to clear
+    }
+}
+
 export function clearPersistence() {
     mmkv.clearAll();
+    // drafts quote code from the signed-out account's repos — never leave them behind
+    clearDiffCommentDrafts();
 }
 
 /**

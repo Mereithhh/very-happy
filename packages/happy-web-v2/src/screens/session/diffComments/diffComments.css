@@ -1,0 +1,347 @@
+/* B-554: changes-panel diff with line comments (ReviewDiffPane). Builds on
+ * diff.css (.dv/.dv-row/.dv-sign/.dv-text); the pane body is the scroll
+ * container, so .dv's chat 420px cap and outer border are undone here. */
+.rdv-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rdv-head {
+  gap: var(--sp-2);
+}
+.rdv-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.rdv {
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  min-width: 0;
+}
+.rdv-rows {
+  min-width: max-content;
+}
+.dv--wrap .rdv-rows {
+  min-width: 0;
+}
+.rdv-notice {
+  padding: 6px var(--sp-3);
+  font-family: var(--font-sans);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--line);
+}
+.rdv-hunk {
+  padding: 2px var(--sp-3);
+  background: var(--bg-1);
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+  border-block: 1px solid var(--line);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: sticky;
+  left: 0;
+  width: 100cqw;
+  box-sizing: border-box;
+}
+.rdv-row {
+  position: relative;
+}
+.rdv-gutter {
+  flex: none;
+  display: inline-flex;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg-1);
+  border-right: 1px solid var(--line);
+  color: var(--text-faint);
+  user-select: none;
+}
+.rdv-no {
+  width: 40px;
+  padding: 0 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.rdv-row.has-comment .rdv-gutter {
+  background: var(--bg-3);
+  color: var(--text-dim);
+}
+.rdv-row.is-selected,
+.rdv-row.is-selected .rdv-gutter {
+  background: color-mix(in srgb, var(--text) 12%, var(--bg-0));
+}
+.rdv-row.is-selected .rdv-gutter {
+  color: var(--text);
+}
+.dv--wrap .rdv-gutter {
+  position: static;
+}
+
+/* desktop "+" — revealed on row hover / keyboard focus, sits over the
+ * old-line-number cell like a gutter affordance */
+.rdv-plus {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  background: var(--text);
+  color: var(--bg-0);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast);
+}
+.rdv-row:hover .rdv-plus,
+.rdv-plus:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.rdv-plus:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--bg-0);
+}
+.rdv--touch .rdv-row {
+  cursor: pointer;
+}
+
+/* inline cards / editor under a row: pinned to the visible width, not the
+ * horizontally scrolled code width */
+.rdv-inline {
+  position: sticky;
+  left: 0;
+  width: 100cqw;
+  box-sizing: border-box;
+  padding: 6px var(--sp-3) 8px;
+  background: var(--bg-0);
+  border-block: 1px solid var(--line);
+  font-family: var(--font-sans);
+  white-space: normal;
+}
+.rdv-scroll {
+  container-type: inline-size;
+}
+.rdv-card {
+  font-size: var(--fs-13);
+  line-height: 1.5;
+  color: var(--text);
+}
+.rdv-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 24px;
+}
+.rdv-card-range {
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+}
+.rdv-stale {
+  font-size: var(--fs-11);
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  color: var(--warn);
+  background: var(--warn-dim);
+}
+.rdv-card-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 2px;
+}
+.rdv-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+}
+.rdv-icon:hover,
+.rdv-icon:focus-visible {
+  outline: none;
+  background: var(--bg-2);
+  color: var(--text);
+}
+.rdv-card-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rdv-card.is-stale .rdv-card-body {
+  color: var(--text-dim);
+}
+
+.rdv-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rdv-textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-1);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-13);
+  line-height: 1.5;
+}
+.rdv-textarea:focus {
+  outline: none;
+  border-color: var(--text-faint);
+}
+.rdv-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.rdv-hint {
+  margin-right: auto;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+
+.rdv-orphans {
+  padding: 8px var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rdv-orphans-title {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.rdv-error {
+  flex-direction: column;
+  gap: var(--sp-2);
+  text-align: center;
+}
+.rdv-error-detail {
+  font-size: var(--fs-11);
+  overflow-wrap: anywhere;
+}
+
+/* touch bottom sheet (portaled to body) */
+.rdv-sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+.rdv-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+.rdv-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 80dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  background: var(--bg-1);
+  border-top: 1px solid var(--line-2);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: var(--shadow-modal);
+  font-family: var(--font-sans);
+}
+.rdv-sheet-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.rdv-sheet-path {
+  min-width: 0;
+  font-size: var(--fs-13);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rdv-sheet-snippet {
+  margin: 0;
+  max-height: 120px;
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-dim);
+}
+.rdv-sheet-extend {
+  display: flex;
+  gap: 8px;
+}
+.rdv-sheet-extend .vh-btn {
+  flex: 1;
+}
+
+@media (pointer: coarse) {
+  .rdv-textarea {
+    font-size: var(--fs-16);
+  }
+  .rdv-sheet .vh-btn,
+  .rdv-icon {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* panel top bar: "N comments · Send to agent" */
+.dcb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  font-size: var(--fs-13);
+}
+.dcb-count {
+  min-width: 0;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dcb-stale {
+  color: var(--warn);
+}
+.dcb-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+@media (pointer: coarse) {
+  .dcb .vh-btn {
+    min-height: 44px;
+  }
+}
