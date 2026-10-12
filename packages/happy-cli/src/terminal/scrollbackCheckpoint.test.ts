@@ -12,13 +12,13 @@ import { encodeArchiveFile } from './scrollbackArchive';
 const homes: string[] = [];
 afterEach(() => { for (const h of homes.splice(0)) rmSync(h, { recursive: true, force: true }); });
 
-function setup(opts: { enabled?: boolean; probe?: string; capture?: (args: string[]) => Promise<Buffer | null> } = {}) {
+function setup(opts: { enabled?: boolean; probe?: string; capture?: (args: string[]) => Promise<Buffer | null>; runSync?: (args: string[]) => Buffer | null } = {}) {
     const home = mkdtempSync(join(tmpdir(), 'vh-sbcp-'));
     homes.push(home);
     let probe = opts.probe ?? '';
     const tmux: ScrollbackTmux = {
         run: async (args) => (args[0] === 'list-sessions' ? Buffer.from(probe) : (opts.capture ? opts.capture(args) : Buffer.from('captured\n'))),
-        runSync: (args) => (args[0] === 'list-sessions' ? Buffer.from(probe) : Buffer.from('sync-captured\n')),
+        runSync: (args) => (opts.runSync ? opts.runSync(args) : args[0] === 'list-sessions' ? Buffer.from(probe) : Buffer.from('sync-captured\n')),
     };
     let enabled = opts.enabled ?? true;
     const cp = new ScrollbackCheckpointer({
@@ -103,10 +103,81 @@ describe('ScrollbackCheckpointer', () => {
         expect(existsSync(t.file('orphan2.prev.vhsb'))).toBe(true);
     });
 
-    it('shutdown flush is a no-op before any tick ran (tests that only construct+stop)', () => {
+    it('shutdown flush is a no-op before any tick ran (tests that only construct+stop)', async () => {
         const t = setup({ probe: `vh-dd|${secs()}|0|\n` });
-        t.cp.flushOnShutdown();
+        await t.cp.flushOnShutdown();
         expect(existsSync(t.dir)).toBe(false);
+    });
+
+    it('shutdown flush: parallel, newest activity first, resolves by the budget even if a capture hangs', async () => {
+        const order: string[] = [];
+        const t = setup({
+            probe: '',
+            capture: (args) => {
+                const target = args[args.indexOf('-t') + 1];
+                order.push(target);
+                // `hang` never answers; `fast` answers at once.
+                return target === '=vh-hang:' ? new Promise<Buffer | null>(() => { /* never */ }) : Promise.resolve(Buffer.from(`${target}\n`));
+            },
+        });
+        await t.cp.runTick([]); // started; nothing listed yet
+        const s0 = secs();
+        t.setProbe(`vh-old|${s0 - 100}|0|\nvh-hang|${s0 - 50}|0|\nvh-fast|${s0}|0|\n`);
+        const started = Date.now();
+        await t.cp.flushOnShutdown(200);
+        expect(Date.now() - started).toBeLessThan(600);
+        expect(order).toEqual(['=vh-fast:', '=vh-hang:', '=vh-old:']); // all issued at once, newest first
+        expect(readFileSync(t.file('fast.live.vhsb'), 'utf8')).toContain('=vh-fast:');
+        expect(existsSync(t.file('hang.live.vhsb'))).toBe(false);
+    });
+
+    it('promote keeps .live when the chained .prev cannot be written', async () => {
+        const t = setup({ probe: `vh-ee|${secs()}|0|\n` });
+        await t.cp.runTick([]);
+        // A non-empty DIRECTORY where .prev should go → the atomic rename fails.
+        mkdirSync(join(t.file('ee.prev.vhsb'), 'blocker'), { recursive: true });
+        t.cp.promote('ee');
+        expect(readFileSync(t.file('ee.live.vhsb'), 'utf8')).toContain('captured');
+    });
+
+    it('promote() undo restores both files exactly (rebuild did not happen)', async () => {
+        const t = setup({ probe: `vh-ff|${secs()}|0|\n` });
+        mkdirSync(t.dir, { recursive: true });
+        const prevBytes = encodeArchiveFile({ savedAt: 1, body: Buffer.from('older') });
+        writeFileSync(t.file('ff.prev.vhsb'), prevBytes);
+        await t.cp.runTick([]);
+        const liveBytes = readFileSync(t.file('ff.live.vhsb'));
+        const undo = t.cp.promote('ff');
+        expect(existsSync(t.file('ff.live.vhsb'))).toBe(false);
+        expect(t.cp.replayFor('ff')!.body.toString()).toContain('captured');
+        undo();
+        expect(readFileSync(t.file('ff.live.vhsb')).equals(liveBytes)).toBe(true);
+        expect(readFileSync(t.file('ff.prev.vhsb')).equals(prevBytes)).toBe(true);
+
+        // No prior .prev: undo removes the one promote created.
+        const t2 = setup({ probe: `vh-gg|${secs()}|0|\n` });
+        await t2.cp.runTick([]);
+        t2.cp.promote('gg')();
+        expect(existsSync(t2.file('gg.prev.vhsb'))).toBe(false);
+        expect(existsSync(t2.file('gg.live.vhsb'))).toBe(true);
+    });
+
+    it('checkpointSync captures one terminal (alt aware), skips attach terminals', () => {
+        const calls: string[][] = [];
+        const t = setup({
+            runSync: (args) => {
+                calls.push(args);
+                if (args[0] === 'display-message') return Buffer.from(args[3] === '=vh-att2:' ? '0|work\n' : '1|\n');
+                return Buffer.from(`part-${calls.length}\n`);
+            },
+        });
+        expect(t.cp.checkpointSync('kk')).toBe(true);
+        const text = readFileSync(t.file('kk.live.vhsb'), 'utf8');
+        expect(text).toContain('part-2');
+        expect(text).toContain('part-3'); // alt: history + saved screen
+        expect(t.cp.checkpointSync('att2')).toBe(false);
+        expect(existsSync(t.file('att2.live.vhsb'))).toBe(false);
+        expect(t.cp.checkpointSync('../x')).toBe(false);
     });
 
     it('attach terminals are never checkpointed', async () => {

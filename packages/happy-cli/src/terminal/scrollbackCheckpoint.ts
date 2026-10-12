@@ -10,8 +10,10 @@
  *                        ↻ restore): its last checkpoint becomes the archive;
  *   replayFor(id)      — a capture is being assembled for a web open: the
  *                        archive to put above it (spec D4);
- *   flushOnShutdown()  — the daemon is exiting: synchronous best-effort
- *                        capture of everything dirty, bounded in time.
+ *   flushOnShutdown()  — the daemon is exiting: async, parallel, ~300ms
+ *                        capture of everything dirty (newest activity first);
+ *   checkpointSync(id) — a terminal is about to be killed: one bounded
+ *                        synchronous capture so its last output survives.
  *
  * Rules live in scrollbackArchive.ts; this file only does tmux + fs. Nothing
  * here ever writes to a pane: replayed bytes travel to the web only.
@@ -49,15 +51,19 @@ import {
 const CONFIG_REFRESH_MS = 60_000;
 /** GC at most this often (and on the first tick). */
 const GC_INTERVAL_MS = 10 * 60_000;
-/** Shutdown flush: total wall-clock budget. */
-export const SHUTDOWN_FLUSH_BUDGET_MS = 1_500;
+/** Shutdown flush: total wall-clock budget. Must stay well inside the
+ *  daemon's 1s forced-exit fallback (daemon/run.ts requestShutdown) and leave
+ *  room for state/lock cleanup. */
+export const SHUTDOWN_FLUSH_BUDGET_MS = 300;
+/** Pre-kill capture budget (killSession is synchronous). */
+export const KILL_CHECKPOINT_BUDGET_MS = 300;
 const TMUX_TIMEOUT_MS = 5_000;
 /** A 5000-line capture with SGR is well under this; it only bounds a runaway. */
 const TMUX_MAX_BUFFER = 32 * 1024 * 1024;
 
 export interface ScrollbackTmux {
     /** Async run; resolves stdout, or null on any failure. */
-    run(args: string[]): Promise<Buffer | null>;
+    run(args: string[], timeoutMs?: number): Promise<Buffer | null>;
     /** Sync run with a timeout; stdout or null. Shutdown only. */
     runSync(args: string[], timeoutMs: number): Buffer | null;
 }
@@ -76,9 +82,9 @@ export interface ScrollbackCheckpointerOptions {
 
 function defaultTmux(env: () => Record<string, string>): ScrollbackTmux {
     return {
-        run: (args) => new Promise((resolve) => {
+        run: (args, timeoutMs) => new Promise((resolve) => {
             try {
-                execFile('tmux', tmuxArgs(args), { env: env(), encoding: 'buffer', timeout: TMUX_TIMEOUT_MS, maxBuffer: TMUX_MAX_BUFFER },
+                execFile('tmux', tmuxArgs(args), { env: env(), encoding: 'buffer', timeout: Math.max(1, timeoutMs ?? TMUX_TIMEOUT_MS), maxBuffer: TMUX_MAX_BUFFER },
                     (err, stdout) => resolve(err ? null : stdout));
             } catch {
                 resolve(null);
@@ -231,19 +237,34 @@ export class ScrollbackCheckpointer {
      * same id). `.live` (the life that ended) is chained onto `.prev` and
      * removed. Synchronous on purpose — the caller creates the session in the
      * same turn, so no async capture can slip in between.
+     *
+     * Returns an UNDO that puts both files back exactly as they were: the
+     * caller runs it when the rebuild did not happen (new-session failed —
+     * e.g. a timed-out has-session misread a live session as gone), so the
+     * same life is not archived twice and replayed as a duplicate.
+     * `.live` is only removed once the chained `.prev` was written.
      */
-    promote(id: string): void {
+    promote(id: string): () => void {
         this.generation.set(id, (this.generation.get(id) ?? 0) + 1);
         this.state.delete(id);
-        if (!this.isEnabled()) return;
+        const noop = () => { /* nothing promoted */ };
+        if (!this.isEnabled()) return noop;
         try {
-            const live = decodeArchiveFile(this.readFile(id, 'live'));
-            const prev = decodeArchiveFile(this.readFile(id, 'prev'));
-            const chained = chainArchive(prev, live);
-            if (chained && live) this.writeFile(id, 'prev', chained);
+            const liveRaw = this.readFile(id, 'live');
+            const prevRaw = this.readFile(id, 'prev');
+            const live = decodeArchiveFile(liveRaw);
+            const chained = chainArchive(decodeArchiveFile(prevRaw), live);
+            if (!chained || !live || !liveRaw) return noop;
+            if (!this.writeFile(id, 'prev', chained)) return noop; // keep .live
             this.removeFile(id, 'live');
+            return () => {
+                this.generation.set(id, (this.generation.get(id) ?? 0) + 1);
+                if (prevRaw) this.writeRaw(id, 'prev', prevRaw); else this.removeFile(id, 'prev');
+                this.writeRaw(id, 'live', liveRaw);
+            };
         } catch (e) {
             logger.debug(`[SCROLLBACK] promote ${id} failed: ${e}`);
+            return noop;
         }
     }
 
@@ -260,45 +281,75 @@ export class ScrollbackCheckpointer {
     // ── shutdown ────────────────────────────────────────────────────────────
 
     /**
-     * Daemon exit: synchronously capture every terminal with output newer than
-     * its last checkpoint, within SHUTDOWN_FLUSH_BUDGET_MS. Best-effort — on a
-     * machine shutdown tmux may already be gone, and the periodic checkpoint is
-     * the real guarantee.
+     * Daemon exit: capture every terminal with output newer than its last
+     * checkpoint — ASYNC and in PARALLEL, newest activity first, within
+     * `budgetMs`. Never throws and always resolves by the deadline, so the
+     * caller's state/lock cleanup runs regardless. Best-effort: on a machine
+     * shutdown tmux may already be gone; the periodic checkpoint is the real
+     * guarantee.
      */
-    flushOnShutdown(budgetMs = SHUTDOWN_FLUSH_BUDGET_MS): void {
+    async flushOnShutdown(budgetMs = SHUTDOWN_FLUSH_BUDGET_MS): Promise<void> {
         if (this.stopped) return;
         this.stopped = true;
         if (!this.started || !this.enabled) return;
-        const deadline = Date.now() + budgetMs;
-        const left = () => deadline - Date.now();
-        try {
-            const out = this.tmux.runSync(['list-sessions', '-F', CHECKPOINT_PROBE_FORMAT], Math.min(500, left()));
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const deadline = new Promise<void>((r) => { timer = setTimeout(r, Math.max(0, budgetMs)); timer.unref?.(); });
+        const startedAt = Date.now();
+        const left = () => Math.max(1, budgetMs - (Date.now() - startedAt));
+        const work = (async () => {
+            const out = await this.tmux.run(['list-sessions', '-F', CHECKPOINT_PROBE_FORMAT], left());
             if (!out) return;
             const probed = parseCheckpointProbe(out.toString('utf8'));
             this.seedState(probed);
             const dirty = planCheckpoints(probed, this.state, this.now(), {
                 quietMs: 0, minIntervalMs: 0, maxDirtyMs: 0, max: Number.MAX_SAFE_INTEGER,
             });
+            const byRecent = dirty
+                .map((id) => probed.find((p) => p.id === id)!)
+                .sort((a, b) => b.activityAt - a.activityAt);
             let written = 0;
-            for (const id of dirty) {
-                if (left() <= 0) break;
-                const t = probed.find((p) => p.id === id)!;
-                const startedAt = this.now();
-                const parts: Buffer[] = [];
-                for (const args of checkpointCaptureArgs(id, t.alternateOn)) {
-                    const timeout = left();
-                    const part = timeout > 0 ? this.tmux.runSync(args, timeout) : null;
-                    if (!part) { parts.length = 0; break; }
-                    parts.push(part);
-                }
-                if (parts.length === 0) continue;
-                this.writeLive(id, buildCheckpointBody(parts), this.now());
-                this.state.set(id, { at: startedAt });
+            await Promise.all(byRecent.map(async (t) => {
+                const at = this.now();
+                const parts = await Promise.all(checkpointCaptureArgs(t.id, t.alternateOn).map((a) => this.tmux.run(a, left())));
+                if (parts.some((p) => !p) || Date.now() - startedAt > budgetMs) return;
+                this.writeLive(t.id, buildCheckpointBody(parts as Buffer[]), this.now());
+                this.state.set(t.id, { at });
                 written++;
-            }
+            }));
             if (dirty.length > 0) logger.debug(`[SCROLLBACK] shutdown flush: ${written}/${dirty.length} terminal(s)`);
+        })().catch((e) => logger.debug(`[SCROLLBACK] shutdown flush failed: ${e}`));
+        await Promise.race([work, deadline]);
+        if (timer) clearTimeout(timer);
+    }
+
+    /**
+     * Synchronous single-terminal capture right before the user kills it, so
+     * a ↻ restore of the close record replays its last output. Bounded by
+     * `budgetMs`; never throws; attach terminals are skipped.
+     */
+    checkpointSync(id: string, budgetMs = KILL_CHECKPOINT_BUDGET_MS): boolean {
+        try {
+            if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id) || !this.isEnabled()) return false;
+            const deadline = Date.now() + budgetMs;
+            const left = () => deadline - Date.now();
+            const probe = this.tmux.runSync(['display-message', '-p', '-t', `=vh-${id}:`, '#{alternate_on}|#{@vh_attach}'], left());
+            if (!probe) return false;
+            const [alt, ...attach] = probe.toString('utf8').replace(/\r?\n$/, '').split('|');
+            if (attach.join('|').trim().length > 0) return false;
+            const at = this.now();
+            const parts: Buffer[] = [];
+            for (const args of checkpointCaptureArgs(id, alt === '1')) {
+                const timeout = left();
+                const part = timeout > 0 ? this.tmux.runSync(args, timeout) : null;
+                if (!part) return false;
+                parts.push(part);
+            }
+            this.writeLive(id, buildCheckpointBody(parts), this.now());
+            this.state.set(id, { at });
+            return true;
         } catch (e) {
-            logger.debug(`[SCROLLBACK] shutdown flush failed: ${e}`);
+            logger.debug(`[SCROLLBACK] pre-kill checkpoint ${id} failed: ${e}`);
+            return false;
         }
     }
 
@@ -323,16 +374,23 @@ export class ScrollbackCheckpointer {
         }
     }
 
-    private writeFile(id: string, kind: ArchiveKind, file: ArchiveFile): void {
+    /** Atomic 0600 write; false on any failure. */
+    private writeFile(id: string, kind: ArchiveKind, file: ArchiveFile): boolean {
+        return this.writeRaw(id, kind, encodeArchiveFile(file));
+    }
+
+    private writeRaw(id: string, kind: ArchiveKind, bytes: Buffer): boolean {
         try {
             this.ensureDir();
             const target = this.filePath(id, kind);
             const tmp = `${target}.${process.pid}.tmp`;
-            writeFileSync(tmp, encodeArchiveFile(file), { mode: 0o600 });
+            writeFileSync(tmp, bytes, { mode: 0o600 });
             chmodSync(tmp, 0o600);
             renameSync(tmp, target);
+            return true;
         } catch (e) {
             logger.debug(`[SCROLLBACK] write ${id}.${kind} failed: ${e}`);
+            return false;
         }
     }
 
