@@ -166,13 +166,20 @@ server 不改，任何 server 版本行为一致（daemonState 不透明转存�
 
 ## 验收标准
 
-- [ ] CLI：Claude `rate_limit_event`（含/不含 `unifiedWindows`、rejected、API key 空帧）normalize 单测
-- [ ] CLI：Codex sparse 通知不清空已有窗口；read 结果正确映射 5h/7d
-- [ ] CLI：merge 丢弃过期窗口、按 observedAt 覆盖；签名不变不写；60s 节流尾随写
-- [ ] CLI：`/rate-limits` 路由宽松接收、坏 body 400 不崩；旧 daemon 404 时 wrapper 不抛
-- [ ] Web：解析器对缺失/坏字段返回空；tone 阈值 80/95；stale 6h；tightest 选择
-- [ ] Web：侧栏与机器页 1280 / 390(coarse) × 亮/暗真浏览器验收，无横向溢出
-- [ ] tsc（cli build + web）零错误，相关 vitest 绿，`vite build` 成功，`dist/index.mjs --version` 冒烟
+- [x] CLI：Claude `rate_limit_event`（含/不含 `unifiedWindows`、rejected、API key 空帧）normalize 单测
+- [x] CLI：Codex sparse 通知不清空已有窗口；read 结果正确映射 5h/7d
+- [x] CLI：merge 丢弃过期窗口、按 observedAt 覆盖；签名不变不写；60s 节流尾随写
+- [x] CLI：`/rate-limits` 路由宽松接收、坏 body 400 不崩；旧 daemon 404 时 wrapper 不抛
+- [x] Web：解析器对缺失/坏字段返回空；tone 阈值 80/95；stale 6h；tightest 选择
+- [x] Web：侧栏与机器页 1280 / 390(coarse) × 亮/暗真浏览器验收，无横向溢出
+- [x] tsc（cli build + web）零错误，相关 vitest 绿，`vite build` 成功，`dist/index.mjs --version` 冒烟
+
+实现期验收记录（2026-10-12，本地 standalone server :3155 + vite :8155 + 隔离 `HAPPY_HOME_DIR` daemon + 自启 Playwright Chromium）：
+真实 `spawn` 一个 Claude(haiku) 与一个 Codex 会话 → 机器 daemonState 出现 `claude` five_hour 8% / seven_day 14% 与
+`codex` five_hour 0% / seven_day 0%；Claude 那条因 60s 节流晚于 Codex 一次尾随写入，符合设计。
+经 `/rate-limits` 注入 86%（Opus）/97.4%（Codex 5h）后，侧栏与机器页在 1280 与 390(coarse) × 亮/暗下：
+填充色分别为 `--warn`/`--danger`、普通为 `--text-faint`，`scrollWidth - clientWidth = 0`，侧栏行 32px / coarse 44px；
+css-probe 采像素确认 danger 条为红、陈旧行降为中性填充 + 0.6 透明度。
 
 ## 留真机验证项
 

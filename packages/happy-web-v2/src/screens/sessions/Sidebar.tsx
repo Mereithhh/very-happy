@@ -65,6 +65,7 @@ import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
+import { SidebarRateLimit } from '@/screens/machine/rateLimits/SidebarRateLimit';
 
 function rowHref(r: Row): string {
   return r.href;
@@ -1222,6 +1223,8 @@ export function Sidebar() {
         )}
       </div>
 
+      {/* B-555: tightest subscription window (renders nothing until reported) */}
+      <SidebarRateLimit />
       <footer className="sb-footer">
         <button className="sb-footer-btn" onClick={() => navigate('/settings')}>
           <Settings size={16} /> <span>{t('tabs.settings')}</span>
