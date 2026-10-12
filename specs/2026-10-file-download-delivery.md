@@ -45,7 +45,7 @@ Owner 原话：「有的时候 AI 生成的文件，我希望能够直接在网�
 | 推送先停靠到来源会话侧栏（`?panel=browse&pinFile=`，由 FilesPanel 消费），否则 B-526 跟随会话 + overlay | `screens/files/FsPreviewOverlay.tsx`（`onFsPreviewOpen` 回调）、`screens/files/previewPinTarget.ts` |
 | 查看器头部已有下载（512 KB 分块、50 MiB 上限），blob 固定 `application/octet-stream`；binary 态只显示「二进制文件 · 大小」 | `screens/files/FsFileViewer.tsx:194,288`、`screens/files/fileDownload.ts:3,8` |
 | `open_preview` 工具卡：`previewToolPath` 只认 `mcp__happy__`/裸名/Codex/pi 四种形状，渲染成单个路径链接；Gemini `happy__open_preview` 与终端 `mcp__very-happy__open_preview` 落到通用 BuiltinToolView | `screens/session/ToolView.tsx:371-377`、`screens/session/previewTools.ts` |
-| 被路径闸拒绝的调用是 `isError: true` → 工具卡 `state === 'error'` | `startHappyServer.ts`（`Could not open preview`） |
+| 被路径闸拒绝的调用返回 `isError: true`，**但 Claude 会话的 transcript 里该调用仍是 `state: 'completed'`、result 为 null**（2026-10-13 本地真会话实测：目录被拒的那次调用即如此），web 不能靠 state 判断是否被拒 | `startHappyServer.ts`（`Could not open preview`）；实测见「验收记录」 |
 | daemon `fs-read` 会展开 `~`；相对路径由 web 按会话 cwd 拼接 | `packages/happy-cli/src/modules/fs/fsRpc.ts:122`、`screens/session/toolFilePath.ts:66` |
 
 ## 设计
@@ -108,7 +108,10 @@ Owner 原话：「有的时候 AI 生成的文件，我希望能够直接在网�
 - 新纯函数 `previewToolCall(tool)`：用 `resolveBuiltinTool` 覆盖全部 runner 形状（Claude/Gemini/Codex/pi/终端），
   返回 `{ path, download }`；ToolView 的 open_preview 分支改用它，渲染 `PreviewToolCard`：路径 + 「打开」「下载」按钮。
   - 机器 = 当前会话 `metadata.machineId`；路径按会话 cwd 解析（`resolveAgainstCwd`）。
-  - 只在调用**未失败**时给按钮（`state !== 'error'`）：被路径闸拒绝的凭据路径不提供一键下载。
+  - 沿用既有规则：只有 `completed` 的调用渲染成预览行（error/running 仍是普通工具行）。但被 CLI 拒绝的调用也可能显示为
+    completed（见现状事实），所以**凭据类路径一律不给一键打开/下载**：web 侧 `isCredentialLikePath` 镜像 CLI 路径闸
+    （不知道远端 home，故目录在路径任意位置出现即命中——只会更严）。路径链接本身维持 B-145 现状。
+  - 行内显示文件名（basename），完整路径在链接 tooltip。
   - 没有 machineId 时按钮禁用并说明原因。
   - 带 `download: true` 的调用在行标题显示为「发送文件」，其余仍「预览」。
 - 「复制与预览记录」的预览条目加「下载」按钮（终端会话没有聊天工具卡，这里是唯一的回看入口）。
@@ -152,6 +155,19 @@ CLI 指 session wrapper + daemon（`very-happy mcp` 跟随全局安装版本，d
 5. **凭据路径**：工具卡只对未失败的调用给按钮；CLI 路径闸不变。用户自己点下载等同于在文件浏览器里手动导航（B-131 D4 口径）。
 6. **工具卡路径解析**：`~` 交给 daemon 展开，相对路径按会话 cwd；会话 cwd 后来变化（极少）可能指错，报 not-found 而不是下错文件。
 7. **intent 明文**：仅一个枚举值，不泄露路径；接受。
+
+## 验收记录（2026-10-13，本地隔离栈）
+
+隔离 standalone server（PGlite，端口 3562）+ vite（8562）+ 隔离 `HAPPY_HOME_DIR` daemon，真 Claude 会话按提示调用
+4 次 `open_preview`（zip+download、docx 无 download、目录+download、12 MB+download），再用 MCP client 直连该会话的
+http MCP 补推 zip/docx/png/12 MB/60 MB。Playwright 自启 Chromium（独立 profile），1280 fine 与 390 coarse × 亮/暗：
+
+- 下载均经 Playwright `download` 事件落盘后比对 sha256，与源文件逐字节一致：工具卡（含无 download 参数的旧形状调用）、
+  桌面自动下载（zip/docx/png/12 MB）、手机点按下载条、不可预览态大按钮、头部图标。
+- 手机不自动下载；下载条/行内按钮命中区 ≥44px（下载条主按钮 48px）；两种宽度均无横向滚动。
+- 60 MB：CLI 返回提示，下载条只显示上限说明与压缩/分卷建议，无按钮；目录被 CLI 拒绝并给 `zip -r` 建议。
+- 文件被移走后点工具卡下载：「The file no longer exists…」。机器离线由组件测试覆盖。
+- 从 /settings 推送：B-526 跟随回会话并停靠侧栏，下载条与自动下载照常。
 
 ## 验收标准
 
