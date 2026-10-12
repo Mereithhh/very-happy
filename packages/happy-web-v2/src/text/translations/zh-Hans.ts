@@ -4171,4 +4171,22 @@ export const zhHans: TranslationStructure = {
         consoleLoggingDescription: '在生产构建中启用 console 日志',
     },
 
+    // B-555: 订阅额度窗口（侧栏 + 机器页）。
+    rateLimits: {
+        title: '额度用量',
+        windows: {
+            five_hour: '5 小时',
+            seven_day: '每周',
+            seven_day_opus: '每周 · Opus',
+            seven_day_sonnet: '每周 · Sonnet',
+            seven_day_overage_included: '每周 · 含额外用量',
+        },
+        resetsIn: ({ time }: { time: string }) => `${time} 后重置`,
+        resetUnknown: '重置时间未知',
+        seenAt: ({ time }: { time: string }) => `观测于 ${time}`,
+        stale: '可能已过时',
+        footer: '数据来自这台机器上 Claude Code / Codex 会话最近一次上报；纯终端会话不会上报用量。',
+        openMachine: ({ machine }: { machine: string }) => `${machine} 的额度用量`,
+    },
+
 } as const;

@@ -1595,6 +1595,9 @@ export async function startDaemon(): Promise<void> {
       onSessionBackgroundTasks: (sessionId, tasks) => backgroundTasks.apply(sessionId, tasks),
       getBackgroundTasks: (sessionId) => backgroundTasks.report(sessionId),
       onSessionEdit: (edit) => { peerCoordinator.onEdit(edit); },
+      // B-555: late-bound like the clipboard push — reports before the machine
+      // client exists are dropped; the wrapper re-sends on the next change.
+      onRateLimits: (report) => { apiMachineRef?.reportRateLimits(report); },
       listPeers: () => peerCoordinator.list(),
       // B-505: `daemon list` shows which sessions have a turn in flight, so an
       // operator can check the WHOLE machine before a supervised restart.

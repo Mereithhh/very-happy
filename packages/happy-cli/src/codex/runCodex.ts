@@ -9,6 +9,7 @@ import { claimSessionOrExit } from '@/utils/sessionLock';
 import React from "react";
 import { ApiClient } from '@/api/api';
 import { CodexAppServerClient } from './codexAppServerClient';
+import { wrapperRateLimitReporter } from '@/rateLimits/rateLimitReporter';
 import type { ReasoningEffort } from './codexAppServerTypes';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
@@ -669,6 +670,8 @@ export async function runCodex(opts: {
 
     // Event handler: same EventMsg types as the legacy MCP server — no changes needed
     const editThrottle = new EditReportThrottle();
+    // B-555: subscription windows → local daemon (advisory, never blocks a turn).
+    client.setRateLimitHandler((snapshot) => wrapperRateLimitReporter().observeCodex(snapshot));
     client.setEventHandler((msg) => {
         if (msg.type === 'token_count') {
             session.sendAgentUsageSnapshot('codex', msg);
