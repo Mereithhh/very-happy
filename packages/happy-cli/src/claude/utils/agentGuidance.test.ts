@@ -50,7 +50,8 @@ describe('AGENT_GUIDANCE', () => {
 
 describe('工具描述同源（B-130 D2）', () => {
     it('B-562: 三处注册点都声明了可选的 download 参数（stdio bridge 不声明会被 SDK 剥掉）', () => {
-        for (const rel of REGISTRATION_POINTS) {
+        // reportProgressTool.ts registers report_progress only — no open_preview there.
+        for (const rel of REGISTRATION_POINTS.filter((r) => r !== 'claude/utils/reportProgressTool.ts')) {
             expect(read(rel), rel).toMatch(/download: z\.boolean\(\)\.optional\(\)\.describe\(PREVIEW_DOWNLOAD_PARAM_DESCRIPTION\)/);
         }
     });
