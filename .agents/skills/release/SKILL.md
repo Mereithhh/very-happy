@@ -136,6 +136,13 @@ point did not roll back: establish reality per operations §A switch that dies
 after the Caddy reload. Never delete the retained candidate while it may own
 connections.
 
+A green workflow does not mean the old slot was stopped: `exit=0
+phase=old-slot-retained` is reported as success (2026-10-07), `exit=5` with the
+same phase as failure (2026-10-02, 2026-10-06). After every switch, grep the
+Deploy log for `left running`; if present, confirm `active-upstream.caddy` and
+`state.env` name the new slot, then `docker stop happy-server-<old>` (operations
+§Stop the old slot). Why drain keeps timing out is B-546.
+
 Environment changes: `docker compose restart` does not reread `env_file`. Deploy
 the active merged `main` with `rollout=switch`, so candidate reads the new env
 while old remains available.
