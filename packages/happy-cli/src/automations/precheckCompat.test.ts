@@ -21,6 +21,11 @@ describe('B-548 precheck writes against old servers', () => {
         await createAutomationChecked(client as any, { ...base, precheck, status: 'paused' });
         expect(client.resume).not.toHaveBeenCalled();
     });
+    it('names the paused automation when the resume fails', async () => {
+        const client = { create: vi.fn().mockResolvedValue({ id: 'a9', name: 'g', precheck }), remove: vi.fn(), resume: vi.fn().mockRejectedValue(new Error('net down.')) };
+        await expect(createAutomationChecked(client as any, { ...base, precheck })).rejects.toThrow('Automation "g" (id a9) was created paused, with its precheck, but could not be resumed: net down. Resume it (very-happy auto resume g) or delete it.');
+        expect(client.remove).not.toHaveBeenCalled();
+    });
     it('deletes an automation an old server stored without its precheck, and never resumes it', async () => {
         const client = { create: vi.fn().mockResolvedValue({ id: 'a', name: 'g' }), remove: vi.fn().mockResolvedValue({ ok: true }), resume: vi.fn() };
         await expect(createAutomationChecked(client as any, { ...base, precheck })).rejects.toThrow(PRECHECK_UNSUPPORTED_SERVER_MESSAGE);

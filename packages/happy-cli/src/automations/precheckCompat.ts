@@ -26,7 +26,12 @@ export async function createAutomationChecked(client: CreateClient, input: Autom
         const removed = await client.remove(created.id).then(() => true, () => false);
         throw new Error(removed ? PRECHECK_UNSUPPORTED_SERVER_MESSAGE : `${PRECHECK_UNSUPPORTED_SERVER_MESSAGE} The automation "${created.name}" was left paused; delete it.`);
     }
-    return input.status === 'paused' ? created : client.resume(created.id);
+    if (input.status === 'paused') return created;
+    try { return await client.resume(created.id); }
+    catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Automation "${created.name}" (id ${created.id}) was created paused, with its precheck, but could not be resumed: ${reason} Resume it (very-happy auto resume ${created.name}) or delete it.`);
+    }
 }
 
 /** Old servers cannot hold a precheck, so a stripped one changed nothing about how the action runs — only report it. */
