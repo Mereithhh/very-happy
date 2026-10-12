@@ -237,7 +237,7 @@ ${chalk.bold('Precheck (optional, runs before the action; exit 0 runs it, anythi
       [--precheck-output]   append the precheck's stdout to the spawn/send prompt
   --no-precheck           edit: remove the precheck
   A shell line is not template-rendered; read the payload from $VH_AUTOMATION_PAYLOAD.
-  Consecutive skips for the same reason fold into one run shown as ×N.
+  Consecutive scheduled skips for the same reason fold into one run shown as ×N.
 
 ${chalk.bold('Options:')}
   --machine <id>|this     Executing machine (default: this machine)

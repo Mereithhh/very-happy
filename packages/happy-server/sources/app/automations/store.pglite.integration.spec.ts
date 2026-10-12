@@ -188,15 +188,17 @@ describe('automations store (pglite)', () => {
         expect(skippedFire.run.status).toBe('skipped'); expect(skippedFire.deduplicated).toBe(false);
         const again = await store.fireAutomation(accountId, 'busy-events', { dedupeKey: 'evt' });
         expect(again.deduplicated).toBe(false); expect(again.run.id).not.toBe(skippedFire.run.id);
-        // B-548: the repeat folded into the newest run instead of adding a row.
-        expect(again.run.occurrenceCount).toBe(2);
-        expect((await store.listRuns(accountId, { automationId: busy.id })).map(r => [r.status, r.occurrenceCount])).toEqual([['skipped', 2], ['queued', 1]]);
+        // B-548: fired events never fold — each keeps its payload / dedupeKey record.
+        expect(again.run.occurrenceCount).toBe(1);
+        expect((await store.listRuns(accountId, { automationId: busy.id })).map(r => [r.source, r.status, r.occurrenceCount])).toEqual([['fire', 'skipped', 1], ['fire', 'skipped', 1], ['manual', 'queued', 1]]);
     });
 
     describe('B-548 precheck', () => {
         let pm: string;
         const precheck = { shell: 'test -s ~/inbox.json', includeOutput: true };
         const claim = (capabilities?: string[]) => store.claimRuns(accountId, { machineId: pm, ...(capabilities ? { capabilities } : {}) });
+        /** One due schedule occurrence, materialized (and, for a capable daemon, claimed) by the next claim. */
+        const due = (id: string) => setNextRunAt(id, new Date(Date.now() - 1000));
         beforeAll(async () => { pm = crypto.randomUUID(); await db.machine.create({ data: { id: pm, accountId, metadata: 'metadata' } }); });
 
         it('stores the precheck beside the action: action-only edits keep it, null removes it, views never show the gate wrapper', async () => {
@@ -216,35 +218,40 @@ describe('automations store (pglite)', () => {
 
         it('never hands a precheck run to a daemon without the capability: skipped, flagged once, repeats fold', async () => {
             const a = await make({ machineId: pm, precheck, concurrency: 'queue' });
-            const first = await store.fireAutomation(accountId, a.name, {});
+            await due(a.id);
             expect((await claim()).runs.some(r => r.automation.id === a.id)).toBe(false);
-            const r1 = await store.getRun(accountId, first.run.id);
-            expect(r1).toMatchObject({ status: 'skipped', error: 'precheck_unsupported_cli', needsAttention: true, attentionReason: 'precheck_unsupported_cli', occurrenceCount: 1 });
+            const [r1] = await store.listRuns(accountId, { automationId: a.id });
+            expect(r1).toMatchObject({ source: 'schedule', status: 'skipped', error: 'precheck_unsupported_cli', needsAttention: true, attentionReason: 'precheck_unsupported_cli', occurrenceCount: 1 });
             await store.ackRun(accountId, r1.id);
-            const second = await store.fireAutomation(accountId, a.name, {});
+            await due(a.id);
             await claim();
             const runs = await store.listRuns(accountId, { automationId: a.id });
             expect(runs).toHaveLength(1);
             // Folded into the newest run, which inherits the acknowledged state: no second flag.
-            expect(runs[0]).toMatchObject({ id: second.run.id, status: 'skipped', occurrenceCount: 2, needsAttention: false, ackedBy: 'owner' });
-            await expect(store.getRun(accountId, first.run.id)).rejects.toMatchObject({ code: 'run_not_found' });
+            expect(runs[0]).toMatchObject({ status: 'skipped', occurrenceCount: 2, needsAttention: false, ackedBy: 'owner' });
+            expect(runs[0].id).not.toBe(r1.id);
             expect((await store.getAutomation(accountId, a.id)).lastRunStatus).toBe('skipped');
             // A capable daemon gets the run with the precheck in its snapshot.
-            const third = await store.fireAutomation(accountId, a.name, {});
-            const claimed = (await claim(['precheck'])).runs.find(r => r.run.id === third.run.id)!;
+            await due(a.id);
+            const claimed = (await claim(['precheck'])).runs.find(r => r.automation.id === a.id)!;
             expect(claimed.automation).toMatchObject({ precheck, action: spawn });
-            // Plain automations still go to old daemons.
+            // Plain automations still go to old daemons; fired precheck runs never fold.
             const plain = await make({ machineId: pm });
             const plainRun = await store.runAutomationNow(accountId, plain.id, {});
             expect((await claim()).runs.some(r => r.run.id === plainRun.id)).toBe(true);
+            const f = await make({ machineId: pm, precheck, concurrency: 'queue' });
+            await store.fireAutomation(accountId, f.name, { payload: '{"sessionId":"aaaaaaaa1"}' });
+            await store.fireAutomation(accountId, f.name, { payload: '{"sessionId":"bbbbbbbb2"}' });
+            await claim(); await claim();
+            expect((await store.listRuns(accountId, { automationId: f.id })).map(r => [r.payload, r.occurrenceCount])).toEqual([['{"sessionId":"bbbbbbbb2"}', 1], ['{"sessionId":"aaaaaaaa1"}', 1]]);
         });
 
         it('folds consecutive daemon-reported skips of one reason; a new reason or another run restarts the count', async () => {
             const a = await make({ machineId: pm, precheck, concurrency: 'queue' });
+            const claimDue = async () => { await due(a.id); return (await claim(['precheck'])).runs.find(r => r.automation.id === a.id)!; };
             const skipOnce = async (error: string, needsAttention = false) => {
-                const fired = await store.fireAutomation(accountId, a.name, {});
-                const c = (await claim(['precheck'])).runs.find(r => r.run.id === fired.run.id)!;
-                return store.reportRun(accountId, fired.run.id, { claimId: c.run.claimId, status: 'skipped', error, summary: `out ${error}`, exitCode: 1, ...(needsAttention ? { needsAttention, attentionReason: error } : {}) });
+                const c = await claimDue();
+                return store.reportRun(accountId, c.run.id, { claimId: c.run.claimId, status: 'skipped', error, summary: `out ${error}`, exitCode: 1, ...(needsAttention ? { needsAttention, attentionReason: error } : {}) });
             };
             expect(await skipOnce('precheck_failed')).toMatchObject({ status: 'skipped', error: 'precheck_failed', occurrenceCount: 1, needsAttention: false });
             expect((await skipOnce('precheck_failed')).occurrenceCount).toBe(2);
@@ -254,15 +261,22 @@ describe('automations store (pglite)', () => {
             // The same flagged reason again stays one open flag, not two.
             expect(await skipOnce('precheck_timeout', true)).toMatchObject({ occurrenceCount: 2, needsAttention: true });
             expect((await store.listRuns(accountId, { automationId: a.id, attention: true })).length).toBe(1);
-            const ok = await store.fireAutomation(accountId, a.name, {});
-            const okClaim = (await claim(['precheck'])).runs.find(r => r.run.id === ok.run.id)!;
-            await store.reportRun(accountId, ok.run.id, { claimId: okClaim.run.claimId, status: 'done' });
+            const ok = await claimDue();
+            await store.reportRun(accountId, ok.run.id, { claimId: ok.run.claimId, status: 'done' });
             expect((await skipOnce('precheck_timeout')).occurrenceCount).toBe(1);
             expect((await store.listRuns(accountId, { automationId: a.id })).map(r => [r.status, r.error, r.occurrenceCount])).toEqual([
                 ['skipped', 'precheck_timeout', 1], ['done', null, 1], ['skipped', 'precheck_timeout', 2], ['skipped', 'precheck_failed', 3],
             ]);
             // The counts live on the automation row without touching its version.
             expect((await store.getAutomation(accountId, a.id)).version).toBe(a.version);
+        });
+
+        it('folds scheduled previous_run_active skips', async () => {
+            const a = await make({ machineId: pm });
+            await store.runAutomationNow(accountId, a.id, {});
+            await due(a.id); await claim(['precheck']);
+            await due(a.id); await claim(['precheck']);
+            expect((await store.listRuns(accountId, { automationId: a.id })).map(r => [r.source, r.status, r.occurrenceCount])).toEqual([['schedule', 'skipped', 2], ['manual', 'claimed', 1]]);
         });
 
         it('keeps skipped daemon-only: an account-level report cannot skip', async () => {

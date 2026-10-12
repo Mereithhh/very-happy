@@ -1000,7 +1000,7 @@ before the action: exit 0 runs it (stdout appended to a spawn/send prompt with
 `includeOutput`, `VH_AUTOMATION_PRECHECK_OUTPUT` for scripts), anything else reports
 `status: skipped` (daemon-only, with `claimId`) and `error` `precheck_failed` /
 `precheck_timeout` / `precheck_error` (the last two with attention). Consecutive skips of one
-automation with the same source and reason (including `previous_run_active`) fold into the
+automation's **scheduled** runs with the same reason (including `previous_run_active`; `fire` and `manual` runs never fold) fold into the
 newest run — the older row is deleted, `run.occurrenceCount` grows and the attention state is
 inherited, so a repeated reason flags once. Design: [`specs/2026-10-automation-precheck.md`](../specs/2026-10-automation-precheck.md).
 

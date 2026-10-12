@@ -49,6 +49,8 @@ describe('B-548 stored action', () => {
         expect(shouldMergeSkip(prev, { source: 'schedule', reason: 'precheck_failed' })).toBe(true);
         expect(shouldMergeSkip(prev, { source: 'schedule', reason: 'precheck_timeout' })).toBe(false);
         expect(shouldMergeSkip(prev, { source: 'fire', reason: 'precheck_failed' })).toBe(false);
+        // Each fired event keeps its own run (payload / dedupeKey / linked sessions stay traceable).
+        expect(shouldMergeSkip({ ...prev, source: 'fire' }, { source: 'fire', reason: 'precheck_failed' })).toBe(false);
         expect(shouldMergeSkip({ ...prev, status: 'done' }, { source: 'schedule', reason: 'precheck_failed' })).toBe(false);
         expect(shouldMergeSkip({ ...prev, source: 'manual' }, { source: 'manual', reason: 'precheck_failed' })).toBe(false);
         expect(shouldMergeSkip(null, { source: 'schedule', reason: 'precheck_failed' })).toBe(false);

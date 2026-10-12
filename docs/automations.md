@@ -116,8 +116,9 @@ very-happy auto edit inbox-triage --no-precheck             # remove it
   always gets it as `$VH_AUTOMATION_PRECHECK_OUTPUT`.
 - **Skips** — a non-zero exit is skipped quietly (`precheck: nothing to do`).
   A timeout or a check that cannot start is skipped **and** shown in *Needs my
-  decision*. Consecutive skips for the same reason fold into one row marked
-  **×N** in the run history (a run in between, or a different reason, starts a
+  decision*. Consecutive scheduled skips for the same reason fold into one row
+  marked **×N** in the run history (fired and manual runs always keep their own
+  row, so every event's payload stays traceable) (a run in between, or a different reason, starts a
   new count), so the history and the decision list do not fill up; a repeated
   reason asks for your decision only once.
 - **Older CLIs** — a machine whose very-happy CLI predates prechecks never runs

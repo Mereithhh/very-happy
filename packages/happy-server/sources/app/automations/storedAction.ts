@@ -81,8 +81,11 @@ export interface SkipCandidate { status: string; error: string | null; source: s
 /**
  * Consecutive-skip folding rule (B-548, after Orca's `occurrenceCount`): the
  * run right before this one is a skip of the same source for the same reason.
- * Manual runs are explicit user intent and always keep their own record.
+ * Only `schedule` runs fold: a manual run is explicit user intent, and a fired
+ * run is one external event whose payload / dedupeKey must stay traceable (and
+ * whose payload-linked sessions must not leak into another event's attention).
  */
+export const FOLDABLE_SKIP_SOURCES: readonly string[] = ['schedule'];
 export function shouldMergeSkip(prev: SkipCandidate | null | undefined, next: { source: string; reason: string }): boolean {
-    return !!prev && prev.status === 'skipped' && prev.error === next.reason && prev.source === next.source && next.source !== 'manual';
+    return !!prev && prev.status === 'skipped' && prev.error === next.reason && prev.source === next.source && FOLDABLE_SKIP_SOURCES.includes(next.source);
 }

@@ -28,7 +28,7 @@ export const AUTOMATION_PRECHECK_OUTPUT_MAX_CHARS = 4000;
 export const AUTOMATION_DAEMON_CAPABILITY_PRECHECK = 'precheck';
 /**
  * Reason codes a `skipped` run carries in `error` (B-548). Consecutive skips of
- * one automation with the same source and reason fold into the newest run
+ * one automation's scheduled runs with the same reason fold into the newest run
  * (`occurrenceCount`). Clients show unknown codes verbatim.
  */
 export const AUTOMATION_SKIP_REASONS = ['previous_run_active', 'precheck_failed', 'precheck_timeout', 'precheck_error', 'precheck_unsupported_cli'] as const;

@@ -11,7 +11,7 @@
 
 1. Automation 可选配置一条 precheck：argv（`command`）或 shell 命令行（`shell`）二选一，`cwd`、`timeoutMs`（默认 60s，上限 600s）、`includeOutput`（把 stdout 附加到 spawn/send prompt）。daemon 领取 run 后先跑 precheck；退出码 0 才执行动作；否则 run 记 `skipped` + 原因码（复用 `error` 字段），**不新增 status enum**。超时杀整个进程组。输出截断 4000 字符。
 2. **旧 daemon 绝不能在不跑 precheck 的情况下执行带 precheck 的动作。** daemon 在 claim 请求里宣告能力；server 只把带 precheck 的 run 派给宣告了 `precheck` 的 daemon，否则该 run 记 `skipped`（`precheck_unsupported_cli`）+ attention 一次。
-3. 同一 automation、同一来源、同一原因的连续 `skipped` 折叠到最近一条，累加 `occurrenceCount`；原因变化或中间出现其它 run 时重新计数。Web 运行列表显示「×N」。
+3. 同一 automation 的**定时（`schedule`）**run 同一原因连续 `skipped` 折叠到最近一条（`fire` 每个事件的 payload/dedupeKey 必须可追溯、payload 关联会话不能跨事件继承 attention，`manual` 是显式意图——二者都不折叠），累加 `occurrenceCount`；原因变化或中间出现其它 run 时重新计数。Web 运行列表显示「×N」。
 4. CLI `auto create/edit`、MCP `automation_create/update`、Web 表单支持 precheck；`docs/automations.md` 更新。
 5. 零 Prisma migration。
 
@@ -90,7 +90,7 @@ AutomationRun.occurrenceCount?: number             // 缺省 = 1
 
 ### 连续跳过合并（server，纯函数 `skipStreak.ts` + store）
 
-`shouldMergeSkip(prev, next)`：`prev.status==='skipped' && prev.error===next.reason && prev.source===next.source && next.source!=='manual'`。prev 取同 automation 中紧挨在当前 run 之前（`createdAt,id` 序）的那条。
+`shouldMergeSkip(prev, next)`：`prev.status==='skipped' && prev.error===next.reason && prev.source===next.source && next.source==='schedule'`（review 修订：`fire` 与 `manual` 都不折叠）。prev 取同 automation 中紧挨在当前 run 之前（`createdAt,id` 序）的那条。
 
 合并方向是**保留最新一条、删除前一条**：计数迁到最新 run（`skipCounts[new] = (skipCounts[prev] ?? 1) + 1`，删 `skipCounts[prev]`），attention 状态（`needsAttention/attentionReason/attentionAt/ackedAt/ackedBy`）从前一条原样继承，于是：
 - 调用方手里的 run id（`fire` 返回的、daemon 正在报告的）始终有效，`--wait` 不会撞 404；
