@@ -1,0 +1,108 @@
+/* FileDownloadAction (B-562) — tokens only. Primary = ink/canvas CTA (design
+ * contract §2: never accent for a CTA). Touch targets ≥44px on coarse pointers. */
+
+.fdl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.fdl-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.fdl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 10px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.fdl-btn:not(:disabled):hover { background: var(--bg-3); }
+.fdl-btn:disabled { opacity: 0.5; cursor: default; }
+.fdl-btn:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+.fdl-btn--primary {
+  min-height: 40px;
+  padding: 8px 16px;
+  font-size: var(--fs-14);
+  color: var(--bg-0);
+  background: var(--text);
+  border-color: var(--text);
+}
+.fdl-btn--primary:not(:disabled):hover { background: var(--text-dim); border-color: var(--text-dim); }
+.fdl-btn--primary:disabled { opacity: 0.7; }
+
+.fdl-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fdl-progress { flex: none; font-size: var(--fs-12); opacity: 0.8; }
+
+.fdl-dismiss {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  color: var(--text-faint);
+  border-radius: var(--r-sm);
+}
+.fdl-dismiss:hover { background: var(--bg-2); color: var(--text); }
+
+.fdl-note, .fdl-error, .fdl-limit {
+  margin: 0;
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.fdl-note { color: var(--text-faint); }
+.fdl-error { color: var(--danger); }
+.fdl-limit { color: var(--text-dim); max-width: 46ch; }
+.fdl-save { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+
+/* Viewer top bar: under the head, above the body. */
+.fdl--bar {
+  flex: none;
+  padding: var(--sp-2) 12px;
+  border-bottom: 1px solid var(--line);
+}
+.fdl--bar .fdl-btn--primary { flex: 0 1 auto; }
+
+/* "Cannot preview" body: centred, larger. */
+.fdl--block { align-items: center; text-align: center; max-width: 100%; }
+.fdl--block .fdl-row { justify-content: center; max-width: 100%; }
+.fdl--block .fdl-btn--primary { min-height: 44px; padding: 10px 20px; }
+
+@media (pointer: coarse) {
+  .fdl-btn, .fdl-dismiss { min-height: 44px; }
+  .fdl-dismiss { width: 44px; }
+  .fdl-btn--primary { min-height: 48px; font-size: var(--fs-15); }
+  .fdl-btn { padding-left: 14px; padding-right: 14px; }
+  .fdl-save { display: inline-block; padding: 10px 0; }
+}
+@media (max-width: 520px) {
+  .fdl--bar .fdl-btn--primary { flex: 1 1 auto; justify-content: center; }
+}
+
+/* Viewer pieces that live in FsFileViewer (head-icon feedback, cannot-preview body). */
+.fsb-download-status { flex: none; padding: var(--sp-1) 12px; border-bottom: 1px solid var(--line); }
+.fsb-unpreviewable { gap: var(--sp-2); }
+.fsb-unpreviewable-title { margin: 0; font-size: var(--fs-14); font-weight: 600; color: var(--text); }

@@ -24,6 +24,8 @@ export interface FilePreviewPushEvent {
     payload: string;
     enc?: boolean;
     mode?: FilePreviewMode;
+    /** B-562: `open_preview(download: true)`. Read leniently — see normalizePreviewIntent. */
+    intent?: unknown;
 }
 
 /** Defensive cap on the decrypted path. Real paths are far shorter; this only
@@ -48,6 +50,12 @@ export function normalizePreviewPath(raw: unknown): string | null {
  *  on a mode a newer CLI invents). */
 export function normalizePreviewMode(mode: unknown): FilePreviewMode {
     return mode === 'diff' ? 'diff' : 'file';
+}
+
+/** B-562: only `'download'` means anything; absent/unknown ⇒ a plain preview
+ *  (an older server strips the key, a newer CLI may invent other values). */
+export function normalizePreviewIntent(intent: unknown): 'download' | undefined {
+    return intent === 'download' ? 'download' : undefined;
 }
 
 export type PreviewTarget =

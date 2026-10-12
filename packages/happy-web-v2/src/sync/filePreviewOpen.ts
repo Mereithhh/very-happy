@@ -16,6 +16,8 @@ export interface FsPreviewRequest {
     mode: 'file' | 'diff';
     /** B-526: pushed by a session's `open_preview` (not opened by the user here). */
     fromPush?: boolean;
+    /** B-562: the agent asked to deliver the file (`open_preview(download: true)`). */
+    intent?: 'download';
 }
 
 const OPEN_EVENT = 'vh:fs-preview-open';

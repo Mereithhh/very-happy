@@ -6,11 +6,12 @@ import { isTerminalToolName, getTerminalToolCommand } from '@/utils/toolDisplay'
  */
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { ChevronRight, AlertTriangle, Bot, Check, FileText, Square } from 'lucide-react';
+import { ChevronRight, AlertTriangle, Bot, Check, Square } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import { sameItems } from './rowMemo';
 import { useTranslation } from '@/i18n/useTranslation';
-import { previewToolPath } from './previewTools';
+import { previewToolCall } from './previewTools';
+import { PreviewToolRow } from './PreviewToolRow';
 import { StatusDot, Spinner } from '@/ui';
 import { ToolView } from './ToolView';
 import { toolLabel, toolDetail, toolDetailIsProse } from './toolInfo';
@@ -164,13 +165,9 @@ function ToolRow({
         );
     }
 
-    const previewPath = previewToolPath(tool);
-    if (previewPath && sessionId && tool.state === 'completed') {
-        return <div className="tg-preview-row" title={messageTimestamp(message.createdAt, lang)}>
-            <FileText size={16} aria-hidden />
-            <span className="tg-tool-label">{t('filePreview.title')}</span>
-            <FilePathLink path={previewPath} sessionId={sessionId} className="tg-preview-path" />
-        </div>;
+    const previewCall = previewToolCall(tool);
+    if (previewCall && sessionId && tool.state === 'completed') {
+        return <PreviewToolRow call={previewCall} sessionId={sessionId} title={messageTimestamp(message.createdAt, lang)} />;
     }
 
     return (

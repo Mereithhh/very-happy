@@ -35,8 +35,10 @@ import {
     previewMimeOf,
 } from './fsPreviewModel';
 import { SpreadsheetPreview } from './SpreadsheetPreview';
-import { downloadBytes, readDownload } from './fileDownload';
 import { fsFailureText } from './fsFailureText';
+import { DownloadFeedback, FileDownloadAction } from './FileDownloadAction';
+import { useFileDownload } from './useFileDownload';
+import { consumeDownloadIntent, useDownloadIntent } from './downloadIntent';
 
 type ViewerState =
     | { phase: 'loading'; progress: number | null }
@@ -69,23 +71,31 @@ interface FsFileViewerProps {
 function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFullscreen, onPin, contained = false }: FsFileViewerProps) {
     const { t, lang } = useTranslation();
     const zh = lang.startsWith('zh');
-    const alive = useRef(true);
-    useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-    const [downloading, setDownloading] = useState(false);
-    const [downloadError, setDownloadError] = useState('');
-    const download = async () => {
-        if (downloading) return;
-        setDownloading(true); setDownloadError('');
-        try {
-            const result = await readDownload(machineId, path, () => !alive.current);
-            if (!alive.current) return;
-            if (result.ok) downloadBytes(result.bytes, path);
-            else setDownloadError(result.code === 'too-large' ? (zh ? '下载上限为 50 MiB。' : 'Download limit is 50 MiB.') : result.code === 'needs-upgrade' ? t('fsBrowser.largeNeedsUpgrade', { size: formatFsSize(result.size) }) : (zh ? '下载失败，请检查连接后重试。' : 'Download failed. Check the connection and retry.'));
-        } catch { if (alive.current) setDownloadError(zh ? '下载失败，请重试。' : 'Download failed. Please retry.'); }
-        finally { if (alive.current) setDownloading(false); }
-    };
     const kind = previewKindOf(path);
     const [state, setState] = useState<ViewerState>({ phase: 'loading', progress: null });
+    // Whole-file bytes already assembled for the preview are reused, not read twice.
+    const stateRef = useRef(state);
+    stateRef.current = state;
+    const preloaded = () => (stateRef.current.phase === 'bytes' ? stateRef.current.bytes : null);
+    const headDownload = useFileDownload(machineId, path, zh);
+    const downloading = headDownload.busy;
+    const download = () => { if (!downloading) void headDownload.start(preloaded() ?? undefined); };
+    // B-562: a pushed `open_preview(download: true)` for THIS file → prominent bar.
+    const intent = useDownloadIntent(machineId, path);
+    const [pushed, setPushed] = useState<{ auto: boolean } | null>(null);
+    useEffect(() => {
+        if (!intent) return;
+        setPushed({ auto: intent.auto });
+        consumeDownloadIntent(intent);
+    }, [intent]);
+    const knownSize = 'size' in state ? state.size : null;
+    const unpreviewable = (title: string) => (
+        <div className="fsb-center fsb-unpreviewable">
+            <p className="fsb-unpreviewable-title">{title}</p>
+            {knownSize != null && <span className="fsb-caption mono">{formatFsSize(knownSize)}</span>}
+            {!pushed && <FileDownloadAction variant="block" machineId={machineId} path={path} size={knownSize} />}
+        </div>
+    );
     const [showSource, setShowSource] = useState(false);
     const [imgActual, setImgActual] = useState(false);
     const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -177,14 +187,10 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
             case 'failed':
                 return <div className="fsb-center">{fsFailureText(t, state.failure)}</div>;
             case 'too-large':
-                return (
-                    <div className="fsb-center">
-                        {t('fsBrowser.tooLarge', {
-                            size: formatFsSize(state.size),
-                            limit: formatFsSize(FS_PREVIEW_MAX_BYTES),
-                        })}
-                    </div>
-                );
+                return unpreviewable(t('fsBrowser.tooLarge', {
+                    size: formatFsSize(state.size),
+                    limit: formatFsSize(FS_PREVIEW_MAX_BYTES),
+                }));
             case 'needs-upgrade':
                 return (
                     <div className="fsb-center">
@@ -192,11 +198,7 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
                     </div>
                 );
             case 'binary':
-                return (
-                    <div className="fsb-center">
-                        {t('fsBrowser.binaryFile', { size: formatFsSize(state.size) })}
-                    </div>
-                );
+                return unpreviewable(zh ? '此类型无法预览' : 'This file type cannot be previewed');
             case 'bytes':
                 if (kind === 'spreadsheet') return <SpreadsheetPreview bytes={state.bytes}/>;
                 if (!blobUrl) return <div className="fsb-center"><Spinner size={16} /></div>;
@@ -302,7 +304,22 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
                     <X size={15} />
                 </button>
             </div>
-            {downloadError && <div className="fsb-notice" role="alert">{downloadError}</div>}
+            {headDownload.state.phase !== 'idle' && headDownload.state.phase !== 'reading' && (
+                <div className="fsb-download-status"><DownloadFeedback state={headDownload.state} zh={zh} /></div>
+            )}
+            {pushed && (
+                <FileDownloadAction
+                    variant="bar"
+                    machineId={machineId}
+                    path={path}
+                    size={knownSize}
+                    preloaded={preloaded}
+                    // Wait for the preview read: it supplies the size (50 MiB gate) and,
+                    // for images/PDFs, the bytes — no second read.
+                    autoStart={pushed.auto && state.phase !== 'loading'}
+                    onDismiss={() => setPushed(null)}
+                />
+            )}
             {body()}
         </div>
     );

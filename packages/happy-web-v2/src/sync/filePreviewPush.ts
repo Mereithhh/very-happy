@@ -23,6 +23,7 @@ import { t } from '@/text';
 import type { Encryption } from '@/sync/encryption/encryption';
 import { storage } from '@/sync/storage';
 import {
+    normalizePreviewIntent,
     normalizePreviewMode,
     normalizePreviewPath,
     resolvePreviewTarget,
@@ -128,5 +129,6 @@ export async function handleFilePreviewPush(encryption: Encryption, data: unknow
         return;
     }
 
-    openFsPreview({ sessionId: event.sessionId, machineId: target.machineId, path, mode: normalizePreviewMode(event.mode), fromPush: true });
+    const intent = normalizePreviewIntent(event.intent);
+    openFsPreview({ sessionId: event.sessionId, machineId: target.machineId, path, mode: normalizePreviewMode(event.mode), fromPush: true, ...(intent ? { intent } : {}) });
 }
