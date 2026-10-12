@@ -3240,6 +3240,13 @@ export const en = {
         refitWidthHint: 'Fit the terminal to this device’s width. Lines already scrolled above keep the width they were printed at — terminals cannot reflow them.',
         selectMode: 'Select / copy mode',
         selectModeHint: 'Select mode — long-press to select & copy · tap again to scroll',
+        // Find in terminal (B-557)
+        search: 'Find in terminal',
+        searchPlaceholder: 'Find in terminal',
+        searchCaseSensitive: 'Match case',
+        searchPrevious: 'Previous match',
+        searchNext: 'Next match',
+        searchClose: 'Close search',
         // Accessible name for the mobile assistive key bar (Esc/Tab/Ctrl/arrows…)
         keybarLabel: 'Terminal keys',
         // Mobile key bar: hide the soft keyboard (blur the terminal)
