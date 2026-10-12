@@ -36,6 +36,7 @@ import { persistRewindRecord, RewindReconciler } from './rewindReconciler';
 import { pendingResumeId } from './rewindReconcile';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { wrapperRateLimitReporter } from '@/rateLimits/rateLimitReporter';
 
 interface PermissionsField {
     date: number;
@@ -326,6 +327,10 @@ export async function claudeRemoteLauncher(
     let notifiedQuestionToolCalls = new Set<string>();
 
     function onMessage(message: SDKMessage) {
+        // B-555: subscription windows ride the SDK stream; forward, never persist.
+        if (message.type === 'rate_limit_event') {
+            wrapperRateLimitReporter().observeClaude(message.rate_limit_info);
+        }
         runtimeControls.observe(message);
         backgroundTasks.observe(message);
         session.setBackgroundTasks(backgroundTasks.list());

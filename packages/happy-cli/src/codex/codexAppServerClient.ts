@@ -48,6 +48,7 @@ import type {
 import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
 import packageJson from '../../package.json';
+import { isUnsupportedCodexMethodError, shouldReadCodexRateLimits } from '@/rateLimits/rateLimitWindows';
 
 type PendingRequest = {
     resolve: (result: unknown) => void;
@@ -206,6 +207,11 @@ export class CodexAppServerClient {
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
     private approvalHandler: ApprovalHandler | null = null;
+    // B-555: subscription rate-limit snapshots (sparse notifications + throttled reads).
+    private rateLimitHandler: ((snapshot: unknown) => void) | null = null;
+    private rateLimitReadAt = 0;
+    private rateLimitReadInFlight = false;
+    private rateLimitReadUnsupported = false;
 
     constructor(sandboxConfig?: SandboxConfig) {
         this.sandboxConfig = sandboxConfig;
@@ -225,6 +231,39 @@ export class CodexAppServerClient {
 
     setApprovalHandler(handler: ApprovalHandler): void {
         this.approvalHandler = handler;
+    }
+
+    /**
+     * B-555: receive Codex `RateLimitSnapshot`s — from `account/rateLimits/updated`
+     * (sparse: null windows mean "not in this update") and from a throttled
+     * `account/rateLimits/read` after connect / each finished turn. Codex does
+     * the fetch with its own login; we never touch its credentials.
+     */
+    setRateLimitHandler(handler: (snapshot: unknown) => void): void {
+        this.rateLimitHandler = handler;
+        this.maybeRefreshRateLimits();
+    }
+
+    private maybeRefreshRateLimits(): void {
+        if (!this.rateLimitHandler || !this.connected) return;
+        if (!shouldReadCodexRateLimits({
+            now: Date.now(),
+            lastReadAt: this.rateLimitReadAt,
+            inFlight: this.rateLimitReadInFlight,
+            unsupported: this.rateLimitReadUnsupported,
+        })) return;
+        this.rateLimitReadAt = Date.now();
+        this.rateLimitReadInFlight = true;
+        this.request('account/rateLimits/read', {}, 15_000)
+            .then((result) => {
+                const snapshot = (result as { rateLimits?: unknown } | null)?.rateLimits;
+                if (snapshot) this.rateLimitHandler?.(snapshot);
+            })
+            .catch((error) => {
+                if (isUnsupportedCodexMethodError(error)) this.rateLimitReadUnsupported = true;
+                logger.debug('[CodexAppServer] account/rateLimits/read failed:', errorLogMetadata(error));
+            })
+            .finally(() => { this.rateLimitReadInFlight = false; });
     }
 
     private extractTurnId(params: any): string | null {
@@ -270,6 +309,7 @@ export class CodexAppServerClient {
 
         this.tryResolvePendingTurn(aborted, turnId, source);
         this._turnId = null;
+        this.maybeRefreshRateLimits();
 
         if (turnId && this.completedTurnIds.has(turnId)) {
             return;
@@ -552,6 +592,7 @@ export class CodexAppServerClient {
         this.notify('initialized');
         this.connected = true;
         logger.debug('[CodexAppServer] Connected and initialized');
+        this.maybeRefreshRateLimits();
     }
 
     private async disconnectInternal(opts?: { preserveThreadState?: boolean }): Promise<void> {
@@ -1399,6 +1440,7 @@ export class CodexAppServerClient {
                         `codex/event/${msg.type}`,
                     );
                     this._turnId = null;
+                    this.maybeRefreshRateLimits();
                 }
             }
             return;
@@ -1432,6 +1474,12 @@ export class CodexAppServerClient {
                     method,
                 );
             }
+            return;
+        }
+
+        if (method === 'account/rateLimits/updated') {
+            const snapshot = params?.rateLimits;
+            if (snapshot) this.rateLimitHandler?.(snapshot);
             return;
         }
 

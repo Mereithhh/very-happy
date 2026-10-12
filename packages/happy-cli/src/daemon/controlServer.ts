@@ -18,6 +18,7 @@ import { checkPreviewPath } from '@/claude/utils/previewPath';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
 import { BACKGROUND_TASKS_MAX, BACKGROUND_TASK_DESCRIPTION_MAX } from '@/claude/backgroundTasks';
 import type { BackgroundTasksReport } from '@/update/backgroundTaskActivity';
+import { sanitizeRateLimitReport, type RateLimitReport } from '@/rateLimits/rateLimitWindows';
 
 const BackgroundTaskInfoSchema = z.object({
   id: z.string().min(1).max(200),
@@ -52,7 +53,8 @@ export function startDaemonControlServer({
   setTerminalTitle,
   onSessionEdit,
   listPeers,
-  isTurnActive
+  isTurnActive,
+  onRateLimits
 }: {
   /** Fresh per-process bearer token persisted in the private daemon state. */
   controlToken: string;
@@ -104,6 +106,9 @@ export function startDaemonControlServer({
   listPeers?: () => PeerSessionInfo[];
   /** B-505: whether this session has an agent turn in flight (B-466 tracker). */
   isTurnActive?: (sessionId: string) => boolean;
+  /** B-555: a wrapper observed subscription rate-limit windows (already
+   *  sanitized). Optional so older wirings/tests keep working. */
+  onRateLimits?: (report: RateLimitReport) => void;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -541,6 +546,32 @@ export function startDaemonControlServer({
         onSessionEdit?.(request.body);
       } catch (error) {
         logger.debug('[CONTROL SERVER] session-edit handler failed:', error);
+      }
+      return { status: 'ok' as const };
+    });
+
+    // B-555: a wrapper saw subscription rate-limit windows (Claude SDK
+    // `rate_limit_event`, Codex `account/rateLimits/*`). The body is parsed
+    // loosely and sanitized here so a newer wrapper's extra fields never 400;
+    // an unusable body is a 400 the wrapper ignores. Best-effort otherwise.
+    typed.post('/rate-limits', {
+      schema: {
+        body: z.object({}).passthrough(),
+        response: {
+          200: z.object({ status: z.literal('ok') }),
+          400: z.object({ error: z.string() }),
+        },
+      },
+    }, async (request, reply) => {
+      const report = sanitizeRateLimitReport(request.body);
+      if (!report) {
+        reply.code(400);
+        return { error: 'invalid rate-limit report' };
+      }
+      try {
+        onRateLimits?.(report);
+      } catch (error) {
+        logger.debug('[CONTROL SERVER] rate-limits handler failed:', error);
       }
       return { status: 'ok' as const };
     });
