@@ -25,6 +25,7 @@ import {
     matchTermSearchChord,
     pickInitialIndex,
     scrollTargetFor,
+    searchInputKeyAction,
     stepIndex,
     type TermMatch,
 } from './termSearch';
@@ -250,7 +251,7 @@ export function TermSearchBar({ getTerm, onClose, openSignal, coarsePointer }: {
         const b = term.buffer.active;
         let next = -1;
         if (mode === 'refresh' && prevAnchor) next = indexOfMatchAt(matches, prevAnchor.row, prevAnchor.col);
-        if (next < 0) next = pickInitialIndex(matches, b.viewportY + term.rows - 1);
+        if (next < 0) next = pickInitialIndex(matches, b.viewportY, b.viewportY + term.rows - 1);
         s.active = next;
         paintAll(term);
         paintActive(term);
@@ -299,16 +300,15 @@ export function TermSearchBar({ getTerm, onClose, openSignal, coarsePointer }: {
     }, []);
 
     const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Escape') {
-            e.preventDefault();
+        // Up = older: new output lands at the bottom (VS Code terminal does the same).
+        const action = searchInputKeyAction(e, ime.isGuarded(e));
+        if (!action) return;
+        e.preventDefault();
+        if (action === 'close') {
             e.stopPropagation();
             onClose();
-            return;
-        }
-        if (e.key === 'Enter' && !ime.isGuarded(e)) {
-            e.preventDefault();
-            // Up = older: new output lands at the bottom (VS Code terminal does the same).
-            step(e.shiftKey ? 1 : -1);
+        } else {
+            step(action === 'next' ? 1 : -1);
         }
     };
 

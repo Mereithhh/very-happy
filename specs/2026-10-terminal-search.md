@@ -1,6 +1,6 @@
 # Web 终端内搜索（find in scrollback）
 
-> 状态：Draft（实现 agent 起草，待主 agent 定稿）
+> 状态：Final（主 agent 2026-10-12 review 后定稿：超限保留最新、初始取视口最近、按终端实例重置、Esc 走 IME 守卫）
 > 日期：2026-10-12 ｜ 关联 backlog：B-557 ｜ 参考：Orca `docs/site/content/docs/terminal.mdx` §Search（只读）｜ 相关：B-550 `2026-10-terminal-scrollback-persistence.md`
 
 ## 背景
@@ -48,8 +48,8 @@ web 终端有 5000 行 scrollback（B-550 之后还包含「上次会话」回�
   命中再映射回 `(row, col)` 段（跨折行的命中拆成多段，每段 `{ row, col, width }`，宽字符按 2 格计）。
   - 快速路径：行文本长度 = 列数且不含代理对 → 字符下标即列号；否则逐格 `getCell` 建下标→列映射。
   - 大小写不敏感用 `toLowerCase()`（只对长度不变的行做，长度会变的字符走逐字符比较以免映射错位）。
-  - 上限 `TERM_SEARCH_MATCH_LIMIT = 2000`，超出返回 `truncated: true`，计数显示 `2000+`。
-- `pickInitialIndex(matches, anchorRow)`：取「起始行 ≤ 视口底行」的最后一个匹配（离当前视野最近、最新的在下方），没有则 0。
+  - 上限 `TERM_SEARCH_MATCH_LIMIT = 2000`：**自底向上扫描**，超出时保留最新（最靠下）的 2000 条并返回 `truncated: true`，计数显示 `2000+`。
+- `pickInitialIndex(matches, viewportTop, viewportBottom)`：视口内有命中取最靠下的一条；否则取离视口最近的一条（按行距，上下等距取上方）。
 - `stepIndex(i, n, dir)` 环绕；`scrollTargetFor(row, viewportY, rows)` 已在视口内返回 null，否则让匹配落在视口约 1/3 处。
 - `matchTermSearchChord(e, isMac)`：mac = 仅 ⌘ + `KeyF`；非 mac = Ctrl+Shift+`KeyF`（**偏离派工的 Ctrl+F**：
   Ctrl+F 在终端里是 readline forward-char、vim/less 翻页，拦截会吞掉用户真实按键；VS Code/Windows Terminal 同样用 Ctrl+Shift+F）。
@@ -69,6 +69,8 @@ web 终端有 5000 行 scrollback（B-550 之后还包含「上次会话」回�
 - 刷新：搜索条打开时订阅 `term.onWriteParsed`，节流 400ms 重搜；当前匹配用一个 marker 跟踪（scrollback 裁剪时 marker 随行移动），
   重搜后按 marker 行 + 列找回同一个匹配，找不到（`reset()` 后 marker 失效）再按视口取最近。
 - 关闭：dispose 所有 decoration/marker、退订、焦点交回（桌面 `focusInput()`；手机不 focus，避免顶起软键盘）。
+- 终端实例身份 `termSearchSurfaceKey(machineId, tid, inputOwnership, streamRemount)` = 终端 effect 的全部依赖；变化即旧 xterm 已 dispose，搜索条关闭并以新 key 重挂，不会挂在死实例上。
+- 输入框按键经 `searchInputKeyAction`：IME 合成中的 Esc/Enter 不关闭、不跳转。
 
 ### D3 挂钩（WebTerminalScreen.tsx，热区最小改动）
 

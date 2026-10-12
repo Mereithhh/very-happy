@@ -8,6 +8,8 @@ import {
     matchTermSearchChord,
     pickInitialIndex,
     scrollTargetFor,
+    searchInputKeyAction,
+    termSearchSurfaceKey,
     stepIndex,
     type SearchBufferLike,
     type SearchLineLike,
@@ -100,6 +102,31 @@ describe('findTermMatches', () => {
         expect(r.truncated).toBe(true);
     });
 
+    it('over the cap keeps the NEWEST matches (bottom of the buffer), in top-to-bottom order', () => {
+        const buf = fakeBuffer(Array.from({ length: 10 }, (_, i) => fakeLine(`hit ${i}`, 10)));
+        const r = findTermMatches(buf, 'hit', { caseSensitive: true, limit: 3 });
+        expect(r.truncated).toBe(true);
+        expect(r.matches.map((m) => m.segments[0].row)).toEqual([7, 8, 9]);
+        const exact = findTermMatches(buf, 'hit', { caseSensitive: true, limit: 10 });
+        expect(exact.truncated).toBe(false);
+        expect(exact.matches).toHaveLength(10);
+    });
+
+    it('cap inside one line keeps the rightmost hits of that line', () => {
+        const buf = fakeBuffer([fakeLine('a1 a2 a3 a4', 12)]);
+        const r = findTermMatches(buf, 'a', { caseSensitive: true, limit: 2 });
+        expect(r.matches.map((m) => m.segments[0].col)).toEqual([6, 9]);
+    });
+
+    it('bottom-up scan still joins wrapped rows', () => {
+        const buf = fakeBuffer([fakeLine('x', 10), fakeLine('hello worl', 10), fakeLine('d', 10, true), fakeLine('world', 10)]);
+        const r = findTermMatches(buf, 'world', { caseSensitive: true });
+        expect(r.matches.map((m) => m.segments)).toEqual([
+            [{ row: 1, col: 6, width: 4 }, { row: 2, col: 0, width: 1 }],
+            [{ row: 3, col: 0, width: 5 }],
+        ]);
+    });
+
     it('is non-overlapping', () => {
         const buf = fakeBuffer([fakeLine('aaaa', 10)]);
         expect(findTermMatches(buf, 'aa', { caseSensitive: true }).matches).toHaveLength(2);
@@ -117,12 +144,18 @@ describe('foldCaseStable', () => {
 describe('navigation helpers', () => {
     const m = (row: number, col = 0) => ({ segments: [{ row, col, width: 1 }] });
 
-    it('pickInitialIndex takes the last hit at or above the anchor row', () => {
+    it('pickInitialIndex prefers the bottom-most hit inside the viewport', () => {
+        const ms = [m(2), m(30), m(35), m(80)];
+        expect(pickInitialIndex(ms, 20, 40)).toBe(2);
+        expect(pickInitialIndex([], 0, 10)).toBe(-1);
+    });
+
+    it('pickInitialIndex otherwise takes the nearest hit above OR below', () => {
         const ms = [m(2), m(10), m(50)];
-        expect(pickInitialIndex(ms, 40)).toBe(1);
-        expect(pickInitialIndex(ms, 50)).toBe(2);
-        expect(pickInitialIndex(ms, 1)).toBe(0);
-        expect(pickInitialIndex([], 10)).toBe(-1);
+        expect(pickInitialIndex(ms, 15, 30)).toBe(1); // 5 above beats 20 below
+        expect(pickInitialIndex(ms, 40, 45)).toBe(2); // 5 below beats 30 above (old rule picked 10)
+        expect(pickInitialIndex(ms, 0, 1)).toBe(0);
+        expect(pickInitialIndex([m(10), m(30)], 15, 25)).toBe(0); // tie → the one above
     });
 
     it('indexOfMatchAt finds a hit by its first cell', () => {
@@ -176,5 +209,30 @@ describe('matchTermSearchChord', () => {
         expect(matchTermSearchChord(ev({ ctrlKey: true, shiftKey: true }), false)).toBe(true);
         expect(matchTermSearchChord(ev({ ctrlKey: true }), false)).toBe(false);
         expect(matchTermSearchChord(ev({ ctrlKey: true, shiftKey: true, altKey: true }), false)).toBe(false);
+    });
+});
+
+describe('searchInputKeyAction', () => {
+    it('Esc closes, Enter steps up, Shift+Enter steps down', () => {
+        expect(searchInputKeyAction({ key: 'Escape', shiftKey: false }, false)).toBe('close');
+        expect(searchInputKeyAction({ key: 'Enter', shiftKey: false }, false)).toBe('prev');
+        expect(searchInputKeyAction({ key: 'Enter', shiftKey: true }, false)).toBe('next');
+        expect(searchInputKeyAction({ key: 'a', shiftKey: false }, false)).toBeNull();
+    });
+    it('IME-guarded Esc/Enter belong to the composition — never close or step', () => {
+        expect(searchInputKeyAction({ key: 'Escape', shiftKey: false }, true)).toBeNull();
+        expect(searchInputKeyAction({ key: 'Enter', shiftKey: false }, true)).toBeNull();
+    });
+});
+
+describe('termSearchSurfaceKey', () => {
+    it('changes with every dependency that rebuilds the xterm instance', () => {
+        const base = { machineId: 'm', tid: 't', inputOwnership: 'own', streamRemount: 0 };
+        const k = termSearchSurfaceKey(base);
+        expect(termSearchSurfaceKey({ ...base })).toBe(k);
+        expect(termSearchSurfaceKey({ ...base, streamRemount: 1 })).not.toBe(k);
+        expect(termSearchSurfaceKey({ ...base, inputOwnership: 'xterm' })).not.toBe(k);
+        expect(termSearchSurfaceKey({ ...base, tid: 'u' })).not.toBe(k);
+        expect(termSearchSurfaceKey({ ...base, machineId: 'n' })).not.toBe(k);
     });
 });

@@ -53,6 +53,7 @@ import { TermInputBar } from './TermInputBar';
 import { TermWebKeyboard } from './TermWebKeyboard';
 import { TermPresetsMenu } from './TermPresetsMenu';
 import { TermSearchBar, useTermSearchController } from './TermSearchBar';
+import { termSearchSurfaceKey } from './termSearch';
 import { presetPasteText } from './termPresetPaste';
 import { onInsertToInput } from '@/app/insertToInput';
 import { storage, useMachine, useSettings, useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
@@ -493,7 +494,7 @@ export function WebTerminalScreen() {
   const bottomBarsRef = useRef<HTMLDivElement | null>(null);
   const screenRef = useRef<HTMLDivElement | null>(null);
   // B-557 find-in-terminal: all logic lives in TermSearchBar.tsx.
-  const termSearch = useTermSearchController({ hostRef, isMac: IS_MAC, coarsePointer: IS_COARSE_POINTER, focusTerminal: () => termRef.current?.focusInput(), resetKey: tid });
+  const termSearch = useTermSearchController({ hostRef, isMac: IS_MAC, coarsePointer: IS_COARSE_POINTER, focusTerminal: () => termRef.current?.focusInput(), resetKey: termSearchSurfaceKey({ machineId, tid, inputOwnership, streamRemount }) });
 
   const runFocusAction = (a: TermFocusAction) => {
     switch (a) {
@@ -2751,7 +2752,7 @@ export function WebTerminalScreen() {
         </div>
         {termSearch.open && (
           <TermSearchBar
-            key={tid}
+            key={termSearchSurfaceKey({ machineId, tid, inputOwnership, streamRemount })}
             getTerm={() => termRef.current?.raw ?? null}
             onClose={termSearch.closeSearch}
             openSignal={termSearch.signal}
