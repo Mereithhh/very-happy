@@ -1,6 +1,6 @@
 # Automation precheck：公开文档同步与 Web 真浏览器验收
 
-> 状态：Final（B-548 收尾，实现 agent 起草；纯文档 + UI 验收，无协议变更）
+> 状态：Final（主 agent 2026-10-12 定稿）
 > 日期：2026-10-12 ｜ 关联 backlog：B-560 ｜ 前身：[Automation precheck](2026-10-automation-precheck.md)（B-548，#489）
 
 ## 背景
