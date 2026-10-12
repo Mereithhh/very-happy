@@ -25,7 +25,7 @@
 | B-558 | **状态文案细化**：用户主动中断显示中性灰而非失败红；长时间无更新在时间位写「12m 无更新」而不下结论 | ux | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 只改 web 文案/tooltip，不加新颜色（accent 只表示 live） |
 | B-557 | **web 终端内搜索（⌘F）**：在终端 scrollback 中查找、上下跳转、高亮；手机有入口 | feat | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 只改 web；与 B-550 回放的历史一起可搜 |
 | B-556 | **agent 自报进度 `set_status`**：新增 MCP 工具让 agent 写一句状态 + 阶段到会话元数据，Board/侧栏直接显示，不全靠 LLM 推断 | feat | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | metadata 可选字段，旧 web 忽略；旧 CLI 无此工具，Board 照旧推断 |
-| B-555 | **订阅额度窗口（5h / 周）与重置倒计时**：daemon 把 SDK `rate_limit_event` 上报到机器/会话状态，web 显示用量与重置时间，>80% 告警 | feat | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 可选字段；旧 CLI 不上报时不显示。需 spec 定字段与来源 |
+| B-555 | **订阅额度窗口（5h / 周）与重置倒计时**：daemon 把 SDK `rate_limit_event` 上报到机器/会话状态，web 显示用量与重置时间，>80% 告警 | feat | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 实现完成，见 PR；spec `specs/2026-10-rate-limit-windows.md`。Claude 取 SDK `rate_limit_info.unifiedWindows`（`@internal`，升级 SDK 需重核），Codex 用 app-server `account/rateLimits/read`；写入 `daemonState.rateLimits`，无 server 改动。Automation 额度跳过未做 |
 | B-554 | **Diff 行内批注，攒成一条带文件/行号的消息发给 agent**：桌面 hover 行号出 +，手机点行出底部面板；草稿保留到发送 | feat | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 只改 web，复用现有发送/排队链路；对照 Orca diff-comments |
 | B-553 | **看板卡片显示最近一轮对话**：你最后一句（1 行）+ agent 最后回复（2 行）；有待回答问题时显示问题摘要 | ux | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 只改 web；不做「完成染绿」 |
 | B-552 | **⌘K 空查询先列「该我处理」的会话**：按看板 lifecycle 排序、行尾状态点 + 多久前；查不到时多一行「以此新建会话」把查询填进首条消息 | ux | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 实现完成，见 PR；spec `specs/2026-10-command-palette-needs-you.md`。只改 web；状态文案拼装抽到 `utils/agentStatusLabel.ts`，侧栏仍内联（后续可收敛） |

@@ -282,6 +282,28 @@ export const ClosedTerminalRecordSchema = z.object({
 })
 
 /**
+ * B-555: subscription rate-limit windows last observed on this machine (spec
+ * 2026-10-rate-limit-windows). Written by the daemon from wrapper reports;
+ * readers parse loosely (web `sync/rateLimits.ts`), so every field beyond
+ * these is ignored and a malformed entry is dropped, never thrown on.
+ */
+export const RateLimitsStateSchema = z.object({
+  v: z.literal(1),
+  updatedAt: z.number(),
+  providers: z.record(z.string(), z.object({
+    observedAt: z.number(),
+    status: z.string().optional(),
+    windows: z.array(z.object({
+      kind: z.string(),
+      usedPercent: z.number(),
+      resetsAt: z.number().nullable(),
+      windowMinutes: z.number().optional(),
+      observedAt: z.number(),
+    })),
+  })),
+})
+
+/**
  * Daemon state - dynamic runtime information (frequently updated)
  */
 export const DaemonStateSchema = z.object({
@@ -396,6 +418,8 @@ export const DaemonStateSchema = z.object({
    * forward), so a downgraded daemon carries this field along unchanged.
    */
   claudeAuth: ClaudeAuthStateSchema.optional(),
+  /** B-555: see RateLimitsStateSchema. Old webs ignore it; old daemons carry it forward unchanged. */
+  rateLimits: RateLimitsStateSchema.optional(),
 })
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>
