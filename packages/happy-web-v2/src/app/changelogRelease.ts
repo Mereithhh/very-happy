@@ -16,6 +16,23 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-13-web-workbench',
+    date: '2026-10-13',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct13a.title',
+    summaryKey: 'changelog.releases.oct13a.summary',
+    itemKeys: ['changelog.releases.oct13a.palette', 'changelog.releases.oct13a.board', 'changelog.releases.oct13a.diff', 'changelog.releases.oct13a.termSearch', 'changelog.releases.oct13a.status', 'changelog.releases.oct13a.badge', 'changelog.releases.oct13a.subagents'],
+  },
+  {
+    id: '2026-10-13-agent-files-and-automations',
+    cliVersion: '0.2.166',
+    date: '2026-10-13',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct13.title',
+    summaryKey: 'changelog.releases.oct13.summary',
+    itemKeys: ['changelog.releases.oct13.download', 'changelog.releases.oct13.search', 'changelog.releases.oct13.precheck', 'changelog.releases.oct13.limits', 'changelog.releases.oct13.hooks', 'changelog.releases.oct13.scrollback', 'changelog.releases.oct13.progress', 'changelog.releases.oct13.cli'],
+  },
+  {
     id: '2026-10-11-restart-keeps-edits',
     cliVersion: '0.2.165',
     date: '2026-10-11',
