@@ -3351,6 +3351,7 @@ export const en = {
         lastRoundFailed: 'last turn failed',
         lastRoundFailedHint: 'The last turn ended with an error. Open the session to see why.',
         noUpdateFor: ({ duration }: { duration: string }) => `no update for ${duration}`,
+        noUpdate: 'no update',
         // B-556: report_progress phase labels + progress line tooltip
         phasePlanning: 'planning',
         phaseImplementing: 'implementing',

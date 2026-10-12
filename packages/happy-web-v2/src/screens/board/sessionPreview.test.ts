@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '@/sync/typesMessage';
-import { pendingQuestionSummary, plainPreviewText, sessionPreview } from './sessionPreview';
+import { earliestPendingRequest, pendingQuestionSummary, plainPreviewText, sessionPreview } from './sessionPreview';
 
 let n = 0;
 const user = (text: string, extra: Partial<Extract<Message, { kind: 'user-text' }>> = {}): Message =>
@@ -68,7 +68,21 @@ describe('plainPreviewText', () => {
 
   it('keeps snake_case and arithmetic intact', () => {
     expect(plainPreviewText('set my_var_name to 2*3*4')).toBe('set my_var_name to 2*3*4');
-    expect(plainPreviewText('call mcp__happy__set_status with __bold__')).toBe('call mcp__happy__set_status with bold');
+    expect(plainPreviewText('call mcp__happy__report_progress, __init__ and __bold text__')).toBe('call mcp__happy__report_progress, __init__ and bold text');
+  });
+
+  it('inline code is literal: no markdown rule touches it', () => {
+    expect(plainPreviewText('glob `*.ts` and `*.js`, call `__init__`, type `Array<string>`'))
+      .toBe('glob *.ts and *.js, call __init__, type Array<string>');
+    // generic angle brackets in prose are text; only HTML-ish tags are dropped
+    expect(plainPreviewText('returns Array<string><br>done')).toBe('returns Array<string> done');
+  });
+
+  it('caps by code points, never leaving half a surrogate pair', () => {
+    const capped = plainPreviewText('😀'.repeat(20), 10);
+    expect(Array.from(capped)).toHaveLength(10);
+    expect(capped).toBe('😀'.repeat(9) + '…');
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(capped)).toBe(false);
   });
 });
 
@@ -96,5 +110,14 @@ describe('pendingQuestionSummary (B-553)', () => {
   it('nothing pending → undefined', () => {
     expect(pendingQuestionSummary({})).toBeUndefined();
     expect(pendingQuestionSummary(null)).toBeUndefined();
+  });
+});
+
+describe('earliestPendingRequest (shared with attentionSince)', () => {
+  it('missing createdAt counts as the fallback; ties keep the first', () => {
+    const reqs = { a: { tool: 'A', createdAt: null }, b: { tool: 'B', createdAt: 50 } };
+    expect(earliestPendingRequest(reqs, 10)).toEqual({ request: reqs.a, at: 10 });
+    expect(earliestPendingRequest(reqs)?.request.tool).toBe('B');
+    expect(earliestPendingRequest({})).toBeUndefined();
   });
 });

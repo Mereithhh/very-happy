@@ -61,6 +61,9 @@ export function BoardCard({
   const outcome = item.waitReason === 'idle' ? preview?.outcome : undefined;
   // B-558: an expired lease states the fact ("no update for 12m"), not a verdict.
   const noUpdate = item.status === 'unknown' && !item.legacyStatus;
+  const noUpdateLabel = item.noUpdateSince !== undefined
+    ? t('board.noUpdateFor', { duration: fmtDuration(now - item.noUpdateSince) })
+    : t('board.noUpdate');
 
   // Move to the top of the sidebar's manual order — board item keys are the
   // SAME keys the sidebar uses (session id / `t:<terminalId>`), so this just
@@ -248,7 +251,7 @@ export function BoardCard({
             {item.status === 'attention' && item.attentionSince != null
               ? t('board.waitingFor', { duration: fmtDuration(now - item.attentionSince) })
               : noUpdate
-                ? t('board.noUpdateFor', { duration: fmtDuration(now - item.lastActivityAt) })
+                ? noUpdateLabel
                 : `${fmtDuration(now - item.lastActivityAt)} ${t('board.agoSuffix')}`}
           </span>
         </div>

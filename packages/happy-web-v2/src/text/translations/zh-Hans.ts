@@ -174,6 +174,7 @@ export const zhHans: TranslationStructure = {
         lastRoundFailed: '上一轮出错',
         lastRoundFailedHint: '上一轮以错误结束，打开会话查看原因。',
         noUpdateFor: ({ duration }: { duration: string }) => `${duration} 无更新`,
+        noUpdate: '无更新',
         phasePlanning: '规划',
         phaseImplementing: '实现',
         phaseTesting: '测试',

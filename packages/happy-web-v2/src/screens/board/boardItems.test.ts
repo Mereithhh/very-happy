@@ -190,6 +190,24 @@ describe('chat session mapping', () => {
   });
 });
 
+describe('B-558 noUpdateSince', () => {
+  it('unknown session: max(this tab last heard, updatedAt); never heard → no duration', () => {
+    const s = mkSession({ id: 's1', updatedAt: NOW - 600_000 });
+    const [heard] = build({ sessions: [s], sessionFresh: { s1: false }, lastHeardAt: { s1: NOW - 120_000 } });
+    expect(heard).toMatchObject({ status: 'unknown', noUpdateSince: NOW - 120_000 });
+    const [older] = build({ sessions: [s], sessionFresh: { s1: false }, lastHeardAt: { s1: NOW - 900_000 } });
+    expect(older.noUpdateSince).toBe(NOW - 600_000);
+    const [never] = build({ sessions: [s], sessionFresh: { s1: false } });
+    expect(never.status).toBe('unknown');
+    expect(never.noUpdateSince).toBeUndefined();
+  });
+  it('only unknown items carry it (a fresh idle session does not)', () => {
+    const [idle] = build({ sessions: [mkSession({ id: 's1' })], lastHeardAt: { s1: NOW - 1_000 } });
+    expect(idle.status).toBe('idle');
+    expect(idle.noUpdateSince).toBeUndefined();
+  });
+});
+
 describe('B-556 board progress on session items', () => {
   it('carries board progress, its time and phase raw (the card judges staleness)', () => {
     const base = mkSession({ id: 'x' }).metadata!;

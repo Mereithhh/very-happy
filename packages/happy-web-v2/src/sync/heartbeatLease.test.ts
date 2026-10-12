@@ -5,6 +5,7 @@ import {
     IDLE_HEARTBEAT_LEASE_TTL_MS,
     backgroundTaskCount,
     forgetHeartbeat,
+    heartbeatLastHeardAt,
     isHeartbeatFresh,
     leaseVerdict,
     recordBackgroundTasks,
@@ -123,5 +124,20 @@ describe('background task count on the heartbeat (B-507)', () => {
         // Verified with scripts/dev/mutation-check.mjs (see PR).
         const sync = readFileSync(new URL('./sync.ts', import.meta.url), 'utf8');
         expect(sync).toContain("recordBackgroundTasks(updateData.id, updateData.active ? updateData.backgroundTasks : undefined);\n            recordHeartbeat(updateData.id, updateData.thinking === true);");
+    });
+});
+
+describe('B-558 heartbeatLastHeardAt (display only)', () => {
+    it('survives lease expiry, ignores the suspended clock, and never changes freshness', () => {
+        const t0 = 1_000_000;
+        expect(heartbeatLastHeardAt('s')).toBeUndefined();
+        recordHeartbeat('s', true, t0);
+        expect(isHeartbeatFresh('s', t0 + HEARTBEAT_LEASE_TTL_MS + 1)).toBe(false);
+        expect(heartbeatLastHeardAt('s')).toBe(t0);
+        setHeartbeatSocketStatusReader(() => 'disconnected');
+        isHeartbeatFresh('s', t0 + 10 * HEARTBEAT_LEASE_TTL_MS);
+        expect(heartbeatLastHeardAt('s')).toBe(t0);
+        forgetHeartbeat('s');
+        expect(heartbeatLastHeardAt('s')).toBeUndefined();
     });
 });

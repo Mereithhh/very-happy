@@ -31,7 +31,7 @@ import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
 import { compareTaskOrder, type BoardTask } from '@/sync/boardTaskOps';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { priorityLevel } from '@/utils/tags';
-import { pendingQuestionSummary } from './sessionPreview';
+import { earliestPendingRequest, pendingQuestionSummary } from './sessionPreview';
 
 /** compact duration — mono console style, deliberately locale-neutral */
 export function fmtDuration(ms: number): string {
@@ -130,6 +130,11 @@ export interface BoardItem {
    *  permission request / AskUserQuestion (set iff a real request drives
    *  the attention status). */
   question?: string;
+  /** B-558: set only on non-legacy `unknown` items — when the last update we
+   *  know of arrived ("no update for N"). Sessions: max(this tab's last
+   *  heartbeat, updatedAt), absent if this tab never heard one (then the card
+   *  says "no update" without a duration). Terminals: their activity time. */
+  noUpdateSince?: number;
   /** B-553: sessions only — `metadata.flavor` (labels the agent's reply). */
   agentKind?: string;
   /** when `progress` was produced (`board.analyzedAt`); the card judges
@@ -161,6 +166,8 @@ export interface BoardInput {
   /** B-465: realtime `terminal-activity` overlay (terminalId → ms). Only the
    *  legacy-daemon estimate reads it; fresh observations never need it. */
   terminalActivity?: Record<string, number>;
+  /** B-558: sessionId → when this tab last heard a heartbeat (display only). */
+  lastHeardAt?: Record<string, number>;
 }
 
 /** ~/-relative path (standalone twin of sessionUtils.formatPathRelativeToHome,
@@ -181,17 +188,8 @@ function sessionHasPendingRequests(s: Session): boolean {
 
 /** earliest pending request: drives attentionSince + the tool-name detail */
 function earliestRequest(s: Session, fallback: number): { at: number; tool?: string } {
-  const requests = s.agentState?.requests ?? {};
-  let at = Number.POSITIVE_INFINITY;
-  let tool: string | undefined;
-  for (const req of Object.values(requests)) {
-    const t = req.createdAt ?? fallback;
-    if (t < at) {
-      at = t;
-      tool = req.tool;
-    }
-  }
-  return Number.isFinite(at) ? { at, tool } : { at: fallback };
+  const earliest = earliestPendingRequest(s.agentState?.requests, fallback);
+  return earliest ? { at: earliest.at, tool: earliest.request.tool } : { at: fallback };
 }
 
 function machineName(machines: Machine[], machineId: string | undefined): string {
@@ -299,6 +297,10 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     const level = priorityLevel(s.metadata?.tags);
     if (level !== null) { item.priority = true; item.priorityLevel = level; }
     if (cls.backgroundTasks) item.backgroundTasks = cls.backgroundTasks;
+    if (cls.status === 'unknown') {
+      const heard = input.lastHeardAt?.[s.id];
+      if (heard !== undefined) item.noUpdateSince = Math.max(heard, s.updatedAt || 0);
+    }
     const board = s.metadata?.board;
     if (board?.progress) {
       item.progress = board.progress;
@@ -374,6 +376,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     const termLevel = priorityLevel(tm.tags);
     if (termLevel !== null) { termItem.priority = true; termItem.priorityLevel = termLevel; }
     if (legacy && online) termItem.legacyStatus = true;
+    else if (status === 'unknown') termItem.noUpdateSince = lastActivityAt;
     const lc = lifecycleOf(termItem);
     termItem.lifecycle = lc.lifecycle;
     if (lc.waitReason) termItem.waitReason = lc.waitReason;
