@@ -29,6 +29,8 @@ import { isMachineOnline, machineLabel, pickDefaultMachineId } from '@/utils/mac
 import { machineImportClaudeSession, machineImportCodexSession, machineListClaudeHistory, machineListCodexHistory, sessionUpdateTitle } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { claudeHistorySupported, codexHistorySupported } from '@/sync/closedTerminals';
+import { historySearchSupported } from './historySearch';
+import { HistorySearchPanel } from './HistorySearchPanel';
 import { resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import { resolveAgentAvailability } from '@/utils/agentAvailability';
 import { recordRecentMachinePath } from '@/app/newChat';
@@ -55,16 +57,21 @@ import {
 import './newsession.css';
 
 export type ImportHistoryAgent = HistoryAgent;
+/** B-549: browse the most recent conversations, or search their content. */
+export type ImportHistoryMode = 'recent' | 'search';
+const MODES: readonly ImportHistoryMode[] = ['recent', 'search'];
 
 const AGENTS: readonly HistoryAgent[] = ['claude', 'codex'];
 
-export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = 'claude' }: {
+export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = 'claude', initialMode = 'recent' }: {
   onClose: () => void;
   /** Preselect this machine (the machine page opens the dialog for its own
    *  machine; without this the picker would default to the newest one). */
   initialMachineId?: string;
   /** Which source the dialog opens on; the user can switch inside. */
   initialAgent?: HistoryAgent;
+  /** B-549: open straight into full-text search (⌘K entry). */
+  initialMode?: ImportHistoryMode;
 }) {
   const navigate = useNavigate();
   const toast = useToast();
@@ -80,6 +87,7 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
   const reviewFirst = useLocalSetting('newSessionReviewFirst');
 
   const [agent, setAgent] = useState<HistoryAgent>(initialAgent);
+  const [mode, setMode] = useState<ImportHistoryMode>(initialMode);
   const [machineId, setMachineId] = useState(() => pickDefaultMachineId(online.map((m) => m.id), initialMachineId));
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
@@ -106,6 +114,9 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
   // not continue an import. Say so instead of failing at spawn.
   const codexMissing = agent === 'codex' && !!machine && !resolveAgentAvailability((machine as any).metadata, 'codex').available;
   const tracked = useMemo(() => trackedHistoryIds(agent, Object.values(sessionsById)), [agent, sessionsById]);
+  const allSessions = useMemo(() => Object.values(sessionsById), [sessionsById]);
+  // B-549: capability of THIS daemon run; an old CLI gets an upgrade hint.
+  const searchSupported = !!machine && historySearchSupported(daemonState);
 
   useEffect(() => {
     setEntries([]);
@@ -114,7 +125,7 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
     setSelected([]);
     setRowStates(new Map());
     setQuery('');
-    if (!machineId || !supported) return;
+    if (mode !== 'recent' || !machineId || !supported) return;
     let cancelled = false;
     setLoading(true);
     const request = agent === 'claude'
@@ -132,7 +143,7 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
     // `tracked` is deliberately not a dependency: it changes the moment an
     // import lands and would refetch the whole list mid-run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agent, machineId, supported]);
+  }, [agent, machineId, supported, mode]);
 
   const visible = useMemo(() => filterImportableHistory(entries, tracked, query), [entries, tracked, query]);
 
@@ -203,6 +214,23 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
     return res.sessionId;
   }
 
+  /** B-549: one search hit's "Import" — same flow as a one-row batch, so the
+   *  settle effect below reports it and jumps to the new chat. */
+  async function runSingle(entry: HistoryEntry) {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    setRunning(true);
+    setRowStates(new Map([[entry.id, { kind: 'running' } as ImportRowState]]));
+    try {
+      await importOne(entry);
+    } catch (e: any) {
+      setRowState(entry.id, { kind: 'failed', message: e?.message });
+    } finally {
+      runningRef.current = false;
+      setRunning(false);
+    }
+  }
+
   async function runImport() {
     if (runningRef.current) return;
     const batch = orderSelectionForImport(selected, visible);
@@ -269,13 +297,30 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
     <div className="ns-backdrop" onClick={running ? undefined : onClose}>
       <div className="ns-card ns-card--wide" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="eyebrow">{t('importClaudeHistory.eyebrow')}</div>
-        <div className="ns-title">{copy.title}</div>
-        <div className="ns-hint" style={{ marginTop: 0 }}>{copy.intro}</div>
+        <div className="ns-title">{mode === 'search' ? t('historySearch.title') : copy.title}</div>
+        {mode === 'recent' && <div className="ns-hint" style={{ marginTop: 0 }}>{copy.intro}</div>}
 
         {online.length === 0 ? (
           <NoMachinesNotice onClose={onClose} />
         ) : (
           <>
+            <label className="ns-label">{t('historySearch.modeLabel')}</label>
+            <div className="ns-agents" role="radiogroup" aria-label={t('historySearch.modeLabel')}>
+              {MODES.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === m}
+                  className={`ns-agent${mode === m ? ' is-on' : ''}`}
+                  disabled={running}
+                  onClick={() => setMode(m)}
+                >
+                  {m === 'recent' ? t('historySearch.modeRecent') : t('historySearch.modeSearch')}
+                </button>
+              ))}
+            </div>
+
             <label className="ns-label">{t('importClaudeHistory.agentLabel')}</label>
             <div className="ns-agents" role="radiogroup" aria-label={t('importClaudeHistory.agentLabel')}>
               {AGENTS.map((a) => (
@@ -304,7 +349,27 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
               </>
             )}
 
-            {!supported ? (
+            {mode === 'search' ? (
+              !searchSupported ? (
+                <div className="ns-hint">{t('historySearch.needsCli')}</div>
+              ) : (
+                <>
+                  {codexMissing && <div className="ns-hint">{t('importClaudeHistory.codexNotInstalled')}</div>}
+                  <HistorySearchPanel
+                    key={machineId}
+                    machineId={machineId}
+                    agent={agent}
+                    homeDir={homeDir}
+                    sessions={allSessions}
+                    rowStates={rowStates}
+                    busy={running}
+                    importBlocked={codexMissing}
+                    onImport={(entry) => void runSingle(entry)}
+                    onOpen={() => onClose()}
+                  />
+                </>
+              )
+            ) : !supported ? (
               <div className="ns-hint">{copy.needsCli}</div>
             ) : loadError !== null ? (
               <div className="ns-hint">{copy.loadFailed}{loadError ? ` · ${loadError}` : ''}</div>
@@ -392,14 +457,16 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
             </span>
           )}
           <Button variant="ghost" disabled={running} onClick={onClose}>{t('common.cancel')}</Button>
-          <Button
-            variant="primary"
-            loading={running}
-            disabled={running || selected.length === 0 || codexMissing}
-            onClick={() => void runImport()}
-          >
-            {t('importClaudeHistory.importAction', { count: selected.length })}
-          </Button>
+          {mode === 'recent' && (
+            <Button
+              variant="primary"
+              loading={running}
+              disabled={running || selected.length === 0 || codexMissing}
+              onClick={() => void runImport()}
+            >
+              {t('importClaudeHistory.importAction', { count: selected.length })}
+            </Button>
+          )}
         </div>
       </div>
     </div>

@@ -41,6 +41,7 @@ import {
 } from '@/claude/utils/claudeSessionFork';
 import { CodexAppServerClient } from '@/codex/codexAppServerClient';
 import { getCodexSessionIndexPath, getCodexSessionsRoot, listCodexSessionHistory } from '@/codex/utils/codexSessionHistory';
+import { createHistorySearchService, type HistorySearchService } from '@/historySearch';
 import { discoverAndClaimRelay, type RelaySwitchTracker } from './relaySelection';
 import { ReleaseDrainNoticeSchema, type RelayAssignment, type ReleaseDrainNotice } from '@slopus/happy-wire';
 import {
@@ -190,6 +191,8 @@ export class ApiMachineClient {
     private keepAliveInterval: NodeJS.Timeout | null = null;
     private lastKnownCLIAvailability: CLIAvailability | null = null;
     private lastKnownResumeSupport: ResumeSupport | null = null;
+    /** B-549: created on the first `history-search` call. */
+    private historySearch: HistorySearchService | null = null;
     /** Wall-clock of the last CLI availability probe. Initialised as "already
      *  stale" so the FIRST keep-alive tick always probes and populates the
      *  machine metadata that a connecting/reconnecting web client reads. */
@@ -856,6 +859,18 @@ export class ApiMachineClient {
             return { type: 'success', ...result };
         });
 
+        // B-549: full-text search over this machine's Claude Code / Codex
+        // history. The index is built lazily on the first search, kept under
+        // HAPPY_HOME and refreshed incrementally; every call answers at once
+        // (with progress while a pass runs) so a cold build never nears the
+        // 30 s RPC limit. Content stays on this machine; only the requested
+        // snippets travel back through this (machine-key encrypted) RPC.
+        // Gated web-side by `daemonState.historySearch`.
+        this.rpcHandlerManager.registerHandler('history-search', async (params: any) => {
+            this.historySearch ??= createHistorySearchService();
+            return this.historySearch.handle(params);
+        });
+
         // B-464: import a Codex thread. Unlike `claude-import-session` the copy
         // is made by the spawned wrapper (`thread/fork` needs a live app-server,
         // and a fork made here would have no owner to discard when the spawn is
@@ -1309,6 +1324,8 @@ export class ApiMachineClient {
                     claudeHistory: { rpcAvailable: true, detectedAt: now },
                     // B-464 capability flag: `codex-list-history` / `codex-import-session`.
                     codexHistory: { rpcAvailable: true, detectedAt: now },
+                    // B-549 capability flag: `history-search` (same restamp discipline).
+                    historySearch: { rpcAvailable: true, detectedAt: now },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.

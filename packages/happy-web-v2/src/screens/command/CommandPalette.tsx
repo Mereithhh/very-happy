@@ -90,6 +90,8 @@ export function CommandPalette() {
   const [showNewTerminal, setShowNewTerminal] = useState(false);
   const [showAttachTmux, setShowAttachTmux] = useState(false);
   const [showImport, setShowImport] = useState<ImportHistoryAgent | null>(null);
+  // B-549: the same dialog, opened straight into full-text search.
+  const [showHistorySearch, setShowHistorySearch] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -227,6 +229,15 @@ export function CommandPalette() {
       icon: <History size={16} />,
       haystack: `import codex history thread conversation desktop resume ${(t('commandPalette.actionImportCodex') as string).toLowerCase()}`,
       run: () => setShowImport('codex'),
+    });
+    out.push({
+      // B-549: search what was said in a machine's Claude Code / Codex history.
+      key: 'action:search-history',
+      group: 'actions',
+      title: t('commandPalette.actionSearchHistory'),
+      icon: <History size={16} />,
+      haystack: `search history full text conversation transcript find content claude codex ${(t('commandPalette.actionSearchHistory') as string).toLowerCase()}`,
+      run: () => setShowHistorySearch(true),
     });
     out.push({
       // B-300: the "+" menu's last entry, mirrored here — ⌘K must not be the
@@ -558,6 +569,7 @@ export function CommandPalette() {
       {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
       {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
+      {showHistorySearch && <ImportHistoryModal initialMode="search" onClose={() => setShowHistorySearch(false)} />}
     </>
   );
 }
