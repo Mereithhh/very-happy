@@ -20,6 +20,15 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-560 | **B-548 收尾：公开文档页 `/docs/automations` 同步 precheck，Web 表单/详情/运行列表 ×N 真浏览器验收（1280/390 × 明暗）** | debt | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | B-548 实现时未做的两项 |
+| B-559 | **PWA 应用图标未读角标 + 通知「标为未读」**：未读数同步 `navigator.setAppBadge`；inbox 条目可标为未读（与跨设备 seen 取 AND） | ux | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 只改 web；不支持 Badging API 的浏览器静默跳过 |
+| B-558 | **状态文案细化**：用户主动中断显示中性灰而非失败红；长时间无更新在时间位写「12m 无更新」而不下结论 | ux | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 只改 web 文案/tooltip，不加新颜色（accent 只表示 live） |
+| B-557 | **web 终端内搜索（⌘F）**：在终端 scrollback 中查找、上下跳转、高亮；手机有入口 | feat | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 只改 web；与 B-550 回放的历史一起可搜 |
+| B-556 | **agent 自报进度 `set_status`**：新增 MCP 工具让 agent 写一句状态 + 阶段到会话元数据，Board/侧栏直接显示，不全靠 LLM 推断 | feat | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | metadata 可选字段，旧 web 忽略；旧 CLI 无此工具，Board 照旧推断 |
+| B-555 | **订阅额度窗口（5h / 周）与重置倒计时**：daemon 把 SDK `rate_limit_event` 上报到机器/会话状态，web 显示用量与重置时间，>80% 告警 | feat | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 可选字段；旧 CLI 不上报时不显示。需 spec 定字段与来源 |
+| B-554 | **Diff 行内批注，攒成一条带文件/行号的消息发给 agent**：桌面 hover 行号出 +，手机点行出底部面板；草稿保留到发送 | feat | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 只改 web，复用现有发送/排队链路；对照 Orca diff-comments |
+| B-553 | **看板卡片显示最近一轮对话**：你最后一句（1 行）+ agent 最后回复（2 行）；有待回答问题时显示问题摘要 | ux | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 只改 web；不做「完成染绿」 |
+| B-552 | **⌘K 空查询先列「该我处理」的会话**：按看板 lifecycle 排序、行尾状态点 + 多久前；查不到时多一行「以此新建会话」把查询填进首条消息 | ux | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 只改 web（CommandPalette）；对照 Orca cmd-j |
 | B-551 | **Claude transcript 读取优先用 hook 给出的 `transcript_path`，并能识别文件被改写**：`sessionScanner` 目前按目录扫描 JSONL；对照 Orca `native-chat/transcript-incremental-reader.ts`（字节偏移增量读 + boundary 检测重写） | debt | Owner 2026-10-12（Orca 对照调研：「建议都很好，直接开工，别人不更新 CLI 也要兼容」） | doing | 实现中。兼容：hook 不带路径或旧 Claude Code 时回退现有目录扫描；纯 CLI 内部，不改 wire |
 | B-550 | **web 终端重启后保留 scrollback**：daemon 按上限把 tmux `capture-pane` 落盘，重启/自动恢复后回放；现状 `snapshotStore` 内存态 TTL 90s，重启即丢（terminal-tombstones spec 留的原 L3） | feat | Owner 2026-10-12（Orca 对照调研：「建议都很好，直接开工，别人不更新 CLI 也要兼容」） | doing | 实现完成，见 PR；spec `specs/2026-10-terminal-scrollback-persistence.md`。默认开启（每终端 ≤512KB、0600、7 天），`~/.happy/settings.json` `terminalScrollbackPersist:false` 关闭并删目录；旧 web 当普通回看，旧 CLI 不变 |
 | B-549 | **会话全文搜索（daemon 本地索引）**：daemon 对本机 Claude/Codex 历史建全文索引（纯 JS，无新依赖），web 经 machine RPC 查询并可 resume；对照 Orca aiVault | feat | Owner 2026-10-12（Orca 对照调研：「建议都很好，直接开工，别人不更新 CLI 也要兼容」） | doing | 实现完成，PR #488；spec `specs/2026-10-session-history-search.md`。旧 daemon 时 web 提示升级，不调用新 RPC |
