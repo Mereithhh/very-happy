@@ -484,6 +484,12 @@ export async function runCodex(opts: {
                         gracePeriodMs: 3000,
                         forceRestartOnTimeout: true,
                     });
+                    // B-558: same lifecycle line as Claude's stop, so the web can tell
+                    // "stopped by you" from a failure. Only for a turn this user stop
+                    // actually ended; it is a plain event, the turn-end is unchanged.
+                    if (abortResult.hadActiveTurn && abortResult.aborted) {
+                        session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
+                    }
                     if (abortResult.forcedRestart) {
                         logger.warn('[Codex] Forced app-server restart after interrupt timeout');
                         session.sendSessionEvent({
