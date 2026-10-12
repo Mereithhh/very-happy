@@ -20,6 +20,8 @@ Pick the trigger, then the action. \`spawn\` takes an agent (claude / codex / pi
 
 Use \`sticky: { key }\` on a spawn action when repeated events about the same subject should continue one conversation: the key is a template (for example \`{{payload.conversationId}}\`). A run whose rendered key matches a live session sends the prompt into that session; otherwise it spawns a new one and remembers it. A dead or archived session is replaced on the next run.
 
+Add a \`precheck\` when the action should only run if there is something to do (for example "new messages since the last run"): exactly one of \`command\` (argv) or \`shell\` (one command line, not template-rendered — read the payload from \`$VH_AUTOMATION_PAYLOAD\`), optional \`cwd\` (defaults to the action directory), \`timeoutMs\` (default 60s, max 10m) and \`includeOutput\` (append its stdout to the spawn/send prompt as context). Exit 0 runs the action; any other exit records the run as skipped (\`precheck_failed\`), a timeout or launch error as \`precheck_timeout\` / \`precheck_error\` with attention. Consecutive skips for the same reason fold into one run with an \`occurrenceCount\`. A machine whose CLI is too old to run prechecks never executes the action; its runs are skipped as \`precheck_unsupported_cli\`.
+
 \`concurrency: skip\` (default) records a run as skipped while the previous one is still running; \`queue\` waits. \`maxRuntimeMs\` bounds a run (default 6h; scripts 30m).
 
 ## Event triggers

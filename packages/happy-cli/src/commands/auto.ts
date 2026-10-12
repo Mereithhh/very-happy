@@ -18,11 +18,12 @@ import chalk from 'chalk';
 import { homedir } from 'node:os';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { AUTOMATION_NAME_PATTERN, isAutomationRunTerminal, type Automation, type AutomationAction, type AutomationCreate, type AutomationReport, type AutomationRun, type AutomationUpdate } from '@slopus/happy-wire';
+import { AUTOMATION_NAME_PATTERN, AUTOMATION_PRECHECK_MAX_TIMEOUT_MS, AutomationPrecheckSchema, isAutomationRunTerminal, type Automation, type AutomationAction, type AutomationCreate, type AutomationPrecheck, type AutomationReport, type AutomationRun, type AutomationUpdate } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
 import { authenticatedAutomationsClient, automationRunIdFromEnv, isAutomationsUnavailable, AUTOMATIONS_UNAVAILABLE_MESSAGE, type AutomationsClient } from '@/automations/client';
 import { describeAction, describeTrigger, parseDuration, triggerFromFlags } from '@/automations/template';
 import { AUTOMATION_SKILL } from '@/automations/resources';
+import { createAutomationChecked, updateAutomationChecked } from '@/automations/precheckCompat';
 import { installAutomationSkill } from '@/automations/install';
 import { sessionWebUrl } from './sessionMessage';
 import { parseEnvAssignment, SPAWN_AGENTS } from './spawn';
@@ -32,8 +33,8 @@ import { delay } from '@/utils/time';
 export const AUTO_ACTIONS = ['list', 'show', 'create', 'edit', 'pause', 'resume', 'rm', 'run', 'fire', 'runs', 'cancel', 'ack', 'report', 'skill', 'install', 'uninstall', 'help'] as const;
 export type AutoAction = typeof AUTO_ACTIONS[number];
 
-const VALUE_FLAGS = ['--name', '--rename', '--description', '--machine', '--cron', '--tz', '--every', '--at', '--spawn-dir', '--prompt', '--prompt-file', '--agent', '--model', '--permission-mode', '--sticky-key', '--send-session', '--cwd', '--env', '--timeout', '--concurrency', '--max-runtime', '--payload', '--payload-json', '--payload-file', '--dedupe-key', '--status', '--limit', '--run', '--summary', '--error', '--attention', '--host', '--home'] as const;
-const BOOL_FLAGS = ['--manual', '--script', '--worktree', '--paused', '--wait', '--json', '--apply', '--all-machines', '--all', '--attention', '--help', '-h'] as const;
+const VALUE_FLAGS = ['--name', '--rename', '--description', '--machine', '--cron', '--tz', '--every', '--at', '--spawn-dir', '--prompt', '--prompt-file', '--agent', '--model', '--permission-mode', '--sticky-key', '--send-session', '--cwd', '--env', '--timeout', '--concurrency', '--max-runtime', '--payload', '--payload-json', '--payload-file', '--dedupe-key', '--status', '--limit', '--run', '--summary', '--error', '--attention', '--host', '--home', '--precheck-shell', '--precheck-argv', '--precheck-cwd', '--precheck-timeout'] as const;
+const BOOL_FLAGS = ['--manual', '--script', '--worktree', '--paused', '--wait', '--json', '--apply', '--all-machines', '--all', '--attention', '--precheck-output', '--no-precheck', '--help', '-h'] as const;
 type ValueFlag = typeof VALUE_FLAGS[number];
 type BoolFlag = typeof BOOL_FLAGS[number];
 
@@ -138,6 +139,56 @@ export function actionFromCommand(command: AutoCommand, current?: AutomationActi
     return { kind: 'spawn', agent: flags['--agent'] ?? 'claude', directory: resolve(flags['--spawn-dir']!), prompt, ...spawnDetails(command) };
 }
 
+/**
+ * B-548 precheck from flags: `undefined` = no precheck flag (edit keeps the
+ * current one), `null` = `--no-precheck`. A new kind (`--precheck-shell` /
+ * `--precheck-argv '<json array>'`) replaces the whole precheck; cwd / timeout
+ * / output alone adjust the current one on edit.
+ */
+export function precheckFromCommand(command: AutoCommand, current?: AutomationPrecheck | null): AutomationPrecheck | null | undefined {
+    const { flags, bools } = command;
+    const shell = flags['--precheck-shell'];
+    const argvJson = flags['--precheck-argv'];
+    const modifiers = ['--precheck-cwd', '--precheck-timeout'].filter((flag) => flags[flag as ValueFlag] !== undefined).concat(bools.has('--precheck-output') ? ['--precheck-output'] : []);
+    if (bools.has('--no-precheck')) {
+        if (shell !== undefined || argvJson !== undefined || modifiers.length) throw new Error('--no-precheck cannot be combined with other --precheck-* options');
+        return null;
+    }
+    if (shell === undefined && argvJson === undefined && modifiers.length === 0) return undefined;
+    if (shell !== undefined && argvJson !== undefined) throw new Error('Use only one of --precheck-shell and --precheck-argv');
+    let base: AutomationPrecheck;
+    if (shell !== undefined) base = { shell };
+    else if (argvJson !== undefined) {
+        let argv: unknown;
+        try { argv = JSON.parse(argvJson); } catch { throw new Error('--precheck-argv must be a JSON array of strings, e.g. \'["./has-new.sh","--since","5m"]\''); }
+        if (!Array.isArray(argv) || argv.length === 0 || !argv.every((part) => typeof part === 'string' && part.length > 0)) throw new Error('--precheck-argv must be a non-empty JSON array of non-empty strings');
+        base = { command: argv as string[] };
+    } else {
+        if (!current) throw new Error(`${modifiers.join(', ')} need a precheck: give --precheck-shell <line> or --precheck-argv <json>`);
+        base = current;
+    }
+    let timeoutMs: number | undefined;
+    if (flags['--precheck-timeout'] !== undefined) {
+        timeoutMs = parseDuration(flags['--precheck-timeout']);
+        if (timeoutMs < 1000 || timeoutMs > AUTOMATION_PRECHECK_MAX_TIMEOUT_MS) throw new Error(`--precheck-timeout must be between 1s and ${AUTOMATION_PRECHECK_MAX_TIMEOUT_MS / 60_000}m`);
+    }
+    const precheck: AutomationPrecheck = {
+        ...base,
+        ...(flags['--precheck-cwd'] !== undefined ? { cwd: flags['--precheck-cwd'] } : {}),
+        ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+        ...(bools.has('--precheck-output') ? { includeOutput: true } : {}),
+    };
+    const parsed = AutomationPrecheckSchema.safeParse(precheck);
+    if (!parsed.success) throw new Error(`Invalid precheck: ${parsed.error.issues[0]?.message ?? 'check the --precheck-* options'}`);
+    return parsed.data;
+}
+
+export function describePrecheck(precheck: AutomationPrecheck): string {
+    const what = precheck.shell !== undefined ? `sh: ${precheck.shell}` : `argv: ${JSON.stringify(precheck.command)}`;
+    const extras = [precheck.cwd ? `cwd ${precheck.cwd}` : null, precheck.timeoutMs ? `timeout ${Math.round(precheck.timeoutMs / 1000)}s` : null, precheck.includeOutput ? 'output → prompt' : null].filter(Boolean);
+    return extras.length ? `${what}  (${extras.join(', ')})` : what;
+}
+
 function spawnDetails(command: AutoCommand): Partial<Extract<AutomationAction, { kind: 'spawn' }>> {
     const { flags, bools } = command;
     if (flags['--agent'] !== undefined && !(SPAWN_AGENTS as readonly string[]).includes(flags['--agent'])) throw new Error(`--agent must be one of: ${SPAWN_AGENTS.join(', ')}`);
@@ -180,6 +231,14 @@ ${chalk.bold('Action (one):')}
   --send-session <id> --prompt <text>|--prompt-file <file>
   --script -- <argv…> [--cwd <dir>] [--env K=V]... [--timeout <dur>]
 
+${chalk.bold('Precheck (optional, runs before the action; exit 0 runs it, anything else records a skip):')}
+  --precheck-shell '<command line>' | --precheck-argv '<json array>'
+      [--precheck-cwd <dir>] [--precheck-timeout <dur>] (default 60s, max 10m)
+      [--precheck-output]   append the precheck's stdout to the spawn/send prompt
+  --no-precheck           edit: remove the precheck
+  A shell line is not template-rendered; read the payload from $VH_AUTOMATION_PAYLOAD.
+  Consecutive skips for the same reason fold into one run shown as ×N.
+
 ${chalk.bold('Options:')}
   --machine <id>|this     Executing machine (default: this machine)
   --description <text>
@@ -204,13 +263,15 @@ function printAutomation(a: Automation): void {
     if (a.description) console.log(`  ${a.description}`);
     console.log(`  trigger:   ${describeTrigger(a.trigger)}   next: ${fmtTime(a.nextRunAt)}`);
     console.log(`  action:    ${describeAction(a.action)}`);
+    if (a.precheck) console.log(`  precheck:  ${describePrecheck(a.precheck)}`);
     console.log(`  machine:   ${a.machineId}   concurrency: ${a.concurrency}   max runtime: ${Math.round(a.maxRuntimeMs / 60_000)}m`);
     console.log(`  last run:  ${fmtTime(a.lastRunAt)} ${a.lastRunStatus ?? ''}`);
 }
 
 function runLine(run: AutomationRun): string {
     const status = run.status === 'done' ? chalk.green(run.status) : ['failed', 'expired'].includes(run.status) ? chalk.red(run.status) : run.status === 'running' ? chalk.cyan(run.status) : run.status;
-    return `${fmtTime(run.createdAt)}  ${status.padEnd(9)}  ${run.automationName.padEnd(20)}  ${run.source.padEnd(8)}  ${run.id}${run.needsAttention ? chalk.yellow(`  ! ${run.attentionReason ?? 'attention'}`) : ''}`;
+    const folded = (run.occurrenceCount ?? 1) > 1 ? ` ×${run.occurrenceCount}` : '';
+    return `${fmtTime(run.createdAt)}  ${status.padEnd(9)}  ${run.automationName.padEnd(20)}  ${run.source.padEnd(8)}  ${run.id}${folded}${run.status === 'skipped' && run.error ? chalk.dim(`  ${run.error}`) : ''}${run.needsAttention ? chalk.yellow(`  ! ${run.attentionReason ?? 'attention'}`) : ''}`;
 }
 
 function printRun(run: AutomationRun): void {
@@ -293,7 +354,9 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
                     ...(command.flags['--max-runtime'] !== undefined ? { maxRuntimeMs: parseDuration(command.flags['--max-runtime']) } : {}),
                     ...(command.bools.has('--paused') ? { status: 'paused' as const } : {}),
                 };
-                const automation = await client.create(input);
+                const precheck = precheckFromCommand(command);
+                if (precheck) input.precheck = precheck;
+                const automation = await createAutomationChecked(client, input);
                 if (json) { console.log(JSON.stringify({ automation })); return; }
                 console.log(chalk.green('Created.')); printAutomation(automation);
                 return;
@@ -311,8 +374,10 @@ export async function handleAutoCommand(args: string[]): Promise<void> {
                     ...(command.flags['--concurrency'] !== undefined ? { concurrency: concurrency(command.flags['--concurrency']) } : {}),
                     ...(command.flags['--max-runtime'] !== undefined ? { maxRuntimeMs: parseDuration(command.flags['--max-runtime']) } : {}),
                 };
+                const precheck = precheckFromCommand(command, current.precheck);
+                if (precheck !== undefined) input.precheck = precheck;
                 if (Object.keys(input).length === 1) throw new Error('Nothing to change');
-                const automation = await client.update(current.id, input);
+                const automation = await updateAutomationChecked(client, current.id, input);
                 if (json) { console.log(JSON.stringify({ automation })); return; }
                 console.log(chalk.green('Updated.')); printAutomation(automation);
                 return;
