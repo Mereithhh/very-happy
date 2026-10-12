@@ -54,11 +54,11 @@
 - hook 命令（每个事件同一条）：
   `[ -f '<forwarder>' ] && node '<forwarder>' '<terminalId>' '<happyHome>' "$PPID" || true`
   ——`$PPID` 在 hook 的 `sh -c` 里就是 claude 进程 pid，daemon 用来判这条记录的 claude 是否还活着。条目 `timeout: 10`。
-- **按版本挑事件**（防整文件被丢弃 → 也防启动时的 settings 报错对话框）：daemon 用终端同款 `ptyEnv()` 跑一次 `claude --version`（异步、5 s 超时、6 h 缓存）。
+- **按版本挑事件**（防整文件被丢弃 → 也防启动时的 settings 报错对话框）：daemon 用终端同款 `ptyEnv()` 跑一次 `claude --version`（异步、5 s 超时、成功缓存 6 h / 失败 5 min 重试）。探测只在 list tracking 启动（daemon 连上 server）时开始；从未 tracking 的 manager（测试、一次性工具）永不注入。自动恢复是异步路径，会有界等待（3 s）正在进行的探测；新建终端 / 恢复已关闭终端不等，探测未落地时不注入。
   - 版本未知 / 低于 2.0.0 → **不注入**（回退截屏）。
   - ≥2.0.0：SessionStart、UserPromptSubmit、Stop、Notification、PostToolUse、SessionEnd；≥2.0.45 加 PermissionRequest；≥2.1.76 加 PostCompact；≥2.1.78 加 StopFailure。
-  - 计划里的事件集合同时记在 daemon 内存（按 terminalId），融合时据此判断「needs_input 是否由 hook 覆盖」。
 - forwarder `scripts/terminal_status_forwarder.cjs`：读 `<happyHome>/daemon.state.json` 拿端口与 control token，**只转发白名单字段**（事件名、session_id、transcript_path、cwd、prompt_id、agent_id、source、notification_type、trigger、reason、tool_name + 我们自加的 terminalId / claudePid / prompt 的 sha256 前 16 位），不转发 prompt 原文、tool_input/response、last_assistant_message、compact_summary。stdout 永远为空、永远 exit 0（PermissionRequest / UserPromptSubmit 的 stdout 会被 Claude 当决策 / 上下文，必须为空）；HTTP 超时 2 s。
+- 实测（隔离 tmux socket，真实 Claude Code 2.1.296，未发模型请求）：带全部 9 个事件的 `--settings` 文件被接受（无设置报错、正常提示符）；SessionStart / SessionEnd 经真实 forwarder 送达，`claudePid` 等于 claude 进程 pid，bearer token 正确；`/exit` 不触发 UserPromptSubmit。
 - 接收端：daemon control server 新路由 `POST /terminal-agent-hook`（同一 bearer 鉴权、`z.any()`、永远 200），经 `apiMachine` 交给 `WebTerminalManager.ingestAgentHook`。不复用 `/terminal-hook`：那条路由会把 SessionStart 当 mirror 绑定信号。
 
 ### 2. 状态记录（纯 reducer）
@@ -88,13 +88,13 @@
 | 探测失败 / claude 但无状态 | working | needs_input | idle |
 | `working` | working | **working**（对话框已消失） | working（如后台任务唤醒、未触发 UserPromptSubmit 的 slash 命令） |
 | `needs_input` | needs_input（对话框标记精确；也覆盖 hook 计划里没有 PermissionRequest 的情况） | needs_input | needs_input |
-| `idle` | working；但若 `updatedAt` 早于 10 min（HOOK_WORKING_STALE_MS）→ idle | idle（对话框已关、回合结束，例如选 No 或 Esc 拒绝） | idle |
+| `idle` | working；但若 `updatedAt` 早于 10 min（HOOK_WORKING_STALE_MS）→ idle | needs_input（Claude 的模式行 `⏵⏵ …` / `bypass permissions on` 会被截屏当成 idle 标记，而它在未识别的对话框下仍可见）；同样 10 min 过期 → idle | idle |
 
-即：hook 的 **working** 不被屏幕的「看不到 spinner」降级（这正是截屏的主要误判），但屏幕的正向证据（spinner、对话框）总是被采纳。`agentKind` 固定为 `claude`，`agentObservedAt` 仍是本次探测时间（web 租约语义不变）。daemon 内部另带 `agentStateSource: 'hook'|'screen'`（不进推送、不进签名）。
+即：hook 的 **working** 不被屏幕的「看不到 spinner」降级（这正是截屏的主要误判），但屏幕的正向证据（spinner、对话框）总是被采纳。`agentKind` 固定为 `claude`，`agentObservedAt` 仍是本次探测时间（web 租约语义不变）。manager 内部另记「哪些终端最近一次判定来自 hook」（`hookSourced`，只给通知用，不进推送、不进签名）。`claudeConfident`（mirror 输入闸门）始终取屏幕判定，hook 不会打开它。
 
 ### 4. 中断推断（Orca 规则）
 
-- `write()` 看到整块输入恰为 `\x1b`（或 kitty `CSI 27 u` 按下）或 `\x03`，且记录 phase∈{working, needs_input} → 记下 pending `{ seq, phaseStartedAt, claudeSessionId, turnId, at }`。
+- `write()` 看到整块输入恰为 `\x1b`（或 kitty `CSI 27 u` 按下）或 `\x03` 且记录 phase∈{working, needs_input}；或恰为 Enter 且 phase=needs_input（在对话框上选「No / 告诉 Claude 怎么做」同样结束回合且不触发 Stop）→ 记下 pending `{ seq, phaseStartedAt, claudeSessionId, turnId, at }`。选「Yes」时屏幕转为 spinner → 本检查 `wait` 到窗口过期放弃，而融合表的「屏幕 working」行把状态更新为 working。
 - 600 ms、2 s、5 s 各复查一次（对该终端单独探测屏幕）。合成 done（`interrupted: true`，seq+1）的**全部**条件：记录仍是同一 claude session、`confirmedTurn`、seq / phaseStartedAt / turnId 与 pending 完全一致、`now - updatedAt ≤ HOOK_WORKING_STALE_MS`、`now - pending.at ≤ 5 s`、屏幕判定为 claude `idle`（不是 working / needs_input / 未知）。屏幕仍在 working/needs_input → 等下一次；窗口过了 → 放弃，保持原状。Esc 关菜单、Ctrl+C 清输入框都不会改变屏幕到 idle-with-same-baseline 之外的结果，因此不会误判。
 - 合成后立即 kick 推送。
 
@@ -107,6 +107,7 @@
 
 - 纯模块 `claude/utils/transcriptCursor.ts`：游标 `{ offset, dev, ino, boundary(≤64 B) }`。每次读：`stat`；dev/ino 变了、`size < offset`、或 `[offset-64, offset)` 的字节与 boundary 不同 → 判定改写，从 0 重读；否则从 offset 读到 EOF，只消费完整行（`\n` 结尾），offset 前移到最后一个 `\n` 之后。重读产生的旧行由现有 `processedMessageKeys` 去重，新行照常上报——与今天「每次整文件重读 + 去重」语义一致，只是不再重复解析未变部分。
 - `TranscriptPathHints`：`sessionId → transcript_path`，只接受绝对路径且 basename 恰为 `<sessionId>.jsonl`。runClaude 的 SessionStart hook（过了 B-515 prewarm 闸门的）先登记再 announce；remote scanner 与 local launcher 的 scanner 都通过 `resolveTranscriptPath` 取用；取不到 → `getProjectPath(cwd)/<id>.jsonl`（现状）。路径变化时重建 watcher、游标归零。
+- 已声明「磁盘上现有内容 = 已处理」的会话（构造时的初始 session、`treatExistingAsProcessed`）在 hook 路径**晚到**而改变读取路径时，新路径上当时已有的内容按同一语义预标记，不当新消息上报——否则重连场景（cwd 推导路径不存在、真实 transcript 在 `CLAUDE_CONFIG_DIR` 下）会把整段历史重放进聊天。runClaude 先登记路径再 announce，正常路径不会走到这里。
 - B-544：rewind 的截断副本是新 session id 新文件，切换走 `onSessionFound` + SessionStart hook，路径提示按 session id 分开存，互不干扰；源文件从不改写，因此不会触发改写重读。即便将来 Claude 原地改写，重读 + 去重只会上报真正的新 uuid。
 
 ### 被否方案
@@ -141,14 +142,15 @@ wire / server / web **零改动**：推送的 `TerminalListItem` 字段与 `agen
 
 ## 验收标准
 
-- [ ] 纯函数单测：注入改写（只认首 token `claude`、已有 `--settings` 不碰、非法路径不注入）、版本→事件计划、settings 内容、reducer 全事件表、融合全表、中断推断（基线不符/过期/未确认/屏幕仍 working/窗口过期都不合成）、通知 authoritative 立即确认。
-- [ ] forwarder 单测：白名单、prompt 只发 hash、stdout 为空、无 daemon 时静默 exit 0。
-- [ ] control server 路由：鉴权、永远 200、回调收到 body。
-- [ ] transcript 游标单测：追加增量、半行、截断、替换（inode 变）、同长度改写（边界不符）；scanner 用 hint 路径、hint 晚到时切换、无 hint 回退。
-- [ ] 现有 `sessionScanner.test.ts`、`terminalNotify.test.ts`、`webTerminal.test.ts` 相关用例不回归；`pnpm -C packages/happy-cli build` + `--version` 冒烟。
-- [ ] 真实 Claude 探针（隔离 tmux socket + 隔离 HAPPY_HOME_DIR）：`--settings` 注入后 SessionStart 到达、`$PPID` 为 claude pid。
+- [x] 纯函数单测：注入改写（只认首 token `claude`、已有 `--settings` 不碰、非法路径不注入）、版本→事件计划、settings 内容、reducer 全事件表、融合全表、中断推断（基线不符/过期/未确认/屏幕仍 working/窗口过期都不合成）、通知 authoritative 立即确认。
+- [x] forwarder 单测：白名单、prompt 只发 hash、stdout 为空、无 daemon 时静默 exit 0。
+- [x] control server 路由：鉴权、永远 200、回调收到 body。
+- [x] transcript 游标单测：追加增量、半行、截断、替换（inode 变）、同长度改写（边界不符）；scanner 用 hint 路径、hint 晚到时切换、预标记会话的晚到 hint 不重放、无 hint 回退。
+- [x] 现有 `sessionScanner.test.ts`、`terminalNotify.test.ts`、`webTerminal.test.ts` 相关用例不回归；`pnpm -C packages/happy-cli build` + `--version` 冒烟。
+- [x] 真实 Claude 探针（隔离 tmux socket + 隔离 HAPPY_HOME_DIR）：`--settings` 注入后 SessionStart 到达、`$PPID` 为 claude pid。
+- [x] 真 tmux 端到端（`webTerminal.hooks.test.ts`，假 claude 走进程树身份）：注入、hook working 盖过 idle 屏、Esc 推断、Enter 答对话框推断、SessionEnd 回退、kill 删文件。
 
 ## 留真机验证项
 
-- 真实回合：UserPromptSubmit→working、Stop→idle、权限对话框→needs_input、Esc 中断→合成 idle 的端到端时序（需要真实模型请求，自动化不跑）。
+- 真实回合：UserPromptSubmit→working、Stop→idle、权限对话框→needs_input、Esc 中断→合成 idle、对话框选 No→合成 idle 的端到端时序；顺带确认 Esc / 选 No 确实不触发 Stop（需要真实模型请求，自动化不跑）。
 - mac-office / dev-sg 上 `claude --version` 在 daemon（launchd / systemd）环境里能否解析；解析不到则该机不注入（按设计退回截屏）。
