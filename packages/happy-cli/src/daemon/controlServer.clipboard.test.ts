@@ -95,6 +95,7 @@ describe('control server /clipboard', () => {
         '/stop-session',
         '/spawn-session',
         '/terminal-hook',
+        '/terminal-agent-hook',
         '/clipboard',
         '/file-preview',
         '/terminal-title',

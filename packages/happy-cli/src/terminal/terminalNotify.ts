@@ -19,7 +19,10 @@
  *  - working → idle fires 'completed'; working|idle → needs_input fires
  *    'permission'; every transition involving 'shell'/undefined is silent;
  *  - after firing, eligibility resets (must see 'working' again) and a
- *    per-terminal cooldown of NOTIFY_COOLDOWN_MS applies.
+ *    per-terminal cooldown of NOTIFY_COOLDOWN_MS applies;
+ *  - B-547: an `authoritative` observation (the state came from a claude
+ *    hook, not the screen) skips the stability window — every other rule
+ *    above still applies.
  *
  * Pure state machine — no timers, no IO; `now` is injected. The only IO in
  * this file is sendTerminalNotification (fire-and-forget POST, kept here so
@@ -81,7 +84,7 @@ export class TerminalNotifyTracker {
      * Feed one observation for a terminal. Returns the notification event this
      * observation triggers, or null. Call once per terminal per tick.
      */
-    observe(terminalId: string, state: AgentState | undefined, now: number, agentKind?: string): TerminalNotifyEvent | null {
+    observe(terminalId: string, state: AgentState | undefined, now: number, agentKind?: string, opts: { authoritative?: boolean } = {}): TerminalNotifyEvent | null {
         let t = this.tracks.get(terminalId);
         if (!t || t.agentKind !== agentKind || now - t.lastObservedAt > 45_000) {
             // First sighting is the baseline, never a transition. It arms the
@@ -118,6 +121,9 @@ export class TerminalNotifyTracker {
             t.candidateCount += 1;
             t.lastCountedAt = now;
         }
+        // B-547: a hook-sourced state is an event from claude itself, not a
+        // possibly-misread TUI frame — one observation confirms it.
+        if (opts.authoritative) t.candidateCount = Math.max(t.candidateCount, this.stableTicks);
         if (t.candidateCount < this.stableTicks) return null;
 
         // Candidate survived the stability window → it becomes the confirmed

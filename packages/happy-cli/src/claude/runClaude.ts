@@ -32,6 +32,7 @@ import type { RawJSONLines } from './types';
 import type { BoardTaskRef } from './utils/boardAnalyzer';
 import { DEFAULT_CLAUDE_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 import { CLAUDE_ATTACHMENT_KINDS, stripAttachmentManifest } from './utils/attachmentContent';
+import { TranscriptPathHints } from './utils/transcriptCursor';
 import { planClaudeStartup } from './startupPlan';
 
 /** JavaScript runtime to use for spawning Claude Code */
@@ -607,9 +608,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // can't see.
     const initialScannerSessionId = forkClaudeSessionId
         ?? (metadata.claudeSessionId ?? null);
+    // B-551: transcript paths Claude reported through the SessionStart hook,
+    // preferred by every scanner of this wrapper over the cwd-derived guess.
+    const transcriptPathHints = new TranscriptPathHints();
     const remoteScanner = await createSessionScanner({
         sessionId: initialScannerSessionId,
         workingDirectory,
+        transcriptPathHints,
         onMessage: (raw) => {
             if (currentRunMode !== 'remote') return;
             // Only user-typed prompts. SDK pipeline owns assistant and
@@ -675,6 +680,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 return;
             }
             logger.debug(`[START] Session hook received: ${sessionId}`, contentLogMetadata(data));
+
+            // B-551: record Claude's own transcript path BEFORE anyone is told
+            // about the id, so the scanners' first read already uses it.
+            transcriptPathHints.note(sessionId, data.transcript_path);
 
             // Tell the remote scanner about this sessionId so it knows
             // which JSONL to watch (and so it can fire onNewSession for
@@ -1242,6 +1251,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         onSessionReady: (sessionInstance) => {
             // Store reference for hook server callback
             currentSession = sessionInstance;
+            // B-551: the local launcher's scanner reads the same hints.
+            sessionInstance.transcriptPathHints = transcriptPathHints;
             // B-515: the system/init path (an adopted warm process, whose
             // SessionStart hook was ignored) must reach the scanner too.
             sessionInstance.addSessionFoundCallback?.(announceSessionToScanner);

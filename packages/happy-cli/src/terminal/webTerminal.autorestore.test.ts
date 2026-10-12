@@ -26,7 +26,9 @@ process.env.HAPPY_HOME_DIR = happyHome;
 // Keep the restored pane alive independent of whether the host has Claude
 // installed. The test verifies command injection, not the provider runtime.
 const fakeClaude = join(binDir, 'claude');
-writeFileSync(fakeClaude, '#!/bin/sh\nwhile :; do sleep 3600; done\n');
+// B-547: `--version` must answer (the daemon probes it to plan hook
+// injection); a version below the hook floor keeps the typed command plain.
+writeFileSync(fakeClaude, '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "0.0.1 (fake)"; exit 0; fi\nwhile :; do sleep 3600; done\n');
 chmodSync(fakeClaude, 0o755);
 process.env.PATH = `${binDir}:${prevPath ?? ''}`;
 

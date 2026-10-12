@@ -91,6 +91,10 @@ import { unescapeOctal } from './controlModeDecoder';
 import { encodeTerminalWrite, buildPastePlan, toControlStdin } from './sendKeysEncoding';
 import { configuration } from '@/configuration';
 import { TerminalNotifyTracker, type TerminalNotification } from './terminalNotify';
+import { TerminalAgentHookStore } from './agentHookStore';
+import { INTERRUPT_CHECK_DELAYS_MS } from './agentHookStatus';
+import { ClaudeVersionCache, removeTerminalHookSettings, sweepStaleTerminalHookSettings, withTerminalHooks } from './terminalHookSettings';
+import type { AgentObservation } from './agentStatus';
 import {
     sanitizeLiveSnapshot,
     serializeLiveSnapshot,
@@ -695,6 +699,14 @@ export type { SessionListLine } from './sessionListFormat';
  */
 export function classifyPane(currentCommand: string, tail: string): AgentState | undefined {
     return classifyAgentPane(currentCommand, tail).agentState;
+}
+
+/** B-547: a probe result as the hook-fusion input — undefined when the
+ *  probe itself failed (no observation stamp), so a live hook record is not
+ *  overruled by "nothing recognizable". */
+function screenObservation(probe: { agentState?: AgentState; agentKind?: CodingAgentKind; agentObservedAt?: number }): AgentObservation | undefined {
+    if (probe.agentObservedAt === undefined) return undefined;
+    return { agentKind: probe.agentKind, agentState: probe.agentState };
 }
 
 /**
@@ -1473,6 +1485,23 @@ export class WebTerminalManager {
     private readonly onNotify: ((n: TerminalNotification) => void) | null;
     private notifyTracker = new TerminalNotifyTracker();
 
+    // ── Hook-driven agent status (B-547) ────────────────────────────────────
+    // `claude` commands the daemon types into a terminal get `--settings`
+    // with managed hooks (terminalHookSettings.ts); the forwarded events land
+    // in `agentHooks` and are fused with the screen classifier in
+    // probeAgentState. The screen stays the fallback for everything else.
+    private agentHooks = new TerminalAgentHookStore();
+    private claudeVersion = new ClaudeVersionCache(ptyEnv);
+    /** Terminals whose LAST probe was decided by a hook record — their
+     *  transitions skip the screen debounce in the notification tracker.
+     *  Daemon-internal: never pushed (wire shape unchanged). */
+    private hookSourced = new Set<string>();
+    /** Last `#{pane_current_command}` identity seen per terminal, so an
+     *  interrupt re-check can classify the screen without a list read. */
+    private lastPolledIdentity = new Map<string, string>();
+    private interruptTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
+    private hookSettingsSwept = false;
+
     // ── Terminal mirror integration (B-105) ─────────────────────────────────
     /** terminalId → shadow session id (daemon's mirror manager). Feeds the
      *  list push (toggle availability) and closed-terminal records. */
@@ -1504,6 +1533,77 @@ export class WebTerminalManager {
         this.kickListRefresh();
     }
 
+    /** B-547: one forwarded status hook (control server /terminal-agent-hook).
+     *  A list-relevant change pushes within the kick debounce instead of
+     *  waiting for the 10 s tick. Never throws. */
+    ingestAgentHook(body: unknown): void {
+        try {
+            const result = this.agentHooks.applyHook(body, Date.now());
+            if (result?.changed) this.kickListRefresh();
+        } catch (e) {
+            logger.debug(`[WEB TERMINAL] agent hook ingest failed: ${e}`);
+        }
+    }
+
+    /** B-547: test/diagnostic view — does this terminal hold a hook record? */
+    hasAgentHookRecord(terminalId: string): boolean {
+        return this.agentHooks.has(terminalId);
+    }
+
+    /** B-547: once per daemon, drop settings files of terminals whose tmux
+     *  session is gone. Per-id `has-session` (not a list read, whose transient
+     *  failure would look like "no terminals") decides liveness. */
+    private sweepHookSettingsOnce(): void {
+        if (this.hookSettingsSwept || !isTmuxAvailable()) return;
+        this.hookSettingsSwept = true;
+        try {
+            const env = ptyEnv();
+            const removed = sweepStaleTerminalHookSettings((id) => this.terminals.has(id)
+                || spawnSync('tmux', tmuxArgs(['has-session', '-t', `=vh-${id}:`]), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status !== 1);
+            if (removed.length > 0) logger.debug(`[WEB TERMINAL] removed ${removed.length} stale terminal hook settings file(s)`);
+        } catch (e) {
+            logger.debug(`[WEB TERMINAL] hook settings sweep failed: ${e}`);
+        }
+    }
+
+    /** B-547: a terminal is gone — drop its hook record, timers and file. */
+    private forgetAgentHooks(terminalId: string): void {
+        this.agentHooks.forget(terminalId);
+        this.hookSourced.delete(terminalId);
+        this.lastPolledIdentity.delete(terminalId);
+        for (const t of this.interruptTimers.get(terminalId) ?? []) clearTimeout(t);
+        this.interruptTimers.delete(terminalId);
+        removeTerminalHookSettings(terminalId);
+    }
+
+    /** B-547: re-check an armed Esc/Ctrl+C at the spec's delays. A later
+     *  keypress re-arms (fresh baseline, fresh timers). */
+    private scheduleInterruptChecks(terminalId: string): void {
+        for (const t of this.interruptTimers.get(terminalId) ?? []) clearTimeout(t);
+        const timers = INTERRUPT_CHECK_DELAYS_MS.map((delay) => {
+            const t = setTimeout(() => this.runInterruptCheck(terminalId), delay);
+            t.unref?.();
+            return t;
+        });
+        this.interruptTimers.set(terminalId, timers);
+    }
+
+    private runInterruptCheck(terminalId: string): void {
+        try {
+            const screen = this.probeScreenState(`vh-${terminalId}`, this.lastPolledIdentity.get(terminalId));
+            const verdict = this.agentHooks.checkInterrupt(terminalId, screenObservation(screen), Date.now());
+            if (verdict === 'wait') return;
+            for (const t of this.interruptTimers.get(terminalId) ?? []) clearTimeout(t);
+            this.interruptTimers.delete(terminalId);
+            if (verdict === 'synthesized') {
+                logger.debug(`[WEB TERMINAL] ${terminalId}: inferred interrupt (Esc/Ctrl+C, no Stop hook)`);
+                this.kickListRefresh();
+            }
+        } catch (e) {
+            logger.debug(`[WEB TERMINAL] interrupt check failed: ${e}`);
+        }
+    }
+
     constructor(emit: EmitFn, onNotify?: (n: TerminalNotification) => void) {
         this.emit = emit;
         this.onNotify = onNotify ?? null;
@@ -1520,6 +1620,10 @@ export class WebTerminalManager {
      */
     startListTracking(cb: (terminals: TerminalListItem[]) => void, intervalMs = LIST_TRACK_INTERVAL_MS): void {
         this.listChangedCb = cb;
+        // B-547: resolve `claude --version` in the background so the first
+        // daemon-typed claude command can already carry hooks.
+        this.claudeVersion.start();
+        this.sweepHookSettingsOnce();
         // The daemon re-calls this on every socket connect, so this doubles as
         // "forget what we told the PREVIOUS connection". Frames emitted while
         // the socket was down went nowhere, and their ids would otherwise stay
@@ -1540,6 +1644,8 @@ export class WebTerminalManager {
         if (this.listTrackTimer) { clearInterval(this.listTrackTimer); this.listTrackTimer = null; }
         if (this.listKickTimer) { clearTimeout(this.listKickTimer); this.listKickTimer = null; }
         if (this.activityFlushTimer) { clearTimeout(this.activityFlushTimer); this.activityFlushTimer = null; }
+        for (const timers of this.interruptTimers.values()) for (const t of timers) clearTimeout(t);
+        this.interruptTimers.clear();
     }
 
     /**
@@ -1687,6 +1793,9 @@ export class WebTerminalManager {
         try {
             const list = this.buildTerminalList();
             this.trackClosures(list);
+            // B-547: records of terminals that no longer exist. An empty list is
+            // indistinguishable from a failed tmux read — skip rather than wipe.
+            if (list.length > 0) this.agentHooks.prune([...list.map((t) => t.id), ...this.terminals.keys()]);
             this.trackNotifications(list);
             // Realtime lane, BEFORE the signature short-circuit: this tick is
             // the only place a COLD session's tmux `#{session_activity}` is
@@ -1761,6 +1870,7 @@ export class WebTerminalManager {
                 closedAt: now,
             });
             changed = true;
+            this.forgetAgentHooks(id);
             logger.debug(`[WEB TERMINAL] recorded closed terminal ${id}`);
             // Notify AFTER the record captured the mirror id — the callback
             // tears the binding down and the resolver would return undefined.
@@ -1856,6 +1966,9 @@ export class WebTerminalManager {
             if (!isTmuxAvailable()) return;   // no tmux → nothing survives anyway
             const settings = await readSettings();
             const config = resolveAutoRestoreConfig(settings as unknown as Record<string, unknown>);
+            // B-547: the restored `claude --resume` should carry hooks; the
+            // version probe started with tracking moments ago.
+            await this.claudeVersion.settled(3_000);
             const selection = selectAutoRestore(candidates, {
                 now: Date.now(),
                 config,
@@ -1997,7 +2110,9 @@ export class WebTerminalManager {
                 { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
         }
         if (plan.command) {
-            for (const argv of startupInjectionArgs(name, plan.command)) {
+            // B-547: a daemon-typed `claude …` carries the status hooks.
+            const command = withTerminalHooks(plan.command, plan.terminalId, this.claudeVersion.current());
+            for (const argv of startupInjectionArgs(name, command)) {
                 spawnSync('tmux', tmuxArgs(argv), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
             }
         }
@@ -2033,7 +2148,8 @@ export class WebTerminalManager {
         const now = Date.now();
         this.notifyTracker.prune(list.map((t) => t.id));
         for (const item of list) {
-            const event = this.notifyTracker.observe(item.id, item.agentState, now, item.agentKind);
+            const event = this.notifyTracker.observe(item.id, item.agentState, now, item.agentKind,
+                { authoritative: this.hookSourced.has(item.id) });
             if (!event) continue;
             try {
                 this.onNotify({ terminalId: item.id, title: item.title || 'Terminal', event });
@@ -2578,7 +2694,11 @@ export class WebTerminalManager {
         // Startup command — ONLY into the session we just created. tmux
         // buffers pane input, so it's fine that the pane's shell may not
         // have finished starting; it runs the command once it reads.
-        const startup = normalizeStartupCommand(startupCommand);
+        const normalized = normalizeStartupCommand(startupCommand);
+        // B-547: `claude …` startup / resume commands carry the status hooks.
+        const startup = normalized && tmuxSession.startsWith('vh-')
+            ? withTerminalHooks(normalized, tmuxSession.slice(3), this.claudeVersion.current())
+            : normalized;
         if (startup) {
             try {
                 for (const a of startupInjectionArgs(tmuxSession, startup)) {
@@ -2781,6 +2901,8 @@ export class WebTerminalManager {
         if (!session) return;
         session.lastTouch = Date.now();
         const text = Buffer.from(dataBase64, 'base64').toString('utf8');
+        // B-547: Esc / Ctrl+C never fire Stop — arm a guarded re-check.
+        if (this.agentHooks.noteInput(terminalId, text, Date.now())) this.scheduleInterruptChecks(terminalId);
         if (session.transport.kind === 'pty') {
             session.transport.pty.write(text);
             return;
@@ -2943,6 +3065,7 @@ export class WebTerminalManager {
             this.tombstones[terminalId] = Date.now();
             saveTombstones(this.tombstones);
             this.notifyTracker.remove(terminalId);
+            this.forgetAgentHooks(terminalId);
             logger.debug(`[WEB TERMINAL] killed direct pty ${terminalId}`);
             this.kickListRefresh();
             return true;
@@ -3010,6 +3133,7 @@ export class WebTerminalManager {
         saveTombstones(this.tombstones);
         // Drop its notification state — a killed terminal must never fire.
         this.notifyTracker.remove(terminalId);
+        this.forgetAgentHooks(terminalId);
         logger.debug(`[WEB TERMINAL] killed session vh-${terminalId}`);
         // Deletion propagates by ABSENCE from the pushed list — refresh now so
         // every device converges without tombstone bookkeeping.
@@ -3112,6 +3236,28 @@ export class WebTerminalManager {
      *  you've opened this daemon lifetime costs nothing. Cold tmux-only sessions
      *  (pty reaped / never attached) fall back to the tmux probe. */
     private probeAgentState(sessionName: string, polledCommand?: string): { agentState?: AgentState; agentKind?: CodingAgentKind; agentObservedAt?: number; claudeConfident: boolean } {
+        const id = sessionName.startsWith('vh-') ? sessionName.slice(3) : sessionName;
+        if (polledCommand) this.lastPolledIdentity.set(id, polledCommand);
+        const screen = this.probeScreenState(sessionName, polledCommand);
+        // B-547: fuse with the hook record (if any). `claudeConfident` stays
+        // the SCREEN's verdict — hooks never open the mirror input gate.
+        const now = Date.now();
+        const fused = this.agentHooks.fuse(id, screenObservation(screen), now);
+        if (fused.source === 'screen') {
+            this.hookSourced.delete(id);
+            return screen;
+        }
+        this.hookSourced.add(id);
+        return {
+            agentState: fused.agentState,
+            agentKind: fused.agentKind,
+            agentObservedAt: screen.agentObservedAt ?? now,
+            claudeConfident: screen.claudeConfident,
+        };
+    }
+
+    /** The screen classifier alone (pre-B-547 probeAgentState). */
+    private probeScreenState(sessionName: string, polledCommand?: string): { agentState?: AgentState; agentKind?: CodingAgentKind; agentObservedAt?: number; claudeConfident: boolean } {
         const id = sessionName.startsWith('vh-') ? sessionName.slice(3) : sessionName;
         const live = this.terminals.get(id);
         if (live) {

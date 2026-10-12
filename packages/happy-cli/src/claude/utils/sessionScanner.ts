@@ -1,7 +1,8 @@
 import { InvalidateSync } from "@/utils/sync";
 import { RawJSONLines, RawJSONLinesSchema } from "../types";
 import { join } from "node:path";
-import { readFile } from "node:fs/promises";
+import { statSync } from "node:fs";
+import { readTranscriptIncrement, isValidTranscriptHint, type TranscriptCursor, type TranscriptPathHints } from "./transcriptCursor";
 import { logger } from "@/ui/logger";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
 import { getProjectPath } from "./path";
@@ -27,6 +28,12 @@ export async function createSessionScanner(opts: {
      * (60s). Exposed mainly so tests can exercise the drop path quickly.
      */
     missingFileTimeoutMs?: number
+    /**
+     * B-551: the transcript path Claude itself reported for a session (the
+     * SessionStart hook's `transcript_path`). Preferred over the path derived
+     * from the working directory; undefined/invalid → derived path (legacy).
+     */
+    transcriptPathHints?: TranscriptPathHints
 }) {
 
     // Resolve project directory
@@ -44,10 +51,78 @@ export async function createSessionScanner(opts: {
     // never written) keeps itself alive forever via the watchers map below
     // and spins the CPU / floods the log (the "dead Happy instance" bug).
     let deadSessions = new Set<string>();
+    // B-551: per-session read cursor (byte offset + rewrite detection) and the
+    // path each watcher is attached to.
+    const cursors = new Map<string, { path: string; cursor: TranscriptCursor | null }>();
+    const watcherPaths = new Map<string, string>();
+    /** Sessions whose existing transcript content was pre-marked as processed. */
+    const premarkedSessions = new Set<string>();
+    /** For a pre-marked session whose hint arrived after the pre-mark: the
+     *  hinted file's size AT HINT TIME — only that much is old history. */
+    const premarkLimits = new Map<string, { path: string; size: number }>();
+
+    const transcriptPathFor = (sessionId: string): string => {
+        const hinted = opts.transcriptPathHints?.get(sessionId);
+        return isValidTranscriptHint(sessionId, hinted) ? hinted : join(projectDir, `${sessionId}.jsonl`);
+    };
+
+    /** Messages appended since the last read of this session (all of them on
+     *  the first read, or after the file was rewritten — uuid dedupe below
+     *  keeps that equivalent to the old whole-file re-read). */
+    const readSessionMessages = async (sessionId: string): Promise<RawJSONLines[]> => {
+        const path = transcriptPathFor(sessionId);
+        const state = cursors.get(sessionId);
+        const pathChanged = state !== undefined && state.path !== path;
+        const cursor = state && !pathChanged ? state.cursor : null;
+        logger.debug(`[SESSION_SCANNER] Reading session file: ${path}`);
+        // A session whose on-disk history was declared "already processed"
+        // (initial session / treatExistingAsProcessed) keeps that meaning when
+        // its hook path only arrives later — but only for what the new file
+        // held WHEN THE HINT ARRIVED. Lines written after that (a prompt typed
+        // seconds after startup) are new and must be delivered.
+        let premarkCursor: TranscriptCursor | null = null;
+        if (pathChanged && premarkedSessions.has(sessionId)) {
+            const limit = premarkLimits.get(sessionId);
+            const old = await readTranscriptIncrement(path, null, limit && limit.path === path ? { limit: limit.size } : {});
+            if (old) {
+                const history = parseSessionLines(old.lines);
+                logger.debug(`[SESSION_SCANNER] Transcript path for ${sessionId} changed; pre-marking ${history.length} existing messages`);
+                for (const m of history) processedMessageKeys.add(messageKey(m));
+                premarkCursor = old.cursor;
+            }
+            premarkLimits.delete(sessionId);
+        }
+        const result = await readTranscriptIncrement(path, premarkCursor ?? cursor);
+        if (!result) {
+            cursors.set(sessionId, { path, cursor: null });
+            logger.debug(`[SESSION_SCANNER] Session file not found: ${path}`);
+            return [];
+        }
+        if (result.reset) {
+            logger.debug(`[SESSION_SCANNER] Transcript ${sessionId} was ${result.reset}; re-reading from the start`);
+        }
+        cursors.set(sessionId, { path, cursor: result.cursor });
+        return parseSessionLines(result.lines);
+    };
+
+    // `sync` is created below; a hint landing before that is picked up by
+    // the first sync pass anyway.
+    let invalidateNow = () => { };
+    // B-551: a hint read NOW, not at the next 3 s poll; for a pre-marked
+    // session remember how much of the hinted file is old history.
+    const unsubscribeHints = opts.transcriptPathHints?.subscribe((sessionId, path) => {
+        if (premarkedSessions.has(sessionId)) {
+            let size = 0;
+            try { size = statSync(path).size; } catch { /* not written yet: nothing is history */ }
+            premarkLimits.set(sessionId, { path, size });
+        }
+        invalidateNow();
+    });
 
     // Mark existing messages as processed and start watching the initial session
     if (opts.sessionId) {
-        let messages = await readSessionLog(projectDir, opts.sessionId);
+        premarkedSessions.add(opts.sessionId);
+        let messages = await readSessionMessages(opts.sessionId);
         logger.debug(`[SESSION_SCANNER] Marking ${messages.length} existing messages as processed from session ${opts.sessionId}`);
         for (let m of messages) {
             processedMessageKeys.add(messageKey(m));
@@ -81,7 +156,7 @@ export async function createSessionScanner(opts: {
 
         // Process sessions
         for (let session of sessions) {
-            const sessionMessages = await readSessionLog(projectDir, session);
+            const sessionMessages = await readSessionMessages(session);
             let skipped = 0;
             let sent = 0;
             for (let file of sessionMessages) {
@@ -110,10 +185,20 @@ export async function createSessionScanner(opts: {
 
         // Update watchers for all sessions
         for (let p of sessions) {
+            // B-551: a hook path that arrived after the watcher started moves it.
+            const path = transcriptPathFor(p);
+            if (watchers.has(p) && watcherPaths.get(p) !== path) {
+                logger.debug(`[SESSION_SCANNER] Transcript path for ${p} changed; re-attaching watcher`);
+                watchers.get(p)?.();
+                watchers.delete(p);
+                watcherPaths.delete(p);
+                sync.invalidate();
+            }
             if (!watchers.has(p) && !deadSessions.has(p)) {
                 logger.debug(`[SESSION_SCANNER] Starting watcher for session: ${p}`);
+                watcherPaths.set(p, path);
                 watchers.set(p, startFileWatcher(
-                    join(projectDir, `${p}.jsonl`),
+                    path,
                     () => { sync.invalidate(); },
                     {
                         missingFileTimeoutMs: opts.missingFileTimeoutMs,
@@ -126,6 +211,7 @@ export async function createSessionScanner(opts: {
                             logger.debug(`[SESSION_SCANNER] Session ${p} transcript never appeared — dropping it`);
                             watchers.get(p)?.();
                             watchers.delete(p);
+                            watcherPaths.delete(p);
                             deadSessions.add(p);
                             pendingSessions.delete(p);
                         },
@@ -134,6 +220,7 @@ export async function createSessionScanner(opts: {
             }
         }
     });
+    invalidateNow = () => sync.invalidate();
     await sync.invalidateAndAwait();
 
     // Periodic sync
@@ -142,6 +229,7 @@ export async function createSessionScanner(opts: {
     // Public interface
     return {
         cleanup: async () => {
+            unsubscribeHints?.();
             clearInterval(intervalId);
             for (let w of watchers.values()) {
                 w();
@@ -176,7 +264,8 @@ export async function createSessionScanner(opts: {
             // file as fresh user prompts. Without this, every previous
             // user message re-appears in the chat after reconnect.
             if (options?.treatExistingAsProcessed) {
-                const existing = await readSessionLog(projectDir, sessionId);
+                premarkedSessions.add(sessionId);
+                const existing = await readSessionMessages(sessionId);
                 logger.debug(`[SESSION_SCANNER] Pre-marking ${existing.length} existing messages as processed for new session ${sessionId}`);
                 for (const m of existing) {
                     processedMessageKeys.add(messageKey(m));
@@ -214,20 +303,10 @@ function messageKey(message: RawJSONLines): string {
 }
 
 /**
- * Read and parse session log file
+ * Parse transcript lines.
  * Returns only valid conversation messages, silently skipping internal events
  */
-async function readSessionLog(projectDir: string, sessionId: string): Promise<RawJSONLines[]> {
-    const expectedSessionFile = join(projectDir, `${sessionId}.jsonl`);
-    logger.debug(`[SESSION_SCANNER] Reading session file: ${expectedSessionFile}`);
-    let file: string;
-    try {
-        file = await readFile(expectedSessionFile, 'utf-8');
-    } catch (error) {
-        logger.debug(`[SESSION_SCANNER] Session file not found: ${expectedSessionFile}`);
-        return [];
-    }
-    let lines = file.split('\n');
+function parseSessionLines(lines: string[]): RawJSONLines[] {
     let messages: RawJSONLines[] = [];
     for (let l of lines) {
         try {

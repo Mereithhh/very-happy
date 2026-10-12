@@ -188,4 +188,42 @@ describe('agent continuity', () => {
         expect(tracker.observe('t', 'idle', 60_000, 'codex')).toBeNull();
         expect(tracker.observe('t', 'idle', 70_000, 'codex')).toBeNull();
     });
+
+    // B-547: a hook-sourced state comes from claude itself, not a TUI frame.
+    describe('authoritative (hook-sourced) observations', () => {
+        it('working → idle fires completed on the first authoritative sighting', () => {
+            const tr = new TerminalNotifyTracker();
+            expect(tr.observe('t1', 'working', 0, 'claude', { authoritative: true })).toBeNull();
+            expect(tr.observe('t1', 'idle', 1_000, 'claude', { authoritative: true })).toBe('completed');
+        });
+
+        it('working → needs_input fires permission immediately, then needs working again', () => {
+            const tr = new TerminalNotifyTracker();
+            tr.observe('t1', 'idle', 0, 'claude', { authoritative: true });
+            expect(tr.observe('t1', 'working', 100, 'claude', { authoritative: true })).toBeNull();
+            expect(tr.observe('t1', 'needs_input', 200, 'claude', { authoritative: true })).toBe('permission');
+            // Disarmed + cooldown: an immediate idle does not fire.
+            expect(tr.observe('t1', 'idle', 300, 'claude', { authoritative: true })).toBeNull();
+        });
+
+        it('keeps eligibility and cooldown rules', () => {
+            const tr = new TerminalNotifyTracker();
+            // Never seen working → an idle↔needs_input flip stays silent.
+            tr.observe('t1', 'idle', 0, 'claude', { authoritative: true });
+            expect(tr.observe('t1', 'needs_input', 100, 'claude', { authoritative: true })).toBeNull();
+            const tr2 = new TerminalNotifyTracker();
+            tr2.observe('t2', 'working', 0, 'claude', { authoritative: true });
+            expect(tr2.observe('t2', 'idle', 100, 'claude', { authoritative: true })).toBe('completed');
+            tr2.observe('t2', 'working', 200, 'claude', { authoritative: true });
+            // Within the cooldown: suppressed even though authoritative.
+            expect(tr2.observe('t2', 'idle', 300, 'claude', { authoritative: true })).toBeNull();
+        });
+
+        it('screen observations keep the 2-tick debounce', () => {
+            const tr = new TerminalNotifyTracker();
+            tr.observe('t1', 'working', 0, 'claude');
+            expect(tr.observe('t1', 'idle', TICK, 'claude')).toBeNull();
+            expect(tr.observe('t1', 'idle', 2 * TICK, 'claude')).toBe('completed');
+        });
+    });
 });
