@@ -21,7 +21,11 @@ import {
     AlertTriangle,
     Settings,
     X,
+    Mail,
+    MailOpen,
+    MoreHorizontal,
 } from 'lucide-react';
+import { ActionContextMenu, ActionDropdownMenu, type MenuItemDef } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
 import { useInbox } from './useInbox';
@@ -58,7 +62,7 @@ const PANEL_W = 380;
 
 export function NotificationBell({ className }: { className?: string }) {
     const { t } = useTranslation();
-    const { entries, unreadCount, markEntryRead, markAllRead } = useInbox();
+    const { entries, unreadCount, markEntryRead, markEntryUnread, markAllRead } = useInbox();
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const [anchor, setAnchor] = useState<{ top: number | null; bottom: number | null; left: number } | null>(null);
@@ -101,6 +105,13 @@ export function NotificationBell({ className }: { className?: string }) {
         close();
         navigate(entry.href);
     };
+
+    // B-559: one item list for both the row's ⋯ button and right-click/long-press.
+    const rowMenu = (entry: InboxEntry): MenuItemDef[] => [
+        entry.unread
+            ? { key: 'read', label: t('notifications.inboxMarkRead'), icon: MailOpen, onSelect: () => markEntryRead(entry) }
+            : { key: 'unread', label: t('notifications.inboxMarkUnread'), icon: Mail, onSelect: () => markEntryUnread(entry) },
+    ];
 
     const now = Date.now();
 
@@ -168,26 +179,40 @@ export function NotificationBell({ className }: { className?: string }) {
                                         const Icon = CATEGORY_ICON[e.category];
                                         const detail =
                                             e.detail || (e.localKind ? t(LOCAL_KIND_LABEL[e.localKind]) : '');
+                                        const items = rowMenu(e);
                                         return (
-                                            <button
-                                                key={e.id}
-                                                className={`nc-row${e.unread ? ' is-unread' : ''}`}
-                                                onClick={() => openEntry(e)}
-                                            >
-                                                <span className={`nc-row-icon nc-cat-${e.category}`}>
-                                                    <Icon size={15} />
-                                                </span>
-                                                <span className="nc-row-text">
-                                                    <span className="nc-row-title">
-                                                        {e.title || t('notifications.unknownSession')}
-                                                    </span>
-                                                    {detail && <span className="nc-row-detail">{detail}</span>}
-                                                </span>
-                                                <span className="nc-row-meta">
-                                                    <span className="nc-row-time mono">{ago(e.createdAt, now)}</span>
-                                                    {e.unread && <span className="nc-row-dot" aria-hidden />}
-                                                </span>
-                                            </button>
+                                            <ActionContextMenu key={e.id} items={items} contentClassName="nc-row-menu">
+                                                <div className={`nc-row-wrap${e.unread ? ' is-unread' : ''}`}>
+                                                    <button
+                                                        className={`nc-row${e.unread ? ' is-unread' : ''}`}
+                                                        onClick={() => openEntry(e)}
+                                                    >
+                                                        <span className={`nc-row-icon nc-cat-${e.category}`}>
+                                                            <Icon size={15} />
+                                                        </span>
+                                                        <span className="nc-row-text">
+                                                            <span className="nc-row-title">
+                                                                {e.title || t('notifications.unknownSession')}
+                                                            </span>
+                                                            {detail && <span className="nc-row-detail">{detail}</span>}
+                                                        </span>
+                                                        <span className="nc-row-meta">
+                                                            <span className="nc-row-time mono">{ago(e.createdAt, now)}</span>
+                                                            {e.unread && <span className="nc-row-dot" aria-hidden />}
+                                                        </span>
+                                                    </button>
+                                                    <ActionDropdownMenu items={items} contentClassName="nc-row-menu">
+                                                        <button
+                                                            type="button"
+                                                            className="nc-row-more"
+                                                            aria-label={t('notifications.inboxEntryActions')}
+                                                            title={t('notifications.inboxEntryActions')}
+                                                        >
+                                                            <MoreHorizontal size={15} />
+                                                        </button>
+                                                    </ActionDropdownMenu>
+                                                </div>
+                                            </ActionContextMenu>
                                         );
                                     })
                                 )}

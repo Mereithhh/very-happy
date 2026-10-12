@@ -189,6 +189,9 @@ export const en = {
         // --- notification center (bell + panel) ---
         inboxTitle: 'Notifications',
         inboxMarkAllRead: 'Mark all read',
+        inboxMarkRead: 'Mark as read',
+        inboxMarkUnread: 'Mark as unread',
+        inboxEntryActions: 'Notification actions',
         inboxEmpty: 'Nothing needs you right now',
         evtPermission: 'Asking to run a tool',
         evtReview: 'Agent suggests a look',

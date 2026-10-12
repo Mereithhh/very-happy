@@ -428,6 +428,9 @@ export const zhHans: TranslationStructure = {
         // --- 通知中心（铃铛 + 面板） ---
         inboxTitle: '通知',
         inboxMarkAllRead: '全部已读',
+        inboxMarkRead: '标为已读',
+        inboxMarkUnread: '标为未读',
+        inboxEntryActions: '通知操作',
         inboxEmpty: '暂时没有需要你处理的',
         evtPermission: '请求运行工具',
         evtReview: '智能体建议你看一眼',
