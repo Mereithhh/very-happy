@@ -1,6 +1,6 @@
 # 会话全文搜索（daemon 本地索引 Claude Code / Codex 历史）
 
-> 状态：Draft
+> 状态：Final（主 agent 2026-10-12 定稿：review 两项已修）
 > 日期：2026-10-12 ｜ 关联 backlog：B-549 ｜ 前身：`2026-09-claude-history-import.md`（B-290）、`2026-09-codex-history-import.md`（B-464）；参考 Orca `ai-vault-search`（只借鉴「增量游标 / 半行不提交 / 只索引对话正文」三条经验，不照搬其 SQLite FTS5 方案）
 
 ## 背景
