@@ -99,11 +99,11 @@ web 终端有 5000 行 scrollback（B-550 之后还包含「上次会话」回�
 
 ## 验收标准
 
-- [ ] `termSearch.test.ts`：折行拼接、跨行命中拆段、宽字符列映射、大小写、上限截断、初始索引、环绕、chord 匹配（mac/非 mac、Shift/Alt 排除）。
-- [ ] 桌面 1280：终端聚焦 ⌘F 打开；焦点在页面别处 ⌘F 不拦截（`defaultPrevented=false`）；计数、↑↓、Aa、Esc 关闭并焦点回终端；匹配像素高亮。
-- [ ] B-550 回放区（「以下为上次会话的输出」分隔之后的历史）可被搜到并滚到。
-- [ ] 390 coarse：按键栏搜索按钮可打开，搜索条不横向溢出，输入框 16px；亮/暗两主题下终端 chrome 一致。
-- [ ] `tsc --noEmit`、相关 vitest、`vite build` 全绿。
+- [x] `termSearch.test.ts`：折行拼接、跨行命中拆段、宽字符列映射、大小写、上限截断、初始索引、环绕、chord 匹配（mac/非 mac、Shift/Alt 排除）。
+- [x] 桌面 1280：终端聚焦 ⌘F 打开；焦点在页面别处 ⌘F 不拦截（`defaultPrevented=false`）；计数、↑↓、Aa、Esc 关闭并焦点回终端；匹配像素高亮。
+- [x] B-550 回放区（「以下为上次会话的输出」分隔之后的历史）可被搜到并滚到。
+- [x] 390 coarse：按键栏搜索按钮可打开，搜索条不横向溢出，输入框 16px；亮/暗两主题下终端 chrome 一致。
+- [x] `tsc --noEmit`、相关 vitest、`vite build` 全绿。
 
 ## 留真机验证项
 

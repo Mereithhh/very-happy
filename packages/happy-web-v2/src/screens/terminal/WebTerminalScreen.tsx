@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
-import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, RefreshCw, MoreHorizontal } from 'lucide-react';
+import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, RefreshCw, MoreHorizontal, Search } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { sync as appSync } from '@/sync/sync';
@@ -52,6 +52,7 @@ import { isTerminalInputElement } from './termInputElement';
 import { TermInputBar } from './TermInputBar';
 import { TermWebKeyboard } from './TermWebKeyboard';
 import { TermPresetsMenu } from './TermPresetsMenu';
+import { TermSearchBar, useTermSearchController } from './TermSearchBar';
 import { presetPasteText } from './termPresetPaste';
 import { onInsertToInput } from '@/app/insertToInput';
 import { storage, useMachine, useSettings, useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
@@ -491,6 +492,8 @@ export function WebTerminalScreen() {
   const inputBarRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomBarsRef = useRef<HTMLDivElement | null>(null);
   const screenRef = useRef<HTMLDivElement | null>(null);
+  // B-557 find-in-terminal: all logic lives in TermSearchBar.tsx.
+  const termSearch = useTermSearchController({ hostRef, isMac: IS_MAC, coarsePointer: IS_COARSE_POINTER, focusTerminal: () => termRef.current?.focusInput(), resetKey: tid });
 
   const runFocusAction = (a: TermFocusAction) => {
     switch (a) {
@@ -2746,6 +2749,15 @@ export function WebTerminalScreen() {
             </ActionDropdownMenu>
           )}
         </div>
+        {termSearch.open && (
+          <TermSearchBar
+            key={tid}
+            getTerm={() => termRef.current?.raw ?? null}
+            onClose={termSearch.closeSearch}
+            openSignal={termSearch.signal}
+            coarsePointer={IS_COARSE_POINTER}
+          />
+        )}
       </header>
       {directShell && !directNoticeDismissed && <TerminalDirectShellNotice onDismiss={() => setDirectNoticeDismissed(true)} />}
       {machineId && tid && <ToolHistory key={`${machineId}:${tid}`} scope={{machineId, terminalId:tid}} machineId={machineId} />}
@@ -2848,6 +2860,17 @@ export function WebTerminalScreen() {
               onClick={toggleInputBarMode}
             >
               <TextCursorInput size={16} />
+            </button>
+            <button
+              type="button"
+              className={`term-keybar-key term-keybar-sys${termSearch.open ? ' is-armed' : ''}`}
+              aria-pressed={termSearch.open}
+              aria-label={t('terminal.search')}
+              title={t('terminal.search')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={termSearch.toggleSearch}
+            >
+              <Search size={16} />
             </button>
             <TermPresetsMenu
               variant="keybar"

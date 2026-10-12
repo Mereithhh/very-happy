@@ -809,3 +809,83 @@
    narrow phone wraps label/command as units and, at worst, scrolls this row. */
 .term-direct-notice-cmds code { color: var(--text); white-space: nowrap; user-select: all; }
 .term-direct-notice-copy { overflow-x: auto; }
+
+/* ── Find in terminal (B-557) ────────────────────────────────────────────────
+   Rendered INSIDE .term-header (not .term-host: the host's capture-phase
+   paste/touch/mousedown listeners would route this input into the pty) and
+   floated just below it, over the terminal's top-right corner. Overlaying —
+   instead of taking a row in the flow — keeps the pane geometry untouched:
+   opening search must not resize the tmux pane (iron rule 9). Uses the
+   terminal-chrome tokens: it sits on the always-dark pane in both themes. */
+.term-header { position: relative; }
+.term-search {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: min(420px, calc(100vw - 16px));
+  padding: 4px 4px 4px 6px;
+  background: var(--term-chrome-panel);
+  border: 1px solid var(--term-chrome-line);
+  border-radius: var(--r-md);
+  color: var(--term-chrome-fg);
+}
+.term-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--term-chrome-bg);
+  color: var(--term-chrome-fg);
+  caret-color: var(--term-accent);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.term-search-input::placeholder { color: var(--term-chrome-dim); }
+.term-search-input:focus {
+  outline: none;
+  border-color: var(--term-chrome-line);
+}
+.term-search-count {
+  flex: 0 0 auto;
+  min-width: 44px;
+  padding: 0 4px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--term-chrome-dim);
+  font-variant-numeric: tabular-nums;
+}
+.term-search-count.is-empty { color: var(--term-chrome-fg); }
+.term-search-btn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--term-chrome-fg);
+  font-size: 12px;
+  font-weight: 600;
+  -webkit-tap-highlight-color: transparent;
+}
+.term-search-btn:hover:not(:disabled) { background: var(--term-chrome-bg); }
+.term-search-btn:focus-visible { outline: 1px solid var(--term-chrome-fg); outline-offset: -1px; }
+.term-search-btn:disabled { color: var(--term-chrome-dim); opacity: 0.6; }
+.term-search-case { color: var(--term-chrome-dim); }
+.term-search-case.is-on {
+  color: var(--term-chrome-fg);
+  border-color: var(--term-chrome-line);
+  background: var(--term-chrome-bg);
+}
+/* Touch: 16px input (iOS focus zoom) and finger-sized buttons. */
+.term-search--coarse { left: 8px; right: 8px; width: auto; }
+.term-search--coarse .term-search-input { height: 36px; font-size: 16px; }
+.term-search--coarse .term-search-btn { width: 36px; height: 36px; }
