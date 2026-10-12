@@ -68,6 +68,7 @@ describe('plainPreviewText', () => {
 
   it('keeps snake_case and arithmetic intact', () => {
     expect(plainPreviewText('set my_var_name to 2*3*4')).toBe('set my_var_name to 2*3*4');
+    expect(plainPreviewText('call mcp__happy__set_status with __bold__')).toBe('call mcp__happy__set_status with bold');
   });
 });
 

@@ -45,7 +45,9 @@ export function plainPreviewText(raw: string, max = PREVIEW_MAX_CHARS): string {
     .replace(/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$/gm, '')
     .replace(/^\s*[-*_]{3,}\s*$/gm, '')
     .replace(/\|/g, ' ')
-    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    // `__bold__` only at word boundaries: identifiers like mcp__happy__x stay intact
+    .replace(/(^|[^\w])__(?!\s)([^_\n]+?)__(?!\w)/g, '$1$2')
     .replace(/(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1$2')
     .replace(/(^|[^\w_])_(?!\s)([^_\n]+?)_(?!\w)/g, '$1$2')
     .replace(/~~(.+?)~~/g, '$1')

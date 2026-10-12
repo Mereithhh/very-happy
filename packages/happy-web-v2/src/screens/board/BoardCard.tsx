@@ -223,7 +223,8 @@ export function BoardCard({
               {item.llmAttention === 'blocked' ? t('board.llmBlocked') : t('board.llmReview')}
             </span>
           )}
-          {item.detail?.kind === 'tool' && <span className="bd-card-tool">{item.detail.name}</span>}
+          {/* B-553: the question block already names the tool */}
+          {item.detail?.kind === 'tool' && !item.question && <span className="bd-card-tool">{item.detail.name}</span>}
           {item.backgroundTasks !== undefined && item.backgroundTasks > 0 && (
             <span className="bd-card-background">{t('sidebar.rowBackgroundTasks', { count: item.backgroundTasks })}</span>
           )}
