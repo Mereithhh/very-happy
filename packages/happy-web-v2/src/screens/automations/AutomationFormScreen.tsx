@@ -16,6 +16,7 @@ import { AutomationsApiError } from '@/sync/apiAutomations';
 import { AUTOMATIONS_DETAIL_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import {
   ACTION_KINDS,
+  PRECHECK_MODES,
   SPAWN_AGENTS,
   SPAWN_PERMISSION_MODES,
   TRIGGER_KINDS,
@@ -47,6 +48,8 @@ const ERR_KEY: Record<string, TranslationKey> = {
   session: 'automations.errSession',
   script: 'automations.errScript',
   maxRuntime: 'automations.errMaxRuntime',
+  precheckCommand: 'automations.errPrecheckCommand',
+  precheckTimeout: 'automations.errPrecheckTimeout',
   schema: 'automations.errSchema',
   name_taken: 'automations.errNameTaken',
   invalid_cron: 'automations.errInvalidCron',
@@ -309,6 +312,53 @@ export function AutomationFormScreen() {
               <Field label={t('automations.fieldCwd') as string}>
                 <input className="au-input mono" value={draft.scriptCwd} onChange={(e) => set('scriptCwd', e.target.value)} autoComplete="off" spellCheck={false} />
               </Field>
+            </>
+          )}
+        </fieldset>
+
+        <fieldset className="au-fieldset">
+          <legend className="au-legend">{t('automations.formPrecheck')}</legend>
+          <label className="au-check au-field--wide">
+            <input type="checkbox" checked={draft.precheckEnabled} onChange={(e) => set('precheckEnabled', e.target.checked)} />
+            <span>{t('automations.precheckEnable')}</span>
+          </label>
+          <p className="au-field-hint au-field--wide">{t('automations.precheckEnableHint')}</p>
+          {draft.precheckEnabled && (
+            <>
+              <div className="au-choice au-field--wide" role="radiogroup" aria-label={t('automations.formPrecheck') as string}>
+                {PRECHECK_MODES.map((mode) => (
+                  <button key={mode} type="button" role="radio" aria-checked={draft.precheckMode === mode} className={`au-choice-btn${draft.precheckMode === mode ? ' is-on' : ''}`} onClick={() => set('precheckMode', mode)}>
+                    {t(mode === 'shell' ? 'automations.precheckModeShell' : 'automations.precheckModeArgv')}
+                  </button>
+                ))}
+              </div>
+              <Field
+                label={t('automations.fieldPrecheckCommand') as string}
+                hint={t(draft.precheckMode === 'shell' ? 'automations.fieldPrecheckShellHint' : 'automations.fieldPrecheckArgvHint') as string}
+                error={err('precheckCommand')}
+                wide
+              >
+                <input
+                  className="au-input mono"
+                  value={draft.precheckCommand}
+                  onChange={(e) => set('precheckCommand', e.target.value)}
+                  placeholder={draft.precheckMode === 'shell' ? 'test -s ~/inbox/new.json' : './has-new-messages --since 5m'}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </Field>
+              <Field label={t('automations.fieldPrecheckCwd') as string} hint={t('automations.fieldPrecheckCwdHint') as string}>
+                <input className="au-input mono" value={draft.precheckCwd} onChange={(e) => set('precheckCwd', e.target.value)} placeholder="~/project" autoComplete="off" spellCheck={false} />
+              </Field>
+              <Field label={t('automations.fieldPrecheckTimeout') as string} hint={t('automations.fieldPrecheckTimeoutHint') as string} error={err('precheckTimeout')}>
+                <input className="au-input mono" value={draft.precheckTimeout} onChange={(e) => set('precheckTimeout', e.target.value)} placeholder="60s" autoComplete="off" />
+              </Field>
+              {draft.actionKind !== 'script' && (
+                <label className="au-check">
+                  <input type="checkbox" checked={draft.precheckIncludeOutput} onChange={(e) => set('precheckIncludeOutput', e.target.checked)} />
+                  <span>{t('automations.fieldPrecheckIncludeOutput')}</span>
+                </label>
+              )}
             </>
           )}
         </fieldset>

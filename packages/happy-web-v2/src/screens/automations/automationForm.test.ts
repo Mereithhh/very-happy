@@ -14,6 +14,7 @@ import {
   joinArgv,
   localInputToEpoch,
   parseDuration,
+  precheckFromDraft,
   splitArgv,
   validateDraft,
 } from './automationForm';
@@ -177,3 +178,34 @@ describe('fireSnippets', () => {
     expect(s.mcp.startsWith('automation_fire({ name: "tanka-dm"')).toBe(true);
   });
 });
+
+describe('B-548 precheck in the form', () => {
+  it('builds a shell or argv precheck and leaves it out when off', () => {
+    const d = emptyDraft({ name: 'n', machineId: 'm', directory: '/r', prompt: 'p' });
+    expect(buildCreate(d)).toMatchObject({ ok: true });
+    expect((buildCreate(d) as { body: object }).body).not.toHaveProperty('precheck');
+    const shell = { ...d, precheckEnabled: true, precheckCommand: ' test -s x ', precheckTimeout: '30s', precheckIncludeOutput: true, precheckCwd: '~/c' };
+    expect(precheckFromDraft(shell)).toEqual({ shell: 'test -s x', cwd: '~/c', timeoutMs: 30_000, includeOutput: true });
+    expect((buildCreate(shell) as { body: { precheck: unknown } }).body.precheck).toEqual({ shell: 'test -s x', cwd: '~/c', timeoutMs: 30_000, includeOutput: true });
+    expect(precheckFromDraft({ ...shell, precheckMode: 'argv', precheckCommand: './has-new "a b"', precheckTimeout: '', precheckIncludeOutput: false, precheckCwd: '' })).toEqual({ command: ['./has-new', 'a b'] });
+  });
+  it('validates the check command and timeout only when enabled', () => {
+    const d = emptyDraft({ name: 'n', machineId: 'm', directory: '/r', prompt: 'p', precheckCommand: '', precheckTimeout: '99m' });
+    expect(validateDraft(d)).toEqual({});
+    expect(validateDraft({ ...d, precheckEnabled: true })).toEqual({ precheckCommand: 'precheckCommand', precheckTimeout: 'precheckTimeout' });
+    expect(validateDraft({ ...d, precheckEnabled: true, precheckMode: 'argv', precheckCommand: '"open', precheckTimeout: '10m' })).toEqual({ precheckCommand: 'precheckCommand' });
+  });
+  it('round-trips an automation and sends only a changed precheck (null removes; older servers have none)', () => {
+    const gated = base({ precheck: { command: ['./check', 'x y'], timeoutMs: 90_000, includeOutput: true } });
+    const d = draftFromAutomation(gated);
+    expect(d).toMatchObject({ precheckEnabled: true, precheckMode: 'argv', precheckCommand: './check "x y"', precheckTimeout: '1m30s', precheckIncludeOutput: true });
+    expect(buildUpdate(d, gated)).toMatchObject({ ok: true, changed: false });
+    const off = buildUpdate({ ...d, precheckEnabled: false }, gated) as { body: { precheck?: unknown } };
+    expect(off.body.precheck).toBeNull();
+    const fromOld = base();
+    expect(buildUpdate(draftFromAutomation(fromOld), fromOld)).toMatchObject({ changed: false });
+    const added = buildUpdate({ ...draftFromAutomation(fromOld), precheckEnabled: true, precheckCommand: 'true' }, fromOld) as { body: { precheck?: unknown } };
+    expect(added.body.precheck).toEqual({ shell: 'true' });
+  });
+});
+

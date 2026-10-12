@@ -11,7 +11,7 @@ import { useMachine, useSession } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { getSessionName } from '@/utils/sessionUtils';
 import { AutomationsApiError } from '@/sync/apiAutomations';
-import { attentionKind, runTone, type AttentionKind, type RunTone } from './automationPresentation';
+import { attentionKind, runTone, skipReasonKind, type AttentionKind, type RunTone, type SkipReasonKind } from './automationPresentation';
 
 const STATUS_KEY: Record<string, TranslationKey> = {
   queued: 'automations.statusQueued',
@@ -36,6 +36,15 @@ const REASON_KEY: Record<Exclude<AttentionKind, 'other'>, TranslationKey> = {
   unknown_outcome: 'automations.reasonUnknownOutcome',
   daemon_restarted: 'automations.reasonDaemonRestarted',
   invalid_action: 'automations.reasonInvalidAction',
+  precheck_broken: 'automations.reasonPrecheckBroken',
+  precheck_unsupported_cli: 'automations.reasonPrecheckUnsupportedCli',
+};
+const SKIP_KEY: Record<Exclude<SkipReasonKind, 'other'>, TranslationKey> = {
+  previous_run_active: 'automations.skipPreviousRunActive',
+  precheck_failed: 'automations.skipPrecheckFailed',
+  precheck_timeout: 'automations.skipPrecheckTimeout',
+  precheck_error: 'automations.skipPrecheckError',
+  precheck_unsupported_cli: 'automations.skipPrecheckUnsupportedCli',
 };
 const TONE_BADGE: Record<RunTone, { tone: 'live' | 'warn' | 'err' | 'muted'; dot: boolean }> = {
   wait: { tone: 'muted', dot: true },
@@ -78,6 +87,17 @@ export function useAttentionReason(): (run: Pick<AutomationRun, 'status' | 'atte
     const kind = attentionKind(run);
     if (kind === 'other') return run.attentionReason || (t('automations.reasonFailed') as string);
     return t(REASON_KEY[kind]) as string;
+  };
+}
+
+/** B-548: why a skipped run was skipped — worded for known codes, verbatim otherwise; null for other statuses */
+export function useSkipReason(): (run: Pick<AutomationRun, 'status' | 'error'>) => string | null {
+  const { t } = useTranslation();
+  return (run) => {
+    const kind = skipReasonKind(run);
+    if (kind === null) return null;
+    if (kind === 'other') return run.error || null;
+    return t(SKIP_KEY[kind]) as string;
   };
 }
 
