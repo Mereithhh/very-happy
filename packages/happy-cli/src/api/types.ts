@@ -675,15 +675,6 @@ export type Metadata = {
     progress?: string,
     analyzedAt: number,
   }
-  /**
-   * B-556: the agent's own status line (`set_status` MCP tool). Optional;
-   * old web clients strip it on parse, new ones read `phase` leniently.
-   */
-  selfStatus?: {
-    text: string,
-    phase?: string,
-    updatedAt: number,
-  }
 };
 
 export type AgentState = {

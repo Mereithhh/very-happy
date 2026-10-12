@@ -30,10 +30,6 @@ import {
     createSelfReportState, normalizeProgress, shouldAcceptSelfReport,
 } from "./boardReport";
 import { checkPreviewPath } from "./previewPath";
-import {
-    SELF_STATUS_TOOL_NAME, createSelfStatusExecutor, createSelfStatusPublisher, registerSelfStatusTool,
-    type SelfStatusExecutor,
-} from "./selfStatus";
 
 interface HappyMcpHandlers {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
@@ -42,8 +38,6 @@ interface HappyMcpHandlers {
     openPreview: (path: string, mode: 'file' | 'diff') => Promise<{ delivered: boolean; resolved?: string; error?: string }>;
     /** B-132: claude self-reports progress onto the task board. */
     reportProgress: (progress: string, attention: BoardAttention) => Promise<{ accepted: boolean; error?: string }>;
-    /** B-556: the agent's own status line (metadata.selfStatus). */
-    setStatus: SelfStatusExecutor;
 }
 
 export interface StartHappyServerOptions {
@@ -189,9 +183,6 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
         };
     });
 
-    // B-556 set_status — optional display line; never forced by the prompt.
-    registerSelfStatusTool(mcp, handlers.setStatus);
-
     if (options?.assistant && !process.env.VH_TEAM_SCOPE_FILE) {
         registerAssistantTools(mcp);
     }
@@ -204,14 +195,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
 
     const selfReportState = options?.selfReportState ?? createSelfReportState();
 
-    // B-556: one publisher per session process — coalesces bursts into at
-    // most one metadata write per window, always ending on the newest status.
-    const selfStatusPublisher = createSelfStatusPublisher({
-        write: (selfStatus) => client.updateMetadata((metadata) => ({ ...metadata, selfStatus })),
-    });
-
     const handlers: HappyMcpHandlers = {
-        setStatus: createSelfStatusExecutor(selfStatusPublisher),
         openPreview: async (path: string, mode: 'file' | 'diff') => {
             // 这道闸必须在 CLI 侧（模型请求刚落地时），不能放 web——web 可绕过。
             const verdict = checkPreviewPath(path);
@@ -346,7 +330,6 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             CLIPBOARD_TOOL_NAME,
             PREVIEW_TOOL_NAME,
             REPORT_PROGRESS_TOOL_NAME,
-            SELF_STATUS_TOOL_NAME,
             ...TEAM_TOOL_NAMES,
             ...AUTOMATION_TOOL_NAMES,
             ...SESSION_PEER_TOOL_NAMES,
@@ -355,7 +338,6 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
             if (adoptionEnabled) client.rpcHandlerManager.unregisterHandler('teams-adopt');
-            selfStatusPublisher.dispose();
             server.close();
         }
     }
