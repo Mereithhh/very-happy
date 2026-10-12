@@ -66,6 +66,54 @@ export function resolveFrozenRows(keys: readonly string[], live: BoardItem[]): B
   });
 }
 
+/**
+ * When the 等我看 membership freezes. Not before the session store is ready
+ * (`isDataReady`): freezing an empty pre-hydration list — or freezing on the
+ * first non-empty board, which a cold open reaches mid-way — would splice a
+ * whole section in above the cursor. Once ready, the current selection is
+ * frozen even when empty, so nothing is inserted later.
+ *
+ * Returns the frozen keys, or null = not frozen yet (the section is not shown).
+ */
+export function freezeNeedsYouKeys(
+  frozen: readonly string[] | null,
+  dataReady: boolean,
+  live: readonly BoardItem[],
+): readonly string[] | null {
+  if (frozen) return frozen;
+  if (!dataReady) return null;
+  return live.map((item) => item.key);
+}
+
+/** The highlighted row, by key; `index` is where it was last seen. */
+export interface PaletteActive {
+  key: string;
+  index: number;
+}
+
+/**
+ * Resolve the highlighted row against the current display order. The
+ * highlight follows its row's KEY, so rows inserted or removed elsewhere
+ * never move it. If its row vanished, the row that slid into its old position
+ * takes over (its neighbour below; the new last row when it was last). No
+ * highlight yet → the first row. Returns -1 for an empty list.
+ */
+export function resolveActiveIndex(keys: readonly string[], active: PaletteActive | null): number {
+  if (keys.length === 0) return -1;
+  if (!active) return 0;
+  const at = keys.indexOf(active.key);
+  if (at >= 0) return at;
+  return Math.min(Math.max(active.index, 0), keys.length - 1);
+}
+
+/** ↑/↓ with wrap-around, from the resolved highlight. */
+export function moveActive(keys: readonly string[], active: PaletteActive | null, delta: 1 | -1): PaletteActive | null {
+  if (keys.length === 0) return null;
+  const from = resolveActiveIndex(keys, active);
+  const index = (from + delta + keys.length) % keys.length;
+  return { key: keys[index], index };
+}
+
 /** BoardItem → the sidebar's AgentExecution (same table as Sidebar.tsx executionByKey). */
 export function boardItemExecution(item: Pick<BoardItem, 'status' | 'backgroundTasks'>): AgentExecution {
   switch (item.status) {

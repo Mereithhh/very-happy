@@ -43,6 +43,10 @@ import type { AgentExecution } from '@/sync/agentStatus';
 import {
   boardItemExecution,
   filterPaletteItems,
+  freezeNeedsYouKeys,
+  moveActive,
+  resolveActiveIndex,
+  type PaletteActive,
   newChatDraftFor,
   orderPaletteItems,
   resolveFrozenRows,
@@ -76,7 +80,7 @@ type CommandItem = {
   /** optional keyboard-shortcut hint rendered on the row's right edge */
   hint?: string;
   /** B-552 等我看 rows: the sidebar's status mark + "how long ago" */
-  status?: { execution: AgentExecution; unread: boolean; backgroundTasks?: number; at: number };
+  status?: { execution: AgentExecution; unread: boolean; backgroundTasks?: number; flavor?: string | null; legacy?: boolean; at: number };
   run: () => void | Promise<void>;
 };
 
@@ -159,7 +163,9 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
 
   const [query, setQuery] = useState('');
   const ime = useImeGuard();
-  const [active, setActive] = useState(0);
+  // Highlight is tracked by row KEY (paletteModel.resolveActiveIndex), so
+  // rows inserted/removed elsewhere never move it under the user.
+  const [active, setActive] = useState<PaletteActive | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -183,19 +189,20 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
   }, []);
 
   // ── B-552 等我看: the board's waiting column (sessions), frozen at open ──
-  // Membership and order freeze on the first non-empty selection so rows
-  // never shuffle under the cursor; status marks keep reading live items.
+  // Membership and order freeze once the session store is ready
+  // (freezeNeedsYouKeys); before that the section isn't rendered at all. Status
+  // marks keep reading the live items.
+  const dataReady = storage((s) => s.isDataReady);
   const liveNeedsYou = useMemo(
     () => selectNeedsYouSessions(boardItems, { currentSessionId }),
     [boardItems, currentSessionId],
   );
-  const frozenNeedsYou = useRef<string[] | null>(null);
-  if (frozenNeedsYou.current === null && liveNeedsYou.length > 0) {
-    frozenNeedsYou.current = liveNeedsYou.map((item) => item.key);
-  }
+  const frozenNeedsYou = useRef<readonly string[] | null>(null);
+  frozenNeedsYou.current = freezeNeedsYouKeys(frozenNeedsYou.current, dataReady, liveNeedsYou);
+  const frozenKeys = frozenNeedsYou.current;
   const needsYou = useMemo(
-    () => (frozenNeedsYou.current ? resolveFrozenRows(frozenNeedsYou.current, boardItems) : liveNeedsYou),
-    [boardItems, liveNeedsYou],
+    () => (frozenKeys ? resolveFrozenRows(frozenKeys, boardItems) : []),
+    [boardItems, frozenKeys],
   );
 
   // one online machine → direct create; 0 / >1 → picker (shared entry point)
@@ -486,6 +493,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
           execution: boardItemExecution(item),
           unread: unreadIds.has(s.id),
           backgroundTasks: item.backgroundTasks,
+          flavor: s.metadata?.flavor,
+          legacy: item.legacyStatus,
           at: item.attentionSince ?? item.lastActivityAt,
         },
         run: () => navigate(`/session/${s.id}`),
@@ -522,16 +531,24 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
     }];
   }, [items, needsYouItems, query, t, navigate, dialogs, location]);
 
-  // keep active index in bounds when the list changes
+  const keys = useMemo(() => filtered.map((it) => it.key), [filtered]);
+  const activeIndex = resolveActiveIndex(keys, active);
+
+  // Pin the highlight to a concrete key: an implicit "first row" would
+  // otherwise jump when a section is inserted above it, and a vanished row's
+  // fallback neighbour becomes the new pinned row.
   useEffect(() => {
-    setActive((a) => (filtered.length === 0 ? 0 : Math.min(a, filtered.length - 1)));
-  }, [filtered.length]);
+    const key = activeIndex >= 0 ? keys[activeIndex] : undefined;
+    if (key !== undefined && (active?.key !== key || active.index !== activeIndex)) {
+      setActive({ key, index: activeIndex });
+    }
+  }, [keys, activeIndex, active]);
 
   // scroll active item into view
   useEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>('.cp-item.is-active');
     el?.scrollIntoView({ block: 'nearest' });
-  }, [active]);
+  }, [activeIndex]);
 
   const runItem = useCallback(
     async (item: CommandItem | undefined) => {
@@ -553,16 +570,16 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         close();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setActive((a) => (filtered.length ? (a + 1) % filtered.length : 0));
+        setActive((a) => moveActive(keys, a, 1));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setActive((a) => (filtered.length ? (a - 1 + filtered.length) % filtered.length : 0));
+        setActive((a) => moveActive(keys, a, -1));
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        runItem(filtered[active]);
+        runItem(activeIndex >= 0 ? filtered[activeIndex] : undefined);
       }
     },
-    [filtered, active, close, runItem, ime],
+    [filtered, keys, activeIndex, close, runItem, ime],
   );
 
   // render grouped list (dividers by group label); `filtered` is already in
@@ -611,7 +628,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
             placeholder={t('commandPalette.placeholder')}
             onChange={(e) => {
               setQuery(e.target.value);
-              setActive(0);
+              setActive(null);
             }}
             autoComplete="off"
             autoCorrect="off"
@@ -630,8 +647,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
                   <button
                     key={it.key}
                     type="button"
-                    className={`cp-item${index === active ? ' is-active' : ''}`}
-                    onMouseMove={() => setActive(index)}
+                    className={`cp-item${index === activeIndex ? ' is-active' : ''}`}
+                    onMouseMove={() => { if (index !== activeIndex) setActive({ key: it.key, index }); }}
                     onClick={() => runItem(it)}
                   >
                     <span className="cp-item-icon">{it.icon}</span>
@@ -645,6 +662,8 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
                           execution={it.status.execution}
                           unread={it.status.unread}
                           backgroundTasks={it.status.backgroundTasks}
+                          flavor={it.status.flavor}
+                          legacy={it.status.legacy}
                         />
                         <span className="cp-item-age">{formatLastSeen(it.status.at)}</span>
                       </span>

@@ -4,7 +4,10 @@ import type { Session, Machine } from '@/sync/storageTypes';
 import {
   boardItemExecution,
   filterPaletteItems,
+  freezeNeedsYouKeys,
+  moveActive,
   newChatDraftFor,
+  resolveActiveIndex,
   orderPaletteItems,
   resolveFrozenRows,
   selectNeedsYouSessions,
@@ -173,5 +176,62 @@ describe('newChatDraftFor', () => {
   });
   it('terminal-only matches still offer a new chat', () => {
     expect(newChatDraftFor('build', [{ group: 'terminals' }])).toBe('build');
+  });
+});
+
+describe('freezeNeedsYouKeys (review #1: freeze only once the store is ready)', () => {
+  const live = board([mkSession({ id: 'a' }), mkSession({ id: 'b', updatedAt: NOW - 90_000 })]);
+  it('does not freeze (section hidden) before isDataReady, even with board rows', () => {
+    expect(freezeNeedsYouKeys(null, false, live)).toBeNull();
+  });
+  it('freezes at readiness — an empty selection freezes too, so nothing is spliced in later', () => {
+    expect(freezeNeedsYouKeys(null, true, [])).toEqual([]);
+    const frozenEmpty = freezeNeedsYouKeys(null, true, []);
+    expect(freezeNeedsYouKeys(frozenEmpty, true, live)).toEqual([]);
+  });
+  it('keeps the first frozen membership/order once set', () => {
+    const frozen = freezeNeedsYouKeys(null, true, live);
+    expect(frozen).toEqual(['a', 'b']);
+    const reordered = [...live].reverse();
+    expect(freezeNeedsYouKeys(frozen, true, reordered)).toBe(frozen);
+  });
+  it('cold open: rows arriving after readiness-pending do not move a pinned highlight', () => {
+    // panel opened before data: only actions are listed and the first is pinned
+    const before = ['a:new-terminal', 'a:new-chat'];
+    const pinned = { key: before[resolveActiveIndex(before, null)], index: 0 };
+    // data arrives: 等我看 section rendered on top
+    const after = ['needs:a', 'needs:b', ...before];
+    expect(after[resolveActiveIndex(after, pinned)]).toBe('a:new-terminal');
+  });
+});
+
+describe('resolveActiveIndex / moveActive (review #2: highlight by key)', () => {
+  const keys = ['needs:a', 'needs:b', 'needs:c', 'a:x'];
+  it('no highlight yet → first row; empty list → -1', () => {
+    expect(resolveActiveIndex(keys, null)).toBe(0);
+    expect(resolveActiveIndex([], null)).toBe(-1);
+    expect(resolveActiveIndex([], { key: 'needs:a', index: 0 })).toBe(-1);
+  });
+  it('follows the key when rows move', () => {
+    expect(resolveActiveIndex(['a:x', 'needs:b'], { key: 'needs:b', index: 1 })).toBe(1);
+    expect(resolveActiveIndex(['z', 'y', 'needs:b'], { key: 'needs:b', index: 0 })).toBe(2);
+  });
+  it('frozen row removed → Enter lands on the row that slid into its place, never elsewhere', () => {
+    // 'b' highlighted, then its session is archived (resolveFrozenRows drops it)
+    const live = board([mkSession({ id: 'a' }), mkSession({ id: 'c', updatedAt: NOW - 90_000 })]);
+    const rows = resolveFrozenRows(['a', 'b', 'c'], live).map((r) => `needs:${r.key}`);
+    const after = [...rows, 'a:x'];
+    expect(after).toEqual(['needs:a', 'needs:c', 'a:x']);
+    expect(after[resolveActiveIndex(after, { key: 'needs:b', index: 1 })]).toBe('needs:c');
+  });
+  it('last row removed → falls back to the new last row', () => {
+    expect(resolveActiveIndex(['p', 'q'], { key: 'r', index: 2 })).toBe(1);
+  });
+  it('arrows wrap and continue from the resolved row', () => {
+    expect(moveActive(keys, null, 1)).toEqual({ key: 'needs:b', index: 1 });
+    expect(moveActive(keys, null, -1)).toEqual({ key: 'a:x', index: 3 });
+    expect(moveActive(keys, { key: 'a:x', index: 3 }, 1)).toEqual({ key: 'needs:a', index: 0 });
+    expect(moveActive(['needs:a', 'needs:c'], { key: 'needs:b', index: 1 }, 1)).toEqual({ key: 'needs:a', index: 0 });
+    expect(moveActive([], null, 1)).toBeNull();
   });
 });
