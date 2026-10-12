@@ -1671,6 +1671,11 @@ export class ApiMachineClient {
         }
     }
 
+    /** B-550: final terminal scrollback checkpoint; resolves within ~300ms, never rejects. */
+    flushTerminalScrollback(): Promise<void> {
+        return this.webTerminal.flushScrollbackForShutdown().catch(() => undefined);
+    }
+
     shutdown() {
         logger.debug('[API MACHINE] Shutting down');
         this.webTerminal.stopListTracking();
