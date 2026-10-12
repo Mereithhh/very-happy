@@ -132,11 +132,11 @@ export interface BoardItem {
   question?: string;
   /** B-553: sessions only — `metadata.flavor` (labels the agent's reply). */
   agentKind?: string;
-  /** B-556: sessions only — raw `metadata.selfStatus`; the card judges
-   *  staleness at render time (sync/selfStatus.ts). */
-  selfStatus?: { text: string; phase?: string; updatedAt: number };
-  /** when `progress` was produced (`board.analyzedAt`) */
+  /** when `progress` was produced (`board.analyzedAt`); the card judges
+   *  staleness at render time (sync/boardProgress.ts) */
   progressAt?: number;
+  /** B-556: optional `board.phase` (report_progress), raw string */
+  progressPhase?: string;
 }
 
 /** ended items older than this fall off the board entirely */
@@ -300,10 +300,12 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     if (level !== null) { item.priority = true; item.priorityLevel = level; }
     if (cls.backgroundTasks) item.backgroundTasks = cls.backgroundTasks;
     const board = s.metadata?.board;
-    if (board?.progress) { item.progress = board.progress; item.progressAt = board.analyzedAt; }
+    if (board?.progress) {
+      item.progress = board.progress;
+      item.progressAt = board.analyzedAt;
+      if (board.phase) item.progressPhase = board.phase;
+    }
     if (s.metadata?.flavor) item.agentKind = s.metadata.flavor;
-    const selfStatus = s.metadata?.selfStatus;
-    if (selfStatus) item.selfStatus = { text: selfStatus.text, phase: selfStatus.phase, updatedAt: selfStatus.updatedAt };
     if (board?.taskId) item.llmTaskId = board.taskId;
     item.llmAttention = llmAttentionOf(s);
     if (cls.status === 'attention') {

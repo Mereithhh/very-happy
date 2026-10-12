@@ -190,19 +190,17 @@ describe('chat session mapping', () => {
   });
 });
 
-describe('B-556 self status on session items', () => {
-  it('carries metadata.selfStatus raw (the card judges staleness) and the progress time', () => {
+describe('B-556 board progress on session items', () => {
+  it('carries board progress, its time and phase raw (the card judges staleness)', () => {
     const base = mkSession({ id: 'x' }).metadata!;
     const [item] = build({ sessions: [mkSession({ id: 's1', thinking: true, metadata: {
       ...base, flavor: 'codex',
-      selfStatus: { text: 'running tests', phase: 'testing', updatedAt: NOW - 1_000 },
-      board: { progress: 'llm guess', analyzedAt: NOW - 5_000 },
+      board: { progress: 'running tests', phase: 'testing', analyzedAt: NOW - 5_000 },
     } })] });
     expect(item).toMatchObject({
-      status: 'working', agentKind: 'codex', progress: 'llm guess', progressAt: NOW - 5_000,
-      selfStatus: { text: 'running tests', phase: 'testing', updatedAt: NOW - 1_000 },
+      status: 'working', agentKind: 'codex', progress: 'running tests', progressAt: NOW - 5_000, progressPhase: 'testing',
     });
-    // the self status never changes the lane
+    // the progress line never changes the lane
     expect(item.lifecycle).toBe('running');
   });
 });

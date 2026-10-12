@@ -11,7 +11,7 @@ import { confirmArchiveSession, confirmCloseTerminal, markSessionDone } from '@/
 import { fmtDuration, type BoardItem } from './boardItems';
 import { useSessionPreview } from './useBoardItems';
 import { codingAgentLabel } from '@/sync/agentStatus';
-import { boardStatusLine, selfStatusView, type KnownSelfStatusPhase } from '@/sync/selfStatus';
+import { boardProgressView, type KnownBoardPhase } from '@/sync/boardProgress';
 
 export { fmtDuration };
 
@@ -23,7 +23,7 @@ const DOT: Record<BoardItem['status'], { status: Status; pulse: boolean }> = {
   ended: { status: 'offline', pulse: false },
 };
 
-const PHASE_KEY: Record<KnownSelfStatusPhase, 'board.phasePlanning' | 'board.phaseImplementing' | 'board.phaseTesting' | 'board.phaseReviewing' | 'board.phaseBlocked' | 'board.phaseDone'> = {
+const PHASE_KEY: Record<KnownBoardPhase, 'board.phasePlanning' | 'board.phaseImplementing' | 'board.phaseTesting' | 'board.phaseReviewing' | 'board.phaseBlocked' | 'board.phaseDone'> = {
   planning: 'board.phasePlanning',
   implementing: 'board.phaseImplementing',
   testing: 'board.phaseTesting',
@@ -49,12 +49,13 @@ export function BoardCard({
   const KindIcon = item.kind === 'terminal' ? TerminalSquare : MessageSquare;
   // B-553: latest round from messages this tab already holds (never fetches).
   const preview = useSessionPreview(item.kind === 'session' ? item.key : null);
-  // B-556: the agent's own status vs. the LLM progress line. `live` reuses the
-  // board's classification — no second liveness judgement.
+  // B-556: board progress (report_progress / boardAnalyzer) with its phase,
+  // de-emphasized when stale. `live` reuses the board's classification — no
+  // second liveness judgement.
   const live = item.status === 'working' || item.status === 'attention';
-  const statusLine = boardStatusLine(
-    selfStatusView(item.selfStatus, { now, live }),
-    item.progress ? { text: item.progress, analyzedAt: item.progressAt } : undefined,
+  const progress = boardProgressView(
+    item.progress ? { progress: item.progress, phase: item.progressPhase, analyzedAt: item.progressAt } : null,
+    { now, live },
   );
   // B-558: only an idle card's badge describes how the round ended.
   const outcome = item.waitReason === 'idle' ? preview?.outcome : undefined;
@@ -183,18 +184,17 @@ export function BoardCard({
           <span className="bd-card-machine">{item.machineName}</span>
           {item.cwd && <span className="bd-card-cwd">{item.cwd}</span>}
         </div>
-        {statusLine?.kind === 'progress' && <div className="bd-card-progress">{statusLine.text}</div>}
-        {statusLine?.kind === 'self' && (
+        {progress && (
           <div
-            className={`bd-card-progress bd-card-self${statusLine.status.stale ? ' is-stale' : ''}`}
-            title={t(statusLine.status.stale ? 'board.selfStatusStaleTitle' : 'board.selfStatusTitle', { duration: fmtDuration(now - statusLine.status.updatedAt) })}
+            className={`bd-card-progress${progress.stale ? ' is-stale' : ''}`}
+            title={progress.updatedAt !== undefined ? t(progress.stale ? 'board.progressStaleTitle' : 'board.progressTitle', { duration: fmtDuration(now - progress.updatedAt) }) : undefined}
           >
-            {(statusLine.status.phase || statusLine.status.unknownPhase) && (
+            {(progress.phase || progress.unknownPhase) && (
               <span className="bd-card-phase mono">
-                {statusLine.status.phase ? t(PHASE_KEY[statusLine.status.phase]) : statusLine.status.unknownPhase}
+                {progress.phase ? t(PHASE_KEY[progress.phase]) : progress.unknownPhase}
               </span>
             )}
-            {statusLine.status.text}
+            {progress.text}
           </div>
         )}
         {item.question && (
