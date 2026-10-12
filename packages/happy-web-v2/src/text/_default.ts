@@ -1533,6 +1533,9 @@ export const en = {
         agentStatusOffline: 'Agent unavailable',
         // B-558: stale lease — state the fact, not a verdict
         agentStatusNoUpdate: ({ duration }: { duration: string }) => `No update for ${duration}`,
+        // B-556: the agent's own status line in the row tooltip
+        selfStatusTooltip: ({ text }: { text: string }) => `Agent: ${text}`,
+        selfStatusOutdated: 'may be outdated',
         collapse: 'Collapse sidebar',
         openSessions: 'Open sessions',
         archiveConfirm: 'Archive this session?',
@@ -3348,6 +3351,15 @@ export const en = {
         lastRoundFailed: 'last turn failed',
         lastRoundFailedHint: 'The last turn ended with an error. Open the session to see why.',
         noUpdateFor: ({ duration }: { duration: string }) => `no update for ${duration}`,
+        // B-556: the agent's own status line (set_status)
+        phasePlanning: 'planning',
+        phaseImplementing: 'implementing',
+        phaseTesting: 'testing',
+        phaseReviewing: 'reviewing',
+        phaseBlocked: 'blocked',
+        phaseDone: 'done',
+        selfStatusTitle: ({ duration }: { duration: string }) => `Reported by the agent · ${duration} ago`,
+        selfStatusStaleTitle: ({ duration }: { duration: string }) => `Reported by the agent · ${duration} ago — may be outdated`,
     },
 
     automations: {

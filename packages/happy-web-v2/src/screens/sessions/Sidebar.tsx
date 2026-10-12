@@ -36,6 +36,7 @@ import { resolveActivityTs } from '@/sync/activityOverlay';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardItems } from '@/screens/board/useBoardItems';
 import { fmtDuration } from '@/screens/board/boardItems';
+import { selfStatusView } from '@/sync/selfStatus';
 import { AUTOMATIONS_SIDEBAR_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import { automationsEntryVisible } from '@/sync/automationsPoll';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
@@ -1447,6 +1448,13 @@ function SidebarRow({
     : status === 'background' ? withNote(t('sidebar.rowBackgroundTasks', { count: backgroundTasks ?? 1 }))
     : status === 'input' ? withNote(t('sidebar.rowNeedsAttention'))
     : status === 'unread' ? [t('sidebar.rowUnread'), availabilityLabel].filter(Boolean).join(' · ') : status === 'offline' ? t('sidebar.agentStatusOffline') : availabilityLabel || t('sidebar.agentStatusUnknown');
+  // B-556: the agent's own status line, de-emphasized in words when stale
+  // (not running, or >30 min old). Display only — never changes the slot.
+  const selfStatus = isTerminal ? null : selfStatusView(s?.metadata?.selfStatus, { now, live: execution === 'running' || execution === 'background' || execution === 'input' });
+  const selfStatusLabel = selfStatus
+    ? [t('sidebar.selfStatusTooltip', { text: selfStatus.text }), selfStatus.stale ? t('sidebar.selfStatusOutdated') : ''].filter(Boolean).join(' · ')
+    : '';
+  const slotLabel = [status ? statusLabel : '', selfStatusLabel].filter(Boolean).join(' · ');
 
   const open = () => navigate(row.href);
 
@@ -1590,7 +1598,7 @@ function SidebarRow({
           </span>
           <span className="sb-row-sub mono">{row.subtitle}</span>
         </span>
-        <span className={`sb-row-status${status ? ` sb-row-status--${status}` : ''}`} title={status ? `${agentLabel} · ${statusLabel}` : undefined} role={status ? 'img' : undefined} aria-label={status ? `${agentLabel} · ${statusLabel}` : undefined}>
+        <span className={`sb-row-status${status ? ` sb-row-status--${status}` : ''}`} title={slotLabel ? `${agentLabel} · ${slotLabel}` : undefined} role={slotLabel ? 'img' : undefined} aria-label={slotLabel ? `${agentLabel} · ${slotLabel}` : undefined}>
           {status === 'running' || status === 'background' ? <Spinner size={14} /> : status === 'input' ? <CircleAlert size={14} />
             : status === 'unknown' ? <UnknownStatus size={13} /> : status === 'offline' ? <Unplug size={13} />
             : status === 'unread' ? <span className="sb-row-unread-dot" /> : null}

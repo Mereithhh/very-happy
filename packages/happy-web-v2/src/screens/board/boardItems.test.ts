@@ -190,6 +190,23 @@ describe('chat session mapping', () => {
   });
 });
 
+describe('B-556 self status on session items', () => {
+  it('carries metadata.selfStatus raw (the card judges staleness) and the progress time', () => {
+    const base = mkSession({ id: 'x' }).metadata!;
+    const [item] = build({ sessions: [mkSession({ id: 's1', thinking: true, metadata: {
+      ...base, flavor: 'codex',
+      selfStatus: { text: 'running tests', phase: 'testing', updatedAt: NOW - 1_000 },
+      board: { progress: 'llm guess', analyzedAt: NOW - 5_000 },
+    } })] });
+    expect(item).toMatchObject({
+      status: 'working', agentKind: 'codex', progress: 'llm guess', progressAt: NOW - 5_000,
+      selfStatus: { text: 'running tests', phase: 'testing', updatedAt: NOW - 1_000 },
+    });
+    // the self status never changes the lane
+    expect(item.lifecycle).toBe('running');
+  });
+});
+
 describe('terminal mapping', () => {
   const entry = (state: TerminalAgentEntry['state'], over: Partial<TerminalAgentEntry> = {}): TerminalAgentEntry => ({
     machineId: 'm1',

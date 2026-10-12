@@ -11,6 +11,7 @@ import { confirmArchiveSession, confirmCloseTerminal, markSessionDone } from '@/
 import { fmtDuration, type BoardItem } from './boardItems';
 import { useSessionPreview } from './useBoardItems';
 import { codingAgentLabel } from '@/sync/agentStatus';
+import { boardStatusLine, selfStatusView, type KnownSelfStatusPhase } from '@/sync/selfStatus';
 
 export { fmtDuration };
 
@@ -20,6 +21,15 @@ const DOT: Record<BoardItem['status'], { status: Status; pulse: boolean }> = {
   idle: { status: 'connected', pulse: false },
   unknown: { status: 'offline', pulse: false },
   ended: { status: 'offline', pulse: false },
+};
+
+const PHASE_KEY: Record<KnownSelfStatusPhase, 'board.phasePlanning' | 'board.phaseImplementing' | 'board.phaseTesting' | 'board.phaseReviewing' | 'board.phaseBlocked' | 'board.phaseDone'> = {
+  planning: 'board.phasePlanning',
+  implementing: 'board.phaseImplementing',
+  testing: 'board.phaseTesting',
+  reviewing: 'board.phaseReviewing',
+  blocked: 'board.phaseBlocked',
+  done: 'board.phaseDone',
 };
 
 export function BoardCard({
@@ -39,6 +49,13 @@ export function BoardCard({
   const KindIcon = item.kind === 'terminal' ? TerminalSquare : MessageSquare;
   // B-553: latest round from messages this tab already holds (never fetches).
   const preview = useSessionPreview(item.kind === 'session' ? item.key : null);
+  // B-556: the agent's own status vs. the LLM progress line. `live` reuses the
+  // board's classification — no second liveness judgement.
+  const live = item.status === 'working' || item.status === 'attention';
+  const statusLine = boardStatusLine(
+    selfStatusView(item.selfStatus, { now, live }),
+    item.progress ? { text: item.progress, analyzedAt: item.progressAt } : undefined,
+  );
   // B-558: only an idle card's badge describes how the round ended.
   const outcome = item.waitReason === 'idle' ? preview?.outcome : undefined;
   // B-558: an expired lease states the fact ("no update for 12m"), not a verdict.
@@ -166,7 +183,20 @@ export function BoardCard({
           <span className="bd-card-machine">{item.machineName}</span>
           {item.cwd && <span className="bd-card-cwd">{item.cwd}</span>}
         </div>
-        {item.progress && <div className="bd-card-progress">{item.progress}</div>}
+        {statusLine?.kind === 'progress' && <div className="bd-card-progress">{statusLine.text}</div>}
+        {statusLine?.kind === 'self' && (
+          <div
+            className={`bd-card-progress bd-card-self${statusLine.status.stale ? ' is-stale' : ''}`}
+            title={t(statusLine.status.stale ? 'board.selfStatusStaleTitle' : 'board.selfStatusTitle', { duration: fmtDuration(now - statusLine.status.updatedAt) })}
+          >
+            {(statusLine.status.phase || statusLine.status.unknownPhase) && (
+              <span className="bd-card-phase mono">
+                {statusLine.status.phase ? t(PHASE_KEY[statusLine.status.phase]) : statusLine.status.unknownPhase}
+              </span>
+            )}
+            {statusLine.status.text}
+          </div>
+        )}
         {item.question && (
           <div className="bd-card-question" title={t('board.questionLabel')}>
             <CircleHelp size={12} aria-label={t('board.questionLabel')} className="bd-card-question-icon" />

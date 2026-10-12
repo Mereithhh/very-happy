@@ -422,6 +422,22 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* B-556: the agent's own status line (set_status) — phase chip + text; stale
+   (not running / >30 min) drops to the faint text stage, never a new hue. */
+.bd-card-phase {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-10, 10px);
+  color: var(--text-dim);
+  vertical-align: 1px;
+}
+.bd-card-self.is-stale,
+.bd-card-self.is-stale .bd-card-phase {
+  color: var(--text-faint);
+}
 /* B-553: pending question — warn = waiting on the user (registered meaning). */
 .bd-card-question {
   display: flex;
