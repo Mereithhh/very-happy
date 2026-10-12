@@ -3,8 +3,8 @@ import { Prisma } from '@prisma/client';
 import {
     AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DEDUPE_WINDOW_MS, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_DEFAULT_MAX_RUNTIME_MS,
     AUTOMATION_QUEUED_ATTENTION_MS, AUTOMATION_RUN_RETENTION, AUTOMATION_SCRIPT_DEFAULT_MAX_RUNTIME_MS, AUTOMATION_RUN_STATUSES,
-    AUTOMATION_RUN_TERMINAL_STATUSES, isAutomationRunTerminal,
-    type Automation, type AutomationClaim, type AutomationClaimResponse, type AutomationCreate, type AutomationFire, type AutomationFireResponse,
+    AUTOMATION_RUN_TERMINAL_STATUSES, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, isAutomationRunTerminal,
+    type Automation, type AutomationAction, type AutomationClaim, type AutomationClaimResponse, type AutomationCreate, type AutomationFire, type AutomationFireResponse,
     type AutomationManualRun, type AutomationReport, type AutomationRun, type AutomationRunStatus, type AutomationSticky, type AutomationUpdate,
 } from '@slopus/happy-wire';
 import { db } from '@/storage/db';
@@ -13,6 +13,7 @@ import { configuredResourceLimit } from '@/app/api/resourceLimits';
 import { AutomationError, requireAutomation } from './errors';
 import { linkedSessionIds } from './attentionLifecycle';
 import { initialRunAt, nextRunAfter, normalizeTrigger } from './schedule';
+import { decodeStoredAction, encodeStoredAction, foldSkipCount, occurrenceOf, shouldMergeSkip, type SkipCounts, type StoredAction } from './storedAction';
 
 /**
  * Account-level Automations (B-496). Every mutation runs in a SERIALIZABLE
@@ -47,22 +48,37 @@ async function requireAutomationCapacity(tx: Tx, accountId: string): Promise<voi
     requireAutomation(count < limit, 'automation_count_quota_exceeded', 429, { limit, count });
 }
 const ms = (d: Date | null | undefined) => d ? d.getTime() : null;
+/** B-548: the column value for a decoded action (see storedAction.ts — precheck gate wrapper + private skip counts). */
+const storeAction = (stored: StoredAction) => encodeStoredAction(stored) as unknown as AutomationAction;
+/** Views always decode the column: clients see the inner action and `precheck` (null when none), never the gate wrapper. */
 export function toAutomationView(row: AutomationRow): Automation {
+    const stored = decodeStoredAction(row.action);
     return {
         id: row.id, name: row.name, description: row.description, machineId: row.machineId, status: row.status as Automation['status'],
-        trigger: row.trigger, action: row.action, concurrency: row.concurrency as Automation['concurrency'], maxRuntimeMs: row.maxRuntimeMs,
+        trigger: row.trigger, action: stored.action, precheck: stored.precheck, concurrency: row.concurrency as Automation['concurrency'], maxRuntimeMs: row.maxRuntimeMs,
         nextRunAt: ms(row.nextRunAt), version: row.version, lastRunAt: ms(row.lastRunAt), lastRunStatus: (row.lastRunStatus ?? null) as AutomationRunStatus | null,
         createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(),
     };
 }
-export function toRunView(row: RunRow, automationName: string): AutomationRun {
+/** Run rows are read with this automation projection so the view can carry the folded skip count. */
+const RUN_AUTOMATION = { select: { name: true, action: true } } as const;
+type RunWithAutomation = RunRow & { automation: { name: string; action: unknown } };
+function runView(row: RunWithAutomation): AutomationRun {
+    return toRunView(row, row.automation.name, decodeStoredAction(row.automation.action).skipCounts);
+}
+/** View of a run written in this transaction (skip counts may have just changed). */
+async function runViewInTx(tx: Tx, run: RunRow): Promise<AutomationRun> {
+    const automation = await tx.automation.findUnique({ where: { id: run.automationId }, select: { name: true, action: true } });
+    return automation ? runView({ ...run, automation }) : toRunView(run, '');
+}
+export function toRunView(row: RunRow, automationName: string, skipCounts: SkipCounts = {}): AutomationRun {
     return {
         id: row.id, automationId: row.automationId, automationName, machineId: row.machineId, source: row.source as AutomationRun['source'],
         dedupeKey: row.dedupeKey, payload: row.payload, status: row.status as AutomationRunStatus, needsAttention: row.needsAttention, attentionReason: row.attentionReason,
         attentionAt: ms(row.attentionAt), ackedAt: ms(row.ackedAt), ackedBy: row.ackedBy ?? null, linkedSessionIds: linkedSessionIds(row),
         sessionId: row.sessionId, stickyKey: row.stickyKey, scheduledFor: ms(row.scheduledFor), claimedAt: ms(row.claimedAt), leaseUntil: ms(row.leaseUntil),
         startedAt: ms(row.startedAt), finishedAt: ms(row.finishedAt), summary: row.summary, error: row.error, exitCode: row.exitCode,
-        createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(),
+        createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(), occurrenceCount: occurrenceOf(skipCounts, row.id),
     };
 }
 /** B-508: the two attention transitions, so every raise records `attentionAt` and every clear records who/what cleared it. */
@@ -128,8 +144,34 @@ async function enqueueRun(tx: Tx, automation: AutomationRow, input: { source: Au
         finishedAt: status === 'skipped' ? now : null, error: status === 'skipped' ? 'previous_run_active' : null, createdAt: now, updatedAt: now,
     } });
     await tx.automation.update({ where: { id: automation.id }, data: { lastRunAt: now, ...(status === 'skipped' ? { lastRunStatus: 'skipped' } : {}) } });
+    const folded = status === 'skipped' ? await foldPreviousSkip(tx, run, 'previous_run_active') : null;
     await pruneRuns(tx, automation.id, now);
-    return run;
+    return folded ?? run;
+}
+
+/**
+ * B-548 consecutive-skip folding. `run` is already recorded as skipped for
+ * `reason`; when the run right before it (same automation, by createdAt/id) is
+ * a skip of the same source for the same reason, the older row is deleted and
+ * its count (+1) and attention state move onto `run`. Inheriting attention is
+ * what makes a repeated reason flag only once: an acknowledged streak stays
+ * acknowledged, an open one stays open. The caller's run id always survives.
+ */
+async function foldPreviousSkip(tx: Tx, run: RunRow, reason: string): Promise<RunRow | null> {
+    const prev = await tx.automationRun.findFirst({
+        where: { automationId: run.automationId, id: { not: run.id }, OR: [{ createdAt: { lt: run.createdAt } }, { createdAt: run.createdAt, id: { lt: run.id } }] },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    if (!prev || !shouldMergeSkip(prev, { source: run.source, reason })) return null;
+    const automation = await tx.automation.findUnique({ where: { id: run.automationId }, select: { action: true } });
+    if (!automation) return null;
+    const stored = decodeStoredAction(automation.action);
+    // Runtime bookkeeping: no version bump, so an open editor's CAS is unaffected.
+    await tx.automation.update({ where: { id: run.automationId }, data: { action: storeAction({ ...stored, skipCounts: foldSkipCount(stored.skipCounts, prev.id, run.id) }) } });
+    await tx.automationRun.delete({ where: { id: prev.id } });
+    return tx.automationRun.update({ where: { id: run.id }, data: {
+        needsAttention: prev.needsAttention, attentionReason: prev.attentionReason, attentionAt: prev.attentionAt, ackedAt: prev.ackedAt, ackedBy: prev.ackedBy,
+    } });
 }
 
 /**
@@ -174,7 +216,7 @@ export async function createAutomation(accountId: string, input: AutomationCreat
             const nextRunAt = status === 'active' ? initialRunAt(trigger, now.getTime()) : null;
             const row = await tx.automation.create({ data: {
                 id: randomUUID(), accountId, name: input.name, description: input.description ?? null, machineId: input.machineId, status,
-                trigger, action: input.action, concurrency: input.concurrency ?? 'skip', maxRuntimeMs: input.maxRuntimeMs ?? defaultMaxRuntime(input.action),
+                trigger, action: storeAction({ action: input.action, precheck: input.precheck ?? null, skipCounts: {} }), concurrency: input.concurrency ?? 'skip', maxRuntimeMs: input.maxRuntimeMs ?? defaultMaxRuntime(input.action),
                 nextRunAt: nextRunAt === null ? null : new Date(nextRunAt), createdAt: now, updatedAt: now,
             } });
             return toAutomationView(row);
@@ -206,7 +248,9 @@ export async function updateAutomation(accountId: string, id: string, input: Aut
             const row = await loadAutomation(tx, accountId, id);
             requireAutomation(row.version === input.version, 'stale_automation', 409, { version: row.version });
             if (input.machineId) await requireMachine(tx, accountId, input.machineId);
-            const action = input.action ?? row.action;
+            // B-548: the action, its precheck and the skip bookkeeping change independently — an action-only edit (old clients) keeps the gate.
+            const stored = decodeStoredAction(row.action);
+            const action = storeAction({ action: input.action ?? stored.action, precheck: input.precheck !== undefined ? input.precheck : stored.precheck, skipCounts: stored.skipCounts });
             if (input.action?.kind === 'send') await requireSession(tx, accountId, input.action.sessionId);
             const trigger = input.trigger ? normalizeTrigger(input.trigger, now.getTime()) : row.trigger;
             const nextRunAt = input.trigger && row.status === 'active' ? initialRunAt(trigger, now.getTime()) : ms(row.nextRunAt);
@@ -265,11 +309,11 @@ export async function fireAutomation(accountId: string, name: string, input: Aut
         requireAutomation(automation.status === 'active', 'automation_paused', 409);
         if (input.dedupeKey) {
             const prior = await tx.automationRun.findUnique({ where: { automationId_dedupeSlot: { automationId: automation.id, dedupeSlot: input.dedupeKey } } });
-            if (prior && prior.createdAt.getTime() >= now.getTime() - AUTOMATION_DEDUPE_WINDOW_MS) return { run: toRunView(prior, automation.name), deduplicated: true };
+            if (prior && prior.createdAt.getTime() >= now.getTime() - AUTOMATION_DEDUPE_WINDOW_MS) return { run: await runViewInTx(tx, prior), deduplicated: true };
             if (prior) await tx.automationRun.update({ where: { id: prior.id }, data: { dedupeSlot: null } });
         }
         const run = await enqueueRun(tx, automation, { source: 'fire', payload: input.payload, dedupeKey: input.dedupeKey }, now);
-        return { run: toRunView(run, automation.name), deduplicated: false };
+        return { run: await runViewInTx(tx, run), deduplicated: false };
     });
     try { return await attempt(); }
     catch (error) {
@@ -284,7 +328,7 @@ export async function runAutomationNow(accountId: string, id: string, input: Aut
     return inTx(async tx => {
         const automation = await loadAutomation(tx, accountId, id);
         const run = await enqueueRun(tx, automation, { source: 'manual', payload: input.payload }, now);
-        return toRunView(run, automation.name);
+        return runViewInTx(tx, run);
     }).catch(mapConflict);
 }
 
@@ -300,16 +344,16 @@ export async function listRuns(accountId: string, query: { automationId?: string
     }
     const rows = await db.automationRun.findMany({
         where: { accountId, ...(automationId ? { automationId } : {}), ...(query.status ? { status: query.status } : {}), ...(query.attention ? { needsAttention: true } : {}) },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: query.limit ?? 50, include: { automation: { select: { name: true } } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: query.limit ?? 50, include: { automation: RUN_AUTOMATION },
     });
-    return rows.map(row => toRunView(row, row.automation.name));
+    return rows.map(runView);
 }
 export async function getRun(accountId: string, id: string): Promise<AutomationRun> {
     assertAutomationsEnabled(accountId);
     await sweepBestEffort(accountId);
-    const row = await db.automationRun.findFirst({ where: { id, accountId }, include: { automation: { select: { name: true } } } });
+    const row = await db.automationRun.findFirst({ where: { id, accountId }, include: { automation: RUN_AUTOMATION } });
     requireAutomation(row, 'run_not_found', 404);
-    return toRunView(row, row.automation.name);
+    return runView(row);
 }
 
 async function upsertSticky(tx: Tx, automationId: string, key: string, sessionId: string, now: Date): Promise<AutomationSticky> {
@@ -324,17 +368,21 @@ async function upsertSticky(tx: Tx, automationId: string, key: string, sessionId
  * with summary / error / exitCode / attention on a claimed or running run — no
  * lease, session or sticky changes. Terminal statuses never change again
  * (`run_finished` carries the current status).
+ *
+ * B-548: `skipped` (daemon only) records a precheck that did not pass, its
+ * reason code in `error`; a run of the same reason right before it folds in
+ * (see foldPreviousSkip), so the answer may carry `occurrenceCount > 1`.
  */
 export async function reportRun(accountId: string, runId: string, input: AutomationReport): Promise<AutomationRun> {
     assertAutomationsEnabled(accountId);
     const now = new Date();
     return inTx(async tx => {
-        const row = await tx.automationRun.findFirst({ where: { id: runId, accountId }, include: { automation: { select: { name: true } } } });
+        const row = await tx.automationRun.findFirst({ where: { id: runId, accountId }, include: { automation: RUN_AUTOMATION } });
         requireAutomation(row, 'run_not_found', 404);
         requireAutomation(!TERMINAL.includes(row.status), 'run_finished', 409, { status: row.status });
         if (input.claimId === undefined) {
             // Account-level explicit outcome (agent / CLI without the daemon's claimId): terminal only, on a claimed or running run.
-            requireAutomation(input.status === 'done' || input.status === 'failed', 'status_required', 400);
+            requireAutomation(input.status === 'done' || input.status === 'failed', 'status_required', 400); // never `skipped`
             requireAutomation(row.status !== 'queued', 'run_not_claimed', 409, { status: row.status });
             requireAutomation(input.leaseMs === undefined && input.stickyKey === undefined && input.sessionId === undefined, 'claim_required', 400);
         } else {
@@ -363,34 +411,52 @@ export async function reportRun(accountId: string, runId: string, input: Automat
             data.status = input.status; data.finishedAt = now; if (!row.startedAt) data.startedAt = now;
             await setLastRunStatus(tx, row.automationId, row.id, input.status);
         }
+        if (input.status === 'skipped') { data.error = input.error ?? 'skipped'; data.dedupeSlot = null; }
         const updated = await tx.automationRun.update({ where: { id: row.id }, data });
-        return toRunView(updated, row.automation.name);
+        const folded = input.status === 'skipped' ? await foldPreviousSkip(tx, updated, updated.error!) : null;
+        return runViewInTx(tx, folded ?? updated);
     }).catch(mapConflict);
 }
 export async function cancelRun(accountId: string, runId: string): Promise<AutomationRun> {
     assertAutomationsEnabled(accountId);
     const now = new Date();
     return inTx(async tx => {
-        const row = await tx.automationRun.findFirst({ where: { id: runId, accountId }, include: { automation: { select: { name: true } } } });
+        const row = await tx.automationRun.findFirst({ where: { id: runId, accountId }, include: { automation: RUN_AUTOMATION } });
         requireAutomation(row, 'run_not_found', 404);
         requireAutomation(!TERMINAL.includes(row.status), 'run_finished', 409, { status: row.status });
         const updated = await tx.automationRun.update({ where: { id: row.id }, data: { status: 'cancelled', finishedAt: now, updatedAt: now } });
         await setLastRunStatus(tx, row.automationId, row.id, 'cancelled');
-        return toRunView(updated, row.automation.name);
+        return runView({ ...updated, automation: row.automation });
     }).catch(mapConflict);
 }
 export async function ackRun(accountId: string, runId: string, by: string = 'owner'): Promise<AutomationRun> {
     assertAutomationsEnabled(accountId);
     const now = new Date();
     return inTx(async tx => {
-        const row = await tx.automationRun.findFirst({ where: { id: runId, accountId }, include: { automation: { select: { name: true } } } });
+        const row = await tx.automationRun.findFirst({ where: { id: runId, accountId }, include: { automation: RUN_AUTOMATION } });
         requireAutomation(row, 'run_not_found', 404);
         // Already clear: idempotent, keep the recorded ackedBy (the first resolution is the truthful one).
         const updated = row.needsAttention
             ? await tx.automationRun.update({ where: { id: row.id }, data: { ...clearAttention(by, now), updatedAt: now } })
             : row;
-        return toRunView(updated, row.automation.name);
+        return runView({ ...updated, automation: row.automation });
     });
+}
+
+/**
+ * B-548: the target daemon is too old to run this automation's precheck, so the
+ * action must not run at all. Recorded as a skip (flagged once — repeats fold
+ * into the newest run and inherit its attention state), never handed out.
+ */
+async function skipUnsupportedPrecheck(tx: Tx, run: RunRow, now: Date): Promise<void> {
+    const reason = 'precheck_unsupported_cli';
+    const updated = await tx.automationRun.update({ where: { id: run.id }, data: {
+        status: 'skipped', error: reason, dedupeSlot: null, finishedAt: now, updatedAt: now,
+        summary: "This machine's very-happy CLI is too old to run the automation's precheck, so the action was not run. Upgrade very-happy-cli on that machine.",
+        ...raiseAttention(reason, now),
+    } });
+    await setLastRunStatus(tx, run.automationId, run.id, 'skipped');
+    await foldPreviousSkip(tx, updated, reason);
 }
 
 /**
@@ -399,7 +465,8 @@ export async function ackRun(accountId: string, runId: string, by: string = 'own
  * on nextRunAt; missed periods collapse into one run), then claim up to
  * `limit` runs — the oldest queued run of each automation (so a backlog on one
  * automation cannot starve the others), skipping automations that already
- * have a claimed/running run.
+ * have a claimed/running run. Precheck runs are only handed to daemons that
+ * announce the `precheck` capability (B-548); otherwise they are skipped.
  */
 export async function claimRuns(accountId: string, input: AutomationClaim): Promise<AutomationClaimResponse> {
     assertAutomationsEnabled(accountId);
@@ -425,9 +492,16 @@ export async function claimRuns(accountId: string, input: AutomationClaim): Prom
             ORDER BY "automationId", "createdAt" ASC, "id" ASC) heads ORDER BY "createdAt" ASC, "id" ASC`;
         const queued = heads.length ? await tx.automationRun.findMany({ where: { id: { in: heads.map(h => h.id) } } }) : [];
         queued.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+        // B-548: a precheck run only goes to a daemon that announced it can execute prechecks.
+        const canPrecheck = input.capabilities?.includes(AUTOMATION_DAEMON_CAPABILITY_PRECHECK) === true;
+        const gated = canPrecheck || queued.length === 0 ? new Set<string>() : new Set(
+            (await tx.automation.findMany({ where: { id: { in: [...new Set(queued.map(r => r.automationId))] } }, select: { id: true, action: true } }))
+                .filter(a => decodeStoredAction(a.action).precheck !== null).map(a => a.id),
+        );
         const claimed: RunRow[] = [];
         for (const run of queued) {
             if (claimed.length >= limit || busy.has(run.automationId)) continue;
+            if (gated.has(run.automationId)) { await skipUnsupportedPrecheck(tx, run, now); continue; }
             const claimId = randomUUID();
             // A machine that comes back resolves its own `machine_offline` attention.
             const attention = run.attentionReason === 'machine_offline' && run.needsAttention ? { ...clearAttention('machine-back', now), attentionReason: null } : {};
