@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyAppBadge, BADGE_COUNT_MESSAGE, createBadgeSyncer, planBadge, type BadgeNavigatorLike } from './appBadge';
+import { applyAppBadge, BADGE_COUNT_MESSAGE, createBadgeSyncer, installVisibleResync, planBadge, type BadgeNavigatorLike } from './appBadge';
 
 function fakeNav(opts: { badging?: boolean; controller?: boolean; reject?: boolean } = {}) {
     const calls: string[] = [];
@@ -73,5 +73,33 @@ describe('createBadgeSyncer', () => {
         s.reset();
         s.sync(0);
         expect(calls).toEqual(['set:2', 'set:3', 'clear', 'clear']);
+    });
+});
+
+describe('installVisibleResync', () => {
+    function fakeDoc() {
+        const ls = new Set<() => void>();
+        return {
+            visibilityState: 'hidden' as DocumentVisibilityState,
+            addEventListener: (_: string, fn: () => void) => { ls.add(fn); },
+            removeEventListener: (_: string, fn: () => void) => { ls.delete(fn); },
+            fire() { for (const l of ls) l(); },
+            size: () => ls.size,
+        };
+    }
+    it('becoming visible re-applies the SAME count (overwrites a SW push estimate)', () => {
+        const { nav, calls, posted } = fakeNav();
+        const s = createBadgeSyncer(() => nav);
+        s.sync(2);
+        const doc = fakeDoc();
+        const off = installVisibleResync(doc as never, s, () => 2);
+        doc.fire(); // hidden → nothing
+        expect(calls).toEqual(['set:2']);
+        doc.visibilityState = 'visible';
+        doc.fire();
+        expect(calls).toEqual(['set:2', 'set:2']);
+        expect(posted).toHaveLength(2);
+        off();
+        expect(doc.size()).toBe(0);
     });
 });

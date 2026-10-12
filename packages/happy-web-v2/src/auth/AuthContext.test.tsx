@@ -20,6 +20,8 @@ vi.mock('@/sync/apiPush', () => ({ unregisterPushToken: vi.fn() }));
 vi.mock('@/track', () => ({ trackLogout: vi.fn() }));
 vi.mock('@/app/programmaticReload', () => ({ markProgrammaticReload: vi.fn() }));
 vi.mock('@/auth/cloudAuth', () => ({ revokeCloudLogin: vi.fn() }));
+const { clearNotificationStateOnLogout } = vi.hoisted(() => ({ clearNotificationStateOnLogout: vi.fn() }));
+vi.mock('@/screens/notifications/logoutCleanup', () => ({ clearNotificationStateOnLogout }));
 vi.mock('@/auth/tokenStorage', () => ({ TokenStorage: { setCredentials: vi.fn(), removeCredentials: vi.fn() } }));
 
 import { AuthProvider, getCurrentAuth, setCurrentAuth } from './AuthContext';
@@ -62,4 +64,18 @@ it('publishes null when mounted logged out', async () => {
   await act(async () => root.render(<AuthProvider initialCredentials={null}><Probe /></AuthProvider>));
   expect(seen).toEqual([null]);
   expect(getCurrentAuth()).toBeNull();
+});
+
+it('B-559: logout clears the notification badge / SW count / mark-unread overlay', async () => {
+  await act(async () => root.render(<AuthProvider initialCredentials={{ token: 'tok', secret: 'sec' }}><span /></AuthProvider>));
+  const reload = vi.fn();
+  const loc = window.location;
+  Object.defineProperty(window, 'location', { configurable: true, value: { ...loc, reload } });
+  try {
+    await act(async () => { await getCurrentAuth()!.logout(); });
+  } finally {
+    Object.defineProperty(window, 'location', { configurable: true, value: loc });
+  }
+  expect(clearNotificationStateOnLogout).toHaveBeenCalledOnce();
+  expect(reload).toHaveBeenCalled();
 });

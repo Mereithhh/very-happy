@@ -72,3 +72,25 @@ export function createBadgeSyncer(getNav: () => BadgeNavigatorLike | undefined) 
         },
     };
 }
+
+export type BadgeSyncer = ReturnType<typeof createBadgeSyncer>;
+
+/**
+ * Coming back to the page FORCES a rewrite of the badge and the SW count: while
+ * hidden the SW may have bumped the badge on a push (count+1), and that
+ * estimate must be replaced by the exact number even when the page's own count
+ * did not change (the deduping syncer would otherwise skip it).
+ */
+export function installVisibleResync(
+    doc: Pick<Document, 'addEventListener' | 'removeEventListener'> & { visibilityState: DocumentVisibilityState },
+    syncer: BadgeSyncer,
+    getCount: () => number,
+): () => void {
+    const onVisibility = () => {
+        if (doc.visibilityState !== 'visible') return;
+        syncer.reset();
+        syncer.sync(getCount());
+    };
+    doc.addEventListener('visibilitychange', onVisibility);
+    return () => doc.removeEventListener('visibilitychange', onVisibility);
+}

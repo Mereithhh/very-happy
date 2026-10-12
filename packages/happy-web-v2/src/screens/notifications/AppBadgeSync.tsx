@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useInbox } from './useInbox';
-import { createBadgeSyncer, type BadgeNavigatorLike } from './appBadge';
+import { createBadgeSyncer, installVisibleResync, type BadgeNavigatorLike } from './appBadge';
 
 const getNav = (): BadgeNavigatorLike | undefined =>
     typeof navigator !== 'undefined' ? (navigator as unknown as BadgeNavigatorLike) : undefined;
@@ -19,6 +19,12 @@ export function AppBadgeSync() {
     useEffect(() => {
         syncer.sync(unreadCount);
     }, [syncer, unreadCount]);
+
+    // Back from hidden: replace any SW push estimate with the exact count.
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        return installVisibleResync(document, syncer, () => countRef.current);
+    }, [syncer]);
 
     // A NEW service worker took control (update / first install): it has no
     // count yet — re-send the current one.

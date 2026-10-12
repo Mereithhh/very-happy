@@ -13,6 +13,8 @@ import vm from 'node:vm';
 const SRC = readFileSync(fileURLToPath(new URL('../../../public/push-sw.js', import.meta.url)), 'utf8');
 
 function makeScope(opts: { badging?: boolean; visible?: boolean } = {}) {
+    const clock = { now: 1_000_000 };
+    const FakeDate = { now: () => clock.now };
     const listeners: Record<string, Array<(e: unknown) => void>> = {};
     const store = new Map<string, string>();
     const badge: Array<number | undefined> = [];
@@ -31,6 +33,8 @@ function makeScope(opts: { badging?: boolean; visible?: boolean } = {}) {
             }),
         },
         Response,
+        Date: FakeDate,
+        JSON,
         Number,
         Math,
         Promise,
@@ -45,7 +49,8 @@ function makeScope(opts: { badging?: boolean; visible?: boolean } = {}) {
     };
     const push = () => fire('push', { data: { json: () => ({ title: 'T', body: '', data: { url: '/session/x' } }) } });
     const report = (count: unknown) => fire('message', { data: { type: 'vh-badge-count', count } });
-    return { push, report, badge, shown, store };
+    const advance = (ms: number) => { clock.now += ms; };
+    return { push, report, badge, shown, store, advance };
 }
 
 describe('push-sw.js app badge (B-559)', () => {
@@ -59,12 +64,26 @@ describe('push-sw.js app badge (B-559)', () => {
     it('reported count + 1 per push while no window is visible', async () => {
         const s = makeScope();
         await s.report(3);
+        s.advance(60_000);
         await s.push();
-        await s.push();
+        await s.push(); // the SW's own estimate is not "a page is alive" — keeps counting
         expect(s.badge).toEqual([4, 5]);
         await s.report(0); // page opened and read everything
+        s.advance(60_000);
         await s.push();
         expect(s.badge).toEqual([4, 5, 1]);
+    });
+
+    it('a page report younger than 10s means a live (hidden) page owns the count — no +1', async () => {
+        const s = makeScope();
+        await s.report(3);
+        s.advance(5_000);
+        await s.push();
+        expect(s.badge).toEqual([]);
+        expect(s.shown).toEqual(['T']); // the notification itself still shows
+        s.advance(6_000); // now 11s since the report
+        await s.push();
+        expect(s.badge).toEqual([4]);
     });
 
     it('a visible window keeps the exact count itself — SW does not touch it', async () => {

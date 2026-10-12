@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    entryReadAction,
     isUnreadWithMarks,
     parseUnreadMarks,
     UNREAD_MARKS_CAP,
@@ -59,5 +60,16 @@ describe('mark bookkeeping', () => {
         expect(parseUnreadMarks({ a: 5, b: 'x', c: -1, d: Infinity, '': 3 })).toEqual({ a: 5 });
         expect(parseUnreadMarks(null)).toEqual({});
         expect(parseUnreadMarks([1, 2])).toEqual({});
+    });
+});
+
+describe('entryReadAction', () => {
+    it('unread → mark read (also for the open target)', () => {
+        expect(entryReadAction({ unread: true, key: 's1' }, 's1')).toBe('markRead');
+    });
+    it('read → mark unread, except for the target open right now', () => {
+        expect(entryReadAction({ unread: false, key: 's1' }, 's2')).toBe('markUnread');
+        expect(entryReadAction({ unread: false, key: 's1' }, null)).toBe('markUnread');
+        expect(entryReadAction({ unread: false, key: 's1' }, 's1')).toBeNull();
     });
 });

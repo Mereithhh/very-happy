@@ -1,6 +1,6 @@
 # PWA 应用图标未读角标 + 通知「标为未读」
 
-> 状态：Draft（实现 agent 起草，待主 agent 定稿）
+> 状态：Final（主 agent 2026-10-12 review 后定稿：可见时强制重写、SW 10s 新鲜度、登出清理、当前目标不提供标为未读）
 > 日期：2026-10-12 ｜ 关联 backlog：B-559 ｜ 参考：Orca `docs/site/content/docs/notifications.mdx`（只读）｜ 相关：B-536（notification seen 去重）、B-086（跨设备 seen）
 
 ## 背景
@@ -48,14 +48,16 @@
 ### D2 角标同步（`notifications/appBadge.ts` + `AppBadgeSync`）
 
 - 纯函数 `planBadge(count)` → `{ kind: 'set', n } | { kind: 'clear' }`；`applyAppBadge(nav, count)` 做特性检测（`typeof nav.setAppBadge === 'function'`），吞掉 rejection（未安装/权限）。
-- 同值去重：只在计数变化时调用。
+- 同值去重：只在计数变化时调用；但页面 `visibilitychange → visible` 时 `reset()` 再 `sync()`，强制重写角标与 SW 计数（覆盖隐藏期间 SW 的 +1 估计）。
+- 登出（`AuthContext.logout`）调用 `clearNotificationStateOnLogout`：`clearAppBadge`、给 SW 发 count 0、清空「标为未读」标记；任何异常吞掉，不阻塞登出。
 - 同时 `postMessage({ type: 'vh-badge-count', count })` 给 `navigator.serviceWorker.controller`（存在才发）。
 - `AppBadgeSync`（渲染 null）在 `AppLayout` 挂一次，避免两个铃铛重复写。
 
 ### D3 SW（`public/push-sw.js`，只追加监听）
 
 - `message` `vh-badge-count`：把计数写入独立 Cache `vh-badge-v1`（不与 workbox precache 同名，workbox 清理不碰它）。
-- `push`：在原有 `showNotification` 的同一个 `waitUntil` 里，若 `self.navigator.setAppBadge` 存在且没有 `visibilityState === 'visible'` 的窗口：读缓存计数 → 有则 `n+1` 写回并 `setAppBadge(n+1)`，无则 `setAppBadge()`（无数字标记）。任何异常吞掉，绝不影响通知展示（iOS 会撤销吞 push 的 worker 的权限）。
+- 缓存值 `{count, at, from}`：`from='page'` 为页面上报，`'sw'` 为 SW 自己的 +1 估计。
+- `push`：在原有 `showNotification` 的同一个 `waitUntil` 里，若 `self.navigator.setAppBadge` 存在且没有 `visibilityState === 'visible'` 的窗口：无缓存 → `setAppBadge()`（无数字标记）；页面上报不足 10s（`VH_BADGE_FRESH_MS`，说明页面仍活着、会自己发精确数）→ 跳过；否则 `count+1` 写回（`from='sw'`）并设置。任何异常吞掉，绝不影响通知展示（iOS 会撤销吞 push 的 worker 的权限）。
 - 不改 install/activate/fetch，不改注册；`push-sw.js` 字节变化只会走正常的 SW 更新检测。
 
 ### D4 UI（`NotificationBell.tsx`）
@@ -63,7 +65,7 @@
 - 共享 `.vh-menu` 层级 1500 低于通知层 1600：`ActionDropdownMenu`/`ActionContextMenu` 增加可选 `contentClassName`，行菜单用 `.nc-row-menu`（1700）。
 
 - 行改为 `<div class="nc-row-wrap">`：主 `<button class="nc-row">` 不变 + 行尾 `⋯` `ActionDropdownMenu`；整行包 `ActionContextMenu`（右键 / 触屏长按）。
-- 菜单项：未读 →「标为已读」（`CheckCheck`），已读 →「标为未读」（`Mail`/`MailOpen`）。
+- 菜单项（`entryReadAction`）：未读 →「标为已读」，已读 →「标为未读」；**当前正打开的目标**（`targetKeyOfPath`）已读时不提供菜单——seen 心跳会在一分钟内把标记自动收回。
 
 ## 兼容矩阵与发布顺序
 
@@ -82,7 +84,7 @@
 ## 风险
 
 1. **push 时的 +1 是估计**：同一事件 feed 与 local 双通道去重、或推送对应的条目已被别的设备看过，都会让角标暂时偏大；打开应用即校正。接受。
-2. **登出不清角标**：AppLayout 卸载不主动 clear（离开 App 路由不等于登出）。登出后角标可能残留到下次打开；接受，可在登出流程补 `clearAppBadge`（不在本项范围）。
+2. **登出**：已在 `logout` 中清角标、SW 计数与标记；AppLayout 卸载本身不 clear（离开 App 路由不等于登出）。
 3. **iOS 角标需安装到主屏 + 通知权限**：浏览器验不了，列真机项。
 4. **Radix 菜单在通知面板（portal + backdrop）里的层级/点外关闭**：真浏览器验证。
 
@@ -99,6 +101,8 @@
 
 - 自启 Chromium（playwright-core + 缓存 chromium-1187），本地 standalone server + vite + 隔离 daemon：未读 2→`set:2`；⋯ 标为已读→`set:1`；右键标为未读→`set:2`、铃铛 2；该目标 seen 戳晚于标记→`set:1`；全部已读→`clear`。菜单项 `elementFromPoint` 命中 `.vh-menu`（在通知层之上）。1280 亮/暗、390 coarse 亮/暗无横向溢出，⋯ 触屏 40px 常显。
 - SW：origin/main 构建 → 本分支构建（保留旧 hashed assets）：`controllerchange` 触发、controller 更换、入口 hash 变化；新 worker `self.navigator.setAppBadge` 为 function；页面上报 3 → 缓存 3；有可见窗口时 push 不动；无窗口 push → 4。
+
+- review 修复复验（自启 Chromium）：当前目标 `/session/s-a` 的已读条目无菜单、另一条有；可见事件在计数不变时重写出 `clear`；登出后角标日志 `clear`、标记数 0；两构建 SW 链路复验通过，页面上报 >10s 后无窗口 push → 4。
 
 ## 留真机验证项
 

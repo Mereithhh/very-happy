@@ -11,7 +11,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { entryReadAction } from '@/sync/notificationUnreadMarks';
+import { targetKeyOfPath } from '@/sync/notificationSeen';
 import {
     Bell,
     CheckCheck,
@@ -64,6 +66,8 @@ export function NotificationBell({ className }: { className?: string }) {
     const { t } = useTranslation();
     const { entries, unreadCount, markEntryRead, markEntryUnread, markAllRead } = useInbox();
     const navigate = useNavigate();
+    const location = useLocation();
+    const currentTargetKey = targetKeyOfPath(location.pathname, location.search);
     const [open, setOpen] = useState(false);
     const [anchor, setAnchor] = useState<{ top: number | null; bottom: number | null; left: number } | null>(null);
     const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -107,11 +111,16 @@ export function NotificationBell({ className }: { className?: string }) {
     };
 
     // B-559: one item list for both the row's ⋯ button and right-click/long-press.
-    const rowMenu = (entry: InboxEntry): MenuItemDef[] => [
-        entry.unread
-            ? { key: 'read', label: t('notifications.inboxMarkRead'), icon: MailOpen, onSelect: () => markEntryRead(entry) }
-            : { key: 'unread', label: t('notifications.inboxMarkUnread'), icon: Mail, onSelect: () => markEntryUnread(entry) },
-    ];
+    const rowMenu = (entry: InboxEntry): MenuItemDef[] => {
+        switch (entryReadAction(entry, currentTargetKey)) {
+            case 'markRead':
+                return [{ key: 'read', label: t('notifications.inboxMarkRead'), icon: MailOpen, onSelect: () => markEntryRead(entry) }];
+            case 'markUnread':
+                return [{ key: 'unread', label: t('notifications.inboxMarkUnread'), icon: Mail, onSelect: () => markEntryUnread(entry) }];
+            case null:
+                return [];
+        }
+    };
 
     const now = Date.now();
 
@@ -180,27 +189,39 @@ export function NotificationBell({ className }: { className?: string }) {
                                         const detail =
                                             e.detail || (e.localKind ? t(LOCAL_KIND_LABEL[e.localKind]) : '');
                                         const items = rowMenu(e);
+                                        const rowButton = (
+                                            <button
+                                                className={`nc-row${e.unread ? ' is-unread' : ''}`}
+                                                onClick={() => openEntry(e)}
+                                            >
+                                                <span className={`nc-row-icon nc-cat-${e.category}`}>
+                                                    <Icon size={15} />
+                                                </span>
+                                                <span className="nc-row-text">
+                                                    <span className="nc-row-title">
+                                                        {e.title || t('notifications.unknownSession')}
+                                                    </span>
+                                                    {detail && <span className="nc-row-detail">{detail}</span>}
+                                                </span>
+                                                <span className="nc-row-meta">
+                                                    <span className="nc-row-time mono">{ago(e.createdAt, now)}</span>
+                                                    {e.unread && <span className="nc-row-dot" aria-hidden />}
+                                                </span>
+                                            </button>
+                                        );
+                                        // No action (the target open right now, already read): no menu at all.
+                                        if (items.length === 0) {
+                                            return (
+                                                <div key={e.id} className="nc-row-wrap">
+                                                    {rowButton}
+                                                    <span className="nc-row-more nc-row-more--none" aria-hidden />
+                                                </div>
+                                            );
+                                        }
                                         return (
                                             <ActionContextMenu key={e.id} items={items} contentClassName="nc-row-menu">
                                                 <div className={`nc-row-wrap${e.unread ? ' is-unread' : ''}`}>
-                                                    <button
-                                                        className={`nc-row${e.unread ? ' is-unread' : ''}`}
-                                                        onClick={() => openEntry(e)}
-                                                    >
-                                                        <span className={`nc-row-icon nc-cat-${e.category}`}>
-                                                            <Icon size={15} />
-                                                        </span>
-                                                        <span className="nc-row-text">
-                                                            <span className="nc-row-title">
-                                                                {e.title || t('notifications.unknownSession')}
-                                                            </span>
-                                                            {detail && <span className="nc-row-detail">{detail}</span>}
-                                                        </span>
-                                                        <span className="nc-row-meta">
-                                                            <span className="nc-row-time mono">{ago(e.createdAt, now)}</span>
-                                                            {e.unread && <span className="nc-row-dot" aria-hidden />}
-                                                        </span>
-                                                    </button>
+                                                    {rowButton}
                                                     <ActionDropdownMenu items={items} contentClassName="nc-row-menu">
                                                         <button
                                                             type="button"

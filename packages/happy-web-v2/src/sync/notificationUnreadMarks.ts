@@ -65,3 +65,18 @@ export function withoutMark(marks: UnreadMarks, id: string): UnreadMarks {
     delete next[id];
     return next;
 }
+
+/**
+ * Which read-state action the entry menu offers. "Mark unread" is NOT offered
+ * for the target the user is looking at right now: the seen tracker re-stamps
+ * the open target (dwell/heartbeat), which would silently retire the mark
+ * within a minute — a control that visibly undoes itself.
+ */
+export function entryReadAction(
+    entry: { unread: boolean; key: string },
+    currentTargetKey: string | null,
+): 'markRead' | 'markUnread' | null {
+    if (entry.unread) return 'markRead';
+    if (currentTargetKey !== null && entry.key === currentTargetKey) return null;
+    return 'markUnread';
+}

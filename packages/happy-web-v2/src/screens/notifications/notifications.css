@@ -295,3 +295,5 @@
 .vh-menu.nc-row-menu {
   z-index: 1700;
 }
+/* keeps the row's text width identical when there is no menu to offer */
+.nc-row-more--none { visibility: hidden; pointer-events: none; }
