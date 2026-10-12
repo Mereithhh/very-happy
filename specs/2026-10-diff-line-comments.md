@@ -1,6 +1,6 @@
 # 改动面板 diff 行内批注（Annotate diff → 发送给 agent）
 
-> 状态：Draft
+> 状态：Final（2026-10-12 主 agent review 后修订：按平台引号、untracked 走 --no-index、存储读回校验与总配额、登出/删除清理、sheet a11y）
 > 日期：2026-10-12 ｜ 关联 backlog：B-554 ｜ 出处/前身：Orca「Annotate AI Diff」（`docs/site/content/docs/review/annotate-ai-diff.mdx`，只读参考）
 
 ## 背景
@@ -34,11 +34,13 @@ Orca 的做法是在 diff 上逐行留批注，攒成一批后一次性发回 ag
 | 文件 tab 渲染 `FsFileViewer`（有 machineId）或 `FileView` | `FilesPanel.tsx:268` |
 | `DiffView` 只服务工具卡片：入参 old/new 全文，内部 LCS（`lineDiff`），无批注能力 | `screens/session/DiffView.tsx:26-37`、`screens/session/diff.ts` |
 | 改动列表来自 `sessionBash` 在会话 cwd 跑 `git status --porcelain=v2`；**路径相对该 cwd**（子目录会话里是 `sub/x.ts`、`../y.ts`，2026-10-12 本机 git 实测），文件 tab 也按 cwd 解析 | `sync/gitStatusFiles.ts:44`、`FilesPanel.tsx:268`（`resolveAgainstCwd`） |
-| `bash` RPC 是 CLI 既有通用 handler（cwd 校验在工作目录内，默认 shell，非 0 退出码 → `success:false` 但带 stdout） | `packages/happy-cli/src/modules/common/registerCommonHandlers.ts:213` |
+| `bash` RPC 是 CLI 既有通用 handler：只收 `command/cwd/timeout`（**无 stdin、无 argv**），`exec` 走机器默认 shell（POSIX `/bin/sh`、Windows `cmd.exe /d /s /c`）；cwd 校验在工作目录内，参数不校验；非 0 退出码 → `success:false` 但带 stdout/exitCode | `packages/happy-cli/src/modules/common/registerCommonHandlers.ts:213` |
 | 把文本交给已挂载输入框的既有通道：`restoreToComposer`（无输入框时返回 false）/`useHasComposer` | `screens/session/composerRestore.ts:39`、`:51` |
 | 输入框接收后按 `mergeRestoredDraft` 前置合并并聚焦；输入框草稿本身已持久化（`session-drafts`） | `screens/session/AgentInput.tsx:397`、`sync/persistence.ts:138` |
 | 文件面板打开时输入框仍挂载（窄屏 aside 是覆盖层） | `screens/session/SessionDetailScreen.tsx:283`、`:309` |
-| 本机持久化惯例：独立 `MMKV({ id })`（localStorage 前缀隔离）+ `useSyncExternalStore` 快照缓存 | `sync/clipboardHistoryStore.ts:28` |
+| 本机持久化惯例：独立 `MMKV({ id })`（localStorage 前缀隔离）+ `useSyncExternalStore` 快照缓存；MMKV web shim 的 `set` 吞掉配额异常只 warn | `sync/clipboardHistoryStore.ts:28`、`storage/mmkv-web.ts` |
+| 平台：会话 metadata `os`（`os.platform()`）与机器 metadata `platform` | `sync/storageTypes.ts:35`、`:275`；`happy-cli/src/utils/createSessionMetadata.ts:140` |
+| 登出走 `clearPersistence()`；会话删除走 `sync.onSessionDeleted` | `auth/AuthContext.tsx:65`、`sync/sync.ts:1437` |
 
 ## 设计
 
@@ -46,11 +48,18 @@ Orca 的做法是在 diff 上逐行留批注，攒成一批后一次性发回 ag
 
 - 改动列表行的点击改为打开 **diff tab**（tab id `diff:<repo 相对路径>`，与文件 tab 共存）；
   diff 头部提供「打开文件」回到原有文件视图，原能力不丢。
-- 已跟踪文件：`git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ":(literal)<path>"`，
+- 命令只能是一条字符串（无 stdin/argv），所以路径按**目标机器的 shell** 引用（会话 `os`，缺则机器 `platform`）：
+  - POSIX：单引号，`'` → `'\''`；
+  - win32（cmd）：双引号包裹（`& | < > ^ ( )` 在引号内是字面量），`%`、`!` 断开引号用 `^%`/`^!`
+    （`"a"^%"b"` 由 argv 解析拼回 `a%b`）；含 `"` 的路径拒绝并提示（Windows 文件名本就不能含 `"`）；
+  - 平台未知：只放行 sh/cmd 都无元字符意义的路径（字母数字、`_-./@+ ,=~#:()`、非 ASCII），其余提示稍后重试；
+  - 任何平台：含控制字符（含换行）的路径拒绝。
+- 已跟踪文件：`git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- <:(literal)path>`，
   cwd = `session.metadata.path`，`<path>` 原样用 status 给的 cwd 相对路径（含 `../`）；
   `:(literal)` 防止以 `:` 开头或含通配符的文件名被当成 pathspec 语法。
-  路径只含安全字符时双引号包裹（sh 与 cmd 都成立）；含 `"$\`` 等时用 POSIX 单引号转义。
-- untracked 文件：不跑 git，用既有 `sessionReadFile` 读全文，渲染为全部新增。
+- untracked 文件：同一 RPC 跑 `git diff --no-index -- /dev/null <path>`（win32 用 `NUL`），与已跟踪文件同一输出上限；
+  不走 `readFile`（其 `validatePath` 会拒绝 `../x`）。`--no-index` 有差异时退出码 1：exitCode=1 且 stdout 以 `diff --git` 开头、
+  且非 maxBuffer 截断时视为成功。
 - 解析：新纯函数 `parseGitUnifiedDiff(text) → rows[]`（hunk 头、add/del/ctx，带 old/new 行号；
   `\ No newline` 等元信息跳过；二进制 → 提示）。
 - 刷新：面板刷新按钮 / 重新打开 tab 时重新拉取；拉取后对该文件批注做一次重新锚定并写回。
@@ -88,7 +97,11 @@ type DiffComment = {
 ### 5. 存储（`diffCommentsStore.ts`）
 
 - `new MMKV({ id: 'diff-comments' })`，**每会话一个 key**（`s.<sessionId>`），JSON 数组；
-  读取逐条校验（坏数据丢弃），上限 200 条/会话、正文 4000 字。
+  读取逐条校验（坏数据丢弃），上限 200 条/会话、正文 4000 字；**整个命名空间 ≤ 1,000,000 字符**。
+- 每次写入后**读回比对**（shim 吞配额异常），不一致 → `failed`；超总配额 → `quota`；
+  UI 对两者 toast 并保留编辑器与已输入文本。
+- 清理：登出 `clearPersistence()` 清整个命名空间（草稿含其他账号仓库的代码片段）；`sync.onSessionDeleted` 清该会话 key。
+  归档**不清**：归档会话可恢复，批注仍有用。命名空间常量与清理函数放 `sync/persistence.ts`，数据层不反向依赖 UI 模块。
 - 与 synced settings / localSettings 无关（铁律 1 不涉及）；不跨设备同步（草稿语义）。
 
 ### 6. 发送链路（二选一：放进输入框）
@@ -107,6 +120,7 @@ type DiffComment = {
 - 桌面（fine pointer）：hover 行时行号槽出「+」按钮；点开行下方内联编辑卡（textarea，⌘/Ctrl+Enter 保存，Esc 取消）；
   Shift+点另一行「+」把正在编辑的范围扩到该行（同侧）。
 - 触屏（coarse）：点行 → 底部 sheet（显示位置与片段、16px textarea、「↑ 扩展 / ↓ 扩展」、保存/删除/取消，按钮 ≥44px）。
+  行是 `role="button"` + `tabIndex=0`，Enter/Space 打开；sheet 是 `role="dialog" aria-modal="true"`，Tab 循环圈定在内、Esc 取消，关闭后焦点回到打开它的行。
 - 已有批注：在其末行下方显示批注卡（位置、正文、过期标记、编辑/删除）。
 - 面板顶部（tab 栏下）在本会话有批注时显示一条：「N 条批注 · 发送给 agent」，以及清空。
 
@@ -124,7 +138,7 @@ type DiffComment = {
 | CLI(daemon+wrapper) | server | web | 行为 |
 |---|---|---|---|
 | 旧 | 旧/新 | 旧 | 不变 |
-| 旧 | 旧/新 | 新 | diff 经既有 `bash` RPC（所有版本都有）/`readFile` 获取；批注本机存储；发送 = 普通用户消息。完全可用 |
+| 旧 | 旧/新 | 新 | diff 经既有 `bash` RPC（所有版本都有）获取；批注本机存储；发送 = 普通用户消息。完全可用 |
 | 新 | 旧/新 | 新 | 同上（CLI 无改动，新旧 CLI 等价） |
 | 任意 | 任意 | 新，会话机器离线 | diff 拉取失败显示错误与重试；已有批注仍可查看/发送（发送仍走输入框，离线时由既有链路排队） |
 
@@ -134,9 +148,9 @@ type DiffComment = {
 ## 风险
 
 1. **大 diff**：`bash` RPC 走 `exec` 默认 1MB stdout 上限 → 失败时显示「diff 过大/获取失败」；渲染行数 >5000 时截断并提示。接受。
-2. **Windows cmd 引号**：普通路径双引号在 cmd 有效；含特殊字符的路径走 POSIX 单引号，在 cmd 下可能失败 → 显示错误。接受（罕见）。
+2. **shell 注入**：按平台引用（见设计 1），单测覆盖 `& | % ^ ! $ \` '` 、中文、空格，POSIX 形式经真 `/bin/sh` 往返；cmd 形式只能做字符串断言（本机无 cmd），留 Windows 真机验证。
 3. **重复行误锚定**：相同内容多处出现时靠邻近行 + 距离打分；仍可能落错，消息里附代码片段让 agent 自行定位。接受。
-4. **localStorage 配额**：每会话 200 条×4000 字上限；写失败被 MMKV 吞掉并 warn。接受。
+4. **localStorage 配额**：命名空间 1M 字符总配额 + 写后读回校验，失败显式提示，不静默丢。
 5. **del 侧行号来自 HEAD**：agent 提交后 HEAD 变化，旧批注按内容重锚或标过期。符合预期。
 
 ## 验收标准
@@ -152,3 +166,4 @@ type DiffComment = {
 ## 留真机验证项
 
 - iOS Safari 真机：点行 sheet 与软键盘的遮挡关系（sheet 内 textarea 聚焦时是否被键盘盖住）。
+- Windows daemon：含 `&`、`%`、空格、中文的文件名 diff 正常、无命令注入（cmd 引号规则本机无法实跑）。
