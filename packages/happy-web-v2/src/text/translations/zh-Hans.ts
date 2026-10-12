@@ -1736,7 +1736,7 @@ export const zhHans: TranslationStructure = {
         closedTerminalRestore: '恢复这个终端（同 id、标题、标签）',
         closeWithTmuxSession: '连同 tmux 会话彻底关闭…',
         terminalRestored: '已恢复',
-        terminalRestoredHint: '重启后自动恢复：目录相同、对话已接回；进程是新的，屏幕历史从头开始。',
+        terminalRestoredHint: '重启后自动恢复：目录相同、对话已接回；进程是新的。若本机开启了回看保留，上次的输出会显示在终端上方。',
         terminalDirect: '临时',
         terminalDirectHint: '这台机器没有 tmux，这是一个普通 shell：daemon 停止时就会结束，重启后无法恢复。安装 tmux 后新开的终端即可持久保留。',
         closedTerminalGap: '重启时结束',

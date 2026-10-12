@@ -1581,7 +1581,7 @@ export const en = {
         closedTerminalRestore: 'Restore this terminal (same id, title and tags)',
         closeWithTmuxSession: 'Close together with the tmux session…',
         terminalRestored: 'restored',
-        terminalRestoredHint: 'Brought back after a restart: same directory, conversation resumed — the processes are new and the scrollback starts fresh.',
+        terminalRestoredHint: 'Brought back after a restart: same directory, conversation resumed — the processes are new. If this machine keeps terminal scrollback, the earlier output is shown above.',
         // B-486: direct shell on a machine without tmux
         terminalDirect: 'temporary',
         terminalDirectHint: 'This machine has no tmux, so this is a plain shell: it ends when the daemon stops and cannot be reattached after a restart. Install tmux for durable terminals.',
