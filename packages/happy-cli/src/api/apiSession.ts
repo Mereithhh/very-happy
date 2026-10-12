@@ -1237,7 +1237,7 @@ export class ApiSessionClient extends EventEmitter {
      * payload on this channel is (clipboard, fs RPC) — and a path leaks
      * project/client names and directory structure.
      */
-    pushFilePreview(path: string, mode: 'file' | 'diff' = 'file'): { delivered: boolean; error?: string } {
+    pushFilePreview(path: string, mode: 'file' | 'diff' = 'file', intent?: 'download'): { delivered: boolean; error?: string } {
         if (!this.socket.connected) {
             return { delivered: false, error: 'not connected to the server' };
         }
@@ -1245,6 +1245,8 @@ export class ApiSessionClient extends EventEmitter {
             payload: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, path)),
             enc: true,
             mode,
+            // B-562: only present for downloads, so a plain preview keeps the old wire shape.
+            ...(intent ? { intent } : {}),
         });
         return { delivered: true };
     }

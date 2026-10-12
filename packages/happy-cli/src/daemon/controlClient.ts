@@ -313,8 +313,8 @@ export async function pushClipboardViaDaemon(text: string, terminalId?: string):
 }
 
 /** Terminal previews use the same authenticated daemon IPC as clipboard pushes. */
-export async function pushFilePreviewViaDaemon(terminalId: string, path: string, mode: 'file' | 'diff' = 'file'): Promise<{ delivered: boolean; error?: string }> {
-  const result = await daemonPost('/file-preview', { terminalId, path, mode });
+export async function pushFilePreviewViaDaemon(terminalId: string, path: string, mode: 'file' | 'diff' = 'file', intent?: 'download'): Promise<{ delivered: boolean; error?: string }> {
+  const result = await daemonPost('/file-preview', { terminalId, path, mode, ...(intent ? { intent } : {}) });
   if (result?.error) return { delivered: false, error: result.error };
   return { delivered: result?.delivered === true, ...(result?.delivered === true ? {} : { error: 'preview was not delivered' }) };
 }

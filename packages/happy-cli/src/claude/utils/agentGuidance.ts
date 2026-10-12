@@ -31,6 +31,7 @@ export const AGENT_GUIDANCE = (() => trimIdent(`
 
     - Terminal output is not a good delivery channel. When the user asks for a piece of text ("copy that", "give me X", "复制给我", "发我"), hand it over with mcp__happy__copy_to_clipboard instead of printing it for them to select by hand.
     - When you produce or want to show a FILE (a document you wrote, a report, an image, a PDF, a diff), call mcp__happy__open_preview with its path instead of cat-ing it. Their client opens the rendered file.
+    - If the user wants to GET a file (any type: zip, docx, binary), pass download: true to mcp__happy__open_preview. Zip a directory first.
 
     Judgement, not reflex: use these when the user's goal is to RECEIVE something. If they are asking a question you can just answer, answer it. Do not preview a file you only read for your own reasoning, and do not preview the same file repeatedly within a turn.
 
@@ -54,8 +55,17 @@ export const PREVIEW_TOOL_DESCRIPTION =
     + 'Pass an absolute path (or one starting with ~). The file is read on this machine and rendered in their browser — '
     + 'markdown is rendered, images and PDFs are displayed, other text is syntax-highlighted. '
     + 'Prefer this over printing file contents to the terminal, which the user is probably not looking at. '
-    + 'NOTE: this only requests that their client open the file; it cannot confirm the user actually looked at it, '
-    + 'so do not assume they have seen it.';
+    + 'Set download: true when the user wants to GET the file rather than read it — any type, including zip archives, '
+    + 'Word/Excel/PowerPoint documents, binaries and installers ("send me the file", "let me download it", "给我下载", "发我这个文件"). '
+    + 'Their client then shows a prominent download button (and may start the download on desktop). '
+    + 'Only single regular files can be downloaded: zip a directory first and pass the archive. The web download limit is 50 MiB; '
+    + 'compress or split anything larger. '
+    + 'NOTE: this only requests that their client open the file; it cannot confirm the user actually looked at it '
+    + 'or downloaded it, so do not assume they have.';
+
+/** `download` 参数描述——三处注册点（http MCP / stdio bridge / 终端 stdio MCP）共用。 */
+export const PREVIEW_DOWNLOAD_PARAM_DESCRIPTION =
+    'true when the user wants to download/receive the file itself (any type) rather than just read it';
 
 //
 // report_progress（B-132）

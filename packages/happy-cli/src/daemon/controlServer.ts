@@ -81,7 +81,7 @@ export function startDaemonControlServer({
   /** B-507: what `/list` reports per child; absent = the daemon does not track it. */
   getBackgroundTasks?: (sessionId: string) => BackgroundTasksReport;
   pushClipboard: (text: string, terminalId?: string) => { delivered: boolean; truncated: boolean; totalBytes: number; error?: string };
-  pushFilePreview?: (terminalId: string, path: string, mode: 'file' | 'diff') => { delivered: boolean; error?: string };
+  pushFilePreview?: (terminalId: string, path: string, mode: 'file' | 'diff', intent?: 'download') => { delivered: boolean; error?: string };
   /** B-105: a claude SessionStart/SessionEnd hook forwarded from inside a vh
    *  web terminal (scripts/terminal_mirror_forwarder.cjs). Payload is claude's
    *  hook JSON + terminalId; parsing/validation is the mirror manager's job.
@@ -487,15 +487,18 @@ export function startDaemonControlServer({
           terminalId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
           path: z.string().min(1),
           mode: z.enum(['file', 'diff']).optional(),
+          // B-562: an older daemon's schema strips this key, which degrades to a plain preview.
+          // Lenient on purpose: a future intent value must not 400 the whole preview.
+          intent: z.string().max(32).optional(),
         }),
         response: { 200: z.object({ delivered: z.boolean(), error: z.string().optional() }) },
       },
     }, async (request) => {
-      const { terminalId, path, mode } = request.body;
+      const { terminalId, path, mode, intent } = request.body;
       const verdict = checkPreviewPath(path);
       if (verdict.deniedReason) return { delivered: false, error: verdict.deniedReason };
       if (!pushFilePreview) return { delivered: false, error: 'daemon is still starting up' };
-      return pushFilePreview(terminalId, verdict.resolved, mode ?? 'file');
+      return pushFilePreview(terminalId, verdict.resolved, mode ?? 'file', intent === 'download' ? 'download' : undefined);
     });
 
     // Title a web terminal from a process running inside it. Local IPC for
