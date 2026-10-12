@@ -17,7 +17,8 @@ very-happy 已经能把它们导入或恢复，缺的是「按内容找到那一
    `claude-import-session` / `codex-import-session` 或打开已有 very-happy 会话。
 3. 首次建索引不阻塞 RPC：立即返回当前（部分）结果 + 索引进度，Web 轮询直到 `ready`（约束 17：RPC ≤30 s）。
 4. Web 在导入对话框加「全文搜索」模式与 ⌘K 入口；旧 daemon 显示「该机器 CLI 版本过旧，升级后可用」，不调 RPC、不报错。
-5. 隐私：正文与索引只在 daemon 本地；片段经现有机器密钥加密的 RPC 通道返回，server 不落库、不进日志/指标。
+5. 隐私：正文与索引只在 daemon 本地，不上传、server 不落库/不进日志与指标；片段经现有 machine RPC（机器密钥加密封包）返回。
+   注意本 fork 是服务端可信模型、非 e2e（`packages/happy-cli/CLAUDE.md` Security boundary），这里不宣称对 relay 保密。
 
 ## 非目标
 
@@ -42,8 +43,9 @@ very-happy 已经能把它们导入或恢复，缺的是「按内容找到那一
 | CLI 引擎 `^20.19 || ^22.13 || >=24`；CI 矩阵 Node 20/24（约束 6）；依赖里没有任何 SQLite | `packages/happy-cli/package.json` engines/dependencies |
 
 本机实测（2026-10-12，主力 Mac）：Claude 1012 份 transcript / 570 MB → 对话正文 5.1 MB；Codex 558 份 rollout / 3.5 GB →
-对话正文约 30 MB（含 harness 块，剥离后约 18 MB）。按 4 000 字/条截断后全部正文 2 300 万字符；对它做大小写不敏感正则线性扫描，
-最坏（无命中）4–7 ms。冷读全部原始文件约 13 s。
+对话正文约 30 MB（含 AGENTS.md 等 harness 块）。实现后同机实测（独立 HAPPY_HOME，只读真实历史）：1 557 个文件 → 959 个会话、
+剥离 harness 后正文 717 万字符；冷建 7.3 s、期间事件循环最大延迟 29 ms；索引文件 13.8 MB；搜索 3–9 ms；20 条结果载荷约 16–18 KB；
+重启后加载 + 增量刷新 88 ms。
 
 ## 设计
 
@@ -162,13 +164,18 @@ wire、server、DB 无改动；wrapper 无改动（只有 daemon 进程注册 RP
 
 ## 验收标准
 
-- [ ] `extract` 单测：Claude 正文/sidechain/tool_result/one-shot skip/summary 标题/harness 剥离；Codex 三种形态、harness 跳过、sub-thread skip、截断。
-- [ ] 增量单测：追加只读新字节、半行不提交、截断/ino 变化重读、删除文件移除、agent-home 根切换移除、上限逐出、持久化往返、版本不符重建、clear。
-- [ ] 查询单测：多词 AND、大小写、中文、正则特殊字符、片段与高亮区间、排序、limit/agent 过滤、同 id 去重。
-- [ ] RPC 单测：注册、参数校验、首次即返 indexing + 轮询后 ready、clear、能力标志 restamp。
-- [ ] Web 单测：能力判断、载荷宽松解析、tracked 映射、高亮切分、轮询判定；`connectMachine` 契约测试不回归。
-- [ ] 实跑：独立 `HAPPY_HOME_DIR` 对本机真实历史建索引（只读），记录冷建耗时、索引大小与搜索耗时。
-- [ ] 门禁：cli build + 相关 vitest + `--version`；web 相关 vitest + vite build + tsc。
+- [x] `extract` 单测：Claude 正文/sidechain/tool_result/one-shot skip/summary 标题/harness 剥离；Codex 三种形态、harness 跳过、sub-thread skip、截断。
+- [x] 增量单测：追加只读新字节、半行不提交、截断/ino 变化重读、删除文件移除、agent-home 根切换移除、上限逐出、持久化往返、版本不符重建、clear。
+- [x] 查询单测：多词 AND、大小写、中文、正则特殊字符、片段与高亮区间、排序、limit/agent 过滤、同 id 去重。
+- [x] RPC 单测：注册、参数校验、首次即返 indexing + 轮询后 ready、clear、能力标志 restamp。
+- [x] Web 单测：能力判断、载荷宽松解析、tracked 映射、高亮切分、轮询判定；`connectMachine` 契约测试不回归。
+- [x] 实跑：独立 `HAPPY_HOME_DIR` 对本机真实历史建索引（只读），记录冷建耗时、索引大小与搜索耗时。
+- [x] 门禁：cli build + 相关 vitest + `--version`；web 相关 vitest + vite build + tsc。
+- [x] 本地全链路（standalone server + vite + 独立 HAPPY_HOME daemon + fixture agent-home）：⌘K 进入搜索、首查 indexing→轮询出结果、中文/英文高亮、
+  Codex 过滤、导入后跳转新会话、原件行变「打开」、清除索引删目录、「最近」模式不回归；1280 亮色与 390 coarse 暗色无横向溢出、按钮 44px、输入 16px。
+
+已知限制：导入产生的副本 transcript 在其会话 `metadata.claudeSessionId` 写入前（wrapper 里 claude 尚未启动）会作为一条可「导入」的结果出现；
+claude 正常启动后即映射为「打开」。
 
 ## 留真机验证项
 

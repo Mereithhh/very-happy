@@ -423,6 +423,8 @@
 .hs-row {
   cursor: default;
   gap: 4px;
+  /* grid item: let long titles/snippets shrink instead of widening the list */
+  min-width: 0;
 }
 .hs-row-head {
   display: flex;
@@ -430,7 +432,10 @@
   gap: var(--sp-2);
   min-width: 0;
 }
-.hs-row-title {
+.ns-session--stack .hs-row-title {
+  /* a block, not the stack rows' flex title: a bare text node in a flex
+     container cannot shrink, which pushed the action button out of view */
+  display: block;
   flex: 1 1 auto;
   min-width: 0;
 }
