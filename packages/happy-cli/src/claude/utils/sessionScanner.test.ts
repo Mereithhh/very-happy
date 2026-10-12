@@ -4,8 +4,9 @@ import { RawJSONLines } from '../types'
 import { mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { existsSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { getProjectPath } from './path'
+import { TranscriptPathHints } from './transcriptCursor'
 
 describe('sessionScanner', () => {
   let testDir: string
@@ -201,11 +202,13 @@ describe('sessionScanner', () => {
     it('reads the hook-reported transcript path instead of the derived one', async () => {
       const hinted = join(hintDir, `${realId}.jsonl`)
       await writeFile(hinted, fixtureLines[0] + '\n')
+      const hints = new TranscriptPathHints()
+      hints.note(realId, hinted)
       scanner = await createSessionScanner({
         sessionId: null,
         workingDirectory: testDir,
         onMessage: (msg) => collectedMessages.push(msg),
-        resolveTranscriptPath: (id) => (id === realId ? hinted : undefined),
+        transcriptPathHints: hints,
       })
       await scanner.onNewSession(realId)
       await wait(300)
@@ -218,32 +221,34 @@ describe('sessionScanner', () => {
 
     it('ignores an invalid hint and falls back to the derived path', async () => {
       await writeFile(join(projectDir, `${realId}.jsonl`), fixtureLines[0] + '\n')
+      const hints = new TranscriptPathHints()
+      expect(hints.note(realId, join(hintDir, 'someone-else.jsonl'))).toBe(false)
       scanner = await createSessionScanner({
         sessionId: null,
         workingDirectory: testDir,
         onMessage: (msg) => collectedMessages.push(msg),
-        resolveTranscriptPath: () => join(hintDir, 'someone-else.jsonl'),
+        transcriptPathHints: hints,
       })
       await scanner.onNewSession(realId)
       await wait(300)
       expect(collectedMessages).toHaveLength(1)
     })
 
-    it('switches to a hint that arrives after the session was announced', async () => {
+    it('a hint that arrives after the announce is read immediately, not at the next poll', async () => {
       const hinted = join(hintDir, `${realId}.jsonl`)
-      let hint: string | undefined
       await writeFile(hinted, fixtureLines[0] + '\n')
+      const hints = new TranscriptPathHints()
       scanner = await createSessionScanner({
         sessionId: null,
         workingDirectory: testDir,
         onMessage: (msg) => collectedMessages.push(msg),
-        resolveTranscriptPath: () => hint,
+        transcriptPathHints: hints,
       })
       await scanner.onNewSession(realId)
       await wait(300)
       expect(collectedMessages).toHaveLength(0)
-      hint = hinted
-      await wait(3500)
+      hints.note(realId, hinted)
+      await wait(400) // well under the 3 s poll
       expect(collectedMessages).toHaveLength(1)
     })
 
@@ -252,21 +257,40 @@ describe('sessionScanner', () => {
       // hook, the derived path does not exist (e.g. CLAUDE_CONFIG_DIR), and
       // the SessionStart hook then reports where the transcript really is.
       const hinted = join(hintDir, `${realId}.jsonl`)
-      let hint: string | undefined
       await writeFile(hinted, fixtureLines.slice(0, 2).join('\n') + '\n')
+      const hints = new TranscriptPathHints()
       scanner = await createSessionScanner({
         sessionId: realId,
         workingDirectory: testDir,
         onMessage: (msg) => collectedMessages.push(msg),
-        resolveTranscriptPath: () => hint,
+        transcriptPathHints: hints,
       })
-      hint = hinted
-      await wait(3500)
+      hints.note(realId, hinted)
+      await wait(400)
       expect(collectedMessages).toHaveLength(0)
       // Genuinely new lines after the switch are delivered.
       await appendFile(hinted, fixtureLines[2] + '\n')
       await wait(3500)
       expect(collectedMessages).toHaveLength(1)
+    })
+
+    it('pre-marking stops at the hint moment: a prompt written right after it is delivered', async () => {
+      const hinted = join(hintDir, `${realId}.jsonl`)
+      await writeFile(hinted, fixtureLines.slice(0, 2).join('\n') + '\n')
+      const hints = new TranscriptPathHints()
+      scanner = await createSessionScanner({
+        sessionId: realId,
+        workingDirectory: testDir,
+        onMessage: (msg) => collectedMessages.push(msg),
+        transcriptPathHints: hints,
+      })
+      hints.note(realId, hinted)
+      // Written right after the hint, before the scanner's (async) read of the
+      // new path: it is NOT history and must not be swallowed by the pre-mark.
+      appendFileSync(hinted, fixtureLines[2] + '\n')
+      await wait(400)
+      expect(collectedMessages).toHaveLength(1)
+      expect((collectedMessages[0] as { uuid?: string }).uuid).toBe(JSON.parse(fixtureLines[2]).uuid)
     })
 
     it('a rewritten transcript is re-read without duplicating already-sent messages', async () => {

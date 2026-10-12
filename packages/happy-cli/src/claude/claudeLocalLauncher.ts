@@ -13,7 +13,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
         sessionId: session.sessionId,
         workingDirectory: session.path,
         // B-551: prefer the transcript path Claude reported via its hook.
-        resolveTranscriptPath: (sessionId) => session.transcriptPathHints?.get(sessionId),
+        transcriptPathHints: session.transcriptPathHints ?? undefined,
         onMessage: (message) => { 
             // Block SDK summary messages - we generate our own
             if (message.type !== 'summary') {

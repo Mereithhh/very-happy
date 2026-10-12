@@ -78,7 +78,10 @@ export function advanceTranscriptCursor(
  * does not exist (yet). `reset` reports a detected rewrite (the returned
  * lines then start from byte 0).
  */
-export async function readTranscriptIncrement(path: string, cursor: TranscriptCursor | null): Promise<{
+export async function readTranscriptIncrement(path: string, cursor: TranscriptCursor | null, opts: {
+    /** Read no further than this byte (complete lines only). */
+    limit?: number;
+} = {}): Promise<{
     lines: string[];
     cursor: TranscriptCursor;
     reset: TranscriptResetReason | null;
@@ -102,7 +105,8 @@ export async function readTranscriptIncrement(path: string, cursor: TranscriptCu
             }
         }
         const base = reset ? null : cursor;
-        const length = Math.max(0, stat.size - start);
+        const end = opts.limit === undefined ? stat.size : Math.min(stat.size, Math.max(0, opts.limit));
+        const length = Math.max(0, end - start);
         if (length === 0) {
             return { lines: [], cursor: base ? { ...base, dev: stat.dev, ino: stat.ino } : advanceTranscriptCursor(null, stat, 0, Buffer.alloc(0)).cursor, reset };
         }
@@ -131,13 +135,26 @@ export function isValidTranscriptHint(sessionId: string, path: unknown): path is
 /** sessionId → transcript_path from SessionStart hooks (bounded). */
 export class TranscriptPathHints {
     private paths = new Map<string, string>();
+    private listeners = new Set<(sessionId: string, path: string) => void>();
 
     constructor(private readonly max = 64) {}
 
+    /** Called synchronously whenever a session's hinted path is set/changed. */
+    subscribe(listener: (sessionId: string, path: string) => void): () => void {
+        this.listeners.add(listener);
+        return () => { this.listeners.delete(listener); };
+    }
+
     note(sessionId: string, path: unknown): boolean {
         if (!isValidTranscriptHint(sessionId, path)) return false;
+        const changed = this.paths.get(sessionId) !== path;
         this.paths.delete(sessionId);
         this.paths.set(sessionId, path);
+        if (changed) {
+            for (const listener of this.listeners) {
+                try { listener(sessionId, path); } catch { /* a scanner must not break the hook path */ }
+            }
+        }
         while (this.paths.size > this.max) {
             const oldest = this.paths.keys().next().value;
             if (oldest === undefined) break;

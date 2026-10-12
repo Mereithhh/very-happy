@@ -107,8 +107,8 @@
 ### 6. B-551：transcript 路径与增量读取
 
 - 纯模块 `claude/utils/transcriptCursor.ts`：游标 `{ offset, dev, ino, boundary(≤64 B) }`。每次读：`stat`；dev/ino 变了、`size < offset`、或 `[offset-64, offset)` 的字节与 boundary 不同 → 判定改写，从 0 重读；否则从 offset 读到 EOF，只消费完整行（`\n` 结尾），offset 前移到最后一个 `\n` 之后。重读产生的旧行由现有 `processedMessageKeys` 去重，新行照常上报——与今天「每次整文件重读 + 去重」语义一致，只是不再重复解析未变部分。
-- `TranscriptPathHints`：`sessionId → transcript_path`，只接受绝对路径且 basename 恰为 `<sessionId>.jsonl`。runClaude 的 SessionStart hook（过了 B-515 prewarm 闸门的）先登记再 announce；remote scanner 与 local launcher 的 scanner 都通过 `resolveTranscriptPath` 取用；取不到 → `getProjectPath(cwd)/<id>.jsonl`（现状）。路径变化时重建 watcher、游标归零。
-- 已声明「磁盘上现有内容 = 已处理」的会话（构造时的初始 session、`treatExistingAsProcessed`）在 hook 路径**晚到**而改变读取路径时，新路径上当时已有的内容按同一语义预标记，不当新消息上报——否则重连场景（cwd 推导路径不存在、真实 transcript 在 `CLAUDE_CONFIG_DIR` 下）会把整段历史重放进聊天。runClaude 先登记路径再 announce，正常路径不会走到这里。
+- `TranscriptPathHints`：`sessionId → transcript_path`，只接受绝对路径且 basename 恰为 `<sessionId>.jsonl`。runClaude 的 SessionStart hook（过了 B-515 prewarm 闸门的）先登记再 announce；remote scanner 与 local launcher 的 scanner 共用同一个 `TranscriptPathHints`（取用 + 订阅变化）；取不到 → `getProjectPath(cwd)/<id>.jsonl`（现状）。路径变化时重建 watcher、游标归零。
+- 已声明「磁盘上现有内容 = 已处理」的会话（构造时的初始 session、`treatExistingAsProcessed`）在 hook 路径**晚到**而改变读取路径时，新路径上**hint 到达时刻**已有的内容（按当时记下的文件大小截断）按同一语义预标记，之后写入的照常上报（启动后几秒内敲的 prompt 不会被吞）；hint 到达即 invalidate，立刻读新路径，不等 3 s 轮询。——否则重连场景（cwd 推导路径不存在、真实 transcript 在 `CLAUDE_CONFIG_DIR` 下）会把整段历史重放进聊天。runClaude 先登记路径再 announce，正常路径不会走到这里。
 - B-544：rewind 的截断副本是新 session id 新文件，切换走 `onSessionFound` + SessionStart hook，路径提示按 session id 分开存，互不干扰；源文件从不改写，因此不会触发改写重读。即便将来 Claude 原地改写，重读 + 去重只会上报真正的新 uuid。
 
 ### 被否方案

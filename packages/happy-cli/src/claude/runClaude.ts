@@ -614,7 +614,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const remoteScanner = await createSessionScanner({
         sessionId: initialScannerSessionId,
         workingDirectory,
-        resolveTranscriptPath: (sessionId) => transcriptPathHints.get(sessionId),
+        transcriptPathHints,
         onMessage: (raw) => {
             if (currentRunMode !== 'remote') return;
             // Only user-typed prompts. SDK pipeline owns assistant and
