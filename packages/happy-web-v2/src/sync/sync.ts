@@ -38,7 +38,7 @@ import { NormalizedMessage, normalizeRawMessage, RawRecord, type SessionEventPay
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { migrateTerminalCommands } from './shortcutPresets';
 import { Profile, profileParse } from './profile';
-import { loadPendingSettings, savePendingSettings } from './persistence';
+import { clearDiffCommentDrafts, loadPendingSettings, savePendingSettings } from './persistence';
 import {
     initializeTracking,
     trackGitHubConnected,
@@ -1441,6 +1441,8 @@ class Sync {
 
         // Remove encryption keys from memory
         this.encryption.removeSessionEncryption(sessionId);
+        // B-554: its diff-comment drafts can never be sent anywhere now
+        clearDiffCommentDrafts(sessionId);
 
         this.messagesSync.delete(sessionId);
         this.sendSync.delete(sessionId);
