@@ -76,7 +76,7 @@ GC（首个 tick 必跑，此后每 10 分钟）：删坏文件名；删 TTL 过
 在 `listTrackTick`（10s）里挂一个**异步、单飞**的 `tick(closedIds)`：
 
 1. 一次 `tmux list-sessions -F '#{session_name}|#{window_activity}|#{alternate_on}|#{@vh_attach}'`（分隔符可打印 ASCII，铁律 19；只认 `vh-` 前缀，跳过 `@vh_attach` 非空的）。
-2. 纯函数 `planCheckpoints` 选出要拍的：`window_activity` 比上次 checkpoint 时新，且
+2. 纯函数 `planCheckpoints` 选出要拍的：`window_activity` 比上次 checkpoint 时新（它只有秒级精度：只有整秒都早于上次捕获**开始**时刻才算干净，同一秒内的后续输出仍算脏），且
    - 已静默 ≥3s（`CHECKPOINT_QUIET_MS`）且距上次 ≥30s（`CHECKPOINT_MIN_INTERVAL_MS`）——「输出静默后」；或
    - 脏了 ≥120s（`CHECKPOINT_MAX_DIRTY_MS`）——spinner/`tail -f` 永不静默的兜底；
    - 每 tick 最多 4 个，最久没拍的优先。首次见到某 id 时，用已有 `.live` 文件的 mtime 作「上次 checkpoint」，daemon 重启不会把所有终端重拍一遍。
@@ -159,11 +159,11 @@ wrapper 不涉及（只改 daemon 的终端管理器）。发布顺序：常规 
 
 ## 验收标准
 
-- [ ] 纯函数单测：清洗（SGR 保留；CUP/`?1049h`/OSC 52/OSC 8/DCS/C0/C1 丢弃；不完整序列不吞后续正常文本）、文件编解码与容错、截断落在行边界、`chainArchive`、`planCheckpoints`（静默/最小间隔/脏兜底/上限/排序/首见 mtime）、probe 解析（跳过非 vh、attach、坏行）、GC（TTL/成员/总上限/探测失败不删成员）、配置容错。
-- [ ] `withArchivedScrollback` 渲染进 `@xterm/headless` 断言 **cell 属性与位置**：归档里未闭合的绿底不漏进分隔行与当前历史；当前屏幕仍在最后 rows 行、光标位置与无归档时一致；`small` 不变；无归档时字节完全不变。
-- [ ] 私有 socket 真 tmux 集成：终端打印带颜色内容 → checkpoint 写出 0600 文件（目录 0700）→ kill tmux 会话 → `restoreClosedTerminal` 重建 → lines open 的 `full` 含头/尾分隔与旧内容，且**新 pane 的输入里没有旧内容**（`capture-pane` 新 pane 不含旧标记串）；关闭开关后目录被删、`full` 不含归档。
-- [ ] webTerminal.ts 只增最小挂钩（import、字段、tick、shutdown flush、promote、replay 包裹），不碰 `classifyPane` 附近。
-- [ ] CLI：`pnpm build` 0 + 相关 vitest + `node dist/index.mjs --version`；web：相关 vitest + `tsc --noEmit` 0 + `vite build`。
+- [x] 纯函数单测：清洗（SGR 保留；CUP/`?1049h`/OSC 52/OSC 8/DCS/C0/C1 丢弃；不完整序列不吞后续正常文本）、文件编解码与容错、截断落在行边界、`chainArchive`、`planCheckpoints`（静默/最小间隔/脏兜底/上限/排序/首见 mtime）、probe 解析（跳过非 vh、attach、坏行）、GC（TTL/成员/总上限/探测失败不删成员）、配置容错。
+- [x] `withArchivedScrollback` 渲染进 `@xterm/headless` 断言 **cell 属性与位置**：归档里未闭合的绿底不漏进分隔行与当前历史；当前屏幕仍在最后 rows 行、光标位置与无归档时一致；`small` 不变；无归档时字节完全不变。
+- [x] 私有 socket 真 tmux 集成：终端打印带颜色内容 → checkpoint 写出 0600 文件（目录 0700）→ kill tmux 会话 → `restoreClosedTerminal` 重建 → lines open 的 `full` 含头/尾分隔与旧内容，且**新 pane 的输入里没有旧内容**（`capture-pane` 新 pane 不含旧标记串）；关闭开关后目录被删、`full` 不含归档。
+- [x] webTerminal.ts 只增最小挂钩（import、字段、tick、shutdown flush、promote、replay 包裹），不碰 `classifyPane` 附近。
+- [x] CLI：`pnpm build` 0 + 相关 vitest + `node dist/index.mjs --version`；web：相关 vitest + `tsc --noEmit` 0 + `vite build`。
 
 ## 留真机验证项
 
