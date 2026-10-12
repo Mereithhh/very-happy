@@ -1,43 +1,41 @@
 /**
  * B-554: fetch one changed file's diff against HEAD through the existing
- * `bash` / `readFile` session RPCs (every CLI version has both — no new RPC).
+ * `bash` session RPC (every CLI version has it — no new RPC).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { sessionBash, sessionReadFile } from '@/sync/ops';
+import { sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
-import { gitDiffCommand, parseGitUnifiedDiff, rowsForNewFile, type ReviewRow } from './gitDiff';
+import { gitDiffCommand, parseGitUnifiedDiff, shellFlavorFor, type ReviewRow } from './gitDiff';
 
 export type GitFileDiffState =
     | { phase: 'loading' }
     | { phase: 'error'; message: string }
+    | { phase: 'refused'; reason: DiffLoadRefusal }
     | { phase: 'binary' }
     | { phase: 'ready'; rows: ReviewRow[]; loadedAt: number };
 
-function decodeBase64Utf8(b64: string): string | null {
-    try {
-        const bin = atob(b64);
-        if (bin.includes('\u0000')) return null;
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-    } catch {
-        return null;
-    }
+/** Message key for a path the shell quoting refused (shown in the pane). */
+export type DiffLoadRefusal = 'control' | 'quote' | 'unknown-platform';
+
+export function platformOfSession(sessionId: string): string | null {
+    const st = storage.getState();
+    const session = st.sessions[sessionId];
+    const machineId = session?.metadata?.machineId;
+    return session?.metadata?.os ?? (machineId ? st.machines[machineId]?.metadata?.platform : undefined) ?? null;
 }
 
 async function loadDiff(sessionId: string, path: string, untracked: boolean): Promise<GitFileDiffState> {
-    if (untracked) {
-        const res = await sessionReadFile(sessionId, path);
-        if (!res.success || typeof res.content !== 'string') return { phase: 'error', message: res.error || 'read failed' };
-        const text = decodeBase64Utf8(res.content);
-        if (text === null) return { phase: 'binary' };
-        return { phase: 'ready', rows: rowsForNewFile(text), loadedAt: Date.now() };
-    }
     const cwd = storage.getState().sessions[sessionId]?.metadata?.path;
     if (!cwd) return { phase: 'error', message: 'no working directory' };
-    const res = await sessionBash(sessionId, { command: gitDiffCommand(path), cwd, timeout: 10000 });
-    if (!res.success) return { phase: 'error', message: (res.stderr || res.error || 'git diff failed').trim().slice(0, 300) };
-    const parsed = parseGitUnifiedDiff(res.stdout);
+    const cmd = gitDiffCommand(path, { untracked, flavor: shellFlavorFor(platformOfSession(sessionId)) });
+    if (!cmd.ok) return { phase: 'refused', reason: cmd.reason };
+    const res = await sessionBash(sessionId, { command: cmd.command, cwd, timeout: 10000 });
+    // `diff --no-index` exits 1 when the files differ (always, vs the null
+    // device); the RPC reports that as a failure but still carries stdout.
+    const noIndexDiffers = untracked && res.exitCode === 1 && (res.stdout ?? '').startsWith('diff --git')
+        && !/maxBuffer/i.test(`${res.error ?? ''} ${res.stderr ?? ''}`);
+    if (!res.success && !noIndexDiffers) return { phase: 'error', message: (res.stderr || res.error || 'git diff failed').trim().slice(0, 300) };
+    const parsed = parseGitUnifiedDiff(res.stdout ?? '');
     if (parsed.binary) return { phase: 'binary' };
     return { phase: 'ready', rows: parsed.rows, loadedAt: Date.now() };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { gitDiffCommand, parseGitUnifiedDiff, quotePathspec, rowsForNewFile, type ReviewRow } from './gitDiff';
+import { execFileSync } from 'node:child_process';
+import { gitDiffCommand, parseGitUnifiedDiff, quoteShellArg, shellFlavorFor, type ReviewRow } from './gitDiff';
 import {
     buildAnchor,
     commentRowIndex,
@@ -66,18 +67,63 @@ describe('parseGitUnifiedDiff', () => {
         expect(parseGitUnifiedDiff('diff --git a/x b/x\nBinary files a/x and b/x differ\n').binary).toBe(true);
     });
 
-    it('treats an untracked file as all additions without a phantom last line', () => {
-        expect(rowsForNewFile('a\nb\n').map((r) => [r.type, r.newNo, r.text])).toEqual([['add', 1, 'a'], ['add', 2, 'b']]);
-        expect(rowsForNewFile('')).toEqual([]);
+    it('parses an untracked file diffed against the null device', () => {
+        const { rows } = parseGitUnifiedDiff('diff --git a/n.ts b/n.ts\nnew file mode 100644\nindex 0000000..1\n--- /dev/null\n+++ b/n.ts\n@@ -0,0 +1,2 @@\n+a\n+b\n');
+        expect(rows.map((r) => [r.type, r.newNo, r.text])).toEqual([['hunk', null, '@@ -0,0 +1,2 @@'], ['add', 1, 'a'], ['add', 2, 'b']]);
     });
 });
 
 describe('gitDiffCommand', () => {
-    it('passes the cwd-relative status path as a literal pathspec (../ from a subdirectory is fine)', () => {
-        expect(gitDiffCommand('../src/a b.ts')).toBe('git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ":(literal)../src/a b.ts"');
+    const NASTY = ['a&calc.txt', 'a|b.txt', '100%PATH%.txt', 'a^b.txt', '中文 文件.ts', 'with space.ts', "it's.ts", 'a$(id)`x`.ts', 'a!b.ts'];
+
+    it('passes the cwd-relative status path as a literal pathspec', () => {
+        expect(gitDiffCommand('../src/a b.ts', { untracked: false, flavor: 'posix' })).toEqual({ ok: true, command: "git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ':(literal)../src/a b.ts'" });
     });
-    it('falls back to POSIX single quotes for shell-special characters', () => {
-        expect(quotePathspec(':(literal)a$b\'c')).toBe(`':(literal)a$b'\\''c'`);
+
+    it('untracked files use --no-index against the null device of that platform', () => {
+        expect(gitDiffCommand('../n.ts', { untracked: true, flavor: 'posix' })).toEqual({ ok: true, command: "git -c core.quotepath=false diff --no-color --no-ext-diff --no-index -- /dev/null '../n.ts'" });
+        expect(gitDiffCommand('n.ts', { untracked: true, flavor: 'cmd' })).toEqual({ ok: true, command: 'git -c core.quotepath=false diff --no-color --no-ext-diff --no-index -- NUL "n.ts"' });
+    });
+
+    it('POSIX quoting round-trips every nasty name through a real /bin/sh unchanged', () => {
+        for (const name of NASTY) {
+            const q = quoteShellArg(name, 'posix');
+            expect(q.ok).toBe(true);
+            const out = execFileSync('/bin/sh', ['-c', `printf '%s' ${(q as { arg: string }).arg}`], { encoding: 'utf8' });
+            expect(out).toBe(name);
+        }
+    });
+
+    it('cmd quoting keeps & | ^ inside double quotes and caret-escapes % and ! outside them', () => {
+        const q = (v: string) => quoteShellArg(v, 'cmd');
+        expect(q('a&calc.txt')).toEqual({ ok: true, arg: '"a&calc.txt"' });
+        expect(q('a|b.txt')).toEqual({ ok: true, arg: '"a|b.txt"' });
+        expect(q('a^b.txt')).toEqual({ ok: true, arg: '"a^b.txt"' });
+        expect(q('100%PATH%.txt')).toEqual({ ok: true, arg: '"100"^%"PATH"^%".txt"' });
+        expect(q('a!b.ts')).toEqual({ ok: true, arg: '"a"^!"b.ts"' });
+        expect(q('中文 文件.ts')).toEqual({ ok: true, arg: '"中文 文件.ts"' });
+        expect(q('with space.ts')).toEqual({ ok: true, arg: '"with space.ts"' });
+        // every cmd metacharacter that is NOT caret-escaped sits inside a quoted span
+        for (const name of NASTY) {
+            const r = q(name);
+            if (!r.ok) continue;
+            const outsideQuotes = r.arg.replace(/"[^"]*"/g, '');
+            expect(outsideQuotes).toMatch(/^(\^[%!])*$/);
+        }
+    });
+
+    it('refuses what it cannot quote safely instead of guessing', () => {
+        expect(quoteShellArg('a"b.ts', 'cmd')).toEqual({ ok: false, reason: 'quote' });
+        expect(quoteShellArg('a\nb.ts', 'posix')).toEqual({ ok: false, reason: 'control' });
+        expect(gitDiffCommand('a&b.ts', { untracked: false, flavor: null })).toEqual({ ok: false, reason: 'unknown-platform' });
+        expect(gitDiffCommand('中文 a.ts', { untracked: false, flavor: null })).toEqual({ ok: true, command: 'git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ":(literal)中文 a.ts"' });
+    });
+
+    it('maps platforms to shells', () => {
+        expect(shellFlavorFor('win32')).toBe('cmd');
+        expect(shellFlavorFor('darwin')).toBe('posix');
+        expect(shellFlavorFor('linux')).toBe('posix');
+        expect(shellFlavorFor(undefined)).toBeNull();
     });
 });
 
@@ -199,5 +245,18 @@ describe('parseDiffComments', () => {
         expect(parseDiffComments(JSON.stringify([ok, { ...ok, side: 'left' }, { ...ok, startLine: 0 }, null]))).toEqual([ok]);
         expect(parseDiffComments('{nope')).toEqual([]);
         expect(parseDiffComments(undefined)).toEqual([]);
+    });
+});
+
+describe('touch sheet a11y helpers', () => {
+    it('wraps Tab at both ends and pulls outside focus back into the dialog', async () => {
+        const { trapFocusTarget, isActivationKey } = await import('./focusTrap');
+        expect(trapFocusTarget(3, 2, false)).toBe(0);
+        expect(trapFocusTarget(3, 0, true)).toBe(2);
+        expect(trapFocusTarget(3, 1, false)).toBeNull();
+        expect(trapFocusTarget(3, -1, false)).toBe(0);
+        expect(trapFocusTarget(3, -1, true)).toBe(2);
+        expect(trapFocusTarget(0, -1, false)).toBeNull();
+        expect(['Enter', ' ', 'a'].map(isActivationKey)).toEqual([true, true, false]);
     });
 });

@@ -4,9 +4,7 @@
  *
  * Paths come from `git status --porcelain=v2` run in the session cwd, which
  * reports them RELATIVE TO THAT CWD (`../x.ts` from a subdirectory — verified
- * on git 2.x), so the diff runs in the same cwd with the same path. The
- * `:(literal)` magic keeps a path that starts with `:` or contains glob
- * characters from being read as pathspec syntax.
+ * on git 2.x), so the diff runs in the same cwd with the same path.
  */
 
 export type ReviewRow =
@@ -18,16 +16,61 @@ export type ParsedGitDiff = { rows: ReviewRow[]; binary: boolean };
 /** Rendering cap — beyond this the view truncates with a notice. */
 export const REVIEW_DIFF_MAX_ROWS = 5000;
 
-const SAFE_PATH = /^[A-Za-z0-9_\-./@+ ,=~#]+$/;
+/**
+ * The `bash` RPC only takes a command string (no stdin, no argv), and runs it
+ * through the MACHINE's default shell: /bin/sh on POSIX, `cmd.exe /d /s /c`
+ * on Windows. Paths are therefore quoted for that exact shell (session
+ * metadata `os` / machine metadata `platform`), never one-size-fits-both:
+ * single quotes are literal characters in cmd, so `a&calc.txt` would run
+ * `calc` there.
+ */
+export type ShellFlavor = 'posix' | 'cmd';
+export type QuoteFailure = 'control' | 'quote' | 'unknown-platform';
+export type QuotedArg = { ok: true; arg: string } | { ok: false; reason: QuoteFailure };
 
-/** Quote a pathspec so it survives both POSIX sh and (for ordinary paths) cmd.exe. */
-export function quotePathspec(pathspec: string): string {
-    if (SAFE_PATH.test(pathspec.replace(/^:\(literal\)/, ''))) return `"${pathspec}"`;
-    return `'${pathspec.replace(/'/g, `'\\''`)}'`;
+/** null = platform not known yet (metadata still syncing / very old CLI). */
+export function shellFlavorFor(platform: string | null | undefined): ShellFlavor | null {
+    if (!platform) return null;
+    return platform === 'win32' ? 'cmd' : 'posix';
 }
 
-export function gitDiffCommand(cwdRelativePath: string): string {
-    return `git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ${quotePathspec(`:(literal)${cwdRelativePath}`)}`;
+// Characters that mean nothing to sh AND cmd — safe inside plain double quotes on both.
+const PORTABLE = /^[A-Za-z0-9_\-./@+ ,=~#:()\u0080-\uffff]*$/;
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f]/;
+
+export function quoteShellArg(value: string, flavor: ShellFlavor | null): QuotedArg {
+    if (CONTROL.test(value)) return { ok: false, reason: 'control' };
+    if (flavor === 'posix') return { ok: true, arg: `'${value.replace(/'/g, `'\\''`)}'` };
+    if (flavor === 'cmd') {
+        // Windows file names cannot contain `"`; refusing it keeps the quoting closed.
+        if (value.includes('"')) return { ok: false, reason: 'quote' };
+        // Inside "…" cmd treats & | < > ^ ( ) literally, but still expands
+        // %VAR% (and !VAR! under delayed expansion). Leave the quotes for those
+        // two and caret-escape them; the program's argv parser glues the
+        // adjacent pieces ("a"^%"b" → a%b) back into one argument.
+        const parts = value.split(/([%!])/).filter((p) => p !== '');
+        if (parts.length === 0) return { ok: true, arg: '""' };
+        return { ok: true, arg: parts.map((p) => (p === '%' || p === '!' ? `^${p}` : `"${p}"`)).join('') };
+    }
+    return PORTABLE.test(value) ? { ok: true, arg: `"${value}"` } : { ok: false, reason: 'unknown-platform' };
+}
+
+export type DiffCommand = { ok: true; command: string } | { ok: false; reason: QuoteFailure };
+
+/**
+ * Tracked file: diff against HEAD with a `:(literal)` pathspec (a leading `:`
+ * or glob characters are not pathspec syntax). Untracked file: `--no-index`
+ * against the null device — same RPC, same output cap, and unlike `readFile`
+ * not subject to the CLI's cwd containment check, so `../x` works.
+ */
+export function gitDiffCommand(cwdRelativePath: string, opts: { untracked: boolean; flavor: ShellFlavor | null }): DiffCommand {
+    const base = 'git -c core.quotepath=false diff --no-color --no-ext-diff';
+    const target = quoteShellArg(opts.untracked ? cwdRelativePath : `:(literal)${cwdRelativePath}`, opts.flavor);
+    if (!target.ok) return target;
+    if (!opts.untracked) return { ok: true, command: `${base} HEAD -- ${target.arg}` };
+    const nullDevice = opts.flavor === 'cmd' ? 'NUL' : '/dev/null';
+    return { ok: true, command: `${base} --no-index -- ${nullDevice} ${target.arg}` };
 }
 
 const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
@@ -76,12 +119,4 @@ export function parseGitUnifiedDiff(text: string): ParsedGitDiff {
         if (/^Binary files .* differ$/.test(line) || line === 'GIT binary patch') binary = true;
     }
     return { rows, binary };
-}
-
-/** Untracked file: every line is an addition. A trailing newline is not a line. */
-export function rowsForNewFile(content: string): ReviewRow[] {
-    if (content === '') return [];
-    const lines = content.split('\n');
-    if (lines[lines.length - 1] === '') lines.pop();
-    return lines.map((text, i) => ({ type: 'add' as const, text, oldNo: null, newNo: i + 1 }));
 }
