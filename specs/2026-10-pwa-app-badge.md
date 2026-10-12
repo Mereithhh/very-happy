@@ -60,6 +60,8 @@
 
 ### D4 UI（`NotificationBell.tsx`）
 
+- 共享 `.vh-menu` 层级 1500 低于通知层 1600：`ActionDropdownMenu`/`ActionContextMenu` 增加可选 `contentClassName`，行菜单用 `.nc-row-menu`（1700）。
+
 - 行改为 `<div class="nc-row-wrap">`：主 `<button class="nc-row">` 不变 + 行尾 `⋯` `ActionDropdownMenu`；整行包 `ActionContextMenu`（右键 / 触屏长按）。
 - 菜单项：未读 →「标为已读」（`CheckCheck`），已读 →「标为未读」（`Mail`/`MailOpen`）。
 
@@ -86,12 +88,17 @@
 
 ## 验收标准
 
-- [ ] `notificationUnreadMarks.test.ts`：标记→未读；标记后 seen 越过→已读；seen 早于标记→仍未读；标为已读清标记；上限淘汰。
-- [ ] `appBadge.test.ts`：特性检测缺失静默；同值去重；0 → clear；rejection 被吞；SW message 只在有 controller 时发。
-- [ ] 桌面 Chromium：未读数变化时 `navigator.setAppBadge` 以正确参数被调用、清零时 `clearAppBadge`（打桩记录调用）。
-- [ ] SW：注入构建后的 `push-sw.js` 在真实 SW 中收到 `vh-badge-count` 后，模拟 push 调用 `self.navigator.setAppBadge(n+1)`（可行范围内验证）；SW 更新链路未改动（diff 不触碰 `swTakeover.ts`/注册代码）。
-- [ ] 条目「⋯」与右键菜单：标为未读后铃铛数 +1、行加粗；再标为已读恢复；1280 与 390 coarse × 亮/暗无溢出。
-- [ ] `tsc --noEmit`、相关 vitest、`vite build` 全绿。
+- [x] `notificationUnreadMarks.test.ts`：标记→未读；标记后 seen 越过→已读；seen 早于标记→仍未读；标为已读清标记；上限淘汰。
+- [x] `appBadge.test.ts`：特性检测缺失静默；同值去重；0 → clear；rejection 被吞；SW message 只在有 controller 时发。
+- [x] 桌面 Chromium：未读数变化时 `navigator.setAppBadge` 以正确参数被调用、清零时 `clearAppBadge`（打桩记录调用）。
+- [x] SW：注入构建后的 `push-sw.js` 在真实 SW 中收到 `vh-badge-count` 后，模拟 push 调用 `self.navigator.setAppBadge(n+1)`（可行范围内验证）；SW 更新链路未改动（diff 不触碰 `swTakeover.ts`/注册代码）。
+- [x] 条目「⋯」与右键菜单：标为未读后铃铛数 +1、行加粗；再标为已读恢复；1280 与 390 coarse × 亮/暗无溢出。
+- [x] `tsc --noEmit`、相关 vitest、`vite build` 全绿。
+
+## 验收记录（2026-10-12）
+
+- 自启 Chromium（playwright-core + 缓存 chromium-1187），本地 standalone server + vite + 隔离 daemon：未读 2→`set:2`；⋯ 标为已读→`set:1`；右键标为未读→`set:2`、铃铛 2；该目标 seen 戳晚于标记→`set:1`；全部已读→`clear`。菜单项 `elementFromPoint` 命中 `.vh-menu`（在通知层之上）。1280 亮/暗、390 coarse 亮/暗无横向溢出，⋯ 触屏 40px 常显。
+- SW：origin/main 构建 → 本分支构建（保留旧 hashed assets）：`controllerchange` 触发、controller 更换、入口 hash 变化；新 worker `self.navigator.setAppBadge` 为 function；页面上报 3 → 缓存 3；有可见窗口时 push 不动；无窗口 push → 4。
 
 ## 留真机验证项
 
