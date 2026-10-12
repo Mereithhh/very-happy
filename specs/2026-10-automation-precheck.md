@@ -125,7 +125,7 @@ AutomationRun.occurrenceCount?: number             // 缺省 = 1
 ## 风险
 
 1. **`skipCounts` 存在 automation 行上**：每次合并多一次 automation 行写入，与 claim/编辑同处 SERIALIZABLE 事务，冲突走既有 `inTx` 重试。接受；频率 ≤ 触发频率。
-2. **合并会删除较旧的 skipped run 行**：其 id 消失（`auto runs <oldId>` 得到 `run_not_found`）。接受——被删的都是已终态的 skipped 记录，计数与 attention 已迁到最新一条；正在被等待/报告的 id 永远是最新那条，不会被删。
+2. **合并会删除较旧的 skipped run 行**：为保证旧 id 可追溯，`action` 列再存 `mergedInto[oldId]=newestId`（一跳、链式合并时重指、上限 200 条）；`GET /runs/:id` 与 `ack` 命中缺失 id 时扫本账号 automation（≤ 账号上限）跟随到新 run（响应 `id` 为新 run），`--wait` 轮询因此自动跟随。超出 200 条或新 run 被保留策略裁掉后才会 `run_not_found`——接受。
 3. **shell precheck 的注入面**：`shell` 不渲染模板；payload 只经环境变量。argv 形态渲染模板（与 script 一致）。
 4. **precheck 输出进 prompt**：可能把大量或敏感文本带进会话。默认关闭，上限 4000 字符，文档提醒。
 5. **paused 创建再 resume** 对 `once` 且时间已过的 trigger：resume 用 `nextRunAfter`，过去的一次性时间不会再触发。接受（带 precheck 的过期一次性任务没有意义），文档说明。

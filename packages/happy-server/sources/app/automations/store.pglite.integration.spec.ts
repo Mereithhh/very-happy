@@ -230,6 +230,10 @@ describe('automations store (pglite)', () => {
             // Folded into the newest run, which inherits the acknowledged state: no second flag.
             expect(runs[0]).toMatchObject({ status: 'skipped', occurrenceCount: 2, needsAttention: false, ackedBy: 'owner' });
             expect(runs[0].id).not.toBe(r1.id);
+            // The folded id still resolves — to the run it went into — for reads and acks (and so for `--wait`).
+            expect((await store.getRun(accountId, r1.id)).id).toBe(runs[0].id);
+            expect((await store.ackRun(accountId, r1.id)).id).toBe(runs[0].id);
+            await expect(store.getRun(accountId, 'never-existed')).rejects.toMatchObject({ code: 'run_not_found' });
             expect((await store.getAutomation(accountId, a.id)).lastRunStatus).toBe('skipped');
             // A capable daemon gets the run with the precheck in its snapshot.
             await due(a.id);
@@ -253,9 +257,12 @@ describe('automations store (pglite)', () => {
                 const c = await claimDue();
                 return store.reportRun(accountId, c.run.id, { claimId: c.run.claimId, status: 'skipped', error, summary: `out ${error}`, exitCode: 1, ...(needsAttention ? { needsAttention, attentionReason: error } : {}) });
             };
-            expect(await skipOnce('precheck_failed')).toMatchObject({ status: 'skipped', error: 'precheck_failed', occurrenceCount: 1, needsAttention: false });
+            const first = await skipOnce('precheck_failed');
+            expect(first).toMatchObject({ status: 'skipped', error: 'precheck_failed', occurrenceCount: 1, needsAttention: false });
             expect((await skipOnce('precheck_failed')).occurrenceCount).toBe(2);
             const third = await skipOnce('precheck_failed');
+            // A chain of folds resolves in one hop to the newest run.
+            expect((await store.getRun(accountId, first.id)).id).toBe(third.id);
             expect(third).toMatchObject({ occurrenceCount: 3, summary: 'out precheck_failed', exitCode: 1 });
             expect(await skipOnce('precheck_timeout', true)).toMatchObject({ occurrenceCount: 1, needsAttention: true, attentionReason: 'precheck_timeout' });
             // The same flagged reason again stays one open flag, not two.

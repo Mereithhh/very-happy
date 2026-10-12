@@ -13,7 +13,7 @@ import { configuredResourceLimit } from '@/app/api/resourceLimits';
 import { AutomationError, requireAutomation } from './errors';
 import { linkedSessionIds } from './attentionLifecycle';
 import { initialRunAt, nextRunAfter, normalizeTrigger } from './schedule';
-import { decodeStoredAction, encodeStoredAction, foldSkipCount, occurrenceOf, shouldMergeSkip, type SkipCounts, type StoredAction } from './storedAction';
+import { decodeStoredAction, encodeStoredAction, foldSkipCount, occurrenceOf, recordMerge, shouldMergeSkip, type SkipCounts, type StoredAction } from './storedAction';
 
 /**
  * Account-level Automations (B-496). Every mutation runs in a SERIALIZABLE
@@ -167,7 +167,7 @@ async function foldPreviousSkip(tx: Tx, run: RunRow, reason: string): Promise<Ru
     if (!automation) return null;
     const stored = decodeStoredAction(automation.action);
     // Runtime bookkeeping: no version bump, so an open editor's CAS is unaffected.
-    await tx.automation.update({ where: { id: run.automationId }, data: { action: storeAction({ ...stored, skipCounts: foldSkipCount(stored.skipCounts, prev.id, run.id) }) } });
+    await tx.automation.update({ where: { id: run.automationId }, data: { action: storeAction({ ...stored, skipCounts: foldSkipCount(stored.skipCounts, prev.id, run.id), mergedInto: recordMerge(stored.mergedInto ?? {}, prev.id, run.id) }) } });
     await tx.automationRun.delete({ where: { id: prev.id } });
     return tx.automationRun.update({ where: { id: run.id }, data: {
         needsAttention: prev.needsAttention, attentionReason: prev.attentionReason, attentionAt: prev.attentionAt, ackedAt: prev.ackedAt, ackedBy: prev.ackedBy,
@@ -348,10 +348,29 @@ export async function listRuns(accountId: string, query: { automationId?: string
     });
     return rows.map(runView);
 }
+/**
+ * B-548: a run id that was folded into a newer skip resolves to that run. Only
+ * consulted on a miss; scans this account's automations (≤ the per-account cap).
+ */
+async function resolveMergedRunId(tx: Tx | typeof db, accountId: string, id: string): Promise<string | null> {
+    const automations = await tx.automation.findMany({ where: { accountId }, select: { action: true } });
+    for (const automation of automations) {
+        const target = decodeStoredAction(automation.action).mergedInto?.[id];
+        if (target) return target;
+    }
+    return null;
+}
+/** A run by id, following a fold (the answer's `id` is then the run it was folded into). */
+async function findRunFollowingMerge(tx: Tx | typeof db, accountId: string, id: string): Promise<RunWithAutomation | null> {
+    const row = await tx.automationRun.findFirst({ where: { id, accountId }, include: { automation: RUN_AUTOMATION } });
+    if (row) return row;
+    const target = await resolveMergedRunId(tx, accountId, id);
+    return target ? tx.automationRun.findFirst({ where: { id: target, accountId }, include: { automation: RUN_AUTOMATION } }) : null;
+}
 export async function getRun(accountId: string, id: string): Promise<AutomationRun> {
     assertAutomationsEnabled(accountId);
     await sweepBestEffort(accountId);
-    const row = await db.automationRun.findFirst({ where: { id, accountId }, include: { automation: RUN_AUTOMATION } });
+    const row = await findRunFollowingMerge(db, accountId, id);
     requireAutomation(row, 'run_not_found', 404);
     return runView(row);
 }
@@ -433,7 +452,7 @@ export async function ackRun(accountId: string, runId: string, by: string = 'own
     assertAutomationsEnabled(accountId);
     const now = new Date();
     return inTx(async tx => {
-        const row = await tx.automationRun.findFirst({ where: { id: runId, accountId }, include: { automation: RUN_AUTOMATION } });
+        const row = await findRunFollowingMerge(tx, accountId, runId);
         requireAutomation(row, 'run_not_found', 404);
         // Already clear: idempotent, keep the recorded ackedBy (the first resolution is the truthful one).
         const updated = row.needsAttention

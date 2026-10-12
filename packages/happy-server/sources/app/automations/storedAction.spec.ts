@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GATED_ACTION_HINT, GATED_ACTION_KIND, decodeStoredAction, encodeStoredAction, foldSkipCount, occurrenceOf, shouldMergeSkip } from './storedAction';
+import { GATED_ACTION_HINT, GATED_ACTION_KIND, decodeStoredAction, encodeStoredAction, foldSkipCount, occurrenceOf, recordMerge, shouldMergeSkip } from './storedAction';
 
 const spawn = { kind: 'spawn' as const, agent: 'claude', directory: '/repo', prompt: 'go' };
 const precheck = { shell: 'test -s inbox.json', includeOutput: true };
@@ -7,7 +7,7 @@ const precheck = { shell: 'test -s inbox.json', includeOutput: true };
 describe('B-548 stored action', () => {
     it('stores an action without precheck byte-for-byte as before', () => {
         expect(encodeStoredAction({ action: spawn, precheck: null, skipCounts: {} })).toEqual(spawn);
-        expect(decodeStoredAction(spawn)).toEqual({ action: spawn, precheck: null, skipCounts: {} });
+        expect(decodeStoredAction(spawn)).toEqual({ action: spawn, precheck: null, skipCounts: {}, mergedInto: {} });
     });
 
     it('wraps a gated action so an old daemon cannot run it and an old web can still render it', () => {
@@ -17,7 +17,7 @@ describe('B-548 stored action', () => {
         expect(stored.command).toEqual(GATED_ACTION_HINT);
         expect(stored).not.toHaveProperty('agent');
         expect(stored).not.toHaveProperty('prompt');
-        expect(decodeStoredAction(stored)).toEqual({ action: spawn, precheck, skipCounts: {} });
+        expect(decodeStoredAction(stored)).toEqual({ action: spawn, precheck, skipCounts: {}, mergedInto: {} });
     });
 
     it('keeps skip counts beside either shape and never leaks them into the action', () => {
@@ -42,6 +42,18 @@ describe('B-548 stored action', () => {
         let many: Record<string, number> = {};
         for (let i = 0; i < 5; i++) many = foldSkipCount(many, `x${i}`, `y${i}`, 3);
         expect(Object.keys(many)).toEqual(['y2', 'y3', 'y4']);
+    });
+
+    it('remembers where folded runs went, one hop, capped, and never inside the action', () => {
+        let m = recordMerge({}, 'a', 'b');
+        m = recordMerge(m, 'b', 'c');
+        expect(m).toEqual({ a: 'c', b: 'c' });
+        expect(Object.keys(recordMerge({ x: 'y', z: 'w' }, 'p', 'q', 2))).toEqual(['z', 'p']);
+        for (const p of [null, precheck]) {
+            const decoded = decodeStoredAction(encodeStoredAction({ action: spawn, precheck: p, skipCounts: {}, mergedInto: m }));
+            expect(decoded.mergedInto).toEqual(m);
+            expect(decoded.action).toEqual(spawn);
+        }
     });
 
     it('merges only consecutive non-manual skips of the same source and reason', () => {
