@@ -44,6 +44,21 @@ describe('filePreviewHandler', () => {
         expect(emitted[0].data).toEqual({ sourceType: 'machine', machineId: 'm1', terminalId: 't-1', payload: 'ciphertext', enc: true, mode: 'file' });
     });
 
+    it('B-562: forwards only the download intent and omits the key otherwise', async () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        filePreviewHandler('u', socket, io, { connectionType: 'session-scoped', sessionId: 's1' });
+        const push = handlers.get('file-preview-push')!;
+        await push({ payload: 'c1', enc: true, intent: 'download' });
+        await push({ payload: 'c2', enc: true, intent: 'future' });
+        await push({ payload: 'c3', enc: true, intent: { nested: true } });
+        await push({ payload: 'c4', enc: true });
+        expect(emitted.map(e => e.data.intent)).toEqual(['download', undefined, undefined, undefined]);
+        expect(emitted.slice(1).every(e => !('intent' in e.data))).toBe(true);
+        expect(emitted[0].data).toEqual({ sourceType: 'session', sessionId: 's1', payload: 'c1', enc: true, mode: 'file', intent: 'download' });
+        // Tool history stays in its existing shape (no intent consumer there).
+        expect(vi.mocked(recordToolHistory).mock.calls[0][2]).toEqual({ kind: 'preview', payload: 'c1', enc: true, mode: 'file' });
+    });
+
     it('ignores a session terminal field and rejects malformed machine terminal ids', async () => {
         const session = makeFakes();
         filePreviewHandler('u', session.socket, session.io, { connectionType: 'session-scoped', sessionId: 's1' });
