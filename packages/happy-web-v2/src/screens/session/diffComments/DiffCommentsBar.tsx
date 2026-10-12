@@ -32,7 +32,11 @@ export function DiffCommentsBar({ sessionId, onSent }: { sessionId: string; onSe
             toast.show(zh ? '输入框不可用，批注已保留' : 'No composer here; comments kept', 'error');
             return;
         }
-        clearDiffComments(sessionId);
+        if (clearDiffComments(sessionId) !== 'ok') {
+            toast.show(zh ? '已放入输入框，但批注草稿未能清除，请手动清空' : 'Added to the composer, but the drafts could not be cleared', 'error');
+            onSent?.();
+            return;
+        }
         toast.show(zh ? '已放入输入框，确认后发送' : 'Added to the composer — review and send', 'success');
         onSent?.();
     };
@@ -42,7 +46,7 @@ export function DiffCommentsBar({ sessionId, onSent }: { sessionId: string; onSe
             zh ? `删除本会话全部 ${comments.length} 条批注？` : `Delete all ${comments.length} comments in this session?`,
             { destructive: true, confirmText: zh ? '清空' : 'Clear' },
         );
-        if (ok) clearDiffComments(sessionId);
+        if (ok && clearDiffComments(sessionId) !== 'ok') toast.show(zh ? '清空失败：浏览器存储不可用' : 'Could not clear: browser storage is unavailable', 'error');
     };
 
     return (
