@@ -1094,6 +1094,7 @@ export const zhHans: TranslationStructure = {
         groupTerminals: '终端',
         actionNewChat: '新建对话',
         actionNewChatAdvanced: '新建对话（自定义选项）…',
+        actionNewChatWithQuery: ({ query }: { query: string }) => `新建对话：${query}`,
         actionNewTerminal: '新建终端',
         actionNewTerminalAt: '在指定目录新建终端…',
         actionAttachTmux: '接入 tmux 会话…',

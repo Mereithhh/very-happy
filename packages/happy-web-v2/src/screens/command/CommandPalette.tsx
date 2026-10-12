@@ -18,11 +18,13 @@ import {
   RotateCcw,
   History,
   HardDrive,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { useSessions, storage, useLocalSetting } from '@/sync/storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { useTerminalSessions } from '@/sync/terminalSessions';
-import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
+import { getSessionName, getSessionSubtitle, formatLastSeen } from '@/utils/sessionUtils';
+import { useBoardItems } from '@/screens/board/useBoardItems';
 import { createTerminalOrPick, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
 import { sessionUpdateTitle } from '@/sync/ops';
@@ -37,11 +39,17 @@ import { AttachTmuxModal } from '@/screens/sessions/AttachTmuxModal';
 import { ImportHistoryModal, type ImportHistoryAgent } from '@/screens/sessions/ImportHistoryModal';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
+import type { AgentExecution } from '@/sync/agentStatus';
 import {
-  parseSidebarQuery,
-  sidebarQueryIsEmpty,
-  tagsMatchSidebarQuery,
-} from '@/screens/sessions/sidebarSearch';
+  boardItemExecution,
+  filterPaletteItems,
+  newChatDraftFor,
+  orderPaletteItems,
+  resolveFrozenRows,
+  selectNeedsYouSessions,
+  type PaletteGroup,
+} from './paletteModel';
+import { PaletteStatusMark } from './PaletteStatusMark';
 import './commandpalette.css';
 
 /**
@@ -57,7 +65,7 @@ export function openCommandPalette() {
 
 type CommandItem = {
   key: string;
-  group: 'actions' | 'sessions' | 'terminals';
+  group: PaletteGroup;
   title: string;
   subtitle?: string;
   icon: React.ReactNode;
@@ -67,50 +75,31 @@ type CommandItem = {
   tags?: string[];
   /** optional keyboard-shortcut hint rendered on the row's right edge */
   hint?: string;
+  /** B-552 等我看 rows: the sidebar's status mark + "how long ago" */
+  status?: { execution: AgentExecution; unread: boolean; backgroundTasks?: number; at: number };
   run: () => void | Promise<void>;
 };
 
-/** simple case-insensitive substring match; score = match position (lower = better, -1 = no match) */
-function matchScore(haystack: string, q: string): number {
-  if (!q) return 0;
-  return haystack.indexOf(q);
-}
+/** Dialogs live in the always-mounted shell: they outlive the panel, which
+ *  unmounts the moment an item runs. */
+type PaletteDialogs = {
+  newChat: (target?: RecentMachinePath, draft?: string) => void;
+  newTerminalAt: () => void;
+  attachTmux: () => void;
+  importHistory: (agent: ImportHistoryAgent) => void;
+  searchHistory: () => void;
+};
 
 export function CommandPalette() {
-  const { t, lang } = useTranslation();
-  const navigate = useNavigate();
-  const location = useLocation();
-
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const ime = useImeGuard();
-  const [active, setActive] = useState(0);
-  const [showNewSession, setShowNewSession] = useState(false);
-  const [newLocation, setNewLocation] = useState<RecentMachinePath>();
+  const [newChatDialog, setNewChatDialog] = useState<{ target?: RecentMachinePath; draft?: string } | null>(null);
   const [showNewTerminal, setShowNewTerminal] = useState(false);
   const [showAttachTmux, setShowAttachTmux] = useState(false);
   const [showImport, setShowImport] = useState<ImportHistoryAgent | null>(null);
   // B-549: the same dialog, opened straight into full-text search.
   const [showHistorySearch, setShowHistorySearch] = useState(false);
 
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
-
-  const sessions = useSessions();
-  const machines = storage((s) => s.machines);
-  const terminals = useTerminalSessions((s) => s.terminals);
-
-  const close = useCallback(() => {
-    setOpen(false);
-    setQuery('');
-    setActive(0);
-  }, []);
-
-  // current session id from the route (/session/:id)
-  const currentSessionId = useMemo(() => {
-    const m = location.pathname.match(/^\/session\/([^/]+)/);
-    return m ? m[1] : null;
-  }, [location.pathname]);
+  const close = useCallback(() => setOpen(false), []);
 
   // ── global ⌘K / Ctrl+K listener (capture phase + preventDefault) ──
   useEffect(() => {
@@ -134,13 +123,80 @@ export function CommandPalette() {
     return () => window.removeEventListener(OPEN_EVENT, onOpen);
   }, []);
 
+  const dialogs = useMemo<PaletteDialogs>(() => ({
+    newChat: (target, draft) => setNewChatDialog({ target, draft }),
+    newTerminalAt: () => setShowNewTerminal(true),
+    attachTmux: () => setShowAttachTmux(true),
+    importHistory: (agent) => setShowImport(agent),
+    searchHistory: () => setShowHistorySearch(true),
+  }), []);
+
+  return (
+    <>
+      {/* Mounted only while open: the panel subscribes to the board's
+          derivation (useBoardItems), which must not run while closed. */}
+      {open && <CommandPalettePanel onClose={close} dialogs={dialogs} />}
+
+      {newChatDialog && (
+        <NewSessionModal
+          initialLocation={newChatDialog.target}
+          initialCommandDefault={newChatDialog.draft}
+          onClose={() => setNewChatDialog(null)}
+        />
+      )}
+      {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
+      {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
+      {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
+      {showHistorySearch && <ImportHistoryModal initialMode="search" onClose={() => setShowHistorySearch(false)} />}
+    </>
+  );
+}
+
+function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void; dialogs: PaletteDialogs }) {
+  const { t, lang } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [query, setQuery] = useState('');
+  const ime = useImeGuard();
+  const [active, setActive] = useState(0);
+
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  const sessions = useSessions();
+  const machines = storage((s) => s.machines);
+  const terminals = useTerminalSessions((s) => s.terminals);
+  const boardItems = useBoardItems();
+  const unreadIds = storage((s) => s.unreadSessionIds);
+
+  // current session id from the route (/session/:id)
+  const currentSessionId = useMemo(() => {
+    const m = location.pathname.match(/^\/session\/([^/]+)/);
+    return m ? m[1] : null;
+  }, [location.pathname]);
+
   // focus input on open
   useEffect(() => {
-    if (open) {
-      const id = requestAnimationFrame(() => inputRef.current?.focus());
-      return () => cancelAnimationFrame(id);
-    }
-  }, [open]);
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  // ── B-552 等我看: the board's waiting column (sessions), frozen at open ──
+  // Membership and order freeze on the first non-empty selection so rows
+  // never shuffle under the cursor; status marks keep reading live items.
+  const liveNeedsYou = useMemo(
+    () => selectNeedsYouSessions(boardItems, { currentSessionId }),
+    [boardItems, currentSessionId],
+  );
+  const frozenNeedsYou = useRef<string[] | null>(null);
+  if (frozenNeedsYou.current === null && liveNeedsYou.length > 0) {
+    frozenNeedsYou.current = liveNeedsYou.map((item) => item.key);
+  }
+  const needsYou = useMemo(
+    () => (frozenNeedsYou.current ? resolveFrozenRows(frozenNeedsYou.current, boardItems) : liveNeedsYou),
+    [boardItems, liveNeedsYou],
+  );
 
   // one online machine → direct create; 0 / >1 → picker (shared entry point)
   const openNewTerminal = useCallback(() => createTerminalOrPick(navigate), [navigate]);
@@ -201,7 +257,7 @@ export function CommandPalette() {
       title: t('commandPalette.actionNewTerminalAt'),
       icon: <FolderOpen size={16} />,
       haystack: `terminal directory cwd ${(t('commandPalette.actionNewTerminalAt') as string).toLowerCase()}`,
-      run: () => setShowNewTerminal(true),
+      run: dialogs.newTerminalAt,
     });
     out.push({
       // B-281: the dedicated attach picker (B-273 machinery).
@@ -210,7 +266,7 @@ export function CommandPalette() {
       title: t('commandPalette.actionAttachTmux'),
       icon: <TerminalSquare size={16} />,
       haystack: `tmux attach session ${(t('commandPalette.actionAttachTmux') as string).toLowerCase()}`,
-      run: () => setShowAttachTmux(true),
+      run: dialogs.attachTmux,
     });
     out.push({
       // B-290: import a Claude Code conversation stored on a machine.
@@ -219,7 +275,7 @@ export function CommandPalette() {
       title: t('commandPalette.actionImportClaude'),
       icon: <History size={16} />,
       haystack: `import claude code history conversation desktop resume ${(t('commandPalette.actionImportClaude') as string).toLowerCase()}`,
-      run: () => setShowImport('claude'),
+      run: () => dialogs.importHistory('claude'),
     });
     out.push({
       // B-464: import a Codex thread stored on a machine.
@@ -228,7 +284,7 @@ export function CommandPalette() {
       title: t('commandPalette.actionImportCodex'),
       icon: <History size={16} />,
       haystack: `import codex history thread conversation desktop resume ${(t('commandPalette.actionImportCodex') as string).toLowerCase()}`,
-      run: () => setShowImport('codex'),
+      run: () => dialogs.importHistory('codex'),
     });
     out.push({
       // B-549: search what was said in a machine's Claude Code / Codex history.
@@ -237,7 +293,7 @@ export function CommandPalette() {
       title: t('commandPalette.actionSearchHistory'),
       icon: <History size={16} />,
       haystack: `search history full text conversation transcript find content claude codex ${(t('commandPalette.actionSearchHistory') as string).toLowerCase()}`,
-      run: () => setShowHistorySearch(true),
+      run: dialogs.searchHistory,
     });
     out.push({
       // B-300: the "+" menu's last entry, mirrored here — ⌘K must not be the
@@ -257,7 +313,7 @@ export function CommandPalette() {
       haystack: (t('commandPalette.actionNewChat') as string).toLowerCase(),
       // Quick create (same flow as the sidebar "+"): spawn directly, fall
       // back to the full dialog only when the quick path can't decide.
-      run: () => void createChatOrConfigure(navigate, target => { setNewLocation(target); setShowNewSession(true); }, { location }),
+      run: () => void createChatOrConfigure(navigate, (target) => dialogs.newChat(target), { location }),
     });
     out.push({
       key: 'action:new-chat-advanced',
@@ -265,7 +321,7 @@ export function CommandPalette() {
       title: t('commandPalette.actionNewChatAdvanced'),
       icon: <MessageSquare size={16} />,
       haystack: (t('commandPalette.actionNewChatAdvanced') as string).toLowerCase(),
-      run: () => { setNewLocation(undefined); setShowNewSession(true); },
+      run: () => dialogs.newChat(),
     });
     if (currentSessionId) {
       out.push({
@@ -401,31 +457,70 @@ export function CommandPalette() {
     machines,
     terminals,
     currentSessionId,
-    location.pathname,
-    location.search,
+    location,
     t,
     navigate,
+    dialogs,
     openNewTerminal,
     renameCurrent,
     archiveCurrent,
   ]);
 
-  // ── filter + sort by match position (actions always kept above nav on ties) ──
-  // The sidebar's `#tag` grammar applies here too (the search box the palette
-  // replaced supported it): `#foo` terms AND-filter on row tags, the
-  // free-text remainder keeps the substring match over the haystack. Items
-  // without tags (actions and old-daemon terminals) fail tag constraints.
-  const filtered = useMemo(() => {
-    const parsed = parseSidebarQuery(query);
-    if (sidebarQueryIsEmpty(parsed)) return items;
-    const groupOrder: Record<CommandItem['group'], number> = { actions: 0, sessions: 1, terminals: 2 };
-    return items
-      .filter((it) => tagsMatchSidebarQuery(it.tags, parsed))
-      .map((it) => ({ it, score: matchScore(it.haystack, parsed.text) }))
-      .filter((x) => x.score >= 0)
-      .sort((a, b) => a.score - b.score || groupOrder[a.it.group] - groupOrder[b.it.group])
-      .map((x) => x.it);
-  }, [items, query]);
+  // B-552 等我看 rows (empty query only), rendered like the session rows plus
+  // the sidebar's status mark and "how long ago".
+  const needsYouItems = useMemo<CommandItem[]>(() => {
+    const byId = new Map<string, Exclude<NonNullable<typeof sessions>[number], string>>();
+    for (const s of sessions ?? []) if (typeof s !== 'string') byId.set(s.id, s);
+    return needsYou.flatMap((item) => {
+      const s = byId.get(item.key);
+      if (!s) return [];
+      const title = getSessionName(s);
+      return [{
+        key: `needs:${s.id}`,
+        group: 'needsYou' as const,
+        title,
+        subtitle: getSessionSubtitle(s),
+        icon: <MessageSquare size={16} />,
+        haystack: title.toLowerCase(),
+        status: {
+          execution: boardItemExecution(item),
+          unread: unreadIds.has(s.id),
+          backgroundTasks: item.backgroundTasks,
+          at: item.attentionSince ?? item.lastActivityAt,
+        },
+        run: () => navigate(`/session/${s.id}`),
+      }];
+    });
+  }, [needsYou, sessions, unreadIds, navigate]);
+
+  // ── filter (paletteModel: substring + sidebar `#tag` grammar, unchanged),
+  // then one display order shared by rendering and ↑↓/Enter ──
+  const filtered = useMemo<CommandItem[]>(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      // Empty query: 等我看 on top; those sessions leave the plain list.
+      const pinned = new Set(needsYouItems.map((it) => it.key.slice('needs:'.length)));
+      return orderPaletteItems([
+        ...needsYouItems,
+        ...items.filter((it) => !(it.group === 'sessions' && pinned.has(it.key.slice('session:'.length)))),
+      ]);
+    }
+    const matched = orderPaletteItems(filterPaletteItems(items, query));
+    const draft = newChatDraftFor(query, matched);
+    if (draft == null) return matched;
+    const createTitle = t('commandPalette.actionNewChatWithQuery', { query: draft });
+    return [...matched, {
+      key: 'create:new-chat',
+      group: 'create' as const,
+      title: createTitle,
+      icon: <MessageSquarePlus size={16} />,
+      haystack: '',
+      // Same entry as "New chat"; the query becomes the composer draft (quick
+      // path) or the dialog's initial instruction (configure path) — never sent
+      // on its own.
+      run: () => void createChatOrConfigure(navigate, (target) => dialogs.newChat(target, draft), { location, draft }),
+    }];
+  }, [items, needsYouItems, query, t, navigate, dialogs, location]);
 
   // keep active index in bounds when the list changes
   useEffect(() => {
@@ -434,10 +529,9 @@ export function CommandPalette() {
 
   // scroll active item into view
   useEffect(() => {
-    if (!open) return;
     const el = listRef.current?.querySelector<HTMLElement>('.cp-item.is-active');
     el?.scrollIntoView({ block: 'nearest' });
-  }, [active, open]);
+  }, [active]);
 
   const runItem = useCallback(
     async (item: CommandItem | undefined) => {
@@ -471,105 +565,104 @@ export function CommandPalette() {
     [filtered, active, close, runItem, ime],
   );
 
-  // render grouped list (dividers by group label)
+  // render grouped list (dividers by group label); `filtered` is already in
+  // display order, so a row's flat index is its keyboard index.
   const groups = useMemo(() => {
-    const labels: Record<CommandItem['group'], string> = {
+    const labels: Record<PaletteGroup, string | null> = {
+      needsYou: t('sidebar.groupWaiting'),
       actions: t('commandPalette.groupActions'),
       sessions: t('commandPalette.groupSessions'),
       terminals: t('commandPalette.groupTerminals'),
+      create: null,
     };
-    const order: CommandItem['group'][] = ['actions', 'sessions', 'terminals'];
-    // flat index → so highlight math stays aligned with `filtered`
-    let flat = 0;
-    return order
-      .map((g) => {
-        const rows = filtered.filter((it) => it.group === g);
-        const mapped = rows.map((it) => ({ it, index: filtered.indexOf(it) }));
-        flat += rows.length;
-        return { group: g, label: labels[g], rows: mapped };
-      })
-      .filter((x) => x.rows.length > 0);
+    const out: { group: PaletteGroup; label: string | null; rows: { it: CommandItem; index: number }[] }[] = [];
+    filtered.forEach((it, index) => {
+      const last = out[out.length - 1];
+      if (last && last.group === it.group) last.rows.push({ it, index });
+      else out.push({ group: it.group, label: labels[it.group], rows: [{ it, index }] });
+    });
+    return out;
   }, [filtered, t]);
 
   return (
-    <>
-      {open && (
-        <div
-          className="cp-backdrop"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) close();
-          }}
-        >
-          <div
-            className="cp-panel"
-            role="dialog"
-            aria-modal="true"
-            onKeyDown={onKeyDown}
-            // Composition events bubble from the search input; tracking them
-            // here keeps the panel-level key guard IME-aware.
-            onCompositionStart={ime.onCompositionStart}
-            onCompositionEnd={ime.onCompositionEnd}
-          >
-            <div className="cp-search">
-              <Search size={16} className="cp-search-icon" />
-              <input
-                ref={inputRef}
-                className="cp-search-input"
-                type="text"
-                value={query}
-                placeholder={t('commandPalette.placeholder')}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setActive(0);
-                }}
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-            </div>
-
-            <div className="cp-list" ref={listRef}>
-              {filtered.length === 0 ? (
-                <div className="cp-empty">{t('commandPalette.empty')}</div>
-              ) : (
-                groups.map((grp) => (
-                  <div key={grp.group}>
-                    <div className="cp-group-label">{grp.label}</div>
-                    {grp.rows.map(({ it, index }) => (
-                      <button
-                        key={it.key}
-                        type="button"
-                        className={`cp-item${index === active ? ' is-active' : ''}`}
-                        onMouseMove={() => setActive(index)}
-                        onClick={() => runItem(it)}
-                      >
-                        <span className="cp-item-icon">{it.icon}</span>
-                        <span className="cp-item-text">
-                          <span className="cp-item-title">{it.title}</span>
-                          {it.subtitle ? <span className="cp-item-sub">{it.subtitle}</span> : null}
-                        </span>
-                        {it.hint ? <kbd className="cp-item-hint">{it.hint}</kbd> : null}
-                      </button>
-                    ))}
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="cp-footer">
-              <span>{t('commandPalette.hintNavigate')}</span>
-              <span>{t('commandPalette.hintSelect')}</span>
-              <span>{t('commandPalette.hintClose')}</span>
-            </div>
-          </div>
+    <div
+      className="cp-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) close();
+      }}
+    >
+      <div
+        className="cp-panel"
+        role="dialog"
+        aria-modal="true"
+        onKeyDown={onKeyDown}
+        // Composition events bubble from the search input; tracking them
+        // here keeps the panel-level key guard IME-aware.
+        onCompositionStart={ime.onCompositionStart}
+        onCompositionEnd={ime.onCompositionEnd}
+      >
+        <div className="cp-search">
+          <Search size={16} className="cp-search-icon" />
+          <input
+            ref={inputRef}
+            className="cp-search-input"
+            type="text"
+            value={query}
+            placeholder={t('commandPalette.placeholder')}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActive(0);
+            }}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+          />
         </div>
-      )}
 
-      {showNewSession && <NewSessionModal initialLocation={newLocation} onClose={() => setShowNewSession(false)} />}
-      {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
-      {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
-      {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
-      {showHistorySearch && <ImportHistoryModal initialMode="search" onClose={() => setShowHistorySearch(false)} />}
-    </>
+        <div className="cp-list" ref={listRef}>
+          {filtered.length === 0 ? (
+            <div className="cp-empty">{t('commandPalette.empty')}</div>
+          ) : (
+            groups.map((grp) => (
+              <div key={grp.group} className={`cp-group cp-group--${grp.group}`}>
+                {grp.label ? <div className="cp-group-label">{grp.label}</div> : null}
+                {grp.rows.map(({ it, index }) => (
+                  <button
+                    key={it.key}
+                    type="button"
+                    className={`cp-item${index === active ? ' is-active' : ''}`}
+                    onMouseMove={() => setActive(index)}
+                    onClick={() => runItem(it)}
+                  >
+                    <span className="cp-item-icon">{it.icon}</span>
+                    <span className="cp-item-text">
+                      <span className="cp-item-title">{it.title}</span>
+                      {it.subtitle ? <span className="cp-item-sub">{it.subtitle}</span> : null}
+                    </span>
+                    {it.status ? (
+                      <span className="cp-item-trail">
+                        <PaletteStatusMark
+                          execution={it.status.execution}
+                          unread={it.status.unread}
+                          backgroundTasks={it.status.backgroundTasks}
+                        />
+                        <span className="cp-item-age">{formatLastSeen(it.status.at)}</span>
+                      </span>
+                    ) : null}
+                    {it.hint ? <kbd className="cp-item-hint">{it.hint}</kbd> : null}
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="cp-footer">
+          <span>{t('commandPalette.hintNavigate')}</span>
+          <span>{t('commandPalette.hintSelect')}</span>
+          <span>{t('commandPalette.hintClose')}</span>
+        </div>
+      </div>
+    </div>
   );
 }
