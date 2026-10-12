@@ -33,8 +33,10 @@ import {
     getDiffComments,
     updateDiffComment,
     useDiffComments,
+    type WriteResult,
 } from './diffCommentsStore';
-import { useGitFileDiff } from './useGitFileDiff';
+import { useGitFileDiff, type DiffLoadRefusal } from './useGitFileDiff';
+import { FOCUSABLE_SELECTOR, isActivationKey, trapFocusTarget } from './focusTrap';
 import '../diff.css';
 import '../../files/fsbrowser.css';
 import './diffComments.css';
@@ -54,7 +56,11 @@ function copyFor(zh: boolean) {
         notInDiff: '以下批注的代码已不在当前 diff 中', refresh: '刷新 diff', openFile: '打开文件',
         noChanges: '与 HEAD 相比没有差异', binary: '二进制文件，无法批注', failed: 'diff 获取失败',
         retry: '重试', truncated: (n: number) => `diff 过长，只显示前 ${n} 行`, up: '向上扩展', down: '向下扩展',
-        shiftHint: 'Shift+点「+」扩展范围 · ⌘/Ctrl+Enter 保存', full: '批注已达上限', deleted: '删除前',
+        shiftHint: 'Shift+点「+」扩展范围 · ⌘/Ctrl+Enter 保存', full: '批注存储已满：先发送或清空一些批注', deleted: '删除前',
+        writeFailed: '保存失败：浏览器存储不可用', refused: {
+            control: '文件名含控制字符，无法安全地传给 shell', quote: '文件名含 " ，在 Windows 上无法安全引用',
+            'unknown-platform': '还不知道这台机器的系统，文件名含特殊字符时暂不获取；稍后重试',
+        } as Record<DiffLoadRefusal, string>,
         rangeFail: '无法扩展到该行（跨越 hunk 或删除/新增侧不同）',
     } : {
         add: 'Add comment', edit: 'Edit', del: 'Delete', save: 'Save', cancel: 'Cancel',
@@ -62,7 +68,11 @@ function copyFor(zh: boolean) {
         notInDiff: 'These comments point at code no longer in this diff', refresh: 'Refresh diff', openFile: 'Open file',
         noChanges: 'No differences from HEAD', binary: 'Binary file — cannot comment', failed: 'Could not load diff',
         retry: 'Retry', truncated: (n: number) => `Diff is long; showing the first ${n} rows`, up: 'Extend up', down: 'Extend down',
-        shiftHint: 'Shift+click “+” to extend · ⌘/Ctrl+Enter to save', full: 'Comment limit reached', deleted: 'old',
+        shiftHint: 'Shift+click “+” to extend · ⌘/Ctrl+Enter to save', full: 'Comment storage is full — send or clear some comments first', deleted: 'old',
+        writeFailed: 'Could not save: browser storage is unavailable', refused: {
+            control: 'The file name has control characters and cannot be passed to the shell safely', quote: 'The file name contains " and cannot be quoted safely on Windows',
+            'unknown-platform': 'This machine’s OS is not known yet; special-character file names are not fetched until it is. Retry shortly',
+        } as Record<DiffLoadRefusal, string>,
         rangeFail: 'Cannot extend to that line (crosses a hunk or a different side)',
     };
 }
@@ -102,6 +112,27 @@ function CommentEditor({ copy, body, onBody, onSave, onCancel, onDelete, hint, a
             </div>
         </div>
     );
+}
+
+/**
+ * aria-modal sheet: Tab/Shift+Tab stay inside, Escape cancels, and focus goes
+ * back to whatever opened it (the tapped row) when it closes.
+ */
+function ModalSheet({ label, onEscape, children }: { label: string; onEscape: () => void; children: React.ReactNode }) {
+    const ref = useRef<HTMLDivElement>(null);
+    // Captured during the first render: child effects (the textarea's
+    // autofocus) run before this component's own, so an effect would already
+    // see focus inside the sheet.
+    const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
+    useEffect(() => () => { opener?.focus?.({ preventScroll: true }); }, [opener]);
+    const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (e.key === 'Escape') { e.preventDefault(); onEscape(); return; }
+        if (e.key !== 'Tab' || !ref.current) return;
+        const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)];
+        const target = trapFocusTarget(items.length, items.indexOf(document.activeElement as HTMLElement), e.shiftKey);
+        if (target !== null) { e.preventDefault(); items[target].focus(); }
+    };
+    return <div ref={ref} className="rdv-sheet" role="dialog" aria-modal="true" aria-label={label} onKeyDown={onKeyDown}>{children}</div>;
 }
 
 function CommentCard({ comment, copy, onEdit, onDelete }: { comment: DiffComment; copy: Copy; onEdit: () => void; onDelete: () => void }) {
@@ -222,19 +253,21 @@ export function ReviewDiffPane({ sessionId, path, untracked, active, onOpenFile,
     };
     const save = () => {
         if (!draft || !rows || !draft.body.trim()) return;
+        let result: WriteResult;
         if (draft.kind === 'edit') {
-            updateDiffComment(sessionId, draft.id, { body: draft.body.trim() });
-            setDraft(null);
-            return;
+            result = updateDiffComment(sessionId, draft.id, { body: draft.body.trim() });
+        } else {
+            const anchor = buildAnchor(rows, draft.side, draft.start, draft.end);
+            if (!anchor) { toast.show(copy.rangeFail, 'info'); return; }
+            result = addDiffComment(sessionId, path, anchor, draft.body.trim());
         }
-        const anchor = buildAnchor(rows, draft.side, draft.start, draft.end);
-        if (!anchor) { toast.show(copy.rangeFail, 'info'); return; }
-        if (!addDiffComment(sessionId, path, anchor, draft.body.trim())) { toast.show(copy.full, 'error'); return; }
+        // keep the editor (and the typed text) open when the write did not land
+        if (result !== 'ok') { toast.show(result === 'quota' ? copy.full : copy.writeFailed, 'error'); return; }
         setDraft(null);
     };
     const edit = (c: DiffComment) => setDraft({ kind: 'edit', id: c.id, side: c.side, start: c.startLine, end: c.endLine, body: c.body });
     const remove = (id: string) => {
-        deleteDiffComment(sessionId, id);
+        if (deleteDiffComment(sessionId, id) !== 'ok') { toast.show(copy.writeFailed, 'error'); return; }
         if (draft?.kind === 'edit' && draft.id === id) setDraft(null);
     };
 
@@ -263,6 +296,12 @@ export function ReviewDiffPane({ sessionId, path, untracked, active, onOpenFile,
                 <Button size="sm" onClick={() => void reload()}>{copy.retry}</Button>
             </div>
         );
+        if (state.phase === 'refused') return (
+            <div className="fp-empty rdv-error">
+                <span>{copy.refused[state.reason]}</span>
+                <Button size="sm" onClick={() => void reload()}>{copy.retry}</Button>
+            </div>
+        );
         if (state.phase === 'binary') return <div className="fp-empty">{copy.binary}</div>;
         if (!rows || rows.length === 0) return <div className="fp-empty">{copy.noChanges}</div>;
         return (
@@ -278,7 +317,15 @@ export function ReviewDiffPane({ sessionId, path, untracked, active, onOpenFile,
                         return (
                             <Fragment key={i}>
                                 <div className={cls} data-row={i}
-                                    onClick={coarse ? () => { if (window.getSelection()?.isCollapsed !== false) startNew(i, false); } : undefined}>
+                                    {...(coarse ? {
+                                        role: 'button',
+                                        tabIndex: 0,
+                                        'aria-label': `${copy.add} ${side === 'old' ? `${copy.deleted} ` : ''}L${no}`,
+                                        onClick: () => { if (window.getSelection()?.isCollapsed !== false) startNew(i, false); },
+                                        onKeyDown: (e: ReactKeyboardEvent<HTMLDivElement>) => {
+                                            if (e.target === e.currentTarget && isActivationKey(e.key)) { e.preventDefault(); startNew(i, false); }
+                                        },
+                                    } : {})}>
                                     <span className="rdv-gutter">
                                         <span className="rdv-no">{r.oldNo ?? ''}</span>
                                         <span className="rdv-no">{r.newNo ?? ''}</span>
@@ -328,7 +375,7 @@ export function ReviewDiffPane({ sessionId, path, untracked, active, onOpenFile,
             {coarse && draft && active && createPortal(
                 <div className="rdv-sheet-root">
                     <div className="rdv-sheet-scrim" onClick={() => { if (!draft.body.trim()) setDraft(null); }} aria-hidden/>
-                    <div className="rdv-sheet" role="dialog" aria-label={copy.add}>
+                    <ModalSheet label={copy.add} onEscape={() => setDraft(null)}>
                         <div className="rdv-sheet-head">
                             <span className="rdv-sheet-path mono" title={path}>{path.split('/').pop()}</span>
                             <span className="rdv-card-range mono">{draftLabel}</span>
@@ -341,7 +388,7 @@ export function ReviewDiffPane({ sessionId, path, untracked, active, onOpenFile,
                             </div>
                         )}
                         {editor}
-                    </div>
+                    </ModalSheet>
                 </div>,
                 document.body,
             )}
