@@ -1,6 +1,6 @@
 # Web 终端 Claude 状态改为 hook 驱动 + transcript 按 hook 路径增量读取
 
-> 状态：Draft（实现 agent 起草，待主 agent 定稿）
+> 状态：Final（主 agent 2026-10-12 定稿：review 五项已修）
 > 日期：2026-10-12 ｜ 关联 backlog：B-547（主）、B-551（附带）｜ 出处：Orca 对照批次（`rea-orca` 的 claude managed hooks / server-status-inference / transcript-incremental-reader）
 
 ## 背景
