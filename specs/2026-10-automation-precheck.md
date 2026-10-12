@@ -1,6 +1,6 @@
 # Automation precheck 与连续跳过合并
 
-> 状态：Draft
+> 状态：Final（主 agent 2026-10-12 定稿：review 七项已修）
 > 日期：2026-10-12 ｜ 关联 backlog：B-548 ｜ 前身：[Automations](2026-09-automations.md)、[Attention lifecycle](2026-09-attention-lifecycle.md)；参考 Orca `automation-precheck.ts` / `precheck-runner.ts` / `automation-run-operations.ts`（只读）
 
 ## 背景
