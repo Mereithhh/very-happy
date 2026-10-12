@@ -1,34 +1,37 @@
 import { CircleAlert, CircleHelp, Unplug } from 'lucide-react';
-import { agentStatusSignal, type AgentExecution } from '@/sync/agentStatus';
+import { agentStatusSignal, codingAgentLabel, type AgentExecution } from '@/sync/agentStatus';
+import { agentStatusLabelTokens, formatAgentStatusLabel } from '@/utils/agentStatusLabel';
 import { Spinner } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 
 /**
  * B-552: the sidebar row's status mark for a palette row — same signal
- * (agentStatusSignal), same glyphs, same tooltip copy keys and the same color
- * tokens as `.sb-row-status*` in sidebar.css. Idle-and-read renders nothing,
- * exactly like the sidebar. The sidebar still renders its own inline copy
- * (Sidebar.tsx is another task's hotspot); it can adopt this component later.
+ * (agentStatusSignal), same glyphs, same label (agentStatusLabelTokens mirrors
+ * the sidebar's assembly incl. the agent prefix and offline/unknown notes) and
+ * the same color tokens as `.sb-row-status*` in sidebar.css. Idle-and-read
+ * renders nothing, exactly like the sidebar. Sidebar.tsx (another task's
+ * hotspot) still renders its own inline copy; it can adopt this later.
  */
 export function PaletteStatusMark({
   execution,
   unread,
+  flavor,
   backgroundTasks,
+  legacy,
 }: {
   execution: AgentExecution;
   unread: boolean;
+  flavor?: string | null;
   backgroundTasks?: number;
+  legacy?: boolean;
 }) {
   const { t } = useTranslation();
   const status = agentStatusSignal(execution, unread);
   if (!status) return null;
-  const label =
-    status === 'running' ? t('sidebar.groupRunning')
-    : status === 'background' ? t('sidebar.rowBackgroundTasks', { count: backgroundTasks ?? 1 })
-    : status === 'input' ? t('sidebar.rowNeedsAttention')
-    : status === 'unread' ? t('sidebar.rowUnread')
-    : status === 'offline' ? t('sidebar.agentStatusOffline')
-    : t('sidebar.agentStatusUnknown');
+  const label = formatAgentStatusLabel(
+    agentStatusLabelTokens({ signal: status, execution, agentLabel: codingAgentLabel(flavor), backgroundTasks, legacy }),
+    (tok) => (tok.key === 'sidebar.rowBackgroundTasks' ? t(tok.key, { count: tok.count }) : t(tok.key)),
+  );
   return (
     <span className={`cp-status cp-status--${status}`} title={label} aria-label={label} role="img">
       {status === 'running' || status === 'background' ? <Spinner size={14} />
