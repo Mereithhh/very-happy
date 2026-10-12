@@ -1,6 +1,6 @@
 # ⌘K 面板：空查询置顶「等我看」+ 无匹配时「新建对话：<查询>」
 
-> 状态：Draft
+> 状态：Final
 > 日期：2026-10-12 ｜ 关联 backlog：B-552 ｜ 出处/前身：Orca Cmd-J（Recent Chats & Terminals、Create worktree 行）对照
 
 ## 背景
@@ -55,8 +55,13 @@
     键盘与渲染共用这一份顺序。
   - `newChatDraftFor(query, matched)`：有自由文本、且命中里没有 `sessions`/`needsYou` 行时返回草稿文本，否则 null。
 - 面板拆成「常驻壳（快捷键、弹窗状态）」+「打开时才挂载的 `CommandPalettePanel`」，`useBoardItems`
-  只在面板打开时订阅；冻结 = 面板挂载时用 ref 记下「等我看」的 key 序列，之后按 key 取最新 BoardItem
-  渲染状态位；某 key 已不在 board（被归档）就不渲染该行。
+  只在面板打开时订阅。
+- 冻结（`freezeNeedsYouKeys`）：session store `isDataReady` 之前不冻结、也不渲染「等我看」段；ready 后立刻冻结
+  当时的选择（空也冻结），之后按 key 取最新 BoardItem 渲染状态位；某 key 已不在 board（被归档）就不渲染该行。
+- 高亮按行 key（`resolveActiveIndex` / `moveActive`）：面板挂载后立即把高亮钉到具体 key，其他行插入/移除不移动它；
+  高亮行消失时退到滑入其原位置的相邻行（原为末行则退到新末行）。
+- 状态位文案：`utils/agentStatusLabel.ts` 纯函数复刻侧栏的拼装（agent 前缀、offline/unknown 说明、legacy 注），
+  面板调用；Sidebar.tsx 不改（并行任务热区），其内联拼装与此函数「文案 key 与拼装规则一致」，后续可切换。
 - 行尾状态位：新组件 `screens/command/PaletteStatusMark.tsx`，图形/颜色/提示文案与侧栏一致
   （同 lucide 图标、`Spinner`、`sidebar.*` 文案键，颜色 token 与 `.sb-row-status*` 相同）。
   侧栏的状态位是 Sidebar.tsx 内联 JSX，属并行任务热区，本项不改 Sidebar；后续可让侧栏改用此组件。
