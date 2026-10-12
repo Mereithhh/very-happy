@@ -5,6 +5,9 @@ import {
   attentionRank,
   attentionRunsForSession,
   attentionSessionIds,
+  describePrecheck,
+  occurrenceLabel,
+  skipReasonKind,
   isOwnerAuthoredUserMessage,
   runSessionIds,
   describeAction,
@@ -266,3 +269,23 @@ describe('B-508 session linkage', () => {
     expect(isOwnerAuthoredUserMessage({ kind: 'agent-text', meta: {} })).toBe(false);
   });
 });
+
+describe('B-548 precheck and folded skips', () => {
+  it('words skip reasons, folds counts into ×N, and ranks precheck attention with the failures', () => {
+    expect(skipReasonKind(run({ status: 'skipped', error: 'precheck_failed' }))).toBe('precheck_failed');
+    expect(skipReasonKind(run({ status: 'skipped', error: 'previous_run_active' }))).toBe('previous_run_active');
+    expect(skipReasonKind(run({ status: 'skipped', error: 'something_newer' }))).toBe('other');
+    expect(skipReasonKind(run({ status: 'failed', error: 'precheck_failed' }))).toBeNull();
+    expect(occurrenceLabel(run({ occurrenceCount: 5 }))).toBe('×5');
+    expect(occurrenceLabel(run({ occurrenceCount: 1 }))).toBeNull();
+    expect(occurrenceLabel(run({}))).toBeNull();
+    expect(attentionKind(run({ status: 'skipped', attentionReason: 'precheck_timeout' }))).toBe('precheck_broken');
+    expect(attentionKind(run({ status: 'skipped', attentionReason: 'precheck_unsupported_cli' }))).toBe('precheck_unsupported_cli');
+    expect(attentionRank(run({ status: 'skipped', attentionReason: 'precheck_unsupported_cli' }))).toBe(1);
+  });
+  it('describes a precheck', () => {
+    expect(describePrecheck({ shell: 'test -s x', includeOutput: true }, 'en')).toEqual({ mode: 'shell', command: 'test -s x', details: ['timeout 60s', 'output appended to the prompt'] });
+    expect(describePrecheck({ command: ['./c', 'a b'], cwd: '/w', timeoutMs: 5000 }, 'zh')).toEqual({ mode: 'argv', command: './c "a b"', details: ['目录 /w', '超时 5s'] });
+  });
+});
+

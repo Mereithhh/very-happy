@@ -20,6 +20,19 @@ export const AUTOMATION_CLAIM_MAX_RUNS = 8;
 export const AUTOMATION_DEDUPE_WINDOW_MS = 24 * 3_600_000;
 export const AUTOMATION_QUEUED_ATTENTION_MS = 10 * 60_000;
 export const AUTOMATION_RUN_RETENTION = 200;
+// B-548 precheck: a cheap command the daemon runs before the action; exit 0 runs the action, anything else records a skip.
+export const AUTOMATION_PRECHECK_DEFAULT_TIMEOUT_MS = 60_000;
+export const AUTOMATION_PRECHECK_MAX_TIMEOUT_MS = 600_000;
+export const AUTOMATION_PRECHECK_OUTPUT_MAX_CHARS = 4000;
+/** Announced in `AutomationClaim.capabilities` by daemons that execute prechecks; the server never hands a precheck run to a daemon without it. */
+export const AUTOMATION_DAEMON_CAPABILITY_PRECHECK = 'precheck';
+/**
+ * Reason codes a `skipped` run carries in `error` (B-548). Consecutive skips of
+ * one automation's scheduled runs with the same reason fold into the newest run
+ * (`occurrenceCount`). Clients show unknown codes verbatim.
+ */
+export const AUTOMATION_SKIP_REASONS = ['previous_run_active', 'precheck_failed', 'precheck_timeout', 'precheck_error', 'precheck_unsupported_cli'] as const;
+export type AutomationSkipReason = typeof AUTOMATION_SKIP_REASONS[number];
 
 const timestamp = z.number().int().positive().max(AUTOMATION_MAX_TIMESTAMP);
 export const AutomationTriggerSchema = z.discriminatedUnion('kind', [
@@ -58,6 +71,23 @@ export const AutomationActionSchema = z.discriminatedUnion('kind', [
 ]);
 export type AutomationAction = z.infer<typeof AutomationActionSchema>;
 
+/**
+ * B-548: optional gate before the action. Exactly one of `command` (argv, no
+ * shell; templates rendered like a script's argv) or `shell` (one command line
+ * run by the platform shell; NOT template-rendered — read the payload from
+ * `$VH_AUTOMATION_PAYLOAD`). `cwd` defaults to the action's directory / cwd,
+ * else the daemon's home. `includeOutput` appends the precheck's stdout to a
+ * spawn/send prompt.
+ */
+export const AutomationPrecheckSchema = z.object({
+    command: z.array(z.string().min(1).max(4096)).min(1).max(256).optional(),
+    shell: z.string().trim().min(1).max(8000).optional(),
+    cwd: z.string().min(1).max(4096).optional(),
+    timeoutMs: z.number().int().min(1000).max(AUTOMATION_PRECHECK_MAX_TIMEOUT_MS).optional(),
+    includeOutput: z.boolean().optional(),
+}).refine((p) => (p.command === undefined) !== (p.shell === undefined), 'precheck needs exactly one of command (argv) or shell');
+export type AutomationPrecheck = z.infer<typeof AutomationPrecheckSchema>;
+
 export const AutomationConcurrencySchema = z.enum(['skip', 'queue']);
 export type AutomationConcurrency = z.infer<typeof AutomationConcurrencySchema>;
 export const AUTOMATION_STATUSES = ['active', 'paused'] as const;
@@ -81,6 +111,8 @@ export const AutomationCreateSchema = z.object({
     concurrency: AutomationConcurrencySchema.optional(),
     maxRuntimeMs: maxRuntimeMs.optional(),
     status: z.enum(AUTOMATION_STATUSES).optional(),
+    /** B-548. Older servers strip it silently — clients must check the response echoes `precheck`. */
+    precheck: AutomationPrecheckSchema.nullable().optional(),
 });
 export type AutomationCreate = z.infer<typeof AutomationCreateSchema>;
 export const AutomationUpdateSchema = z.object({
@@ -92,6 +124,8 @@ export const AutomationUpdateSchema = z.object({
     action: AutomationActionSchema.optional(),
     concurrency: AutomationConcurrencySchema.optional(),
     maxRuntimeMs: maxRuntimeMs.optional(),
+    /** B-548: omitted keeps the current precheck, `null` removes it. Changing `action` alone keeps it too. */
+    precheck: AutomationPrecheckSchema.nullable().optional(),
 });
 export type AutomationUpdate = z.infer<typeof AutomationUpdateSchema>;
 
@@ -105,6 +139,8 @@ export const AutomationClaimSchema = z.object({
     machineId: id,
     limit: z.number().int().min(1).max(AUTOMATION_CLAIM_MAX_RUNS).optional(),
     leaseMs: z.number().int().min(5_000).max(3_600_000).optional(),
+    /** B-548: what this daemon can execute (e.g. `precheck`). Older daemons send nothing; older servers strip it. */
+    capabilities: z.array(z.string().min(1).max(64)).max(32).optional(),
 });
 export type AutomationClaim = z.infer<typeof AutomationClaimSchema>;
 
@@ -114,10 +150,11 @@ export type AutomationClaim = z.infer<typeof AutomationClaimSchema>;
 // - account-level explicit outcome (no `claimId`, e.g. `automation_report` from
 //   inside the session): `status` must be done|failed; only summary / error /
 //   exitCode / attention are applied, never lease, session or sticky.
-// Terminal statuses are final either way.
+// Terminal statuses are final either way. `skipped` (B-548, a precheck that did
+// not pass) is daemon-only and carries its reason code in `error`.
 export const AutomationReportSchema = z.object({
     claimId: id.optional(),
-    status: z.enum(['running', 'done', 'failed']).optional(),
+    status: z.enum(['running', 'done', 'failed', 'skipped']).optional(),
     sessionId: id.nullable().optional(),
     stickyKey: z.string().min(1).max(512).optional(),
     summary: z.string().max(AUTOMATION_SUMMARY_MAX_CHARS).nullable().optional(),
@@ -164,6 +201,8 @@ export type Automation = {
     lastRunStatus: AutomationRunStatus | null;
     createdAt: number;
     updatedAt: number;
+    /** B-548: the gate before the action; `null` = none. Absent on older servers (which also drop it on create/update). */
+    precheck?: AutomationPrecheck | null;
 };
 export type AutomationRun = {
     id: string;
@@ -195,6 +234,8 @@ export type AutomationRun = {
     exitCode: number | null;
     createdAt: number;
     updatedAt: number;
+    /** B-548: consecutive same-reason skips folded into this run (absent = 1). */
+    occurrenceCount?: number;
 };
 export type AutomationSticky = { key: string; sessionId: string; updatedAt: number };
 export type AutomationClaimedRun = { run: AutomationRun & { claimId: string }; automation: Automation; stickies: AutomationSticky[] };

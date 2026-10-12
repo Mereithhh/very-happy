@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUTOMATION_ACK_BY, AutomationAckSchema, AutomationActionSchema, AutomationCreateSchema, AutomationFireSchema, AutomationNameSchema, AutomationReportSchema, AutomationTriggerSchema, isAutomationRunTerminal } from './automations';
+import { AUTOMATION_ACK_BY, AUTOMATION_PRECHECK_MAX_TIMEOUT_MS, AutomationAckSchema, AutomationClaimSchema, AutomationPrecheckSchema, AutomationUpdateSchema, AutomationActionSchema, AutomationCreateSchema, AutomationFireSchema, AutomationNameSchema, AutomationReportSchema, AutomationTriggerSchema, isAutomationRunTerminal } from './automations';
 
 describe('automation wire schemas', () => {
     it('constrains names and interval floors', () => {
@@ -35,5 +35,23 @@ describe('automation wire schemas', () => {
         expect(AutomationAckSchema.parse({ by: 'owner-replied' })).toEqual({ by: 'owner-replied' });
         expect(AutomationAckSchema.safeParse({ by: '' }).success).toBe(false);
         expect(AUTOMATION_ACK_BY).toContain('owner');
+    });
+    it('B-548: precheck needs exactly one of argv / shell and bounds the timeout', () => {
+        expect(AutomationPrecheckSchema.safeParse({ shell: 'test -s inbox.json' }).success).toBe(true);
+        expect(AutomationPrecheckSchema.safeParse({ command: ['./has-new.sh'], cwd: '/repo', timeoutMs: 5000, includeOutput: true }).success).toBe(true);
+        expect(AutomationPrecheckSchema.safeParse({}).success).toBe(false);
+        expect(AutomationPrecheckSchema.safeParse({ shell: 'x', command: ['y'] }).success).toBe(false);
+        expect(AutomationPrecheckSchema.safeParse({ shell: '   ' }).success).toBe(false);
+        expect(AutomationPrecheckSchema.safeParse({ shell: 'x', timeoutMs: AUTOMATION_PRECHECK_MAX_TIMEOUT_MS + 1 }).success).toBe(false);
+        expect(AutomationPrecheckSchema.safeParse({ shell: 'x', timeoutMs: 999 }).success).toBe(false);
+    });
+    it('B-548: create/update carry precheck (null removes), claim carries capabilities, only the daemon may report skipped', () => {
+        const base = { name: 'x', machineId: 'm', trigger: { kind: 'manual' }, action: { kind: 'send', sessionId: 's', prompt: 'p' } };
+        expect(AutomationCreateSchema.parse({ ...base, precheck: { shell: 'true' } }).precheck).toEqual({ shell: 'true' });
+        expect(AutomationCreateSchema.safeParse({ ...base, precheck: { cwd: '/x' } }).success).toBe(false);
+        expect(AutomationUpdateSchema.parse({ version: 1, precheck: null }).precheck).toBeNull();
+        expect('precheck' in AutomationUpdateSchema.parse({ version: 1 })).toBe(false);
+        expect(AutomationClaimSchema.parse({ machineId: 'm', capabilities: ['precheck'] }).capabilities).toEqual(['precheck']);
+        expect(AutomationReportSchema.safeParse({ claimId: 'c', status: 'skipped', error: 'precheck_failed' }).success).toBe(true);
     });
 });

@@ -15,18 +15,20 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { AUTOMATIONS_DETAIL_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import {
   describeAction,
+  describePrecheck,
   describeTrigger,
   fmtAbsolute,
   fmtRelative,
   fmtSpan,
   isRunOpen,
   langOf,
+  occurrenceLabel,
   promptPreview,
   runDurationMs,
   runMoment,
 } from './automationPresentation';
 import { fireSnippets } from './automationForm';
-import { MachineTag, reportAutomationError, RunStatusBadge, SessionLink, useAttentionReason, useNow, useSourceLabel } from './AutomationShared';
+import { MachineTag, reportAutomationError, RunStatusBadge, SessionLink, useAttentionReason, useNow, useSkipReason, useSourceLabel } from './AutomationShared';
 import './automations.css';
 
 function ActionCard({ automation }: { automation: Automation }) {
@@ -54,6 +56,24 @@ function ActionCard({ automation }: { automation: Automation }) {
           {full ? t('automations.promptCollapse') : t('automations.promptTruncated')}
         </button>
       )}
+    </section>
+  );
+}
+
+/** B-548: the gate before the action, when there is one. */
+function PrecheckCard({ automation }: { automation: Automation }) {
+  const { t, lang } = useTranslation();
+  if (!automation.precheck) return null;
+  const text = describePrecheck(automation.precheck, langOf(lang));
+  return (
+    <section className="au-section">
+      <h2 className="au-section-title">{t('automations.precheck')}</h2>
+      <div className="au-action-kind">
+        <span>{t(text.mode === 'shell' ? 'automations.precheckModeShell' : 'automations.precheckModeArgv')}</span>
+        <span className="au-dot" aria-hidden>·</span>
+        <span className="mono au-action-head">{text.details.join(' · ')}</span>
+      </div>
+      <pre className="au-pre">{text.command}</pre>
     </section>
   );
 }
@@ -104,6 +124,9 @@ function RunRow({
   const l = langOf(lang);
   const at = runMoment(run);
   const duration = runDurationMs(run, now);
+  const skipReason = useSkipReason();
+  const skipped = skipReason(run);
+  const folded = occurrenceLabel(run);
   const hasBody = Boolean(run.summary || run.error);
   return (
     <li className={`au-run${run.needsAttention ? ' au-run--attn' : ''}`}>
@@ -113,6 +136,12 @@ function RunRow({
         <time className="mono au-run-time" dateTime={new Date(at).toISOString()} title={fmtAbsolute(at, l)}>
           {fmtRelative(at, now, l)}
         </time>
+        {folded && (
+          <span className="mono au-run-count" title={t('automations.occurrenceTitle', { count: run.occurrenceCount ?? 1 }) as string}>
+            {folded}
+          </span>
+        )}
+        {skipped && <span className="au-muted au-run-skip">{skipped}</span>}
         {duration !== null && <span className="mono au-muted">{fmtSpan(duration)}</span>}
         {run.exitCode !== null && run.exitCode !== 0 && (
           <span className="mono au-muted">
@@ -357,6 +386,7 @@ export function AutomationDetailScreen() {
         {automation.trigger.kind === 'manual' && <FireCard name={automation.name} />}
 
         <ActionCard automation={automation} />
+        <PrecheckCard automation={automation} />
 
         <section className="au-section">
           <h2 className="au-section-title">{t('automations.stickies')}</h2>

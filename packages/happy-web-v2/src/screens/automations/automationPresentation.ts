@@ -4,7 +4,7 @@
  * no `t()`: the two languages the product ships (zh / en) are branched here so
  * the module stays unit-testable and the wording of a cron line is pinned.
  */
-import type { Automation, AutomationAction, AutomationRun, AutomationRunStatus, AutomationTrigger } from '@slopus/happy-wire';
+import { AUTOMATION_PRECHECK_DEFAULT_TIMEOUT_MS, type Automation, type AutomationAction, type AutomationPrecheck, type AutomationRun, type AutomationRunStatus, type AutomationTrigger } from '@slopus/happy-wire';
 
 export type Lang = 'zh' | 'en';
 export function langOf(lang: string): Lang {
@@ -281,6 +281,10 @@ export type AttentionKind =
   | 'unknown_outcome'
   | 'daemon_restarted'
   | 'invalid_action'
+  /** B-548: the precheck timed out or could not start (the action did not run) */
+  | 'precheck_broken'
+  /** B-548: the machine's CLI cannot run prechecks (the action did not run) */
+  | 'precheck_unsupported_cli'
   | 'other';
 
 export function attentionKind(run: Pick<AutomationRun, 'status' | 'attentionReason'>): AttentionKind {
@@ -290,6 +294,8 @@ export function attentionKind(run: Pick<AutomationRun, 'status' | 'attentionReas
   if (reason === 'unknown_outcome') return 'unknown_outcome';
   if (reason === 'daemon_restarted') return 'daemon_restarted';
   if (reason === 'invalid_action') return 'invalid_action';
+  if (reason === 'precheck_timeout' || reason === 'precheck_error') return 'precheck_broken';
+  if (reason === 'precheck_unsupported_cli') return 'precheck_unsupported_cli';
   if (reason === 'lease_expired' || reason === 'max_runtime_exceeded' || run.status === 'expired') return 'expired';
   if (run.status === 'failed') return 'failed';
   return 'other';
@@ -313,6 +319,8 @@ export function attentionRank(run: Pick<AutomationRun, 'status' | 'attentionReas
     case 'unknown_outcome':
     case 'daemon_restarted':
     case 'invalid_action':
+    case 'precheck_broken':
+    case 'precheck_unsupported_cli':
       return 1;
     case 'machine_offline':
       return 2;
@@ -385,4 +393,40 @@ export function isOwnerAuthoredUserMessage(message: { kind: string; meta?: { sen
   if (message.kind !== 'user-text') return false;
   const from = message.meta?.sentFrom;
   return typeof from !== 'string' || !AUTOMATED_SENT_FROM.has(from);
+}
+
+// ---------------------------------------------------------------------------
+// B-548: precheck + folded skips
+
+/** Why a run was skipped (its `error` carries the code); unknown codes → 'other' (shown verbatim). */
+export type SkipReasonKind = 'previous_run_active' | 'precheck_failed' | 'precheck_timeout' | 'precheck_error' | 'precheck_unsupported_cli' | 'other';
+const SKIP_REASONS: readonly SkipReasonKind[] = ['previous_run_active', 'precheck_failed', 'precheck_timeout', 'precheck_error', 'precheck_unsupported_cli'];
+
+export function skipReasonKind(run: Pick<AutomationRun, 'status' | 'error'>): SkipReasonKind | null {
+  if (run.status !== 'skipped') return null;
+  return (SKIP_REASONS as readonly string[]).includes(run.error ?? '') ? (run.error as SkipReasonKind) : 'other';
+}
+
+/** "×N" for a run that folded N consecutive same-reason skips; null for a single occurrence (and older servers). */
+export function occurrenceLabel(run: Pick<AutomationRun, 'occurrenceCount'>): string | null {
+  const n = run.occurrenceCount ?? 1;
+  return n > 1 ? `×${n}` : null;
+}
+
+export interface PrecheckText {
+  mode: 'shell' | 'argv';
+  command: string;
+  /** cwd / timeout / output-to-prompt, already worded */
+  details: string[];
+}
+
+export function describePrecheck(precheck: AutomationPrecheck, lang: Lang): PrecheckText {
+  const zh = lang === 'zh';
+  const details: string[] = [];
+  if (precheck.cwd) details.push(`${zh ? '目录' : 'cwd'} ${precheck.cwd}`);
+  details.push(`${zh ? '超时' : 'timeout'} ${Math.round((precheck.timeoutMs ?? AUTOMATION_PRECHECK_DEFAULT_TIMEOUT_MS) / 1000)}s`);
+  if (precheck.includeOutput) details.push(zh ? '输出附加到 prompt' : 'output appended to the prompt');
+  if (precheck.shell !== undefined) return { mode: 'shell', command: precheck.shell, details };
+  const argv = (precheck.command ?? []).map((a) => (/[\s"']/.test(a) ? JSON.stringify(a) : a)).join(' ');
+  return { mode: 'argv', command: argv, details };
 }

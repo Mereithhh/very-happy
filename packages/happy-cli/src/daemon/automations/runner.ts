@@ -13,6 +13,12 @@
  * own prompt confirms the turn ended and takes the agent's final text as the
  * summary.
  *
+ * B-548: an automation with a `precheck` runs it first (tracked like a script,
+ * so leases renew and a cancel kills it); exit 0 runs the action, anything
+ * else reports the run `skipped` with a reason code. Claims announce the
+ * `precheck` capability — the server never hands a precheck run to a daemon
+ * that does not.
+ *
  * Two independent timers: lease renewal (never blocked by a slow spawn) and
  * the claim/monitor tick. Claimed runs execute concurrently, bounded by
  * AUTOMATION_MAX_CONCURRENT minus what is already tracked.
@@ -21,8 +27,8 @@ import { homedir } from 'node:os';
 import { join, isAbsolute } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import {
-    AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_SUMMARY_MAX_CHARS, isAutomationRunTerminal,
-    type AutomationClaimedRun, type AutomationReport,
+    AUTOMATION_CLAIM_MAX_RUNS, AUTOMATION_DAEMON_CAPABILITY_PRECHECK, AUTOMATION_DEFAULT_LEASE_MS, AUTOMATION_SUMMARY_MAX_CHARS, isAutomationRunTerminal,
+    type AutomationAction, type AutomationClaimedRun, type AutomationReport,
 } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
 import { readPersistedSessions } from '@/persistence';
@@ -38,6 +44,7 @@ import { clipText, renderAction, renderTemplate, type TemplateContext } from '@/
 import { prepareTeamWorktree } from '@/daemon/teams/worktree';
 import { readReceipts, writeReceipt, type AutomationReceipt } from './receipts';
 import { runScript as defaultRunScript, terminateScriptTree, type ScriptRunOptions, type ScriptRunResult } from './script';
+import { appendPrecheckOutput, defaultPrecheckCwd, evaluatePrecheck, precheckTimeoutMs, runPrecheck as defaultRunPrecheck, type PrecheckResult, type PrecheckRunOptions } from './precheck';
 
 export const AUTOMATION_TICK_MS = 5_000;
 export const AUTOMATION_LEASE_RENEW_MS = 30_000;
@@ -64,6 +71,7 @@ export interface AutomationRunnerDeps {
     serverUrl?: string;
     client?: AutomationsClient;
     runScript?: (options: ScriptRunOptions) => Promise<ScriptRunResult>;
+    runPrecheck?: (options: PrecheckRunOptions) => Promise<PrecheckResult>;
     /** Turn state of `sessionId` anchored on the prompt of `runId`. */
     readTurn?: (sessionId: string, runId: string) => Promise<TurnState>;
     send?: (sessionId: string, text: string, meta: { localId: string; model?: string | null; permissionMode?: string; effort?: string | null }) => Promise<void>;
@@ -138,6 +146,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
     const home = deps.home ?? configuration.happyHomeDir;
     const client = deps.client ?? createAutomationsClient({ serverUrl: deps.serverUrl ?? configuration.serverUrl, token: deps.token, client: 'daemon-auto' });
     const runScript = deps.runScript ?? defaultRunScript;
+    const runPrecheck = deps.runPrecheck ?? defaultRunPrecheck;
     const readTurn = deps.readTurn ?? defaultReadTurn;
     const send = deps.send ?? defaultSend;
     const prepareWorktree = deps.prepareWorktree ?? prepareTeamWorktree;
@@ -149,6 +158,8 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
     let disabledUntil = 0;
     let lastUnavailableLogAt = -Infinity;
     let recovered = false;
+    /** Runs whose precheck is executing detached from the tick. */
+    let gating = 0;
 
     function persist(receipt: Omit<AutomationReceipt, 'updatedAt'>): void { writeReceipt(home, receipt, now()); }
 
@@ -157,6 +168,8 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         try {
             await client.report(item.runId, report);
         } catch (error) {
+            // A server that does not know `skipped` (rolled back mid-run): record it as failed — the action still never ran.
+            if (report.status === 'skipped' && error instanceof AutomationsRequestError && error.status === 400) { await finish(item, { ...report, status: 'failed' }); return; }
             if (!isSettledByServer(error)) { item.pendingFinal = report; deps.log(`Automation run ${item.runId} final report deferred`); return; }
         }
         persist({ runId: item.runId, automationId: item.automationId, kind: item.kind, phase: 'finished', claimId: item.claimId, sessionId: item.sessionId });
@@ -186,6 +199,36 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         }
     }
 
+    /**
+     * B-548: run the automation's precheck. Resolves with its stdout when it
+     * passed (the action may run), or null when the run was reported skipped or
+     * settled by the server meanwhile (the action must not run).
+     */
+    async function gate(claimed: AutomationClaimedRun, action: AutomationAction, context: TemplateContext, env: Record<string, string>): Promise<{ stdout: string; truncated: boolean } | null> {
+        const { run, automation } = claimed;
+        const precheck = automation.precheck!;
+        const timeoutMs = precheckTimeoutMs(precheck);
+        const item = track(claimed, 'script');
+        const rawCwd = precheck.cwd ?? defaultPrecheckCwd(action) ?? homedir();
+        const cwd = expandHome(rawCwd);
+        const result: PrecheckResult = isAbsolute(cwd)
+            ? await runPrecheck({
+                // argv renders templates like a script; a shell line never does (payload only via $VH_AUTOMATION_PAYLOAD).
+                ...(precheck.shell !== undefined ? { shell: precheck.shell } : { command: (precheck.command ?? []).map((part) => renderTemplate(part, context)) }),
+                cwd, timeoutMs, env, onStart: (child) => { item.child = child; },
+            })
+            : { exitCode: null, signal: null, timedOut: false, stdout: '', output: '', error: `working directory must be absolute: ${rawCwd}`, durationMs: 0 };
+        if (!tracked.has(run.id)) return null; // cancelled / deleted while checking
+        // The daemon is stopping (a real shutdown kills the check): report nothing — the lease
+        // lapses and the server marks the run expired with attention; the action never ran.
+        if (closed) return null;
+        const verdict = evaluatePrecheck(result, timeoutMs);
+        // Passed: the entry stays tracked (lease renewal continues) until the action re-tracks the run.
+        if (verdict.pass) return { stdout: verdict.stdout, truncated: verdict.truncated };
+        await finish(item, { claimId: run.claimId, status: 'skipped', error: verdict.reason, summary: verdict.summary, exitCode: verdict.exitCode, ...(verdict.attention ? { needsAttention: true, attentionReason: verdict.reason } : {}) });
+        return null;
+    }
+
     async function execute(claimed: AutomationClaimedRun): Promise<void> {
         const { run, automation } = claimed;
         const existing = readReceipts(home)[run.id];
@@ -199,7 +242,32 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         }
         const context: TemplateContext = { payload: run.payload, runId: run.id, automationName: automation.name, ...(automation.trigger.kind === 'cron' ? { tz: automation.trigger.tz } : {}), now: now() };
         const action = renderAction(automation.action, context);
-        const env = { VH_AUTOMATION_RUN_ID: run.id, VH_AUTOMATION_NAME: automation.name };
+        const env: Record<string, string> = { VH_AUTOMATION_RUN_ID: run.id, VH_AUTOMATION_NAME: automation.name };
+        if (!automation.precheck) { await perform(claimed, action, context, env); return; }
+        // A precheck may take minutes: it must not hold the claim/monitor tick, so it runs detached (counted in `busy`).
+        gating++;
+        void (async () => {
+            try {
+                const passed = await gate(claimed, action, context, { ...env, ...(run.payload ? { VH_AUTOMATION_PAYLOAD: run.payload } : {}) });
+                if (!passed) return;
+                const item = tracked.get(run.id);
+                if (closed) { if (item) await finish(item, { claimId: run.claimId, status: 'failed', error: 'Daemon stopped after the precheck passed; the action was not run', needsAttention: true, attentionReason: 'daemon_restarted' }); return; }
+                // Precheck output is data, never a template: appended after rendering.
+                if (action.kind === 'script') await perform(claimed, action, context, { ...env, VH_AUTOMATION_PRECHECK_OUTPUT: passed.stdout });
+                else await perform(claimed, automation.precheck!.includeOutput ? { ...action, prompt: appendPrecheckOutput(action.prompt, passed.stdout, passed.truncated) } : action, context, env);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                deps.log(`Automation run ${run.id} failed to start: ${message}`);
+                // Settle it here: a tracked entry left behind would hold a concurrency slot and renew the lease forever.
+                const item = tracked.get(run.id);
+                if (item) await finish(item, { claimId: run.claimId, status: 'failed', error: clipText(`Automation failed to start after its precheck passed: ${message}`, AUTOMATION_SUMMARY_MAX_CHARS), ...(item.sessionId ? { sessionId: item.sessionId } : {}), needsAttention: true, attentionReason: 'unknown_outcome' });
+            } finally { gating--; }
+        })();
+    }
+
+    /** The action itself (after any precheck passed). */
+    async function perform(claimed: AutomationClaimedRun, action: AutomationAction, context: TemplateContext, env: Record<string, string>): Promise<void> {
+        const { run, automation } = claimed;
         const header = automationPromptHeader(automation.name, run.id);
 
         if (action.kind === 'script') {
@@ -369,7 +437,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
             const capacity = AUTOMATION_MAX_CONCURRENT - tracked.size;
             if (now() >= disabledUntil && capacity > 0) {
                 try {
-                    const claimed = await client.claim({ machineId: deps.machineId, limit: capacity, leaseMs: AUTOMATION_DEFAULT_LEASE_MS });
+                    const claimed = await client.claim({ machineId: deps.machineId, limit: capacity, leaseMs: AUTOMATION_DEFAULT_LEASE_MS, capabilities: [AUTOMATION_DAEMON_CAPABILITY_PRECHECK] });
                     // Concurrent: one slow spawn (key wait, worktree) must not delay the others.
                     await Promise.all(claimed.runs.map((entry) => closed ? Promise.resolve() : execute(entry).catch((error) => deps.log(`Automation run ${entry.run.id} failed to start: ${error instanceof Error ? error.message : String(error)}`))));
                 } catch (error) {
@@ -411,7 +479,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         hasSession: (id: string) => [...tracked.values()].some((item) => item.sessionId === id),
         trackedRunIds: () => [...tracked.keys()],
         /** Executing a claim, or a script child is still alive — handover and auto-update wait for this. */
-        get busy() { return running || [...tracked.values()].some(scriptAlive); },
+        get busy() { return running || gating > 0 || [...tracked.values()].some(scriptAlive); },
         /**
          * Stop the loops. `killScripts` (real shutdown) terminates live script
          * trees; the next daemon's recovery reports them failed + attention from

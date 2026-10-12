@@ -544,6 +544,19 @@ a.au-machine:hover {
 .au-run-time {
   color: var(--text-dim);
 }
+/* B-548: folded consecutive skips (×N) and the skip reason — neutral, like the skipped badge */
+.au-run-count {
+  color: var(--text);
+  font-size: var(--fs-11);
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.au-run-skip {
+  font-size: var(--fs-11);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .au-run-spacer {
   flex: 1;
 }

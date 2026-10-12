@@ -11,6 +11,7 @@ vi.mock('@/sessions/sessionOps', () => ({ readSessionLog: vi.fn(), TURN_WINDOW: 
 import { AutomationsRequestError } from '@/automations/client';
 import { AUTOMATION_LEASE_RENEW_MS, AUTOMATION_LOG_READ_MS, AUTOMATION_MAX_CONCURRENT, AUTOMATION_UNAVAILABLE_LOG_MS, automationPromptHeader, automationRunAnchor, createAutomationRunner } from './runner';
 import { readReceipt, writeReceipt } from './receipts';
+import { appendPrecheckOutput } from './precheck';
 
 let home: string;
 let runners: ReturnType<typeof createAutomationRunner>[] = [];
@@ -80,7 +81,7 @@ describe('automation runner: spawn runs', () => {
     it('spawns with run env, sends the rendered prompt, reports running, then done after the anchored turn ends', async () => {
         const client = fakeClient([claimed()]);
         const runner = start(client); await settled(runner);
-        expect(client.claim).toHaveBeenCalledWith({ machineId: 'm1', limit: AUTOMATION_MAX_CONCURRENT, leaseMs: 60_000 });
+        expect(client.claim).toHaveBeenCalledWith({ machineId: 'm1', limit: AUTOMATION_MAX_CONCURRENT, leaseMs: 60_000, capabilities: ['precheck'] });
         expect(spawn).toHaveBeenCalledWith({ directory: '/repo', agent: 'claude', permissionMode: 'bypassPermissions', spawnedBy: 'automation', environmentVariables: { VH_AUTOMATION_RUN_ID: 'r1', VH_AUTOMATION_NAME: 'nightly' } });
         expect(send).toHaveBeenCalledWith('s1', `${automationPromptHeader('nightly', 'r1')}\nSummarize tanka for nightly`, expect.objectContaining({ localId: 'automation-r1', permissionMode: 'bypassPermissions', model: 'claude-opus-5-5', effort: null }));
         expect(client.report).toHaveBeenCalledWith('r1', { claimId: 'claim-1', status: 'running', sessionId: 's1' });
@@ -222,7 +223,7 @@ describe('automation runner: spawn runs', () => {
         release(); await settled(runner);
         expect(client.report).toHaveBeenCalledWith('slow', expect.objectContaining({ status: 'running' }));
         await runner.tick();
-        expect(client.claim).toHaveBeenLastCalledWith({ machineId: 'm1', limit: AUTOMATION_MAX_CONCURRENT - 2, leaseMs: 60_000 });
+        expect(client.claim).toHaveBeenLastCalledWith({ machineId: 'm1', limit: AUTOMATION_MAX_CONCURRENT - 2, leaseMs: 60_000, capabilities: ['precheck'] });
     });
 });
 
@@ -388,5 +389,115 @@ describe('automation runner: restarts and degraded servers', () => {
         clock += 61_000; await runner.tick();
         expect(log.mock.calls[2][0]).toContain('claim failed');
         expect(spawn).not.toHaveBeenCalled();
+    });
+});
+
+describe('B-548 automation runner: precheck', () => {
+    const result = (over: Record<string, unknown> = {}) => ({ exitCode: 0, signal: null, timedOut: false, stdout: '', output: '', durationMs: 5, ...over });
+    const gated = (precheck: Automation['precheck'], action?: Automation['action']) => claimed(run(), automation({ precheck, ...(action ? { action } : {}) }));
+
+    it('runs the action only after the precheck passes, in the action directory, and appends stdout when asked', async () => {
+        const runPrecheck = vi.fn().mockResolvedValue(result({ stdout: '3 new messages\n' }));
+        const client = fakeClient([gated({ shell: 'check-inbox', includeOutput: true })]);
+        const runner = start(client, { runPrecheck }); await settled(runner);
+        expect(runPrecheck).toHaveBeenCalledWith(expect.objectContaining({ shell: 'check-inbox', cwd: '/repo', timeoutMs: 60_000, env: { VH_AUTOMATION_RUN_ID: 'r1', VH_AUTOMATION_NAME: 'nightly', VH_AUTOMATION_PAYLOAD: '{"topic":"tanka"}' } }));
+        expect(runPrecheck.mock.calls[0][0]).not.toHaveProperty('command');
+        expect(spawn).toHaveBeenCalledTimes(1);
+        expect(send).toHaveBeenCalledWith('s1', `${automationPromptHeader('nightly', 'r1')}\n${appendPrecheckOutput('Summarize tanka for nightly', '3 new messages')}`, expect.anything());
+        expect(send.mock.calls[0][1]).toContain('untrusted');
+        expect(client.report).toHaveBeenCalledWith('r1', { claimId: 'claim-1', status: 'running', sessionId: 's1' });
+    });
+
+    it('records a non-zero exit as skipped without attention and never runs the action', async () => {
+        const runPrecheck = vi.fn().mockResolvedValue(result({ exitCode: 1, output: 'no news' }));
+        const client = fakeClient([gated({ command: ['./has-new', '{{payload.topic}}'], cwd: '/checks' })]);
+        const runner = start(client, { runPrecheck }); await settled(runner);
+        expect(runPrecheck).toHaveBeenCalledWith(expect.objectContaining({ command: ['./has-new', 'tanka'], cwd: '/checks' }));
+        expect(spawn).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+        expect(client.report).toHaveBeenCalledTimes(1);
+        expect(client.report).toHaveBeenCalledWith('r1', { claimId: 'claim-1', status: 'skipped', error: 'precheck_failed', summary: 'Precheck exited 1; nothing to do.\nno news', exitCode: 1 });
+        expect(readReceipt(home, 'r1')?.phase).toBe('finished');
+    });
+
+    it('flags a timeout or a launch error, and refuses a relative working directory without running anything', async () => {
+        const runPrecheck = vi.fn().mockResolvedValue(result({ exitCode: null, timedOut: true }));
+        let client = fakeClient([gated({ shell: 'slow', timeoutMs: 5000 })]);
+        let runner = start(client, { runPrecheck }); await settled(runner);
+        expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'skipped', error: 'precheck_timeout', needsAttention: true, attentionReason: 'precheck_timeout' }));
+        expect(runPrecheck.mock.calls[0][0].timeoutMs).toBe(5000);
+        runPrecheck.mockClear();
+        client = fakeClient([claimed(run({ id: 'r2' }), automation({ precheck: { shell: 'x', cwd: 'relative/dir' } }))]);
+        runner = start(client, { runPrecheck }); await settled(runner);
+        expect(runPrecheck).not.toHaveBeenCalled();
+        expect(client.report).toHaveBeenCalledWith('r2', expect.objectContaining({ status: 'skipped', error: 'precheck_error', needsAttention: true }));
+        expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('gives a script action the precheck stdout as VH_AUTOMATION_PRECHECK_OUTPUT instead of a prompt', async () => {
+        const runPrecheck = vi.fn().mockResolvedValue(result({ stdout: 'ids: 1 2' }));
+        runScript.mockReturnValue(new Promise(() => {}));
+        const client = fakeClient([gated({ shell: 'check' }, { kind: 'script', command: ['sync'], cwd: '/work' })]);
+        const runner = start(client, { runPrecheck }); await flush();
+        expect(runPrecheck).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/work' }));
+        expect(runScript).toHaveBeenCalledWith(expect.objectContaining({ env: expect.objectContaining({ VH_AUTOMATION_PRECHECK_OUTPUT: 'ids: 1 2' }) }));
+        runner.stop();
+    });
+
+    it('does not hold the tick while a precheck runs, and stays busy for handover until it settles', async () => {
+        let release!: (value: unknown) => void;
+        const runPrecheck = vi.fn().mockReturnValue(new Promise((resolve) => { release = resolve; }));
+        const client = fakeClient([gated({ shell: 'slow' })]);
+        const runner = start(client, { runPrecheck });
+        await flush();
+        expect(runPrecheck).toHaveBeenCalledTimes(1);
+        expect(runner.busy).toBe(true);
+        await runner.tick(); // the loop keeps claiming while the precheck is pending
+        expect(client.claim).toHaveBeenCalledTimes(2);
+        release(result({ exitCode: 1 }));
+        await settled(runner);
+        expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing when the daemon stops and kills the precheck: the lease lapses into expired + attention', async () => {
+        let release!: (value: unknown) => void;
+        const runPrecheck = vi.fn().mockReturnValue(new Promise((resolve) => { release = resolve; }));
+        const client = fakeClient([gated({ shell: 'slow' })]);
+        const runner = start(client, { runPrecheck });
+        await flush();
+        runner.stop({ killScripts: true });
+        release(result({ exitCode: null, signal: 'SIGTERM' }));
+        await flush();
+        expect(client.report).not.toHaveBeenCalled();
+        expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('settles a run whose action throws after the precheck passed, freeing its slot', async () => {
+        const runPrecheck = vi.fn().mockResolvedValue(result());
+        spawn.mockReset().mockRejectedValue(new Error('daemon spawn exploded'));
+        const client = fakeClient([gated({ shell: 'ok' })]);
+        const runner = start(client, { runPrecheck }); await settled(runner);
+        expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'failed', needsAttention: true, attentionReason: 'unknown_outcome', error: expect.stringContaining('daemon spawn exploded') }));
+        expect(runner.trackedRunIds()).toEqual([]);
+        expect(readReceipt(home, 'r1')?.phase).toBe('finished');
+    });
+
+    it('reports failed instead when the server rejects `skipped` (rolled back mid-run)', async () => {
+        const runPrecheck = vi.fn().mockResolvedValue(result({ exitCode: 3 }));
+        const client = fakeClient([gated({ shell: 'x' })]);
+        client.report.mockImplementation(async (id: string, body: any) => {
+            if (body.status === 'skipped') throw new AutomationsRequestError(400, 'Bad Request');
+            return { ...run({ id }), status: body.status };
+        });
+        const runner = start(client, { runPrecheck }); await settled(runner);
+        expect(client.report).toHaveBeenLastCalledWith('r1', expect.objectContaining({ status: 'failed', error: 'precheck_failed' }));
+        expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('fails closed on the server gate wrapper (an old server returning the raw column) instead of running it', async () => {
+        const wrapper = { kind: 'precheck', command: ['very-happy: gated'], precheck: { shell: 'x' }, then: { kind: 'spawn', agent: 'claude', directory: '/repo', prompt: 'p' } } as unknown as Automation['action'];
+        const client = fakeClient([claimed(run(), automation({ action: wrapper }))]);
+        const runner = start(client); await settled(runner);
+        expect(spawn).not.toHaveBeenCalled(); expect(runScript).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+        expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'failed', needsAttention: true, attentionReason: 'invalid_action' }));
     });
 });
