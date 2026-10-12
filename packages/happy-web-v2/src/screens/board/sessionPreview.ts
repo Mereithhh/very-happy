@@ -1,7 +1,7 @@
 /**
  * B-553 / B-558 — what a board card says about a session's latest round,
  * derived purely from data the web already holds (spec
- * `specs/2026-10-agent-set-status.md` §4/§5):
+ * `specs/2026-10-report-progress-all-runners.md` §4/§5):
  *
  *  - `sessionPreview`: 「你：最后一句」 + the agent's reply to it, and how that
  *    round ended (stopped by the user / failed), from the session's already

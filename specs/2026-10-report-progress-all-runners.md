@@ -55,7 +55,10 @@
 - 写入：`board = { ...旧 board 去掉 phase, phase?（仅本次给出时）, attention, progress, analyzedAt, source }`——本次没给
   phase 就不保留旧 phase（防止旧标签配新文本）。analyzer 整体覆盖 board，天然不带 phase。
 - Codex `ALWAYS_AUTO_APPROVE_NAMES` 加 `report_progress` / `mcp__happy__report_progress`（+ id 前缀），否则每个里程碑都会
-  弹审批、把会话推进「等你」。
+  弹审批、把会话推进「等你」。裸名与 id 前缀只在 elicitation 的 `serverName` 为 `happy`（runCodex 的 `mcpServers` key，
+  `HAPPY_MCP_SERVER_NAME`）时放行（`change_title` 同规则），其他 MCP server 的同名工具照常挂起审批。
+- Gemini（ACP）白名单加 `report_progress` / `happy__report_progress` / `mcp__happy__report_progress` + id 前缀。ACP 的权限请求
+  不带 server 名，裸名无法绑定到本 server——与既有 `change_title` 同一已接受限制。
 
 ### 2. Web 显示（B-556）
 
@@ -79,8 +82,9 @@
 
 - 同一次扫描得出本轮结局：最新服务事件 `presentServiceEvent` 判 `stopped` → 「已由你中断」；`error`/`agent-error`/
   `claude-auth` → 「上一轮出错」。仅替换 idle 卡的「跑完待收」徽标，中性 `--text-faint`。
-- Codex：`turn_aborted` 原先只发 `turn-end{cancelled}`，web 识别不到；现在在同一分支补发与 Claude 一致的
-  `Aborted by user` session event（只是一条可见事件，不改 turn 生命周期）。
+- Codex：用户停止原先只留 `turn-end{cancelled}`，web 识别不到；现在 `handleAbort('user')`（abort RPC）在确实中断了一轮时
+  补发与 Claude 一致的 `Aborted by user` session event（只是一条可见事件，不改 turn 生命周期）。kill / 信号 / 本地退出
+  （`handleAbort('kill' | 'exit')`）不发，对齐 Claude 的 `!exitReason`。
 - 「N 无更新」：status `unknown`（租约过期，判定不变）时时间位改写。N 的起点 = max(本 tab 最后收到该会话心跳的时刻
   `lastHeardAt`, 会话 `updatedAt`)。`heartbeatLease` 另存 `lastHeardAt`（租约过期不删、只读、不参与判活）；本 tab 从未
   收到过心跳则只写「无更新」不给时长。终端条目沿用其 activity 时间。侧栏 tooltip 同一规则。
