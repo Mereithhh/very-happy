@@ -120,8 +120,17 @@ describe.skipIf(!tmuxAvailable)('terminal scrollback persistence (B-550, real tm
         tmux('send-keys', '-t', `=vh-${FLUSH}:`, '-l', "printf 'FLUSH-%s\\n' NOW");
         tmux('send-keys', '-t', `=vh-${FLUSH}:`, 'Enter');
         await waitFor(() => tmux('capture-pane', '-p', '-t', `=vh-${FLUSH}:`).stdout.includes('FLUSH-NOW'));
-        cp.flushOnShutdown();
+        await cp.flushOnShutdown();
         expect(readFileSync(join(dir, `${FLUSH}.live.vhsb`), 'utf8')).toContain('FLUSH-NOW');
+    });
+
+    it('killing a terminal checkpoints its last output first (for a later ↻ restore)', async () => {
+        tmux('send-keys', '-t', `=vh-${FLUSH}:`, '-l', "printf 'LAST-%s\\n' WORDS");
+        tmux('send-keys', '-t', `=vh-${FLUSH}:`, 'Enter');
+        await waitFor(() => tmux('capture-pane', '-p', '-t', `=vh-${FLUSH}:`).stdout.includes('LAST-WORDS'));
+        expect(mgr.killSession(FLUSH)).toBe(true);
+        expect(tmux('has-session', '-t', `=vh-${FLUSH}:`).status).not.toBe(0);
+        expect(readFileSync(join(dir, `${FLUSH}.live.vhsb`), 'utf8')).toContain('LAST-WORDS');
     });
 
     it('terminalScrollbackPersist=false: no replay, files deleted', () => {
@@ -129,5 +138,23 @@ describe.skipIf(!tmuxAvailable)('terminal scrollback persistence (B-550, real tm
         const cp = new ScrollbackCheckpointer({ homeDir: () => happyHome, env: () => iso.env });
         expect(cp.replayFor(SB)).toBeNull();
         expect(existsSync(dir)).toBe(false);
+    });
+});
+
+// Review item 4: a has-session that times out reads a LIVE session as gone →
+// promote → new-session fails as a duplicate. The failed rebuild must undo the
+// promotion, or the same life is archived and replayed twice. (A timed-out
+// probe cannot be provoked against real tmux, so the wiring is pinned in
+// source; the undo itself is behaviour-tested in scrollbackCheckpoint.test.ts.)
+describe('createDetachedTerminal undoes the promotion when nothing was rebuilt (B-550)', () => {
+    it('undo runs on the create-failed branch', () => {
+        const src = readFileSync(new URL('./webTerminal.ts', import.meta.url), 'utf8')
+            .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+        const fn = src.slice(src.indexOf('private createDetachedTerminal('));
+        const promote = fn.indexOf('const undoPromote = plan.attachTmux ? undefined : this.scrollback.promote(plan.terminalId);');
+        const create = fn.indexOf('tmuxNewSessionArgs(name, cols, rows, plan.cwd, envFlags');
+        expect(promote).toBeGreaterThan(-1);
+        expect(promote).toBeLessThan(create);
+        expect(fn).toMatch(/if \(!live\) \{\s*undoPromote\?\.\(\);/);
     });
 });

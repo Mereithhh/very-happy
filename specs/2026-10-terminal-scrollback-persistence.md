@@ -86,15 +86,17 @@ GC（首个 tick 必跑，此后每 10 分钟）：删坏文件名；删 TTL 过
 4. 每段：清洗（D4）→ LF→CRLF → 去尾部空行；段间用 `\x1b[0m` + CRLF 拼接；按行边界截到 512KB（保留最新）。
 5. 写 `.live`；写前核对该 id 的「代」没有被 D3 的晋升改变（防止在飞的旧捕获在晋升后覆盖）。
 
-**daemon 退出前**：`stopListTracking()` 末尾同步 `flushOnShutdown()`——用 `spawnSync` 对所有「脏」终端补拍，总预算 1.5s，超时即止。
-只在本进程至少跑过一次 tick 后生效（单测里 `stopListTracking` 不会去碰真实 tmux）。机器关机时 tmux 可能先死，此时补拍失败即放弃，
-最多丢最后一个静默周期（≤ ~2 分钟）的输出，由周期 checkpoint 兜底。
+**daemon 退出前**（review 修订）：`daemon/run.ts` `cleanupAndShutdown` **开头**发起 `apiMachine.flushTerminalScrollback()`——异步 `execFile`、所有脏终端**并行**、按最近活动优先，预算 300ms，与 daemon-state 更新和那 100ms 等待重叠；在 mirror/state/lock 清理前 `await`，且永不 reject、到点必返回，远低于 `requestShutdown` 的 1s 强退兜底，`cleanupDaemonState`/`releaseDaemonLock`/`stopCaffeinate` 一定执行。
+只在本进程至少跑过一次 tick 后生效。机器关机时 tmux 可能先死，补拍失败即放弃，最多丢最后一个静默周期（≤ ~2 分钟），由周期 checkpoint 兜底。
+
+**用户关闭终端前**：`killSession` 在 `kill-session` 前同步 `checkpointSync(id)`（≤300ms，跳过 attach 终端），让之后 ↻ 恢复能回放最后的输出。
 
 ### D3 何时晋升（live → prev）
 
 只有一个时机：`createDetachedTerminal` 通过了「会话不存在」检查、即将 `new-session` 时，`promote(id)`：
 
-- `prev' = 截尾512KB(prev ⊕ 内分隔「── 重建 ──」⊕ live)`（只有一边就取那一边），savedAt 取较新一边；写 `.prev`、删 `.live`、该 id 的代 +1。
+- `prev' = 截尾512KB(prev ⊕ 内分隔「── 重建 ──」⊕ live)`（只有一边就取那一边），savedAt 取较新一边；写 `.prev`，**写成功才**删 `.live`；该 id 的代 +1。
+- `promote` 返回 undo：`new-session` 失败（例如 has-session 超时把活会话误判为不存在、随后重名失败）时把 `.prev`/`.live` 原样恢复，避免同一世被归档两次、重复回放。
 - attach 计划（`plan.attachTmux`）不晋升。
 - 晋升在建会话**之前**：同一同步回合内，异步 tick 无法在两者之间对新会话拍照；create 失败时 `.prev` 也是正确状态（下次成功重建照样回放）。
 

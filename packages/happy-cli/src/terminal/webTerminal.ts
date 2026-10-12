@@ -1650,7 +1650,11 @@ export class WebTerminalManager {
         if (this.activityFlushTimer) { clearTimeout(this.activityFlushTimer); this.activityFlushTimer = null; }
         for (const timers of this.interruptTimers.values()) for (const t of timers) clearTimeout(t);
         this.interruptTimers.clear();
-        this.scrollback.flushOnShutdown(); // B-550: last checkpoint before exit
+    }
+
+    /** B-550: last scrollback checkpoint before the daemon exits (async, ~300ms, never throws). */
+    flushScrollbackForShutdown(): Promise<void> {
+        return this.scrollback.flushOnShutdown();
     }
 
     /**
@@ -2075,7 +2079,7 @@ export class WebTerminalManager {
         if (exists) return false;
         // B-550: the life that ended becomes the archive replayed above the
         // rebuilt session — before new-session, so no checkpoint slips between.
-        if (!plan.attachTmux) this.scrollback.promote(plan.terminalId);
+        const undoPromote = plan.attachTmux ? undefined : this.scrollback.promote(plan.terminalId);
         const envFlags = tmuxSupportsEnvFlag() ? [
             '-e', CLAUDE_CLASSIC_RENDERER_ENV,
             '-e', `VH_TERMINAL_ID=${plan.terminalId}`,
@@ -2095,6 +2099,7 @@ export class WebTerminalManager {
         const live = created.status === 0 && spawnSync('tmux', tmuxArgs(['has-session', '-t', `=${name}:`]),
             { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
         if (!live) {
+            undoPromote?.(); // B-550: not rebuilt (e.g. duplicate after a has-session timeout) → no archive
             logger.debug(`[WEB TERMINAL] auto-restore: tmux create failed for ${plan.terminalId}`);
             return false;
         }
@@ -3095,6 +3100,7 @@ export class WebTerminalManager {
         // spawnSync returning is not enough: the old implementation ignored a
         // non-zero exit code and acknowledged kills that never happened.
         const target = `=vh-${terminalId}:`;
+        this.scrollback.checkpointSync(terminalId); // B-550: keep its last output for a ↻ restore
         const killed = spawnSync('tmux', tmuxArgs(['kill-session', '-t', target]), { stdio: 'ignore', env: ptyEnv() });
         const verified = spawnSync('tmux', tmuxArgs(['has-session', '-t', target]), { stdio: 'ignore', env: ptyEnv() });
         if (!tmuxKillVerified(killed, verified)) {
