@@ -276,6 +276,12 @@ export class ApiMachineClient {
         return this.webTerminal.setTitle(terminalId, title, ifAbsent);
     }
 
+    /** B-547: a status hook forwarded from a daemon-launched claude inside a
+     *  web terminal (control server /terminal-agent-hook → here). */
+    ingestTerminalAgentHook(body: unknown): void {
+        this.webTerminal.ingestAgentHook(body);
+    }
+
     /**
      * Push text to the clipboard of every web client the user has open
      * (terminal-path claude → `very-happy mcp` → daemon /clipboard → here).

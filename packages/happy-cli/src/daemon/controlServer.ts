@@ -48,6 +48,7 @@ export function startDaemonControlServer({
   pushClipboard,
   pushFilePreview,
   onTerminalHook,
+  onTerminalAgentHook,
   setTerminalTitle,
   onSessionEdit,
   listPeers,
@@ -84,6 +85,11 @@ export function startDaemonControlServer({
    *  hook JSON + terminalId; parsing/validation is the mirror manager's job.
    *  Optional so older wirings/tests keep working. */
   onTerminalHook?: (body: unknown) => void;
+  /** B-547: a status hook from a `claude` the daemon launched inside a web
+   *  terminal with `--settings` (scripts/terminal_status_forwarder.cjs).
+   *  Parsing/validation is the web-terminal manager's job. Optional so
+   *  older wirings/tests keep working. */
+  onTerminalAgentHook?: (body: unknown) => void;
   /** Title a vh web terminal (tmux `@vh_title`) from a local process inside
    *  it (`very-happy mcp` change_title with VH_TERMINAL_ID). Same tmux result
    *  contract as the `set-terminal-title` machine RPC: false = not landed (409);
@@ -419,6 +425,28 @@ export function startDaemonControlServer({
         onTerminalHook?.(request.body);
       } catch (error) {
         logger.debug('[CONTROL SERVER] terminal-hook handler failed:', error);
+      }
+      return { status: 'ok' as const };
+    });
+
+    // B-547: web-terminal status hooks. Separate from /terminal-hook on
+    // purpose — that route treats SessionStart as a mirror-binding signal.
+    // Same loose schema and always-200 contract: a hook must never surface an
+    // error into claude.
+    typed.post('/terminal-agent-hook', {
+      schema: {
+        body: z.any(),
+        response: {
+          200: z.object({
+            status: z.literal('ok')
+          })
+        }
+      }
+    }, async (request) => {
+      try {
+        onTerminalAgentHook?.(request.body);
+      } catch (error) {
+        logger.debug('[CONTROL SERVER] terminal-agent-hook handler failed:', error);
       }
       return { status: 'ok' as const };
     });

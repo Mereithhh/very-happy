@@ -1612,6 +1612,11 @@ export async function startDaemon(): Promise<void> {
       onTerminalHook: (body: unknown) => {
         mirrorManagerRef?.handleHookPayload(body);
       },
+      // B-547: before the machine client exists there is no terminal manager
+      // to own the record — drop; the next hook (or the screen) catches up.
+      onTerminalAgentHook: (body: unknown) => {
+        apiMachineRef?.ingestTerminalAgentHook(body);
+      },
       setTerminalTitle: (terminalId: string, title: string, ifAbsent: boolean) => {
         if (!apiMachineRef) return 'starting';
         return apiMachineRef.setTerminalTitle(terminalId, title, ifAbsent);
