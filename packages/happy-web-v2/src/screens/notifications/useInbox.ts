@@ -42,11 +42,20 @@ import {
 } from '@/sync/notificationInbox';
 import { isEntryUnread } from '@/sync/notificationSeen';
 import { useNotificationSeen, useSeenMap } from '@/sync/notificationSeenStore';
+import { isUnreadWithMarks } from '@/sync/notificationUnreadMarks';
+import {
+    clearAllUnreadMarks,
+    clearUnreadMark,
+    markEntryUnread,
+    useUnreadMarks,
+} from '@/sync/notificationUnreadMarksStore';
 
 export interface Inbox {
     entries: InboxEntry[];
     unreadCount: number;
     markEntryRead: (entry: InboxEntry) => void;
+    /** B-559: device-local "mark unread" overlay, retired by a later visit (seen). */
+    markEntryUnread: (entry: InboxEntry) => void;
     markAllRead: () => void;
 }
 
@@ -56,6 +65,7 @@ export function useInbox(): Inbox {
     const localEntries = useLocalEntries();
     const retentionDays = useRetentionDays();
     const seen = useSeenMap();
+    const marks = useUnreadMarks();
 
     // First-run: baseline an unset watermark to the feed head so pre-feature
     // history doesn't open as a wall of unread (see notificationReadState).
@@ -76,9 +86,14 @@ export function useInbox(): Inbox {
                     title: e.title,
                     detail: e.snippet,
                     createdAt: e.createdAt,
-                    unread: isEntryUnread(
-                        e.unread && !readIds.has(e.id),
-                        { key: e.sessionId, createdAt: e.createdAt },
+                    unread: isUnreadWithMarks(
+                        isEntryUnread(
+                            e.unread && !readIds.has(e.id),
+                            { key: e.sessionId, createdAt: e.createdAt },
+                            seen,
+                        ),
+                        { id: e.id, key: e.sessionId },
+                        marks,
                         seen,
                     ),
                 });
@@ -94,10 +109,10 @@ export function useInbox(): Inbox {
             detail: '', // rendered as the translated kind label
             localKind: e.kind,
             createdAt: e.createdAt,
-            unread: isEntryUnread(!e.read, e, seen),
+            unread: isUnreadWithMarks(isEntryUnread(!e.read, e, seen), e, marks, seen),
         }));
         return filterByRetention(mergeInbox(feedEntries, localUi), Date.now(), retentionDays);
-    }, [feed, readIds, localEntries, retentionDays, seen]);
+    }, [feed, readIds, localEntries, retentionDays, seen, marks]);
 
     const unreadCount = useMemo(() => countUnread(entries), [entries]);
 
@@ -105,10 +120,13 @@ export function useInbox(): Inbox {
         entries,
         unreadCount,
         markEntryRead: (entry) => {
+            clearUnreadMark(entry.id);
             if (entry.source === 'feed') markFeedItemRead(entry.id);
             else markLocalRead(entry.id);
         },
+        markEntryUnread: (entry) => markEntryUnread(entry.id),
         markAllRead: () => {
+            clearAllUnreadMarks();
             if (feed.maxCounter > 0) markReadUpTo(feed.maxCounter);
             markAllLocalRead();
             // Cross-device half: stamp every currently visible target as seen
