@@ -3243,6 +3243,13 @@ export const en = {
         refitWidthHint: 'Fit the terminal to this device’s width. Lines already scrolled above keep the width they were printed at — terminals cannot reflow them.',
         selectMode: 'Select / copy mode',
         selectModeHint: 'Select mode — long-press to select & copy · tap again to scroll',
+        // Find in terminal (B-557)
+        search: 'Find in terminal',
+        searchPlaceholder: 'Find in terminal',
+        searchCaseSensitive: 'Match case',
+        searchPrevious: 'Previous match',
+        searchNext: 'Next match',
+        searchClose: 'Close search',
         // Accessible name for the mobile assistive key bar (Esc/Tab/Ctrl/arrows…)
         keybarLabel: 'Terminal keys',
         // Mobile key bar: hide the soft keyboard (blur the terminal)
@@ -4302,6 +4309,24 @@ export const en = {
         verboseLoggingDescription: 'Log all socket requests and responses',
         consoleLogging: 'Console output',
         consoleLoggingDescription: 'Enable console logging in production builds',
+    },
+
+    // B-555: subscription rate-limit windows (sidebar + machine page).
+    rateLimits: {
+        title: 'Usage limits',
+        windows: {
+            five_hour: '5h',
+            seven_day: 'Weekly',
+            seven_day_opus: 'Weekly · Opus',
+            seven_day_sonnet: 'Weekly · Sonnet',
+            seven_day_overage_included: 'Weekly · extra usage',
+        },
+        resetsIn: ({ time }: { time: string }) => `resets in ${time}`,
+        resetUnknown: 'reset time unknown',
+        seenAt: ({ time }: { time: string }) => `seen ${time}`,
+        stale: 'may be out of date',
+        footer: 'Last seen by Claude Code / Codex sessions on this machine. Terminal-only sessions do not report usage.',
+        openMachine: ({ machine }: { machine: string }) => `Usage limits on ${machine}`,
     },
 
 } as const;

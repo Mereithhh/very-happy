@@ -37,6 +37,7 @@ import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agent
 import { cliUpdateCommandForNotice, hasValidCliUpdatePolicy, machineCliUpdateNotice } from '@/app/cliUpdatePolicy';
 import { claudeAuthTone, isClaudeAuthStale, isKnownClaudeAuthDiagnosis, readClaudeAuth } from '@/sync/claudeAuth';
 import { machineClaudeAuthProbe, machineClaudeAuthRepair, machineClaudeAuthSetStore, type ClaudeAuthRpcResult } from '@/sync/ops';
+import { MachineRateLimits } from './rateLimits/MachineRateLimits';
 
 export function MachineScreen() {
   const { id } = useParams();
@@ -410,6 +411,8 @@ export function MachineScreen() {
               <Item title={t('machine.stopDaemon')} destructive onClick={stopDaemon} loading={stopping} right={<ChevronRight size={16} />} />
             )}
           </ItemGroup>
+
+          <MachineRateLimits machine={machine} />
 
           {claudeAuth && (
             <ItemGroup

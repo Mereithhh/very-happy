@@ -3380,6 +3380,12 @@ export const zhHans: TranslationStructure = {
         refitWidthHint: '让终端按本设备宽度重新适配。上方已滚过的旧内容仍保持当时打印的宽度——终端无法重排它们。',
         selectMode: '选择/复制模式',
         selectModeHint: '选择模式 — 长按选中并复制 · 再点一下切回滚动',
+        search: '在终端中查找',
+        searchPlaceholder: '查找终端输出',
+        searchCaseSensitive: '区分大小写',
+        searchPrevious: '上一个匹配',
+        searchNext: '下一个匹配',
+        searchClose: '关闭查找',
         keybarLabel: '终端按键',
         hideKeyboard: '收起键盘',
         toggleKeyboard: '显示或收起键盘',
@@ -4166,6 +4172,24 @@ export const zhHans: TranslationStructure = {
         verboseLoggingDescription: '记录所有 socket 请求与响应',
         consoleLogging: '控制台输出',
         consoleLoggingDescription: '在生产构建中启用 console 日志',
+    },
+
+    // B-555: 订阅额度窗口（侧栏 + 机器页）。
+    rateLimits: {
+        title: '额度用量',
+        windows: {
+            five_hour: '5 小时',
+            seven_day: '每周',
+            seven_day_opus: '每周 · Opus',
+            seven_day_sonnet: '每周 · Sonnet',
+            seven_day_overage_included: '每周 · 含额外用量',
+        },
+        resetsIn: ({ time }: { time: string }) => `${time} 后重置`,
+        resetUnknown: '重置时间未知',
+        seenAt: ({ time }: { time: string }) => `观测于 ${time}`,
+        stale: '可能已过时',
+        footer: '数据来自这台机器上 Claude Code / Codex 会话最近一次上报；纯终端会话不会上报用量。',
+        openMachine: ({ machine }: { machine: string }) => `${machine} 的额度用量`,
     },
 
 } as const;

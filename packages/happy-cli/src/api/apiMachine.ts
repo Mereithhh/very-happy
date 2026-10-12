@@ -50,6 +50,8 @@ import {
     forkCodexThread,
     listCodexRewindPoints,
 } from '@/codex/codexThreadFork';
+import { RateLimitPublisher } from '@/rateLimits/rateLimitPublisher';
+import { mergeRateLimitReports, type RateLimitReport } from '@/rateLimits/rateLimitWindows';
 
 const guardOptions = { log: (message: string) => logger.debug(message) };
 
@@ -202,6 +204,11 @@ export class ApiMachineClient {
     private cliUpdateState: CliUpdateState | null = null;
     private cliUpdatePushChain: Promise<void> = Promise.resolve();
     private claudeAuthState: ClaudeAuthState | null = null;
+    private rateLimitPushChain: Promise<void> = Promise.resolve();
+    private readonly rateLimitPublisher = new RateLimitPublisher({
+        getCurrent: () => this.machine.daemonState?.rateLimits,
+        write: (reports) => this.writeRateLimits(reports),
+    });
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
     private restartSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
@@ -370,6 +377,31 @@ export class ApiMachineClient {
         this.cliUpdatePushChain = this.cliUpdatePushChain
             .then(() => this.updateDaemonState((current) => withCurrentCliUpdateState(current, this.cliUpdateState)))
             .catch((error) => logger.debug('[API MACHINE] Failed to publish CLI update policy:', error));
+    }
+
+    /** B-555: a wrapper's rate-limit observation; written throttled by the publisher. */
+    reportRateLimits(report: RateLimitReport): void {
+        this.rateLimitPublisher.report(report);
+    }
+
+    private writeRateLimits(reports: RateLimitReport[]): Promise<boolean> {
+        if (!this.socket?.connected) return Promise.resolve(false);
+        // Own chain on purpose: a stuck rate-limit write must never delay the
+        // claudeAuth / cliUpdate publishes. Concurrent writers are safe — the
+        // CAS in updateDaemonState re-runs each handler on version mismatch.
+        const attempt = this.rateLimitPushChain
+            .then(() => this.updateDaemonState((current) => {
+                const merged = mergeRateLimitReports(current?.rateLimits, reports, Date.now());
+                return {
+                    ...(current ?? {}),
+                    status: current?.status ?? 'running',
+                    ...(merged ? { rateLimits: merged } : {}),
+                };
+            }))
+            .then(() => true)
+            .catch((error) => { logger.debug('[API MACHINE] Failed to publish rate limits:', error); return false; });
+        this.rateLimitPushChain = attempt.then(() => undefined);
+        return attempt;
     }
 
     /**
@@ -1679,6 +1711,7 @@ export class ApiMachineClient {
     shutdown() {
         logger.debug('[API MACHINE] Shutting down');
         this.webTerminal.stopListTracking();
+        this.rateLimitPublisher.stop();
         this.stopKeepAlive();
         if (this.reconnectInterval) {
             clearInterval(this.reconnectInterval);

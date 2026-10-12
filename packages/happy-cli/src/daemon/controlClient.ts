@@ -9,6 +9,7 @@ import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import type { PeerSessionInfo } from './types';
 import type { BackgroundTaskInfo } from '@/claude/backgroundTasks';
+import type { RateLimitReport } from '@/rateLimits/rateLimitWindows';
 
 function daemonControlHeaders(controlToken?: string): Record<string, string> {
   return {
@@ -245,6 +246,19 @@ export async function notifyDaemonBackgroundTasks(
   backgroundTasks: readonly BackgroundTaskInfo[],
 ): Promise<{ error?: string } | any> {
   return daemonPost('/session-event', { sessionId, event: 'background_tasks', backgroundTasks });
+}
+
+/**
+ * B-555: hand the daemon the rate-limit windows this wrapper just observed.
+ * Fire-and-forget: an old daemon answers 404, no daemon at all is fine too —
+ * the only cost is that nothing shows on the web.
+ */
+export function reportRateLimitsToDaemon(report: RateLimitReport): void {
+  void daemonPost('/rate-limits', report).then((result) => {
+    if (result?.error) logger.debug(`[CONTROL CLIENT] rate-limits not recorded: ${result.error}`);
+  }).catch((error) => {
+    logger.debug('[CONTROL CLIENT] rate-limits failed:', error);
+  });
 }
 
 /**

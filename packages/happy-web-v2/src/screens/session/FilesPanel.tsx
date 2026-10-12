@@ -22,9 +22,16 @@ import { WorkspacePane } from '../workspace/WorkspacePane';
 import { WorkspaceTabs, WorkspaceTabsSlot } from '../workspace/WorkspaceTabs';
 import { closeWorkspaceTab, moveWorkspaceTab, openWorkspaceTab } from '../workspace/workspaceTabModel';
 import { useWorkspaceView } from '../workspace/workspaceViewStore';
+import { useMediaQuery } from '@/app/useMediaQuery';
+import { ReviewDiffPane } from './diffComments/ReviewDiffPane';
+import { DiffCommentsBar } from './diffComments/DiffCommentsBar';
 import './files.css';
 
 export type FilesPanelTab = 'changed' | 'all' | 'browse';
+
+/** B-554: a changed file opens as a diff tab next to (not instead of) its file tab. */
+const DIFF_TAB_PREFIX = 'diff:';
+const diffTabPath = (id: string): string | null => (id.startsWith(DIFF_TAB_PREFIX) ? id.slice(DIFF_TAB_PREFIX.length) : null);
 
 type TreeNode = {
     name: string;
@@ -157,6 +164,10 @@ function FilesPanelContent({
     const selected = fileTabs.active;
     useEffect(() => { setFileFullscreen(false); }, [selected]);
     const setSelected = (path: string) => setFileTabs(state => openWorkspaceTab(state, { id: path, title: path.split('/').pop() || path, description: path }));
+    const openDiff = (path: string) => setFileTabs(state => openWorkspaceTab(state, { id: DIFF_TAB_PREFIX + path, title: `${path.split('/').pop() || path} · diff`, description: `${path} · diff` }));
+    // Narrow viewports show this panel as a full-screen overlay: after handing
+    // the comments to the composer, close it so the composer is visible.
+    const panelInline = useMediaQuery('(min-width: 1100px)');
     const previousControlledTab = useRef(controlledTab);
     useEffect(() => {
         if (previousControlledTab.current !== controlledTab) {
@@ -215,6 +226,7 @@ function FilesPanelContent({
                     <button type="button" className="fp-icon" onClick={onClose} aria-label={t('session.chat.closeFiles')} title={t('session.chat.closeFiles')}><X size={16}/></button>
                 </>}
             />
+            <DiffCommentsBar sessionId={sessionId} onSent={panelInline ? undefined : onClose}/>
 
             <div className="fp-body" hidden={!active || selected !== null}>
                 {effectiveTab === 'browse' ? (
@@ -236,8 +248,8 @@ function FilesPanelContent({
                                         <button
                                             key={f.fullPath}
                                             type="button"
-                                            className={`fp-row${selected === f.fullPath ? ' fp-row--active' : ''}`}
-                                            onClick={() => setSelected(f.fullPath)}
+                                            className={`fp-row${selected === DIFF_TAB_PREFIX + f.fullPath ? ' fp-row--active' : ''}`}
+                                            onClick={() => openDiff(f.fullPath)}
                                             title={f.fullPath}
                                         >
                                             <span className={`fp-status ${STATUS_CLASS[f.status]}`}>{f.status[0].toUpperCase()}</span>
@@ -264,8 +276,12 @@ function FilesPanelContent({
                 )}
             </div>
             {fileTabs.tabs.map(file => <WorkspacePane className="fp-viewer" key={file.id} active={active && selected === file.id} order={fileTabs.tabs.map(tab => tab.id).join("\n")}>
+                {diffTabPath(file.id) !== null ? <ReviewDiffPane sessionId={sessionId} path={diffTabPath(file.id)!}
+                    untracked={changed.find(f => f.fullPath === diffTabPath(file.id))?.status === 'untracked'}
+                    active={active && selected === file.id} refreshToken={gitStatusFiles} onOpenFile={() => setSelected(diffTabPath(file.id)!)}/> : <>
                 {!browseMachineId && <div className="fp-viewer-head"><span className="fp-viewer-path" title={file.id}>{file.id}</span></div>}
                 {browseMachineId ? <FsFileViewer machineId={browseMachineId} path={resolveAgainstCwd(file.id, browsePath)} fullscreen={fileFullscreen} onToggleFullscreen={() => setFileFullscreen(value => !value)} onClose={() => setFileTabs(state => closeWorkspaceTab(state, file.id))}/> : <FileView sessionId={sessionId} fullPath={file.id}/>}
+                </>}
             </WorkspacePane>)}
             {children}
         </div>

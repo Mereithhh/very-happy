@@ -189,6 +189,12 @@
   --term-chrome-dim: #8a93a0;
   --term-accent: #34e2c4;
   --term-accent-ink: #04110e;
+  /* find-in-terminal (B-557): xterm decorations only accept #RRGGBB, so the
+     search bar reads these via getComputedStyle. Amber from the terminal
+     palette (THEME.yellow) — NOT the accent, which means live. */
+  --term-search-match-bg: #4a3b14;
+  --term-search-active-bg: #e6b450;
+  --term-search-active-fg: #06080c;
 
   /* Owner-approved animated maximum reasoning energy; never a live/status signal.
      Matching end stops make translated duplicate bands seamless. */
