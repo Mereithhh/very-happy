@@ -9,6 +9,7 @@ import { trackLogout } from '@/track';
 import { markProgrammaticReload } from '@/app/programmaticReload';
 import { revokeCloudLogin } from '@/auth/cloudAuth';
 import { isAuthLatched, resetAuthLatch } from '@/auth/authLatch';
+import { clearNotificationStateOnLogout } from '@/screens/notifications/logoutCleanup';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -63,6 +64,8 @@ export function AuthProvider({ children, initialCredentials }: { children: React
             await revokeCloudLogin(credentials);
         }
         clearPersistence();
+        // B-559: app-icon badge, SW count and mark-unread overlay belong to this account.
+        clearNotificationStateOnLogout();
         await TokenStorage.removeCredentials();
 
         // Update React state to ensure UI consistency

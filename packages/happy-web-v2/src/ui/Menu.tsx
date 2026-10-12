@@ -94,19 +94,22 @@ export function ActionDropdownMenu({
   align = 'end',
   sideOffset = 4,
   matchTriggerWidth = false,
+  contentClassName,
 }: {
   items: MenuItemDef[];
   children: React.ReactElement;
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
   matchTriggerWidth?: boolean;
+  /** extra class on the menu panel — e.g. to stack above a higher layer (B-559) */
+  contentClassName?: string;
 }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>{children}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="vh-menu"
+          className={contentClassName ? `vh-menu ${contentClassName}` : 'vh-menu'}
           style={matchTriggerWidth ? { minWidth: 'var(--radix-dropdown-menu-trigger-width, 0px)' } : undefined}
           align={align}
           sideOffset={sideOffset}
@@ -147,15 +150,17 @@ export function ActionDropdownMenu({
 export function ActionContextMenu({
   items,
   children,
+  contentClassName,
 }: {
   items: MenuItemDef[];
   children: React.ReactElement;
+  contentClassName?: string;
 }) {
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="vh-menu" onCloseAutoFocus={giveFocusBackToTerminal}>
+        <ContextMenu.Content className={contentClassName ? `vh-menu ${contentClassName}` : 'vh-menu'} onCloseAutoFocus={giveFocusBackToTerminal}>
           {items.map((item) => (
             <Fragment key={item.key}>
               {item.separatorBefore && <ContextMenu.Separator className="vh-menu-sep" />}

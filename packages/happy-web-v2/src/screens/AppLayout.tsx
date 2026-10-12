@@ -9,6 +9,7 @@ import { ClipboardHistoryPanel } from '@/screens/clipboard/ClipboardHistoryPanel
 import { FsPreviewOverlay } from '@/screens/files/FsPreviewOverlay';
 import { NotesDock } from '@/screens/notes/NotesDock';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
+import { AppBadgeSync } from '@/screens/notifications/AppBadgeSync';
 import { useTerminalSync } from '@/sync/terminalSync';
 import { useNewTerminalShortcuts } from '@/app/newTerminal';
 import { useCloseViewShortcuts, useUnloadGuard } from '@/app/viewShortcuts';
@@ -106,6 +107,8 @@ export function AppLayout() {
       >
         <Outlet />
       </AppShell>
+      {/* B-559: inbox unread → PWA app-icon badge (mounted once; the bell is mounted twice) */}
+      <AppBadgeSync />
       <CommandPalette />
       {/* clipboard-push history — singleton like the palette (⌘K / settings open it) */}
       <ClipboardHistoryPanel />

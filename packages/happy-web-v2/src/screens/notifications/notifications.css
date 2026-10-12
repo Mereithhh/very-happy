@@ -241,3 +241,59 @@
     padding: var(--sp-3) var(--sp-2);
   }
 }
+
+/* B-559: row + trailing ⋯ menu (mark read / unread). The row stays one
+   <button> (whole-row tap opens the target); the ⋯ is a sibling, never nested. */
+.nc-row-wrap {
+  display: flex;
+  align-items: flex-start;
+  border-radius: var(--r-sm);
+}
+.nc-row-wrap:hover {
+  background: var(--bg-2);
+}
+.nc-row-wrap .nc-row {
+  flex: 1;
+  min-width: 0;
+}
+.nc-row-wrap .nc-row:hover {
+  background: transparent;
+}
+.nc-row-more {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: var(--sp-1) var(--sp-1) 0 0;
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity var(--motion-fast);
+}
+.nc-row-wrap:hover .nc-row-more,
+.nc-row-more:focus-visible,
+.nc-row-more[data-state='open'] {
+  opacity: 1;
+}
+.nc-row-more:hover {
+  color: var(--text);
+  background: var(--bg-3);
+}
+/* Touch: no hover — keep ⋯ visible and finger-sized. */
+@media (pointer: coarse) {
+  .nc-row-more {
+    opacity: 1;
+    width: 40px;
+    height: 40px;
+    margin-top: var(--sp-1);
+  }
+}
+/* Row menus open from INSIDE the notification layer (z 1600); the shared
+   .vh-menu sits at 1500 and would render behind the panel. */
+.vh-menu.nc-row-menu {
+  z-index: 1700;
+}
+/* keeps the row's text width identical when there is no menu to offer */
+.nc-row-more--none { visibility: hidden; pointer-events: none; }
