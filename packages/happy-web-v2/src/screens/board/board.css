@@ -422,6 +422,76 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* B-556: board progress phase chip; stale (not running / >30 min) drops to
+   the faint text stage, never a new hue. */
+.bd-card-phase {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-10, 10px);
+  color: var(--text-dim);
+  vertical-align: 1px;
+}
+.bd-card-progress.is-stale,
+.bd-card-progress.is-stale .bd-card-phase {
+  color: var(--text-faint);
+}
+/* B-553: pending question — warn = waiting on the user (registered meaning). */
+.bd-card-question {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--r-sm);
+  background: var(--warn-dim);
+  color: var(--warn);
+  font-size: var(--fs-11);
+  line-height: 1.35;
+}
+.bd-card-question-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.bd-card-question-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* B-553: latest round — "You: …" one line, the agent's reply two lines. */
+.bd-card-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  line-height: 1.35;
+}
+.bd-card-preview-user,
+.bd-card-preview-agent {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.bd-card-preview-user {
+  -webkit-line-clamp: 1;
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+}
+.bd-card-preview-agent {
+  -webkit-line-clamp: 2;
+  font-size: var(--fs-12, 12px);
+  color: var(--text);
+}
+.bd-card-preview-who {
+  font-weight: 500;
+  color: var(--text-faint);
+}
 .bd-card-llm {
   text-transform: uppercase;
   letter-spacing: 0.06em;

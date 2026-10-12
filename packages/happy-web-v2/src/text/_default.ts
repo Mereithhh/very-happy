@@ -1531,6 +1531,11 @@ export const en = {
         // B-465: the daemon predates observation stamps; the verdict is an estimate.
         agentStatusLegacy: 'Estimated from an older Very Happy CLI (terminal activity) — update the daemon for exact status',
         agentStatusOffline: 'Agent unavailable',
+        // B-558: stale lease — state the fact, not a verdict
+        agentStatusNoUpdate: ({ duration }: { duration: string }) => `No update for ${duration}`,
+        // B-556: the board progress line in the row tooltip
+        progressTooltip: ({ text }: { text: string }) => `Progress: ${text}`,
+        progressOutdated: 'may be outdated',
         collapse: 'Collapse sidebar',
         openSessions: 'Open sessions',
         archiveConfirm: 'Archive this session?',
@@ -3337,6 +3342,25 @@ export const en = {
         // LLM attention badges (metadata.board.attention)
         llmReview: 'review',
         llmBlocked: 'blocked',
+        // B-553: latest-round preview on a session card
+        previewYou: 'You',
+        questionLabel: 'Waiting for your answer',
+        // B-558: how the latest round ended — neutral, never a verdict
+        interruptedByYou: 'stopped by you',
+        interruptedByYouHint: 'You stopped the last turn. Nothing failed — send a message to continue.',
+        lastRoundFailed: 'last turn failed',
+        lastRoundFailedHint: 'The last turn ended with an error. Open the session to see why.',
+        noUpdateFor: ({ duration }: { duration: string }) => `no update for ${duration}`,
+        noUpdate: 'no update',
+        // B-556: report_progress phase labels + progress line tooltip
+        phasePlanning: 'planning',
+        phaseImplementing: 'implementing',
+        phaseTesting: 'testing',
+        phaseReviewing: 'reviewing',
+        phaseBlocked: 'blocked',
+        phaseDone: 'done',
+        progressTitle: ({ duration }: { duration: string }) => `Updated ${duration} ago`,
+        progressStaleTitle: ({ duration }: { duration: string }) => `Updated ${duration} ago — may be outdated`,
     },
 
     automations: {

@@ -35,6 +35,8 @@ import { useActivityOverlay } from '@/sync/activityOverlayStore';
 import { resolveActivityTs } from '@/sync/activityOverlay';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardItems } from '@/screens/board/useBoardItems';
+import { fmtDuration } from '@/screens/board/boardItems';
+import { boardProgressView } from '@/sync/boardProgress';
 import { AUTOMATIONS_SIDEBAR_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import { automationsEntryVisible } from '@/sync/automationsPoll';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
@@ -392,6 +394,8 @@ export function Sidebar() {
   const backgroundCountByKey = useMemo(() => new Map(boardItems.flatMap(item => item.backgroundTasks ? [[item.key, item.backgroundTasks] as [string, number]] : [])), [boardItems]);
   // B-465: rows whose status is an estimate from an old daemon get a note.
   const legacyStatusKeys = useMemo(() => new Set(boardItems.filter(item => item.legacyStatus).map(item => item.key)), [boardItems]);
+  // B-558: an expired lease says how long nothing arrived, instead of a verdict.
+  const noUpdateSinceByKey = useMemo(() => new Map(boardItems.flatMap(item => item.noUpdateSince !== undefined ? [[item.key, item.noUpdateSince] as [string, number]] : [])), [boardItems]);
   const attentionCount = boardItems.filter(item => item.status === 'attention').length;
 
   // ----- two-level row signal (B-085) -----
@@ -1101,6 +1105,7 @@ export function Sidebar() {
                           execution={executionByKey.get(r.key) ?? (r.session?.presence === 'online' ? 'idle' : 'offline')}
                           backgroundTasks={backgroundCountByKey.get(r.key)}
                           statusNote={legacyStatusKeys.has(r.key) ? t('sidebar.agentStatusLegacy') : undefined}
+                          noUpdateSince={noUpdateSinceByKey.get(r.key)}
                           automationAttention={r.kind === 'session' && automationAttentionKeys.has(r.key)}
                           signal={rowSignalOf({
                             attention: attentionKeys.has(r.key),
@@ -1382,6 +1387,7 @@ function SidebarRow({
   execution,
   backgroundTasks,
   statusNote,
+  noUpdateSince,
   automationAttention,
   signal,
   badge,
@@ -1396,6 +1402,9 @@ function SidebarRow({
   backgroundTasks?: number;
   /** B-465: appended to the status tooltip when the verdict is an estimate. */
   statusNote?: string;
+  /** B-558: start of "no update for N" on unknown (boardItems.noUpdateSince);
+   *  undefined → this tab never heard the agent, say "no update" without N. */
+  noUpdateSince?: number;
   /** B-508: an automation run waits for the owner's decision about this session. */
   automationAttention?: boolean;
   /** two-level marker (B-085): 'attention' = agent waiting on the user
@@ -1430,12 +1439,24 @@ function SidebarRow({
   const terminalAgent = useTerminalAgentStates(st => isTerminal && row.terminalId ? st.states[row.terminalId]?.agentKind : undefined);
   const agentLabel = codingAgentLabel(isTerminal ? terminalAgent : s?.metadata?.flavor);
   const status = agentStatusSignal(execution, signal === 'unread');
-  const availabilityLabel = [execution === 'offline' ? t('sidebar.agentStatusOffline') : execution === 'unknown' ? t('sidebar.agentStatusUnknown') : '', statusNote ?? ''].filter(Boolean).join(' · ');
+  const now = Date.now();
+  // B-558: unknown = the lease expired. Lead with the fact (how long nothing
+  // arrived); the estimate note (legacy daemon) already explains itself.
+  const unknownLabel = [statusNote ? '' : noUpdateSince !== undefined ? t('sidebar.agentStatusNoUpdate', { duration: fmtDuration(now - noUpdateSince) }) : t('board.noUpdate'), t('sidebar.agentStatusUnknown')].filter(Boolean).join(' · ');
+  const availabilityLabel = [execution === 'offline' ? t('sidebar.agentStatusOffline') : execution === 'unknown' ? unknownLabel : '', statusNote ?? ''].filter(Boolean).join(' · ');
   const withNote = (label: string) => [label, statusNote ?? ''].filter(Boolean).join(' · ');
   const statusLabel = status === 'running' ? withNote(t('sidebar.groupRunning'))
     : status === 'background' ? withNote(t('sidebar.rowBackgroundTasks', { count: backgroundTasks ?? 1 }))
     : status === 'input' ? withNote(t('sidebar.rowNeedsAttention'))
     : status === 'unread' ? [t('sidebar.rowUnread'), availabilityLabel].filter(Boolean).join(' · ') : status === 'offline' ? t('sidebar.agentStatusOffline') : availabilityLabel || t('sidebar.agentStatusUnknown');
+  // B-556: the board progress line (report_progress / boardAnalyzer),
+  // de-emphasized in words when stale (not running, or >30 min old).
+  // Display only — never changes the slot.
+  const progress = isTerminal ? null : boardProgressView(s?.metadata?.board, { now, live: execution === 'running' || execution === 'background' || execution === 'input' });
+  const progressLabel = progress
+    ? [t('sidebar.progressTooltip', { text: progress.text }), progress.stale ? t('sidebar.progressOutdated') : ''].filter(Boolean).join(' · ')
+    : '';
+  const slotLabel = [status ? statusLabel : '', progressLabel].filter(Boolean).join(' · ');
 
   const open = () => navigate(row.href);
 
@@ -1579,7 +1600,7 @@ function SidebarRow({
           </span>
           <span className="sb-row-sub mono">{row.subtitle}</span>
         </span>
-        <span className={`sb-row-status${status ? ` sb-row-status--${status}` : ''}`} title={status ? `${agentLabel} · ${statusLabel}` : undefined} role={status ? 'img' : undefined} aria-label={status ? `${agentLabel} · ${statusLabel}` : undefined}>
+        <span className={`sb-row-status${status ? ` sb-row-status--${status}` : ''}`} title={slotLabel ? `${agentLabel} · ${slotLabel}` : undefined} role={slotLabel ? 'img' : undefined} aria-label={slotLabel ? `${agentLabel} · ${slotLabel}` : undefined}>
           {status === 'running' || status === 'background' ? <Spinner size={14} /> : status === 'input' ? <CircleAlert size={14} />
             : status === 'unknown' ? <UnknownStatus size={13} /> : status === 'offline' ? <Unplug size={13} />
             : status === 'unread' ? <span className="sb-row-unread-dot" /> : null}

@@ -285,13 +285,13 @@ describe('public documentation registry', () => {
     expect(managedClaude).toContain("registerTool('change_title'");
     expect(managedClaude).toContain('registerTool(CLIPBOARD_TOOL_NAME');
     expect(managedClaude).toContain('registerTool(PREVIEW_TOOL_NAME');
-    expect(managedClaude).toContain('registerTool(REPORT_PROGRESS_TOOL_NAME');
+    expect(managedClaude).toContain('registerReportProgressTool(mcp, ');
     expect(codexBridge).toContain("'change_title'");
     expect(codexBridge).toContain('PREVIEW_TOOL_NAME');
     expect(codexBridge).toContain('CLIPBOARD_TOOL_NAME');
     expect(codexBridge.match(/registerTool\(/g)).toHaveLength(3);
-    expect(codexBridge).not.toContain('REPORT_PROGRESS_TOOL_NAME');
-    expect(codexBridge).not.toContain("'report_progress'");
+    // B-556: report_progress reaches the bridge through the shared registration.
+    expect(codexBridge).toContain('registerReportProgressTool(server, ');
     expect(acpRunner).toContain("join(projectPath(), 'bin', 'very-happy-mcp.mjs')");
     expect(geminiRunner).toContain("join(projectPath(), 'bin', 'very-happy-mcp.mjs')");
     for (const tool of ['sessions_list', 'session_read', 'session_send', 'session_spawn', 'session_kill', 'session_archive', 'terminals_list', 'terminal_read', 'terminal_send', 'memory_update', 'journal_append']) {

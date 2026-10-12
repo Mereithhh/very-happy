@@ -23,12 +23,13 @@ import { CLIPBOARD_MAX_BYTES, CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, C
 import { ASSISTANT_TOOL_NAMES, registerAssistantTools } from "@/assistant/assistantTools";
 import {
     PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE,
-    REPORT_PROGRESS_TOOL_DESCRIPTION, REPORT_PROGRESS_TOOL_NAME, REPORT_PROGRESS_TOOL_TITLE,
+    REPORT_PROGRESS_TOOL_NAME,
 } from "./agentGuidance";
 import {
-    type BoardAttention, type SelfReportState,
-    createSelfReportState, normalizeProgress, shouldAcceptSelfReport,
+    type BoardAttention, type BoardPhase, type SelfReportState,
+    createSelfReportState, normalizeAttention, normalizePhase, normalizeProgress, shouldAcceptSelfReport,
 } from "./boardReport";
+import { registerReportProgressTool } from "./reportProgressTool";
 import { checkPreviewPath } from "./previewPath";
 
 interface HappyMcpHandlers {
@@ -37,7 +38,7 @@ interface HappyMcpHandlers {
     /** B-131: ask the user's web clients to open a file preview. */
     openPreview: (path: string, mode: 'file' | 'diff') => Promise<{ delivered: boolean; resolved?: string; error?: string }>;
     /** B-132: claude self-reports progress onto the task board. */
-    reportProgress: (progress: string, attention: BoardAttention) => Promise<{ accepted: boolean; error?: string }>;
+    reportProgress: (progress: string, attention: BoardAttention, phase?: BoardPhase) => Promise<{ accepted: boolean; error?: string }>;
 }
 
 export interface StartHappyServerOptions {
@@ -162,16 +163,9 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     });
 
     // B-132 report_progress —— 写 session metadata 的 board 字段，复用既有 sessions push。
-    mcp.registerTool(REPORT_PROGRESS_TOOL_NAME, {
-        description: REPORT_PROGRESS_TOOL_DESCRIPTION,
-        title: REPORT_PROGRESS_TOOL_TITLE,
-        inputSchema: {
-            progress: z.string().describe('One short line describing the current state of this task'),
-            attention: z.enum(['none', 'review', 'blocked']).optional()
-                .describe("'blocked' = cannot proceed without the user; 'review' = wants their eyes; 'none' = ordinary progress"),
-        },
-    }, async (args) => {
-        const response = await handlers.reportProgress(args.progress, args.attention ?? 'none');
+    // B-556: the schema (incl. optional phase) lives in reportProgressTool.ts, shared with the stdio bridge.
+    registerReportProgressTool(mcp, async (args) => {
+        const response = await handlers.reportProgress(String(args.progress ?? ''), normalizeAttention(args.attention), normalizePhase(args.phase));
         logger.debug('[happyMCP] report_progress response:', response);
         if (response.accepted) {
             return { content: [{ type: 'text', text: 'Board updated.' }], isError: false };
@@ -188,6 +182,12 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     }
 
     return mcp;
+}
+
+function withoutPhase(board: Record<string, unknown> | undefined): Record<string, unknown> {
+    if (!board) return {};
+    const { phase: _phase, ...rest } = board;
+    return rest;
 }
 
 export async function startHappyServer(client: ApiSessionClient, options?: StartHappyServerOptions) {
@@ -210,7 +210,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
                 return { delivered: false, error: String(error) };
             }
         },
-        reportProgress: async (progress: string, attention: BoardAttention) => {
+        reportProgress: async (progress: string, attention: BoardAttention, phase?: BoardPhase) => {
             const text = normalizeProgress(progress);
             if (!text) {
                 return { accepted: false, error: 'progress must be a non-empty one-line string' };
@@ -218,17 +218,21 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             const now = Date.now();
             // attention 跃迁绕过节流（review finding 4）：否则「开始干活 → 撞权限
             // 卡住」的第二条会被静默吞掉，而 analyzer 又被 15min 水位压着。
-            if (!shouldAcceptSelfReport(selfReportState, now, attention)) {
+            if (!shouldAcceptSelfReport(selfReportState, now, attention, phase)) {
                 return { accepted: false };
             }
             // 只有被接受时才推进水位——否则疯狂刷就能把 analyzer 永久压制住
             selfReportState.lastAcceptedAt = now;
             selfReportState.lastAttention = attention;
+            selfReportState.lastPhase = phase;
             try {
                 client.updateMetadata((metadata) => ({
                     ...metadata,
                     board: {
-                        ...(metadata as { board?: Record<string, unknown> })?.board,
+                        // B-556: a report without phase must not keep the previous one
+                        // (a stale label next to fresh text); taskId etc. are kept.
+                        ...withoutPhase((metadata as { board?: Record<string, unknown> })?.board),
+                        ...(phase ? { phase } : {}),
                         attention,
                         progress: text,
                         analyzedAt: now,

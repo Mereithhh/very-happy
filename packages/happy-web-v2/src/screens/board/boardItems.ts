@@ -31,6 +31,18 @@ import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
 import { compareTaskOrder, type BoardTask } from '@/sync/boardTaskOps';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { priorityLevel } from '@/utils/tags';
+import { earliestPendingRequest, pendingQuestionSummary } from './sessionPreview';
+
+/** compact duration — mono console style, deliberately locale-neutral */
+export function fmtDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
 
 export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended' | 'unknown';
 
@@ -114,6 +126,22 @@ export interface BoardItem {
   /** B-507: sessions only — `working` because background tasks are still
    *  running after the turn ended (the count), not because of a live turn. */
   backgroundTasks?: number;
+  /** B-553: sessions only — one-line summary of the earliest pending
+   *  permission request / AskUserQuestion (set iff a real request drives
+   *  the attention status). */
+  question?: string;
+  /** B-558: set only on non-legacy `unknown` items — when the last update we
+   *  know of arrived ("no update for N"). Sessions: max(this tab's last
+   *  heartbeat, updatedAt), absent if this tab never heard one (then the card
+   *  says "no update" without a duration). Terminals: their activity time. */
+  noUpdateSince?: number;
+  /** B-553: sessions only — `metadata.flavor` (labels the agent's reply). */
+  agentKind?: string;
+  /** when `progress` was produced (`board.analyzedAt`); the card judges
+   *  staleness at render time (sync/boardProgress.ts) */
+  progressAt?: number;
+  /** B-556: optional `board.phase` (report_progress), raw string */
+  progressPhase?: string;
 }
 
 /** ended items older than this fall off the board entirely */
@@ -138,6 +166,8 @@ export interface BoardInput {
   /** B-465: realtime `terminal-activity` overlay (terminalId → ms). Only the
    *  legacy-daemon estimate reads it; fresh observations never need it. */
   terminalActivity?: Record<string, number>;
+  /** B-558: sessionId → when this tab last heard a heartbeat (display only). */
+  lastHeardAt?: Record<string, number>;
 }
 
 /** ~/-relative path (standalone twin of sessionUtils.formatPathRelativeToHome,
@@ -158,17 +188,8 @@ function sessionHasPendingRequests(s: Session): boolean {
 
 /** earliest pending request: drives attentionSince + the tool-name detail */
 function earliestRequest(s: Session, fallback: number): { at: number; tool?: string } {
-  const requests = s.agentState?.requests ?? {};
-  let at = Number.POSITIVE_INFINITY;
-  let tool: string | undefined;
-  for (const req of Object.values(requests)) {
-    const t = req.createdAt ?? fallback;
-    if (t < at) {
-      at = t;
-      tool = req.tool;
-    }
-  }
-  return Number.isFinite(at) ? { at, tool } : { at: fallback };
+  const earliest = earliestPendingRequest(s.agentState?.requests, fallback);
+  return earliest ? { at: earliest.at, tool: earliest.request.tool } : { at: fallback };
 }
 
 function machineName(machines: Machine[], machineId: string | undefined): string {
@@ -276,8 +297,17 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     const level = priorityLevel(s.metadata?.tags);
     if (level !== null) { item.priority = true; item.priorityLevel = level; }
     if (cls.backgroundTasks) item.backgroundTasks = cls.backgroundTasks;
+    if (cls.status === 'unknown') {
+      const heard = input.lastHeardAt?.[s.id];
+      if (heard !== undefined) item.noUpdateSince = Math.max(heard, s.updatedAt || 0);
+    }
     const board = s.metadata?.board;
-    if (board?.progress) item.progress = board.progress;
+    if (board?.progress) {
+      item.progress = board.progress;
+      item.progressAt = board.analyzedAt;
+      if (board.phase) item.progressPhase = board.phase;
+    }
+    if (s.metadata?.flavor) item.agentKind = s.metadata.flavor;
     if (board?.taskId) item.llmTaskId = board.taskId;
     item.llmAttention = llmAttentionOf(s);
     if (cls.status === 'attention') {
@@ -285,6 +315,8 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
         const req = earliestRequest(s, lastActivityAt);
         item.attentionSince = req.at;
         if (req.tool) item.detail = { kind: 'tool', name: req.tool };
+        const question = pendingQuestionSummary(s.agentState?.requests);
+        if (question) item.question = question;
       } else {
         // LLM-flagged only: waiting since the verdict was produced.
         item.attentionSince = board?.analyzedAt ?? lastActivityAt;
@@ -344,6 +376,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     const termLevel = priorityLevel(tm.tags);
     if (termLevel !== null) { termItem.priority = true; termItem.priorityLevel = termLevel; }
     if (legacy && online) termItem.legacyStatus = true;
+    else if (status === 'unknown') termItem.noUpdateSince = lastActivityAt;
     const lc = lifecycleOf(termItem);
     termItem.lifecycle = lc.lifecycle;
     if (lc.waitReason) termItem.waitReason = lc.waitReason;

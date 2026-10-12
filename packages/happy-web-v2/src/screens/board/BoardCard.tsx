@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { ArrowUpRight, ArrowUpToLine, Archive, Check, MessageSquare, Pencil, TerminalSquare, X } from 'lucide-react';
+import { ArrowUpRight, ArrowUpToLine, Archive, Check, CircleHelp, MessageSquare, Pencil, TerminalSquare, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { StatusDot, ActionContextMenu, type MenuItemDef, type Status } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -8,18 +8,12 @@ import { sync } from '@/sync/sync';
 import { upsertPinAt } from '@/screens/sessions/sidebarPins';
 import { moveEntryToTop } from '@/screens/sessions/sidebarOrder';
 import { confirmArchiveSession, confirmCloseTerminal, markSessionDone } from '@/app/rowActions';
-import type { BoardItem } from './boardItems';
+import { fmtDuration, type BoardItem } from './boardItems';
+import { useSessionPreview } from './useBoardItems';
+import { codingAgentLabel } from '@/sync/agentStatus';
+import { boardProgressView, type KnownBoardPhase } from '@/sync/boardProgress';
 
-/** compact duration — mono console style, deliberately locale-neutral */
-export function fmtDuration(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
-}
+export { fmtDuration };
 
 const DOT: Record<BoardItem['status'], { status: Status; pulse: boolean }> = {
   attention: { status: 'permission', pulse: true },
@@ -27,6 +21,15 @@ const DOT: Record<BoardItem['status'], { status: Status; pulse: boolean }> = {
   idle: { status: 'connected', pulse: false },
   unknown: { status: 'offline', pulse: false },
   ended: { status: 'offline', pulse: false },
+};
+
+const PHASE_KEY: Record<KnownBoardPhase, 'board.phasePlanning' | 'board.phaseImplementing' | 'board.phaseTesting' | 'board.phaseReviewing' | 'board.phaseBlocked' | 'board.phaseDone'> = {
+  planning: 'board.phasePlanning',
+  implementing: 'board.phaseImplementing',
+  testing: 'board.phaseTesting',
+  reviewing: 'board.phaseReviewing',
+  blocked: 'board.phaseBlocked',
+  done: 'board.phaseDone',
 };
 
 export function BoardCard({
@@ -44,6 +47,23 @@ export function BoardCard({
   const dot = DOT[item.status];
   const title = item.title || t('session.newChat');
   const KindIcon = item.kind === 'terminal' ? TerminalSquare : MessageSquare;
+  // B-553: latest round from messages this tab already holds (never fetches).
+  const preview = useSessionPreview(item.kind === 'session' ? item.key : null);
+  // B-556: board progress (report_progress / boardAnalyzer) with its phase,
+  // de-emphasized when stale. `live` reuses the board's classification — no
+  // second liveness judgement.
+  const live = item.status === 'working' || item.status === 'attention';
+  const progress = boardProgressView(
+    item.progress ? { progress: item.progress, phase: item.progressPhase, analyzedAt: item.progressAt } : null,
+    { now, live },
+  );
+  // B-558: only an idle card's badge describes how the round ended.
+  const outcome = item.waitReason === 'idle' ? preview?.outcome : undefined;
+  // B-558: an expired lease states the fact ("no update for 12m"), not a verdict.
+  const noUpdate = item.status === 'unknown' && !item.legacyStatus;
+  const noUpdateLabel = item.noUpdateSince !== undefined
+    ? t('board.noUpdateFor', { duration: fmtDuration(now - item.noUpdateSince) })
+    : t('board.noUpdate');
 
   // Move to the top of the sidebar's manual order — board item keys are the
   // SAME keys the sidebar uses (session id / `t:<terminalId>`), so this just
@@ -167,14 +187,47 @@ export function BoardCard({
           <span className="bd-card-machine">{item.machineName}</span>
           {item.cwd && <span className="bd-card-cwd">{item.cwd}</span>}
         </div>
-        {item.progress && <div className="bd-card-progress">{item.progress}</div>}
+        {progress && (
+          <div
+            className={`bd-card-progress${progress.stale ? ' is-stale' : ''}`}
+            title={progress.updatedAt !== undefined ? t(progress.stale ? 'board.progressStaleTitle' : 'board.progressTitle', { duration: fmtDuration(now - progress.updatedAt) }) : undefined}
+          >
+            {(progress.phase || progress.unknownPhase) && (
+              <span className="bd-card-phase mono">
+                {progress.phase ? t(PHASE_KEY[progress.phase]) : progress.unknownPhase}
+              </span>
+            )}
+            {progress.text}
+          </div>
+        )}
+        {item.question && (
+          <div className="bd-card-question" title={t('board.questionLabel')}>
+            <CircleHelp size={12} aria-label={t('board.questionLabel')} className="bd-card-question-icon" />
+            <span className="bd-card-question-text">{item.question}</span>
+          </div>
+        )}
+        {(preview?.user || preview?.agent) && (
+          <div className="bd-card-preview">
+            {preview.user && (
+              <div className="bd-card-preview-user">
+                <span className="bd-card-preview-who">{t('board.previewYou')}</span> {preview.user}
+              </div>
+            )}
+            {preview.agent && (
+              <div className="bd-card-preview-agent">
+                <span className="bd-card-preview-who">{codingAgentLabel(item.agentKind)}</span> {preview.agent}
+              </div>
+            )}
+          </div>
+        )}
         <div className="bd-card-foot mono">
           {item.llmAttention && (
             <span className={`bd-card-llm bd-card-llm--${item.llmAttention}`}>
               {item.llmAttention === 'blocked' ? t('board.llmBlocked') : t('board.llmReview')}
             </span>
           )}
-          {item.detail?.kind === 'tool' && <span className="bd-card-tool">{item.detail.name}</span>}
+          {/* B-553: the question block already names the tool */}
+          {item.detail?.kind === 'tool' && !item.question && <span className="bd-card-tool">{item.detail.name}</span>}
           {item.backgroundTasks !== undefined && item.backgroundTasks > 0 && (
             <span className="bd-card-background">{t('sidebar.rowBackgroundTasks', { count: item.backgroundTasks })}</span>
           )}
@@ -184,14 +237,22 @@ export function BoardCard({
           {item.status === 'ended' && item.detail?.kind !== 'machineOffline' && (
             <span className="bd-card-offline">{t('board.endedTag')}</span>
           )}
-          {item.waitReason === 'unknown' && <span className="bd-card-offline">{t(item.legacyStatus ? 'sidebar.agentStatusLegacy' : 'sidebar.agentStatusUnknown')}</span>}
+          {item.waitReason === 'unknown' && item.legacyStatus && <span className="bd-card-offline">{t('sidebar.agentStatusLegacy')}</span>}
           {item.waitReason === 'idle' && (
-            <span className="bd-card-offline">{t('board.readyToReview')}</span>
+            outcome === 'interrupted' ? (
+              <span className="bd-card-offline" title={t('board.interruptedByYouHint')}>{t('board.interruptedByYou')}</span>
+            ) : outcome === 'failed' ? (
+              <span className="bd-card-offline" title={t('board.lastRoundFailedHint')}>{t('board.lastRoundFailed')}</span>
+            ) : (
+              <span className="bd-card-offline">{t('board.readyToReview')}</span>
+            )
           )}
-          <span className="bd-card-time">
+          <span className="bd-card-time" title={noUpdate ? t('sidebar.agentStatusUnknown') : undefined}>
             {item.status === 'attention' && item.attentionSince != null
               ? t('board.waitingFor', { duration: fmtDuration(now - item.attentionSince) })
-              : `${fmtDuration(now - item.lastActivityAt)} ${t('board.agoSuffix')}`}
+              : noUpdate
+                ? noUpdateLabel
+                : `${fmtDuration(now - item.lastActivityAt)} ${t('board.agoSuffix')}`}
           </span>
         </div>
       </div>

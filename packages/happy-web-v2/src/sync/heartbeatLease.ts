@@ -56,6 +56,12 @@ export const HEARTBEAT_LEASE_TTL_MS = 25_000;
 export const IDLE_HEARTBEAT_LEASE_TTL_MS = 45_000;
 
 const lastBeatAt = new Map<string, number>();
+/**
+ * B-558: when THIS tab last heard a heartbeat for the session — display only
+ * ("no update for N"). Unlike `lastBeatAt` it is never moved by the suspended
+ * clock and never dropped on expiry, and nothing judges liveness from it.
+ */
+const lastHeardAt = new Map<string, number>();
 /** B-538：最后一拍是否 busy（thinking 或带后台任务）——决定用哪个 TTL。 */
 const lastBeatBusy = new Map<string, boolean>();
 const expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -117,6 +123,7 @@ export function setHeartbeatSocketStatusReader(reader: () => string): void {
  */
 export function recordHeartbeat(sessionId: string, thinking: boolean, now = Date.now(), ttlMs = HEARTBEAT_LEASE_TTL_MS): void {
     lastBeatAt.set(sessionId, now);
+    lastHeardAt.set(sessionId, now);
     lastBeatBusy.set(sessionId, thinking || (backgroundTasks.get(sessionId) ?? 0) > 0);
     const existing = expiryTimers.get(sessionId);
     if (existing) clearTimeout(existing);
@@ -167,12 +174,18 @@ function defaultTtl(sessionId: string): number {
     return lastBeatBusy.get(sessionId) === false ? IDLE_HEARTBEAT_LEASE_TTL_MS : HEARTBEAT_LEASE_TTL_MS;
 }
 
+/** B-558: last heartbeat this tab received for the session (undefined = never). Display only. */
+export function heartbeatLastHeardAt(sessionId: string): number | undefined {
+    return lastHeardAt.get(sessionId);
+}
+
 /** 会话被删除时清理，别把 Map 和 timer 漏在这里（B-312 的红点泄漏同形）。 */
 export function forgetHeartbeat(sessionId: string): void {
     const timer = expiryTimers.get(sessionId);
     if (timer) clearTimeout(timer);
     expiryTimers.delete(sessionId);
     lastBeatAt.delete(sessionId);
+    lastHeardAt.delete(sessionId);
     lastBeatBusy.delete(sessionId);
     backgroundTasks.delete(sessionId);
 }
@@ -181,6 +194,7 @@ export function resetHeartbeatLeaseForTest(): void {
     for (const timer of expiryTimers.values()) clearTimeout(timer);
     expiryTimers.clear();
     lastBeatAt.clear();
+    lastHeardAt.clear();
     lastBeatBusy.clear();
     backgroundTasks.clear();
     currentSocketStatus = () => 'connected';

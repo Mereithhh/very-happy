@@ -17,16 +17,26 @@ import {
 // Re-export types for backwards compatibility
 export type { PermissionResult, PendingRequest };
 
+/** The `mcpServers` key runCodex registers the Very Happy bridge under. */
+export const HAPPY_MCP_SERVER_NAME = 'happy';
+
 /**
  * Codex-specific permission handler.
  */
 export class CodexPermissionHandler extends BasePermissionHandler {
     // Exact tool names that should always be auto-approved. Include the bare
     // form (used by Codex elicitation messages like `tool "change_title"`)
-    // and the MCP-qualified form for defense in depth.
+    // and the MCP-qualified form for defense in depth. A BARE name (and an ID
+    // prefix) only counts when the request comes from our own server: any
+    // other MCP server may expose a tool with the same name.
+    // B-556: report_progress only writes this session's own board line (same
+    // trust as change_title); an approval prompt per report would park the
+    // session in "waiting for you" at every milestone.
     private static readonly ALWAYS_AUTO_APPROVE_NAMES: ReadonlySet<string> = new Set([
         'change_title',
         'mcp__happy__change_title',
+        'report_progress',
+        'mcp__happy__report_progress',
     ]);
 
     // Tool-call IDs that should auto-approve when they exactly match one of
@@ -35,6 +45,7 @@ export class CodexPermissionHandler extends BasePermissionHandler {
     // contain `change_title` as a substring would be silently approved.
     private static readonly ALWAYS_AUTO_APPROVE_ID_PREFIXES: readonly string[] = [
         'change_title',
+        'report_progress',
     ];
 
     constructor(session: ApiSessionClient) {
@@ -45,7 +56,11 @@ export class CodexPermissionHandler extends BasePermissionHandler {
         return '[Codex]';
     }
 
-    private shouldAutoApprove(toolName: string, toolCallId: string): boolean {
+    private shouldAutoApprove(toolName: string, toolCallId: string, serverName?: string): boolean {
+        if (toolName.startsWith(`mcp__${HAPPY_MCP_SERVER_NAME}__`)) {
+            return CodexPermissionHandler.ALWAYS_AUTO_APPROVE_NAMES.has(toolName);
+        }
+        if (serverName !== HAPPY_MCP_SERVER_NAME) return false;
         if (CodexPermissionHandler.ALWAYS_AUTO_APPROVE_NAMES.has(toolName)) {
             return true;
         }
@@ -64,14 +79,16 @@ export class CodexPermissionHandler extends BasePermissionHandler {
      * @param toolCallId - The unique ID of the tool call
      * @param toolName - The name of the tool being called
      * @param input - The input parameters for the tool
+     * @param serverName - MCP server of an elicitation (`mcpServer/elicitation/request`); undefined for exec/patch
      * @returns Promise resolving to permission result
      */
     async handleToolCall(
         toolCallId: string,
         toolName: string,
-        input: unknown
+        input: unknown,
+        serverName?: string,
     ): Promise<PermissionResult> {
-        if (this.shouldAutoApprove(toolName, toolCallId)) {
+        if (this.shouldAutoApprove(toolName, toolCallId, serverName)) {
             logger.debug(`${this.getLogPrefix()} Auto-approving tool ${toolName} (${toolCallId})`);
 
             this.session.updateAgentState((currentState) => ({

@@ -673,6 +673,8 @@ export type Metadata = {
     attention?: 'none' | 'review' | 'blocked',
     /** one-line Chinese progress note */
     progress?: string,
+    /** B-556: optional phase from report_progress (self-report only) */
+    phase?: string,
     analyzedAt: number,
   }
 };

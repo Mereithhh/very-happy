@@ -1,4 +1,4 @@
-import { backgroundTaskCount, isHeartbeatFresh, useHeartbeatLeaseBump } from '@/sync/heartbeatLease';
+import { backgroundTaskCount, heartbeatLastHeardAt, isHeartbeatFresh, useHeartbeatLeaseBump } from '@/sync/heartbeatLease';
 import { isTerminalStatusFresh } from '@/sync/terminalAgentState';
 import { useShallow } from 'zustand/react/shallow';
 import { storage } from '@/sync/storage';
@@ -18,6 +18,7 @@ import { useActivityOverlay } from '@/sync/activityOverlayStore';
 import { useBoardTasks } from '@/sync/boardTasks';
 import { visibleTasks } from '@/sync/boardTaskOps';
 import { buildBoardItems, buildCompletedEntries, type BoardItem, type CompletedEntry } from './boardItems';
+import { sessionPreview, type SessionPreview } from './sessionPreview';
 
 /** re-derive "waiting 4m" / the 24h ended cutoff even with no store activity */
 const TICK_MS = 30_000;
@@ -33,6 +34,26 @@ function runningBackgroundCounts(state: ReturnType<typeof storage.getState>): Re
     if (count > 0) result[id] = count;
   }
   return result;
+}
+
+/** B-553: preview per messages array — the store replaces the array on every
+ *  change, so a hit means nothing changed and the selector returns the SAME
+ *  object (no re-render). Not part of useBoardItems: the sidebar consumes that
+ *  hook too, and streaming deltas must not rebuild the whole sidebar. */
+const previews = new WeakMap<object, SessionPreview | null>();
+
+/** Latest-round preview from messages this tab already holds — never fetches. */
+export function useSessionPreview(sessionId: string | null): SessionPreview | null {
+  return storage((state) => {
+    const messages = sessionId ? state.sessionMessages[sessionId]?.messages : undefined;
+    if (!messages) return null;
+    let preview = previews.get(messages);
+    if (preview === undefined) {
+      preview = sessionPreview(messages);
+      previews.set(messages, preview);
+    }
+    return preview;
+  });
 }
 
 export function useBoardItems(): BoardItem[] {
@@ -59,6 +80,8 @@ export function useBoardItems(): BoardItem[] {
       // B-507: heartbeat-reported background tasks; leaseBump re-derives on a
       // count change and on lease expiry (both tick the same store).
       backgroundTasks:Object.fromEntries(sessions.flatMap(s=>{ const n=backgroundTaskCount(s.id); return n>0 ? [[s.id,n]] : []; })),
+      // B-558: display-only start of "no update for N" (never judges liveness).
+      lastHeardAt:Object.fromEntries(sessions.flatMap(s=>{ const at=heartbeatLastHeardAt(s.id); return at!==undefined ? [[s.id,at]] : []; })),
       terminalActivity:Object.fromEntries(terminals.flatMap(t=>{ const at=remoteActivity[`t:${t.id}`]; return typeof at==='number' ? [[t.id,at]] : []; })),
     }),
     [sessions, terminals, agentStates, machines, now, leaseBump, runningSubagents, remoteActivity],

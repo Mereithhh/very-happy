@@ -173,6 +173,53 @@ describe('chat session mapping', () => {
     });
     const [item] = build({ sessions: [s] });
     expect(item.status).toBe('ended');
+    expect(item.question).toBeUndefined();
+  });
+
+  it('B-553: an attention item carries a summary of its earliest pending question', () => {
+    const s = mkSession({
+      id: 's1',
+      agentState: { requests: { r: { tool: 'AskUserQuestion', arguments: { questions: [{ question: 'Ship it?' }] }, createdAt: NOW - 5_000 } } },
+    });
+    const [item] = build({ sessions: [s] });
+    expect(item).toMatchObject({ status: 'attention', question: 'Ship it?' });
+    // LLM-only attention (no real request) has no question block
+    const [llm] = build({ sessions: [mkSession({ id: 's2', metadata: { ...mkSession({ id: 'x' }).metadata!, board: { attention: 'review', analyzedAt: NOW } } })] });
+    expect(llm.status).toBe('attention');
+    expect(llm.question).toBeUndefined();
+  });
+});
+
+describe('B-558 noUpdateSince', () => {
+  it('unknown session: max(this tab last heard, updatedAt); never heard → no duration', () => {
+    const s = mkSession({ id: 's1', updatedAt: NOW - 600_000 });
+    const [heard] = build({ sessions: [s], sessionFresh: { s1: false }, lastHeardAt: { s1: NOW - 120_000 } });
+    expect(heard).toMatchObject({ status: 'unknown', noUpdateSince: NOW - 120_000 });
+    const [older] = build({ sessions: [s], sessionFresh: { s1: false }, lastHeardAt: { s1: NOW - 900_000 } });
+    expect(older.noUpdateSince).toBe(NOW - 600_000);
+    const [never] = build({ sessions: [s], sessionFresh: { s1: false } });
+    expect(never.status).toBe('unknown');
+    expect(never.noUpdateSince).toBeUndefined();
+  });
+  it('only unknown items carry it (a fresh idle session does not)', () => {
+    const [idle] = build({ sessions: [mkSession({ id: 's1' })], lastHeardAt: { s1: NOW - 1_000 } });
+    expect(idle.status).toBe('idle');
+    expect(idle.noUpdateSince).toBeUndefined();
+  });
+});
+
+describe('B-556 board progress on session items', () => {
+  it('carries board progress, its time and phase raw (the card judges staleness)', () => {
+    const base = mkSession({ id: 'x' }).metadata!;
+    const [item] = build({ sessions: [mkSession({ id: 's1', thinking: true, metadata: {
+      ...base, flavor: 'codex',
+      board: { progress: 'running tests', phase: 'testing', analyzedAt: NOW - 5_000 },
+    } })] });
+    expect(item).toMatchObject({
+      status: 'working', agentKind: 'codex', progress: 'running tests', progressAt: NOW - 5_000, progressPhase: 'testing',
+    });
+    // the progress line never changes the lane
+    expect(item.lifecycle).toBe('running');
   });
 });
 

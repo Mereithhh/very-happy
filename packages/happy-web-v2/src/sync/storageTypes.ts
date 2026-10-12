@@ -147,6 +147,10 @@ export const MetadataSchema = z.object({
         attention: z.enum(['none', 'review', 'blocked']).optional(),
         /** one-line progress note (Chinese) */
         progress: z.string().optional(),
+        /** B-556: optional phase from report_progress; readers whitelist known
+         *  values and show others as text (铁律 14). Lenient: a bad value drops
+         *  only this field. No default (铁律 1). */
+        phase: z.string().optional().catch(undefined),
         analyzedAt: z.number(),
     }).optional(),
     /**

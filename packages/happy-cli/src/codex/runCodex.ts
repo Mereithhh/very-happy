@@ -11,7 +11,7 @@ import { ApiClient } from '@/api/api';
 import { CodexAppServerClient } from './codexAppServerClient';
 import { wrapperRateLimitReporter } from '@/rateLimits/rateLimitReporter';
 import type { ReasoningEffort } from './codexAppServerTypes';
-import { CodexPermissionHandler } from './utils/permissionHandler';
+import { CodexPermissionHandler, HAPPY_MCP_SERVER_NAME } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
@@ -463,7 +463,9 @@ export async function runCodex(opts: {
      * This is the equivalent of Claude Code's abort - it stops what's currently
      * happening but keeps the session alive for new prompts.
      */
-    async function handleAbort() {
+    /** B-558: who asked — only a user stop leaves the `Aborted by user` line
+     *  (Claude: `!exitReason`); kill / signal / local exit do not. */
+    async function handleAbort(source: 'user' | 'kill' | 'exit') {
         if (abortInProgress) {
             await abortInProgress;
             return;
@@ -484,6 +486,12 @@ export async function runCodex(opts: {
                         gracePeriodMs: 3000,
                         forceRestartOnTimeout: true,
                     });
+                    // B-558: same lifecycle line as Claude's stop, so the web can tell
+                    // "stopped by you" from a failure. Only for a turn this user stop
+                    // actually ended; it is a plain event, the turn-end is unchanged.
+                    if (source === 'user' && abortResult.hadActiveTurn && abortResult.aborted) {
+                        session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
+                    }
                     if (abortResult.forcedRestart) {
                         logger.warn('[Codex] Forced app-server restart after interrupt timeout');
                         session.sendSessionEvent({
@@ -521,7 +529,7 @@ export async function runCodex(opts: {
      */
     const handleKillSession = async () => {
         logger.debug('[Codex] Kill session requested - terminating process');
-        await handleAbort();
+        await handleAbort('kill');
         logger.debug('[Codex] Abort completed, proceeding with termination');
 
         try {
@@ -564,7 +572,7 @@ export async function runCodex(opts: {
         try { return await readChildThread(client, args?.threadId); }
         catch (error) { return {error:error instanceof Error ? error.message : 'Child read failed'}; }
     });
-    session.rpcHandlerManager.registerHandler('abort', handleAbort);
+    session.rpcHandlerManager.registerHandler('abort', () => handleAbort('user'));
 
     const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, handleKillSession, session, { processSignals: true });
 
@@ -585,7 +593,7 @@ export async function runCodex(opts: {
                 // Exit the agent
                 logger.debug('[codex]: Exiting agent via Ctrl-C');
                 shouldExit = true;
-                await handleAbort();
+                await handleAbort('exit');
             }
         }), {
             exitOnCtrlC: false,
@@ -659,7 +667,8 @@ export async function runCodex(opts: {
                 : (params.input ?? {});
 
         try {
-            const result = await permissionHandler.handleToolCall(params.callId, toolName, input);
+            // B-556: the server name gates the bare-name auto-approve list.
+            const result = await permissionHandler.handleToolCall(params.callId, toolName, input, params.type === 'mcp' ? params.serverName : undefined);
             logger.debug('[Codex] Permission request resolved');
             return result.decision;
         } catch (error) {
@@ -794,7 +803,7 @@ export async function runCodex(opts: {
     // not be visible to the model, and the model would improvise with shell echoes.
     const bridgeEntrypoint = join(projectPath(), 'bin', 'very-happy-mcp.mjs');
     const mcpServers = {
-        happy: {
+        [HAPPY_MCP_SERVER_NAME]: {
             command: process.execPath,
             args: ['--no-warnings', '--no-deprecation', bridgeEntrypoint, '--url', happyServer.url]
         }

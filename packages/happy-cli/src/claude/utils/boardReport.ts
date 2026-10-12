@@ -26,6 +26,19 @@ export type BoardAttention = 'none' | 'review' | 'blocked';
 
 const ATTENTION_VALUES: readonly BoardAttention[] = ['none', 'review', 'blocked'];
 
+/**
+ * B-556: optional work phase on a self-report (`metadata.board.phase`). The
+ * tool schema offers exactly these; web readers whitelist them and show any
+ * other string verbatim (铁律 14), so adding a value later is safe.
+ */
+export const BOARD_PHASES = ['planning', 'implementing', 'testing', 'reviewing', 'blocked', 'done'] as const;
+export type BoardPhase = typeof BOARD_PHASES[number];
+
+/** Known phase or undefined (an unknown value is never written). */
+export function normalizePhase(value: unknown): BoardPhase | undefined {
+    return BOARD_PHASES.includes(value as BoardPhase) ? (value as BoardPhase) : undefined;
+}
+
 /** 进度文案的字符上限——它渲染在看板卡片的一行里。 */
 export const PROGRESS_MAX_CHARS = 200;
 
@@ -35,6 +48,8 @@ export interface SelfReportState {
     lastAcceptedAt: number;
     /** 上一次被接受的 attention，用于识别状态跃迁（见 shouldAcceptSelfReport）。 */
     lastAttention?: BoardAttention;
+    /** B-556: 上一次被接受的 phase；phase 变化同样是里程碑，绕过节流。 */
+    lastPhase?: BoardPhase;
 }
 
 export function createSelfReportState(): SelfReportState {
@@ -57,9 +72,12 @@ export function shouldAcceptSelfReport(
     state: SelfReportState,
     now: number,
     attention?: BoardAttention,
+    phase?: BoardPhase,
 ): boolean {
     if (state.lastAcceptedAt === 0) return true;
     if (attention !== undefined && attention !== state.lastAttention) return true;
+    // B-556: a NEW phase is a milestone too; an omitted or repeated phase is not.
+    if (phase !== undefined && phase !== state.lastPhase) return true;
     return now - state.lastAcceptedAt >= SELF_REPORT_MIN_INTERVAL_MS;
 }
 
