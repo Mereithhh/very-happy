@@ -63,6 +63,12 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
             'change_title',
             'happy__change_title',
             'mcp__happy__change_title',
+            // B-556: report_progress only writes this session's own board line.
+            // ACP gives no server name here, so a bare name cannot be tied to
+            // our server — same accepted limitation as change_title above.
+            'report_progress',
+            'happy__report_progress',
+            'mcp__happy__report_progress',
             'GeminiReasoning',
             'CodexReasoning',
             'think',
@@ -71,7 +77,7 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         // Tool-call IDs auto-approve when they exactly match one of these
         // values or start with `<name>-` (Gemini CLI format, e.g.
         // `change_title-1765385846663`). Substring was a bypass vector.
-        const alwaysAutoApproveIdPrefixes: readonly string[] = ['change_title', 'save_memory'];
+        const alwaysAutoApproveIdPrefixes: readonly string[] = ['change_title', 'report_progress', 'save_memory'];
 
         // Check by tool name
         if (alwaysAutoApproveNames.has(toolName)) {

@@ -27,6 +27,10 @@ describe('report_progress across runners', () => {
     it('Codex / Gemini / ACP: the stdio bridge forwards it by name and Codex auto-approves it', () => {
         expect(read('../../codex/happyMcpStdioBridge.ts')).toContain('registerReportProgressTool(server, async (args) => (await ensureHttpClient()).callTool({ name: REPORT_PROGRESS_TOOL_NAME, arguments: args }) as any);');
         expect(read('../../codex/utils/permissionHandler.ts')).toContain("'mcp__happy__report_progress',");
+        // the bare-name list is gated by the elicitation's server, which runCodex passes through
+        const runCodex = read('../../codex/runCodex.ts');
+        expect(runCodex).toContain("permissionHandler.handleToolCall(params.callId, toolName, input, params.type === 'mcp' ? params.serverName : undefined)");
+        expect(runCodex).toContain('[HAPPY_MCP_SERVER_NAME]: {');
     });
     it('pi: discovered over tools/list and exempt from the per-call confirmation', () => {
         expect(PI_TEAMS_EXTENSION).toContain("await rpc('tools/list', {})");

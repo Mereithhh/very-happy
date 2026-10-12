@@ -11,7 +11,7 @@ import { ApiClient } from '@/api/api';
 import { CodexAppServerClient } from './codexAppServerClient';
 import { wrapperRateLimitReporter } from '@/rateLimits/rateLimitReporter';
 import type { ReasoningEffort } from './codexAppServerTypes';
-import { CodexPermissionHandler } from './utils/permissionHandler';
+import { CodexPermissionHandler, HAPPY_MCP_SERVER_NAME } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
@@ -665,7 +665,8 @@ export async function runCodex(opts: {
                 : (params.input ?? {});
 
         try {
-            const result = await permissionHandler.handleToolCall(params.callId, toolName, input);
+            // B-556: the server name gates the bare-name auto-approve list.
+            const result = await permissionHandler.handleToolCall(params.callId, toolName, input, params.type === 'mcp' ? params.serverName : undefined);
             logger.debug('[Codex] Permission request resolved');
             return result.decision;
         } catch (error) {
@@ -800,7 +801,7 @@ export async function runCodex(opts: {
     // not be visible to the model, and the model would improvise with shell echoes.
     const bridgeEntrypoint = join(projectPath(), 'bin', 'very-happy-mcp.mjs');
     const mcpServers = {
-        happy: {
+        [HAPPY_MCP_SERVER_NAME]: {
             command: process.execPath,
             args: ['--no-warnings', '--no-deprecation', bridgeEntrypoint, '--url', happyServer.url]
         }

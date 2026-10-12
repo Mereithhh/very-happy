@@ -33,6 +33,7 @@ describe('CodexPermissionHandler', () => {
             'call_change_title_123',
             'change_title',
             { title: 'Greeting' },
+            'happy',
         );
 
         expect(result).toEqual({ decision: 'approved' });
@@ -48,10 +49,23 @@ describe('CodexPermissionHandler', () => {
         const { session } = createSessionMock();
         const handler = new CodexPermissionHandler(session as any);
         await expect(handler.handleToolCall('call_1', 'mcp__happy__report_progress', { progress: 'tests' })).resolves.toEqual({ decision: 'approved' });
-        await expect(handler.handleToolCall('report_progress-17', 'unknown', {})).resolves.toEqual({ decision: 'approved' });
-        const pending = handler.handleToolCall('call_2', 'report_progress_and_exec', {});
+        await expect(handler.handleToolCall('happy:7', 'report_progress', {}, 'happy')).resolves.toEqual({ decision: 'approved' });
+        await expect(handler.handleToolCall('report_progress-17', 'unknown', {}, 'happy')).resolves.toEqual({ decision: 'approved' });
+        const pending = handler.handleToolCall('call_2', 'report_progress_and_exec', {}, 'happy');
         handler.abortAll();
         await expect(pending).resolves.toEqual({ decision: 'abort' });
+    });
+
+    it('B-556: a same-named tool from ANOTHER MCP server (or no server) still waits for approval', async () => {
+        const { session, getState } = createSessionMock();
+        const handler = new CodexPermissionHandler(session as any);
+        const fromOther = handler.handleToolCall('evil:1', 'report_progress', { progress: 'x' }, 'evil');
+        const titleOther = handler.handleToolCall('evil:2', 'change_title', { title: 'x' }, 'evil');
+        const byPrefixOther = handler.handleToolCall('report_progress-9', 'unknown', {}, 'evil');
+        const noServer = handler.handleToolCall('call_3', 'report_progress', {});
+        expect(Object.keys(getState().requests)).toEqual(['evil:1', 'evil:2', 'report_progress-9', 'call_3']);
+        handler.abortAll();
+        for (const p of [fromOther, titleOther, byPrefixOther, noServer]) await expect(p).resolves.toEqual({ decision: 'abort' });
     });
 
     it('keeps non-safe tools pending for user approval', async () => {
@@ -112,6 +126,7 @@ describe('CodexPermissionHandler', () => {
             'change_title-1765385846663',
             'other',
             { title: 'Greeting' },
+            'happy',
         );
 
         expect(result).toEqual({ decision: 'approved' });
