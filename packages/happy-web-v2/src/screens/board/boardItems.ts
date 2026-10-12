@@ -33,6 +33,17 @@ import { isHiddenSession } from '@/assistant/assistantSession';
 import { priorityLevel } from '@/utils/tags';
 import { pendingQuestionSummary } from './sessionPreview';
 
+/** compact duration — mono console style, deliberately locale-neutral */
+export function fmtDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
 export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended' | 'unknown';
 
 //

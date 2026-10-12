@@ -35,6 +35,7 @@ import { useActivityOverlay } from '@/sync/activityOverlayStore';
 import { resolveActivityTs } from '@/sync/activityOverlay';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardItems } from '@/screens/board/useBoardItems';
+import { fmtDuration } from '@/screens/board/boardItems';
 import { AUTOMATIONS_SIDEBAR_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import { automationsEntryVisible } from '@/sync/automationsPoll';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
@@ -392,6 +393,8 @@ export function Sidebar() {
   const backgroundCountByKey = useMemo(() => new Map(boardItems.flatMap(item => item.backgroundTasks ? [[item.key, item.backgroundTasks] as [string, number]] : [])), [boardItems]);
   // B-465: rows whose status is an estimate from an old daemon get a note.
   const legacyStatusKeys = useMemo(() => new Set(boardItems.filter(item => item.legacyStatus).map(item => item.key)), [boardItems]);
+  // B-558: an expired lease says how long nothing arrived, instead of a verdict.
+  const lastActivityByKey = useMemo(() => new Map(boardItems.map(item => [item.key, item.lastActivityAt] as [string, number])), [boardItems]);
   const attentionCount = boardItems.filter(item => item.status === 'attention').length;
 
   // ----- two-level row signal (B-085) -----
@@ -1101,6 +1104,7 @@ export function Sidebar() {
                           execution={executionByKey.get(r.key) ?? (r.session?.presence === 'online' ? 'idle' : 'offline')}
                           backgroundTasks={backgroundCountByKey.get(r.key)}
                           statusNote={legacyStatusKeys.has(r.key) ? t('sidebar.agentStatusLegacy') : undefined}
+                          lastActivityAt={lastActivityByKey.get(r.key)}
                           automationAttention={r.kind === 'session' && automationAttentionKeys.has(r.key)}
                           signal={rowSignalOf({
                             attention: attentionKeys.has(r.key),
@@ -1382,6 +1386,7 @@ function SidebarRow({
   execution,
   backgroundTasks,
   statusNote,
+  lastActivityAt,
   automationAttention,
   signal,
   badge,
@@ -1396,6 +1401,8 @@ function SidebarRow({
   backgroundTasks?: number;
   /** B-465: appended to the status tooltip when the verdict is an estimate. */
   statusNote?: string;
+  /** B-558: newest activity the board knows of — "no update for N" on unknown. */
+  lastActivityAt?: number;
   /** B-508: an automation run waits for the owner's decision about this session. */
   automationAttention?: boolean;
   /** two-level marker (B-085): 'attention' = agent waiting on the user
@@ -1430,7 +1437,11 @@ function SidebarRow({
   const terminalAgent = useTerminalAgentStates(st => isTerminal && row.terminalId ? st.states[row.terminalId]?.agentKind : undefined);
   const agentLabel = codingAgentLabel(isTerminal ? terminalAgent : s?.metadata?.flavor);
   const status = agentStatusSignal(execution, signal === 'unread');
-  const availabilityLabel = [execution === 'offline' ? t('sidebar.agentStatusOffline') : execution === 'unknown' ? t('sidebar.agentStatusUnknown') : '', statusNote ?? ''].filter(Boolean).join(' · ');
+  const now = Date.now();
+  // B-558: unknown = the lease expired. Lead with the fact (how long nothing
+  // arrived); the estimate note (legacy daemon) already explains itself.
+  const unknownLabel = [!statusNote && lastActivityAt ? t('sidebar.agentStatusNoUpdate', { duration: fmtDuration(now - lastActivityAt) }) : '', t('sidebar.agentStatusUnknown')].filter(Boolean).join(' · ');
+  const availabilityLabel = [execution === 'offline' ? t('sidebar.agentStatusOffline') : execution === 'unknown' ? unknownLabel : '', statusNote ?? ''].filter(Boolean).join(' · ');
   const withNote = (label: string) => [label, statusNote ?? ''].filter(Boolean).join(' · ');
   const statusLabel = status === 'running' ? withNote(t('sidebar.groupRunning'))
     : status === 'background' ? withNote(t('sidebar.rowBackgroundTasks', { count: backgroundTasks ?? 1 }))

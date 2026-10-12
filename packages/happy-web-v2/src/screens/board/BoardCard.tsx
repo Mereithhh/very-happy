@@ -8,20 +8,11 @@ import { sync } from '@/sync/sync';
 import { upsertPinAt } from '@/screens/sessions/sidebarPins';
 import { moveEntryToTop } from '@/screens/sessions/sidebarOrder';
 import { confirmArchiveSession, confirmCloseTerminal, markSessionDone } from '@/app/rowActions';
-import type { BoardItem } from './boardItems';
+import { fmtDuration, type BoardItem } from './boardItems';
 import { useSessionPreview } from './useBoardItems';
 import { codingAgentLabel } from '@/sync/agentStatus';
 
-/** compact duration — mono console style, deliberately locale-neutral */
-export function fmtDuration(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
-}
+export { fmtDuration };
 
 const DOT: Record<BoardItem['status'], { status: Status; pulse: boolean }> = {
   attention: { status: 'permission', pulse: true },
@@ -48,6 +39,10 @@ export function BoardCard({
   const KindIcon = item.kind === 'terminal' ? TerminalSquare : MessageSquare;
   // B-553: latest round from messages this tab already holds (never fetches).
   const preview = useSessionPreview(item.kind === 'session' ? item.key : null);
+  // B-558: only an idle card's badge describes how the round ended.
+  const outcome = item.waitReason === 'idle' ? preview?.outcome : undefined;
+  // B-558: an expired lease states the fact ("no update for 12m"), not a verdict.
+  const noUpdate = item.status === 'unknown' && !item.legacyStatus;
 
   // Move to the top of the sidebar's manual order — board item keys are the
   // SAME keys the sidebar uses (session id / `t:<terminalId>`), so this just
@@ -208,14 +203,22 @@ export function BoardCard({
           {item.status === 'ended' && item.detail?.kind !== 'machineOffline' && (
             <span className="bd-card-offline">{t('board.endedTag')}</span>
           )}
-          {item.waitReason === 'unknown' && <span className="bd-card-offline">{t(item.legacyStatus ? 'sidebar.agentStatusLegacy' : 'sidebar.agentStatusUnknown')}</span>}
+          {item.waitReason === 'unknown' && item.legacyStatus && <span className="bd-card-offline">{t('sidebar.agentStatusLegacy')}</span>}
           {item.waitReason === 'idle' && (
-            <span className="bd-card-offline">{t('board.readyToReview')}</span>
+            outcome === 'interrupted' ? (
+              <span className="bd-card-offline" title={t('board.interruptedByYouHint')}>{t('board.interruptedByYou')}</span>
+            ) : outcome === 'failed' ? (
+              <span className="bd-card-offline" title={t('board.lastRoundFailedHint')}>{t('board.lastRoundFailed')}</span>
+            ) : (
+              <span className="bd-card-offline">{t('board.readyToReview')}</span>
+            )
           )}
-          <span className="bd-card-time">
+          <span className="bd-card-time" title={noUpdate ? t('sidebar.agentStatusUnknown') : undefined}>
             {item.status === 'attention' && item.attentionSince != null
               ? t('board.waitingFor', { duration: fmtDuration(now - item.attentionSince) })
-              : `${fmtDuration(now - item.lastActivityAt)} ${t('board.agoSuffix')}`}
+              : noUpdate
+                ? t('board.noUpdateFor', { duration: fmtDuration(now - item.lastActivityAt) })
+                : `${fmtDuration(now - item.lastActivityAt)} ${t('board.agoSuffix')}`}
           </span>
         </div>
       </div>
