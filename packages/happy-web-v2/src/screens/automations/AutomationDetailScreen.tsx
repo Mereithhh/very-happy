@@ -70,9 +70,8 @@ function PrecheckCard({ automation }: { automation: Automation }) {
       <h2 className="au-section-title">{t('automations.precheck')}</h2>
       <div className="au-action-kind">
         <span>{t(text.mode === 'shell' ? 'automations.precheckModeShell' : 'automations.precheckModeArgv')}</span>
-        <span className="au-dot" aria-hidden>·</span>
-        <span className="mono au-action-head">{text.details.join(' · ')}</span>
       </div>
+      <p className="mono au-precheck-details">{text.details.join(' · ')}</p>
       <pre className="au-pre">{text.command}</pre>
     </section>
   );

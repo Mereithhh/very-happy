@@ -905,6 +905,7 @@ export const en = {
         groupTerminals: 'Terminals',
         actionNewChat: 'New chat',
         actionNewChatAdvanced: 'New chat (choose options)…',
+        actionNewChatWithQuery: ({ query }: { query: string }) => `New chat: ${query}`,
         actionNewTerminal: 'New terminal',
         actionNewTerminalAt: 'New terminal in a directory…',
         actionAttachTmux: 'Attach a tmux session…',

@@ -695,3 +695,43 @@ it('documents Automations in both languages as a gated, single-machine feature w
  expect(JSON.stringify(zh)).toContain('需要我决策');
  expect(getPublicDocs('en').find(doc => doc.slug === 'integrations')!.sections[0].blocks.some(block => block.type === 'link' && block.href === '/docs/automations')).toBe(true);
 });
+
+it('documents automation prechecks, skip reasons, ×N folding and old-CLI compatibility in both languages (B-560)', () => {
+ const en = getPublicDocs('en').find(doc => doc.slug === 'automations')!;
+ const zh = getPublicDocs('zh-Hans').find(doc => doc.slug === 'automations')!;
+ const enIndex = en.sections.findIndex(section => section.heading === 'Precheck: only run when there is something to do');
+ expect(enIndex).toBeGreaterThan(0);
+ expect(zh.sections[enIndex].heading).toBe('前置检查：有事可做才运行');
+ const enText = JSON.stringify(en.sections[enIndex]);
+ const zhText = JSON.stringify(zh.sections[enIndex]);
+ // the CLI flags the docs teach must exist in the CLI parser
+ const auto = readFileSync(new URL('../../../../happy-cli/src/commands/auto.ts', import.meta.url), 'utf8');
+ for (const flag of ['--precheck-shell', '--precheck-argv', '--precheck-cwd', '--precheck-timeout', '--precheck-output', '--no-precheck']) {
+  expect(enText).toContain(flag);
+  expect(auto).toContain(`'${flag}'`);
+ }
+ // limits match the wire constants
+ expect(enText).toContain('Timeout: default 60s, at most 10m;');
+ expect(enText).toContain('4,000 characters');
+ // every skip-reason wording the web shows is named in both languages
+ const enUi = readFileSync(new URL('../../text/_default.ts', import.meta.url), 'utf8');
+ const zhUi = readFileSync(new URL('../../text/translations/zh-Hans.ts', import.meta.url), 'utf8');
+ for (const key of ['skipPrecheckFailed', 'skipPrecheckTimeout', 'skipPrecheckError', 'skipPrecheckUnsupportedCli', 'skipPreviousRunActive']) {
+  const enLabel = new RegExp(`\\b${key}: '([^']+)'`).exec(enUi)![1];
+  const zhLabel = new RegExp(`\\b${key}: '([^']+)'`).exec(zhUi)![1];
+  expect(enText).toContain(enLabel);
+  expect(zhText).toContain(zhLabel);
+ }
+ // folding: only scheduled skips fold; fire/manual keep their own row
+ expect(enText).toContain('Consecutive scheduled skips for the same reason fold into one row marked ×N');
+ expect(enText).toContain('Fired and manual runs always keep their own row');
+ expect(zhText).toContain('×N');
+ // compatibility: old CLI never runs the action; new CLI refuses on an old server
+ expect(enText).toContain('never runs the action of an automation that has one');
+ expect(enText).toContain('upgrade very-happy-cli on that machine');
+ expect(enText).toContain('refuses to create or edit a precheck');
+ expect(zhText).toContain('绝不会在它上面执行动作');
+ expect(zhText).toContain('拒绝创建或编辑前置检查');
+ // the code block stays untranslated and identical
+ expect(zh.sections[enIndex].blocks[1]).toEqual(en.sections[enIndex].blocks[1]);
+});
