@@ -463,7 +463,9 @@ export async function runCodex(opts: {
      * This is the equivalent of Claude Code's abort - it stops what's currently
      * happening but keeps the session alive for new prompts.
      */
-    async function handleAbort() {
+    /** B-558: who asked — only a user stop leaves the `Aborted by user` line
+     *  (Claude: `!exitReason`); kill / signal / local exit do not. */
+    async function handleAbort(source: 'user' | 'kill' | 'exit') {
         if (abortInProgress) {
             await abortInProgress;
             return;
@@ -487,7 +489,7 @@ export async function runCodex(opts: {
                     // B-558: same lifecycle line as Claude's stop, so the web can tell
                     // "stopped by you" from a failure. Only for a turn this user stop
                     // actually ended; it is a plain event, the turn-end is unchanged.
-                    if (abortResult.hadActiveTurn && abortResult.aborted) {
+                    if (source === 'user' && abortResult.hadActiveTurn && abortResult.aborted) {
                         session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                     }
                     if (abortResult.forcedRestart) {
@@ -527,7 +529,7 @@ export async function runCodex(opts: {
      */
     const handleKillSession = async () => {
         logger.debug('[Codex] Kill session requested - terminating process');
-        await handleAbort();
+        await handleAbort('kill');
         logger.debug('[Codex] Abort completed, proceeding with termination');
 
         try {
@@ -570,7 +572,7 @@ export async function runCodex(opts: {
         try { return await readChildThread(client, args?.threadId); }
         catch (error) { return {error:error instanceof Error ? error.message : 'Child read failed'}; }
     });
-    session.rpcHandlerManager.registerHandler('abort', handleAbort);
+    session.rpcHandlerManager.registerHandler('abort', () => handleAbort('user'));
 
     const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, handleKillSession, session, { processSignals: true });
 
@@ -591,7 +593,7 @@ export async function runCodex(opts: {
                 // Exit the agent
                 logger.debug('[codex]: Exiting agent via Ctrl-C');
                 shouldExit = true;
-                await handleAbort();
+                await handleAbort('exit');
             }
         }), {
             exitOnCtrlC: false,

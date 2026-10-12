@@ -14,7 +14,14 @@ describe('Codex user stop lifecycle event', () => {
         const at = source.indexOf('const abortResult = await client.abortTurnWithFallback({');
         expect(at).toBeGreaterThan(0);
         const tail = source.slice(at, at + 700);
-        expect(tail).toContain("if (abortResult.hadActiveTurn && abortResult.aborted) {\n                        session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });");
+        expect(tail).toContain("if (source === 'user' && abortResult.hadActiveTurn && abortResult.aborted) {\n                        session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });");
         expect(tail.indexOf("'Aborted by user'")).toBeLessThan(tail.indexOf('if (abortResult.forcedRestart) {'));
+    });
+    it('only the abort RPC is a user stop; kill / signal / local exit are not (Claude: !exitReason)', () => {
+        expect(source).toContain("registerHandler('abort', () => handleAbort('user'));");
+        expect(source).toContain("await handleAbort('kill');");
+        expect(source).toContain("await handleAbort('exit');");
+        expect(source).not.toMatch(/handleAbort\(\)/);
+        expect(source).not.toContain("registerHandler('abort', handleAbort)");
     });
 });
