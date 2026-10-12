@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -34,5 +34,31 @@ describe('B-562 statDownloadTarget', () => {
         expect(await statDownloadTarget(join(dir, 'sub'))).toEqual({ kind: 'directory' });
         expect(await statDownloadTarget(join(dir, 'nope'))).toEqual({ kind: 'missing' });
         expect((await checkDownloadTarget(join(dir, 'sub'))).error).toContain('directory');
+    });
+});
+
+describe('B-562 review: only ENOENT means missing', () => {
+    let dir: string;
+    beforeAll(async () => {
+        dir = await mkdtemp(join(tmpdir(), 'vh-dl-err-'));
+        await symlink(join(dir, 'loop-b'), join(dir, 'loop-a'));
+        await symlink(join(dir, 'loop-a'), join(dir, 'loop-b'));
+        await mkdir(join(dir, 'locked'));
+        await writeFile(join(dir, 'locked', 'f.bin'), 'x');
+        await chmod(join(dir, 'locked'), 0o000);
+    });
+    afterAll(async () => { await chmod(join(dir, 'locked'), 0o700); await rm(dir, { recursive: true, force: true }); });
+    it('reports ELOOP instead of claiming the file does not exist', async () => {
+        const target = await statDownloadTarget(join(dir, 'loop-a'));
+        expect(target).toMatchObject({ kind: 'error', code: 'ELOOP' });
+        const verdict = downloadTargetVerdict('/x', target);
+        expect(verdict.error).toContain('ELOOP');
+        expect(verdict.error).not.toContain('does not exist');
+    });
+    it.skipIf(process.getuid?.() === 0)('reports EACCES for an unreadable parent directory', async () => {
+        expect(await statDownloadTarget(join(dir, 'locked', 'f.bin'))).toMatchObject({ kind: 'error', code: 'EACCES' });
+    });
+    it('formats any non-ENOENT failure for the agent', () => {
+        expect(downloadTargetVerdict('/a', { kind: 'error', code: 'ENAMETOOLONG', message: 'name too long' }).error).toBe('cannot read /a: ENAMETOOLONG (name too long)');
     });
 });

@@ -100,7 +100,7 @@
   .fdl-dismiss { width: 44px; }
   .fdl-btn--primary, .fdl--block .fdl-btn--primary { min-height: 48px; font-size: var(--fs-15); }
   .fdl-btn { padding-left: 14px; padding-right: 14px; }
-  .fdl-save { display: inline-block; padding: 10px 0; }
+  .fdl-save { display: inline-flex; align-items: center; min-height: 44px; }
 }
 @media (max-width: 520px) {
   .fdl--bar .fdl-btn--primary { flex: 1 1 auto; justify-content: center; }

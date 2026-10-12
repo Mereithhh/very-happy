@@ -22,11 +22,16 @@ export function previewToolCall(tool: ToolCall): PreviewToolCall | null {
     return path ? { path, download: input!.download === true } : null;
 }
 
+/** Our MCP server names only (Claude `mcp__<server>__`, Gemini `<server>__`, Codex `server`):
+ *  `happy` (session / bridge), `very-happy` and `very-happy-clipboard` (`very-happy mcp`).
+ *  A third-party `unhappy` / `happy-files` server is not ours. */
+const OWN_SERVERS: ReadonlySet<string> = new Set(['happy', 'very-happy', 'very-happy-clipboard']);
+
 /** Same shape rules as `resolveBuiltinTool` (components/tools/builtinTools.ts),
  *  kept local so this module stays free of the i18n/text runtime. */
 function previewToolInput(tool: ToolCall): Record<string, any> | null {
     const input = tool.input && typeof tool.input === 'object' ? tool.input as Record<string, any> : {};
-    const own = (server: unknown) => typeof server === 'string' && /happy/i.test(server);
+    const own = (server: unknown) => typeof server === 'string' && OWN_SERVERS.has(server);
     if (input.piTool === 'open_preview') return objectOr(input.rawInput);
     if (tool.name === 'McpTool') return input.tool === 'open_preview' && own(input.server) ? objectOr(input.arguments) : null;
     if (typeof tool.name !== 'string') return null;
@@ -51,8 +56,19 @@ function objectOr(value: unknown): Record<string, any> {
 const CREDENTIAL_DIRS = ['.secrets', '.ssh', '.gnupg', '.aws', '.kube', '.config/rbw'];
 const CREDENTIAL_FILES = ['.claude.json', '.claude/.credentials.json', '.netrc', '.pgpass'];
 const CREDENTIAL_BASENAMES = [/^\.env$/i, /^\.env\./i, /\.env$/i, /\.pem$/i, /\.key$/i, /\.p12$/i, /\.pfx$/i, /^id_(rsa|dsa|ecdsa|ed25519)$/i, /^\.htpasswd$/i];
+/** Collapse `//`, `.` and `..` (never above root) so `~/.claude/./x` cannot dodge the match. */
+function normalizePosix(path: string): string {
+    const out: string[] = [];
+    for (const part of path.split('/')) {
+        if (part === '' || part === '.') continue;
+        if (part === '..') out.pop();
+        else out.push(part);
+    }
+    return `/${out.join('/')}`;
+}
+
 export function isCredentialLikePath(path: string): boolean {
-    const p = `/${path.replace(/\\/g, '/').replace(/^~\/?/, '')}`.replace(/\/+/g, '/');
+    const p = normalizePosix(`/${path.replace(/\\/g, '/').replace(/^~\/?/, '')}`);
     if (CREDENTIAL_DIRS.some(dir => p.includes(`/${dir}/`) || p.endsWith(`/${dir}`))) return true;
     if (CREDENTIAL_FILES.some(file => p.endsWith(`/${file}`))) return true;
     if (p.endsWith('/.git/config')) return true;

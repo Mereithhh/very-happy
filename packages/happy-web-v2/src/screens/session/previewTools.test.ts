@@ -53,3 +53,19 @@ describe('B-562 credential-like paths get no one-click actions',()=>{
         for(const p of ['/repo/out.zip','~/reports/q3.docx','/repo/environment.md','/repo/keys.txt','/repo/sshd-notes.md','/repo/.github/config.yml']) expect(isCredentialLikePath(p),p).toBe(false);
     });
 });
+
+describe('B-562 review: normalisation and own-server names',()=>{
+    it('normalises . and .. before matching credential paths',()=>{
+        for(const p of ['~/.claude/./.credentials.json','repo/.git/./config','~/.config/./rbw/x','/repo/a/../.ssh/id_rsa','/x/../../.aws/credentials','~//.ssh//config'])
+            expect(isCredentialLikePath(p),p).toBe(true);
+        expect(isCredentialLikePath('/repo/.ssh-notes/../out.zip')).toBe(false);
+    });
+    it('only recognises our own MCP server names',()=>{
+        for(const name of ['mcp__happy__open_preview','mcp__very-happy__open_preview','mcp__very-happy-clipboard__open_preview','happy__open_preview','very-happy__open_preview'])
+            expect(previewToolCall(tool(name,{path:'/a.zip'})),name).not.toBeNull();
+        for(const name of ['mcp__unhappy__open_preview','mcp__happy-files__open_preview','unhappy__open_preview','mcp__Happy__open_preview'])
+            expect(previewToolCall(tool(name,{path:'/a.zip'})),name).toBeNull();
+        expect(previewToolCall(tool('McpTool',{server:'happy-files',tool:'open_preview',arguments:{path:'/a.zip'}}))).toBeNull();
+        expect(previewToolCall(tool('McpTool',{server:'very-happy',tool:'open_preview',arguments:{path:'/a.zip'}}))).not.toBeNull();
+    });
+});

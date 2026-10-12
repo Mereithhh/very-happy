@@ -16,6 +16,8 @@ export type DownloadTargetStat =
     | { kind: 'missing' }
     | { kind: 'directory' }
     | { kind: 'other' }
+    /** stat failed for a reason other than ENOENT (EACCES, ELOOP, ENAMETOOLONG…). */
+    | { kind: 'error'; code: string; message: string }
     | { kind: 'file'; size: number };
 
 export interface DownloadTargetVerdict {
@@ -37,6 +39,8 @@ export function downloadTargetVerdict(path: string, target: DownloadTargetStat):
             };
         case 'other':
             return { error: `${path} is not a regular file`, note: null };
+        case 'error':
+            return { error: `cannot read ${path}: ${target.code} (${target.message})`, note: null };
         case 'file':
             return target.size > WEB_DOWNLOAD_MAX_BYTES
                 ? {
@@ -55,8 +59,11 @@ export async function statDownloadTarget(path: string): Promise<DownloadTargetSt
         if (s.isDirectory()) return { kind: 'directory' };
         if (!s.isFile()) return { kind: 'other' };
         return { kind: 'file', size: s.size };
-    } catch {
-        return { kind: 'missing' };
+    } catch (error) {
+        const code = (error as NodeJS.ErrnoException)?.code;
+        // Only "does not exist" is a missing file; anything else is reported as-is.
+        if (code === 'ENOENT') return { kind: 'missing' };
+        return { kind: 'error', code: code ?? 'UNKNOWN', message: error instanceof Error ? error.message : String(error) };
     }
 }
 
