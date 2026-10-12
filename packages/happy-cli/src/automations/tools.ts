@@ -9,11 +9,12 @@
 
 import { z } from 'zod';
 import {
-    AutomationActionSchema, AutomationConcurrencySchema, AutomationNameSchema, AutomationTriggerSchema,
+    AutomationActionSchema, AutomationConcurrencySchema, AutomationNameSchema, AutomationPrecheckSchema, AutomationTriggerSchema,
     type Automation, type AutomationCreate, type AutomationReport, type AutomationUpdate,
 } from '@slopus/happy-wire';
 import type { AssistantToolRegistrar } from '@/assistant/assistantTools';
 import { authenticatedAutomationsClient, automationRunIdFromEnv, type AutomationsClient } from './client';
+import { createAutomationChecked, updateAutomationChecked } from './precheckCompat';
 
 export const AUTOMATION_TOOL_NAMES = [
     'automation_list', 'automation_get', 'automation_create', 'automation_update', 'automation_pause', 'automation_resume',
@@ -25,6 +26,7 @@ const id = z.string().min(1).max(128);
 const ref = { name: AutomationNameSchema.optional().describe('Automation name'), id: id.optional().describe('Automation id (alternative to name)') };
 const payload = z.string().max(65_536).optional().describe('Payload text; JSON lets prompts use {{payload.field}}');
 const maxRuntimeMs = z.number().int().min(60_000).max(7 * 86_400_000).optional();
+const precheckDescription = 'Optional gate run on the machine before the action: exactly one of command (argv array) or shell (one command line, not template-rendered; payload in $VH_AUTOMATION_PAYLOAD). Exit 0 runs the action; anything else records the run as skipped (repeats fold into one run, ×N). cwd defaults to the action directory; timeoutMs default 60000, max 600000; includeOutput appends its stdout to the spawn/send prompt.';
 
 /** Input schemas, shared verbatim by the in-process server and the stdio bridge. */
 export const AUTOMATION_TOOL_SCHEMAS: Record<AutomationToolName, { description: string; readOnly?: boolean; destructive?: boolean; inputSchema: Record<string, z.ZodTypeAny> }> = {
@@ -38,14 +40,16 @@ export const AUTOMATION_TOOL_SCHEMAS: Record<AutomationToolName, { description: 
             trigger: AutomationTriggerSchema, action: AutomationActionSchema,
             concurrency: AutomationConcurrencySchema.optional().describe('skip (default): a run while another is active is recorded as skipped; queue: it waits'),
             maxRuntimeMs, paused: z.boolean().optional().describe('Create paused'),
+            precheck: AutomationPrecheckSchema.optional().describe(precheckDescription),
         },
     },
     automation_update: {
-        description: 'Change an automation (name / description / machine / trigger / action / concurrency / maxRuntimeMs). Requires the current version from automation_get; a stale version is rejected.',
+        description: 'Change an automation (name / description / machine / trigger / action / precheck / concurrency / maxRuntimeMs). Requires the current version from automation_get; a stale version is rejected. Omitted fields stay as they are; precheck: null removes the precheck.',
         inputSchema: {
             ...ref, version: z.number().int().positive(), newName: AutomationNameSchema.optional(), description: z.string().max(4000).nullable().optional(),
             machineId: id.optional(), trigger: AutomationTriggerSchema.optional(), action: AutomationActionSchema.optional(),
             concurrency: AutomationConcurrencySchema.optional(), maxRuntimeMs,
+            precheck: AutomationPrecheckSchema.nullable().optional().describe(`${precheckDescription} null removes it.`),
         },
     },
     automation_pause: { description: 'Pause an automation: no new scheduled runs and fire is refused until resumed.', inputSchema: ref },
@@ -98,8 +102,9 @@ export async function executeAutomationTool(name: AutomationToolName, args: any,
                 ...(args.concurrency !== undefined ? { concurrency: args.concurrency } : {}),
                 ...(args.maxRuntimeMs !== undefined ? { maxRuntimeMs: args.maxRuntimeMs } : {}),
                 ...(args.paused ? { status: 'paused' as const } : {}),
+                ...(args.precheck ? { precheck: args.precheck } : {}),
             };
-            return { automation: await client.create(input) };
+            return { automation: await createAutomationChecked(client, input) };
         }
         case 'automation_update': {
             const current = await resolve(context, args);
@@ -112,8 +117,9 @@ export async function executeAutomationTool(name: AutomationToolName, args: any,
                 ...(args.action !== undefined ? { action: args.action } : {}),
                 ...(args.concurrency !== undefined ? { concurrency: args.concurrency } : {}),
                 ...(args.maxRuntimeMs !== undefined ? { maxRuntimeMs: args.maxRuntimeMs } : {}),
+                ...(args.precheck !== undefined ? { precheck: args.precheck } : {}),
             };
-            return { automation: await client.update(current.id, input) };
+            return { automation: await updateAutomationChecked(client, current.id, input) };
         }
         case 'automation_pause': return { automation: await client.pause((await resolve(context, args)).id) };
         case 'automation_resume': return { automation: await client.resume((await resolve(context, args)).id) };

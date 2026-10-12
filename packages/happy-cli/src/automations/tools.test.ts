@@ -67,4 +67,21 @@ describe('automation_* tools', () => {
         expect(client.report).toHaveBeenLastCalledWith('explicit', { status: 'failed', error: 'e', needsAttention: true, attentionReason: 'r' });
         await expect(executeAutomationTool('automation_report', { status: 'done' }, { ...context, env: {} })).rejects.toThrow('No run id');
     });
+    it('B-548: passes a precheck through create/update and refuses an old server that drops it', async () => {
+        const client = fakeClient();
+        const context = { client: client as any, machineId: 'm' };
+        const precheck = { shell: 'test -s inbox' };
+        client.create.mockResolvedValueOnce({ id: 'a3', name: 'g', precheck });
+        client.resume.mockResolvedValueOnce({ id: 'a3', name: 'g', status: 'active', precheck });
+        await executeAutomationTool('automation_create', { name: 'g', trigger: { kind: 'manual' }, action: { kind: 'send', sessionId: 's', prompt: 'p' }, precheck }, context);
+        expect(client.create).toHaveBeenCalledWith(expect.objectContaining({ precheck, status: 'paused' }));
+        expect(client.resume).toHaveBeenCalledWith('a3');
+        client.update.mockResolvedValueOnce({ id: 'a1', version: 4, precheck: null });
+        await executeAutomationTool('automation_update', { name: 'nightly', version: 3, precheck: null }, context);
+        expect(client.update).toHaveBeenLastCalledWith('a1', { version: 3, precheck: null });
+        client.create.mockResolvedValueOnce({ id: 'a4', name: 'h' }); // old server: no `precheck` key
+        await expect(executeAutomationTool('automation_create', { name: 'h', trigger: { kind: 'manual' }, action: { kind: 'send', sessionId: 's', prompt: 'p' }, precheck }, context)).rejects.toThrow('does not support automation prechecks');
+        expect(client.remove).toHaveBeenCalledWith('a4');
+        expect(AUTOMATION_TOOL_SCHEMAS.automation_create.inputSchema.precheck).toBeDefined();
+    });
 });

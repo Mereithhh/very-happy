@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolve } from 'node:path';
-import { actionFromCommand, AUTO_HELP, parseAutoArgs } from './auto';
+import { actionFromCommand, AUTO_HELP, describePrecheck, parseAutoArgs, precheckFromCommand } from './auto';
 
 describe('very-happy auto argv parsing', () => {
     it('parses subcommands, targets, value/boolean flags, repeatable --env and script argv after --', () => {
@@ -67,5 +67,30 @@ describe('action flags', () => {
     });
     it('documents every subcommand in --help', () => {
         for (const word of ['list', 'show', 'create', 'edit', 'pause|resume|rm', 'fire', 'runs', 'cancel', 'ack', 'report', 'skill', 'install', '--sticky-key', '--dedupe-key', '--wait', 'VH_AUTOMATION_RUN_ID']) expect(AUTO_HELP).toContain(word);
+    });
+});
+
+describe('B-548 precheck flags', () => {
+    const pc = (args: string[], current?: Parameters<typeof precheckFromCommand>[1]) => precheckFromCommand(parseAutoArgs(['edit', 'n', ...args]), current);
+    it('builds a shell or argv precheck with cwd, timeout and output', () => {
+        expect(pc([])).toBeUndefined();
+        expect(pc(['--precheck-shell', 'test -s inbox.json', '--precheck-timeout', '90s', '--precheck-output', '--precheck-cwd', '/w']))
+            .toEqual({ shell: 'test -s inbox.json', cwd: '/w', timeoutMs: 90_000, includeOutput: true });
+        expect(pc(['--precheck-argv', '["./has-new","--since","5m"]'])).toEqual({ command: ['./has-new', '--since', '5m'] });
+        expect(pc(['--no-precheck'])).toBeNull();
+    });
+    it('adjusts the current precheck on edit and rejects ambiguous or invalid input', () => {
+        expect(pc(['--precheck-timeout', '2m'], { shell: 'x', includeOutput: true })).toEqual({ shell: 'x', includeOutput: true, timeoutMs: 120_000 });
+        expect(() => pc(['--precheck-timeout', '2m'])).toThrow('need a precheck');
+        expect(() => pc(['--precheck-shell', 'x', '--precheck-argv', '["y"]'])).toThrow('only one');
+        expect(() => pc(['--no-precheck', '--precheck-shell', 'x'])).toThrow('cannot be combined');
+        expect(() => pc(['--precheck-argv', 'not json'])).toThrow('JSON array');
+        expect(() => pc(['--precheck-argv', '[]'])).toThrow('non-empty');
+        expect(() => pc(['--precheck-shell', 'x', '--precheck-timeout', '11m'])).toThrow('between 1s and 10m');
+        expect(() => pc(['--precheck-shell', '   '])).toThrow('Invalid precheck');
+    });
+    it('documents and describes the precheck', () => {
+        for (const word of ['--precheck-shell', '--precheck-argv', '--precheck-output', '--no-precheck', 'VH_AUTOMATION_PAYLOAD', '×N']) expect(AUTO_HELP).toContain(word);
+        expect(describePrecheck({ shell: 'test -s x', timeoutMs: 5000, includeOutput: true })).toBe('sh: test -s x  (timeout 5s, output → prompt)');
     });
 });

@@ -987,6 +987,23 @@ so a run id is never spawned twice across restarts; an unknown launch outcome is
 reported `failed` with attention instead of retried. Exit codes of `fire --wait`:
 `0` done, `2` wait timed out, `3` failed / expired / cancelled / skipped.
 
+**Precheck (B-548).** An automation may carry `precheck: { command: string[] | shell: string,
+cwd?, timeoutMs? (default 60000, max 600000), includeOutput? }` on create / update (`null`
+removes it; an update without the key keeps it). The server stores it inside the `action`
+JSON column as a gate wrapper and always returns `automation.precheck` (null when none), so
+clients detect an older server by the missing key — `very-happy auto` / MCP create such an
+automation paused, verify the echo, then resume or delete it. Daemons announce
+`capabilities: ['precheck']` on `POST /v1/automations/claim`; a precheck run is never handed
+to a daemon without it and is recorded `skipped` / `error: precheck_unsupported_cli` with
+attention. A capable daemon runs the precheck (own process group; timeout kills the group)
+before the action: exit 0 runs it (stdout appended to a spawn/send prompt with
+`includeOutput`, `VH_AUTOMATION_PRECHECK_OUTPUT` for scripts), anything else reports
+`status: skipped` (daemon-only, with `claimId`) and `error` `precheck_failed` /
+`precheck_timeout` / `precheck_error` (the last two with attention). Consecutive skips of one
+automation's **scheduled** runs with the same reason (including `previous_run_active`; `fire` and `manual` runs never fold) fold into the
+newest run — the older row is deleted, `run.occurrenceCount` grows and the attention state is
+inherited, so a repeated reason flags once. Design: [`specs/2026-10-automation-precheck.md`](../specs/2026-10-automation-precheck.md).
+
 `very-happy auto skill` prints the official skill; `very-happy teams install
 --host … --apply` materializes it next to the Teams skill at
 `~/.local/share/very-happy/skills/very-happy-automations/SKILL.md` (`very-happy

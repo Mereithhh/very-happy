@@ -9,11 +9,13 @@ import {
   AUTOMATION_MAX_INTERVAL_MS,
   AUTOMATION_MIN_INTERVAL_MS,
   AUTOMATION_NAME_PATTERN,
+  AUTOMATION_PRECHECK_MAX_TIMEOUT_MS,
   AutomationCreateSchema,
   AutomationUpdateSchema,
   type Automation,
   type AutomationAction,
   type AutomationCreate,
+  type AutomationPrecheck,
   type AutomationTrigger,
   type AutomationUpdate,
 } from '@slopus/happy-wire';
@@ -24,6 +26,8 @@ export const ACTION_KINDS = ['spawn', 'send', 'script'] as const;
 /** mirrors the CLI's SPAWN_AGENTS / ALLOWED_SPAWN_PERMISSION_MODES (the daemon is the enforcer) */
 export const SPAWN_AGENTS = ['claude', 'codex', 'pi', 'gemini', 'openclaw'] as const;
 export const SPAWN_PERMISSION_MODES = ['', 'default', 'acceptEdits', 'plan', 'yolo', 'bypassPermissions'] as const;
+/** B-548: a precheck is one shell line or an argv (split like the script command) */
+export const PRECHECK_MODES = ['shell', 'argv'] as const;
 
 export interface AutomationDraft {
   name: string;
@@ -51,6 +55,15 @@ export interface AutomationDraft {
   concurrency: 'skip' | 'queue';
   /** "6h", "30m" */
   maxRuntime: string;
+  /** B-548 optional gate before the action */
+  precheckEnabled: boolean;
+  precheckMode: (typeof PRECHECK_MODES)[number];
+  /** the shell line, or an argv line (see splitArgv) */
+  precheckCommand: string;
+  precheckCwd: string;
+  /** "60s", "2m" — blank = daemon default (60s) */
+  precheckTimeout: string;
+  precheckIncludeOutput: boolean;
 }
 
 export function localTimeZone(): string {
@@ -84,6 +97,12 @@ export function emptyDraft(over: Partial<AutomationDraft> = {}): AutomationDraft
     scriptCwd: '',
     concurrency: 'skip',
     maxRuntime: '',
+    precheckEnabled: false,
+    precheckMode: 'shell',
+    precheckCommand: '',
+    precheckCwd: '',
+    precheckTimeout: '',
+    precheckIncludeOutput: false,
     ...over,
   };
 }
@@ -264,6 +283,15 @@ export function draftFromAutomation(a: Automation): AutomationDraft {
     d.scriptCommand = joinArgv(act.command);
     d.scriptCwd = act.cwd ?? '';
   }
+  const pc = a.precheck;
+  if (pc) {
+    d.precheckEnabled = true;
+    d.precheckMode = pc.shell !== undefined ? 'shell' : 'argv';
+    d.precheckCommand = pc.shell ?? joinArgv(pc.command ?? []);
+    d.precheckCwd = pc.cwd ?? '';
+    d.precheckTimeout = pc.timeoutMs ? formatDuration(pc.timeoutMs) : '';
+    d.precheckIncludeOutput = pc.includeOutput === true;
+  }
   return d;
 }
 
@@ -300,7 +328,26 @@ export function validateDraft(d: AutomationDraft): DraftErrors {
     const ms = parseDuration(d.maxRuntime);
     if (ms === null || ms < 60_000 || ms > 7 * 86_400_000) e.maxRuntime = 'maxRuntime';
   }
+  if (d.precheckEnabled) {
+    if (d.precheckMode === 'shell' ? !d.precheckCommand.trim() : !splitArgv(d.precheckCommand)?.length) e.precheckCommand = 'precheckCommand';
+    if (d.precheckTimeout.trim()) {
+      const ms = parseDuration(d.precheckTimeout);
+      if (ms === null || ms < 1_000 || ms > AUTOMATION_PRECHECK_MAX_TIMEOUT_MS) e.precheckTimeout = 'precheckTimeout';
+    }
+  }
   return e;
+}
+
+/** B-548: the precheck the draft describes, or null when the gate is off */
+export function precheckFromDraft(d: AutomationDraft): AutomationPrecheck | null {
+  if (!d.precheckEnabled) return null;
+  const timeoutMs = d.precheckTimeout.trim() ? parseDuration(d.precheckTimeout) : null;
+  return {
+    ...(d.precheckMode === 'shell' ? { shell: d.precheckCommand.trim() } : { command: splitArgv(d.precheckCommand) ?? [] }),
+    ...(d.precheckCwd.trim() ? { cwd: d.precheckCwd.trim() } : {}),
+    ...(timeoutMs ? { timeoutMs } : {}),
+    ...(d.precheckIncludeOutput ? { includeOutput: true } : {}),
+  };
 }
 
 export function triggerFromDraft(d: AutomationDraft): AutomationTrigger {
@@ -357,6 +404,8 @@ export function buildCreate(d: AutomationDraft): BuildResult<AutomationCreate> {
     ...(d.description.trim() ? { description: d.description.trim() } : {}),
     ...(maxRuntimeMs ? { maxRuntimeMs } : {}),
   };
+  const precheck = precheckFromDraft(d);
+  if (precheck) body.precheck = precheck;
   const parsed = AutomationCreateSchema.safeParse(body);
   if (!parsed.success) return { ok: false, errors: { name: 'schema' } };
   return { ok: true, body: parsed.data };
@@ -380,9 +429,23 @@ export function buildUpdate(d: AutomationDraft, current: Automation): BuildResul
   if (d.concurrency !== current.concurrency) body.concurrency = d.concurrency;
   const maxRuntimeMs = d.maxRuntime.trim() ? parseDuration(d.maxRuntime) : null;
   if (maxRuntimeMs && maxRuntimeMs !== current.maxRuntimeMs) body.maxRuntimeMs = maxRuntimeMs;
+  // B-548: only a changed precheck is sent (null removes it); `current.precheck` is absent on older servers = none.
+  const precheck = precheckFromDraft(d);
+  if (!samePrecheck(precheck, current.precheck ?? null)) body.precheck = precheck;
   const parsed = AutomationUpdateSchema.safeParse(body);
   if (!parsed.success) return { ok: false, errors: { name: 'schema' } };
   return { ok: true, body: parsed.data, changed: Object.keys(body).length > 1 };
+}
+
+function samePrecheck(a: AutomationPrecheck | null, b: AutomationPrecheck | null): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.shell === b.shell &&
+    JSON.stringify(a.command ?? null) === JSON.stringify(b.command ?? null) &&
+    (a.cwd ?? null) === (b.cwd ?? null) &&
+    (a.timeoutMs ?? null) === (b.timeoutMs ?? null) &&
+    (a.includeOutput === true) === (b.includeOutput === true)
+  );
 }
 
 function sameTrigger(a: AutomationTrigger, b: AutomationTrigger): boolean {

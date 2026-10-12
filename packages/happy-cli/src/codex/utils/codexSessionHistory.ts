@@ -170,7 +170,7 @@ function parseTimestamp(raw: unknown): number | null {
 
 /** Codex prepends the AGENTS.md text and an environment block to the first
  *  user turn as separate user messages. They are harness, not the prompt. */
-function isHarnessUserText(text: string): boolean {
+export function isHarnessUserText(text: string): boolean {
     const t = text.trimStart();
     return t.startsWith('# AGENTS.md instructions')
         || t.startsWith('<environment_context>')
@@ -179,7 +179,7 @@ function isHarnessUserText(text: string): boolean {
         || t.startsWith('<recommended_plugins>');
 }
 
-function stripHarnessBlocks(text: string): string {
+export function stripHarnessBlocks(text: string): string {
     return text
         .replace(/<(environment_context|user_instructions|INSTRUCTIONS|turn_aborted|system-reminder|recommended_plugins)>[\s\S]*?<\/\1>/g, ' ')
         .replace(/^# AGENTS\.md instructions[^\n]*\n/m, ' ');
