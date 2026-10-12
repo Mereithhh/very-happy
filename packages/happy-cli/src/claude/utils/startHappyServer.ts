@@ -22,7 +22,7 @@ import { randomUUID } from "node:crypto";
 import { CLIPBOARD_MAX_BYTES, CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, CLIPBOARD_TOOL_TITLE } from "@/clipboard/limits";
 import { ASSISTANT_TOOL_NAMES, registerAssistantTools } from "@/assistant/assistantTools";
 import {
-    PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE,
+    PREVIEW_DOWNLOAD_PARAM_DESCRIPTION, PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE,
     REPORT_PROGRESS_TOOL_NAME,
 } from "./agentGuidance";
 import {
@@ -31,12 +31,13 @@ import {
 } from "./boardReport";
 import { registerReportProgressTool } from "./reportProgressTool";
 import { checkPreviewPath } from "./previewPath";
+import { checkDownloadTarget } from "./downloadTarget";
 
 interface HappyMcpHandlers {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
     copyToClipboard: (text: string) => Promise<{ delivered: boolean; truncated: boolean; totalBytes: number; error?: string }>;
     /** B-131: ask the user's web clients to open a file preview. */
-    openPreview: (path: string, mode: 'file' | 'diff') => Promise<{ delivered: boolean; resolved?: string; error?: string }>;
+    openPreview: (path: string, mode: 'file' | 'diff', download?: boolean) => Promise<{ delivered: boolean; resolved?: string; error?: string; note?: string }>;
     /** B-132: claude self-reports progress onto the task board. */
     reportProgress: (progress: string, attention: BoardAttention, phase?: BoardPhase) => Promise<{ accepted: boolean; error?: string }>;
 }
@@ -141,17 +142,22 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
             path: z.string().describe('Absolute path (or ~/…) of the file to show the user'),
             mode: z.enum(['file', 'diff']).optional()
                 .describe("'file' (default) renders the file; 'diff' is reserved and currently falls back to 'file'"),
+            // B-562: optional; old web clients ignore the resulting intent and just preview.
+            download: z.boolean().optional().describe(PREVIEW_DOWNLOAD_PARAM_DESCRIPTION),
         },
     }, async (args) => {
-        const response = await handlers.openPreview(args.path, args.mode ?? 'file');
+        const response = await handlers.openPreview(args.path, args.mode ?? 'file', args.download === true);
         logger.debug('[happyMCP] open_preview response:', response);
         if (response.delivered) {
+            const target = response.resolved ?? args.path;
             return {
                 content: [{
                     type: 'text',
                     // 明说不保证用户看到了——否则 claude 会基于「已预览」做后续推断（spec 风险 8）
-                    text: `Asked the user's open web client(s) to preview ${response.resolved ?? args.path}. `
-                        + 'This does not confirm they looked at it.',
+                    text: (args.download === true
+                        ? `Asked the user's open web client(s) to offer ${target} for download. This does not confirm they downloaded it.`
+                        : `Asked the user's open web client(s) to preview ${target}. This does not confirm they looked at it.`)
+                        + (response.note ? ` ${response.note}` : ''),
                 }],
                 isError: false,
             };
@@ -196,16 +202,19 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
     const selfReportState = options?.selfReportState ?? createSelfReportState();
 
     const handlers: HappyMcpHandlers = {
-        openPreview: async (path: string, mode: 'file' | 'diff') => {
+        openPreview: async (path: string, mode: 'file' | 'diff', download = false) => {
             // 这道闸必须在 CLI 侧（模型请求刚落地时），不能放 web——web 可绕过。
             const verdict = checkPreviewPath(path);
             if (verdict.deniedReason) {
                 logger.debug(`[happyMCP] open_preview denied: ${verdict.deniedReason}`);
                 return { delivered: false, error: verdict.deniedReason };
             }
+            // B-562: a download must be one existing regular file (directories → zip first).
+            const target = download ? await checkDownloadTarget(verdict.resolved) : null;
+            if (target?.error) return { delivered: false, error: target.error };
             try {
-                const result = client.pushFilePreview(verdict.resolved, mode);
-                return { delivered: result.delivered, resolved: verdict.resolved, error: result.error };
+                const result = client.pushFilePreview(verdict.resolved, mode, download ? 'download' : undefined);
+                return { delivered: result.delivered, resolved: verdict.resolved, error: result.error, note: target?.note ?? undefined };
             } catch (error) {
                 return { delivered: false, error: String(error) };
             }

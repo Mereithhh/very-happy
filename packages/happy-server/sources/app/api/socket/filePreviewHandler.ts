@@ -41,12 +41,21 @@ export interface FilePreviewPushEvent {
     enc?: boolean;
     mode?: FilePreviewMode;
     terminalId?: string;
+    /** B-562: the user should get the file (web shows a download button). */
+    intent?: unknown;
 }
 
 /** Unknown modes are normalized to 'file' rather than passed through, so a new
  *  CLI cannot make an old/new web client branch on a mode it does not know. */
 function normalizeMode(mode: unknown): FilePreviewMode {
     return mode === 'diff' ? 'diff' : 'file';
+}
+
+/** B-562: only the known intent is forwarded; anything else OMITS the key, so
+ *  the relayed event keeps the exact pre-B-562 shape for plain previews and an
+ *  unknown future value can never reach a client that would branch on it. */
+function intentField(intent: unknown): { intent?: 'download' } {
+    return intent === 'download' ? { intent: 'download' } : {};
 }
 
 export function filePreviewHandler(
@@ -88,6 +97,7 @@ export function filePreviewHandler(
             payload: data.payload,
             enc: data.enc === true,
             mode: normalizeMode(data.mode),
+            ...intentField(data.intent),
         });
         await recordToolHistory(userId, { ...source, ...terminal }, {
             kind: 'preview',

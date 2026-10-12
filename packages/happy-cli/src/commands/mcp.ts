@@ -34,7 +34,8 @@ import { CLIPBOARD_MAX_BYTES, CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, C
 import { registerAssistantSessionTools, type AssistantToolRegistrar } from '@/assistant/assistantTools';
 import { logger } from '@/ui/logger';
 import { checkPreviewPath } from '@/claude/utils/previewPath';
-import { PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE } from '@/claude/utils/agentGuidance';
+import { PREVIEW_DOWNLOAD_PARAM_DESCRIPTION, PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE } from '@/claude/utils/agentGuidance';
+import { checkDownloadTarget } from '@/claude/utils/downloadTarget';
 import { resolveMcpTerminalId, resolveMcpToolSurface, TERMINAL_TITLE_TOOL_NAME, type McpToolSurface } from './mcpToolSurface';
 import { TerminalTitleSuggestRequestSchema } from '@/terminal/terminalTitleSuggest';
 import { suggestTitleForPrompt } from '@/claude/utils/titleGenerator';
@@ -94,14 +95,21 @@ export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToo
             inputSchema: {
                 path: z.string().min(1).describe('Absolute path or path relative to the current working directory'),
                 mode: z.enum(['file', 'diff']).optional().describe("'file' (default) previews the file; 'diff' is reserved and currently falls back to 'file'"),
+                download: z.boolean().optional().describe(PREVIEW_DOWNLOAD_PARAM_DESCRIPTION),
             },
         }, async (args) => {
             const verdict = checkPreviewPath(args.path);
             if (verdict.deniedReason) return { content: [{ type: 'text' as const, text: verdict.deniedReason }], isError: true };
-            const result = await pushFilePreviewViaDaemon(terminalId, verdict.resolved, args.mode ?? 'file');
+            const download = args.download === true;
+            const target = download ? await checkDownloadTarget(verdict.resolved) : null;
+            if (target?.error) return { content: [{ type: 'text' as const, text: target.error }], isError: true };
+            const result = await pushFilePreviewViaDaemon(terminalId, verdict.resolved, args.mode ?? 'file', download ? 'download' : undefined);
+            const note = target?.note ? ` ${target.note}` : '';
             return {
                 content: [{ type: 'text' as const, text: result.delivered
-                    ? `Queued a preview request for ${verdict.resolved}. This does not confirm that a browser opened it.`
+                    ? (download
+                        ? `Queued a download request for ${verdict.resolved}. This does not confirm that a browser downloaded it.${note}`
+                        : `Queued a preview request for ${verdict.resolved}. This does not confirm that a browser opened it.`)
                     : `Failed to request preview: ${result.error || 'unknown error'}` }],
                 isError: !result.delivered,
             };

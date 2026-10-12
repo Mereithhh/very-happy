@@ -53,7 +53,7 @@ describe('native pi terminal tools', () => {
             await tools.get('change_title').execute('2', { title: 'Pi task' });
             expect(title).toHaveBeenCalledWith('term_1', 'Pi task', false);
             await tools.get('open_preview').execute('3', { path: 'notes.md', mode: 'diff' });
-            expect(preview).toHaveBeenCalledWith('term_1', resolve('notes.md'), 'diff');
+            expect(preview).toHaveBeenCalledWith('term_1', resolve('notes.md'), 'diff', undefined);
 
             await expect(tools.get('open_preview').execute('4', { path: '~/.ssh/id_ed25519' })).rejects.toThrow();
             expect(preview).toHaveBeenCalledTimes(1);

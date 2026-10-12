@@ -72,7 +72,7 @@ describe('auto-discovered native Pi tools', () => {
             await runtime.tools.get('copy_to_clipboard').execute('1', { text: 'native pi' });
             expect(clipboard).toHaveBeenCalledWith('native pi', 'term_native');
             await runtime.tools.get('open_preview').execute('2', { path: 'notes.md' });
-            expect(preview).toHaveBeenCalledWith('term_native', join(home, 'notes.md'), 'file');
+            expect(preview).toHaveBeenCalledWith('term_native', join(home, 'notes.md'), 'file', undefined);
             await runtime.tools.get('change_title').execute('3', { title: 'My terminal' });
             expect(title).toHaveBeenCalledWith('term_native', 'My terminal', false);
             await expect(runtime.tools.get('open_preview').execute('4', { path: '~/.ssh/id_ed25519' })).rejects.toThrow();

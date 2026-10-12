@@ -38,12 +38,24 @@ describe('AGENT_GUIDANCE', () => {
         expect(AGENT_GUIDANCE).toContain(`mcp__happy__${REPORT_PROGRESS_TOOL_NAME}`);
     });
 
+    it('B-562: 告诉 agent 交付文件用 download: true，目录先打包', () => {
+        expect(AGENT_GUIDANCE).toContain('download: true');
+        expect(AGENT_GUIDANCE).toMatch(/Zip a directory first/);
+    });
+
     it('写的是判断边界而不是硬规则（避免 claude 在不合适的场合硬调，spec 风险 4）', () => {
         expect(AGENT_GUIDANCE).toMatch(/Judgement|judgement/);
     });
 });
 
 describe('工具描述同源（B-130 D2）', () => {
+    it('B-562: 三处注册点都声明了可选的 download 参数（stdio bridge 不声明会被 SDK 剥掉）', () => {
+        // reportProgressTool.ts registers report_progress only — no open_preview there.
+        for (const rel of REGISTRATION_POINTS.filter((r) => r !== 'claude/utils/reportProgressTool.ts')) {
+            expect(read(rel), rel).toMatch(/download: z\.boolean\(\)\.optional\(\)\.describe\(PREVIEW_DOWNLOAD_PARAM_DESCRIPTION\)/);
+        }
+    });
+
     it('三处注册点都不内联描述字面量，只引用共享常量', () => {
         // 判据：拿每个描述的头 40 个字符当指纹，它只应出现在常量定义处，
         // 不应出现在任何注册点文件里。

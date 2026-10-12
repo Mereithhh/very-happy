@@ -83,7 +83,7 @@ export interface ClientToServerEvents {
   // `payload` is the file's ABSOLUTE PATH (not its contents), encrypted with the
   // session key when `enc` is true. The web client reads the file itself over the
   // existing fs-read RPC — that keeps this relay tiny and adds no new file access.
-  'file-preview-push': (data: { payload: string, enc?: boolean, mode?: 'file' | 'diff' }) => void,
+  'file-preview-push': (data: { payload: string, enc?: boolean, mode?: 'file' | 'diff', intent?: 'download' }) => void,
   'update-metadata': (data: { sid: string, expectedVersion: number, metadata: string }, cb: (answer: {
     // B-307: the server has always named account-resource refusals here
     // (`<resource>_rate_quota_exceeded`); this side just never declared it, so

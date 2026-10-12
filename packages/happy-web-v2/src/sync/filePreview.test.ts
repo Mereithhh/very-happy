@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     MAX_PREVIEW_PATH_CHARS,
+    normalizePreviewIntent,
     normalizePreviewMode,
     normalizePreviewPath,
     resolvePreviewTarget,
@@ -63,5 +64,14 @@ describe('resolvePreviewTarget', () => {
             .toEqual({ ok: false, reason: 'no-source' });
         expect(resolvePreviewTarget({ sourceType: 'session' }, lookup))
             .toEqual({ ok: false, reason: 'no-source' });
+    });
+});
+
+describe('B-562 normalizePreviewIntent', () => {
+    it('only the download intent survives; absent/unknown values are a plain preview', () => {
+        expect(normalizePreviewIntent('download')).toBe('download');
+        for (const v of [undefined, null, '', 'Download', 'future', 1, true, { kind: 'download' }]) {
+            expect(normalizePreviewIntent(v)).toBeUndefined();
+        }
     });
 });

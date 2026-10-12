@@ -33,6 +33,8 @@ import { storage, useMachine } from '@/sync/storage';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { onFsPreviewOpen, type FsPreviewRequest } from '@/sync/filePreviewOpen';
 import { FsFileViewer } from './FsFileViewer';
+import { setDownloadIntent } from './downloadIntent';
+import { currentAutoDownloadEnv, shouldAutoDownload } from './fileDownload';
 import './fsbrowser.css';
 import './filepreview.css';
 
@@ -128,6 +130,11 @@ export function FsPreviewOverlay() {
     const locationRef = useRef(location);
     locationRef.current = location;
     useEffect(() => onFsPreviewOpen((next) => {
+        // B-562: record the download intent BEFORE docking/following, so the
+        // viewer that mounts for this file (side panel or this overlay) finds it.
+        if (next.intent === 'download') {
+            setDownloadIntent({ machineId: next.machineId, path: next.path, auto: shouldAutoDownload(currentAutoDownloadEnv()) });
+        }
         // Dock into the resizable side panel when there is a verified context,
         // so the conversation stays usable next to the preview. The panel does
         // not take focus: typing in the composer keeps working. The modal below
