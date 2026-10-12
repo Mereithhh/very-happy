@@ -1,6 +1,6 @@
 # 终端回看跨重启保留（scrollback persistence）
 
-> 状态：Draft
+> 状态：Final（主 agent 2026-10-12 定稿：review 四项已修；默认开启）
 > 日期：2026-10-12 ｜ 关联 backlog：B-550 ｜ 前身：`2026-08-terminal-tombstones.md`（B-149，非目标里留的「原 L3」）、`2026-08-terminal-auto-restore.md`（B-150）｜ 参考：Orca `daemon-pty-checkpoint-persistence.ts` / `terminal-scrollback-limits.ts`（只读）
 
 ## 背景
