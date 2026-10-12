@@ -367,6 +367,15 @@ export const DaemonStateSchema = z.object({
     detectedAt: z.number(),
   }).optional(),
   /**
+   * B-549 capability flag: this daemon answers `history-search` (full-text
+   * search over the machine's Claude Code / Codex history, indexed locally).
+   * Same trust rule (`detectedAt >= startedAt`); old webs ignore it.
+   */
+  historySearch: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
+  /**
    * B-486: can web terminals on this machine be durable? `tmuxAvailable:
    * false` ⇒ every new terminal is a direct shell that dies with the daemon,
    * so the web tells the user to install tmux. Same trust rule

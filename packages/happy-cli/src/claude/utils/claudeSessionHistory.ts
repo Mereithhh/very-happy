@@ -225,7 +225,7 @@ export function parseClaudeHistoryHead(
 /** Drop harness envelopes (`<system-reminder>`, `<task-notification>`,
  *  `<command-name>`…) that Claude Code prepends to a typed prompt, so the
  *  listing shows what the human wrote. */
-function stripHarnessTags(text: string): string {
+export function stripHarnessTags(text: string): string {
     return text
         .replace(/<(system-reminder|task-notification|command-message|command-name|command-args|local-command-stdout|local-command-caveat)>[\s\S]*?<\/\1>/g, ' ')
         .replace(/<\/?(system-reminder|task-notification)>/g, ' ');
