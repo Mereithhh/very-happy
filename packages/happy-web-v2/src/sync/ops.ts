@@ -14,6 +14,7 @@ import type { MachineMetadata, Metadata } from './storageTypes';
 import { ClaudeAuthStateSchema, type ClaudeAuthState } from './claudeAuth';
 import { commitSessionResume } from './sessionResumeFlow';
 import { parseClaudeHistory, parseCodexHistory, type ClaudeHistoryEntry, type CodexHistoryEntry } from '@/screens/sessions/claudeHistoryImport';
+import { parseHistorySearch, type HistorySearchPayload } from '@/screens/sessions/historySearch';
 
 // Strict type definitions for all operations
 
@@ -906,6 +907,29 @@ export async function machineImportCodexSession(options: {
         return { type: 'error', errorMessage: 'Unexpected import response' };
     } catch (error) {
         return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+/** B-549: full-text search over a machine's Claude Code / Codex history.
+ *  The daemon indexes the transcripts locally and always answers at once —
+ *  while a pass is running it says `indexing` (with progress) and the caller
+ *  polls. Callers must check `historySearchSupported(daemonState)` first (an
+ *  unregistered RPC makes the server wait before failing). Never throws. */
+export async function machineHistorySearch(
+    machineId: string,
+    params: { op?: 'search' | 'status' | 'clear'; query?: string; limit?: number; agent?: 'claude' | 'codex' },
+): Promise<({ ok: true } & HistorySearchPayload) | { ok: false; message?: string }> {
+    try {
+        await ensureMachineEncryption(machineId);
+        const result = await apiSocket.machineRPC<unknown, typeof params>(
+            machineId, 'history-search', params, { timeoutMs: 20_000 },
+        );
+        // Iron rule 17: a throwing handler resolves as `{ error }`.
+        const error = (result as { error?: unknown } | null)?.error;
+        if (typeof error === 'string' && error) return { ok: false, message: error };
+        return { ok: true, ...parseHistorySearch(result) };
+    } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }
 }
 
