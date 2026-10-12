@@ -24,9 +24,14 @@ export class CodexPermissionHandler extends BasePermissionHandler {
     // Exact tool names that should always be auto-approved. Include the bare
     // form (used by Codex elicitation messages like `tool "change_title"`)
     // and the MCP-qualified form for defense in depth.
+    // B-556: set_status only writes this session's own board status line —
+    // same trust as change_title; an approval prompt per status would park
+    // the session in "waiting for you" every phase change.
     private static readonly ALWAYS_AUTO_APPROVE_NAMES: ReadonlySet<string> = new Set([
         'change_title',
         'mcp__happy__change_title',
+        'set_status',
+        'mcp__happy__set_status',
     ]);
 
     // Tool-call IDs that should auto-approve when they exactly match one of
@@ -35,6 +40,7 @@ export class CodexPermissionHandler extends BasePermissionHandler {
     // contain `change_title` as a substring would be silently approved.
     private static readonly ALWAYS_AUTO_APPROVE_ID_PREFIXES: readonly string[] = [
         'change_title',
+        'set_status',
     ];
 
     constructor(session: ApiSessionClient) {

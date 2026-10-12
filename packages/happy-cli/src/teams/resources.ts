@@ -63,7 +63,7 @@ export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport
     if (mode === 'yolo') mode = 'bypassPermissions';
     if (!['default','plan','acceptEdits','bypassPermissions'].includes(mode)) mode = 'default';
     if (mode === 'bypassPermissions') return;
-    if (['read','ls','find','grep','team_inspect','change_title','report_progress'].includes(event.toolName)) return;
+    if (['read','ls','find','grep','team_inspect','change_title','report_progress','set_status'].includes(event.toolName)) return;
     if (mode === 'plan') return {block:true,reason:'Plan mode allows read-only tools'};
     if (mode === 'acceptEdits' && ['write','edit'].includes(event.toolName)) return;
     try {
