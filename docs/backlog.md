@@ -20,7 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-562 | **AI 生成的文件在网页端直接下载**：`open_preview` 加 `download` 意图，任意类型文件（zip/docx/二进制等）都能推到网页并一键下载；聊天里的 open_preview 工具卡带「下载」按钮（翻历史也能下）；不可预览类型显示大号下载按钮而不只是「二进制文件」占位 | feat | Owner 2026-10-13（「AI 生成的文件希望直接在网页端下载，现在只能先推到中间位置」） | doing | 现状：查看器头部已有下载按钮（50 MiB，B-file-preview-actions），但 agent 不知道可用于非预览文件、推送是一次性的、binary 态无明显入口。兼容：旧 web 忽略新字段仍可预览；工具卡下载按钮纯 web，对旧 CLI 的历史调用也生效 |
+| B-562 | **AI 生成的文件在网页端直接下载**：`open_preview` 加 `download` 意图，任意类型文件（zip/docx/二进制等）都能推到网页并一键下载；聊天里的 open_preview 工具卡带「下载」按钮（翻历史也能下）；不可预览类型显示大号下载按钮而不只是「二进制文件」占位 | feat | Owner 2026-10-13（「AI 生成的文件希望直接在网页端下载，现在只能先推到中间位置」） | doing | 实现完成，见 PR；spec `specs/2026-10-file-download-delivery.md`。CLI `open_preview` `download` 参数（目录拒绝并提示 zip，>50 MiB 提示压缩）；server 只转发 `intent:'download'`；web 跟随会话 + 顶部主下载按钮（仅桌面自动下载）、聊天行「打开/下载」、不可预览态大按钮；可执行类型下载用 octet-stream；web 镜像凭据路径规则。留真机：iOS Safari/PWA/Android 下载 |
 | B-561 | **看板/侧栏子代理活性计数恒为 0**：`useBoardItems.ts` 把新→旧排序的消息传给要求旧→新的 `currentTurnMessages`（铁律 15），子代理在跑时计数仍为 0 | bug | B-553 实现时发现 2026-10-13 | doing | 修复见 PR：新增 `screens/session/transcriptMessages.ts`（新→旧 反转 + 与 ChatList 同一过滤后再切 turn），ChatList 与看板共用；回归测试 `runningSubagentCount.test.ts`。行为变化：在线且当前 turn 有子代理在跑的会话由「空闲/等我看」改判「在跑」 |
 | B-560 | **B-548 收尾：公开文档页 `/docs/automations` 同步 precheck，Web 表单/详情/运行列表 ×N 真浏览器验收（1280/390 × 明暗）** | debt | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | B-548 实现时未做的两项 |
 | B-559 | **PWA 应用图标未读角标 + 通知「标为未读」**：未读数同步 `navigator.setAppBadge`；inbox 条目可标为未读（与跨设备 seen 取 AND） | ux | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | 实现完成，见 PR；spec `specs/2026-10-pwa-app-badge.md`。只改 web + push-sw.js 追加；SW 推送时估计 +1（页面 10s 内上报则跳过），可见时强制重写；登出清角标/SW 计数/本机标记；iOS 主屏与 Android 留真机 |
