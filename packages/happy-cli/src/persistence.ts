@@ -115,6 +115,15 @@ interface Settings {
   terminalAutoRestoreMax?: number
   terminalAutoRestoreWindowHours?: number
   /**
+   * B-550: checkpoint each web terminal's scrollback to
+   * `<HAPPY_HOME_DIR>/terminal-scrollback/` (0600, ≤512KB each, 7-day TTL) and
+   * replay it above the terminal when it is rebuilt (auto-restore / ↻).
+   * Absent → on (terminal/scrollbackArchive.ts SCROLLBACK_PERSIST_DEFAULT).
+   * `false` stops checkpointing and DELETES the directory. Machine-local, read
+   * synchronously by terminal/scrollbackCheckpoint.ts (re-read every 60s).
+   */
+  terminalScrollbackPersist?: boolean
+  /**
    * B-478: where Claude Code / Codex keep their conversations on this machine
    * when the daemon must not trust its own environment or the login shell
    * (`~` allowed). Normally unset: the daemon asks the user's login shell for
