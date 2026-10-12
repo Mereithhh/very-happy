@@ -11,6 +11,8 @@ import {
     shouldReadCodexRateLimits,
     CODEX_RATE_LIMIT_READ_MIN_INTERVAL_MS,
     RATE_LIMIT_OBSERVED_REFRESH_MS,
+    RATE_LIMIT_MAX_RESET_AHEAD_MS,
+    RATE_LIMIT_NULL_RESET_MAX_AGE_MS,
 } from './rateLimitWindows';
 
 const NOW = 1_791_800_000_000;
@@ -183,5 +185,38 @@ describe('codex read policy (B-555)', () => {
         expect(isUnsupportedCodexMethodError(new Error('account/rateLimits/read: Invalid request: unknown variant `account/rateLimits/read` (code=-32600)'))).toBe(true);
         expect(isUnsupportedCodexMethodError(new Error('account/rateLimits/read: network error (code=-32000)'))).toBe(false);
         expect(isUnsupportedCodexMethodError(new Error('account/rateLimits/read timed out after 15000ms (id=4)'))).toBe(false);
+    });
+});
+
+describe('plausibility guards (B-555 review)', () => {
+    const DAY = 86_400_000;
+
+    it('treats a reset more than 30 days ahead as unknown (Claude, Codex, stored)', () => {
+        const farSec = Math.round((NOW + RATE_LIMIT_MAX_RESET_AHEAD_MS + DAY) / 1000);
+        const okSec = Math.round((NOW + 29 * DAY) / 1000);
+        const claude = fromClaudeRateLimitInfo({ unifiedWindows: { five_hour: { utilization: 0.1, resetsAt: farSec }, seven_day: { utilization: 0.1, resetsAt: okSec } } }, NOW);
+        expect(claude?.windows.map((w) => w.resetsAt)).toEqual([null, okSec * 1000]);
+        expect(fromCodexRateLimits({ primary: { usedPercent: 1, windowDurationMins: 300, resetsAt: farSec } }, NOW)?.windows[0].resetsAt).toBeNull();
+        const merged = mergeRateLimits(undefined, { provider: 'claude', observedAt: NOW, windows: [{ kind: 'five_hour', usedPercent: 1, resetsAt: NOW + 40 * DAY, observedAt: NOW }] }, NOW);
+        expect(merged.providers.claude.windows[0].resetsAt).toBeNull();
+    });
+
+    it('drops a reset-less window once its observation is older than 7 days', () => {
+        const old = { kind: 'secondary', usedPercent: 5, resetsAt: null, observedAt: NOW - RATE_LIMIT_NULL_RESET_MAX_AGE_MS - 1 };
+        const fresh = { kind: 'primary', usedPercent: 5, resetsAt: null, observedAt: NOW - RATE_LIMIT_NULL_RESET_MAX_AGE_MS + 1000 };
+        const state = mergeRateLimits({ v: 1, updatedAt: 0, providers: { codex: { observedAt: NOW, windows: [old, fresh] } } },
+            { provider: 'claude', observedAt: NOW, windows: [{ kind: 'five_hour', usedPercent: 1, resetsAt: null, observedAt: NOW }] }, NOW);
+        expect(state.providers.codex.windows.map((w) => w.kind)).toEqual(['primary']);
+    });
+
+    it('drops ratios above 10 (>1000%) and non-finite values instead of reporting them', () => {
+        expect(fromClaudeRateLimitInfo({ unifiedWindows: { five_hour: { utilization: 10.5, resetsAt: 1791826800 } } }, NOW)).toBeNull();
+        expect(fromClaudeRateLimitInfo({ unifiedWindows: { five_hour: { utilization: 10, resetsAt: 1791826800 } } }, NOW)?.windows[0].usedPercent).toBe(1000);
+        expect(fromClaudeRateLimitInfo({ unifiedWindows: { five_hour: { utilization: Infinity } } }, NOW)).toBeNull();
+        expect(fromClaudeRateLimitInfo({ unifiedWindows: { five_hour: { utilization: Number.NaN } } }, NOW)).toBeNull();
+        expect(fromClaudeRateLimitInfo({ status: 'allowed_warning', rateLimitType: 'seven_day_opus', utilization: 42 }, NOW)).toBeNull();
+        expect(fromCodexRateLimits({ primary: { usedPercent: 5000, windowDurationMins: 300, resetsAt: null } }, NOW)).toBeNull();
+        const merged = mergeRateLimits(undefined, { provider: 'claude', observedAt: NOW, windows: [{ kind: 'five_hour', usedPercent: 1500, resetsAt: null, observedAt: NOW }] }, NOW);
+        expect(merged.providers.claude.windows).toEqual([]);
     });
 });

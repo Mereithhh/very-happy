@@ -80,9 +80,25 @@ export function parseRateLimits(daemonState: unknown): ProviderRateLimits[] {
     return out;
 }
 
-/** Windows whose reset already passed describe usage that is gone — hide them. */
+/** A reset further out than this is implausible for any plan window — shown as unknown. */
+export const RATE_LIMIT_MAX_RESET_AHEAD_MS = 30 * 24 * 60 * 60 * 1000;
+/** A window with no reset time is hidden once its observation is this old. */
+export const RATE_LIMIT_NULL_RESET_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * What can still be shown: a reset more than 30 days out becomes "unknown";
+ * a window past its reset (usage gone) or reset-less and observed more than
+ * 7 days ago is hidden. Mirrors the CLI merge rules for data an older or
+ * newer daemon may have written.
+ */
 export function visibleWindows(windows: readonly RateLimitWindow[], now: number): RateLimitWindow[] {
-    return windows.filter((w) => w.resetsAt === null || w.resetsAt > now);
+    const out: RateLimitWindow[] = [];
+    for (const w of windows) {
+        const resetsAt = w.resetsAt !== null && w.resetsAt - now > RATE_LIMIT_MAX_RESET_AHEAD_MS ? null : w.resetsAt;
+        if (resetsAt === null ? now - w.observedAt > RATE_LIMIT_NULL_RESET_MAX_AGE_MS : resetsAt <= now) continue;
+        out.push(resetsAt === w.resetsAt ? w : { ...w, resetsAt });
+    }
+    return out;
 }
 
 export type RateLimitTone = 'normal' | 'warn' | 'danger';

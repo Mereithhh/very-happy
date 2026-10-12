@@ -9,6 +9,7 @@
  * field and Codex rolling updates are sparse, so a shape change must degrade
  * to "nothing to show", never to a throw.
  */
+import { logger } from '@/ui/logger';
 
 export type RateLimitProvider = 'claude' | 'codex';
 
@@ -55,11 +56,43 @@ function round2(value: number): number {
     return Math.round(value * 100) / 100;
 }
 
-/** Unix seconds → ms; tolerates a value that already looks like ms. */
-function epochToMs(value: unknown): number | null {
+/** A reset further out than this is implausible for any plan window — treat as unknown. */
+export const RATE_LIMIT_MAX_RESET_AHEAD_MS = 30 * 24 * 60 * 60_000;
+/** A window with no reset time is dropped once its observation is this old. */
+export const RATE_LIMIT_NULL_RESET_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
+/** Usage beyond this share of a window (1000%) is a unit/shape error, not data. */
+export const RATE_LIMIT_MAX_USED_PERCENT = 1000;
+
+/** ms reset → null when it is implausibly far ahead of `now`. */
+function plausibleReset(resetsAt: number | null, now: number): number | null {
+    if (resetsAt === null) return null;
+    return resetsAt - now > RATE_LIMIT_MAX_RESET_AHEAD_MS ? null : resetsAt;
+}
+
+/** Unix seconds → ms (tolerates a value that already looks like ms); far-future → null. */
+function epochToMs(value: unknown, now: number): number | null {
     const n = finite(value);
     if (n === undefined || n <= 0) return null;
-    return n > 1e12 ? Math.round(n) : Math.round(n * 1000);
+    return plausibleReset(n > 1e12 ? Math.round(n) : Math.round(n * 1000), now);
+}
+
+/** Percent from a provider, or undefined (with a debug line) when it is not plausible data. */
+function plausiblePercent(percent: number | undefined, source: string): number | undefined {
+    if (percent === undefined || percent < 0) return undefined;
+    if (percent > RATE_LIMIT_MAX_USED_PERCENT) {
+        logger.debug(`[rate-limits] dropped ${source}: ${percent}% is outside the plausible range`);
+        return undefined;
+    }
+    return round2(percent);
+}
+
+/** finite() plus a debug line when the provider sent something present but unusable. */
+function finiteOrLog(value: unknown, source: string): number | undefined {
+    const n = finite(value);
+    if (n === undefined && value !== undefined && value !== null) {
+        logger.debug(`[rate-limits] dropped ${source}: non-finite value`);
+    }
+    return n;
 }
 
 const CLAUDE_UNIFIED_KINDS = ['five_hour', 'seven_day', 'seven_day_overage_included'] as const;
@@ -90,12 +123,13 @@ export function fromClaudeRateLimitInfo(info: unknown, now: number): RateLimitRe
         for (const kind of CLAUDE_UNIFIED_KINDS) {
             const w = (unified as Record<string, unknown>)[kind];
             if (!w || typeof w !== 'object') continue;
-            const utilization = finite((w as Record<string, unknown>).utilization);
-            if (utilization === undefined || utilization < 0) continue;
+            const utilization = finiteOrLog((w as Record<string, unknown>).utilization, `claude ${kind}`);
+            const usedPercent = plausiblePercent(utilization === undefined ? undefined : utilization * 100, `claude ${kind}`);
+            if (usedPercent === undefined) continue;
             windows.set(kind, {
                 kind,
-                usedPercent: round2(utilization * 100),
-                resetsAt: epochToMs((w as Record<string, unknown>).resetsAt),
+                usedPercent,
+                resetsAt: epochToMs((w as Record<string, unknown>).resetsAt, now),
                 windowMinutes: CLAUDE_WINDOW_MINUTES[kind],
                 observedAt: now,
             });
@@ -105,9 +139,9 @@ export function fromClaudeRateLimitInfo(info: unknown, now: number): RateLimitRe
     const status = typeof raw.status === 'string' ? raw.status : undefined;
     const topKind = typeof raw.rateLimitType === 'string' ? raw.rateLimitType : undefined;
     if (topKind && topKind !== 'overage') {
-        const utilization = finite(raw.utilization);
-        const usedPercent = utilization !== undefined && utilization >= 0
-            ? round2(utilization * 100)
+        const utilization = finiteOrLog(raw.utilization, `claude ${topKind}`);
+        const usedPercent = utilization !== undefined
+            ? plausiblePercent(utilization * 100, `claude ${topKind}`)
             : status === 'rejected' ? 100 : undefined;
         if (usedPercent !== undefined) {
             const prior = windows.get(topKind);
@@ -116,7 +150,7 @@ export function fromClaudeRateLimitInfo(info: unknown, now: number): RateLimitRe
                 // The limiting window's own number wins only if it is higher —
                 // both describe the same window, the larger is the safer read.
                 usedPercent: prior ? Math.max(prior.usedPercent, usedPercent) : usedPercent,
-                resetsAt: epochToMs(raw.resetsAt) ?? prior?.resetsAt ?? null,
+                resetsAt: epochToMs(raw.resetsAt, now) ?? prior?.resetsAt ?? null,
                 windowMinutes: CLAUDE_WINDOW_MINUTES[topKind],
                 observedAt: now,
             });
@@ -155,13 +189,13 @@ export function fromCodexRateLimits(snapshot: unknown, now: number): RateLimitRe
     for (const slot of ['primary', 'secondary'] as const) {
         const w = raw[slot];
         if (!w || typeof w !== 'object') continue;
-        const usedPercent = finite((w as Record<string, unknown>).usedPercent);
-        if (usedPercent === undefined || usedPercent < 0) continue;
+        const usedPercent = plausiblePercent(finiteOrLog((w as Record<string, unknown>).usedPercent, `codex ${slot}`), `codex ${slot}`);
+        if (usedPercent === undefined) continue;
         const windowMinutes = finite((w as Record<string, unknown>).windowDurationMins);
         windows.push({
             kind: codexKind(windowMinutes, slot),
-            usedPercent: round2(usedPercent),
-            resetsAt: epochToMs((w as Record<string, unknown>).resetsAt),
+            usedPercent,
+            resetsAt: epochToMs((w as Record<string, unknown>).resetsAt, now),
             ...(windowMinutes !== undefined ? { windowMinutes } : {}),
             observedAt: now,
         });
@@ -206,8 +240,28 @@ export function sanitizeRateLimitReport(value: unknown): RateLimitReport | null 
     };
 }
 
+/**
+ * Gone from view: past its reset, or (no reset known) observed too long ago
+ * for the number to mean anything. Run after {@link withPlausibleReset}.
+ */
 function isExpired(window: RateLimitWindow, now: number): boolean {
-    return window.resetsAt !== null && window.resetsAt <= now;
+    if (window.resetsAt === null) return now - window.observedAt > RATE_LIMIT_NULL_RESET_MAX_AGE_MS;
+    return window.resetsAt <= now;
+}
+
+function withPlausibleReset(window: RateLimitWindow, now: number): RateLimitWindow {
+    const resetsAt = plausibleReset(window.resetsAt, now);
+    return resetsAt === window.resetsAt ? window : { ...window, resetsAt };
+}
+
+function keepWindow(window: RateLimitWindow, now: number): RateLimitWindow | null {
+    if (window.usedPercent > RATE_LIMIT_MAX_USED_PERCENT) return null;
+    const normalized = withPlausibleReset(window, now);
+    return isExpired(normalized, now) ? null : normalized;
+}
+
+function keepWindows(windows: readonly RateLimitWindow[], now: number): RateLimitWindow[] {
+    return windows.map((w) => keepWindow(w, now)).filter((w): w is RateLimitWindow => w !== null);
 }
 
 /** Read whatever is currently stored, dropping anything malformed. */
@@ -242,14 +296,12 @@ export function mergeRateLimits(current: unknown, report: RateLimitReport, now: 
         const existing = byKind.get(w.kind);
         if (!existing || w.observedAt >= existing.observedAt) byKind.set(w.kind, w);
     }
-    const windows = [...byKind.values()]
-        .filter((w) => !isExpired(w, now))
-        .slice(0, MAX_WINDOWS_PER_PROVIDER);
+    const windows = keepWindows([...byKind.values()], now).slice(0, MAX_WINDOWS_PER_PROVIDER);
 
     const providers: Record<string, ProviderRateLimits> = {};
     for (const [name, p] of Object.entries(base.providers)) {
         if (name === report.provider) continue;
-        providers[name] = { ...p, windows: p.windows.filter((w) => !isExpired(w, now)) };
+        providers[name] = { ...p, windows: keepWindows(p.windows, now) };
     }
     const newer = !prior || report.observedAt >= prior.observedAt;
     providers[report.provider] = {

@@ -9,6 +9,9 @@ import {
     readMachineRateLimits,
     tightestRateLimit,
     RATE_LIMIT_STALE_AFTER_MS,
+    RATE_LIMIT_MAX_RESET_AHEAD_MS,
+    RATE_LIMIT_NULL_RESET_MAX_AGE_MS,
+    visibleWindows,
 } from './rateLimits';
 
 const NOW = 1_791_800_000_000;
@@ -98,5 +101,25 @@ describe('machine + account selection (B-555)', () => {
         expect(tightestRateLimit([machines[2]], NOW)).toMatchObject({ machineId: 'c', stale: true });
         expect(tightestRateLimit([machines[3]], NOW)).toBeNull();
         expect(tightestRateLimit([], NOW)).toBeNull();
+    });
+});
+
+describe('visibleWindows plausibility (B-555 review)', () => {
+    it('shows a reset more than 30 days ahead as unknown', () => {
+        const [far, ok] = visibleWindows([
+            win('five_hour', 1, { resetsAt: NOW + RATE_LIMIT_MAX_RESET_AHEAD_MS + 1 }),
+            win('seven_day', 1, { resetsAt: NOW + RATE_LIMIT_MAX_RESET_AHEAD_MS }),
+        ] as any, NOW);
+        expect(far.resetsAt).toBeNull();
+        expect(ok.resetsAt).toBe(NOW + RATE_LIMIT_MAX_RESET_AHEAD_MS);
+    });
+
+    it('hides a reset-less window observed more than 7 days ago, including one whose reset was implausible', () => {
+        const out = visibleWindows([
+            win('a', 1, { resetsAt: null, observedAt: NOW - RATE_LIMIT_NULL_RESET_MAX_AGE_MS - 1 }),
+            win('b', 1, { resetsAt: null, observedAt: NOW - RATE_LIMIT_NULL_RESET_MAX_AGE_MS + 1 }),
+            win('c', 1, { resetsAt: NOW + 60 * 86_400_000, observedAt: NOW - RATE_LIMIT_NULL_RESET_MAX_AGE_MS - 1 }),
+        ] as any, NOW);
+        expect(out.map((w) => w.kind)).toEqual(['b']);
     });
 });

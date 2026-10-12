@@ -204,6 +204,7 @@ export class ApiMachineClient {
     private cliUpdateState: CliUpdateState | null = null;
     private cliUpdatePushChain: Promise<void> = Promise.resolve();
     private claudeAuthState: ClaudeAuthState | null = null;
+    private rateLimitPushChain: Promise<void> = Promise.resolve();
     private readonly rateLimitPublisher = new RateLimitPublisher({
         getCurrent: () => this.machine.daemonState?.rateLimits,
         write: (reports) => this.writeRateLimits(reports),
@@ -378,13 +379,6 @@ export class ApiMachineClient {
             .catch((error) => logger.debug('[API MACHINE] Failed to publish CLI update policy:', error));
     }
 
-    /**
-     * B-276: publish the daemon-context Claude auth preflight into daemonState
-     * (same serialized push chain as the CLI update policy). Resolves true when
-     * the server acknowledged the write with our value in it, false otherwise
-     * (rate-limit `result:'error'` is swallowed by updateDaemonState, so the
-     * caller checks the echoed state and re-sends on the next probe).
-     */
     /** B-555: a wrapper's rate-limit observation; written throttled by the publisher. */
     reportRateLimits(report: RateLimitReport): void {
         this.rateLimitPublisher.report(report);
@@ -392,7 +386,10 @@ export class ApiMachineClient {
 
     private writeRateLimits(reports: RateLimitReport[]): Promise<boolean> {
         if (!this.socket?.connected) return Promise.resolve(false);
-        const attempt = this.cliUpdatePushChain
+        // Own chain on purpose: a stuck rate-limit write must never delay the
+        // claudeAuth / cliUpdate publishes. Concurrent writers are safe — the
+        // CAS in updateDaemonState re-runs each handler on version mismatch.
+        const attempt = this.rateLimitPushChain
             .then(() => this.updateDaemonState((current) => {
                 const merged = mergeRateLimitReports(current?.rateLimits, reports, Date.now());
                 return {
@@ -403,10 +400,17 @@ export class ApiMachineClient {
             }))
             .then(() => true)
             .catch((error) => { logger.debug('[API MACHINE] Failed to publish rate limits:', error); return false; });
-        this.cliUpdatePushChain = attempt.then(() => undefined);
+        this.rateLimitPushChain = attempt.then(() => undefined);
         return attempt;
     }
 
+    /**
+     * B-276: publish the daemon-context Claude auth preflight into daemonState
+     * (same serialized push chain as the CLI update policy). Resolves true when
+     * the server acknowledged the write with our value in it, false otherwise
+     * (rate-limit `result:'error'` is swallowed by updateDaemonState, so the
+     * caller checks the echoed state and re-sends on the next probe).
+     */
     setClaudeAuthState(state: ClaudeAuthState): Promise<boolean> {
         this.claudeAuthState = state;
         if (!this.socket?.connected) return Promise.resolve(false);

@@ -1,6 +1,6 @@
 # 订阅额度窗口（Claude 5h / 周 + Codex）显示
 
-> 状态：Draft
+> 状态：Final
 > 日期：2026-10-12 ｜ 关联 backlog：B-555 ｜ 出处：Orca 对照第二批（Orca 读 `api.anthropic.com/api/oauth/usage`，我们不跟）
 
 ## 背景
@@ -61,7 +61,7 @@
   `account/rateLimits/read` 返回 `primary {usedPercent:0, windowDurationMins:300, resetsAt:1791836601}`、
   `secondary {usedPercent:0, windowDurationMins:10080, resetsAt:1792377533}`。usedPercent 是 0–100，resetsAt 是 unix 秒。
 - 结论：只听通知在实测里拿不到任何窗口 → 通知做合并源，另在连接后与每轮结束时调用 `account/rateLimits/read`
-  （节流 ≥10 分钟，方法不存在/报错即本进程停用）。**此调用是否保留由主 agent/Owner 拍板**，实现上它是一个独立调用点，删掉即退化为纯通知。
+  （节流 ≥10 分钟，方法不存在/报错即本进程停用）。**主 agent 已决定保留此调用**（2026-10-12 review）；它是独立调用点，需要时删掉即退化为纯通知。
 
 ## 现状事实（代码已确认）
 
@@ -115,12 +115,15 @@ rateLimits?: {
     `windowDurationMins` 300→`five_hour`、10080→`seven_day`，其他 `window_<mins>m`。
   - `mergeRateLimits(current, provider, report, now)`：按 `kind` 合并，新观测覆盖旧观测；丢弃已过 `resetsAt` 的窗口；
     丢弃形状不合法的旧值（容忍降级 daemon 写过的脏数据）。
+    - 合理性（review 定稿）：resetsAt 超过 now+30 天按 `null` 处理；`resetsAt=null` 的窗口 observedAt 超过 7 天丢弃；
+    比例 >10（>1000%）或非有限数的窗口丢弃并记 debug 日志、不上报。Web `visibleWindows` 对已存数据做同样处理。
   - `rateLimitSignature(state)`：`kind:round(usedPercent):round(resetsAt/60s)` 拼接，用于变化检测。
 - wrapper：`RateLimitReporter`（每进程一个）。Claude remote `onMessage` 收到 `rate_limit_event` 即 normalize；
   Codex client 收到通知 / read 结果即 normalize；按签名去重后 `POST /rate-limits` 到本机 daemon，fire-and-forget。
 - daemon：control server 新路由 `/rate-limits`（宽松 body：`provider` + `windows[]` + `status?`）。
   `ApiMachineClient.reportRateLimits()` 在 `updateDaemonState` 里与**当前** daemonState 合并（daemon 重启后不丢别的 provider），
   签名未变不写；距上次写入 <60s 时排一个尾随写（只保留最新一次），避免多会话并发刷屏和 B-307 配额。
+  额度写入走独立推送链（不与 claudeAuth/cliUpdate 共用），写卡住不拖慢 claudeAuth 发布；并发写由 CAS 重试保证一致。
 
 ### Web
 
@@ -159,7 +162,7 @@ server 不改，任何 server 版本行为一致（daemonState 不透明转存�
 ## 风险
 
 1. `unifiedWindows` 是 SDK `@internal` 字段，可能改名/删除 → 宽松解析 + 顶层字段兜底；只会退化为「告警态才显示」或不显示。SDK 升级时用 `scripts` 外的同款 probe 复核（见上「数据来源核实」）。
-2. Codex `account/rateLimits/read` 由 codex 访问 OpenAI 后台 → 节流 10 分钟、失败停用；如 Owner 不接受，删掉调用点即可。
+2. Codex `account/rateLimits/read` 由 codex 访问 OpenAI 后台 → 节流 10 分钟、方法不存在即停用；已决定保留。
 3. 同机多 Claude 账号（不同 `CLAUDE_CONFIG_DIR`）会按窗口互相覆盖 → 接受；文案只说「这台机器最近观测」。
 4. 只覆盖 Claude remote(SDK) 与 Codex 会话；纯终端用户看不到 → 接受，非目标已注明。
 5. daemonState 每次写入带整份终端列表 → 签名去重 + 60s 节流；额度变化本身每轮最多 1 次。

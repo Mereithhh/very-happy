@@ -13,6 +13,7 @@ describe('ApiMachineClient rate limits (B-555)', () => {
         const client: any = {
             socket: { connected },
             cliUpdatePushChain: Promise.resolve(),
+            rateLimitPushChain: Promise.resolve(),
             state,
             updateDaemonState(update: (s: any) => any) { client.state = update(client.state); return Promise.resolve(); },
         };
@@ -44,5 +45,29 @@ describe('ApiMachineClient rate limits (B-555)', () => {
         const client = fakeClient({ status: 'running' });
         client.updateDaemonState = () => Promise.reject(new Error('quota'));
         await expect(write.call(client, [report('claude', 'five_hour', 1)])).resolves.toBe(false);
+    });
+
+    it('a stuck rate-limit write does not hold up the claudeAuth publish (separate push chains)', async () => {
+        const client: any = {
+            socket: { connected: true },
+            cliUpdatePushChain: Promise.resolve(),
+            rateLimitPushChain: Promise.resolve(),
+            machine: { daemonState: { status: 'running' } },
+            updateDaemonState(update: (s: any) => any) {
+                const next = update(client.machine.daemonState);
+                if (next.rateLimits) return new Promise(() => { /* never acknowledged */ });
+                client.machine.daemonState = next;
+                return Promise.resolve();
+            },
+        };
+        const stuck = write.call(client, [report('claude', 'five_hour', 1)]);
+        const auth = { daemonPid: 7, checkedAt: 123 } as any;
+        const published = (ApiMachineClient.prototype as any).setClaudeAuthState.call(client, auth);
+        await expect(Promise.race([published, new Promise((r) => setTimeout(() => r('timeout'), 200))])).resolves.toBe(true);
+        expect(client.machine.daemonState.claudeAuth).toBe(auth);
+        let settled = false;
+        void stuck.then(() => { settled = true; });
+        await new Promise((r) => setTimeout(r, 10));
+        expect(settled).toBe(false);
     });
 });
