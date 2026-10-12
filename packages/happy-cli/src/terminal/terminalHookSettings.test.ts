@@ -7,7 +7,7 @@ const home = mkdtempSync(join(tmpdir(), 'vh-term-hooks-'));
 vi.mock('@/configuration', () => ({ configuration: { happyHomeDir: home } }));
 vi.mock('@/ui/logger', () => ({ logger: { debug: () => undefined } }));
 
-const { ClaudeVersionCache, removeTerminalHookSettings, terminalHookSettingsPath, withTerminalHooks } = await import('./terminalHookSettings');
+const { ClaudeVersionCache, removeTerminalHookSettings, sweepStaleTerminalHookSettings, terminalHookSettingsPath, withTerminalHooks } = await import('./terminalHookSettings');
 
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
@@ -61,5 +61,22 @@ describe('ClaudeVersionCache (B-547)', () => {
         const t = Date.now();
         expect(await hung.settled(50)).toBeNull();
         expect(Date.now() - t).toBeLessThan(1000);
+    });
+});
+
+describe('sweepStaleTerminalHookSettings (B-547)', () => {
+    it('removes only files of terminals that are not live', () => {
+        withTerminalHooks('claude', 'live1', '2.1.296');
+        withTerminalHooks('claude', 'dead1', '2.1.296');
+        const removed = sweepStaleTerminalHookSettings((id) => id === 'live1');
+        expect(removed).toEqual(['dead1']);
+        expect(existsSync(terminalHookSettingsPath('live1'))).toBe(true);
+        expect(existsSync(terminalHookSettingsPath('dead1'))).toBe(false);
+        removeTerminalHookSettings('live1');
+    });
+
+    it('is a no-op without the directory', () => {
+        rmSync(join(home, 'tmp'), { recursive: true, force: true });
+        expect(sweepStaleTerminalHookSettings(() => false)).toEqual([]);
     });
 });

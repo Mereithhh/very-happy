@@ -93,7 +93,7 @@ import { configuration } from '@/configuration';
 import { TerminalNotifyTracker, type TerminalNotification } from './terminalNotify';
 import { TerminalAgentHookStore } from './agentHookStore';
 import { INTERRUPT_CHECK_DELAYS_MS } from './agentHookStatus';
-import { ClaudeVersionCache, removeTerminalHookSettings, withTerminalHooks } from './terminalHookSettings';
+import { ClaudeVersionCache, removeTerminalHookSettings, sweepStaleTerminalHookSettings, withTerminalHooks } from './terminalHookSettings';
 import type { AgentObservation } from './agentStatus';
 import {
     sanitizeLiveSnapshot,
@@ -1500,6 +1500,7 @@ export class WebTerminalManager {
      *  interrupt re-check can classify the screen without a list read. */
     private lastPolledIdentity = new Map<string, string>();
     private interruptTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
+    private hookSettingsSwept = false;
 
     // ── Terminal mirror integration (B-105) ─────────────────────────────────
     /** terminalId → shadow session id (daemon's mirror manager). Feeds the
@@ -1541,6 +1542,27 @@ export class WebTerminalManager {
             if (result?.changed) this.kickListRefresh();
         } catch (e) {
             logger.debug(`[WEB TERMINAL] agent hook ingest failed: ${e}`);
+        }
+    }
+
+    /** B-547: test/diagnostic view — does this terminal hold a hook record? */
+    hasAgentHookRecord(terminalId: string): boolean {
+        return this.agentHooks.has(terminalId);
+    }
+
+    /** B-547: once per daemon, drop settings files of terminals whose tmux
+     *  session is gone. Per-id `has-session` (not a list read, whose transient
+     *  failure would look like "no terminals") decides liveness. */
+    private sweepHookSettingsOnce(): void {
+        if (this.hookSettingsSwept || !isTmuxAvailable()) return;
+        this.hookSettingsSwept = true;
+        try {
+            const env = ptyEnv();
+            const removed = sweepStaleTerminalHookSettings((id) => this.terminals.has(id)
+                || spawnSync('tmux', tmuxArgs(['has-session', '-t', `=vh-${id}:`]), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status !== 1);
+            if (removed.length > 0) logger.debug(`[WEB TERMINAL] removed ${removed.length} stale terminal hook settings file(s)`);
+        } catch (e) {
+            logger.debug(`[WEB TERMINAL] hook settings sweep failed: ${e}`);
         }
     }
 
@@ -1601,6 +1623,7 @@ export class WebTerminalManager {
         // B-547: resolve `claude --version` in the background so the first
         // daemon-typed claude command can already carry hooks.
         this.claudeVersion.start();
+        this.sweepHookSettingsOnce();
         // The daemon re-calls this on every socket connect, so this doubles as
         // "forget what we told the PREVIOUS connection". Frames emitted while
         // the socket was down went nowhere, and their ids would otherwise stay
@@ -1770,6 +1793,9 @@ export class WebTerminalManager {
         try {
             const list = this.buildTerminalList();
             this.trackClosures(list);
+            // B-547: records of terminals that no longer exist. An empty list is
+            // indistinguishable from a failed tmux read — skip rather than wipe.
+            if (list.length > 0) this.agentHooks.prune([...list.map((t) => t.id), ...this.terminals.keys()]);
             this.trackNotifications(list);
             // Realtime lane, BEFORE the signature short-circuit: this tick is
             // the only place a COLD session's tmux `#{session_activity}` is

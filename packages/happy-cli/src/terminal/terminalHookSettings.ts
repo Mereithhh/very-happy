@@ -6,7 +6,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
@@ -137,4 +137,32 @@ export function removeTerminalHookSettings(terminalId: string): void {
     } catch {
         // best-effort: a leftover file is tiny and overwritten on reuse
     }
+}
+
+/**
+ * Daemon start: delete settings files whose terminal no longer exists (a
+ * daemon killed hard never got to clean up). `isLive` must be authoritative
+ * per id — a file of a LIVE terminal belongs to a claude that may still be
+ * running and re-reading it. Returns the ids removed.
+ */
+export function sweepStaleTerminalHookSettings(isLive: (terminalId: string) => boolean): string[] {
+    const removed: string[] = [];
+    let names: string[];
+    try {
+        names = readdirSync(hooksDir());
+    } catch {
+        return removed;
+    }
+    for (const name of names) {
+        const m = name.match(/^([A-Za-z0-9_-]{1,64})\.json$/);
+        if (!m) continue;
+        try {
+            if (isLive(m[1])) continue;
+            unlinkSync(join(hooksDir(), name));
+            removed.push(m[1]);
+        } catch {
+            // best-effort
+        }
+    }
+    return removed;
 }

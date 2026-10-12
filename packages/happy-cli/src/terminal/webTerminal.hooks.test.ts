@@ -18,9 +18,9 @@
  * screen; killing the terminal removes its settings file.
  */
 import { afterAll, describe, expect, it } from 'vitest';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createIsolatedTmux, tmuxAvailable } from '@/testing/isolatedTmux';
 
 const happyHome = mkdtempSync(join(tmpdir(), 'vh-hooks-home-'));
@@ -78,10 +78,16 @@ describe.skipIf(!tmuxAvailable)('web terminal hook status (B-547, real tmux)', (
     });
 
     it('injects --settings into the daemon-typed claude command', { timeout: 30_000 }, async () => {
+        // A leftover from a daemon that died hard: no such tmux session.
+        const ghost = terminalHookSettingsPath('ghost01');
+        mkdirSync(dirname(ghost), { recursive: true });
+        writeFileSync(ghost, '{}');
         // Tick interval far beyond the test: every push below is event-kicked.
         mgr.startListTracking((list) => pushes.push(list as Item[]), 10 * 60 * 1000);
         // The version probe starts with tracking; give it a moment to land.
         const settingsPath = terminalHookSettingsPath(TID);
+        // Startup sweep removed the orphan.
+        expect(existsSync(ghost)).toBe(false);
         await new Promise((r) => setTimeout(r, 1500));
         await mgr.open({ terminalId: TID, cols: 100, rows: 30, cwd: binDir, startupCommand: 'claude' });
         expect(existsSync(settingsPath)).toBe(true);
@@ -133,6 +139,15 @@ describe.skipIf(!tmuxAvailable)('web terminal hook status (B-547, real tmux)', (
         hook('SessionEnd', { reason: 'exit' });
         // Record gone → the screen (idle footer) decides again.
         await waitFor(() => latest()?.agentState === 'idle', 3000, 'screen fallback after SessionEnd');
+    });
+
+    it('a list tick prunes records of terminals that do not exist', async () => {
+        hook('UserPromptSubmit', { prompt_id: 'p-9' });
+        mgr.ingestAgentHook({ hook_event_name: 'UserPromptSubmit', session_id: 's-ghost', terminalId: 'ghost02', claudePid: process.pid });
+        expect(mgr.hasAgentHookRecord('ghost02')).toBe(true);
+        mgr.requestListRefresh();
+        await waitFor(() => !mgr.hasAgentHookRecord('ghost02'), 3000, 'ghost record pruned');
+        expect(mgr.hasAgentHookRecord(TID)).toBe(true);
     });
 
     it('killing the terminal removes its settings file', () => {
