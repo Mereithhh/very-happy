@@ -73,11 +73,11 @@ describe('parseGitUnifiedDiff', () => {
 });
 
 describe('gitDiffCommand', () => {
-    it('uses :(top) so repo-root paths work from a subdirectory cwd', () => {
-        expect(gitDiffCommand('src/a b.ts')).toBe('git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ":(top)src/a b.ts"');
+    it('passes the cwd-relative status path as a literal pathspec (../ from a subdirectory is fine)', () => {
+        expect(gitDiffCommand('../src/a b.ts')).toBe('git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ":(literal)../src/a b.ts"');
     });
     it('falls back to POSIX single quotes for shell-special characters', () => {
-        expect(quotePathspec(':(top)a$b\'c')).toBe(`':(top)a$b'\\''c'`);
+        expect(quotePathspec(':(literal)a$b\'c')).toBe(`':(literal)a$b'\\''c'`);
     });
 });
 

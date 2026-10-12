@@ -33,7 +33,7 @@ Orca 的做法是在 diff 上逐行留批注，攒成一批后一次性发回 ag
 | 改动列表点文件只打开文件全文（`setSelected(f.fullPath)`），面板里没有 git diff 视图 | `packages/happy-web-v2/src/screens/session/FilesPanel.tsx:240`、`:266-268` |
 | 文件 tab 渲染 `FsFileViewer`（有 machineId）或 `FileView` | `FilesPanel.tsx:268` |
 | `DiffView` 只服务工具卡片：入参 old/new 全文，内部 LCS（`lineDiff`），无批注能力 | `screens/session/DiffView.tsx:26-37`、`screens/session/diff.ts` |
-| 改动列表来自 `sessionBash` 跑 `git status --porcelain=v2`，路径相对仓库根（porcelain 不受 relativePaths 影响） | `sync/gitStatusFiles.ts:44` |
+| 改动列表来自 `sessionBash` 在会话 cwd 跑 `git status --porcelain=v2`；**路径相对该 cwd**（子目录会话里是 `sub/x.ts`、`../y.ts`，2026-10-12 本机 git 实测），文件 tab 也按 cwd 解析 | `sync/gitStatusFiles.ts:44`、`FilesPanel.tsx:268`（`resolveAgainstCwd`） |
 | `bash` RPC 是 CLI 既有通用 handler（cwd 校验在工作目录内，默认 shell，非 0 退出码 → `success:false` 但带 stdout） | `packages/happy-cli/src/modules/common/registerCommonHandlers.ts:213` |
 | 把文本交给已挂载输入框的既有通道：`restoreToComposer`（无输入框时返回 false）/`useHasComposer` | `screens/session/composerRestore.ts:39`、`:51` |
 | 输入框接收后按 `mergeRestoredDraft` 前置合并并聚焦；输入框草稿本身已持久化（`session-drafts`） | `screens/session/AgentInput.tsx:397`、`sync/persistence.ts:138` |
@@ -46,8 +46,9 @@ Orca 的做法是在 diff 上逐行留批注，攒成一批后一次性发回 ag
 
 - 改动列表行的点击改为打开 **diff tab**（tab id `diff:<repo 相对路径>`，与文件 tab 共存）；
   diff 头部提供「打开文件」回到原有文件视图，原能力不丢。
-- 已跟踪文件：`git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ":(top)<path>"`，
-  cwd = `session.metadata.path`。`:(top)` 让仓库根相对路径在子目录会话里也成立。
+- 已跟踪文件：`git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ":(literal)<path>"`，
+  cwd = `session.metadata.path`，`<path>` 原样用 status 给的 cwd 相对路径（含 `../`）；
+  `:(literal)` 防止以 `:` 开头或含通配符的文件名被当成 pathspec 语法。
   路径只含安全字符时双引号包裹（sh 与 cmd 都成立）；含 `"$\`` 等时用 POSIX 单引号转义。
 - untracked 文件：不跑 git，用既有 `sessionReadFile` 读全文，渲染为全部新增。
 - 解析：新纯函数 `parseGitUnifiedDiff(text) → rows[]`（hunk 头、add/del/ctx，带 old/new 行号；
@@ -58,7 +59,7 @@ Orca 的做法是在 diff 上逐行留批注，攒成一批后一次性发回 ag
 
 ```ts
 type DiffComment = {
-  id: string; filePath: string;           // 仓库根相对
+  id: string; filePath: string;           // 与 git status 一致：相对会话 cwd
   side: 'new' | 'old';                     // add/ctx 行用 new 号，del 行用 old 号
   startLine: number; endLine: number;      // 该侧行号，单行时相等
   lines: string[];                         // 锚定行原文（片段；每行截 400 字、最多 40 行）
@@ -140,13 +141,13 @@ type DiffComment = {
 
 ## 验收标准
 
-- [ ] Changes 标签点改动文件打开 diff tab，显示行号与 +/−；diff 头可打开原文件视图。
-- [ ] 桌面 hover 出「+」，点击添加、编辑、删除；Shift+点扩范围。
-- [ ] 390 coarse：点行出底部 sheet，16px 输入、44px 按钮、无横向溢出。
-- [ ] 刷新页面后批注仍在；diff 内容上移若干行后批注跟随；删掉对应行后标「已过期」。
-- [ ] 顶部「N 条批注 · 发送给 agent」→ 输入框出现按文件分组的消息，批注清空；窄屏关闭面板。
-- [ ] 纯函数单测、web tsc 0 错误、相关 vitest、vite build 通过。
-- [ ] 亮/暗 × 1280/390 截图取证。
+- [x] Changes 标签点改动文件打开 diff tab，显示行号与 +/−；diff 头可打开原文件视图。
+- [x] 桌面 hover 出「+」，点击添加、编辑、删除；Shift+点扩范围。
+- [x] 390 coarse：点行出底部 sheet，16px 输入、44px 按钮、无横向溢出。
+- [x] 刷新页面后批注仍在；diff 内容上移若干行后批注跟随；删掉对应行后标「已过期」。
+- [x] 顶部「N 条批注 · 发送给 agent」→ 输入框出现按文件分组的消息，批注清空；窄屏关闭面板。
+- [x] 纯函数单测、web tsc 0 错误、相关 vitest、vite build 通过。
+- [x] 亮/暗 × 1280/390 截图取证。
 
 ## 留真机验证项
 

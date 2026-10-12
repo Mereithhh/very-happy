@@ -15,7 +15,7 @@ export type CommentSide = 'new' | 'old';
 
 export interface DiffComment {
     id: string;
-    /** repo-root relative, as git status reports it */
+    /** as `git status` reports it: relative to the session cwd */
     filePath: string;
     side: CommentSide;
     startLine: number;

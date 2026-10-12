@@ -2,8 +2,11 @@
  * B-554: git diff for the changes panel — command building and unified-diff
  * parsing. Pure; the RPC lives in useGitFileDiff.ts.
  *
- * Paths from `git status --porcelain=v2` are repo-root relative, while the
- * session cwd may be a subdirectory, so the pathspec uses `:(top)` magic.
+ * Paths come from `git status --porcelain=v2` run in the session cwd, which
+ * reports them RELATIVE TO THAT CWD (`../x.ts` from a subdirectory — verified
+ * on git 2.x), so the diff runs in the same cwd with the same path. The
+ * `:(literal)` magic keeps a path that starts with `:` or contains glob
+ * characters from being read as pathspec syntax.
  */
 
 export type ReviewRow =
@@ -19,12 +22,12 @@ const SAFE_PATH = /^[A-Za-z0-9_\-./@+ ,=~#]+$/;
 
 /** Quote a pathspec so it survives both POSIX sh and (for ordinary paths) cmd.exe. */
 export function quotePathspec(pathspec: string): string {
-    if (SAFE_PATH.test(pathspec.replace(/^:\(top\)/, ''))) return `"${pathspec}"`;
+    if (SAFE_PATH.test(pathspec.replace(/^:\(literal\)/, ''))) return `"${pathspec}"`;
     return `'${pathspec.replace(/'/g, `'\\''`)}'`;
 }
 
-export function gitDiffCommand(repoRelativePath: string): string {
-    return `git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ${quotePathspec(`:(top)${repoRelativePath}`)}`;
+export function gitDiffCommand(cwdRelativePath: string): string {
+    return `git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ${quotePathspec(`:(literal)${cwdRelativePath}`)}`;
 }
 
 const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
