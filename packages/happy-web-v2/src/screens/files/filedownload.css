@@ -78,6 +78,10 @@
 .fdl-limit { color: var(--text-dim); max-width: 46ch; }
 .fdl-save { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
 
+/* Tool rows / history: button and its short feedback side by side. */
+.fdl--inline { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: var(--sp-2); }
+.fdl-save--compact { font-size: var(--fs-12); white-space: nowrap; }
+
 /* Viewer top bar: under the head, above the body. */
 .fdl--bar {
   flex: none;
@@ -94,7 +98,7 @@
 @media (pointer: coarse) {
   .fdl-btn, .fdl-dismiss { min-height: 44px; }
   .fdl-dismiss { width: 44px; }
-  .fdl-btn--primary { min-height: 48px; font-size: var(--fs-15); }
+  .fdl-btn--primary, .fdl--block .fdl-btn--primary { min-height: 48px; font-size: var(--fs-15); }
   .fdl-btn { padding-left: 14px; padding-right: 14px; }
   .fdl-save { display: inline-block; padding: 10px 0; }
 }

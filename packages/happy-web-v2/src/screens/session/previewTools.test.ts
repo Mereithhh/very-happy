@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {previewToolCall,previewToolPath,sessionPreviewPaths,legacyPreviewHistory} from './previewTools';
+import {isCredentialLikePath,previewToolCall,previewToolPath,sessionPreviewPaths,legacyPreviewHistory} from './previewTools';
 import type {ToolCallMessage,ToolCall} from '@/sync/typesMessage';
 const tool=(name:string,input:unknown)=>({name,input} as ToolCall);
 describe('preview tool history',()=>{
@@ -40,5 +40,16 @@ describe('B-562 previewToolCall',()=>{
         expect(previewToolCall(tool('mcp__other__open_preview',{path:'/a.md'}))).toBeNull();
         expect(previewToolCall(tool('mcp__happy__copy_to_clipboard',{text:'x'}))).toBeNull();
         expect(previewToolCall(tool('mcp__happy__open_preview',{}))).toBeNull();
+    });
+});
+
+describe('B-562 credential-like paths get no one-click actions',()=>{
+    it('mirrors the CLI gate (dirs anywhere, files, basenames)',()=>{
+        for(const p of ['~/.ssh/id_ed25519','/home/u/.ssh/config','/Users/u/.secrets/env/x.env','/Users/u/.aws/credentials','~/.config/rbw/db',
+            '/Users/u/.claude.json','/Users/u/.claude/.credentials.json','/srv/app/.env','/srv/app/.env.local','/srv/prod.env','/a/server.pem','/a/tls.key',
+            '/repo/.git/config','/a/.netrc','C:\\Users\\u\\.ssh\\id_rsa']) expect(isCredentialLikePath(p),p).toBe(true);
+    });
+    it('leaves ordinary deliverables alone',()=>{
+        for(const p of ['/repo/out.zip','~/reports/q3.docx','/repo/environment.md','/repo/keys.txt','/repo/sshd-notes.md','/repo/.github/config.yml']) expect(isCredentialLikePath(p),p).toBe(false);
     });
 });

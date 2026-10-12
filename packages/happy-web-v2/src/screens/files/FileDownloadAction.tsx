@@ -78,15 +78,23 @@ export function FileDownloadAction({ machineId, path, size = null, variant, prel
                 )}
             </div>
             {disabledReason && variant !== 'inline' && <p className="fdl-note">{disabledReason}</p>}
-            <DownloadFeedback state={state} zh={zh} />
+            <DownloadFeedback state={state} zh={zh} compact={variant === 'inline'} />
         </div>
     );
 }
 
 /** Error text, or — once bytes are ready — the real `<a download>` gesture fallback. */
-export function DownloadFeedback({ state, zh }: { state: FileDownloadState; zh: boolean }) {
+export function DownloadFeedback({ state, zh, compact = false }: { state: FileDownloadState; zh: boolean; compact?: boolean }) {
     if (state.phase === 'failed') return <p className="fdl-error" role="alert">{state.message}</p>;
     if (state.phase !== 'ready') return null;
+    if (compact) {
+        // Tool rows: a short real link next to the button keeps the row on one line.
+        return (
+            <a className="fdl-save fdl-save--compact" href={state.url} download={state.name} title={zh ? `已开始下载。没有反应就点这里保存 ${state.name}` : `Download started. If nothing happened, save ${state.name} here`}>
+                {zh ? '没反应？保存' : 'Not saved? Save'}
+            </a>
+        );
+    }
     return (
         <p className="fdl-note" role="status">
             {zh ? '已开始下载。没有反应？' : 'Download started. Nothing happened? '}

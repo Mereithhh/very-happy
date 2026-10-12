@@ -40,6 +40,26 @@ function objectOr(value: unknown): Record<string, any> {
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
 }
 
+/**
+ * B-562: tool cards cannot rely on the call having FAILED when the CLI refused
+ * it — Claude's MCP errors reach the transcript as `state: 'completed'` with no
+ * result (verified in a real session). So the one-click Open/Download actions
+ * mirror the CLI's credential-path gate (`happy-cli/src/claude/utils/previewPath.ts`)
+ * and are withheld for those paths. Without the remote home directory this
+ * matches the directories anywhere in the path — stricter, never looser.
+ */
+const CREDENTIAL_DIRS = ['.secrets', '.ssh', '.gnupg', '.aws', '.kube', '.config/rbw'];
+const CREDENTIAL_FILES = ['.claude.json', '.claude/.credentials.json', '.netrc', '.pgpass'];
+const CREDENTIAL_BASENAMES = [/^\.env$/i, /^\.env\./i, /\.env$/i, /\.pem$/i, /\.key$/i, /\.p12$/i, /\.pfx$/i, /^id_(rsa|dsa|ecdsa|ed25519)$/i, /^\.htpasswd$/i];
+export function isCredentialLikePath(path: string): boolean {
+    const p = `/${path.replace(/\\/g, '/').replace(/^~\/?/, '')}`.replace(/\/+/g, '/');
+    if (CREDENTIAL_DIRS.some(dir => p.includes(`/${dir}/`) || p.endsWith(`/${dir}`))) return true;
+    if (CREDENTIAL_FILES.some(file => p.endsWith(`/${file}`))) return true;
+    if (p.endsWith('/.git/config')) return true;
+    const base = p.split('/').pop() ?? '';
+    return CREDENTIAL_BASENAMES.some(re => re.test(base));
+}
+
 export function previewToolPath(tool: ToolCall): string | null {
     return previewToolCall(tool)?.path ?? null;
 }
