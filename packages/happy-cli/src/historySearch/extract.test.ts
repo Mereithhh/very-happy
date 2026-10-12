@@ -34,6 +34,26 @@ describe('extractClaudeLine (B-549)', () => {
         expect(s.chars).toBe('How do I migrate the daemon?'.length + 'Use the handover path.'.length);
     });
 
+    it('skips isMeta / isCompactSummary turns and strips shell, command and hook harness (review B-549)', () => {
+        const s = emptyDocState();
+        // `/apodex-product` alone: the envelope, then the injected skill body (isMeta).
+        extractClaudeLine(s, j({ type: 'user', cwd: '/w', message: { content: '<command-message>apodex-product</command-message>\n<command-name>/apodex-product</command-name>' } }));
+        extractClaudeLine(s, j({ type: 'user', isMeta: true, message: { content: [{ type: 'text', text: 'Base directory for this skill: /Users/me/.claude/skills/apodex-product\n\n# Apodex' }] } }));
+        extractClaudeLine(s, j({ type: 'user', isCompactSummary: true, message: { content: 'This session is being continued from a previous conversation. Summary: …' } }));
+        extractClaudeLine(s, j({ type: 'user', message: { content: '<bash-input>ls -la</bash-input>' } }));
+        extractClaudeLine(s, j({ type: 'user', message: { content: '<bash-stdout>secret.txt</bash-stdout><bash-stderr>warn</bash-stderr>' } }));
+        extractClaudeLine(s, j({ type: 'user', message: { content: '<local-command-caveat>Caveat: …</local-command-caveat>\n<local-command-stdout>Compacted</local-command-stdout>' } }));
+        extractClaudeLine(s, j({ type: 'user', message: { content: '<user-prompt-submit-hook>hook says hi</user-prompt-submit-hook>real question about relays' } }));
+        extractClaudeLine(s, j({ type: 'user', message: { content: '<command-name>/review</command-name>\n<command-args>the relay patch</command-args>' } }));
+
+        expect(s.meta.firstPrompt).toBe('real question about relays');
+        expect(s.msgs.map((m) => m.x)).toEqual(['real question about relays', 'the relay patch']);
+        const all = s.msgs.map((m) => m.x).join(' ');
+        for (const leaked of ['Base directory', '/Users/me/.claude/skills', 'continued from a previous', 'ls -la', 'secret.txt', 'warn', 'Compacted', 'Caveat', 'hook says hi', '/review']) {
+            expect(all).not.toContain(leaked);
+        }
+    });
+
     it("skips very-happy's own one-shot transcripts as a whole", () => {
         const s = emptyDocState();
         extractClaudeLine(s, j({ type: 'user', cwd: '/x', message: { content: `${TITLE_PROMPT_PREFIX}: hello` } }));

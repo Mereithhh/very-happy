@@ -12,7 +12,6 @@
  * per-file state, so the incremental reader can feed it any byte range.
  */
 import { isVeryHappyOneShotPrompt } from '@/claude/utils/oneShotPrompts';
-import { stripHarnessTags } from '@/claude/utils/claudeSessionHistory';
 import { isCodexSubThread, isHarnessUserText, stripHarnessBlocks } from '@/codex/utils/codexSessionHistory';
 
 export type HistorySearchAgent = 'claude' | 'codex';
@@ -95,6 +94,21 @@ function push(state: DocState, role: 'u' | 'a', text: string, at: number | undef
     state.chars += x.length;
 }
 
+/**
+ * Claude Code wraps a lot of non-conversation in user turns: `!` shell input
+ * and its output, local slash-command output and caveats, hook injections,
+ * system reminders and the slash-command envelope itself. That is tool output
+ * by another name (spec non-goal), so the whole block goes. `<command-args>`
+ * is the one exception: it is what the person typed after `/command`, so its
+ * text stays and only the tags go.
+ */
+const CLAUDE_HARNESS_BLOCK = /<(system-reminder|task-notification|command-message|command-name|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g;
+const CLAUDE_HARNESS_TAG = /<\/?(system-reminder|task-notification|command-message|command-name|command-args|local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|user-prompt-submit-hook)>/g;
+
+export function stripClaudeHarness(text: string): string {
+    return text.replace(CLAUDE_HARNESS_BLOCK, ' ').replace(CLAUDE_HARNESS_TAG, ' ');
+}
+
 /** Claude content: a string, or the `text` blocks of a block array (never
  *  tool_use / tool_result / thinking / images). */
 function claudeText(content: unknown): string | null {
@@ -151,6 +165,11 @@ export function extractClaudeLine(state: DocState, line: string): void {
         return;
     }
     if (parsed.isSidechain) return;
+    // `isMeta`: text Claude Code injected as a user turn (skill bodies —
+    // "Base directory for this skill: /path…" —, caveats). `isCompactSummary`:
+    // the model-written recap that opens a compacted conversation. Neither is
+    // something the person said, and neither may become the title.
+    if (parsed.isMeta || parsed.isCompactSummary) return;
     if (typeof parsed.cwd === 'string' && parsed.cwd && !meta.cwd) meta.cwd = parsed.cwd;
     if (typeof parsed.gitBranch === 'string' && parsed.gitBranch && !meta.gitBranch) meta.gitBranch = parsed.gitBranch;
     if (typeof parsed.entrypoint === 'string' && parsed.entrypoint && !meta.entrypoint) meta.entrypoint = parsed.entrypoint;
@@ -172,7 +191,7 @@ export function extractClaudeLine(state: DocState, line: string): void {
                 return;
             }
         }
-        const text = stripHarnessTags(raw);
+        const text = stripClaudeHarness(raw);
         if (!meta.firstPrompt) {
             const first = oneLine(text, MAX_TITLE_CHARS);
             if (first) meta.firstPrompt = first;
