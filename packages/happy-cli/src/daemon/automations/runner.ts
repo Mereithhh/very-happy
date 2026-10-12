@@ -204,7 +204,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
      * passed (the action may run), or null when the run was reported skipped or
      * settled by the server meanwhile (the action must not run).
      */
-    async function gate(claimed: AutomationClaimedRun, action: AutomationAction, context: TemplateContext, env: Record<string, string>): Promise<{ stdout: string } | null> {
+    async function gate(claimed: AutomationClaimedRun, action: AutomationAction, context: TemplateContext, env: Record<string, string>): Promise<{ stdout: string; truncated: boolean } | null> {
         const { run, automation } = claimed;
         const precheck = automation.precheck!;
         const timeoutMs = precheckTimeoutMs(precheck);
@@ -219,9 +219,12 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
             })
             : { exitCode: null, signal: null, timedOut: false, stdout: '', output: '', error: `working directory must be absolute: ${rawCwd}`, durationMs: 0 };
         if (!tracked.has(run.id)) return null; // cancelled / deleted while checking
+        // The daemon is stopping (a real shutdown kills the check): report nothing — the lease
+        // lapses and the server marks the run expired with attention; the action never ran.
+        if (closed) return null;
         const verdict = evaluatePrecheck(result, timeoutMs);
         // Passed: the entry stays tracked (lease renewal continues) until the action re-tracks the run.
-        if (verdict.pass) return { stdout: verdict.stdout };
+        if (verdict.pass) return { stdout: verdict.stdout, truncated: verdict.truncated };
         await finish(item, { claimId: run.claimId, status: 'skipped', error: verdict.reason, summary: verdict.summary, exitCode: verdict.exitCode, ...(verdict.attention ? { needsAttention: true, attentionReason: verdict.reason } : {}) });
         return null;
     }
@@ -251,9 +254,13 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
                 if (closed) { if (item) await finish(item, { claimId: run.claimId, status: 'failed', error: 'Daemon stopped after the precheck passed; the action was not run', needsAttention: true, attentionReason: 'daemon_restarted' }); return; }
                 // Precheck output is data, never a template: appended after rendering.
                 if (action.kind === 'script') await perform(claimed, action, context, { ...env, VH_AUTOMATION_PRECHECK_OUTPUT: passed.stdout });
-                else await perform(claimed, automation.precheck!.includeOutput ? { ...action, prompt: appendPrecheckOutput(action.prompt, passed.stdout) } : action, context, env);
+                else await perform(claimed, automation.precheck!.includeOutput ? { ...action, prompt: appendPrecheckOutput(action.prompt, passed.stdout, passed.truncated) } : action, context, env);
             } catch (error) {
-                deps.log(`Automation run ${run.id} failed to start: ${error instanceof Error ? error.message : String(error)}`);
+                const message = error instanceof Error ? error.message : String(error);
+                deps.log(`Automation run ${run.id} failed to start: ${message}`);
+                // Settle it here: a tracked entry left behind would hold a concurrency slot and renew the lease forever.
+                const item = tracked.get(run.id);
+                if (item) await finish(item, { claimId: run.claimId, status: 'failed', error: clipText(`Automation failed to start after its precheck passed: ${message}`, AUTOMATION_SUMMARY_MAX_CHARS), ...(item.sessionId ? { sessionId: item.sessionId } : {}), needsAttention: true, attentionReason: 'unknown_outcome' });
             } finally { gating--; }
         })();
     }

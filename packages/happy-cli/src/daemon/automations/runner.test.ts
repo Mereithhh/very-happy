@@ -11,6 +11,7 @@ vi.mock('@/sessions/sessionOps', () => ({ readSessionLog: vi.fn(), TURN_WINDOW: 
 import { AutomationsRequestError } from '@/automations/client';
 import { AUTOMATION_LEASE_RENEW_MS, AUTOMATION_LOG_READ_MS, AUTOMATION_MAX_CONCURRENT, AUTOMATION_UNAVAILABLE_LOG_MS, automationPromptHeader, automationRunAnchor, createAutomationRunner } from './runner';
 import { readReceipt, writeReceipt } from './receipts';
+import { appendPrecheckOutput } from './precheck';
 
 let home: string;
 let runners: ReturnType<typeof createAutomationRunner>[] = [];
@@ -402,7 +403,8 @@ describe('B-548 automation runner: precheck', () => {
         expect(runPrecheck).toHaveBeenCalledWith(expect.objectContaining({ shell: 'check-inbox', cwd: '/repo', timeoutMs: 60_000, env: { VH_AUTOMATION_RUN_ID: 'r1', VH_AUTOMATION_NAME: 'nightly', VH_AUTOMATION_PAYLOAD: '{"topic":"tanka"}' } }));
         expect(runPrecheck.mock.calls[0][0]).not.toHaveProperty('command');
         expect(spawn).toHaveBeenCalledTimes(1);
-        expect(send).toHaveBeenCalledWith('s1', `${automationPromptHeader('nightly', 'r1')}\nSummarize tanka for nightly\n\n[precheck output]\n3 new messages`, expect.anything());
+        expect(send).toHaveBeenCalledWith('s1', `${automationPromptHeader('nightly', 'r1')}\n${appendPrecheckOutput('Summarize tanka for nightly', '3 new messages')}`, expect.anything());
+        expect(send.mock.calls[0][1]).toContain('untrusted');
         expect(client.report).toHaveBeenCalledWith('r1', { claimId: 'claim-1', status: 'running', sessionId: 's1' });
     });
 
@@ -454,6 +456,29 @@ describe('B-548 automation runner: precheck', () => {
         release(result({ exitCode: 1 }));
         await settled(runner);
         expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing when the daemon stops and kills the precheck: the lease lapses into expired + attention', async () => {
+        let release!: (value: unknown) => void;
+        const runPrecheck = vi.fn().mockReturnValue(new Promise((resolve) => { release = resolve; }));
+        const client = fakeClient([gated({ shell: 'slow' })]);
+        const runner = start(client, { runPrecheck });
+        await flush();
+        runner.stop({ killScripts: true });
+        release(result({ exitCode: null, signal: 'SIGTERM' }));
+        await flush();
+        expect(client.report).not.toHaveBeenCalled();
+        expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('settles a run whose action throws after the precheck passed, freeing its slot', async () => {
+        const runPrecheck = vi.fn().mockResolvedValue(result());
+        spawn.mockReset().mockRejectedValue(new Error('daemon spawn exploded'));
+        const client = fakeClient([gated({ shell: 'ok' })]);
+        const runner = start(client, { runPrecheck }); await settled(runner);
+        expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'failed', needsAttention: true, attentionReason: 'unknown_outcome', error: expect.stringContaining('daemon spawn exploded') }));
+        expect(runner.trackedRunIds()).toEqual([]);
+        expect(readReceipt(home, 'r1')?.phase).toBe('finished');
     });
 
     it('reports failed instead when the server rejects `skipped` (rolled back mid-run)', async () => {
