@@ -94,7 +94,7 @@ interface DaemonToServerEvents {
     // Clipboard push: daemon → server → all of the user's web clients.
     // `payload` is the clipboard text, encrypted with the per-machine key when
     // `enc` is true (same primitive as the terminal byte stream).
-    'file-preview-push': (data: { payload: string, enc?: boolean, terminalId: string, mode: 'file' | 'diff' }) => void;
+    'file-preview-push': (data: { payload: string, enc?: boolean, terminalId: string, mode: 'file' | 'diff', intent?: 'download' }) => void;
     'clipboard-push': (data: { payload: string, enc?: boolean, terminalId?: string, historyPayload?: string, historyTruncated?: boolean, truncated?: boolean, totalBytes?: number }) => void;
     'machine-alive': (data: {
         machineId: string;
@@ -316,13 +316,14 @@ export class ApiMachineClient {
     }
 
     /** Queue a terminal preview with the machine key. Delivery does not prove a browser opened it. */
-    pushFilePreview(terminalId: string, path: string, mode: 'file' | 'diff' = 'file'): { delivered: boolean; error?: string } {
+    pushFilePreview(terminalId: string, path: string, mode: 'file' | 'diff' = 'file', intent?: 'download'): { delivered: boolean; error?: string } {
         if (!this.socket?.connected) return { delivered: false, error: 'daemon is not connected to the server' };
         this.socket.emit('file-preview-push', {
             terminalId,
             payload: encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, path)),
             enc: true,
             mode,
+            ...(intent ? { intent } : {}),
         });
         return { delivered: true };
     }

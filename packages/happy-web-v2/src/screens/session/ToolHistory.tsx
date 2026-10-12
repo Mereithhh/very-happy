@@ -2,6 +2,7 @@ import { Copy, FileSearch } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { openFsPreview } from '@/sync/filePreviewOpen';
+import { FileDownloadAction } from '../files/FileDownloadAction';
 import { clipboardPreview } from '@/sync/clipboardHistory';
 import { useToolHistory } from '@/sync/useToolHistory';
 import { mergeToolHistory, type ToolHistoryEntry, type ToolHistoryScope } from '@/sync/toolHistory';
@@ -34,8 +35,10 @@ export function ToolHistoryView({entries, machineId, sessionId, failed = false, 
                     {entry.state === 'running' && <span>{zh ? '调用中' : 'In progress'}</span>}
                     {entry.text !== null && (entry.kind === 'clipboard'
                         ? <CopyButton text={entry.text} showLabel label={entry.truncated ? (zh ? '复制节选' : 'Copy excerpt') : (zh ? '再次复制' : 'Copy again')} />
-                        : <button type="button" className="tool-history-open" disabled={!machineId}
-                            onClick={() => machineId && openFsPreview({machineId, sessionId, path: entry.text!, mode: entry.mode ?? 'file'})}>{zh ? '打开预览' : 'Open preview'}</button>)}
+                        : <><button type="button" className="tool-history-open" disabled={!machineId}
+                            onClick={() => machineId && openFsPreview({machineId, sessionId, path: entry.text!, mode: entry.mode ?? 'file'})}>{zh ? '打开预览' : 'Open preview'}</button>
+                            {/* B-562: terminal sessions have no chat tool card; this is their way back to the file. */}
+                            {machineId && <FileDownloadAction variant="inline" machineId={machineId} path={entry.text!} />}</>)}
                 </div>
                 {entry.text === null ? <p>{zh ? '正文未保存或暂时无法解密' : 'Content was not saved or cannot be decrypted yet'} {onRetry && <button type="button" onClick={onRetry}>{zh ? '重试' : 'Retry'}</button>}</p>
                     : entry.kind === 'preview' ? <p className="tool-history-path">{entry.text}</p>

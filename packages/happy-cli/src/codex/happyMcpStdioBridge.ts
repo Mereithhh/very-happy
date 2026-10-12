@@ -22,7 +22,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
 import { CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, CLIPBOARD_TOOL_TITLE } from '@/clipboard/limits';
-import { PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE } from '@/claude/utils/agentGuidance';
+import { PREVIEW_DOWNLOAD_PARAM_DESCRIPTION, PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE } from '@/claude/utils/agentGuidance';
 
 function parseArgs(argv: string[]): { url: string | null } {
   let url: string | null = null;
@@ -108,6 +108,9 @@ async function main() {
       inputSchema: {
         path: z.string().describe('Absolute path (or ~/…) of the file to show the user'),
         mode: z.enum(['file', 'diff']).optional(),
+        // B-562: must be declared here too — the SDK strips undeclared arguments
+        // before they reach the forwarded callTool.
+        download: z.boolean().optional().describe(PREVIEW_DOWNLOAD_PARAM_DESCRIPTION),
       },
     },
     async (args) => {

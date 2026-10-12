@@ -183,7 +183,12 @@
   word-break: break-word;
 }
 
-.tg-preview-row { display:flex; align-items:center; gap:var(--sp-2); min-width:0; min-height:32px; padding:2px 0; }
+.tg-preview-row { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-1) var(--sp-2); min-width:0; min-height:32px; padding:2px 0; }
+/* B-562: Open / Download on the row; wraps under the path on narrow screens. */
+.tg-preview-actions { display:flex; align-items:flex-start; gap:var(--sp-1); margin-left:auto; min-width:0; flex-wrap:wrap; }
+.tg-preview-actions .fdl--inline { max-width:min(42ch, 100%); }
+.tg-preview-row > .tg-preview-path { flex:1 1 14ch; }
+.tg-preview-note { margin-left:auto; font-size:var(--fs-12); color:var(--text-faint); }
 .tg-preview-row > svg { width:var(--conversation-icon-size); flex:none; color:var(--text-dim); }
 .tg-preview-path { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-dim); }
 .tg-preview-path .fpl-icon { display:none; }

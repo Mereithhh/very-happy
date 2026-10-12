@@ -21,7 +21,14 @@ describe('control server /file-preview', () => {
     it('forwards an allowed normalized path with the terminal identity and defaults to file mode', async () => {
         const response = await post({ terminalId: 'term_1', path: '/workspace/a/../report.md' });
         expect(await response.json()).toEqual({ delivered: true });
-        expect(pushFilePreview).toHaveBeenLastCalledWith('term_1', '/workspace/report.md', 'file');
+        expect(pushFilePreview).toHaveBeenLastCalledWith('term_1', '/workspace/report.md', 'file', undefined);
+    });
+    it('B-562: forwards a download intent and ignores unknown intents or extra keys', async () => {
+        await post({ terminalId: 'term_1', path: '/workspace/out.zip', intent: 'download' });
+        expect(pushFilePreview).toHaveBeenLastCalledWith('term_1', '/workspace/out.zip', 'file', 'download');
+        const future = await post({ terminalId: 'term_1', path: '/workspace/out.zip', intent: 'future-intent', future: 1 });
+        expect(await future.json()).toEqual({ delivered: true });
+        expect(pushFilePreview).toHaveBeenLastCalledWith('term_1', '/workspace/out.zip', 'file', undefined);
     });
     it('applies the preview denylist again at the daemon boundary', async () => {
         pushFilePreview.mockClear();

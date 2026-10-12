@@ -1608,9 +1608,9 @@ export async function startDaemon(): Promise<void> {
         }
         return apiMachineRef.pushClipboard(text, terminalId);
       },
-      pushFilePreview: (terminalId, path, mode) => {
+      pushFilePreview: (terminalId, path, mode, intent) => {
         if (!apiMachineRef) return { delivered: false, error: 'daemon is still starting up' };
-        return apiMachineRef.pushFilePreview(terminalId, path, mode);
+        return apiMachineRef.pushFilePreview(terminalId, path, mode, intent);
       },
       onTerminalHook: (body: unknown) => {
         mirrorManagerRef?.handleHookPayload(body);

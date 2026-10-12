@@ -3,11 +3,81 @@ import type { ToolHistoryEntry } from '@/sync/toolHistory';
 import type { Message, ToolCall } from '@/sync/typesMessage';
 import { normalizePreviewPath } from '@/sync/filePreview';
 
+export interface PreviewToolCall {
+    /** As the agent wrote it (absolute, `~/…` or cwd-relative). */
+    path: string;
+    /** B-562: `open_preview(download: true)` — the agent is delivering the file. */
+    download: boolean;
+}
+
+/**
+ * An `open_preview` call in ANY runner's name shape (B-499 identity: Claude
+ * `mcp__happy__…`, terminal `mcp__very-happy__…`, Gemini `happy__…`, Codex
+ * `McpTool`, pi `piTool`, bare). Pure web: works for transcripts written by
+ * CLIs that predate the `download` flag.
+ */
+export function previewToolCall(tool: ToolCall): PreviewToolCall | null {
+    const input = previewToolInput(tool);
+    const path = input ? normalizePreviewPath(input.path) : null;
+    return path ? { path, download: input!.download === true } : null;
+}
+
+/** Our MCP server names only (Claude `mcp__<server>__`, Gemini `<server>__`, Codex `server`):
+ *  `happy` (session / bridge), `very-happy` and `very-happy-clipboard` (`very-happy mcp`).
+ *  A third-party `unhappy` / `happy-files` server is not ours. */
+const OWN_SERVERS: ReadonlySet<string> = new Set(['happy', 'very-happy', 'very-happy-clipboard']);
+
+/** Same shape rules as `resolveBuiltinTool` (components/tools/builtinTools.ts),
+ *  kept local so this module stays free of the i18n/text runtime. */
+function previewToolInput(tool: ToolCall): Record<string, any> | null {
+    const input = tool.input && typeof tool.input === 'object' ? tool.input as Record<string, any> : {};
+    const own = (server: unknown) => typeof server === 'string' && OWN_SERVERS.has(server);
+    if (input.piTool === 'open_preview') return objectOr(input.rawInput);
+    if (tool.name === 'McpTool') return input.tool === 'open_preview' && own(input.server) ? objectOr(input.arguments) : null;
+    if (typeof tool.name !== 'string') return null;
+    if (tool.name === 'open_preview') return input;
+    const bare = tool.name.startsWith('mcp__') ? tool.name.slice('mcp__'.length) : tool.name;
+    const cut = bare.lastIndexOf('__');
+    return cut > 0 && bare.slice(cut + 2) === 'open_preview' && own(bare.slice(0, cut)) ? input : null;
+}
+
+function objectOr(value: unknown): Record<string, any> {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
+}
+
+/**
+ * B-562: tool cards cannot rely on the call having FAILED when the CLI refused
+ * it — Claude's MCP errors reach the transcript as `state: 'completed'` with no
+ * result (verified in a real session). So the one-click Open/Download actions
+ * mirror the CLI's credential-path gate (`happy-cli/src/claude/utils/previewPath.ts`)
+ * and are withheld for those paths. Without the remote home directory this
+ * matches the directories anywhere in the path — stricter, never looser.
+ */
+const CREDENTIAL_DIRS = ['.secrets', '.ssh', '.gnupg', '.aws', '.kube', '.config/rbw'];
+const CREDENTIAL_FILES = ['.claude.json', '.claude/.credentials.json', '.netrc', '.pgpass'];
+const CREDENTIAL_BASENAMES = [/^\.env$/i, /^\.env\./i, /\.env$/i, /\.pem$/i, /\.key$/i, /\.p12$/i, /\.pfx$/i, /^id_(rsa|dsa|ecdsa|ed25519)$/i, /^\.htpasswd$/i];
+/** Collapse `//`, `.` and `..` (never above root) so `~/.claude/./x` cannot dodge the match. */
+function normalizePosix(path: string): string {
+    const out: string[] = [];
+    for (const part of path.split('/')) {
+        if (part === '' || part === '.') continue;
+        if (part === '..') out.pop();
+        else out.push(part);
+    }
+    return `/${out.join('/')}`;
+}
+
+export function isCredentialLikePath(path: string): boolean {
+    const p = normalizePosix(`/${path.replace(/\\/g, '/').replace(/^~\/?/, '')}`);
+    if (CREDENTIAL_DIRS.some(dir => p.includes(`/${dir}/`) || p.endsWith(`/${dir}`))) return true;
+    if (CREDENTIAL_FILES.some(file => p.endsWith(`/${file}`))) return true;
+    if (p.endsWith('/.git/config')) return true;
+    const base = p.split('/').pop() ?? '';
+    return CREDENTIAL_BASENAMES.some(re => re.test(base));
+}
+
 export function previewToolPath(tool: ToolCall): string | null {
-    if (tool.input?.piTool === 'open_preview') return normalizePreviewPath(tool.input.rawInput?.path);
-    if (tool.name === 'mcp__happy__open_preview' || tool.name === 'open_preview') return normalizePreviewPath(tool.input?.path);
-    if (tool.name === 'McpTool' && tool.input?.server === 'happy' && tool.input?.tool === 'open_preview') return normalizePreviewPath(tool.input.arguments?.path);
-    return null;
+    return previewToolCall(tool)?.path ?? null;
 }
 
 export function sessionPreviewPaths(messages: Message[]): string[] {
