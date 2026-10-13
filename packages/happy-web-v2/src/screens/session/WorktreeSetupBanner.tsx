@@ -18,7 +18,7 @@ import {
     worktreeSetupApprove, worktreeSetupDecline, worktreeSetupLog, worktreeSetupStatus,
     type WorktreeSetupStatus,
 } from '@/sync/worktreeOps';
-import { machineSupportsWorktrees, setupBannerKind } from '@/utils/worktree';
+import { markInvisibleChars, machineSupportsWorktrees, setupBannerKind } from '@/utils/worktree';
 import { worktreeCopy } from '@/screens/sessions/worktreeCopy';
 import '@/screens/sessions/newsession.css';
 import '@/screens/sessions/worktree.css';
@@ -57,7 +57,13 @@ export function WorktreeSetupBanner({ sessionId }: { sessionId: string }) {
 
     if (!enabled || !status || !machineId) return null;
     const kind = setupBannerKind(status.setup.state);
-    if (!kind) return null;
+    const initNote = status.initError ? (
+        <div className="mrb-note mrb-note--failed" role="status" data-testid="worktree-init-error">
+            <FileTerminal size={13} />
+            <span className="mrb-note-text">{copy.initFailed(status.initError)}</span>
+        </div>
+    ) : null;
+    if (!kind) return initNote ? <div className="mrb" data-kind="worktree-init">{initNote}</div> : null;
     if (dismissed && (kind === 'succeeded' || kind === 'declined')) return null;
 
     const text = kind === 'approve' ? copy.bannerApprove
@@ -70,6 +76,7 @@ export function WorktreeSetupBanner({ sessionId }: { sessionId: string }) {
 
     return (
         <div className="mrb" data-testid="worktree-setup-banner" data-kind={`worktree-setup-${kind}`} data-severity={kind === 'approve' || kind === 'failed' ? 'critical' : undefined}>
+            {initNote}
             <div className={`mrb-note${kind === 'failed' ? ' mrb-note--failed' : ''}`} role="status">
                 {kind === 'running' ? <Spinner size={13} /> : <FileTerminal size={13} />}
                 <span className="mrb-note-text">
@@ -146,6 +153,7 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
     }, [mode, machineId, worktreePath]);
 
     const pending = status.pending;
+    const invisible = markInvisibleChars(pending?.script ?? '');
 
     const approve = async () => {
         if (!pending || busy) return;
@@ -181,6 +189,8 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
                     <>
                         <p className="wts-lead">{copy.approveLead}</p>
                         {pending.changedSinceApproval && <p className="wts-changed" role="note">{copy.changed}</p>}
+                        <p className="wts-changed" role="note" data-testid="worktree-repo-files-warning">{copy.repoFilesWarning}</p>
+                        {invisible.count > 0 && <p className="wts-changed wts-danger" role="alert" data-testid="worktree-invisible-warning">{copy.invisibleWarning(invisible.count)}</p>}
                         <dl className="wts-facts">
                             <dt>{copy.factRepo}</dt><dd>{pending.repoRoot}</dd>
                             <dt>{copy.factCwd}</dt><dd>{pending.cwd}</dd>
@@ -189,7 +199,12 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
                             <dt>{copy.factConfig}</dt><dd>{pending.configPath}</dd>
                             <dt>{copy.factHash}</dt><dd title={pending.hash}>{pending.hash.slice(0, 12)}</dd>
                         </dl>
-                        <pre className="wts-script" data-testid="worktree-setup-script" tabIndex={0}>{pending.script}</pre>
+                        <pre className="wts-script" data-testid="worktree-setup-script" tabIndex={0}>
+                            {invisible.segments.map((seg, i) => seg.kind === 'text'
+                                ? <span key={i}>{seg.text}</span>
+                                : <mark key={i} className="wts-invisible">{seg.code}</mark>)}
+                        </pre>
+                        <p className="wts-lead">{copy.autoRunWarning}</p>
                         {status.copied.length > 0 && <div className="wts-state">{copy.copiedFiles(status.copied.length)}: <span className="mono">{status.copied.join(', ')}</span></div>}
                     </>
                 ) : mode === 'review' ? (

@@ -34,7 +34,7 @@ export interface WorktreeCreateResult {
     worktreePath: string;
     branch: string;
     baseRef: string;
-    init: { copied: string[]; linked: string[]; skipped: SkippedPath[]; configError?: string; setup: { state: WorktreeSetupState | string; message?: string } };
+    init: { copied: string[]; linked: string[]; skipped: SkippedPath[]; configError?: string; initError?: string; setup: { state: WorktreeSetupState | string; message?: string } };
 }
 
 export interface WorktreePendingSetup {
@@ -61,13 +61,14 @@ export type WorktreeSetupStatus =
         linked: string[];
         skipped: SkippedPath[];
         configError?: string;
+        initError?: string;
         setup: WorktreeSetupRecord;
         pending?: WorktreePendingSetup;
     };
 
 export interface WorktreeLogChunk { text: string; offset: number; size: number; done: boolean }
 
-export interface WorktreeInspection { removable: boolean; reason?: string; branch: string | null; dirty: string[]; dirtyCount: number }
+export interface WorktreeInspection { removable: boolean; reason?: string; branch: string | null; dirty: string[]; dirtyCount: number; dirtyFingerprint?: string }
 
 async function call<T>(machineId: string, method: string, params: Record<string, unknown>, timeoutMs = 30_000): Promise<WorktreeRpcResult<T>> {
     try {
@@ -90,5 +91,5 @@ export const worktreeSetupApprove = (machineId: string, path: string, hash: stri
 export const worktreeSetupDecline = (machineId: string, path: string) => call<WorktreeSetupStatus>(machineId, 'worktree-setup-decline', { path });
 export const worktreeSetupLog = (machineId: string, path: string, offset: number) => call<WorktreeLogChunk>(machineId, 'worktree-setup-log', { path, offset });
 export const worktreeInspect = (machineId: string, path: string) => call<WorktreeInspection>(machineId, 'worktree-inspect', { path });
-export const worktreeRemove = (machineId: string, path: string, discardChanges: boolean) =>
-    call<{ removed: boolean; branch: string | null }>(machineId, 'worktree-remove', { path, discardChanges });
+export const worktreeRemove = (machineId: string, path: string, discardChanges: boolean, expectedFingerprint?: string) =>
+    call<{ removed: boolean; branch: string | null }>(machineId, 'worktree-remove', { path, discardChanges, ...(expectedFingerprint ? { expectedFingerprint } : {}) });

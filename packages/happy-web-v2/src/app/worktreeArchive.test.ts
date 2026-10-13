@@ -46,7 +46,7 @@ describe('B-586 archive + delete worktree', () => {
         expect(mocks.confirm).toHaveBeenCalledTimes(1);
         expect(mocks.confirm.mock.calls[0][2]).toMatchObject({ destructive: true });
         expect(order).toEqual(['archive', 'remove']);
-        expect(mocks.remove).toHaveBeenCalledWith('m', '/wt/a', false);
+        expect(mocks.remove).toHaveBeenCalledWith('m', '/wt/a', false, undefined);
     });
 
     it('dirty worktree: second destructive confirm; declining it changes nothing', async () => {
@@ -63,7 +63,7 @@ describe('B-586 archive + delete worktree', () => {
         mocks.inspect.mockResolvedValue({ ok: true, data: { removable: true, dirty: ['a.ts'], dirtyCount: 1, branch: 'vh/a' } });
         mocks.confirm.mockResolvedValue(true);
         await archiveAndDeleteWorktree(session('s'));
-        expect(mocks.remove).toHaveBeenCalledWith('m', '/wt/a', true);
+        expect(mocks.remove).toHaveBeenCalledWith('m', '/wt/a', true, undefined);
     });
 
     it('not removable / old daemon / failed archive: explain, delete nothing', async () => {
@@ -77,5 +77,22 @@ describe('B-586 archive + delete worktree', () => {
         mocks.archive.mockRejectedValue(new Error('offline'));
         expect(await archiveAndDeleteWorktree(session('s'))).toBe(false);
         expect(mocks.remove).not.toHaveBeenCalled();
+    });
+
+    it('低7: changes moved after the confirm → asks again (no archive, no delete until re-confirmed)', async () => {
+        const dirty = (fp: string) => ({ ok: true, data: { removable: true, dirty: ['a.ts'], dirtyCount: 1, dirtyFingerprint: fp, branch: 'vh/a' } });
+        mocks.inspect.mockResolvedValueOnce(dirty('f1')).mockResolvedValueOnce(dirty('f2')).mockResolvedValueOnce(dirty('f2')).mockResolvedValueOnce(dirty('f2'));
+        mocks.confirm.mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+        expect(await archiveAndDeleteWorktree(session('s'))).toBe(false);
+        expect(mocks.confirm.mock.calls[2][1]).toContain('changed after you confirmed');
+        expect(mocks.archive).not.toHaveBeenCalled();
+        expect(mocks.remove).not.toHaveBeenCalled();
+    });
+
+    it('passes the confirmed fingerprint to the daemon as the final guard', async () => {
+        mocks.inspect.mockResolvedValue({ ok: true, data: { removable: true, dirty: ['a.ts'], dirtyCount: 1, dirtyFingerprint: 'f1', branch: 'vh/a' } });
+        mocks.confirm.mockResolvedValue(true);
+        await archiveAndDeleteWorktree(session('s'));
+        expect(mocks.remove).toHaveBeenCalledWith('m', '/wt/a', true, 'f1');
     });
 });

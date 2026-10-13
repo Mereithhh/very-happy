@@ -32,7 +32,7 @@ export function otherSessionsInWorktree(session: Session, all: Session[]): numbe
 }
 
 /** Returns true when the session was archived (callers navigate away as for archive). */
-export async function archiveAndDeleteWorktree(session: Session): Promise<boolean> {
+export async function archiveAndDeleteWorktree(session: Session, attempt = 0): Promise<boolean> {
     const copy = worktreeCopy(getCurrentLanguage());
     const machineId = session.metadata?.machineId;
     const path = worktreePathOf(session);
@@ -49,7 +49,7 @@ export async function archiveAndDeleteWorktree(session: Session): Promise<boolea
         return false;
     }
     const others = otherSessionsInWorktree(session, Object.values(storage.getState().sessions ?? {}) as Session[]);
-    const ok = await Modal.confirm(copy.confirmTitle, [copy.confirmBody(path, info.branch), others ? copy.otherSessions(others) : ''].filter(Boolean).join(' '), {
+    const ok = await Modal.confirm(copy.confirmTitle, [attempt > 0 ? copy.changesChanged : '', copy.confirmBody(path, info.branch), others ? copy.otherSessions(others) : ''].filter(Boolean).join(' '), {
         confirmText: copy.confirmDelete, cancelText: copy.cancel, destructive: true,
     });
     if (!ok) return false;
@@ -63,6 +63,13 @@ export async function archiveAndDeleteWorktree(session: Session): Promise<boolea
         if (!discard) return false;
     }
 
+    // The user confirmed THIS set of changes: re-check right before acting; if
+    // it moved (new file / edited listed file), ask again instead of deleting.
+    const recheck = await worktreeInspect(machineId, path);
+    if (!recheck.ok || recheck.data.dirtyFingerprint !== info.dirtyFingerprint) {
+        if (attempt >= 2) { Modal.alert(copy.inspectFailed, copy.changesChanged); return false; }
+        return archiveAndDeleteWorktree(session, attempt + 1);
+    }
     try {
         await archiveSessionNow(session);
     } catch (error) {
@@ -70,7 +77,7 @@ export async function archiveAndDeleteWorktree(session: Session): Promise<boolea
         Modal.alert(copy.removeFailed, error instanceof Error ? error.message : String(error));
         return false;
     }
-    const removed = await worktreeRemove(machineId, path, discard);
+    const removed = await worktreeRemove(machineId, path, discard, info.dirtyFingerprint);
     if (!removed.ok) {
         Modal.alert(copy.removeFailed, `${removed.error} (${path})`);
         return true;

@@ -118,7 +118,8 @@ very-happy 现在只有 Teams 与 Automations（`--worktree`）在 daemon 里建
 - **POSIX**：脚本以 `#!` 开头时 runner 为 `shebang`，写文件、chmod 0700 后直接 exec；否则 runner 为 `posix-sh`，执行 `/bin/sh -e script.sh`。用 `detached: true` 让脚本自成进程组；超时、取消和 daemon 退出时先对 `-pgid` 发 SIGTERM，10 秒后发 SIGKILL。
 - **原生 Windows**：读 `setupWindows ?? setup`。以 `#!` 开头时状态记为 `unsupported`，说明「Windows 上 `#!` 脚本需要 POSIX shell，请提供 setupWindows」，不执行（与 Orca 拒绝 cmd 运行 `#!` 的理由相同：在 cmd 里跑一半比不跑更糟）。否则按 Orca 的 `buildWindowsRunnerScript` 生成 `.cmd`：`@echo off` + `setlocal EnableExtensions DisableDelayedExpansion`，每行 `call <line>` 后接 `if errorlevel 1 exit /b %errorlevel%`；用 `cmd.exe /d /c <runner 路径>` 以 argv 方式启动（不拼自由文本），`windowsHide: true`；停止时用 `taskkill /PID <pid> /T /F`。**支持范围**：Windows 上的代码路径都有单测覆盖，没有在 Windows 真机跑过；至少保证不崩，出错时状态是可读的 `failed`/`unsupported`。
 - **超时**：`setupTimeoutMinutes`，默认 10 分钟，到点状态记为 `timed-out` 并杀整个进程组。
-- daemon 停止（`cleanupAndShutdown`）时杀掉所有运行中的 setup，状态记为 `interrupted`，下次启动不会自动重跑。
+- **输出上限**：日志超过 20 MB 即杀进程组，状态 `failed` 并标 `truncated`。
+- daemon 停止（`cleanupAndShutdown`）时杀掉所有运行中的 setup，状态记为 `interrupted`，下次启动不会自动重跑。daemon 被硬杀时的孤儿进程组见 T6。
 
 ### 5. 机器 RPC（新方法；旧 daemon 返回 `Method not found`）
 
@@ -136,9 +137,11 @@ very-happy 现在只有 Teams 与 Automations（`--worktree`）在 daemon 里建
 | `worktree-remove` | `{ path, discardChanges }` | 有改动且 `discardChanges !== true` 时返回 `{error:'dirty'}`；否则删除 |
 
 创建（`worktree-create`）：
-- `branch` 用 `git check-ref-format --branch` 校验，且分支不能已存在；`baseRef` 必须能 `rev-parse --verify <ref>^{commit}`。
+- `branch` 用 `git check-ref-format --branch` 校验，并要求它的输出与输入**完全一致**（`--branch` 会展开 `@{-1}` 之类的简写）；分支不能已存在；`baseRef` 必须能 `rev-parse --verify <ref>^{commit}`。
 - `location` 必须是绝对路径且不存在，父目录存在或可以创建，并且不在来源 checkout 内部（避免嵌套在仓库里出现未跟踪目录）。默认 `location = <repoRoot 的父目录>/<repo 名>.worktrees/<分支名中 / 换成 ->`。
-- 执行 `git worktree add -b <branch> <location> <baseRef>`，用 argv 方式（不经 shell），超时 25 秒（relay RPC 上限 30 秒）。
+- 执行 `git worktree add -b <branch> <location> <baseRef>`，用 argv 方式（不经 shell），超时 25 秒（relay RPC 上限 30 秒）。失败或超时会清理残留：删除半成品 worktree、`worktree prune`、删除本次新建的分支（调用前已确认它不存在）。
+- 重试幂等：若同一 location 已登记为同仓库、同分支的 web worktree（上次 RPC 应答丢了），直接返回该结果（`reused: true`），不报 `branch-exists`。
+- 初始化先登记再复制/链接；任一步失败只记 `initError`（网页 toast + 会话横幅显示「初始化部分失败」），worktree 仍可删除。
 
 删除（`worktree-remove`）：
 - 只删登记表里 `origin === 'web'` 且仍是 linked worktree 的目录（不是主 checkout，`git worktree list` 里有它）。Teams 和 Automations 的 worktree 由它们自己的收尾逻辑管理。
@@ -180,13 +183,15 @@ wrapper 启动时用纯 FS（复用 `repoIdentity` 的判断）检查 cwd 的 to
 | # | 威胁 | 场景 | 缓解 |
 |---|---|---|---|
 | T1 | 仓库脚本自动执行 | clone 来的第三方仓库或 PR 分支里的 `.veryhappy/worktree.json` 写了恶意 setup | 没有允许记录就不执行；允许前展示完整脚本、cwd 和 runner |
-| T2 | agent 提权 | 沙箱或权限模式下的 agent 改写脚本，等下次建 worktree 时在沙箱外执行 | hash 绑定内容，改一个字节就要重新确认；Teams 和 Automations 遇到未确认的脚本一律不跑；确认只能在网页上做 |
+| T2 | agent 提权 | 沙箱或权限模式下的 agent 改写 setup 入口脚本，或改写入口会执行的**仓库文件**（`package.json` scripts、`scripts/setup.sh`、postinstall），等下次建 worktree 时在沙箱外执行 | **确认的是入口，不是仓库内容**：hash 只绑定入口文本，改入口一个字节就要重新确认；但 `pnpm install`、`./scripts/x.sh` 实际执行的仓库文件不在 hash 内，agent 改了它们**不会**触发重新确认（残余风险，已接受，弹窗醒目写明）。另外：Teams/Automations 遇到未确认的脚本一律不跑；确认只能在网页上做；沙箱（`buildSandboxRuntimeConfig`）无条件 denyWrite `HAPPY_HOME/worktree-setup`，即使 `workspaceRoot` 覆盖 `~`，agent 也写不了允许记录和已允许的运行快照。弹窗同时写明：允许后，这台机器上团队/自动化为该仓库建的 worktree 也会自动运行同一脚本 |
 | T3 | 确认后被替换（TOCTOU） | 用户看到 A，执行时变成了 B | approve 带上 hash，daemon 重新算 hash 比对；执行的是快照到 `runs/` 的那份字节 |
 | T4 | 路径穿越与符号链接逃逸 | `copy: ["../../.ssh/id_rsa"]`、`.env` 链到 `/etc/shadow`、被跟踪的符号链接目录把写入引到仓库外 | 校验 pattern；来源 realpath 必须在仓库内；目标父目录 realpath 必须在 worktree 内；`COPYFILE_EXCL` 不覆盖已有文件；有大小和数量上限 |
 | T5 | 凭据泄露给脚本 | daemon 环境里的 `HAPPY_*` / `VH_TEAM_SCOPE_FILE` | 剥掉 `HAPPY_*`、`VH_*`；不注入 token |
-| T6 | 失控进程 | 脚本 fork 出后台进程或一直挂着 | 进程组/`taskkill /T`；有超时；daemon 退出时清理；stdin 关闭 |
+| T6 | 失控进程 | 脚本 fork 出后台进程、一直挂着、或刷爆日志 | 进程组/`taskkill /T`；有超时；输出超过 20 MB 即杀进程组并标 `truncated`；daemon 退出时清理；daemon 被 SIGKILL 后，下次启动对被中断的记录，只有当该 pid 的命令行仍含这次运行的脚本路径（`HAPPY_HOME/worktree-setup/runs/<runId>/`）时才 kill 其进程组（pid 被复用则不动；组长已退出、只剩子进程的组无法证明归属，不动）；stdin 关闭 |
 | T7 | 允许记录被篡改或伪造 | 网页、server 或 relay 被攻破 | 允许记录只存本机 0600 文件。**已接受的残余风险**：攻破网页本来就能调用 `bash` RPC 执行任意命令，所以 setup 确认防的不是被攻破的网页，而是 T1/T2（防止 setup 被静默执行）。确认弹窗的价值在于「给人看清楚」，不是额外加一层身份校验 |
-| T8 | 误删数据 | 归档时删除带未提交改动的 worktree | 默认不删；只删网页创建的；检查改动并二次确认；保留分支 |
+| T8 | 误删数据 | 归档时删除带未提交改动的 worktree；或确认之后又有新改动 | 默认不删；只删网页创建的；检查改动并二次确认；保留分支。确认的是一份改动指纹（路径 + 大小 + mtime）：执行前网页再 inspect 一次，daemon 删除时再比一次，不一致就要求重新确认。**残余窗口**：daemon 最后一次比对到 `git worktree remove` 之间（毫秒级）的编辑仍会丢，已接受 |
+| T11 | 不可见字符 | 脚本里的双向控制符、零宽字符、裸 `\r` 让显示内容与执行内容不一致（Trojan Source） | 弹窗把这些字符显示成 `U+XXXX` 标记并给出警告 |
+| T12 | link 逃逸 | `link` 条目的中间段是符号链接（`a -> ../outside`，条目 `a/b`） | 对来源取 realpath，必须在仓库内；链接目标用 realpath 结果；含 `.git` 段的条目跳过 |
 | T9 | 共享 `node_modules` 双向污染 | worktree 里装依赖改到了主 checkout 的依赖 | `link` 默认关闭；网页摘要显式写出「链接：node_modules」；文档说明风险 |
 | T10 | 日志泄密 | setup 输出里打印了密钥 | 日志只在本机，经 machine key 加密的 RPC 按需读取，不进 server 持久化 |
 

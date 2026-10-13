@@ -95,4 +95,22 @@ describe('B-585 worktree setup banner', () => {
         expect(host.querySelector('[role=dialog]')).toBeNull();
         expect(host.textContent).toContain('Setup skipped');
     });
+
+    it('高1/低9: states that repo files run too, that teams/automations auto-run it, and flags invisible characters', async () => {
+        mock.status.mockResolvedValue(pending('h1', 'pnpm install\u202E # x'));
+        act(() => root.render(<WorktreeSetupBanner sessionId="s1" />));
+        await flush();
+        click('Review and allow');
+        expect(host.querySelector('[data-testid=worktree-repo-files-warning]')?.textContent).toContain('not the repository');
+        expect(host.textContent).toContain('teams or automations create for this repository');
+        expect(host.querySelector('[data-testid=worktree-invisible-warning]')?.textContent).toContain('1 invisible character');
+        expect(host.querySelector('.wts-invisible')?.textContent).toBe('U+202E');
+    });
+
+    it('shows a partial-initialization failure even without a setup script', async () => {
+        mock.status.mockResolvedValue({ ok: true, data: { tracked: true, worktreePath: '/wt', origin: 'web', branch: 'vh/a', repoRoot: '/r', copied: [], linked: [], skipped: [], initError: 'link: EEXIST', setup: { state: 'none' } } });
+        act(() => root.render(<WorktreeSetupBanner sessionId="s1" />));
+        await flush();
+        expect(host.querySelector('[data-testid=worktree-init-error]')?.textContent).toContain('link: EEXIST');
+    });
 });

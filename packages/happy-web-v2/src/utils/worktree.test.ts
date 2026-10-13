@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    generateWorktreeBranch, isAbsoluteMachinePath, isPlausibleBranchName, isUnsupportedRpcError, machineSupportsWorktrees,
+    generateWorktreeBranch, isAbsoluteMachinePath, markInvisibleChars, isPlausibleBranchName, isUnsupportedRpcError, machineSupportsWorktrees,
     setupBannerKind, worktreeBranchLabel, worktreeLocationFor,
 } from './worktree';
 
@@ -52,5 +52,14 @@ describe('B-586 worktree helpers', () => {
         expect(isAbsoluteMachinePath('C:\\x')).toBe(true);
         expect(isAbsoluteMachinePath('~/x')).toBe(false);
         expect(isAbsoluteMachinePath('x')).toBe(false);
+    });
+
+    it('低9: marks bidi controls, zero-width chars and bare CR visibly', () => {
+        const script = 'echo ok\n# \u202Eevil\u202C\nrm\u200B -rf x\r\n';
+        const { segments, count } = markInvisibleChars(script);
+        expect(count).toBe(4);
+        expect(segments.filter((s) => s.kind === 'invisible').map((s) => (s as { code: string }).code)).toEqual(['U+202E', 'U+202C', 'U+200B', 'U+000D']);
+        expect(segments.map((s) => (s.kind === 'text' ? s.text : '')).join('')).toBe('echo ok\n# evil\nrm -rf x\n');
+        expect(markInvisibleChars('plain\tscript\n').count).toBe(0);
     });
 });

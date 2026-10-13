@@ -9,6 +9,7 @@ import { newSessionTimingStart } from '@/app/newSessionTiming';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { pendingSessions } from '@/sync/pendingSessionsRuntime';
 import { Button, Spinner } from '@/ui';
+import { toast } from '@/ui/Toast';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ConnectMachineLink, NoMachinesNotice } from './NoMachinesNotice';
 import { claudeAuthNotice, hasClaudeAuthNotice } from './claudeAuthNotice';
@@ -199,6 +200,8 @@ export function NewSessionModal({
         return;
       }
       path = result.data.worktreePath;
+      // B-585: partial initialization is not fatal — the session still starts there.
+      if (result.data.init.initError) toast.show(worktreeCopy(lang).initFailed(result.data.init.initError), 'error');
     }
     newSessionTimingStart('dialog');
     prefetchSessionDetail();

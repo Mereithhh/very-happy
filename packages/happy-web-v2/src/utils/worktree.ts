@@ -69,3 +69,38 @@ export function worktreeBranchLabel(metadata: { worktree?: { branch?: string | n
 export function isAbsoluteMachinePath(path: string): boolean {
     return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path);
 }
+
+/**
+ * Characters that change how a script READS without being visible: bidi
+ * controls (Trojan Source), zero-width chars, BOM, a bare CR (overprints a line
+ * in some terminals), other C0/C1 controls except tab/newline.
+ */
+/** Inclusive code-point ranges (numeric on purpose: literal invisible characters in source are themselves a hazard). */
+const INVISIBLE_RANGES: ReadonlyArray<readonly [number, number]> = [
+    [0x0000, 0x0008], [0x000b, 0x000c], [0x000d, 0x000d], [0x000e, 0x001f], [0x007f, 0x009f], [0x00ad, 0x00ad],
+    [0x200b, 0x200f], [0x2028, 0x2029], [0x202a, 0x202e], [0x2060, 0x2064], [0x2066, 0x2069], [0xfeff, 0xfeff],
+];
+function isInvisible(ch: string): boolean {
+    const code = ch.codePointAt(0)!;
+    return INVISIBLE_RANGES.some(([lo, hi]) => code >= lo && code <= hi);
+}
+
+export type ScriptSegment = { kind: 'text'; text: string } | { kind: 'invisible'; code: string };
+
+/** Split a script into plain text and visible `U+XXXX` markers for invisible characters. */
+export function markInvisibleChars(script: string): { segments: ScriptSegment[]; count: number } {
+    const segments: ScriptSegment[] = [];
+    let buffer = '';
+    let count = 0;
+    for (const ch of script) {
+        if (isInvisible(ch)) {
+            if (buffer) { segments.push({ kind: 'text', text: buffer }); buffer = ''; }
+            segments.push({ kind: 'invisible', code: `U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}` });
+            count++;
+        } else {
+            buffer += ch;
+        }
+    }
+    if (buffer) segments.push({ kind: 'text', text: buffer });
+    return { segments, count };
+}
