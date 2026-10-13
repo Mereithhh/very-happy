@@ -457,6 +457,9 @@ export function sessionRoutes(app: Fastify) {
         if (result.count === 0) {
             return reply.code(404).send({ error: 'Session not found' });
         }
+        // B-587: a heartbeat queued just before the exit must not be flushed
+        // AFTER this write and flip the row back to active (batched presence).
+        activityCache.discardSessionUpdate(sessionId);
 
         sessionActivityRelayGate.forget(sessionId);
         eventRouter.emitEphemeral({

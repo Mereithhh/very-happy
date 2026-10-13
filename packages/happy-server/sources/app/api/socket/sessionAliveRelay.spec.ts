@@ -26,8 +26,9 @@ vi.mock('@/app/monitoring/metrics2', () => ({
     sessionAliveRelayCounter: { inc: vi.fn() },
     websocketEventsCounter: { inc: vi.fn() },
 }));
+const discardSessionUpdate = vi.hoisted(() => vi.fn());
 vi.mock('@/app/presence/sessionCache', () => ({
-    activityCache: { isSessionValid: vi.fn(async () => true), queueSessionUpdate },
+    activityCache: { isSessionValid: vi.fn(async () => true), queueSessionUpdate, discardSessionUpdate },
 }));
 vi.mock('@/utils/log', () => ({ log: vi.fn() }));
 
@@ -100,5 +101,13 @@ describe('session-alive fan-out is coalesced (B-484)', () => {
         await h.get('session-alive')!({ sid: 's1', time: Date.now(), thinking: false });
         const actives = emitEphemeral.mock.calls.map((c) => c[0].payload.active);
         expect(actives).toEqual([true, false, true]);
+    });
+
+    it('B-587: session-end drops the beat still queued in the presence batch (it would re-activate the row)', async () => {
+        const h = connect();
+        await h.get('session-alive')!({ sid: 's1', time: Date.now(), thinking: false });
+        discardSessionUpdate.mockClear();
+        await h.get('session-end')!({ sid: 's1', time: Date.now() });
+        expect(discardSessionUpdate).toHaveBeenCalledWith('s1');
     });
 });

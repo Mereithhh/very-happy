@@ -153,7 +153,9 @@ describe('server-owned session lifecycle routes', () => {
         expect(row.lastActiveAt.getTime()).toBeGreaterThan(0);
         expect(emitArchived).not.toHaveBeenCalled();
         expect(emitUpdate).not.toHaveBeenCalled();
-        expect(discardPending).not.toHaveBeenCalled();
+        // B-587: a heartbeat queued just before the wrapper went offline must
+        // not be flushed after this write and flip the row back to active.
+        expect(discardPending).toHaveBeenCalledWith(row.id);
         expect(emitEphemeral).toHaveBeenCalledTimes(1);
         expect(emitEphemeral.mock.calls[0][0].payload).toMatchObject({ type: 'activity', id: row.id, active: false, thinking: false });
 

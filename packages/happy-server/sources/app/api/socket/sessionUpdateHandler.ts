@@ -258,6 +258,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 return;
             }
 
+            // B-587: drop a heartbeat still queued in the presence batch, or
+            // its flush re-activates the row after this write.
+            activityCache.discardSessionUpdate(sid);
             // Update last active at
             await db.session.update({
                 where: { id: sid },
