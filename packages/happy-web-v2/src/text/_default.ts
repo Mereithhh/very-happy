@@ -422,7 +422,7 @@ export const en = {
         closeGuard: 'Closing a session with ⌘W',
         closeGuardDescription: '⌘W (installed app) / ⌥W (browser tab) closes the open session itself — a chat session is archived, a terminal is closed — the same flow as the row menu, then you land back home. On other screens the shortcut is left to the browser. In a browser tab ⌘W belongs to the browser anyway: it closes the whole tab before the page sees the key (the session keeps running), and only the browser\'s own dialog can interrupt that — its wording and styling cannot be customized.',
         closeViewConfirm: 'Confirm before ⌘W closes a session',
-        closeViewConfirmDescription: 'Ask first when ⌘W / ⌥W would archive the open chat session or close the open terminal. Turn this off to skip the dialog and act immediately. Cancelling leaves you exactly where you were.',
+        closeViewConfirmDescription: 'Ask first when ⌘W / ⌥W would close the open terminal. Archiving a chat session never asks — it shows Undo for a few seconds instead. Turn this off to skip the dialog and act immediately. Cancelling leaves you exactly where you were.',
         closeTabWarning: 'Warn before leaving the page',
         closeTabWarningDescription: 'While a session or terminal view is open, ask the browser to confirm closing or reloading the tab. Uses the browser\'s built-in dialog; deliberate in-app reloads (app updates, logout) are exempt.',
     },

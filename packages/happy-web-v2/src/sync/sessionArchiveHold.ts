@@ -4,8 +4,8 @@ const holds = new Map<string, number>();
 /** Keep a stale in-flight activity event from resurrecting a row immediately
  * after the user archived it. The hold is deliberately short: a deliberate
  * resume later in the same tab must become visible normally. */
-export function holdSessionInactive(sessionId: string, now = Date.now()): void {
-  holds.set(sessionId, now + ARCHIVE_ACTIVITY_HOLD_MS);
+export function holdSessionInactive(sessionId: string, now = Date.now(), durationMs = ARCHIVE_ACTIVITY_HOLD_MS): void {
+  holds.set(sessionId, now + durationMs);
 }
 
 export function releaseSessionInactive(sessionId: string): void {

@@ -495,6 +495,37 @@
   color: var(--text);
   background: var(--bg-2);
 }
+/* B-566: text + button toast ("已归档 · 撤销"); only the button acts */
+.vh-toast--button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  cursor: default;
+}
+.vh-toast-text {
+  min-width: 0;
+}
+.vh-toast-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  cursor: pointer;
+}
+.vh-toast-btn:hover {
+  background: var(--bg-3);
+}
+.vh-toast-btn:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
 
 @media (max-width: 600px), (pointer: coarse) {
   .vh-toasts {
@@ -510,6 +541,14 @@
       opacity: 0;
       transform: translateY(-6px);
     }
+  }
+}
+@media (pointer: coarse) {
+  /* B-566 touch target: the undo button must be easy to hit */
+  .vh-toast-btn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 var(--sp-3);
   }
 }
 

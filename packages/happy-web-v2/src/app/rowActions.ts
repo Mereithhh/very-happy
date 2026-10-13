@@ -27,6 +27,15 @@ import type { Session } from '@/sync/storageTypes';
 import { pickNextSessionId } from './nextSession';
 import { commitSessionArchive } from './sessionArchiveFlow';
 import { restoreSession, useSessionRestore } from './sessionRestore';
+import { deferredCommits, installDeferredCommitFlush, isUnloadFlush } from './deferredCommit';
+import { holdSessionInactive } from '@/sync/sessionArchiveHold';
+import { toast } from '@/ui/Toast';
+
+/** B-566: how long archive / mark-done can be undone before the server call. */
+export const UNDO_WINDOW_MS = 6_000;
+/** the inactive hold must outlive the window (+ the usual 5 s after commit),
+ *  or a CLI heartbeat inside the window would resurrect the hidden row */
+const UNDO_HOLD_MS = UNDO_WINDOW_MS + 5_000;
 
 /** B-111: route to land on after closing `closedId` — the most recently
  *  active other visible session, or '/' when none is left. Read the store at
@@ -40,7 +49,7 @@ export function nextSessionPathAfterClose(closedId: string): string {
 
 /** The server-owned archive transition (no confirm). The server commits the
  *  durable state first and then tells the daemon/session process to stop. */
-export async function archiveSessionNow(session: Session): Promise<void> {
+export async function archiveSessionNow(session: Session, opts?: { keepalive?: boolean }): Promise<void> {
   const wasActive = session.active;
   const previousArchivedAt = session.archivedAt;
   if (wasActive) storage.getState().setSessionActiveLocal(session.id, false);
@@ -48,7 +57,7 @@ export async function archiveSessionNow(session: Session): Promise<void> {
   // "offline") before the server's update-session round-trips.
   storage.getState().setSessionArchivedAtLocal(session.id, Date.now());
   try {
-    await commitSessionArchive(() => sessionArchive(session.id));
+    await commitSessionArchive(() => sessionArchive(session.id, opts));
   } catch (error) {
     if (wasActive) storage.getState().setSessionActiveLocal(session.id, true);
     storage.getState().setSessionArchivedAtLocal(session.id, previousArchivedAt ?? null);
@@ -96,23 +105,85 @@ export async function restoreClosedTerminal(navigate: NavigateFunction, row: Clo
   return false;
 }
 
-/** Archive a chat session, confirm first (sidebar/menu/⌘W entry point).
- *  Returns whether the archive actually ran — false means the user
- *  cancelled (callers like the ⌘W flow restore focus / stay put on cancel). */
-export async function confirmArchiveSession(session: Session): Promise<boolean> {
-  const ok = await Modal.confirm(t('sidebar.archiveConfirm'), undefined, {
-    confirmText: t('common.archive'),
-    destructive: true,
+/**
+ * B-566: archive / mark-done with an undo window instead of a confirm dialog.
+ *
+ * The row is hidden locally at once (inactive + archivedAt stamp, held
+ * against heartbeats for the whole window); the server call waits
+ * UNDO_WINDOW_MS. Undo reverts locally — nothing was sent, so other devices
+ * never saw a change. Leaving the page commits immediately (see
+ * deferredCommit). Delay-then-commit was chosen over commit-then-restore:
+ * archive kills the process, and restore is a fresh spawn that fails when the
+ * machine is offline (spec 2026-10-web-robustness-undo-presence).
+ *
+ * Returns true once the row is hidden (callers navigate away as before).
+ */
+function scheduleUndoableArchive(
+  session: Session,
+  kind: 'archive' | 'done',
+  commit: (keepalive: boolean) => Promise<void>,
+): boolean {
+  const key = `archive:${session.id}`;
+  if (deferredCommits.isPending(key)) return true;
+  const state = storage.getState();
+  const wasActive = session.active;
+  const previousArchivedAt = session.archivedAt ?? null;
+  if (wasActive) state.setSessionActiveLocal(session.id, false);
+  holdSessionInactive(session.id, Date.now(), UNDO_HOLD_MS);
+  state.setSessionArchivedAtLocal(session.id, Date.now());
+  installDeferredCommitFlush();
+  const handle = deferredCommits.schedule(key, {
+    delayMs: UNDO_WINDOW_MS,
+    commit: (reason) => commit(isUnloadFlush(reason)),
+    revert: () => {
+      const s = storage.getState();
+      if (wasActive) s.setSessionActiveLocal(session.id, true);
+      s.setSessionArchivedAtLocal(session.id, previousArchivedAt);
+    },
   });
-  if (!ok) return false;
-  try {
-    await archiveSessionNow(session);
-    return true;
-  } catch (error) {
-    console.error('[archiveSession] archive failed', error);
-    Modal.alert(t('common.error'), t('sessionInfo.failedToArchiveSession'));
-    return false;
-  }
+  toast.undoable(
+    t(kind === 'done' ? 'robustness.markedDone' : 'robustness.archived'),
+    t('robustness.undo'),
+    () => {
+      if (!handle.undo()) toast.show(t('robustness.undoTooLate'));
+    },
+    UNDO_WINDOW_MS,
+  );
+  return true;
+}
+
+/** Archive a chat session with an undo window (sidebar/menu/⌘W/board). */
+export function archiveSessionWithUndo(session: Session): boolean {
+  return scheduleUndoableArchive(session, 'archive', async (keepalive) => {
+    try {
+      // the snapshot taken before the optimistic hide: a failed commit rolls
+      // back to the real pre-archive state
+      await archiveSessionNow(session, { keepalive });
+    } catch (error) {
+      console.error('[archiveSession] archive failed', error);
+      if (!keepalive) Modal.alert(t('common.error'), t('sessionInfo.failedToArchiveSession'));
+    }
+  });
+}
+
+/** Mark done with an undo window (board ✓). Undo = no completion record,
+ *  no kill, no webhook. */
+export function markSessionDoneWithUndo(session: Session, opts?: { notify?: boolean }): boolean {
+  return scheduleUndoableArchive(session, 'done', async (keepalive) => {
+    try {
+      await markSessionDone(session, { ...opts, keepalive });
+    } catch (error) {
+      console.error('[markSessionDone] archive failed', error);
+      if (!keepalive) Modal.alert(t('common.error'), t('sessionInfo.failedToArchiveSession'));
+    }
+  });
+}
+
+/** Historical name kept for existing callers (Sidebar, BoardCard, ⌘W).
+ *  B-566 removed the confirm dialog: it now archives with an undo window and
+ *  resolves true as soon as the row is hidden. */
+export async function confirmArchiveSession(session: Session): Promise<boolean> {
+  return archiveSessionWithUndo(session);
 }
 
 /**
@@ -131,14 +202,22 @@ export async function confirmArchiveSession(session: Session): Promise<boolean> 
  */
 export async function markSessionDone(
   session: Session,
-  opts?: { notify?: boolean },
+  opts?: { notify?: boolean; keepalive?: boolean },
 ): Promise<void> {
-  try {
-    await sessionMarkCompleted(session.id);
-  } catch (error) {
-    console.warn('[markSessionDone] completion record write failed', error);
+  if (opts?.keepalive) {
+    // B-566: the page is going away — the archive request must be issued in
+    // THIS task (keepalive fetch), so it can't wait for the completion
+    // record round-trip. The record is fired alongside, best-effort; its
+    // metadata write rebases on a version conflict, so order is not fatal.
+    void sessionMarkCompleted(session.id).catch((error) => console.warn('[markSessionDone] completion record write failed', error));
+  } else {
+    try {
+      await sessionMarkCompleted(session.id);
+    } catch (error) {
+      console.warn('[markSessionDone] completion record write failed', error);
+    }
   }
-  await archiveSessionNow(session);
+  await archiveSessionNow(session, { keepalive: opts?.keepalive });
   if (opts?.notify !== false) {
     const title = session.metadata?.summary?.text?.trim() || t('session.newChat');
     const credentials = getCurrentAuth()?.credentials;
