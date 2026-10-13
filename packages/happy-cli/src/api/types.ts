@@ -422,6 +422,16 @@ export const DaemonStateSchema = z.object({
   claudeAuth: ClaudeAuthStateSchema.optional(),
   /** B-555: see RateLimitsStateSchema. Old webs ignore it; old daemons carry it forward unchanged. */
   rateLimits: RateLimitsStateSchema.optional(),
+  /**
+   * B-587 capability + setting: this daemon answers `agent-hibernation-set`
+   * and hibernates idle UI sessions after `idleMs` (0 = off). Same trust rule
+   * as the other capability flags (`detectedAt >= startedAt`).
+   */
+  agentHibernation: z.object({
+    idleMs: z.number(),
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).passthrough().optional(),
 })
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>
@@ -601,6 +611,14 @@ export type Metadata = {
   lifecycleStateSince?: number,
   archivedBy?: string,
   archiveReason?: string,
+  /**
+   * B-587: written by a wrapper that exited by idle hibernation (offline, not
+   * archived); cleared by the next wrapper on reconnect. `seq` = its message
+   * cursor — records above it are replayed on wake. Old clients ignore it.
+   */
+  hibernation?: { at: number; seq: number; idleMs: number; v: 1 },
+  /** B-587: user opted this session out of idle hibernation (web ⋯ menu). */
+  keepAwake?: boolean,
   flavor?: string
   sandbox?: SandboxConfig | null
   dangerouslySkipPermissions?: boolean | null

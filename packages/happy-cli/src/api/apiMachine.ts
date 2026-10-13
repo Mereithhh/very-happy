@@ -206,6 +206,8 @@ export class ApiMachineClient {
     private cliUpdateState: CliUpdateState | null = null;
     private cliUpdatePushChain: Promise<void> = Promise.resolve();
     private claudeAuthState: ClaudeAuthState | null = null;
+    /** B-587: the machine's hibernation threshold, published as a capability. */
+    private agentHibernationIdleMs: number | null = null;
     private rateLimitPushChain: Promise<void> = Promise.resolve();
     private readonly rateLimitPublisher = new RateLimitPublisher({
         getCurrent: () => this.machine.daemonState?.rateLimits,
@@ -431,6 +433,36 @@ export class ApiMachineClient {
             .then(() => this.machine.daemonState?.claudeAuth?.checkedAt === state.checkedAt
                 && this.machine.daemonState?.claudeAuth?.daemonPid === state.daemonPid)
             .catch((error) => { logger.debug('[API MACHINE] Failed to publish Claude auth state:', error); return false; });
+        this.cliUpdatePushChain = attempt.then(() => undefined);
+        return attempt;
+    }
+
+    /**
+     * B-587: `agent-hibernation-set {idleMs}` (0 = off) and the
+     * `daemonState.agentHibernation` capability. Call before connect().
+     */
+    setAgentHibernationHandlers(initialIdleMs: number, set: (idleMs: number) => Promise<number>): void {
+        this.agentHibernationIdleMs = initialIdleMs;
+        this.rpcHandlerManager.registerHandler('agent-hibernation-set', async (params: any) => {
+            const raw = params?.idleMs;
+            if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) return { error: 'invalid-idle-ms' };
+            const idleMs = await set(raw);
+            this.agentHibernationIdleMs = idleMs;
+            await this.publishAgentHibernation();
+            return { agentHibernation: { idleMs } };
+        });
+    }
+
+    private publishAgentHibernation(): Promise<void> {
+        const idleMs = this.agentHibernationIdleMs;
+        if (idleMs === null || !this.socket?.connected) return Promise.resolve();
+        const attempt = this.cliUpdatePushChain
+            .then(() => this.updateDaemonState((current) => ({
+                ...(current ?? {}),
+                status: current?.status ?? 'running',
+                agentHibernation: { idleMs, rpcAvailable: true, detectedAt: Date.now() },
+            })))
+            .catch((error) => { logger.debug('[API MACHINE] Failed to publish agent hibernation:', error); });
         this.cliUpdatePushChain = attempt.then(() => undefined);
         return attempt;
     }
@@ -1379,6 +1411,8 @@ export class ApiMachineClient {
                     // B-276: re-ship the last preflight so a reconnect never
                     // leaves a stale-pid value visible longer than needed.
                     ...(this.claudeAuthState ? { claudeAuth: this.claudeAuthState } : {}),
+                    // B-587 capability + setting (same restamp discipline).
+                    ...(this.agentHibernationIdleMs !== null ? { agentHibernation: { idleMs: this.agentHibernationIdleMs, rpcAvailable: true, detectedAt: now } } : {}),
                 };
             });
             // From here on, only CHANGES push (signature diff inside the manager).

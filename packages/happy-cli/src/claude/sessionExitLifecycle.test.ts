@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SessionExitGate, exitIntentFromArchiveFlag, settleSessionOnExit } from './sessionExitLifecycle';
+import type { Metadata } from '@/api/types';
 
 /**
  * B-505 regression. 2026-09-25 13:06:44Z, dev-sg: `very-happy daemon stop` for
@@ -87,7 +88,9 @@ describe('runClaude / api wiring', () => {
     });
 
     it('cleanup claims the intent through the gate before doing anything', () => {
-        expect(runClaude).toContain('const intent = exitGate.claim(exitIntentFromArchiveFlag(opts.archive));');
+        // B-587: only a hibernation (which claimed the gate in commitHibernation) bypasses the claim here.
+        expect(runClaude).toContain("const intent = opts.hibernation ? 'hibernate' as const : exitGate.claim(exitIntentFromArchiveFlag(opts.archive));");
+        expect(runClaude).toContain("claimExit: () => exitGate.claim('hibernate') !== null,");
         expect(runClaude).toContain('if (intent === null) {');
         expect(runClaude).toContain('await settleSessionOnExit(session.sessionId, intent, {');
         // the archive route is reachable only through the lifecycle module
@@ -107,5 +110,44 @@ describe('runClaude / api wiring', () => {
         const start = api.indexOf('async archiveSession(sessionId: string)');
         expect(api.slice(start, start + 800)).toContain('/v1/sessions/${sessionId}/archive`');
         expect(api.match(/\/v1\/sessions\/\$\{sessionId\}\/archive`/g)).toHaveLength(1);
+    });
+});
+
+describe('B-587 hibernate exit', () => {
+    const stamp = { at: 1_000, seq: 42, idleMs: 3_600_000, v: 1 as const };
+
+    it('stamps metadata.hibernation (awaited) BEFORE session-end, then /deactivate — never /archive or archived lifecycle', async () => {
+        const order: string[] = [];
+        const d = {
+            ...deps(),
+            sendSessionDeath: vi.fn(() => { order.push('session-end'); }),
+            deactivateSession: vi.fn(async () => { order.push('deactivate'); return true; }),
+            updateMetadataAndWait: vi.fn(async (_handler: (metadata: Metadata) => Metadata) => { order.push('stamp'); return true; }),
+            hibernation: stamp,
+        };
+        await settleSessionOnExit('s1', 'hibernate', d);
+        expect(order).toEqual(['stamp', 'session-end', 'deactivate']);
+        expect(d.archiveSession).not.toHaveBeenCalled();
+        const written = d.updateMetadataAndWait.mock.calls[0][0]({ flavor: 'claude', lifecycleState: 'running' } as never);
+        expect(written).toEqual({ flavor: 'claude', lifecycleState: 'running', hibernation: stamp });
+    });
+
+    it('a stamp that does not land in time still goes offline (plain offline is recoverable)', async () => {
+        const d = { ...deps(), updateMetadataAndWait: vi.fn(async () => false), hibernation: stamp };
+        await settleSessionOnExit('s1', 'hibernate', d);
+        expect(d.deactivateSession).toHaveBeenCalledWith('s1');
+        expect(d.archiveSession).not.toHaveBeenCalled();
+    });
+
+    it('the gate can be handed back after an aborted hibernation, but only by the hibernation', () => {
+        const gate = new SessionExitGate();
+        expect(gate.claim('hibernate')).toBe('hibernate');
+        expect(gate.claim('archive')).toBeNull();
+        gate.release('offline');
+        expect(gate.current).toBe('hibernate');
+        gate.release('hibernate');
+        expect(gate.claim('archive')).toBe('archive');
+        gate.release('hibernate');
+        expect(gate.current).toBe('archive');
     });
 });

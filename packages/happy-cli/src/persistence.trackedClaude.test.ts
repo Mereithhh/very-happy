@@ -26,6 +26,20 @@ describe('readTrackedClaudeSessionIds (B-291)', () => {
         await writeFile(join(home, 'sessions.json'), JSON.stringify({ sessions }));
     }
 
+    it('B-587: a hibernated record is kept 90 days, an ordinary one 14', async () => {
+        const day = 24 * 60 * 60 * 1000;
+        const twentyDaysAgo = Date.now() - 20 * day;
+        await writeSessions({
+            hibernated: { savedAt: twentyDaysAgo, hibernatedAt: twentyDaysAgo, metadata: {} },
+            offline: { savedAt: twentyDaysAgo, metadata: {} },
+            // resumed after hibernating: savedAt moved on, the old stamp no longer counts
+            resumedLongAgo: { savedAt: twentyDaysAgo, hibernatedAt: twentyDaysAgo - day, metadata: {} },
+            tooOld: { savedAt: Date.now() - 91 * day, hibernatedAt: Date.now() - 91 * day, metadata: {} },
+        });
+        const { readPersistedSessions } = await import('./persistence');
+        expect(Object.keys(readPersistedSessions()).sort()).toEqual(['hibernated']);
+    });
+
     it('collects own and imported-from ids regardless of the live-session age prune', async () => {
         const ancient = Date.now() - 400 * 24 * 60 * 60 * 1000;
         await writeSessions({

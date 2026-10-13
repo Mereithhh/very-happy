@@ -497,3 +497,25 @@ async function waitForProcessDeath(pid: number, timeout: number): Promise<void> 
   }
   throw new Error('Process did not die within timeout');
 }
+
+/**
+ * B-587: ask the daemon whether this idle session may hibernate (spec
+ * 2026-10-idle-agent-hibernation §1). An old daemon has no route (404) and no
+ * daemon at all means nobody may decide — both map to `unsupported`, which the
+ * probe answers with a long back-off. Never throws.
+ */
+export async function checkDaemonHibernation(
+  body: { sessionId: string; pid: number; report: import('@/hibernation/hibernationPolicy').WrapperIdleSnapshot },
+): Promise<import('@/hibernation/hibernationProbe').HibernateCheckResult> {
+  const result = await daemonPost('/session-hibernate-check', body);
+  if (result && typeof result === 'object' && typeof result.error === 'string') {
+    return /404|Not Found|No daemon running|not running/.test(result.error) ? 'unsupported' : 'error';
+  }
+  if (!result || typeof result.hibernate !== 'boolean') return 'error';
+  return {
+    hibernate: result.hibernate,
+    ...(typeof result.reason === 'string' ? { reason: result.reason } : {}),
+    ...(typeof result.idleMs === 'number' ? { idleMs: result.idleMs } : {}),
+    ...(typeof result.nextCheckMs === 'number' ? { nextCheckMs: result.nextCheckMs } : {}),
+  };
+}

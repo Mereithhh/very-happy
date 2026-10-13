@@ -13,6 +13,7 @@ import * as z from 'zod';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { CliUpdateState, Metadata } from '@/api/types';
 import { logger } from '@/ui/logger';
+import { HIBERNATED_RECORD_MAX_AGE_MS } from '@/hibernation/hibernationPolicy';
 import { credentialRelayProblem } from '@/ui/authRelay';
 import {
   ensurePrivateDirectory,
@@ -69,6 +70,12 @@ interface Settings {
    * absent/`auto` = Claude Code's own keychain-first behaviour.
    */
   claudeCredentialStore?: 'auto' | 'file'
+  /**
+   * B-587: idle agent hibernation threshold for UI sessions on this machine
+   * (ms). Absent = default (6h), 0 = off. Machine-local for the same reason as
+   * boardLlm; set from the web machine page via `agent-hibernation-set`.
+   */
+  agentHibernationIdleMs?: number
   /**
    * B-327: install a newly recommended CLI by itself while the machine is idle.
    * `idle` (the default) upgrades only with no session wrapper and no live web
@@ -579,6 +586,8 @@ export type PersistedSession = {
   agentStateVersion: number;
   metadata: Metadata;
   savedAt: number;
+  /** B-587: set when the wrapper exited by hibernating — kept 90 days, not 14. */
+  hibernatedAt?: number;
 };
 
 type SessionsFile = {
@@ -596,7 +605,8 @@ export function readPersistedSessions(): Record<string, PersistedSession> {
     const now = Date.now();
     const sessions: Record<string, PersistedSession> = {};
     for (const [id, session] of Object.entries(data.sessions)) {
-      if (now - session.savedAt < SESSION_MAX_AGE_MS) {
+      const maxAge = typeof session.hibernatedAt === 'number' && session.hibernatedAt >= session.savedAt ? HIBERNATED_RECORD_MAX_AGE_MS : SESSION_MAX_AGE_MS;
+      if (now - session.savedAt < maxAge) {
         sessions[id] = session;
       }
     }

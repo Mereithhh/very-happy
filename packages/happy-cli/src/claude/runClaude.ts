@@ -1,5 +1,7 @@
 import os from 'node:os';
-import { applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
+import { applyHibernationReplay, applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
+import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, resolveCheckMs, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
+import { HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
 import { randomUUID } from 'node:crypto';
 
 // B-512: only what the pre-webhook half needs is imported statically. The
@@ -17,7 +19,7 @@ import { spawnOriginTags } from '@/utils/createSessionMetadata';
 import { PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { configuration } from '@/configuration';
-import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
+import { checkDaemonHibernation, notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
@@ -224,7 +226,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1', 'claude-runtime-controls-v1', 'claude-opus-5-5-v1', PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY],
         // Effective mode this process enforces. Kept current by
         // publishPermissionMode below; the web renders it instead of guessing.
         permissionMode: mapToClaudeMode(initialPermissionMode ?? 'default'),
@@ -336,12 +338,18 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // transient failure after retries) fall back to the legacy skip-all-history
     // reconnect with zeroed versions so the first write pulls the server copy.
     let reconnectSeeded = false;
+    let wakingFromHibernation = false;
     if (reconnectSessionId) {
         const snapshot = await api.getSession(response.id, response.encryptionKey, response.encryptionVariant);
         if (snapshot.ok) {
             response = applyServerSnapshot(response, snapshot.session);
             reconnectSeeded = true;
             logger.debug(`[START] Reconnect seeded from server: seq=${snapshot.session.seq} metadataVersion=${snapshot.session.metadataVersion}`);
+            // B-587: waking from hibernation → replay what arrived after the stamp.
+            const wake = applyHibernationReplay(response);
+            response = wake.response;
+            wakingFromHibernation = wake.replaying;
+            if (wake.replaying) logger.debug(`[START] Waking from hibernation: replaying records after seq=${response.seq}`);
         } else {
             response = withoutServerSnapshot(response);
             logger.debug(`[START] Reconnect without server snapshot (${snapshot.reason}); skipping existing messages`);
@@ -432,7 +440,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // B-332: whatever the previous wrapper still held in its queue is gone
         // now — seeded or skipped, this process will never see it. Tombstone
         // it so the web stops showing it as「排队中」/ delivered. Best-effort.
-        void session.cancelUndeliveredQueuedInputs();
+        // B-587: not when waking from hibernation — its queue was empty by
+        // definition, and the scan would tombstone the records being replayed.
+        if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs();
         // First write: server truth (handler arg) + this process's identity
         // (the local `metadata` object) + lifecycle back to running.
         session.updateMetadata((meta) => ({
@@ -1142,12 +1152,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // `archive` by whatever arrives while cleanup is in flight — the server's
     // `session-archive` echo, or teardown noise from the dying SDK child.
     const exitGate = new SessionExitGate();
-    const cleanup = async (opts: { archive?: boolean } = { archive: true }) => {
-        const intent = exitGate.claim(exitIntentFromArchiveFlag(opts.archive));
+    let hibernationProbe: HibernationProbe | null = null;
+    const cleanup = async (opts: { archive?: boolean; hibernation?: NonNullable<Metadata['hibernation']> } = { archive: true }) => {
+        // B-587: a hibernation claimed the gate itself (commitHibernation) before calling here.
+        const intent = opts.hibernation ? 'hibernate' as const : exitGate.claim(exitIntentFromArchiveFlag(opts.archive));
         if (intent === null) {
             logger.debug(`[START] Termination (archive=${opts.archive ?? true}) ignored: cleanup already running as ${exitGate.current}`);
             return;
         }
+        hibernationProbe?.stop();
         logger.debug(`[START] Received termination signal, cleaning up (archive=${intent === 'archive'})...`);
         // B-509: first thing — never pop another server-queued prompt into a
         // process that is leaving (a popped item is a message the next wrapper
@@ -1167,6 +1180,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 // where a dropped link leaves it — visible and resumable.
                 await settleSessionOnExit(session.sessionId, intent, {
                     updateMetadata: (handler) => session.updateMetadata(handler),
+                    updateMetadataAndWait: (handler) => session.updateMetadataAndWait(handler),
+                    hibernation: opts.hibernation,
                     sendSessionDeath: () => session.sendSessionDeath(),
                     archiveSession: (id) => api.archiveSession(id),
                     deactivateSession: (id) => api.deactivateSession(id),
@@ -1233,6 +1248,46 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // want the metadata stamped — it's the user explicitly choosing to
     // retire the session, not just disconnecting.
     registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }), session);
+
+    // B-587: idle hibernation (spec 2026-10-idle-agent-hibernation). Only a
+    // daemon-spawned remote UI session checks in; the daemon decides, this
+    // process re-checks its own state at commit and goes offline (never archive).
+    const hibernationSnapshot = (): WrapperIdleSnapshot => {
+        const agentState = session.getAgentState();
+        const current = currentSession as Session | null;
+        const meta = session.getMetadata();
+        return {
+            flavor: 'claude',
+            uiSession: options.startedBy === 'daemon' && options.startingMode === 'remote' && agentState?.controlledByUser !== true,
+            ...(isAssistantVariant ? { variant: 'assistant' } : {}),
+            ...(process.env.HAPPY_SPAWNED_BY ? { spawnedBy: process.env.HAPPY_SPAWNED_BY } : {}),
+            ...(meta?.tags ? { tags: meta.tags } : {}),
+            keepAwake: meta?.keepAwake === true,
+            thinking: current?.thinking === true,
+            queuedInputs: messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
+            waitingForInput: messageQueue.isWaiting(),
+            pendingRequests: Object.keys(agentState?.requests ?? {}).length,
+            backgroundTasks: current?.backgroundTasks.length ?? 0,
+            lastActivityAt: session.lastActivityAt,
+            ...(exitGate.current && exitGate.current !== 'hibernate' ? { exiting: true } : {}),
+        };
+    };
+    if (options.startedBy === 'daemon' && options.startingMode === 'remote' && !isAssistantVariant) {
+        hibernationProbe = new HibernationProbe({
+            checkMs: resolveCheckMs(),
+            snapshot: hibernationSnapshot,
+            ask: (report) => checkDaemonHibernation({ sessionId: session.sessionId, pid: process.pid, report }),
+            commit: (idleMs) => commitHibernation({
+                client: session,
+                claimExit: () => exitGate.claim('hibernate') !== null,
+                releaseExit: () => exitGate.release('hibernate'),
+                recheck: () => evaluateWrapperIdle(hibernationSnapshot(), idleMs, Date.now()),
+                idleMs,
+                finish: (stamp) => cleanup({ archive: false, hibernation: stamp }),
+            }),
+        });
+        hibernationProbe.start();
+    }
 
     // Create claude loop
     const exitCode = await loop({

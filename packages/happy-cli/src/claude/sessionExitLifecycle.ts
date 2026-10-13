@@ -32,7 +32,9 @@
  */
 import type { Metadata } from '@/api/types';
 
-export type SessionExitIntent = 'archive' | 'offline';
+/** B-587: `hibernate` = `offline` on the server (deactivate, never archive)
+ *  plus a `metadata.hibernation` stamp written before the session ends. */
+export type SessionExitIntent = 'archive' | 'offline' | 'hibernate';
 
 export interface SessionExitDeps {
     updateMetadata: (handler: (metadata: Metadata) => Metadata) => void;
@@ -41,6 +43,10 @@ export interface SessionExitDeps {
     archiveSession: (sessionId: string) => Promise<boolean>;
     /** POST /deactivate — active=false only. */
     deactivateSession: (sessionId: string) => Promise<boolean>;
+    /** B-587: awaited metadata write (resolves false on timeout); required for `hibernate`. */
+    updateMetadataAndWait?: (handler: (metadata: Metadata) => Metadata) => Promise<boolean>;
+    /** B-587: the stamp to write for a `hibernate` exit. */
+    hibernation?: NonNullable<Metadata['hibernation']>;
     log?: (message: string, ...args: unknown[]) => void;
 }
 
@@ -54,6 +60,15 @@ export async function settleSessionOnExit(sessionId: string, intent: SessionExit
             archivedBy: 'cli',
             archiveReason: 'User terminated',
         }));
+    }
+
+    if (intent === 'hibernate' && deps.hibernation) {
+        const stamp = deps.hibernation;
+        const handler = (currentMetadata: Metadata): Metadata => ({ ...currentMetadata, hibernation: stamp });
+        // The stamp must land before session-end; a timeout still goes offline
+        // (a plain offline session is just as recoverable).
+        const landed = deps.updateMetadataAndWait ? await deps.updateMetadataAndWait(handler) : (deps.updateMetadata(handler), false);
+        if (!landed) deps.log?.('[START] hibernation stamp not confirmed before going offline');
     }
 
     // Socket path first: the server flips active=false on `session-end`
@@ -83,6 +98,11 @@ export class SessionExitGate {
 
     get current(): SessionExitIntent | null {
         return this.decided;
+    }
+
+    /** B-587: a hibernation that aborted at commit hands the exit back. */
+    release(intent: SessionExitIntent): void {
+        if (this.decided === intent) this.decided = null;
     }
 }
 

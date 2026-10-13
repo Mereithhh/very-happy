@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyServerSnapshot, mergeReconnectMetadata, processIdentityFields, withoutServerSnapshot } from './reconnectSession';
+import { applyHibernationReplay, applyServerSnapshot, mergeReconnectMetadata, processIdentityFields, withoutServerSnapshot } from './reconnectSession';
 import type { Metadata, Session } from '@/api/types';
 
 const base: Metadata = { path: '/p', host: 'h', homeDir: '/home', happyHomeDir: '/h/.happy', happyLibDir: '/lib', happyToolsDir: '/tools' };
@@ -39,5 +39,33 @@ describe('B-265 server snapshot seeding', () => {
     });
     it('without a snapshot the env versions are zeroed so the first write mismatches and pulls the server copy', () => {
         expect(withoutServerSnapshot(response)).toMatchObject({ seq: 3, metadataVersion: 0, agentStateVersion: 0 });
+    });
+});
+
+describe('B-587 waking a hibernated session', () => {
+    const stamp = { at: 1, seq: 40, idleMs: 3_600_000, v: 1 as const };
+    const session = (seq: number, metadata: Metadata): Session => ({
+        id: 's', seq, encryptionKey: new Uint8Array(32), encryptionVariant: 'dataKey',
+        metadata, metadataVersion: 3, agentState: null, agentStateVersion: 1,
+    } as Session);
+
+    it('the reconnect merge drops the hibernation stamp (awake again) — and JSON drops the key', () => {
+        const merged = mergeReconnectMetadata({ ...base, hibernation: stamp, keepAwake: true }, { ...base, hostPid: 2 }, 9);
+        expect(merged.hibernation).toBeUndefined();
+        expect('hibernation' in JSON.parse(JSON.stringify(merged))).toBe(false);
+        expect(merged.keepAwake).toBe(true); // user choice survives the wake
+    });
+
+    it('records stored after the stamp are replayed: cursor moves back to the stamp', () => {
+        const { response, replaying } = applyHibernationReplay(session(45, { ...base, hibernation: stamp }));
+        expect(replaying).toBe(true);
+        expect(response.seq).toBe(40);
+    });
+
+    it('nothing arrived (or no stamp, or a corrupt one ahead of the server) → keep the server cursor', () => {
+        expect(applyHibernationReplay(session(40, { ...base, hibernation: stamp }))).toMatchObject({ replaying: false, response: { seq: 40 } });
+        expect(applyHibernationReplay(session(45, base))).toMatchObject({ replaying: false, response: { seq: 45 } });
+        expect(applyHibernationReplay(session(30, { ...base, hibernation: stamp }))).toMatchObject({ replaying: false, response: { seq: 30 } });
+        expect(applyHibernationReplay(session(45, { ...base, hibernation: { at: 1 } } as unknown as Metadata))).toMatchObject({ replaying: false });
     });
 });

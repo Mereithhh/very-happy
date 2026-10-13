@@ -608,6 +608,14 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private routeIncomingMessage(message: unknown, sourceLocalId?: string | null) {
+        // B-587: a hibernating wrapper routes nothing more — whatever arrives
+        // now has a seq above the stamp and is replayed by the next wrapper.
+        if (this.inboundFrozen) {
+            logger.debug(`[API] Hibernating: leaving inbound ${sourceLocalId ?? '(no localId)'} for the next wrapper`);
+            return;
+        }
+        this.inboundRoutedDuringCommit = true;
+        this.noteActivity();
         if (sourceLocalId) this.promptQueueDrain?.onInbound(sourceLocalId);
         const messageWithSource = sourceLocalId && typeof message === 'object' && message !== null
             ? { ...message, localKey: (message as { localKey?: unknown }).localKey ?? sourceLocalId }
@@ -907,6 +915,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private enqueueMessage(content: unknown, invalidate: boolean = true, localId?: string) {
+        this.noteActivity();
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.pendingOutbox.push({
             content: encrypted,
@@ -1127,6 +1136,40 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content);
     }
 
+    // ── B-587 hibernation support ──────────────────────────────────────────
+    /** Last user/agent activity this wrapper saw (spec §2.1). */
+    private lastActivity = Date.now();
+    private inboundFrozen = false;
+    private inboundRoutedDuringCommit = false;
+
+    noteActivity(now: number = Date.now()): void {
+        if (now > this.lastActivity) this.lastActivity = now;
+    }
+
+    get lastActivityAt(): number {
+        return this.lastActivity;
+    }
+
+    /** The message cursor (highest seq this wrapper has seen). */
+    get messageCursor(): number {
+        return this.lastSeq;
+    }
+
+    /** Start watching for inbound routed during the hibernation commit window. */
+    beginHibernationCommit(): void {
+        this.inboundRoutedDuringCommit = false;
+    }
+
+    /** Was any inbound message routed since beginHibernationCommit()? */
+    inboundRoutedSinceCommit(): boolean {
+        return this.inboundRoutedDuringCommit;
+    }
+
+    /** Stop routing inbound messages; the next wrapper replays them (spec §3/§4). */
+    freezeInbound(): void {
+        this.inboundFrozen = true;
+    }
+
     /**
      * Send a ping message to keep the connection alive
      */
@@ -1154,6 +1197,7 @@ export class ApiSessionClient extends EventEmitter {
         }
         this.turnReporter.observe(thinking);
         if (backgroundTasks) this.backgroundTaskReporter.observe(backgroundTasks);
+        if (thinking || (backgroundTasks?.length ?? 0) > 0) this.noteActivity();
         this.socket.volatile.emit('session-alive', {
             sid: this.sessionId,
             time: Date.now(),
@@ -1362,7 +1406,26 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
-        this.metadataLock.inLock(async () => {
+        void this.writeMetadata(handler);
+    }
+
+    /**
+     * B-587: the same write, awaitable with a ceiling — the hibernation stamp
+     * must land before `session-end`. Resolves false on timeout (the write
+     * itself keeps retrying in the background, exactly like updateMetadata).
+     */
+    async updateMetadataAndWait(handler: (metadata: Metadata) => Metadata, timeoutMs = 10_000): Promise<boolean> {
+        let timer: NodeJS.Timeout | undefined;
+        const timeout = new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs); });
+        try {
+            return await Promise.race([this.writeMetadata(handler).then(() => true as const), timeout]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    private writeMetadata(handler: (metadata: Metadata) => Metadata): Promise<void> {
+        return this.metadataLock.inLock(async () => {
             // B-307: consecutive RATE refusals for this one write. The enclosing
             // backoff retries within a second and never gives up — correct for a
             // dropped packet, an amplifier against an account-wide bucket.
@@ -1412,6 +1475,8 @@ export class ApiSessionClient extends EventEmitter {
                     this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
                     this.agentStateVersion = answer.version;
                     rateRefusals = 0;
+                    // B-587: a pending approval/question is activity.
+                    if (Object.keys(this.agentState?.requests ?? {}).length > 0) this.noteActivity();
                     logger.debug('Agent state updated', this.agentState);
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version > this.agentStateVersion) {
