@@ -4296,4 +4296,24 @@ export const zhHans: TranslationStructure = {
         openMachine: ({ machine }: { machine: string }) => `${machine} 的额度用量`,
     },
 
+    terminalPaths: {
+        notFound: ({ path }: { path: string }) => `没有找到文件：${path}`,
+        isDirectory: ({ path }: { path: string }) => `${path} 是目录，不是文件`,
+        noCwd: ({ path }: { path: string }) => `无法解析 ${path}：不知道这个终端当前所在目录`,
+    },
+    quickOpen: {
+        title: '打开文件',
+        placeholder: '按文件名搜索…',
+        loading: '正在读取项目文件…',
+        noMatches: '没有匹配的文件',
+        unavailableTitle: '没有项目文件列表',
+        unavailableBody: '这个目录不是 git 仓库，或这个会话暂时无法列出文件（离线或 CLI 较旧）。可以改用文件浏览。',
+        noSession: '这个对话没有可搜索的机器目录。',
+        browse: '浏览文件',
+        recent: '最近打开',
+        files: '文件',
+        truncatedHint: ({ count }: { count: number }) => `只显示前 ${count} 个，继续输入以缩小范围。`,
+        paletteAction: '打开文件…',
+    },
+
 } as const;

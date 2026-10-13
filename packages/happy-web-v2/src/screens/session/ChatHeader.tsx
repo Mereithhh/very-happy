@@ -22,6 +22,7 @@ import { useImeGuard } from '@/utils/ime';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { RelayBadge } from '@/components/RelayBadge';
 import { sessionAgentLabel } from './sessionAgentLabel';
+import { PrStatusChip } from './git/PrStatusChip';
 import './header.css';
 
 export function ChatHeader({
@@ -211,6 +212,7 @@ export function ChatHeader({
                 place the input measured 4px wide at 360px — unusable. */}
             {!editing && (
                 <div className="ch-status">
+                    <PrStatusChip sessionId={sessionId} compact={!isTablet} />
                     <RelayBadge status={relayStatus} />
                 </div>
             )}

@@ -66,14 +66,14 @@ export function foldCaseStable(s: string): string {
     return out;
 }
 
-interface RowText {
+export interface RowText {
     row: number;
     text: string;
     /** text index i ↔ column i (no wide chars, no surrogate pairs). */
     identity: boolean;
 }
 
-function rowText(line: SearchLineLike, row: number, isLast: boolean): RowText {
+export function rowText(line: SearchLineLike, row: number, isLast: boolean): RowText {
     const full = line.translateToString(false);
     const identity = full.length === line.length && !SURROGATE_RE.test(full);
     // Only the LAST row of a logical line is right-trimmed: inner rows of a
@@ -83,8 +83,9 @@ function rowText(line: SearchLineLike, row: number, isLast: boolean): RowText {
     return { row, text, identity };
 }
 
-/** Per-code-unit cell map for one logical line (built only when it has a hit). */
-function buildCellMap(buffer: SearchBufferLike, rows: RowText[]): { row: number[]; col: number[]; end: number[] } {
+/** Per-code-unit cell map for one logical line (built only when it has a hit).
+ *  Also used by termPathLinks (B-574) to map a path's string span back to cells. */
+export function buildCellMap(buffer: SearchBufferLike, rows: RowText[]): { row: number[]; col: number[]; end: number[] } {
     const rowOf: number[] = [];
     const colOf: number[] = [];
     const endOf: number[] = [];

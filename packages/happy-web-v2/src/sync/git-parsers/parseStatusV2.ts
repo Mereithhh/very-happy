@@ -172,8 +172,10 @@ function parseRenameCopy(matches: (string | undefined)[]): GitFileEntryV2 | null
         hashHead: matches[7],
         hashIndex: matches[8],
         renameScore: parseInt(matches[10] || '0', 10),
-        from: decodeGitPath(matches[11]),
-        path: decodeGitPath(matches[12])
+        // `2 … <X><score> <path>\t<origPath>`: the NEW path comes first
+        // (verified on git 2.x); the two were swapped here before B-583.
+        path: decodeGitPath(matches[11]),
+        from: decodeGitPath(matches[12])
     };
 }
 
