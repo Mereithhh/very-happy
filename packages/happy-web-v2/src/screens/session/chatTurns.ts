@@ -6,7 +6,7 @@ import { parseLocalCommandMessage, parseTaskNotification, stripHarnessBlocks } f
 import { GENERIC_TURN_FAILURE, presentServiceEvent } from './serviceEvent';
 import { stripThinkingWrapper } from './thinking';
 import { summarizeCompactionTurn, type CompactionSummary } from './compaction';
-import { collectTouchedPaths, turnDiffSummary, type TurnDiff } from './turnDiffs';
+import { turnDiffSummary, type TurnDiff } from './turnDiffs';
 
 export type LeafRow =
     | {
@@ -293,9 +293,6 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean, opti
     const { messages, attachments: userAttachments } = extractUserAttachments(rawMessages);
     const rows: ChatRow[] = [];
     const finalAgentId = lastFinalAgentId(messages);
-    // B-571: paths touched before the current turn (a Write to one of them is
-    // an overwrite, not a new file — see turnDiffs.ts).
-    const touched = options.turnDiffs ? new Set<string>() : null;
     let i = 0;
 
     while (i < messages.length) {
@@ -304,7 +301,6 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean, opti
             let end = i + 1;
             while (end < messages.length && messages[end].kind !== 'user-text') end++;
             rows.push(...buildLeafRows(messages.slice(i, end), finalAgentId));
-            if (touched) collectTouchedPaths(messages.slice(i, end), touched);
             i = end;
             continue;
         }
@@ -406,10 +402,9 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean, opti
             rows.splice(turnRowsStart, 0, ...buildLeafRows([message], finalAgentId, true, true, userAttachments));
         }
         // B-571: a finished turn that wrote files ends on one rollup line.
-        if (touched) {
-            const diff = !live && !compaction ? turnDiffSummary(turnMessages, touched) : null;
+        if (options.turnDiffs && !live && !compaction) {
+            const diff = turnDiffSummary(turnMessages);
             if (diff) rows.push({ type: 'turn-diff', key: `turndiff-${message.id}`, diff });
-            collectTouchedPaths(turnMessages, touched);
         }
         i = turnEnd;
     }

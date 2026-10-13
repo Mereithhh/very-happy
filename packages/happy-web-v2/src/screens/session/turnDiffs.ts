@@ -135,6 +135,30 @@ function structuredPatchCounts(result: unknown): { added: number; removed: numbe
     return { added, removed };
 }
 
+/**
+ * Claude `structuredPatch` → old/new snippets for DiffView, so an expanded
+ * file shows the SAME change its numbers count (review 低2).
+ */
+function structuredPatchRender(result: unknown): EditRender | null {
+    const patch = record(result)?.structuredPatch;
+    if (!Array.isArray(patch) || patch.length === 0) return null;
+    const oldLines: string[] = [];
+    const newLines: string[] = [];
+    for (const [i, hunk] of patch.entries()) {
+        const lines = record(hunk)?.lines;
+        if (!Array.isArray(lines)) return null;
+        if (i > 0) { oldLines.push('⋯'); newLines.push('⋯'); }
+        for (const line of lines) {
+            if (typeof line !== 'string') continue;
+            const body = line.slice(1);
+            if (line.startsWith('+')) newLines.push(body);
+            else if (line.startsWith('-')) oldLines.push(body);
+            else if (!line.startsWith('\\')) { oldLines.push(body); newLines.push(body); }
+        }
+    }
+    return { oldText: oldLines.join('\n'), newText: newLines.join('\n') };
+}
+
 function codexPatchEdits(input: Record<string, unknown>): FileEdit[] {
     const changes = record(input.changes) ?? record(input.fileChanges);
     if (!changes) return [];
@@ -170,27 +194,11 @@ function codexPatchEdits(input: Record<string, unknown>): FileEdit[] {
     return edits;
 }
 
-/** File-path-bearing tools that READ or WRITE (used for the "existed before" check). */
-const TOUCH_TOOLS = new Set(['Read', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
-
-/** The path a Claude-shaped tool points at (after the pi mapping), or null. */
-export function toolTouchedPath(rawTool: ToolCall): string | null {
-    const tool = normalizePiToolCall(rawTool);
-    if (!TOUCH_TOOLS.has(tool.name)) return null;
-    const input = record(tool.input) ?? {};
-    return asString(input.file_path) ?? asString(input.notebook_path);
-}
-
-export type EditContext = {
-    /** Paths (as written by the tool, normalized) touched by EARLIER messages of this session. */
-    seenBefore: ReadonlySet<string>;
-};
-
 /**
  * Write-tool calls → the files they changed. Only COMPLETED calls count: a
  * failed, denied or still-running edit changed nothing (yet).
  */
-export function toolFileEdits(rawTool: ToolCall, ctx: EditContext): FileEdit[] {
+export function toolFileEdits(rawTool: ToolCall): FileEdit[] {
     if (rawTool.state !== 'completed') return [];
     const tool = normalizePiToolCall(rawTool);
     const input = record(tool.input) ?? {};
@@ -202,7 +210,8 @@ export function toolFileEdits(rawTool: ToolCall, ctx: EditContext): FileEdit[] {
             const newText = asString(input.new_string) ?? '';
             const exact = structuredPatchCounts(tool.result);
             const counts = exact ?? (input.replace_all === true ? null : countReplacement(oldText, newText));
-            return [{ path, added: counts?.added ?? null, removed: counts?.removed ?? null, renders: [{ oldText, newText }] }];
+            const patched = exact ? structuredPatchRender(tool.result) : null;
+            return [{ path, added: counts?.added ?? null, removed: counts?.removed ?? null, renders: [patched ?? { oldText, newText }] }];
         }
         case 'MultiEdit': {
             const path = asString(input.file_path);
@@ -210,7 +219,7 @@ export function toolFileEdits(rawTool: ToolCall, ctx: EditContext): FileEdit[] {
             const list = Array.isArray(input.edits) ? input.edits.map(record).filter((e): e is Record<string, unknown> => e !== null) : [];
             const renders = list.map((e) => ({ oldText: asString(e.old_string) ?? '', newText: asString(e.new_string) ?? '' }));
             const exact = structuredPatchCounts(tool.result);
-            if (exact) return [{ path, ...exact, renders }];
+            if (exact) { const patched = structuredPatchRender(tool.result); return [{ path, ...exact, renders: patched ? [patched] : renders }]; }
             let added: number | null = 0;
             let removed: number | null = 0;
             for (const [i, e] of list.entries()) {
@@ -227,12 +236,15 @@ export function toolFileEdits(rawTool: ToolCall, ctx: EditContext): FileEdit[] {
             const content = asString(input.content) ?? '';
             const result = record(tool.result);
             const type = asString(result?.type);
-            const exact = structuredPatchCounts(result);
-            if (type === 'update' && exact) return [{ path, ...exact, renders: [{ oldText: '', newText: content }] }];
-            const created = type === 'create' || (type !== 'update' && !ctx.seenBefore.has(normalizeToolPath(path)));
-            return created
-                ? [{ path, added: countLines(content), removed: 0, renders: [{ oldText: '', newText: content }] }]
-                : [{ path, added: null, removed: null, renders: [] }];
+            // Only the runner's own result says whether the file existed. No
+            // type (pi, the session-protocol channel) → 「已改」, never a guess
+            // (review 低1). Counts and the expanded diff come from one source
+            // (review 低2).
+            if (type === 'create') return [{ path, added: countLines(content), removed: 0, renders: [{ oldText: '', newText: content }] }];
+            const exact = type === 'update' ? structuredPatchCounts(result) : null;
+            const patched = exact ? structuredPatchRender(result) : null;
+            if (exact && patched) return [{ path, ...exact, renders: [patched] }];
+            return [{ path, added: null, removed: null, renders: [] }];
         }
         case 'NotebookEdit': {
             const path = asString(input.notebook_path) ?? asString(input.file_path);
@@ -252,17 +264,12 @@ export function normalizeToolPath(path: string): string {
     return p.replace(/\/\.\//g, '/').replace(/(.)\/$/, '$1');
 }
 
-const editCache = new WeakMap<ToolCall, { seen: boolean; edits: FileEdit[] }>();
+const editCache = new WeakMap<ToolCall, FileEdit[]>();
 
 /** Cached per ToolCall object — long transcripts rebuild rows often. */
-function cachedEdits(tool: ToolCall, ctx: EditContext): FileEdit[] {
-    // Only Write depends on ctx, and only through one bit.
-    const path = normalizePiToolCall(tool).name === 'Write' ? toolTouchedPath(tool) : null;
-    const seen = path ? ctx.seenBefore.has(normalizeToolPath(path)) : false;
-    const hit = editCache.get(tool);
-    if (hit && hit.seen === seen) return hit.edits;
-    const edits = toolFileEdits(tool, ctx);
-    editCache.set(tool, { seen, edits });
+function cachedEdits(tool: ToolCall): FileEdit[] {
+    let edits = editCache.get(tool);
+    if (!edits) { edits = toolFileEdits(tool); editCache.set(tool, edits); }
     return edits;
 }
 
@@ -282,29 +289,11 @@ export function* walkToolCalls(messages: readonly Message[]): Generator<ToolCall
     }
 }
 
-/** Record every path these messages touched (Read/Edit/Write…) into `into`. */
-export function collectTouchedPaths(messages: readonly Message[], into: Set<string>): Set<string> {
-    for (const tool of walkToolCalls(messages)) {
-        const path = toolTouchedPath(tool);
-        if (path) into.add(normalizeToolPath(path));
-        if (tool.name === 'CodexPatch') {
-            const input = record(tool.input);
-            const changes = record(input?.changes) ?? record(input?.fileChanges);
-            for (const key of Object.keys(changes ?? {})) into.add(normalizeToolPath(key));
-        }
-    }
-    return into;
-}
-
-/**
- * One turn's recorded file changes, or null when it wrote nothing.
- * `seenBefore` = paths touched before this turn (see toolFileEdits/Write).
- */
-export function turnDiffSummary(turnMessages: readonly Message[], seenBefore: ReadonlySet<string>): TurnDiff | null {
-    const seen = new Set(seenBefore);
+/** One turn's recorded file changes, or null when it wrote nothing. */
+export function turnDiffSummary(turnMessages: readonly Message[]): TurnDiff | null {
     const byPath = new Map<string, TurnDiffFile>();
     for (const tool of walkToolCalls(turnMessages)) {
-        for (const edit of cachedEdits(tool, { seenBefore: seen })) {
+        for (const edit of cachedEdits(tool)) {
             const key = normalizeToolPath(edit.path);
             const prev = byPath.get(key);
             if (!prev) {
@@ -317,8 +306,6 @@ export function turnDiffSummary(turnMessages: readonly Message[], seenBefore: Re
                 prev.edits++;
             }
         }
-        const touched = toolTouchedPath(tool);
-        if (touched) seen.add(normalizeToolPath(touched));
     }
     if (byPath.size === 0) return null;
     const files = [...byPath.values()];
