@@ -8,11 +8,14 @@
  * first non-zero errorlevel; delayed expansion off so `!` survives.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { chmodSync, closeSync, openSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, fstatSync, openSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SetupRunner } from './config';
 
 export const SETUP_KILL_GRACE_MS = 10_000;
+/** Output beyond this stops the run (a runaway loop must not fill the disk). */
+export const SETUP_LOG_MAX_BYTES = 20 * 1024 * 1024;
+const LOG_CHECK_MS = 500;
 
 /** One CRLF batch file: `call <line>` + errorlevel check per non-empty line. */
 export function buildWindowsRunnerScript(script: string): string {
@@ -65,6 +68,8 @@ export interface SetupRunOutcome {
     state: 'succeeded' | 'failed' | 'timed-out' | 'interrupted';
     exitCode: number | null;
     message?: string;
+    /** The output cap was hit and the run was killed. */
+    truncated?: boolean;
 }
 
 export interface SetupRunHandle {
@@ -95,12 +100,15 @@ export function startSetupRun(opts: {
     env: Record<string, string>;
     logPath: string;
     timeoutMs: number;
+    maxLogBytes?: number;
     spawnImpl?: typeof spawn;
 }): SetupRunHandle {
+    const maxLogBytes = opts.maxLogBytes ?? SETUP_LOG_MAX_BYTES;
     const logFd = openSync(opts.logPath, 'a', 0o600);
     let child: ChildProcess;
     let interrupted = false;
     let timedOut = false;
+    let truncated = false;
     let settle: (outcome: SetupRunOutcome) => void = () => undefined;
     const done = new Promise<SetupRunOutcome>((resolve) => { settle = resolve; });
     let settled = false;
@@ -108,6 +116,7 @@ export function startSetupRun(opts: {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        clearInterval(sizeWatch);
         try { closeSync(logFd); } catch { /* already closed */ }
         settle(outcome);
     };
@@ -119,6 +128,13 @@ export function startSetupRun(opts: {
     };
     const timer = setTimeout(() => { timedOut = true; terminate(); }, opts.timeoutMs);
     timer.unref();
+    const sizeWatch = setInterval(() => {
+        if (truncated) return;
+        let size = 0;
+        try { size = fstatSync(logFd).size; } catch { return; }
+        if (size > maxLogBytes) { truncated = true; terminate(); }
+    }, LOG_CHECK_MS);
+    sizeWatch.unref();
     try {
         child = (opts.spawnImpl ?? spawn)(opts.launch.command, opts.launch.args, {
             cwd: opts.cwd,
@@ -139,7 +155,8 @@ export function startSetupRun(opts: {
         if (process.platform !== 'win32' && child.pid) {
             try { process.kill(-child.pid, 'SIGKILL'); } catch { /* group already empty */ }
         }
-        if (timedOut) finish({ state: 'timed-out', exitCode: code, message: `Timed out after ${Math.round(opts.timeoutMs / 60000)} min` });
+        if (truncated) finish({ state: 'failed', exitCode: code, truncated: true, message: `Output exceeded ${Math.round(maxLogBytes / 1024 / 1024)} MB; stopped` });
+        else if (timedOut) finish({ state: 'timed-out', exitCode: code, message: `Timed out after ${Math.round(opts.timeoutMs / 60000)} min` });
         else if (interrupted) finish({ state: 'interrupted', exitCode: code, message: 'Stopped' });
         else if (code === 0) finish({ state: 'succeeded', exitCode: 0 });
         else finish({ state: 'failed', exitCode: code, ...(signal ? { message: `Killed by ${signal}` } : {}) });

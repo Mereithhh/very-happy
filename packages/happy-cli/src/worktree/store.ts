@@ -28,6 +28,7 @@ export interface SetupRecord {
     endedAt?: number;
     exitCode?: number | null;
     message?: string;
+    truncated?: boolean;
 }
 
 export interface WorktreeRecord {
@@ -40,6 +41,8 @@ export interface WorktreeRecord {
     linked: string[];
     skipped: SkippedPath[];
     configError?: string;
+    /** Materialization failed part-way (the worktree still exists and stays removable). */
+    initError?: string;
     setup: SetupRecord;
 }
 
@@ -139,16 +142,16 @@ export class WorktreeStore {
      * Daemon start: any `running` record belongs to a previous daemon process
      * (this one has not started anything yet) — it was cut off. Never re-run.
      */
-    markStaleRunsInterrupted(now = Date.now()): number {
+    markStaleRunsInterrupted(now = Date.now()): Array<{ worktree: string; pid?: number; runId?: string }> {
         const all = this.worktrees();
-        let changed = 0;
-        for (const record of Object.values(all)) {
+        const cut: Array<{ worktree: string; pid?: number; runId?: string }> = [];
+        for (const [worktree, record] of Object.entries(all)) {
             if (record.setup.state === 'running') {
+                cut.push({ worktree, pid: record.setup.pid, runId: record.setup.runId });
                 record.setup = { ...record.setup, state: 'interrupted', endedAt: now, message: 'Daemon stopped during setup' };
-                changed++;
             }
         }
-        if (changed) this.write('worktrees.json', { version: 1, worktrees: all });
-        return changed;
+        if (cut.length) this.write('worktrees.json', { version: 1, worktrees: all });
+        return cut;
     }
 }

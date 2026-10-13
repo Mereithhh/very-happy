@@ -124,24 +124,37 @@ export async function linkIntoWorktree(sourceRoot: string, worktree: string, ent
     const realWorktree = await realpath(worktree);
     for (const rel of entries) {
         if (!isSafeRelativePattern(rel) || hasGlob(rel)) { skipped.push({ path: rel, reason: 'unsafe-pattern' }); continue; }
-        const source = join(realSource, ...rel.split('/'));
-        let info;
-        try { info = await lstat(source); } catch { skipped.push({ path: rel, reason: 'missing' }); continue; }
-        // Only a real directory inside the checkout (a symlinked dir could point anywhere).
-        if (info.isSymbolicLink() || !info.isDirectory()) { skipped.push({ path: rel, reason: 'not-a-directory' }); continue; }
-        const destination = join(realWorktree, ...rel.split('/'));
-        if (await lstat(destination).then(() => true, () => false)) { skipped.push({ path: rel, reason: 'exists' }); continue; }
-        const parentReal = await realExistingAncestor(dirname(destination));
-        if (!parentReal || !isInside(realWorktree, parentReal)) { skipped.push({ path: rel, reason: 'outside-worktree' }); continue; }
-        await mkdir(dirname(destination), { recursive: true });
-        let done = false;
-        let lastError = '';
-        for (const type of linkTypeCandidates(platform)) {
-            try { await symlink(source, destination, type); done = true; break; }
-            catch (error) { lastError = error instanceof Error ? error.message : String(error); }
+        if (rel.split('/').includes('.git')) { skipped.push({ path: rel, reason: 'git-internal' }); continue; }
+        try {
+            const source = join(realSource, ...rel.split('/'));
+            let info;
+            try { info = await lstat(source); } catch { skipped.push({ path: rel, reason: 'missing' }); continue; }
+            // The final segment must be a real directory, and the WHOLE path must
+            // resolve inside the checkout: an intermediate symlinked segment
+            // (`a -> ../outside`, entry `a/b`) would otherwise escape.
+            if (info.isSymbolicLink() || !info.isDirectory()) { skipped.push({ path: rel, reason: 'not-a-directory' }); continue; }
+            const resolved = await realOrNull(source);
+            if (!resolved || !isInside(realSource, resolved) || resolved === realSource) { skipped.push({ path: rel, reason: 'outside-repo' }); continue; }
+            const destination = join(realWorktree, ...rel.split('/'));
+            if (await lstat(destination).then(() => true, () => false)) { skipped.push({ path: rel, reason: 'exists' }); continue; }
+            const parentReal = await realExistingAncestor(dirname(destination));
+            if (!parentReal || !isInside(realWorktree, parentReal)) { skipped.push({ path: rel, reason: 'outside-worktree' }); continue; }
+            await mkdir(dirname(destination), { recursive: true });
+            const madeReal = await realpath(dirname(destination));
+            if (!isInside(realWorktree, madeReal)) { skipped.push({ path: rel, reason: 'outside-worktree' }); continue; }
+            let done = false;
+            let lastError = '';
+            for (const type of linkTypeCandidates(platform)) {
+                // Link to the REAL path that was checked, never the symlinked spelling.
+                try { await symlink(resolved, destination, type); done = true; break; }
+                catch (error) { lastError = error instanceof Error ? error.message : String(error); }
+            }
+            if (done) linked.push(rel);
+            else skipped.push({ path: rel, reason: `link-failed: ${lastError}`.slice(0, 200) });
+        } catch (error) {
+            // Never let one entry abort initialization (the worktree already exists).
+            skipped.push({ path: rel, reason: `link-failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 200) });
         }
-        if (done) linked.push(rel);
-        else skipped.push({ path: rel, reason: `link-failed: ${lastError}`.slice(0, 200) });
     }
     return { linked, skipped };
 }

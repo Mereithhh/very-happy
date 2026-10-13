@@ -6,8 +6,8 @@
  * All git calls are argv (`execFile`, never a shell); user-supplied branch and
  * paths are validated before they reach git.
  */
-import { execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { execFile, execFileSync } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, openSync, readSync, closeSync, statSync, readFileSync, realpathSync, unlinkSync, rmdirSync, mkdirSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import {
@@ -78,6 +78,8 @@ export interface WorktreeServiceOptions {
     machineId: string;
     platform?: NodeJS.Platform;
     env?: NodeJS.ProcessEnv;
+    /** `ps`-style probe of a pid's command line (orphan cleanup); injectable for tests. */
+    processCommand?: (pid: number) => string | null;
     /** Daemon debug log, injected: importing ui/logger here would pull configuration into every importer. */
     log?: (message: string, error?: unknown) => void;
 }
@@ -92,7 +94,25 @@ export class WorktreeService {
         this.store = new WorktreeStore(opts.home);
         this.platform = opts.platform ?? process.platform;
         this.debug = opts.log ?? (() => undefined);
-        try { this.store.markStaleRunsInterrupted(); } catch (error) { this.debug('[worktree] could not reconcile stale setup runs', error); }
+        try { this.killOrphanedRuns(this.store.markStaleRunsInterrupted()); } catch (error) { this.debug('[worktree] could not reconcile stale setup runs', error); }
+    }
+
+    /**
+     * A daemon that died hard (SIGKILL/crash) left its setup process groups
+     * running. Kill a group ONLY when its leader's command line still names
+     * that run's own script path (a reused pid belongs to something else).
+     * A group whose leader already exited cannot be verified and is left alone.
+     */
+    private killOrphanedRuns(cut: Array<{ worktree: string; pid?: number; runId?: string }>): void {
+        if (this.platform === 'win32') return;
+        const probe = this.opts.processCommand ?? defaultProcessCommand;
+        for (const run of cut) {
+            if (!run.pid || !run.runId) continue;
+            const command = probe(run.pid);
+            if (!command || !command.includes(join(this.store.dir, 'runs', run.runId))) continue;
+            try { process.kill(-run.pid, 'SIGKILL'); this.debug(`[worktree] killed orphaned setup group ${run.pid}`); }
+            catch (error) { this.debug('[worktree] orphan kill failed', error); }
+        }
     }
 
     async toplevel(path: string): Promise<string> {
@@ -150,17 +170,24 @@ export class WorktreeService {
     async create(params: { path: unknown; branch: unknown; baseRef: unknown; location: unknown }) {
         const root = await this.toplevel(requireAbsolute(params.path));
         const branch = typeof params.branch === 'string' ? params.branch.trim() : '';
-        if (!branch || branch.length > 200) throw new WorktreeError('invalid-branch');
+        if (!branch || branch.length > 200 || branch.startsWith('-')) throw new WorktreeError('invalid-branch');
         const refCheck = await runGit(root, ['check-ref-format', '--branch', branch]);
-        if (refCheck.code !== 0 || branch.startsWith('-')) throw new WorktreeError('invalid-branch', branch);
-        if ((await runGit(root, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0) throw new WorktreeError('branch-exists', branch);
+        // `--branch` EXPANDS shorthands (`@{-1}` → the previous branch): only a name it echoes verbatim is literal.
+        if (refCheck.code !== 0 || refCheck.stdout.trim() !== branch) throw new WorktreeError('invalid-branch', branch);
         const baseRef = typeof params.baseRef === 'string' && params.baseRef.trim() ? params.baseRef.trim() : 'HEAD';
         if (baseRef.startsWith('-')) throw new WorktreeError('invalid-base', baseRef);
-        const base = await runGit(root, ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`]);
-        if (base.code !== 0) throw new WorktreeError('invalid-base', baseRef);
         const location = typeof params.location === 'string' && params.location.trim()
             ? requireAbsolute(params.location.trim(), 'location')
             : defaultWorktreeLocation(root, branch);
+        // Idempotent retry: a create whose RPC answer was lost (relay 30 s cap)
+        // already registered this exact worktree → hand the same result back.
+        const existing = existsSync(location) ? this.store.get(real(location)) : undefined;
+        if (existing && existing.origin === 'web' && existing.repoRoot === root && existing.branch === branch) {
+            return { worktreePath: real(location), branch, baseRef: existing.baseRef ?? baseRef, init: summarize(existing), reused: true };
+        }
+        if ((await runGit(root, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0) throw new WorktreeError('branch-exists', branch);
+        const base = await runGit(root, ['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`]);
+        if (base.code !== 0) throw new WorktreeError('invalid-base', baseRef);
         if (existsSync(location)) throw new WorktreeError('location-exists', location);
         // Real path of the nearest existing ancestor: a location inside the checkout (even via a symlink) is refused.
         let ancestor = dirname(location);
@@ -168,10 +195,23 @@ export class WorktreeService {
         if (isInside(root, real(ancestor)) || isInside(root, resolve(location))) throw new WorktreeError('location-inside-repo', location);
         mkdirSync(dirname(location), { recursive: true });
         const added = await runGit(root, ['worktree', 'add', '-b', branch, location, base.stdout.trim()], GIT_CREATE_TIMEOUT_MS);
-        if (added.code !== 0) throw new WorktreeError('git-worktree-add-failed', added.stderr.trim().slice(0, 500));
+        if (added.code !== 0) {
+            // Timeout / failure: undo whatever git got to, so a retry starts clean.
+            await this.cleanupFailedAdd(root, location, branch);
+            throw new WorktreeError('git-worktree-add-failed', added.stderr.trim().slice(0, 500));
+        }
         const worktreePath = real(location);
         const record = await this.initialize({ source: root, worktree: worktreePath, branch, baseRef, origin: 'web' });
         return { worktreePath, branch, baseRef, init: summarize(record) };
+    }
+
+    /** Remove a half-made worktree + the branch this call created (it did not exist before). */
+    private async cleanupFailedAdd(root: string, location: string, branch: string): Promise<void> {
+        if (existsSync(location)) await runGit(root, ['worktree', 'remove', '--force', location]);
+        await runGit(root, ['worktree', 'prune']);
+        if ((await runGit(root, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0) {
+            await runGit(root, ['branch', '-D', branch]);
+        }
     }
 
     /**
@@ -181,26 +221,34 @@ export class WorktreeService {
     async initialize(input: { source: string; worktree: string; branch: string | null; baseRef: string | null; origin: WorktreeOrigin }): Promise<WorktreeRecord> {
         const source = real(input.source);
         const worktree = real(input.worktree);
-        const { resolved, selection, hash } = this.setupFor(source, input.origin);
-        const copy = resolved.config.copy.length ? await copyIntoWorktree(source, worktree, resolved.config.copy) : { copied: [], skipped: [] };
-        const link = resolved.config.link.length ? await linkIntoWorktree(source, worktree, resolved.config.link, this.platform) : { linked: [], skipped: [] };
+        // Register FIRST: whatever fails below, the worktree stays tracked (and removable).
         const record: WorktreeRecord = {
-            repoRoot: source,
-            branch: input.branch,
-            baseRef: input.baseRef,
-            origin: input.origin,
-            createdAt: Date.now(),
+            repoRoot: source, branch: input.branch, baseRef: input.baseRef, origin: input.origin, createdAt: Date.now(),
+            copied: [], linked: [], skipped: [], setup: { state: 'none' },
+        };
+        this.store.put(worktree, record);
+        const { resolved, selection, hash } = this.setupFor(source, input.origin);
+        const errors: string[] = [];
+        const step = async <T>(label: string, run: () => Promise<T>, fallback: T): Promise<T> => {
+            try { return await run(); }
+            catch (error) { errors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300)); return fallback; }
+        };
+        const copy = resolved.config.copy.length ? await step('copy', () => copyIntoWorktree(source, worktree, resolved.config.copy), { copied: [], skipped: [] }) : { copied: [], skipped: [] };
+        const link = resolved.config.link.length ? await step('link', () => linkIntoWorktree(source, worktree, resolved.config.link, this.platform), { linked: [], skipped: [] }) : { linked: [], skipped: [] };
+        Object.assign(record, {
             copied: copy.copied,
             linked: link.linked,
             skipped: [...copy.skipped, ...link.skipped],
             ...(resolved.errors.length ? { configError: resolved.errors.join('; ') } : {}),
+            ...(errors.length ? { initError: errors.join('; ') } : {}),
             setup: selection.kind === 'none' ? { state: 'none' }
                 : selection.kind === 'unsupported' ? { state: 'unsupported', message: selection.message }
                 : { state: 'needs-approval', hash: hash!, runner: selection.runner },
-        };
+        });
         this.store.put(worktree, record);
         if (selection.kind === 'script' && hash && this.store.isApproved(this.opts.machineId, source, hash)) {
-            return this.startRun(worktree, record, selection.script, selection.runner, hash, resolved.config.setupTimeoutMinutes);
+            try { return this.startRun(worktree, record, selection.script, selection.runner, hash, resolved.config.setupTimeoutMinutes); }
+            catch (error) { return this.store.updateSetup(worktree, { state: 'failed', message: error instanceof Error ? error.message : String(error) }) ?? record; }
         }
         return record;
     }
@@ -222,7 +270,7 @@ export class WorktreeService {
         const next = this.store.updateSetup(worktree, { state: 'running', hash, runner, runId, pid: handle.pid, startedAt: Date.now(), endedAt: undefined, exitCode: undefined, message: undefined })!;
         void handle.done.then((outcome) => {
             this.runs.delete(worktree);
-            this.store.updateSetup(worktree, { state: outcome.state, exitCode: outcome.exitCode, endedAt: Date.now(), message: outcome.message });
+            this.store.updateSetup(worktree, { state: outcome.state, exitCode: outcome.exitCode, endedAt: Date.now(), message: outcome.message, ...(outcome.truncated ? { truncated: true } : {}) });
         }).catch((error) => this.debug('[worktree] setup outcome not recorded', error));
         return next;
     }
@@ -231,7 +279,7 @@ export class WorktreeService {
         const worktree = real(requireAbsolute(path));
         const record = this.store.get(worktree);
         if (!record) return { tracked: false as const };
-        const base = { tracked: true as const, worktreePath: worktree, origin: record.origin, branch: record.branch, repoRoot: record.repoRoot, copied: record.copied, linked: record.linked, skipped: record.skipped, ...(record.configError ? { configError: record.configError } : {}), setup: record.setup };
+        const base = { tracked: true as const, worktreePath: worktree, origin: record.origin, branch: record.branch, repoRoot: record.repoRoot, copied: record.copied, linked: record.linked, skipped: record.skipped, ...(record.configError ? { configError: record.configError } : {}), ...(record.initError ? { initError: record.initError } : {}), setup: record.setup };
         if (record.setup.state !== 'needs-approval' && record.setup.state !== 'declined') return base;
         const { resolved, selection, hash } = this.setupFor(record.repoRoot, record.origin);
         if (selection.kind !== 'script' || !hash) return base;
@@ -302,14 +350,24 @@ export class WorktreeService {
         if (status.code !== 0) return { removable: false, reason: 'git-status-failed', dirty: [], dirtyCount: 0, branch: record.branch };
         const dirty = userDirtyPaths(parsePorcelainZ(status.stdout), record);
         const head = await runGit(worktree, ['symbolic-ref', '--short', '-q', 'HEAD']);
-        return { removable: true, dirty: dirty.slice(0, MAX_DIRTY_LISTED), dirtyCount: dirty.length, branch: head.stdout.trim() || record.branch };
+        return { removable: true, dirty: dirty.slice(0, MAX_DIRTY_LISTED), dirtyCount: dirty.length, dirtyFingerprint: dirtyFingerprint(worktree, dirty), branch: head.stdout.trim() || record.branch };
     }
 
-    async remove(path: unknown, discardChanges: unknown) {
+    /**
+     * `expectedFingerprint` is what the user confirmed (inspect's
+     * `dirtyFingerprint`). If the changes moved since — new files, or an edit
+     * to a listed one — refuse with `changes-changed` and make them re-confirm.
+     * Residual window: between this final check and `git worktree remove`
+     * (milliseconds) an edit can still be lost; spec §5 accepts it.
+     */
+    async remove(path: unknown, discardChanges: unknown, expectedFingerprint?: unknown) {
         const worktree = real(requireAbsolute(path));
         const inspection = await this.inspect(worktree);
         if (!inspection.removable) throw new WorktreeError('not-removable', inspection.reason);
         if (inspection.dirtyCount > 0 && discardChanges !== true) throw new WorktreeError('dirty', String(inspection.dirtyCount));
+        if (typeof expectedFingerprint === 'string' && 'dirtyFingerprint' in inspection && expectedFingerprint !== inspection.dirtyFingerprint) {
+            throw new WorktreeError('changes-changed', String(inspection.dirtyCount));
+        }
         const record = this.store.get(worktree)!;
         this.runs.get(worktree)?.stop();
         // Drop our links first so a recursive delete can never walk into the shared target.
@@ -333,8 +391,24 @@ export class WorktreeService {
     }
 }
 
+/** Paths + size + mtime of the user's changes: changes after the confirm alter it. */
+export function dirtyFingerprint(worktree: string, dirty: string[]): string {
+    const hash = createHash('sha256');
+    for (const rel of [...dirty].sort()) {
+        let meta = 'missing';
+        try { const info = lstatSync(join(worktree, ...rel.split('/'))); meta = `${info.size}:${info.mtimeMs}`; } catch { /* deleted = a change too */ }
+        hash.update(`${rel}\0${meta}\n`);
+    }
+    return hash.digest('hex').slice(0, 32);
+}
+
+function defaultProcessCommand(pid: number): string | null {
+    try { return execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 2_000 }).trim() || null; }
+    catch { return null; }
+}
+
 export function summarize(record: WorktreeRecord) {
-    return { copied: record.copied, linked: record.linked, skipped: record.skipped, ...(record.configError ? { configError: record.configError } : {}), setup: { state: record.setup.state, ...(record.setup.message ? { message: record.setup.message } : {}) } };
+    return { copied: record.copied, linked: record.linked, skipped: record.skipped, ...(record.configError ? { configError: record.configError } : {}), ...(record.initError ? { initError: record.initError } : {}), setup: { state: record.setup.state, ...(record.setup.message ? { message: record.setup.message } : {}) } };
 }
 
 let current: WorktreeService | null = null;

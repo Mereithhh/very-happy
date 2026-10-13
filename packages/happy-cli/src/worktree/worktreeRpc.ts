@@ -38,5 +38,5 @@ export function registerWorktreeHandlers(rpc: RpcHandlerManager, service: Worktr
     rpc.registerHandler('worktree-setup-decline', async (params: unknown) => service.decline(obj(params).path));
     rpc.registerHandler('worktree-setup-log', async (params: unknown) => service.log(obj(params).path, obj(params).offset));
     rpc.registerHandler('worktree-inspect', async (params: unknown) => service.inspect(obj(params).path));
-    rpc.registerHandler('worktree-remove', async (params: unknown) => service.remove(obj(params).path, obj(params).discardChanges));
+    rpc.registerHandler('worktree-remove', async (params: unknown) => service.remove(obj(params).path, obj(params).discardChanges, obj(params).expectedFingerprint));
 }
