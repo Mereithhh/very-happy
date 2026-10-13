@@ -14,7 +14,7 @@ import { Button, EmptyState, OrbitLoader, Spinner, useToast } from '@/ui';
 import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
-import { PermissionCard } from './PermissionCard';
+import { PermissionPointer } from './PermissionCard';
 import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 import { LiveStreamView } from './LiveStreamView';
 import { endLiveStreamTurn } from '@/sync/liveStreamStore';
@@ -302,7 +302,7 @@ export function ChatList({
                             title={t('session.chat.emptyTitle')}
                             description={t('session.chat.emptyDescription')}
                         />
-                        <PermissionCard sessionId={sessionId} />
+                        <PermissionPointer sessionId={sessionId} />
                         {showLiveStatus && <SessionLiveStatusBar sessionId={sessionId} />}
                     </div>
                 </div>
@@ -388,7 +388,9 @@ export function ChatList({
                         storage claims it away the instant the real message
                         lands. */}
                     <LiveStreamView sessionId={sessionId} />
-                    <PermissionCard sessionId={sessionId} />
+                    {/* B-563: the actionable card is pinned above the composer
+                        (SessionDetailScreen); the transcript keeps one pointer. */}
+                    <PermissionPointer sessionId={sessionId} />
                     {/* Part of scrollback: innerRef observes growth, while manual
                         scrollback keeps the user's position. No empty footer slot. */}
                     {showLiveStatus && <SessionLiveStatusBar sessionId={sessionId} />}

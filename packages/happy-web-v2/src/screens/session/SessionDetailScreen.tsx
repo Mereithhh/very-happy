@@ -1,5 +1,6 @@
 import { SessionPreviews } from './SessionPreviews';
 import { SubagentDock } from './SubagentDock';
+import { PermissionCard } from './PermissionCard';
 import { messageActionsCopy } from './messageActionsCopy';
 import { useEffect, useMemo, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
@@ -275,6 +276,9 @@ export function SessionDetailScreen() {
                     <div className="sd-foot">
                         {session && <SessionPreviews sessionId={id} />}
                         {session && <SubagentDock sessionId={id} />}
+                        {/* B-563: pending approvals / questions stay pinned right
+                            above the composer while the transcript scrolls. */}
+                        {session && <PermissionCard key={id} sessionId={id} />}
                         {/* Queue/draft/attachment ownership is session-scoped.
                             Force a clean composer instance when the session changes so
                             an unsent item can never cross into another session. The one
