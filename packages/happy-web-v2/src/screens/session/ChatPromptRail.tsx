@@ -82,7 +82,17 @@ export function ChatPromptRail({
     const { lang } = useTranslation();
     const copy = chatReadingAidsCopy(lang);
     const fine = useFinePointer();
-    const allItems = useMemo(() => railItemsFromRows(rows), [rows]);
+    // rows are rebuilt on every streamed chunk; keep the item list (and with it
+    // the measuring layout effect) stable unless a prompt or its preview changed.
+    const itemsRef = useRef<RailItem[]>([]);
+    const allItems = useMemo(() => {
+        const next = railItemsFromRows(rows);
+        const prev = itemsRef.current;
+        const same = prev.length === next.length
+            && prev.every((item, i) => item.id === next[i].id && item.text === next[i].text && item.reply === next[i].reply);
+        if (!same) itemsRef.current = next;
+        return itemsRef.current;
+    }, [rows]);
     const [layout, setLayout] = useState<Layout>(EMPTY);
     const [view, setView] = useState({ scrollTop: 0, clientHeight: 0, scrollHeight: 0 });
     const [preview, setPreview] = useState<number | null>(null);
