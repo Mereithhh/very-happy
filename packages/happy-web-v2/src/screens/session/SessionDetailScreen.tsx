@@ -21,6 +21,7 @@ import { clearPendingSessionKeys, pendingDraft, pendingSessions, usePendingRecor
 import { notesPanelTransition, type NotesPanelSnapshot } from './notesPanelTransition';
 import { setNotesPanelOpen } from '../notes/notesPanelState';
 import { SessionWorkspacePanel } from './SessionWorkspacePanel';
+import { QuickOpen } from '../quickopen/QuickOpen';
 import { useRetainedWorkspace } from '../workspace/useRetainedWorkspace';
 import { onBtwOpen } from './btwPanelState';
 import { onSubagentOpen } from './subagentPanelState';
@@ -317,6 +318,8 @@ export function SessionDetailScreen() {
                     </aside>
                 </>
             )}
+            {/* B-576 ⌘P quick open: mounted here so its ⌘P/Ctrl+P interception exists only on the session page. */}
+            {session && id && !pendingMode && <QuickOpen sessionId={id} />}
         </div>
     );
 }
