@@ -105,7 +105,7 @@ very-happy 现在只有 Teams 与 Automations（`--worktree`）在 daemon 里建
 
 - `approvals.json`：`{ version: 1, approvals: [{ machineId, repoRoot, hash, approvedAt }] }`。`repoRoot` 是来源 checkout toplevel 的 `realpath`；`hash` 是**最终交给 runner 的脚本正文**（按平台选中的 `setup` 或 `setupWindows`，原样 UTF-8 字节，不做换行规范化）的 sha256。另存一份 `runner` 字段（`posix-sh` / `shebang` / `cmd`）：同一段文本换一种解释器就是另一份代码，所以 runner 也参与 hash，`hash = sha256(runner + "\0" + script)`。上限 500 条，超出时淘汰最旧的。
 - `worktrees.json`：以 worktree 的 realpath 为键，值为 `{ repoRoot, branch, baseRef, origin, createdAt, copied[], linked[], skipped[], configError?, setup: { state, hash?, runner?, runId?, startedAt?, endedAt?, exitCode?, message? } }`。`state` 取值：`none | needs-approval | declined | running | succeeded | failed | timed-out | interrupted | unsupported`。上限 500 条。
-- `runs/<runId>/`：`script.sh` 或 `script.cmd`（**被允许的那份字节**）、`output.log`（stdout 和 stderr 直接写入文件 fd，日志在磁盘上完整保留）。
+- `runs/<runId>/`：`setup.sh`、`setup`（带 `#!` 的脚本）或 `setup.cmd`（**被允许的那份字节**），以及 `output.log`（stdout 和 stderr 直接写入文件 fd，日志在磁盘上完整保留）。只保留最新的 100 个运行目录，正在运行的不删。
 
 写入都在 daemon 进程内串行进行，先写临时文件再 rename。daemon 启动时，登记为 `running` 但 pid 已不在的记录改为 `interrupted`。
 
@@ -142,7 +142,7 @@ very-happy 现在只有 Teams 与 Automations（`--worktree`）在 daemon 里建
 
 删除（`worktree-remove`）：
 - 只删登记表里 `origin === 'web'` 且仍是 linked worktree 的目录（不是主 checkout，`git worktree list` 里有它）。Teams 和 Automations 的 worktree 由它们自己的收尾逻辑管理。
-- 改动判定：`git status --porcelain=v1 -z --untracked-files=all`，减去登记表里的 `copied` 和 `linked` 路径。
+- 改动判定：`git status --porcelain=v1 -z --untracked-files=all`，减去登记表里的 `copied` 和 `linked` 路径。setup 生成的未跟踪文件（且没有被 gitignore）**算作改动**，因为删除后同样找不回。
 - 删除顺序：先 unlink 我们建的链接（防止递归删除时进入链接目标），再执行 `git worktree remove --force <path>`。分支**保留**，提交不会丢；网页文案写明「分支 X 会保留」。
 
 ### 6. 会话 metadata：`worktree`
@@ -161,7 +161,7 @@ wrapper 启动时用纯 FS（复用 `repoIdentity` 的判断）检查 cwd 的 to
   - `failed`/`timed-out`/`interrupted`/`unsupported`：「setup 失败 · 查看输出」；
   - `succeeded`：「setup 已完成 · 查看输出」，可关闭；
   - `declined`：「setup 已跳过 · 查看」。
-- **确认弹窗**（复用 `ns-card` 弹窗结构）：展示仓库、执行位置（cwd）、runner（`/bin/sh -e` / 直接执行 / `cmd.exe`）、超时、hash 前 12 位、完整脚本（mono、等宽滚动区），脚本变更时显示「脚本自上次允许后已变更」。按钮：「不运行」（安静）和「允许并运行」（ink 主按钮，不响应 Enter 也不作为默认焦点，避免顺手确认）。
+- **确认弹窗**（复用 `ns-card` 弹窗结构）：展示仓库、执行位置（cwd）、runner（`/bin/sh -e` / 直接执行 / `cmd.exe`）、超时、hash 前 12 位、完整脚本（mono、等宽滚动区），脚本变更时显示「脚本自上次允许后已变更」。按钮：「不运行」（安静）和「允许并运行」（ink 主按钮）。打开弹窗时焦点落在弹窗容器上，不落在任何按钮上：Esc 可以退出，Enter 不会确认，长弹窗也不会被滚到底部。脚本区保持自身高度（最高 40dvh），由弹窗整体滚动；触屏下按钮高 44px。
 - **输出抽屉**：输出在弹窗里以只读 mono 区显示，按 offset 增量拉取，到底后停止。
 - **「归档并删除 worktree…」**（行菜单，在归档项后面；只在会话有 `metadata.worktree`、未归档、机器支持时出现）：先 `worktree-inspect`。
   - 不可删时提示原因（例如「这个 worktree 由团队/自动化创建，由它们收尾」）。
@@ -217,11 +217,11 @@ wrapper 启动时用纯 FS（复用 `repoIdentity` 的判断）检查 cwd 的 to
 
 ## 验收标准
 
-- [ ] CLI 单测：配置校验（`..`、绝对路径、盘符、glob）；复制时的符号链接逃逸与目标父目录逃逸；大小和数量上限；hash 绑定 runner；approve 时 hash 不一致被拒；未确认时不执行；Teams/Automations 不用默认 `.env*`；runner 选择（posix-sh/shebang/cmd、Windows 拒绝 `#!`）；`.cmd` 生成；超时后进程组被杀；环境变量剥离；`worktree-remove` 遇到改动时拒绝、只删 web 来源、保留分支；`metadata.worktree` 的识别。
-- [ ] 网页单测：能力判定（无字段/有字段/`Method not found`）；默认位置和分支名生成；状态到横幅文案的映射；schema 保留 `worktreeVersion`/`worktree`；副标题追加分支名。
-- [ ] 实跑（独立 HAPPY_HOME_DIR、临时 git 仓库）：创建 → 复制 `.env` → needs-approval → 允许 → 运行成功 → 日志可读；改脚本 → 新 worktree 需要再次确认；拒绝 → 只复制了文件。
-- [ ] 真浏览器 1280/390 × 亮/暗：新建 worktree 会话、首次确认脚本、hash 变化后再次确认、拒绝后只复制了文件。
-- [ ] 门禁：cli build + `--version`，相关 vitest；web tsc/vitest/vite build；design lint；gitleaks。
+- [x] CLI 单测：配置校验（`..`、绝对路径、盘符、glob）；复制时的符号链接逃逸与目标父目录逃逸；大小和数量上限；hash 绑定 runner；approve 时 hash 不一致被拒；未确认时不执行；Teams/Automations 不用默认 `.env*`；runner 选择（posix-sh/shebang/cmd、Windows 拒绝 `#!`）；`.cmd` 生成；超时后进程组被杀；环境变量剥离；`worktree-remove` 遇到改动时拒绝、只删 web 来源、保留分支；`metadata.worktree` 的识别。
+- [x] 网页单测：能力判定（无字段/有字段/`Method not found`）；默认位置和分支名生成；状态到横幅文案的映射；schema 保留 `worktreeVersion`/`worktree`；副标题追加分支名。
+- [x] 实跑（独立 HAPPY_HOME_DIR、临时 git 仓库）：创建 → 复制 `.env` → needs-approval → 允许 → 运行成功 → 日志可读；改脚本 → 新 worktree 需要再次确认；拒绝 → 只复制了文件。
+- [x] 真浏览器 1280/390 × 亮/暗：新建 worktree 会话、首次确认脚本、hash 变化后再次确认、拒绝后只复制了文件。
+- [x] 门禁：cli build + `--version`，相关 vitest；web tsc/vitest/vite build；design lint；gitleaks。
 
 ## 留真机验证项
 
