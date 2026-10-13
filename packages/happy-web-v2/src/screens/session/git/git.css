@@ -1,0 +1,264 @@
+/* B-583/B-584: git actions bar (changes tab), commit/push/PR dialog, PR chip. */
+
+/* ── changes-tab header ─────────────────────────────────────────────────── */
+.gab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-12);
+}
+.gab-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-dim);
+}
+.gab-branch > svg { flex: none; color: var(--text-faint); }
+.gab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.gab-ahead {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.gab-actions {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+@media (pointer: coarse) {
+  .gab .vh-btn { min-height: 44px; }
+}
+
+/* ── dialog (builds on sessionOptionsDialog.css .so-*) ──────────────────── */
+.so-dialog.gd { width: min(520px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: var(--sp-4); }
+.gd-branch {
+  margin: var(--sp-1) 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font: var(--fs-12)/1.5 var(--font-mono);
+}
+.gd-body { display: grid; gap: var(--sp-4); min-width: 0; }
+.gd-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.gd-files { min-width: 0; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r-md); }
+.gd-file-list { max-height: min(200px, 30dvh); overflow-y: auto; overscroll-behavior: contain; }
+.gd-file {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px var(--sp-3);
+  font-size: var(--fs-13);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.gd-file:hover { background: var(--bg-2); }
+.gd-file--all { border-bottom: 1px solid var(--line); color: var(--text); }
+.gd-file input, .gd-check input { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--text); }
+.gd-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+.gd-count { margin-left: auto; color: var(--text-faint); font-size: var(--fs-12); }
+.gd-input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  padding: 8px 10px;
+  font: var(--fs-13)/1.5 var(--font-sans);
+}
+.gd-input:focus { outline: none; border-color: var(--text-faint); box-shadow: inset 0 0 0 1px var(--text-faint); }
+.gd-textarea { resize: vertical; min-height: 72px; max-height: 40dvh; }
+.gd-check { display: flex; align-items: center; gap: var(--sp-2); min-height: 28px; font-size: var(--fs-13); color: var(--text); cursor: pointer; }
+.gd-mono { font-family: var(--font-mono); font-size: var(--fs-12); color: var(--text-faint); }
+.gd-link {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-13);
+}
+.gd-link:hover:not(:disabled) { color: var(--text); background: var(--bg-2); }
+.gd-link:focus-visible { outline: none; background: var(--bg-2); color: var(--text); }
+.gd-link:disabled { opacity: 0.5; cursor: default; }
+.gd-summary { display: grid; gap: var(--sp-3); font-size: var(--fs-13); color: var(--text-dim); }
+.gd-summary p { margin: 0; line-height: 1.5; }
+.gd-warn { margin: 0; color: var(--warn); font-size: var(--fs-13); line-height: 1.5; }
+.gd-error { margin: 0; color: var(--danger); font-size: var(--fs-13); line-height: 1.5; }
+.gd-ok { margin: 0; color: var(--text); font-size: var(--fs-13); line-height: 1.5; overflow-wrap: anywhere; }
+.gd-a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.gd-cmd {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: 6px 6px 6px 10px;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+}
+.gd-cmd code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: var(--fs-12)/1.5 var(--font-mono);
+  color: var(--text);
+}
+.gd-ext { justify-self: start; text-decoration: none; gap: 6px; }
+.gd-results { display: grid; gap: var(--sp-3); min-width: 0; }
+.gd-fail { display: grid; gap: var(--sp-2); min-width: 0; }
+.gd-fail-title { margin: 0; color: var(--danger); font-size: var(--fs-13); font-weight: 600; }
+.gd-pre {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  font: var(--fs-12)/1.5 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gd-pre--full { max-height: 40dvh; }
+.gd-fail-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.gd-fail-spacer { flex: 1; }
+.gd-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.gd-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 auto 0 0;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+}
+.gd-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.gd-primary:disabled, .gd .vh-modal-btn:disabled { opacity: 0.5; cursor: default; }
+@media (pointer: coarse) {
+  .gd-fail-actions .vh-btn, .gd-fail-actions .vh-copy, .gd-ext { min-height: 44px; }
+}
+@media (pointer: coarse), (max-width: 600px) {
+  .gd-input { font-size: var(--fs-16); }
+  .gd-file, .gd-check, .gd-link { min-height: 44px; }
+  .gd .vh-modal-btn { min-height: 44px; }
+}
+
+/* ── header PR chip (sits next to the relay badge, same pill) ───────────── */
+.prc {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 5px;
+  min-width: 36px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: var(--fs-11)/1.4 var(--font-mono);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.prc::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--bg-1);
+}
+.prc:hover, .prc[data-state='open'] { color: var(--text); }
+.prc:hover::before, .prc[data-state='open']::before { background: var(--bg-2); }
+.prc:focus-visible { outline: none; }
+.prc:focus-visible::before { border-color: var(--text-dim); }
+.prc-ci { display: inline-flex; align-items: center; gap: 3px; }
+.prc--failed .prc-ci { color: var(--danger); }
+.prc--pending .prc-ci { color: var(--accent); }
+.prc-spin { animation: fp-rot 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .prc-spin { animation: none; } }
+@media (pointer: coarse) {
+  .prc { min-height: 44px; min-width: 44px; justify-content: center; }
+  .prc::before { inset: 8px 0; }
+}
+.prc-pop {
+  z-index: 100;
+  width: min(320px, calc(100vw - 24px));
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  color: var(--text);
+  box-shadow: var(--shadow-lift);
+  font: var(--fs-13)/1.5 var(--font-sans);
+}
+.prc-pop-head { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); }
+.prc-pop-state { font-weight: 600; color: var(--text); }
+.prc-pop-link { display: inline-flex; align-items: center; gap: 3px; font-family: var(--font-mono); font-size: var(--fs-12); color: var(--text-dim); }
+a.prc-pop-link:hover { color: var(--text); text-decoration: underline; }
+.prc-refresh { margin-left: auto; }
+.prc-pop-title { margin: 0; overflow-wrap: anywhere; }
+.prc-pop-ci { margin: 0; color: var(--text-dim); font-size: var(--fs-12); }
+.prc-pop-failed { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-12); }
+.prc-pop-failed li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.prc-pop-failed li > svg { flex: none; color: var(--danger); }
+.prc-pop-failed a, .prc-pop-failed span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.prc-pop-failed a:hover { text-decoration: underline; }
+.prc-more { color: var(--text-faint); }
+.prc-pop-actions { display: flex; justify-content: flex-end; padding-top: var(--sp-1); }
+@media (pointer: coarse) {
+  .prc-pop-actions .vh-btn { min-height: 44px; }
+}
+
+/* The header is the session's only chrome; when it is narrow (side panel open,
+ * phone) the chip drops to state icon + CI icon so the title keeps its room.
+ * Scoped with :has() so headers without a PR are untouched; the chip is not
+ * rendered while renaming, so the rename bar keeps its full width. */
+.ch:has(.prc) { container-type: inline-size; container-name: vh-chat-header; }
+@container vh-chat-header (max-width: 640px) {
+  .prc-num, .prc-ci > span { display: none; }
+  .prc { min-width: 0; padding-inline: 6px; }
+  /* design-language「面板栏与系统状态」: a narrow header compresses long names
+     (full agent/host stay in the identity popover) before the title loses room. */
+  .ch-host { display: none; }
+}
