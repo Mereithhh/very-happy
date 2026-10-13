@@ -16,9 +16,28 @@ export function getRewindTarget(session: Session | null | undefined, message: Us
     if (!pointId) return 'missingPoint';
     return { source, messageId: message.id, pointId };
 }
+function quoteLines(text: string): string {
+    return text.split('\n').map((line) => `> ${line}`).join('\n');
+}
+
 export function appendMessageQuote(draft: string, text: string): string {
-    const quote = text.split('\n').map((line) => `> ${line}`).join('\n');
+    const quote = quoteLines(text);
     return `${draft.trimEnd()}${draft.trim() ? '\n\n' : ''}${quote}\n\n`;
+}
+
+/**
+ * B-577: the same quote block, put where the caret is (replacing any selected
+ * draft text) instead of at the end. A blank line separates it from text on
+ * either side; the caret lands on the blank line after it, ready for the reply.
+ */
+export function insertMessageQuoteAt(draft: string, text: string, start: number, end: number): { text: string; caret: number } {
+    const from = Math.max(0, Math.min(start, end, draft.length));
+    const to = Math.max(from, Math.min(Math.max(start, end), draft.length));
+    const before = draft.slice(0, from);
+    const after = draft.slice(to).replace(/^\n+/, '');
+    const lead = !before.trim() ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+    const head = `${before.trim() ? before : ''}${lead}${quoteLines(text)}\n\n`;
+    return { text: `${head}${after}`, caret: head.length };
 }
 
 export function rewindPermissionMode(kind: 'claude' | 'codex', mode: string | null | undefined): string {

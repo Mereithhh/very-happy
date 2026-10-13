@@ -99,7 +99,7 @@ describe('persistent message action row', () => {
             await click('message.copyMessage');
             expect(write).toHaveBeenCalledExactlyOnceWith(raw);
             await click('Quote');
-            expect(quote).toHaveBeenCalledExactlyOnceWith(raw);
+            expect(quote).toHaveBeenCalledExactlyOnceWith(raw, 'append');
             expect(otherSession).not.toHaveBeenCalled();
             expect(mocks.send).not.toHaveBeenCalled();
         } finally {

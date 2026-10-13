@@ -3,7 +3,7 @@ import { supportsSessionAttachments } from '@/sync/attachmentCapabilities';
 import { ModelEffortMenu } from './ModelEffortMenu';
 import { onMessageQuote } from './messageQuote';
 import { mergeRestoredDraft, onComposerRestore } from './composerRestore';
-import { appendMessageQuote } from './messageActionsModel';
+import { appendMessageQuote, insertMessageQuoteAt } from './messageActionsModel';
 /**
  * AgentInput — the composer. A rounded auto-growing textarea + circular send
  * button, with permissions and model in one row; context sits below.
@@ -392,7 +392,31 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         requestAnimationFrame(() => taRef.current?.focus());
     };
 
-    useEffect(() => onMessageQuote(sessionId, (quote) => {
+    // B-577: a selection quote goes where the caret is — but only once the
+    // textarea has been focused in this mount; before that its selection
+    // offsets say nothing about where the user was writing, so append.
+    const caretKnownRef = useRef(false);
+    useEffect(() => {
+        const ta = taRef.current;
+        if (!ta) return;
+        const onFocus = () => { caretKnownRef.current = true; };
+        ta.addEventListener('focus', onFocus);
+        return () => ta.removeEventListener('focus', onFocus);
+    }, []);
+    useEffect(() => onMessageQuote(sessionId, (quote, mode) => {
+        const ta = taRef.current;
+        if (mode === 'cursor' && ta && caretKnownRef.current) {
+            const next = insertMessageQuoteAt(draftRef.current, quote, ta.selectionStart, ta.selectionEnd);
+            draftRef.current = next.text;
+            setText(next.text);
+            requestAnimationFrame(() => {
+                const el = taRef.current;
+                if (!el) return;
+                el.focus();
+                el.setSelectionRange(next.caret, next.caret);
+            });
+            return;
+        }
         setText((current) => appendMessageQuote(current, quote));
         requestAnimationFrame(() => taRef.current?.focus());
     }), [sessionId]);
