@@ -26,6 +26,18 @@ import { openVerifiedFile, revealPreviewLine } from './termPathOpen';
 import type { TerminalRenderer } from './renderer';
 import './termPathLinks.css';
 
+/**
+ * Private-API, best effort (same stance as remeasureFont in xtermRenderer):
+ * make the Linkifier re-ask providers on the next mouse move. A renamed field
+ * only costs the stale-cache edge case, never an error.
+ */
+function invalidateLinkCache(term: Terminal): void {
+    try {
+        const linkifier = (term as unknown as { _core?: { linkifier?: { _activeLine?: number } } })._core?.linkifier;
+        if (linkifier && typeof linkifier._activeLine === 'number') linkifier._activeLine = -1;
+    } catch { /* best-effort */ }
+}
+
 function hasDomSelection(): boolean {
     const sel = typeof window !== 'undefined' ? window.getSelection?.() : null;
     return !!sel && !sel.isCollapsed && sel.toString().length > 0;
@@ -118,6 +130,11 @@ export function useTermPathLinks({ termRef, hostRef, machineId, cwd, surfaceKey,
                 callback(links.length ? links : undefined);
             },
         });
+        // xterm 5.5's Linkifier caches each line's provider replies until the
+        // mouse changes LINE (or the terminal resizes) — not when the line's
+        // text changes. A pointer resting on a row while output rewrites it
+        // would keep the stale "no links" answer. Invalidate on every parse.
+        const writeSub = term.onWriteParsed(() => invalidateLinkCache(term));
         host.addEventListener('mousemove', onMouseMove, { capture: true, passive: true });
         window.addEventListener('keydown', onKey, true);
         window.addEventListener('keyup', onKey, true);
@@ -141,6 +158,7 @@ export function useTermPathLinks({ termRef, hostRef, machineId, cwd, surfaceKey,
 
         return () => {
             provider.dispose();
+            writeSub.dispose();
             host.removeEventListener('mousemove', onMouseMove, { capture: true } as EventListenerOptions);
             window.removeEventListener('keydown', onKey, true);
             window.removeEventListener('keyup', onKey, true);

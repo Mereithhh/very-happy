@@ -87,7 +87,8 @@ function QuickOpenPanel({ sessionId, onClose }: { sessionId: string; onClose: ()
         if (!pathKey) { setFetching(false); return; }
         setFetching(true);
         getProjectFiles(sessionId)
-            .then((files) => { if (!cancelled) storage.getState().applyProjectFiles(pathKey, files); })
+            // A failed refresh (wrapper offline) must not wipe a good cached list.
+            .then((files) => { if (!cancelled && files) storage.getState().applyProjectFiles(pathKey, files); })
             .catch(() => { /* keep the cached list */ })
             .finally(() => { if (!cancelled) setFetching(false); });
         return () => { cancelled = true; };
