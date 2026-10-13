@@ -104,7 +104,12 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/';
+  const rawUrl = (event.notification.data && event.notification.data.url) || '/';
+  // B-567: the tap is a human gesture the page can't see — a one-shot marker
+  // the page (src/app/presenceBoot.ts) turns into one presence input.
+  const marked = new URL(rawUrl, self.location.origin);
+  marked.searchParams.set('vh_presence', '1');
+  const url = marked.origin === self.location.origin ? marked.pathname + marked.search + marked.hash : rawUrl;
   event.waitUntil(
     (async () => {
       const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });

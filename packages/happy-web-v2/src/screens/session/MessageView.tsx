@@ -13,6 +13,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { restartBrokenSession, useRestartState } from '@/app/sessionRestartAction';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
+import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 import { Markdown } from './Markdown';
 import { MessageMetaRow } from './MessageMetaRow';
 import { stripHarnessBlocks, parseLocalCommandMessage, parseTaskNotification } from './harness';
@@ -403,15 +404,7 @@ function sameTools(a?: ToolCallMessage[], b?: ToolCallMessage[]): boolean {
     return a.every((tool, i) => tool === b[i]);
 }
 
-export const MessageView = memo(function MessageView({
-    message,
-    showMeta,
-    showActions = true,
-    sessionId,
-    thinkingDurationMs,
-    attachments,
-    optionsActive = false,
-}: {
+type MessageViewProps = {
     message: Message;
     showMeta: boolean;
     showActions?: boolean;
@@ -421,7 +414,36 @@ export const MessageView = memo(function MessageView({
     attachments?: ToolCallMessage[];
     /** B-520: this answer's `<options>` are the live suggestions (see chatTurns). */
     optionsActive?: boolean;
-}) {
+};
+
+/** B-565: one message row = one boundary. resetKey is the message object —
+ *  the reducer rebuilds it only when its content changed (B-311), so it is
+ *  "id + content version" for free; a fixed message re-renders by itself. */
+export const MessageView = memo(function MessageView(props: MessageViewProps) {
+    return (
+        <RecoverableBoundary region="message" resetKey={props.message} compact>
+            <MessageViewBody {...props} />
+        </RecoverableBoundary>
+    );
+}, (prev, next) => (
+    prev.message === next.message
+    && prev.showActions === next.showActions
+    && prev.showMeta === next.showMeta
+    && prev.sessionId === next.sessionId
+    && prev.thinkingDurationMs === next.thinkingDurationMs
+    && prev.optionsActive === next.optionsActive
+    && sameTools(prev.attachments, next.attachments)
+));
+
+function MessageViewBody({
+    message,
+    showMeta,
+    showActions = true,
+    sessionId,
+    thinkingDurationMs,
+    attachments,
+    optionsActive = false,
+}: MessageViewProps) {
     switch (message.kind) {
         case 'user-text':
             return <UserText message={message} sessionId={sessionId} attachments={attachments} />;
@@ -448,12 +470,4 @@ export const MessageView = memo(function MessageView({
                 </div>
             );
     }
-}, (prev, next) => (
-    prev.message === next.message
-    && prev.showActions === next.showActions
-    && prev.showMeta === next.showMeta
-    && prev.sessionId === next.sessionId
-    && prev.thinkingDurationMs === next.thinkingDurationMs
-    && prev.optionsActive === next.optionsActive
-    && sameTools(prev.attachments, next.attachments)
-));
+}

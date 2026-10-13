@@ -185,8 +185,21 @@ export type VisitStampEvent =
     | 'route-exit';
 
 /**
+ * B-567: what the tracker knows about the human at event time. Derived from
+ * userPresence (visible + hasFocus + a trusted input within 5 min).
+ */
+export interface VisitPresence {
+    /** document.visibilityState === 'visible' */
+    visible: boolean;
+    /** visible AND focused AND recent trusted input (isUserPresent) */
+    present: boolean;
+    /** a trusted input within the presence window (hasRecentInput) */
+    recentInput: boolean;
+}
+
+/**
  * Should this event write `lastSeenAt[key] = now`? `counted` = the dwell has
- * fired for this visit; `visible` = the document is visible at event time.
+ * fired for this visit; `presence` = the human signals at event time.
  *
  * The B-086 rows are 'went-hidden' and 'pagehide': a counted visit that ends
  * by hiding/closing (instead of an in-app route change) previously wrote NO
@@ -195,27 +208,32 @@ export type VisitStampEvent =
  * Stamping AT THE MOMENT of going away is safe by the time model: the stamp
  * carries that instant, so an entry arriving after it (`createdAt > stamp`)
  * remains unread — a backgrounded tab still can't eat later notifications.
+ *
+ * B-567: visibility alone is not a reader. Counting and heartbeats need the
+ * user PRESENT; exit stamps (the page is hidden / losing focus by then) need
+ * a recent trusted input — a screen that locked after an hour unattended must
+ * not stamp "seen" at lock time.
  */
 export function shouldStampVisit(
     event: VisitStampEvent,
     counted: boolean,
-    visible: boolean,
+    presence: VisitPresence,
 ): boolean {
     switch (event) {
         case 'dwell-elapsed':
-            return visible; // becoming counted IS the stamp
+            return presence.present; // becoming counted IS the stamp
         case 'heartbeat':
-            return counted && visible;
+            return counted && presence.present;
         case 'went-hidden':
-            return counted && !visible;
+            return counted && !presence.visible && presence.recentInput;
         case 'pagehide':
             // if visibilitychange(hidden) fired first, that stamp already
             // covered this instant — only stamp a still-visible teardown
-            return counted && visible;
+            return counted && presence.visible && presence.recentInput;
         case 'route-exit':
             // leaving while hidden is a programmatic navigation in a
             // background tab, not a human reading anything (unchanged rule)
-            return counted && visible;
+            return counted && presence.visible && presence.recentInput;
     }
 }
 
@@ -228,16 +246,17 @@ export const ARRIVAL_MAX_FUTURE_MS = 120_000;
 
 /**
  * Pure: does an entry arriving for `href` count as already-seen right now?
- * True iff the document is visible AND the entry's target is the current
+ * True iff the user is PRESENT (B-567: visible + focused + recent trusted
+ * input — not merely a visible tab) AND the entry's target is the current
  * view — the read-state twin of the chime's self-view suppression.
  */
 export function shouldStampOnArrival(
-    visible: boolean,
+    present: boolean,
     href: string,
     currentPath: string,
     currentSearch: string,
 ): boolean {
-    return visible && isSameTarget(href, currentPath, currentSearch);
+    return present && isSameTarget(href, currentPath, currentSearch);
 }
 
 /**

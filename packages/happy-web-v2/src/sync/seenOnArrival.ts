@@ -1,7 +1,8 @@
 /**
  * seenOnArrival — B-086, the "badge contradicts the self-view" half.
  *
- * A notification whose target is CURRENTLY on screen in a visible tab must
+ * A notification whose target is CURRENTLY on screen in a visible tab (B-567:
+ * with the user present — focused, recent input) must
  * not bump the unread badge: the user is literally looking at the thing the
  * badge would tell them to look at. The chime already suppresses itself for
  * this case (notificationChime.isViewingTarget); before this module the READ
@@ -19,16 +20,19 @@
 
 import { arrivalStampAt, shouldStampOnArrival } from './notificationSeen';
 import { useNotificationSeen } from './notificationSeenStore';
+import { isUserPresent, readPresence } from './userPresence';
 
 /**
- * Stamp `key` seen iff its target is the visible current view. Safe to call
+ * Stamp `key` seen iff its target is the current view and the user is present. Safe to call
  * from any producer; no-ops outside the DOM (native / SSR).
  */
 export function stampSeenOnArrival(key: string, href: string, createdAt: number): void {
     if (!key || !href) return;
     if (typeof document === 'undefined' || typeof window === 'undefined') return;
-    const visible = document.visibilityState === 'visible';
-    if (!shouldStampOnArrival(visible, href, window.location.pathname, window.location.search)) {
+    // B-567: a visible tab is not a reader — require visible + focused +
+    // recent trusted input (unknown presence never clears).
+    const present = isUserPresent(readPresence());
+    if (!shouldStampOnArrival(present, href, window.location.pathname, window.location.search)) {
         return;
     }
     useNotificationSeen.getState().markSeen([key], arrivalStampAt(Date.now(), createdAt));

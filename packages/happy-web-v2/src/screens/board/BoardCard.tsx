@@ -7,7 +7,7 @@ import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { upsertPinAt } from '@/screens/sessions/sidebarPins';
 import { moveEntryToTop } from '@/screens/sessions/sidebarOrder';
-import { confirmArchiveSession, confirmCloseTerminal, markSessionDone } from '@/app/rowActions';
+import { confirmArchiveSession, confirmCloseTerminal, markSessionDoneWithUndo } from '@/app/rowActions';
 import { fmtDuration, type BoardItem } from './boardItems';
 import { useSessionPreview } from './useBoardItems';
 import { codingAgentLabel } from '@/sync/agentStatus';
@@ -87,7 +87,7 @@ export function BoardCard({
   const onMarkDone = useCallback(() => {
     if (item.kind === 'session') {
       const session = storage.getState().sessions[item.key];
-      if (session) void markSessionDone(session);
+      if (session) markSessionDoneWithUndo(session); // B-566: undo window, then kill
     } else if (item.machineId) {
       void confirmCloseTerminal(item.machineId, item.key.slice(2));
     }

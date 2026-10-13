@@ -4,8 +4,8 @@
  *
  * Semantics (B-089 — the old "close the view, go home" reading was wrong):
  * ⌘W means "I'm done with this session". On a chat session view it runs the
- * row-menu archive flow (rowActions.confirmArchiveSession → kill-first
- * archive); on an open terminal view it runs the row-menu close flow
+ * row-menu archive flow (rowActions.archiveSessionWithUndo → B-566 undo
+ * window, then the kill-first archive); on an open terminal view it runs the row-menu close flow
  * (rowActions.confirmCloseTerminal → ends the tmux session, B-083 neutral
  * copy). After the session is gone we navigate home — the same place the
  * sidebar row actions leave you. On every other route (home, /board,
@@ -16,7 +16,8 @@
  *
  *  layer 1 (useCloseViewShortcuts) — the in-app flow above. The confirm
  *    dialog is gated by the `closeViewConfirm` local setting: ON (default) =
- *    ask first, OFF = archive/close immediately. Reachable wherever the page
+ *    ask first, OFF = close immediately. Since B-566 it only applies to
+ *    terminals — session archive never asks; it offers Undo instead. Reachable wherever the page
  *    actually receives the chord: ⌘W in the installed PWA, ⌥W anywhere.
  *  layer 2 (useUnloadGuard) — the browser's own leave-site dialog. In a normal
  *    Chrome tab ⌘W is browser-reserved: preventDefault is ignored and the TAB
@@ -56,9 +57,8 @@ import {
 } from '@/app/closeGuard';
 import { isProgrammaticReloadPending } from '@/app/programmaticReload';
 import {
-  archiveSessionNow,
+  archiveSessionWithUndo,
   closeTerminalNow,
-  confirmArchiveSession,
   nextSessionPathAfterClose,
   confirmCloseTerminal,
 } from '@/app/rowActions';
@@ -129,15 +129,9 @@ async function archiveOrCloseTarget(
     if (target.kind === 'session') {
       const session = storage.getState().sessions[target.sessionId];
       if (!session) return; // stale route / not loaded yet — nothing to archive
-      if (confirmFirst) {
-        const archived = await confirmArchiveSession(session);
-        if (!archived) {
-          restoreFocusAfterCancel(captured);
-          return;
-        }
-      } else {
-        await archiveSessionNow(session);
-      }
+      // B-566: no confirm for sessions anymore (either setting) — archive
+      // hides the row now and offers Undo; the server call follows the window.
+      archiveSessionWithUndo(session);
       // B-111: land on the next session (most recently active other visible
       // one) — same rule as the command palette's archive action.
       navigate(nextSessionPathAfterClose(target.sessionId));

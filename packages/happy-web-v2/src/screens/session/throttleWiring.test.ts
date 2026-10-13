@@ -57,12 +57,15 @@ describe('streaming throttle + parse memo wiring', () => {
 describe('MessageView memo comparator covers every prop', () => {
     it('a new prop must be added to the comparator (TypeScript will not tell you)', () => {
         const source = read('./MessageView.tsx');
-        const propsBlock = source.slice(source.indexOf('}: {', source.indexOf('export const MessageView')));
-        const props = [...propsBlock.slice(0, propsBlock.indexOf('\n}')).matchAll(/^\s{4}(\w+)\??:/gm)].map((m) => m[1]);
+        // B-565: props live in `type MessageViewProps` (shared by the memo'd
+        // boundary wrapper and MessageViewBody).
+        const propsBlock = source.slice(source.indexOf('type MessageViewProps = {'));
+        const props = [...propsBlock.slice(0, propsBlock.indexOf('\n};')).matchAll(/^\s{4}(\w+)\??:/gm)].map((m) => m[1]);
         expect(props.length).toBeGreaterThan(3);
-        const comparator = source.slice(source.lastIndexOf('}, (prev, next) => ('));
+        const comparatorStart = source.lastIndexOf('}, (prev, next) => (');
+        const comparator = source.slice(comparatorStart, source.indexOf('));', comparatorStart));
         for (const prop of props) {
-            expect(comparator, `${prop} is not compared — the row would render stale content`).toContain(`prev.${prop}`);
+            expect(comparator, `${prop} is not compared — the row would render stale content`).toMatch(new RegExp(`\\bprev\\.${prop}\\b`));
         }
     });
 });
@@ -88,6 +91,7 @@ describe('MermaidView state machine wiring (B-358)', () => {
 
     it('a draft never renders a diagram', () => {
         const markdown = read('./Markdown.tsx');
-        expect(markdown).toContain("if (lang === 'mermaid' && !plainCode) return <MermaidView code={code} />;");
+        // B-565: the diagram sits in its own render-error boundary
+        expect(markdown).toContain("if (lang === 'mermaid' && !plainCode) return <RecoverableBoundary region=\"mermaid\" resetKey={code} compact><MermaidView code={code} /></RecoverableBoundary>;");
     });
 });

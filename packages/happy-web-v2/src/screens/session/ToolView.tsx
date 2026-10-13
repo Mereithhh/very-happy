@@ -36,6 +36,7 @@ function ToolPath({ path }: { path: string }) {
     return sessionId ? <FilePathLink path={path} sessionId={sessionId} /> : <>{path}</>;
 }
 import './toolview.css';
+import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 
 function asString(v: unknown): string | null {
     return typeof v === 'string' ? v : null;
@@ -358,7 +359,16 @@ function prettyInput(input: unknown): string {
     }
 }
 
-export function ToolView({ message, abortedAt = null }: { message: ToolCallMessage; abortedAt?: number | null }) {
+/** B-565: a tool card's body crashing must not take the transcript with it. */
+export function ToolView(props: { message: ToolCallMessage; abortedAt?: number | null }) {
+    return (
+        <RecoverableBoundary region="tool" resetKey={props.message} compact>
+            <ToolViewBody {...props} />
+        </RecoverableBoundary>
+    );
+}
+
+function ToolViewBody({ message, abortedAt = null }: { message: ToolCallMessage; abortedAt?: number | null }) {
     const {id:sessionId}=useParams();
     const subagentNavigation = useSubagentNavigation();
     const tool = message.tool;

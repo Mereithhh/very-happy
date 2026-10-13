@@ -37,6 +37,7 @@ import { splitOptionSegments } from './optionsBlock';
 import { rehypeTableCellBreaks, rehypeTableScope, rehypeTextLeaves, safeUrlTransform } from './markdownPlugins';
 import { streamThrottleMs } from './streamThrottle';
 import { SkillDocumentLink } from '@/ui/SkillDocumentLink';
+import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 
 // Stable identities: react-markdown re-runs the whole unified pipeline on every
 // render, and a fresh array here would also invalidate the memo below.
@@ -211,7 +212,7 @@ function buildComponents(plainCode: boolean, trustContent: boolean): Components 
             // B-358: a mermaid fence becomes a diagram — but never while streaming.
             // A half-written diagram cannot parse, and the draft re-renders several
             // times a second, so it would be a stream of failed renders.
-            if (lang === 'mermaid' && !plainCode) return <MermaidView code={code} />;
+            if (lang === 'mermaid' && !plainCode) return <RecoverableBoundary region="mermaid" resetKey={code} compact><MermaidView code={code} /></RecoverableBoundary>;
             return <CodeView code={code} lang={lang} plain={plainCode} />;
         },
         code({ children, className }) {
@@ -329,9 +330,11 @@ export function Markdown({ text, onOption, hideOptions = false, plainCode = fals
                         </div>
                     );
                 }
+                // B-565: a markdown block that throws (plugin edge case, bad
+                // table, mermaid…) degrades to one line, not a blank page.
                 return (
+                    <RecoverableBoundary key={index} region="markdown" resetKey={segment.text} compact>
                     <ReactMarkdown
-                        key={index}
                         remarkPlugins={REMARK_PLUGINS}
                         rehypePlugins={REHYPE_PLUGINS}
                         urlTransform={safeUrlTransform}
@@ -339,6 +342,7 @@ export function Markdown({ text, onOption, hideOptions = false, plainCode = fals
                     >
                         {segment.text}
                     </ReactMarkdown>
+                    </RecoverableBoundary>
                 );
             })}
         </div>

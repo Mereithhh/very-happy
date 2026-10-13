@@ -1,0 +1,62 @@
+/* B-565 RecoverableBoundary fallback — tokens only, never --accent (accent = live). */
+.vh-boundary {
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-1);
+}
+.vh-boundary--compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  margin: var(--sp-1) 0;
+  min-height: 28px;
+}
+.vh-boundary--panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-6) var(--sp-4);
+  margin: var(--sp-3);
+  text-align: center;
+}
+.vh-boundary-icon {
+  color: var(--danger);
+  flex-shrink: 0;
+}
+.vh-boundary-title {
+  color: var(--text-dim);
+  font-size: var(--fs-13);
+}
+.vh-boundary-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.vh-boundary-sep {
+  color: var(--line-2);
+}
+.vh-boundary-btn {
+  color: var(--text-dim);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--line-2);
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+  font-size: inherit;
+}
+.vh-boundary-btn:hover {
+  color: var(--text);
+  background: var(--bg-3);
+}
+@media (pointer: coarse) {
+  .vh-boundary-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
