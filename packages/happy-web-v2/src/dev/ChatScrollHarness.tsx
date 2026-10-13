@@ -12,8 +12,14 @@
  *   stop()
  *   grow(chars)           append text to the newest message (streaming)
  *   appendMessage()       a brand-new newest message
+ *   patchSession(patch)   merge fields into the session (presence, thinking, …)
+ *
+ * `/dev/chat-scroll/session/dev-chat-scroll?full=1` mounts the real
+ * SessionDetailScreen around the list (banners, sd-foot docks, composer);
+ * `&idle=1` makes the session offline / not running.
  */
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { SessionDetailScreen } from '@/screens/session/SessionDetailScreen';
 import type { NormalizedMessage } from '@/sync/typesRaw';
 import type { Session } from '@/sync/storageTypes';
 import { storage } from '@/sync/storage';
@@ -57,11 +63,16 @@ declare global {
       grow: (chars?: number) => void;
       appendMessage: () => void;
       oldestSeq: () => number;
+      patchSession: (patch: Partial<Session>) => void;
     };
   }
 }
 
 export function ChatScrollHarness() {
+  const [params] = useState(() => new URLSearchParams(window.location.search));
+  const full = params.get('full') === '1';
+  const idle = params.get('idle') === '1';
+  const [seeded, setSeeded] = useState(false);
   useEffect(() => {
     const now = Date.now();
     storage.getState().applySessions([{
@@ -77,7 +88,8 @@ export function ChatScrollHarness() {
       agentStateVersion: 1,
       thinking: false,
       thinkingAt: 0,
-      presence: 'online',
+      presence: idle ? 'offline' : 'online',
+      ...(idle ? { active: false } : {}),
     } as unknown as Session]);
     // Newest page first, like fetchInitialLatestPage.
     let oldest = 1000;
@@ -92,9 +104,17 @@ export function ChatScrollHarness() {
       { role: 'agent', id: 'm-1058-result', localId: null, createdAt: BASE + 1058 * 60_000 + 2, isSidechain: false, seq: 1058.6,
         content: [{ type: 'tool-result', tool_use_id: 'call-1', content: stdout, is_error: false, uuid: 'tr-1', parentUUID: null }] },
     ] as unknown as NormalizedMessage[]);
+    // An Edit in the last turn → a B-571 turn-diff row at the end of a finished turn.
+    storage.getState().applyMessages(SESSION_ID, [
+      { role: 'agent', id: 'm-1058-edit', localId: null, createdAt: BASE + 1058 * 60_000 + 3, isSidechain: false, seq: 1058.7,
+        content: [{ type: 'tool-call', id: 'call-2', name: 'Edit', input: { file_path: '/repo/a.ts', old_string: 'a\nb', new_string: 'a\nc\nd' }, description: null, uuid: 'tc-2', parentUUID: null }] },
+      { role: 'agent', id: 'm-1058-edit-r', localId: null, createdAt: BASE + 1058 * 60_000 + 4, isSidechain: false, seq: 1058.8,
+        content: [{ type: 'tool-result', tool_use_id: 'call-2', content: 'ok', is_error: false, uuid: 'tr-2', parentUUID: null }] },
+    ] as unknown as NormalizedMessage[]);
     storage.getState().applyMessagesLoaded(SESSION_ID);
     storage.getState().applyOlderMessagesPagination(SESSION_ID, { hasMore: true });
 
+    setSeeded(true);
     let timer: ReturnType<typeof setInterval> | null = null;
     const prependPage = async (n = 40) => {
       const s = storage.getState();
@@ -103,6 +123,10 @@ export function ChatScrollHarness() {
       oldest -= n;
       s.applyMessages(SESSION_ID, page(oldest, n));
       s.applyOlderMessagesPagination(SESSION_ID, { hasMore: oldest > 40 });
+      // sync.loadOlderMessages clears the flag in a `finally` after the lock's
+      // promise chain settles — microtasks later, so the prepend usually
+      // commits on its own before isLoadingOlder flips back.
+      for (let i = 0; i < 3; i++) await Promise.resolve();
       s.applyOlderMessagesLoading(SESSION_ID, false);
     };
     window.__chatScroll = {
@@ -123,13 +147,26 @@ export function ChatScrollHarness() {
         storage.getState().applyMessages(SESSION_ID, page(newest, 1));
       },
       oldestSeq: () => oldest,
+      patchSession: (patch) => {
+        const current = storage.getState().sessions[SESSION_ID];
+        storage.getState().applySessions([{ ...current, ...patch } as Session]);
+      },
     };
     return () => {
       if (timer) clearInterval(timer);
       delete window.__chatScroll;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  if (full) {
+    if (!seeded) return null;
+    return (
+      <div style={{ height: '100vh', display: 'flex' }}>
+        <SessionDetailScreen />
+      </div>
+    );
+  }
   return (
     <div className="sd" style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <ChatList sessionId={SESSION_ID} showLiveStatus={false} />

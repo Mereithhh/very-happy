@@ -26,6 +26,7 @@ import {
     nextAwaySnapshot,
     unseenRows,
     formatUnseen,
+    isBottomEdgeChange,
     shouldFollowGrowth,
     shouldFollowShrink,
     shouldSmoothJumpToLatest,
@@ -189,12 +190,21 @@ export function ChatList({
     // Auto-stick to bottom on new content when already near the bottom. Keyed on
     // both row count (new messages) and the streaming message's growing length
     // (in-place text updates) so the view follows live streamed output.
+    // Only a change at the BOTTOM edge follows: older history prepended at the
+    // top (background prefetch / 「加载更早」) also bumps rows.length, and
+    // snapping on it dragged a reader slowly scrolling up inside the 80px band
+    // back to 0 on every page — they could never get out (isBottomEdgeChange).
+    const newestRowKey = rowKeys[rowKeys.length - 1] ?? null;
+    const bottomEdgeRef = useRef({ newestKey: newestRowKey, lastContentLen });
     useLayoutEffect(() => {
-        if (atBottomRef.current) {
+        const prev = bottomEdgeRef.current;
+        const next = { newestKey: newestRowKey, lastContentLen };
+        bottomEdgeRef.current = next;
+        if (atBottomRef.current && isBottomEdgeChange(prev, next)) {
             scrollToBottom(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [rows.length, lastContentLen]);
+    }, [rows.length, lastContentLen, newestRowKey]);
 
     // B-520: sending is joining the live end — override a scrolled-back view.
     // atBottom=true also arms the growth/row followers for the reply.
@@ -218,23 +228,36 @@ export function ChatList({
     // 展开）时 rows.length 与 lastContentLen 都不变，上面的 effect 不触发——用
     // ResizeObserver 盯内容 wrapper（.cl-inner）补住：高度增长且仍贴底才跟随
     // （非 smooth，防抖到 rAF）。atBottom 门控保持：用户上滚回看绝不能被拉回。
+    // Growth while an older page is in flight is history landing at the TOP —
+    // the prepend effect below compensates it; following it would yank the
+    // reader (same trap as the row effect above). The baseline is shared so
+    // that compensation can re-arm it.
     const hasTranscript = isLoaded && messages.length > 0;
+    const isLoadingOlderRef = useRef(isLoadingOlder);
+    isLoadingOlderRef.current = isLoadingOlder;
+    const innerHeightRef = useRef(0);
     useEffect(() => {
         const inner = innerRef.current;
         if (!hasTranscript || !inner || typeof ResizeObserver === 'undefined') return;
         let raf = 0;
-        let prevHeight = inner.getBoundingClientRect().height;
-        const ro = new ResizeObserver((entries) => {
-            const next =
-                entries[entries.length - 1]?.contentRect.height ??
-                inner.getBoundingClientRect().height;
-            const follow = shouldFollowGrowth(prevHeight, next, atBottomRef.current);
-            prevHeight = next;
-            if (!follow || raf) return;
+        innerHeightRef.current = inner.getBoundingClientRect().height;
+        // The decision is taken here but the scroll lands a frame later: a
+        // reader who scrolled away in between must not be pulled back.
+        const followNextFrame = () => {
             raf = requestAnimationFrame(() => {
                 raf = 0;
-                scrollToBottom(false);
+                if (atBottomRef.current) scrollToBottom(false);
             });
+        };
+        // Border box on every read (not contentRect): the prepend effect
+        // re-arms this baseline from outside the observer with the same measure.
+        const ro = new ResizeObserver(() => {
+            const next = inner.getBoundingClientRect().height;
+            const follow = !isLoadingOlderRef.current
+                && shouldFollowGrowth(innerHeightRef.current, next, atBottomRef.current);
+            innerHeightRef.current = next;
+            if (!follow || raf) return;
+            followNextFrame();
         });
         ro.observe(inner);
         // B-114 ②：滚动容器自身变矮（软键盘弹起 resize 视口）时保持贴底——
@@ -249,10 +272,7 @@ export function ChatList({
                 const follow = shouldFollowShrink(prevScrollerHeight, next, atBottomRef.current);
                 prevScrollerHeight = next;
                 if (!follow || raf) return;
-                raf = requestAnimationFrame(() => {
-                    raf = 0;
-                    scrollToBottom(false);
-                });
+                followNextFrame();
             })
             : null;
         if (roScroller && scroller) roScroller.observe(scroller);
@@ -264,7 +284,10 @@ export function ChatList({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hasTranscript]);
 
-    // Preserve scroll position when older messages are prepended.
+    // Preserve scroll position when older messages are prepended — for every
+    // reader, including one inside the follow band: their distance from the
+    // bottom is kept (still 0 for someone at the very bottom), so a slow
+    // scroll-up keeps its progress across prefetch pages.
     useLayoutEffect(() => {
         const el = scrollRef.current;
         if (!el) return;
@@ -272,10 +295,14 @@ export function ChatList({
             prevHeightRef.current = el.scrollHeight;
         } else if (prevHeightRef.current > 0) {
             const delta = el.scrollHeight - prevHeightRef.current;
-            if (delta > 0 && !atBottomRef.current) {
+            if (delta > 0) {
                 el.scrollTop += delta;
             }
             prevHeightRef.current = 0;
+            // The prepend is accounted for: don't let the growth follower
+            // read it as new content at the bottom.
+            const inner = innerRef.current;
+            if (inner) innerHeightRef.current = inner.getBoundingClientRect().height;
         }
     }, [isLoadingOlder]);
 

@@ -3,6 +3,7 @@ import {
     nextAwaySnapshot,
     unseenRows,
     formatUnseen,
+    isBottomEdgeChange,
     shouldFollowGrowth,
     shouldFollowShrink,
     shouldSmoothJumpToLatest,
@@ -97,5 +98,18 @@ describe('shouldSmoothJumpToLatest', () => {
     it('does not request animation for invalid or already-bottom distances', () => {
         expect(shouldSmoothJumpToLatest(0, 500)).toBe(false);
         expect(shouldSmoothJumpToLatest(100, 0)).toBe(false);
+    });
+});
+
+describe('isBottomEdgeChange', () => {
+    const edge = (newestKey: string | null, lastContentLen = 10) => ({ newestKey, lastContentLen });
+    it('older history prepended at the top is not a bottom change', () => {
+        expect(isBottomEdgeChange(edge('r9'), edge('r9'))).toBe(false);
+    });
+    it('a new newest row is', () => {
+        expect(isBottomEdgeChange(edge('r9'), edge('r10'))).toBe(true);
+    });
+    it('the newest message growing in place (streaming) is', () => {
+        expect(isBottomEdgeChange(edge('r9', 10), edge('r9', 42))).toBe(true);
     });
 });

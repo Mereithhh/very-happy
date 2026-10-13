@@ -238,7 +238,11 @@ const router = createBrowserRouter(
       ? [{ path: '/dev/composer-ux', element: <Lazy><ComposerUxHarness /></Lazy> }]
       : []),
     ...(ChatScrollHarness
-      ? [{ path: '/dev/chat-scroll', element: <Lazy><ChatScrollHarness /></Lazy> }]
+      ? [
+          { path: '/dev/chat-scroll', element: <Lazy><ChatScrollHarness /></Lazy> },
+          // ?full=1: the real SessionDetailScreen reads `:id` from the route.
+          { path: '/dev/chat-scroll/session/:id', element: <Lazy><ChatScrollHarness /></Lazy> },
+        ]
       : []),
     ...(ChangelogHarness
       ? [
