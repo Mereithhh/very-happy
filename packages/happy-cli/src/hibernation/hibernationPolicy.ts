@@ -97,7 +97,10 @@ export interface WrapperIdleSnapshot {
     /** `HAPPY_SPAWNED_BY` of this process (teams / automation / assistant / IM bridge …). */
     spawnedBy?: string;
     tags?: string[];
+    /** Effective (latched) keep-awake — see `latchKeepAwake`. */
     keepAwake: boolean;
+    /** Raw `metadata.keepAwake` as read now: true / false (explicit off) / undefined (absent). */
+    keepAwakeSetting?: boolean;
     thinking: boolean;
     /** Items in the in-memory input queue, plus 1 when the server prompt queue holds some. */
     queuedInputs: number;
@@ -127,6 +130,17 @@ export function evaluateWrapperIdle(snapshot: WrapperIdleSnapshot, idleMs: numbe
     if (snapshot.backgroundTasks > 0) return { ok: false, reason: 'background-tasks' };
     if (!(now - snapshot.lastActivityAt >= idleMs)) return { ok: false, reason: 'recent-activity' };
     return { ok: true };
+}
+
+/**
+ * keepAwake survives an old web stripping it. An old web's metadata write
+ * drops undeclared keys, so ABSENT does not mean "off": only an explicit
+ * `false` (what the new web writes) turns a latched `true` off.
+ */
+export function latchKeepAwake(raw: unknown, latched: boolean): boolean {
+    if (raw === true) return true;
+    if (raw === false) return false;
+    return latched;
 }
 
 // ── Daemon side ─────────────────────────────────────────────────────────────

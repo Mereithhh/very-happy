@@ -322,6 +322,11 @@ export async function startDaemon(): Promise<void> {
         }
       },
       log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
+      readKeepAwake: (sessionId) => readPersistedSessions()[sessionId]?.keepAwake === true,
+      writeKeepAwake: (sessionId, value) => {
+        const record = readPersistedSessions()[sessionId];
+        if (record) persistSession(sessionId, { ...record, keepAwake: value || undefined });
+      },
     });
 
     // Retain session data after process exits so resume can still find it.

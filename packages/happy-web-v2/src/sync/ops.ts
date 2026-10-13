@@ -315,14 +315,11 @@ export async function machineSetAgentHibernation(machineId: string, idleMs: numb
     }
 }
 
-/** B-587: opt a session in/out of idle hibernation (`metadata.keepAwake`; absent = not kept awake). */
+/** B-587: opt a session in/out of idle hibernation. Off is written as an
+ *  explicit `false`, never deleted: an absent key is what an old web's
+ *  metadata write leaves behind, and the CLI keeps a latched `true` then. */
 export async function sessionSetKeepAwake(sessionId: string, keepAwake: boolean): Promise<void> {
-    await sessionApplyMetadata(sessionId, (base) => {
-        const next = { ...base };
-        if (keepAwake) next.keepAwake = true;
-        else delete next.keepAwake;
-        return next;
-    });
+    await sessionApplyMetadata(sessionId, (base) => ({ ...base, keepAwake }));
 }
 
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {

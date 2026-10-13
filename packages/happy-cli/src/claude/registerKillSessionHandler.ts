@@ -20,13 +20,23 @@ export function registerKillSessionHandler(
     rpcHandlerManager: RpcHandlerManager,
     killThisHappy: () => Promise<void>,
     archiveEvents: SessionArchiveEvents,
-    options?: { processSignals?: boolean },
+    options?: {
+        processSignals?: boolean;
+        /** B-587 / AGENTS 7: what SIGTERM/SIGINT run instead of `killThisHappy`
+         *  — an infrastructure exit goes offline, it never stamps archived. */
+        onSignal?: () => Promise<void>;
+    },
 ) {
     let terminationStarted = false;
     const terminateOnce = () => {
         if (terminationStarted) return;
         terminationStarted = true;
         void killThisHappy();
+    };
+    const signalOnce = () => {
+        if (terminationStarted) return;
+        terminationStarted = true;
+        void (options?.onSignal ?? killThisHappy)();
     };
 
     // The server-owned archive event is the primary path. Keeping it beside
@@ -35,8 +45,8 @@ export function registerKillSessionHandler(
     // whose machine daemon is unavailable.
     archiveEvents.on('archived', terminateOnce);
     if (options?.processSignals) {
-        process.on('SIGTERM', terminateOnce);
-        process.on('SIGINT', terminateOnce);
+        process.on('SIGTERM', signalOnce);
+        process.on('SIGINT', signalOnce);
     }
 
     rpcHandlerManager.registerHandler<KillSessionRequest, KillSessionResponse>('killSession', async () => {
@@ -55,8 +65,8 @@ export function registerKillSessionHandler(
     return () => {
         archiveEvents.off?.('archived', terminateOnce);
         if (options?.processSignals) {
-            process.off('SIGTERM', terminateOnce);
-            process.off('SIGINT', terminateOnce);
+            process.off('SIGTERM', signalOnce);
+            process.off('SIGINT', signalOnce);
         }
     };
 }

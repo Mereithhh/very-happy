@@ -588,6 +588,8 @@ export type PersistedSession = {
   savedAt: number;
   /** B-587: set when the wrapper exited by hibernating — kept 90 days, not 14. */
   hibernatedAt?: number;
+  /** B-587: daemon-side keep-awake latch (survives an old web stripping metadata.keepAwake). */
+  keepAwake?: boolean;
 };
 
 type SessionsFile = {
@@ -671,7 +673,10 @@ export function readTrackedCodexThreadIds(): string[] {
 export function persistSession(sessionId: string, session: PersistedSession): void {
   try {
     const existing = readPersistedSessions();
-    existing[sessionId] = session;
+    // B-587: record rewrites (webhook, resume) do not know the keep-awake
+    // latch — carry it unless the caller sets the key explicitly.
+    const prior = existing[sessionId];
+    existing[sessionId] = !('keepAwake' in session) && prior?.keepAwake ? { ...session, keepAwake: true } : session;
     const tmpFile = configuration.sessionsFile + '.tmp';
     writePrivateFileSync(tmpFile, JSON.stringify({ sessions: existing }, null, 2));
     renameSync(tmpFile, configuration.sessionsFile);

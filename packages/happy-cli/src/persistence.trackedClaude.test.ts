@@ -40,6 +40,15 @@ describe('readTrackedClaudeSessionIds (B-291)', () => {
         expect(Object.keys(readPersistedSessions()).sort()).toEqual(['hibernated']);
     });
 
+    it('B-587: record rewrites keep the keep-awake latch unless they set it', async () => {
+        await writeSessions({ s: { savedAt: Date.now(), keepAwake: true, metadata: {} } });
+        const { persistSession, readPersistedSessions } = await import('./persistence');
+        persistSession('s', { savedAt: Date.now(), metadata: {} } as never);
+        expect(readPersistedSessions().s.keepAwake).toBe(true);
+        persistSession('s', { savedAt: Date.now(), metadata: {}, keepAwake: undefined } as never);
+        expect(readPersistedSessions().s.keepAwake).toBeUndefined();
+    });
+
     it('collects own and imported-from ids regardless of the live-session age prune', async () => {
         const ancient = Date.now() - 400 * 24 * 60 * 60 * 1000;
         await writeSessions({

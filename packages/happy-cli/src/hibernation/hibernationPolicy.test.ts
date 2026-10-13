@@ -144,3 +144,13 @@ describe('B-587 replay cursor', () => {
         expect(hibernationReplaySeq(null, 12)).toBeNull();
     });
 });
+
+describe('B-587 latchKeepAwake', () => {
+    it('absent keeps the latch, explicit values set it', async () => {
+        const { latchKeepAwake } = await import('./hibernationPolicy');
+        expect(latchKeepAwake(undefined, true)).toBe(true);
+        expect(latchKeepAwake(undefined, false)).toBe(false);
+        expect(latchKeepAwake(false, true)).toBe(false);
+        expect(latchKeepAwake(true, false)).toBe(true);
+    });
+});

@@ -30,7 +30,7 @@ import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { checkDaemonHibernation, notifyDaemonSessionStarted } from "@/daemon/controlClient";
-import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, resolveCheckMs, type HibernationStamp, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
+import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, latchKeepAwake, resolveCheckMs, type HibernationStamp, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 import { HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
@@ -539,7 +539,7 @@ export async function runCodex(opts: {
      * Abort stops the current inference but keeps the session alive.
      * Kill terminates the entire process.
      */
-    const handleKillSession = async () => {
+    const handleKillSession = async (intent: 'archive' | 'offline' = 'archive') => {
         // B-587: a hibernation is already taking this process offline; never
         // let a late signal stamp it archived on the way out.
         if (hibernating) {
@@ -551,8 +551,15 @@ export async function runCodex(opts: {
         logger.debug('[Codex] Abort completed, proceeding with termination');
 
         try {
-            // Update lifecycle state to archived before closing
-            if (session) {
+            // Update lifecycle state to archived before closing — only for a
+            // user's archive/kill. AGENTS 7 / B-587: SIGTERM/SIGINT (daemon
+            // stop, upgrade, shutdown) go offline: no archived stamp.
+            if (session && intent === 'offline') {
+                session.sendSessionDeath();
+                await session.flush();
+                try { await api.deactivateSession(session.sessionId); } catch (error) { logger.debug('[Codex] deactivate on signal failed', safeCodexErrorMetadata(error)); }
+                await session.close();
+            } else if (session) {
                 session.updateMetadata((currentMetadata) => ({
                     ...currentMetadata,
                     lifecycleState: 'archived',
@@ -592,7 +599,7 @@ export async function runCodex(opts: {
     });
     session.rpcHandlerManager.registerHandler('abort', () => handleAbort('user'));
 
-    const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, handleKillSession, session, { processSignals: true });
+    const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, () => handleKillSession('archive'), session, { processSignals: true, onSignal: () => handleKillSession('offline') });
 
     //
     // Initialize Ink UI
@@ -913,6 +920,7 @@ export async function runCodex(opts: {
 
         // B-587: idle hibernation (spec 2026-10-idle-agent-hibernation; see runClaude).
         if (opts.startedBy === 'daemon' && !hasTTY && process.env.HAPPY_SESSION_VARIANT !== 'assistant') {
+            let keepAwakeLatch = false;
             const hibernationSnapshot = (): WrapperIdleSnapshot => {
                 const meta = session.getMetadata();
                 return {
@@ -921,7 +929,8 @@ export async function runCodex(opts: {
                     uiSession: true,
                     ...(process.env.HAPPY_SPAWNED_BY ? { spawnedBy: process.env.HAPPY_SPAWNED_BY } : {}),
                     ...(meta?.tags ? { tags: meta.tags } : {}),
-                    keepAwake: meta?.keepAwake === true,
+                    keepAwake: (keepAwakeLatch = latchKeepAwake(meta?.keepAwake, keepAwakeLatch)),
+                    ...(typeof meta?.keepAwake === 'boolean' ? { keepAwakeSetting: meta.keepAwake } : {}),
                     thinking: thinking || turnActive,
                     queuedInputs: messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
                     waitingForInput: messageQueue.isWaiting(),

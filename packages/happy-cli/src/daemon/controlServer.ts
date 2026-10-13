@@ -29,6 +29,7 @@ const WrapperIdleSnapshotSchema = z.object({
   spawnedBy: z.string().max(64).optional(),
   tags: z.array(z.string().max(128)).max(64).optional(),
   keepAwake: z.boolean(),
+  keepAwakeSetting: z.boolean().optional(),
   thinking: z.boolean(),
   queuedInputs: z.number().int().nonnegative(),
   waitingForInput: z.boolean(),

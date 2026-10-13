@@ -107,3 +107,22 @@ describe('B-587 collectAutomationBindings', () => {
         await expect(collectAutomationBindings(client, 'm')).rejects.toBeInstanceOf(AutomationsRequestError);
     });
 });
+
+describe('B-587 keep-awake latch (an old web strips metadata.keepAwake on rename)', () => {
+    it('true is latched and survives the key disappearing; only an explicit false turns it off', async () => {
+        const store = new Map<string, boolean>();
+        const { h } = make({ readKeepAwake: (id) => store.get(id) ?? false, writeKeepAwake: (id, v) => { store.set(id, v); } });
+        const on = report({ keepAwake: true, keepAwakeSetting: true });
+        await h.check({ sessionId: 's1', pid: 1, report: on });
+        expect(store.get('s1')).toBe(true);
+        // old web renamed the session: key gone, wrapper restarted (its own latch lost)
+        const stripped = report({ keepAwake: false });
+        await h.check({ sessionId: 's1', pid: 1, report: stripped });
+        expect(await h.check({ sessionId: 's1', pid: 1, report: stripped })).toMatchObject({ hibernate: false, reason: 'keep-awake' });
+        // new web turns it off explicitly
+        const off = report({ keepAwake: false, keepAwakeSetting: false });
+        await h.check({ sessionId: 's1', pid: 1, report: off });
+        expect(store.get('s1')).toBe(false);
+        expect(await h.check({ sessionId: 's1', pid: 1, report: off })).toMatchObject({ hibernate: true });
+    });
+});

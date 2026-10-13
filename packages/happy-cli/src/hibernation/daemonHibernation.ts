@@ -6,6 +6,7 @@
  */
 import {
     decideDaemonHibernation,
+    latchKeepAwake,
     nextCheckDelay,
     reportSignature,
     type WrapperIdleSnapshot,
@@ -26,6 +27,9 @@ export interface DaemonHibernationDeps {
     backgroundTasks: (sessionId: string) => number;
     /** Session ids Automations reuse. Throw = unknown (fail closed); [] = none. */
     loadAutomationBindings: () => Promise<string[]>;
+    /** Persisted keep-awake latch per session (survives wrapper restarts / old-web strips). */
+    readKeepAwake?: (sessionId: string) => boolean;
+    writeKeepAwake?: (sessionId: string, value: boolean) => void;
     now?: () => number;
     log?: (message: string) => void;
 }
@@ -81,6 +85,10 @@ export function createDaemonHibernation(deps: DaemonHibernationDeps) {
         const idleMs = deps.idleMs();
         const t = now();
         const tracked = deps.tracked(request.sessionId, request.pid);
+        const latchedBefore = deps.readKeepAwake?.(request.sessionId) ?? false;
+        const latched = latchKeepAwake(request.report.keepAwakeSetting, latchedBefore || request.report.keepAwake);
+        if (latched !== latchedBefore) deps.writeKeepAwake?.(request.sessionId, latched);
+        if (latched && !request.report.keepAwake) request = { ...request, report: { ...request.report, keepAwake: true } };
         const signature = reportSignature(request.report);
         const previousSignature = signatures.get(request.sessionId);
         signatures.set(request.sessionId, signature);

@@ -29,7 +29,6 @@ very-happy 已经有「停进程不归档」（铁律 7，`POST /deactivate`）�
 - 不休眠 pi / gemini / openclaw 会话：web 的恢复只支持 claude / codex（`restoreEligibility`），休眠了就醒不过来。
 - 不做「打开即预热」「按内存压力动态调阈值」「休眠前截断/压缩上下文」。
 - 不改 server、不加 migration、不改 wire 包。
-- 不修 Codex 在 SIGTERM 时把 metadata 盖成 `lifecycleState:'archived'` 的既有问题（见风险 R8），只保证休眠路径不走它。
 
 ## 现状事实（代码已确认）
 
@@ -193,10 +192,10 @@ web 回滚 = 显示为 offline + 恢复。
 2. **休眠瞬间到达的消息**：提交窗口内到达 → 放弃休眠；freeze 之后到达 → seq 大于戳，下次唤醒时重放（不会自动唤醒，见 §5）。
 3. **Automations 列表拉取失败**：本轮整体不休眠（fail-closed）。
 4. **恢复记录过期**：休眠记录保留 90 天；Claude transcript 被 Claude Code 自己清理（默认 30 天）时，恢复走既有「新对话 + 历史仍可见」降级。
-5. **旧 web 写 metadata 剥字段**：`keepAwake` 可能被旧 web 改名清掉 → 会话可能被休眠，但可唤醒；新 web 全量发布后消失。接受。
+5. **旧 web 写 metadata 剥字段**：旧 web 改名会删掉 `hibernation`/`keepAwake`。`hibernation` 被删只是退化为普通 offline（仍可恢复）。`keepAwake` 被删若不处理会让用户要求常醒的会话被休眠，因此：新 web 关闭时写显式 `false`（不删键）；wrapper 与 daemon 都把 `true` 锁存（`latchKeepAwake`：缺键≠关闭，只有显式 `false` 解除），daemon 锁存落在 `sessions.json` 的恢复记录（`keepAwake`），跨 wrapper 重启/唤醒保留，记录重写时自动沿用。
 6. **唤醒时延**：Claude resume 冷启动约数秒；横幅显示「正在唤醒…」，输入排队。接受。
 7. **外部派生会话 resume 后丢失 spawnedBy**：额外用 tags 兜底（`teams/automation/assistant`）；其他外部来源（如 `--spawned-by tanka`）首个 wrapper 带 env 时不休眠，resume 后若用户删了 tag 则可能被休眠——它们靠 REST 发消息，唤醒后会被重放，不丢。接受。
-8. **Codex SIGTERM 盖 archived 戳**（既有问题）：休眠走独立路径不经过它；本 spec 不修，记录在报告。
+8. **Codex SIGTERM 盖 archived 戳**（既有问题，违反铁律 7）：Codex 的休眠路径不经过它（提交后设 `hibernating`，`handleKillSession` 遇到即返回；主循环正常退出走 session-end + `/deactivate`）。本期顺带修复：`registerKillSessionHandler` 增加 `onSignal`，Codex 的 SIGTERM/SIGINT 改走 offline（session-end + `/deactivate`，不写 archived），归档戳只留给用户的 kill/归档。
 
 ## 验收标准
 

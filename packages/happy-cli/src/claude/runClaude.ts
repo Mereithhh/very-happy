@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { applyHibernationReplay, applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
-import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, resolveCheckMs, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
+import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, latchKeepAwake, resolveCheckMs, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
 import { HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
 import { randomUUID } from 'node:crypto';
 
@@ -1252,6 +1252,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // B-587: idle hibernation (spec 2026-10-idle-agent-hibernation). Only a
     // daemon-spawned remote UI session checks in; the daemon decides, this
     // process re-checks its own state at commit and goes offline (never archive).
+    let keepAwakeLatch = false;
     const hibernationSnapshot = (): WrapperIdleSnapshot => {
         const agentState = session.getAgentState();
         const current = currentSession as Session | null;
@@ -1263,7 +1264,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             ...(isAssistantVariant ? { variant: 'assistant' } : {}),
             ...(process.env.HAPPY_SPAWNED_BY ? { spawnedBy: process.env.HAPPY_SPAWNED_BY } : {}),
             ...(meta?.tags ? { tags: meta.tags } : {}),
-            keepAwake: meta?.keepAwake === true,
+            keepAwake: (keepAwakeLatch = latchKeepAwake(meta?.keepAwake, keepAwakeLatch)),
+            ...(typeof meta?.keepAwake === 'boolean' ? { keepAwakeSetting: meta.keepAwake } : {}),
             thinking: current?.thinking === true,
             queuedInputs: messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
             waitingForInput: messageQueue.isWaiting(),

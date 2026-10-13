@@ -39,3 +39,26 @@ it('routes process termination through the same cleanup once and removes listene
     expect(process.listeners('SIGTERM')).toEqual(before);
     expect(events.listenerCount('archived')).toBe(0);
 });
+
+it('B-587 / AGENTS 7: a signal runs onSignal (offline), never the archive kill; still once', async () => {
+    const before = process.listeners('SIGTERM');
+    const kill = vi.fn(async () => {});
+    const onSignal = vi.fn(async () => {});
+    const events = new EventEmitter();
+    const dispose = registerKillSessionHandler({registerHandler:()=>{}} as any, kill, events, {processSignals:true, onSignal});
+    const added = process.listeners('SIGTERM').filter(fn=>!before.includes(fn));
+    try {
+        added[0]('SIGTERM');
+        events.emit('archived');
+        await Promise.resolve();
+        expect(onSignal).toHaveBeenCalledTimes(1);
+        expect(kill).not.toHaveBeenCalled();
+    } finally { dispose(); }
+});
+
+it('B-587: Codex wires signals to an offline exit and keeps the archived stamp for user kills only', () => {
+    const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'codex', 'runCodex.ts'), 'utf8');
+    expect(src).toContain("onSignal: () => handleKillSession('offline')");
+    expect(src).toContain("if (session && intent === 'offline') {");
+    expect(src).toContain("if (hibernating) {\n            logger.debug('[Codex] Kill/terminate ignored: hibernation in progress');");
+});
