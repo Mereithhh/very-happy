@@ -22,3 +22,9 @@ it('both cards load the shared rule', () => {
     expect(readFileSync(new URL(file, import.meta.url), 'utf8')).toMatch(/import '(\.\/|@\/app\/)floatingCards\.css';/);
   }
 });
+
+it('keeps the card short on phones with a composer (decorative preview dropped, below the taller header)', () => {
+  const phone = css.slice(css.indexOf('@media (max-width: 520px), (pointer: coarse)'));
+  expect(phone).toContain('top: calc(env(safe-area-inset-top, 0px) + 68px);');
+  expect(phone).toMatch(/body:has\(\.sd-foot, \.term-screen\) \.notif-optin-preview \{ display: none; \}/);
+});

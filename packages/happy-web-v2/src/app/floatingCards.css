@@ -11,6 +11,16 @@ body:has(.sd-foot, .term-screen) :is(.pwa-install, .notif-optin) {
   overflow-y: auto;
 }
 
+/* Phones: the session header is taller (two-line meta) and the space between
+   it and the composer is the reading area — keep the card short there by
+   dropping the decorative notification preview (the copy above explains it). */
+@media (max-width: 520px), (pointer: coarse) {
+  body:has(.sd-foot, .term-screen) :is(.pwa-install, .notif-optin) {
+    top: calc(env(safe-area-inset-top, 0px) + 68px);
+  }
+  body:has(.sd-foot, .term-screen) .notif-optin-preview { display: none; }
+}
+
 /* The CLI update banner owns the top edge (it can be `required`); the
    notification invitation is the one that can wait. */
 body:has(.cli-update) .notif-optin { display: none; }
