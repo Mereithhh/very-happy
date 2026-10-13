@@ -42,6 +42,8 @@ ordinary terminal access does not imply identical structured support for every
 agent. Connect each machine once, keep its daemon online, and use the same
 workspace for a single conversation or a coordinated team.
 
+pi conversations (`very-happy pi`, or pi in the Web's new-session dialog) run pi through the [pi-acp](https://www.npmjs.com/package/pi-acp) adapter, so the machine needs both: `npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`. The daemon picks them up within five minutes; `very-happy pi` and the dialog both show the exact command when either is missing.
+
 Run `very-happy install-pi-tools` once, then launch `pi` directly inside a Very Happy terminal to load terminal naming, clipboard and file preview tools. `very-happy pi --terminal` remains available for temporary loading. Each conversation and terminal has a **Copy and preview history** disclosure for reopening files and copying earlier content. [Tool setup and retention limits](docs/channels.md#native-pi-terminal-tools).
 
 
