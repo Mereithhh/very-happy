@@ -13,7 +13,7 @@
   justify-content: center;
   gap: var(--sp-3);
   color: var(--text-dim);
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
 }
 .cl--empty .cl-scroll { width:100%; display:flex; flex-direction:column; justify-content:safe center; }
 .cl--loading .cl-inner { justify-self: start; }
@@ -37,15 +37,20 @@
 .cl-inner {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: calc(var(--chat-space) * 3);
   /* Align to the full chat lane, not its scrollbar-reduced client width.
      Leave the horizontal inset outside this box so the scrollbar never
      creates hidden horizontal overflow. */
   width: calc(min(820px, 100cqi) - 2 * var(--chat-content-inset));
   margin-block: 0;
   margin-inline-start: calc(max(0px, (100cqi - 820px) / 2) + var(--chat-content-inset));
-  padding-block: var(--sp-4) var(--sp-6);
+  padding-block: calc(var(--chat-space) * 4) calc(var(--chat-space) * 6);
 }
+/* B-582: lucide glyphs in the transcript and the sub-agent panel follow the
+   对话字号 setting. zoom is a no-op at the default scale; rules that size an
+   svg slot divide by --chat-scale so zoom × slot = --conversation-icon-size. */
+.cl-inner svg.lucide,
+.sap-body svg.lucide { zoom: var(--chat-scale); }
 .cl-queue {
   flex: 0 0 auto;
   width: calc(100% - (2 * var(--sp-4)));
@@ -67,7 +72,7 @@
   border-bottom: 1px solid var(--line);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
 }
 .cl-queue-labels {
   min-width: 0;
@@ -89,7 +94,7 @@
   background: var(--bg-2);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
 }
 .cl-queue-hint {
   min-width: 0;
@@ -110,7 +115,7 @@
   min-height: 44px;
   padding: 5px 6px 5px var(--sp-3);
   color: var(--text);
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
 }
 .cl-queue-item:hover,
 .cl-queue-item:focus-within {
@@ -207,7 +212,7 @@
   border: 1px solid var(--line-2);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   line-height: 16px;
   text-align: center;
   box-shadow: var(--shadow-lift);

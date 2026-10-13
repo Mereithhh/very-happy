@@ -4,14 +4,14 @@
   line-height: var(--conversation-leading);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   min-width: 0;
   max-width: 100%;
 }
 .tv-stack {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   min-width: 0;
 }
 
@@ -19,21 +19,21 @@
 .tv-section {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   min-width: 0;
 }
 .tv-section-head {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   align-self: flex-start;
-  min-height: 30px;
-  padding: 2px var(--sp-1);
+  min-height: calc(var(--chat-space) * 7.5);
+  padding: 2px var(--chat-space);
 }
 .tv-section-head:hover {
   color: var(--text-dim);
@@ -43,9 +43,9 @@
 }
 .tv-empty {
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
   color: var(--text-faint);
-  padding: var(--sp-1) 0;
+  padding: var(--chat-space) 0;
 }
 .tv-path {
   font-family: var(--font-mono);
@@ -56,10 +56,10 @@
 .tv-skill {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
 }
 .tv-skill strong {
   overflow: hidden;
@@ -73,14 +73,14 @@
 .tv-query {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-code);
   color: var(--text);
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  padding: var(--sp-1) var(--sp-2);
+  padding: var(--chat-space) calc(var(--chat-space) * 2);
 }
 .tv-query-icon {
   flex: none;
@@ -105,11 +105,11 @@
 }
 .tv-results {
   margin: 0;
-  padding: var(--sp-2) var(--sp-3);
+  padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
   max-height: 320px;
   overflow: auto;
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-code);
   line-height: 1.5;
   color: var(--text-dim);
   background: var(--bg-0);
@@ -131,8 +131,8 @@
 .tv-todo {
   display: flex;
   align-items: flex-start;
-  gap: var(--sp-2);
-  font-size: var(--fs-13);
+  gap: calc(var(--chat-space) * 2);
+  font-size: var(--chat-fs-control);
   color: var(--text);
 }
 .tv-todo-icon {
@@ -160,22 +160,22 @@
 .tv-multiedit {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
 }
 .tv-multiedit-head,
 .tv-task-head {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
 }
 .tv-task-count {
   color: var(--text-dim);
 }
 .tv-task-prompt {
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   line-height: 1.5;
   color: var(--text-dim);
   white-space: pre-wrap;
@@ -187,7 +187,7 @@
  * and a subagent_type badge is identity, not liveness (B-260). */
 .tv-badge {
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-dim);
   background: var(--bg-2);
   border: 1px solid var(--line);
@@ -201,7 +201,7 @@
   flex-direction: column;
   gap: 2px;
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-dim);
 }
 .tv-task-log-line {
@@ -215,18 +215,18 @@
 .tv-plan {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   min-width: 0;
 }
 .tv-plan-head {
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .tv-plan-body {
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   color: var(--text);
   min-width: 0;
 }
@@ -235,39 +235,39 @@
 .tv-ask {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: calc(var(--chat-space) * 3);
   min-width: 0;
 }
 .tv-ask-q {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   min-width: 0;
 }
 .tv-ask-head {
   display: flex;
   align-items: baseline;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   flex-wrap: wrap;
 }
 .tv-ask-chip {
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-dim);
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  padding: 1px var(--sp-2);
+  padding: 1px calc(var(--chat-space) * 2);
   white-space: nowrap;
 }
 .tv-ask-question {
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   color: var(--text);
 }
 .tv-ask-options {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   align-items: stretch;
 }
 .tv-ask-opt {
@@ -278,7 +278,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-1);
-  padding: var(--sp-2) var(--sp-3);
+  padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
 }
 .tv-ask-opt:not(:disabled):hover {
   background: var(--bg-2);
@@ -293,15 +293,15 @@
 .tv-ask-opt-label {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-2);
-  font-size: var(--fs-13);
+  gap: calc(var(--chat-space) * 2);
+  font-size: var(--chat-fs-control);
   color: var(--text);
 }
 .tv-ask-opt:disabled:not(.tv-ask-opt--selected) .tv-ask-opt-label {
   color: var(--text-dim);
 }
 .tv-ask-opt-desc {
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
   color: var(--text-dim);
 }
 .tv-ask-opt--other {
@@ -311,7 +311,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
 }
 .tv-ask-other textarea {
   width: 100%;
@@ -321,7 +321,7 @@
   border-radius: var(--r-md);
   background: var(--bg-0);
   color: var(--text);
-  padding: var(--sp-2) var(--sp-3);
+  padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
   font: inherit;
   line-height: 1.5;
 }
@@ -332,8 +332,8 @@
 .tv-attachment {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3);
+  gap: calc(var(--chat-space) * 3);
+  padding: calc(var(--chat-space) * 3);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-2);
@@ -351,24 +351,24 @@
   white-space: nowrap;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
 }
 .tv-attachment-copy span {
   color: var(--text-faint);
   font-family: var(--font-mono);
-  font-size: var(--fs-10);
+  font-size: var(--chat-fs-badge);
 }
 
 /* B-260-P2: sub-agent final report (markdown), labelled in mono. */
 .tv-task-result {
   border-top: 1px solid var(--line);
-  padding-top: var(--sp-2);
+  padding-top: calc(var(--chat-space) * 2);
   max-height: 320px;
   overflow: auto;
 }
 .tv-task-result-label {
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
-  margin-bottom: var(--sp-1);
+  margin-bottom: var(--chat-space);
 }

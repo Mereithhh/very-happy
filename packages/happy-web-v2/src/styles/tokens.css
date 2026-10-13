@@ -223,9 +223,25 @@
 
   /* Workspace primary labels and transcript text share a desktop baseline. */
   --workspace-primary-size: var(--fs-14);
-  --conversation-size: var(--fs-14);
+
+  /* ── Chat type scale (B-582, design-language「对话字号档位」) ──────────────
+     The conversation uses these tiers and no others. Every tier is a ratio of
+     the 对话字号 setting (--chat-scale, set per device via
+     html[data-chat-size]), so all tiers and the spacing unit grow together.
+     At the default scale (1) every value equals the pre-B-582 pixel size.
+     Hit areas never shrink with the scale: wrap touch minimums in max(44px, …);
+     touch editable controls stay max(16px, …) (iOS focus zoom). */
+  --chat-scale: 1;
+  --chat-fs-body: calc(var(--fs-14) * var(--chat-scale));      /* 正文：消息、工具/子代理行、输入框（触屏 15，见下方媒体查询） */
+  --chat-fs-control: calc(var(--fs-13) * var(--chat-scale));   /* 次级控件：卡片标题/按钮/权限说明 */
+  --chat-fs-secondary: calc(var(--fs-12) * var(--chat-scale)); /* 次级：标签、时间、计数、行下第二行 */
+  --chat-fs-caption: calc(var(--fs-11) * var(--chat-scale));   /* 说明：注脚、度量、分类小标题 */
+  --chat-fs-badge: calc(var(--fs-10) * var(--chat-scale));     /* 徽标：徽章、mono 小药丸 */
+  --chat-fs-code: calc(var(--fs-12) * var(--chat-scale));      /* 代码：代码块、diff、工具输出 */
+  --chat-space: calc(var(--sp-1) * var(--chat-scale));         /* 对话间距单位（默认 4px） */
+  --conversation-size: var(--chat-fs-body);
   --conversation-leading: 1.6;
-  --conversation-icon-size: 18px;
+  --conversation-icon-size: calc(18px * var(--chat-scale));
 
   /* spacing (4px base) */
   --sp-1: 4px;
@@ -266,5 +282,11 @@
 }
 
 @media (pointer: coarse), (max-width: 860px) {
-  :root { --conversation-size: var(--fs-15); }
+  :root { --chat-fs-body: calc(var(--fs-15) * var(--chat-scale)); }
 }
+
+/* 对话字号 setting (B-582): device-local, applied to <html> by
+   ui/chatTextSize.ts before first render. Absent attribute = 默认 (1). */
+:root[data-chat-size='sm'] { --chat-scale: 0.9; }
+:root[data-chat-size='lg'] { --chat-scale: 1.125; }
+:root[data-chat-size='xl'] { --chat-scale: 1.25; }

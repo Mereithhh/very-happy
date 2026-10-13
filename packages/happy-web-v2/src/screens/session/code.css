@@ -11,13 +11,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px var(--sp-2) 4px var(--sp-3);
+  padding: 4px calc(var(--chat-space) * 2) 4px calc(var(--chat-space) * 3);
   background: var(--bg-2);
   border-bottom: 1px solid var(--line);
 }
 .cv-lang {
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
   text-transform: lowercase;
 }
@@ -35,7 +35,7 @@
 }
 .cv-pre {
   margin: 0;
-  padding: var(--sp-3);
+  padding: calc(var(--chat-space) * 3);
   overflow-x: auto;
   /* Explicit overflow-y:hidden — a bare overflow-x:auto makes overflow-y compute
    * to auto (CSS spec), turning the block into a 2-axis scroll container that
@@ -43,7 +43,7 @@
    * sits over a code block. hidden lets the wheel bubble to the transcript. */
   overflow-y: hidden;
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-code);
   line-height: 1.5;
   color: var(--text);
 }
@@ -58,11 +58,11 @@
  * default; light theme swaps the variable. */
 .cv-shiki pre.shiki {
   margin: 0;
-  padding: var(--sp-3);
+  padding: calc(var(--chat-space) * 3);
   overflow-x: auto;
   overflow-y: hidden; /* see .cv-pre: keep vertical wheel bubbling to transcript */
   font-family: var(--font-mono) !important;
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-code);
   line-height: 1.55;
   background: var(--cv-code-background, var(--bg-0)) !important;
   color: var(--text);
@@ -105,7 +105,7 @@
   content: counter(ln);
   display: inline-block;
   width: 2.5em;
-  margin-right: var(--sp-3);
+  margin-right: calc(var(--chat-space) * 3);
   text-align: right;
   color: var(--text-faint);
   user-select: none;
@@ -147,11 +147,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   width: 100%;
-  padding: 4px var(--sp-3);
+  padding: 4px calc(var(--chat-space) * 3);
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-dim);
   text-align: center;
   background: var(--bg-2);

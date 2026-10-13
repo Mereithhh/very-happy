@@ -4,22 +4,22 @@
 .msg-compaction {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: calc(var(--chat-space) * 3);
   min-width: 0;
   color: var(--text-faint);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
 }
 .msg-compaction::before,
 .msg-compaction::after {
   content: '';
   flex: 1 1 0;
-  min-width: var(--sp-4);
+  min-width: calc(var(--chat-space) * 4);
   border-top: 1px solid var(--line);
 }
 .msg-compaction-label {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   min-width: 0;
   max-width: 80%;
 }
@@ -31,11 +31,11 @@
 .msg-compaction-time {
   flex: none;
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
 }
 .msg-compaction-time::before {
   content: '·';
-  margin-right: var(--sp-2);
+  margin-right: calc(var(--chat-space) * 2);
 }
 .msg-compaction--running { color: var(--text-dim); }
 .msg-compaction--running .vh-spinner { color: var(--accent); border-color: var(--accent); border-top-color: transparent; }

@@ -2,14 +2,14 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-2);
-  margin-top: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
+  margin-top: calc(var(--chat-space) * 2);
 }
 .meta-chip {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
   background: var(--bg-1);
   border: 1px solid var(--line);

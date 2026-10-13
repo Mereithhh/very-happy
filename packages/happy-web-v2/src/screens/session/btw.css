@@ -23,7 +23,7 @@
   color: var(--text-dim);
 }
 .btw-title {
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   font-weight: 600;
   color: var(--text);
 }
@@ -34,7 +34,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
 }
 .btw-icon {
@@ -69,13 +69,13 @@
 }
 .btw-empty-icon { margin:0 auto 12px; color:var(--text-faint); }
 .btw-empty-title {
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   color: var(--text);
   margin-bottom: var(--sp-1);
 }
 .btw-empty-desc {
   white-space:pre-line;
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
   line-height: 1.5;
 }
 
@@ -97,7 +97,7 @@
   border: 0;
   border-radius: 18px;
   padding: var(--sp-2) var(--sp-3);
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   line-height: 1.5;
   color: var(--message-user-text);
   white-space: pre-wrap;
@@ -105,12 +105,12 @@
 }
 .btw-meta {
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
 }
 .btw-a {
   min-width: 0;
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   line-height: 1.55;
   color: var(--text);
 }
@@ -120,12 +120,12 @@
   gap: var(--sp-2);
   margin-top: var(--sp-1);
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
   color: var(--text-dim);
 }
 .btw-note {
   margin-top: var(--sp-1);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
   line-height: 1.5;
   color: var(--text-dim);
 }
@@ -160,7 +160,7 @@
   opacity: 0.6;
 }
 .btw-composer-tools { display:flex; align-items:center; gap:8px; width:100%; }
-.btw-composer-hint { flex:1; font-size:var(--fs-11); color:var(--text-faint); }
+.btw-composer-hint { flex:1; font-size:var(--chat-fs-caption); color:var(--text-faint); }
 .btw-textarea {
   width:100%;
   flex: 1;
@@ -170,7 +170,7 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--fs-14);
+  font-size: var(--chat-fs-body);
   line-height: 1.5;
   padding: 2px var(--sp-1);
   max-height: 40vh;
@@ -215,4 +215,4 @@
   }
 }
 
-@media (max-width: 600px), (pointer: coarse) { .btw-textarea { font-size:16px; } }
+@media (max-width: 600px), (pointer: coarse) { .btw-textarea { font-size:max(16px, var(--chat-fs-body)); } }

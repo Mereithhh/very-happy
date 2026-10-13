@@ -1,6 +1,6 @@
 .cmd {
   font-family: var(--font-mono);
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   line-height: 1.65;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -10,8 +10,8 @@
 }
 .cmd-line {
   display: flex;
-  gap: var(--sp-2);
-  padding: var(--sp-3) 44px var(--sp-3) var(--sp-4);
+  gap: calc(var(--chat-space) * 2);
+  padding: calc(var(--chat-space) * 3) 44px calc(var(--chat-space) * 3) calc(var(--chat-space) * 4);
   background: var(--bg-1);
   border-bottom: 1px solid var(--line);
   overflow-x: auto;
@@ -46,7 +46,7 @@
 }
 .cmd-stream {
   margin: 0;
-  padding: var(--sp-3) 44px var(--sp-3) var(--sp-4);
+  padding: calc(var(--chat-space) * 3) 44px calc(var(--chat-space) * 3) calc(var(--chat-space) * 4);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--text-dim);

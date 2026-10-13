@@ -4,7 +4,7 @@
 .bt {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   min-width: 0;
   font-family: var(--font-sans);
   font-size: var(--conversation-size);
@@ -14,7 +14,7 @@
   margin: 0;
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  column-gap: var(--sp-3);
+  column-gap: calc(var(--chat-space) * 3);
   row-gap: 2px;
   min-width: 0;
 }
@@ -34,7 +34,7 @@
 }
 .bt-v--mono {
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
   color: var(--text-dim);
   word-break: break-all;
 }
@@ -59,7 +59,7 @@
   gap: 4px;
   min-width: 0;
   border-top: 1px solid var(--line);
-  padding-top: var(--sp-2);
+  padding-top: calc(var(--chat-space) * 2);
   color: var(--text-dim);
 }
 .bt-line--first {
@@ -74,7 +74,7 @@
 .bt-links {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   padding-top: 2px;
 }
 /* Neutral chip (accent is reserved for live state); the arrow says "leaves this view". */
@@ -83,13 +83,13 @@
   align-items: center;
   gap: 4px;
   min-height: 28px;
-  padding: 0 var(--sp-2);
+  padding: 0 calc(var(--chat-space) * 2);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--bg-2);
   color: var(--text);
   text-decoration: none;
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
 }
 .bt-link:hover {
   background: var(--bg-3);
@@ -98,18 +98,18 @@
 .bt-raw {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   min-width: 0;
 }
 .bt-raw-head {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   align-self: flex-start;
   min-height: 30px;
-  padding: 2px var(--sp-1);
+  padding: 2px var(--chat-space);
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -123,7 +123,7 @@
     row-gap: 0;
   }
   .bt-field:not(:first-child) .bt-k {
-    padding-top: var(--sp-1);
+    padding-top: var(--chat-space);
   }
 }
 @media (pointer: coarse) {
