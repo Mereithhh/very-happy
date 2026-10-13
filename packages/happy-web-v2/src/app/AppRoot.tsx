@@ -39,6 +39,7 @@ import { ChangelogNotice } from './ChangelogNotice';
 import { AuthExpiredNotice } from './AuthExpiredNotice';
 import { installAuthGuards } from './authGuards';
 import './appFonts';
+import { initVhDiagFlagFromUrl, subscribeVhDiagFlag } from '@/diag/vhDiagFlag';
 
 // B-490: before any sync starts — a rejected token must stop every loop.
 installAuthGuards();
@@ -61,6 +62,9 @@ const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen')
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
 const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
 const ChangelogScreen = lazy(() => import('@/screens/changelog/ChangelogScreen').then((m) => ({ default: m.ChangelogScreen })));
+// B-599: iOS standalone viewport diagnostics — no auth, reached from 设置 → 诊断.
+const ViewportDiagScreen = lazy(() => import('@/diag/ViewportDiagScreen').then((m) => ({ default: m.ViewportDiagScreen })));
+const VhDiagOverlay = lazy(() => import('@/diag/VhDiagOverlay').then((m) => ({ default: m.VhDiagOverlay })));
 
 function Lazy({ children, fullViewport = true, centered = false }: { children: ReactNode; fullViewport?: boolean; centered?: boolean }) {
   return (
@@ -282,6 +286,7 @@ const router = createBrowserRouter(
     { path: '/privacy', element: <PrivacyScreen /> },
     { path: '/terms', element: <TermsScreen /> },
     { path: '/changelog', element: <Lazy><ChangelogScreen /></Lazy> },
+    { path: '/diag/viewport', element: <Lazy><ViewportDiagScreen /></Lazy> },
     { path: '/welcome', element: <LandingScreen /> },
     { path: '/docs', element: <DocsScreen /> },
     { path: '/docs/:slug', element: <DocsScreen /> },
@@ -331,6 +336,15 @@ const router = createBrowserRouter(
   { basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/' },
 );
 
+/** B-599: `?vhdiag=1` (or the toggle on /diag/viewport) outlines the real
+ *  layout; the chunk only loads when the device flag is on. */
+function VhDiagGate() {
+  const [on, setOn] = useState(() => initVhDiagFlagFromUrl(window.location.search));
+  useEffect(() => subscribeVhDiagFlag(setOn), []);
+  if (!on) return null;
+  return <Suspense fallback={null}><VhDiagOverlay /></Suspense>;
+}
+
 function Splash() {
   return <RouteLoading fullViewport />;
 }
@@ -377,6 +391,7 @@ export function AppRoot() {
             </AuthProvider>
           )}
           <PwaInstallPrompt />
+          <VhDiagGate />
         </ModalProvider>
       </ToastProvider>
     </ThemeProvider>
