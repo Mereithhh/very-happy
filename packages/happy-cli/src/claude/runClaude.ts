@@ -1258,6 +1258,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         const meta = session.getMetadata();
         return {
             flavor: 'claude',
+            resumable: typeof meta?.claudeSessionId === 'string' && meta.claudeSessionId.length > 0,
             uiSession: options.startedBy === 'daemon' && options.startingMode === 'remote' && agentState?.controlledByUser !== true,
             ...(isAssistantVariant ? { variant: 'assistant' } : {}),
             ...(process.env.HAPPY_SPAWNED_BY ? { spawnedBy: process.env.HAPPY_SPAWNED_BY } : {}),

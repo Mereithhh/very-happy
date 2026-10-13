@@ -87,6 +87,7 @@ wrapper：hibernate=true → 立即用同一纯函数复核本地状态 → 提�
 | 无运行中的后台任务 / async_launched 子代理 | `Session.backgroundTasks` |
 | 未被标「保持唤醒」（`metadata.keepAwake !== true`） | metadata |
 | 远程模式、daemon 启动（`startedBy==='daemon'`），非 assistant variant，无 spawn 来源 | 启动参数 / env |
+| 已有可恢复的会话 id（Claude `claudeSessionId` / Codex `codexThreadId`）——否则 web 的恢复会以 `no-backend-id` 拒绝，休眠了就醒不过来（实跑发现：新建后从未发过消息的会话） | metadata |
 | `now - lastActivityAt >= idleMs` | §2.1 |
 
 **daemon（`decideDaemonHibernation`）在此之上再要求：**
@@ -144,8 +145,10 @@ daemon 在 `onChildExited` 时若该会话刚被批准休眠：恢复记录写 `
   误标成休眠）；`hibernationSupported(daemonState)`（`agentHibernation.detectedAt >= startedAt`）。
 - composer：`composerGate` 对休眠会话返回 `restore-first`（沿用归档恢复的排队/释放机制，唤醒并 online 后释放）。
 - 打开即唤醒：`SessionDetailScreen` 挂载/切换到一个休眠会话且机器在线时调用 `restoreSession` 一次
-  （按 `sessionId + hibernation.at` 去重，失败不重试，由横幅「重试」接管）；另外若 `session.seq > hibernation.seq`
-  （休眠后有新记录进来，比如休眠瞬间发出的消息）也唤醒一次。
+  （按 `sessionId + hibernation.at` 去重，失败不重试，由横幅「重试」接管）。停留在页面上时会话进入休眠不会立刻
+  唤醒（否则开着的标签页永远不休眠）。web 的 `session.seq` 是账户级 update seq、不是消息 seq，不能拿来判断
+  「休眠后有新消息」，所以休眠瞬间发出的那条消息（极窄窗口）要等下一次打开/发送/点唤醒才处理——唤醒时由 §4
+  重放，不丢。
 - 横幅：休眠态显示「已休眠以释放内存 · 发消息或点唤醒」，进行中显示「正在唤醒…」，按钮「唤醒」。
 - 侧栏：休眠行用 `Moon` 图标、提示「已休眠」（替代 offline 的 Unplug），Restore 按钮照旧。
 - 会话 ⋯ 菜单：「保持唤醒」勾选项，仅当 `metadata.capabilities` 含 `agent-hibernation-v1` 时出现；写
@@ -187,7 +190,7 @@ web 回滚 = 显示为 offline + 恢复。
 ## 风险
 
 1. **误停正在用的会话**：判据多层 AND + 两次签名确认 + wrapper 提交前复核 + 提交窗口入站检测；任何一层不确定都不休眠。
-2. **休眠瞬间到达的消息**：提交窗口内到达 → 放弃休眠；freeze 之后到达 → seq 大于戳，唤醒时重放；新 web 还会因 `session.seq > hibernation.seq` 主动唤醒。
+2. **休眠瞬间到达的消息**：提交窗口内到达 → 放弃休眠；freeze 之后到达 → seq 大于戳，下次唤醒时重放（不会自动唤醒，见 §5）。
 3. **Automations 列表拉取失败**：本轮整体不休眠（fail-closed）。
 4. **恢复记录过期**：休眠记录保留 90 天；Claude transcript 被 Claude Code 自己清理（默认 30 天）时，恢复走既有「新对话 + 历史仍可见」降级。
 5. **旧 web 写 metadata 剥字段**：`keepAwake` 可能被旧 web 改名清掉 → 会话可能被休眠，但可唤醒；新 web 全量发布后消失。接受。

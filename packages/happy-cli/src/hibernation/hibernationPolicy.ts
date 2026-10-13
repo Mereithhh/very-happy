@@ -39,6 +39,7 @@ export type HibernationRefusal =
     | 'disabled'
     | 'not-ui-session'
     | 'unsupported-flavor'
+    | 'not-resumable'
     | 'not-tracked'
     | 'keep-awake'
     | 'turn-active'
@@ -88,6 +89,8 @@ export function resolveCheckMs(env: Record<string, string | undefined> = process
 /** What the wrapper knows about itself; also the check-in body. */
 export interface WrapperIdleSnapshot {
     flavor: string;
+    /** The agent conversation id the web's resume needs (claudeSessionId / codexThreadId) is known. */
+    resumable: boolean;
     /** Daemon-spawned, remote (UI) session; never a user's own terminal. */
     uiSession: boolean;
     variant?: string;
@@ -113,6 +116,8 @@ export function evaluateWrapperIdle(snapshot: WrapperIdleSnapshot, idleMs: numbe
     if (snapshot.exiting) return { ok: false, reason: 'exiting' };
     if (!snapshot.uiSession || snapshot.variant) return { ok: false, reason: 'not-ui-session' };
     if (!HIBERNATABLE_FLAVORS.includes(snapshot.flavor)) return { ok: false, reason: 'unsupported-flavor' };
+    // The web can only wake what `resume-happy-session` can resume (restoreEligibility: no-backend-id).
+    if (!snapshot.resumable) return { ok: false, reason: 'not-resumable' };
     if (snapshot.spawnedBy && snapshot.spawnedBy.trim()) return { ok: false, reason: 'spawn-origin' };
     if ((snapshot.tags ?? []).some((tag) => NON_UI_ORIGIN_TAGS.includes(tag))) return { ok: false, reason: 'spawn-origin' };
     if (snapshot.keepAwake) return { ok: false, reason: 'keep-awake' };

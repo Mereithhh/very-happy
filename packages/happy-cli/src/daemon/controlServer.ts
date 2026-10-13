@@ -23,6 +23,7 @@ import { sanitizeRateLimitReport, type RateLimitReport } from '@/rateLimits/rate
 // B-587: lenient on purpose — a newer wrapper may report more fields.
 const WrapperIdleSnapshotSchema = z.object({
   flavor: z.string().max(64),
+  resumable: z.boolean(),
   uiSession: z.boolean(),
   variant: z.string().max(64).optional(),
   spawnedBy: z.string().max(64).optional(),

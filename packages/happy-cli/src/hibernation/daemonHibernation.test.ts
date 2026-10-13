@@ -8,7 +8,7 @@ let clock = 1_000_000;
 
 function report(overrides: Partial<WrapperIdleSnapshot> = {}): WrapperIdleSnapshot {
     return {
-        flavor: 'claude', uiSession: true, keepAwake: false, thinking: false, queuedInputs: 0, waitingForInput: true,
+        flavor: 'claude', resumable: true, uiSession: true, keepAwake: false, thinking: false, queuedInputs: 0, waitingForInput: true,
         pendingRequests: 0, backgroundTasks: 0, lastActivityAt: clock - IDLE, ...overrides,
     };
 }

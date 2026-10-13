@@ -917,6 +917,7 @@ export async function runCodex(opts: {
                 const meta = session.getMetadata();
                 return {
                     flavor: 'codex',
+                    resumable: typeof meta?.codexThreadId === 'string' && meta.codexThreadId.length > 0,
                     uiSession: true,
                     ...(process.env.HAPPY_SPAWNED_BY ? { spawnedBy: process.env.HAPPY_SPAWNED_BY } : {}),
                     ...(meta?.tags ? { tags: meta.tags } : {}),

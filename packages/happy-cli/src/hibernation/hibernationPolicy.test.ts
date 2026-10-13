@@ -20,6 +20,7 @@ const IDLE = 6 * HOUR_MS;
 function idle(overrides: Partial<WrapperIdleSnapshot> = {}): WrapperIdleSnapshot {
     return {
         flavor: 'claude',
+        resumable: true,
         uiSession: true,
         keepAwake: false,
         thinking: false,
@@ -58,6 +59,7 @@ describe('B-587 wrapper rules — each one alone keeps the session awake', () =>
         ['terminal / local session', { uiSession: false }, 'not-ui-session'],
         ['assistant variant', { variant: 'assistant' }, 'not-ui-session'],
         ['pi flavor (web cannot resume it)', { flavor: 'pi' }, 'unsupported-flavor'],
+        ['no conversation id yet (never had a turn) — the web could not wake it', { resumable: false }, 'not-resumable'],
         ['spawned by an IM bridge', { spawnedBy: 'tanka' }, 'spawn-origin'],
         ['teams tag after a resume lost the env', { tags: ['teams'] }, 'spawn-origin'],
         ['automation tag', { tags: ['x', 'automation'] }, 'spawn-origin'],

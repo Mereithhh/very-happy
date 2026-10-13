@@ -63,7 +63,7 @@ describe('B-587 commitHibernation', () => {
 
 describe('B-587 HibernationProbe', () => {
     const snapshot = (overrides: Partial<WrapperIdleSnapshot> = {}): WrapperIdleSnapshot => ({
-        flavor: 'claude', uiSession: true, keepAwake: false, thinking: false, queuedInputs: 0, waitingForInput: true,
+        flavor: 'claude', resumable: true, uiSession: true, keepAwake: false, thinking: false, queuedInputs: 0, waitingForInput: true,
         pendingRequests: 0, backgroundTasks: 0, lastActivityAt: 0, ...overrides,
     });
     function probe(overrides: Partial<ConstructorParameters<typeof HibernationProbe>[0]> = {}) {
