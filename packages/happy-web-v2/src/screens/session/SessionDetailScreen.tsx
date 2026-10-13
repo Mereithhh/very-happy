@@ -266,8 +266,11 @@ export function SessionDetailScreen() {
                 />}
                 {session && <SessionTeamContext sessionId={id} />}
                 {mirror && <MirrorBanner sessionId={id} />}
-                {/* B-508: an automation run is waiting on this session → say which and offer 「知道了」 */}
-                {session && !mirror && <AutomationAttentionBanner key={id} sessionId={id} />}
+                {/* B-508: an automation run is waiting on this session → say which and offer 「知道了」.
+                    Sibling keys MUST differ (`<slot>:<id>`, never a bare id): `.sd-main` has false holes,
+                    so React reconciles it by key map, and two same-key siblings orphan one fiber —
+                    its DOM stays and a fresh copy is inserted on every re-render (duplicated strip). */}
+                {session && !mirror && <AutomationAttentionBanner key={`automation-attention:${id}`} sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}
                 {session && !mirror && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
                 {/* B-462: live session still on an older wrapper than the machine runs → offer a restart */}
@@ -275,7 +278,7 @@ export function SessionDetailScreen() {
                 {/* B-487: the wanted model cannot run on this wrapper / agent CLI → say so and offer the fix */}
                 {session && !mirror && !canOfferRestore(session, bannerMachine) && <ModelSupportBanner sessionId={id} />}
                 {/* B-585: this session's worktree setup is waiting for approval / running / failed */}
-                {session && !mirror && <WorktreeSetupBanner key={id} sessionId={id} />}
+                {session && !mirror && <WorktreeSetupBanner key={`worktree-setup:${id}`} sessionId={id} />}
                 <div className="sd-body">
                     {session ? <ChatList key={id} sessionId={id} showLiveStatus={!mirror} /> : <PendingSessionBody record={pending!} />}
                 </div>
@@ -285,7 +288,7 @@ export function SessionDetailScreen() {
                         {session && <SubagentDock sessionId={id} />}
                         {/* B-563: pending approvals / questions stay pinned right
                             above the composer while the transcript scrolls. */}
-                        {session && <PermissionCard key={id} sessionId={id} />}
+                        {session && <PermissionCard key={`permission:${id}`} sessionId={id} />}
                         {/* Queue/draft/attachment ownership is session-scoped.
                             Force a clean composer instance when the session changes so
                             an unsent item can never cross into another session. The one
