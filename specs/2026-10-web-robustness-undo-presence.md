@@ -158,6 +158,20 @@ Toast 扩展（不破坏 `toast.action` / `toast.show` / `success` / `error`）�
 会话即已读」仍成立。行为变化：从系统通知横幅点进来（SW `notificationclick` 打开/聚焦窗口，页面内没有
 输入）时，要等第一次触摸/滚动才标已读——这是有意的「presence 未知不清」。同理，地址栏直接打开 / 刷新页面后，第一次点击、按键、滚轮或触摸之前不标已读。
 
+### Review 修正（2026-10-13）
+
+1. **窗口内重新使用会话 = 撤销**：`restoreSession`（横幅「恢复」、输入框 restore-first 发送、行菜单恢复的共同入口）
+   先 `deferredCommits.undo(archiveCommitKey(id))`。原本在跑的会话恢复显示后直接返回，不发 resume RPC，延迟归档也不再执行；
+   原本就离线的会话撤销后继续走正常恢复。toast 上的「撤销」随之变成静默无操作（handle 状态为 reverted，不提示「太晚」）。
+2. **presence 监听在启动时安装**：`main.tsx` 首先 import `app/presenceBoot.ts`（副作用模块），冷启动时点进第一个会话的那次触摸也会被记录。
+3. **推送点击记一次在场**：`public/push-sw.js` 的 notificationclick 给目标 URL 加一次性 `vh_presence=1`（只处理同源 URL）；
+   `presenceBoot` 读到后记一次可信输入，并用 `replaceState` 去掉标记（保留 history.state 与 hash）。用 URL 标记而不用 postMessage，
+   是因为 `client.navigate()` 会整页导航，postMessage 发给的是即将销毁的旧文档。
+4. **「完成」在页面关闭时提交**：完成记录、归档、webhook 三件事在提交起点同一任务内并发发出；归档和 webhook 用 keepalive fetch。
+   完成记录走 socket 的 `update-metadata`（没有 HTTP 路由），只能尽力而为。
+5. **hidden ≠ 卸载**：visibility hidden 和 beforeunload 仍用 keepalive 提交，但失败时照常回滚该行并弹窗说明原因（带服务器错误信息）；
+   只有 `pagehide` 被视为真正卸载，失败只记 console。
+
 ## 兼容矩阵与发布顺序
 
 三项都是纯 Web 改动，无 wire 字段、无 server/CLI 改动、无 migration。
