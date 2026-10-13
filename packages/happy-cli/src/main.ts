@@ -30,7 +30,8 @@ import { planClaudeStartup } from './claude/startupPlan'
 import { isStandaloneVersionRequest } from './utils/versionArgs'
 import { configuration } from './configuration'
 import { daemonEndpointsMatch } from './ui/doctorReadiness'
-import { parsePiRunnerArgs, piAdapterMissingHint } from '@/agent/acp/piRunnerArgs'
+import { missingPiPrerequisites, parsePiRunnerArgs, piAdapterMissingHint, piSetupMessage } from '@/agent/acp/piRunnerArgs'
+import { commandOnPath } from '@/utils/detectCLI'
 import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
 
 
@@ -455,13 +456,25 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       const hint = piAdapterMissingHint(detail);
       if (hint && !hintPrinted) {
         hintPrinted = true;
-        console.error(chalk.gray(hint));
+        console.error(chalk.yellow(hint));
       }
     };
     try {
+      const parsed = parsePiRunnerArgs(args.slice(1));
+      // B-596: fail before a session exists when pi or pi-acp is not on PATH,
+      // with the exact install command — not a session that dies in 4 s under
+      // the ACP SDK's EPIPE stack trace. Daemon-started runs skip this: the
+      // daemon already refuses pi from its own availability probe, and their
+      // stdio goes nowhere.
+      if (parsed.startedBy !== 'daemon') {
+        const missing = missingPiPrerequisites(commandOnPath, process.env);
+        if (missing.length > 0) {
+          console.error(chalk.yellow(piSetupMessage(missing)));
+          process.exit(1);
+        }
+      }
       const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
 
-      const parsed = parsePiRunnerArgs(args.slice(1));
       const resolved = resolveAcpAgentConfig(['pi', ...parsed.passthrough]);
       const { credentials } = await authAndSetupMachineIfNeeded();
       await ensureDaemonRunning()

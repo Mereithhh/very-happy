@@ -20,6 +20,7 @@ import { credentialRelayProblem } from './authRelay'
 import { shareSafeDaemonState, shareSafeEnvironmentInfo, shareSafeProcessLine } from './doctorPrivacy'
 import { deriveLocalCliUpdateSummary } from '@/update/cliUpdate'
 import { gatherInstallLocationFacts, installLocationWarnings } from '@/update/installLocation'
+import { piInstallCommand } from '@/agent/acp/piRunnerArgs'
 
 function printCliUpdateStatus(state: Awaited<ReturnType<typeof readDaemonState>>): void {
     const installed = configuration.currentCliVersion;
@@ -307,7 +308,7 @@ export async function runDoctorCommand(): Promise<void> {
     const piProbe = readiness.agents.find(agent => agent.command === 'pi');
     if (piProbe?.available && !readiness.piAdapter.available) {
         console.log(chalk.yellow('○ pi found, but the pi-acp adapter is not on PATH — `very-happy pi` and spawning pi from the Web need it'));
-        console.log(chalk.gray('  Install it for the daemon user: npm install -g pi-acp@0.0.33'));
+        console.log(chalk.gray(`  Install it for the daemon user: ${piInstallCommand(['pi-acp'])} (the daemon picks it up within 5 minutes)`));
     }
 
     // Authentication
