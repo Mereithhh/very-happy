@@ -1,6 +1,6 @@
 # Very Happy 视觉设计契约
 
-> 状态：Active · 最后更新：2026-09-10
+> 状态：Active · 最后更新：2026-10-13
 >
 > 迁移执行与全量验收：[实施台账](../specs/2026-09-workspace-rollout.md)。本文件中较新的工作台标准覆盖早期相冲突的控件密度与加载描述；营销展示的字号层级独立。
 >
@@ -74,6 +74,63 @@
    读起来像 UI 坏了。对话流里只留**一行指针**（是谁 / 在做什么 / 多久），
    正文进 session aside 抽屉（`.sd-files` 那一格，窄屏自动变整屏 + scrim）。
    判据是「这段内容有没有自己的时间线」——有就该有自己的容器。
+
+## 6. 交互反馈、组件选择与文案（B-581）
+
+本节补交互层通用规则，借鉴 Orca STYLEGUIDE 的 UX rules；与本文件已有的具体条目冲突时，以已有条目为准，并在下文注明。
+
+### 反馈时机
+
+先按动作的感知时长选反馈，而不是先问「控件要不要变」：
+
+| 时长 | 反馈 |
+|---|---|
+| 0–100ms | 不给可见反馈，闪一下反而像故障 |
+| 100ms–1s | 只禁用 |
+| 1–3s | 禁用，加 Spinner 或替换文案 |
+| 3s 以上或多步骤 | 阶段文字（真实阶段，不用假百分比） |
+
+- 禁用要立刻生效，防止重复提交；可见的 loading 延迟约 200ms 再出。本地很快、经 relay 会多出 50–200ms 延迟，延迟出现能让快的路径什么都不显示，慢的路径照样有反馈。
+- 和 B-513 的关系：发送确认态是这条规则的具体实例，以 B-513 为准。气泡降透明度相当于立即禁用，超过 150ms 才出 Spinner，因为 Spinner 放在时间位，不改变布局，可以比默认更早出现。其他异步动作默认延迟 200ms。
+- 控件预先占好最终尺寸：要换成更长的文案或多出图标时，一开始就用固定 `width`（不用 `min-width`），执行中途不能变宽。现有 `Button` 的 `loading` 会立即换上 Spinner，没有 `leftIcon` 时还会变宽；新调用方要自己处理延迟和占位，`Button` 统一收口另立事项。
+- 异步状态显示在原操作位置（同 B-436）；减少动态效果时 Spinner 静止，但仍要能看出「进行中」。
+
+### 组件选择
+
+| 需要 | 用 | 不用 |
+|---|---|---|
+| 给纯图标按钮起名字 | 原生 `title` + `aria-label`（如 `CopyButton` 的 `label`）；对话时间只用已有的 `MessageTimeTooltip` | 在提示里放交互内容、错误或教学 |
+| 悬停显示富内容（悬浮卡） | 目前没有。触屏没有 hover，改成点击打开 Popover（如 `RelayBadge`） | 自造 HoverCard |
+| 点击后列出一组动作 | `ui/Menu.tsx` 的 `ActionDropdownMenu`，菜单项写成 `MenuItemDef[]` | 在 Popover 里手写列表 |
+| 右键或长按的动作 | `ActionContextMenu`，和下拉菜单共用同一份 `MenuItemDef[]` | 另写一份菜单项 |
+| 从已知列表里单选（带勾选列） | 沿用 `ModeMenu` / `PresetsMenu` 的选择器写法 | 套用动作菜单 |
+| 点击打开表单、选择器或详情 | Radix Popover（`ModelEffortMenu`、`RelayBadge`） | Dialog：它会锁焦点、压暗背景 |
+| 必须先做决定才能继续 | `Modal.confirm` / `alert` / `prompt`；自定义内容用 `Modal.show` 或 Radix Dialog（`SessionOptionsDialog`、`ImagePreview`） | Popover 或行内浮层 |
+| 长期查看的辅助内容，或有自己时间线的内容 | 右侧工作区标签（`screens/workspace/`）或 session aside 抽屉，窄屏自动全屏 | 居中模态框 |
+| 一闪而过的确认（已复制、已保存） | `toast`（`ui/Toast.tsx`） | Dialog、常驻横幅 |
+| 需要阅读、重试或复制的状态和错误 | 行内文字 + `StatusDot` / `Badge` / `.tg-error`；空状态用 `EmptyState` | toast，它会自己消失 |
+
+如果需要绕着某个组件改样式，把 Popover 改得像 Dialog，或者反过来，就该换组件了：两者的焦点语义不同，后来的人会被误导。
+
+### 文案
+
+- 不夸大：代码手里没有对应的结果数据时，不用「已跳过 / 已验证 / 已修复 / 已删除 / 已发现」这类结果动词。等待期间用中性的过程描述（「检查中」「正在提交」），拿到真实结果再换成结果动词。
+- 去掉填充词：不写「请」「只需」「简单地」「您可以」，也不用没有状态支撑的泛泛成功语。这条补充 §4：§4 规定短动词，这里规定要删掉的词。
+- 取消、关闭、放弃、忽略不是破坏性操作，只是退出当前动作：保持安静，不上色、不加快捷键角标、不加动画提示，视觉重量留给确认动作。实现上用 `.vh-modal-btn.is-cancel`，Esc 仍然可用。`--danger` 和 `destructive` 只留给会丢数据或无法撤销的动作，这类确认不响应 Enter（见 `ModalProvider`）。
+
+### 相邻组件一致
+
+相邻组件指同一领域、行为有重叠、在同一流程里前后出现的组件，比如消息操作栏和排队 dock，或者下拉菜单和右键菜单。它们要读起来像同一个设计：图标、快捷键约定、提交和取消语义都一致，用户在两者之间切换时看不出接缝。要和相邻组件不同，必须有理由：要么相邻组件本身错了，就两边一起改；要么新组件的角色确实不同，就明确定下来。没有相邻组件时，对齐周围界面的按钮尺寸、图标粗细和语气；不要从用户根本不会联系起来的页面硬找「相邻组件」。
+
+### 改动行 lint
+
+`node scripts/dev/check-design-lint.mjs [--base <ref>]`（CI 的 Quality Gates 以 PR base 为基准运行）只检查 `packages/happy-web-v2/src` 下 .css/.tsx 的**新增行**，存量问题不要求迁移：
+
+1. 裸色值：`#hex`、`rgb()`/`hsl()` 字面量。参数里带 `var()` 的写法放行，比如 `color-mix(… var(--x) …)`；阴影和遮罩用 `--shadow-*` / `--scrim`。豁免 `tokens.css`、测试文件，以及只能写字面量的 xterm 主题（`WebTerminalScreen.tsx`）。
+2. 对话区 css（脚本里的 `CONVERSATION_CSS`：对话流、工具和子代理行、实时状态、输入框、侧问）不能写死 `font-size: <n>px`，改用 `var(--conversation-size)` 或 `var(--fs-*)`。
+3. `outline: none|0`：同一文件里没有对应的 `:focus-visible` / `:focus-within` 替代样式就报。`X:focus { outline: none }` 这种程序化聚焦容器的写法放行。
+
+确实要保留时，在同一行或上一行写 `design-lint-allow: <理由>`，理由必填。规则本身宁可漏报、不要误报，误报应该修脚本，不要靠堆豁免。
 
 ## 实现检查
 
