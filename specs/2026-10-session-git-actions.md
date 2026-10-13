@@ -174,3 +174,14 @@ pre-commit hook 或 CI 失败时还要手抄输出给 agent。Orca 把这些放�
 
 - 真实 GitHub 仓库上的 `gh pr create` 与 CI rollup（本次用假 gh 验证解析与交互）。
 - Windows 执行电脑上的 cmd 引用与同步模式。
+
+## Review 修订（2026-10-13，主 agent review）
+
+- **P0 推送目标**：推送永远写本地同名分支 `refs/heads/<本地分支>`。上游同名时推到上游的 remote；上游名字不同（如 `git worktree add -b x path origin/main` 默认跟踪 origin/main）或没有上游时，用 `-u <origin|上游 remote|唯一 remote> HEAD:refs/heads/<本地分支>`，对话框写明「上游是 origin/main，将推送到 origin/x 并设为上游，不会推到 origin/main」。二次确认看**推送目标分支**（远端默认分支或 main/master）。`gitShell.pushTarget`、`gitFlow.pushPlan`。
+- **P2-1**：POSIX 下全选也提交显式路径快照；只有 cmd 超长且全选时退回 `add -A`，UI 提示会包含打开对话框后新出现的改动。
+- **P2-2**：web 读结果即删作业目录；每次起作业先清理 `$TMPDIR/vh-git.*` 中超过 1 天的目录。
+- **P2-3**：同名上游 behind>0 时不推送：提示先拉取，并提供「让 agent 拉取并推送」（进输入框）。behind 来自本地远端跟踪引用，不主动 fetch。
+- **P2-4**：推送设 `GIT_TERMINAL_PROMPT=0`，并把 `-o BatchMode=yes` 追加到实际生效的 ssh 命令（`GIT_SSH_COMMAND` > `core.sshCommand` > `ssh`，不覆盖用户配置）；认证类失败提示「需要在终端完成认证」。cmd 只设 `GIT_TERMINAL_PROMPT`。
+- **P2-5**：PR 查询连续失败 3 次才视为不可用（10 分钟退避），单次失败保留上次值、按原节奏重试；无 PR 或 PR 已合并/已关闭时 5 分钟轮询一次。
+- **P2-6**：「让 agent 修 CI」放进输入框时提示「日志可能包含敏感信息，发送前请检查」。
+- 「审阅改动」标签（B-571~B-573 已合入）顶部同样挂 `GitActionsBar`。
