@@ -27,7 +27,7 @@ import type { Session } from '@/sync/storageTypes';
 import { pickNextSessionId } from './nextSession';
 import { commitSessionArchive } from './sessionArchiveFlow';
 import { restoreSession, useSessionRestore } from './sessionRestore';
-import { deferredCommits, installDeferredCommitFlush, isUnloadFlush } from './deferredCommit';
+import { archiveCommitKey, deferredCommits, installDeferredCommitFlush, isPageExitFlush, isUnloadFlush, type FlushReason } from './deferredCommit';
 import { holdSessionInactive } from '@/sync/sessionArchiveHold';
 import { toast } from '@/ui/Toast';
 
@@ -121,9 +121,9 @@ export async function restoreClosedTerminal(navigate: NavigateFunction, row: Clo
 function scheduleUndoableArchive(
   session: Session,
   kind: 'archive' | 'done',
-  commit: (keepalive: boolean) => Promise<void>,
+  commit: (reason: FlushReason) => Promise<void>,
 ): boolean {
-  const key = `archive:${session.id}`;
+  const key = archiveCommitKey(session.id);
   if (deferredCommits.isPending(key)) return true;
   const state = storage.getState();
   const wasActive = session.active;
@@ -134,7 +134,7 @@ function scheduleUndoableArchive(
   installDeferredCommitFlush();
   const handle = deferredCommits.schedule(key, {
     delayMs: UNDO_WINDOW_MS,
-    commit: (reason) => commit(isUnloadFlush(reason)),
+    commit: (reason) => commit(reason),
     revert: () => {
       const s = storage.getState();
       if (wasActive) s.setSessionActiveLocal(session.id, true);
@@ -145,7 +145,8 @@ function scheduleUndoableArchive(
     t(kind === 'done' ? 'robustness.markedDone' : 'robustness.archived'),
     t('robustness.undo'),
     () => {
-      if (!handle.undo()) toast.show(t('robustness.undoTooLate'));
+      // already reverted elsewhere (restore / send on the session) → nothing to say
+      if (!handle.undo() && handle.state() === 'committed') toast.show(t('robustness.undoTooLate'));
     },
     UNDO_WINDOW_MS,
   );
@@ -154,14 +155,13 @@ function scheduleUndoableArchive(
 
 /** Archive a chat session with an undo window (sidebar/menu/⌘W/board). */
 export function archiveSessionWithUndo(session: Session): boolean {
-  return scheduleUndoableArchive(session, 'archive', async (keepalive) => {
+  return scheduleUndoableArchive(session, 'archive', async (reason) => {
     try {
       // the snapshot taken before the optimistic hide: a failed commit rolls
-      // back to the real pre-archive state
-      await archiveSessionNow(session, { keepalive });
+      // back to the real pre-archive state (the row reappears)
+      await archiveSessionNow(session, { keepalive: isUnloadFlush(reason) });
     } catch (error) {
-      console.error('[archiveSession] archive failed', error);
-      if (!keepalive) Modal.alert(t('common.error'), t('sessionInfo.failedToArchiveSession'));
+      reportCommitFailure('[archiveSession] archive failed', error, reason);
     }
   });
 }
@@ -169,14 +169,23 @@ export function archiveSessionWithUndo(session: Session): boolean {
 /** Mark done with an undo window (board ✓). Undo = no completion record,
  *  no kill, no webhook. */
 export function markSessionDoneWithUndo(session: Session, opts?: { notify?: boolean }): boolean {
-  return scheduleUndoableArchive(session, 'done', async (keepalive) => {
+  return scheduleUndoableArchive(session, 'done', async (reason) => {
     try {
-      await markSessionDone(session, { ...opts, keepalive });
+      await markSessionDone(session, { ...opts, keepalive: isUnloadFlush(reason) });
     } catch (error) {
-      console.error('[markSessionDone] archive failed', error);
-      if (!keepalive) Modal.alert(t('common.error'), t('sessionInfo.failedToArchiveSession'));
+      reportCommitFailure('[markSessionDone] archive failed', error, reason);
     }
   });
+}
+
+/** B-566 review: a hidden tab is still alive — a failed commit there must
+ *  still explain itself (the row is already back). Only a real teardown
+ *  (pagehide) has nobody left to tell. */
+function reportCommitFailure(tag: string, error: unknown, reason: FlushReason): void {
+  console.error(tag, error);
+  if (isPageExitFlush(reason)) return;
+  const detail = error instanceof Error && error.message ? ` (${error.message})` : '';
+  Modal.alert(t('common.error'), `${t('sessionInfo.failedToArchiveSession')}${detail}`);
 }
 
 /** Historical name kept for existing callers (Sidebar, BoardCard, ⌘W).
@@ -205,11 +214,15 @@ export async function markSessionDone(
   opts?: { notify?: boolean; keepalive?: boolean },
 ): Promise<void> {
   if (opts?.keepalive) {
-    // B-566: the page is going away — the archive request must be issued in
-    // THIS task (keepalive fetch), so it can't wait for the completion
-    // record round-trip. The record is fired alongside, best-effort; its
-    // metadata write rebases on a version conflict, so order is not fatal.
+    // B-566: the page may be going away — nothing after an `await` is
+    // guaranteed to run. Issue all three side effects NOW, in this task:
+    // archive + webhook as keepalive fetches, the completion record over the
+    // socket (no HTTP route exists for metadata writes, so it stays
+    // best-effort; its write rebases on a version conflict, order not fatal).
     void sessionMarkCompleted(session.id).catch((error) => console.warn('[markSessionDone] completion record write failed', error));
+    sendDoneWebhook(session, opts, true);
+    await archiveSessionNow(session, { keepalive: true });
+    return;
   } else {
     try {
       await sessionMarkCompleted(session.id);
@@ -217,16 +230,19 @@ export async function markSessionDone(
       console.warn('[markSessionDone] completion record write failed', error);
     }
   }
-  await archiveSessionNow(session, { keepalive: opts?.keepalive });
-  if (opts?.notify !== false) {
-    const title = session.metadata?.summary?.text?.trim() || t('session.newChat');
-    const credentials = getCurrentAuth()?.credentials;
-    if (credentials) {
-      void notifyWebhook(credentials, {
-        title: `✅ 已完成 · ${title}`,
-        sessionId: session.id,
-      });
-    }
+  await archiveSessionNow(session);
+  sendDoneWebhook(session, opts, false);
+}
+
+function sendDoneWebhook(session: Session, opts: { notify?: boolean } | undefined, keepalive: boolean): void {
+  if (opts?.notify === false) return;
+  const title = session.metadata?.summary?.text?.trim() || t('session.newChat');
+  const credentials = getCurrentAuth()?.credentials;
+  if (credentials) {
+    void notifyWebhook(credentials, {
+      title: `✅ 已完成 · ${title}`,
+      sessionId: session.id,
+    }, keepalive ? { keepalive: true } : undefined);
   }
 }
 

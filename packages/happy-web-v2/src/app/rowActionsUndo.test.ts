@@ -121,6 +121,45 @@ describe('undoable archive / done (B-566)', () => {
         expect(deferredCommits.pendingKeys()).toEqual([]);
     });
 
+    it('done on page exit: completion record, archive AND webhook all issued synchronously, webhook keepalive', async () => {
+        const s = session('s10'); store.sessions.s10 = s;
+        // archive never resolves: nothing after an await may be relied on once the page is gone
+        ops.sessionArchive.mockImplementationOnce(() => new Promise(() => {}) as never);
+        markSessionDoneWithUndo(s as never);
+        window.dispatchEvent(new Event('pagehide'));
+        await Promise.resolve(); await Promise.resolve();
+        expect(ops.sessionMarkCompleted).toHaveBeenCalledWith('s10');
+        expect(webhook.notifyWebhook).toHaveBeenCalledWith(expect.anything(), { title: '✅ 已完成 · title s10', sessionId: 's10' }, { keepalive: true });
+        expect(ops.sessionArchive).toHaveBeenCalledWith('s10', { keepalive: true });
+    });
+
+    it('hidden tab: commits with keepalive, and a failure still rolls the row back and explains why', async () => {
+        ops.sessionArchive.mockResolvedValueOnce({ success: false, message: 'Server error: 503' } as never);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const s = session('s11'); store.sessions.s11 = s;
+        archiveSessionWithUndo(s as never);
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+        document.dispatchEvent(new Event('visibilitychange'));
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+        expect(ops.sessionArchive).toHaveBeenCalledWith('s11', { keepalive: true });
+        await vi.waitFor(() => expect(modal.alert).toHaveBeenCalled());
+        expect(String(modal.alert.mock.calls[0][1])).toContain('Server error: 503');
+        expect(store.sessions.s11.active).toBe(true);
+        expect(store.sessions.s11.archivedAt).toBeNull();
+        err.mockRestore();
+    });
+
+    it('real teardown (pagehide): failure rolls back silently — nobody left to alert', async () => {
+        ops.sessionArchive.mockResolvedValueOnce({ success: false, message: 'x' } as never);
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const s = session('s12'); store.sessions.s12 = s;
+        archiveSessionWithUndo(s as never);
+        window.dispatchEvent(new Event('pagehide'));
+        await vi.waitFor(() => expect(err).toHaveBeenCalled());
+        expect(modal.alert).not.toHaveBeenCalled();
+        err.mockRestore();
+    });
+
     it('switching sessions does not cancel or hurry the window (module-level queue)', async () => {
         const s = session('s8'); store.sessions.s8 = s;
         archiveSessionWithUndo(s as never);
