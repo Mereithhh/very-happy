@@ -2196,6 +2196,12 @@ export const en = {
                 undo: 'Archive and Done can be undone for a few seconds. A broken message now shows a one-line error instead of blanking the page, and a desktop tab you walked away from no longer marks finished sessions as read.',
                 fontSize: 'Appearance → Conversation text size: small, default, large or extra large, on this device.',
             },
+            oct14: {
+                title: 'Missing pi setup says exactly what to install',
+                summary: 'pi runs through the pi-acp adapter; when either is missing, the terminal and the new-session dialog now give the exact command. Needs CLI 0.2.169 for the terminal part.',
+                cli: '`very-happy pi` checks for pi and pi-acp before starting a session and prints the npm command for whatever is missing, instead of a session that dies under an error trace.',
+                web: 'New session: select a 「not installed」 agent to see its install command with a copy button. pi lists both packages it needs. No daemon restart afterwards — the machine is re-checked within 5 minutes.',
+            },
             oct13e: {
                 title: 'Scrolling back stays put',
                 summary: 'Reading older messages no longer snaps you back to the bottom.',
