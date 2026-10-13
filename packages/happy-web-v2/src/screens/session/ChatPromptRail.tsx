@@ -13,6 +13,7 @@ import { ChevronsUp, ChevronUp, ChevronDown } from 'lucide-react';
 import { sync } from '@/sync/sync';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { ChatRow } from './chatTurns';
+import { dismissFeatureTip, useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 import {
     activeRailIndex,
     adjacentPromptIndex,
@@ -189,8 +190,13 @@ export function ChatPromptRail({
     const { items, pcts } = layout;
     const active = nav.active;
     const showRail = shouldShowRail({ finePointer: fine, gutter: layout.gutter, count: items.length });
+    // B-588: one-time tip next to the rail (desktop) or the prev/next pair (phone).
+    const navRef = useRef<HTMLDivElement>(null);
+    useFeatureTipAnchor('prompt-rail', railRef, showRail);
+    useFeatureTipAnchor('prompt-rail', navRef, !showRail && navVisible && items.length > 0);
 
     const scrollToIndex = (index: number) => {
+        dismissFeatureTip('prompt-rail');
         const scroll = scrollRef.current;
         const top = topsRef.current[index];
         if (!scroll || top === undefined) return;
@@ -289,7 +295,7 @@ export function ChatPromptRail({
     if (!navVisible || items.length === 0) return null;
     const { prev, next } = nav;
     return (
-        <div className="cl-promptnav" role="group" aria-label={t('session.chat.readingAids.railLabel')}>
+        <div ref={navRef} className="cl-promptnav" role="group" aria-label={t('session.chat.readingAids.railLabel')}>
             <button
                 type="button"
                 className="cl-promptnav-btn"

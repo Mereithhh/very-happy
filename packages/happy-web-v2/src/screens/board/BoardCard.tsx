@@ -157,6 +157,7 @@ export function BoardCard({
         role="button"
         tabIndex={0}
         className={`bd-card bd-card--${item.status}`}
+        data-flip-key={item.key}
         onClick={() => navigate(item.href)}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return; // let the ✓ handle its own keys

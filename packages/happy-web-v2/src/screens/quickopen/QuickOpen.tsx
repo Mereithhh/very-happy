@@ -30,6 +30,7 @@ import { readQuickOpenHistory, recordQuickOpen } from './quickOpenHistory';
 import { COMMAND_PALETTE_OPEN_EVENT, matchQuickOpenChord, onQuickOpen, openQuickOpen } from './quickOpenEvents';
 import '../command/commandpalette.css';
 import './quickopen.css';
+import { dismissFeatureTip } from '@/components/featureTips/FeatureTips';
 
 export function QuickOpen({ sessionId }: { sessionId: string }) {
     const [open, setOpen] = useState(false);
@@ -48,6 +49,8 @@ export function QuickOpen({ sessionId }: { sessionId: string }) {
         return () => window.removeEventListener('keydown', onKeyDown, true);
     }, []);
     useEffect(() => onQuickOpen(() => setOpen(true)), []);
+    // B-588: using ⌘P retires its one-time tip.
+    useEffect(() => { if (open) dismissFeatureTip('quick-open'); }, [open]);
     // ⌘K (or its programmatic open) shows the palette: step aside, never stack two modals.
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (isAppChord(e) && (e.key === 'k' || e.key === 'K')) setOpen(false); };

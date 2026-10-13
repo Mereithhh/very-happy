@@ -4,7 +4,7 @@
  * (the same DiffView the tool cards use). 「审阅全部」 opens the workspace
  * review tab (B-572). Spec: specs/2026-10-change-review-surfaces.md
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { useSession } from '@/sync/storage';
@@ -14,6 +14,7 @@ import { langForPath } from './langForPath';
 import { displayPath, type TurnDiff, type TurnDiffFile } from './turnDiffs';
 import { withSessionPanel } from './sessionPanelState';
 import { REVIEW_ALL_PARAM } from './reviewAll/reviewAllModel';
+import { useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 import './diff.css';
 import './turnDiff.css';
 
@@ -73,6 +74,9 @@ export function TurnDiffRollup({ sessionId, diff }: { sessionId: string; diff: T
     const [open, setOpen] = useState(false);
     const cwd = session?.metadata?.path;
     const canReview = Boolean(session?.metadata?.machineId && cwd);
+    // B-588: one-time tip next to 「审阅全部」 (the host picks the lowest = newest turn's button)
+    const reviewRef = useRef<HTMLButtonElement | null>(null);
+    useFeatureTipAnchor('review-all', reviewRef, canReview);
     const reviewAll = () => setParams((prev) => {
         const next = withSessionPanel(prev, 'changed');
         next.set(REVIEW_ALL_PARAM, '1');
@@ -89,7 +93,7 @@ export function TurnDiffRollup({ sessionId, diff }: { sessionId: string; diff: T
                     )}
                     {diff.partial && <span className="tdr-unknown">{diff.added > 0 || diff.removed > 0 ? copy.partial : copy.changed}</span>}
                 </button>
-                {canReview && <button type="button" className="tdr-review" onClick={reviewAll}>{copy.reviewAll}</button>}
+                {canReview && <button ref={reviewRef} type="button" className="tdr-review" onClick={reviewAll}>{copy.reviewAll}</button>}
             </div>
             {open && (
                 <div className="tdr-body">

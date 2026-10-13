@@ -1,0 +1,62 @@
+/* B-588 one-time feature tip — small neutral floating hint (same surface as
+   toasts/menus: --bg-1 + --shadow-pop), ink primary, no accent. */
+.vh-tip {
+  position: fixed;
+  z-index: 950;
+  box-sizing: border-box;
+  width: min(280px, calc(100vw - 16px));
+  padding: var(--sp-3) var(--sp-8) var(--sp-3) var(--sp-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+  animation: vh-tip-in 160ms ease-out both;
+}
+.vh-tip-text {
+  margin: 0;
+  font-size: var(--fs-13);
+  line-height: 1.5;
+}
+.vh-tip-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--sp-2);
+  margin-right: calc(-1 * var(--sp-5));
+}
+.vh-tip-ok {
+  min-height: 30px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--text);
+  border-radius: var(--r-sm);
+  background: var(--text);
+  color: var(--bg-0);
+  font-size: var(--fs-12);
+  font-weight: 600;
+}
+.vh-tip-ok:hover { opacity: .88; }
+.vh-tip-ok:focus-visible { box-shadow: 0 0 0 2px var(--bg-1), 0 0 0 3px var(--text); }
+.vh-tip-close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+}
+.vh-tip-close:hover { color: var(--text); background: var(--bg-2); }
+
+@media (pointer: coarse) {
+  .vh-tip { padding-right: 48px; }
+  .vh-tip-ok { min-height: 44px; }
+  .vh-tip-close { top: 0; right: 0; width: 44px; height: 44px; }
+  .vh-tip-actions { margin-right: -36px; }
+}
+
+@keyframes vh-tip-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .vh-tip { animation: none; }
+}

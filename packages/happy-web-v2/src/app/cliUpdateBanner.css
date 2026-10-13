@@ -33,9 +33,8 @@
 .cli-update__actions button:hover { color: var(--text); border-color: var(--line-2); background: var(--bg-2); }
 
 @media (max-width: 520px) {
-  /* The install prompt owns the compact viewport while visible; showing both
-     fixed cards can cover the entire 320×568 usable area. */
-  body:has(.pwa-install) .cli-update { display: none; }
+  /* B-588: the CLI update banner wins the compact viewport (it can be
+     `required`); the install card yields instead — see floatingCards.css. */
   .cli-update { left: max(var(--sp-3), env(safe-area-inset-left)); right: max(var(--sp-3), env(safe-area-inset-right)); top: max(var(--sp-3), env(safe-area-inset-top)); width: auto; }
   .cli-update__actions { align-items: stretch; flex-direction: column; }
   .cli-update__actions button { justify-content: center; width: 100%; min-height: 44px; }

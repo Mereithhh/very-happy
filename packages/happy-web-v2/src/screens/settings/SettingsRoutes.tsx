@@ -129,6 +129,7 @@ import { getServerInfo } from '@/sync/serverConfig';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { VoiceSettings } from './VoiceSettings';
 import { MachinesSettings } from './MachinesSettings';
+import { resetFeatureTips } from '@/components/featureTips/FeatureTips';
 import { CodeView } from '@/screens/session/CodeView';
 import { SettingsPage as Page, SettingsHeader as Header, SettingsWorkspace } from './SettingsLayout';
 
@@ -336,6 +337,8 @@ function Appearance() {
   // dialog). Separate switches — different mechanisms, different annoyance.
   const [closeViewConfirm, setCloseViewConfirm] = useLocalSettingMutable('closeViewConfirm');
   const [closeTabWarning, setCloseTabWarning] = useLocalSettingMutable('closeTabWarning');
+  // B-588: one-time feature tips are device-local; this brings them all back.
+  const toast = useToast();
 
   const themeOpts: { key: 'system' | 'dark' | 'light'; label: string; desc: string }[] = [
     {
@@ -504,6 +507,18 @@ function Appearance() {
                 label={t('settingsAppearance.wrapLinesInDiffs')}
               />
             }
+          />
+        </ItemGroup>
+
+        <ItemGroup title={t('featureTips.groupTitle')}>
+          <Item
+            settingId="appearance.featureTips"
+            title={t('featureTips.resetTitle')}
+            subtitle={t('featureTips.resetDescription')}
+            onClick={() => {
+              resetFeatureTips();
+              toast.success(t('featureTips.resetDone'));
+            }}
           />
         </ItemGroup>
       </ItemList>

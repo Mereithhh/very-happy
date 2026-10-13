@@ -21,6 +21,7 @@ import {
 } from './pwaInstallPolicy';
 import { setPwaInstallPromptVisible } from './pwaInstallVisibility';
 import './pwaInstallPrompt.css';
+import './floatingCards.css';
 
 const REVEAL_DELAY_MS = 1_800;
 

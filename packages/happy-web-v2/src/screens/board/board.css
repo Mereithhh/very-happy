@@ -588,3 +588,12 @@
     overflow-y: visible;
   }
 }
+
+/* B-588: the fixed-position clone that flies a card to its new column
+   (boardFlip.ts). Overlay only — never takes input, never changes layout. */
+.bd-card-ghost {
+  z-index: 40;
+  pointer-events: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}

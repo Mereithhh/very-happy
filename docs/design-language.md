@@ -100,7 +100,7 @@
 | 需要 | 用 | 不用 |
 |---|---|---|
 | 给纯图标按钮起名字 | 原生 `title` + `aria-label`（如 `CopyButton` 的 `label`）；对话时间只用已有的 `MessageTimeTooltip` | 在提示里放交互内容、错误或教学 |
-| 悬停显示富内容（悬浮卡） | 目前没有。触屏没有 hover，改成点击打开 Popover（如 `RelayBadge`） | 自造 HoverCard |
+| 悬停显示富内容（悬浮卡） | 只读预览（B-588 侧栏会话预览 `SessionPeek`）：只在 `(hover: hover) and (pointer: fine)` 下悬停约 600ms 打开、离开即关，不抢焦点；悬停态是不接收指针的普通浮层，不挂 Radix 关闭层（它会在捕获阶段吞掉终端/输入框的 Esc），点击/键盘打开才用 Radix Popover；内容只读，不放主要操作（操作留在行本身和菜单）；同一内容必须另有点击/键盘入口（行菜单「预览」、Alt+Enter），触屏只走点击 | 无延迟或触屏悬停、卡内放按钮、只能悬停才看得到的信息、自造 HoverCard |
 | 点击后列出一组动作 | `ui/Menu.tsx` 的 `ActionDropdownMenu`，菜单项写成 `MenuItemDef[]` | 在 Popover 里手写列表 |
 | 右键或长按的动作 | `ActionContextMenu`，和下拉菜单共用同一份 `MenuItemDef[]` | 另写一份菜单项 |
 | 从已知列表里单选（带勾选列） | 沿用 `ModeMenu` / `PresetsMenu` 的选择器写法 | 套用动作菜单 |
