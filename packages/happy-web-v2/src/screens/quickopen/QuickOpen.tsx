@@ -19,31 +19,43 @@ import { useSearchParams } from 'react-router-dom';
 import { FileText, FolderOpen, Search } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
-import { IS_MAC } from '@/app/appChord';
+import { IS_MAC, isAppChord } from '@/app/appChord';
 import { storage, useSession, useSessionProjectFiles } from '@/sync/storage';
 import { getProjectFiles } from '@/sync/projectFiles';
 import { openFsPreview } from '@/sync/filePreviewOpen';
 import { resolveAgainstCwd } from '../session/toolFilePath';
 import { withSessionPanel } from '../session/sessionPanelState';
-import { highlightRuns, QUICK_OPEN_RESULT_LIMIT, rankQuickOpen, type QuickOpenMatch } from './quickOpenScore';
+import { createQuickOpenRanker, highlightRuns, QUICK_OPEN_DEBOUNCE_MS, QUICK_OPEN_DEBOUNCE_THRESHOLD, QUICK_OPEN_RESULT_LIMIT, type QuickOpenMatch } from './quickOpenScore';
 import { readQuickOpenHistory, recordQuickOpen } from './quickOpenHistory';
-import { matchQuickOpenChord, onQuickOpen } from './quickOpenEvents';
+import { COMMAND_PALETTE_OPEN_EVENT, matchQuickOpenChord, onQuickOpen, openQuickOpen } from './quickOpenEvents';
 import '../command/commandpalette.css';
 import './quickopen.css';
 
 export function QuickOpen({ sessionId }: { sessionId: string }) {
     const [open, setOpen] = useState(false);
+    const openRef = useRef(open);
+    openRef.current = open;
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (e.isComposing || !matchQuickOpenChord(e, IS_MAC)) return;
             e.preventDefault(); // the browser's print dialog
             e.stopPropagation();
-            setOpen((v) => !v);
+            // Opening goes through the event so the ⌘K palette closes itself (one modal at a time).
+            if (openRef.current) setOpen(false);
+            else openQuickOpen();
         };
         window.addEventListener('keydown', onKeyDown, true);
         return () => window.removeEventListener('keydown', onKeyDown, true);
     }, []);
     useEffect(() => onQuickOpen(() => setOpen(true)), []);
+    // ⌘K (or its programmatic open) shows the palette: step aside, never stack two modals.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (isAppChord(e) && (e.key === 'k' || e.key === 'K')) setOpen(false); };
+        const onPalette = () => setOpen(false);
+        window.addEventListener('keydown', onKey, true);
+        window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onPalette);
+        return () => { window.removeEventListener('keydown', onKey, true); window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onPalette); };
+    }, []);
     useEffect(() => { setOpen(false); }, [sessionId]);
     if (!open) return null;
     return <QuickOpenPanel sessionId={sessionId} onClose={() => setOpen(false)} />;
@@ -95,18 +107,27 @@ function QuickOpenPanel({ sessionId, onClose }: { sessionId: string; onClose: ()
     }, [sessionId]);
 
     const files = useMemo(() => projectFiles?.files.map((f) => f.fullPath) ?? [], [projectFiles]);
+    // Big repos: scoring runs on the main thread — debounce typing a little and
+    // narrow incrementally while the query only grows (createQuickOpenRanker).
+    const [settledQuery, setSettledQuery] = useState(deferredQuery);
+    useEffect(() => {
+        if (files.length <= QUICK_OPEN_DEBOUNCE_THRESHOLD) { setSettledQuery(deferredQuery); return; }
+        const timer = setTimeout(() => setSettledQuery(deferredQuery), QUICK_OPEN_DEBOUNCE_MS);
+        return () => clearTimeout(timer);
+    }, [deferredQuery, files.length]);
+    const ranker = useMemo(() => createQuickOpenRanker(), []);
     const results = useMemo<QuickOpenMatch[]>(
-        () => rankQuickOpen(deferredQuery, files, history),
-        [deferredQuery, files, history],
+        () => ranker(settledQuery, files, history),
+        [ranker, settledQuery, files, history],
     );
     const recentCount = useMemo(() => {
-        if (deferredQuery.trim()) return 0;
+        if (settledQuery.trim()) return 0;
         const recent = new Set(history);
         let n = 0;
         while (n < results.length && recent.has(results[n].path)) n++;
         return n;
-    }, [deferredQuery, history, results]);
-    useEffect(() => { setActive(0); }, [deferredQuery]);
+    }, [settledQuery, history, results]);
+    useEffect(() => { setActive(0); }, [settledQuery]);
     useEffect(() => {
         listRef.current?.querySelector<HTMLElement>(`[data-qo-index="${active}"]`)?.scrollIntoView({ block: 'nearest' });
     }, [active]);

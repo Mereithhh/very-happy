@@ -110,16 +110,50 @@ export function rankQuickOpen(
         }
         return out.slice(0, limit);
     }
+    return scoreAll(query, files, recency, history.length).slice(0, limit);
+}
+
+/** Every match of `query` in `pool`, best first (no limit). */
+function scoreAll(query: string, pool: readonly string[], recency: Map<string, number>, historyLength: number): QuickOpenMatch[] {
     const scored: QuickOpenMatch[] = [];
-    for (const path of files) {
+    for (const path of pool) {
         const m = scoreQuickOpen(query, path);
         if (!m) continue;
         const r = recency.get(path);
-        if (r !== undefined) m.score += Math.max(1, history.length - r) * RECENCY_STEP;
+        if (r !== undefined) m.score += Math.max(1, historyLength - r) * RECENCY_STEP;
         scored.push(m);
     }
     scored.sort((a, b) => b.score - a.score || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-    return scored.slice(0, limit);
+    return scored;
+}
+
+/** Above this many files the panel debounces the query (main-thread scoring). */
+export const QUICK_OPEN_DEBOUNCE_THRESHOLD = 20_000;
+export const QUICK_OPEN_DEBOUNCE_MS = 80;
+
+const normalizeQuery = (q: string) => q.replace(/\s+/g, '').toLowerCase();
+
+/**
+ * Stateful ranker for typing: when the new query EXTENDS the previous one
+ * (same file list), only the previous matches can still match — a subsequence
+ * of the longer query is a subsequence of its prefix — so the scan narrows to
+ * that pool instead of the whole repository.
+ */
+export function createQuickOpenRanker() {
+    let last: { files: readonly string[]; q: string; pool: string[] } | null = null;
+    const ranker = (query: string, files: readonly string[], history: readonly string[], limit = QUICK_OPEN_RESULT_LIMIT): QuickOpenMatch[] => {
+        const q = normalizeQuery(query);
+        if (!q) { last = null; return rankQuickOpen(query, files, history, limit); }
+        const pool = last && last.files === files && last.q && q.startsWith(last.q) ? last.pool : files;
+        ranker.lastPoolSize = pool.length;
+        const recency = new Map<string, number>();
+        history.forEach((p, i) => { if (!recency.has(p)) recency.set(p, i); });
+        const all = scoreAll(query, pool, recency, history.length);
+        last = { files, q, pool: all.map((m) => m.path) };
+        return all.slice(0, limit);
+    };
+    ranker.lastPoolSize = 0;
+    return ranker;
 }
 
 /** Split `text` into [plain, matched] runs for rendering highlights. */

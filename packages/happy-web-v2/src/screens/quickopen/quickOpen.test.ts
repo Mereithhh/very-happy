@@ -126,3 +126,32 @@ describe('matchQuickOpenChord', () => {
         expect(matchQuickOpenChord(k({ ctrlKey: true, code: 'KeyO' }), false)).toBe(false);
     });
 });
+
+import { createQuickOpenRanker } from './quickOpenScore';
+
+describe('createQuickOpenRanker (incremental narrowing)', () => {
+    it('a growing query rescans only the previous matches and ranks like a full scan', () => {
+        const rank = createQuickOpenRanker();
+        const many = [...FILES, ...Array.from({ length: 200 }, (_, i) => `gen/file${i}.txt`)];
+        rank('t', many, []);
+        const firstPool = rank.lastPoolSize;
+        expect(firstPool).toBe(many.length);
+        const narrowed = rank('te', many, []);
+        expect(rank.lastPoolSize).toBeLessThan(firstPool);
+        expect(narrowed.map((m) => m.path)).toEqual(rankQuickOpen('te', many, []).map((m) => m.path));
+        const deeper = rank('term', many, []);
+        expect(deeper.map((m) => m.path)).toEqual(rankQuickOpen('term', many, []).map((m) => m.path));
+    });
+    it('backspace, a different query or a new file list falls back to a full scan', () => {
+        const rank = createQuickOpenRanker();
+        rank('term', FILES, []);
+        rank('ter', FILES, []);
+        expect(rank.lastPoolSize).toBe(FILES.length);
+        rank('read', FILES, []);
+        expect(rank.lastPoolSize).toBe(FILES.length);
+        rank('reado', FILES, []);
+        const other = [...FILES];
+        rank('readme', other, []);
+        expect(rank.lastPoolSize).toBe(other.length);
+    });
+});

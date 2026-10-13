@@ -40,7 +40,7 @@ import { ImportHistoryModal, type ImportHistoryAgent } from '@/screens/sessions/
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { FileSearch } from 'lucide-react';
-import { openQuickOpen } from '@/screens/quickopen/quickOpenEvents';
+import { onQuickOpen, openQuickOpen } from '@/screens/quickopen/quickOpenEvents';
 import type { AgentExecution } from '@/sync/agentStatus';
 import {
   boardItemExecution,
@@ -128,6 +128,8 @@ export function CommandPalette() {
     window.addEventListener(OPEN_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_EVENT, onOpen);
   }, []);
+  // B-576: ⌘P quick open takes over — one modal at a time.
+  useEffect(() => onQuickOpen(() => setOpen(false)), []);
 
   const dialogs = useMemo<PaletteDialogs>(() => ({
     newChat: (target, draft) => setNewChatDialog({ target, draft }),

@@ -80,7 +80,7 @@
 - `term.registerLinkProvider`：`provideLinks(y)` 取 y 所在逻辑行的候选，返回与 y 相交的 link。
   `decorations` 初值按「最近一次鼠标事件是否按着修饰键」，hover 期间监听 keydown/keyup 动态开关（xterm 跟踪该对象）。
   `activate(e)`：仅 `isMac ? e.metaKey : e.ctrlKey` 时打开；普通单击维持现状（聚焦/选择）。
-- 触屏：`onTouchEnd` 开头一行 `if (pathTap.consume(e, distanceSquared)) return;`。`consume` 在以下条件全满足时打开文件并 `preventDefault`（不唤起键盘、不产生兼容鼠标事件）：
+- 触屏：`onTouchEnd` 开头一行 `if (termPaths.consumeTap(e, { distanceSquared, scrolled, flingAtStart })) return;`（强路径规则见风险 11）。`consume` 在以下条件全满足时打开文件并 `preventDefault`（不唤起键盘、不产生兼容鼠标事件）：
   非选择模式、位移 ≤12px、按下时长 <500ms（长按不算）、当前无非折叠 DOM 选区、xterm 无选区、触点所在单元格正好落在一个候选上。
   否则返回 false，原 tap 流程不变。
 - 打开流程 `openTerminalPath`：`resolveTerminalPath` → `machineFsRead(machineId, abs, {maxBytes: 1})`：
@@ -131,7 +131,11 @@
 6. **⌘P 拦截浏览器打印**：只在会话页挂载期间拦截；终端页与其它页面不变。Ctrl+P 在非 Mac 的会话页输入框里本来就是打印（无 readline 语义），拦截无损。
 7. **xterm 5.5 Linkifier 的行级缓存**：provider 结果按「鼠标所在行」缓存，只在换行/resize 时失效，行内容被改写后鼠标不换行就拿旧结果（真浏览器实测：先停在第 1 行、再输出路径 → ⌘ 点击无效）。缓解：`term.onWriteParsed` 时把私有 `_core.linkifier._activeLine` 置 -1（try/catch，字段改名只退化为该边角情况）。
 8. **FilesPanel 刷新失败会清空项目文件缓存**（`useSessionFiles` 直接 `applyProjectFiles(null)`，归 r3-review）：QuickOpen 自己的刷新已改为失败不覆盖，但面板打开后再按 ⌘P 可能看到「没有项目文件列表」——仅在会话 wrapper 不在线时出现。
-9. **大仓库（10 万文件）打分开销**：每次输入 O(N·|q|)，用 `useDeferredValue`，结果截断 50 条；打分为线性子序列扫描，无回溯。
+9. **大仓库（10 万文件）打分开销**：每次输入 O(N·|q|)；文件数 >2 万时输入防抖 80ms，且查询只增长时只重扫上次命中集（`createQuickOpenRanker`），结果截断 50 条。
+10. **cwd 新鲜度**：相对路径按 `meta.cwd`（daemon 跟踪的 `pane_current_path`）解析。`cd` 后一个跟踪周期内、以及回看 `cd` 之前的旧输出时，相对路径会按「当前」目录解析，可能打开同名的别处文件或提示不存在。接受：绝对路径、`~/` 不受影响；不存在只给轻提示。
+11. **触屏误吞键盘**（review 中1）：触屏只消费强路径——显式根（`/`、`~/`、`./`、`../`）、带 `:行号`、或最后一段有扩展名的相对路径（`and/or` 不算）；裸文件名（`Node.js`、`www.example.com`）只有命中该目录的项目文件缓存才消费；邮箱不识别。滚动中、按下时正在惯性滚动、双指抬手一律交还原流程。
+12. **复制拦截范围**（review 中2）：事件目标是 xterm 隐藏 textarea 以外的 input/textarea（own-input 输入层、搜索条）时不拦截，终端残留选区不会覆盖输入框自己的复制。
+13. **⌘K / ⌘P 互斥**：任一打开时关闭另一个，不叠两层模态。
 
 ## 验收标准
 

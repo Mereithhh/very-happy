@@ -4,6 +4,8 @@
  * mounted by the session page only, so outside a session nothing listens.
  */
 const OPEN_EVENT = 'vh:quick-open';
+/** CommandPalette's programmatic-open event (mirrored here to avoid importing the palette chunk). */
+export const COMMAND_PALETTE_OPEN_EVENT = 'vh:command-palette-open';
 
 export function openQuickOpen(): void {
     if (typeof window === 'undefined') return;
