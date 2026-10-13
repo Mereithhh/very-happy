@@ -70,3 +70,10 @@
   color: var(--text-faint);
   font-size: var(--fs-12);
 }
+
+/* Hover mode is a plain fixed overlay (no Radix layer): never takes the
+   pointer, so leaving the row is the only way it lives or dies. */
+.sb-peek--hover {
+  position: fixed;
+  pointer-events: none;
+}

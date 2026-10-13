@@ -6,16 +6,18 @@
  * touch), or Alt+Enter on the focused row. No actions inside; Esc / outside
  * click closes. Never steals focus.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as Popover from '@radix-ui/react-popover';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { Session } from '@/sync/storageTypes';
 import { sessionBash } from '@/sync/ops';
 import { useSessionPreview } from '@/screens/board/useBoardItems';
-import { PEEK_HOVER_DELAY_MS, PEEK_HOVER_MEDIA, cachedBranch, lookupBranch, peekFacts } from './sessionPeekModel';
+import { PEEK_HOVER_DELAY_MS, PEEK_HOVER_MEDIA, cachedBranch, lookupBranch, peekFacts, placeHoverPeek } from './sessionPeekModel';
 import './sessionPeek.css';
 
-type OpenReason = 'hover' | 'explicit';
+export type PeekOpenReason = 'hover' | 'explicit';
+type OpenReason = PeekOpenReason;
 
 /** Hover/explicit open state for one row. */
 export function useSessionPeek() {
@@ -65,9 +67,23 @@ export function useSessionPeek() {
   return { open, close, openExplicit, rowHandlers: { onPointerEnter, onPointerLeave, onPointerDown }, onKeyDown };
 }
 
+/** DOM id of a row's preview, for the row button's aria-describedby. */
+export function peekDomId(sessionId: string): string {
+  return `sb-peek-${sessionId}`;
+}
+
+/**
+ * Two surfaces on purpose:
+ *  - hover: a plain fixed, pointer-transparent overlay — NO Radix
+ *    DismissableLayer. That layer listens for Escape on the document in the
+ *    capture phase and preventDefault()s it, which swallowed Esc in the
+ *    terminal / composer while the pointer merely rested on a row. Leaving
+ *    the row closes it, so it needs no dismiss handling at all.
+ *  - explicit (menu / Alt+Enter): Radix Popover — Esc and outside click close.
+ */
 export function SessionPeek({
   session,
-  open,
+  mode,
   onClose,
   title,
   agentLabel,
@@ -76,7 +92,7 @@ export function SessionPeek({
   anchorRef,
 }: {
   session: Session;
-  open: boolean;
+  mode: PeekOpenReason | null;
   onClose: () => void;
   title: string;
   agentLabel: string;
@@ -85,15 +101,65 @@ export function SessionPeek({
   /** the row element — a virtual anchor, so the row keeps its own trigger wrappers (context menu) */
   anchorRef: React.RefObject<HTMLElement | null>;
 }) {
+  const { t } = useTranslation();
+  const body = <PeekBody session={session} title={title} agentLabel={agentLabel} statusLabel={statusLabel} unread={unread} />;
+  if (mode === 'hover') return <HoverPeek anchorRef={anchorRef} id={peekDomId(session.id)}>{body}</HoverPeek>;
+  const coarse = (() => { try { return window.matchMedia?.('(pointer: coarse)').matches === true; } catch { return false; } })();
   return (
-    <Popover.Root open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+    <Popover.Root open={mode === 'explicit'} onOpenChange={(next) => { if (!next) onClose(); }}>
       <Popover.Anchor virtualRef={anchorRef as React.RefObject<HTMLElement>} />
       <Popover.Portal>
-        {open && (
-          <PeekBody session={session} title={title} agentLabel={agentLabel} statusLabel={statusLabel} unread={unread} />
+        {mode === 'explicit' && (
+          <Popover.Content
+            id={peekDomId(session.id)}
+            className="sb-peek"
+            side={coarse ? 'bottom' : 'right'}
+            align="start"
+            sideOffset={8}
+            collisionPadding={12}
+            hideWhenDetached
+            aria-label={t('sessionPeek.label')}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+            onCloseAutoFocus={(e) => e.preventDefault()}
+            // The row menu hands focus back to its "…" button right as we open.
+            onFocusOutside={(e) => e.preventDefault()}
+          >
+            {body}
+          </Popover.Content>
         )}
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+function HoverPeek({ anchorRef, id, children }: { anchorRef: React.RefObject<HTMLElement | null>; id: string; children: React.ReactNode }) {
+  const { t } = useTranslation();
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const row = anchorRef.current;
+    const el = ref.current;
+    if (!row || !el) return;
+    const r = row.getBoundingClientRect();
+    setPos(placeHoverPeek(
+      { left: r.left, top: r.top, width: r.width, height: r.height },
+      { width: el.offsetWidth, height: el.offsetHeight },
+      { width: window.innerWidth, height: window.innerHeight },
+    ));
+  }, [anchorRef]);
+  return createPortal(
+    <div
+      ref={ref}
+      id={id}
+      className="sb-peek sb-peek--hover"
+      role="tooltip"
+      aria-label={t('sessionPeek.label')}
+      data-state="open"
+      style={pos ? { left: pos.left, top: pos.top } : { left: 0, top: 0, visibility: 'hidden' }}
+    >
+      {children}
+    </div>,
+    document.body,
   );
 }
 
@@ -111,7 +177,6 @@ function PeekBody({ session, title, agentLabel, statusLabel, unread }: {
   const metaBranch = facts.branch;
   const [lookedUp, setLookedUp] = useState<string | undefined>(() => cachedBranch(session.id));
   const branch = metaBranch ?? lookedUp;
-  const coarse = (() => { try { return window.matchMedia?.('(pointer: coarse)').matches === true; } catch { return false; } })();
   useEffect(() => {
     if (metaBranch) return;
     let live = true;
@@ -124,19 +189,7 @@ function PeekBody({ session, title, agentLabel, statusLabel, unread }: {
   const where = [facts.machine, facts.path].filter(Boolean).join(' · ');
   const runtime = [agentLabel, facts.model].filter(Boolean).join(' · ');
   return (
-    <Popover.Content
-      className="sb-peek"
-      side={coarse ? 'bottom' : 'right'}
-      align="start"
-      sideOffset={8}
-      collisionPadding={12}
-      hideWhenDetached
-      aria-label={t('sessionPeek.label')}
-      onOpenAutoFocus={(e) => e.preventDefault()}
-      onCloseAutoFocus={(e) => e.preventDefault()}
-      // The row menu hands focus back to its "…" button right as we open.
-      onFocusOutside={(e) => e.preventDefault()}
-    >
+    <>
       <div className="sb-peek-title">{title}</div>
       {where && <div className="sb-peek-where mono" title={session.metadata?.path}>{where}</div>}
       <dl className="sb-peek-facts">
@@ -161,6 +214,6 @@ function PeekBody({ session, title, agentLabel, statusLabel, unread }: {
       ) : (
         <p className="sb-peek-empty">{t('sessionPeek.notLoaded')}</p>
       )}
-    </Popover.Content>
+    </>
   );
 }

@@ -116,6 +116,10 @@ export function useBoardFlip(
 
   const signature = columnSignature(columns);
   const changed = signature !== committed.current.signature;
+  // A new signature always starts from a clean slate: stale First rects from a
+  // render that never committed (or a skipped scope / reduced-motion pass)
+  // must not fly cards on the next commit.
+  if (changed) firstRects.current = new Map();
   if (changed && committed.current.signature && committed.current.scope === scope && containerRef.current && !prefersReducedMotion()) {
     const moved = columnChanges(committed.current.columns, columns);
     if (moved.length > 0) {
@@ -150,6 +154,8 @@ export function useBoardFlip(
       ghost.removeAttribute('data-flip-key');
       ghost.removeAttribute('tabindex');
       ghost.setAttribute('aria-hidden', 'true');
+      // A clone of an interactive card: no focus, no clicks, no find-in-page.
+      ghost.inert = true;
       ghost.classList.add('bd-card-ghost');
       Object.assign(ghost.style, {
         position: 'fixed',

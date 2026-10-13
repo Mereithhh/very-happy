@@ -82,7 +82,7 @@ import {
 import { SidebarRateLimit } from '@/screens/machine/rateLimits/SidebarRateLimit';
 import { archiveAndDeleteWorktree, canArchiveAndDeleteWorktree } from '@/app/worktreeArchive';
 import { worktreeCopy } from './worktreeCopy';
-import { SessionPeek, useSessionPeek } from './SessionPeek';
+import { SessionPeek, peekDomId, useSessionPeek } from './SessionPeek';
 import { dismissFeatureTip, useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 
 function rowHref(r: Row): string {
@@ -1698,7 +1698,7 @@ function SidebarRow({
       {peekable && (
         <SessionPeek
           session={row.session!}
-          open={peek.open !== null}
+          mode={peek.open}
           onClose={peek.close}
           title={`${row.teamLabel ? `${row.teamLabel} · ` : ''}${row.title}`}
           agentLabel={agentLabel}
@@ -1716,6 +1716,9 @@ function SidebarRow({
         data-href={row.href}
         onClick={open}
         aria-current={selected ? 'page' : undefined}
+        // B-588: the preview is this row's disclosure (menu / Alt+Enter / hover).
+        aria-expanded={peekable ? peek.open !== null : undefined}
+        aria-describedby={peekable && peek.open !== null ? peekDomId(row.session!.id) : undefined}
       >
         <span className="sb-row-icon sb-row-icon--neutral" title={`${agentLabel} · ${isTerminal ? 'Terminal' : 'Chat'}`} aria-label={`${agentLabel} · ${isTerminal ? 'Terminal' : 'Chat'}`}>
           {!isTerminal ? <MessageSquare size={15} /> : terminalAgent === 'claude' ? <Asterisk size={16} /> : terminalAgent === 'codex' ? <CodeXml size={16} /> : terminalAgent === 'pi' ? <Pi size={16} /> : <TerminalSquare size={16} />}

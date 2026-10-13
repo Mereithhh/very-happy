@@ -56,7 +56,7 @@ Orca 对照第三轮列出的三件小体验，加上 B-570 上线后发现的�
 
 ### 2. 会话预览（`screens/sessions/SessionPeek.tsx`）
 
-- Radix Popover，Anchor 为整行（`virtualRef`，不破坏行上已有的右键菜单 trigger），z-index 1100（高于被动引导卡 1000、低于菜单/弹窗），`side=right`（coarse 时 `bottom`），不抢焦点（`onOpenAutoFocus` prevent），Esc/外点关闭。
+- 悬停态：不接收指针的 fixed 浮层（`role=tooltip`，不挂 Radix DismissableLayer，否则它在 document 捕获阶段 preventDefault 掉终端/输入框的 Esc）；显式态（菜单 / Alt+Enter，Mac 文案 ⌥↩）：Radix Popover，Anchor 为整行（`virtualRef`，不破坏行上已有的右键菜单 trigger），z-index 1100（高于被动引导卡 1000、低于菜单/弹窗），`side=right`（coarse 时 `bottom`），不抢焦点（`onOpenAutoFocus` prevent），Esc/外点关闭。
 - 打开方式：
   - 桌面 `(hover: hover) and (pointer: fine)`：`pointerenter` 600ms 后打开，`pointerleave`/按下/滚动即关；拖拽、菜单打开时不打开。
   - 行菜单「预览」（所有设备；触屏唯一入口）。
@@ -68,6 +68,7 @@ Orca 对照第三轮列出的三件小体验，加上 B-570 上线后发现的�
 ### 3. 功能提示（`components/featureTips/`）
 
 - `featureTipsModel.ts`（纯）：tip 定义（id、文案、版本）、已看集合读写（`FEATURE_TIPS_SEEN_STORAGE = 'vh.featureTips.seen.v1'`，try/catch，存 `id@version`）、`pickTip`（按定义顺序挑第一个「未看 + 有可见锚点」的）、`placeTip`（锚点下方/上方，夹在视口内，与避让矩形相交就换边，两边都撞就不显示）、启动门槛 `performance.now() >= 3000`。
+- 提示根节点用 `role=region`，不用 `dialog`（`[role=dialog]` 是终端焦点看门狗的「浮层打开」判据）；全部看过后不挂定时器。
 - `useFeatureTipAnchor(id, ref, enabled)`：入口组件登记锚点；`FeatureTipHost`（AppLayout 挂一次）选出唯一 tip，fixed 定位渲染：文案 + 「知道了」+ 关闭（44px 触屏命中），`role="dialog"` 非模态、不抢焦点；滚动/尺寸变化重新定位。避让矩形：`.sd-foot`（输入区、发送按钮、其上的固定区）以及 `.pwa-install` / `.notif-optin` / `.cli-update`；选 tip 时按「未看 + 锚点可见 + 有地方放」依次挑，放不下的不挡后面的。有 Radix 对话框/菜单、待审批卡（`role=alertdialog`）或会话预览打开时不显示。
 - 本轮 4 条（顺序即优先级，全局仍最多 1 个）：⌘P 打开文件（B-576；键盘入口没有按钮，锚在会话顶栏文件按钮旁，只对 pointer: fine 提示，打开 QuickOpen 即算已看）、提问导航轨（B-579；桌面锚刻度轨，手机锚上一条/下一条按钮，文案随形态切换，跳转即算已看）、审阅全部改动（`.tdr-review`，B-572）、会话预览（侧栏第一条会话行，B-588；桌面说悬停、触屏说菜单）。
 - 文案走 `text/_default.ts` + `translations/zh-Hans.ts`（另补 zh-Hant），命名空间 `featureTips.*`、`sessionPeek.*`。
@@ -76,7 +77,7 @@ Orca 对照第三轮列出的三件小体验，加上 B-570 上线后发现的�
 ### 4. 引导卡位置统一（`app/floatingCards.css`）
 
 - 规则：**有输入区的页面（`body:has(.sd-foot, .term-screen)`）上，PWA 安装卡与通知引导卡移到顶部**：桌面 `top: safe-area-top + 56px`（让开 44px 顶栏），窄屏/coarse `+ 68px`（手机顶栏实测 60px）并隐藏通知卡的装饰性示例块，`bottom: auto`；其他页面保持原位置。两张卡共用这一份规则。
-- 顶部已有 CLI 更新横幅（可能是 required 级别），不能让它让位；改为**通知卡在 `.cli-update` 存在时隐藏**（它本来就是可稍后的邀请）。PWA 卡与 CLI 横幅的既有让位规则不变。
+- 顶部已有 CLI 更新横幅（可能是 required 级别）与会话顶栏下的 `.mrb` 横幅（Stale / ModelSupport / WorktreeSetup / 归档 / 镜像），它们右侧有按钮：**两张卡在这些横幅存在时都隐藏**；CLI 横幅窄屏原先为 PWA 卡自隐的规则删除（否则两者互相隐藏）。镜像会话（`.mri` 输入条，无 `.sd-foot`）同样按会话页处理。
 - 通知卡出现时机对齐 PWA 卡：到点时若焦点在输入控件（`shouldDeferPwaInstall`），每秒重查，直到不在打字。
 
 ## 兼容矩阵与发布顺序

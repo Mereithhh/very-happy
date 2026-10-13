@@ -85,3 +85,21 @@ export function cachedBranch(sessionId: string): string | undefined {
 export function resetBranchCache(): void {
   branchCache.clear();
 }
+
+/**
+ * Hover-mode placement (no Radix popper there, see SessionPeek): right of the
+ * row, top-aligned, clamped into the viewport; left of it when the right side
+ * has no room.
+ */
+export function placeHoverPeek(
+  row: { left: number; top: number; width: number; height: number },
+  size: { width: number; height: number },
+  viewport: { width: number; height: number },
+  gap = 8,
+  margin = 12,
+): { left: number; top: number } {
+  const right = row.left + row.width + gap;
+  const left = right + size.width <= viewport.width - margin ? right : Math.max(margin, row.left - gap - size.width);
+  const top = Math.min(Math.max(row.top, margin), Math.max(margin, viewport.height - margin - size.height));
+  return { left, top };
+}
