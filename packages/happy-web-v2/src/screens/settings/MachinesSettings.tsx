@@ -38,7 +38,7 @@ export function MachinesSettings() {
             <ItemList>
                 {/* B-296: connecting another machine was only ever documented on
                     FirstRunScreen, which disappears for good after machine #1. */}
-                <ItemGroup title={t('connectMachine.groupTitle')}>
+                <ItemGroup settingId="machines.connect" title={t('connectMachine.groupTitle')}>
                     <Item
                         title={t('connectMachine.cta')}
                         subtitle={t('connectMachine.settingsSubtitle')}
@@ -47,7 +47,7 @@ export function MachinesSettings() {
                         onClick={() => navigate('/machine/connect')}
                     />
                 </ItemGroup>
-                <ItemGroup title={t('settingsMachines.listTitle')} footer={t('settingsMachines.footer')}>
+                <ItemGroup settingId="machines.list" title={t('settingsMachines.listTitle')} footer={t('settingsMachines.footer')}>
                     {machines.length === 0 && <Item title={t('settingsMachines.empty')} />}
                     {machines.map((m) => {
                         const online = isMachineOnline(m);

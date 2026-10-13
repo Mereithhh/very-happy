@@ -51,8 +51,13 @@ import {
   orderPaletteItems,
   resolveFrozenRows,
   selectNeedsYouSessions,
+  paletteSettingsQuery,
+  PALETTE_SETTINGS_LIMIT,
   type PaletteGroup,
 } from './paletteModel';
+import { displayText, searchSettings, sectionTitle, settingHref } from '@/screens/settings/settingsIndex';
+import { isWebPushSupported } from '@/sync/webPush';
+import { getNotificationPermission } from '@/sync/webNotifications';
 import { PaletteStatusMark } from './PaletteStatusMark';
 import './commandpalette.css';
 
@@ -514,7 +519,22 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
         ...items.filter((it) => !(it.group === 'sessions' && pinned.has(it.key.slice('session:'.length)))),
       ]);
     }
-    const matched = orderPaletteItems(filterPaletteItems(items, query));
+    // B-575: item-level settings hits — their own ranking (settingsIndex),
+    // appended as one 「设置」 section; Enter deep-links to the row.
+    const settingsText = paletteSettingsQuery(query);
+    const webPush = isWebPushSupported() && getNotificationPermission() !== 'unsupported';
+    const settingsRows: CommandItem[] = settingsText
+      ? searchSettings(settingsText, { webPush }).slice(0, PALETTE_SETTINGS_LIMIT).map(({ entry }) => ({
+          key: `setting:${entry.id}`,
+          group: 'settings' as const,
+          title: displayText(entry.title, lang, t),
+          subtitle: displayText(sectionTitle(entry.section), lang, t),
+          icon: <Settings size={16} />,
+          haystack: '',
+          run: () => navigate(settingHref(entry)),
+        }))
+      : [];
+    const matched = orderPaletteItems([...filterPaletteItems(items, query), ...settingsRows]);
     const draft = newChatDraftFor(query, matched);
     if (draft == null) return matched;
     const createTitle = t('commandPalette.actionNewChatWithQuery', { query: draft });
@@ -529,7 +549,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       // on its own.
       run: () => void createChatOrConfigure(navigate, (target) => dialogs.newChat(target, draft), { location, draft }),
     }];
-  }, [items, needsYouItems, query, t, navigate, dialogs, location]);
+  }, [items, needsYouItems, query, t, lang, navigate, dialogs, location]);
 
   const keys = useMemo(() => filtered.map((it) => it.key), [filtered]);
   const activeIndex = resolveActiveIndex(keys, active);
@@ -590,6 +610,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       actions: t('commandPalette.groupActions'),
       sessions: t('commandPalette.groupSessions'),
       terminals: t('commandPalette.groupTerminals'),
+      settings: t('settings.title'),
       create: null,
     };
     const out: { group: PaletteGroup; label: string | null; rows: { it: CommandItem; index: number }[] }[] = [];

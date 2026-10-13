@@ -372,6 +372,7 @@ function Appearance() {
       />
       <ItemList>
         <ItemGroup
+          settingId="appearance.theme"
           title={t('settingsAppearance.theme')}
           footer={t('settingsAppearance.themeDescription')}
         >
@@ -387,9 +388,10 @@ function Appearance() {
           ))}
         </ItemGroup>
 
-        <ItemGroup title={teamCopy.title}><Item title={teamCopy.show} subtitle={teamCopy.hint} right={<Toggle checked={happyBotEntryVisible} onChange={setHappyBotEntryVisible} />} /></ItemGroup>
+        <ItemGroup title={teamCopy.title}><Item settingId="appearance.teamsEntry" title={teamCopy.show} subtitle={teamCopy.hint} right={<Toggle checked={happyBotEntryVisible} onChange={setHappyBotEntryVisible} />} /></ItemGroup>
 
         <ItemGroup
+          settingId="appearance.homeView"
           title={t('settingsAppearance.homeView')}
           footer={t('settingsAppearance.homeViewDescription')}
         >
@@ -410,6 +412,7 @@ function Appearance() {
           footer={t('settingsAppearance.closeGuardDescription')}
         >
           <Item
+            settingId="appearance.closeViewConfirm"
             title={t('settingsAppearance.closeViewConfirm')}
             subtitle={t('settingsAppearance.closeViewConfirmDescription')}
             right={
@@ -421,6 +424,7 @@ function Appearance() {
             }
           />
           <Item
+            settingId="appearance.closeTabWarning"
             title={t('settingsAppearance.closeTabWarning')}
             subtitle={t('settingsAppearance.closeTabWarningDescription')}
             right={
@@ -437,6 +441,7 @@ function Appearance() {
             settings blob is client-side encrypted and the CLI can't read it,
             so there is deliberately no toggle here — only the pointer. */}
         <ItemGroup
+          settingId="appearance.boardLlm"
           title={t('settingsAppearance.boardLlm')}
           footer={t('settingsAppearance.boardLlmDescription')}
         >
@@ -447,6 +452,7 @@ function Appearance() {
         </ItemGroup>
 
         <ItemGroup
+          settingId="appearance.language"
           title={t('settingsLanguage.title')}
           footer={t('settingsLanguage.description')}
         >
@@ -475,6 +481,7 @@ function Appearance() {
           footer={t('settingsAppearance.displayDescription')}
         >
           <Item
+            settingId="appearance.lineNumbers"
             title={t('settingsAppearance.showLineNumbersInDiffs')}
             subtitle={t('settingsAppearance.showLineNumbersInDiffsDescription')}
             right={
@@ -486,6 +493,7 @@ function Appearance() {
             }
           />
           <Item
+            settingId="appearance.wrapDiff"
             title={t('settingsAppearance.wrapLinesInDiffs')}
             subtitle={t('settingsAppearance.wrapLinesInDiffsDescription')}
             right={
@@ -678,24 +686,27 @@ function Account() {
             <Item title={t('settingsAccount.publicId')} detail={profile.id} />
           )}
           <Item
+            settingId="account.emailLogin"
             title={t('settingsAccount.emailLogin')}
             subtitle={emailSubtitle()}
             right={accountIdentityAction(emailState) ? <ChevronRight size={16} /> : undefined}
             onClick={identityAction(emailState, '/settings/email')}
           />
           <Item
+            settingId="account.googleLogin"
             title={t('settingsAccount.googleLogin')}
             subtitle={googleSubtitle()}
             right={accountIdentityAction(googleState) ? <ChevronRight size={16} /> : undefined}
             onClick={identityAction(googleState, '/settings/google')}
           />
           {(passwordLoginEnabled === true || passwordLoginEnabled === null) && <Item
+            settingId="account.password"
             title={t('settingsAccount.password')}
             subtitle={authConfigError ? t('settingsAccount.authConfigUnavailable') : passwordLoginEnabled === null ? t('common.loading') : t('settingsAccount.passwordChange')}
             right={(authConfigError || passwordLoginEnabled === true) ? <ChevronRight size={16} /> : undefined}
             onClick={authConfigError ? () => setAuthConfigReload((value) => value + 1) : passwordLoginEnabled === true ? () => navigate('/settings/password') : undefined}
           />}
-          <Item title={t('settingsAccount.server')} detail={serverInfo.hostname} />
+          <Item settingId="account.server" title={t('settingsAccount.server')} detail={serverInfo.hostname} />
         </ItemGroup>
 
         {(profile.github || displayName || avatarUrl) && (
@@ -726,6 +737,7 @@ function Account() {
 
         <ItemGroup title={t('settingsAccount.dangerZone')}>
           <Item
+            settingId="account.logout"
             title={t('settingsAccount.logout')}
             subtitle={t('settingsAccount.logoutSubtitle')}
             left={<LogOut size={18} />}
@@ -1030,6 +1042,7 @@ function NewSessionAgentField({
   return (
     <>
       <Item
+        settingId="agents.defaultAgent"
         title={t('settingsAgents.defaultAgent')}
         right={<span className="set-value">{value}</span>}
         onClick={() => setOpen((v) => !v)}
@@ -1108,6 +1121,7 @@ function Agents() {
         >
           <NewSessionAgentField value={quickAgent} onPick={(a) => setNewSessionAgent(a)} />
           <Item
+            settingId="agents.alwaysAsk"
             title={t('settingsAgents.alwaysAsk')}
             subtitle={t('settingsAgents.alwaysAskDescription')}
             right={
@@ -1119,6 +1133,7 @@ function Agents() {
             }
           />
           <Item
+            settingId="agents.reviewFirst"
             title={t('settingsFeatures.reviewChangesFirst')}
             subtitle={reviewFirst ? t('settingsFeatures.reviewChangesFirstEnabled') : t('settingsFeatures.reviewChangesFirstDisabled')}
             right={
@@ -1137,7 +1152,7 @@ function Agents() {
           const modelOptions = agent === 'pi' ? piModelOptions : getHardcodedModelModes(agent, translate);
           const effortOptions = getEffortLevelsForModel(agent, resolved.modelMode);
           return (
-            <ItemGroup key={agent} title={agent}>
+            <ItemGroup key={agent} settingId={`agents.${agent}`} title={agent}>
               <AgentField
                 label={t('settingsAgents.permission')}
                 options={permOptions}
@@ -1309,6 +1324,7 @@ function Snippets() {
 
       <ItemList>
         <ItemGroup
+          settingId="snippets.presets"
           title={t('settingsSnippets.presetsGroup')}
           footer={t('settingsSnippets.presetsFooter')}
         >
@@ -1350,6 +1366,7 @@ function Snippets() {
         </ItemGroup>
 
         <ItemGroup
+          settingId="snippets.startup"
           title={t('settingsSnippets.startupGroup')}
           footer={t('settingsSnippets.startupFooter')}
         >
@@ -1374,6 +1391,7 @@ function Snippets() {
             whole point of a setting (rather than a build flag) is that rolling
             back needs no release. */}
         <ItemGroup
+          settingId="snippets.inputOwnership"
           title={t('settingsSnippets.inputOwnershipGroup')}
           footer={t('settingsSnippets.inputOwnershipFooter')}
         >
@@ -1392,6 +1410,7 @@ function Snippets() {
         {/* B-105 terminal mirror: which face a mirrored terminal opens with
             on THIS device (M-3③ level 1; per-terminal toggles override). */}
         <ItemGroup
+          settingId="snippets.viewDefault"
           title={t('settingsSnippets.viewDefaultGroup')}
           footer={t('settingsSnippets.viewDefaultFooter')}
         >
@@ -1549,6 +1568,7 @@ function WebhookGroup() {
 
   return (
     <ItemGroup
+      settingId="channels.webhook"
       title={t('notifications.webhook')}
       footer={t('notifications.webhookDescription')}
     >
@@ -1656,7 +1676,7 @@ function Channels() {
         <WebhookGroup />
 
         {/* Inbound: external tools → sessions. Read-only how-to. */}
-        <ItemGroup title={t('settingsChannels.cliTitle')}>
+        <ItemGroup settingId="channels.cli" title={t('settingsChannels.cliTitle')}>
           <div className="set-channel">
             <p className="set-note">{t('settingsChannels.cliIntro')}</p>
             <p className="set-note">{t('settingsChannels.cliSpawnLabel')}</p>
@@ -1668,7 +1688,7 @@ function Channels() {
           </div>
         </ItemGroup>
 
-        <ItemGroup title={t('settingsChannels.mcpTitle')}>
+        <ItemGroup settingId="channels.mcp" title={t('settingsChannels.mcpTitle')}>
           <div className="set-channel">
             <p className="set-note">{t('settingsChannels.mcpIntro')}</p>
             <CodeView code={MCP_CMD} lang="bash" />
@@ -1677,7 +1697,7 @@ function Channels() {
           <FilePreviewReceiveItems />
         </ItemGroup>
 
-        <ItemGroup title={t('settingsChannels.imTitle')}>
+        <ItemGroup settingId="channels.im" title={t('settingsChannels.imTitle')}>
           <div className="set-channel">
             <p className="set-note">{t('settingsChannels.imIntro')}</p>
           </div>
@@ -1703,6 +1723,7 @@ function ClipboardReceiveItems() {
   return (
     <>
       <Item
+        settingId="channels.clipboardAutoCopy"
         title={t('clipboard.autoCopyTitle')}
         subtitle={t('clipboard.autoCopySubtitle')}
         right={
@@ -1714,6 +1735,7 @@ function ClipboardReceiveItems() {
         }
       />
       <Item
+        settingId="channels.clipboardHistory"
         title={t('clipboard.historyTitle')}
         subtitle={t('clipboard.historyOpenSubtitle')}
         left={<ClipboardList size={18} />}
@@ -1733,6 +1755,7 @@ function FilePreviewReceiveItems() {
   const [receive, setReceive] = useLocalSettingMutable('filePreviewReceive');
   return (
     <Item
+      settingId="channels.filePreview"
       title={t('filePreview.receiveTitle')}
       subtitle={t('filePreview.receiveSubtitle')}
       left={<FileText size={18} />}
@@ -1799,7 +1822,7 @@ function SoundGroups() {
 
   return (
     <>
-      <ItemGroup title={t('notifications.sound')} footer={t('notifications.soundDescription')}>
+      <ItemGroup settingId="notifications.sound" title={t('notifications.sound')} footer={t('notifications.soundDescription')}>
         <Item
           title={t('notifications.soundEnable')}
           right={
@@ -1832,7 +1855,7 @@ function SoundGroups() {
         />
       </ItemGroup>
 
-      <ItemGroup title={t('notifications.soundVoice')} footer={t('notifications.soundVoiceDescription')}>
+      <ItemGroup settingId="notifications.soundVoice" title={t('notifications.soundVoice')} footer={t('notifications.soundVoiceDescription')}>
         {CHIME_VOICES.map((voice) => (
           <Item
             key={voice}
@@ -1866,7 +1889,7 @@ function SoundGroups() {
       {/* B-469: OpenPeon / peon-ping voice packs, fetched from their own host
           on first use (game audio the project distributes as CC-BY-NC / fair
           use — never bundled here). Red Alert first. */}
-      <ItemGroup title={t('notifications.soundPacks')} footer={t('notifications.soundPacksDescription')}>
+      <ItemGroup settingId="notifications.soundPacks" title={t('notifications.soundPacks')} footer={t('notifications.soundPacksDescription')}>
         {SOUND_PACKS.map((pack) => {
           const selected = prefs.pack === pack.id;
           const state = packPreview?.id === pack.id ? packPreview.state : null;
@@ -1904,7 +1927,7 @@ function SoundGroups() {
         })}
       </ItemGroup>
 
-      <ItemGroup title={t('notifications.soundEvents')} footer={t('notifications.soundEventsDescription')}>
+      <ItemGroup settingId="notifications.soundEvents" title={t('notifications.soundEvents')} footer={t('notifications.soundEventsDescription')}>
         {SOUND_EVENTS.map((ev) => (
           <Item
             key={ev}
@@ -1931,6 +1954,7 @@ function InboxGroup() {
   const days = useRetentionDays();
   return (
     <ItemGroup
+      settingId="notifications.inbox"
       title={t('notifications.inboxGroup')}
       footer={t('notifications.inboxRetentionDescription')}
     >
@@ -2006,6 +2030,7 @@ function Notifications() {
       />
       <ItemList>
         <ItemGroup
+          settingId="notifications.browser"
           title={t('notifications.browserNotifications')}
           footer={
             denied
@@ -2032,6 +2057,7 @@ function Notifications() {
         </ItemGroup>
 
         <ItemGroup
+          settingId="notifications.types"
           title={t('notifications.types')}
           footer={t('notifications.typesDescription')}
         >
@@ -2053,6 +2079,7 @@ function Notifications() {
         </ItemGroup>
 
         <ItemGroup
+          settingId="notifications.quietHours"
           title={t('notifications.quietHours')}
           footer={t('notifications.quietHoursDescription')}
         >
@@ -2345,7 +2372,7 @@ function WebBuildGroup() {
     }
   };
   return (
-    <ItemGroup title={t('diagnostics.webBuild')}>
+    <ItemGroup settingId="diagnostics.webBuild" title={t('diagnostics.webBuild')}>
       <Item
         title={t('diagnostics.webBuildVersion')}
         right={<span className="set-value mono">{__APP_VERSION__}</span>}
@@ -2380,7 +2407,7 @@ function Diagnostics() {
       />
       <ItemList>
         <WebBuildGroup />
-        <ItemGroup title={t('diagnostics.relay')}>
+        <ItemGroup settingId="diagnostics.relay" title={t('diagnostics.relay')}>
           <Item
             title={t('diagnostics.serverSocket')}
             subtitle={
@@ -2393,7 +2420,7 @@ function Diagnostics() {
           />
         </ItemGroup>
 
-        <ItemGroup title={t('diagnostics.machinesAndDaemons')}>
+        <ItemGroup settingId="diagnostics.machines" title={t('diagnostics.machinesAndDaemons')}>
           {machines.length === 0 ? (
             <Item title={t('diagnostics.noMachines')} />
           ) : (
@@ -2441,6 +2468,7 @@ function Diagnostics() {
           footer={t('diagnostics.developerFooter')}
         >
           <Item
+            settingId="diagnostics.verboseLogging"
             title={t('diagnostics.verboseLogging')}
             subtitle={t('diagnostics.verboseLoggingDescription')}
             right={
@@ -2452,6 +2480,7 @@ function Diagnostics() {
             }
           />
           <Item
+            settingId="diagnostics.consoleLogging"
             title={t('diagnostics.consoleLogging')}
             subtitle={t('diagnostics.consoleLoggingDescription')}
             right={
