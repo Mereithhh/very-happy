@@ -10,7 +10,7 @@
  * specs/2026-10-change-review-surfaces.md
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, ChevronsDownUp, ChevronsUpDown, FileDiff, ListTree, WrapText } from 'lucide-react';
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, FileDiff, ListTree, Space, WrapText } from 'lucide-react';
 import { useMediaQuery } from '@/app/useMediaQuery';
 import { useSetting } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -184,7 +184,7 @@ export function ReviewAllPane({ sessionId, files, active, refreshToken, onOpenDi
                     <button type="button" className="rva-tool" onClick={() => setAll(false)} title={copy.expandAll} aria-label={copy.expandAll}><ChevronsUpDown size={14} aria-hidden/><span className="rva-tool-label">{copy.expandAll}</span></button>
                     <button type="button" className="rva-tool" onClick={() => setAll(true)} title={copy.collapseAll} aria-label={copy.collapseAll}><ChevronsDownUp size={14} aria-hidden/><span className="rva-tool-label">{copy.collapseAll}</span></button>
                     <button type="button" className={`rva-tool${wrap ? ' is-active' : ''}`} aria-pressed={wrap} onClick={() => setWrap((v) => !v)} title={copy.wrap}><WrapText size={14} aria-hidden/><span className="rva-tool-label">{copy.wrap}</span></button>
-                    <button type="button" className={`rva-tool${ignoreWs ? ' is-active' : ''}`} aria-pressed={ignoreWs} onClick={() => setIgnoreWs((v) => !v)} title={copy.ignoreWs}><span className="rva-ws" aria-hidden>␣</span><span className="rva-tool-label">{copy.ignoreWs}</span></button>
+                    <button type="button" className={`rva-tool${ignoreWs ? ' is-active' : ''}`} aria-pressed={ignoreWs} onClick={() => setIgnoreWs((v) => !v)} title={copy.ignoreWs}><Space size={14} aria-hidden/><span className="rva-tool-label">{copy.ignoreWs}</span></button>
                 </span>
             </div>
             <div className="rva-main">
