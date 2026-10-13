@@ -57,14 +57,15 @@ agent 一轮改了哪些文件，现在只能逐个展开工具卡数；想把�
   - `Edit`：result 有 `structuredPatch` → 数其中 `+`/`-` 行（精确，含 replace_all）；否则 `replace_all` → 计数未知；否则对 `old_string/new_string` 做行级 diff
     （先剥公共前后缀行，剩余 `n·m > 250k` 时计数未知，避免 LCS 卡主线程）。
   - `MultiEdit`：逐个 edit 同上求和，任一未知 → 未知。
-  - `Write`：result `type === 'create'` → 全增；`type === 'update'` 且有 `structuredPatch` → 按 patch；否则若该路径在**本会话更早的消息里**被 Read/Edit/Write 过 →
-    已存在文件被覆写，计数未知（显示「已改」）；否则按新文件全增。
+  - `Write`：只信 runner 自己的 result——`type === 'create'` → 全增；`type === 'update'` 且有 `structuredPatch` → 按 patch；
+    没有 type（pi、session 协议通道）→ 计数未知（「已改」），不再用「本会话碰过该路径」猜新建（review 低2/低1）。
+  - 有 `structuredPatch` 时（Edit/MultiEdit/Write update），展开的 diff 也由同一 patch 还原，数字与展开内容同源。
   - `NotebookEdit`：计数未知。
   - `CodexPatch`：每个 path 一项；`add`（kind.type 或 `add.content`）→ 全增；`delete` → 全删；`update`/`diff`/`unified_diff` → 数 hunk 内 `+`/`-` 行（跳过 `+++`/`---` 头）；
     `modify{old_content,new_content}` → 行级 diff；`move_path` 存在时按新路径记。都没有 → 未知。
   - 其余工具 → 空。
-- `render` 是展开时给 `DiffView` 的 `{oldText,newText}`（Edit/MultiEdit 每段一份、Write 为 `''→content`、patch 由 hunk 还原新旧片段）；没有可渲染载荷时为 null，展开处提示「此改动无可显示的 diff」。
-- `turnDiffSummary(turnMessages, seenBefore) → TurnDiff | null`：遍历本轮消息，**子代理归属**：递归进入 Task/Agent 工具的 `children`，
+- `render` 是展开时给 `DiffView` 的 `{oldText,newText}`（有 structuredPatch 用它、否则 Edit/MultiEdit 每段一份、Write create 为 `''→content`、patch 由 hunk 还原新旧片段）；没有可渲染载荷时为 null，展开处提示「此改动无可显示的 diff」。
+- `turnDiffSummary(turnMessages) → TurnDiff | null`：遍历本轮消息，**子代理归属**：递归进入 Task/Agent 工具的 `children`，
   其中的写入算进**包含该卡的那一轮**（子代理是那一轮派出去的工作；后台子代理在轮结束后才写完时，汇总随消息到达而更新）。
   Codex 子线程（`CodexCollaboration`）的改动不在本会话 transcript 里，不计入。按规范化路径聚合，同一路径多次编辑加总，任一次未知 → 该文件未知。
   文件顺序 = 首次被改的顺序。无文件 → null。
@@ -72,7 +73,7 @@ agent 一轮改了哪些文件，现在只能逐个展开工具卡数；想把�
 
 **接入**：`buildChatRows(messages, live, { turnDiffs: true })` 对每个**非 live、非 compaction** 的轮，在该轮行尾追加
 `{ type: 'turn-diff', key: 'turndiff-<userMsgId>', diff }`。选项默认关，既有调用与测试不变；ChatList 只加一个分支渲染 `TurnDiffRollup`（最小挂钩，文件归 r3-composer，主 agent 合并时注意）。
-`seenBefore` 在切轮循环里随轮推进（只含该轮之前的消息）。计算缓存在 `WeakMap<ToolCall, FileEdit[]>`，长会话重建行时不重复跑 diff。
+计算缓存在 `WeakMap<ToolCall, FileEdit[]>`，长会话重建行时不重复跑 diff。
 
 **UI `TurnDiffRollup`**：一行中性文本按钮（`--text-muted`，无卡片、无 accent），chevron + 「改了 N 个文件 · +a −b」；
 展开后每个文件一行（mono 路径，相对会话 cwd 显示；`+a −b` 或「已改」），点文件行就地展开该文件本轮的各段 `DiffView`；行末「审阅全部」按钮
@@ -85,18 +86,20 @@ URL `review=1` 由 FilesPanel 消费后删除（与 `pinFile` 同机制）。
 
 **数据**：FilesPanel 已有的 `changed`（`gitStatusFiles` 去重后的列表）；每个文件的 diff 走 B-554 的 `useGitFileDiff`（同一 `bash` RPC、同一 5000 行上限）。
 新增 `ignoreWhitespace` 选项 → 命令加 `-w`（git 的 `--no-index` 也支持，数据源能做，所以做这个开关）。
-`useGitFileDiff` 加全页并发上限 4（模块内信号量），避免「全部展开」一次打满 RPC。
+`useGitFileDiff` 加全页并发上限 4（`slotPool.ts`：释放的槽直接交给下一个等待者，杜绝第 5 个插队；pane 卸载或被新一次加载取代时，排队中的请求取消、不占槽），避免「全部展开」一次打满 RPC。
+diff 结果带 `ignoreWhitespace` 标记；重锚定只对**非 -w 的行**执行并写回（关掉开关后、新结果到达前仍显示的 -w 行不会写回，review 中1）。
 
 **结构**：把 `ReviewDiffPane` 的「行 + 批注 + 编辑器 + 底部 sheet」抽成 `ReviewDiffBody`（不含头部与滚动容器），单文件 diff 标签与审阅标签共用。
 - 审阅标签 = 工具条 + 文件导航 + 一个滚动容器，内含每个文件一个 section（sticky 头：状态字母、路径、`+/−`、「已看」勾选、折叠、打开 diff 标签）。
-- **懒渲染**：section 用 IntersectionObserver（`rootMargin` 一屏）首次进入视口才挂载 `ReviewDiffBody` 并取 diff；之后保持（`active` 粘滞为 true），只在 git status 刷新时重取。未挂载时按 numstat 估算高度占位（上限 600px），滚动条不乱跳。
+- **懒渲染**：section 用 IntersectionObserver（`rootMargin` 一屏）首次进入视口才挂载 `ReviewDiffBody` 并取 diff；之后保持。重取 key = 该文件的 `sig + 内容 id`：git status 刷新后只有**内容真变了的文件**重拉，不是所有已展开分段（review 低4）。首次取 diff 等内容 id 查询落定，避免取两次。未挂载时按 numstat 估算高度占位（上限 600px），滚动条不乱跳。
 - **工具条**：「已看 k/N」、全部展开/全部折叠、换行（本标签内开关，默认跟随 `wrapLinesInDiffs` 在触屏的语义）、忽略空白。
 - **文件导航**：≥1100px 时左侧 220px 列表（点击滚到 section、显示已看勾）；窄屏收为顶部「文件」下拉列表按钮（全屏面板内）。
 - **忽略空白时不重锚批注**：`-w` 下某些行不在 diff 里，重锚会把好好的批注写成「已过期」；该模式下批注只读定位（找不到的放 section 顶部「不在当前 diff」），不写回存储。新建批注仍可（锚定按真实行号与内容）。
 
 **已看（`reviewViewed.ts` 纯函数 + `reviewViewedStore.ts`）**
-- 记录 `{ path → { sig, hash, at } }`：`sig` = git status 的 `状态:+N:-M`（staged+unstaged 合计），`hash` = 已加载 diff 行的 FNV-1a（复用 B-554 hash）。
-- 判定：`sig` 不同 → 失效；diff 已加载且 `hash` 不同 → 失效；diff 未加载只看 `sig`（折叠的已看文件不为验证而取 diff）。失效的记录在下次写入时清除。
+- 记录 `{ path → { sig, cid, hash, at } }`：`sig` = git status 的 `状态:+N:-M`（staged+unstaged 合计）；`cid` = 工作区内容 id；`hash` = 已加载 diff 行的 FNV-1a（复用 B-554 hash）。
+- 内容 id（review 中3）：每次 git status 刷新后批量一次 `git hash-object -- <路径…>`（每批 ≤100 个，路径沿用 `quoteShellArg` 按目标 shell 引用；hash-object 收的是**文件名不是 pathspec**，所以不加 `:(literal)`，`--` 防 `-` 开头被当选项）；删除的文件 id 固定为 `deleted`；输出行数对不上或命令失败 → 这批无 id，退回 `sig`。
+- 判定：`sig` 不同 → 失效；双方都有 `cid` 且不同 → 失效（增删行数不变的改动也能识别）；diff 已加载且 `hash` 不同 → 失效；都未知时只看 `sig`。失效的记录在下次写入时清除。
 - 已看文件默认折叠。存储：MMKV `review-viewed`，每会话一个 key，单会话 ≤500 条；读入逐条校验。登出与删会话随 `clearDiffCommentDrafts` 一起清（同一清理函数追加一行）。
 
 **批注**：`ReviewDiffBody` 用同一 `useDiffComments` 存储、同一 `DiffCommentsBar`（FilesPanel 顶部已有），所以在审阅标签里写的批注与单文件 diff 标签互通、一次发送。
@@ -105,10 +108,13 @@ URL `review=1` 由 FilesPanel 消费后删除（与 `pinFile` 同机制）。
 
 ### B-573 文件预览跟随 agent 改动
 
-- 纯函数 `normalizeAbsPath(path, cwd)`（`resolveAgainstCwd` + 折叠 `.`/`..`/重复斜杠；`~` 原样比较）、
-  `agentWriteSignature(messages, targetAbs, cwd) → string`：本会话所有已完成写工具（复用 `toolFileEdits` 的路径提取，含子代理 children）中
-  路径规范化后等于目标的事件，签名 = `count:最后完成时间`。
-- `FsFileViewer` 新增可选 `sessionId`。有它时订阅该会话消息算签名；首次渲染的签名为基线，之后签名变化 = agent 刚写过这个文件。
+- 纯函数 `normalizeAbsPath(path, cwd, home)`（`~`/`~/` 用会话 `metadata.homeDir` 展开，取不到则原样；`resolveAgainstCwd` + 折叠 `.`/`..`/重复斜杠）。
+  **不处理大小写不敏感文件系统与符号链接**：同一文件的另一种写法不触发刷新（漏判，不误判）。
+- `lastAgentWriteAt(messages, targetAbs, cwd, home) → number`：本会话已完成写工具（含子代理 children）中路径规范化后等于目标的最晚完成时间。
+  只比较时间、不比较次数——次数会随更早的历史分页载入而变，误触发刷新（review 中2）。每条消息的写入路径按消息对象缓存（WeakMap），
+  消息列表最多每秒采样一次（前沿立即、窗口内合并为一次尾随更新，review 低3）。
+- `FsFileViewer` 新增可选 `sessionId`。记录本次读文件的时间 `readAt`；只有 `lastAgentWriteAt > readAt` 才算 agent 新写过（处理后把 `readAt` 推到该时间，同一次写不重复提示）。
+  完成时间来自服务端时间戳、`readAt` 是本机时钟：本机时钟快于服务端时可能漏一次跟随（只会漏判，手动刷新仍可用）。
   FilesPanel 的文件标签与 Browse 内预览（`FsBrowser` 透传）、`open_preview` 弹层（请求带 sessionId 时）传入；机器文件页不传 → 行为不变。
 - 变化时：
   - 当前是文本/markdown/代码视图，且视图内**没有非空选区**、**最近 1.5 s 没有滚动/按下**、标签可见 → **静默刷新**：
@@ -140,7 +146,7 @@ URL `review=1` 由 FilesPanel 消费后删除（与 `pinFile` 同机制）。
 ## 风险
 
 1. **计数与真实落盘不一致**：编辑后被 agent 自己再改回、Bash 写入、外部进程写入都不在汇总里。文案用「改了」而非「最终差异」，展开说明「按本轮记录的编辑统计」。接受。
-2. **Write 覆写判断是启发式**：路径在已加载历史里没出现过、但其实是已存在文件（历史未加载完、或在终端里先看过）→ 会按全增计。旧通道有 `toolUseResult.type` 时以它为准。接受并在展开说明里写明口径。
+2. **Write 没有 result type 时显示「已改」**：pi 与 session 协议通道下新建文件也只显示「已改」而无行数——宁可少报，不猜新建（review 低1）。接受。
 3. **部分加载的轮**：长会话只加载了最近一页时，最早那一轮可能缺前半段工具消息。该轮仍显示其已加载部分（与工具卡显示一致）。接受。
 4. **静默刷新打断阅读**：以「无选区 + 1.5s 内无滚动/指针按下」为闸，误判时最多是位置按比例恢复。不满足就只出提示条。
 5. **大量改动文件**：懒挂载 + 并发上限 4 + 单文件 5000 行上限 + `content-visibility: auto`。上百个文件时导航列表本身是普通列表，可接受。
