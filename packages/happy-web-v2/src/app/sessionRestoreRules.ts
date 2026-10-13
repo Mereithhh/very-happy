@@ -15,6 +15,7 @@
  * in isolation); the store + the restore action live in sessionRestore.ts.
  */
 import type { Machine, Session } from '@/sync/storageTypes';
+import { isHibernated } from './sessionHibernation';
 
 export type RestoreReason =
   | 'not-archived'
@@ -53,7 +54,7 @@ export const RESTORE_SLOW_SPAWN_MS = 15_000;
 /** RPC ceiling: server-side RPC timeout (30 s) + margin. */
 export const RESTORE_RPC_TIMEOUT_MS = 35_000;
 
-export type EligibilitySession = Pick<Session, 'active' | 'archivedAt' | 'metadata'>;
+export type EligibilitySession = Pick<Session, 'active' | 'archivedAt' | 'metadata'> & { activeAt?: number };
 export type EligibilityMachine = Pick<Machine, 'id' | 'active'>;
 
 /** Whether the web can even ask the machine to restore this session. Only
@@ -148,9 +149,10 @@ export function advanceRestoreState(
 }
 
 /** Composer gate (A3): an archived session's composer restores first and
- *  queues; everything else (live OR merely offline) sends as today. */
+ *  queues; so does a HIBERNATED one (B-587: it will not come back on its own);
+ *  everything else (live OR merely offline) sends as today. */
 export type ComposerGate = 'send' | 'restore-first';
 export function composerGate(session: EligibilitySession | null | undefined): ComposerGate {
-  return isRestorable(session) ? 'restore-first' : 'send';
+  return isRestorable(session) || isHibernated(session) ? 'restore-first' : 'send';
 }
 

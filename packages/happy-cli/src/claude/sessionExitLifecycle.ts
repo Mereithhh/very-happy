@@ -32,7 +32,9 @@
  */
 import type { Metadata } from '@/api/types';
 
-export type SessionExitIntent = 'archive' | 'offline';
+/** B-587: `hibernate` = `offline` on the server (deactivate, never archive)
+ *  plus a `metadata.hibernation` stamp written before the session ends. */
+export type SessionExitIntent = 'archive' | 'offline' | 'hibernate';
 
 export interface SessionExitDeps {
     updateMetadata: (handler: (metadata: Metadata) => Metadata) => void;
@@ -41,6 +43,10 @@ export interface SessionExitDeps {
     archiveSession: (sessionId: string) => Promise<boolean>;
     /** POST /deactivate — active=false only. */
     deactivateSession: (sessionId: string) => Promise<boolean>;
+    /** B-587: awaited metadata write (resolves false on timeout); required for `hibernate`. */
+    updateMetadataAndWait?: (handler: (metadata: Metadata) => Metadata) => Promise<boolean>;
+    /** B-587: the stamp to write for a `hibernate` exit. */
+    hibernation?: NonNullable<Metadata['hibernation']>;
     log?: (message: string, ...args: unknown[]) => void;
 }
 
@@ -54,6 +60,15 @@ export async function settleSessionOnExit(sessionId: string, intent: SessionExit
             archivedBy: 'cli',
             archiveReason: 'User terminated',
         }));
+    }
+
+    if (intent === 'hibernate' && deps.hibernation) {
+        const stamp = deps.hibernation;
+        const handler = (currentMetadata: Metadata): Metadata => ({ ...currentMetadata, hibernation: stamp });
+        // The stamp must land before session-end; a timeout still goes offline
+        // (a plain offline session is just as recoverable).
+        const landed = deps.updateMetadataAndWait ? await deps.updateMetadataAndWait(handler) : (deps.updateMetadata(handler), false);
+        if (!landed) deps.log?.('[START] hibernation stamp not confirmed before going offline');
     }
 
     // Socket path first: the server flips active=false on `session-end`
@@ -70,12 +85,27 @@ export async function settleSessionOnExit(sessionId: string, intent: SessionExit
     }
 }
 
-/** First exit reason wins; every later request is reported and dropped. */
+/**
+ * First exit reason wins; every later request is reported and dropped —
+ * EXCEPT while an idle hibernation is still deciding (B-587 review P1-1):
+ * a user archive / kill or a SIGTERM that arrives then is DEFERRED, the
+ * hibernation sees `exitRequested` and aborts, and `release` hands the
+ * deferred intent back so the caller runs it at once. After the hibernation
+ * is committed the process is leaving anyway (offline, never archive), so
+ * later requests are dropped as before.
+ */
 export class SessionExitGate {
     private decided: SessionExitIntent | null = null;
+    private hibernateCommitted = false;
+    private deferred: SessionExitIntent | null = null;
 
     /** Returns the intent to act on, or null when cleanup already started. */
     claim(intent: SessionExitIntent): SessionExitIntent | null {
+        if (this.decided === 'hibernate' && !this.hibernateCommitted && intent !== 'hibernate') {
+            // archive outranks offline: a user's archive must not be downgraded.
+            if (this.deferred !== 'archive') this.deferred = intent;
+            return null;
+        }
         if (this.decided !== null) return null;
         this.decided = intent;
         return intent;
@@ -83,6 +113,28 @@ export class SessionExitGate {
 
     get current(): SessionExitIntent | null {
         return this.decided;
+    }
+
+    /** B-587: an exit was requested while the hibernation was deciding. */
+    get exitRequested(): boolean {
+        return this.deferred !== null;
+    }
+
+    /** B-587: the hibernation passed its last check — no more deferral. */
+    commitHibernate(): void {
+        if (this.decided === 'hibernate') this.hibernateCommitted = true;
+    }
+
+    /**
+     * B-587: a hibernation that aborted hands the exit back. Returns the exit
+     * deferred meanwhile (the caller must run it now), or null.
+     */
+    release(intent: SessionExitIntent): SessionExitIntent | null {
+        if (this.decided !== intent || (intent === 'hibernate' && this.hibernateCommitted)) return null;
+        this.decided = null;
+        const deferred = this.deferred;
+        this.deferred = null;
+        return deferred;
     }
 }
 

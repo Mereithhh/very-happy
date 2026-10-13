@@ -29,10 +29,13 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
-import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
+import { checkDaemonHibernation, notifyDaemonSessionStarted } from "@/daemon/controlClient";
+import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, latchKeepAwake, resolveCheckMs, type HibernationStamp, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
+import { HibernationExitLatch, HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
+import { settleCodexSession } from './codexTermination';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
-import { applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
+import { applyHibernationReplay, applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -144,7 +147,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -195,12 +198,17 @@ export async function runCodex(opts: {
 
     // B-265: seed the reconnect from the server snapshot (see runClaude).
     let reconnectSeeded = false;
+    let wakingFromHibernation = false;
     if (reconnectSessionId && response) {
         const snapshot = await api.getSession(response.id, response.encryptionKey, response.encryptionVariant);
         if (snapshot.ok) {
             response = applyServerSnapshot(response, snapshot.session);
             reconnectSeeded = true;
             logger.debug(`[START] Reconnect seeded from server: seq=${snapshot.session.seq} metadataVersion=${snapshot.session.metadataVersion}`);
+            // B-587: waking from hibernation → replay what arrived after the stamp.
+            const wake = applyHibernationReplay(response);
+            response = wake.response;
+            wakingFromHibernation = wake.replaying;
         } else {
             response = withoutServerSnapshot(response);
             logger.debug(`[START] Reconnect without server snapshot (${snapshot.reason}); skipping existing messages`);
@@ -242,7 +250,8 @@ export async function runCodex(opts: {
         if (!reconnectSeeded) session.skipExistingMessages();
         // B-332: see runClaude — the previous wrapper's undelivered queue is
         // lost either way; tell the web.
-        void session.cancelUndeliveredQueuedInputs();
+        // B-587: not when waking from hibernation (see runClaude).
+        if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs();
         session.updateMetadata((meta) => mergeReconnectMetadata(meta, metadata, Date.now()));
     }
 
@@ -457,6 +466,10 @@ export async function runCodex(opts: {
     // Turn cancellation uses client.interruptTurn() — no AbortController hack needed.
     let abortController = new AbortController();
     let shouldExit = false;
+    // B-587: a hibernation in progress; exits requested meanwhile are deferred (review P1-1).
+    const hibernationExit = new HibernationExitLatch<'archive' | 'offline'>((a, b) => a === 'archive' && b !== 'archive');
+    let hibernationStamp: HibernationStamp | null = null;
+    let hibernationProbe: HibernationProbe | null = null;
 
     /**
      * Handles aborting the current task/inference without exiting the process.
@@ -527,27 +540,21 @@ export async function runCodex(opts: {
      * Abort stops the current inference but keeps the session alive.
      * Kill terminates the entire process.
      */
-    const handleKillSession = async () => {
+    const handleKillSession = async (intent: 'archive' | 'offline' = 'archive') => {
+        // B-587: a hibernation is already taking this process offline; never
+        // let a late signal stamp it archived on the way out.
+        if (hibernationExit.intercept(intent)) {
+            logger.debug(`[Codex] ${intent} exit deferred: hibernation in progress`);
+            return;
+        }
         logger.debug('[Codex] Kill session requested - terminating process');
         await handleAbort('kill');
         logger.debug('[Codex] Abort completed, proceeding with termination');
 
         try {
-            // Update lifecycle state to archived before closing
-            if (session) {
-                session.updateMetadata((currentMetadata) => ({
-                    ...currentMetadata,
-                    lifecycleState: 'archived',
-                    lifecycleStateSince: Date.now(),
-                    archivedBy: 'cli',
-                    archiveReason: 'User terminated'
-                }));
-                
-                // Send session death message
-                session.sendSessionDeath();
-                await session.flush();
-                await session.close();
-            }
+            // AGENTS 7 / B-587: archived stamp only for a user's archive/kill;
+            // SIGTERM/SIGINT go offline (codexTermination.ts).
+            if (session) await settleCodexSession(session, intent, (id) => api.deactivateSession(id), (m, e) => logger.debug(m, safeCodexErrorMetadata(e)));
 
             // Force close Codex transport (best-effort) so we don't leave stray processes
             try {
@@ -574,7 +581,7 @@ export async function runCodex(opts: {
     });
     session.rpcHandlerManager.registerHandler('abort', () => handleAbort('user'));
 
-    const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, handleKillSession, session, { processSignals: true });
+    const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, () => handleKillSession('archive'), session, { processSignals: true, onSignal: () => handleKillSession('offline') });
 
     //
     // Initialize Ink UI
@@ -893,6 +900,57 @@ export async function runCodex(opts: {
 
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = null;
 
+        // B-587: idle hibernation (spec 2026-10-idle-agent-hibernation; see runClaude).
+        if (opts.startedBy === 'daemon' && !hasTTY && process.env.HAPPY_SESSION_VARIANT !== 'assistant') {
+            let keepAwakeLatch = false;
+            const hibernationSnapshot = (): WrapperIdleSnapshot => {
+                const meta = session.getMetadata();
+                return {
+                    flavor: 'codex',
+                    resumable: typeof meta?.codexThreadId === 'string' && meta.codexThreadId.length > 0,
+                    uiSession: true,
+                    ...(process.env.HAPPY_SPAWNED_BY ? { spawnedBy: process.env.HAPPY_SPAWNED_BY } : {}),
+                    ...(meta?.tags ? { tags: meta.tags } : {}),
+                    keepAwake: (keepAwakeLatch = latchKeepAwake(meta?.keepAwake, keepAwakeLatch)),
+                    ...(typeof meta?.keepAwake === 'boolean' ? { keepAwakeSetting: meta.keepAwake } : {}),
+                    thinking: thinking || turnActive,
+                    queuedInputs: messageQueue.size() + (session.promptQueueHasPending() ? 1 : 0),
+                    waitingForInput: messageQueue.isWaiting(),
+                    pendingRequests: Object.keys(session.getAgentState()?.requests ?? {}).length,
+                    backgroundTasks: codexActiveSubagents.size,
+                    lastActivityAt: session.lastActivityAt,
+                    ...(shouldExit && !hibernationExit.hibernating ? { exiting: true } : {}),
+                };
+            };
+            hibernationProbe = new HibernationProbe({
+                onKeepAwakeLatched: () => {
+                    if (session.getMetadata()?.keepAwake === undefined) session.updateMetadata((m) => (m.keepAwake === undefined ? { ...m, keepAwake: true } : m));
+                },
+                checkMs: resolveCheckMs(),
+                snapshot: hibernationSnapshot,
+                ask: (report) => checkDaemonHibernation({ sessionId: session.sessionId, pid: process.pid, report }),
+                commit: (idleMs) => commitHibernation({
+                    client: session,
+                    claimExit: () => !shouldExit && hibernationExit.begin(),
+                    exitRequested: () => hibernationExit.exitRequested,
+                    markCommitted: () => hibernationExit.commit(),
+                    releaseExit: () => {
+                        const deferred = hibernationExit.release();
+                        if (deferred) void handleKillSession(deferred);
+                    },
+                    recheck: () => evaluateWrapperIdle(hibernationSnapshot(), idleMs, Date.now()),
+                    idleMs,
+                    finish: async (stamp) => {
+                        hibernationStamp = stamp;
+                        // Leave the main loop; the finally below goes offline and exits.
+                        shouldExit = true;
+                        abortController.abort();
+                    },
+                }),
+            });
+            hibernationProbe.start();
+        }
+
         // Idle from the start: a session nobody ever writes to must not hold app-server either.
         idleRelease.arm();
 
@@ -1058,6 +1116,7 @@ export async function runCodex(opts: {
     } finally {
         // Clean up resources when main loop exits
         disposeTermination?.();
+        hibernationProbe?.stop();
         session.closePromptQueueDrain(); // B-509: no more pops into a process that is leaving
         logger.debug('[codex]: Final cleanup start');
         logActiveHandles('cleanup-start');
@@ -1109,5 +1168,11 @@ export async function runCodex(opts: {
 
         logActiveHandles('cleanup-end');
         logger.debug('[codex]: Final cleanup completed');
+        if (hibernationExit.hibernating && hibernationStamp) {
+            // B-587: offline, never archive — the HTTP fallback for session-end.
+            try { await api.deactivateSession(session.sessionId); } catch (error) { logger.debug('[codex]: deactivate after hibernation failed', safeCodexErrorMetadata(error)); }
+            logger.debug('[codex]: hibernated; exiting');
+            process.exit(0);
+        }
     }
 }

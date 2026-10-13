@@ -61,6 +61,14 @@ export interface AutomationRunnerDeps {
     spawn: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     /** The daemon tracks a live wrapper process for this session. */
     live: (sessionId: string) => boolean;
+    /**
+     * B-587 review P2-5: bring a HIBERNATED target back (same path as the web's
+     * wake) and resolve true once it is live again; false = not hibernated /
+     * could not wake in time. Absent = old wiring: no wake attempt.
+     */
+    wakeHibernated?: (sessionId: string) => Promise<boolean>;
+    /** B-587: the session's wrapper exited by idle hibernation (its restore record says so). */
+    isHibernated?: (sessionId: string) => boolean;
     /** A turn is in flight per the wrapper's B-466 heartbeat. */
     turnActive: (sessionId: string) => boolean;
     /** B-507: background tasks still in flight per the wrapper's report (0 when
@@ -95,6 +103,8 @@ interface Tracked {
     nextLogReadAt: number;
     attentionReported: boolean;
     exited: boolean;
+    /** B-587: the target session is being woken from hibernation; monitor leaves it alone (lease renewal does not). */
+    waking?: boolean;
     /** B-507: the turn ended but background tasks were still running (logged once). */
     waitingOnBackground?: boolean;
     /** `running` report not yet accepted; re-attached to every renewal until it is. */
@@ -265,6 +275,39 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         })();
     }
 
+    /**
+     * B-587 review: deliver into a HIBERNATED session. The wake (bounded but up
+     * to ~75 s) runs detached from the tick like a precheck (counted in `busy`),
+     * the run is tracked first so its lease keeps renewing, and a failed wake
+     * is reported as `session_wake_failed`, not "not running on this machine".
+     */
+    function wakeThenSend(claimed: AutomationClaimedRun, sessionId: string, text: string, stickyKey?: string): void {
+        const { run, automation } = claimed;
+        const item = track(claimed, 'send', sessionId);
+        item.waking = true;
+        gating++;
+        void (async () => {
+            try {
+                const woke = await deps.wakeHibernated!(sessionId).catch(() => false);
+                if (!tracked.has(run.id) || closed) return; // settled by the server, or the daemon is stopping (lease lapses)
+                item.waking = false;
+                if (!woke || !deps.live(sessionId)) {
+                    await finish(item, { claimId: run.claimId, status: 'failed', sessionId, error: `Session ${sessionId} was hibernated and could not be woken in time`, needsAttention: true, attentionReason: 'session_wake_failed' });
+                    return;
+                }
+                persist({ runId: run.id, automationId: automation.id, kind: 'send', phase: 'running', claimId: run.claimId, sessionId, ...(stickyKey ? { stickyKey } : {}) });
+                try { await send(sessionId, text, { localId: `automation-${run.id}` }); }
+                catch (error) {
+                    await finish(item, { claimId: run.claimId, status: 'failed', sessionId, error: clipText(`Message delivery failed: ${error instanceof Error ? error.message : String(error)}`, AUTOMATION_SUMMARY_MAX_CHARS), needsAttention: true, attentionReason: 'send_failed' });
+                    return;
+                }
+                await reportRunning(item, sessionId, stickyKey);
+            } finally { item.waking = false; gating--; }
+        })();
+    }
+
+    const wakeable = (sessionId: string) => !deps.live(sessionId) && !!deps.wakeHibernated && deps.isHibernated?.(sessionId) === true;
+
     /** The action itself (after any precheck passed). */
     async function perform(claimed: AutomationClaimedRun, action: AutomationAction, context: TemplateContext, env: Record<string, string>): Promise<void> {
         const { run, automation } = claimed;
@@ -291,6 +334,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         }
 
         if (action.kind === 'send') {
+            if (wakeable(action.sessionId)) { wakeThenSend(claimed, action.sessionId, `${header}\n${action.prompt}`); return; }
             if (!deps.live(action.sessionId)) { await failNow(claimed, 'send', `Session ${action.sessionId} is not running on this machine`, 'session_not_live', action.sessionId); return; }
             persist({ runId: run.id, automationId: automation.id, kind: 'send', phase: 'running', claimId: run.claimId, sessionId: action.sessionId });
             try { await send(action.sessionId, `${header}\n${action.prompt}`, { localId: `automation-${run.id}` }); }
@@ -307,6 +351,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         const stickyKey = action.sticky ? renderTemplate(action.sticky.key, context) : undefined;
         if (stickyKey) {
             const bound = claimed.stickies.find((sticky) => sticky.key === stickyKey);
+            if (bound && wakeable(bound.sessionId)) { wakeThenSend(claimed, bound.sessionId, `${header}\n${action.prompt}`, stickyKey); return; }
             if (bound && deps.live(bound.sessionId)) {
                 persist({ runId: run.id, automationId: automation.id, kind: 'send', phase: 'running', claimId: run.claimId, sessionId: bound.sessionId, stickyKey });
                 try { await send(bound.sessionId, `${header}\n${action.prompt}`, { localId: `automation-${run.id}` }); }
@@ -346,7 +391,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         for (const item of [...tracked.values()]) {
             if (closed) return;
             if (item.pendingFinal) { await finish(item, item.pendingFinal); continue; }
-            if (item.kind === 'script') continue;
+            if (item.kind === 'script' || item.waking) continue;
             const sessionId = item.sessionId!;
             const active = deps.turnActive(sessionId);
             if (active) item.sawTurn = true;

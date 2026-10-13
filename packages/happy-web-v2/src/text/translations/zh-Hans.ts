@@ -4355,4 +4355,24 @@ export const zhHans: TranslationStructure = {
         notLoaded: '这个标签页还没加载过对话',
     },
 
+    // B-587: 空闲休眠
+    hibernation: {
+        notice: '已休眠以释放内存。发消息或点「唤醒」继续。',
+        waking: '正在唤醒…',
+        wakingSlow: '正在唤醒，机器尚未响应…',
+        wake: '唤醒',
+        rowLabel: '已休眠',
+        keepAwake: '保持唤醒',
+        keepAwakeOn: '此会话不会休眠',
+        keepAwakeOff: '此会话空闲时可以休眠',
+        keepAwakeFailed: '无法更改保持唤醒',
+        machineTitle: '空闲休眠',
+        machineFooter: '空闲的 Claude / Codex 对话会被停下以释放内存，打开或发消息时自动唤醒。运行中、等待审批、有后台任务、属于团队、被自动化复用或标为保持唤醒的会话不会被停下。',
+        off: '关闭',
+        afterHours: ({ hours }: { hours: number }) => `${hours} 小时后`,
+        afterCustom: ({ text }: { text: string }) => `${text}后`,
+        saved: '已更新空闲休眠设置',
+        saveFailed: '无法更新空闲休眠设置',
+    },
+
 } as const;

@@ -258,10 +258,15 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 return;
             }
 
-            // Update last active at
+            // B-587: drop a heartbeat still queued in the presence batch, or
+            // its flush re-activates the row after this write. `lastActiveAt`
+            // is stamped with the SERVER clock (≥ t): the flush guard
+            // (`lastActiveAt < beat receivedAt`) then also stops beats that
+            // are in flight or queued on another instance.
+            activityCache.discardSessionUpdate(sid);
             await db.session.update({
                 where: { id: sid },
-                data: { lastActiveAt: new Date(t), active: false }
+                data: { lastActiveAt: new Date(Math.max(t, Date.now())), active: false }
             });
 
             // Emit session activity update

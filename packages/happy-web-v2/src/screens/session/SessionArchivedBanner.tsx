@@ -6,12 +6,13 @@
  * Token discipline as MirrorBanner: bg ladder + --warn; no --accent (an
  * archived session is not live).
  */
-import { useEffect, useState } from 'react';
-import { Archive, RotateCcw, Unplug } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Archive, Moon, RotateCcw, Unplug } from 'lucide-react';
 import { useSession } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
 import { restoreSession, useRestoreState, RESTORE_SLOW_SPAWN_MS, type RestoreReason } from '@/app/sessionRestore';
+import { isHibernated } from '@/app/sessionHibernation';
 import './mirror.css';
 
 type TKey = Parameters<ReturnType<typeof useTranslation>['t']>[0];
@@ -31,15 +32,27 @@ export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
         const iv = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(iv);
     }, [state?.phase]);
+    // B-587: a hibernated session is offline on purpose; waking it is the
+    // same restore, narrated as one「正在唤醒…」state — also for the moment
+    // between reactivation (stamp no longer applies) and the banner unmounting.
+    const hibernatedNow = isHibernated(session);
+    const wasHibernated = useRef(false);
+    if (hibernatedNow) wasHibernated.current = true;
+    else if (!busy) wasHibernated.current = false;
     if (!session) return null;
+    const hibernated = hibernatedNow || (busy && wasHibernated.current);
 
     let text: string;
-    if (state?.phase === 'spawning') {
+    if (hibernated && (state?.phase === 'spawning' || state?.phase === 'awaiting-online')) {
+        text = state.phase === 'spawning' && now - state.startedAt >= RESTORE_SLOW_SPAWN_MS ? t('hibernation.wakingSlow') : t('hibernation.waking');
+    } else if (state?.phase === 'spawning') {
         text = now - state.startedAt >= RESTORE_SLOW_SPAWN_MS ? t('restore.restoringSlow') : t('restore.restoring');
     } else if (state?.phase === 'awaiting-online') {
         text = t('restore.awaitingOnline');
     } else if (state?.phase === 'failed') {
         text = `${t('restore.failed')}: ${t(restoreReasonKey(state.reason))}${state.reason === 'unknown' && state.message ? ` (${state.message})` : ''}`;
+    } else if (hibernated) {
+        text = t('hibernation.notice');
     } else {
         // recoverability: archived vs merely-offline get different notices.
         text = session.archivedAt != null ? t('restore.archivedNotice') : t('restore.offlineNotice');
@@ -47,9 +60,9 @@ export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
     const offline = session.archivedAt == null;
 
     return (
-        <div className="mrb" data-testid="session-archived-banner">
+        <div className="mrb" data-testid="session-archived-banner" data-hibernated={hibernated ? '' : undefined}>
             <div className={`mrb-note${state?.phase === 'failed' ? ' mrb-note--failed' : ''}`} role="status">
-                {offline ? <Unplug size={13} /> : <Archive size={13} />}
+                {hibernated ? <Moon size={13} /> : offline ? <Unplug size={13} /> : <Archive size={13} />}
                 <span className="mrb-note-text">{text}</span>
                 <button
                     type="button"
@@ -59,7 +72,7 @@ export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
                     aria-busy={busy}
                 >
                     {busy ? <Spinner size={13} /> : <RotateCcw size={13} />}
-                    <span>{t(state?.phase === 'failed' ? 'restore.retry' : 'restore.restore')}</span>
+                    <span>{state?.phase === 'failed' ? t('restore.retry') : hibernated ? t('hibernation.wake') : t('restore.restore')}</span>
                 </button>
             </div>
         </div>

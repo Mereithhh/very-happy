@@ -83,6 +83,18 @@ export const MetadataSchema = z.object({
     archivedBy: z.string().optional(),
     archiveReason: z.string().optional(),
     /**
+     * B-587: the wrapper exited by idle hibernation (offline, restorable);
+     * cleared by the next wrapper. Declared so a web metadata write keeps it.
+     * Lenient: a shape mismatch must not fail the whole metadata parse.
+     */
+    hibernation: z.object({
+        at: z.number(),
+        seq: z.number().optional(),
+        idleMs: z.number().optional(),
+    }).passthrough().optional().catch(undefined),
+    /** B-587: user opted this session out of idle hibernation. Never default it. */
+    keepAwake: z.boolean().optional().catch(undefined),
+    /**
      * Lineage for sessions created via the fork / duplicate flow.
      * `parentSessionId` is the Happy session this one was branched from.
      * `forkedFromMessageId` is the in-app message id used as the rewind

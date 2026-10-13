@@ -6,6 +6,8 @@ interface SessionCacheEntry {
     validUntil: number;
     lastUpdateSent: number;
     pendingUpdate: number | null;
+    /** B-587: SERVER time the pending beat arrived (the monotonic guard below). */
+    pendingReceivedAt?: number;
     userId: string;
 }
 
@@ -19,11 +21,20 @@ interface MachineCacheEntry {
 /** A heartbeat may update presence only while no durable archive tombstone
  * exists. Keeping the guard in the database predicate closes the race where a
  * batch was collected before the archive transaction committed. */
-export function sessionActivityUpdateWhere(sessionId: string) {
-    return { id: sessionId, archivedAt: null } as const;
+export function sessionActivityUpdateWhere(sessionId: string, receivedAt?: number) {
+    // B-587: ...and only if nothing newer was written since the beat ARRIVED.
+    // Every offline / archive / unarchive write stamps `lastActiveAt` with the
+    // server's now, so a beat batched before it (in flight on this instance,
+    // or queued on another instance / the other blue-green slot) can no longer
+    // flip the row back to active. Compared with the server receive time, not
+    // the wrapper's clock: a resumed wrapper's beats arrive after the
+    // reactivation write and always pass, whatever the client clock says.
+    if (receivedAt === undefined) return { id: sessionId, archivedAt: null } as const;
+    return { id: sessionId, archivedAt: null, lastActiveAt: { lt: new Date(receivedAt) } } as const;
 }
 
-class ActivityCache {
+/** Exported for tests (two instances = two server processes / blue-green slots). */
+export class ActivityCache {
     private sessionCache = new Map<string, SessionCacheEntry>();
     private machineCache = new Map<string, MachineCacheEntry>();
     private batchTimer: ReturnType<typeof setInterval> | null = null;
@@ -130,7 +141,7 @@ class ActivityCache {
         }
     }
 
-    queueSessionUpdate(sessionId: string, timestamp: number): boolean {
+    queueSessionUpdate(sessionId: string, timestamp: number, receivedAt: number = Date.now()): boolean {
         const cached = this.sessionCache.get(sessionId);
         if (!cached) {
             return false; // Should validate first
@@ -140,6 +151,7 @@ class ActivityCache {
         const timeDiff = Math.abs(timestamp - cached.lastUpdateSent);
         if (timeDiff > this.UPDATE_THRESHOLD) {
             cached.pendingUpdate = timestamp;
+            cached.pendingReceivedAt = receivedAt;
             return true;
         }
         
@@ -152,6 +164,7 @@ class ActivityCache {
         const cached = this.sessionCache.get(sessionId);
         if (!cached) return;
         cached.pendingUpdate = null;
+        cached.pendingReceivedAt = undefined;
     }
 
     queueMachineUpdate(machineId: string, timestamp: number): boolean {
@@ -172,15 +185,16 @@ class ActivityCache {
     }
 
     private async flushPendingUpdates(): Promise<void> {
-        const sessionUpdates: { id: string, timestamp: number }[] = [];
+        const sessionUpdates: { id: string, timestamp: number, receivedAt?: number }[] = [];
         const machineUpdates: { id: string, timestamp: number, userId: string }[] = [];
         
         // Collect session updates
         for (const [sessionId, entry] of this.sessionCache.entries()) {
             if (entry.pendingUpdate) {
-                sessionUpdates.push({ id: sessionId, timestamp: entry.pendingUpdate });
+                sessionUpdates.push({ id: sessionId, timestamp: entry.pendingUpdate, receivedAt: entry.pendingReceivedAt });
                 entry.lastUpdateSent = entry.pendingUpdate;
                 entry.pendingUpdate = null;
+                entry.pendingReceivedAt = undefined;
             }
         }
         
@@ -202,7 +216,7 @@ class ActivityCache {
             try {
                 await Promise.all(sessionUpdates.map(update =>
                     db.session.updateMany({
-                        where: sessionActivityUpdateWhere(update.id),
+                        where: sessionActivityUpdateWhere(update.id, update.receivedAt),
                         data: { lastActiveAt: new Date(update.timestamp), active: true }
                     })
                 ));

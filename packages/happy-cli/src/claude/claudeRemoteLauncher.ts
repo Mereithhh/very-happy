@@ -334,6 +334,7 @@ export async function claudeRemoteLauncher(
         runtimeControls.observe(message);
         backgroundTasks.observe(message);
         session.setBackgroundTasks(backgroundTasks.list());
+        session.scheduledWakeups.observe(message);
         // SDK prompt echoes supply checkpoint UUIDs; the app already owns the user bubble.
         if (isRuntimeCheckpointReplay(message)) return;
 

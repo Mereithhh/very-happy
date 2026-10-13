@@ -53,13 +53,16 @@ import { getInitialMachineMetadata, getStartupCliAvailability } from './machineM
 import { currentWorktreeService } from '@/worktree/service';
 import { WORKTREE_CAPABILITY_VERSION } from '@/worktree/worktreeRpc';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
-import { readSettings, writeSettings } from '@/persistence';
+import { readSettings, updateSettings, writeSettings } from '@/persistence';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
 import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
 import { installCliSafely } from '@/update/npmInstall';
 import { createUpdateController } from '@/update/updateController';
 import { TurnActivityTracker } from '@/update/turnActivity';
+import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
+import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
+import { createAutomationsClient, isAutomationsUnavailable } from '@/automations/client';
 import { BackgroundTaskTracker } from '@/update/backgroundTaskActivity';
 import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
@@ -148,6 +151,8 @@ export async function startDaemon(): Promise<void> {
   let cliUpdateStateRef: CliUpdateState | null = null;
   let lastHandoverHold: string | null = null;
   let claudeCredentialStoreSetting: 'auto' | 'file' = (await readSettings()).claudeCredentialStore === 'file' ? 'file' : 'auto';
+  // B-587: machine-local idle hibernation threshold (undefined = default 6h, 0 = off).
+  let agentHibernationSetting: number | undefined = (await readSettings()).agentHibernationIdleMs;
   // B-478: align the daemon's own CLAUDE_CONFIG_DIR / CODEX_HOME with the
   // user's login shell (and settings.json) before anything reads them.
   try {
@@ -291,6 +296,38 @@ export async function startDaemon(): Promise<void> {
     const backgroundTasks = new BackgroundTaskTracker();
     // B-497: who edited which real path lately, and the conflict notices.
     const peerCoordinator = createPeerCoordinator({ getChildren: () => Array.from(pidToTrackedSession.values()) });
+    // B-587: idle hibernation (spec 2026-10-idle-agent-hibernation). Wrappers
+    // ask, this decides from policy + the trackers above; exits it approved are
+    // recorded as hibernations (offline, restorable for 90 days).
+    const hibernationAutomations = createAutomationsClient({ serverUrl: configuration.serverUrl, token: credentials.token, client: 'daemon-hibernate' });
+    const daemonHibernation = createDaemonHibernation({
+      idleMs: () => resolveIdleMs(agentHibernationSetting),
+      checkMs: resolveCheckMs(),
+      tracked: (sessionId, pid) => {
+        const tracked = pidToTrackedSession.get(pid);
+        if (!tracked || tracked.happySessionId !== sessionId) return null;
+        let live = false;
+        try { process.kill(pid, 0); live = true; } catch { live = false; }
+        return { live, ...(tracked.spawnedBy ? { spawnedBy: tracked.spawnedBy } : {}) };
+      },
+      teamsMember: (sessionId) => teamWorker?.hasSession(sessionId) === true,
+      turnActive: (sessionId) => turnActivity.activeSessions().includes(sessionId),
+      backgroundTasks: (sessionId) => backgroundTasks.count(sessionId),
+      loadAutomationBindings: async () => {
+        try {
+          return await collectAutomationBindings(hibernationAutomations, machineId);
+        } catch (error) {
+          if (isAutomationsUnavailable(error)) return []; // old/gated server: no automations exist
+          throw error;
+        }
+      },
+      log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
+      readKeepAwake: (sessionId) => readPersistedSessions()[sessionId]?.keepAwake === true,
+      writeKeepAwake: (sessionId, value) => {
+        const record = readPersistedSessions()[sessionId];
+        if (record) persistSession(sessionId, { ...record, keepAwake: value || undefined });
+      },
+    });
 
     // Retain session data after process exits so resume can still find it.
     // Pre-populate from disk so sessions survive daemon restarts.
@@ -1166,6 +1203,16 @@ export async function startDaemon(): Promise<void> {
 
     const resumeSessionImpl = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
       try {
+        // B-587 review P1-2: the wrapper we just let hibernate has sent
+        // session-end but may still be exiting. Its pid is not "already
+        // running" — wait for it (bounded) so this wake actually spawns.
+        if (daemonHibernation.pendingExit(happySessionId)) {
+          const dying = [...pidToTrackedSession.entries()].filter(([, s]) => s.happySessionId === happySessionId).map(([pid]) => pid);
+          const exited = await waitForPidsToExit(dying, isPidAlive);
+          logger.debug(`[DAEMON RUN] resume ${happySessionId}: waited for hibernating wrapper(s) ${dying.join(', ')} → ${exited ? 'exited' : 'still alive after timeout'}`);
+          if (!exited) return { type: 'error', errorMessage: `Session ${happySessionId} is still going to sleep; try again in a few seconds.` };
+          for (const pid of dying) if (pidToTrackedSession.has(pid)) onChildExited(pid);
+        }
         for (const [pid, live] of pidToTrackedSession.entries()) {
           if (live.happySessionId !== happySessionId) continue;
           if (isPidAlive(pid)) {
@@ -1491,6 +1538,15 @@ export async function startDaemon(): Promise<void> {
       if (session?.happySessionId) turnActivity.forget(session.happySessionId);
       if (session?.happySessionId) backgroundTasks.forget(session.happySessionId);
       if (session?.happySessionId) peerCoordinator.forget(session.happySessionId);
+      // B-587: an exit we approved is a hibernation — keep the restore record 90 days.
+      if (session?.happySessionId && daemonHibernation.consumeExit(session.happySessionId)) {
+        const persisted = readPersistedSessions()[session.happySessionId];
+        if (persisted) {
+          const at = Date.now();
+          persistSession(session.happySessionId, { ...persisted, savedAt: at, hibernatedAt: at });
+        }
+        logger.debug(`[DAEMON RUN] Session ${session.happySessionId} hibernated (PID ${pid} exited)`);
+      }
       if (session?.happySessionId && session.encryption) {
         sessionIdToFinishedSession.set(session.happySessionId, session);
         logger.debug(`[DAEMON RUN] Process PID ${pid} exited, preserved session ${session.happySessionId} for resume`);
@@ -1600,6 +1656,7 @@ export async function startDaemon(): Promise<void> {
       // B-555: late-bound like the clipboard push — reports before the machine
       // client exists are dropped; the wrapper re-sends on the next change.
       onRateLimits: (report) => { apiMachineRef?.reportRateLimits(report); },
+      onHibernateCheck: (body) => daemonHibernation.check(body),
       listPeers: () => peerCoordinator.list(),
       // B-505: `daemon list` shows which sessions have a turn in flight, so an
       // operator can check the WHOLE machine before a supervised restart.
@@ -1764,6 +1821,15 @@ export async function startDaemon(): Promise<void> {
       setStore: (store) => claudeAuthService.setStore(store),
     });
     claudeAuthService.start();
+
+    // B-587: the machine page's「空闲休眠」setting.
+    apiMachine.setAgentHibernationHandlers(resolveIdleMs(agentHibernationSetting), async (requested) => {
+      const value = requested <= 0 ? 0 : settingIdleMs(requested);
+      await updateSettings((current) => ({ ...current, agentHibernationIdleMs: value }));
+      agentHibernationSetting = value;
+      daemonHibernation.invalidateBindings();
+      return resolveIdleMs(agentHibernationSetting);
+    });
 
     // Connect to server
     apiMachine.connect();
@@ -1986,6 +2052,17 @@ export async function startDaemon(): Promise<void> {
       live: id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid)),
       turnActive: id => turnActivity.activeSessions().includes(id),
       backgroundTasks: id => backgroundTasks.count(id),
+      // B-587 review P2-5: a hibernated target is woken (resume) and the send
+      // waits until its wrapper is back; anything else stays session_not_live.
+      isHibernated: (id) => {
+        const record = readPersistedSessions()[id];
+        return !!record && typeof record.hibernatedAt === 'number' && record.hibernatedAt >= record.savedAt;
+      },
+      wakeHibernated: async (id) => {
+        const result = await resumeSession(id);
+        if (result.type !== 'success') return false;
+        return waitForSessionLive(id, (sid) => [...pidToTrackedSession.values()].some(s => s.happySessionId === sid && isPidAlive(s.pid)));
+      },
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
 

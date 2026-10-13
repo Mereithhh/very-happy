@@ -9,6 +9,7 @@ import type { SandboxConfig } from "@/persistence";
 import { NotificationProducer } from "./notificationProducer";
 import { notifyDaemonSessionEvent } from "@/daemon/controlClient";
 import { sameBackgroundTasks, type BackgroundTaskInfo } from "./backgroundTasks";
+import { createScheduledWakeupTracker } from "@/hibernation/scheduledWakeups";
 import type { ClaudePrewarmLease } from "./claudePrewarm";
 
 export type ClaudeSteerInput = {
@@ -43,6 +44,8 @@ export class Session {
      *  for the Claude runner: an empty one says "nothing running", which is a
      *  different statement from a runner that has no such notion (undefined). */
     backgroundTasks: BackgroundTaskInfo[] = [];
+    /** B-587 review P3-4: CronCreate / ScheduleWakeup pending in this Claude process. */
+    readonly scheduledWakeups = createScheduledWakeupTracker();
 
     /**
      * Window after a user-initiated abort during which stray promise rejections

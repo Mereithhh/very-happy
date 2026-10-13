@@ -4502,6 +4502,26 @@ export const en = {
         notLoaded: 'Conversation not loaded in this tab yet',
     },
 
+    // B-587: idle agent hibernation (banner / sidebar / machine page / ⋯ menu)
+    hibernation: {
+        notice: 'Hibernated to free memory. Send a message or wake it to continue.',
+        waking: 'Waking up…',
+        wakingSlow: 'Waking up — the machine has not answered yet…',
+        wake: 'Wake',
+        rowLabel: 'Hibernated',
+        keepAwake: 'Keep awake',
+        keepAwakeOn: 'This session will not hibernate',
+        keepAwakeOff: 'This session can hibernate when idle',
+        keepAwakeFailed: 'Could not change keep awake',
+        machineTitle: 'Idle hibernation',
+        machineFooter: 'Idle Claude / Codex chats are stopped to free memory and wake automatically when opened or messaged. Sessions running, waiting for approval, with background tasks, in Teams, reused by Automations or kept awake are never stopped.',
+        off: 'Off',
+        afterHours: ({ hours }: { hours: number }) => (hours === 1 ? 'After 1 hour' : `After ${hours} hours`),
+        afterCustom: ({ text }: { text: string }) => `After ${text}`,
+        saved: 'Idle hibernation updated',
+        saveFailed: 'Could not update idle hibernation',
+    },
+
 } as const;
 
 export type Translations = typeof en;

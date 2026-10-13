@@ -1317,5 +1317,24 @@ export const zhHant: PartialTranslationStructure = {
 
     // open_preview 推送：檔案預覽浮層（B-131）
 
+    // B-587: 閒置休眠
+    hibernation: {
+        notice: '已休眠以釋放記憶體。傳送訊息或點「喚醒」繼續。',
+        waking: '正在喚醒…',
+        wakingSlow: '正在喚醒，機器尚未回應…',
+        wake: '喚醒',
+        rowLabel: '已休眠',
+        keepAwake: '保持喚醒',
+        keepAwakeOn: '此工作階段不會休眠',
+        keepAwakeOff: '此工作階段閒置時可以休眠',
+        keepAwakeFailed: '無法變更保持喚醒',
+        machineTitle: '閒置休眠',
+        machineFooter: '閒置的 Claude / Codex 對話會被停下以釋放記憶體，開啟或傳送訊息時自動喚醒。執行中、等待核准、有背景任務、屬於團隊、被自動化重用或標為保持喚醒的工作階段不會被停下。',
+        off: '關閉',
+        afterHours: ({ hours }: { hours: number }) => `${hours} 小時後`,
+        afterCustom: ({ text }: { text: string }) => `${text}後`,
+        saved: '已更新閒置休眠設定',
+        saveFailed: '無法更新閒置休眠設定',
+    },
 
 } as const;

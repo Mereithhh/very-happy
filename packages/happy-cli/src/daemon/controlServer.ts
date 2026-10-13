@@ -20,6 +20,39 @@ import { BACKGROUND_TASKS_MAX, BACKGROUND_TASK_DESCRIPTION_MAX } from '@/claude/
 import type { BackgroundTasksReport } from '@/update/backgroundTaskActivity';
 import { sanitizeRateLimitReport, type RateLimitReport } from '@/rateLimits/rateLimitWindows';
 
+// B-587: lenient on purpose — a newer wrapper may report more fields.
+const WrapperIdleSnapshotSchema = z.object({
+  flavor: z.string().max(64),
+  resumable: z.boolean(),
+  uiSession: z.boolean(),
+  variant: z.string().max(64).optional(),
+  spawnedBy: z.string().max(64).optional(),
+  tags: z.array(z.string().max(128)).max(64).optional(),
+  keepAwake: z.boolean(),
+  keepAwakeSetting: z.boolean().optional(),
+  thinking: z.boolean(),
+  queuedInputs: z.number().int().nonnegative(),
+  waitingForInput: z.boolean(),
+  pendingRequests: z.number().int().nonnegative(),
+  backgroundTasks: z.number().int().nonnegative(),
+  scheduledWakeups: z.number().int().nonnegative().optional(),
+  lastActivityAt: z.number(),
+  exiting: z.boolean().optional(),
+}).passthrough();
+const HibernateCheckBodySchema = z.object({
+  sessionId: z.string().min(1).max(200),
+  pid: z.number().int().positive(),
+  report: WrapperIdleSnapshotSchema,
+});
+export type HibernateCheckBody = z.infer<typeof HibernateCheckBodySchema>;
+export interface HibernateCheckReply {
+  hibernate: boolean;
+  reason?: string;
+  idleMs?: number;
+  nextCheckMs?: number;
+  keepAwake?: boolean;
+}
+
 const BackgroundTaskInfoSchema = z.object({
   id: z.string().min(1).max(200),
   type: z.string().max(64),
@@ -54,7 +87,8 @@ export function startDaemonControlServer({
   onSessionEdit,
   listPeers,
   isTurnActive,
-  onRateLimits
+  onRateLimits,
+  onHibernateCheck
 }: {
   /** Fresh per-process bearer token persisted in the private daemon state. */
   controlToken: string;
@@ -109,6 +143,9 @@ export function startDaemonControlServer({
   /** B-555: a wrapper observed subscription rate-limit windows (already
    *  sanitized). Optional so older wirings/tests keep working. */
   onRateLimits?: (report: RateLimitReport) => void;
+  /** B-587: an idle wrapper asks whether it may hibernate. Absent → 404, the
+   *  wrapper backs off (same as an old daemon). */
+  onHibernateCheck?: (body: HibernateCheckBody) => Promise<HibernateCheckReply> | HibernateCheckReply;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -216,6 +253,31 @@ export function startDaemonControlServer({
       onSessionStateEvent?.(sessionId, event, spawnedBy);
       return { status: 'ok' as const };
     });
+
+    // B-587: idle hibernation check-in (spec 2026-10-idle-agent-hibernation §1).
+    if (onHibernateCheck) {
+      typed.post('/session-hibernate-check', {
+        schema: {
+          body: HibernateCheckBodySchema,
+          response: {
+            200: z.object({
+              hibernate: z.boolean(),
+              reason: z.string().optional(),
+              idleMs: z.number().optional(),
+              nextCheckMs: z.number().optional(),
+              keepAwake: z.boolean().optional(),
+            }),
+          },
+        },
+      }, async (request) => {
+        try {
+          return await onHibernateCheck(request.body);
+        } catch (error) {
+          logger.debug('[CONTROL SERVER] hibernate check failed:', error);
+          return { hibernate: false, reason: 'error' };
+        }
+      });
+    }
 
     // List all tracked sessions
     typed.post('/list', {

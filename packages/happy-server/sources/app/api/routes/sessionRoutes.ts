@@ -449,6 +449,10 @@ export function sessionRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
+        // B-587: drop this instance's queued beat BEFORE the write; beats
+        // already in flight / on another instance are stopped by the flush's
+        // `lastActiveAt < receivedAt` guard against the `now` written here.
+        activityCache.discardSessionUpdate(sessionId);
         const now = new Date();
         const result = await db.session.updateMany({
             where: { id: sessionId, accountId: userId },

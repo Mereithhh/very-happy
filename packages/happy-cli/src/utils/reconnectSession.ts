@@ -10,6 +10,7 @@
  * side is `api.getSession` and the wiring lives in runClaude / runCodex.
  */
 import type { AgentState, Metadata, Session } from '@/api/types';
+import { hibernationReplaySeq } from '@/hibernation/hibernationPolicy';
 
 /** Metadata keys a freshly started process has authority over. Anything else
  *  comes from the server copy. */
@@ -56,6 +57,8 @@ export function mergeReconnectMetadata(server: Metadata, local: Metadata, now: n
         lifecycleStateSince: now,
         archivedBy: undefined,
         archiveReason: undefined,
+        // B-587: awake again — the hibernation stamp no longer describes us.
+        hibernation: undefined,
     };
 }
 
@@ -86,4 +89,19 @@ export function applyServerSnapshot(response: Session, snapshot: ServerSessionSn
  *  pulls the server copy before applying the merge. */
 export function withoutServerSnapshot(response: Session): Session {
     return { ...response, metadataVersion: 0, agentStateVersion: 0 };
+}
+
+/**
+ * B-587: waking a HIBERNATED session. The previous wrapper exited with an
+ * empty input queue and stamped its message cursor; anything stored after it
+ * (a message sent to the "offline" session from an old web, a peer notice, a
+ * message that raced the hibernation) was never routed. Start the cursor at
+ * the stamp so those records are routed now, and tell the caller to skip the
+ * B-332 undelivered-queue scan — there was no in-memory queue to lose, and the
+ * scan would tombstone the very messages being replayed.
+ */
+export function applyHibernationReplay(response: Session): { response: Session; replaying: boolean } {
+    const replaySeq = hibernationReplaySeq(response.metadata, response.seq);
+    if (replaySeq === null) return { response, replaying: false };
+    return { response: { ...response, seq: replaySeq }, replaying: true };
 }
