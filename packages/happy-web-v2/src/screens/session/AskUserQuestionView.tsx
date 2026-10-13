@@ -38,6 +38,7 @@ function QuestionBlock({
     onChange,
     onSubmit,
     onOptionPicked,
+    onOtherInteraction,
 }: {
     q: AskQuestion;
     disabled: boolean;
@@ -48,6 +49,8 @@ function QuestionBlock({
     onSubmit: (labels: string[]) => void;
     /** B-564: a single-select OPTION (not 「other」) was picked in deferred mode. */
     onOptionPicked?: () => void;
+    /** B-564: the user turned to 「other」 — a pending auto-advance must not fire. */
+    onOtherInteraction?: () => void;
 }) {
     const { t } = useTranslation();
     const [showOther, setShowOther] = useState(false);
@@ -104,7 +107,10 @@ function QuestionBlock({
                     className={`tv-ask-opt tv-ask-opt--other${showOther ? ' tv-ask-opt--selected' : ''}`}
                     disabled={disabled}
                     aria-expanded={showOther}
-                    onClick={() => setShowOther((current) => !current)}
+                    onClick={() => {
+                        onOtherInteraction?.();
+                        setShowOther((current) => !current);
+                    }}
                 >
                     <span className="tv-ask-opt-label">
                         <MessageCircle size={13} />
@@ -122,6 +128,7 @@ function QuestionBlock({
                         placeholder={t('tools.askUserQuestion.otherPlaceholder')}
                         onChange={(event) => {
                             const value = event.target.value;
+                            onOtherInteraction?.();
                             setOtherText(value);
                             if (deferSubmit) onChange(value.trim() ? [value.trim()] : []);
                         }}
@@ -206,6 +213,7 @@ export function AskUserQuestionOptions({
                 if (!shouldAutoAdvance({ multi: q.multiSelect === true, other: false, index: i, total })) return;
                 advanceTimer.current = setTimeout(() => setStep(i + 1), ASK_AUTO_ADVANCE_MS);
             } : undefined}
+            onOtherInteraction={stepper ? cancelAdvance : undefined}
         />
     );
     if (stepper) {

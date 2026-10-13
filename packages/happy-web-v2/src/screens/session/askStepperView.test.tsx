@@ -80,6 +80,16 @@ describe('B-564 multi-question stepper', () => {
         expect(option(host, 'Postgres').className).toContain('tv-ask-opt--selected');
     });
 
+    it('turning to 「other」 within the beat cancels the pending auto-advance', () => {
+        vi.useFakeTimers();
+        const { host } = mount(questions);
+        act(() => option(host, 'Postgres').click());
+        act(() => [...visiblePane(host).querySelectorAll<HTMLButtonElement>('.tv-ask-opt--other')][0].click());
+        act(() => { vi.advanceTimersByTime(500); });
+        expect(visiblePane(host).textContent).toContain('Which DB?');
+        expect(visiblePane(host).querySelector('textarea')).not.toBeNull();
+    });
+
     it('a single question keeps the immediate click-to-submit behaviour', () => {
         const { host, onSubmit } = mount([questions[0]]);
         expect(host.querySelector('.tv-ask-steps')).toBeNull();
