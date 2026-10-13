@@ -27,6 +27,7 @@ import { ReviewDiffPane } from './diffComments/ReviewDiffPane';
 import { DiffCommentsBar } from './diffComments/DiffCommentsBar';
 import { ReviewAllPane } from './reviewAll/ReviewAllPane';
 import { REVIEW_ALL_PARAM, REVIEW_TAB_ID, reviewFileList } from './reviewAll/reviewAllModel';
+import { GitActionsBar } from './git/GitActionsBar';
 import './files.css';
 
 export type FilesPanelTab = 'changed' | 'all' | 'browse';
@@ -251,6 +252,8 @@ function FilesPanelContent({
                     )
                 ) : (
                     <>
+                        {effectiveTab === 'changed' && <GitActionsBar sessionId={sessionId} gitStatus={gitStatusFiles} active={active && selected === null}
+                            onRefresh={() => void refresh()} onHandedOff={panelInline ? undefined : onClose}/>}
                         <div className="fp-list">
                             {isLoading ? (
                                 <div className="fp-empty"><Spinner size={16} /></div>
