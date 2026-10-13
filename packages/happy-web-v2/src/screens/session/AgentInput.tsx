@@ -107,6 +107,8 @@ import { getAgentDefaultOverride } from '@/sync/agentDefaults';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { yieldForSendFeedback } from './sendFeedback';
+import { focusAfterSend, type SendOutcome } from './composerSendFocus';
+import { useReconnectingHint } from './useReconnectingHint';
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
 // historical unconditional refocus (mouse-clicking Send should return the
@@ -229,6 +231,8 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         if (serverQueue) void loadPromptQueue(sessionId);
     }, [serverQueue, sessionId]);
     const hasPendingPermission = Object.keys(session?.agentState?.requests ?? {}).length > 0;
+    // B-568: socket down ≥1.5s → the placeholder says so (input stays usable).
+    const reconnecting = useReconnectingHint();
     // B-283: `/btw` is a WEB command (never sent to the CLI) — list it first on
     // any Claude session; the panel itself explains when the wrapper is too old.
     const slashSuggestions = dismissedSlashText === text
@@ -529,6 +533,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         let takenAttachments: QueuedMessage['attachments'];
         let draftTaken = false;
         let queueOwnsItem = false;
+        let outcome: SendOutcome = 'failed';
         try {
             // Take only this submission before yielding. The user may start a
             // new draft or attach another file while the request is in flight.
@@ -585,17 +590,20 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                     setQueued(next);
                 }
                 queueOwnsItem = true;
+                outcome = 'queued';
                 if (gate === 'restore-first') void restoreSession(sessionId);
                 return;
             }
 
             if (queueOwnsItem) {
                 // Its existing restore/idle gate owns eventual queue delivery.
+                outcome = 'queued';
                 if (gate === 'restore-first') void restoreSession(sessionId);
                 return;
             }
 
             await sendQueuedItem(makeItem(), delivery);
+            outcome = 'sent';
         } catch {
             // Preserve the exact failed draft and any text/files composed
             // meanwhile, including attachment-only sends and preflight errors.
@@ -609,9 +617,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         } finally {
             sendingRef.current = false;
             setSending(false);
-            if (hadFocus || !IS_COARSE_POINTER) {
-                requestAnimationFrame(() => taRef.current?.focus());
-            }
+            // B-568: a touch send that reached the agent puts the keyboard away;
+            // queued/failed sends keep the B-114 rule (composerSendFocus.ts).
+            const caret = focusAfterSend({ coarse: IS_COARSE_POINTER, hadFocus, outcome });
+            if (caret === 'focus') requestAnimationFrame(() => taRef.current?.focus());
+            else if (caret === 'blur') taRef.current?.blur();
         }
     };
 
@@ -1151,7 +1161,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                     className="ci-textarea"
                     value={text}
                     rows={1}
-                    placeholder={t('session.inputPlaceholder')}
+                    placeholder={reconnecting ? t('session.reconnectingPlaceholder') : t('session.inputPlaceholder')}
                     onChange={(e) => { draftRef.current = e.target.value; setText(e.target.value); }}
                     onKeyDown={onKeyDown}
                     onPaste={onPaste}

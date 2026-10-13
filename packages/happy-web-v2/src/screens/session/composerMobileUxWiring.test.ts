@@ -1,0 +1,57 @@
+/**
+ * B-563 / B-568 wiring (source assertions, comments stripped first; verified
+ * with scripts/dev/mutation-check.mjs).
+ */
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+const read = (name: string) => readFileSync(new URL(name, import.meta.url), 'utf8')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/^\s*\/\*[\s\S]*?\*\//gm, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+describe('B-563 the pending-request dock sits above the composer', () => {
+    const screen = read('./SessionDetailScreen.tsx');
+    const chatList = read('./ChatList.tsx');
+    it('renders PermissionCard in the foot between the sub-agent strip and the composer', () => {
+        const dock = screen.indexOf('{session && <PermissionCard key={id} sessionId={id} />}');
+        expect(dock).toBeGreaterThan(screen.indexOf('{session && <SubagentDock sessionId={id} />}'));
+        expect(dock).toBeLessThan(screen.indexOf('<AgentInput\n'));
+        expect(dock).toBeGreaterThan(screen.indexOf('<div className="sd-foot">'));
+    });
+    it('keeps only a pointer in the transcript (no second actionable card)', () => {
+        expect(chatList).not.toMatch(/<PermissionCard\b/);
+        expect(chatList.match(/<PermissionPointer sessionId=\{sessionId\} \/>/g)).toHaveLength(2);
+    });
+    it('the transcript AskUserQuestion is a read-only receipt while the dock owns it', () => {
+        const toolView = read('./ToolView.tsx');
+        expect(toolView).toContain('const pinned = usePinnedRequest(sessionId, livePendingId);');
+        expect(toolView).toContain('if (pinned && !answered) {');
+    });
+});
+
+describe('B-568 composer wiring', () => {
+    const input = read('./AgentInput.tsx');
+    it('a direct send records outcome sent; both queue paths record queued', () => {
+        expect(input).toMatch(/await sendQueuedItem\(makeItem\(\), delivery\);\s+outcome = 'sent';/);
+        expect(input).toMatch(/queueOwnsItem = true;\s+outcome = 'queued';\s+if \(gate === 'restore-first'\)/);
+        expect(input).toMatch(/if \(queueOwnsItem\) \{\s+outcome = 'queued';/);
+    });
+    it('the caret decision comes from focusAfterSend', () => {
+        expect(input).toContain('const caret = focusAfterSend({ coarse: IS_COARSE_POINTER, hadFocus, outcome });');
+        expect(input).toContain("else if (caret === 'blur') taRef.current?.blur();");
+    });
+    it('the placeholder switches while reconnecting', () => {
+        expect(input).toContain("placeholder={reconnecting ? t('session.reconnectingPlaceholder') : t('session.inputPlaceholder')}");
+    });
+    it('the reconnect hint reads the existing socketStatus only (AGENTS 13)', () => {
+        const hook = read('./useReconnectingHint.ts');
+        expect(hook).toContain('const status = useSocketStatus();');
+        expect(hook).not.toMatch(/addEventListener|visibilitychange|onfocus|io\.open/);
+    });
+    it('attachments are downscaled only for eligible images', () => {
+        const att = read('./useAttachments.ts');
+        expect(att).toContain('const target = shouldDownscaleImage(file.type) ? computeImageDownscale(width, height) : null;');
+        expect(att).toContain('const smaller = await redrawImage(uri, file.type, file.size, target);');
+    });
+});

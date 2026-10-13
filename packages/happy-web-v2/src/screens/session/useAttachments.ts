@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
 import { generateThumbhash } from '@/utils/thumbhash';
+import { computeImageDownscale, redrawImage, shouldDownscaleImage } from './imageDownscale';
 
 let attachmentSeq = 0;
 
@@ -56,7 +57,7 @@ async function fileToPreview(
     ownUrl: (uri: string) => void,
     disownUrl: (uri: string) => void,
 ): Promise<AttachmentPreview | null> {
-    const uri = URL.createObjectURL(file);
+    let uri = URL.createObjectURL(file);
     ownUrl(uri);
     try {
         const isPreviewableImage = SUPPORTED_IMAGE_MIME_TYPES.includes(
@@ -73,7 +74,7 @@ async function fileToPreview(
                 mimeType: file.type || 'application/octet-stream',
             };
         }
-        const { width, height } = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const natural = await new Promise<{ width: number; height: number }>((resolve, reject) => {
             const img = new Image();
             const timeout = setTimeout(() => reject(new Error('timeout')), 5000);
             img.onload = () => {
@@ -86,13 +87,32 @@ async function fileToPreview(
             };
             img.src = uri;
         });
+        let width = natural.width;
+        let height = natural.height;
+        let size = file.size;
+        // B-568: cap the long edge at 2000px before upload (jpeg/png/webp only;
+        // any failure keeps the original file).
+        const target = shouldDownscaleImage(file.type) ? computeImageDownscale(width, height) : null;
+        if (target) {
+            const smaller = await redrawImage(uri, file.type, file.size, target);
+            if (smaller) {
+                const nextUri = URL.createObjectURL(smaller);
+                ownUrl(nextUri);
+                URL.revokeObjectURL(uri);
+                disownUrl(uri);
+                uri = nextUri;
+                width = target.width;
+                height = target.height;
+                size = smaller.size;
+            }
+        }
         const thumbhash = width > 0 && height > 0 ? await generateThumbhash(uri, width, height) : undefined;
         return {
             id: `att-${attachmentSeq++}-${Date.now()}`,
             uri,
             width,
             height,
-            size: file.size,
+            size,
             name: file.name || `paste_${Date.now()}.png`,
             mimeType: file.type || 'image/png',
             thumbhash,
