@@ -71,9 +71,12 @@ export function pushTargetKey(data: Record<string, unknown>): string | null {
 
 export type SeenMap = Record<string, number>;
 
+/** Larger blobs are treated as empty — the web prunes to ≤800 keys (~40KB). */
+export const SEEN_KV_MAX_BYTES = 64 * 1024;
+
 /** Tolerant decode of the raw KV bytes (`{"seen":{...}}`); junk → {}. */
 export function parseSeenKvValue(raw: Uint8Array | null | undefined): SeenMap {
-    if (!raw || raw.length === 0) return {};
+    if (!raw || raw.length === 0 || raw.length > SEEN_KV_MAX_BYTES) return {};
     let obj: unknown;
     try {
         obj = JSON.parse(Buffer.from(raw).toString('utf8'));
@@ -87,6 +90,21 @@ export function parseSeenKvValue(raw: Uint8Array | null | undefined): SeenMap {
         if (!key || typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue;
         out[key] = value;
     }
+    return out;
+}
+
+/**
+ * Clamp every seen stamp to `writtenAt` — the KV row's `updatedAt`, i.e. SERVER
+ * time of the last write. Stamps come from device clocks; a device running
+ * fast would otherwise write a "seen" in the future that covers (and lets the
+ * SW close) notifications for events that happen after the visit — including
+ * an unanswered decision request. Nothing can have been seen after it was
+ * written to the server.
+ */
+export function capSeenAt(seen: SeenMap, writtenAt: number): SeenMap {
+    if (!Number.isFinite(writtenAt) || writtenAt <= 0) return seen;
+    const out: SeenMap = {};
+    for (const [key, at] of Object.entries(seen)) out[key] = Math.min(at, writtenAt);
     return out;
 }
 

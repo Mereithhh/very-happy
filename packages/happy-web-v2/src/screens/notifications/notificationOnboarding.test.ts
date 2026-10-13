@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeTestPushResult, shouldOfferNotificationOptIn, testPushUnavailable, type OptInGateInput } from './notificationOnboarding';
+import { describeTestPushResult, runNotificationOptIn, shouldOfferNotificationOptIn, testPushUnavailable, type OptInGateInput } from './notificationOnboarding';
 
 const base: OptInGateInput = {
     supported: true,
@@ -42,5 +42,28 @@ describe('describeTestPushResult (B-570)', () => {
         expect(testPushUnavailable({ kind: 'unsupported' })).toBe(true);
         expect(testPushUnavailable({ kind: 'error' })).toBe(false);
         expect(testPushUnavailable(null)).toBe(false);
+    });
+});
+
+describe('runNotificationOptIn (review #5)', () => {
+    it('requests permission first, then subscribes', async () => {
+        const order: string[] = [];
+        const out = await runNotificationOptIn({
+            requestPermission: async () => { order.push('perm'); return 'granted'; },
+            enablePush: async () => { order.push('push'); return true; },
+        });
+        expect(out).toBe('enabled');
+        expect(order).toEqual(['perm', 'push']);
+    });
+    it('subscription failure or throw → failed, never rejects', async () => {
+        await expect(runNotificationOptIn({ requestPermission: async () => 'granted', enablePush: async () => false })).resolves.toBe('failed');
+        await expect(runNotificationOptIn({ requestPermission: async () => 'granted', enablePush: async () => { throw new Error('subscribe'); } })).resolves.toBe('failed');
+        await expect(runNotificationOptIn({ requestPermission: async () => { throw new Error('x'); }, enablePush: null })).resolves.toBe('failed');
+        await expect(runNotificationOptIn({ requestPermission: async () => 'granted', enablePush: null })).resolves.toBe('failed');
+    });
+    it('denied → denied without subscribing', async () => {
+        let called = false;
+        await expect(runNotificationOptIn({ requestPermission: async () => 'denied', enablePush: async () => { called = true; return true; } })).resolves.toBe('denied');
+        expect(called).toBe(false);
     });
 });

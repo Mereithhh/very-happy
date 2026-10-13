@@ -29,6 +29,7 @@ import { sendPushNotifications } from "@/app/push/pushSend";
 import { parseWebPushToken, sendWebPush, webPushConfigured } from "@/app/push/webPush";
 import {
     buildWebPushPayload,
+    capSeenAt,
     parseSeenKvValue,
     pushTargetKey,
     webPushTopic,
@@ -38,6 +39,7 @@ import {
 import {
     WEBHOOK_TOKEN_PREFIX,
     buildWebhookPayload,
+    isWebhookTokenCorrupt,
     logWebhookResult,
     mapKindToWebhookEvent,
     parseWebhookToken,
@@ -117,9 +119,11 @@ async function loadSeenWatermark(userId: string): Promise<SeenMap | null> {
     try {
         const row = await db.userKVStore.findUnique({
             where: { accountId_key: { accountId: userId, key: NOTIFICATION_SEEN_KV_KEY } },
-            select: { value: true },
+            select: { value: true, updatedAt: true },
         });
-        const seen = parseSeenKvValue(row?.value ?? null);
+        if (!row) return null;
+        // Device clocks may run fast: cap stamps at the server write time.
+        const seen = capSeenAt(parseSeenKvValue(row.value), row.updatedAt.getTime());
         return Object.keys(seen).length > 0 ? seen : null;
     } catch (error) {
         log({ module: 'push', level: 'warn', error }, 'Seen watermark load failed; sending without it');
@@ -207,8 +211,15 @@ async function sendWebhooks(
     await Promise.all(tokens.map(async (t) => {
         const config = parseWebhookToken(t.token);
         if (!config) {
-            // Malformed stored webhook config — prune it (mirrors web push).
-            await pruneToken(t.id);
+            // Only a CORRUPT blob (unparseable JSON / no url) is deleted. A
+            // config that merely fails today's URL rules (rules can tighten
+            // after it was saved) is skipped and kept — never silently drop a
+            // user's saved webhook because validation changed.
+            if (isWebhookTokenCorrupt(t.token)) {
+                await pruneToken(t.id);
+            } else {
+                log({ module: 'push', level: 'warn', userId: params.userId }, 'Webhook config failed validation; skipped (kept)');
+            }
             return;
         }
         if (!event || !payload) {

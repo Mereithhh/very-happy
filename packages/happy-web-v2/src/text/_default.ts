@@ -183,6 +183,7 @@ export const en = {
         optInClose: 'Close',
         optInEnabledTitle: 'Notifications are on',
         optInEnabledBody: 'This is what an alert from Very Happy looks like.',
+        optInFailed: 'Could not turn on notifications. You can retry in Settings → Notifications.',
         types: 'Alert Types',
         typesDescription: 'Choose which session events trigger a notification.',
         type_permission_request: 'Permission requests',

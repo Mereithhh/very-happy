@@ -4,7 +4,9 @@ import {
     TTL_COMPLETION_S,
     TTL_DECISION_S,
     TTL_TEST_S,
+    SEEN_KV_MAX_BYTES,
     buildWebPushPayload,
+    capSeenAt,
     parseSeenKvValue,
     pushTargetKey,
     selectSeenWatermark,
@@ -61,6 +63,20 @@ describe('parseSeenKvValue', () => {
         expect(parseSeenKvValue(new TextEncoder().encode('not json'))).toEqual({});
         expect(parseSeenKvValue(enc({ seen: [1, 2] }))).toEqual({});
         expect(parseSeenKvValue(null)).toEqual({});
+    });
+    it('treats an oversized blob (>64KB) as empty (review #4)', () => {
+        const seen: Record<string, number> = {};
+        for (let i = 0; i < 3000; i++) seen[`session-${i}-${'x'.repeat(10)}`] = 1_700_000_000_000 + i;
+        const raw = enc({ seen });
+        expect(raw.length).toBeGreaterThan(SEEN_KV_MAX_BYTES);
+        expect(parseSeenKvValue(raw)).toEqual({});
+    });
+});
+
+describe('capSeenAt (review #1)', () => {
+    it('clamps future stamps to the server write time, keeps older ones', () => {
+        expect(capSeenAt({ a: 500, b: 90 }, 100)).toEqual({ a: 100, b: 90 });
+        expect(capSeenAt({ a: 500 }, NaN)).toEqual({ a: 500 });
     });
 });
 

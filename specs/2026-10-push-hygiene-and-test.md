@@ -92,13 +92,17 @@ push 处理：
 - `dispatchSessionEventPush` / `dispatchDeviceEventPush` 在确定要发 Web Push 后读一次（每次派发一次查询，`findUnique` 走唯一索引）；读失败/无记录 → 不带 `seen`。
 - `selectSeenWatermark(seen, now, budgetBytes)`（纯函数）：只取近 7 天（与 24h TTL + 通知栏滞留匹配）、按 lastSeen 新→旧、最多 40 条，并在字节预算内贪心加入。预算 = 3500 − 基础 payload 的 UTF-8 字节数（Web Push 单条明文上限约 3993 字节，留余量）；预算不足时整段省略。
 - payload：顶层 `sentAt`（server 毫秒）与 `seen`（`{key: ms}`）。放顶层而非 `data`：`data` 来自 CLI，顶层是 server 独占，不会撞名。
+- **时钟封顶**（review #1）：每个 seen 值取 `min(seen, KV 行 updatedAt)`。updatedAt 是 server 写入时刻；设备时钟偏快写出的「未来 seen」否则会覆盖之后才发生的事件（包括未处理的决策请求）并被 SW 关掉。
+- KV 原始值 >64KB 直接当空（web 端已裁到 ≤800 key，约 40KB；超出说明数据异常）。
+- **语义（有意为之）**：用户在任一设备看过某会话后，该会话此前的通知——**包括尚未决策的「需要你决策」**——都会在下一条推送到达时被清掉。理由：用户已进入会话，待处理的请求在 app 内仍然可见（会话页、铃铛、看板），系统通知栏只承担「提醒」，不是待办列表。
 - 时间模型与通知中心一致：通知 createdAt 用 server 时间，seen 戳是看过的设备的本地时间（`notificationSeen.ts` 已接受同样的偏差，`arrivalStampAt` 限制前向偏移 120s）。
 
 ### D4 测试通知（B-570 ①）
 
 - server `POST /v1/push/test`（`app.authenticate`）：body `{ title?: ≤100, body?: ≤300 }`（Web 传本地化文案，缺省用英文默认）。`createAccountRateLimiter({ max: 1, windowMs: 10_000 })` → 超限 429 `{ error: 'rate_limited' }`。
 - 派发 `sendTestWebPush(userId, copy)`（`pushDispatch.ts`）：不做在线抑制（用户正在页面上点它）；只发 `webpush:` 订阅；data `{ kind: 'test', url: '/settings/notifications' }`，Topic = `webPushTopic('test')`，TTL 300s；过期/坏订阅删除同现有逻辑。
-- 修复既有 bug：`pruneToken()` 统一 settle 删除（Web Push 路径 await，Expo 路径 fire-and-forget 但会执行）；回归测试用惰性 thenable 模拟 Prisma。
+- 修复既有 bug：`pruneToken()` 统一 settle 删除（review #2 收窄）：Web Push 只在 404/410 或订阅 JSON 损坏时删；**webhook 配置只在 JSON 损坏/缺 url 时删**（`isWebhookTokenCorrupt`），仅不满足当前 URL 校验规则的旧配置跳过并打日志、保留（铁律 4：新规则不能破坏旧数据——修好 deleteMany 后，原「parse 失败即删」会把规则收紧前保存的 webhook 静默删掉）。
+  删除执行方式：`pruneToken()` 统一 settle 删除（Web Push 路径 await，Expo 路径 fire-and-forget 但会执行）；回归测试用惰性 thenable 模拟 Prisma。
 - 返回 200 `{ configured, total, sent, failed, pruned }`：`configured=false`（无 VAPID）时 total 照数、sent=0。
 - Web `apiPush.sendTestPush()` 结果联合：`ok`(计数) / `unsupported`(404) / `rate-limited`(429) / `error`。纯函数 `describeTestPushResult()` 映射成文案 key：
   - `sent>0` →「已发送到 N 个设备」（`failed>0` 时追加失败数）；
@@ -115,6 +119,7 @@ push 处理：
 - 与 PWA 安装卡互斥：`PwaInstallPrompt` 在 guide 变化时写一个小的模块级可见性信号（`app/pwaInstallVisibility.ts`），引导卡订阅之；装卡显示期间引导卡让位。PWA 安装（`appinstalled` 或 standalone 启动）后安装卡消失，引导卡随即可出现——满足「PWA 安装后」的时机。
 - 预览：卡内两条静态示例通知（「需要你决策」「跑完了」样式，标明「示例」），`aria-hidden`，减少动态效果时无动画。
 - 「开启通知」按钮：点击处理的**第一个异步调用**就是 `requestNotificationPermission()`（内部第一步即 `Notification.requestPermission()`，满足 iOS 用户手势要求）；granted → `enableWebPush(credentials)` → 用 `registration.showNotification` 弹一条本地「通知已开启」预览（tag `vh-test`，失败忽略）→ 关卡；denied → 关卡（之后 gate 永不再显示）。
+- 授权后订阅/上报失败（返回 false 或抛错）→ toast「开启失败，可在 设置 → 通知 里重试」，卡片关闭；流程封装为 `runNotificationOptIn`，永不 reject（review #5）。
 - 「以后再说」/ ×：写 `vh-notif-optin-dismissed-v1 = 1`（try/catch；存储不可用时仅本次隐藏）。
 
 ## 兼容矩阵与发布顺序
@@ -136,7 +141,7 @@ CLI 不涉及：CLI 只调用既有 `/v1/sessions/:id/push-event`、`/v1/webhook
 ## 风险
 
 1. **水位清理依赖下一条推送**：B 设备若之后再没收到任何推送，旧通知不会被清。iOS 禁止静默推送，接受；打开应用后本机 `systemNotificationDismiss` 仍会清。
-2. **时钟偏差**：seen 戳是设备本地时钟。设备时钟超前时可能把略早的通知判为已读而关掉——只影响「旧」通知，本条推送被排除（先清后显 + 排除本 tag），最坏是早关一条旧横幅；接受。
+2. **时钟偏差**：seen 戳是设备本地时钟。server 用 KV 行 `updatedAt` 封顶（见 D3），偏快的设备不能覆盖写入之后的事件；剩余偏差只可能让写入前、略晚于真实访问时刻的旧通知被清，且本条推送永远被排除（先清后显 + 排除本 tag）；接受。
 3. **payload 体积**：`seen` 有 3500 字节总预算与 40 条上限，预算不足整段省略；CLI 传来的超大 data 本来就可能超限（与本改动无关）。
 4. **Topic 支持度**：RFC 8030 标准头，FCM / Mozilla autopush / Apple Web Push 均声明支持；不支持的服务会忽略该头，不影响投递。
 5. **renotify 在 Safari 无效**：iOS 上同 tag 顶替时是否再次响铃以真机为准（列真机项）；最坏为静默顶替，用户仍能在通知栏看到最新一条。

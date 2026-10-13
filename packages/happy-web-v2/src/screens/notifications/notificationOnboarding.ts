@@ -65,3 +65,31 @@ export function describeTestPushResult(result: TestPushResult): TestPushMessage 
 export function testPushUnavailable(result: TestPushResult | null): boolean {
     return result?.kind === 'unsupported';
 }
+
+export type OptInOutcome = 'enabled' | 'denied' | 'failed';
+
+/**
+ * The opt-in button's flow, never rejecting. `requestPermission` MUST be the
+ * first await (iOS user-gesture rule) — keep it first here. A permission
+ * grant whose subscription/registration fails (or throws) is 'failed': the
+ * card tells the user to retry from settings instead of an unhandled rejection.
+ */
+export async function runNotificationOptIn(deps: {
+    requestPermission: () => Promise<NotificationPermission | 'unsupported'>;
+    /** subscribe + register with the server; false/throw = failed */
+    enablePush: (() => Promise<boolean>) | null;
+}): Promise<OptInOutcome> {
+    let permission: NotificationPermission | 'unsupported';
+    try {
+        permission = await deps.requestPermission();
+    } catch {
+        return 'failed';
+    }
+    if (permission !== 'granted') return 'denied';
+    if (!deps.enablePush) return 'failed';
+    try {
+        return (await deps.enablePush()) ? 'enabled' : 'failed';
+    } catch {
+        return 'failed';
+    }
+}

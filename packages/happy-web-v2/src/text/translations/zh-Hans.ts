@@ -438,6 +438,7 @@ export const zhHans: TranslationStructure = {
         optInClose: '关闭',
         optInEnabledTitle: '通知已开启',
         optInEnabledBody: 'Very Happy 的提醒就长这样。',
+        optInFailed: '开启失败，可在 设置 → 通知 里重试。',
         types: '提醒类型',
         typesDescription: '选择哪些会话事件触发通知。',
         type_permission_request: '权限请求',

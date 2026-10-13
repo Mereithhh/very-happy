@@ -10,6 +10,7 @@ const { state, dbMock, sendWebPushSpy, isUserActiveSpy } = vi.hoisted(() => {
         tokens: [] as Array<{ id: string; token: string }>,
         kvValue: null as Uint8Array | null,
         kvThrows: false,
+        kvUpdatedAt: new Date(),
         status: 201,
         executedDeletes: [] as string[],
     };
@@ -28,7 +29,7 @@ const { state, dbMock, sendWebPushSpy, isUserActiveSpy } = vi.hoisted(() => {
         userKVStore: {
             findUnique: vi.fn(async () => {
                 if (state.kvThrows) throw new Error('db down');
-                return state.kvValue ? { value: state.kvValue } : null;
+                return state.kvValue ? { value: state.kvValue, updatedAt: state.kvUpdatedAt } : null;
             }),
         },
     };
@@ -52,6 +53,7 @@ vi.mock('@/app/push/webPush', async (importOriginal) => {
 
 import { dispatchDeviceEventPush, dispatchSessionEventPush, sendTestWebPush } from './pushDispatch';
 import { webPushTopic } from './pushHygiene';
+import { validateWebhookUrl, WEBHOOK_TOKEN_PREFIX } from './webhookNotify';
 
 const SUB = 'webpush:' + JSON.stringify({ endpoint: 'https://push.example/x', keys: { p256dh: 'p', auth: 'a' } });
 
@@ -59,6 +61,7 @@ beforeEach(() => {
     state.tokens = [{ id: 'w1', token: SUB }];
     state.kvValue = null;
     state.kvThrows = false;
+    state.kvUpdatedAt = new Date();
     state.status = 201;
     state.executedDeletes = [];
     sendWebPushSpy.mockClear();
@@ -93,6 +96,34 @@ describe('dispatchSessionEventPush → Web Push', () => {
         isUserActiveSpy.mockResolvedValue(true);
         await dispatchSessionEventPush({ userId: 'u', sessionId: 's1', title: 'T', body: 'B', data: { kind: 'done' } });
         expect(sendWebPushSpy).not.toHaveBeenCalled();
+    });
+});
+
+describe('seen watermark vs device clock skew (review #1)', () => {
+    it('a stamp from a fast device clock is capped at the KV row server write time', async () => {
+        const writtenAt = Date.now() - 60_000;
+        state.kvUpdatedAt = new Date(writtenAt);
+        // device clock 10 minutes ahead wrote "seen" in the future
+        state.kvValue = new TextEncoder().encode(JSON.stringify({ seen: { s1: writtenAt + 600_000, s2: writtenAt - 5 } }));
+        await dispatchSessionEventPush({ userId: 'u', sessionId: 's9', title: 'T', body: 'B', data: { kind: 'permission' } });
+        const [, payload] = sendWebPushSpy.mock.calls[0];
+        expect(payload.seen).toEqual({ s1: writtenAt, s2: writtenAt - 5 });
+        // a decision push for s1 sent after the write is therefore never covered
+        expect(payload.seen.s1).toBeLessThan(payload.sentAt);
+    });
+});
+
+describe('webhook tokens are only deleted when corrupt (review #2)', () => {
+    it('keeps a well-formed config that fails current URL validation; deletes broken JSON', async () => {
+        const badUrl = 'http://127.0.0.1/hook';
+        expect(validateWebhookUrl(badUrl)).not.toBeNull();
+        state.tokens = [
+            { id: 'wh-valid-json', token: WEBHOOK_TOKEN_PREFIX + JSON.stringify({ url: badUrl, events: ['completed'] }) },
+            { id: 'wh-corrupt', token: WEBHOOK_TOKEN_PREFIX + '{not json' },
+        ];
+        await dispatchSessionEventPush({ userId: 'u', sessionId: 's1', title: 'T', body: 'B', data: { kind: 'done' } });
+        await new Promise((r) => setTimeout(r, 10)); // webhook leg is fire-and-forget
+        expect(state.executedDeletes).toEqual(['wh-corrupt']);
     });
 });
 

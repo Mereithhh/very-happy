@@ -21,8 +21,10 @@ import { enableWebPush, isWebPushSupported } from '@/sync/webPush';
 import {
   NOTIF_OPT_IN_DISMISSED_STORAGE,
   NOTIF_OPT_IN_REVEAL_MS,
+  runNotificationOptIn,
   shouldOfferNotificationOptIn,
 } from './notificationOnboarding';
+import { useToast } from '@/ui';
 import './notificationOptInCard.css';
 
 function readDismissed(): boolean {
@@ -65,6 +67,7 @@ export function NotificationOptInCard() {
   const [revealed, setRevealed] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRevealed(true), NOTIF_OPT_IN_REVEAL_MS);
@@ -89,13 +92,18 @@ export function NotificationOptInCard() {
     if (busy) return;
     setBusy(true);
     try {
-      // MUST be the first await (iOS user-gesture requirement).
-      const result = await requestNotificationPermission();
-      if (result === 'granted') {
-        if (credentials) await enableWebPush(credentials);
+      // requestPermission stays the FIRST await inside runNotificationOptIn (iOS).
+      const outcome = await runNotificationOptIn({
+        requestPermission: requestNotificationPermission,
+        enablePush: credentials ? () => enableWebPush(credentials) : null,
+      });
+      if (outcome === 'enabled') {
         void showEnabledPreview(t('notifications.optInEnabledTitle'), t('notifications.optInEnabledBody'));
+      } else if (outcome === 'failed') {
+        toast.error(t('notifications.optInFailed'));
       }
-      // granted or denied: the decision is made, the gate never reopens.
+      // enabled / denied / failed: the card's job is done; a failure is
+      // retried from settings (the gate stays closed once permission != default).
       setHidden(true);
     } finally {
       setBusy(false);
