@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentSetupInstruction, isAgentOffered, resolveAgentAvailability } from './agentAvailability';
+import { agentSetupInstruction, agentsNeedingSetup, isAgentOffered, resolveAgentAvailability } from './agentAvailability';
 
 describe('new-session agent availability', () => {
     it('keeps bundled structured Claude available without an external claude CLI', () => {
@@ -68,5 +68,27 @@ describe('new-session agent availability', () => {
         expect(agentSetupInstruction('gemini')).toMatchObject({ kind: 'command', command: expect.stringContaining('@google/gemini-cli') });
         expect(agentSetupInstruction('openclaw')).toEqual({ kind: 'gateway' });
         expect(agentSetupInstruction('pi')).toMatchObject({ kind: 'command', command: expect.stringContaining('pi-acp@') });
+    });
+});
+
+// B-596: the not-installed agents that get a click-to-reveal install row.
+describe('agentsNeedingSetup', () => {
+    it('lists offered agents the machine cannot start, never claude', () => {
+        const metadata = { cliAvailability: { claude: false, codex: true, gemini: false, openclaw: false, pi: false, detectedAt: 1 } } as any;
+        expect(agentsNeedingSetup(metadata)).toEqual(['gemini', 'openclaw', 'pi']);
+    });
+
+    it('omits pi on a daemon that never reported the field (fix is a CLI upgrade, not an install)', () => {
+        const metadata = { cliAvailability: { claude: true, codex: true, gemini: true, openclaw: true, detectedAt: 1 } } as any;
+        expect(agentsNeedingSetup(metadata)).toEqual([]);
+    });
+
+    it('is empty without availability data', () => {
+        expect(agentsNeedingSetup(null)).toEqual([]);
+        expect(agentsNeedingSetup({} as any)).toEqual([]);
+    });
+
+    it('gives pi one command for both packages', () => {
+        expect(agentSetupInstruction('pi')).toEqual({ kind: 'command', command: 'npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33' });
     });
 });
