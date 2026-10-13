@@ -1,0 +1,70 @@
+/* B-588 sidebar session preview — same neutral floating surface as the relay
+   detail popover; read-only, no accent. */
+.sb-peek {
+  z-index: 120;
+  box-sizing: border-box;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(420px, calc(100dvh - 24px));
+  overflow: auto;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+  font: var(--fs-13)/1.5 var(--font-sans);
+}
+.sb-peek[data-state='open'] { animation: sb-peek-in 120ms ease-out both; }
+@keyframes sb-peek-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .sb-peek[data-state='open'] { animation: none; }
+}
+
+.sb-peek-title {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.sb-peek-where {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: var(--fs-11);
+  overflow-wrap: anywhere;
+}
+.sb-peek-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px var(--sp-3);
+  margin: var(--sp-3) 0 0;
+}
+.sb-peek-facts dt { color: var(--text-faint); font-size: var(--fs-12); }
+.sb-peek-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-12); }
+.sb-peek-counts { display: inline-flex; flex-wrap: wrap; gap: var(--sp-2); margin-left: var(--sp-2); }
+.sb-peek-unread { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); }
+.sb-peek-pending { color: var(--warn); }
+
+.sb-peek-round {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+.sb-peek-round p {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+.sb-peek-who { margin-right: 6px; color: var(--text); font-weight: 600; }
+.sb-peek-empty {
+  margin: var(--sp-3) 0 0;
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+}

@@ -11,6 +11,7 @@ import { NotesDock } from '@/screens/notes/NotesDock';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { AppBadgeSync } from '@/screens/notifications/AppBadgeSync';
 import { NotificationOptInCard } from '@/screens/notifications/NotificationOptInCard';
+import { FeatureTipHost } from '@/components/featureTips/FeatureTips';
 import { useTerminalSync } from '@/sync/terminalSync';
 import { useNewTerminalShortcuts } from '@/app/newTerminal';
 import { useCloseViewShortcuts, useUnloadGuard } from '@/app/viewShortcuts';
@@ -113,6 +114,8 @@ export function AppLayout() {
       <AppBadgeSync />
       {/* B-570: non-blocking "turn on notifications" invitation (logged-in app only) */}
       <NotificationOptInCard />
+      {/* B-588: at most one one-time feature tip app-wide */}
+      <FeatureTipHost />
       <CommandPalette />
       {/* clipboard-push history — singleton like the palette (⌘K / settings open it) */}
       <ClipboardHistoryPanel />

@@ -4,7 +4,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -82,6 +82,8 @@ import {
 import { SidebarRateLimit } from '@/screens/machine/rateLimits/SidebarRateLimit';
 import { archiveAndDeleteWorktree, canArchiveAndDeleteWorktree } from '@/app/worktreeArchive';
 import { worktreeCopy } from './worktreeCopy';
+import { SessionPeek, peekCopy, useSessionPeek } from './SessionPeek';
+import { dismissFeatureTip, useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 
 function rowHref(r: Row): string {
   return r.href;
@@ -347,6 +349,9 @@ export function Sidebar() {
   // disappearing rows are handled). The decision is a pure function so it can
   // be unit-tested; this hook is only the plumbing.
   const listRef = useRef<HTMLDivElement | null>(null);
+  // B-588: one-time tip for item-level settings search (B-575/B-580)
+  const settingsBtnRef = useRef<HTMLButtonElement | null>(null);
+  useFeatureTipAnchor('settings-search', settingsBtnRef);
   const [heldKeys, setHeldKeys] = useState<string[] | null>(null);
   const heldRef = useRef<string[] | null>(null);
   /** Row keys as currently RENDERED — the snapshot taken when the hold arms. */
@@ -1113,6 +1118,7 @@ export function Sidebar() {
               // Flat row index ACROSS sections — must mirror displayRows
               // exactly (⌘1-9 badges + move-up/down read rowsRef positions).
               let flat = 0;
+              let peekTipPlaced = false; // B-588: the session-preview tip anchors to the first chat row
               return sections.map((sec) => (
                 <div key={sec.id} className="sb-section">
                   {sec.label !== undefined && (
@@ -1164,6 +1170,8 @@ export function Sidebar() {
                         {cmdHeld && i < 9 && <kbd className="sb-row-badge mono">⌘{i + 1}</kbd>}
                       </button>
                     </div></div>;
+                    const peekTipAnchor = !peekTipPlaced && r.kind === 'session' && !!r.session;
+                    if (peekTipAnchor) peekTipPlaced = true;
                     return (
                       <div
                         key={r.key}
@@ -1197,6 +1205,7 @@ export function Sidebar() {
                           canMoveDown={i < displayRows.length - 1}
                           onMove={orderable && !grouped && !teamHistory ? (dir) => moveRow(r.key, i, dir) : undefined}
                           onRenameRequest={() => setRenameTarget(r)}
+                          peekTipAnchor={peekTipAnchor}
                         />
                       </div>
                     );
@@ -1302,7 +1311,7 @@ export function Sidebar() {
       {/* B-555: tightest subscription window (renders nothing until reported) */}
       <SidebarRateLimit />
       <footer className="sb-footer">
-        <button className="sb-footer-btn" onClick={() => navigate('/settings')}>
+        <button ref={settingsBtnRef} className="sb-footer-btn" onClick={() => navigate('/settings')}>
           <Settings size={16} /> <span>{t('tabs.settings')}</span>
         </button>
         {/* notes dock toggle (B-094) — app chrome, so it shares the footer row */}
@@ -1496,6 +1505,7 @@ function SidebarRow({
   canMoveDown,
   onMove,
   onRenameRequest,
+  peekTipAnchor,
 }: {
   row: Row;
   execution: AgentExecution;
@@ -1520,10 +1530,21 @@ function SidebarRow({
    *  search narrowing). */
   onMove?: (dir: -1 | 1) => void;
   onRenameRequest: () => void;
+  /** B-588: this row hosts the one-time 「会话预览」 tip */
+  peekTipAnchor?: boolean;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { t, lang } = useTranslation();
+  // B-588 read-only preview (chat sessions only): fine-pointer hover, the
+  // row menu's 「预览」, or Alt+Enter on the focused row.
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const peek = useSessionPeek();
+  const peekable = row.kind === 'session' && !!row.session;
+  useFeatureTipAnchor('session-peek', rowRef, !!peekTipAnchor && peekable, { dismissOnClick: false });
+  useEffect(() => {
+    if (peek.open) dismissFeatureTip('session-peek');
+  }, [peek.open]);
 
   const isTerminal = row.kind === 'terminal';
   // Terminal rows are focused when the terminal route + tid match (they were
@@ -1649,6 +1670,10 @@ function SidebarRow({
     });
   }
 
+  if (peekable) {
+    menuItems.unshift({ key: 'peek', label: peekCopy(lang.startsWith('zh')).preview, icon: Eye, onSelect: peek.openExplicit });
+  }
+
   if (canKillAttached) {
     menuItems.push({
       key: 'kill-attached',
@@ -1667,10 +1692,24 @@ function SidebarRow({
   return (
     <ActionContextMenu items={menuItems}>
     <div
+      ref={rowRef}
       className={`sb-row${selected ? ' is-selected' : ''}${
         signal === 'attention' ? ' sb-row--attention' : signal === 'unread' ? ' sb-row--unread' : ''
       }`}
+      {...(peekable ? { ...peek.rowHandlers, onKeyDown: peek.onKeyDown } : {})}
     >
+      {peekable && (
+        <SessionPeek
+          session={row.session!}
+          open={peek.open !== null}
+          onClose={peek.close}
+          title={`${row.teamLabel ? `${row.teamLabel} · ` : ''}${row.title}`}
+          agentLabel={agentLabel}
+          statusLabel={status ? statusLabel : peekCopy(lang.startsWith('zh')).idle}
+          unread={signal === 'unread'}
+          anchorRef={rowRef}
+        />
+      )}
       {/* aria-current="page": the row IS a nav link to the open route, so SRs
           announce the selected row the same way the rail highlight shows it. */}
       <button
