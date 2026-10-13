@@ -20,32 +20,34 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-588 | **小体验三件**：看板卡片换列动画、会话 hover 详情卡、功能提示引导 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-587 | **空闲 agent 自动休眠、打开时恢复**：判据要严，不误停 Automation 复用的会话 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-586 | **网页新建 worktree 会话**：激活现有未被调用的 `utils/worktree.ts` | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-585 | **worktree 初始化**：新建 worktree 时复制 `.env`、链接依赖、跑 setup 脚本（需定信任边界） | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-584 | **PR/CI 状态绑定会话**：会话显示 PR 与 CI 结果，CI 挂了一键让 agent 修 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-583 | **提交 / 推送 / 开 PR**：会话内一键，hook 失败一键交给 agent 修 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-582 | **对话字号比例化 + 字号设置**：对话区收敛为几档 token、间距随字号缩放，清理写死 px（现约 179 处）；设置里可调对话字号（可选捏合） | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
+| B-590 | **`Button` 的 `loading` 立即出 Spinner 且无 leftIcon 时变宽**，不符合 design-language §6 反馈时机（可见 loading 延迟约 200ms、预留宽度） | debt | Orca 对照第三轮实施中发现 2026-10-13（B-581） | todo | 统一在 Button 内收口：禁用立即生效、Spinner 延迟、固定宽度 |
+| B-589 | **不稳定测试 `apiSocketRelay.test.ts`「does not retire a relay … RATE (T-014)」**：按耗时断言 ≥100ms，CI 实测 99ms 失败（PR #510 首跑） | debt | Orca 对照第三轮实施中发现 2026-10-13 | todo | 改用 fake timers 或放宽为单调条件，不按墙钟毫秒断言 |
+| B-588 | **小体验三件**：看板卡片换列动画、会话 hover 详情卡、功能提示引导 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#515），待发布；spec `specs/2026-10-small-ux-polish.md`，review 问题已修 |
+| B-587 | **空闲 agent 自动休眠、打开时恢复**：判据要严，不误停 Automation 复用的会话 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#517），待发布；spec `specs/2026-10-idle-agent-hibernation.md`，review 问题已修 |
+| B-586 | **网页新建 worktree 会话**：激活现有未被调用的 `utils/worktree.ts` | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#514），待发布；spec `specs/2026-10-worktree-sessions-and-setup.md`，review 问题已修 |
+| B-585 | **worktree 初始化**：新建 worktree 时复制 `.env`、链接依赖、跑 setup 脚本（需定信任边界） | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#514），待发布；spec `specs/2026-10-worktree-sessions-and-setup.md`，review 问题已修 |
+| B-584 | **PR/CI 状态绑定会话**：会话显示 PR 与 CI 结果，CI 挂了一键让 agent 修 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#512），待发布；spec `specs/2026-10-session-git-actions.md`，review 问题已修 |
+| B-583 | **提交 / 推送 / 开 PR**：会话内一键，hook 失败一键交给 agent 修 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#512），待发布；spec `specs/2026-10-session-git-actions.md`，review 问题已修 |
+| B-582 | **对话字号比例化 + 字号设置**：对话区收敛为几档 token、间距随字号缩放，清理写死 px（现约 179 处）；设置里可调对话字号（可选捏合） | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#516），待发布；spec `specs/2026-10-chat-type-scale.md`，review 问题已修 |
 | B-581 | **设计规范补充 + 改动行 lint**：反馈时机表（100ms/1s/3s、可见 loading 延迟 200ms、预留宽度）、组件选择表、界面审查清单、文案不夸大/取消不是破坏性；CI 只查改动行的字号/焦点框/裸色值 | debt | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | design-language §6（反馈时机/组件选择/文案/相邻一致）+ design skill 审查清单 + `scripts/dev/check-design-lint.mjs`（PR 新增行：裸色值/对话区写死字号/无替代 outline:none），CI design-lint job；历史 113 个 web commit 抽测 14 处命中、13 处真违规。遗留：`Button` loading 立即出 Spinner 且会变宽，另立项 |
-| B-580 | **侧栏分组可折叠并能定位当前会话**：折叠状态持久化，从 ⌘K/通知进入时自动展开并滚到当前行 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-579 | **用户提问导航轨**：长会话右侧刻度、悬停预览、点击跳转；手机为上一条/下一条提问 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-578 | **中断后一键「继续」**：「被你停止」行放中性按钮 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-577 | **选中回复文字「引用到输入框」** | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-576 | **⌘P 模糊打开文件**：用已有 git ls-files 列表 + 最近访问排序 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-575 | **设置项级搜索**：每个设置项可搜（中英别名），⌘K 可直达具体开关 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-574 | **终端里点文件路径打开预览**（支持 `:行:列`）；终端复制去掉公共左缩进 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-573 | **文件预览跟随 agent 改动**：agent 写过正在预览的文件时自动刷新或提示「已更新 · 刷新」 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-572 | **审阅全部改动**：合并 diff 视图（一条滚动、文件导航、已看标记、全部展开/折叠、换行/忽略空白），复用 B-554 行内批注 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-571 | **每轮改动汇总行**：一轮末尾「3 个文件 +40 −12」，点文件展开对应 diff（客户端从 Edit/Write/patch 工具消息算） | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-570 | **通知可验证可开通**：设置里「发送测试通知」（server 新接口）；装成 PWA/首次进入后引导开通知并预览样子 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-569 | **推送整理**：同会话 tag 顶替、`Topic` 按会话、TTL 从 28 天缩短；推送带已读水位线，SW 收到时关掉其他设备已看过的旧通知 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-568 | **输入框小三件**：给 agent 发送后收起手机键盘；断线时占位提示「重连中…恢复后自动发送」（延迟显示防闪，不锁输入）；图片附件上传前缩到长边约 2000px | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-567 | **自动已读要求人在场**：visible 之外还需窗口 focus 且最近有 trusted 输入，离开电脑时不把完成提醒就地清掉（跨设备同步已读） | bug | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-566 | **归档/完成可撤销**：先执行、toast「已归档 · 撤销」，去掉归档确认框；Toast 支持文字+按钮 action | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-565 | **局部错误边界**：按单条消息/工具卡/预览面板/侧栏分别兜底（resetKey=message id，可重试），一条畸形消息不再白屏整页；落实 B-027 第一件 | debt | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-564 | **多题 AskUserQuestion 逐题作答**：题目标签 + 下一题/提交，单选自动前进；手机不再竖排滚好几屏 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
-| B-563 | **审批/提问卡片固定在输入框上方**，可折叠成一行；上翻记录时不再看不到待审批（Orca 移动端 prompt strip） | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | todo | |
+| B-580 | **侧栏分组可折叠并能定位当前会话**：折叠状态持久化，从 ⌘K/通知进入时自动展开并滚到当前行 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#510），待发布；spec `specs/2026-10-settings-search-and-sidebar-groups.md`，review 问题已修 |
+| B-579 | **用户提问导航轨**：长会话右侧刻度、悬停预览、点击跳转；手机为上一条/下一条提问 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#513），待发布；spec `specs/2026-10-chat-reading-aids.md`，review 问题已修 |
+| B-578 | **中断后一键「继续」**：「被你停止」行放中性按钮 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#513），待发布；spec `specs/2026-10-chat-reading-aids.md`，review 问题已修 |
+| B-577 | **选中回复文字「引用到输入框」** | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#513），待发布；spec `specs/2026-10-chat-reading-aids.md`，review 问题已修 |
+| B-576 | **⌘P 模糊打开文件**：用已有 git ls-files 列表 + 最近访问排序 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#511），待发布；spec `specs/2026-10-terminal-paths-and-quick-open.md`，review 问题已修 |
+| B-575 | **设置项级搜索**：每个设置项可搜（中英别名），⌘K 可直达具体开关 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#510），待发布；spec `specs/2026-10-settings-search-and-sidebar-groups.md`，review 问题已修 |
+| B-574 | **终端里点文件路径打开预览**（支持 `:行:列`）；终端复制去掉公共左缩进 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#511），待发布；spec `specs/2026-10-terminal-paths-and-quick-open.md`，review 问题已修 |
+| B-573 | **文件预览跟随 agent 改动**：agent 写过正在预览的文件时自动刷新或提示「已更新 · 刷新」 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#509），待发布；spec `specs/2026-10-change-review-surfaces.md`，review 问题已修 |
+| B-572 | **审阅全部改动**：合并 diff 视图（一条滚动、文件导航、已看标记、全部展开/折叠、换行/忽略空白），复用 B-554 行内批注 | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#509），待发布；spec `specs/2026-10-change-review-surfaces.md`，review 问题已修 |
+| B-571 | **每轮改动汇总行**：一轮末尾「3 个文件 +40 −12」，点文件展开对应 diff（客户端从 Edit/Write/patch 工具消息算） | feat | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#509），待发布；spec `specs/2026-10-change-review-surfaces.md`，review 问题已修 |
+| B-570 | **通知可验证可开通**：设置里「发送测试通知」（server 新接口）；装成 PWA/首次进入后引导开通知并预览样子 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#508），待发布；spec `specs/2026-10-push-hygiene-and-test.md`，review 问题已修 |
+| B-569 | **推送整理**：同会话 tag 顶替、`Topic` 按会话、TTL 从 28 天缩短；推送带已读水位线，SW 收到时关掉其他设备已看过的旧通知 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#508），待发布；spec `specs/2026-10-push-hygiene-and-test.md`，review 问题已修 |
+| B-568 | **输入框小三件**：给 agent 发送后收起手机键盘；断线时占位提示「重连中…恢复后自动发送」（延迟显示防闪，不锁输入）；图片附件上传前缩到长边约 2000px | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#507），待发布；spec `specs/2026-10-composer-mobile-ux.md`，review 问题已修 |
+| B-567 | **自动已读要求人在场**：visible 之外还需窗口 focus 且最近有 trusted 输入，离开电脑时不把完成提醒就地清掉（跨设备同步已读） | bug | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#506），待发布；spec `specs/2026-10-web-robustness-undo-presence.md`，review 问题已修 |
+| B-566 | **归档/完成可撤销**：先执行、toast「已归档 · 撤销」，去掉归档确认框；Toast 支持文字+按钮 action | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#506），待发布；spec `specs/2026-10-web-robustness-undo-presence.md`，review 问题已修 |
+| B-565 | **局部错误边界**：按单条消息/工具卡/预览面板/侧栏分别兜底（resetKey=message id，可重试），一条畸形消息不再白屏整页；落实 B-027 第一件 | debt | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#506），待发布；spec `specs/2026-10-web-robustness-undo-presence.md`，review 问题已修 |
+| B-564 | **多题 AskUserQuestion 逐题作答**：题目标签 + 下一题/提交，单选自动前进；手机不再竖排滚好几屏 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#507），待发布；spec `specs/2026-10-composer-mobile-ux.md`，review 问题已修 |
+| B-563 | **审批/提问卡片固定在输入框上方**，可折叠成一行；上翻记录时不再看不到待审批（Orca 移动端 prompt strip） | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | doing | 已合入 main（#507），待发布；spec `specs/2026-10-composer-mobile-ux.md`，review 问题已修 |
 | B-562 | **AI 生成的文件在网页端直接下载**：`open_preview` 加 `download` 意图，任意类型文件（zip/docx/二进制等）都能推到网页并一键下载；聊天里的 open_preview 工具卡带「下载」按钮（翻历史也能下）；不可预览类型显示大号下载按钮而不只是「二进制文件」占位 | feat | Owner 2026-10-13（「AI 生成的文件希望直接在网页端下载，现在只能先推到中间位置」） | doing | 实现完成，见 PR；spec `specs/2026-10-file-download-delivery.md`。CLI `open_preview` `download` 参数（目录拒绝并提示 zip，>50 MiB 提示压缩）；server 只转发 `intent:'download'`；web 跟随会话 + 顶部主下载按钮（仅桌面自动下载）、聊天行「打开/下载」、不可预览态大按钮；可执行类型下载用 octet-stream；web 镜像凭据路径规则。留真机：iOS Safari/PWA/Android 下载 |
 | B-561 | **看板/侧栏子代理活性计数恒为 0**：`useBoardItems.ts` 把新→旧排序的消息传给要求旧→新的 `currentTurnMessages`（铁律 15），子代理在跑时计数仍为 0 | bug | B-553 实现时发现 2026-10-13 | doing | 修复见 PR：新增 `screens/session/transcriptMessages.ts`（新→旧 反转 + 与 ChatList 同一过滤后再切 turn），ChatList 与看板共用；回归测试 `runningSubagentCount.test.ts`。行为变化：在线且当前 turn 有子代理在跑的会话由「空闲/等我看」改判「在跑」 |
 | B-560 | **B-548 收尾：公开文档页 `/docs/automations` 同步 precheck，Web 表单/详情/运行列表 ×N 真浏览器验收（1280/390 × 明暗）** | debt | Owner 2026-10-12（Orca 对照第二轮：「第一批的 8 项都可以做」） | doing | B-548 实现时未做的两项 |
@@ -283,7 +285,7 @@
 | B-024 | Playwright 冒烟 E2E（登录→侧栏→开终端→回显断言），挂 deploy 后跑 | debt | 工程走查#8 | todo |  |
 | B-025 | server 数据保留策略（Session/消息/UsageReport 无定时清理；SimpleCache 无过期字段）+ DB 体积接告警 | debt | 工程走查#9 | todo | 先只报数跑一周再开删 |
 | B-026 | webhook 出站零重试（Tanka 抖动=通知永久丢）+ 投递失败数进诊断页 | debt | 工程走查#10 | todo | 进程内 3 次指数退避 |
-| B-027 | web 健壮性三件套：ErrorBoundary（现在渲染异常=白屏）、离线/重连横幅、store 消息 LRU 逐出 | debt | 工程走查#11+UX走查#13#14 | todo | ErrorBoundary 最便宜收益最大，优先 |
+| B-027 | web 健壮性三件套：ErrorBoundary（现在渲染异常=白屏）、离线/重连横幅、store 消息 LRU 逐出 | debt | 工程走查#11+UX走查#13#14 | todo | ErrorBoundary 已由 B-565（#506）落实；剩离线/重连横幅、store 消息 LRU 逐出 |
 | B-028 | bundle 瘦身：514KB gzip 首屏、两套 crypto 打一个 chunk、shiki 全语言进 precache（每次发版 PWA 重下 5.7MB） | debt | 工程走查#12 | todo | shiki 动态 import + globIgnores |
 | B-031 | CI 加 gitleaks job；核 metrics 0.0.0.0:9090 是否公网可达；daemon 本地控制口无签名 | debt | 工程走查#15 | doing | 2026-08-25：已加 version+SHA256 pinned 的 introduced-commit Gitleaks 门禁（PR 恒定跑 hosted runner），并补全历史净化/轮换/公开切换 runbook；当前 `HEAD` archive 0 findings，但全历史真实 session dump + 旧 GCP keys 仍是 Owner 公开前硬阻塞。metrics 暴露与 daemon local-control 认证仍待本轮复核。 |
 | B-032 | 看板/侧栏卡片上直接批权限（Approve/Deny/Approve-for-session；sessionAllow/Deny 已是纯 ops） | ux | UX走查#1 | todo | 多会话并行的最高频点击链 |

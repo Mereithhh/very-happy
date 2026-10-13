@@ -16,6 +16,23 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-13-worktrees-and-hibernation',
+    cliVersion: '0.2.167',
+    date: '2026-10-13',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct13c.title',
+    summaryKey: 'changelog.releases.oct13c.summary',
+    itemKeys: ['changelog.releases.oct13c.worktree', 'changelog.releases.oct13c.setup', 'changelog.releases.oct13c.hibernate', 'changelog.releases.oct13c.cli'],
+  },
+  {
+    id: '2026-10-13-review-and-reading',
+    date: '2026-10-13',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct13b.title',
+    summaryKey: 'changelog.releases.oct13b.summary',
+    itemKeys: ['changelog.releases.oct13b.review', 'changelog.releases.oct13b.git', 'changelog.releases.oct13b.approvals', 'changelog.releases.oct13b.reading', 'changelog.releases.oct13b.navigate', 'changelog.releases.oct13b.terminal', 'changelog.releases.oct13b.notify', 'changelog.releases.oct13b.undo', 'changelog.releases.oct13b.fontSize'],
+  },
+  {
     id: '2026-10-13-web-workbench',
     date: '2026-10-13',
     buildVersion: __APP_VERSION__,
