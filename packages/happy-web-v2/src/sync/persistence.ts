@@ -379,14 +379,19 @@ export function resetVoiceLocalCounters() {
 export const DIFF_COMMENTS_MMKV_ID = 'diff-comments';
 export const diffCommentsKey = (sessionId: string) => `s.${sessionId}`;
 
-/** Drop one session's comment drafts, or (no id) the whole namespace. Never throws. */
+/** B-572: per-session "viewed" marks of the review-all tab (same key shape). */
+export const REVIEW_VIEWED_MMKV_ID = 'review-viewed';
+
+/** Drop one session's comment drafts (and B-572 viewed marks), or (no id) the whole namespaces. Never throws. */
 export function clearDiffCommentDrafts(sessionId?: string) {
-    try {
-        const store = new MMKV({ id: DIFF_COMMENTS_MMKV_ID });
-        if (sessionId) store.delete(diffCommentsKey(sessionId));
-        else store.clearAll();
-    } catch {
-        // storage unavailable: nothing persisted to clear
+    for (const id of [DIFF_COMMENTS_MMKV_ID, REVIEW_VIEWED_MMKV_ID]) {
+        try {
+            const store = new MMKV({ id });
+            if (sessionId) store.delete(diffCommentsKey(sessionId));
+            else store.clearAll();
+        } catch {
+            // storage unavailable: nothing persisted to clear
+        }
     }
 }
 

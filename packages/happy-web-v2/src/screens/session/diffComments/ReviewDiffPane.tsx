@@ -35,7 +35,7 @@ import {
     useDiffComments,
     type WriteResult,
 } from './diffCommentsStore';
-import { useGitFileDiff, type DiffLoadRefusal } from './useGitFileDiff';
+import { useGitFileDiff, type DiffLoadRefusal, type GitFileDiffState } from './useGitFileDiff';
 import { FOCUSABLE_SELECTOR, isActivationKey, trapFocusTarget } from './focusTrap';
 import '../diff.css';
 import '../../files/fsbrowser.css';
@@ -157,14 +157,49 @@ export function ReviewDiffPane({ sessionId, path, untracked, active, onOpenFile,
     refreshToken?: unknown;
 }) {
     const { lang } = useTranslation();
+    const copy = copyFor(lang.startsWith('zh'));
+    const { state, reload } = useGitFileDiff(sessionId, path, untracked, active, refreshToken);
+    const rows = state.phase === 'ready' ? state.rows.slice(0, REVIEW_DIFF_MAX_ROWS) : null;
+    const added = rows?.filter((r) => r.type === 'add').length ?? 0;
+    const removed = rows?.filter((r) => r.type === 'del').length ?? 0;
+
+    return (
+        <div className="rdv-pane">
+            <div className="fsb-viewer-head rdv-head">
+                <span className="fsb-viewer-path" title={path}>{path}</span>
+                {rows && <span className="fp-diffstat"><span className="fp-add">+{added}</span><span className="fp-del">-{removed}</span></span>}
+                <div className="fsb-viewer-actions">
+                    <button type="button" className="fsb-iconbtn" onClick={() => void reload()} aria-label={copy.refresh} title={copy.refresh}><RefreshCw size={14}/></button>
+                    <button type="button" className="fsb-iconbtn" onClick={onOpenFile} aria-label={copy.openFile} title={copy.openFile}><FileText size={14}/></button>
+                </div>
+            </div>
+            <div className="rdv-scroll">
+                <ReviewDiffBody sessionId={sessionId} path={path} state={state} reload={reload} active={active}/>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * One file's diff rows with comments, the inline editor and the touch sheet —
+ * shared by the single-file diff tab and the review-all tab (B-572), so both
+ * write the same comment drafts sent by the same DiffCommentsBar.
+ */
+export function ReviewDiffBody({ sessionId, path, state, reload, active, wrap: wrapOverride, reanchor = true }: {
+    sessionId: string; path: string; state: GitFileDiffState; reload: () => Promise<void> | void; active: boolean;
+    /** undefined → the diff tab's rule (wrap only on touch, per setting) */
+    wrap?: boolean;
+    /** false → do not persist re-anchoring (ignore-whitespace view) */
+    reanchor?: boolean;
+}) {
+    const { lang } = useTranslation();
     const zh = lang.startsWith('zh');
     const copy = copyFor(zh);
-    const { state, reload } = useGitFileDiff(sessionId, path, untracked, active, refreshToken);
     const all = useDiffComments(sessionId);
     const comments = useMemo(() => all.filter((c) => c.filePath === path), [all, path]);
     const coarse = useMediaQuery('(pointer: coarse)');
     const wrapSetting = useSetting('wrapLinesInDiffs');
-    const wrap = coarse && wrapSetting;
+    const wrap = wrapOverride ?? (coarse && wrapSetting);
     const [draft, setDraft] = useState<Draft | null>(null);
 
     const allRows = state.phase === 'ready' ? state.rows : null;
@@ -172,9 +207,11 @@ export function ReviewDiffPane({ sessionId, path, untracked, active, onOpenFile,
 
     // Re-anchor this file's comments every time a fresh diff arrives.
     useEffect(() => {
-        if (state.phase !== 'ready') return;
+        // B-572: an ignore-whitespace diff hides lines on purpose; re-anchoring
+        // against it would mark good comments stale, so it is read-only.
+        if (state.phase !== 'ready' || !reanchor) return;
         applyReanchored(sessionId, reanchorFile(getDiffComments(sessionId), path, state.rows));
-    }, [state, sessionId, path]);
+    }, [state, sessionId, path, reanchor]);
     // A refreshed diff invalidates an unsaved new-comment range.
     useEffect(() => { setDraft((d) => (d?.kind === 'new' ? null : d)); }, [allRows]);
 
@@ -284,9 +321,6 @@ export function ReviewDiffPane({ sessionId, path, untracked, active, onOpenFile,
         // eslint-disable-next-line react-hooks/exhaustive-deps -- inDraft reads draft
     }, [draft, rows]);
 
-    const added = rows?.filter((r) => r.type === 'add').length ?? 0;
-    const removed = rows?.filter((r) => r.type === 'del').length ?? 0;
-
     const body = () => {
         if (state.phase === 'loading') return <div className="fp-empty"><Spinner size={16}/></div>;
         if (state.phase === 'error') return (
@@ -352,26 +386,16 @@ export function ReviewDiffPane({ sessionId, path, untracked, active, onOpenFile,
     };
 
     return (
-        <div className="rdv-pane">
-            <div className="fsb-viewer-head rdv-head">
-                <span className="fsb-viewer-path" title={path}>{path}</span>
-                {rows && <span className="fp-diffstat"><span className="fp-add">+{added}</span><span className="fp-del">-{removed}</span></span>}
-                <div className="fsb-viewer-actions">
-                    <button type="button" className="fsb-iconbtn" onClick={() => void reload()} aria-label={copy.refresh} title={copy.refresh}><RefreshCw size={14}/></button>
-                    <button type="button" className="fsb-iconbtn" onClick={onOpenFile} aria-label={copy.openFile} title={copy.openFile}><FileText size={14}/></button>
+        <>
+            {placement.orphans.length > 0 && (
+                <div className="rdv-orphans">
+                    <div className="rdv-orphans-title">{copy.notInDiff}</div>
+                    {placement.orphans.map((c) => (!coarse && draft?.kind === 'edit' && draft.id === c.id)
+                        ? <Fragment key={c.id}>{editor}</Fragment>
+                        : <CommentCard key={c.id} comment={c} copy={copy} onEdit={() => edit(c)} onDelete={() => remove(c.id)}/>)}
                 </div>
-            </div>
-            <div className="rdv-scroll">
-                {placement.orphans.length > 0 && (
-                    <div className="rdv-orphans">
-                        <div className="rdv-orphans-title">{copy.notInDiff}</div>
-                        {placement.orphans.map((c) => (!coarse && draft?.kind === 'edit' && draft.id === c.id)
-                            ? <Fragment key={c.id}>{editor}</Fragment>
-                            : <CommentCard key={c.id} comment={c} copy={copy} onEdit={() => edit(c)} onDelete={() => remove(c.id)}/>)}
-                    </div>
-                )}
-                {body()}
-            </div>
+            )}
+            {body()}
             {coarse && draft && active && createPortal(
                 <div className="rdv-sheet-root">
                     <div className="rdv-sheet-scrim" onClick={() => { if (!draft.body.trim()) setDraft(null); }} aria-hidden/>
@@ -392,6 +416,6 @@ export function ReviewDiffPane({ sessionId, path, untracked, active, onOpenFile,
                 </div>,
                 document.body,
             )}
-        </div>
+        </>
     );
 }

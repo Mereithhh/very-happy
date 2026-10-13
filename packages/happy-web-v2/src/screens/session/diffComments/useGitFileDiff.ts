@@ -24,12 +24,30 @@ export function platformOfSession(sessionId: string): string | null {
     return session?.metadata?.os ?? (machineId ? st.machines[machineId]?.metadata?.platform : undefined) ?? null;
 }
 
-async function loadDiff(sessionId: string, path: string, untracked: boolean): Promise<GitFileDiffState> {
+/**
+ * B-572: at most this many diff RPCs in flight per page — "expand all" in the
+ * review tab must not fire one `bash` per changed file at once.
+ */
+export const MAX_CONCURRENT_DIFF_LOADS = 4;
+let inFlight = 0;
+const waiting: Array<() => void> = [];
+async function withDiffSlot<T>(run: () => Promise<T>): Promise<T> {
+    if (inFlight >= MAX_CONCURRENT_DIFF_LOADS) await new Promise<void>((resolve) => waiting.push(resolve));
+    inFlight++;
+    try {
+        return await run();
+    } finally {
+        inFlight--;
+        waiting.shift()?.();
+    }
+}
+
+async function loadDiff(sessionId: string, path: string, untracked: boolean, ignoreWhitespace: boolean): Promise<GitFileDiffState> {
     const cwd = storage.getState().sessions[sessionId]?.metadata?.path;
     if (!cwd) return { phase: 'error', message: 'no working directory' };
-    const cmd = gitDiffCommand(path, { untracked, flavor: shellFlavorFor(platformOfSession(sessionId)) });
+    const cmd = gitDiffCommand(path, { untracked, flavor: shellFlavorFor(platformOfSession(sessionId)), ignoreWhitespace });
     if (!cmd.ok) return { phase: 'refused', reason: cmd.reason };
-    const res = await sessionBash(sessionId, { command: cmd.command, cwd, timeout: 10000 });
+    const res = await withDiffSlot(() => sessionBash(sessionId, { command: cmd.command, cwd, timeout: 10000 }));
     // `diff --no-index` exits 1 when the files differ (always, vs the null
     // device); the RPC reports that as a failure but still carries stdout.
     const noIndexDiffers = untracked && res.exitCode === 1 && (res.stdout ?? '').startsWith('diff --git')
@@ -40,7 +58,7 @@ async function loadDiff(sessionId: string, path: string, untracked: boolean): Pr
     return { phase: 'ready', rows: parsed.rows, loadedAt: Date.now() };
 }
 
-export function useGitFileDiff(sessionId: string, path: string, untracked: boolean, active: boolean, refreshToken?: unknown) {
+export function useGitFileDiff(sessionId: string, path: string, untracked: boolean, active: boolean, refreshToken?: unknown, ignoreWhitespace = false) {
     const [state, setState] = useState<GitFileDiffState>({ phase: 'loading' });
     const generation = useRef(0);
     const reload = useCallback(async () => {
@@ -48,12 +66,12 @@ export function useGitFileDiff(sessionId: string, path: string, untracked: boole
         setState((prev) => (prev.phase === 'ready' ? prev : { phase: 'loading' }));
         let next: GitFileDiffState;
         try {
-            next = await loadDiff(sessionId, path, untracked);
+            next = await loadDiff(sessionId, path, untracked, ignoreWhitespace);
         } catch (error) {
             next = { phase: 'error', message: error instanceof Error ? error.message : 'failed' };
         }
         if (mine === generation.current) setState(next);
-    }, [sessionId, path, untracked]);
+    }, [sessionId, path, untracked, ignoreWhitespace]);
     // Fetch when the tab becomes visible, on identity change, and when the
     // panel's git status was refreshed; a hidden tab keeps its last diff.
     useEffect(() => {

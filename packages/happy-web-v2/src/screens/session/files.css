@@ -178,3 +178,30 @@
 
 .fp-body[hidden], .fp-viewer[hidden] { display:none; }
 .fp-body > .fp-list { flex:1; max-height:none; }
+
+/* B-572: Changes list head — file count + 「审阅全部」 entry to the review tab. */
+.fp-list-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 32px;
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.fp-list-count { flex: 1; min-width: 0; }
+.fp-review-all {
+  flex: none;
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: var(--fs-12);
+}
+.fp-review-all:hover,
+.fp-review-all:focus-visible { outline: none; background: var(--bg-3); }
+@media (pointer: coarse) {
+  .fp-list-head { min-height: 44px; }
+  .fp-review-all { height: 44px; }
+}
