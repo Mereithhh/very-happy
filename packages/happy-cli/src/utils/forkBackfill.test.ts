@@ -86,8 +86,8 @@ describe('B-531 publishForkBackfillWhenCommitted (wrapper side)', () => {
 
 describe('B-531 wiring (source assertions, verified with mutation-check)', () => {
     it('both runners advertise the capability', () => {
-        expect(code('claude/runClaude.ts')).toContain("PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY],")
-        expect(code('codex/runCodex.ts')).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY],')
+        expect(code('claude/runClaude.ts')).toContain("PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY],")
+        expect(code('codex/runCodex.ts')).toContain('capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY],')
     })
 
     it('Claude fork replay publishes the marker after the replay loop and on a failed read', () => {
