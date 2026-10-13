@@ -21,7 +21,7 @@ export function buildInitialMachineMetadata(cliAvailability: CLIAvailability): M
   // share the same hostname and look identical).
   const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
   return {
-    teamsVersion: 1, teamLaunchVersion: 1,
+    teamsVersion: 1, teamLaunchVersion: 1, worktreeVersion: 1,
     host: os.hostname() + hostSuffix,
     platform: os.platform(),
     happyCliVersion: packageJson.version,

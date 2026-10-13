@@ -38,4 +38,14 @@ describe('getSessionSidebarSubtitle', () => {
       path: '/srv/app',
     }))).toBe('build · claude · /srv/app');
   });
+
+  it('B-586: a worktree session also names its branch', () => {
+    expect(getSessionSidebarSubtitle(session({
+      host: 'office',
+      flavor: 'claude',
+      path: '/Users/demo/repo.worktrees/vh-swift-river',
+      homeDir: '/Users/demo',
+      worktree: { branch: 'vh/swift-river', root: '/Users/demo/repo.worktrees/vh-swift-river' },
+    }))).toBe('office · claude · ~/repo.worktrees/vh-swift-river · ⎇ vh/swift-river');
+  });
 });

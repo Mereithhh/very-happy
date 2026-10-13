@@ -75,7 +75,7 @@ export interface AutomationRunnerDeps {
     /** Turn state of `sessionId` anchored on the prompt of `runId`. */
     readTurn?: (sessionId: string, runId: string) => Promise<TurnState>;
     send?: (sessionId: string, text: string, meta: { localId: string; model?: string | null; permissionMode?: string; effort?: string | null }) => Promise<void>;
-    prepareWorktree?: (home: string, repository: string, id: string) => Promise<{ directory: string }>;
+    prepareWorktree?: (home: string, repository: string, id: string, origin: 'automation') => Promise<{ directory: string }>;
     now?: () => number;
     tickMs?: number;
 }
@@ -319,7 +319,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         let directory = expandHome(action.directory);
         if (!isAbsolute(directory)) { await failNow(claimed, 'spawn', `Directory must be absolute: ${action.directory}`, 'invalid_action'); return; }
         if (action.worktree) {
-            try { directory = (await prepareWorktree(home, directory, `auto-${run.id}`)).directory; }
+            try { directory = (await prepareWorktree(home, directory, `auto-${run.id}`, 'automation')).directory; }
             catch (error) { await failNow(claimed, 'spawn', `Worktree preparation failed: ${error instanceof Error ? error.message : String(error)}`, 'worktree_failed'); return; }
         }
         persist({ runId: run.id, automationId: automation.id, kind: 'spawn', phase: 'starting', claimId: run.claimId, stickyKey, ...(action.worktree ? { directory } : {}) });

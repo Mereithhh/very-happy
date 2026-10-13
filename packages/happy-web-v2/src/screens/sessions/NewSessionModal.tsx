@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bookmark, Check, X } from 'lucide-react';
 import { useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
@@ -8,7 +8,8 @@ import type { RecentMachinePath } from '@/utils/quickChat';
 import { newSessionTimingStart } from '@/app/newSessionTiming';
 import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { pendingSessions } from '@/sync/pendingSessionsRuntime';
-import { Button } from '@/ui';
+import { Button, Spinner } from '@/ui';
+import { toast } from '@/ui/Toast';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ConnectMachineLink, NoMachinesNotice } from './NoMachinesNotice';
 import { claudeAuthNotice, hasClaudeAuthNotice } from './claudeAuthNotice';
@@ -20,6 +21,10 @@ import {
   SESSION_AGENTS,
   type SessionAgent,
 } from '@/utils/agentAvailability';
+import { EMPTY_WORKTREE_DRAFT, NewWorktreeFields, useWorktreeInfo, worktreeDraftReady, type WorktreeDraft } from './NewWorktreeFields';
+import { worktreeCreate } from '@/sync/worktreeOps';
+import { machineSupportsWorktrees } from '@/utils/worktree';
+import { worktreeCopy, worktreeErrorText } from './worktreeCopy';
 import './newsession.css';
 
 interface PathPreset {
@@ -127,9 +132,19 @@ export function NewSessionModal({
   // user just completed, and a launcher that refuses on stale evidence is worse
   // than one that says what it knows.
   const selectedClaudeAuth = claudeAuthNotice(selectedMachine, agent);
+  // B-586: 「在新 worktree 中」 — machine capability gate + the daemon's repo info.
+  const worktreeSupported = machineSupportsWorktrees(selectedMachine);
+  const [worktree, setWorktreeState] = useState<WorktreeDraft>(EMPTY_WORKTREE_DRAFT);
+  const setWorktree = useCallback((next: WorktreeDraft) => setWorktreeState(next), []);
+  const worktreeActive = worktree.enabled && worktreeSupported;
+  const worktreeInfoState = useWorktreeInfo(machineId, resolveDir(trimmed), worktreeActive);
+  const [creating, setCreating] = useState<'idle' | 'busy' | 'slow'>('idle');
+  const [createError, setCreateError] = useState<string | null>(null);
   const canCreate = !!selectedMachine
     && trimmed.length > 0
-    && selectedAgentAvailability.available;
+    && selectedAgentAvailability.available
+    && (!worktreeActive || worktreeDraftReady(worktree, worktreeInfoState))
+    && creating === 'idle';
 
   // Availability can change when a machine is selected or a daemon refreshes
   // its metadata. Never leave the modal pointing at a known-missing external
@@ -168,13 +183,31 @@ export function NewSessionModal({
   // B-516: optimistic open. The pending page owns the spawn, a directory
   // creation approval, the first message (queued in its outbox) and failure;
   // recent-path memory and the Task Board mapping happen on success there.
-  function onCreate() {
+  async function onCreate() {
     if (!canCreate) return;
+    let path = resolveDir(trimmed);
+    if (worktreeActive) {
+      // The worktree must exist before the optimistic page spawns into it.
+      setCreating('busy');
+      setCreateError(null);
+      const slow = setTimeout(() => setCreating((c) => (c === 'busy' ? 'slow' : c)), 200);
+      const result = await worktreeCreate(machineId, { path, branch: worktree.branch.trim(), baseRef: worktree.baseRef, location: worktree.location.trim() });
+      clearTimeout(slow);
+      if (!result.ok) {
+        const copy = worktreeCopy(lang);
+        setCreateError(result.unsupported ? copy.unsupported : `${copy.createFailed}: ${worktreeErrorText(copy, result.error)}`);
+        setCreating('idle');
+        return;
+      }
+      path = result.data.worktreePath;
+      // B-585: partial initialization is not fatal — the session still starts there.
+      if (result.data.init.initError) toast.show(worktreeCopy(lang).initFailed(result.data.init.initError), 'error');
+    }
     newSessionTimingStart('dialog');
     prefetchSessionDetail();
     const record = pendingSessions.create({
       machineId,
-      path: resolveDir(trimmed),
+      path,
       agent,
       permissionMode: resolveNewSessionPermissionMode(agentDefaultOverrides, agent, reviewFirst),
       source: 'dialog',
@@ -271,6 +304,15 @@ export function NewSessionModal({
               </button>
             </div>
 
+            <NewWorktreeFields
+              lang={lang}
+              supported={worktreeSupported}
+              draft={worktree}
+              onChange={setWorktree}
+              info={worktreeInfoState}
+            />
+            {createError && <div className="nwt-error" role="alert">{createError}</div>}
+
             <label className="ns-label">{t('newSession.agent')}</label>
             <div className="ns-agents">
               {SESSION_AGENTS.filter((a) => isAgentOffered(selectedMachine?.metadata, a)).map((a) => {
@@ -337,7 +379,7 @@ export function NewSessionModal({
                 // ⌘/Ctrl+Enter from the field = create, matching the send gesture.
                 // IME guard: a composition-committing Enter must not create.
                 if (ime.isGuarded(e)) return;
-                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); onCreate(); }
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void onCreate(); }
               }}
             />
           </>
@@ -347,8 +389,8 @@ export function NewSessionModal({
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button variant="primary" disabled={!canCreate} onPointerDown={prefetchSessionDetail} onClick={onCreate}>
-            {t('common.create')}
+          <Button variant="primary" disabled={!canCreate} aria-busy={creating !== 'idle' || undefined} onPointerDown={prefetchSessionDetail} onClick={() => { void onCreate(); }}>
+            {creating === 'slow' ? <><Spinner size={13} /> {worktreeCopy(lang).creating}</> : t('common.create')}
           </Button>
         </div>
       </div>

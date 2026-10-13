@@ -4,11 +4,17 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, isAbsolute, resolve } from 'node:path';
 import { ensurePrivateDirectorySync } from '@/utils/secureFiles';
+import { initializeOwnedWorktree } from '@/worktree/service';
 const exec = promisify(execFile);
 const git = async (directory: string, args: string[]) => (await exec('git', ['-C', directory, ...args], { timeout: 30_000, maxBuffer: 2 * 1024 * 1024 })).stdout.trim();
 
-/** Worktrees isolate repository edits; no branch force/reset and no uncommitted input copying. */
-export async function prepareTeamWorktree(home: string, repository: string, id: string): Promise<{ directory: string; repository: string; branch: string }> {
+/**
+ * Worktrees isolate repository edits; no branch force/reset. Uncommitted input
+ * is copied ONLY when the repository opts in via `.veryhappy/worktree.json`
+ * (B-585: no `.env*` default here), and its setup script runs only if the owner
+ * already approved that exact script on this machine.
+ */
+export async function prepareTeamWorktree(home: string, repository: string, id: string, origin: 'teams' | 'automation' = 'teams'): Promise<{ directory: string; repository: string; branch: string }> {
     // Resolve on the execution machine, never relative to the daemon's private home.
     if (repository === '~') repository = homedir();
     else if (repository.startsWith('~/') || (process.platform === 'win32' && repository.startsWith('~\\'))) repository = join(homedir(), repository.slice(2));
@@ -26,6 +32,8 @@ export async function prepareTeamWorktree(home: string, repository: string, id: 
         if (resolve(common) !== resolve(expected)) throw new Error('Team worktree belongs to another repository');
     } else {
         await git(repository, ['worktree', 'add', '-b', branch, directory, 'HEAD']);
+        // Fresh worktree only (a reused one was initialized when it was created). Never throws.
+        await initializeOwnedWorktree({ source: repository, worktree: directory, branch, origin });
     }
     return { directory, repository, branch };
 }

@@ -49,6 +49,8 @@ export const MetadataSchema = z.object({
     queueCancellation: z.boolean().optional(),
     /** Explicit daemon/CLI feature negotiation. Optional; never default it. */
     capabilities: z.array(z.string()).optional(),
+    /** B-586: session started inside a linked git worktree (wrapper snapshot). Lenient: never drops the session. */
+    worktree: z.object({ branch: z.string().nullable().optional(), root: z.string().optional() }).passthrough().nullable().optional().catch(undefined),
     /**
      * Effective permission mode the CLI process enforces right now (Claude SDK
      * vocabulary). Written only by the CLI; the web renders it instead of the
@@ -275,6 +277,8 @@ export interface DecryptedMessage {
 export const MachineMetadataSchema = z.object({
   teamsVersion: z.number().int().positive().optional(),
   teamLaunchVersion: z.number().int().positive().optional(),
+  /** B-586: daemon serves the `worktree-*` RPCs (absent on old daemons). */
+  worktreeVersion: z.number().int().positive().optional(),
     host: z.string(),
     platform: z.string(),
     happyCliVersion: z.string(),

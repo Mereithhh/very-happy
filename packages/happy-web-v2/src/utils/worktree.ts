@@ -1,192 +1,106 @@
 /**
- * Git worktree operations: create, list, remove
+ * B-586 worktree helpers (pure). Replaces the old unused `machineBash`-based
+ * create/list/remove (shell-interpolated user input): every operation now goes
+ * through the daemon's `worktree-*` RPCs (sync/worktreeOps.ts), and this file
+ * only holds the rules the UI needs. Spec: specs/2026-10-worktree-sessions-and-setup.md.
  */
 
-import { machineBash } from '@/sync/ops';
+/** Machine-level capability (铁律 14, machine form): the daemon serves `worktree-*`. */
+export function machineSupportsWorktrees(machine: { metadata?: { worktreeVersion?: number } | null } | null | undefined): boolean {
+    return (machine?.metadata?.worktreeVersion ?? 0) >= 1;
+}
 
-/** Relative path prefix where worktrees are stored inside a repo */
-export const WORKTREE_DIR = '.dev/worktree';
+/** An old daemon answers unknown methods with a normal `{error:'Method not found'}`. */
+export function isUnsupportedRpcError(error: string | undefined | null): boolean {
+    return !!error && /method not found|unknown method|not supported/i.test(error);
+}
 
-/** Absolute path marker used to detect worktree paths */
-export const WORKTREE_PATH_MARKER = `/${WORKTREE_DIR}/`;
+const adjectives = ['clever', 'happy', 'swift', 'bright', 'calm', 'bold', 'quiet', 'brave', 'wise', 'eager', 'gentle', 'quick', 'sharp', 'smooth', 'fresh'];
+const nouns = ['ocean', 'forest', 'cloud', 'star', 'river', 'mountain', 'valley', 'bridge', 'beacon', 'harbor', 'garden', 'meadow', 'canyon', 'island', 'desert'];
 
-// --- Name generation ---
+/** `vh/<adjective>-<noun>`; `random` injectable for tests. */
+export function generateWorktreeBranch(random: () => number = Math.random): string {
+    const pick = (list: string[]) => list[Math.floor(random() * list.length) % list.length];
+    return `vh/${pick(adjectives)}-${pick(nouns)}`;
+}
 
-const adjectives = [
-    'clever', 'happy', 'swift', 'bright', 'calm',
-    'bold', 'quiet', 'brave', 'wise', 'eager',
-    'gentle', 'quick', 'sharp', 'smooth', 'fresh'
+/** Same rule as the daemon (`defaultWorktreeLocation`): `<defaultParent>/<branch with / → ->`. */
+export function worktreeLocationFor(defaultParent: string, branch: string): string {
+    const slug = branch.replace(/[\\/]+/g, '-').replace(/[^A-Za-z0-9._-]/g, '-').replace(/^-+|-+$/g, '') || 'worktree';
+    const sep = defaultParent.includes('\\') && !defaultParent.includes('/') ? '\\' : '/';
+    return `${defaultParent.replace(/[\\/]+$/, '')}${sep}${slug}`;
+}
+
+/**
+ * A cheap client-side pre-check mirroring the obvious `git check-ref-format`
+ * failures (the daemon has the final say).
+ */
+export function isPlausibleBranchName(name: string): boolean {
+    const value = name.trim();
+    if (!value || value.length > 200 || value.startsWith('-') || value.startsWith('/') || value.endsWith('/') || value.endsWith('.')) return false;
+    if (/[\s~^:?*[\\]|\.\.|@\{|\/\/|\.lock(\/|$)/.test(value)) return false;
+    // eslint-disable-next-line no-control-regex
+    return !/[\x00-\x1f\x7f]/.test(value);
+}
+
+export type WorktreeSetupState = 'none' | 'needs-approval' | 'declined' | 'running' | 'succeeded' | 'failed' | 'timed-out' | 'interrupted' | 'unsupported';
+
+export type SetupBannerKind = 'approve' | 'running' | 'failed' | 'succeeded' | 'declined' | null;
+
+/** Which strip a session shows for its worktree setup state (unknown states → none). */
+export function setupBannerKind(state: string | undefined | null): SetupBannerKind {
+    switch (state) {
+        case 'needs-approval': return 'approve';
+        case 'running': return 'running';
+        case 'failed': case 'timed-out': case 'interrupted': case 'unsupported': return 'failed';
+        case 'succeeded': return 'succeeded';
+        case 'declined': return 'declined';
+        default: return null;
+    }
+}
+
+/** Session list subtitle suffix for a worktree session. */
+export function worktreeBranchLabel(metadata: { worktree?: { branch?: string | null } | null } | null | undefined): string | null {
+    const branch = metadata?.worktree?.branch;
+    return typeof branch === 'string' && branch ? `⎇ ${branch}` : null;
+}
+
+/** POSIX `/…` or Windows `C:\…` / `C:/…` (the daemon requires absolute paths). */
+export function isAbsoluteMachinePath(path: string): boolean {
+    return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path);
+}
+
+/**
+ * Characters that change how a script READS without being visible: bidi
+ * controls (Trojan Source), zero-width chars, BOM, a bare CR (overprints a line
+ * in some terminals), other C0/C1 controls except tab/newline.
+ */
+/** Inclusive code-point ranges (numeric on purpose: literal invisible characters in source are themselves a hazard). */
+const INVISIBLE_RANGES: ReadonlyArray<readonly [number, number]> = [
+    [0x0000, 0x0008], [0x000b, 0x000c], [0x000d, 0x000d], [0x000e, 0x001f], [0x007f, 0x009f], [0x00ad, 0x00ad],
+    [0x200b, 0x200f], [0x2028, 0x2029], [0x202a, 0x202e], [0x2060, 0x2064], [0x2066, 0x2069], [0xfeff, 0xfeff],
 ];
-
-const nouns = [
-    'ocean', 'forest', 'cloud', 'star', 'river',
-    'mountain', 'valley', 'bridge', 'beacon', 'harbor',
-    'garden', 'meadow', 'canyon', 'island', 'desert'
-];
-
-function generateWorktreeName(): string {
-    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
-    const noun = nouns[Math.floor(Math.random() * nouns.length)];
-    return `${adjective}-${noun}`;
+function isInvisible(ch: string): boolean {
+    const code = ch.codePointAt(0)!;
+    return INVISIBLE_RANGES.some(([lo, hi]) => code >= lo && code <= hi);
 }
 
-// --- Operations ---
+export type ScriptSegment = { kind: 'text'; text: string } | { kind: 'invisible'; code: string };
 
-export async function createWorktree(
-    machineId: string,
-    basePath: string
-): Promise<{
-    success: boolean;
-    worktreePath: string;
-    branchName: string;
-    error?: string;
-}> {
-    const name = generateWorktreeName();
-
-    // Check if it's a git repository
-    const gitCheck = await machineBash(
-        machineId,
-        'git rev-parse --git-dir',
-        basePath
-    );
-
-    if (!gitCheck.success) {
-        // exitCode -1 means the RPC call itself failed (network, daemon offline, etc.)
-        // Don't mask it as "Not a Git repository"
-        const isRpcFailure = gitCheck.exitCode === -1;
-        return {
-            success: false,
-            worktreePath: '',
-            branchName: '',
-            error: isRpcFailure
-                ? (gitCheck.stderr || 'Failed to connect to machine')
-                : 'Not a Git repository'
-        };
-    }
-
-    // Create the worktree with new branch
-    const worktreePath = `${WORKTREE_DIR}/${name}`;
-    let result = await machineBash(
-        machineId,
-        `git worktree add -b ${name} ${worktreePath}`,
-        basePath
-    );
-
-    // If worktree exists, try with a different name
-    if (!result.success && result.stderr.includes('already exists')) {
-        // Try up to 3 times with numbered suffixes
-        for (let i = 2; i <= 4; i++) {
-            const newName = `${name}-${i}`;
-            const newWorktreePath = `${WORKTREE_DIR}/${newName}`;
-            result = await machineBash(
-                machineId,
-                `git worktree add -b ${newName} ${newWorktreePath}`,
-                basePath
-            );
-
-            if (result.success) {
-                return {
-                    success: true,
-                    worktreePath: `${basePath}/${newWorktreePath}`,
-                    branchName: newName,
-                    error: undefined
-                };
-            }
+/** Split a script into plain text and visible `U+XXXX` markers for invisible characters. */
+export function markInvisibleChars(script: string): { segments: ScriptSegment[]; count: number } {
+    const segments: ScriptSegment[] = [];
+    let buffer = '';
+    let count = 0;
+    for (const ch of script) {
+        if (isInvisible(ch)) {
+            if (buffer) { segments.push({ kind: 'text', text: buffer }); buffer = ''; }
+            segments.push({ kind: 'invisible', code: `U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}` });
+            count++;
+        } else {
+            buffer += ch;
         }
     }
-
-    if (result.success) {
-        return {
-            success: true,
-            worktreePath: `${basePath}/${worktreePath}`,
-            branchName: name,
-            error: undefined
-        };
-    }
-
-    return {
-        success: false,
-        worktreePath: '',
-        branchName: '',
-        error: result.stderr || 'Failed to create worktree'
-    };
-}
-
-export interface WorktreeInfo {
-    path: string;
-    branch: string;
-}
-
-export async function listWorktrees(
-    machineId: string,
-    basePath: string
-): Promise<WorktreeInfo[]> {
-    const result = await machineBash(
-        machineId,
-        'git worktree list --porcelain',
-        basePath
-    );
-    if (!result.success) return [];
-
-    // Porcelain output has blocks separated by blank lines.
-    // First block is the main worktree — skip it.
-    const blocks = result.stdout.split('\n\n').slice(1);
-    const worktrees: WorktreeInfo[] = [];
-
-    for (const block of blocks) {
-        let path = '';
-        let branch = '';
-        for (const line of block.split('\n')) {
-            if (line.startsWith('worktree ')) {
-                path = line.slice('worktree '.length);
-            } else if (line.startsWith('branch refs/heads/')) {
-                branch = line.slice('branch refs/heads/'.length);
-            }
-        }
-        if (path) {
-            worktrees.push({ path, branch: branch || path });
-        }
-    }
-
-    return worktrees;
-}
-
-export async function removeWorktree(
-    machineId: string,
-    worktreePath: string
-): Promise<{ success: boolean; error?: string }> {
-    const idx = worktreePath.indexOf(WORKTREE_PATH_MARKER);
-    if (idx === -1) {
-        return { success: false, error: 'Not a worktree path' };
-    }
-    const basePath = worktreePath.slice(0, idx);
-
-    const result = await machineBash(
-        machineId,
-        `git worktree remove ${worktreePath} --force`,
-        basePath
-    );
-    return {
-        success: result.success,
-        error: result.success ? undefined : (result.stderr || 'Failed to remove worktree'),
-    };
-}
-
-/** Check if a path is inside a worktree */
-export function isWorktreePath(path: string): boolean {
-    return path.includes(WORKTREE_PATH_MARKER);
-}
-
-/** Extract the main repository checkout path from a possibly-worktree path */
-export function getRepoPath(path: string): string {
-    const idx = path.indexOf(WORKTREE_PATH_MARKER);
-    if (idx === -1) return path;
-    return path.slice(0, idx);
-}
-
-/** Extract the worktree name from a worktree path, or null if not a worktree */
-export function getWorktreeName(path: string): string | null {
-    const idx = path.indexOf(WORKTREE_PATH_MARKER);
-    if (idx === -1) return null;
-    return path.slice(idx + WORKTREE_PATH_MARKER.length);
+    if (buffer) segments.push({ kind: 'text', text: buffer });
+    return { segments, count };
 }

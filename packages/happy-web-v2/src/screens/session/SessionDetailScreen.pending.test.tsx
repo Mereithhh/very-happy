@@ -85,6 +85,7 @@ vi.mock('./SessionArchivedBanner', () => ({ SessionArchivedBanner: () => null })
 vi.mock('./StaleWrapperBanner', () => ({ StaleWrapperBanner: () => null }));
 vi.mock('./ModelSupportBanner', () => ({ ModelSupportBanner: () => null }));
 vi.mock('./AutomationAttentionBanner', () => ({ AutomationAttentionBanner: () => null }));
+vi.mock('./WorktreeSetupBanner', () => ({ WorktreeSetupBanner: () => null }));
 vi.mock('./messageActionsCopy', () => ({ messageActionsCopy: () => ({}) }));
 vi.mock('./btwPanelState', () => ({ onBtwOpen: () => () => {} }));
 vi.mock('./subagentPanelState', () => ({ onSubagentOpen: () => () => {} }));

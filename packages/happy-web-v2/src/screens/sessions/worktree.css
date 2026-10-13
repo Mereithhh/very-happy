@@ -1,0 +1,172 @@
+/* B-585/B-586 worktree option (new-session dialog) and setup review dialog.
+ * Reuses the ns-* dialog primitives; tokens only. A setup state is not "live",
+ * so no --accent: attention uses --warn, failures --danger text. */
+
+.nwt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+.nwt-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  color: var(--text);
+  min-height: 32px;
+  cursor: pointer;
+}
+.nwt-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--text);
+}
+.nwt-toggle.is-disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+.nwt-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-left: var(--sp-3);
+  border-left: 1px solid var(--line);
+}
+.nwt-fields .ns-label {
+  margin-top: var(--sp-1);
+}
+.nwt-fields .ns-input.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-13);
+  min-width: 0;
+}
+.nwt-fields .ns-input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.nwt-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.nwt-error {
+  font-size: var(--fs-12);
+  color: var(--danger);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.nwt-summary {
+  margin: var(--sp-1) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.nwt-summary-warn {
+  color: var(--warn);
+}
+
+/* ── setup review / output dialog ── */
+.ns-card.wts-card {
+  max-width: 560px;
+}
+/* Programmatic focus target on open (keyboard users land inside the dialog). */
+.ns-card.wts-card:focus {
+  outline: none;
+}
+.wts-lead {
+  margin: 0;
+  font-size: var(--fs-13);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.wts-changed {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--warn-dim);
+  color: var(--text);
+  font-size: var(--fs-12);
+}
+.wts-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px var(--sp-3);
+  margin: 0;
+  font-size: var(--fs-12);
+}
+.wts-facts dt {
+  color: var(--text-faint);
+}
+.wts-facts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.wts-script {
+  /* Keep its own height (up to 40dvh): the card scrolls, the script is never squeezed. */
+  flex: none;
+  margin: 0;
+  max-height: 40dvh;
+  overflow: auto;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--text);
+}
+.wts-changed.wts-danger {
+  background: var(--danger-dim);
+}
+.wts-invisible {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--danger-dim);
+  color: var(--danger);
+  font-size: var(--fs-11);
+}
+.wts-error {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+.wts-state {
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+
+@media (pointer: coarse), (max-width: 640px) {
+  .nwt-fields .ns-input.mono {
+    font-size: var(--fs-16);
+  }
+  .nwt-toggle {
+    min-height: 44px;
+  }
+  .wts-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wts-facts dt {
+    margin-top: var(--sp-1);
+  }
+}
+
+/* Touch: the dialog's decisions get full 44px targets. */
+@media (pointer: coarse) {
+  .wts-card .ns-actions .vh-btn {
+    min-height: 44px;
+  }
+}

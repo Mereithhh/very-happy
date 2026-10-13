@@ -4,7 +4,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -80,6 +80,8 @@ import {
   type GroupStatusSummary,
 } from './sidebarCollapsedGroups';
 import { SidebarRateLimit } from '@/screens/machine/rateLimits/SidebarRateLimit';
+import { archiveAndDeleteWorktree, canArchiveAndDeleteWorktree } from '@/app/worktreeArchive';
+import { worktreeCopy } from './worktreeCopy';
 
 function rowHref(r: Row): string {
   return r.href;
@@ -1521,7 +1523,7 @@ function SidebarRow({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   const isTerminal = row.kind === 'terminal';
   // Terminal rows are focused when the terminal route + tid match (they were
@@ -1629,6 +1631,23 @@ function SidebarRow({
           );
         },
   });
+
+  // B-586: opt-in sibling of archive for a web-created worktree session (plain
+  // archive never deletes). The flow inspects, double-confirms dirty work and
+  // keeps the branch (app/worktreeArchive.ts).
+  if (!isTerminal && canArchiveAndDeleteWorktree(s ?? undefined, restoreMachine)) {
+    menuItems.push({
+      key: 'archive-delete-worktree',
+      label: worktreeCopy(lang).archiveDelete,
+      icon: FolderX,
+      danger: true,
+      onSelect: () => {
+        void archiveAndDeleteWorktree(row.session!).then((archived) => {
+          if (archived && selected) navigate(nextSessionPathAfterClose(row.session!.id));
+        });
+      },
+    });
+  }
 
   if (canKillAttached) {
     menuItems.push({

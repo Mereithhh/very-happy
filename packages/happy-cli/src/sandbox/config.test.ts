@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildSandboxRuntimeConfig } from './config';
+import { buildSandboxRuntimeConfig, defaultHappyHomeDir } from './config';
 import type { SandboxConfig } from '@/persistence';
 
 const sessionPath = '/tmp/happy-session';
@@ -153,6 +153,7 @@ describe('buildSandboxRuntimeConfig', () => {
         expect(runtimeConfig.filesystem?.denyWrite).toEqual([
             resolve(sessionPath, '.env'),
             resolve(sessionPath, 'relative/write-deny'),
+            join(defaultHappyHomeDir(), 'worktree-setup'),
         ]);
     });
 
@@ -181,5 +182,23 @@ describe('buildSandboxRuntimeConfig', () => {
                 process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
             }
         }
+    });
+
+    it('B-585: worktree-setup trust store is write-denied even when workspaceRoot is ~ (covers HAPPY_HOME)', () => {
+        const home = join(homedir(), '.happy-test-home');
+        for (const isolation of ['workspace', 'strict', 'custom'] as const) {
+            const runtimeConfig = buildSandboxRuntimeConfig(
+                createConfig({ sessionIsolation: isolation, workspaceRoot: '~', customWritePaths: ['~'] }),
+                sessionPath,
+                home,
+            );
+            if (isolation !== 'strict') expect(runtimeConfig.filesystem?.allowWrite).toContain(homedir());
+            expect(runtimeConfig.filesystem?.denyWrite).toContain(join(home, 'worktree-setup'));
+        }
+    });
+
+    it('B-585: default HAPPY_HOME follows HAPPY_HOME_DIR like configuration does', () => {
+        expect(defaultHappyHomeDir({ HAPPY_HOME_DIR: '~/vh-dev' })).toBe(`${homedir()}/vh-dev`);
+        expect(defaultHappyHomeDir({})).toBe(join(homedir(), '.happy'));
     });
 });

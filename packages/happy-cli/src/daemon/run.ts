@@ -50,6 +50,8 @@ import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
 import { spawnAgentUnavailableError } from '@/daemon/spawnAgentAvailability';
 import type { CLIAvailability } from '@/utils/detectCLI';
 import { getInitialMachineMetadata, getStartupCliAvailability } from './machineMetadata';
+import { currentWorktreeService } from '@/worktree/service';
+import { WORKTREE_CAPABILITY_VERSION } from '@/worktree/worktreeRpc';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { readSettings, writeSettings } from '@/persistence';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
@@ -1991,6 +1993,8 @@ export async function startDaemon(): Promise<void> {
     // Publish the executing daemon's capability after the worker is installed.
     void apiMachine.updateMachineMetadata(current => ({
       ...(current ?? initialMachineMetadata), teamsVersion: 1, teamLaunchVersion: 1,
+      // B-586: this daemon serves the worktree-* RPCs (web gates 「在新 worktree 中」 on it).
+      worktreeVersion: WORKTREE_CAPABILITY_VERSION,
     })).catch(() => logger.debug('[DAEMON RUN] Teams capability publication will retry on reconnect'));
 
     // Setup signal handlers
@@ -2002,6 +2006,8 @@ export async function startDaemon(): Promise<void> {
       teamWorker?.stop();
       // Real shutdown: kill live script trees; the next daemon reports them from the receipt, never re-runs them.
       automationRunner?.stop({ killScripts: true });
+      // B-585: kill running worktree setup trees; the next daemon records them as interrupted.
+      currentWorktreeService()?.stopAll();
 
       // Clear health check interval
       if (restartOnStaleVersionAndHeartbeat) {
