@@ -17,8 +17,8 @@
  * The head shows the full path with a copy-path button, plus the host's
  * fullscreen toggle (owned by FsBrowser).
  */
-import { useEffect, useRef, useState } from 'react';
-import { Code, Eye, ClipboardCopy, Download, PanelRightOpen, Maximize2, Minimize2, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Code, Eye, ClipboardCopy, Download, PanelRightOpen, Maximize2, Minimize2, RefreshCw, X } from 'lucide-react';
 import { machineFsRead, type FsFailure } from '@/sync/fsOps';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
@@ -39,6 +39,8 @@ import { fsFailureText } from './fsFailureText';
 import { DownloadFeedback, FileDownloadAction } from './FileDownloadAction';
 import { useFileDownload } from './useFileDownload';
 import { consumeDownloadIntent, useDownloadIntent } from './downloadIntent';
+import { useSession, useSessionMessages } from '@/sync/storage';
+import { agentWriteSignature, changeAction } from './agentWrites';
 
 type ViewerState =
     | { phase: 'loading'; progress: number | null }
@@ -59,7 +61,19 @@ function decodeUtf8(b64: string): string {
 export function FsFileViewer(props: FsFileViewerProps) {
     return <FsFileViewerContent key={JSON.stringify([props.machineId, props.path])} {...props}/>;
 }
+/**
+ * B-573: a signature of this session's completed agent writes to `path`
+ * (null without a session — the machine file page has nothing to follow).
+ */
+function useAgentWriteSignature(sessionId: string | undefined, path: string): string | null {
+    const { messages } = useSessionMessages(sessionId ?? '');
+    const cwd = useSession(sessionId ?? '')?.metadata?.path;
+    return useMemo(() => (sessionId ? agentWriteSignature(messages, path, cwd) : null), [sessionId, messages, path, cwd]);
+}
+
 interface FsFileViewerProps {
+    /** B-573: follow this session's agent writes to the file (refresh / banner). */
+    sessionId?: string;
     onPin?: () => void;
     contained?: boolean;
     machineId: string;
@@ -68,7 +82,7 @@ interface FsFileViewerProps {
     fullscreen: boolean;
     onToggleFullscreen: () => void;
 }
-function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFullscreen, onPin, contained = false }: FsFileViewerProps) {
+function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFullscreen, onPin, contained = false, sessionId }: FsFileViewerProps) {
     const { t, lang } = useTranslation();
     const zh = lang.startsWith('zh');
     const kind = previewKindOf(path);
@@ -100,11 +114,54 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
     const [imgActual, setImgActual] = useState(false);
     const [blobUrl, setBlobUrl] = useState<string | null>(null);
 
+    // B-573: re-read when the agent writes this file. `silent` keeps the old
+    // content on screen until the new one lands, then restores the scroll.
+    const rootRef = useRef<HTMLDivElement>(null);
+    const [reload, setReload] = useState<{ tick: number; silent: boolean }>({ tick: 0, silent: false });
+    const restoreScroll = useRef<number | null>(null);
+    const lastInteraction = useRef(0);
+    const [agentChanged, setAgentChanged] = useState(false);
+    const scroller = () => rootRef.current?.querySelector<HTMLElement>('.fsb-viewer-body') ?? null;
+    const refresh = (silent: boolean) => {
+        setAgentChanged(false);
+        restoreScroll.current = silent ? scroller()?.scrollTop ?? null : null;
+        setReload((r) => ({ tick: r.tick + 1, silent }));
+    };
+    const writeSig = useAgentWriteSignature(sessionId, path);
+    const seenSig = useRef(writeSig);
+    useEffect(() => {
+        if (writeSig === seenSig.current) return;
+        seenSig.current = writeSig;
+        if (writeSig === null) return;
+        const root = rootRef.current;
+        const selection = typeof window !== 'undefined' ? window.getSelection() : null;
+        const hasSelection = !!(root && selection && !selection.isCollapsed && selection.anchorNode && root.contains(selection.anchorNode));
+        const action = changeAction({
+            phase: stateRef.current.phase,
+            kind: kind === 'markdown' && showSource ? 'text' : kind,
+            visible: !!root && root.getClientRects().length > 0,
+            hasSelection,
+            msSinceInteraction: Date.now() - lastInteraction.current,
+        });
+        if (action === 'banner') setAgentChanged(true);
+        else refresh(action === 'silent');
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on the signature only
+    }, [writeSig]);
+    useLayoutEffect(() => {
+        if (restoreScroll.current === null || state.phase !== 'text') return;
+        const el = scroller();
+        if (el) el.scrollTop = Math.min(restoreScroll.current, Math.max(0, el.scrollHeight - el.clientHeight));
+        restoreScroll.current = null;
+    }, [state]);
+
     useEffect(() => {
         let cancelled = false;
-        setState({ phase: 'loading', progress: null });
-        setShowSource(false);
-        setImgActual(false);
+        const silent = reload.silent && stateRef.current.phase === 'text';
+        if (!silent) {
+            setState({ phase: 'loading', progress: null });
+            setShowSource(false);
+            setImgActual(false);
+        }
 
         (async () => {
             if (kind === 'image' || kind === 'pdf' || kind === 'spreadsheet') {
@@ -159,7 +216,8 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
         return () => {
             cancelled = true;
         };
-    }, [machineId, path, kind]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- reload.silent is read with the tick
+    }, [machineId, path, kind, reload.tick]);
 
     // Blob URL lifecycle: created in an effect (not lazily during render — a
     // StrictMode double-render would leak one), revoked on replace/unmount.
@@ -271,7 +329,10 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
     };
 
     return (
-        <div className={`fsb-viewer${fullscreen && !contained ? ' fsb--full' : ''}`}>
+        <div ref={rootRef} className={`fsb-viewer${fullscreen && !contained ? ' fsb--full' : ''}`}
+            onScrollCapture={() => { lastInteraction.current = Date.now(); }}
+            onPointerDownCapture={() => { lastInteraction.current = Date.now(); }}
+            onWheelCapture={() => { lastInteraction.current = Date.now(); }}>
             <div className="fsb-viewer-head">
                 <span className="fsb-viewer-path" title={path}>{path}</span>
                 <div className="fsb-viewer-actions">
@@ -306,6 +367,15 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
             </div>
             {headDownload.state.phase !== 'idle' && headDownload.state.phase !== 'reading' && (
                 <div className="fsb-download-status"><DownloadFeedback state={headDownload.state} zh={zh} /></div>
+            )}
+            {agentChanged && (
+                <div className="fsb-agent-changed" role="status">
+                    <span className="fsb-agent-changed-text">{zh ? '文件已被 agent 修改' : 'The agent changed this file'}</span>
+                    <button type="button" className="fsb-agent-changed-refresh" onClick={() => refresh(true)}>
+                        <RefreshCw size={13} aria-hidden/>{zh ? '刷新' : 'Refresh'}
+                    </button>
+                    <button type="button" className="fsb-iconbtn" onClick={() => setAgentChanged(false)} aria-label={zh ? '关闭提示' : 'Dismiss'} title={zh ? '关闭提示' : 'Dismiss'}><X size={13}/></button>
+                </div>
             )}
             {pushed && (
                 <FileDownloadAction
