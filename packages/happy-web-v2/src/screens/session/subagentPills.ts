@@ -47,8 +47,10 @@ export function countSubagentCards(messages: Message[]): number {
  * B-317: a card the user aborted is not running, whatever its last lifecycle
  * event said — see subagentAbort.ts for why the transcript keeps lying here.
  */
-export function countRunningSubagentCards(messages: Message[]): number {
-    const abortedAt = userAbortedAt(messages);
+export function countRunningSubagentCards(messages: Message[], liftedAbortedAt?: number | null): number {
+    // B-578: the stop line may have been lifted out of `messages` (chatTurns) —
+    // the caller then passes its time, or the cards would pulse forever.
+    const abortedAt = liftedAbortedAt ?? userAbortedAt(messages);
     let count = 0;
     for (const message of messages) {
         if (message.kind !== 'tool-call') continue;

@@ -7,6 +7,8 @@ import { GENERIC_TURN_FAILURE, presentServiceEvent } from './serviceEvent';
 import { stripThinkingWrapper } from './thinking';
 import { summarizeCompactionTurn, type CompactionSummary } from './compaction';
 import { turnDiffSummary, type TurnDiff } from './turnDiffs';
+import { continueOfferStopId, isUserStopEvent } from './continueOffer';
+import { userAbortedAt } from './subagentAbort';
 
 export type LeafRow =
     | {
@@ -20,6 +22,8 @@ export type LeafRow =
         attachments?: ToolCallMessage[];
         /** B-520: this answer's `<options>` are still the live suggestions. */
         optionsActive?: boolean;
+        /** B-578: the latest 「已由你停止」 with nothing sent since — carries 「继续」. */
+        continueOffer?: boolean;
     }
     | { type: 'toolgroup'; key: string; tools: ToolCallMessage[] };
 
@@ -31,6 +35,9 @@ export type ChatRow = LeafRow | ({ type: 'compaction'; key: string } & Compactio
     durationSeconds?: number;
     /** B-519: the task notification that started this turn (shown as the header). */
     trigger?: Message;
+    /** B-578: the turn's user stop, when its line was lifted out of the fold —
+     *  the folded sub-agent cards still need it (B-317, subagentAbort.ts). */
+    abortedAt?: number;
 } | {
     /** B-571: the files a finished turn changed (one neutral line at its end). */
     type: 'turn-diff';
@@ -349,9 +356,13 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean, opti
                 // B-487: a turn that ended without an answer ends on its
                 // failure — keep that visible instead of folding it into the
                 // collapsed activity where nobody opens it.
+                // B-578: so does a turn the user stopped — the stop line (and its
+                // 「继续」) stays visible instead of folding away.
                 const renderable = turnMessages.filter(isRenderableActivityMessage);
                 const failures = visibleTurnFailures(renderable);
-                const activity = renderable.filter((candidate) => !isTurnFailure(candidate));
+                const ends = renderable.filter((candidate) => failures.includes(candidate) || isUserStopEvent(candidate));
+                const activity = renderable.filter((candidate) => !isTurnFailure(candidate) && !isUserStopEvent(candidate));
+                const abortedAt = userAbortedAt(renderable);
                 if (activity.length > 0) {
                     rows.push({
                         type: 'activity',
@@ -360,10 +371,11 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean, opti
                         live: false,
                         durationSeconds: activityDurationSeconds(renderable),
                         ...(trigger ? { trigger } : {}),
+                        ...(abortedAt !== null ? { abortedAt } : {}),
                     });
                     rows.push(...askAnswerRows(turnMessages));
                 }
-                if (failures.length > 0) rows.push(...buildLeafRows(failures, finalAgentId));
+                if (ends.length > 0) rows.push(...buildLeafRows(ends, finalAgentId));
             } else {
                 const activity = turnMessages
                     .slice(0, finalIndex)
@@ -409,6 +421,11 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean, opti
         i = turnEnd;
     }
 
+    const stopId = continueOfferStopId(messages);
+    if (stopId) {
+        const index = rows.findIndex((row) => row.type === 'message' && row.message.id === stopId);
+        if (index >= 0) rows[index] = { ...(rows[index] as Extract<LeafRow, { type: 'message' }>), continueOffer: true };
+    }
     const optionsId = liveSuggestionsMessageId(messages, finalAgentId);
     if (optionsId) {
         const index = rows.findIndex((row) => row.type === 'message' && row.message.id === optionsId);

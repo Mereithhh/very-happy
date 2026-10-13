@@ -5,7 +5,7 @@
  */
 import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Ban, Bot, Brain, Check, ChevronDown, ChevronRight, Square, Terminal } from 'lucide-react';
+import { AlertTriangle, Ban, Bot, Brain, Check, ChevronDown, ChevronRight, Play, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage, ToolCallMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { useSession, useSessionThinking, useMachine } from '@/sync/storage';
@@ -33,6 +33,8 @@ import { presentTeamMessage } from './teamMessage';
 import { TeamMessageCard } from './TeamMessageCard';
 import { presentSessionPeerMessage } from './sessionPeerMessage';
 import { SessionPeerMessageCard } from './SessionPeerMessageCard';
+import { isMirrorSession } from '@/assistant/assistantSession';
+import { composerGate } from '@/app/sessionRestoreRules';
 
 function UserText({ message, sessionId, attachments }: { message: UserTextMessage; sessionId: string; attachments?: ToolCallMessage[] }) {
     const { t } = useTranslation();
@@ -78,7 +80,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     if (parsed.kind === 'caveat') return null;
     if (parsed.kind === 'command-run') {
         return (
-            <div className="msg msg--user">
+            <div className="msg msg--user" data-chat-prompt-id={message.id}>
                 <div className={`msg-bubble msg-bubble--cmd${send ? ' msg-bubble--unsent' : ''}`}>
                     <Terminal size={13} />
                     <span className="msg-cmd-name">/{parsed.commandName}</span>
@@ -107,7 +109,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     // under the bubble instead of letting it pass for a delivered prompt.
     const discarded = discardedReasonKey(message);
     return (
-        <div className="msg msg--user">
+        <div className="msg msg--user" data-chat-prompt-id={message.id}>
             <UserAttachments sessionId={sessionId} items={attachmentItems} />
             <div className={`msg-bubble-wrap vh-copyhost${send ? ' msg-bubble-wrap--unsent' : ''}`}>
                 <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0} send={send}>
@@ -318,7 +320,45 @@ function ClaudeAuthFailedBlock({ sessionId }: { sessionId: string }) {
     );
 }
 
-function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; sessionId: string }) {
+/**
+ * B-578: 「继续」 on the latest 「已由你停止」 (chatTurns marks which one). A
+ * plain user message through the same path as B-520's option picks. ChatList
+ * withholds it while the agent works or a prompt is queued; hidden here on
+ * mirrors (read-only) and archived sessions (the composer's restore-first
+ * path owns those).
+ */
+function ContinueAction({ sessionId }: { sessionId: string }) {
+    const { t } = useTranslation();
+    const session = useSession(sessionId);
+    const [busy, setBusy] = useState(false);
+    // Liveness and the queue are judged by ChatList (it only passes
+    // `continueOffer` while the session is idle with nothing queued).
+    if (!session || isMirrorSession(session) || composerGate(session) !== 'send') return null;
+    // The button text is what gets sent, in the UI language (B-578).
+    const label = t('session.chat.readingAids.continue');
+    const onContinue = () => {
+        if (busy) return;
+        setBusy(true);
+        requestChatFollow(sessionId);
+        void sync.sendMessage(sessionId, label, { source: 'chat' })
+            .then((receipt) => { if (!receipt) setBusy(false); })
+            .catch(() => setBusy(false));
+    };
+    return (
+        <button
+            type="button"
+            className="msg-event-continue"
+            title={t('session.chat.readingAids.continueHint')}
+            disabled={busy}
+            onClick={onContinue}
+        >
+            <Play size={12} aria-hidden />
+            <span>{label}</span>
+        </button>
+    );
+}
+
+function AgentEventBlock({ message, sessionId, continueOffer = false }: { message: ModeSwitchMessage; sessionId: string; continueOffer?: boolean }) {
     const { t } = useTranslation();
     const ev = message.event;
     let label: string;
@@ -339,7 +379,14 @@ function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; s
                     return <ClaudeAuthFailedBlock sessionId={sessionId} />;
                 }
                 if (presentation.kind === 'stopped') {
-                    return <div className="msg msg--event"><span className="msg-event-line msg-event-line--stopped"><Square size={11} fill="currentColor" />{t(presentation.textKey)}</span></div>;
+                    return (
+                        <div className="msg msg--event">
+                            <span className="msg-event-stopped-row">
+                                <span className="msg-event-line msg-event-line--stopped"><Square size={11} fill="currentColor" />{t(presentation.textKey)}</span>
+                                {continueOffer && <ContinueAction sessionId={sessionId} />}
+                            </span>
+                        </div>
+                    );
                 }
                 if (presentation.kind === 'error') {
                     return (
@@ -414,6 +461,8 @@ type MessageViewProps = {
     attachments?: ToolCallMessage[];
     /** B-520: this answer's `<options>` are the live suggestions (see chatTurns). */
     optionsActive?: boolean;
+    /** B-578: the latest user stop — offer 「继续」 (see chatTurns). */
+    continueOffer?: boolean;
 };
 
 /** B-565: one message row = one boundary. resetKey is the message object —
@@ -432,6 +481,7 @@ export const MessageView = memo(function MessageView(props: MessageViewProps) {
     && prev.sessionId === next.sessionId
     && prev.thinkingDurationMs === next.thinkingDurationMs
     && prev.optionsActive === next.optionsActive
+    && prev.continueOffer === next.continueOffer
     && sameTools(prev.attachments, next.attachments)
 ));
 
@@ -443,6 +493,7 @@ function MessageViewBody({
     thinkingDurationMs,
     attachments,
     optionsActive = false,
+    continueOffer = false,
 }: MessageViewProps) {
     switch (message.kind) {
         case 'user-text':
@@ -459,7 +510,7 @@ function MessageViewBody({
                 />
             );
         case 'agent-event':
-            return <AgentEventBlock message={message} sessionId={sessionId} />;
+            return <AgentEventBlock message={message} sessionId={sessionId} continueOffer={continueOffer} />;
         default:
             // Never silently drop an unknown kind — show a subtle fallback line.
             return (

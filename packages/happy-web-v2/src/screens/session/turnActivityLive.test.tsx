@@ -130,3 +130,16 @@ describe('TurnActivityView live turn', () => {
         expect(html).not.toContain('ta--live');
     });
 });
+
+describe('B-578: a stopped turn whose stop line was lifted out', () => {
+    it('does not pulse its sub-agents as running in the header', () => {
+        const card: ToolCallMessage = {
+            ...runningTool('task', 'Task', 1_000),
+            subagent: { status: 'running', updatedAt: 1_000 },
+        } as ToolCallMessage;
+        const stopped = render(<TurnActivityView messages={[card]} live={false} sessionId="s" abortedAt={2_000} />);
+        expect(stopped).not.toContain('ta-subagents--live');
+        const unstopped = render(<TurnActivityView messages={[card]} live={false} sessionId="s" />);
+        expect(unstopped).toContain('ta-subagents--live');
+    });
+});

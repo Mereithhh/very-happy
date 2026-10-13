@@ -23,6 +23,7 @@ function TurnActivityViewImpl({
     sessionId,
     durationSeconds,
     trigger,
+    abortedAt: liftedAbortedAt,
 }: {
     messages: Message[];
     live: boolean;
@@ -30,6 +31,8 @@ function TurnActivityViewImpl({
     durationSeconds?: number;
     /** B-519: the task notification that started this turn. */
     trigger?: Message;
+    /** B-578: set when the turn's stop line was lifted out of `messages`. */
+    abortedAt?: number;
 }) {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(live);
@@ -46,10 +49,10 @@ function TurnActivityViewImpl({
 
     // B-260: a folded turn should still say how many sub-agents ran inside it.
     const subagentCount = useMemo(() => countSubagentCards(messages), [messages]);
-    const runningSubagents = useMemo(() => countRunningSubagentCards(messages), [messages]);
+    const runningSubagents = useMemo(() => countRunningSubagentCards(messages, liftedAbortedAt), [messages, liftedAbortedAt]);
     // B-317: a user abort inside this turn ends its sub-agents, whatever their
     // last lifecycle event said (subagentAbort.ts).
-    const abortedAt = useMemo(() => userAbortedAt(messages), [messages]);
+    const abortedAt = useMemo(() => liftedAbortedAt ?? userAbortedAt(messages), [liftedAbortedAt, messages]);
 
     const elapsed = useElapsedSeconds(live ? activityStart(messages) : null);
     const duration = live ? elapsed : durationSeconds ?? activityDurationSeconds(messages);
@@ -103,4 +106,5 @@ export const TurnActivityView = memo(TurnActivityViewImpl, (prev, next) => (
     && prev.sessionId === next.sessionId
     && prev.durationSeconds === next.durationSeconds
     && prev.trigger === next.trigger
+    && prev.abortedAt === next.abortedAt
 ));
