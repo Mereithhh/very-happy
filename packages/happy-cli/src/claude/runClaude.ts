@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { AgentState, Metadata } from '@/api/types';
+import { sessionWorktreeMetadata } from '@/worktree/sessionWorktree';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import type { EnhancedMode, PermissionMode } from './loop';
@@ -241,6 +242,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // all. (Shared helper: the other flavors get the same tag via
         // createSessionMetadata.)
         ...(originTags ? { tags: originTags } : {}),
+        // B-586: linked git worktree → branch shown in the session list.
+        ...sessionWorktreeMetadata(workingDirectory),
     };
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)

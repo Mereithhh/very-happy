@@ -153,6 +153,8 @@ export type Session = {
 export const MachineMetadataSchema = z.object({
   teamsVersion: z.number().int().positive().optional(),
   teamLaunchVersion: z.number().int().positive().optional(),
+  /** B-586: daemon serves the `worktree-*` RPCs. Absent on old daemons. */
+  worktreeVersion: z.number().int().positive().optional(),
   host: z.string(),
   platform: z.string(),
   happyCliVersion: z.string(),
@@ -585,6 +587,8 @@ export type Metadata = {
   queueCancellation?: boolean,
   /** Explicit feature negotiation; old CLIs omit this field. */
   capabilities?: string[],
+  /** B-586: session started inside a linked git worktree (snapshot at start). Old clients ignore it. */
+  worktree?: { branch: string | null; root: string } | null,
   homeDir: string,
   happyHomeDir: string,
   happyLibDir: string,

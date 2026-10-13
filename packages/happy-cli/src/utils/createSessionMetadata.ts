@@ -15,6 +15,7 @@ import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
 import type { SandboxConfig } from '@/persistence';
 import packageJson from '../../package.json';
+import { sessionWorktreeMetadata } from '@/worktree/sessionWorktree';
 
 /**
  * Backend flavor identifier for session metadata.
@@ -159,6 +160,8 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         // from birth (see spawnOriginTags) — applies to every flavor the daemon
         // can spawn, since HAPPY_SPAWNED_BY is exported flavor-independently.
         ...(originTags ? { tags: originTags } : {}),
+        // B-586: linked git worktree → branch shown in the session list.
+        ...sessionWorktreeMetadata(process.cwd()),
     };
 
     return { state, metadata };
