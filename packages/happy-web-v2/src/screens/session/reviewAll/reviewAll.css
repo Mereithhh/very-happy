@@ -1,0 +1,184 @@
+/* B-572 review-all tab. Neutral surfaces + 1px lines; no accent (nothing here is live). */
+.rva {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+  container-name: rva;
+}
+.rva-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.rva-progress {
+  flex: none;
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+}
+.rva-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.rva-tool {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 28px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.rva-tool:hover,
+.rva-tool:focus-visible { outline: none; background: var(--bg-3); color: var(--text); }
+.rva-tool.is-active { background: var(--bg-3); color: var(--text); }
+.rva-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+}
+.rva-nav {
+  display: none;
+}
+.rva-nav.is-open {
+  display: block;
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 4;
+  width: min(320px, 100%);
+  max-height: 70%;
+  overflow: auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-top: 0;
+  box-shadow: var(--shadow-pop);
+}
+.rva-nav-list { list-style: none; margin: 0; padding: var(--sp-1) 0; }
+.rva-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 28px;
+  padding: 0 var(--sp-3);
+  text-align: left;
+  font-size: var(--fs-12);
+  color: var(--text);
+}
+.rva-nav-item:hover,
+.rva-nav-item:focus-visible { outline: none; background: var(--bg-3); }
+.rva-nav-item.is-viewed { color: var(--text-dim); }
+.rva-nav-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rva-nav-check { flex: none; color: var(--text-dim); font-size: var(--fs-11); }
+
+/* Wide panel: the navigator is a permanent left column. */
+@container rva (min-width: 760px) {
+  .rva-nav-toggle { display: none; }
+  .rva-nav,
+  .rva-nav.is-open {
+    display: block;
+    position: static;
+    flex: none;
+    width: 220px;
+    max-height: none;
+    overflow: auto;
+    border: 0;
+    border-right: 1px solid var(--line);
+    box-shadow: none;
+    background: var(--bg-1);
+  }
+}
+
+.rva-scroll {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: relative;
+}
+.rva-section { border-bottom: 1px solid var(--line); }
+.rva-section-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  padding: 2px var(--sp-2) 2px var(--sp-1);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+}
+.rva-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 30px;
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: var(--text);
+}
+.rva-toggle:focus-visible { outline: none; background: var(--bg-3); }
+.rva-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-12);
+}
+.rva-dir { color: var(--text-dim); }
+.rva-name { color: var(--text); }
+.rva-comments { flex: none; font-size: var(--fs-11); color: var(--text-dim); }
+.rva-viewed {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 30px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.rva-viewed:hover { background: var(--bg-3); color: var(--text); }
+.rva-viewed input { margin: 0; accent-color: var(--text); }
+.rva-section.is-viewed .rva-name { color: var(--text-dim); }
+.rva-section-body {
+  container-type: inline-size;
+  overflow-x: auto;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}
+.rva-placeholder { background: var(--bg-0); }
+
+@media (pointer: coarse) {
+  .rva-tool,
+  .rva-toggle,
+  .rva-viewed,
+  .rva-nav-item { min-height: 44px; }
+  .rva-tool { height: 44px; }
+  .rva-open { width: 44px; height: 44px; }
+}
+/* Narrow: icon-only tools so the bar never wraps or scrolls the page. */
+@container rva (max-width: 520px) {
+  .rva-tool-label { display: none; }
+  .rva-nav-toggle span { display: none; }
+}

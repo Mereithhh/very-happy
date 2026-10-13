@@ -105,6 +105,7 @@ function PreviewBody({ request, fullscreen, onToggleFullscreen, onClose, onPin }
 
     return (
         <FsFileViewer
+            sessionId={request.sessionId}
             onPin={onPin}
             machineId={request.machineId}
             path={request.path}
