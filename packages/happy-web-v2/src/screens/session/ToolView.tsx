@@ -22,6 +22,7 @@ import { CodeView } from './CodeView';
 import { DiffView } from './DiffView';
 import { Markdown } from './Markdown';
 import { AskUserQuestionOptions } from './AskUserQuestionView';
+import { useTranscriptQuestionPlacement } from './usePinnedRequest';
 import { detectSelectedLabels } from './askUserQuestion';
 import { asCommand, extractError, resultToText } from './toolInfo';
 import { SubagentDetail } from './SubagentDetail';
@@ -283,8 +284,14 @@ function PlanView({ tool }: { tool: ToolCall }) {
 function QuestionView({ tool }: { tool: ToolCall }) {
     // ChatList doesn't thread sessionId through ToolGroupView (frozen file for
     // this batch) — the session route param IS the sessionId.
+    const { t } = useTranslation();
     const { id: sessionId } = useParams();
     const [sent, setSent] = useState(false);
+    const livePendingId = tool.permission?.status === 'pending' ? tool.permission.id : null;
+    // B-563: while the request is answerable in the dock above the composer,
+    // this copy is a read-only receipt — one actionable card, not two. A
+    // terminal mirror (B-105) is read-only here too.
+    const placement = useTranscriptQuestionPlacement(sessionId, livePendingId);
     const parsed = knownTools['AskUserQuestion'].input.safeParse(tool.input ?? {});
     const questions =
         parsed.success && Array.isArray(parsed.data.questions) && parsed.data.questions.length > 0
@@ -292,17 +299,26 @@ function QuestionView({ tool }: { tool: ToolCall }) {
             : null;
     if (!questions || !sessionId) return <DefaultView tool={tool} />;
     const answered = tool.result != null || tool.state === 'completed' || tool.state === 'error';
-    const pendingRequestId = tool.permission?.status === 'pending' ? tool.permission.id : null;
+    const pendingRequestId = livePendingId;
     const selected = answered
         ? detectSelectedLabels(
               resultToText(tool.result),
               questions.flatMap((q) => (q.options ?? []).map((o) => o.label)),
           )
         : [];
+    if (placement !== 'inline' && !answered) {
+        return (
+            <div className="tv-stack">
+                <AskUserQuestionOptions questions={questions} disabled stacked selected={[]} onSubmit={() => {}} />
+                {placement === 'dock' && <div className="tv-ask-pinned">{t('session.permission.answerAbove')}</div>}
+            </div>
+        );
+    }
     return (
         <AskUserQuestionOptions
             questions={questions}
             disabled={answered || sent || !pendingRequestId}
+            stacked={answered || sent || !pendingRequestId}
             selected={selected}
             onSubmit={(answers) => {
                 if (!pendingRequestId) return;

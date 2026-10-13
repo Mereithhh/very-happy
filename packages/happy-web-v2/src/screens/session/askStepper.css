@@ -1,0 +1,51 @@
+/* B-564: multi-question AskUserQuestion, one question at a time. Neutral
+ * surfaces only: the current step is ink-on-raised, never --accent (live). */
+.tv-ask-steps {
+  display: flex;
+  gap: var(--sp-1);
+  overflow-x: auto;
+  min-width: 0;
+  scrollbar-width: none;
+}
+.tv-ask-steps::-webkit-scrollbar { display: none; }
+.tv-ask-step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: 0 0 auto;
+  max-width: 16ch;
+  min-height: 28px;
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+}
+.tv-ask-step:not(:disabled):hover { background: var(--bg-2); }
+.tv-ask-step--current {
+  border-color: var(--line-2);
+  background: var(--bg-2);
+  color: var(--text);
+  font-weight: 600;
+}
+.tv-ask-step-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv-ask-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+@media (pointer: coarse) {
+  .tv-ask-step { min-height: 44px; }
+  .tv-ask-nav .vh-btn { min-height: 44px; }
+}
+/* B-563: transcript receipt while the dock above the composer owns the answer. */
+.tv-ask-pinned {
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+}

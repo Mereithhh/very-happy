@@ -567,6 +567,8 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        // B-568: socket down for 1.5s+
+        reconnectingPlaceholder: 'Reconnecting… messages you send will go out once it recovers',
         // B-497: a message another session on the same machine sent this one,
         // or the daemon's edit-conflict notice — rendered as a source card.
         peerMessage: {
@@ -840,6 +842,12 @@ export const en = {
             approveAll: 'Approve all',
             denyAll: 'Deny all',
             pending: ({ count }: { count: number }) => count === 1 ? '1 request pending' : `${count} requests pending`,
+            // B-563: the dock above the composer
+            collapse: 'Collapse',
+            expand: 'Expand',
+            pointer: ({ count }: { count: number }) => count === 1 ? '1 request waiting for you · pinned above the input' : `${count} requests waiting for you · pinned above the input`,
+            pointerAction: 'Show',
+            answerAbove: 'Answer above the input',
         },
     },
 
@@ -1733,6 +1741,11 @@ export const en = {
             other: 'Talk about it',
             otherDescription: 'Reply in your own words',
             otherPlaceholder: 'Type your answer...',
+            // B-564: one question at a time
+            next: 'Next',
+            previous: 'Previous',
+            stepLabel: ({ index }: { index: number }) => `Question ${index}`,
+            stepsLabel: 'Questions',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,

@@ -6,7 +6,7 @@
  * Input parsing happens at the CALL SITES via the knownTools zod schema — this
  * component receives already-validated questions.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, CheckSquare, MessageCircle, Square } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Button } from '@/ui';
@@ -19,6 +19,15 @@ import {
     type AskAnswers,
     type AskQuestion,
 } from './askUserQuestion';
+import {
+    ASK_AUTO_ADVANCE_MS,
+    askPrimaryAction,
+    canTakePrimaryAction,
+    isQuestionAnswered,
+    shouldAutoAdvance,
+} from './askStepper';
+import './toolview.css';
+import './askStepper.css';
 
 function QuestionBlock({
     q,
@@ -28,6 +37,8 @@ function QuestionBlock({
     deferSubmit,
     onChange,
     onSubmit,
+    onOptionPicked,
+    onOtherInteraction,
 }: {
     q: AskQuestion;
     disabled: boolean;
@@ -36,6 +47,10 @@ function QuestionBlock({
     deferSubmit: boolean;
     onChange: (labels: string[]) => void;
     onSubmit: (labels: string[]) => void;
+    /** B-564: a single-select OPTION (not 「other」) was picked in deferred mode. */
+    onOptionPicked?: () => void;
+    /** B-564: the user turned to 「other」 — a pending auto-advance must not fire. */
+    onOtherInteraction?: () => void;
 }) {
     const { t } = useTranslation();
     const [showOther, setShowOther] = useState(false);
@@ -65,7 +80,10 @@ function QuestionBlock({
                             aria-pressed={multi || deferSubmit ? isPicked : undefined}
                             onClick={() => {
                                 if (multi) onChange(toggleLabel(picked, o.label));
-                                else if (deferSubmit) onChange([o.label]);
+                                else if (deferSubmit) {
+                                    onChange([o.label]);
+                                    onOptionPicked?.();
+                                }
                                 else {
                                     onChange([o.label]);
                                     onSubmit([o.label]);
@@ -89,7 +107,10 @@ function QuestionBlock({
                     className={`tv-ask-opt tv-ask-opt--other${showOther ? ' tv-ask-opt--selected' : ''}`}
                     disabled={disabled}
                     aria-expanded={showOther}
-                    onClick={() => setShowOther((current) => !current)}
+                    onClick={() => {
+                        onOtherInteraction?.();
+                        setShowOther((current) => !current);
+                    }}
                 >
                     <span className="tv-ask-opt-label">
                         <MessageCircle size={13} />
@@ -107,6 +128,7 @@ function QuestionBlock({
                         placeholder={t('tools.askUserQuestion.otherPlaceholder')}
                         onChange={(event) => {
                             const value = event.target.value;
+                            onOtherInteraction?.();
                             setOtherText(value);
                             if (deferSubmit) onChange(value.trim() ? [value.trim()] : []);
                         }}
@@ -145,6 +167,7 @@ export function AskUserQuestionOptions({
     questions,
     disabled,
     selected,
+    stacked = false,
     onSubmit,
 }: {
     questions: AskQuestion[];
@@ -152,28 +175,95 @@ export function AskUserQuestionOptions({
     disabled: boolean;
     /** Labels detected as chosen in the tool result (highlight only). */
     selected?: string[];
+    /** Read-only receipt: several questions stay stacked instead of stepping. */
+    stacked?: boolean;
     onSubmit: (answers: AskAnswerPayload) => void;
 }) {
     const { t } = useTranslation();
     const [answers, setAnswers] = useState<AskAnswers>({});
+    const [step, setStep] = useState(0);
+    const advanceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const cancelAdvance = () => clearTimeout(advanceTimer.current);
+    useEffect(() => () => clearTimeout(advanceTimer.current), []);
     const batched = questions.length > 1;
+    // B-564: several questions are answered one at a time; the submit payload
+    // and the answers state are exactly the batched form's.
+    const stepper = batched && !stacked;
     const complete = areQuestionAnswersComplete(questions, answers);
+    const total = questions.length;
+    const current = Math.min(step, total - 1);
+    const goTo = (index: number) => {
+        cancelAdvance();
+        setStep(Math.max(0, Math.min(index, total - 1)));
+    };
+    const block = (q: AskQuestion, i: number) => (
+        <QuestionBlock
+            key={i}
+            q={q}
+            disabled={disabled}
+            selected={selected ?? []}
+            picked={answers[i] ?? []}
+            deferSubmit={batched}
+            onChange={(labels) => setAnswers((prev) => setQuestionAnswer(prev, i, labels))}
+            onSubmit={(labels) =>
+                onSubmit(buildQuestionAnswers(questions, setQuestionAnswer({}, i, labels)))
+            }
+            onOptionPicked={stepper ? () => {
+                cancelAdvance();
+                if (!shouldAutoAdvance({ multi: q.multiSelect === true, other: false, index: i, total })) return;
+                advanceTimer.current = setTimeout(() => setStep(i + 1), ASK_AUTO_ADVANCE_MS);
+            } : undefined}
+            onOtherInteraction={stepper ? cancelAdvance : undefined}
+        />
+    );
+    if (stepper) {
+        const action = askPrimaryAction(current, total);
+        return (
+            <div className="tv-ask tv-ask--stepper">
+                <div className="tv-ask-steps" role="group" aria-label={t('tools.askUserQuestion.stepsLabel')}>
+                    {questions.map((q, i) => (
+                        <button
+                            key={i}
+                            type="button"
+                            className={`tv-ask-step${i === current ? ' tv-ask-step--current' : ''}`}
+                            aria-current={i === current ? 'step' : undefined}
+                            disabled={disabled}
+                            onClick={() => goTo(i)}
+                        >
+                            <span className="tv-ask-step-label">{q.header || t('tools.askUserQuestion.stepLabel', { index: i + 1 })}</span>
+                            {isQuestionAnswered(answers, i) && <Check size={12} aria-hidden />}
+                        </button>
+                    ))}
+                </div>
+                {questions.map((q, i) => (
+                    <div key={i} className="tv-ask-pane" hidden={i !== current}>
+                        {block(q, i)}
+                    </div>
+                ))}
+                {!disabled && (
+                    <div className="tv-ask-nav">
+                        <Button size="sm" variant="ghost" disabled={current === 0} onClick={() => goTo(current - 1)}>
+                            {t('tools.askUserQuestion.previous')}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={!canTakePrimaryAction(answers, current, total)}
+                            onClick={() => {
+                                if (action === 'next') goTo(current + 1);
+                                else onSubmit(buildQuestionAnswers(questions, answers));
+                            }}
+                        >
+                            {action === 'next' ? t('tools.askUserQuestion.next') : t('tools.askUserQuestion.submit')}
+                        </Button>
+                    </div>
+                )}
+            </div>
+        );
+    }
     return (
         <div className="tv-ask">
-            {questions.map((q, i) => (
-                <QuestionBlock
-                    key={i}
-                    q={q}
-                    disabled={disabled}
-                    selected={selected ?? []}
-                    picked={answers[i] ?? []}
-                    deferSubmit={batched}
-                    onChange={(labels) => setAnswers((current) => setQuestionAnswer(current, i, labels))}
-                    onSubmit={(labels) =>
-                        onSubmit(buildQuestionAnswers(questions, setQuestionAnswer({}, i, labels)))
-                    }
-                />
-            ))}
+            {questions.map(block)}
             {batched && !disabled && (
                 <Button
                     size="sm"

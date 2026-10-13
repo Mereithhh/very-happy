@@ -20,7 +20,7 @@ vi.mock('./MessageView', () => ({ MessageView: () => <p data-testid="message">An
 vi.mock('./ToolGroupView', () => ({ ToolGroupView: () => null }));
 vi.mock('./TurnActivityView', () => ({ TurnActivityView: () => <p data-testid="message">Activity</p> }));
 vi.mock('./LiveStreamView', () => ({ LiveStreamView: () => <p data-testid="draft">Streaming</p> }));
-vi.mock('./PermissionCard', () => ({ PermissionCard: () => <p data-testid="permission">Permission</p> }));
+vi.mock('./PermissionCard', () => ({ PermissionPointer: () => <p data-testid="permission">Permission pointer</p> }));
 vi.mock('./SessionLiveStatusBar', () => ({ SessionLiveStatusBar: () => <div className="lsb">Working</div> }));
 import { ChatList } from './ChatList';
 
@@ -31,7 +31,7 @@ function render(showLiveStatus = true) {
 }
 
 describe('transcript activity placement', () => {
-  it('renders exactly one status after messages, draft and permission, inside the observed transcript', () => {
+  it('renders exactly one status after messages, draft and the permission pointer (B-563), inside the observed transcript', () => {
     const doc = render();
     const inner = doc.querySelector('.cl-scroll > .cl-inner')!;
     expect(inner.lastElementChild?.className).toBe('lsb');
