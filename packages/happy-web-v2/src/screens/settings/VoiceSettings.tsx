@@ -174,7 +174,7 @@ export function VoiceSettings() {
         <Page>
             <Header title={t('settingsVoice.title')} />
             <ItemList>
-                <ItemGroup title={t('settingsVoice.voice')}>
+                <ItemGroup settingId="voice.voice" title={t('settingsVoice.voice')}>
                     {voicesState.kind === 'loading' && (
                         <Item title={t('common.loading')} left={<Spinner size={16} />} />
                     )}
@@ -203,6 +203,7 @@ export function VoiceSettings() {
                 </ItemGroup>
 
                 <ItemGroup
+                    settingId="voice.library"
                     title={t('settingsVoice.library')}
                     footer={library.kind === 'collapsed' ? undefined : t('settingsVoice.libraryHint')}
                 >
@@ -272,7 +273,7 @@ export function VoiceSettings() {
                         ))}
                 </ItemGroup>
 
-                <ItemGroup title={t('settingsVoice.asrLanguage')} footer={t('settingsVoice.asrLanguageHint')}>
+                <ItemGroup settingId="voice.asrLanguage" title={t('settingsVoice.asrLanguage')} footer={t('settingsVoice.asrLanguageHint')}>
                     <Item
                         title={t('settingsVoice.asrLanguageAuto')}
                         right={asrLanguage == null ? <Check size={16} /> : undefined}
@@ -294,6 +295,7 @@ export function VoiceSettings() {
 
                 <ItemGroup>
                     <Item
+                        settingId="voice.readTextReplies"
                         title={t('settingsVoice.readTextReplies')}
                         subtitle={t('settingsVoice.readTextRepliesHint')}
                         right={
@@ -308,6 +310,7 @@ export function VoiceSettings() {
                         }
                     />
                     <Item
+                        settingId="voice.pttSound"
                         title={t('settingsVoice.pttSound')}
                         subtitle={t('settingsVoice.pttSoundHint')}
                         right={
@@ -322,6 +325,7 @@ export function VoiceSettings() {
                         }
                     />
                     <Item
+                        settingId="voice.skipPermissions"
                         title={t('settingsVoice.skipPermissions')}
                         subtitle={t('settingsVoice.skipPermissionsHint')}
                         right={
@@ -337,7 +341,7 @@ export function VoiceSettings() {
                     />
                 </ItemGroup>
 
-                <ItemGroup title={t('settingsVoice.assistantMachine')}>
+                <ItemGroup settingId="voice.assistantMachine" title={t('settingsVoice.assistantMachine')}>
                     <Item
                         title={t('settingsVoice.assistantMachineAuto')}
                         right={assistantMachineId == null ? <Check size={16} /> : undefined}

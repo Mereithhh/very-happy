@@ -4,7 +4,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -67,6 +67,18 @@ import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
+import {
+  findRevealTarget,
+  flattenOpenGroups,
+  isGroupCollapsed,
+  nearestScrollTop,
+  planReveal,
+  setGroupCollapsed,
+  summarizeGroup,
+  withTemporaryExpanded,
+  useCollapsedGroups,
+  type GroupStatusSummary,
+} from './sidebarCollapsedGroups';
 import { SidebarRateLimit } from '@/screens/machine/rateLimits/SidebarRateLimit';
 
 function rowHref(r: Row): string {
@@ -115,7 +127,10 @@ interface SidebarSection {
   id: string;
   label: string | undefined;
   count: number;
+  /** VISIBLE rows ([] while collapsed) */
   rows: Row[];
+  /** every row of the group — the collapsed-header summary and reveal read it (B-580) */
+  allRows: Row[];
   collapsible: boolean;
   open: boolean;
   detail?: string;
@@ -426,7 +441,14 @@ export function Sidebar() {
   // window and source as the board's Done column). Collapsed by default so
   // the live groups keep the space. Date.now() in the memo is fine — session
   // changes are what re-derive it; the window edge doesn't need a live clock.
-  const [completedOpen, setCompletedOpen] = useState(false);
+  // B-580: every labelled group is collapsible; state is device-local
+  // (sidebarCollapsedGroups.ts). 已完成 keeps its collapsed-by-default.
+  // `collapsedGroups` = persisted choices + the in-memory reveal override
+  // (groups temporarily opened to show the current row; cleared on route change).
+  const storedCollapsedGroups = useCollapsedGroups();
+  const [revealExpanded, setRevealExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const collapsedGroups = useMemo(() => withTemporaryExpanded(storedCollapsedGroups, revealExpanded), [storedCollapsedGroups, revealExpanded]);
+  const completedOpen = !isGroupCollapsed(collapsedGroups, 'completed');
   const completedRows = useMemo<Row[]>(() => {
     if (view !== 'status' || !sessions) return [];
     const list = sessions.filter((s): s is Session => typeof s !== 'string');
@@ -457,8 +479,8 @@ export function Sidebar() {
       // exactly (⌘1-9 badges and move-up/down read positions from it).
       // Collapsed 已完成 rows are NOT visible, so they don't take numbers.
       return [
-        ...statusGroups.waiting,
-        ...statusGroups.running,
+        ...(isGroupCollapsed(collapsedGroups, 'waiting') ? [] : statusGroups.waiting),
+        ...(isGroupCollapsed(collapsedGroups, 'running') ? [] : statusGroups.running),
         ...(completedOpen ? completedRows : []),
       ];
     }
@@ -473,7 +495,7 @@ export function Sidebar() {
     if ((orderSetting ?? []).length > 0) return priorityFirst(sortRowsByManualOrder(rows, orderSetting!));
     const { pinned, rest } = splitPinnedRows(rows, pinnedSetting ?? []);
     return priorityFirst([...pinned, ...rest]);
-  }, [rows, view, statusGroups, completedRows, completedOpen, orderSetting, pinnedSetting, orderable, sortMode, heldKeys]);
+  }, [rows, view, statusGroups, completedRows, completedOpen, collapsedGroups, orderSetting, pinnedSetting, orderable, sortMode, heldKeys]);
   // Tag grouping (列表 view): group the ordered sequence by first tag; the
   // FLAT displayRows below stays the exact rendered order (⌘1-9 badges and
   // the quick-switch read it), so it must be the groups flattened.
@@ -485,13 +507,15 @@ export function Sidebar() {
     () => (orderable && groupMode === 'workspace' && orderedRows ? groupRowsByWorkspace(orderedRows) : null),
     [orderable, groupMode, orderedRows],
   );
+  // Collapsed groups' rows are not rendered, so they take no ⌘1-9 number
+  // and no move-up/down position either (B-580).
   const plainDisplayRows = useMemo<Row[] | null>(
     () => workspaceGroups
-      ? workspaceGroups.flatMap((g) => g.rows)
+      ? flattenOpenGroups(workspaceGroups, workspaceGroupId, collapsedGroups)
       : tagGroups
-        ? tagGroups.flatMap((g) => g.rows)
+        ? flattenOpenGroups(tagGroups, tagGroupId, collapsedGroups)
         : orderedRows,
-    [workspaceGroups, tagGroups, orderedRows],
+    [workspaceGroups, tagGroups, orderedRows, collapsedGroups],
   );
   // Group only the normal flat history. Explicit status/workspace/tag lenses
   // and archive retain their existing behavior and ordering.
@@ -798,53 +822,20 @@ export function Sidebar() {
   const sections = useMemo<SidebarSection[]>(() => {
     if (view === 'status' && statusGroups) {
       return [
-        {
-          id: 'waiting',
-          label: t('sidebar.groupWaiting') as string | undefined,
-          count: statusGroups.waiting.length,
-          rows: statusGroups.waiting,
-          collapsible: false,
-          open: true,
-        },
-        {
-          id: 'running',
-          label: t('sidebar.groupRunning') as string | undefined,
-          count: statusGroups.running.length,
-          rows: statusGroups.running,
-          collapsible: false,
-          open: true,
-        },
-        {
-          id: 'completed',
-          label: t('sidebar.groupDoneToday') as string | undefined,
-          count: completedRows.length,
-          rows: completedOpen ? completedRows : [],
-          collapsible: true,
-          open: completedOpen,
-        },
+        collapsibleSection('waiting', t('sidebar.groupWaiting'), statusGroups.waiting, collapsedGroups),
+        collapsibleSection('running', t('sidebar.groupRunning'), statusGroups.running, collapsedGroups),
+        collapsibleSection('completed', t('sidebar.groupDoneToday'), completedRows, collapsedGroups),
       ];
     }
     // 列表 + 按 tag 分组: one section per tag group, same sb-section-head
     // chrome as the status view. Untagged rows tail as 未分组.
     if (tagGroups) {
-      return tagGroups.map((g) => ({
-        id: g.tag === null ? 'untagged' : `tag:${g.tag.toLowerCase()}`,
-        label: (g.tag ?? (t('sidebar.groupUntagged') as string)) as string | undefined,
-        count: g.rows.length,
-        rows: g.rows,
-        collapsible: false,
-        open: true,
-      }));
+      return tagGroups.map((g) => collapsibleSection(tagGroupId(g), g.tag ?? (t('sidebar.groupUntagged') as string), g.rows, collapsedGroups));
     }
     if (workspaceGroups) {
       return workspaceGroups.map((g: SidebarWorkspaceGroup<Row>) => ({
-        id: `workspace:${g.key}`,
-        label: (g.name ?? (t('sidebar.workspaceUnassigned') as string)) as string | undefined,
+        ...collapsibleSection(workspaceGroupId(g), g.name ?? (t('sidebar.workspaceUnassigned') as string), g.rows, collapsedGroups),
         detail: [g.machineName, g.path].filter(Boolean).join(' · '),
-        count: g.rows.length,
-        rows: g.rows,
-        collapsible: false,
-        open: true,
         createLocation: g.machineId && g.path ? { machineId: g.machineId, path: g.rows.find(r => r.workspacePath)?.workspacePath ?? g.path } : undefined,
       }));
     }
@@ -854,11 +845,90 @@ export function Sidebar() {
         label: undefined as string | undefined,
         count: displayRows?.length ?? 0,
         rows: displayRows ?? [],
+        allRows: displayRows ?? [],
         collapsible: false,
         open: true,
       },
     ];
-  }, [view, statusGroups, completedRows, completedOpen, tagGroups, workspaceGroups, displayRows, t]);
+  }, [view, statusGroups, completedRows, collapsedGroups, tagGroups, workspaceGroups, displayRows, t]);
+
+  // ----- collapsed-header status summary (B-580) -----
+  // Same inputs as the row's own status slot (SidebarRow → agentStatusSignal),
+  // so a folded group still shows 等待操作 / 运行中 / 未读 counts.
+  const rowStatusOf = useCallback((r: Row) => {
+    const execution = executionByKey.get(r.key) ?? (r.session?.presence === 'online' ? 'idle' : 'offline');
+    const unread = (r.kind === 'session' && !!r.session?.active && unreadIds.has(r.key))
+      || (r.kind === 'terminal' && !!r.terminalId && unreadTerminalIds.has(r.terminalId));
+    return agentStatusSignal(execution, rowSignalOf({ attention: attentionKeys.has(r.key), unread }) === 'unread');
+  }, [executionByKey, unreadIds, unreadTerminalIds, attentionKeys]);
+
+  // ----- reveal the current row (B-580) -----
+  // On every route change (⌘K, notification, deep link, click) and on mount:
+  // expand the group holding the current row if it is folded, then scroll the
+  // row into the sidebar's OWN list (nearest edge; no scrollIntoView, which
+  // would also scroll ancestors). Only route changes arm it, so folding the
+  // current row's group afterwards sticks. "定位当前会话" re-arms it by hand.
+  const isCurrentRow = useCallback((r: Row) => {
+    if (r.team || r.teamHistoryLink) return false;
+    if (location.pathname === r.href || `${location.pathname}${location.search}` === r.href) return true;
+    return r.kind === 'terminal'
+      && location.pathname === `/terminal/${encodeURIComponent(r.machineId ?? '')}`
+      && new URLSearchParams(location.search).get('tid') === r.terminalId;
+  }, [location.pathname, location.search]);
+  const onRowRoute = Boolean(currentSessionId) || location.pathname.startsWith('/terminal/');
+  const [revealSeq, setRevealSeq] = useState(1);
+  const revealHandled = useRef(0);
+  const revealManual = useRef(false);
+  const dataReady = storage((st) => st.isDataReady);
+  useEffect(() => {
+    setRevealExpanded((cur) => (cur.size ? new Set() : cur)); // temporary opens end with the route
+    setRevealSeq((n) => n + 1);
+  }, [location.pathname, location.search]);
+  const locateCurrent = useCallback(() => { revealManual.current = true; setRevealSeq((n) => n + 1); }, []);
+  useEffect(() => {
+    if (displayRows === null) return;
+    const target = findRevealTarget(
+      sections.map((sec) => ({ id: sec.id, collapsible: sec.collapsible, keys: sec.allRows })),
+      isCurrentRow,
+      (id) => isGroupCollapsed(collapsedGroups, id),
+    );
+    const step = planReveal({
+      armed: revealHandled.current !== revealSeq,
+      dataReady,
+      found: target !== null,
+      expand: target?.expand ?? false,
+      manual: revealManual.current,
+      inListView: view === 'list',
+    });
+    if (step === 'idle' || step === 'wait') return;
+    if (step === 'switch-to-list') {
+      // Asked by hand but the row isn't in this view (e.g. 归档 while the
+      // session is active): one retry in the list view. The flag is cleared
+      // NOW, so a second miss ends the pass instead of pinning the list view.
+      revealManual.current = false;
+      selectView('list');
+      return;
+    }
+    if (step === 'expand') {
+      // Memory-only: never persisted, so 已完成's default fold and the user's own folds survive.
+      setRevealExpanded((cur) => new Set([...cur, target!.sectionId]));
+      return; // next render scrolls
+    }
+    revealHandled.current = revealSeq;
+    revealManual.current = false;
+    if (step === 'done' || !target) return;
+    const key = target.key.key;
+    const raf = requestAnimationFrame(() => {
+      const list = listRef.current;
+      const el = list?.querySelector<HTMLElement>(`[data-dragkey="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(key) : key}"]`);
+      if (!list || !el) return;
+      const lr = list.getBoundingClientRect();
+      const er = el.getBoundingClientRect();
+      const top = nearestScrollTop({ containerTop: lr.top, containerHeight: list.clientHeight, scrollTop: list.scrollTop, rowTop: er.top, rowHeight: er.height });
+      if (top !== null) list.scrollTop = top;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [revealSeq, sections, displayRows, isCurrentRow, collapsedGroups, view, selectView, dataReady]);
 
   return (
     <div className="sb">
@@ -1014,6 +1084,7 @@ export function Sidebar() {
                 { key: 'tag', disabled: !orderable, label: `${groupMode === 'tag' ? '✓ ' : ''}${t('sidebar.groupTags')}`, icon: Tags, onSelect: () => selectGroupMode('tag') },
                 { key: 'none', disabled: !orderable, label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Rows3, onSelect: () => selectGroupMode('none') },
                 { key: 'ordering-help', disabled: !orderable || Boolean(teamHistory), label: lang.startsWith('zh') ? '排序说明' : 'Reordering help', icon: CircleHelp, checked: showOrderHint, onSelect: () => setShowOrderHint((shown) => !shown) },
+                { key: 'locate-current', disabled: !onRowRoute, label: lang.startsWith('zh') ? '定位当前会话' : 'Locate current session', icon: LocateFixed, separatorBefore: true, onSelect: locateCurrent },
                 { key: 'overview', label: `${t('board.title')}${attentionCount ? ` · ${attentionCount}` : ''}`, icon: LayoutGrid, separatorBefore: true, onSelect: () => navigate('/board') },
               ]}
             >
@@ -1042,37 +1113,35 @@ export function Sidebar() {
               let flat = 0;
               return sections.map((sec) => (
                 <div key={sec.id} className="sb-section">
-                  {sec.label !== undefined &&
-                    (sec.collapsible ? (
-                      // Only 已完成 is collapsible; it's the only section with
-                      // this header variant, so the toggle can be direct.
+                  {sec.label !== undefined && (
+                    <div className={`sb-section-head sb-section-head--toggle${sec.createLocation ? ' sb-section-head--workspace' : ''}`} title={sec.detail || undefined}>
+                      {/* B-580: every labelled group folds; Enter/Space via the native button. */}
                       <button
-                        className="sb-section-head sb-section-head--toggle"
-                        onClick={() => setCompletedOpen((o) => !o)}
+                        type="button"
+                        className="sb-section-toggle"
                         aria-expanded={sec.open}
+                        onClick={() => {
+                          // Only a click on the head persists; it also drops any temporary reveal-open.
+                          setRevealExpanded((cur) => { if (!cur.has(sec.id)) return cur; const next = new Set(cur); next.delete(sec.id); return next; });
+                          setGroupCollapsed(sec.id, sec.open);
+                        }}
                       >
-                        <ChevronRight
-                          size={11}
-                          className={`sb-section-chevron${sec.open ? ' is-open' : ''}`}
-                        />
+                        <ChevronRight size={11} className={`sb-section-chevron${sec.open ? ' is-open' : ''}`} />
                         <span className="sb-section-label">{sec.label}</span>
                         <span className="sb-section-count mono">{sec.count}</span>
+                        {!sec.open && <GroupSummary summary={summarizeGroup(sec.allRows.map(rowStatusOf))} zh={lang.startsWith('zh')} />}
+                        {/* folded: the summary needs the room; machine · path stays in the head's tooltip */}
+                        {sec.detail && sec.open && <span className="sb-section-detail">{sec.detail}</span>}
                       </button>
-                    ) : (
-                      <div className={`sb-section-head${sec.createLocation ? ' sb-section-head--workspace' : ''}`} title={sec.detail || undefined}>
-                        <span className="sb-section-label">{sec.label}</span>
-                        <span className="sb-section-count mono">{sec.count}</span>
-                        {sec.detail && <span className="sb-section-detail">{sec.detail}</span>}
-                        {sec.createLocation && <button
-                          type="button" className="sb-workspace-new" disabled={creatingChat}
-                          title={lang.startsWith('zh') ? `在此目录新建会话：${sec.createLocation.path}` : `New chat here: ${sec.createLocation.path}`}
-                          aria-label={lang.startsWith('zh') ? `在此目录新建会话：${sec.label}` : `New chat here: ${sec.label}`}
-                          onPointerDown={prefetchSessionDetail}
-                          onClick={() => void createChatOrConfigure(navigate, configureNew, { target: sec.createLocation })}
-                        ><Plus size={14} /></button>}
-
-                      </div>
-                    ))}
+                      {sec.createLocation && <button
+                        type="button" className="sb-workspace-new" disabled={creatingChat}
+                        title={lang.startsWith('zh') ? `在此目录新建会话：${sec.createLocation.path}` : `New chat here: ${sec.createLocation.path}`}
+                        aria-label={lang.startsWith('zh') ? `在此目录新建会话：${sec.label}` : `New chat here: ${sec.label}`}
+                        onPointerDown={prefetchSessionDetail}
+                        onClick={() => void createChatOrConfigure(navigate, configureNew, { target: sec.createLocation })}
+                      ><Plus size={14} /></button>}
+                    </div>
+                  )}
                   {sec.rows.map((r) => {
                     const i = flat++;
                     if (r.team) {
@@ -1293,6 +1362,36 @@ export function Sidebar() {
  * dropdown (all pointers) and the right-click context menu (fine pointers /
  * long-press). Icon, label, danger tone and disabled state live here only.
  */
+function tagGroupId(g: { tag: string | null }): string {
+  return g.tag === null ? 'untagged' : `tag:${g.tag.toLowerCase()}`;
+}
+function workspaceGroupId(g: { key: string }): string {
+  return `workspace:${g.key}`;
+}
+/** A labelled group: `rows` empty while folded, `allRows` always complete. */
+function collapsibleSection(id: string, label: string, rows: Row[], collapsed: Record<string, boolean>): SidebarSection {
+  const open = !isGroupCollapsed(collapsed, id);
+  return { id, label, count: rows.length, rows: open ? rows : [], allRows: rows, collapsible: true, open };
+}
+
+/** B-580: a folded group's header still shows the states that need the user. */
+function GroupSummary({ summary, zh }: { summary: GroupStatusSummary; zh: boolean }) {
+  const parts = [
+    summary.input ? (zh ? `${summary.input} 个等待操作` : `${summary.input} waiting for you`) : '',
+    summary.running ? (zh ? `${summary.running} 个运行中` : `${summary.running} running`) : '',
+    summary.unread ? (zh ? `${summary.unread} 个未读` : `${summary.unread} unread`) : '',
+  ].filter(Boolean);
+  if (!parts.length) return null;
+  const label = parts.join(' · ');
+  return (
+    <span className="sb-section-summary" role="img" aria-label={label} title={label}>
+      {summary.input > 0 && <span className="sb-section-summary__item sb-section-summary__item--input"><CircleAlert size={12} />{summary.input}</span>}
+      {summary.running > 0 && <span className="sb-section-summary__item"><Spinner size={11} />{summary.running}</span>}
+      {summary.unread > 0 && <span className="sb-section-summary__item"><span className="sb-row-unread-dot" />{summary.unread}</span>}
+    </span>
+  );
+}
+
 function rowMenuItems(opts: {
   t: ReturnType<typeof useTranslation>['t'];
   isTerminal: boolean;

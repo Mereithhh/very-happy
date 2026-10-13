@@ -1,9 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Settings, Palette, User, Bot, Bookmark, Bell, Cable, Volume2, HardDrive, BarChart3, Stethoscope, KeyRound, Mail, Link2, Search } from 'lucide-react';
+import { ArrowLeft, Settings, Palette, User, Bot, Bookmark, Bell, Cable, Volume2, HardDrive, BarChart3, Stethoscope, KeyRound, Mail, Link2, Search, ChevronRight } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
+import { isWebPushSupported } from '@/sync/webPush';
+import { getNotificationPermission } from '@/sync/webNotifications';
+import { displayText, searchSettings, sectionTitle, settingHref, SETTING_QUERY_PARAM } from './settingsIndex';
+import { revealSettingWhenReady } from './settingsReveal';
 import './settings.css';
 
 export const settingsSections: {path:string; key:SimpleTranslationKey; icon:typeof Settings}[] = [
@@ -23,6 +27,15 @@ export const settingsSections: {path:string; key:SimpleTranslationKey; icon:type
   {path:'google',key:'settings.account',icon:Link2},
 ];
 
+/** Same predicate the Notifications page uses to decide which groups render. */
+export function settingsWebPushAvailable(): boolean {
+  try {
+    return isWebPushSupported() && getNotificationPermission() !== 'unsupported';
+  } catch {
+    return false;
+  }
+}
+
 export function SettingsPage({children}:{children:ReactNode}) {
   return <div className="set-scroll"><div className="set-page">{children}</div></div>;
 }
@@ -34,16 +47,44 @@ export function SettingsHeader({title,subtitle,right}:{title:string;subtitle?:st
 export function SettingsWorkspace({children,basePath='/settings'}:{children:ReactNode;basePath?:string}) {
   const {t,lang}=useTranslation(); const navigate=useNavigate(); const location=useLocation();
   const [query,setQuery]=useState(''); const [searchOpen,setSearchOpen]=useState(false); const zh=lang.startsWith('zh');
+  const contentRef=useRef<HTMLDivElement|null>(null);
   const current=location.pathname.slice(basePath.length).replace(/^\//,'');
   const label=(section:typeof settingsSections[number])=>section.path==='google'?'Google':t(section.key);
-  const visible=settingsSections.filter(s=>label(s).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const trimmed=query.trim().toLocaleLowerCase();
+  const visible=settingsSections.filter(s=>label(s).toLocaleLowerCase().includes(trimmed));
+  // B-575: item-level results ("分类 › 设置项") under the matching sections.
+  const hits=useMemo(()=>trimmed?searchSettings(trimmed,{webPush:settingsWebPushAvailable()}).slice(0,12):[],[trimmed]);
+  // B-575: `?setting=<id>` (search result, ⌘K) → scroll the content's own
+  // scroller to that row and highlight it. Keyed on location.key so picking
+  // the same result twice still lands.
+  const targetId=new URLSearchParams(location.search).get(SETTING_QUERY_PARAM);
+  useEffect(()=>{
+    if(!targetId||!contentRef.current) return;
+    return revealSettingWhenReady(contentRef.current,targetId);
+  },[location.key,targetId]);
+  const openHit=(href:string)=>{setQuery('');setSearchOpen(false);navigate(href);};
+  const searchLabel=zh?'搜索设置':'Search settings';
   return <div className="settings-workspace"><div className="settings-layout">
-    <aside className="settings-navigation" data-search-open={searchOpen} data-searching={Boolean(query.trim())}>
-      <div className="settings-navigation-top"><Link className="settings-return" to="/"><ArrowLeft size={16}/><span>{zh?'返回工作台':'Back to workspace'}</span></Link><button className="settings-search-toggle" aria-label={zh?'搜索设置分类':'Search settings sections'} aria-expanded={searchOpen} onClick={()=>{setSearchOpen(!searchOpen);setQuery('');}}><Search size={16}/></button></div>
-      <label className="settings-search"><Search size={14}/><input aria-label={zh?'搜索设置分类':'Search settings sections'} placeholder={zh?'搜索设置分类…':'Search sections…'} value={query} onChange={e=>setQuery(e.target.value)}/></label>
-      <nav aria-label={t('settings.title')}>{visible.map(s=><Link key={s.path} to={`${basePath}${s.path?'/'+s.path:''}`} aria-current={current===s.path?'page':undefined}><s.icon size={15}/><span>{label(s)}</span></Link>)}{!visible.length&&<p className="set-note">{zh?'没有匹配的分类':'No matching sections'}</p>}</nav>
+    <aside className="settings-navigation" data-search-open={searchOpen} data-searching={Boolean(trimmed)}>
+      <div className="settings-navigation-top"><Link className="settings-return" to="/"><ArrowLeft size={16}/><span>{zh?'返回工作台':'Back to workspace'}</span></Link><button className="settings-search-toggle" aria-label={searchLabel} aria-expanded={searchOpen} onClick={()=>{setSearchOpen(!searchOpen);setQuery('');}}><Search size={16}/></button></div>
+      <label className="settings-search"><Search size={14}/><input type="search" aria-label={searchLabel} placeholder={zh?'搜索设置…':'Search settings…'} value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'&&hits[0]&&!e.nativeEvent.isComposing){e.preventDefault();openHit(settingHref(hits[0].entry,basePath));} }}/></label>
+      <nav aria-label={t('settings.title')}>
+        {visible.map(s=><Link key={s.path} to={`${basePath}${s.path?'/'+s.path:''}`} aria-current={current===s.path?'page':undefined} onClick={()=>{if(trimmed){setQuery('');setSearchOpen(false);}}}><s.icon size={15}/><span>{label(s)}</span></Link>)}
+        {hits.length>0&&<div className="settings-search-results" role="group" aria-label={zh?'设置项':'Settings'}>
+          {visible.length>0&&<div className="settings-search-results__label">{zh?'设置项':'Settings'}</div>}
+          {hits.map(({entry})=>{
+            const section=displayText(sectionTitle(entry.section),lang,t);
+            const title=displayText(entry.title,lang,t);
+            const href=settingHref(entry,basePath);
+            return <a key={entry.id} href={href} className="settings-search-hit" data-setting-hit={entry.id} onClick={e=>{e.preventDefault();openHit(href);}}>
+              <span className="settings-search-hit__section">{section}</span><ChevronRight size={12} aria-hidden/><span className="settings-search-hit__title">{title}</span>
+            </a>;
+          })}
+        </div>}
+        {!visible.length&&!hits.length&&<p className="set-note">{zh?'没有匹配的设置':'No matching settings'}</p>}
+      </nav>
       <select className="settings-mobile-select" aria-label={t('settings.title')} value={current} onChange={e=>navigate(`${basePath}${e.target.value?'/'+e.target.value:''}`)}>{settingsSections.map(s=><option key={s.path} value={s.path}>{label(s)}</option>)}</select>
     </aside>
-    <div className="settings-content">{children}</div>
+    <div className="settings-content" ref={contentRef}>{children}</div>
   </div></div>;
 }
