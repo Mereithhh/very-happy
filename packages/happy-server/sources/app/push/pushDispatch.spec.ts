@@ -11,11 +11,19 @@ const { state, dbMock, sendWebPushSpy, isUserActiveSpy } = vi.hoisted(() => {
         kvValue: null as Uint8Array | null,
         kvThrows: false,
         status: 201,
+        executedDeletes: [] as string[],
     };
     const dbMock = {
         accountPushToken: {
             findMany: vi.fn(async () => state.tokens),
-            deleteMany: vi.fn(async () => ({ count: 1 })),
+            // Prisma queries are LAZY: nothing runs until .then(). Model that so
+            // a fire-and-forget `void db...deleteMany()` is caught (it never ran).
+            deleteMany: vi.fn((args: { where: { id: string } }) => ({
+                then(onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) {
+                    state.executedDeletes.push(args.where.id);
+                    return Promise.resolve({ count: 1 }).then(onOk, onErr);
+                },
+            })),
         },
         userKVStore: {
             findUnique: vi.fn(async () => {
@@ -52,6 +60,7 @@ beforeEach(() => {
     state.kvValue = null;
     state.kvThrows = false;
     state.status = 201;
+    state.executedDeletes = [];
     sendWebPushSpy.mockClear();
     dbMock.accountPushToken.deleteMany.mockClear();
     isUserActiveSpy.mockReset();
@@ -116,8 +125,8 @@ describe('sendTestWebPush', () => {
         state.tokens = [{ id: 'w1', token: SUB }, { id: 'bad', token: 'webpush:{nope' }];
         const res = await sendTestWebPush('u', { title: 'Test', body: 'b' });
         expect(res).toEqual({ configured: true, total: 2, sent: 0, failed: 2, pruned: 2 });
-        expect(dbMock.accountPushToken.deleteMany).toHaveBeenCalledWith({ where: { id: 'w1' } });
-        expect(dbMock.accountPushToken.deleteMany).toHaveBeenCalledWith({ where: { id: 'bad' } });
+        // actually EXECUTED, not just built (lazy Prisma promise)
+        expect(state.executedDeletes.sort()).toEqual(['bad', 'w1']);
     });
 
     it('no subscriptions → total 0', async () => {

@@ -45,6 +45,20 @@ import {
 } from "@/app/push/webhookNotify";
 import { log } from "@/utils/log";
 
+/**
+ * Delete a dead/malformed push token. Prisma queries are LAZY — they only run
+ * once awaited or `.then`-ed — so the old `void db.accountPushToken.deleteMany()`
+ * never executed and dead subscriptions were retried forever. Always settle it.
+ */
+function pruneToken(id: string): Promise<void> {
+    return db.accountPushToken.deleteMany({ where: { id } }).then(
+        () => undefined,
+        (error: unknown) => {
+            log({ module: 'push', level: 'warn', error }, 'Push token prune failed');
+        },
+    );
+}
+
 async function sendExpo(
     params: { userId: string; sessionId: string; title: string; body: string; data: Record<string, unknown>; channelId: string },
     tokens: { id: string; token: string }[],
@@ -72,9 +86,7 @@ async function sendExpo(
         }
         errors.push(ticket.details?.error || ticket.message || 'unknown');
         if (ticket.details?.error === 'DeviceNotRegistered') {
-            void db.accountPushToken.deleteMany({
-                where: { id: tokens[i].id }
-            });
+            void pruneToken(tokens[i].id);
         }
     }
 
@@ -149,7 +161,7 @@ async function sendWeb(
             // Malformed stored subscription — prune it.
             result.pruned++;
             result.failed++;
-            void db.accountPushToken.deleteMany({ where: { id: t.id } });
+            await pruneToken(t.id);
             return;
         }
         const res = await sendWebPush(sub, payload, opts);
@@ -160,7 +172,7 @@ async function sendWeb(
         }
         if (res.gone) {
             result.pruned++;
-            void db.accountPushToken.deleteMany({ where: { id: t.id } });
+            await pruneToken(t.id);
         }
     }));
 
@@ -196,7 +208,7 @@ async function sendWebhooks(
         const config = parseWebhookToken(t.token);
         if (!config) {
             // Malformed stored webhook config — prune it (mirrors web push).
-            void db.accountPushToken.deleteMany({ where: { id: t.id } });
+            await pruneToken(t.id);
             return;
         }
         if (!event || !payload) {
