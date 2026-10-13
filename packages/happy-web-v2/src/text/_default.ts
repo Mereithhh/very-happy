@@ -2138,6 +2138,27 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct13b: {
+                title: 'Review the agent\'s work without leaving the web',
+                summary: 'See what each turn changed, review everything in one place, and commit, push or open a PR from the session.',
+                review: 'Each finished turn ends with 「Changed 3 files · +40 −12」; open a file to see its diff. 「Review changes」 shows every changed file in one scroll with viewed marks, whitespace toggle and line comments. File previews refresh when the agent edits the file.',
+                git: 'Commit, push and open a PR from the changes panel. Pushes go to a branch of the same name and ask again before touching main or the default branch; force push is never offered. When a hook or CI fails, 「Ask the agent to fix」 puts the output in the composer for you to send. The header shows the PR and CI status.',
+                approvals: 'Pending approvals and questions sit above the composer, so scrolling back no longer hides them. Multi-question prompts are answered one question at a time.',
+                reading: 'Select text in a reply to quote it, use 「Continue」 after you stop a turn, and jump between your prompts with the rail on the right (previous/next buttons on phones).',
+                navigate: 'Search individual settings (Chinese or English) and jump to them from ⌘K. ⌘P opens any file in the project. Sidebar groups collapse, and the current session is revealed when you open it.',
+                terminal: 'In a web terminal, ⌘-click (or tap on phones) a file path to preview it; copied text loses the shared left indent.',
+                notify: 'Notifications for the same session replace each other, stale ones expire, and ones you have seen on another device are cleared. Settings can send a test notification.',
+                undo: 'Archive and Done can be undone for a few seconds. A broken message now shows a one-line error instead of blanking the page, and a desktop tab you walked away from no longer marks finished sessions as read.',
+                fontSize: 'Appearance → Conversation text size: small, default, large or extra large, on this device.',
+            },
+            oct13c: {
+                title: 'Worktree sessions and idle hibernation',
+                summary: 'Start a session in a fresh git worktree, and let idle agents sleep until you need them. Needs CLI 0.2.167.',
+                worktree: 'New session → 「In a new worktree」 picks a base branch and a branch name, copies .env files and starts the agent there. Archiving can also remove the worktree (it asks first when there are uncommitted changes and keeps the branch).',
+                setup: 'A repository can declare files to copy and a setup script in .veryhappy/worktree.json. The script runs only after you have read and allowed it on the web; a changed script asks again. Allowing it also applies to worktrees created by Teams and automations.',
+                hibernate: 'Agent sessions idle for 6 hours (configurable per machine, or off) stop their process to free memory and wake up when you open them or send a message. Sessions that are working, waiting on you, used by automations or Teams, or marked 「Keep awake」 never sleep.',
+                cli: 'These need the CLI update to 0.2.167; machines on the latest channel update automatically when idle. Older CLIs keep working; the worktree option is disabled until they update.',
+            },
             oct13a: {
                 title: 'Less hunting: ⌘K, board cards and diff comments',
                 summary: 'The web client shows what needs you first and lets you hand review notes straight back to the agent.',
