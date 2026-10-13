@@ -2307,11 +2307,11 @@ export const zhHans: TranslationStructure = {
             },
             oct13c: {
                 title: 'worktree 会话与空闲休眠',
-                summary: '在新的 git worktree 里开会话；空闲的 agent 自动休眠，用到时再醒。需要 CLI 0.2.167。',
+                summary: '在新的 git worktree 里开会话；空闲的 agent 自动休眠，用到时再醒。需要 CLI 0.2.168。',
                 worktree: '新建会话 →「在新 worktree 中」：选基础分支和分支名，自动复制 .env 文件后在那里启动 agent。归档时可以顺带删除 worktree（有未提交改动会先确认，分支保留）。',
                 setup: '仓库可以在 .veryhappy/worktree.json 里声明要复制的文件和 setup 脚本。脚本要你在网页上看过完整内容并允许后才会运行，脚本一改会再次确认；允许后，团队和自动化创建的 worktree 也会运行它。',
                 hibernate: '空闲 6 小时的 agent 会话会停掉进程释放内存（每台机器可改时长或关闭），打开或发消息时自动唤醒。正在干活、等你处理、被自动化或团队使用、或设了「保持唤醒」的会话不会休眠。',
-                cli: '以上需要 CLI 更新到 0.2.167，设为跟随最新版的机器会在空闲时自动更新。旧 CLI 照常可用，只是「在新 worktree 中」要更新后才能选。',
+                cli: '以上需要 CLI 更新到 0.2.168，设为跟随最新版的机器会在空闲时自动更新。旧 CLI 照常可用，只是「在新 worktree 中」要更新后才能选。',
             },
             oct13a: {
                 title: '少找一点：⌘K、看板卡片与 diff 批注',

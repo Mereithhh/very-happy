@@ -2153,11 +2153,11 @@ export const en = {
             },
             oct13c: {
                 title: 'Worktree sessions and idle hibernation',
-                summary: 'Start a session in a fresh git worktree, and let idle agents sleep until you need them. Needs CLI 0.2.167.',
+                summary: 'Start a session in a fresh git worktree, and let idle agents sleep until you need them. Needs CLI 0.2.168.',
                 worktree: 'New session → 「In a new worktree」 picks a base branch and a branch name, copies .env files and starts the agent there. Archiving can also remove the worktree (it asks first when there are uncommitted changes and keeps the branch).',
                 setup: 'A repository can declare files to copy and a setup script in .veryhappy/worktree.json. The script runs only after you have read and allowed it on the web; a changed script asks again. Allowing it also applies to worktrees created by Teams and automations.',
                 hibernate: 'Agent sessions idle for 6 hours (configurable per machine, or off) stop their process to free memory and wake up when you open them or send a message. Sessions that are working, waiting on you, used by automations or Teams, or marked 「Keep awake」 never sleep.',
-                cli: 'These need the CLI update to 0.2.167; machines on the latest channel update automatically when idle. Older CLIs keep working; the worktree option is disabled until they update.',
+                cli: 'These need the CLI update to 0.2.168; machines on the latest channel update automatically when idle. Older CLIs keep working; the worktree option is disabled until they update.',
             },
             oct13a: {
                 title: 'Less hunting: ⌘K, board cards and diff comments',
