@@ -2196,6 +2196,11 @@ export const en = {
                 undo: 'Archive and Done can be undone for a few seconds. A broken message now shows a one-line error instead of blanking the page, and a desktop tab you walked away from no longer marks finished sessions as read.',
                 fontSize: 'Appearance → Conversation text size: small, default, large or extra large, on this device.',
             },
+            oct14b: {
+                title: 'Copy and paste no longer race a clipboard push',
+                summary: 'Text an agent copied for you no longer overwrites what you copy or paste with ⌘C / ⌘V.',
+                paste: 'Fixed: while a clipboard push was waiting to be written, pressing ⌘V or ⌘C could swap your clipboard for the pushed text. Modifier shortcuts no longer trigger that write; a normal key press or click still does.',
+            },
             oct14: {
                 title: 'Missing pi setup says exactly what to install',
                 summary: 'pi runs through the pi-acp adapter; when either is missing, the terminal and the new-session dialog now give the exact command. Needs CLI 0.2.169 for the terminal part.',
