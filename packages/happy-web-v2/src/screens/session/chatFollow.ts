@@ -87,3 +87,49 @@ export function shouldFollowShrink(
 export function shouldSmoothJumpToLatest(distance: number, viewportHeight: number): boolean {
     return distance > 0 && viewportHeight > 0 && distance <= viewportHeight * 2;
 }
+
+/**
+ * B-598：「跟随带」与「真正到底」两个阈值。
+ *
+ * 跟随带（80px）只用于**还没表达过离开意图**的读者：贴底时内容的小幅抖动
+ * （markdown 迟到渲染、滚动条取整）不该让跟随断掉。可一旦用户做了向上滚的
+ * 手势，再用 80px 带重新上膛就是 bug：触控板/慢滚轮每个事件只走几 px，两次
+ * 流式 token 之间读者仍在带内，下一个 token 就把他拽回 0——永远出不去
+ * （Xu CHEN 2026-10-13：「往上滚想看完整回复，会主动掉到最下面」）。
+ * 脱离后只有真正回到底（≤ REATTACH_PX，留给 HiDPI 的小数 scrollTop）才重新跟随。
+ */
+export const FOLLOW_BAND_PX = 80;
+export const REATTACH_PX = 2;
+
+export type FollowState = { atBottom: boolean; detached: boolean };
+
+/** 一次 scroll 事件之后的跟随状态：脱离中只认真正到底，否则沿用 80px 带。 */
+export function followAfterScroll(detached: boolean, distance: number): FollowState {
+    if (detached) {
+        const back = distance <= REATTACH_PX;
+        return { atBottom: back, detached: !back };
+    }
+    return { atBottom: distance < FOLLOW_BAND_PX, detached: false };
+}
+
+/** 滚轮向上（内容往回翻）才是离开意图；横向/向下滚不算。 */
+export function isUpwardWheel(deltaY: number): boolean {
+    return deltaY < 0;
+}
+
+/** 触摸拖动：手指向下移动 = 内容向上滚（往回看）。留一点死区防误触。 */
+export function isUpwardTouch(startY: number, currentY: number, slop = 4): boolean {
+    return currentY - startY > slop;
+}
+
+/**
+ * 会把滚动容器往上翻的按键：PageUp / ↑ / Home / Shift+Space，以及 macOS 的
+ * Cmd+↑（到顶）。Ctrl/Alt 组合交给别的快捷键，不算。
+ */
+export function isUpwardScrollKey(e: { key: string; shiftKey?: boolean; altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }): boolean {
+    if (e.altKey || e.ctrlKey) return false;
+    if (e.key === 'ArrowUp') return true;
+    if (e.metaKey) return false;
+    if (e.key === 'PageUp' || e.key === 'Home') return true;
+    return (e.key === ' ' || e.key === 'Spacebar') && e.shiftKey === true;
+}

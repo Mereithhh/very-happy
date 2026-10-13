@@ -74,6 +74,7 @@ export function ChatPromptRail({
     isLoadingOlder,
     sessionId,
     navVisible,
+    onNavigateUp,
 }: {
     rows: ChatRow[];
     scrollRef: RefObject<HTMLDivElement | null>;
@@ -83,6 +84,8 @@ export function ChatPromptRail({
     sessionId: string;
     /** 窄屏按钮的显示条件：离开底部且「跳到最新」在它的老位置（没有排队 dock）。 */
     navVisible: boolean;
+    /** B-598: jumping back to an earlier prompt is a reading intent — the list stops following the live end. */
+    onNavigateUp?: () => void;
 }) {
     const { t } = useTranslation();
     const fine = useFinePointer();
@@ -200,6 +203,7 @@ export function ChatPromptRail({
         const scroll = scrollRef.current;
         const top = topsRef.current[index];
         if (!scroll || top === undefined) return;
+        if (railScrollTarget(top) < scroll.scrollTop) onNavigateUp?.();
         scroll.scrollTo({ top: railScrollTarget(top), behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     };
 

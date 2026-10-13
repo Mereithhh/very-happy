@@ -7,6 +7,10 @@ import {
     shouldFollowGrowth,
     shouldFollowShrink,
     shouldSmoothJumpToLatest,
+    followAfterScroll,
+    isUpwardWheel,
+    isUpwardTouch,
+    isUpwardScrollKey,
 } from './chatFollow';
 
 describe('nextAwaySnapshot', () => {
@@ -111,5 +115,47 @@ describe('isBottomEdgeChange', () => {
     });
     it('the newest message growing in place (streaming) is', () => {
         expect(isBottomEdgeChange(edge('r9', 10), edge('r9', 42))).toBe(true);
+    });
+});
+
+describe('followAfterScroll (B-598)', () => {
+    it('未脱离时沿用 80px 跟随带', () => {
+        expect(followAfterScroll(false, 0)).toEqual({ atBottom: true, detached: false });
+        expect(followAfterScroll(false, 79)).toEqual({ atBottom: true, detached: false });
+        expect(followAfterScroll(false, 80)).toEqual({ atBottom: false, detached: false });
+    });
+
+    it('脱离后带内不再重新上膛——只有真正到底才回来', () => {
+        expect(followAfterScroll(true, 10)).toEqual({ atBottom: false, detached: true });
+        expect(followAfterScroll(true, 79)).toEqual({ atBottom: false, detached: true });
+        expect(followAfterScroll(true, 2)).toEqual({ atBottom: true, detached: false });
+        expect(followAfterScroll(true, 0.5)).toEqual({ atBottom: true, detached: false });
+        expect(followAfterScroll(true, 0)).toEqual({ atBottom: true, detached: false });
+    });
+});
+
+describe('upward intent (B-598)', () => {
+    it('滚轮只有向上算', () => {
+        expect(isUpwardWheel(-1)).toBe(true);
+        expect(isUpwardWheel(0)).toBe(false);
+        expect(isUpwardWheel(4)).toBe(false);
+    });
+
+    it('触摸：手指下移超过死区 = 内容上滚', () => {
+        expect(isUpwardTouch(200, 210)).toBe(true);
+        expect(isUpwardTouch(200, 203)).toBe(false);
+        expect(isUpwardTouch(200, 150)).toBe(false);
+    });
+
+    it('上翻按键', () => {
+        for (const key of ['PageUp', 'ArrowUp', 'Home']) expect(isUpwardScrollKey({ key })).toBe(true);
+        expect(isUpwardScrollKey({ key: ' ', shiftKey: true })).toBe(true);
+        expect(isUpwardScrollKey({ key: 'ArrowUp', metaKey: true })).toBe(true);
+        expect(isUpwardScrollKey({ key: ' ' })).toBe(false);
+        expect(isUpwardScrollKey({ key: 'PageDown' })).toBe(false);
+        expect(isUpwardScrollKey({ key: 'End' })).toBe(false);
+        expect(isUpwardScrollKey({ key: 'ArrowUp', ctrlKey: true })).toBe(false);
+        expect(isUpwardScrollKey({ key: 'ArrowUp', altKey: true })).toBe(false);
+        expect(isUpwardScrollKey({ key: 'Home', metaKey: true })).toBe(false);
     });
 });

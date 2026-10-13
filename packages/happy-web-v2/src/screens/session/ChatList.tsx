@@ -4,7 +4,7 @@
  * when the user is already near it. Consecutive tool-calls collapse into a
  * single ToolGroupView. "Load older" appears when hasMoreOlder.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { ChevronDown, Trash2 } from 'lucide-react';
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -30,6 +30,10 @@ import {
     shouldFollowGrowth,
     shouldFollowShrink,
     shouldSmoothJumpToLatest,
+    followAfterScroll,
+    isUpwardWheel,
+    isUpwardTouch,
+    isUpwardScrollKey,
 } from './chatFollow';
 import { countRunningSubagentCards } from './subagentPills';
 import { transcriptChronological } from './transcriptMessages';
@@ -65,6 +69,10 @@ export function ChatList({
     // B-099 ②：离底时刻最新一行的 key（贴底时为 null）。排在它后面的 row 数
     // 渲染成 .cl-jump 上的数字 badge；回底清零。顶部插入的旧历史不计。
     const awaySnapshotRef = useRef<string | null>(null);
+    // B-598: the reader made an upward scroll gesture. While set, the 80px
+    // follow band no longer re-arms `atBottom` — only the real bottom does
+    // (followAfterScroll), or send / jump / session switch clear it.
+    const detachedRef = useRef(false);
 
     // storage keeps messages sorted NEWEST-FIRST (compareMessagesNewestFirst,
     // used by the sidebar's latest-message needs). The transcript reads top→
@@ -155,6 +163,84 @@ export function ChatList({
         el.scrollTo({ top: el.scrollHeight, behavior: animate ? 'smooth' : 'auto' });
     };
 
+    // B-598: an upward scroll gesture leaves the live end immediately, whatever
+    // the distance. Without it a trackpad / slow wheel / touch scroll moving a
+    // few px per event stayed inside the 80px band between two streamed tokens
+    // and every token snapped it back to the bottom.
+    const detach = () => {
+        const el = scrollRef.current;
+        // Nothing above to read (short transcript / already at the top): don't
+        // stop following for a gesture that cannot move the view.
+        if (!el || el.scrollTop <= 0) return;
+        detachedRef.current = true;
+        atBottomRef.current = false;
+        awaySnapshotRef.current = nextAwaySnapshot(awaySnapshotRef.current, false, rowKeys[rowKeys.length - 1] ?? null);
+        setShowJump(true);
+    };
+    // Document-level listeners below are installed once; they call the latest.
+    const detachRef = useRef(detach);
+    detachRef.current = detach;
+
+    const onWheel = (e: ReactWheelEvent<HTMLDivElement>) => {
+        if (isUpwardWheel(e.deltaY) && !nestedScrollerTakesUp(e.target, e.currentTarget)) detach();
+    };
+
+    // Highest finger position of the current touch gesture: a finger moving
+    // DOWN from it scrolls the content UP (reading back).
+    const touchAnchorYRef = useRef<number | null>(null);
+    const onTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
+        touchAnchorYRef.current = e.touches[0]?.clientY ?? null;
+    };
+    const onTouchMove = (e: ReactTouchEvent<HTMLDivElement>) => {
+        onTouchMoveDismissKeyboard();
+        const y = e.touches[0]?.clientY;
+        const anchor = touchAnchorYRef.current;
+        if (y === undefined || anchor === null) return;
+        if (y < anchor) touchAnchorYRef.current = y;
+        else if (isUpwardTouch(anchor, y) && !nestedScrollerTakesUp(e.target, e.currentTarget)) detach();
+    };
+
+    // Keyboard scrolling (PageUp / ↑ / Home / Shift+Space) lands on the
+    // transcript when focus is inside it, or on <body> after the reader last
+    // clicked in it. Typing in the composer (or any field) never counts.
+    useEffect(() => {
+        let pointerInside = false;
+        const onPointerDown = (e: PointerEvent) => {
+            const el = scrollRef.current;
+            pointerInside = !!el && e.target instanceof Node && el.contains(e.target);
+        };
+        const onKeyDown = (e: KeyboardEvent) => {
+            const el = scrollRef.current;
+            if (!el || e.defaultPrevented || !isUpwardScrollKey(e) || isEditableTarget(e.target)) return;
+            const target = e.target instanceof Node ? e.target : null;
+            const onTranscript = !!target && el.contains(target);
+            const onPage = target === document.body || target === document.documentElement;
+            if (onTranscript || (onPage && pointerInside)) detachRef.current();
+        };
+        document.addEventListener('pointerdown', onPointerDown, true);
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('pointerdown', onPointerDown, true);
+            document.removeEventListener('keydown', onKeyDown);
+        };
+    }, []);
+
+    // Dragging the scrollbar: the pointerdown lands on the scroller itself.
+    // Only an actual upward move while dragging detaches (see onScroll).
+    const scrollbarDragRef = useRef(false);
+    const lastScrollTopRef = useRef(0);
+    const onScrollerPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+        if (e.target !== e.currentTarget) return;
+        scrollbarDragRef.current = true;
+        const release = () => {
+            scrollbarDragRef.current = false;
+            window.removeEventListener('pointerup', release, true);
+            window.removeEventListener('pointercancel', release, true);
+        };
+        window.addEventListener('pointerup', release, true);
+        window.addEventListener('pointercancel', release, true);
+    };
+
     // Touch-scrolling the transcript dismisses the composer keyboard — the
     // native `keyboardDismissMode="onDrag"` convention (iOS Messages, Telegram,
     // every chat app): dragging the list means "let me read", and on iOS the
@@ -177,7 +263,12 @@ export function ChatList({
         const el = scrollRef.current;
         if (!el) return;
         const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-        const atBottom = distance < 80;
+        const movedUp = el.scrollTop < lastScrollTopRef.current;
+        lastScrollTopRef.current = el.scrollTop;
+        if (scrollbarDragRef.current && movedUp) detachedRef.current = true;
+        // B-598: once detached, the 80px band no longer re-arms following.
+        const { atBottom, detached } = followAfterScroll(detachedRef.current, distance);
+        detachedRef.current = detached;
         atBottomRef.current = atBottom;
         awaySnapshotRef.current = nextAwaySnapshot(awaySnapshotRef.current, atBottom, rowKeys[rowKeys.length - 1] ?? null);
         setShowJump(!atBottom);
@@ -209,6 +300,7 @@ export function ChatList({
     // B-520: sending is joining the live end — override a scrolled-back view.
     // atBottom=true also arms the growth/row followers for the reply.
     const followNow = () => {
+        detachedRef.current = false;
         atBottomRef.current = true;
         awaySnapshotRef.current = null;
         setShowJump(false);
@@ -312,6 +404,7 @@ export function ChatList({
     // growth is then covered by the ResizeObserver while atBottom remains true.
     useLayoutEffect(() => {
         if (!isLoaded) return;
+        detachedRef.current = false;
         atBottomRef.current = true;
         awaySnapshotRef.current = null;
         prevHeightRef.current = 0;
@@ -319,6 +412,13 @@ export function ChatList({
         scrollToBottom(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId, isLoaded]);
+
+    // 「跳到最新」 is asking to follow again: drop the detach so the smooth
+    // catch-up re-arms through the follow band like before B-598.
+    const jumpToLatest = () => {
+        detachedRef.current = false;
+        scrollToBottom(true);
+    };
 
     // B-309: a wrapper that dies mid-turn never sends `turn-end`, so liveness
     // dropping is the other signal that drafts are done. Arms the same delayed
@@ -368,7 +468,10 @@ export function ChatList({
                 className="cl-scroll"
                 ref={scrollRef}
                 onScroll={onScroll}
-                onTouchMove={onTouchMoveDismissKeyboard}
+                onWheel={onWheel}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onPointerDown={onScrollerPointerDown}
             >
                 <div className="cl-inner" ref={innerRef}>
                     {hasMoreOlder && (
@@ -444,6 +547,7 @@ export function ChatList({
                 isLoadingOlder={!!isLoadingOlder}
                 sessionId={sessionId}
                 navVisible={showJump && queuedMessages.length === 0}
+                onNavigateUp={detach}
             />
             {queuedMessages.length > 0 && (
                 <section className="cl-queue" aria-label={t('session.chat.queuedTitle', { count: queuedMessages.length })}>
@@ -456,7 +560,7 @@ export function ChatList({
                             <button
                                 type="button"
                                 className="cl-queue-jump"
-                                onClick={() => scrollToBottom(true)}
+                                onClick={jumpToLatest}
                                 aria-label={t('session.chat.jumpToLatest')}
                                 title={t('session.chat.jumpToLatest')}
                             >
@@ -504,7 +608,7 @@ export function ChatList({
                 <button
                     type="button"
                     className="cl-jump"
-                    onClick={() => scrollToBottom(true)}
+                    onClick={jumpToLatest}
                     aria-label={t('session.chat.jumpToLatest')}
                     title={t('session.chat.jumpToLatest')}
                 >
@@ -519,4 +623,24 @@ export function ChatList({
         </div>
         </MarkdownPathProvider>
     );
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    return target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.isContentEditable;
+}
+
+/**
+ * Does a nested vertical scroller between the event target and the
+ * transcript take this upward gesture itself (it can still scroll up)?
+ * Then the transcript does not move and must keep following. At its top
+ * edge the gesture chains to the transcript (B-467) and counts.
+ */
+function nestedScrollerTakesUp(target: EventTarget | null, scroller: HTMLElement): boolean {
+    for (let node = target instanceof Element ? target : null; node && node !== scroller; node = node.parentElement) {
+        if (!(node instanceof HTMLElement) || node.scrollTop <= 0 || node.scrollHeight <= node.clientHeight) continue;
+        const overflowY = getComputedStyle(node).overflowY;
+        if (overflowY === 'auto' || overflowY === 'scroll') return true;
+    }
+    return false;
 }
