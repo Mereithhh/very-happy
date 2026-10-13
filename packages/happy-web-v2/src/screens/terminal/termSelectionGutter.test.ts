@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { measureSelectionGutter, normalizeTerminalDomText, stripTerminalSelectionGutter } from './termSelectionGutter';
+import { measureSelectionGutter, normalizeTerminalDomText, stripTerminalSelectionGutter, terminalCopyDecision } from './termSelectionGutter';
 
 describe('stripTerminalSelectionGutter (B-574②)', () => {
     it('removes the agent gutter from a code block and keeps relative indentation', () => {
@@ -60,5 +60,24 @@ describe('stripTerminalSelectionGutter (B-574②)', () => {
     it('DOM text: NBSP cells become spaces first', () => {
         const dom = '\u00a0\u00a0a:\n\u00a0\u00a0\u00a0\u00a0b';
         expect(stripTerminalSelectionGutter(normalizeTerminalDomText(dom))).toBe('a:\n  b');
+    });
+});
+
+describe('terminalCopyDecision', () => {
+    const base = { foreignEditable: false, targetInTerminal: true, termSelection: null as string | null, domSelection: null as string | null };
+    it('⌘C on a terminal selection copies it without the gutter', () => {
+        expect(terminalCopyDecision({ ...base, termSelection: '  a\n    b' })).toBe('a\n  b');
+    });
+    it('no gutter → leave it to xterm', () => {
+        expect(terminalCopyDecision({ ...base, termSelection: 'a\n  b' })).toBeNull();
+    });
+    it('⌘C in another field (own-input overlay, search bar) never takes a leftover terminal selection', () => {
+        expect(terminalCopyDecision({ ...base, foreignEditable: true, termSelection: '  stale' })).toBeNull();
+    });
+    it('copy from outside the terminal with a leftover selection is untouched', () => {
+        expect(terminalCopyDecision({ ...base, targetInTerminal: false, termSelection: '  stale' })).toBeNull();
+    });
+    it('native long-press selection in the rows: NBSP folded and gutter stripped', () => {
+        expect(terminalCopyDecision({ ...base, targetInTerminal: false, domSelection: '\u00a0\u00a0x\n\u00a0\u00a0\u00a0\u00a0y' })).toBe('x\n  y');
     });
 });

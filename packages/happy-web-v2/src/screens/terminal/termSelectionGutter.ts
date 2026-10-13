@@ -56,3 +56,32 @@ export function stripTerminalSelectionGutter(selection: string): string {
 export function normalizeTerminalDomText(text: string): string {
     return text.replace(/ /g, ' ');
 }
+
+/**
+ * What a `copy` event should put on the clipboard, or null = leave it alone.
+ * Inputs are plain facts gathered by the hook (useTermPathLinks):
+ *  - `foreignEditable`: the event target is an input/textarea other than
+ *    xterm's own helper textarea (own-input overlay, search bar, composer);
+ *    its own selection always wins and a leftover terminal selection must not
+ *    replace it;
+ *  - `targetInTerminal`: the target sits inside the xterm element;
+ *  - `termSelection`: xterm's selection (null when none);
+ *  - `domSelection`: a native selection fully inside this terminal's rows.
+ */
+export function terminalCopyDecision(f: {
+    foreignEditable: boolean;
+    targetInTerminal: boolean;
+    termSelection: string | null;
+    domSelection: string | null;
+}): string | null {
+    if (f.foreignEditable) return null;
+    if (f.termSelection && f.targetInTerminal) {
+        const stripped = stripTerminalSelectionGutter(f.termSelection);
+        return stripped === f.termSelection ? null : stripped; // unchanged → xterm's own handler
+    }
+    if (f.domSelection) {
+        const cleaned = stripTerminalSelectionGutter(normalizeTerminalDomText(f.domSelection));
+        return cleaned === f.domSelection ? null : cleaned;
+    }
+    return null;
+}

@@ -4,6 +4,7 @@ import {
     isPathLike,
     isPathOpenClick,
     isPathTapGesture,
+    isStrongTouchPath,
     pathAtCell,
     pathLinksOnRow,
     resolveTerminalPath,
@@ -132,12 +133,41 @@ describe('gestures', () => {
         expect(isPathOpenClick({ metaKey: false, ctrlKey: false }, false)).toBe(false);
     });
     it('touch: only a short, still tap with no selection and not in select mode', () => {
-        const tap = { selectMode: false, distanceSquared: 4, durationMs: 120, hasDomSelection: false, hasTermSelection: false };
+        const tap = { selectMode: false, distanceSquared: 4, durationMs: 120, hasDomSelection: false, hasTermSelection: false, scrolled: false, flingAtStart: false, multiTouch: false };
         expect(isPathTapGesture(tap)).toBe(true);
         expect(isPathTapGesture({ ...tap, durationMs: 650 })).toBe(false); // long press = native selection
         expect(isPathTapGesture({ ...tap, distanceSquared: 200 })).toBe(false);
         expect(isPathTapGesture({ ...tap, selectMode: true })).toBe(false);
         expect(isPathTapGesture({ ...tap, hasDomSelection: true })).toBe(false);
         expect(isPathTapGesture({ ...tap, hasTermSelection: true })).toBe(false);
+        expect(isPathTapGesture({ ...tap, scrolled: true })).toBe(false); // gesture became a scroll
+        expect(isPathTapGesture({ ...tap, flingAtStart: true })).toBe(false); // tap only stopped momentum
+        expect(isPathTapGesture({ ...tap, multiTouch: true })).toBe(false); // pinch lift
+    });
+});
+
+describe('touch: only strong paths take the tap from the keyboard', () => {
+    const cand = (text: string) => findPathCandidates(text)[0] ?? null;
+    const none = () => false;
+    it('prose look-alikes are not consumed', () => {
+        // Node.js / www.example.com: bare names unknown to the project
+        expect(isStrongTouchPath(cand('use Node.js now')!, none)).toBe(false);
+        expect(isStrongTouchPath(cand('www.example.com')!, none)).toBe(false);
+        // and/or: a slash but no file-like last segment
+        expect(isStrongTouchPath(cand('this and/or that')!, none)).toBe(false);
+        // e-mail is not even a candidate
+        expect(cand('mail a@b.com')).toBeNull();
+    });
+    it('explicit roots, :line and relative paths with an extension are strong', () => {
+        expect(isStrongTouchPath(cand('/etc/hosts')!, none)).toBe(true);
+        expect(isStrongTouchPath(cand('~/notes/todo')!, none)).toBe(true);
+        expect(isStrongTouchPath(cand('./run')!, none)).toBe(true);
+        expect(isStrongTouchPath(cand('index.ts:40')!, none)).toBe(true);
+        expect(isStrongTouchPath(cand('src/app/main.ts')!, none)).toBe(true);
+    });
+    it('a bare name counts only when the project list knows it', () => {
+        const known = (n: string) => n === 'README.md';
+        expect(isStrongTouchPath(cand('README.md')!, known)).toBe(true);
+        expect(isStrongTouchPath(cand('Node.js')!, known)).toBe(false);
     });
 });

@@ -20,8 +20,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { ILink, Terminal } from '@xterm/xterm';
 import { useTranslation } from '@/i18n/useTranslation';
 import { toast } from '@/ui/Toast';
-import { isPathOpenClick, isPathTapGesture, pathAtCell, pathLinksOnRow, resolveTerminalPath, type PathCandidate } from './termPathLinks';
-import { normalizeTerminalDomText, stripTerminalSelectionGutter } from './termSelectionGutter';
+import { storage } from '@/sync/storage';
+import { isPathOpenClick, isPathTapGesture, isStrongTouchPath, pathAtCell, pathLinksOnRow, resolveTerminalPath, type PathCandidate } from './termPathLinks';
+import { terminalCopyDecision } from './termSelectionGutter';
 import { openVerifiedFile, revealPreviewLine } from './termPathOpen';
 import type { TerminalRenderer } from './renderer';
 import './termPathLinks.css';
@@ -44,20 +45,28 @@ function hasDomSelection(): boolean {
 }
 
 /** Text a copy event inside this terminal should carry, or null = don't touch it. */
-function terminalCopyText(term: Terminal, host: HTMLElement, target: EventTarget | null): string | null {
-    if (term.hasSelection() && target instanceof Node && host.contains(target)) {
-        const raw = term.getSelection();
-        const stripped = stripTerminalSelectionGutter(raw);
-        return stripped === raw ? null : stripped; // unchanged → leave it to xterm
-    }
+function isForeignEditable(target: EventTarget | null, term: Terminal): boolean {
+    return (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && target !== term.textarea;
+}
+
+/** Native selection text when it lies entirely inside this terminal's rows. */
+function domSelectionInRows(host: HTMLElement): string | null {
     const sel = window.getSelection?.();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
     const rows = host.querySelector('.xterm-rows');
     const range = sel.getRangeAt(0);
     if (!rows || !rows.contains(range.startContainer) || !rows.contains(range.endContainer)) return null;
-    const raw = sel.toString();
-    const cleaned = stripTerminalSelectionGutter(normalizeTerminalDomText(raw));
-    return cleaned === raw ? null : cleaned;
+    return sel.toString() || null;
+}
+
+function terminalCopyText(term: Terminal, host: HTMLElement, target: EventTarget | null): string | null {
+    const foreignEditable = isForeignEditable(target, term);
+    return terminalCopyDecision({
+        foreignEditable,
+        targetInTerminal: target instanceof Node && !!term.element?.contains(target),
+        termSelection: term.hasSelection() ? term.getSelection() : null,
+        domSelection: foreignEditable ? null : domSelectionInRows(host),
+    });
 }
 
 export function useTermPathLinks({ termRef, hostRef, machineId, cwd, surfaceKey, isMac, coarsePointer, selectModeRef }: {
@@ -90,6 +99,7 @@ export function useTermPathLinks({ termRef, hostRef, machineId, cwd, surfaceKey,
     }, []);
 
     const touchStartAt = useRef(0);
+    const multiTouch = useRef(false);
 
     useEffect(() => {
         const term = termRef.current?.raw;
@@ -153,7 +163,10 @@ export function useTermPathLinks({ termRef, hostRef, machineId, cwd, surfaceKey,
         document.addEventListener('copy', onCopy, true);
 
         // ── touch: remember when the finger went down (long press ≠ tap) ──
-        const onTouchStart = (e: TouchEvent) => { touchStartAt.current = e.timeStamp; };
+        const onTouchStart = (e: TouchEvent) => {
+            if (e.touches.length <= 1) { touchStartAt.current = e.timeStamp; multiTouch.current = false; }
+            else multiTouch.current = true;
+        };
         if (coarsePointer) host.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
 
         return () => {
@@ -175,14 +188,17 @@ export function useTermPathLinks({ termRef, hostRef, machineId, cwd, surfaceKey,
      * path and was consumed (preventDefault'd); the caller must skip its own
      * tap handling so the soft keyboard does not come up.
      */
-    const consumeTap = useCallback((e: TouchEvent, distanceSquared: number): boolean => {
+    const consumeTap = useCallback((e: TouchEvent, g: { distanceSquared: number; scrolled: boolean; flingAtStart: boolean }): boolean => {
         const renderer = termRef.current;
         const term = renderer?.raw;
         const p = e.changedTouches[0];
         if (!term || !p || !coarsePointer) return false;
         if (!isPathTapGesture({
             selectMode: selectModeRef.current === true,
-            distanceSquared,
+            distanceSquared: g.distanceSquared,
+            scrolled: g.scrolled,
+            flingAtStart: g.flingAtStart,
+            multiTouch: multiTouch.current || e.touches.length > 0,
             durationMs: e.timeStamp - touchStartAt.current,
             hasDomSelection: hasDomSelection(),
             hasTermSelection: term.hasSelection(),
@@ -196,6 +212,11 @@ export function useTermPathLinks({ termRef, hostRef, machineId, cwd, surfaceKey,
         if (col < 0 || col >= term.cols || vrow < 0 || vrow >= term.rows) return false;
         const candidate = pathAtCell(term.buffer.active, term.buffer.active.viewportY + vrow, col);
         if (!candidate) return false;
+        // Touch false positives cost the keyboard: only unmistakable paths, and
+        // bare names only when the cached project list knows them.
+        const { machineId: mid, cwd: dir } = live.current;
+        const known = mid && dir ? storage.getState().pathProjectFiles[`${mid}:${dir}`]?.files : undefined;
+        if (!isStrongTouchPath(candidate, (name) => !!known?.some((f) => f.fullPath === name))) return false;
         if (e.cancelable) e.preventDefault();
         void openCandidate(candidate);
         return true;

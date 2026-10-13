@@ -1958,10 +1958,12 @@ export function WebTerminalScreen() {
     let touchX = 0;
     let touchY = 0;
     let gestureScrolled = false;
+    let flingAtTouchStart = false;
     const onTouchStart = (e: TouchEvent) => {
       const p = e.touches[0];
       if (selectModeRef.current) return; // let the browser select/scroll natively
       gestureScrolled = false;
+      flingAtTouchStart = touchFling.active(); // B-574①: a tap that stops a fling is not a path tap
       touchFling.cancel();
       if (p) { touchX = p.clientX; touchY = p.clientY; }
     };
@@ -1971,7 +1973,7 @@ export function WebTerminalScreen() {
       const dx = p.clientX - touchX;
       const dy = p.clientY - touchY;
       const distanceSquared = dx * dx + dy * dy;
-      if (termPaths.consumeTap(e, distanceSquared)) return; // B-574①: tap on a path opens it
+      if (termPaths.consumeTap(e, { distanceSquared, scrolled: gestureScrolled, flingAtStart: flingAtTouchStart })) return; // B-574①: tap on a path opens it
       // A tap is the ONE explicit gesture that may summon the keyboard — route
       // it through the focus policy (it also clears a prior dismissal). The
       // resulting term.focus() still runs synchronously inside this touchend

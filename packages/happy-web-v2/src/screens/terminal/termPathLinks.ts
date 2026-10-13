@@ -52,6 +52,7 @@ export function isPathLike(p: string): boolean {
         return true;
     }
     if (STOPWORDS.has(p.toLowerCase())) return false;
+    if (p.includes('@') && /@[^@]+\.[A-Za-z]{2,}$/.test(p)) return false; // a@b.com
     return BARE_FILE_RE.test(p) || DOT_FILE_RE.test(p);
 }
 
@@ -212,7 +213,8 @@ export function isPathOpenClick(e: { metaKey: boolean; ctrlKey: boolean }, isMac
 
 /**
  * Touch: is this touchend a plain tap that may open a path? Long presses
- * (native selection), drags, select mode and live selections never are.
+ * (native selection), drags, scrolls (incl. a tap that only stopped a fling),
+ * multi-touch (pinch lift), select mode and live selections never are.
  */
 export function isPathTapGesture(g: {
     selectMode: boolean;
@@ -220,10 +222,41 @@ export function isPathTapGesture(g: {
     durationMs: number;
     hasDomSelection: boolean;
     hasTermSelection: boolean;
+    /** The gesture was classified as a scroll (screen's gestureScrolled). */
+    scrolled: boolean;
+    /** A momentum scroll was running when the finger went down (the tap stops it). */
+    flingAtStart: boolean;
+    /** More than one finger touched during the gesture. */
+    multiTouch: boolean;
 }): boolean {
     return !g.selectMode
+        && !g.scrolled
+        && !g.flingAtStart
+        && !g.multiTouch
         && g.distanceSquared <= 12 * 12
         && g.durationMs >= 0 && g.durationMs < 500
         && !g.hasDomSelection
         && !g.hasTermSelection;
+}
+
+const EMAIL_RE = /^[^@\s/]+@[^@\s/]+\.[A-Za-z]{2,}$/;
+const LAST_SEGMENT_EXT_RE = /\/[^/]*\.[A-Za-z][A-Za-z0-9]{0,9}$/;
+
+/**
+ * Touch only: is this candidate strong enough to take the tap away from
+ * "tap = summon the keyboard"? A false positive there costs the keyboard, so
+ * only unmistakable paths qualify:
+ *  - explicit roots (`/`, `~/`, `./`, `../`), a `:line` suffix, or
+ *  - a relative path whose LAST segment has an extension (`src/a.ts`, not `and/or`);
+ *  - a bare name (`README.md`, `Node.js`, `www.example.com`) only when it is a
+ *    known project file (`knownFile`, from the cached project list).
+ * Desktop needs ⌘/Ctrl anyway and keeps the generous rules.
+ */
+export function isStrongTouchPath(c: PathCandidate, knownFile: (name: string) => boolean): boolean {
+    const p = c.pathText;
+    if (EMAIL_RE.test(p)) return false;
+    if (c.line !== null) return true;
+    if (p.startsWith('/') || p.startsWith('~/') || p.startsWith('./') || p.startsWith('../')) return true;
+    if (p.includes('/')) return LAST_SEGMENT_EXT_RE.test(p);
+    return knownFile(p);
 }
