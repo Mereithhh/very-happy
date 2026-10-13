@@ -4402,6 +4402,28 @@ export const en = {
         openMachine: ({ machine }: { machine: string }) => `Usage limits on ${machine}`,
     },
 
+    // B-574: clickable paths in the web terminal.
+    terminalPaths: {
+        notFound: ({ path }: { path: string }) => `File not found: ${path}`,
+        isDirectory: ({ path }: { path: string }) => `${path} is a directory, not a file`,
+        noCwd: ({ path }: { path: string }) => `Can't resolve ${path}: this terminal's directory is unknown`,
+    },
+    // B-576: ⌘P quick open.
+    quickOpen: {
+        title: 'Open file',
+        placeholder: 'Search files by name…',
+        loading: 'Loading project files…',
+        noMatches: 'No matching files',
+        unavailableTitle: 'No project file list',
+        unavailableBody: 'This directory is not a git repository, or this session cannot list files right now (offline or an older CLI). Browse the folder instead.',
+        noSession: 'This conversation has no machine directory to search.',
+        browse: 'Browse files',
+        recent: 'Recent',
+        files: 'Files',
+        truncatedHint: ({ count }: { count: number }) => `Showing the top ${count}. Keep typing to narrow.`,
+        paletteAction: 'Open file…',
+    },
+
 } as const;
 
 export type Translations = typeof en;

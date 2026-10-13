@@ -54,6 +54,8 @@ import { TermWebKeyboard } from './TermWebKeyboard';
 import { TermPresetsMenu } from './TermPresetsMenu';
 import { TermSearchBar, useTermSearchController } from './TermSearchBar';
 import { termSearchSurfaceKey } from './termSearch';
+import { useTermPathLinks } from './useTermPathLinks';
+import { stripTerminalSelectionGutter } from './termSelectionGutter';
 import { presetPasteText } from './termPresetPaste';
 import { onInsertToInput } from '@/app/insertToInput';
 import { storage, useMachine, useSettings, useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
@@ -1969,6 +1971,7 @@ export function WebTerminalScreen() {
       const dx = p.clientX - touchX;
       const dy = p.clientY - touchY;
       const distanceSquared = dx * dx + dy * dy;
+      if (termPaths.consumeTap(e, distanceSquared)) return; // B-574①: tap on a path opens it
       // A tap is the ONE explicit gesture that may summon the keyboard — route
       // it through the focus policy (it also clears a prior dismissal). The
       // resulting term.focus() still runs synchronously inside this touchend
@@ -2273,7 +2276,7 @@ export function WebTerminalScreen() {
       if (dragged && term.hasSelection()) {
         // Copy-on-select: mouseup is a user gesture, so writeText is allowed.
         // Keep the selection visible; don't steal focus. ⌘C/right-click still work.
-        const sel = term.getSelection();
+        const sel = stripTerminalSelectionGutter(term.getSelection()); // B-574②
         if (sel) navigator.clipboard?.writeText(sel).catch(() => {});
       }
       // Resume output AFTER the copy so the clipboard got the frozen content.
@@ -2439,6 +2442,8 @@ export function WebTerminalScreen() {
     // live mount (vh-update / rollback) is handled by REBUILDING this effect,
     // never by hot-switching tracks inside it (spec §D3 M-R2-4).
   }, [machineId, tid, inputOwnership, streamRemount]);
+  // B-574 path links + gutter-free copy: declared AFTER the terminal effect so the xterm exists.
+  const termPaths = useTermPathLinks({ termRef, hostRef, machineId, cwd: meta?.cwd, surfaceKey: termSearchSurfaceKey({ machineId, tid, inputOwnership, streamRemount }), isMac: IS_MAC, coarsePointer: IS_COARSE_POINTER, selectModeRef });
 
   // Returns when the text has actually reached the pane — load-bearing for
   // execPreset: in lines mode the paste is an RPC while the trailing \r rides
