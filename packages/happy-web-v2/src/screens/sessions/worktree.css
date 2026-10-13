@@ -75,8 +75,12 @@
 }
 
 /* ── setup review / output dialog ── */
-.wts-card {
+.ns-card.wts-card {
   max-width: 560px;
+}
+/* Programmatic focus target on open (keyboard users land inside the dialog). */
+.ns-card.wts-card:focus {
+  outline: none;
 }
 .wts-lead {
   margin: 0;
@@ -109,6 +113,8 @@
   overflow-wrap: anywhere;
 }
 .wts-script {
+  /* Keep its own height (up to 40dvh): the card scrolls, the script is never squeezed. */
+  flex: none;
   margin: 0;
   max-height: 40dvh;
   overflow: auto;
@@ -145,5 +151,12 @@
   }
   .wts-facts dt {
     margin-top: var(--sp-1);
+  }
+}
+
+/* Touch: the dialog's decisions get full 44px targets. */
+@media (pointer: coarse) {
+  .wts-card .ns-actions .vh-btn {
+    min-height: 44px;
   }
 }

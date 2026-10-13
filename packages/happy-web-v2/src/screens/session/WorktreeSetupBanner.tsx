@@ -115,10 +115,12 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
     const [error, setError] = useState<string | null>(null);
     const [output, setOutput] = useState('');
     const offset = useRef(0);
-    const closeRef = useRef<HTMLButtonElement>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { setStatus(initial); }, [initial]);
-    useEffect(() => { closeRef.current?.focus(); }, []);
+    // Focus the dialog itself (not a button): Esc works, Enter approves nothing,
+    // and a long card is not scrolled to its bottom on open.
+    useEffect(() => { cardRef.current?.focus({ preventScroll: true }); }, []);
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
         window.addEventListener('keydown', onKey);
@@ -173,7 +175,7 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
 
     return (
         <div className="ns-backdrop" onClick={onClose}>
-            <div className="ns-card wts-card" role="dialog" aria-modal="true" aria-labelledby="wts-title" onClick={(e) => e.stopPropagation()}>
+            <div ref={cardRef} tabIndex={-1} className="ns-card wts-card" role="dialog" aria-modal="true" aria-labelledby="wts-title" onClick={(e) => e.stopPropagation()}>
                 <div className="ns-title" id="wts-title">{mode === 'review' ? copy.approveTitle : copy.outputTitle}</div>
                 {mode === 'review' && pending ? (
                     <>
@@ -206,7 +208,7 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
                 <div className="ns-actions">
                     {mode === 'review' && pending ? (
                         <>
-                            <Button ref={closeRef} variant="ghost" onClick={() => { void decline(); }} disabled={busy !== null}>
+                            <Button variant="ghost" onClick={() => { void decline(); }} disabled={busy !== null}>
                                 {copy.decline}
                             </Button>
                             {/* Not the default focus and not bound to Enter: approving code is a deliberate click. */}
@@ -215,7 +217,7 @@ export function WorktreeSetupDialog({ machineId, worktreePath, initial, mode, la
                             </Button>
                         </>
                     ) : (
-                        <Button ref={closeRef} variant="ghost" onClick={onClose}>{copy.close}</Button>
+                        <Button variant="ghost" onClick={onClose}>{copy.close}</Button>
                     )}
                 </div>
             </div>
