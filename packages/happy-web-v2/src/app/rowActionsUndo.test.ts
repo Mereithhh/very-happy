@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * B-566: archive / mark-done no longer ask or act at once — the row hides,
+ * B-566: mark-done no longer acts at once (archive asks again since B-591) — the row hides,
  * an Undo toast runs for UNDO_WINDOW_MS, and only then does the server call
  * (archive → kill) go out. Page exit commits immediately with keepalive.
  */
@@ -34,7 +34,7 @@ const store = vi.hoisted(() => {
 });
 vi.mock('@/sync/storage', () => ({ storage: { getState: () => store } }));
 
-import { archiveSessionWithUndo, confirmArchiveSession, markSessionDoneWithUndo, UNDO_WINDOW_MS } from './rowActions';
+import { confirmArchiveSession, markSessionDoneWithUndo, UNDO_WINDOW_MS } from './rowActions';
 import { deferredCommits } from './deferredCommit';
 
 const session = (id: string): S => ({ id, active: true, archivedAt: null, metadata: { summary: { text: `title ${id}` } } });
@@ -51,23 +51,22 @@ describe('undoable archive / done (B-566)', () => {
         vi.useRealTimers();
     });
 
-    it('archive: no confirm, row hidden at once, RPC only after the window', async () => {
+    it('archive asks first (B-591): cancel changes nothing; confirm archives at once, no undo toast', async () => {
         const s = session('s1'); store.sessions.s1 = s;
-        expect(await confirmArchiveSession(s as never)).toBe(true);
-        expect(modal.confirm).not.toHaveBeenCalled();
-        expect(store.sessions.s1.active).toBe(false);
-        expect(store.sessions.s1.archivedAt).not.toBeNull();
-        expect(toasts.undoable).toHaveBeenCalledWith('Archived', 'Undo', expect.any(Function), UNDO_WINDOW_MS);
-        vi.advanceTimersByTime(UNDO_WINDOW_MS - 1);
+        modal.confirm.mockResolvedValueOnce(false);
+        expect(await confirmArchiveSession(s as never)).toBe(false);
+        expect(store.sessions.s1.active).toBe(true);
+        expect(store.sessions.s1.archivedAt).toBeNull();
         expect(ops.sessionArchive).not.toHaveBeenCalled();
-        vi.advanceTimersByTime(1);
-        await vi.runAllTicks();
-        expect(ops.sessionArchive).toHaveBeenCalledWith('s1', { keepalive: false });
+        expect(await confirmArchiveSession(s as never)).toBe(true);
+        expect(modal.confirm).toHaveBeenCalledTimes(2);
+        expect(ops.sessionArchive).toHaveBeenCalledWith('s1', undefined);
+        expect(toasts.undoable).not.toHaveBeenCalled();
     });
 
-    it('archive: Undo inside the window restores the row and sends nothing', async () => {
+    it('done: Undo inside the window restores the row and sends nothing', async () => {
         const s = session('s2'); store.sessions.s2 = s;
-        archiveSessionWithUndo(s as never);
+        markSessionDoneWithUndo(s as never);
         vi.advanceTimersByTime(2000);
         lastUndo()();
         expect(store.sessions.s2.active).toBe(true);
@@ -78,7 +77,7 @@ describe('undoable archive / done (B-566)', () => {
 
     it('Undo after the commit says it is too late', async () => {
         const s = session('s3'); store.sessions.s3 = s;
-        archiveSessionWithUndo(s as never);
+        markSessionDoneWithUndo(s as never);
         vi.advanceTimersByTime(UNDO_WINDOW_MS);
         lastUndo()();
         expect(toasts.show).toHaveBeenCalledWith(expect.stringContaining('Already applied'));
@@ -109,7 +108,7 @@ describe('undoable archive / done (B-566)', () => {
     it('closing the page inside the window commits immediately with keepalive', async () => {
         const a = session('s6'); store.sessions.s6 = a;
         const b = session('s7'); store.sessions.s7 = b;
-        archiveSessionWithUndo(a as never);
+        markSessionDoneWithUndo(a as never);
         markSessionDoneWithUndo(b as never);
         window.dispatchEvent(new Event('pagehide'));
         await vi.runAllTicks();
@@ -137,7 +136,7 @@ describe('undoable archive / done (B-566)', () => {
         ops.sessionArchive.mockResolvedValueOnce({ success: false, message: 'Server error: 503' } as never);
         const err = vi.spyOn(console, 'error').mockImplementation(() => {});
         const s = session('s11'); store.sessions.s11 = s;
-        archiveSessionWithUndo(s as never);
+        markSessionDoneWithUndo(s as never);
         Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
         document.dispatchEvent(new Event('visibilitychange'));
         Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
@@ -153,7 +152,7 @@ describe('undoable archive / done (B-566)', () => {
         ops.sessionArchive.mockResolvedValueOnce({ success: false, message: 'x' } as never);
         const err = vi.spyOn(console, 'error').mockImplementation(() => {});
         const s = session('s12'); store.sessions.s12 = s;
-        archiveSessionWithUndo(s as never);
+        markSessionDoneWithUndo(s as never);
         window.dispatchEvent(new Event('pagehide'));
         await vi.waitFor(() => expect(err).toHaveBeenCalled());
         expect(modal.alert).not.toHaveBeenCalled();
@@ -162,7 +161,7 @@ describe('undoable archive / done (B-566)', () => {
 
     it('switching sessions does not cancel or hurry the window (module-level queue)', async () => {
         const s = session('s8'); store.sessions.s8 = s;
-        archiveSessionWithUndo(s as never);
+        markSessionDoneWithUndo(s as never);
         // "navigate away": nothing in the archive path is tied to a component;
         // only time or page exit commits it.
         window.history.pushState({}, '', '/session/other');
@@ -170,15 +169,14 @@ describe('undoable archive / done (B-566)', () => {
         vi.advanceTimersByTime(UNDO_WINDOW_MS - 1);
         expect(ops.sessionArchive).not.toHaveBeenCalled();
         vi.advanceTimersByTime(1);
-        await vi.runAllTicks();
-        expect(ops.sessionArchive).toHaveBeenCalledWith('s8', { keepalive: false });
+        await vi.waitFor(() => expect(ops.sessionArchive).toHaveBeenCalledWith('s8', undefined));
     });
 
     it('a failed commit rolls the row back and alerts', async () => {
         ops.sessionArchive.mockResolvedValueOnce({ success: false, message: 'boom' } as never);
         const err = vi.spyOn(console, 'error').mockImplementation(() => {});
         const s = session('s9'); store.sessions.s9 = s;
-        archiveSessionWithUndo(s as never);
+        markSessionDoneWithUndo(s as never);
         vi.advanceTimersByTime(UNDO_WINDOW_MS);
         await vi.waitFor(() => expect(modal.alert).toHaveBeenCalled());
         expect(store.sessions.s9.active).toBe(true);

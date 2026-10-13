@@ -21,7 +21,7 @@ vi.mock('@/ui/Toast', async (orig) => ({ ...(await orig<typeof import('@/ui/Toas
 
 import { storage } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
-import { archiveSessionWithUndo, markSessionDoneWithUndo, UNDO_WINDOW_MS } from './rowActions';
+import { markSessionDoneWithUndo, UNDO_WINDOW_MS } from './rowActions';
 import { deferredCommits } from './deferredCommit';
 import { resetSessionRestoreForTest, restoreSession } from './sessionRestore';
 import { SessionArchivedBanner } from '@/screens/session/SessionArchivedBanner';
@@ -56,7 +56,7 @@ describe('undo window × re-using the session (B-566 review)', () => {
 
     it('banner Restore inside the window = undo: no resume RPC, session live again, never archived', async () => {
         const s = seed('live-1', true);
-        archiveSessionWithUndo(s);
+        markSessionDoneWithUndo(s);
         expect(storage.getState().sessions['live-1'].active).toBe(false);
         await act(async () => root.render(<SessionArchivedBanner sessionId="live-1" />));
         const button = host.querySelector('[data-testid="session-archived-banner"] button') as HTMLButtonElement;
@@ -81,9 +81,9 @@ describe('undo window × re-using the session (B-566 review)', () => {
         expect(ops.sessionMarkCompleted).not.toHaveBeenCalled();
     });
 
-    it('a session that was merely OFFLINE before the archive click still gets its real restore', async () => {
+    it('a session that was merely OFFLINE before the mark-done click still gets its real restore', async () => {
         const s = seed('off-1', false);
-        archiveSessionWithUndo(s);
+        markSessionDoneWithUndo(s);
         await restoreSession('off-1');
         expect(ops.machineResumeSession).toHaveBeenCalledTimes(1);
         await act(async () => { vi.advanceTimersByTime(UNDO_WINDOW_MS * 2); });
