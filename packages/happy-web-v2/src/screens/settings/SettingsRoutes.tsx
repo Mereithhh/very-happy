@@ -2506,6 +2506,13 @@ function Diagnostics() {
           footer={t('diagnostics.developerFooter')}
         >
           <Item
+            settingId="diagnostics.viewportDiag"
+            title={t('diagnostics.viewportDiag')}
+            subtitle={t('diagnostics.viewportDiagDescription')}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/diag/viewport')}
+          />
+          <Item
             settingId="diagnostics.verboseLogging"
             title={t('diagnostics.verboseLogging')}
             subtitle={t('diagnostics.verboseLoggingDescription')}

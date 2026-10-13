@@ -4515,6 +4515,8 @@ export const en = {
         never: 'Never',
         developer: 'Developer',
         developerFooter: 'Troubleshooting toggles for this device only. Leave off unless you are debugging.',
+        viewportDiag: 'Viewport & safe area',
+        viewportDiagDescription: 'Screen, safe-area and app-height numbers for layout bug reports',
         verboseLogging: 'Verbose network logging',
         verboseLoggingDescription: 'Log all socket requests and responses',
         consoleLogging: 'Console output',

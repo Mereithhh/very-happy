@@ -4369,6 +4369,8 @@ export const zhHans: TranslationStructure = {
         never: '从未',
         developer: '开发者',
         developerFooter: '仅本设备生效的排障开关。非排障时请保持关闭。',
+        viewportDiag: '视口与安全区',
+        viewportDiagDescription: '屏幕、安全区与 app 高度实测值，用于反馈底部留白等布局问题',
         verboseLogging: '详细网络日志',
         verboseLoggingDescription: '记录所有 socket 请求与响应',
         consoleLogging: '控制台输出',

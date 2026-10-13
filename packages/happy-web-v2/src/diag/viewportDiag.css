@@ -1,0 +1,140 @@
+/* B-599 viewport diagnostics: /diag/viewport page + ?vhdiag=1 overlay. */
+
+.vd-page {
+  height: var(--app-h);
+  overflow-y: auto;
+  background: var(--bg-0);
+  color: var(--text);
+  padding: calc(env(safe-area-inset-top, 0px) + var(--sp-3)) var(--sp-4) var(--sp-4);
+}
+.vd-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.vd-title {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: var(--fs-16);
+  font-weight: 600;
+}
+.vd-hint {
+  margin: 0 0 var(--sp-3);
+  color: var(--text-dim);
+  font-size: var(--fs-13);
+}
+.vd-pre {
+  margin: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Full-height frame sized exactly like the app shell: its bottom edge is where
+   the app ends; the screenshot edge is the physical screen bottom. */
+.vd-frame {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h);
+  border: 3px dashed var(--danger);
+  pointer-events: none;
+  z-index: 2147483000;
+}
+.vd-frame-label {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 1px 4px;
+  background: var(--danger);
+  color: var(--danger-ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+}
+.vd-fixed-bottom {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 40%;
+  height: 0;
+  border-top: 3px solid var(--warn);
+  pointer-events: none;
+  z-index: 2147483000;
+}
+.vd-fixed-bottom span {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  color: var(--warn);
+}
+
+/* overlay on the real app */
+.vd-box {
+  position: fixed;
+  pointer-events: none;
+  z-index: 2147483000;
+  border: 2px solid currentColor;
+}
+.vd-box-label {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 0 3px;
+  background: var(--bg-0);
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  line-height: 1.3;
+}
+.vd-box--app-shell { color: var(--danger); }
+.vd-box--sd-foot { color: var(--warn); border-style: dashed; }
+.vd-box--ci { color: var(--accent-2); }
+.vd-box--ci-status { color: var(--text); border-style: dotted; }
+
+.vd-panel {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 4px);
+  left: 4px;
+  right: 4px;
+  max-height: 38vh;
+  overflow-y: auto;
+  z-index: 2147483001;
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-1);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+}
+.vd-panel--collapsed {
+  left: auto;
+  max-height: none;
+}
+.vd-panel-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.vd-panel--collapsed .vd-panel-actions { margin-bottom: 0; }
+.vd-panel .vd-pre {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: var(--fs-10);
+}
+/* Stagger labels so the four nested bottoms don't print on top of each other. */
+.vd-box--sd-foot .vd-box-label { right: auto; left: 0; }
+.vd-box--ci .vd-box-label { bottom: auto; top: 0; }
+.vd-box--ci-status .vd-box-label { right: auto; left: 0; bottom: 100%; }
