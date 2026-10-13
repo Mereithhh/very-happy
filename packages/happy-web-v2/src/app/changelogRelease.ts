@@ -17,7 +17,7 @@ export interface ChangelogRelease {
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
     id: '2026-10-13-worktrees-and-hibernation',
-    cliVersion: '0.2.167',
+    cliVersion: '0.2.168',
     date: '2026-10-13',
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.oct13c.title',
