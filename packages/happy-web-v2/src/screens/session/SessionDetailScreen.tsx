@@ -33,6 +33,7 @@ import { SessionArchivedBanner } from './SessionArchivedBanner';
 import { StaleWrapperBanner } from './StaleWrapperBanner';
 import { ModelSupportBanner } from './ModelSupportBanner';
 import { AutomationAttentionBanner } from './AutomationAttentionBanner';
+import { WorktreeSetupBanner } from './WorktreeSetupBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { newSessionTimingComposerMounted, newSessionTimingInStore, newSessionTimingPendingShown } from '@/app/newSessionTiming';
@@ -270,6 +271,8 @@ export function SessionDetailScreen() {
                 {session && !mirror && !canOfferRestore(session, bannerMachine) && <StaleWrapperBanner sessionId={id} />}
                 {/* B-487: the wanted model cannot run on this wrapper / agent CLI → say so and offer the fix */}
                 {session && !mirror && !canOfferRestore(session, bannerMachine) && <ModelSupportBanner sessionId={id} />}
+                {/* B-585: this session's worktree setup is waiting for approval / running / failed */}
+                {session && !mirror && <WorktreeSetupBanner key={id} sessionId={id} />}
                 <div className="sd-body">
                     {session ? <ChatList key={id} sessionId={id} showLiveStatus={!mirror} /> : <PendingSessionBody record={pending!} />}
                 </div>

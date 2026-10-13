@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
+import { worktreeBranchLabel } from './worktree';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
@@ -160,7 +161,8 @@ export function getSessionSidebarSubtitle(session: Session): string {
     if (!session.metadata) return getSessionSubtitle(session);
     const flavor = session.metadata.flavor?.trim();
     const agent = !flavor || flavor === 'terminal-mirror' ? 'claude' : flavor;
-    return [session.metadata.host.trim(), agent, getSessionSubtitle(session)]
+    // B-586: a worktree session also names its branch.
+    return [session.metadata.host.trim(), agent, getSessionSubtitle(session), worktreeBranchLabel(session.metadata)]
         .filter(Boolean)
         .join(' · ');
 }
