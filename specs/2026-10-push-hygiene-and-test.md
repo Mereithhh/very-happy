@@ -1,6 +1,6 @@
 # 推送整理（同会话顶替 / Topic / 短 TTL / 已读水位）+ 测试通知与开通引导
 
-> 状态：Draft（实现 agent 起草，待主 agent 定稿）
+> 状态：Draft（实现 agent 起草并已实现，待主 agent 定稿）
 > 日期：2026-10-13 ｜ 关联 backlog：B-569、B-570 ｜ 参考：Orca `mobile/src/notifications/push-dismissal-watermarks.ts`、`push-tray-dismissal.ts`、`mobile/src/onboarding/NotificationOnboardingPreview.tsx`、`mobile/src/notifications/notification-opt-in-gate.ts`（MIT，只借做法）｜ 前身：B-559 `specs/2026-10-pwa-app-badge.md`
 
 ## 背景
@@ -41,7 +41,7 @@ B-570 通知可验证、可开通：
 | Web Push TTL 固定 28 天、Urgency high，无 Topic | `packages/happy-server/sources/app/push/webPush.ts:158-159` |
 | Web Push payload = `{title, body, data:{sessionId, ...CLI data}}`；CLI data 含 `kind`、`url`（新 CLI）、`sessionTitle` | `app/push/pushDispatch.ts:102-106`、`happy-cli/src/api/pushNotifications.ts:276-283` |
 | 终端事件推送走 `dispatchDeviceEventPush`，data = `{kind: completed|permission, url:/terminal/<m>?tid=<t>}`，无 sessionId | `pushDispatch.ts:169-199`、`api/routes/pushRoutes.ts:336-349` |
-| 过期订阅（404/410）删除；格式坏的订阅删除 | `pushDispatch.ts:96-110` |
+| 过期订阅（404/410）、格式坏的订阅「删除」写成 `void db.accountPushToken.deleteMany(...)`——Prisma 查询惰性，未 await/then 不执行，**实际从未删除**（本次实测发现，见 D4） | `pushDispatch.ts:75,98,108`（基线） |
 | 跨设备已读水位 = 账号 KV `vh.notif-seen.v1`，值为 UTF-8 JSON `{"seen":{<key>:<ms>}}`（key = sessionId 或 `t:<terminalId>`），按 key 取 max 合并，永不回退 | `happy-web-v2/src/sync/notificationSeenStore.ts:52,134-136`、`sync/notificationSeen.ts` 头注 |
 | server KV 表 `UserKVStore(accountId,key)` 唯一，`value Bytes?`；server 侧可直接读，无需 migration | `prisma/schema.prisma:487-499`、`app/kv/kvGet.ts` |
 | 本机清横幅只匹配 `tag === key` 或 `data.url` 推出的 key | `src/sync/notificationSeen.ts` `systemNotificationMatchesKey`、`sync/systemNotificationDismiss.ts` |
@@ -98,6 +98,7 @@ push 处理：
 
 - server `POST /v1/push/test`（`app.authenticate`）：body `{ title?: ≤100, body?: ≤300 }`（Web 传本地化文案，缺省用英文默认）。`createAccountRateLimiter({ max: 1, windowMs: 10_000 })` → 超限 429 `{ error: 'rate_limited' }`。
 - 派发 `sendTestWebPush(userId, copy)`（`pushDispatch.ts`）：不做在线抑制（用户正在页面上点它）；只发 `webpush:` 订阅；data `{ kind: 'test', url: '/settings/notifications' }`，Topic = `webPushTopic('test')`，TTL 300s；过期/坏订阅删除同现有逻辑。
+- 修复既有 bug：`pruneToken()` 统一 settle 删除（Web Push 路径 await，Expo 路径 fire-and-forget 但会执行）；回归测试用惰性 thenable 模拟 Prisma。
 - 返回 200 `{ configured, total, sent, failed, pruned }`：`configured=false`（无 VAPID）时 total 照数、sent=0。
 - Web `apiPush.sendTestPush()` 结果联合：`ok`(计数) / `unsupported`(404) / `rate-limited`(429) / `error`。纯函数 `describeTestPushResult()` 映射成文案 key：
   - `sent>0` →「已发送到 N 个设备」（`failed>0` 时追加失败数）；
@@ -144,14 +145,22 @@ CLI 不涉及：CLI 只调用既有 `/v1/sessions/:id/push-event`、`/v1/webhook
 
 ## 验收标准
 
-- [ ] `pushSwHygiene.test.ts`（vm 跑真实 push-sw.js）：tag 计算（session/terminal/test/无 key）；同 tag 带 `renotify:true`；无 tag 不带 renotify；`seen` 覆盖的旧通知被 close、未覆盖/无 createdAt/本 tag 的不关；无 `seen`（旧 server）不关任何通知；sweep 抛错仍 showNotification；旧 SW 无 tag 通知按 url+timestamp 被识别。
-- [ ] `pushSwBadge.test.ts`（B-559）原样全绿。
-- [ ] server `pushHygiene.spec.ts`：Topic ≤32、字符集 `[A-Za-z0-9_-]`、同 key 稳定/不同 key 不同；TTL 分类；水位选择（近 7 天、上限、预算省略、坏数据宽松）。
-- [ ] server `webPush.spec.ts`：真实加密 + 打桩 fetch，断言 `TTL`、`Topic` 头；不传 opts 时 TTL=86400 无 Topic。
-- [ ] server `pushTest.spec.ts`：`POST /v1/push/test` 401/200 计数/429（10s 内第二次）/过期订阅清理；`sendTestWebPush` 不做在线抑制。
-- [ ] Web：`systemNotificationMatchesKey` 认新 tag；`describeTestPushResult` 全分支；`shouldOfferNotificationOptIn` 全分支。
-- [ ] server `tsc --noEmit` + `vitest run`；web `tsc --noEmit` + 相关 vitest + `vite build`。
-- [ ] 真浏览器（自启 Chromium）：同 tag 两次 `showNotification` 后 `getNotifications()` 只剩 1 条（顶替）；测试按钮 404 降级与结果文案；引导卡 1280 / 390 coarse × 亮 / 暗无溢出。
+- [x] `pushSwHygiene.test.ts`（vm 跑真实 push-sw.js）：tag 计算（session/terminal/test/无 key）；同 tag 带 `renotify:true`；无 tag 不带 renotify；`seen` 覆盖的旧通知被 close、未覆盖/无 createdAt/本 tag 的不关；无 `seen`（旧 server）不关任何通知；sweep 抛错仍 showNotification；旧 SW 无 tag 通知按 url+timestamp 被识别。
+- [x] `pushSwBadge.test.ts`（B-559）原样全绿。
+- [x] server `pushHygiene.spec.ts`：Topic ≤32、字符集 `[A-Za-z0-9_-]`、同 key 稳定/不同 key 不同；TTL 分类；水位选择（近 7 天、上限、预算省略、坏数据宽松）。
+- [x] server `webPush.spec.ts`：真实加密 + 打桩 fetch，断言 `TTL`、`Topic` 头；不传 opts 时 TTL=86400 无 Topic。
+- [x] server `pushTest.spec.ts`：`POST /v1/push/test` 401/200 计数/429（10s 内第二次）/过期订阅清理；`sendTestWebPush` 不做在线抑制。
+- [x] Web：`systemNotificationMatchesKey` 认新 tag；`describeTestPushResult` 全分支；`shouldOfferNotificationOptIn` 全分支。
+- [x] server `tsc --noEmit` + `vitest run`；web `tsc --noEmit` + 相关 vitest + `vite build`。
+- [x] 真浏览器（自启 Chromium）：同 tag 两次 `showNotification` 后 `getNotifications()` 只剩 1 条（顶替）；测试按钮 404 降级与结果文案；引导卡 1280 / 390 coarse × 亮 / 暗无溢出。
+
+## 验收记录（2026-10-13，自启 Chromium + 本地 standalone server + 本地推送接收器）
+
+- 测试按钮：无订阅 →「No device is subscribed yet…」；注册 alive/gone 两个指向本地接收器的订阅后 →「Sent to 1, failed on 1」，接收器解密得 `kind:test`、`TTL: 300`、32 字符 Topic、`sentAt`；10s 内再点 →「Too soon…」；gone 订阅被真正删除（修复前一直残留，同一轮实测发现）。
+- 真实派发：写入 KV 水位（近 2s 与 9 天前各一条）后关页面，`/v1/webhook/notify` 终端完成事件 → `TTL: 21600`、终端 Topic、payload `seen` 只含近 7 天那条。
+- 真实 SW（CDP `ServiceWorker.deliverPushMessage`）：同会话两次推送后 `getNotifications()` 只剩后一条（`session:sess-a`、`renotify: true`）；带 `seen` 的下一条推送关掉 sess-a，保留 sess-b；无 `seen` 的推送不清理。
+- 引导卡：permission default 时出现；1280 / 390 coarse × 亮 / 暗无横向溢出，主按钮 ink/canvas，手机按钮 44px；「Not now」后重载不再出现；授权后卡片消失并弹出本地「Notifications are on」（tag `vh-test`）。PWA 安装卡可见时让位（`installCard:false` 前置）。
+- 截图：`~/code/github/skills/tmp/vh-orca-lessons/r3-push-scratch/optin-*.png`、`settings-phone-light.png`。
 
 ## 留真机验证项
 
