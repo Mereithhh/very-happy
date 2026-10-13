@@ -2,7 +2,7 @@ import { ClaudeRuntimeDialog } from './ClaudeRuntimeDialog';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { useLocalSetting } from '@/sync/storage';
 import { useNavigate } from 'react-router-dom';
-import { Bot } from 'lucide-react';
+import { Bot, Moon } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 /**
  * ChatHeader — title (editable rename), machine·cwd breadcrumb, relay badge,
@@ -12,7 +12,9 @@ import { useEffect, useRef, useState } from 'react';
 import { StickyNote, Check, FolderOpen, MessageCircleQuestion, MoreHorizontal, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useSession } from '@/sync/storage';
-import { sessionUpdateTitle } from '@/sync/ops';
+import { sessionSetKeepAwake, sessionUpdateTitle } from '@/sync/ops';
+import { supportsKeepAwake } from '@/app/sessionHibernation';
+import { toast } from '@/ui/Toast';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ActionDropdownMenu, Spinner, type MenuItemDef } from '@/ui';
@@ -53,6 +55,15 @@ export function ChatHeader({
     const [editing, setEditing] = useState(false);
     const [runtimeOpen, setRuntimeOpen] = useState(false);
     const canControlRuntime = session?.metadata?.capabilities?.includes('claude-runtime-controls-v1') === true;
+    // B-587: only a wrapper that can hibernate offers「保持唤醒」(AGENTS #14).
+    const canKeepAwake = supportsKeepAwake(session?.metadata);
+    const keepAwake = session?.metadata?.keepAwake === true;
+    const toggleKeepAwake = () => {
+        const next = !keepAwake;
+        sessionSetKeepAwake(sessionId, next)
+            .then(() => toast.success(next ? t('hibernation.keepAwakeOn') : t('hibernation.keepAwakeOff')))
+            .catch(() => toast.error(t('hibernation.keepAwakeFailed')));
+    };
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const ime = useImeGuard();
@@ -224,8 +235,8 @@ export function ChatHeader({
                 </div>
             )}
             {!editing && plan.inline.map(renderAction)}
-            {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime) && (
-                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : [])]}>
+            {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake) && (
+                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : [])]}>
                     <button
                         type="button"
                         className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}

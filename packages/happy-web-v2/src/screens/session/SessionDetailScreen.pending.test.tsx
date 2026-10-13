@@ -102,6 +102,8 @@ vi.mock('@/ui', () => ({
     OrbitLoader: () => <div data-loader />,
 }));
 vi.mock('@/app/sessionRestore', () => ({ canOfferRestore: () => false }));
+// B-587: the auto-wake hook reads the restore store; a pending page never wakes anything.
+vi.mock('@/app/useHibernationAutoWake', () => ({ useHibernationAutoWake: () => {} }));
 vi.mock('@/assistant/assistantSession', () => ({ isMirrorSession: () => false }));
 
 import { SessionDetailScreen } from './SessionDetailScreen';

@@ -7,6 +7,7 @@ import { storage } from '@/sync/storage';
 import { machineResumeSession } from '@/sync/ops';
 import { releaseSessionInactive } from '@/sync/sessionArchiveHold';
 import { archiveCommitKey, deferredCommits } from './deferredCommit';
+import { isHibernated } from './sessionHibernation';
 import {
   advanceRestoreState,
   mapResumeError,
@@ -86,8 +87,11 @@ export async function restoreSession(sessionId: string): Promise<boolean> {
   releaseSessionInactive(sessionId);
   const startedAt = Date.now();
   store.set(sessionId, { phase: 'spawning', startedAt });
+  // B-587: waking a hibernated session keeps the permission mode its wrapper
+  // enforced (the daemon allowlists it); a plain restore stays as before.
+  const wakeMode = isHibernated(session) ? session.metadata?.permissionMode : undefined;
   const result = await machineResumeSession(
-    { machineId: eligibility.machineId, sessionId },
+    { machineId: eligibility.machineId, sessionId, ...(wakeMode ? { permissionMode: wakeMode } : {}) },
     { timeoutMs: RESTORE_RPC_TIMEOUT_MS },
     // A non-archived (merely offline) session must not be re-archived on a
     // resume failure — skip the unarchive/rearchive dance for it.

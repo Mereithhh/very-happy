@@ -35,6 +35,7 @@ import { ModelSupportBanner } from './ModelSupportBanner';
 import { AutomationAttentionBanner } from './AutomationAttentionBanner';
 import { WorktreeSetupBanner } from './WorktreeSetupBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
+import { useHibernationAutoWake } from '@/app/useHibernationAutoWake';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { newSessionTimingComposerMounted, newSessionTimingInStore, newSessionTimingPendingShown } from '@/app/newSessionTiming';
 import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
@@ -61,6 +62,8 @@ export function SessionDetailScreen() {
         const mid = session?.metadata?.machineId;
         return mid ? s.machines[mid] : undefined;
     });
+    // B-587: opening a hibernated session wakes it.
+    useHibernationAutoWake(pendingMode ? undefined : id);
     const [searchParams, setSearchParams] = useSearchParams();
     const panelTab = readSessionPanel(searchParams.get('panel'));
     const notesOpen = useLocalSetting('notesPanelOpen');

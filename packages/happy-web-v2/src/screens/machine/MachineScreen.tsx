@@ -38,6 +38,7 @@ import { cliUpdateCommandForNotice, hasValidCliUpdatePolicy, machineCliUpdateNot
 import { claudeAuthTone, isClaudeAuthStale, isKnownClaudeAuthDiagnosis, readClaudeAuth } from '@/sync/claudeAuth';
 import { machineClaudeAuthProbe, machineClaudeAuthRepair, machineClaudeAuthSetStore, type ClaudeAuthRpcResult } from '@/sync/ops';
 import { MachineRateLimits } from './rateLimits/MachineRateLimits';
+import { MachineHibernationGroup } from './MachineHibernationGroup';
 
 export function MachineScreen() {
   const { id } = useParams();
@@ -413,6 +414,8 @@ export function MachineScreen() {
           </ItemGroup>
 
           <MachineRateLimits machine={machine} />
+
+          <MachineHibernationGroup machine={machine} online={online} />
 
           {claudeAuth && (
             <ItemGroup

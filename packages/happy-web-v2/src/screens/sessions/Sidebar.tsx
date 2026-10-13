@@ -4,7 +4,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -17,6 +17,7 @@ import { buildClosedTerminalRows, closedTerminalsOf, killAttachedSupported } fro
 import { restoreClosedTerminal } from '@/app/rowActions';
 import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, confirmKillAttachedTerminal, saveRowRename, collectAllTags, restoreSessionOrAlert } from '@/app/rowActions';
 import { canOfferRestore, useRestoreState } from '@/app/sessionRestore';
+import { isHibernated } from '@/app/sessionHibernation';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { priorityLevel, setPriorityLevel, sortByPriority, PRIORITY_LEVELS, priorityTag, type PriorityLevel } from '@/utils/tags';
 import { visibleSidebarSessions } from './sidebarRows';
@@ -1558,6 +1559,8 @@ function SidebarRow({
   const terminalAgent = useTerminalAgentStates(st => isTerminal && row.terminalId ? st.states[row.terminalId]?.agentKind : undefined);
   const agentLabel = codingAgentLabel(isTerminal ? terminalAgent : s?.metadata?.flavor);
   const status = agentStatusSignal(execution, signal === 'unread');
+  // B-587: offline because it hibernated — same slot, a moon instead of the plug.
+  const hibernated = !isTerminal && isHibernated(s);
   const now = Date.now();
   // B-558: unknown = the lease expired. Lead with the fact (how long nothing
   // arrived); the estimate note (legacy daemon) already explains itself.
@@ -1567,7 +1570,7 @@ function SidebarRow({
   const statusLabel = status === 'running' ? withNote(t('sidebar.groupRunning'))
     : status === 'background' ? withNote(t('sidebar.rowBackgroundTasks', { count: backgroundTasks ?? 1 }))
     : status === 'input' ? withNote(t('sidebar.rowNeedsAttention'))
-    : status === 'unread' ? [t('sidebar.rowUnread'), availabilityLabel].filter(Boolean).join(' · ') : status === 'offline' ? t('sidebar.agentStatusOffline') : availabilityLabel || t('sidebar.agentStatusUnknown');
+    : status === 'unread' ? [t('sidebar.rowUnread'), availabilityLabel].filter(Boolean).join(' · ') : status === 'offline' ? (hibernated ? t('hibernation.rowLabel') : t('sidebar.agentStatusOffline')) : availabilityLabel || t('sidebar.agentStatusUnknown');
   // B-556: the board progress line (report_progress / boardAnalyzer),
   // de-emphasized in words when stale (not running, or >30 min old).
   // Display only — never changes the slot.
@@ -1759,7 +1762,7 @@ function SidebarRow({
         </span>
         <span className={`sb-row-status${status ? ` sb-row-status--${status}` : ''}`} title={slotLabel ? `${agentLabel} · ${slotLabel}` : undefined} role={slotLabel ? 'img' : undefined} aria-label={slotLabel ? `${agentLabel} · ${slotLabel}` : undefined}>
           {status === 'running' || status === 'background' ? <Spinner size={14} /> : status === 'input' ? <CircleAlert size={14} />
-            : status === 'unknown' ? <UnknownStatus size={13} /> : status === 'offline' ? <Unplug size={13} />
+            : status === 'unknown' ? <UnknownStatus size={13} /> : status === 'offline' ? (hibernated ? <Moon size={13} /> : <Unplug size={13} />)
             : status === 'unread' ? <span className="sb-row-unread-dot" /> : null}
         </span>
         {badge != null && <kbd className="sb-row-badge mono">⌘{badge}</kbd>}
