@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-13-help-and-safer-archive',
+    date: '2026-10-13',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct13d.title',
+    summaryKey: 'changelog.releases.oct13d.summary',
+    itemKeys: ['changelog.releases.oct13d.help', 'changelog.releases.oct13d.archive', 'changelog.releases.oct13d.clipboard'],
+  },
+  {
     id: '2026-10-13-worktrees-and-hibernation',
     cliVersion: '0.2.168',
     date: '2026-10-13',
