@@ -1,0 +1,53 @@
+/* ⌘P quick open (B-576). Layout/rows reuse the ⌘K palette (.cp-*); only the
+   match highlight and the "no file list" state live here. */
+.qo-hit {
+  background: none;
+  color: var(--text);
+  font-weight: 600;
+}
+.cp-item-sub .qo-hit {
+  color: var(--text-dim);
+}
+.qo-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-5) var(--sp-4);
+}
+.qo-state-title {
+  margin: 0;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  color: var(--text);
+}
+.qo-state-body {
+  margin: 0;
+  font-size: var(--fs-13);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.qo-browse {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  min-height: 32px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: var(--fs-13);
+  cursor: pointer;
+}
+.qo-browse:focus-visible {
+  outline: none;
+  background: var(--bg-3);
+}
+@media (hover: hover) {
+  .qo-browse:hover { background: var(--bg-3); }
+}
+@media (pointer: coarse) {
+  .qo-browse { min-height: 44px; }
+}

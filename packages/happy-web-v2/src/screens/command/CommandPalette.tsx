@@ -39,6 +39,8 @@ import { AttachTmuxModal } from '@/screens/sessions/AttachTmuxModal';
 import { ImportHistoryModal, type ImportHistoryAgent } from '@/screens/sessions/ImportHistoryModal';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
+import { FileSearch } from 'lucide-react';
+import { openQuickOpen } from '@/screens/quickopen/quickOpenEvents';
 import type { AgentExecution } from '@/sync/agentStatus';
 import {
   boardItemExecution,
@@ -331,6 +333,16 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       run: () => dialogs.newChat(),
     });
     if (currentSessionId) {
+      // B-576: phone entry to the session page's ⌘P quick open.
+      out.push({
+        key: 'action:quick-open',
+        group: 'actions',
+        title: t('quickOpen.paletteAction'),
+        icon: <FileSearch size={16} />,
+        haystack: `open file quick find path ${(t('quickOpen.paletteAction') as string).toLowerCase()}`,
+        hint: IS_MAC ? '⌘P' : 'Ctrl+P',
+        run: openQuickOpen,
+      });
       out.push({
         key: 'action:rename',
         group: 'actions',
