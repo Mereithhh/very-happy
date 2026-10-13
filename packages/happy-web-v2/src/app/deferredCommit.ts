@@ -19,9 +19,16 @@
 
 export type FlushReason = 'timeout' | 'pagehide' | 'beforeunload' | 'hidden' | 'manual';
 
-/** reasons that fire while the page is going away — use fetch keepalive */
+/** reasons that MAY outlive the page — send with fetch keepalive */
 export function isUnloadFlush(reason: FlushReason): boolean {
     return reason === 'pagehide' || reason === 'beforeunload' || reason === 'hidden';
+}
+
+/** only a real teardown: the page is gone, no UI can report a failure. A
+ *  hidden tab and a cancellable beforeunload are still alive — failures
+ *  there must still roll the row back AND say why. */
+export function isPageExitFlush(reason: FlushReason): boolean {
+    return reason === 'pagehide';
 }
 
 export interface DeferredSpec {
@@ -34,8 +41,10 @@ export interface DeferredSpec {
 
 export interface DeferredHandle {
     readonly key: string;
-    /** true = reverted before commit; false = already committed (too late) */
+    /** true = reverted before commit; false = already committed or reverted */
     undo: () => boolean;
+    /** 'pending' until it commits or is reverted (by this handle or queue.undo) */
+    state: () => 'pending' | 'committed' | 'reverted';
     flush: (reason?: FlushReason) => void;
     isPending: () => boolean;
 }
@@ -49,6 +58,7 @@ interface Entry {
     handle: DeferredHandle;
     timer: unknown;
     spec: DeferredSpec;
+    setState: (s: 'committed' | 'reverted') => void;
 }
 
 export function createDeferredCommits(deps: TimerDeps) {
@@ -59,6 +69,7 @@ export function createDeferredCommits(deps: TimerDeps) {
         if (!entry) return;
         pending.delete(key);
         deps.clearTimer(entry.timer);
+        entry.setState('committed');
         try {
             const result = entry.spec.commit(reason);
             if (result && typeof (result as Promise<void>).catch === 'function') {
@@ -72,29 +83,36 @@ export function createDeferredCommits(deps: TimerDeps) {
     const schedule = (key: string, spec: DeferredSpec): DeferredHandle => {
         const existing = pending.get(key);
         if (existing) return existing.handle;
+        let state: 'pending' | 'committed' | 'reverted' = 'pending';
         const handle: DeferredHandle = {
             key,
-            undo: () => {
-                const entry = pending.get(key);
-                if (!entry || entry.handle !== handle) return false;
-                pending.delete(key);
-                deps.clearTimer(entry.timer);
-                entry.spec.revert();
-                return true;
-            },
+            undo: () => (pending.get(key)?.handle === handle ? undoKey(key) : false),
+            state: () => state,
             flush: (reason: FlushReason = 'manual') => {
                 if (pending.get(key)?.handle === handle) run(key, reason);
             },
             isPending: () => pending.get(key)?.handle === handle,
         };
         const timer = deps.setTimer(() => run(key, 'timeout'), spec.delayMs);
-        pending.set(key, { handle, timer, spec });
+        pending.set(key, { handle, timer, spec, setState: (s) => { state = s; } });
         return handle;
     };
+
+    function undoKey(key: string): boolean {
+        const entry = pending.get(key);
+        if (!entry) return false;
+        pending.delete(key);
+        deps.clearTimer(entry.timer);
+        entry.setState('reverted');
+        entry.spec.revert();
+        return true;
+    }
 
     return {
         schedule,
         isPending: (key: string) => pending.has(key),
+        /** revert a pending item by key (any surface that re-uses the object) */
+        undo: undoKey,
         pendingKeys: () => [...pending.keys()],
         /** commit everything now (page going away) */
         flushAll: (reason: FlushReason) => {
@@ -104,6 +122,11 @@ export function createDeferredCommits(deps: TimerDeps) {
 }
 
 export type DeferredCommits = ReturnType<typeof createDeferredCommits>;
+
+/** Key of a session's pending archive / mark-done (rowActions). */
+export function archiveCommitKey(sessionId: string): string {
+    return `archive:${sessionId}`;
+}
 
 /** The app-wide queue (archive / done). */
 export const deferredCommits: DeferredCommits = createDeferredCommits({

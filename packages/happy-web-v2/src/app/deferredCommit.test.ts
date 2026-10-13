@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createDeferredCommits, installDeferredCommitFlush, isUnloadFlush, type FlushReason } from './deferredCommit';
+import { createDeferredCommits, installDeferredCommitFlush, isPageExitFlush, isUnloadFlush, type FlushReason } from './deferredCommit';
 
 describe('deferredCommit (B-566)', () => {
     beforeEach(() => vi.useFakeTimers());
@@ -66,6 +66,27 @@ describe('deferredCommit (B-566)', () => {
     it('keepalive reasons are exactly the page-exit ones', () => {
         const all: FlushReason[] = ['timeout', 'pagehide', 'beforeunload', 'hidden', 'manual'];
         expect(all.filter(isUnloadFlush)).toEqual(['pagehide', 'beforeunload', 'hidden']);
+    });
+
+    it('only pagehide is a teardown — hidden/beforeunload pages can still report failures', () => {
+        const all: FlushReason[] = ['timeout', 'pagehide', 'beforeunload', 'hidden', 'manual'];
+        expect(all.filter(isPageExitFlush)).toEqual(['pagehide']);
+    });
+
+    it('queue.undo(key) reverts from another surface; the handle then reads reverted, not committed', () => {
+        const q = make();
+        const revert = vi.fn(); const commit = vi.fn();
+        const h = q.schedule('archive:s1', { delayMs: 6000, commit, revert });
+        expect(q.undo('archive:s1')).toBe(true);
+        expect(h.state()).toBe('reverted');
+        expect(h.undo()).toBe(false);
+        expect(q.undo('archive:s1')).toBe(false);
+        vi.advanceTimersByTime(10_000);
+        expect(commit).not.toHaveBeenCalled();
+        expect(revert).toHaveBeenCalledTimes(1);
+        const h2 = q.schedule('archive:s2', { delayMs: 10, commit, revert });
+        vi.advanceTimersByTime(10);
+        expect(h2.state()).toBe('committed');
     });
 
     describe('page-exit flushing', () => {
