@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
-import { dispatchDeviceEventPush, dispatchSessionEventPush } from "@/app/push/pushDispatch";
+import { dispatchDeviceEventPush, dispatchSessionEventPush, sendTestWebPush } from "@/app/push/pushDispatch";
 import { getVapidPublicKey, webPushConfigured } from "@/app/push/webPush";
 import {
     WEBHOOK_EVENTS,
@@ -389,6 +389,44 @@ export function pushRoutes(app: Fastify) {
             }
         });
         return reply.send({ success: true });
+    });
+
+    // B-570: "send test notification" (settings → notifications). Sends one
+    // clearly-labelled test push to every Web Push subscription of the
+    // caller and reports per-subscription counts, so the user can tell
+    // "pushes work" from "this account has no live subscription". 1 per 10s
+    // per account (in-memory; an anti-double-click guard, not a security
+    // boundary). Old servers 404 here — the web disables the button then.
+    const allowTestPush = createAccountRateLimiter({ max: 1, windowMs: 10_000 });
+
+    app.post('/v1/push/test', {
+        schema: {
+            body: z.object({
+                title: z.string().min(1).max(100).optional(),
+                body: z.string().max(300).optional(),
+            }).nullish(),
+            response: {
+                200: z.object({
+                    configured: z.boolean(),
+                    total: z.number(),
+                    sent: z.number(),
+                    failed: z.number(),
+                    pruned: z.number(),
+                }),
+                429: z.object({ error: z.literal('rate_limited') }),
+            }
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        if (!allowTestPush.allow(userId)) {
+            return reply.code(429).send({ error: 'rate_limited' });
+        }
+        const result = await sendTestWebPush(userId, {
+            title: request.body?.title ?? 'Very Happy · Test notification',
+            body: request.body?.body ?? 'If you can see this, notifications reach this device.',
+        });
+        return reply.send(result);
     });
 
     // Get Push Tokens API

@@ -64,8 +64,9 @@ export type DiffCommand = { ok: true; command: string } | { ok: false; reason: Q
  * against the null device — same RPC, same output cap, and unlike `readFile`
  * not subject to the CLI's cwd containment check, so `../x` works.
  */
-export function gitDiffCommand(cwdRelativePath: string, opts: { untracked: boolean; flavor: ShellFlavor | null }): DiffCommand {
-    const base = 'git -c core.quotepath=false diff --no-color --no-ext-diff';
+export function gitDiffCommand(cwdRelativePath: string, opts: { untracked: boolean; flavor: ShellFlavor | null; ignoreWhitespace?: boolean }): DiffCommand {
+    // B-572: `-w` (ignore all whitespace) works for both HEAD and --no-index diffs.
+    const base = `git -c core.quotepath=false diff --no-color --no-ext-diff${opts.ignoreWhitespace ? ' -w' : ''}`;
     const target = quoteShellArg(opts.untracked ? cwdRelativePath : `:(literal)${cwdRelativePath}`, opts.flavor);
     if (!target.ok) return target;
     if (!opts.untracked) return { ok: true, command: `${base} HEAD -- ${target.arg}` };

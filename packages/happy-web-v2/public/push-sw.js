@@ -8,10 +8,121 @@
  * encrypted pushes that never became visible notifications. These handlers
  * restore the visible half of the pipeline.
  *
- * Payload contract (server app/push/webPush.ts sendWebPush):
- *   { title, body, data: { url?, ... } }   — data.url is an app path like
- *   /session/<id> or /terminal/<machineId>?tid=<id>.
+ * Payload contract (server app/push/pushDispatch.ts sendWeb):
+ *   { title, body, data: { url?, sessionId?, kind?, ... },
+ *     sentAt?: number,                 // B-569, server ms
+ *     seen?: { [targetKey]: ms } }     // B-569, account read watermark subset
+ *   data.url is an app path like /session/<id> or /terminal/<machineId>?tid=<id>.
+ *   Old servers send neither sentAt nor seen → nothing is swept (old behavior).
  */
+
+// ---------------------------------------------------------------------------
+// B-569 — pure helpers (no SW globals; pushSwHygiene.test.ts runs this file
+// in node:vm and calls them directly). Target keys share the web's key space
+// (src/sync/notificationSeen.ts targetKeyOfPath): a session id, or
+// `t:<terminalId>`.
+// ---------------------------------------------------------------------------
+
+/** App path → target key, or null. Same rules as targetKeyOfPath. */
+function vhTargetKeyOfUrl(url) {
+  if (typeof url !== 'string' || url.charAt(0) !== '/') return null;
+  const q = url.indexOf('?');
+  const path = q >= 0 ? url.slice(0, q) : url;
+  const query = q >= 0 ? url.slice(q + 1) : '';
+  const parts = path.split('/').filter(Boolean);
+  if (parts.length !== 2) return null;
+  if (parts[0] === 'session') {
+    let id = parts[1];
+    try { id = decodeURIComponent(id); } catch { /* keep raw */ }
+    return id && id.indexOf('pending-') !== 0 ? id : null;
+  }
+  if (parts[0] === 'terminal') {
+    const m = /(?:^|&)tid=([^&]*)/.exec(query);
+    if (!m || !m[1]) return null;
+    let tid = m[1];
+    try { tid = decodeURIComponent(tid); } catch { /* keep raw */ }
+    return tid ? 't:' + tid : null;
+  }
+  return null;
+}
+
+/** Target key of an incoming push: data.sessionId first, then data.url. */
+function vhPushKey(data) {
+  if (!data || typeof data !== 'object') return null;
+  if (typeof data.sessionId === 'string' && data.sessionId) return data.sessionId;
+  return vhTargetKeyOfUrl(data.url);
+}
+
+/**
+ * Notification tag: one live notification per target, the newer replaces the
+ * older. `vh-test` for test pushes; null (no tag → old stacking behavior)
+ * when the push names no target.
+ */
+function vhNotificationTag(payload) {
+  const data = payload && payload.data;
+  if (data && data.kind === 'test') return 'vh-test';
+  const key = vhPushKey(data);
+  if (!key) return null;
+  return key.indexOf('t:') === 0 ? 'terminal:' + key.slice(2) : 'session:' + key;
+}
+
+/** Target key of a LIVE notification (ours, or one an older SW showed). */
+function vhKeyOfNotification(n) {
+  if (!n) return null;
+  const tag = typeof n.tag === 'string' ? n.tag : '';
+  if (tag.indexOf('session:') === 0 && tag.length > 8) return tag.slice(8);
+  if (tag.indexOf('terminal:') === 0 && tag.length > 9) return 't:' + tag.slice(9);
+  const data = n.data && typeof n.data === 'object' ? n.data : null;
+  if (data && typeof data.key === 'string' && data.key) return data.key;
+  return data ? vhTargetKeyOfUrl(data.url) : null;
+}
+
+/** When the notification's event happened (server sentAt, else show time). */
+function vhNotificationCreatedAt(n) {
+  const data = n && n.data && typeof n.data === 'object' ? n.data : null;
+  if (data && typeof data.createdAt === 'number' && data.createdAt > 0) return data.createdAt;
+  if (n && typeof n.timestamp === 'number' && n.timestamp > 0) return n.timestamp;
+  return null;
+}
+
+/** Tolerant parse of payload.seen → { key: ms } (junk dropped). */
+function vhParseSeen(x) {
+  const out = {};
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return out;
+  for (const key of Object.keys(x)) {
+    const v = x[key];
+    if (key && typeof v === 'number' && isFinite(v) && v > 0) out[key] = v;
+  }
+  return out;
+}
+
+/**
+ * Live notifications the watermark already covers: the user opened that
+ * target (on any device) at or after the notification's event. The incoming
+ * push's own tag is never swept (device clock skew must not eat a new alert).
+ */
+function vhStaleNotifications(list, seen, exceptTag) {
+  const out = [];
+  for (const n of list || []) {
+    if (exceptTag && n.tag === exceptTag) continue;
+    const key = vhKeyOfNotification(n);
+    if (!key || seen[key] === undefined) continue;
+    const at = vhNotificationCreatedAt(n);
+    if (at === null) continue;
+    if (seen[key] >= at) out.push(n);
+  }
+  return out;
+}
+
+async function vhSweepSeen(rawSeen, exceptTag) {
+  const seen = vhParseSeen(rawSeen);
+  if (Object.keys(seen).length === 0) return 0;
+  const reg = self.registration;
+  if (!reg || typeof reg.getNotifications !== 'function') return 0;
+  const stale = vhStaleNotifications(await reg.getNotifications(), seen, exceptTag);
+  for (const n of stale) n.close();
+  return stale.length;
+}
 
 self.addEventListener('push', (event) => {
   let payload = {};
@@ -21,17 +132,35 @@ self.addEventListener('push', (event) => {
     // Non-JSON push (should not happen) — still show something: iOS revokes
     // push permission from workers that swallow pushes silently.
   }
+  if (!payload || typeof payload !== 'object') payload = {};
+  const data = payload.data && typeof payload.data === 'object' ? payload.data : {};
   const title = payload.title || 'Very Happy';
   const body = payload.body || '';
-  const url = (payload.data && payload.data.url) || '/';
+  const key = vhPushKey(data);
+  // Old CLIs send no url; a session push can still deep-link.
+  const url = data.url || (key && key.indexOf('t:') !== 0 ? '/session/' + encodeURIComponent(key) : '/');
+  const tag = vhNotificationTag(payload);
+  const createdAt = typeof payload.sentAt === 'number' && payload.sentAt > 0 ? payload.sentAt : Date.now();
+  const options = {
+    body,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    data: { url, key, kind: typeof data.kind === 'string' ? data.kind : undefined, createdAt },
+  };
+  if (tag) {
+    // Same target → replace, but still alert: every push that reaches the SW
+    // is one the server decided to deliver (it already suppresses while the
+    // user is active). renotify without a tag throws, hence inside the if.
+    options.tag = tag;
+    options.renotify = true;
+  }
   event.waitUntil(
     Promise.all([
-      self.registration.showNotification(title, {
-        body,
-        icon: '/icon-192.png',
-        badge: '/icon-192.png',
-        data: { url },
-      }),
+      // Sweep first, then ALWAYS show: the sweep can never close this push's
+      // own notification, and its failure never blocks it.
+      vhSweepSeen(payload.seen, tag)
+        .catch(() => 0)
+        .then(() => self.registration.showNotification(title, options)),
       // B-559: never allowed to reject — the notification above must show.
       bumpAppBadge().catch(() => {}),
     ])

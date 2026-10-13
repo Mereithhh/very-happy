@@ -384,3 +384,32 @@
 }
 .fsb-sheet-paging { display:flex; align-items:center; justify-content:center; gap:12px; border-top:1px solid var(--line); flex:none; }
 .fsb-sheet-paging button { padding:8px 12px; min-height:44px; }
+
+/* B-573: the agent wrote this file while you were reading — neutral, one line. */
+.fsb-agent-changed {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 2px var(--sp-2) 2px var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.fsb-agent-changed-text { flex: 1; min-width: 0; }
+.fsb-agent-changed-refresh {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--text);
+}
+.fsb-agent-changed-refresh:hover,
+.fsb-agent-changed-refresh:focus-visible { outline: none; background: var(--bg-3); }
+@media (pointer: coarse) {
+  .fsb-agent-changed-refresh { height: 44px; }
+}
