@@ -170,7 +170,12 @@ export function HistorySearchPanel({ machineId, agent, homeDir, sessions, rowSta
         <div className="ns-sessions ns-sessions--tall hs-results" role="list" aria-label={t('historySearch.title')} aria-busy={loading}>
           {hits.map((hit) => {
             const entry = hit.entry;
-            const sessionId = tracked.get(hit.key);
+            const trackedHit = tracked.get(hit.key);
+            // B-600: only a conversation very-happy drives is "open only"; an
+            // original claimed by an earlier import (maybe a failed, empty
+            // shell) can be opened AND imported again.
+            const sessionId = trackedHit?.kind === 'own' ? trackedHit.sessionId : undefined;
+            const importedInto = trackedHit?.kind === 'imported' ? trackedHit.sessionId : undefined;
             const state = rowStates.get(entry.id) ?? { kind: 'idle' as const };
             const source = historySourceLabel(entry);
             const age = formatSessionAge(entry.updatedAt, now);
@@ -188,9 +193,16 @@ export function HistorySearchPanel({ machineId, agent, homeDir, sessions, rowSta
                       {t('historySearch.open')}
                     </Button>
                   ) : (
-                    <Button size="sm" variant="secondary" loading={state.kind === 'running'} disabled={busy || importBlocked} onClick={() => onImport(entry)}>
-                      {t('historySearch.import')}
-                    </Button>
+                    <>
+                      {importedInto && (
+                        <Button size="sm" variant="ghost" disabled={busy} onClick={() => { navigate(`/session/${importedInto}`); onOpen(importedInto); }}>
+                          {t('historySearch.openImported')}
+                        </Button>
+                      )}
+                      <Button size="sm" variant="secondary" loading={state.kind === 'running'} disabled={busy || importBlocked} onClick={() => onImport(entry)}>
+                        {importedInto ? t('historySearch.importAgain') : t('historySearch.import')}
+                      </Button>
+                    </>
                   )}
                 </div>
                 {hit.snippets.map((snippet, i) => (
@@ -208,6 +220,7 @@ export function HistorySearchPanel({ machineId, agent, homeDir, sessions, rowSta
                   {source ? ` · ${source}` : ''}
                   {age ? ` · ${age}` : ''}
                   {hit.matchCount > 0 ? ` · ${t('historySearch.matches', { count: hit.matchCount })}` : ''}
+                  {importedInto && state.kind !== 'done' ? ` · ${t('importClaudeHistory.alreadyImported')}` : ''}
                   {failedMsg ? ` · ${failedMsg}` : ''}
                 </span>
               </div>

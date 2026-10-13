@@ -134,7 +134,8 @@ export const MetadataSchema = z.object({
     /**
      * B-290: the Claude conversation (claude CLI / desktop / claude.ai
      * transcript) this session was imported from. Written by the CLI at
-     * spawn; the import picker hides originals that already have a copy.
+     * spawn; the import picker labels such originals "imported before" and
+     * still offers them (B-600 — a failed import must not hide the original).
      */
     importedFromClaudeSessionId: z.string().optional(),
     /**

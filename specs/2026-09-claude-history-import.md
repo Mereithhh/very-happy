@@ -56,6 +56,8 @@ very-happy 已经会「继续一个 JSONL」：`claude-fork-session` 复制文�
    `metadata.claudeSessionId` 与 `importedFromClaudeSessionId`，且**刻意不套 `readPersistedSessions` 的 14 天剪枝**（那是「会话是否还活着」，与「是否已被接管」无关），
    RPC 把它与 web 传来的 `exclude` 合并。web 侧只是二次过滤，且必须读 raw `storage.sessions` 而不是 `useAllSessions()`——后者按设计过滤 mirror 会话
    （网页终端里手敲的 claude 全是 mirror），store 也只有已同步的会话：初版就是这么让 33% 的行变成自家会话的（本机 421→284）。`importedFromClaudeSessionId` 经 spawn RPC → `HAPPY_IMPORTED_FROM_CLAUDE_SESSION_ID` → `runClaude.ts` 初始 metadata 写入。
+   **B-600 修订（2026-10-14）**：去重只认 `claudeSessionId`，原件（`importedFromClaudeSessionId`）不再排除——与 Codex 同步（那边失败导入的空壳会把原件永久藏掉）。
+   Claude 侧 spawn 失败会删副本、不留标记，但 spawn 成功后 claude 起不来同样留下空壳；原件现标「已导入过」并可再次导入。
 6. **模型选择器**（同批）：`getClaudeModelModes()` 镜像 2.1.258 别名；`sanitizeResumeModel` 放行 `[1m]` 后缀；CLI `pricing.ts` 补 Claude 5 / Fable 行并按家族+代次解析别名。
 
 否掉的方案：直接 `--resume` 原件（不复制）——与桌面版共用一份 JSONL 会出现双写者，且 very-happy 的单写者锁只管自己的 wrapper。

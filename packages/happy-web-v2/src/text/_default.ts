@@ -1329,6 +1329,10 @@ export const en = {
         codexEmpty: 'No importable threads on this machine — everything under ~/.codex/sessions is already tracked here, or the machine has no Codex history yet.',
         codexLoadFailed: 'Could not read the Codex history on this machine.',
         codexCopyNote: 'Import forks the thread inside Codex: the original stays untouched for the tool that wrote it, and the new chat continues from the full history in the same directory.',
+        // B-600: an original an earlier import was made from (that import may
+        // have failed and left an empty chat) — still importable again.
+        alreadyImported: 'imported before',
+        alreadyImportedOpen: ({ name }: { name: string }) => `Open the chat it was imported into: ${name}`,
     },
     historySearch: {
         // B-549: full-text search over the machine's Claude Code / Codex
@@ -1350,6 +1354,9 @@ export const en = {
         evicted: ({ count }: { count: number }) => `${count} older conversations are searchable by title only (index size cap).`,
         open: 'Open',
         import: 'Import',
+        // B-600: hit an earlier import was made from.
+        openImported: 'Open earlier import',
+        importAgain: 'Import again',
         roleUser: 'You',
         roleAssistant: 'Agent',
         matches: ({ count }: { count: number }) => count === 1 ? '1 match' : `${count} matches`,

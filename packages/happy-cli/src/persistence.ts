@@ -618,28 +618,16 @@ export function readPersistedSessions(): Record<string, PersistedSession> {
   }
 }
 
-/**
- * Every Claude conversation id this machine has ever recorded for a Happy
- * session, plus the originals imported ones came from (B-291).
- *
- * Deliberately ignores the 14-day prune `readPersistedSessions` applies: that
- * window is about which sessions are still live, while "did very-happy already
- * take this conversation over?" stays true forever. The import picker uses this
- * as its exclusion set — the web's own view of that is incomplete (it hides
- * mirror sessions, and the store only holds what has been synced), which is why
- * the picker used to list conversations very-happy was already driving.
- */
-export function readTrackedClaudeSessionIds(): string[] {
+/** Own conversation ids (`claudeSessionId` / `codexThreadId`) in sessions.json. */
+function readOwnConversationIds(field: 'claudeSessionId' | 'codexThreadId'): string[] {
   try {
     if (!existsSync(configuration.sessionsFile)) return [];
     const data = JSON.parse(readFileSync(configuration.sessionsFile, 'utf-8')) as SessionsFile;
     if (!data?.sessions || typeof data.sessions !== 'object') return [];
     const ids = new Set<string>();
     for (const session of Object.values(data.sessions)) {
-      const metadata = (session ?? {}).metadata as (Metadata & { importedFromClaudeSessionId?: string }) | undefined;
-      for (const id of [metadata?.claudeSessionId, metadata?.importedFromClaudeSessionId]) {
-        if (typeof id === 'string' && id.length > 0) ids.add(id.toLowerCase());
-      }
+      const id = ((session ?? {}).metadata as Metadata | undefined)?.[field];
+      if (typeof id === 'string' && id.length > 0) ids.add(id.toLowerCase());
     }
     return [...ids];
   } catch {
@@ -648,26 +636,36 @@ export function readTrackedClaudeSessionIds(): string[] {
 }
 
 /**
+ * Every Claude conversation id this machine has recorded as a Happy session's
+ * OWN conversation (B-291) — for an import that is the copy, not the original.
+ *
+ * Deliberately ignores the 14-day prune `readPersistedSessions` applies: that
+ * window is about which sessions are still live, while "is very-happy driving
+ * this conversation?" stays true forever. The import picker uses this as its
+ * exclusion set — the web's own view of that is incomplete (it hides mirror
+ * sessions, and the store only holds what has been synced), which is why the
+ * picker used to list conversations very-happy was already driving.
+ *
+ * B-600: `importedFromClaudeSessionId` (the original an import was copied
+ * from) is NOT included any more. sessions.json only holds a session's birth
+ * metadata, so it cannot tell a working import from one that failed and left
+ * an empty shell — and excluding the original then locked the conversation out
+ * of the picker for good. The web lists the original with an "imported
+ * before" label instead; importing again only makes another copy.
+ */
+export function readTrackedClaudeSessionIds(): string[] {
+  return readOwnConversationIds('claudeSessionId');
+}
+
+/**
  * Codex twin of `readTrackedClaudeSessionIds` (B-464): every Codex thread id
- * this machine has driven for a Happy session, plus the originals imports
- * were forked from. Same no-prune rule: "already taken over" never expires.
+ * this machine has driven for a Happy session. Same no-prune rule; same B-600
+ * rule — the original of an import (`importedFromCodexThreadId`, stamped at
+ * birth even when the fork then fails) is not excluded. very-happy's own forks
+ * are also dropped by the `happy-codex` originator filter.
  */
 export function readTrackedCodexThreadIds(): string[] {
-  try {
-    if (!existsSync(configuration.sessionsFile)) return [];
-    const data = JSON.parse(readFileSync(configuration.sessionsFile, 'utf-8')) as SessionsFile;
-    if (!data?.sessions || typeof data.sessions !== 'object') return [];
-    const ids = new Set<string>();
-    for (const session of Object.values(data.sessions)) {
-      const metadata = (session ?? {}).metadata as (Metadata & { importedFromCodexThreadId?: string }) | undefined;
-      for (const id of [metadata?.codexThreadId, metadata?.importedFromCodexThreadId]) {
-        if (typeof id === 'string' && id.length > 0) ids.add(id.toLowerCase());
-      }
-    }
-    return [...ids];
-  } catch {
-    return [];
-  }
+  return readOwnConversationIds('codexThreadId');
 }
 
 export function persistSession(sessionId: string, session: PersistedSession): void {
