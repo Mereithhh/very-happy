@@ -107,7 +107,7 @@ import { getAgentDefaultOverride } from '@/sync/agentDefaults';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { yieldForSendFeedback } from './sendFeedback';
-import { focusAfterSend, type SendOutcome } from './composerSendFocus';
+import { focusAfterSend, isSoftKeyboardOpen, type SendOutcome } from './composerSendFocus';
 import { useReconnectingHint } from './useReconnectingHint';
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
@@ -527,6 +527,15 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         // dead state where the next tap fires no focus event and the keyboard
         // can't be summoned. Mobile-only; desktop always refocuses.
         const hadFocus = document.activeElement === taRef.current;
+        // B-568: read before the send — sending may itself move the viewport.
+        const softKeyboard = IS_COARSE_POINTER && hadFocus && isSoftKeyboardOpen({
+            keyboardOpenAttr: taRef.current?.closest('[data-keyboard-open="true"]') != null,
+            visualHeight: window.visualViewport?.height ?? null,
+            innerWidth: window.innerWidth,
+            innerHeight: window.innerHeight,
+            screenWidth: window.screen?.width ?? 0,
+            screenHeight: window.screen?.height ?? 0,
+        });
         sendingRef.current = true;
         setSending(true);
         const createdAt = Date.now();
@@ -619,7 +628,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             setSending(false);
             // B-568: a touch send that reached the agent puts the keyboard away;
             // queued/failed sends keep the B-114 rule (composerSendFocus.ts).
-            const caret = focusAfterSend({ coarse: IS_COARSE_POINTER, hadFocus, outcome });
+            const caret = focusAfterSend({ coarse: IS_COARSE_POINTER, hadFocus, softKeyboard, outcome });
             if (caret === 'focus') requestAnimationFrame(() => taRef.current?.focus());
             else if (caret === 'blur') taRef.current?.blur();
         }

@@ -4,7 +4,7 @@
  * long edge is capped at 2000px. (Idea from Orca's clipboard-image downscale,
  * MIT; this caps the edge instead of a byte budget.)
  *
- * Only jpeg / png / webp: GIF would lose its animation, SVG has no pixels,
+ * Only still jpeg / png / webp (animated APNG/WebP are skipped): GIF would lose its animation, SVG has no pixels,
  * HEIC is not decodable by most browsers. The format is kept — PNG stays PNG so
  * transparency survives. Any failure, or a result that is not smaller, keeps
  * the original file.
@@ -34,6 +34,44 @@ export function computeImageDownscale(
     };
 }
 
+const ascii = (b: Uint8Array, at: number) => String.fromCharCode(b[at], b[at + 1], b[at + 2], b[at + 3]);
+
+/**
+ * Animated PNG / WebP must not be redrawn: canvas keeps only the first frame.
+ * APNG = an `acTL` chunk before the first `IDAT`; animated WebP = the VP8X
+ * animation flag (0x02) or an `ANIM`/`ANMF` chunk. Unparseable → treated as
+ * animated (the safe answer is "keep the original").
+ */
+export function isAnimatedImage(bytes: Uint8Array, mimeType: string): boolean {
+    const type = mimeType.toLowerCase();
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (type === 'image/png') {
+        if (bytes.length < 8 || bytes[0] !== 0x89 || ascii(bytes, 1).slice(0, 3) !== 'PNG') return true;
+        let at = 8;
+        while (at + 8 <= bytes.length) {
+            const length = view.getUint32(at);
+            const chunk = ascii(bytes, at + 4);
+            if (chunk === 'acTL') return true;
+            if (chunk === 'IDAT' || chunk === 'IEND') return false;
+            at += 12 + length;
+        }
+        return true;
+    }
+    if (type === 'image/webp') {
+        if (bytes.length < 16 || ascii(bytes, 0) !== 'RIFF' || ascii(bytes, 8) !== 'WEBP') return true;
+        let at = 12;
+        while (at + 8 <= bytes.length) {
+            const chunk = ascii(bytes, at);
+            const length = view.getUint32(at + 4, true);
+            if (chunk === 'VP8X' && at + 8 < bytes.length && (bytes[at + 8] & 0x02) !== 0) return true;
+            if (chunk === 'ANIM' || chunk === 'ANMF') return true;
+            at += 8 + length + (length % 2);
+        }
+        return false;
+    }
+    return false;
+}
+
 /** Browser-only: redraw `uri` at `target`; null on any failure or no gain. */
 export async function redrawImage(
     uri: string,
@@ -41,22 +79,24 @@ export async function redrawImage(
     originalSize: number,
     target: { width: number; height: number },
 ): Promise<Blob | null> {
+    let canvas: HTMLCanvasElement | null = null;
     try {
         const img = new Image();
         img.decoding = 'async';
         img.src = uri;
         await img.decode();
-        const canvas = document.createElement('canvas');
-        canvas.width = target.width;
-        canvas.height = target.height;
-        const ctx = canvas.getContext('2d');
+        const surface = document.createElement('canvas');
+        canvas = surface;
+        surface.width = target.width;
+        surface.height = target.height;
+        const ctx = surface.getContext('2d');
         if (!ctx) return null;
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, target.width, target.height);
         const type = mimeType.toLowerCase();
         const blob = await new Promise<Blob | null>((resolve) =>
-            canvas.toBlob(resolve, type, type === 'image/png' ? undefined : IMAGE_LOSSY_QUALITY),
+            surface.toBlob(resolve, type, type === 'image/png' ? undefined : IMAGE_LOSSY_QUALITY),
         );
         // toBlob falls back to PNG for an unsupported type — then the file
         // would lie about its own format; keep the original instead.
@@ -64,5 +104,11 @@ export async function redrawImage(
         return blob;
     } catch {
         return null;
+    } finally {
+        // Release the backing store now; iOS caps total canvas memory per page.
+        if (canvas) {
+            canvas.width = 0;
+            canvas.height = 0;
+        }
     }
 }

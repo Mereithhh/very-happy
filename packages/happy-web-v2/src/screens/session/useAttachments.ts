@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
 import { generateThumbhash } from '@/utils/thumbhash';
-import { computeImageDownscale, redrawImage, shouldDownscaleImage } from './imageDownscale';
+import { computeImageDownscale, isAnimatedImage, redrawImage, shouldDownscaleImage } from './imageDownscale';
 
 let attachmentSeq = 0;
 
@@ -93,7 +93,7 @@ async function fileToPreview(
         // B-568: cap the long edge at 2000px before upload (jpeg/png/webp only;
         // any failure keeps the original file).
         const target = shouldDownscaleImage(file.type) ? computeImageDownscale(width, height) : null;
-        if (target) {
+        if (target && !isAnimatedImage(new Uint8Array(await file.arrayBuffer()), file.type)) {
             const smaller = await redrawImage(uri, file.type, file.size, target);
             if (smaller) {
                 const nextUri = URL.createObjectURL(smaller);

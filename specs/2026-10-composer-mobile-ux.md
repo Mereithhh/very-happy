@@ -51,7 +51,8 @@
 - **折叠**：头部整行是按钮。折叠后一行摘要：盾牌图标 + 标题 + 首个请求摘要（工具名 + 命令/路径/题干首行，单行省略）+ 待处理数。
   折叠状态按「请求 id 集合」记：折叠时记下当前 id；**出现新 id 自动展开**，已有请求被处理不会自动展开（纯函数 `isDockCollapsed`）。状态存模块内 per-session store，换会话互不影响，不持久化（刷新后默认展开）。
 - **消息流指针**：原 PermissionCard 位置渲染一行 `PermissionPointer`（「N 个请求等待你处理 · 已固定在输入框上方」+「查看」）。点「查看」= 展开固定区并把焦点移到固定区头部。它不可操作请求本身。
-- **QuestionView 去重**：消息流里的 AskUserQuestion 工具卡在其 pending 请求出现在固定区（请求 id 在 `agentState.requests` 中且非镜像会话）时渲染为只读并显示「在输入框上方作答」；请求不在 `requests` 里（旧数据 / 镜像）时保持原可点行为不变。
+- **QuestionView 去重**：消息流里的 AskUserQuestion 工具卡在其 pending 请求出现在固定区（请求 id 在 `agentState.requests`、不在 `completedRequests`、且非镜像会话）时渲染为只读并显示「在输入框上方作答」；镜像会话（B-105）同样只读、不显示提示；其余（旧数据，请求不在 `requests`）保持原可点行为。
+- **已决请求不残留**：固定区与指针排除已在 `agentState.completedRequests` 中的 id。
 - **不变项**：yolo、能力门控、`planApprovalMode`、全部批准/拒绝、Elicitation、镜像会话不渲染、pending 会话无 session 不渲染。
 
 ### B-564 多题逐题作答
@@ -69,13 +70,13 @@
 
 1. **发送后收键盘**：纯函数 `focusAfterSend({ coarse, hadFocus, outcome })`：
    - 桌面（非 coarse）：总是 refocus（不变）。
-   - coarse + `outcome === 'sent'`（直接发送或 steer 成功）：`blur()` 收起键盘——轮次交给 agent，键盘挡住的正是要等的回复。
+   - coarse + `outcome === 'sent'`（直接发送或 steer 成功）+ 发送前软键盘确实弹出：`blur()` 收起键盘——轮次交给 agent，键盘挡住的正是要等的回复。软键盘判定 `isSoftKeyboardOpen` 只用现有信号：iOS 的 `data-keyboard-open`（useKeyboardViewportPin）或 visualViewport 比布局视口矮 50px 以上；Android（resizes-content）为窗口高度 < 当前朝向屏幕边长的 75%。iPad 外接键盘（Cmd+Enter）两者都不成立，保持焦点。
    - coarse + `queued`（tab 排队 / 服务端排队）：保持现有规则（发送前有焦点才 refocus）——agent 忙时用户常连续排多条，不打断。
    - coarse + `failed`：保持现有规则（草稿已放回，方便改了重发）。
    - pending 会话（B-516）与 `/btw` 路由不变。
-2. **断线占位**：`useReconnectingHint()` 读 `useSocketStatus()`；非 `connected` 持续 `RECONNECT_HINT_DELAY_MS = 1500` 后为真，恢复 connected 立即为假。为真时 textarea `placeholder` 换成「重连中…发送的消息会在恢复后送出」。不禁用输入、不改发送逻辑；不新增任何恢复监听，恢复仍只走 `resumeSync`（铁律 13）。
+2. **断线占位**：`useReconnectingHint()` 读 `useSocketStatus()`，且只在本 tab 连上过一次之后（`socketLastConnectedAt` 非空，冷启动首连期间不提示）；非 `connected` 持续 `RECONNECT_HINT_DELAY_MS = 1500` 后为真，恢复 connected 立即为假。为真时 textarea `placeholder` 换成「重连中…发送的消息会在恢复后送出」。不禁用输入、不改发送逻辑；不新增任何恢复监听，恢复仍只走 `resumeSync`（铁律 13）。
    注：文案承诺「恢复后送出」依赖现有发送链路的离线重试/排队（`sendStatusModel` 的 sending→failed 15s 规则仍然适用，失败时有「重试」）。
-3. **图片缩放**：`fileToPreview` 读到宽高后，若 mime ∈ {jpeg, png, webp} 且长边 > 2000：canvas 缩到长边 2000（等比、整数像素），`toBlob` 保持原格式（jpeg/webp 质量 0.85，PNG 无损以保留透明）。结果非空且比原文件小才替换（blob URL、宽高、size；文件名不变），否则用原图；任何异常回退原图。纯函数 `computeImageDownscale(w, h, maxEdge)` 与 `shouldDownscaleImage(mime)` 单测。
+3. **图片缩放**：`fileToPreview` 读到宽高后，若 mime ∈ {jpeg, png, webp}、长边 > 2000 且不是动图（APNG：`IDAT` 前有 `acTL`；WebP：VP8X 动画位或 `ANIM/ANMF` 块；头部无法解析按动图处理）：canvas 缩到长边 2000（等比、整数像素），`toBlob` 保持原格式（jpeg/webp 质量 0.85，PNG 无损以保留透明）。结果非空且比原文件小才替换（blob URL、宽高、size；文件名不变），否则用原图；任何异常回退原图。纯函数 `computeImageDownscale(w, h, maxEdge)` 与 `shouldDownscaleImage(mime)` 单测。
 
 ## 兼容矩阵与发布顺序
 
