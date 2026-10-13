@@ -40,7 +40,7 @@ import { DownloadFeedback, FileDownloadAction } from './FileDownloadAction';
 import { useFileDownload } from './useFileDownload';
 import { consumeDownloadIntent, useDownloadIntent } from './downloadIntent';
 import { useSession, useSessionMessages } from '@/sync/storage';
-import { agentWriteSignature, changeAction } from './agentWrites';
+import { changeAction, isNewWrite, lastAgentWriteAt } from './agentWrites';
 
 type ViewerState =
     | { phase: 'loading'; progress: number | null }
@@ -62,13 +62,40 @@ export function FsFileViewer(props: FsFileViewerProps) {
     return <FsFileViewerContent key={JSON.stringify([props.machineId, props.path])} {...props}/>;
 }
 /**
- * B-573: a signature of this session's completed agent writes to `path`
- * (null without a session — the machine file page has nothing to follow).
+ * Leading-edge throttle: the first change after a quiet second passes at
+ * once, later ones within the second are merged into one trailing update.
  */
-function useAgentWriteSignature(sessionId: string | undefined, path: string): string | null {
+function useThrottledValue<T>(value: T, ms: number): T {
+    const [shown, setShown] = useState(value);
+    const lastEmit = useRef(0);
+    const current = useRef(value);
+    useEffect(() => {
+        if (Object.is(value, current.current)) return;   // the mount value is not an emission
+        current.current = value;
+        const wait = lastEmit.current + ms - Date.now();
+        if (wait <= 0) { lastEmit.current = Date.now(); setShown(value); return; }
+        const timer = setTimeout(() => { lastEmit.current = Date.now(); setShown(current.current); }, wait);
+        return () => clearTimeout(timer);
+    }, [value, ms]);
+    return shown;
+}
+
+/** Throttle window for following a streaming session's writes (review 低3). */
+const FOLLOW_THROTTLE_MS = 1000;
+
+/**
+ * B-573: completion time of this session's latest agent write to `path`
+ * (null without a session — the machine file page has nothing to follow).
+ * Messages are sampled at most once a second while a session streams, and
+ * each message's writes are cached (agentWrites.ts).
+ */
+function useAgentLastWrite(sessionId: string | undefined, path: string): number | null {
     const { messages } = useSessionMessages(sessionId ?? '');
-    const cwd = useSession(sessionId ?? '')?.metadata?.path;
-    return useMemo(() => (sessionId ? agentWriteSignature(messages, path, cwd) : null), [sessionId, messages, path, cwd]);
+    const sampled = useThrottledValue(messages, FOLLOW_THROTTLE_MS);
+    const metadata = useSession(sessionId ?? '')?.metadata;
+    const cwd = metadata?.path;
+    const home = metadata?.homeDir;
+    return useMemo(() => (sessionId ? lastAgentWriteAt(sampled, path, cwd, home) : null), [sessionId, sampled, path, cwd, home]);
 }
 
 interface FsFileViewerProps {
@@ -122,17 +149,19 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
     const lastInteraction = useRef(0);
     const [agentChanged, setAgentChanged] = useState(false);
     const scroller = () => rootRef.current?.querySelector<HTMLElement>('.fsb-viewer-body') ?? null;
+    // When the content on screen was read: only writes completed after it are news (review 中2).
+    const readAt = useRef(Date.now());
     const refresh = (silent: boolean) => {
         setAgentChanged(false);
+        readAt.current = Math.max(readAt.current, Date.now());
         restoreScroll.current = silent ? scroller()?.scrollTop ?? null : null;
         setReload((r) => ({ tick: r.tick + 1, silent }));
     };
-    const writeSig = useAgentWriteSignature(sessionId, path);
-    const seenSig = useRef(writeSig);
+    const lastWrite = useAgentLastWrite(sessionId, path);
     useEffect(() => {
-        if (writeSig === seenSig.current) return;
-        seenSig.current = writeSig;
-        if (writeSig === null) return;
+        if (lastWrite === null || !isNewWrite(lastWrite, readAt.current)) return;
+        // handled: a banner must not re-fire for the same write
+        readAt.current = Math.max(readAt.current, lastWrite);
         const root = rootRef.current;
         const selection = typeof window !== 'undefined' ? window.getSelection() : null;
         const hasSelection = !!(root && selection && !selection.isCollapsed && selection.anchorNode && root.contains(selection.anchorNode));
@@ -145,8 +174,8 @@ function FsFileViewerContent({ machineId, path, onClose, fullscreen, onToggleFul
         });
         if (action === 'banner') setAgentChanged(true);
         else refresh(action === 'silent');
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on the signature only
-    }, [writeSig]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on the write time only
+    }, [lastWrite]);
     useLayoutEffect(() => {
         if (restoreScroll.current === null || state.phase !== 'text') return;
         const el = scroller();

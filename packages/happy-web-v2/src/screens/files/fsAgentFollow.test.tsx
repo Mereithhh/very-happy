@@ -41,6 +41,7 @@ const write = (id: string, completedAt: number): Message => ({
     tool: { name: 'Edit', state: 'completed', input: { file_path: 'src/a.ts', old_string: 'v1', new_string: 'v2' }, createdAt: completedAt - 1, startedAt: null, completedAt, description: null },
 });
 
+let T0 = 0;
 let host: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
@@ -48,7 +49,7 @@ beforeEach(() => {
     host = document.createElement('div');
     document.body.append(host);
     root = createRoot(host);
-    fs.content = 'v1'; fs.reads = 0; bus.set([write('old', 5)]);
+    fs.content = 'v1'; fs.reads = 0; T0 = Date.now(); bus.set([write('old', T0 - 60_000)]);
     // jsdom has no layout: treat the viewer as visible
     vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
 });
@@ -70,7 +71,7 @@ it('an agent write to the open file refreshes it silently, keeping the scroll po
     Object.defineProperty(body, 'clientHeight', { configurable: true, value: 100 });
     body.scrollTop = 240;
     fs.content = 'v2';
-    await act(async () => bus.set([write('old', 5), write('new', 9)]));
+    await act(async () => bus.set([write('old', T0 - 60_000), write('new', T0 + 5_000)]));
     expect(fs.reads).toBe(2);
     expect(code()).toBe('v2');
     expect(host.querySelector('.fsb-agent-changed')).toBeNull();
@@ -83,7 +84,7 @@ it('a write while text is selected in the viewer shows the banner instead; 刷�
     range.selectNodeContents(host.querySelector('[data-code]')!);
     window.getSelection()!.addRange(range);
     fs.content = 'v2';
-    await act(async () => bus.set([write('old', 5), write('new', 9)]));
+    await act(async () => bus.set([write('old', T0 - 60_000), write('new', T0 + 5_000)]));
     expect(fs.reads).toBe(1);
     expect(code()).toBe('v1');
     expect(host.querySelector('.fsb-agent-changed')?.textContent).toContain('The agent changed this file');
@@ -95,10 +96,35 @@ it('a write while text is selected in the viewer shows the banner instead; 刷�
 
 it('writes to other files, and viewers without a session, never reload', async () => {
     await act(async () => root.render(<FsFileViewer {...props} path="/repo/src/b.ts" />));
-    await act(async () => bus.set([write('old', 5), write('new', 9)]));
+    await act(async () => bus.set([write('old', T0 - 60_000), write('new', T0 + 5_000)]));
     expect(fs.reads).toBe(1);
     await act(async () => root.render(<FsFileViewer {...props} sessionId={undefined} />));
     const before = fs.reads;
-    await act(async () => bus.set([write('old', 5), write('new', 9), write('newer', 12)]));
+    await act(async () => bus.set([write('old', T0 - 60_000), write('new', T0 + 5_000), write('newer', T0 + 9_000)]));
     expect(fs.reads).toBe(before);
+});
+
+it('history loaded after opening (older writes) and the first message load never reload the file (review 中2)', async () => {
+    bus.set([]);
+    await act(async () => root.render(<FsFileViewer {...props} />));
+    // first load of the transcript brings a write from before the file was read
+    await act(async () => bus.set([write('before-open', T0 - 1_000)]));
+    // an older page arrives later
+    await act(async () => bus.set([write('before-open', T0 - 1_000), write('older-page', T0 - 90_000)]));
+    expect(fs.reads).toBe(1);
+    expect(host.querySelector('.fsb-agent-changed')).toBeNull();
+});
+
+it('a streaming burst of writes within a second is merged into one trailing refresh (review 低3)', async () => {
+    await act(async () => root.render(<FsFileViewer {...props} />));
+    fs.content = 'v2';
+    await act(async () => bus.set([write('old', T0 - 60_000), write('w1', T0 + 1_000)]));
+    expect(fs.reads).toBe(2);                       // first change after a quiet second: immediate
+    fs.content = 'v3';
+    await act(async () => bus.set([write('old', T0 - 60_000), write('w1', T0 + 1_000), write('w2', T0 + 2_000)]));
+    await act(async () => bus.set([write('old', T0 - 60_000), write('w1', T0 + 1_000), write('w2', T0 + 2_000), write('w3', T0 + 3_000)]));
+    expect(fs.reads).toBe(2);                       // held back…
+    await act(async () => { await new Promise((r) => setTimeout(r, 1_100)); });
+    expect(fs.reads).toBe(3);                       // …and merged into ONE re-read
+    expect(code()).toBe('v3');
 });

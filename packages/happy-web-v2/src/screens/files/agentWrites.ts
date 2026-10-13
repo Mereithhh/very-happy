@@ -10,9 +10,17 @@ import type { Message } from '@/sync/typesMessage';
 import { resolveAgainstCwd } from '../session/toolFilePath';
 import { walkToolCalls, writtenPathsOf } from '../session/turnDiffs';
 
-/** Resolve against cwd, then fold `.`/`..`/`//` so tool paths and viewer paths compare equal. */
-export function normalizeAbsPath(path: string, cwd: string | null | undefined): string {
-    const resolved = resolveAgainstCwd(path.replace(/\\/g, '/'), cwd);
+/**
+ * Resolve against cwd, expand `~` with the session's home when known (review
+ * 低5; unknown home → `~` stays literal), then fold `.`/`..`/`//` so tool
+ * paths and viewer paths compare equal. Case-insensitive file systems and
+ * symlinks are NOT folded (see spec) — a different spelling of the same file
+ * simply does not trigger a refresh.
+ */
+export function normalizeAbsPath(path: string, cwd: string | null | undefined, home?: string | null): string {
+    let p = path.replace(/\\/g, '/');
+    if (home && (p === '~' || p.startsWith('~/'))) p = home.replace(/\/+$/, '') + p.slice(1);
+    const resolved = resolveAgainstCwd(p, cwd);
     const absolute = resolved.startsWith('/');
     const out: string[] = [];
     for (const part of resolved.split('/')) {
@@ -27,22 +35,41 @@ export function normalizeAbsPath(path: string, cwd: string | null | undefined): 
     return (absolute ? '/' : '') + out.join('/');
 }
 
-/**
- * `count:lastCompletedAt` of completed writes to `targetPath` (any order of
- * messages). Equal signatures = nothing new was written.
- */
-export function agentWriteSignature(messages: readonly Message[], targetPath: string, cwd: string | null | undefined): string {
-    const target = normalizeAbsPath(targetPath, cwd);
-    let count = 0;
-    let last = 0;
-    for (const tool of walkToolCalls(messages)) {
-        for (const path of writtenPathsOf(tool)) {
-            if (normalizeAbsPath(path, cwd) !== target) continue;
-            count++;
-            last = Math.max(last, tool.completedAt ?? tool.createdAt ?? 0);
-        }
+type WriteEntries = { key: string; writes: Array<[path: string, at: number]> };
+// Per message object: a streaming session re-renders on every message, but
+// only new/changed message objects are re-walked (review 低3).
+const entryCache = new WeakMap<Message, WriteEntries>();
+
+function writesOf(message: Message, cwd: string | null | undefined, home: string | null | undefined): Array<[string, number]> {
+    const key = `${cwd ?? ''}\u0000${home ?? ''}`;
+    const hit = entryCache.get(message);
+    if (hit && hit.key === key) return hit.writes;
+    const writes: Array<[string, number]> = [];
+    for (const tool of walkToolCalls([message])) {
+        for (const path of writtenPathsOf(tool)) writes.push([normalizeAbsPath(path, cwd, home), tool.completedAt ?? tool.createdAt ?? 0]);
     }
-    return `${count}:${last}`;
+    entryCache.set(message, { key, writes });
+    return writes;
+}
+
+/**
+ * Completion time of the latest agent write to `targetPath`, 0 when none.
+ * Only the TIME is compared by the viewer (against when it read the file):
+ * a count would move when older history pages load (review 中2).
+ */
+export function lastAgentWriteAt(messages: readonly Message[], targetPath: string, cwd: string | null | undefined, home?: string | null): number {
+    const target = normalizeAbsPath(targetPath, cwd, home);
+    let last = 0;
+    for (const message of messages) {
+        if (message.kind !== 'tool-call') continue;
+        for (const [path, at] of writesOf(message, cwd, home)) if (path === target && at > last) last = at;
+    }
+    return last;
+}
+
+/** A write is news only if it completed after the content on screen was read. */
+export function isNewWrite(lastWriteAt: number, readAt: number): boolean {
+    return lastWriteAt > readAt;
 }
 
 /** What to do when the signature moved: refresh quietly only if the user is not mid-reading. */
