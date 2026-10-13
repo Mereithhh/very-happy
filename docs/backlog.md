@@ -20,7 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-594 | **会话页「需要我决策」提醒条重复显示两条**：服务端只有 1 个 run，页面却叠两条一模一样的条（无「还有 N 条」）。根因：B-585 的 `<WorktreeSetupBanner key={id}>` 与 `<AutomationAttentionBanner key={id}>` 同级同 key，`.sd-main` 有 false 空位走 key map 协调，旧 fiber 被孤立、DOM 残留且每次重渲染再插一份；`.sd-foot` 的 `PermissionCard`（B-563）同样撞 key | bug | Owner 截图 2026-10-13 | doing | key 改为 `<slot>:<id>`；`SessionDetailScreen.keys.test.tsx` 挂真实页面重渲染计数（修前 2、修后 1，并断言无 duplicate-key 警告） |
+| B-594 | **会话页「需要我决策」提醒条重复显示两条**：服务端只有 1 个 run，页面却叠两条一模一样的条（无「还有 N 条」）。根因：B-585 的 `<WorktreeSetupBanner key={id}>` 与 `<AutomationAttentionBanner key={id}>` 同级同 key，`.sd-main` 有 false 空位走 key map 协调，旧 fiber 被孤立、DOM 残留且每次重渲染再插一份；`.sd-foot` 的 `PermissionCard`（B-563）同样撞 key | bug | Owner 截图 2026-10-13 | doing | key 改为 `<slot>:<id>`；`SessionDetailScreen.keys.test.tsx` 挂真实页面重渲染计数（修前 2、修后 1，并断言无 duplicate-key 警告）。Owner 追报「一条也关不上」：残留那份的按钮绑在 React 不再渲染的孤立 fiber 上，「先收起」只改它的 state、DOM 不动（服务端 run 3bfa10a5 其实已被「知道了」确认，`ackedBy=owner`）；同测试补「重渲染后逐个收起 → 0 条」，旧 key 下失败 |
 | B-593 | **帮助页讲清 Orca 批次新功能怎么用**（Owner 2026-10-13「我自己都不知道怎么用好这些功能了」）：「帮助与新手入门」新增审阅改动 / 对话 / 会话收尾三组，补 ⌘P、搜索设置、会话预览、终端路径、文件下载 | docs | Owner 2026-10-13 | doing | `HelpScreen` GROUPS + `workspaceGuide.capabilities.*`（中英）；更新日志 oct13d |
 | B-592 | **剪贴板推送不要再让用户点 toast**：自动复制开着但页面在后台/浏览器要手势时，推送等到页面回到前台（focus+visible）或下一次 pointer/key 手势自动写入，最新一条为准；手势内仍失败才退回「点击复制」，自动复制关闭保持原 toast | ux | Owner 2026-10-13 | doing | `sync/clipboardPush.ts`；`clipboardDelivery.test.ts` |
 | B-591 | **归档改回二次确认（尤其 ⌘W）**：B-566 用 6s 撤销 toast 替代了确认框，Owner 认为太容易误伤；归档（侧栏/菜单/看板/⌘W，⌘W 仍受 `closeViewConfirm`）先弹确认、确认后立即执行；看板「完成」按 Owner 一次点击规则保留撤销窗口 | ux | Owner 2026-10-13 | doing | `rowActions.confirmArchiveSession`、`viewShortcuts` |
