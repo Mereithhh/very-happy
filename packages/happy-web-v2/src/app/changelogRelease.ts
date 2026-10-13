@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-14-paste-fix',
+    date: '2026-10-14',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct14b.title',
+    summaryKey: 'changelog.releases.oct14b.summary',
+    itemKeys: ['changelog.releases.oct14b.paste'],
+  },
+  {
     id: '2026-10-14-pi-install-hints',
     cliVersion: '0.2.169',
     date: '2026-10-14',

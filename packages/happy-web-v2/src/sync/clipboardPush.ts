@@ -15,7 +15,8 @@
  *    the write (gesture policy, common on mobile/iOS PWA) → B-592: the text
  *    waits (newest push wins) and is written by itself the moment the page is
  *    focused + visible again, or on the next pointer/key gesture anywhere in
- *    the page — no "tap to copy" chore. Only a write that fails even inside a
+ *    the page (never a ⌘/Ctrl chord or bare modifier — isClipboardGestureKey)
+ *    — no "tap to copy" chore. Only a write that fails even inside a
  *    gesture falls back to the clickable toast;
  *  - auto-copy off → the sticky clickable toast (the user opted out of silent
  *    writes), and the text is already in history as the fallback.
@@ -140,8 +141,25 @@ async function flushPending(viaGesture: boolean): Promise<void> {
     toast.success(t('clipboard.copiedPreview', { preview: item.preview }));
 }
 
+const MODIFIER_KEYS = new Set(['Meta', 'Control', 'Alt', 'AltGraph', 'Shift', 'CapsLock', 'Fn', 'FnLock', 'OS', 'Hyper', 'Super']);
+
+/**
+ * Whether a keydown may serve as the write gesture for a waiting push.
+ * Not a bare modifier and not a ⌘/Ctrl chord: the ⌘ of ⌘V / ⌘C is the user
+ * reaching for THEIR clipboard. Writing the push there replaced the text a
+ * ⌘V was about to paste (real macOS pasteboard: the async write races the
+ * paste) and overwrote what a ⌘C had just copied. Plain typing still counts.
+ */
+export function isClipboardGestureKey(e: { key?: string; metaKey?: boolean; ctrlKey?: boolean }): boolean {
+    if (e.metaKey || e.ctrlKey) return false;
+    return !MODIFIER_KEYS.has(e.key ?? '');
+}
+
 function onFocusLike(): void { void flushPending(false); }
-function onGesture(): void { void flushPending(true); }
+function onGesture(event: Event): void {
+    if (event.type === 'keydown' && !isClipboardGestureKey(event as KeyboardEvent)) return;
+    void flushPending(true);
+}
 
 function waitForWritableMoment(text: string, preview: string): void {
     pending = { text, preview };
