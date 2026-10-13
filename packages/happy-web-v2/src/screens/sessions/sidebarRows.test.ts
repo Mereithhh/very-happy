@@ -98,3 +98,13 @@ describe('visibleSidebarSessions', () => {
     expect(visibleSidebarSessions(['online', normal], 'list')).toEqual([normal]);
   });
 });
+
+describe('B-587 hibernated sessions stay in the working list', () => {
+  it('list/status keep a hibernated row; archived view does not take it', async () => {
+    const { visibleSidebarSessions } = await import('./sidebarRows');
+    const hib = { id: 'h', active: false, archivedAt: null, activeAt: 1, metadata: { path: '/', host: 'h', hibernation: { at: 1, seq: 1 } } } as never;
+    const off = { id: 'o', active: false, archivedAt: null, activeAt: 1, metadata: { path: '/', host: 'h' } } as never;
+    expect(visibleSidebarSessions([hib, off], 'list').map((s) => s.id)).toEqual(['h']);
+    expect(visibleSidebarSessions([hib, off], 'archived').map((s) => s.id)).toEqual(['o']);
+  });
+});
