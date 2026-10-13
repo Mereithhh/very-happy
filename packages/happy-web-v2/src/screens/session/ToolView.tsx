@@ -22,7 +22,7 @@ import { CodeView } from './CodeView';
 import { DiffView } from './DiffView';
 import { Markdown } from './Markdown';
 import { AskUserQuestionOptions } from './AskUserQuestionView';
-import { usePinnedRequest } from './usePinnedRequest';
+import { useTranscriptQuestionPlacement } from './usePinnedRequest';
 import { detectSelectedLabels } from './askUserQuestion';
 import { asCommand, extractError, resultToText } from './toolInfo';
 import { SubagentDetail } from './SubagentDetail';
@@ -288,8 +288,9 @@ function QuestionView({ tool }: { tool: ToolCall }) {
     const [sent, setSent] = useState(false);
     const livePendingId = tool.permission?.status === 'pending' ? tool.permission.id : null;
     // B-563: while the request is answerable in the dock above the composer,
-    // this copy is a read-only receipt — one actionable card, not two.
-    const pinned = usePinnedRequest(sessionId, livePendingId);
+    // this copy is a read-only receipt — one actionable card, not two. A
+    // terminal mirror (B-105) is read-only here too.
+    const placement = useTranscriptQuestionPlacement(sessionId, livePendingId);
     const parsed = knownTools['AskUserQuestion'].input.safeParse(tool.input ?? {});
     const questions =
         parsed.success && Array.isArray(parsed.data.questions) && parsed.data.questions.length > 0
@@ -304,11 +305,11 @@ function QuestionView({ tool }: { tool: ToolCall }) {
               questions.flatMap((q) => (q.options ?? []).map((o) => o.label)),
           )
         : [];
-    if (pinned && !answered) {
+    if (placement !== 'inline' && !answered) {
         return (
             <div className="tv-stack">
                 <AskUserQuestionOptions questions={questions} disabled stacked selected={[]} onSubmit={() => {}} />
-                <div className="tv-ask-pinned">{t('session.permission.answerAbove')}</div>
+                {placement === 'dock' && <div className="tv-ask-pinned">{t('session.permission.answerAbove')}</div>}
             </div>
         );
     }

@@ -14,6 +14,34 @@ export function isDockCollapsed(collapsedIds: readonly string[] | null | undefin
     return currentIds.every((id) => collapsedIds.includes(id));
 }
 
+/**
+ * Ids the dock may act on: in `requests` and NOT already in
+ * `completedRequests` (a decided request can linger in `requests` for a
+ * state version; acting on it again would be a stale double answer).
+ */
+export function pendingDockRequestIds(
+    requests: Record<string, unknown> | null | undefined,
+    completedRequests: Record<string, unknown> | null | undefined,
+): string[] {
+    if (!requests) return [];
+    const done = completedRequests ?? {};
+    return Object.keys(requests).filter((id) => !Object.prototype.hasOwnProperty.call(done, id));
+}
+
+/**
+ * Where the transcript's AskUserQuestion card may be answered:
+ * - 'dock'     the dock above the composer owns it → transcript is a receipt;
+ * - 'readonly' a terminal mirror (B-105) → nobody answers from the web;
+ * - 'inline'   not in the dock (old data) → the transcript card stays answerable.
+ */
+export type TranscriptQuestionPlacement = 'dock' | 'readonly' | 'inline';
+
+export function transcriptQuestionPlacement(input: { mirror: boolean; pendingIds: readonly string[]; requestId: string | null }): TranscriptQuestionPlacement {
+    if (input.mirror) return 'readonly';
+    if (input.requestId && input.pendingIds.includes(input.requestId)) return 'dock';
+    return 'inline';
+}
+
 type RequestLike = { tool?: unknown; arguments?: unknown; kind?: unknown };
 
 function firstLine(value: string): string {

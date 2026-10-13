@@ -25,8 +25,8 @@ describe('B-563 the pending-request dock sits above the composer', () => {
     });
     it('the transcript AskUserQuestion is a read-only receipt while the dock owns it', () => {
         const toolView = read('./ToolView.tsx');
-        expect(toolView).toContain('const pinned = usePinnedRequest(sessionId, livePendingId);');
-        expect(toolView).toContain('if (pinned && !answered) {');
+        expect(toolView).toContain('const placement = useTranscriptQuestionPlacement(sessionId, livePendingId);');
+        expect(toolView).toContain("if (placement !== 'inline' && !answered) {");
     });
 });
 
@@ -38,7 +38,8 @@ describe('B-568 composer wiring', () => {
         expect(input).toMatch(/if \(queueOwnsItem\) \{\s+outcome = 'queued';/);
     });
     it('the caret decision comes from focusAfterSend', () => {
-        expect(input).toContain('const caret = focusAfterSend({ coarse: IS_COARSE_POINTER, hadFocus, outcome });');
+        expect(input).toContain('const caret = focusAfterSend({ coarse: IS_COARSE_POINTER, hadFocus, softKeyboard, outcome });');
+        expect(input).toContain("keyboardOpenAttr: taRef.current?.closest('[data-keyboard-open=\"true\"]') != null,");
         expect(input).toContain("else if (caret === 'blur') taRef.current?.blur();");
     });
     it('the placeholder switches while reconnecting', () => {
@@ -47,11 +48,13 @@ describe('B-568 composer wiring', () => {
     it('the reconnect hint reads the existing socketStatus only (AGENTS 13)', () => {
         const hook = read('./useReconnectingHint.ts');
         expect(hook).toContain('const status = useSocketStatus();');
+        expect(hook).toContain('const down = isReconnecting(status, everConnected);');
         expect(hook).not.toMatch(/addEventListener|visibilitychange|onfocus|io\.open/);
     });
     it('attachments are downscaled only for eligible images', () => {
         const att = read('./useAttachments.ts');
         expect(att).toContain('const target = shouldDownscaleImage(file.type) ? computeImageDownscale(width, height) : null;');
         expect(att).toContain('const smaller = await redrawImage(uri, file.type, file.size, target);');
+        expect(att).toContain('if (target && !isAnimatedImage(new Uint8Array(await file.arrayBuffer()), file.type)) {');
     });
 });

@@ -1,14 +1,17 @@
 /**
- * B-563: is this pending request shown — and answerable — in the dock above the
- * composer? Same rule PermissionCard renders by: the id is in
- * agentState.requests and the session is not a read-only terminal mirror.
- * The transcript uses it to avoid a second actionable copy.
+ * B-563: where may the transcript's pending AskUserQuestion be answered?
+ * Same rule PermissionCard renders by (pendingDockRequestIds), plus B-105:
+ * a terminal mirror is read-only everywhere on the web.
  */
 import { useSession } from '@/sync/storage';
 import { isMirrorSession } from '@/assistant/assistantSession';
+import { pendingDockRequestIds, transcriptQuestionPlacement, type TranscriptQuestionPlacement } from './permissionDock';
 
-export function usePinnedRequest(sessionId: string | undefined, requestId: string | null): boolean {
+export function useTranscriptQuestionPlacement(sessionId: string | undefined, requestId: string | null): TranscriptQuestionPlacement {
     const session = useSession(sessionId ?? '');
-    if (!session || !requestId || isMirrorSession(session)) return false;
-    return Object.prototype.hasOwnProperty.call(session.agentState?.requests ?? {}, requestId);
+    return transcriptQuestionPlacement({
+        mirror: !!session && isMirrorSession(session),
+        pendingIds: pendingDockRequestIds(session?.agentState?.requests, session?.agentState?.completedRequests),
+        requestId,
+    });
 }

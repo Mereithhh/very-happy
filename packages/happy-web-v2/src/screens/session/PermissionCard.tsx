@@ -27,6 +27,7 @@ import {
     collapsePermissionDock,
     expandPermissionDock,
     isDockCollapsed,
+    pendingDockRequestIds,
     permissionDockDomId,
     requestSummary,
     usePermissionDockFolded,
@@ -158,7 +159,9 @@ function usePendingRequests(sessionId: string): Pending[] {
     // B-105: a terminal mirror is strictly read-only — permission UI never
     // renders, whatever agentState claims (approval happens in the TUI).
     if (!requestsObj || (session && isMirrorSession(session))) return [];
-    return Object.entries(requestsObj).map(([id, r]) => ({
+    // A decided request can linger in `requests`; never offer it again.
+    const live = new Set(pendingDockRequestIds(requestsObj, session?.agentState?.completedRequests));
+    return Object.entries(requestsObj).filter(([id]) => live.has(id)).map(([id, r]) => ({
         id,
         tool: (r as any).tool,
         arguments: (r as any).arguments,
