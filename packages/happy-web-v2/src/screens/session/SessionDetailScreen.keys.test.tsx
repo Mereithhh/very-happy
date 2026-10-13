@@ -77,7 +77,18 @@ vi.mock('./MirrorInputBar', () => ({ MirrorInputBar: () => null }));
 vi.mock('./SessionArchivedBanner', () => ({ SessionArchivedBanner: () => null }));
 vi.mock('./StaleWrapperBanner', () => ({ StaleWrapperBanner: () => null }));
 vi.mock('./ModelSupportBanner', () => ({ ModelSupportBanner: () => null }));
-vi.mock('./AutomationAttentionBanner', () => ({ AutomationAttentionBanner: () => <div data-testid="automation-attention-banner" /> }));
+// Stateful like the real strip: its 「先收起」 hides it via local state (Owner 2026-10-13: neither
+// duplicated strip could be closed — the orphaned copy's button updates a fiber React never renders).
+vi.mock('./AutomationAttentionBanner', async () => {
+    const React = await vi.importActual<typeof import('react')>('react');
+    return {
+        AutomationAttentionBanner: () => {
+            const [hidden, setHidden] = React.useState(false);
+            if (hidden) return null;
+            return <div data-testid="automation-attention-banner"><button type="button" data-testid="banner-dismiss" onClick={() => setHidden(true)} /></div>;
+        },
+    };
+});
 // The worktree banner renders nothing for a non-worktree session — its fiber alone is enough to collide.
 vi.mock('./WorktreeSetupBanner', () => ({ WorktreeSetupBanner: () => null }));
 
@@ -120,5 +131,18 @@ describe('SessionDetailScreen sibling keys', () => {
         const dupKeys = errors.mock.calls.filter((args) => String(args[0]).includes('two children with the same key'));
         errors.mockRestore();
         expect(dupKeys).toEqual([]);
+    });
+
+    it('the strip can be dismissed after re-renders — no leftover copy that ignores its close button (B-594)', () => {
+        act(() => root.render(
+            <MemoryRouter initialEntries={['/session/s1']}>
+                <Routes><Route path="/session/:id" element={<SessionDetailScreen />} /></Routes>
+            </MemoryRouter>,
+        ));
+        for (let i = 0; i < 3; i++) act(() => sessionStore.set({ ...sessionStore.get(), activeAt: i }));
+        for (const button of [...host.querySelectorAll<HTMLButtonElement>('[data-testid="banner-dismiss"]')]) act(() => button.click());
+        expect(count('automation-attention-banner')).toBe(0);
+        act(() => sessionStore.set({ ...sessionStore.get(), activeAt: 99 }));
+        expect(count('automation-attention-banner')).toBe(0);
     });
 });
