@@ -156,7 +156,7 @@ Toast 扩展（不破坏 `toast.action` / `toast.show` / `success` / `error`）�
 
 手机：PWA 前台时 `hasFocus()` 为 true；打开会话本身是一次 touch（`touchstart`/`pointerdown`），所以「点进
 会话即已读」仍成立。行为变化：从系统通知横幅点进来（SW `notificationclick` 打开/聚焦窗口，页面内没有
-输入）时，要等第一次触摸/滚动才标已读——这是有意的「presence 未知不清」。
+输入）时，要等第一次触摸/滚动才标已读——这是有意的「presence 未知不清」。同理，地址栏直接打开 / 刷新页面后，第一次点击、按键、滚轮或触摸之前不标已读。
 
 ## 兼容矩阵与发布顺序
 
@@ -191,7 +191,7 @@ Toast 扩展（不破坏 `toast.action` / `toast.show` / `success` / `error`）�
 - [ ] 触屏 toast 按钮 ≥44px（css-probe，390 coarse）。
 - [ ] presence 纯函数单测；`shouldStampVisit` 新判定表单测；输入监听 capture+passive、仅 isTrusted（vitest）。
 - [ ] 未改 `resumeSync` / `checkLiveness`，未新增 focus 监听（grep）。
-- [ ] vitest / tsc / vite build 全绿；1280 与 390 × 亮暗看兜底行与撤销 toast。
+- [ ] vitest / tsc / vite build 全绿；1280 与 390 × 亮暗看兜底行与撤销 toast（DEV harness `/dev/robustness?theme=light|dark`）。
 
 ## 留真机验证项
 
