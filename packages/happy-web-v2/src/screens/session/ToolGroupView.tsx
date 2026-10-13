@@ -27,6 +27,7 @@ import { openSubagentPanel } from './subagentPanelState';
 import { useSubagentNavigation } from './subagentNavigation';
 import { normalizePiToolCall } from '@/components/tools/piToolMapping';
 import { messageTimestamp, messageTimestampRange } from './messageTimestamp';
+import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 import './toolgroup.css';
 import './subagent.css';
 
@@ -237,6 +238,7 @@ function ToolGroupViewImpl({
         return (
             <div className={`tg tg--${state}`}>
                 <div className="tg-content">
+                    <RecoverableBoundary region="tool-row" resetKey={tools[0]} compact>
                     <ToolRow
                         message={tools[0]}
                         defaultOpen={collapseCompleted ? running || state === 'error' : !compact || running || state === 'error'}
@@ -244,6 +246,7 @@ function ToolGroupViewImpl({
                         stalled={stalled}
                         abortedAt={abortedAt}
                     />
+                    </RecoverableBoundary>
                 </div>
             </div>
         );
@@ -285,14 +288,15 @@ function ToolGroupViewImpl({
                 <div id={rowsId} className="tg-rows vh-disclosure-panel" hidden={!expanded}>
                     {expanded && <>
                         {tools.map((m) => (
+                            <RecoverableBoundary key={m.id} region="tool-row" resetKey={m} compact>
                             <ToolRow
-                                key={m.id}
                                 message={m}
                                 defaultOpen={(m.tool.state === 'running' && !stalled) || m.tool.state === 'error'}
                                 collapseOnComplete={collapseCompleted}
                                 stalled={stalled}
                                 abortedAt={abortedAt}
                             />
+                            </RecoverableBoundary>
                         ))}
                     </>}
                 </div>
@@ -304,7 +308,15 @@ function ToolGroupViewImpl({
 /** B-311: see rowMemo — the tools array is rebuilt every render, its elements
  *  are not. Without this, one running tool's per-second timer re-rendered
  *  every other tool group in the transcript. */
-export const ToolGroupView = memo(ToolGroupViewImpl, (prev, next) => (
+export const ToolGroupView = memo(function ToolGroupView(props: Parameters<typeof ToolGroupViewImpl>[0]) {
+    // B-565: the group header (summary/elapsed) is its own boundary; the memo
+    // below only re-renders when a tool changed, so `tools` is a content key.
+    return (
+        <RecoverableBoundary region="tool-group" resetKey={props.tools} compact>
+            <ToolGroupViewImpl {...props} />
+        </RecoverableBoundary>
+    );
+}, (prev, next) => (
     sameItems(prev.tools, next.tools)
     && prev.collapseCompleted === next.collapseCompleted
     && prev.stalled === next.stalled

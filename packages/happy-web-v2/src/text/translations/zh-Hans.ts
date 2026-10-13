@@ -4151,6 +4151,19 @@ export const zhHans: TranslationStructure = {
 
     // Diagnostics / health screen.
     // B-516: optimistic new-session page (sync/pendingSessions.ts)
+    // B-565 / B-566: 局部渲染兜底 + 归档/完成撤销 toast
+    robustness: {
+        renderFailed: '这条内容渲染失败',
+        panelFailed: '这个面板渲染失败',
+        panelFailedHint: '应用其余部分仍可正常使用。',
+        retry: '重试',
+        copyError: '复制错误',
+        errorCopied: '已复制错误信息',
+        archived: '已归档',
+        markedDone: '已标记完成',
+        undo: '撤销',
+        undoTooLate: '已生效——可在「已归档」里恢复。',
+    },
     pendingSession: {
         starting: '正在启动…',
         connecting: '正在连接…',

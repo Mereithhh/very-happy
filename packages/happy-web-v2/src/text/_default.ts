@@ -4293,6 +4293,19 @@ export const en = {
 
     // Diagnostics / health screen.
     // B-516: optimistic new-session page (sync/pendingSessions.ts)
+    // B-565 / B-566: local render-error fallback + undoable archive/done toasts
+    robustness: {
+        renderFailed: 'This content failed to render',
+        panelFailed: 'This panel failed to render',
+        panelFailedHint: 'The rest of the app is still working.',
+        retry: 'Retry',
+        copyError: 'Copy error',
+        errorCopied: 'Error copied',
+        archived: 'Archived',
+        markedDone: 'Marked done',
+        undo: 'Undo',
+        undoTooLate: 'Already applied — restore it from Archived.',
+    },
     pendingSession: {
         starting: 'Starting…',
         connecting: 'Connecting…',
