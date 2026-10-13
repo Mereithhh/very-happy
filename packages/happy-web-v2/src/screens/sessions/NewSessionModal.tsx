@@ -14,8 +14,10 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { ConnectMachineLink, NoMachinesNotice } from './NoMachinesNotice';
 import { claudeAuthNotice, hasClaudeAuthNotice } from './claudeAuthNotice';
 import { useImeGuard } from '@/utils/ime';
+import { Command } from '@/screens/onboarding/ConnectMachineGuide';
 import {
   agentSetupInstruction,
+  agentsNeedingSetup,
   isAgentOffered,
   resolveAgentAvailability,
   SESSION_AGENTS,
@@ -72,6 +74,8 @@ export function NewSessionModal({
   const [directory, setDirectory] = useState(initialLocation?.path ?? list[0]?.path ?? '');
   const [editingId, setEditingId] = useState<string | null>(initialLocation ? null : list[0]?.id ?? null);
   const [agent, setAgent] = useState<SessionAgent>(() => normalizeAgentKey(defaultAgent));
+  // B-596: the not-installed agent whose install command is shown (its greyed button was selected).
+  const [setupAgent, setSetupAgent] = useState<Exclude<SessionAgent, 'claude'> | null>(null);
   const [initialCommand, setInitialCommand] = useState(initialCommandDefault ?? '');
   const ime = useImeGuard();
 
@@ -123,6 +127,10 @@ export function NewSessionModal({
   // selected machine's reported home dir. Avoids a bogus "create directory ~/…"
   // prompt for paths that actually exist.
   const selectedMachine = online.find((m) => m.id === machineId);
+  const agentsToSetUp = agentsNeedingSetup(selectedMachine?.metadata);
+  // Derived, not stored: switching machines or the agent becoming available hides the row.
+  const shownSetupAgent = setupAgent && agentsToSetUp.includes(setupAgent) ? setupAgent : null;
+  const shownSetupInstruction = shownSetupAgent ? agentSetupInstruction(shownSetupAgent) : null;
   const homeDir = (selectedMachine as any)?.metadata?.homeDir as string | undefined;
   const selectedAgentAvailability = resolveAgentAvailability(selectedMachine?.metadata, agent);
   // B-301: the daemon publishes its Claude login state, but until now only the
@@ -323,17 +331,23 @@ export function NewSessionModal({
                   : unavailable
                     ? t('newSessionModal.notInstalled')
                     : null;
+                const showingSetup = unavailable && shownSetupAgent === a;
                 return (
                 <button
                   key={a}
                   type="button"
-                  className={`ns-agent${agent === a ? ' is-on' : ''}${unavailable ? ' is-disabled' : ''}`}
-                  disabled={unavailable}
+                  className={`ns-agent${agent === a ? ' is-on' : ''}${unavailable ? ' is-disabled' : ''}${showingSetup ? ' is-setup' : ''}`}
                   aria-disabled={unavailable}
+                  aria-expanded={unavailable ? showingSetup : undefined}
+                  aria-controls={unavailable ? 'ns-agent-setup' : undefined}
                   title={unavailable
                     ? t('newSessionModal.agentUnavailableTitle', { agent: a })
                     : undefined}
-                  onClick={() => setAgent(a)}
+                  onClick={() => {
+                    // Not installed: selecting it reveals how to install it instead of choosing it.
+                    if (!unavailable) setAgent(a);
+                    else if (a !== 'claude') setSetupAgent(showingSetup ? null : a);
+                  }}
                 >
                   <span>{a}</span>
                   {suffix && <span className="ns-agent-status">{suffix}</span>}
@@ -349,22 +363,26 @@ export function NewSessionModal({
                 </Link>
               </div>
             )}
-            {selectedMachine?.metadata?.cliAvailability && (
-              <div className="ns-agent-help">
-                {[
-                  ...SESSION_AGENTS
-                      .filter((candidate): candidate is Exclude<SessionAgent, 'claude'> => candidate !== 'claude')
-                      .filter((candidate) => isAgentOffered(selectedMachine.metadata, candidate))
-                      .filter((candidate) => !resolveAgentAvailability(selectedMachine.metadata, candidate).available)
-                      .map((candidate) => {
-                        const setup = agentSetupInstruction(candidate);
-                        return setup.kind === 'command'
-                          ? t('newSessionModal.agentInstallHelp', { agent: candidate, command: setup.command })
-                          : t('newSessionModal.openClawSetupHelp');
-                      }),
-                ].filter(Boolean).join(' · ')}
+            {agentsToSetUp.length > 0 && (shownSetupAgent ? (
+              <div className="ns-agent-setup" id="ns-agent-setup">
+                {shownSetupInstruction?.kind === 'command' ? (
+                  <>
+                    <div className="ns-agent-help">
+                      {shownSetupAgent === 'pi'
+                        ? t('newSessionModal.piInstallHelp')
+                        : t('newSessionModal.agentInstallHelp', { agent: shownSetupAgent })}
+                    </div>
+                    <Command value={shownSetupInstruction.command} />
+                  </>
+                ) : (
+                  <div className="ns-agent-help">{t('newSessionModal.openClawSetupHelp')}</div>
+                )}
               </div>
-            )}
+            ) : (
+              <div className="ns-agent-help">
+                {t('newSessionModal.agentSetupPrompt', { agents: agentsToSetUp.join(', ') })}
+              </div>
+            ))}
 
             <label className="ns-label">{t('newSession.initialCommand')}</label>
             <textarea

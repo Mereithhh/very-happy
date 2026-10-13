@@ -227,7 +227,10 @@ with the account content key, which `dataKey` CLI credentials do not hold.
   `pi`. `pi` runs through the [pi-acp](https://www.npmjs.com/package/pi-acp)
   adapter (`very-happy pi` = the generic ACP runner with `pi-acp`), so the
   daemon machine needs both `pi` and `pi-acp` on the daemon's PATH
-  (`npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`). The daemon
+  (`npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`; the
+  keep-alive re-probes PATH every 5 minutes, no restart needed). A terminal
+  `very-happy pi` checks both on PATH before creating a session and prints the
+  command for what is missing (B-596; `PI_ACP_PI_COMMAND` exempts `pi`). The daemon
   reports that as `cliAvailability.pi`; the Web launcher offers pi only when a
   daemon reports the field, and enables it only when it is `true`, and the
   daemon's `/spawn-session` refuses `agent: 'pi'` while it is `false` — `spawn

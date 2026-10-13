@@ -56,6 +56,21 @@ export function isAgentOffered(
     return metadata?.cliAvailability?.pi !== undefined;
 }
 
+/**
+ * B-596: the agents the launcher lists for this machine but cannot start —
+ * each gets an install row (revealed by selecting its greyed button). Claude
+ * is bundled and never appears.
+ */
+export function agentsNeedingSetup(
+    metadata: MachineMetadata | null | undefined,
+): Exclude<SessionAgent, 'claude'>[] {
+    if (!metadata?.cliAvailability) return [];
+    return SESSION_AGENTS
+        .filter((candidate): candidate is Exclude<SessionAgent, 'claude'> => candidate !== 'claude')
+        .filter((candidate) => isAgentOffered(metadata, candidate))
+        .filter((candidate) => !resolveAgentAvailability(metadata, candidate).available);
+}
+
 export type AgentSetupInstruction =
     | { kind: 'command'; command: string }
     | { kind: 'gateway' };

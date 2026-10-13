@@ -84,9 +84,19 @@
   color: var(--text-dim);
 }
 .ns-agent.is-disabled {
-  cursor: not-allowed;
+  cursor: pointer;
   opacity: 0.58;
   background: var(--bg-2);
+}
+/* B-596: a not-installed agent opens its install row instead of being chosen. */
+.ns-agent.is-disabled.is-setup {
+  opacity: 1;
+  border-color: var(--text-faint);
+  color: var(--text);
+}
+.ns-agent-setup {
+  display: grid;
+  gap: var(--sp-2);
 }
 .ns-agent-status {
   color: var(--text-faint);

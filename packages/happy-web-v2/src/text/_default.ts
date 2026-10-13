@@ -1268,7 +1268,10 @@ export const en = {
         bundledClaudeHelp: 'Structured Claude is bundled with Very Happy; the separate claude CLI is only needed for native terminal use.',
         claudeCredentialHelp: 'Run Doctor or open credential setup before the first session.',
         agentUnavailableTitle: ({ agent }: { agent: string }) => `${agent} is not available on this machine`,
-        agentInstallHelp: ({ agent, command }: { agent: string; command: string }) => `To use ${agent}, run \`${command}\` on the daemon machine, then restart the daemon — or choose Claude.`,
+        // B-596: shown with a copyable command below; the daemon re-probes PATH every 5 minutes.
+        agentSetupPrompt: ({ agents }: { agents: string }) => `Not installed on this machine: ${agents}. Select one to see how to install it.`,
+        agentInstallHelp: ({ agent }: { agent: string }) => `${agent} is not installed on this machine. Run this on it — it is picked up within 5 minutes, no daemon restart needed:`,
+        piInstallHelp: 'pi cannot run on this machine yet: Very Happy runs pi through the pi-acp adapter, so it needs both pi and pi-acp. Run this on it — it is picked up within 5 minutes, no daemon restart needed:',
         openClawSetupHelp: 'To use OpenClaw, configure its local gateway or OPENCLAW_GATEWAY_URL and token/password for the daemon user, then restart the daemon. See Docs → Configuration.',
         offlineMachine: 'Offline',
         offlineTerminalHelp: 'Terminal unavailable. On that machine, run `very-happy daemon start`, then try again.',
