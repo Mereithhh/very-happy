@@ -7,7 +7,8 @@
  * replays the fork's turns into the Happy session so the chat shows the full
  * history. From here on the session behaves exactly like one that resumed the
  * fork: `metadata.codexThreadId` is the fork, so a daemon restart resumes it;
- * `importedFromCodexThreadId` is the original, so the import picker hides it.
+ * `importedFromCodexThreadId` is the original, which the import picker labels
+ * "imported before" (B-600: it is not hidden — a failed fork must not lock it out).
  *
  * Why the wrapper forks and not the daemon (unlike `claude-import-session`,
  * which copies the JSONL before spawning): forking needs a live app-server,

@@ -58,6 +58,11 @@ very-happy 已经会「接着一条 thread 聊」：`thread/fork` + `thread/resu
    入口：侧栏「+」菜单、⌘K、机器页（按 `codexHistorySupported` 出现）。
 6. **去重**：daemon 合并 `readTrackedCodexThreadIds()`（`sessions.json` 里每个会话的 `codexThreadId` + `importedFromCodexThreadId`，不套 14 天剪枝）与 web 传来的
    `exclude`（`trackedCodexThreadIds` 读 raw `storage.sessions`）；加上 `happy-codex` originator 过滤，very-happy 自己 fork 出来的副本天然不进列表。
+   **B-600 修订（2026-10-14）**：去重只认会话**自己的** `codexThreadId`，不再把 `importedFromCodexThreadId`（原件）算作已接管——daemon 与 web 两侧都改。
+   原因：`importedFromCodexThreadId` 出生即打标，fork 失败（或 B-529 前 fork 出空 guardian 线程）的空壳也带着它；`sessions.json` 只有出生快照，
+   连 fork 成功后的 `codexThreadId` 都不会写进去，daemon 本地分不出成败 → 一次失败导入把原件永久藏掉（Xu CHEN 实撞）。现在原件照常列出，web 按
+   store 里 `importedFrom…` 标「已导入过」（可点开那条会话）并允许再次导入（导入是 fork，原件不动，重复导入只多一份副本）；全文搜索里同理
+   显示「打开之前的导入」+「再次导入」，只有 very-happy 自己驱动的会话才是「仅打开」。取代未合入的 PR #470（server 探测成败的方案）。
 
 否掉的方案：`--resume` 原件不 fork——与 Codex 桌面版共用一条 thread 会双写者；daemon 侧 `withCodexAppServerClient` fork——见设计 3。
 
@@ -68,6 +73,7 @@ very-happy 已经会「接着一条 thread 聊」：`thread/fork` + `thread/resu
 | daemon → web | `daemonState.codexHistory` | 旧 web 忽略；新 web 见不到标志只显示升级提示，不调 RPC |
 | web → daemon | `codex-list-history`、`codex-import-session`、`spawn-happy-session.importCodexThreadId` | 旧 daemon 无标志故不会被调；即使被调也忽略未知字段 |
 | CLI → server/web | `metadata.importedFromCodexThreadId` | 旧 web schema 剥掉该字段（只影响去重展示） |
+| B-600 去重语义 | 新 web 不再把原件放进 `exclude`；新 daemon 不再从 `sessions.json` 排除原件 | 新 web + 旧 daemon：最近列表仍被旧 daemon 按 `sessions.json` 排除（该记录 14 天无写入后随下次落盘剪掉），全文搜索（daemon ≥0.2.166）立即可再导入；旧 web + 新 daemon：旧 web 仍发 `exclude` 且客户端二次过滤，行为同旧版 |
 
 顺序：server/web（同镜像）→ CLI tag v0.2.139 → 机器升级 daemon。回滚点：上一 live SHA / v0.2.138。
 

@@ -49,17 +49,32 @@ describe('readTrackedClaudeSessionIds (B-291)', () => {
         expect(readPersistedSessions().s.keepAwake).toBeUndefined();
     });
 
-    it('collects own and imported-from ids regardless of the live-session age prune', async () => {
+    it('collects own conversation ids regardless of the live-session age prune', async () => {
         const ancient = Date.now() - 400 * 24 * 60 * 60 * 1000;
         await writeSessions({
             live: { savedAt: Date.now(), metadata: { claudeSessionId: A.toUpperCase() } },
             // readPersistedSessions() drops this one as too old; exclusion must not.
-            old: { savedAt: ancient, metadata: { importedFromClaudeSessionId: B } },
+            old: { savedAt: ancient, metadata: { claudeSessionId: B } },
             noConversation: { savedAt: Date.now(), metadata: {} },
         });
         const { readTrackedClaudeSessionIds, readPersistedSessions } = await import('./persistence');
         expect(readTrackedClaudeSessionIds().sort()).toEqual([A, B].sort());
         expect(Object.keys(readPersistedSessions())).not.toContain('old');
+    });
+
+    it('B-600: the original an import came from is not tracked (a failed import must not hide it)', async () => {
+        const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+        const D = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+        await writeSessions({
+            // The birth snapshot a Codex import leaves (fork id never reaches
+            // sessions.json, B-537 PR notes) — identical for a failed fork.
+            codexShell: { savedAt: Date.now(), metadata: { importedFromCodexThreadId: A } },
+            codexOwn: { savedAt: Date.now(), metadata: { codexThreadId: C } },
+            claudeImport: { savedAt: Date.now(), metadata: { claudeSessionId: D, importedFromClaudeSessionId: B } },
+        });
+        const { readTrackedClaudeSessionIds, readTrackedCodexThreadIds } = await import('./persistence');
+        expect(readTrackedCodexThreadIds()).toEqual([C]);
+        expect(readTrackedClaudeSessionIds()).toEqual([D]);
     });
 
     it('is empty and never throws when the store is missing or malformed', async () => {

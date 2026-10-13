@@ -50,6 +50,7 @@ import {
   summarizeImportRun,
   toggleImportSelection,
   trackedHistoryIds,
+  importedHistorySessions,
   type HistoryAgent,
   type HistoryEntry,
   type ImportRowState,
@@ -113,8 +114,13 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
   // Codex is not bundled: a machine without it can list its rollouts but could
   // not continue an import. Say so instead of failing at spawn.
   const codexMissing = agent === 'codex' && !!machine && !resolveAgentAvailability((machine as any).metadata, 'codex').available;
-  const tracked = useMemo(() => trackedHistoryIds(agent, Object.values(sessionsById)), [agent, sessionsById]);
   const allSessions = useMemo(() => Object.values(sessionsById), [sessionsById]);
+  // B-600: only conversations very-happy drives are hidden (and sent as the
+  // daemon's `exclude`); an original an import was made from stays listed with
+  // an "already imported" label, so a failed import's empty shell can never
+  // lock the conversation out of the picker again.
+  const tracked = useMemo(() => trackedHistoryIds(agent, allSessions), [agent, allSessions]);
+  const importedFrom = useMemo(() => importedHistorySessions(agent, allSessions), [agent, allSessions]);
   // B-549: capability of THIS daemon run; an old CLI gets an upgrade hint.
   const searchSupported = !!machine && historySearchSupported(daemonState);
 
@@ -401,6 +407,7 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
                       const source = historySourceLabel(entry);
                       const state = rowStates.get(entry.id) ?? { kind: 'idle' as const };
                       const isSelected = selected.includes(entry.id);
+                      const prior = state.kind === 'done' ? undefined : importedFrom.get(entry.id);
                       const statusLabel = state.kind === 'running' ? t('importClaudeHistory.importing')
                         : state.kind === 'queued' ? t('importClaudeHistory.queued')
                           : state.kind === 'done' ? t('importClaudeHistory.rowDone')
@@ -437,6 +444,25 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
                             {` · ${formatHistorySize(entry.sizeBytes)}`}
                             {age ? ` · ${age}` : ''}
                             {statusLabel ? ` · ${statusLabel}` : ''}
+                            {prior && (
+                              <>
+                                {' · '}
+                                <button
+                                  type="button"
+                                  className="ns-imported-link"
+                                  title={t('importClaudeHistory.alreadyImportedOpen', { name: prior.title ?? prior.sessionId })}
+                                  disabled={running}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onClose();
+                                    navigate(`/session/${prior.sessionId}`);
+                                  }}
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                >
+                                  {t('importClaudeHistory.alreadyImported')}
+                                </button>
+                              </>
+                            )}
                           </span>
                         </div>
                       );

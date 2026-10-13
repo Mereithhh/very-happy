@@ -1512,6 +1512,8 @@ export const zhHans: TranslationStructure = {
         codexEmpty: '这台机器上没有可导入的 thread——~/.codex/sessions 下的记录都已在这里，或者机器上还没有 Codex 历史。',
         codexLoadFailed: '无法读取这台机器上的 Codex 历史。',
         codexCopyNote: '导入会在 Codex 里 fork 这条 thread：原件保持不变、留给写它的工具；新对话在同一目录里接着完整历史继续。',
+        alreadyImported: '已导入过',
+        alreadyImportedOpen: ({ name }: { name: string }) => `打开之前导入成的会话：${name}`,
     },
     historySearch: {
         modeLabel: '查找方式',
@@ -1531,6 +1533,8 @@ export const zhHans: TranslationStructure = {
         evicted: ({ count }: { count: number }) => `有 ${count} 个较早的对话超出索引容量，只能按标题搜到。`,
         open: '打开',
         import: '导入',
+        openImported: '打开之前的导入',
+        importAgain: '再次导入',
         roleUser: '你',
         roleAssistant: 'Agent',
         matches: ({ count }: { count: number }) => `${count} 处匹配`,

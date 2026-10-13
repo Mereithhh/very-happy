@@ -31,7 +31,8 @@ describe('ApiMachineClient codex-list-history RPC (B-464)', () => {
 
     beforeEach(async () => {
         codexHome = join(tmpdir(), `vh-codex-history-rpc-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        process.env = { ...originalEnv, CODEX_HOME: codexHome };
+        // Never read the developer's real ~/.happy/sessions.json.
+        process.env = { ...originalEnv, CODEX_HOME: codexHome, HAPPY_HOME_DIR: join(codexHome, 'empty-happy-home') };
         const day = join(codexHome, 'sessions', '2026', '09', '01');
         await mkdir(day, { recursive: true });
         await writeFile(join(day, `rollout-2026-09-01T00-00-00-${id}.jsonl`), rollout(id, 'hello'));
@@ -44,12 +45,14 @@ describe('ApiMachineClient codex-list-history RPC (B-464)', () => {
         await rm(codexHome, { recursive: true, force: true });
     });
 
-    it('also excludes threads the daemon itself already drives (sessions.json)', async () => {
+    it('B-600: excludes threads the daemon drives (sessions.json) but not the original of an import', async () => {
         const happyHome = join(codexHome, 'happy-home');
         await mkdir(happyHome, { recursive: true });
         await writeFile(join(happyHome, 'sessions.json'), JSON.stringify({
             sessions: {
                 'happy-1': { savedAt: 0, metadata: { codexThreadId: id.toUpperCase() } },
+                // A failed (or empty, pre-B-529) import: the birth snapshot only
+                // names the original. It used to hide `other` forever.
                 'happy-2': { savedAt: 0, metadata: { importedFromCodexThreadId: other } },
                 'happy-3': { savedAt: 0, metadata: {} },
             },
@@ -63,7 +66,11 @@ describe('ApiMachineClient codex-list-history RPC (B-464)', () => {
         const handler = handlersFrom(client).get('machine-1:codex-list-history')!;
 
         const result = await handler({});
-        expect(result.entries).toEqual([]);
+        expect(result.entries.map((e: any) => e.codexThreadId)).toEqual([other]);
+
+        // An old web still sends the original in `exclude`: honoured as before.
+        const oldWeb = await handler({ exclude: [other] });
+        expect(oldWeb.entries).toEqual([]);
     });
 
     it('lists rollouts machine-wide with index names, honours exclude, limit and directory, validates directory', async () => {

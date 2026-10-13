@@ -131,7 +131,7 @@ tmp + rename 原子写。刷新结束（有变化时）与冷建过程中每 20 
 
 - `sync/ops.ts`：`machineHistorySearch(machineId, params)`，先查 `{ error }`（约束 17），失败返回 `{ ok:false }`，不抛。
 - 纯模块 `screens/sessions/historySearch.ts`：`historySearchSupported(daemonState)`、宽松解析 RPC 载荷（未知 state 归 `idle`、坏行丢弃）、
-  结果 → 现有 `HistoryEntry`（直接喂给导入流程）、`findTrackedSessionId(agent, id, sessions)`（会话自身 id 或 importedFrom 命中 → 打开该会话）、
+  结果 → 现有 `HistoryEntry`（直接喂给导入流程）、`findTrackedSessionId(agent, id, sessions)`（会话自身 id 命中 → `own`，只给「打开」；仅 importedFrom 命中 → `imported`，B-600 起给「打开之前的导入」+「再次导入」，失败导入的空壳不再挡住重导）、
   片段高亮切分、是否继续轮询。
 - `ImportHistoryModal` 增加「最近 / 全文搜索」模式切换（`initialMode` 可选 prop），来源单选沿用为 agent 过滤；搜索模式渲染新组件
   `HistorySearchPanel`：防抖 300 ms 输入、结果行（标题、高亮片段、`~/cwd · 来源 · 时间`）、行内按钮「打开」（已有会话）/「导入」

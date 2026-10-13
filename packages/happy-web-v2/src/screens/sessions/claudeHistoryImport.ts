@@ -107,36 +107,73 @@ export function parseCodexHistory(raw: unknown): CodexHistoryEntry[] {
     return out;
 }
 
-/** Claude conversation ids very-happy already owns on any machine: a session's
- *  own conversation, plus the source of a fork/import (the copy is tracked, so
- *  offering the original again would just create a second copy). Lower-cased
- *  so the daemon-side exclude and the client-side filter agree. */
-export function trackedClaudeSessionIds(sessions: ReadonlyArray<Pick<Session, 'metadata'>>): string[] {
+/**
+ * Conversation ids very-happy itself drives, on any machine: a session's OWN
+ * conversation (`claudeSessionId` / `codexThreadId` — for an import that is
+ * the copy/fork, never the original). These are the only ids the picker hides
+ * and the only ids it sends the daemon as `exclude`. Lower-cased so the
+ * daemon-side exclude and the client-side filter agree.
+ *
+ * B-600: the original an import was made FROM (`importedFrom…`) is no longer
+ * hidden. A failed import — a Codex fork that errored, or one that came back
+ * empty before B-529 (CLI < 0.2.162) — leaves a shell session that names the
+ * original but holds nothing, and hiding the original then made the
+ * conversation impossible to import again. It is listed with an "already
+ * imported" label instead (`importedHistorySessions`); importing it again only
+ * makes another copy, the original is never touched.
+ */
+function ownHistoryIds(agent: HistoryAgent, sessions: ReadonlyArray<Pick<Session, 'metadata'>>): string[] {
     const ids = new Set<string>();
     for (const s of sessions) {
-        const own = s.metadata?.claudeSessionId;
+        const own = agent === 'claude' ? s.metadata?.claudeSessionId : s.metadata?.codexThreadId;
         if (typeof own === 'string' && UUID_RE.test(own)) ids.add(own.toLowerCase());
-        const source = s.metadata?.importedFromClaudeSessionId;
-        if (typeof source === 'string' && UUID_RE.test(source)) ids.add(source.toLowerCase());
     }
     return [...ids];
 }
 
-/** Codex twin (B-464): a session's own thread (the fork, for imports) plus the
- *  original the import was forked from. */
+/** Claude conversations very-happy drives (see `ownHistoryIds`). */
+export function trackedClaudeSessionIds(sessions: ReadonlyArray<Pick<Session, 'metadata'>>): string[] {
+    return ownHistoryIds('claude', sessions);
+}
+
+/** Codex twin (B-464): a session's own thread (the fork, for imports). */
 export function trackedCodexThreadIds(sessions: ReadonlyArray<Pick<Session, 'metadata'>>): string[] {
-    const ids = new Set<string>();
-    for (const s of sessions) {
-        const own = s.metadata?.codexThreadId;
-        if (typeof own === 'string' && UUID_RE.test(own)) ids.add(own.toLowerCase());
-        const source = s.metadata?.importedFromCodexThreadId;
-        if (typeof source === 'string' && UUID_RE.test(source)) ids.add(source.toLowerCase());
-    }
-    return [...ids];
+    return ownHistoryIds('codex', sessions);
 }
 
 export function trackedHistoryIds(agent: HistoryAgent, sessions: ReadonlyArray<Pick<Session, 'metadata'>>): string[] {
-    return agent === 'claude' ? trackedClaudeSessionIds(sessions) : trackedCodexThreadIds(sessions);
+    return ownHistoryIds(agent, sessions);
+}
+
+/** The newest session an original conversation was imported into (B-600). */
+export interface ImportedHistorySession {
+    sessionId: string;
+    title?: string;
+}
+
+/**
+ * Original conversation id → the newest session imported from it, for the
+ * "already imported" label (B-600). The session may be an empty shell of a
+ * failed import; the label only informs, it never blocks importing again.
+ */
+export function importedHistorySessions(
+    agent: HistoryAgent,
+    sessions: ReadonlyArray<Pick<Session, 'id' | 'metadata' | 'updatedAt'>>,
+): Map<string, ImportedHistorySession> {
+    const newest = new Map<string, Pick<Session, 'id' | 'metadata' | 'updatedAt'>>();
+    for (const s of sessions) {
+        const source = agent === 'claude' ? s.metadata?.importedFromClaudeSessionId : s.metadata?.importedFromCodexThreadId;
+        if (typeof source !== 'string' || !UUID_RE.test(source)) continue;
+        const id = source.toLowerCase();
+        const prev = newest.get(id);
+        if (!prev || s.updatedAt > prev.updatedAt) newest.set(id, s);
+    }
+    const out = new Map<string, ImportedHistorySession>();
+    for (const [id, s] of newest) {
+        const title = s.metadata?.summary?.text;
+        out.set(id, { sessionId: s.id, ...(title ? { title } : {}) });
+    }
+    return out;
 }
 
 /** Rows the picker shows: untracked, newest first, optionally narrowed by a

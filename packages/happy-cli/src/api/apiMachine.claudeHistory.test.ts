@@ -24,7 +24,8 @@ describe('ApiMachineClient claude-list-history RPC (B-290)', () => {
 
     beforeEach(async () => {
         configDir = join(tmpdir(), `vh-claude-history-rpc-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        process.env = { ...originalEnv, CLAUDE_CONFIG_DIR: configDir };
+        // Never read the developer's real ~/.happy/sessions.json.
+        process.env = { ...originalEnv, CLAUDE_CONFIG_DIR: configDir, HAPPY_HOME_DIR: join(configDir, 'empty-happy-home') };
         const dir = join(configDir, 'projects', '-work-app');
         await mkdir(dir, { recursive: true });
         const line = (text: string) => JSON.stringify({ type: 'user', cwd: '/work/app', timestamp: '2026-09-01T00:00:00Z', message: { role: 'user', content: text } }) + '\n';
@@ -57,9 +58,14 @@ describe('ApiMachineClient claude-list-history RPC (B-290)', () => {
         client.setRPCHandlers({ spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn() });
         const handler = handlersFrom(client).get('machine-1:claude-list-history')!;
 
-        // Both transcripts are on disk and the web sends no exclusions at all.
+        // Both transcripts are on disk and the web sends no exclusions at all:
+        // the driven one is hidden; the import ORIGIN stays listed (B-600) — the
+        // web labels it "imported before" and lets it be imported again.
         const result = await handler({});
-        expect(result.entries).toEqual([]);
+        expect(result.entries.map((e: any) => e.claudeSessionId)).toEqual([other]);
+
+        // An old web still sends the original in `exclude`: honoured as before.
+        expect((await handler({ exclude: [other] })).entries).toEqual([]);
     });
 
     it('lists transcripts machine-wide, honours exclude and limit, and validates directory', async () => {

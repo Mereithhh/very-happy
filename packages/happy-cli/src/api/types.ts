@@ -658,15 +658,17 @@ export type Metadata = {
   /**
    * B-290: the Claude conversation this session was imported from (the
    * on-disk transcript written by claude CLI / desktop / claude.ai that was
-   * copied by `claude-fork-session`). Lets the import picker hide originals
-   * that already have a copy here. Absent on every other session.
+   * copied by `claude-fork-session`). The import picker labels the original
+   * "imported before" (B-600: it no longer hides it — a failed import's shell
+   * must not lock the original out). Absent on every other session.
    */
   importedFromClaudeSessionId?: string
   /**
    * B-464: the Codex thread this session was imported from (the rollout
    * written by the codex TUI / `codex exec` / Codex desktop that the wrapper
-   * forked at start). `codexThreadId` is the fork. Lets the import picker hide
-   * originals that already have a copy here. Absent on every other session.
+   * forked at start). `codexThreadId` is the fork. The import picker labels
+   * the original "imported before" (B-600: no longer hidden — stamped at birth,
+   * so a failed fork carries it too). Absent on every other session.
    */
   importedFromCodexThreadId?: string
   /**

@@ -162,16 +162,24 @@ export function parseHistorySearch(raw: unknown): HistorySearchPayload {
     return { status: parseHistorySearchStatus(r.status), hits, truncated: r.truncated === true };
 }
 
+/** How very-happy already relates to a search hit (B-600). */
+export type TrackedHistoryHit =
+    /** very-happy drives this very conversation: open it, never import it. */
+    | { kind: 'own'; sessionId: string }
+    /** A session was imported FROM it — possibly an empty shell of a failed
+     *  import. Offer both opening that session and importing again. */
+    | { kind: 'imported'; sessionId: string };
+
 /**
- * The very-happy session that already owns this conversation: one whose own
- * conversation it is (`claudeSessionId` / `codexThreadId`), else one that
- * imported it (`importedFrom…`). Newest wins. `undefined` → offer import.
+ * The very-happy session that already relates to this conversation: one whose
+ * own conversation it is (`claudeSessionId` / `codexThreadId`), else one that
+ * imported it (`importedFrom…`). Newest wins. `undefined` → plain import.
  */
 export function findTrackedSessionId(
     agent: HistoryAgent,
     id: string,
     sessions: ReadonlyArray<Pick<Session, 'id' | 'metadata' | 'updatedAt'>>,
-): string | undefined {
+): TrackedHistoryHit | undefined {
     const wanted = id.toLowerCase();
     let own: Pick<Session, 'id' | 'updatedAt'> | undefined;
     let imported: Pick<Session, 'id' | 'updatedAt'> | undefined;
@@ -186,7 +194,14 @@ export function findTrackedSessionId(
             if (!imported || s.updatedAt > imported.updatedAt) imported = s;
         }
     }
-    return (own ?? imported)?.id;
+    if (own) return { kind: 'own', sessionId: own.id };
+    if (imported) return { kind: 'imported', sessionId: imported.id };
+    return undefined;
+}
+
+/** B-600: only a conversation very-happy drives itself is closed to import. */
+export function historySearchCanImport(tracked: TrackedHistoryHit | undefined): boolean {
+    return tracked?.kind !== 'own';
 }
 
 export type HighlightSegment = { text: string; hit: boolean };
