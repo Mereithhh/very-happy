@@ -48,6 +48,8 @@ pre-commit hook 或 CI 失败时还要手抄输出给 agent。Orca 把这些放�
 | 恢复通路唯一：`resumeSync → sync.onWebResume`（铁律 13），不得另加 focus/visibility 监听 | `sync/sync.ts:316`；AGENTS.md 13 |
 | RPC resolve 可能是 `{ error }`；`sessionBash` 把异常折成 `success:false` | `sync/ops.ts:1657-1676` |
 
+| `parseStatusV2` 的 rename（`2 …`）行把新旧路径解析反了：porcelain v2 是 `<新路径>\t<原路径>`，旧代码 `from=新、path=原`，改动列表把 rename 显示成旧名 | `sync/git-parsers/parseStatusV2.ts:161`（本次修正 + 回归测试） |
+
 本机实测（git 2.x，2026-10-13，scratch 仓库）：
 - `git add -A -- <path>` 对「已暂存删除 / rename 源路径」报 `pathspec did not match`；`git commit -- <path>` 对这类路径正常（HEAD 里有）。
 - `git commit -m … -- <paths>`（隐含 `--only`）只提交所列路径，其它已暂存条目保持暂存。
@@ -118,6 +120,8 @@ pre-commit hook 或 CI 失败时还要手抄输出给 agent。Orca 把这些放�
 - 显示：顶栏 `.ch-status` 内 RelayBadge 前一个 chip：桌面「#12 · CI ✓3」，窄屏只留图标 + 状态点；
   点击打开 Radix Popover（§6：点击打开详情）：状态、标题、编号外链、检查计数、失败 check 列表、
   「让 agent 修 CI」。颜色：失败 `--danger`，进行中 `--accent`（running 即 live 语义），其余中性。
+- 顶栏变窄（桌面开右侧面板、手机）时：`.ch:has(.prc)` 设为 inline-size 容器，≤640px 只留 PR 状态图标 + CI 图标，
+  并隐藏 `.ch-host`（完整信息仍在身份 Popover，design-language「窄屏压缩长名称」），保证标题可读。
 - 「让 agent 修 CI」：从失败 check 的 `detailsUrl` 取 `/actions/runs/<id>`（最多 2 个），
   POSIX `gh run view <id> --log-failed 2>&1 | tail -c 12000`；cmd 无 tail，超 1MB 走 maxBuffer 失败分支只发 check 名单。
 
