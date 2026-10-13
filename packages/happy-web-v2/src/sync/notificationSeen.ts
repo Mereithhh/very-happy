@@ -353,6 +353,11 @@ export async function pushSeenWithCas(
     return { status: 'exhausted' };
 }
 
+/** push-sw.js `vhNotificationTag` for a target key (session id | `t:<tid>`). */
+export function pushTagOfKey(key: string): string {
+    return key.startsWith('t:') ? `terminal:${key.slice(2)}` : `session:${key}`;
+}
+
 /**
  * Does a live system notification belong to `key`? Foreground notifications
  * (webNotifications.ts) are tagged with the session id; Web Push ones
@@ -364,6 +369,11 @@ export function systemNotificationMatchesKey(
     key: string,
 ): boolean {
     if (notif.tag && notif.tag === key) return true;
+    // B-569: Web Push notifications are tagged per target by push-sw.js
+    // (`session:<id>` / `terminal:<tid>`) and carry `data.key`.
+    if (notif.tag && pushTagOfKey(key) === notif.tag) return true;
+    const dataKey = (notif.data as { key?: unknown } | null | undefined)?.key;
+    if (typeof dataKey === 'string' && dataKey.length > 0 && dataKey === key) return true;
     const url = (notif.data as { url?: unknown } | null | undefined)?.url;
     if (typeof url !== 'string' || url.length === 0) return false;
     const [path, query = ''] = url.split('?');

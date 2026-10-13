@@ -91,3 +91,50 @@ export async function unregisterPushToken(credentials: AuthCredentials, token: s
         }
     });
 }
+
+/** B-570 POST /v1/push/test outcome (never throws). */
+export type TestPushResult =
+    | { kind: 'ok'; configured: boolean; total: number; sent: number; failed: number; pruned: number }
+    /** 404 — the server predates the endpoint */
+    | { kind: 'unsupported' }
+    /** 429 — 1 per 10s per account */
+    | { kind: 'rate-limited' }
+    | { kind: 'error' };
+
+const TestPushResponseSchema = z.object({
+    configured: z.boolean(),
+    total: z.number(),
+    sent: z.number(),
+    failed: z.number(),
+    pruned: z.number(),
+});
+
+/**
+ * Ask the server to send a labelled test notification to every Web Push
+ * subscription of this account. Single attempt (a user-triggered button,
+ * the server rate-limits it) — no backoff loop.
+ */
+export async function sendTestPush(
+    credentials: AuthCredentials,
+    copy: { title: string; body: string },
+): Promise<TestPushResult> {
+    try {
+        const response = await fetch(`${getServerUrl()}/v1/push/test`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
+            },
+            body: JSON.stringify(copy),
+        });
+        assertNotAuthFailure(response, 'apiPush');
+        if (response.status === 404) return { kind: 'unsupported' };
+        if (response.status === 429) return { kind: 'rate-limited' };
+        if (!response.ok) return { kind: 'error' };
+        const parsed = TestPushResponseSchema.safeParse(await response.json());
+        return parsed.success ? { kind: 'ok', ...parsed.data } : { kind: 'error' };
+    } catch {
+        return { kind: 'error' };
+    }
+}
