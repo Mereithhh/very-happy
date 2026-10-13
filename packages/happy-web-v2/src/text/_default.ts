@@ -407,6 +407,15 @@ export const en = {
         showLineNumbersInToolViewsDescription: 'Display line numbers in tool view diffs',
         wrapLinesInDiffs: 'Wrap Lines in Diffs',
         wrapLinesInDiffsDescription: 'Wrap long lines instead of horizontal scrolling in diff views (touch devices; desktop always scrolls)',
+        // B-582: device-local chat type scale.
+        chatTextSize: 'Chat text size',
+        chatTextSizeDescription: 'Scales conversation text, code, tool rows and spacing on this device. Touch targets and the 16px input floor are kept.',
+        chatTextSizeOptions: {
+            sm: 'Small',
+            md: 'Default',
+            lg: 'Large',
+            xl: 'Extra large',
+        },
         diffStyle: 'Diff View',
         diffStyleDescription: 'Show diffs as a single column (unified) or side-by-side (split). Split view is web-only.',
         diffStyleOptions: {
