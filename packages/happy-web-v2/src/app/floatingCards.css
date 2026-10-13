@@ -1,0 +1,16 @@
+/* B-588 — one placement rule for the floating onboarding cards (PWA install,
+   notification opt-in). They sit bottom-right (bottom-wide on phones) by
+   default, which on a page with an input area covers the composer, the send
+   button and whatever sits right above it. On those pages both move to the
+   top, below the 44px header and the safe area. Browsers without :has() keep
+   the default corner (the pre-B-588 behaviour). */
+body:has(.sd-foot, .term-screen) :is(.pwa-install, .notif-optin) {
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  bottom: auto;
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 72px);
+  overflow-y: auto;
+}
+
+/* The CLI update banner owns the top edge (it can be `required`); the
+   notification invitation is the one that can wait. */
+body:has(.cli-update) .notif-optin { display: none; }

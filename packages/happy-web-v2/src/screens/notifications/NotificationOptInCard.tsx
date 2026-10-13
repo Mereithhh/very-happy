@@ -25,7 +25,9 @@ import {
   shouldOfferNotificationOptIn,
 } from './notificationOnboarding';
 import { useToast } from '@/ui';
+import { shouldDeferPwaInstall } from '@/app/pwaInstallPolicy';
 import './notificationOptInCard.css';
+import '@/app/floatingCards.css';
 
 function readDismissed(): boolean {
   try {
@@ -69,8 +71,18 @@ export function NotificationOptInCard() {
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
+  // Same reveal rule as the PWA install card: never pop up mid-typing —
+  // re-check every second until focus leaves the text field (B-588).
   useEffect(() => {
-    const timer = window.setTimeout(() => setRevealed(true), NOTIF_OPT_IN_REVEAL_MS);
+    let timer = 0;
+    const revealWhenIdle = () => {
+      if (shouldDeferPwaInstall(document.activeElement)) {
+        timer = window.setTimeout(revealWhenIdle, 1_000);
+        return;
+      }
+      setRevealed(true);
+    };
+    timer = window.setTimeout(revealWhenIdle, NOTIF_OPT_IN_REVEAL_MS);
     return () => window.clearTimeout(timer);
   }, []);
 
