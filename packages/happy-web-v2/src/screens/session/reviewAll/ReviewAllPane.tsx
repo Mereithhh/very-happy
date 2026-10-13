@@ -20,6 +20,7 @@ import { useGitFileDiff } from '../diffComments/useGitFileDiff';
 import { useDiffComments } from '../diffComments/diffCommentsStore';
 import { diffRowsHash, estimateSectionBodyPx, isViewedCurrent, pruneViewed, type ReviewFile, type ViewedEntry } from './reviewAllModel';
 import { useViewedMap, writeViewedMap, getViewedMap } from './reviewViewedStore';
+import { useWorktreeIds } from './useWorktreeIds';
 import '../diff.css';
 import '../../files/fsbrowser.css';
 import '../diffComments/diffComments.css';
@@ -44,10 +45,12 @@ const STATUS_CLASS: Record<ReviewFile['status'], string> = {
     modified: 'fp-st--mod', added: 'fp-st--add', deleted: 'fp-st--del', renamed: 'fp-st--ren', untracked: 'fp-st--unt',
 };
 
-function ReviewSection({ sessionId, file, copy, root, collapsed, onToggle, viewed, onViewed, wrap, ignoreWs, tabActive, refreshToken, onLoadedHash, onOpenDiff, commentCount, register }: {
+function ReviewSection({ sessionId, file, copy, root, collapsed, onToggle, viewed, onViewed, wrap, ignoreWs, tabActive, contentId, idsSettled, onLoadedHash, onOpenDiff, commentCount, register }: {
     sessionId: string; file: ReviewFile; copy: Copy; root: HTMLElement | null;
     collapsed: boolean; onToggle: () => void; viewed: boolean; onViewed: (next: boolean, hash: string | null) => void;
-    wrap: boolean; ignoreWs: boolean; tabActive: boolean; refreshToken: unknown;
+    wrap: boolean; ignoreWs: boolean; tabActive: boolean;
+    /** working-tree content id (undefined = unknown) and whether the id query for this refresh has settled */
+    contentId: string | undefined; idsSettled: boolean;
     onLoadedHash: (path: string, hash: string | null) => void; onOpenDiff: (path: string) => void;
     commentCount: number; register: (path: string, el: HTMLElement | null) => void;
 }) {
@@ -64,9 +67,11 @@ function ReviewSection({ sessionId, file, copy, root, collapsed, onToggle, viewe
         io.observe(el);
         return () => io.disconnect();
     }, [near, root]);
-    const load = near && !collapsed;
-    const { state, reload } = useGitFileDiff(sessionId, file.path, file.status === 'untracked', load, refreshToken, ignoreWs);
-    const hash = useMemo(() => (state.phase === 'ready' && !ignoreWs ? diffRowsHash(state.rows) : null), [state, ignoreWs]);
+    // Wait for the content ids so the first fetch is not repeated when they land;
+    // afterwards only THIS file's signature/content change refetches (review 低4).
+    const load = near && !collapsed && idsSettled;
+    const { state, reload } = useGitFileDiff(sessionId, file.path, file.status === 'untracked', load, `${file.sig}:${contentId ?? ''}`, ignoreWs);
+    const hash = useMemo(() => (state.phase === 'ready' && !state.ignoreWhitespace ? diffRowsHash(state.rows) : null), [state]);
     useEffect(() => { onLoadedHash(file.path, hash); }, [file.path, hash, onLoadedHash]);
     const setRef = (el: HTMLElement | null) => { ref.current = el; register(file.path, el); };
     const name = file.path.split('/').pop() || file.path;
@@ -119,7 +124,8 @@ export function ReviewAllPane({ sessionId, files, active, refreshToken, onOpenDi
     const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
     const sections = useRef(new Map<string, HTMLElement>());
 
-    const viewedOf = (f: ReviewFile) => isViewedCurrent(viewedMap[f.path], f.sig, hashes[f.path] ?? null);
+    const { ids, settled: idsSettled } = useWorktreeIds(sessionId, files, active, refreshToken);
+    const viewedOf = (f: ReviewFile) => isViewedCurrent(viewedMap[f.path], f.sig, hashes[f.path] ?? null, ids[f.path]);
     const viewedCount = files.filter(viewedOf).length;
     // Viewed files start collapsed; the user's own toggle wins.
     const collapsedOf = (f: ReviewFile) => overrides[f.path] ?? viewedOf(f);
@@ -138,7 +144,7 @@ export function ReviewAllPane({ sessionId, files, active, refreshToken, onOpenDi
 
     const setViewed = (f: ReviewFile, next: boolean, hash: string | null) => {
         const map = { ...getViewedMap(sessionId) };
-        if (next) map[f.path] = { sig: f.sig, hash, at: Date.now() } satisfies ViewedEntry;
+        if (next) map[f.path] = { sig: f.sig, hash, at: Date.now(), cid: ids[f.path] ?? null } satisfies ViewedEntry;
         else delete map[f.path];
         if (!writeViewedMap(sessionId, pruneViewed(map, files))) { toast.show(copy.saveFailed, 'error'); return; }
         // marking viewed folds the file away (GitHub-style); un-marking opens it again
@@ -194,7 +200,7 @@ export function ReviewAllPane({ sessionId, files, active, refreshToken, onOpenDi
                         <ReviewSection key={f.path} sessionId={sessionId} file={f} copy={copy} root={scroller}
                             collapsed={collapsedOf(f)} onToggle={() => setOverrides((o) => ({ ...o, [f.path]: !collapsedOf(f) }))}
                             viewed={viewedOf(f)} onViewed={(next, hash) => setViewed(f, next, hash)}
-                            wrap={wrap} ignoreWs={ignoreWs} tabActive={active} refreshToken={refreshToken}
+                            wrap={wrap} ignoreWs={ignoreWs} tabActive={active} contentId={ids[f.path]} idsSettled={idsSettled}
                             onLoadedHash={onLoadedHash} onOpenDiff={onOpenDiff} commentCount={commentCounts.get(f.path) ?? 0}
                             register={register}/>
                     ))}

@@ -35,7 +35,7 @@ import {
     useDiffComments,
     type WriteResult,
 } from './diffCommentsStore';
-import { useGitFileDiff, type DiffLoadRefusal, type GitFileDiffState } from './useGitFileDiff';
+import { rowsForReanchor, useGitFileDiff, type DiffLoadRefusal, type GitFileDiffState } from './useGitFileDiff';
 import { FOCUSABLE_SELECTOR, isActivationKey, trapFocusTarget } from './focusTrap';
 import '../diff.css';
 import '../../files/fsbrowser.css';
@@ -208,9 +208,12 @@ export function ReviewDiffBody({ sessionId, path, state, reload, active, wrap: w
     // Re-anchor this file's comments every time a fresh diff arrives.
     useEffect(() => {
         // B-572: an ignore-whitespace diff hides lines on purpose; re-anchoring
-        // against it would mark good comments stale, so it is read-only.
-        if (state.phase !== 'ready' || !reanchor) return;
-        applyReanchored(sessionId, reanchorFile(getDiffComments(sessionId), path, state.rows));
+        // against it would mark good comments stale, so it is read-only. The
+        // check is on the ROWS' own flag: right after the toggle is switched
+        // off, the still-shown -w rows must not be written back (review 中1).
+        const target = rowsForReanchor(state, reanchor);
+        if (!target) return;
+        applyReanchored(sessionId, reanchorFile(getDiffComments(sessionId), path, target));
     }, [state, sessionId, path, reanchor]);
     // A refreshed diff invalidates an unsaved new-comment range.
     useEffect(() => { setDraft((d) => (d?.kind === 'new' ? null : d)); }, [allRows]);

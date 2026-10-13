@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { gitDiffCommand } from '../diffComments/gitDiff';
 import {
+    DELETED_CID,
+    parseWorktreeIds,
+    worktreeIdBatches,
+    WORKTREE_ID_BATCH,
     diffRowsHash,
     estimateSectionBodyPx,
     isViewedCurrent,
@@ -72,5 +76,34 @@ describe('layout + command', () => {
             .toEqual({ ok: true, command: "git -c core.quotepath=false diff --no-color --no-ext-diff -w --no-index -- /dev/null 'n.md'" });
         expect(gitDiffCommand('a.ts', { untracked: false, flavor: 'posix' }))
             .toEqual({ ok: true, command: "git -c core.quotepath=false diff --no-color --no-ext-diff HEAD -- ':(literal)a.ts'" });
+    });
+});
+
+describe('working-tree content ids (review 中3)', () => {
+    const H1 = 'a'.repeat(40);
+    const H2 = 'b'.repeat(40);
+    it('a same-size edit invalidates the mark through the content id', () => {
+        const entry = { sig: 'modified:1:1', hash: null, at: 1, cid: H1 };
+        expect(isViewedCurrent(entry, 'modified:1:1', null, H1)).toBe(true);
+        expect(isViewedCurrent(entry, 'modified:1:1', null, H2)).toBe(false);
+        expect(isViewedCurrent(entry, 'modified:1:1', null, undefined)).toBe(true);   // ids not known yet
+        expect(isViewedCurrent({ sig: 'modified:1:1', hash: null, at: 1 }, 'modified:1:1', null, H2)).toBe(true); // old mark, no cid
+        expect(parseViewedMap(JSON.stringify({ a: { sig: 's', hash: null, at: 1, cid: 7 } }))).toEqual({});
+    });
+    it('batches hash-object over quoted FILE NAMES (no :(literal) — not a pathspec), skipping deletions', () => {
+        const files = [
+            { path: "it's.ts", status: 'modified' as const }, { path: 'gone.ts', status: 'deleted' as const },
+            { path: '-dash.md', status: 'untracked' as const }, { path: 'bad\nname', status: 'modified' as const },
+        ];
+        expect(worktreeIdBatches(files, 'posix')).toEqual([{ command: "git hash-object -- 'it'\\''s.ts' '-dash.md'", paths: ["it's.ts", '-dash.md'] }]);
+        expect(worktreeIdBatches([{ path: 'a&b.ts', status: 'modified' }], 'cmd')[0].command).toBe('git hash-object -- "a&b.ts"');
+        const many = Array.from({ length: WORKTREE_ID_BATCH + 1 }, (_, i) => ({ path: `f${i}`, status: 'modified' as const }));
+        expect(worktreeIdBatches(many, 'posix').map((b) => b.paths.length)).toEqual([WORKTREE_ID_BATCH, 1]);
+        expect(DELETED_CID).toBe('deleted');
+    });
+    it('trusts the output only when it lines up one id per path', () => {
+        expect(parseWorktreeIds(`${H1}\n${H2}\n`, ['a', 'b'])).toEqual({ a: H1, b: H2 });
+        expect(parseWorktreeIds(`${H1}\n`, ['a', 'b'])).toBeNull();
+        expect(parseWorktreeIds('fatal: x\n', ['a'])).toBeNull();
     });
 });
