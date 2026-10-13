@@ -129,7 +129,9 @@
 4. **原生复制被改写**：只在 DOM 选区完全落在本终端 `.xterm-rows` 内时改写，NBSP 归一为普通空格（原来粘贴出的 NBSP 本身就是坑）。
 5. **行号定位依赖 viewer DOM**（`.fsb-viewer-path` title、Shiki `.line`）：结构变了只是不滚动，不报错；markdown 渲染态/图片没有行概念，不定位。
 6. **⌘P 拦截浏览器打印**：只在会话页挂载期间拦截；终端页与其它页面不变。Ctrl+P 在非 Mac 的会话页输入框里本来就是打印（无 readline 语义），拦截无损。
-7. **大仓库（10 万文件）打分开销**：每次输入 O(N·|q|)，用 `useDeferredValue`，结果截断 50 条；打分为线性子序列扫描，无回溯。
+7. **xterm 5.5 Linkifier 的行级缓存**：provider 结果按「鼠标所在行」缓存，只在换行/resize 时失效，行内容被改写后鼠标不换行就拿旧结果（真浏览器实测：先停在第 1 行、再输出路径 → ⌘ 点击无效）。缓解：`term.onWriteParsed` 时把私有 `_core.linkifier._activeLine` 置 -1（try/catch，字段改名只退化为该边角情况）。
+8. **FilesPanel 刷新失败会清空项目文件缓存**（`useSessionFiles` 直接 `applyProjectFiles(null)`，归 r3-review）：QuickOpen 自己的刷新已改为失败不覆盖，但面板打开后再按 ⌘P 可能看到「没有项目文件列表」——仅在会话 wrapper 不在线时出现。
+9. **大仓库（10 万文件）打分开销**：每次输入 O(N·|q|)，用 `useDeferredValue`，结果截断 50 条；打分为线性子序列扫描，无回溯。
 
 ## 验收标准
 
