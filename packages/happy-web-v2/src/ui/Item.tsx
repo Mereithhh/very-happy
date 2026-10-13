@@ -9,9 +9,11 @@ export function ItemList({ children }: { children: ReactNode }) {
   return <div className="vh-itemlist">{children}</div>;
 }
 
-export function ItemGroup({ title, footer, children }: { title?: string; footer?: ReactNode; children: ReactNode }) {
+/** `settingId` (B-575): stable anchor for settings search deep links
+ *  (`data-setting-id`, see screens/settings/settingsIndex.ts). */
+export function ItemGroup({ title, footer, children, settingId }: { title?: string; footer?: ReactNode; children: ReactNode; settingId?: string }) {
   return (
-    <div className="vh-itemgroup">
+    <div className="vh-itemgroup" data-setting-id={settingId}>
       {title && <div className="vh-itemgroup__title eyebrow">{title}</div>}
       <div className="vh-itemgroup__body">{children}</div>
       {footer && <div className="vh-itemgroup__footer">{footer}</div>}
@@ -32,6 +34,8 @@ interface ItemProps {
   multiline?: boolean;
   loading?: boolean;
   disabled?: boolean;
+  /** B-575: settings search anchor, rendered as `data-setting-id`. */
+  settingId?: string;
 }
 
 export function Item({
@@ -46,6 +50,7 @@ export function Item({
   multiline,
   loading = false,
   disabled = false,
+  settingId,
 }: ItemProps) {
   const interactive = !!onClick;
   const Cmp: any = interactive ? 'button' : 'div';
@@ -64,6 +69,7 @@ export function Item({
       type={interactive ? 'button' : undefined}
       disabled={interactive ? disabled || loading : undefined}
       aria-busy={loading || undefined}
+      data-setting-id={settingId}
     >
       {left && <span className="vh-item__left">{left}</span>}
       <span className="vh-item__text">

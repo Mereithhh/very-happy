@@ -47,7 +47,7 @@ function entryIcon(type: FsEntry['type']) {
 type BrowserView = { path: string; file: string | null; showHidden: boolean };
 // View identities only; file contents and RPC results stay with their original owners.
 const browserViews = new Map<string, BrowserView>();
-type BrowserProps = { initialFile?: { path: string } | null; active?: boolean; machineId: string; initialPath: string; viewKey?: string; onPickDir?: (path: string) => void };
+type BrowserProps = { initialFile?: { path: string } | null; active?: boolean; sessionId?: string; machineId: string; initialPath: string; viewKey?: string; onPickDir?: (path: string) => void };
 export function FsBrowser(props: BrowserProps) {
     const identity = props.viewKey && !props.onPickDir ? JSON.stringify([props.viewKey, props.machineId, props.initialPath]) : undefined;
     return <FsBrowserContent key={identity ?? JSON.stringify([props.machineId, props.initialPath])} {...props} identity={identity}/>;
@@ -59,7 +59,10 @@ function FsBrowserContent({
     onPickDir,
     identity,
     active = true,
+    sessionId,
 }: {
+    /** B-573: the session whose agent writes the open file preview follows. */
+    sessionId?: string;
     initialFile?: { path: string } | null;
     active?: boolean;
     identity?: string;
@@ -276,7 +279,7 @@ function FsBrowserContent({
                 </div>
             )}
         </div>
-        {file && <FsFileViewer machineId={machineId} path={file} onClose={() => setFile(null)} fullscreen={fullscreen} contained onToggleFullscreen={() => setFullscreen(v => !v)} />}
+        {file && <FsFileViewer sessionId={sessionId} machineId={machineId} path={file} onClose={() => setFile(null)} fullscreen={fullscreen} contained onToggleFullscreen={() => setFullscreen(v => !v)} />}
         </div>
         </div>
     );

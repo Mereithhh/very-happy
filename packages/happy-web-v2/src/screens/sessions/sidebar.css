@@ -178,11 +178,58 @@
     flex-basis: 44px;
   }
 }
+/* B-580: every labelled group header is a fold toggle (button inside the
+   head; the workspace "new chat here" button stays a sibling). */
 .sb-section-head--toggle {
+  padding-left: var(--sp-2);
+}
+.sb-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 1;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0 var(--sp-2) 0 6px;
+  border-radius: var(--r-sm);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  text-align: left;
   cursor: pointer;
 }
-.sb-section-head--toggle:hover {
+.sb-section-toggle:hover {
   color: var(--text-dim);
+}
+.sb-section-toggle:focus-visible {
+  outline: none;
+  box-shadow: none;
+  background: var(--bg-2);
+  color: var(--text);
+}
+.sb-section-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex: none;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.sb-section-summary__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-dim);
+}
+.sb-section-summary__item--input {
+  color: var(--warn);
+}
+@media (pointer: coarse) {
+  .sb-section-toggle {
+    min-height: 44px;
+  }
 }
 .sb-section-chevron {
   flex-shrink: 0;

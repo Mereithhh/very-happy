@@ -12,6 +12,7 @@ import {
   resolveFrozenRows,
   selectNeedsYouSessions,
   NEEDS_YOU_LIMIT,
+  paletteSettingsQuery,
   type PaletteGroup,
 } from './paletteModel';
 
@@ -154,8 +155,21 @@ describe('orderPaletteItems', () => {
       { key: 'n:1', group: 'needsYou', haystack: '' },
       { key: 's:1', group: 'sessions', haystack: '' },
       { key: 't:1', group: 'terminals', haystack: '' },
+      { key: 'set:1', group: 'settings', haystack: '' },
     ];
-    expect(orderPaletteItems(mixed).map((r) => r.key)).toEqual(['n:1', 'a:1', 's:2', 's:1', 't:1', 'create']);
+    // B-575: 设置 sits after chats/terminals and before the create row.
+    expect(orderPaletteItems(mixed).map((r) => r.key)).toEqual(['n:1', 'a:1', 's:2', 's:1', 't:1', 'set:1', 'create']);
+  });
+});
+
+describe('paletteSettingsQuery (B-575)', () => {
+  it('passes free text through, lower-cased', () => {
+    expect(paletteSettingsQuery('  Quiet Hours ')).toBe('quiet hours');
+  });
+  it('no settings search for tag queries or an empty query', () => {
+    expect(paletteSettingsQuery('sound #web')).toBeNull();
+    expect(paletteSettingsQuery('#')).toBeNull();
+    expect(paletteSettingsQuery('   ')).toBeNull();
   });
 });
 

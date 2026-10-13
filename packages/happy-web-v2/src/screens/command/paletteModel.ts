@@ -15,15 +15,32 @@ import {
   tagsMatchSidebarQuery,
 } from '@/screens/sessions/sidebarSearch';
 
-/** Display sections, top to bottom. Keyboard order follows the same list. */
-export type PaletteGroup = 'needsYou' | 'actions' | 'sessions' | 'terminals' | 'create';
+/** Display sections, top to bottom. Keyboard order follows the same list.
+ *  `settings` (B-575): item-level settings hits, only for a free-text query. */
+export type PaletteGroup = 'needsYou' | 'actions' | 'sessions' | 'terminals' | 'settings' | 'create';
 export const PALETTE_GROUP_ORDER: readonly PaletteGroup[] = [
   'needsYou',
   'actions',
   'sessions',
   'terminals',
+  'settings',
   'create',
 ];
+
+/** Settings rows shown in ⌘K for one query. */
+export const PALETTE_SETTINGS_LIMIT = 6;
+
+/**
+ * B-575: the free text the settings index is searched with, or null when the
+ * query carries `#tag` terms (settings have no tags — a tag query is about
+ * chats/terminals) or no free text at all.
+ */
+export function paletteSettingsQuery(query: string): string | null {
+  const parsed = parseSidebarQuery(query);
+  if (!parsed.text) return null;
+  if (!sidebarQueryIsEmpty({ ...parsed, text: '' })) return null;
+  return parsed.text;
+}
 
 /** Rows in the empty-query 等我看 section. */
 export const NEEDS_YOU_LIMIT = 6;

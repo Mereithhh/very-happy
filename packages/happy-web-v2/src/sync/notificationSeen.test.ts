@@ -11,6 +11,7 @@ import {
     seenMapsEqual,
     targetKeyOfPath,
     systemNotificationMatchesKey,
+    pushTagOfKey,
     shouldStampVisit,
     shouldStampOnArrival,
     arrivalStampAt,
@@ -472,6 +473,17 @@ describe('systemNotificationMatchesKey', () => {
         expect(
             systemNotificationMatchesKey({ data: { url: '/terminal/m1?tid=other' } }, 't:t9'),
         ).toBe(false);
+    });
+
+    it('B-569: matches the per-target push tags and data.key from push-sw.js', () => {
+        expect(systemNotificationMatchesKey({ tag: 'session:s1' }, 's1')).toBe(true);
+        expect(systemNotificationMatchesKey({ tag: 'terminal:t9' }, 't:t9')).toBe(true);
+        expect(systemNotificationMatchesKey({ tag: 'session:s2' }, 's1')).toBe(false);
+        expect(systemNotificationMatchesKey({ tag: 'terminal:t9' }, 't9')).toBe(false);
+        expect(systemNotificationMatchesKey({ tag: 'vh-test', data: { key: 's1' } }, 's1')).toBe(true);
+        expect(systemNotificationMatchesKey({ data: { key: '' } }, '')).toBe(false);
+        expect(pushTagOfKey('t:x')).toBe('terminal:x');
+        expect(pushTagOfKey('abc')).toBe('session:abc');
     });
 
     it('never matches on missing/garbage payloads', () => {

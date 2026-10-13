@@ -12,7 +12,7 @@ vi.mock('../session/CodeView', () => ({ CodeView: () => null }));
 vi.mock('../session/Markdown', () => ({ Markdown: () => null }));
 vi.mock('./SpreadsheetPreview', () => ({ SpreadsheetPreview: () => null }));
 const state = vi.hoisted(() => ({ machine: { id: 'm', active: true, metadata: { host: 'box' } } as any, size: 6 }));
-vi.mock('@/sync/storage', () => ({ useMachine: () => state.machine }));
+vi.mock('@/sync/storage', () => ({ useMachine: () => state.machine, useSessionMessages: () => ({ messages: [] }), useSession: () => null }));
 vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: (m: any) => m.active, machineLabel: (m: any) => m.metadata.host }));
 const BYTES = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00]);
 const machineFsRead = vi.hoisted(() => vi.fn());

@@ -25,6 +25,8 @@ import { useWorkspaceView } from '../workspace/workspaceViewStore';
 import { useMediaQuery } from '@/app/useMediaQuery';
 import { ReviewDiffPane } from './diffComments/ReviewDiffPane';
 import { DiffCommentsBar } from './diffComments/DiffCommentsBar';
+import { ReviewAllPane } from './reviewAll/ReviewAllPane';
+import { REVIEW_ALL_PARAM, REVIEW_TAB_ID, reviewFileList } from './reviewAll/reviewAllModel';
 import './files.css';
 
 export type FilesPanelTab = 'changed' | 'all' | 'browse';
@@ -141,7 +143,8 @@ function FilesPanelContent({
     tab?: FilesPanelTab;
     onTabChange?: (tab: FilesPanelTab) => void;
 }) {
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
+    const zh = lang.startsWith('zh');
     const { projectFiles, gitStatusFiles, isLoading, isFetching, refresh } = useSessionFiles(sessionId, refreshOnMount);
     const session = useSession(sessionId);
     const [fileFullscreen, setFileFullscreen] = useState(false);
@@ -165,6 +168,9 @@ function FilesPanelContent({
     useEffect(() => { setFileFullscreen(false); }, [selected]);
     const setSelected = (path: string) => setFileTabs(state => openWorkspaceTab(state, { id: path, title: path.split('/').pop() || path, description: path }));
     const openDiff = (path: string) => setFileTabs(state => openWorkspaceTab(state, { id: DIFF_TAB_PREFIX + path, title: `${path.split('/').pop() || path} · diff`, description: `${path} · diff` }));
+    // B-572: one review-all tab (fixed id → re-opening activates it).
+    const reviewTitle = zh ? '审阅改动' : 'Review changes';
+    const openReview = () => setFileTabs(state => openWorkspaceTab(state, { id: REVIEW_TAB_ID, title: reviewTitle, description: reviewTitle }));
     // Narrow viewports show this panel as a full-screen overlay: after handing
     // the comments to the composer, close it so the composer is visible.
     const panelInline = useMediaQuery('(min-width: 1100px)');
@@ -187,6 +193,13 @@ function FilesPanelContent({
         setSelected(pinFile);
         const next = new URLSearchParams(params); next.delete('pinFile'); setParams(next, { replace: true });
     }, [pinFile, browseMachineId]);
+    // B-572: the chat's turn rollup asks for the review tab via `?review=1`.
+    const reviewRequested = params.get(REVIEW_ALL_PARAM) === '1';
+    useEffect(() => {
+        if (!reviewRequested || !browseMachineId) return;
+        openReview();
+        const next = new URLSearchParams(params); next.delete(REVIEW_ALL_PARAM); setParams(next, { replace: true });
+    }, [reviewRequested, browseMachineId]);
 
     const tree = useMemo(() => buildTree(projectFiles?.files ?? []), [projectFiles]);
 
@@ -201,6 +214,7 @@ function FilesPanelContent({
         }
         return out;
     }, [gitStatusFiles]);
+    const reviewFiles = useMemo(() => reviewFileList(gitStatusFiles), [gitStatusFiles]);
 
     // default to "all" tab if there are no changes
     const effectiveTab: FilesPanelTab = controlledTab === undefined && tab === 'changed' && changed.length === 0 ? 'all' : tab;
@@ -231,7 +245,7 @@ function FilesPanelContent({
             <div className="fp-body" hidden={!active || selected !== null}>
                 {effectiveTab === 'browse' ? (
                     browseMachineId && browsePath ? (
-                        <FsBrowser active={active && selected === null} viewKey={viewIdentity} machineId={browseMachineId} initialPath={browsePath} />
+                        <FsBrowser active={active && selected === null} viewKey={viewIdentity} machineId={browseMachineId} initialPath={browsePath} sessionId={sessionId} />
                     ) : (
                         <div className="fp-empty">{t('session.chat.noFiles')}</div>
                     )
@@ -243,8 +257,14 @@ function FilesPanelContent({
                             ) : effectiveTab === 'changed' ? (
                                 changed.length === 0 ? (
                                     <div className="fp-empty">{t('session.chat.noFiles')}</div>
-                                ) : (
-                                    changed.map((f) => (
+                                ) : (<>
+                                    {browseMachineId && (
+                                        <div className="fp-list-head">
+                                            <span className="fp-list-count">{zh ? `${changed.length} 个文件` : `${changed.length} file${changed.length === 1 ? '' : 's'}`}</span>
+                                            <button type="button" className="fp-review-all" onClick={openReview}>{zh ? '审阅全部' : 'Review all'}</button>
+                                        </div>
+                                    )}
+                                    {changed.map((f) => (
                                         <button
                                             key={f.fullPath}
                                             type="button"
@@ -261,8 +281,8 @@ function FilesPanelContent({
                                                 </span>
                                             )}
                                         </button>
-                                    ))
-                                )
+                                    ))}
+                                </>)
                             ) : (projectFiles?.files.length ?? 0) === 0 ? (
                                 <div className="fp-empty">{t('session.chat.noFiles')}</div>
                             ) : (
@@ -276,11 +296,12 @@ function FilesPanelContent({
                 )}
             </div>
             {fileTabs.tabs.map(file => <WorkspacePane className="fp-viewer" key={file.id} active={active && selected === file.id} order={fileTabs.tabs.map(tab => tab.id).join("\n")}>
-                {diffTabPath(file.id) !== null ? <ReviewDiffPane sessionId={sessionId} path={diffTabPath(file.id)!}
+                {file.id === REVIEW_TAB_ID ? <ReviewAllPane sessionId={sessionId} files={reviewFiles} active={active && selected === file.id}
+                    refreshToken={gitStatusFiles} onOpenDiff={openDiff}/> : diffTabPath(file.id) !== null ? <ReviewDiffPane sessionId={sessionId} path={diffTabPath(file.id)!}
                     untracked={changed.find(f => f.fullPath === diffTabPath(file.id))?.status === 'untracked'}
                     active={active && selected === file.id} refreshToken={gitStatusFiles} onOpenFile={() => setSelected(diffTabPath(file.id)!)}/> : <>
                 {!browseMachineId && <div className="fp-viewer-head"><span className="fp-viewer-path" title={file.id}>{file.id}</span></div>}
-                {browseMachineId ? <FsFileViewer machineId={browseMachineId} path={resolveAgainstCwd(file.id, browsePath)} fullscreen={fileFullscreen} onToggleFullscreen={() => setFileFullscreen(value => !value)} onClose={() => setFileTabs(state => closeWorkspaceTab(state, file.id))}/> : <FileView sessionId={sessionId} fullPath={file.id}/>}
+                {browseMachineId ? <FsFileViewer sessionId={sessionId} machineId={browseMachineId} path={resolveAgainstCwd(file.id, browsePath)} fullscreen={fileFullscreen} onToggleFullscreen={() => setFileFullscreen(value => !value)} onClose={() => setFileTabs(state => closeWorkspaceTab(state, file.id))}/> : <FileView sessionId={sessionId} fullPath={file.id}/>}
                 </>}
             </WorkspacePane>)}
             {children}
