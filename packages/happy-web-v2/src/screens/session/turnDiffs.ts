@@ -1,0 +1,378 @@
+/**
+ * B-571: which files one turn changed, from the write tools it RECORDED —
+ * pure, client-side, no RPC. Spec: specs/2026-10-change-review-surfaces.md.
+ *
+ * Shape idea from Orca `native-chat-turn-diffs.ts` (MIT): group recorded
+ * edits by the transcript's own turn boundaries, sum per path. Everything
+ * below (tool shapes, unknown counts, sub-agent attribution) is ours.
+ *
+ * Counts are LINES, the same unit the Edit tool cards' DiffView shows. A
+ * count that cannot be known (replace_all without a patch, an overwrite of
+ * an existing file, a notebook edit, a patch with no diff text) is `null` and
+ * renders as 「已改」 — never as a guessed number.
+ */
+import type { Message, ToolCall } from '@/sync/typesMessage';
+import { normalizePiToolCall } from '@/components/tools/piToolMapping';
+import { lineDiff } from './diff';
+
+/** What the rollup can show for one edit when the file row is expanded. */
+export type EditRender = { oldText: string; newText: string };
+
+export type FileEdit = {
+    path: string;
+    added: number | null;
+    removed: number | null;
+    renders: EditRender[];
+};
+
+export type TurnDiffFile = {
+    path: string;
+    /** null = at least one edit of this file could not be counted. */
+    added: number | null;
+    removed: number | null;
+    renders: EditRender[];
+    edits: number;
+};
+
+export type TurnDiff = {
+    files: TurnDiffFile[];
+    /** Sums over the files whose counts are known. */
+    added: number;
+    removed: number;
+    /** Some file's count is unknown — the totals cover only part of the turn. */
+    partial: boolean;
+};
+
+/** Beyond this many LCS cells (after trimming common lines) the count is reported unknown. */
+export const EDIT_DIFF_MAX_CELLS = 250_000;
+
+const asString = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+const record = (v: unknown): Record<string, unknown> | null =>
+    (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+
+/** Lines of a file body: a trailing newline does not open another line. */
+export function countLines(text: string): number {
+    if (text === '') return 0;
+    const parts = text.split('\n');
+    return parts[parts.length - 1] === '' ? parts.length - 1 : parts.length;
+}
+
+/** +/- lines of an old→new replacement; null when too large to diff on the main thread. */
+export function countReplacement(oldText: string, newText: string): { added: number; removed: number } | null {
+    const a = oldText === '' ? [] : oldText.split('\n');
+    const b = newText === '' ? [] : newText.split('\n');
+    let start = 0;
+    while (start < a.length && start < b.length && a[start] === b[start]) start++;
+    let endA = a.length;
+    let endB = b.length;
+    while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
+    const restA = a.slice(start, endA);
+    const restB = b.slice(start, endB);
+    if (restA.length === 0 || restB.length === 0) return { added: restB.length, removed: restA.length };
+    if (restA.length * restB.length > EDIT_DIFF_MAX_CELLS) return null;
+    let added = 0;
+    let removed = 0;
+    for (const row of lineDiff(restA.join('\n'), restB.join('\n'))) {
+        if (row.type === 'add') added++;
+        else if (row.type === 'del') removed++;
+    }
+    return { added, removed };
+}
+
+/** Count hunk body lines of a unified diff (file headers `+++`/`---` skipped). */
+export function countUnifiedDiff(diff: string): { added: number; removed: number } {
+    let added = 0;
+    let removed = 0;
+    let inHunk = false;
+    for (const line of diff.split('\n')) {
+        if (line.startsWith('@@')) { inHunk = true; continue; }
+        if (!inHunk && (line.startsWith('+++') || line.startsWith('---'))) continue;
+        if (line.startsWith('diff --git')) { inHunk = false; continue; }
+        if (line.startsWith('+')) added++;
+        else if (line.startsWith('-')) removed++;
+    }
+    return { added, removed };
+}
+
+/** Rebuild old/new snippets from a unified diff's hunks, for DiffView. */
+export function unifiedDiffRender(diff: string): EditRender | null {
+    const oldLines: string[] = [];
+    const newLines: string[] = [];
+    let inHunk = false;
+    for (const line of diff.split('\n')) {
+        if (line.startsWith('@@')) {
+            if (inHunk) { oldLines.push('⋯'); newLines.push('⋯'); }
+            inHunk = true;
+            continue;
+        }
+        if (!inHunk) continue;
+        if (line.startsWith('\\')) continue;
+        const sign = line[0];
+        const body = line.slice(1);
+        if (sign === '+') newLines.push(body);
+        else if (sign === '-') oldLines.push(body);
+        else if (sign === ' ' || line === '') { oldLines.push(body); newLines.push(body); }
+    }
+    if (!inHunk) return null;
+    return { oldText: oldLines.join('\n'), newText: newLines.join('\n') };
+}
+
+/** Claude `toolUseResult.structuredPatch` → +/- counts; null when absent. */
+function structuredPatchCounts(result: unknown): { added: number; removed: number } | null {
+    const patch = record(result)?.structuredPatch;
+    if (!Array.isArray(patch)) return null;
+    let added = 0;
+    let removed = 0;
+    for (const hunk of patch) {
+        const lines = record(hunk)?.lines;
+        if (!Array.isArray(lines)) return null;
+        for (const line of lines) {
+            if (typeof line !== 'string') continue;
+            if (line.startsWith('+')) added++;
+            else if (line.startsWith('-')) removed++;
+        }
+    }
+    return { added, removed };
+}
+
+function codexPatchEdits(input: Record<string, unknown>): FileEdit[] {
+    const changes = record(input.changes) ?? record(input.fileChanges);
+    if (!changes) return [];
+    const edits: FileEdit[] = [];
+    for (const [rawPath, rawChange] of Object.entries(changes)) {
+        if (!rawPath.trim()) continue;
+        const change = record(rawChange) ?? {};
+        const kind = record(change.kind);
+        const type = asString(kind?.type) ?? asString(change.type);
+        const update = record(change.update);
+        const movePath = asString(kind?.move_path) ?? asString(update?.move_path) ?? asString(change.move_path);
+        const path = movePath && movePath.trim() ? movePath : rawPath;
+        const addContent = asString(record(change.add)?.content) ?? (type === 'add' ? asString(change.content) : null);
+        const delContent = asString(record(change.delete)?.content) ?? (type === 'delete' ? asString(change.content) : null);
+        const diff = asString(change.diff) ?? asString(change.unified_diff) ?? asString(update?.unified_diff);
+        const modify = record(change.modify);
+        if (diff !== null && diff.trim() !== '') {
+            const counts = countUnifiedDiff(diff);
+            const render = unifiedDiffRender(diff);
+            // `add` changes from the app-server carry the new file as a diff too.
+            edits.push({ path, ...counts, renders: render ? [render] : addContent !== null ? [{ oldText: '', newText: addContent }] : [] });
+        } else if (addContent !== null) {
+            edits.push({ path, added: countLines(addContent), removed: 0, renders: [{ oldText: '', newText: addContent }] });
+        } else if (delContent !== null) {
+            edits.push({ path, added: 0, removed: countLines(delContent), renders: [{ oldText: delContent, newText: '' }] });
+        } else if (modify && typeof modify.old_content === 'string' && typeof modify.new_content === 'string') {
+            const counts = countReplacement(modify.old_content, modify.new_content);
+            edits.push({ path, added: counts?.added ?? null, removed: counts?.removed ?? null, renders: [{ oldText: modify.old_content, newText: modify.new_content }] });
+        } else {
+            edits.push({ path, added: null, removed: null, renders: [] });
+        }
+    }
+    return edits;
+}
+
+/** File-path-bearing tools that READ or WRITE (used for the "existed before" check). */
+const TOUCH_TOOLS = new Set(['Read', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
+
+/** The path a Claude-shaped tool points at (after the pi mapping), or null. */
+export function toolTouchedPath(rawTool: ToolCall): string | null {
+    const tool = normalizePiToolCall(rawTool);
+    if (!TOUCH_TOOLS.has(tool.name)) return null;
+    const input = record(tool.input) ?? {};
+    return asString(input.file_path) ?? asString(input.notebook_path);
+}
+
+export type EditContext = {
+    /** Paths (as written by the tool, normalized) touched by EARLIER messages of this session. */
+    seenBefore: ReadonlySet<string>;
+};
+
+/**
+ * Write-tool calls → the files they changed. Only COMPLETED calls count: a
+ * failed, denied or still-running edit changed nothing (yet).
+ */
+export function toolFileEdits(rawTool: ToolCall, ctx: EditContext): FileEdit[] {
+    if (rawTool.state !== 'completed') return [];
+    const tool = normalizePiToolCall(rawTool);
+    const input = record(tool.input) ?? {};
+    switch (tool.name) {
+        case 'Edit': {
+            const path = asString(input.file_path);
+            if (!path) return [];
+            const oldText = asString(input.old_string) ?? '';
+            const newText = asString(input.new_string) ?? '';
+            const exact = structuredPatchCounts(tool.result);
+            const counts = exact ?? (input.replace_all === true ? null : countReplacement(oldText, newText));
+            return [{ path, added: counts?.added ?? null, removed: counts?.removed ?? null, renders: [{ oldText, newText }] }];
+        }
+        case 'MultiEdit': {
+            const path = asString(input.file_path);
+            if (!path) return [];
+            const list = Array.isArray(input.edits) ? input.edits.map(record).filter((e): e is Record<string, unknown> => e !== null) : [];
+            const renders = list.map((e) => ({ oldText: asString(e.old_string) ?? '', newText: asString(e.new_string) ?? '' }));
+            const exact = structuredPatchCounts(tool.result);
+            if (exact) return [{ path, ...exact, renders }];
+            let added: number | null = 0;
+            let removed: number | null = 0;
+            for (const [i, e] of list.entries()) {
+                const counts = e.replace_all === true ? null : countReplacement(renders[i].oldText, renders[i].newText);
+                if (!counts || added === null || removed === null) { added = null; removed = null; break; }
+                added += counts.added;
+                removed += counts.removed;
+            }
+            return [{ path, added, removed, renders }];
+        }
+        case 'Write': {
+            const path = asString(input.file_path);
+            if (!path) return [];
+            const content = asString(input.content) ?? '';
+            const result = record(tool.result);
+            const type = asString(result?.type);
+            const exact = structuredPatchCounts(result);
+            if (type === 'update' && exact) return [{ path, ...exact, renders: [{ oldText: '', newText: content }] }];
+            const created = type === 'create' || (type !== 'update' && !ctx.seenBefore.has(normalizeToolPath(path)));
+            return created
+                ? [{ path, added: countLines(content), removed: 0, renders: [{ oldText: '', newText: content }] }]
+                : [{ path, added: null, removed: null, renders: [] }];
+        }
+        case 'NotebookEdit': {
+            const path = asString(input.notebook_path) ?? asString(input.file_path);
+            return path ? [{ path, added: null, removed: null, renders: [] }] : [];
+        }
+        case 'CodexPatch':
+            return codexPatchEdits(input);
+        default:
+            return [];
+    }
+}
+
+/** Light, cwd-free normalization so `./a.ts`, `a.ts` and `a//b` compare equal. */
+export function normalizeToolPath(path: string): string {
+    let p = path.trim().replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+    while (p.startsWith('./')) p = p.slice(2);
+    return p.replace(/\/\.\//g, '/').replace(/(.)\/$/, '$1');
+}
+
+const editCache = new WeakMap<ToolCall, { seen: boolean; edits: FileEdit[] }>();
+
+/** Cached per ToolCall object — long transcripts rebuild rows often. */
+function cachedEdits(tool: ToolCall, ctx: EditContext): FileEdit[] {
+    // Only Write depends on ctx, and only through one bit.
+    const path = normalizePiToolCall(tool).name === 'Write' ? toolTouchedPath(tool) : null;
+    const seen = path ? ctx.seenBefore.has(normalizeToolPath(path)) : false;
+    const hit = editCache.get(tool);
+    if (hit && hit.seen === seen) return hit.edits;
+    const edits = toolFileEdits(tool, ctx);
+    editCache.set(tool, { seen, edits });
+    return edits;
+}
+
+const isSubagentCard = (message: Message) => message.kind === 'tool-call' && (message.tool.name === 'Task' || message.tool.name === 'Agent');
+
+/**
+ * Every tool call in `messages`, sub-agent children included (depth-first, in
+ * order). Sub-agent work is attributed to the turn holding its card: the
+ * turn sent it out, and a background one finishing later still updates that
+ * turn's rollup when its messages arrive.
+ */
+export function* walkToolCalls(messages: readonly Message[]): Generator<ToolCall> {
+    for (const message of messages) {
+        if (message.kind !== 'tool-call') continue;
+        yield message.tool;
+        if (isSubagentCard(message) && message.children.length > 0) yield* walkToolCalls(message.children);
+    }
+}
+
+/** Record every path these messages touched (Read/Edit/Write…) into `into`. */
+export function collectTouchedPaths(messages: readonly Message[], into: Set<string>): Set<string> {
+    for (const tool of walkToolCalls(messages)) {
+        const path = toolTouchedPath(tool);
+        if (path) into.add(normalizeToolPath(path));
+        if (tool.name === 'CodexPatch') {
+            const input = record(tool.input);
+            const changes = record(input?.changes) ?? record(input?.fileChanges);
+            for (const key of Object.keys(changes ?? {})) into.add(normalizeToolPath(key));
+        }
+    }
+    return into;
+}
+
+/**
+ * One turn's recorded file changes, or null when it wrote nothing.
+ * `seenBefore` = paths touched before this turn (see toolFileEdits/Write).
+ */
+export function turnDiffSummary(turnMessages: readonly Message[], seenBefore: ReadonlySet<string>): TurnDiff | null {
+    const seen = new Set(seenBefore);
+    const byPath = new Map<string, TurnDiffFile>();
+    for (const tool of walkToolCalls(turnMessages)) {
+        for (const edit of cachedEdits(tool, { seenBefore: seen })) {
+            const key = normalizeToolPath(edit.path);
+            const prev = byPath.get(key);
+            if (!prev) {
+                byPath.set(key, { path: edit.path, added: edit.added, removed: edit.removed, renders: [...edit.renders], edits: 1 });
+            } else {
+                const known = prev.added !== null && prev.removed !== null && edit.added !== null && edit.removed !== null;
+                prev.added = known ? prev.added! + edit.added! : null;
+                prev.removed = known ? prev.removed! + edit.removed! : null;
+                prev.renders.push(...edit.renders);
+                prev.edits++;
+            }
+        }
+        const touched = toolTouchedPath(tool);
+        if (touched) seen.add(normalizeToolPath(touched));
+    }
+    if (byPath.size === 0) return null;
+    const files = [...byPath.values()];
+    let added = 0;
+    let removed = 0;
+    let partial = false;
+    for (const file of files) {
+        if (file.added === null || file.removed === null) { partial = true; continue; }
+        added += file.added;
+        removed += file.removed;
+    }
+    return { files, added, removed, partial };
+}
+
+/** Show a path relative to the session cwd when it lives under it. */
+export function displayPath(path: string, cwd: string | null | undefined): string {
+    const p = normalizeToolPath(path);
+    if (!cwd) return p;
+    const root = normalizeToolPath(cwd).replace(/\/$/, '');
+    return root && p.startsWith(`${root}/`) ? p.slice(root.length + 1) : p;
+}
+
+/**
+ * B-573: the paths a COMPLETED write tool wrote (no line counting — cheap
+ * enough to run over a whole session on every message).
+ */
+export function writtenPathsOf(rawTool: ToolCall): string[] {
+    if (rawTool.state !== 'completed') return [];
+    const tool = normalizePiToolCall(rawTool);
+    const input = record(tool.input) ?? {};
+    switch (tool.name) {
+        case 'Edit':
+        case 'MultiEdit':
+        case 'Write': {
+            const path = asString(input.file_path);
+            return path ? [path] : [];
+        }
+        case 'NotebookEdit': {
+            const path = asString(input.notebook_path) ?? asString(input.file_path);
+            return path ? [path] : [];
+        }
+        case 'CodexPatch': {
+            const changes = record(input.changes) ?? record(input.fileChanges);
+            if (!changes) return [];
+            const out: string[] = [];
+            for (const [path, raw] of Object.entries(changes)) {
+                const change = record(raw);
+                const move = asString(record(change?.kind)?.move_path) ?? asString(record(change?.update)?.move_path) ?? asString(change?.move_path);
+                if (path.trim()) out.push(path);
+                if (move && move.trim()) out.push(move);
+            }
+            return out;
+        }
+        default:
+            return [];
+    }
+}

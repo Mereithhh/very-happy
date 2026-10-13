@@ -6,6 +6,7 @@ import { parseLocalCommandMessage, parseTaskNotification, stripHarnessBlocks } f
 import { GENERIC_TURN_FAILURE, presentServiceEvent } from './serviceEvent';
 import { stripThinkingWrapper } from './thinking';
 import { summarizeCompactionTurn, type CompactionSummary } from './compaction';
+import { collectTouchedPaths, turnDiffSummary, type TurnDiff } from './turnDiffs';
 
 export type LeafRow =
     | {
@@ -30,6 +31,11 @@ export type ChatRow = LeafRow | ({ type: 'compaction'; key: string } & Compactio
     durationSeconds?: number;
     /** B-519: the task notification that started this turn (shown as the header). */
     trigger?: Message;
+} | {
+    /** B-571: the files a finished turn changed (one neutral line at its end). */
+    type: 'turn-diff';
+    key: string;
+    diff: TurnDiff;
 };
 
 /**
@@ -280,13 +286,16 @@ export function opensTurn(messages: readonly Message[], index: number, turnStart
  * moves out as the visible answer and the preceding work becomes collapsible.
  * Messages before the first user prompt stay as ordinary transcript rows.
  */
-export function buildChatRows(rawMessages: Message[], sessionLive: boolean): ChatRow[] {
+export function buildChatRows(rawMessages: Message[], sessionLive: boolean, options: { turnDiffs?: boolean } = {}): ChatRow[] {
     // B-355: attachments belong to the user turn, so they leave the stream here —
     // BEFORE the leaf/activity split below, which has three different landing
     // places for them (see extractUserAttachments).
     const { messages, attachments: userAttachments } = extractUserAttachments(rawMessages);
     const rows: ChatRow[] = [];
     const finalAgentId = lastFinalAgentId(messages);
+    // B-571: paths touched before the current turn (a Write to one of them is
+    // an overwrite, not a new file — see turnDiffs.ts).
+    const touched = options.turnDiffs ? new Set<string>() : null;
     let i = 0;
 
     while (i < messages.length) {
@@ -295,6 +304,7 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean): Cha
             let end = i + 1;
             while (end < messages.length && messages[end].kind !== 'user-text') end++;
             rows.push(...buildLeafRows(messages.slice(i, end), finalAgentId));
+            if (touched) collectTouchedPaths(messages.slice(i, end), touched);
             i = end;
             continue;
         }
@@ -394,6 +404,12 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean): Cha
         // with no work): keep it as its own line, where it always was.
         if (trigger && !rows.slice(turnRowsStart).some((row) => row.type === 'activity' && row.trigger === trigger)) {
             rows.splice(turnRowsStart, 0, ...buildLeafRows([message], finalAgentId, true, true, userAttachments));
+        }
+        // B-571: a finished turn that wrote files ends on one rollup line.
+        if (touched) {
+            const diff = !live && !compaction ? turnDiffSummary(turnMessages, touched) : null;
+            if (diff) rows.push({ type: 'turn-diff', key: `turndiff-${message.id}`, diff });
+            collectTouchedPaths(turnMessages, touched);
         }
         i = turnEnd;
     }

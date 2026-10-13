@@ -19,6 +19,7 @@ import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 import { LiveStreamView } from './LiveStreamView';
 import { endLiveStreamTurn } from '@/sync/liveStreamStore';
 import { TurnActivityView } from './TurnActivityView';
+import { TurnDiffRollup } from './TurnDiffRollup';
 import { CompactionDivider } from './CompactionDivider';
 import { buildChatRows } from './chatTurns';
 import {
@@ -96,7 +97,7 @@ export function ChatList({
         heartbeatFresh: leaseFresh,
     });
     const rows = useMemo(
-        () => buildChatRows(chronological, sessionLive),
+        () => buildChatRows(chronological, sessionLive, { turnDiffs: true }),
         [chronological, sessionLive],
     );
     const rowKeys = useMemo(() => rows.map((row) => row.key), [rows]);
@@ -359,6 +360,8 @@ export function ChatList({
                                 durationSeconds={row.durationSeconds}
                                 trigger={row.trigger}
                             />
+                        ) : row.type === 'turn-diff' ? (
+                            <TurnDiffRollup key={row.key} sessionId={sessionId} diff={row.diff} />
                         ) : row.type === 'compaction' ? (
                             <CompactionDivider key={row.key} state={row.state} startedAt={row.startedAt}
                                 durationSeconds={row.durationSeconds} error={row.error} />

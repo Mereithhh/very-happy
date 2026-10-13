@@ -1,0 +1,94 @@
+/* B-571 turn change rollup — one neutral line, no card, no accent. */
+.tdr {
+  min-width: 0;
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.tdr-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.tdr-toggle,
+.tdr-file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-sm);
+  color: inherit;
+  text-align: left;
+}
+.tdr-toggle { flex: 0 1 auto; }
+.tdr-toggle:hover,
+.tdr-file-row:hover,
+.tdr-review:hover { background: var(--bg-2); color: var(--text); }
+.tdr-toggle:focus-visible,
+.tdr-file-row:focus-visible,
+.tdr-review:focus-visible { outline: none; background: var(--bg-3); color: var(--text); }
+.tdr-summary { flex: none; }
+.tdr-counts {
+  flex: none;
+  display: inline-flex;
+  gap: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+}
+.tdr-unknown {
+  flex: none;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.tdr-review {
+  flex: none;
+  margin-left: auto;
+  min-height: 28px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+}
+.tdr-body {
+  padding: var(--sp-1) 0 0 var(--sp-4);
+}
+.tdr-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tdr-file { min-width: 0; }
+.tdr-file-row { width: 100%; }
+.tdr-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-size: var(--fs-12);
+  color: var(--text);
+}
+.tdr-edits { flex: none; color: var(--text-faint); font-size: var(--fs-11); }
+.tdr-file-row .tdr-counts,
+.tdr-file-row .tdr-unknown { margin-left: auto; }
+.tdr-diffs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0 var(--sp-2) var(--sp-5);
+}
+.tdr-note {
+  padding: var(--sp-1);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+
+@media (pointer: coarse) {
+  .tdr-toggle,
+  .tdr-file-row,
+  .tdr-review { min-height: 44px; }
+  .tdr-diffs { padding-left: 0; }
+}
