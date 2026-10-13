@@ -436,6 +436,21 @@
   /* grid item: let long titles/snippets shrink instead of widening the list */
   min-width: 0;
 }
+/* B-600: "already imported" in a picker row's meta line — opens that session,
+   the row itself stays selectable for importing again. */
+.ns-imported-link {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ns-imported-link:hover:not(:disabled) { color: var(--text); }
+.ns-imported-link:disabled { cursor: default; text-decoration: none; }
 .hs-row-head {
   display: flex;
   align-items: center;

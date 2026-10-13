@@ -32,7 +32,7 @@ describe('full-screen shell height (iOS 26 standalone bottom gap)', () => {
         const session = read('../screens/session/session.css');
         expect(session).toMatch(/\.sd-foot \{\s*padding-bottom: env\(safe-area-inset-bottom, 0px\);/);
         expect(session).toMatch(/\.sd\[data-keyboard-open='true'\] \.sd-foot \{\s*padding-bottom: 0;/);
-        // B-600: only `.sd-foot` reserves the inset; the composer adding its own
+        // B-601: only `.sd-foot` reserves the inset; the composer adding its own
         // (old inline max(sp-3, env(...))) left a ~34pt extra band on iPhone.
         expect(read('../screens/session/AgentInput.tsx')).not.toMatch(/safe-area-inset-bottom/);
     });

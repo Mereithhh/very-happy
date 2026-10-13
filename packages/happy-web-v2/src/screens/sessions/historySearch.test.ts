@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
     findTrackedSessionId,
+    historySearchCanImport,
     historySearchSupported,
     parseHistorySearch,
     parseHistorySearchStatus,
@@ -74,10 +75,20 @@ describe('findTrackedSessionId (B-549)', () => {
             s('none', 3, { claudeSessionId: B }),
             { id: 'nometa', updatedAt: 1, metadata: null },
         ];
-        expect(findTrackedSessionId('claude', A, sessions)).toBe('own-new');
-        expect(findTrackedSessionId('claude', A, sessions.filter((x) => !x.id.startsWith('own')))).toBe('imp');
-        expect(findTrackedSessionId('codex', B, sessions)).toBe('cx');
+        expect(findTrackedSessionId('claude', A, sessions)).toEqual({ kind: 'own', sessionId: 'own-new' });
+        expect(findTrackedSessionId('claude', A, sessions.filter((x) => !x.id.startsWith('own')))).toEqual({ kind: 'imported', sessionId: 'imp' });
+        expect(findTrackedSessionId('codex', B, sessions)).toEqual({ kind: 'own', sessionId: 'cx' });
         expect(findTrackedSessionId('codex', A, sessions)).toBeUndefined();
+    });
+
+    it('B-600 an original claimed only by an import (e.g. a failed import shell) stays re-importable', () => {
+        const shell = s('shell', 4, { importedFromCodexThreadId: A });
+        const hit = findTrackedSessionId('codex', A, [shell]);
+        // The panel offers "Open" only for kind 'own'; 'imported' keeps "Import again".
+        expect(hit).toEqual({ kind: 'imported', sessionId: 'shell' });
+        expect(historySearchCanImport(hit)).toBe(true);
+        expect(historySearchCanImport(undefined)).toBe(true);
+        expect(historySearchCanImport({ kind: 'own', sessionId: 'x' })).toBe(false);
     });
 });
 

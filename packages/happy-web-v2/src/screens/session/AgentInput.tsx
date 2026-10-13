@@ -1027,7 +1027,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const hasDraft = text.trim().length > 0 || attachments.length > 0 || processingAttachments;
     const canSend = hasDraft && !sending && !processingAttachments;
 
-    // B-600: no safe-area padding here — `.sd-foot` (session.css) owns the
+    // B-601: no safe-area padding here — `.sd-foot` (session.css) owns the
     // home-indicator gap; a second one doubled the band under the composer.
     return (
         <div className="ci">

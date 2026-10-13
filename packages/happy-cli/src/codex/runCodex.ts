@@ -152,7 +152,8 @@ export async function runCodex(opts: {
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
     // B-464: import of a Codex CLI / desktop thread. The original id is stamped
-    // from birth so the import picker hides it even if the fork below fails;
+    // from birth (lineage, and the picker's "imported before" label — B-600:
+    // never a reason to hide the original, since the fork below can fail);
     // the title rides along like the Claude import (B-294) — the title
     // generator never fires for an imported session.
     const importCodexThreadId = process.env[IMPORT_CODEX_THREAD_ENV];

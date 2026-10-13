@@ -16,7 +16,9 @@ import {
     trackedClaudeSessionIds,
     trackedCodexThreadIds,
     trackedHistoryIds,
+    importedHistorySessions,
     type ClaudeHistoryEntry,
+    type CodexHistoryEntry,
 } from './claudeHistoryImport';
 
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -25,6 +27,10 @@ const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
 function claude(id: string, rest: Omit<ClaudeHistoryEntry, 'id' | 'agent' | 'claudeSessionId'>): ClaudeHistoryEntry {
     return { id, agent: 'claude', claudeSessionId: id, ...rest };
+}
+
+function codex(id: string, rest: Omit<CodexHistoryEntry, 'id' | 'agent' | 'codexThreadId'>): CodexHistoryEntry {
+    return { id, agent: 'codex', codexThreadId: id, ...rest };
 }
 
 describe('B-290 / B-464 history import helpers', () => {
@@ -49,14 +55,39 @@ describe('B-290 / B-464 history import helpers', () => {
         expect(parseClaudeHistory({ error: 'boom' })).toEqual([]);
     });
 
-    it('collects tracked ids from own and imported-from metadata', () => {
+    it('B-600 tracks only conversations very-happy drives, never the import origin', () => {
         const ids = trackedClaudeSessionIds([
             { metadata: { claudeSessionId: A.toUpperCase() } } as any,
             { metadata: { claudeSessionId: B, importedFromClaudeSessionId: C } } as any,
             { metadata: { claudeSessionId: 'bad' } } as any,
             { metadata: null } as any,
         ]);
-        expect(ids.sort()).toEqual([A, B, C].sort());
+        expect(ids.sort()).toEqual([A, B].sort());
+    });
+
+    it('B-600 a failed import shell no longer hides its original; it is labelled instead', () => {
+        // Shapes a failed Codex import leaves behind (CLI 0.2.139+):
+        //  - fork failed: only importedFromCodexThreadId (stamped at birth)
+        //  - fork "succeeded" but empty (pre-B-529 guardian threads): own fork id + origin
+        const sessions = [
+            { id: 'shell-failed', updatedAt: 1, metadata: { importedFromCodexThreadId: A, summary: { text: '重构 x', updatedAt: 1 } } },
+            { id: 'shell-empty', updatedAt: 5, metadata: { codexThreadId: B, importedFromCodexThreadId: A } },
+            { id: 'claude-imp', updatedAt: 2, metadata: { claudeSessionId: B, importedFromClaudeSessionId: C } },
+        ] as any[];
+        const tracked = trackedHistoryIds('codex', sessions);
+        expect(tracked).toEqual([B]);
+        const rows = [
+            codex(A, { cwd: '/w', firstPrompt: '重构 x', startedAt: 0, updatedAt: 9, sizeBytes: 1 }),
+            codex(B, { cwd: '/w', firstPrompt: 'the fork', startedAt: 0, updatedAt: 8, sizeBytes: 1 }),
+        ];
+        expect(filterImportableHistory(rows, tracked, '重构').map((e) => e.id)).toEqual([A]);
+
+        const imported = importedHistorySessions('codex', sessions);
+        expect(imported.get(A)).toEqual({ sessionId: 'shell-empty' });
+        expect(imported.has(B)).toBe(false);
+        expect(importedHistorySessions('codex', sessions.slice(0, 1)).get(A)).toEqual({ sessionId: 'shell-failed', title: '重构 x' });
+        expect(importedHistorySessions('claude', sessions).get(C)).toEqual({ sessionId: 'claude-imp' });
+        expect(trackedHistoryIds('claude', sessions)).toEqual([B]);
     });
 
     it('B-464 parses codex-list-history rows and tracks own thread + import origin', () => {
@@ -82,7 +113,7 @@ describe('B-290 / B-464 history import helpers', () => {
             { metadata: { claudeSessionId: A } } as any,
             { metadata: null } as any,
         ]);
-        expect(ids.sort()).toEqual([A, B, C].sort());
+        expect(ids.sort()).toEqual([A, B].sort());
         expect(trackedHistoryIds('codex', [{ metadata: { codexThreadId: A } } as any])).toEqual([A]);
         expect(trackedHistoryIds('claude', [{ metadata: { codexThreadId: A } } as any])).toEqual([]);
 
