@@ -17,6 +17,9 @@ try { (document as unknown as { fonts?: { load?: (q: string) => unknown } }).fon
 import './styles/tokens.css';
 import './styles/base.css';
 
+// B-567: presence input listeners from the first tap (cold start), and the
+// push-click marker consumed before the router reads the URL.
+import './app/presenceBoot';
 import { installPwaPromptCapture } from './app/pwaInstallCapture.ts';
 import { installChunkRecovery } from './app/chunkRecovery';
 import { ChunkFailure } from './app/ChunkFailure';

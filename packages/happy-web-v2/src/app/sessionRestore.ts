@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { storage } from '@/sync/storage';
 import { machineResumeSession } from '@/sync/ops';
 import { releaseSessionInactive } from '@/sync/sessionArchiveHold';
+import { archiveCommitKey, deferredCommits } from './deferredCommit';
 import {
   advanceRestoreState,
   mapResumeError,
@@ -59,6 +60,17 @@ function ensureTicker() {
  *  resume (the session then comes online within a few seconds); false with
  *  the failure recorded in the store. Idempotent while a restore is running. */
 export async function restoreSession(sessionId: string): Promise<boolean> {
+  // B-566 review: inside the archive/done undo window nothing reached the
+  // server — the process is still RUNNING. Restoring it (resume-first) would
+  // race a live wrapper, and the deferred archive would kill it 6 s later
+  // together with whatever the composer just queued. Re-using the session
+  // (banner Restore, composer send, row Restore) therefore means Undo.
+  if (deferredCommits.undo(archiveCommitKey(sessionId))) {
+    const back = storage.getState().sessions[sessionId];
+    // It was live before the archive click → it is live again; nothing to spawn.
+    // It was merely offline → fall through to the ordinary restore below.
+    if (!back || back.active) return true;
+  }
   const store = useSessionRestore.getState();
   const current = store.states[sessionId];
   if (current && current.phase !== 'failed') return false;

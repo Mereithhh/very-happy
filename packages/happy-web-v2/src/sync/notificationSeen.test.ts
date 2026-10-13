@@ -487,37 +487,56 @@ describe('systemNotificationMatchesKey', () => {
 // B-086 — badge counting consistency: the writer's stamp coverage
 // ---------------------------------------------------------------------------
 
+// B-567 presence fixtures: PRESENT = visible+focused+recent input; the old
+// boolean `visible` maps to PRESENT / HIDDEN_RECENT.
+const PRESENT = { visible: true, present: true, recentInput: true };
+const HIDDEN_RECENT = { visible: false, present: false, recentInput: true };
+const VISIBLE_AWAY = { visible: true, present: false, recentInput: false }; // tab shown, nobody there
+const VISIBLE_UNFOCUSED = { visible: true, present: false, recentInput: true }; // other app focused
+const HIDDEN_AWAY = { visible: false, present: false, recentInput: false };
+
 describe('shouldStampVisit (the tracker decision table)', () => {
-    it('dwell-elapsed stamps only a visible page (counted is irrelevant — it is becoming counted)', () => {
-        expect(shouldStampVisit('dwell-elapsed', false, true)).toBe(true);
-        expect(shouldStampVisit('dwell-elapsed', false, false)).toBe(false);
+    it('dwell-elapsed stamps only when the user is present (counted is irrelevant — it is becoming counted)', () => {
+        expect(shouldStampVisit('dwell-elapsed', false, PRESENT)).toBe(true);
+        expect(shouldStampVisit('dwell-elapsed', false, HIDDEN_RECENT)).toBe(false);
+        // B-567: a visible tab is not a reader
+        expect(shouldStampVisit('dwell-elapsed', false, VISIBLE_AWAY)).toBe(false);
+        expect(shouldStampVisit('dwell-elapsed', false, VISIBLE_UNFOCUSED)).toBe(false);
     });
 
-    it('heartbeat stamps only counted+visible', () => {
-        expect(shouldStampVisit('heartbeat', true, true)).toBe(true);
-        expect(shouldStampVisit('heartbeat', true, false)).toBe(false);
-        expect(shouldStampVisit('heartbeat', false, true)).toBe(false);
+    it('heartbeat stamps only counted+present', () => {
+        expect(shouldStampVisit('heartbeat', true, PRESENT)).toBe(true);
+        expect(shouldStampVisit('heartbeat', true, HIDDEN_RECENT)).toBe(false);
+        expect(shouldStampVisit('heartbeat', false, PRESENT)).toBe(false);
+        expect(shouldStampVisit('heartbeat', true, VISIBLE_AWAY)).toBe(false);
+        expect(shouldStampVisit('heartbeat', true, VISIBLE_UNFOCUSED)).toBe(false);
     });
 
     it('B-086: going hidden stamps a counted visit at that instant', () => {
-        expect(shouldStampVisit('went-hidden', true, false)).toBe(true);
+        expect(shouldStampVisit('went-hidden', true, HIDDEN_RECENT)).toBe(true);
         // a visit that never counted (dwell not elapsed) writes nothing
-        expect(shouldStampVisit('went-hidden', false, false)).toBe(false);
+        expect(shouldStampVisit('went-hidden', false, HIDDEN_RECENT)).toBe(false);
         // guard: the event is "went hidden" — a visible page is not it
-        expect(shouldStampVisit('went-hidden', true, true)).toBe(false);
+        expect(shouldStampVisit('went-hidden', true, PRESENT)).toBe(false);
+        // B-567: the screen locking after the user walked away is not a read
+        expect(shouldStampVisit('went-hidden', true, HIDDEN_AWAY)).toBe(false);
     });
 
     it('B-086: pagehide stamps a counted STILL-VISIBLE teardown (tab close)', () => {
-        expect(shouldStampVisit('pagehide', true, true)).toBe(true);
+        expect(shouldStampVisit('pagehide', true, PRESENT)).toBe(true);
+        // clicking the tab strip may already have taken focus — recent input suffices
+        expect(shouldStampVisit('pagehide', true, VISIBLE_UNFOCUSED)).toBe(true);
         // already hidden → the went-hidden stamp covered that instant
-        expect(shouldStampVisit('pagehide', true, false)).toBe(false);
-        expect(shouldStampVisit('pagehide', false, true)).toBe(false);
+        expect(shouldStampVisit('pagehide', true, HIDDEN_RECENT)).toBe(false);
+        expect(shouldStampVisit('pagehide', false, PRESENT)).toBe(false);
+        expect(shouldStampVisit('pagehide', true, VISIBLE_AWAY)).toBe(false);
     });
 
-    it('route-exit keeps the old rule: counted && visible only', () => {
-        expect(shouldStampVisit('route-exit', true, true)).toBe(true);
-        expect(shouldStampVisit('route-exit', true, false)).toBe(false);
-        expect(shouldStampVisit('route-exit', false, true)).toBe(false);
+    it('route-exit: counted && visible && recent input', () => {
+        expect(shouldStampVisit('route-exit', true, PRESENT)).toBe(true);
+        expect(shouldStampVisit('route-exit', true, HIDDEN_RECENT)).toBe(false);
+        expect(shouldStampVisit('route-exit', false, PRESENT)).toBe(false);
+        expect(shouldStampVisit('route-exit', true, VISIBLE_AWAY)).toBe(false);
     });
 });
 

@@ -629,7 +629,7 @@ export const zhHans: TranslationStructure = {
         closeGuard: '⌘W 收掉会话',
         closeGuardDescription: '⌘W（已安装的应用）/ ⌥W（浏览器标签页）收掉的是会话本身——聊天会话归档、终端关闭，与行菜单同一套流程，完成后回到首页。其他页面不拦截，快捷键交还给浏览器。在浏览器标签页里 ⌘W 本来就属于浏览器：页面根本收不到这个按键，整个标签页就已经被关掉（会话仍在运行），只有浏览器自带的对话框能拦住它——那个对话框的文案和样式我们无法定制。',
         closeViewConfirm: '⌘W 收掉会话前确认',
-        closeViewConfirmDescription: '当 ⌘W / ⌥W 要归档当前聊天会话或关闭当前终端时先询问一次；关掉此开关则不弹窗直接执行。取消后原地不动，焦点回到原处。',
+        closeViewConfirmDescription: '当 ⌘W / ⌥W 要关闭当前终端时先询问一次；归档聊天会话不再询问，改为几秒内可撤销。关掉此开关则不弹窗直接执行。取消后原地不动，焦点回到原处。',
         closeTabWarning: '离开页面前提醒',
         closeTabWarningDescription: '当会话或终端视图打开时，让浏览器在关闭或刷新标签页前确认一次。用的是浏览器自带对话框；应用自己主动发起的刷新（自动更新、退出登录）不受影响。',
         // Appearance settings screen
@@ -4161,6 +4161,19 @@ export const zhHans: TranslationStructure = {
 
     // Diagnostics / health screen.
     // B-516: optimistic new-session page (sync/pendingSessions.ts)
+    // B-565 / B-566: 局部渲染兜底 + 归档/完成撤销 toast
+    robustness: {
+        renderFailed: '这条内容渲染失败',
+        panelFailed: '这个面板渲染失败',
+        panelFailedHint: '应用其余部分仍可正常使用。',
+        retry: '重试',
+        copyError: '复制错误',
+        errorCopied: '已复制错误信息',
+        archived: '已归档',
+        markedDone: '已标记完成',
+        undo: '撤销',
+        undoTooLate: '已生效——可在「已归档」里恢复。',
+    },
     pendingSession: {
         starting: '正在启动…',
         connecting: '正在连接…',

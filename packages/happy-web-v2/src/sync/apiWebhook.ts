@@ -78,12 +78,15 @@ export async function saveWebhookConfig(credentials: AuthCredentials, config: We
 export async function notifyWebhook(
     credentials: AuthCredentials,
     payload: { title: string; message?: string; sessionId?: string; taskId?: string },
+    opts?: { keepalive?: boolean },
 ): Promise<boolean> {
     try {
         const response = await fetch(`${getServerUrl()}/v1/webhook/notify`, {
             method: 'POST',
             headers: headers(credentials),
             body: JSON.stringify(payload),
+            // B-566: a mark-done committed while the page is going away
+            ...(opts?.keepalive ? { keepalive: true } : {}),
         });
         if (!response.ok) return false;
         const data = await response.json();

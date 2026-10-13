@@ -1832,10 +1832,13 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
  * Archive a session by deactivating it on the server.
  * Use this when the CLI process is already dead and sessionKill can't reach it.
  */
-export async function sessionArchive(sessionId: string): Promise<{ success: boolean; message?: string }> {
+export async function sessionArchive(sessionId: string, opts?: { keepalive?: boolean }): Promise<{ success: boolean; message?: string }> {
     try {
+        // B-566: `keepalive` lets an archive committed during pagehide (undo
+        // window flushed on page exit) outlive the document.
         const response = await apiSocket.request(`/v1/sessions/${sessionId}/archive`, {
-            method: 'POST'
+            method: 'POST',
+            ...(opts?.keepalive ? { keepalive: true } : {}),
         });
         if (!response.ok) {
             return { success: false, message: `Server error: ${response.status}` };

@@ -22,6 +22,7 @@ import { shouldShowFirstRun, shouldShowWorkspaceGuide } from '@/screens/onboardi
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { AppShell, type AppShellMode } from './AppShell';
 import './layout.css';
+import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 
 export function AppLayout() {
   // Singleton terminal sync (daemon pushes + legacy-poll fallback) — lives at
@@ -96,7 +97,7 @@ export function AppLayout() {
   return (
     <>
       <AppShell mode={mode} width={width} onResizeStart={onDragStart}
-        sidebar={<Sidebar />}
+        sidebar={<RecoverableBoundary region="sidebar"><Sidebar /></RecoverableBoundary>}
         rail={<>
           <button className="app-rail-btn" onClick={() => setCollapsed(false)} aria-label="expand sidebar" title="Show sidebar">
             <PanelLeft size={18} />

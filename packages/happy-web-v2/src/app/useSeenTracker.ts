@@ -13,9 +13,13 @@
  *     it a pass-through render (redirects, a mistyped ⌘K jump, back-button
  *     bounces, the board's "next item" hops) would silently mark a target read
  *     the user never saw.
- *  2. VISIBILITY — a hidden tab doesn't count. A backgrounded PWA parked on a
- *     session must not eat that session's notifications; the dwell restarts
- *     when the tab comes back.
+ *  2. PRESENCE (B-567, was: visibility) — a hidden tab doesn't count, and
+ *     neither does a visible one nobody is at: counting and heartbeats need
+ *     visible + document.hasFocus() + a trusted input within 5 min
+ *     (sync/userPresence). A dwell that elapses without presence waits for
+ *     the next trusted input and restarts; a heartbeat missed for absence is
+ *     made up on the next input. Exit stamps need a recent input. Phones are
+ *     unaffected in practice: the tap that opened the session is the input.
  *  3. HEARTBEAT + EXIT — while the target stays open and visible we re-stamp
  *     every `HEARTBEAT_MS`, and once more on leave. That covers notifications
  *     that arrive DURING the visit (you're staring at the session — the chime
@@ -41,7 +45,8 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthContext';
-import { shouldStampVisit, targetKeyOfPath } from '@/sync/notificationSeen';
+import { shouldStampVisit, targetKeyOfPath, type VisitPresence } from '@/sync/notificationSeen';
+import { ensurePresenceTracking, hasRecentInput, isUserPresent, readPresence, subscribePresenceInput } from '@/sync/userPresence';
 import { setSeenCredentials, useNotificationSeen } from '@/sync/notificationSeenStore';
 import { dismissSystemNotificationsFor } from '@/sync/systemNotificationDismiss';
 
@@ -53,6 +58,12 @@ export const HEARTBEAT_MS = 60_000;
 function isVisible(): boolean {
     if (typeof document === 'undefined') return true;
     return document.visibilityState !== 'hidden';
+}
+
+/** B-567: the human signals for the stamp table, read at event time. */
+function visitPresence(): VisitPresence {
+    const p = readPresence();
+    return { visible: isVisible(), present: isUserPresent(p), recentInput: hasRecentInput(p) };
 }
 
 export function useSeenTracker(): void {
@@ -80,11 +91,14 @@ export function useSeenTracker(): void {
 
     useEffect(() => {
         if (!key) return;
+        ensurePresenceTracking();
 
         let dwellTimer: ReturnType<typeof setTimeout> | null = null;
         let heartbeat: ReturnType<typeof setInterval> | null = null;
         /** did this visit ever count? only then does the exit stamp apply */
         let counted = false;
+        /** B-567: a heartbeat skipped because nobody was there — made up on the next input */
+        let missedBeat = false;
 
         const stop = () => {
             if (dwellTimer) {
@@ -103,13 +117,19 @@ export function useSeenTracker(): void {
             if (dwellTimer || heartbeat) return;
             dwellTimer = setTimeout(() => {
                 dwellTimer = null;
-                if (!shouldStampVisit('dwell-elapsed', counted, isVisible())) return;
+                // B-567: not present → wait; the next trusted input restarts the dwell
+                if (!shouldStampVisit('dwell-elapsed', counted, visitPresence())) return;
                 counted = true;
                 mark();
                 // Clear this device's OS banners for the target we just opened.
                 void dismissSystemNotificationsFor(key);
                 heartbeat = setInterval(() => {
-                    if (shouldStampVisit('heartbeat', counted, isVisible())) mark();
+                    if (shouldStampVisit('heartbeat', counted, visitPresence())) {
+                        mark();
+                        missedBeat = false;
+                    } else {
+                        missedBeat = true;
+                    }
                 }, HEARTBEAT_MS);
             }, DWELL_MS);
         };
@@ -119,7 +139,7 @@ export function useSeenTracker(): void {
             // B-086: the instant a counted visit goes hidden is the last
             // moment the user was really looking — stamp it, or a turn that
             // finished just before backgrounding stays unread forever.
-            if (shouldStampVisit('went-hidden', counted, visible)) mark();
+            if (shouldStampVisit('went-hidden', counted, visitPresence())) mark();
             if (visible) start();
             else stop();
         };
@@ -130,8 +150,22 @@ export function useSeenTracker(): void {
         // still lands in the local mirror synchronously and is published on
         // this device's next refresh() (the store's offline-reads path).
         const onPageHide = () => {
-            if (shouldStampVisit('pagehide', counted, isVisible())) mark();
+            if (shouldStampVisit('pagehide', counted, visitPresence())) mark();
         };
+
+        // B-567: a trusted input is the moment presence can become true —
+        // start the dwell a non-present visit skipped, or make up a missed
+        // heartbeat. Read-state only: no focus/visibility recovery here.
+        const onPresenceInput = () => {
+            if (!isVisible()) return;
+            if (!counted) {
+                start();
+            } else if (missedBeat && shouldStampVisit('heartbeat', counted, visitPresence())) {
+                mark();
+                missedBeat = false;
+            }
+        };
+        const offPresence = subscribePresenceInput(onPresenceInput);
 
         if (isVisible()) start();
         if (typeof document !== 'undefined') {
@@ -143,6 +177,7 @@ export function useSeenTracker(): void {
 
         return () => {
             stop();
+            offPresence();
             if (typeof document !== 'undefined') {
                 document.removeEventListener('visibilitychange', onVisibility);
             }
@@ -154,7 +189,7 @@ export function useSeenTracker(): void {
             // deliberately left alone, and so is a route we're leaving while
             // hidden (a programmatic navigation in a background tab is not a
             // human reading anything).
-            if (shouldStampVisit('route-exit', counted, isVisible())) mark();
+            if (shouldStampVisit('route-exit', counted, visitPresence())) mark();
         };
     }, [key]);
 }
