@@ -115,7 +115,8 @@ describe('multi-question component wiring', () => {
     const source = readFileSync(new URL('./AskUserQuestionView.tsx', import.meta.url), 'utf8');
 
     it('keeps single-option picks local until the whole form is submitted', () => {
-        expect(source).toContain('else if (deferSubmit) onChange([o.label]);');
+        // B-564: a deferred single pick stays local and only asks the stepper to advance.
+        expect(source).toContain('else if (deferSubmit) {\n                                    onChange([o.label]);\n                                    onOptionPicked?.();');
         expect(source).toContain('multi && !deferSubmit && !disabled');
         expect(source).toContain('onSubmit(buildQuestionAnswers(questions, answers))');
     });

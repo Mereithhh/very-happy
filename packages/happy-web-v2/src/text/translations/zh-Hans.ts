@@ -791,6 +791,7 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
+        reconnectingPlaceholder: '重连中…发送的消息会在恢复后送出',
         peerMessage: {
             messageFrom: '来自其他会话的消息',
             conflict: '编辑冲突',
@@ -1046,6 +1047,11 @@ export const zhHans: TranslationStructure = {
             approveAll: '全部批准',
             denyAll: '全部拒绝',
             pending: ({ count }: { count: number }) => `${count} 个请求待处理`,
+            collapse: '收起',
+            expand: '展开',
+            pointer: ({ count }: { count: number }) => `${count} 个请求等待你处理 · 已固定在输入框上方`,
+            pointerAction: '查看',
+            answerAbove: '在输入框上方作答',
         },
     },
 
@@ -2007,6 +2013,10 @@ export const zhHans: TranslationStructure = {
             other: '聊聊这个',
             otherDescription: '用你自己的话回复',
             otherPlaceholder: '输入您的答案...',
+            next: '下一题',
+            previous: '上一题',
+            stepLabel: ({ index }: { index: number }) => `第 ${index} 题`,
+            stepsLabel: '题目',
         }
     },
 
