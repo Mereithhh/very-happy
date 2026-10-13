@@ -61,6 +61,25 @@ jobs:
       - name: Gate - changelog cliVersion is not invented
         run: node scripts/release/check-changelog-versions.mjs
 
+  design-lint:
+    name: design lint (PR added lines)
+    # B-581：只查本 PR 新增的 web .css/.tsx 行（裸色值 / 对话区写死字号 / 无替代的
+    # outline:none），存量不迁移。零依赖 node 脚本；需要完整历史求 base...HEAD。
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+      - name: 'Gate: design lint on PR added lines'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/dev/check-design-lint.mjs --base "$BASE_SHA" --head HEAD
+
   gates:
     name: quality gates (wire / server / web-v2 / cli)
     runs-on: ubuntu-latest
@@ -76,6 +95,7 @@ jobs:
           node --test scripts/changelog/check-release.test.mjs
           node --test scripts/ci/cli-smoke-evidence.test.mjs
           node --test scripts/release/check-recommended.test.mjs
+          node --test scripts/dev/check-design-lint.test.mjs
 
       # ⚠️ 顺序：setup-node 在 pnpm/action-setup **之前**。pnpm/action-setup 默认要用
       # 现成的 node/npm 装 pnpm（README: "This action does not setup Node.js for you"），

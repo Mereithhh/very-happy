@@ -42,6 +42,7 @@ pnpm -C packages/happy-wire exec vitest run
 env -u HAPPY_SERVER_URL -u HAPPY_WEBAPP_URL pnpm -C packages/happy-web-v2 exec vitest run
 pnpm -C packages/happy-web-v2 exec vite build
 pnpm -C packages/happy-web-v2 exec tsc --noEmit
+node scripts/dev/check-design-lint.mjs --base origin/main   # web 新增行设计 lint（B-581）
 
 # tmux 中运行前 unset TMUX；同机只跑一份 CLI 测试。
 pnpm -C packages/happy-cli test
