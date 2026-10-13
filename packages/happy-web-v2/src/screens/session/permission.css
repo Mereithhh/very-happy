@@ -137,7 +137,13 @@
   font-size: var(--fs-12);
   color: var(--text-dim);
 }
+.perm-dock .perm-title,
+.perm-dock .perm-count { flex: none; white-space: nowrap; }
 .perm-card--collapsed .perm-count { margin-left: 0; }
+/* Narrow + folded: the summary says more than the title. */
+@media (max-width: 600px) {
+  .perm-card--collapsed .perm-title { display: none; }
+}
 .perm-dock-body {
   display: flex;
   flex-direction: column;
