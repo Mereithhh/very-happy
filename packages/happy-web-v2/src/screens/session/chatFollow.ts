@@ -52,6 +52,19 @@ export function shouldFollowGrowth(
     return atBottom && nextHeight > prevHeight;
 }
 
+/** transcript 底端的指纹：最新一行的 key + 最新一条消息的文本长度（流式增长）。 */
+export type BottomEdge = { newestKey: string | null; lastContentLen: number };
+
+/**
+ * rows 变化是不是「底部来了新内容」：只有最新一行换了、或最新一条消息原地变长才算。
+ * 后台历史预取（sync.prefetchOlderMessagesInBackground，每页 250ms）和「加载更早」
+ * 把旧消息插在**顶部**——rows.length 照样涨，底端却没变。把它当新内容跟随，会把
+ * 80px 跟随带内正在慢慢上滚（触控板）的用户一页一页拽回底部，永远滚不出去。
+ */
+export function isBottomEdgeChange(prev: BottomEdge, next: BottomEdge): boolean {
+    return prev.newestKey !== next.newestKey || prev.lastContentLen !== next.lastContentLen;
+}
+
 /**
  * 滚动容器自身变矮时是否应保持贴底（B-114）：软键盘弹起 resize 视口把容器
  * 压矮，内容高度不变——growth 那条路永远不触发，贴底状态就丢了。仅当

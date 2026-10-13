@@ -2199,6 +2199,7 @@ export const en = {
                 help: 'Help & getting started has new sections — reviewing changes, working in chat, worktree sessions and hibernation — plus ⌘P, settings search, session peek, terminal paths and file downloads.',
                 archive: 'Archive (menu, board or Command/Ctrl W) asks for confirmation again instead of offering Undo. Done on the board stays one click with a short Undo.',
                 clipboard: 'Text an agent copies for you goes straight into the clipboard; if the page was in the background it lands the moment you return, no toast to click.',
+                scroll: 'Fixed: scrolling up slowly right after opening a chat snapped back to the bottom; it now stays where you scrolled while older messages load. The session\'s decision strip no longer appears twice and can be dismissed.'
             },
             oct13c: {
                 title: 'Worktree sessions and idle hibernation',
