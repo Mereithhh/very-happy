@@ -6,14 +6,17 @@
  *   - foreground `new Notification()` (webNotifications.ts), tagged with the
  *     session id;
  *   - Web Push shown by the service worker (public/push-sw.js), which carries
- *     `data.url` (`/session/<id>` / `/terminal/<m>?tid=<id>`) and no tag.
+ *     `data.url` (`/session/<id>` / `/terminal/<m>?tid=<id>`), `data.key`, and
+ *     (B-569) a per-target tag `session:<id>` / `terminal:<tid>`.
  * `registration.getNotifications()` returns BOTH (any notification owned by the
  * registration), so one sweep covers both. Matching is pure and tested —
  * `systemNotificationMatchesKey` in notificationSeen.ts.
  *
  * Scope: THIS device only. There is no API to close a banner on another
- * device — a phone whose PWA isn't running can't be told to dismiss anything,
- * so a stale banner may still sit in another device's notification shade. The
+ * device — a phone whose PWA isn't running can't be told to dismiss anything.
+ * B-569 narrows the gap: every push carries the account's read watermark and
+ * the SW closes covered notifications when the NEXT push arrives (iOS forbids
+ * silent pushes, so a device that receives nothing keeps its stale banner). The
  * in-app read state does sync (notificationSeenStore); the OS shade does not.
  */
 

@@ -159,6 +159,31 @@ export const en = {
         enabledOff: 'Off',
         unsupported: 'Not supported in this browser',
         permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
+        // --- B-570: test notification + opt-in card ---
+        testPush: 'Send a test notification',
+        testPushDescription: 'Checks that notifications actually reach your devices.',
+        testPushButton: 'Send test',
+        testPushTitle: 'Very Happy · Test notification',
+        testPushBody: 'If you can see this, notifications reach this device.',
+        testPushSent: ({ count }: { count: number }) => `Sent to ${count} ${count === 1 ? 'device' : 'devices'}`,
+        testPushSentPartial: ({ sent, failed }: { sent: number; failed: number }) => `Sent to ${sent}, failed on ${failed}`,
+        testPushNoDevices: 'No device is subscribed yet — turn on notifications above first.',
+        testPushNotConfigured: 'Web Push is not configured on this server.',
+        testPushUnsupported: 'This server version cannot send test notifications.',
+        testPushRateLimited: 'Too soon — try again in 10 seconds.',
+        testPushFailed: 'Could not send the test notification.',
+        optInTitle: 'Know when an agent needs you',
+        optInBody: 'Get an alert when a session asks for a decision or finishes — even with the app closed.',
+        optInPreviewLabel: 'Example',
+        optInSampleDecision: 'refactor-auth',
+        optInSampleDone: 'docs-site',
+        optInEnable: 'Turn on notifications',
+        optInEnabling: 'Turning on…',
+        optInLater: 'Not now',
+        optInClose: 'Close',
+        optInEnabledTitle: 'Notifications are on',
+        optInEnabledBody: 'This is what an alert from Very Happy looks like.',
+        optInFailed: 'Could not turn on notifications. You can retry in Settings → Notifications.',
         types: 'Alert Types',
         typesDescription: 'Choose which session events trigger a notification.',
         type_permission_request: 'Permission requests',
@@ -567,6 +592,8 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        // B-568: socket down for 1.5s+
+        reconnectingPlaceholder: 'Reconnecting… messages you send will go out once it recovers',
         // B-497: a message another session on the same machine sent this one,
         // or the daemon's edit-conflict notice — rendered as a source card.
         peerMessage: {
@@ -840,6 +867,12 @@ export const en = {
             approveAll: 'Approve all',
             denyAll: 'Deny all',
             pending: ({ count }: { count: number }) => count === 1 ? '1 request pending' : `${count} requests pending`,
+            // B-563: the dock above the composer
+            collapse: 'Collapse',
+            expand: 'Expand',
+            pointer: ({ count }: { count: number }) => count === 1 ? '1 request waiting for you · pinned above the input' : `${count} requests waiting for you · pinned above the input`,
+            pointerAction: 'Show',
+            answerAbove: 'Answer above the input',
         },
     },
 
@@ -1733,6 +1766,11 @@ export const en = {
             other: 'Talk about it',
             otherDescription: 'Reply in your own words',
             otherPlaceholder: 'Type your answer...',
+            // B-564: one question at a time
+            next: 'Next',
+            previous: 'Previous',
+            stepLabel: ({ index }: { index: number }) => `Question ${index}`,
+            stepsLabel: 'Questions',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,

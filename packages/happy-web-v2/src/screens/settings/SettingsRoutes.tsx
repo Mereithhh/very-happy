@@ -103,6 +103,7 @@ import {
   formatMinute,
 } from '@/sync/notificationPrefs';
 import { getNotificationPermission, requestNotificationPermission } from '@/sync/webNotifications';
+import { TestPushItem } from '@/screens/notifications/TestPushItem';
 import {
   useSoundPrefs,
   updateSoundPrefs,
@@ -2029,6 +2030,8 @@ function Notifications() {
               )
             }
           />
+          {/* B-570: verify delivery end to end */}
+          <TestPushItem />
         </ItemGroup>
 
         <ItemGroup

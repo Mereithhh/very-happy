@@ -1,10 +1,16 @@
 /**
- * PermissionCard — inline card shown when a session has pending permission
- * requests (Session.agentState.requests). Wires approve / approve-for-session /
- * deny to the sync ops layer.
+ * PermissionCard — the pending-request dock shown when a session has pending
+ * permission requests (Session.agentState.requests). Wires approve /
+ * approve-for-session / deny to the sync ops layer.
+ *
+ * B-563: it lives ABOVE THE COMPOSER (SessionDetailScreen's foot), not at the
+ * end of the scrolling transcript — a user reading back must still see that
+ * the agent is blocked on them. It folds to one summary line; a request the
+ * user has not seen re-opens it (permissionDock.ts). The transcript keeps only
+ * a one-line PermissionPointer, never a second actionable copy.
  */
 import { useState } from 'react';
-import { ShieldAlert } from 'lucide-react';
+import { ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useSession } from '@/sync/storage';
 import { isMirrorSession } from '@/assistant/assistantSession';
@@ -17,6 +23,15 @@ import { ElicitationRequestView } from './ElicitationRequestView';
 import { isMutableTool, knownTools } from '@/components/tools/knownTools';
 import { sessionApprovalPolicy } from './permissionCompatibility';
 import { planApprovalMode } from './planApprovalMode';
+import {
+    collapsePermissionDock,
+    expandPermissionDock,
+    isDockCollapsed,
+    pendingDockRequestIds,
+    permissionDockDomId,
+    requestSummary,
+    usePermissionDockFolded,
+} from './permissionDock';
 import './permission.css';
 
 type Pending = {
@@ -138,17 +153,15 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
     );
 }
 
-export function PermissionCard({ sessionId }: { sessionId: string }) {
-    const { t } = useTranslation();
+function usePendingRequests(sessionId: string): Pending[] {
     const session = useSession(sessionId);
     const requestsObj = session?.agentState?.requests ?? null;
-    const [busyAll, setBusyAll] = useState<null | 'approve' | 'deny'>(null);
-
     // B-105: a terminal mirror is strictly read-only — permission UI never
     // renders, whatever agentState claims (approval happens in the TUI).
-    if (session && isMirrorSession(session)) return null;
-    if (!requestsObj) return null;
-    const requests: Pending[] = Object.entries(requestsObj).map(([id, r]) => ({
+    if (!requestsObj || (session && isMirrorSession(session))) return [];
+    // A decided request can linger in `requests`; never offer it again.
+    const live = new Set(pendingDockRequestIds(requestsObj, session?.agentState?.completedRequests));
+    return Object.entries(requestsObj).filter(([id]) => live.has(id)).map(([id, r]) => ({
         id,
         tool: (r as any).tool,
         arguments: (r as any).arguments,
@@ -156,7 +169,18 @@ export function PermissionCard({ sessionId }: { sessionId: string }) {
         kind: (r as any).kind,
         permissionSuggestions: (r as any).permissionSuggestions,
     }));
+}
+
+export function PermissionCard({ sessionId }: { sessionId: string }) {
+    const { t } = useTranslation();
+    const session = useSession(sessionId);
+    const requests = usePendingRequests(sessionId);
+    const folded = usePermissionDockFolded(sessionId);
+    const [busyAll, setBusyAll] = useState<null | 'approve' | 'deny'>(null);
+
     if (requests.length === 0) return null;
+    const ids = requests.map((request) => request.id);
+    const collapsed = isDockCollapsed(folded, ids);
     const hasInteractiveQuestion = requests.some((request) => request.tool === 'AskUserQuestion' || request.kind === 'elicitation' || request.kind === 'user_dialog');
 
     const batch = async (kind: 'approve' | 'deny') => {
@@ -174,30 +198,67 @@ export function PermissionCard({ sessionId }: { sessionId: string }) {
         }
     };
 
+    const bodyId = `${permissionDockDomId(sessionId)}-body`;
     return (
-        <div className="perm-card" role="alertdialog" aria-label={t('session.permission.title')}>
-            <div className="perm-card-head">
-                <ShieldAlert size={16} />
-                <span className="perm-title">{t('session.permission.title')}</span>
-                <span className="perm-count">{t('session.permission.pending', { count: requests.length })}</span>
-            </div>
-            <div className="perm-list">
-                {requests.map((r) => (
-                    <PermissionRequestRow key={r.id} sessionId={sessionId} req={r} />
-                ))}
-            </div>
-            {requests.length > 1 && (
-                <div className="perm-batch">
-                    {!hasInteractiveQuestion && (
-                        <Button size="sm" variant="primary" loading={busyAll === 'approve'} disabled={!!busyAll} onClick={() => batch('approve')}>
-                            {t('session.permission.approveAll')}
-                        </Button>
+        <div className="perm-dock" id={permissionDockDomId(sessionId)}>
+            <div className={`perm-card${collapsed ? ' perm-card--collapsed' : ''}`} role="alertdialog" aria-label={t('session.permission.title')}>
+                <button
+                    type="button"
+                    className="perm-card-head"
+                    aria-expanded={!collapsed}
+                    aria-controls={bodyId}
+                    title={collapsed ? t('session.permission.expand') : t('session.permission.collapse')}
+                    onClick={() => (collapsed ? expandPermissionDock(sessionId) : collapsePermissionDock(sessionId, ids))}
+                >
+                    <ShieldAlert size={16} aria-hidden />
+                    <span className="perm-title">{t('session.permission.title')}</span>
+                    {collapsed && <span className="perm-summary">{requestSummary(requests[0])}</span>}
+                    <span className="perm-count">{t('session.permission.pending', { count: requests.length })}</span>
+                    {collapsed ? <ChevronUp size={16} aria-hidden /> : <ChevronDown size={16} aria-hidden />}
+                </button>
+                <div className="perm-dock-body" id={bodyId} hidden={collapsed}>
+                    <div className="perm-list">
+                        {requests.map((r) => (
+                            <PermissionRequestRow key={r.id} sessionId={sessionId} req={r} />
+                        ))}
+                    </div>
+                    {requests.length > 1 && (
+                        <div className="perm-batch">
+                            {!hasInteractiveQuestion && (
+                                <Button size="sm" variant="primary" loading={busyAll === 'approve'} disabled={!!busyAll} onClick={() => batch('approve')}>
+                                    {t('session.permission.approveAll')}
+                                </Button>
+                            )}
+                            <Button size="sm" variant="ghost" loading={busyAll === 'deny'} disabled={!!busyAll} onClick={() => batch('deny')}>
+                                {t('session.permission.denyAll')}
+                            </Button>
+                        </div>
                     )}
-                    <Button size="sm" variant="ghost" loading={busyAll === 'deny'} disabled={!!busyAll} onClick={() => batch('deny')}>
-                        {t('session.permission.denyAll')}
-                    </Button>
                 </div>
-            )}
+            </div>
+        </div>
+    );
+}
+
+/** B-563: the transcript's one-line pointer to the dock (not actionable itself). */
+export function PermissionPointer({ sessionId }: { sessionId: string }) {
+    const { t } = useTranslation();
+    const requests = usePendingRequests(sessionId);
+    if (requests.length === 0) return null;
+    const show = () => {
+        expandPermissionDock(sessionId);
+        requestAnimationFrame(() => {
+            const head = document.getElementById(permissionDockDomId(sessionId))?.querySelector<HTMLElement>('.perm-card-head');
+            head?.focus();
+        });
+    };
+    return (
+        <div className="perm-pointer">
+            <ShieldAlert size={14} aria-hidden />
+            <span className="perm-pointer-text">{t('session.permission.pointer', { count: requests.length })}</span>
+            <button type="button" className="perm-pointer-action" onClick={show}>
+                {t('session.permission.pointerAction')}
+            </button>
         </div>
     );
 }

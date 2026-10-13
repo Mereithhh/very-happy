@@ -218,6 +218,21 @@ export function buildWebhookToken(config: WebhookConfig): string {
 }
 
 /** Parse a stored `webhook:`-prefixed token into a config, or null. */
+/**
+ * True only for a stored webhook blob that is structurally broken (not JSON,
+ * not an object, no string url) — the only case pushDispatch may delete. A
+ * well-formed config that fails `validateWebhookUrl` is NOT corrupt.
+ */
+export function isWebhookTokenCorrupt(token: string): boolean {
+    if (!token.startsWith(WEBHOOK_TOKEN_PREFIX)) return false;
+    try {
+        const obj = JSON.parse(token.slice(WEBHOOK_TOKEN_PREFIX.length));
+        return !obj || typeof obj !== 'object' || typeof obj.url !== 'string';
+    } catch {
+        return true;
+    }
+}
+
 export function parseWebhookToken(token: string): WebhookConfig | null {
     if (!token.startsWith(WEBHOOK_TOKEN_PREFIX)) return null;
     try {

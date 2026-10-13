@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: mocks.send } }));
 vi.mock('@/sync/ops', () => ({ sessionAbort: mocks.abort, sessionSetPermissionMode: vi.fn() }));
+// B-568: the socket hint reads the live store; these composer tests mock storage as a plain object.
+vi.mock('./useReconnectingHint', () => ({ useReconnectingHint: () => false }));
 vi.mock('@/sync/storage', () => ({
     useSession: () => mocks.session,
     useSessionUsage: () => null,
