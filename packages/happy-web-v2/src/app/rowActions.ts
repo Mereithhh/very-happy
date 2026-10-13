@@ -31,7 +31,7 @@ import { archiveCommitKey, deferredCommits, installDeferredCommitFlush, isPageEx
 import { holdSessionInactive } from '@/sync/sessionArchiveHold';
 import { toast } from '@/ui/Toast';
 
-/** B-566: how long archive / mark-done can be undone before the server call. */
+/** B-566: how long mark-done can be undone before the server call. */
 export const UNDO_WINDOW_MS = 6_000;
 /** the inactive hold must outlive the window (+ the usual 5 s after commit),
  *  or a CLI heartbeat inside the window would resurrect the hidden row */
@@ -106,7 +106,8 @@ export async function restoreClosedTerminal(navigate: NavigateFunction, row: Clo
 }
 
 /**
- * B-566: archive / mark-done with an undo window instead of a confirm dialog.
+ * B-566: mark-done with an undo window instead of a confirm dialog (archive
+ * went back to a confirm dialog in B-591; the machinery stays kind-generic).
  *
  * The row is hidden locally at once (inactive + archivedAt stamp, held
  * against heartbeats for the whole window); the server call waits
@@ -153,19 +154,6 @@ function scheduleUndoableArchive(
   return true;
 }
 
-/** Archive a chat session with an undo window (sidebar/menu/⌘W/board). */
-export function archiveSessionWithUndo(session: Session): boolean {
-  return scheduleUndoableArchive(session, 'archive', async (reason) => {
-    try {
-      // the snapshot taken before the optimistic hide: a failed commit rolls
-      // back to the real pre-archive state (the row reappears)
-      await archiveSessionNow(session, { keepalive: isUnloadFlush(reason) });
-    } catch (error) {
-      reportCommitFailure('[archiveSession] archive failed', error, reason);
-    }
-  });
-}
-
 /** Mark done with an undo window (board ✓). Undo = no completion record,
  *  no kill, no webhook. */
 export function markSessionDoneWithUndo(session: Session, opts?: { notify?: boolean }): boolean {
@@ -188,11 +176,27 @@ function reportCommitFailure(tag: string, error: unknown, reason: FlushReason): 
   Modal.alert(t('common.error'), `${t('sessionInfo.failedToArchiveSession')}${detail}`);
 }
 
-/** Historical name kept for existing callers (Sidebar, BoardCard, ⌘W).
- *  B-566 removed the confirm dialog: it now archives with an undo window and
- *  resolves true as soon as the row is hidden. */
+/** Archive a chat session, confirm first (sidebar/menu/⌘W/board entry point).
+ *  B-591: B-566 had replaced this dialog with an undo toast; the Owner found
+ *  that too easy to trigger by accident (⌘W especially) — archive asks again,
+ *  and only mark-done (one-click by Owner rule) keeps the undo window.
+ *  Returns whether the archive actually ran — false means the user cancelled
+ *  (callers like the ⌘W flow restore focus / stay put on cancel). */
 export async function confirmArchiveSession(session: Session): Promise<boolean> {
-  return archiveSessionWithUndo(session);
+  const ok = await Modal.confirm(t('sidebar.archiveConfirm'), undefined, {
+    confirmText: t('common.archive'),
+    destructive: true,
+  });
+  if (!ok) return false;
+  try {
+    await archiveSessionNow(session);
+    return true;
+  } catch (error) {
+    console.error('[archiveSession] archive failed', error);
+    const detail = error instanceof Error && error.message ? ` (${error.message})` : '';
+    Modal.alert(t('common.error'), `${t('sessionInfo.failedToArchiveSession')}${detail}`);
+    return false;
+  }
 }
 
 /**

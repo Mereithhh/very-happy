@@ -14,7 +14,7 @@ describe('B-563 the pending-request dock sits above the composer', () => {
     const screen = read('./SessionDetailScreen.tsx');
     const chatList = read('./ChatList.tsx');
     it('renders PermissionCard in the foot between the sub-agent strip and the composer', () => {
-        const dock = screen.indexOf('{session && <PermissionCard key={id} sessionId={id} />}');
+        const dock = screen.indexOf('{session && <PermissionCard key={`permission:${id}`} sessionId={id} />}');
         expect(dock).toBeGreaterThan(screen.indexOf('{session && <SubagentDock sessionId={id} />}'));
         expect(dock).toBeLessThan(screen.indexOf('<AgentInput\n'));
         expect(dock).toBeGreaterThan(screen.indexOf('<div className="sd-foot">'));

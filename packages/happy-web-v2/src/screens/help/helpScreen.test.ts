@@ -35,6 +35,18 @@ describe('compact workspace help screen', () => {
     for (const phrase of ['终端 ↔ 结构化文本', '把文件直接粘贴到终端', '临时笔记本', '直接让 AI 复制给你']) expect(chinese).toContain(phrase);
   });
 
+  it('explains the B-563~B-588 features with a title and description in both languages (B-593)', () => {
+    const keys = ['quickOpen', 'settingsSearch', 'peek', 'turnDiff', 'reviewAll', 'diffComments', 'gitActions', 'approvals', 'quote', 'continue', 'promptRail', 'fontSize', 'worktree', 'hibernate', 'archive', 'notify', 'termPaths', 'download'];
+    for (const key of keys) {
+      expect(screen).toContain(`key: '${key}'`);
+      for (const copy of [english, chinese]) {
+        expect(copy).toContain(`${key}Title:`);
+        expect(copy).toContain(`${key}Description:`);
+      }
+    }
+    for (const group of ['review', 'converse', 'sessions']) for (const copy of [english, chinese]) expect(copy).toContain(`${group}Summary:`);
+  });
+
   it('keeps touch targets large, mobile layout compact, and colors tokenized', () => {
     expect(styles).toMatch(/\.help-screen__actions > button \{ min-height: 44px; \}/);
     expect(Number(styles.match(/\.help-topic__trigger \{[^}]*min-height: (\d+)px;/s)?.[1])).toBeGreaterThanOrEqual(44);

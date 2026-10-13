@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, ChevronDown, Clipboard, FileUp, FolderOpen, Keyboard, PlusCircle,
-  Layers3, ListChecks, MessageSquarePlus, Settings, StickyNote, TerminalSquare, Text, Zap,
+  Archive, ArrowRight, Bell, ChevronDown, Clipboard, Download, Eye, FileDiff, FileSearch, FileUp, FolderOpen, GitBranch, GitPullRequest,
+  Keyboard, Layers3, ListChecks, MessageSquare, MessageSquarePlus, MessageSquareQuote, Moon, Navigation, Play, PlusCircle, Search,
+  Settings, ShieldCheck, StickyNote, TerminalSquare, Text, Type, Zap,
 } from 'lucide-react';
 import { Button } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -17,9 +18,26 @@ import { TeamGettingStarted } from '@/screens/onboarding/TeamGettingStarted';
 import { AutomationsGettingStarted } from '@/screens/onboarding/AutomationsGettingStarted';
 
 const GROUPS = [
-  { key: 'navigate', icon: Keyboard, capabilities: [{ key: 'shortcuts', icon: Keyboard, badge: '⌘ / Ctrl K' }, { key: 'files', icon: FolderOpen }] },
+  { key: 'navigate', icon: Keyboard, capabilities: [
+    { key: 'shortcuts', icon: Keyboard, badge: '⌘ / Ctrl K' }, { key: 'quickOpen', icon: FileSearch, badge: '⌘ / Ctrl P' },
+    { key: 'settingsSearch', icon: Search }, { key: 'peek', icon: Eye }, { key: 'files', icon: FolderOpen },
+  ] },
+  // B-593: the Orca-round features (B-563~B-588), described where people look for "how do I…"
+  { key: 'review', icon: FileDiff, capabilities: [
+    { key: 'turnDiff', icon: FileDiff }, { key: 'reviewAll', icon: ListChecks }, { key: 'diffComments', icon: MessageSquare }, { key: 'gitActions', icon: GitPullRequest },
+  ] },
+  { key: 'converse', icon: MessageSquareQuote, capabilities: [
+    { key: 'approvals', icon: ShieldCheck }, { key: 'quote', icon: MessageSquareQuote }, { key: 'continue', icon: Play },
+    { key: 'promptRail', icon: Navigation }, { key: 'fontSize', icon: Type },
+  ] },
+  { key: 'sessions', icon: GitBranch, capabilities: [
+    { key: 'worktree', icon: GitBranch }, { key: 'hibernate', icon: Moon }, { key: 'archive', icon: Archive, badge: '⌘ / Ctrl W' }, { key: 'notify', icon: Bell },
+  ] },
   { key: 'organize', icon: Layers3, capabilities: [{ key: 'notes', icon: StickyNote, badge: '⌘ / Ctrl J' }, { key: 'todos', icon: ListChecks }, { key: 'automations', icon: Zap }] },
-  { key: 'handoff', icon: Clipboard, capabilities: [{ key: 'views', icon: Text }, { key: 'fileHandoff', icon: FileUp }, { key: 'clipboard', icon: Clipboard }] },
+  { key: 'handoff', icon: Clipboard, capabilities: [
+    { key: 'views', icon: Text }, { key: 'fileHandoff', icon: FileUp }, { key: 'termPaths', icon: TerminalSquare },
+    { key: 'download', icon: Download }, { key: 'clipboard', icon: Clipboard },
+  ] },
 ] as const;
 
 export function HelpScreen() {

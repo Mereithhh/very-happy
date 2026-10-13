@@ -20,6 +20,10 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-594 | **会话页「需要我决策」提醒条重复显示两条**：服务端只有 1 个 run，页面却叠两条一模一样的条（无「还有 N 条」）。根因：B-585 的 `<WorktreeSetupBanner key={id}>` 与 `<AutomationAttentionBanner key={id}>` 同级同 key，`.sd-main` 有 false 空位走 key map 协调，旧 fiber 被孤立、DOM 残留且每次重渲染再插一份；`.sd-foot` 的 `PermissionCard`（B-563）同样撞 key | bug | Owner 截图 2026-10-13 | doing | key 改为 `<slot>:<id>`；`SessionDetailScreen.keys.test.tsx` 挂真实页面重渲染计数（修前 2、修后 1，并断言无 duplicate-key 警告） |
+| B-593 | **帮助页讲清 Orca 批次新功能怎么用**（Owner 2026-10-13「我自己都不知道怎么用好这些功能了」）：「帮助与新手入门」新增审阅改动 / 对话 / 会话收尾三组，补 ⌘P、搜索设置、会话预览、终端路径、文件下载 | docs | Owner 2026-10-13 | doing | `HelpScreen` GROUPS + `workspaceGuide.capabilities.*`（中英）；更新日志 oct13d |
+| B-592 | **剪贴板推送不要再让用户点 toast**：自动复制开着但页面在后台/浏览器要手势时，推送等到页面回到前台（focus+visible）或下一次 pointer/key 手势自动写入，最新一条为准；手势内仍失败才退回「点击复制」，自动复制关闭保持原 toast | ux | Owner 2026-10-13 | doing | `sync/clipboardPush.ts`；`clipboardDelivery.test.ts` |
+| B-591 | **归档改回二次确认（尤其 ⌘W）**：B-566 用 6s 撤销 toast 替代了确认框，Owner 认为太容易误伤；归档（侧栏/菜单/看板/⌘W，⌘W 仍受 `closeViewConfirm`）先弹确认、确认后立即执行；看板「完成」按 Owner 一次点击规则保留撤销窗口 | ux | Owner 2026-10-13 | doing | `rowActions.confirmArchiveSession`、`viewShortcuts` |
 | B-590 | **`Button` 的 `loading` 立即出 Spinner 且无 leftIcon 时变宽**，不符合 design-language §6 反馈时机（可见 loading 延迟约 200ms、预留宽度） | debt | Orca 对照第三轮实施中发现 2026-10-13（B-581） | todo | 统一在 Button 内收口：禁用立即生效、Spinner 延迟、固定宽度 |
 | B-589 | **不稳定测试 `apiSocketRelay.test.ts`「does not retire a relay … RATE (T-014)」**：按耗时断言 ≥100ms，CI 实测 99ms 失败（PR #510 首跑） | debt | Orca 对照第三轮实施中发现 2026-10-13 | todo | 改用 fake timers 或放宽为单调条件，不按墙钟毫秒断言 |
 | B-588 | **小体验三件**：看板卡片换列动画、会话 hover 详情卡、功能提示引导 | ux | Owner 2026-10-13（Orca 对照第三轮：「先把 orca 值得借鉴的事情都做了」） | done | **Shipped 2026-10-13**：web/server deploy 38367255472（blue，`main@c50066e1`；B-546 exit=5 后手停 green）+ CLI v0.2.168（latest/relay 推荐；v0.2.167 的 `very-happy-tools-arm64-win32` 卡 npm staged 404，按 B-481 口径同 commit 递增重发）；Mac launchd / dev-sg systemd daemon 均 0.2.168。 已合入 main（#515）；spec `specs/2026-10-small-ux-polish.md`，review 问题已修 |
