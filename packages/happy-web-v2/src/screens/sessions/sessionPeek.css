@@ -1,7 +1,9 @@
 /* B-588 sidebar session preview — same neutral floating surface as the relay
    detail popover; read-only, no accent. */
+/* Above the passive floating cards (PWA / notification invitation, 1000) —
+   the preview is something the user just asked for — below menus and modals. */
 .sb-peek {
-  z-index: 120;
+  z-index: 1100;
   box-sizing: border-box;
   width: min(320px, calc(100vw - 24px));
   max-height: min(420px, calc(100dvh - 24px));

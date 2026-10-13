@@ -95,7 +95,8 @@ export function useFeatureTipAnchor(
 
 // ---- host ----
 const BLOCKING_OVERLAYS = '.vh-menu, [role="dialog"][aria-modal="true"], [role="alertdialog"], .sb-peek';
-const AVOID_SELECTOR = '.sd-foot';
+// The composer, plus the floating onboarding cards — a tip never sits on or under them.
+const AVOID_SELECTOR = '.sd-foot, .pwa-install, .notif-optin, .cli-update';
 
 function toBox(r: DOMRect): Box {
   return { left: r.left, top: r.top, width: r.width, height: r.height };
@@ -116,6 +117,10 @@ function visibleAnchor(id: FeatureTipId): HTMLElement | null {
   return best?.el ?? null;
 }
 
+function avoidBoxes(): Box[] {
+  return Array.from(document.querySelectorAll<HTMLElement>(AVOID_SELECTOR)).map((n) => toBox(n.getBoundingClientRect()));
+}
+
 function coarsePointer(): boolean {
   try {
     return window.matchMedia?.('(pointer: coarse)').matches === true;
@@ -131,6 +136,7 @@ export function FeatureTipHost() {
   const [tick, setTick] = useState(0);
   const [pos, setPos] = useState<{ left: number; top: number; side: 'top' | 'bottom' } | null>(null);
   const tipRef = useRef<HTMLDivElement | null>(null);
+  const lastHeight = useRef(140);
 
   // Re-evaluate on scroll / resize (next frame) and once a second (anchors
   // appear, the startup window ends, overlays close).
@@ -158,17 +164,20 @@ export function FeatureTipHost() {
   let anchor: HTMLElement | null = null;
   const ready = typeof performance !== 'undefined' && performance.now() >= FEATURE_TIP_STARTUP_MS;
   if (ready && anchors.size > 0 && !document.querySelector(BLOCKING_OVERLAYS)) {
-    const visible = new Set<FeatureTipId>();
-    const byId = new Map<FeatureTipId, HTMLElement>();
+    // First unseen tip (in order) whose anchor is on screen AND that has room
+    // next to it — a tip that cannot be placed must not block the next one.
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const avoid = avoidBoxes();
+    const estimate = { width: Math.min(280, viewport.width - 16), height: lastHeight.current };
+    const seenNow = seenSet();
     for (const def of FEATURE_TIPS) {
+      if (!pickTip([def], seenNow, new Set([def.id]))) continue;
       const el = visibleAnchor(def.id);
-      if (el) {
-        visible.add(def.id);
-        byId.set(def.id, el);
-      }
+      if (!el || !placeTip(toBox(el.getBoundingClientRect()), estimate, viewport, avoid)) continue;
+      tip = def;
+      anchor = el;
+      break;
     }
-    tip = pickTip(FEATURE_TIPS, seenSet(), visible);
-    anchor = tip ? byId.get(tip.id) ?? null : null;
   }
 
   useLayoutEffect(() => {
@@ -178,8 +187,8 @@ export function FeatureTipHost() {
       return;
     }
     const size = { width: el.offsetWidth, height: el.offsetHeight };
-    const avoid = Array.from(document.querySelectorAll<HTMLElement>(AVOID_SELECTOR)).map((n) => toBox(n.getBoundingClientRect()));
-    const next = placeTip(toBox(anchor.getBoundingClientRect()), size, { width: window.innerWidth, height: window.innerHeight }, avoid);
+    lastHeight.current = size.height;
+    const next = placeTip(toBox(anchor.getBoundingClientRect()), size, { width: window.innerWidth, height: window.innerHeight }, avoidBoxes());
     if (next?.left !== pos?.left || next?.top !== pos?.top || next?.side !== pos?.side) setPos(next);
   });
 
