@@ -211,3 +211,115 @@ describe('new content at the bottom still follows', () => {
         expect(distance()).toBe(readingAt);
     });
 });
+
+/**
+ * B-598 regression (Xu CHEN 2026-10-13, desktop): after sending, scrolling up
+ * to re-read the start of the reply while it streams got yanked back to the
+ * bottom. onScroll re-armed `atBottom` whenever the reader was inside the 80px
+ * band, and every streamed token (row effect / growth follower) then scrolled
+ * to the bottom — a trackpad moving a few px per event never left the band.
+ * An upward scroll gesture now detaches at once; only reaching the real
+ * bottom (or send / jump / session switch) re-attaches.
+ */
+describe('an upward gesture during streaming detaches from the live end', () => {
+    /** The newest (agent) message grows in place, like a streamed token. */
+    const streamToken = () => act(() => {
+        const [newest, ...rest] = store.get().messages as Msg[];
+        store.set({ messages: [{ ...newest, text: `${newest.text} tok` }, ...rest] });
+    });
+    /** A trackpad / slow wheel step: the wheel event, then the scroll it causes. */
+    const wheel = (deltaY: number) => {
+        act(() => { el.dispatchEvent(new WheelEvent('wheel', { deltaY, bubbles: true })); });
+        userScrollTo(top + deltaY);
+    };
+    const touch = (type: 'touchstart' | 'touchmove', clientY: number) => act(() => {
+        const ev = new Event(type, { bubbles: true });
+        Object.defineProperty(ev, 'touches', { value: [{ clientY }] });
+        el.dispatchEvent(ev);
+    });
+    const key = (init: KeyboardEventInit, target: Element = el) => act(() => {
+        target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init }));
+    });
+
+    it('a 10px wheel-up between streamed tokens is not snapped back, and keeps accumulating', () => {
+        streamToken();
+        expect(distance()).toBe(0);
+        wheel(-10);
+        streamToken();
+        expect(distance()).toBe(10);
+        flushFrames();
+        expect(distance()).toBe(10);
+        wheel(-10);
+        streamToken();
+        expect(distance()).toBe(20);
+        expect(host.querySelector('.cl-jump')).not.toBeNull();
+    });
+
+    it('a growth follow scheduled before the gesture is dropped', () => {
+        const grown = document.createElement('div');
+        grown.setAttribute('data-row', '');
+        el.querySelector('.cl-inner')!.appendChild(grown);
+        fireInnerResize(); // decision taken while attached …
+        wheel(-10); // … reader scrolls up before the frame
+        const readingAt = distance();
+        expect(readingAt).toBeGreaterThan(0);
+        flushFrames();
+        expect(distance()).toBe(readingAt);
+    });
+
+    it('a touch drag that scrolls the content up detaches too', () => {
+        touch('touchstart', 200);
+        touch('touchmove', 210); // finger moves down → content scrolls up
+        userScrollTo(top - 10);
+        streamToken();
+        expect(distance()).toBe(10);
+    });
+
+    it('PageUp on the transcript detaches; the same key typed in the composer does not', () => {
+        const composer = document.createElement('textarea');
+        document.body.appendChild(composer);
+        key({ key: 'PageUp' }, composer);
+        streamToken();
+        expect(host.querySelector('.cl-jump')).toBeNull();
+        composer.remove();
+        key({ key: 'PageUp' });
+        userScrollTo(top - 10);
+        streamToken();
+        expect(distance()).toBe(10);
+    });
+
+    it('reaching the real bottom re-arms following', () => {
+        wheel(-10);
+        streamToken();
+        expect(distance()).toBe(10);
+        wheel(10); // back to the bottom (distance 0)
+        expect(distance()).toBe(0);
+        expect(host.querySelector('.cl-jump')).toBeNull();
+        act(() => store.set({ messages: [...messages(110, 110), ...store.get().messages] }));
+        expect(distance()).toBe(0);
+    });
+
+    it('inside the band while detached does not re-arm (only the real bottom does)', () => {
+        wheel(-40);
+        wheel(30); // 10px from the bottom, still detached
+        streamToken();
+        expect(distance()).toBe(10);
+    });
+
+    it('sending again re-attaches even from far up', () => {
+        wheel(-500);
+        act(() => store.set({ messages: [
+            { kind: 'user-text', id: 'own', text: 'again', createdAt: 200, seq: 200, localId: 'l-own', sendState: 'sending' },
+            ...store.get().messages,
+        ] }));
+        expect(distance()).toBe(0);
+        streamToken();
+        expect(distance()).toBe(0);
+    });
+
+    it('a downward wheel at the bottom does not detach', () => {
+        act(() => { el.dispatchEvent(new WheelEvent('wheel', { deltaY: 10, bubbles: true })); });
+        streamToken();
+        expect(host.querySelector('.cl-jump')).toBeNull();
+    });
+});
