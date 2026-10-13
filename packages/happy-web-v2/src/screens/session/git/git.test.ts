@@ -9,6 +9,9 @@ import {
     commitCandidates,
     commitMessageArgs,
     humanCommand,
+    isAuthFailure,
+    pushTarget,
+    type GitProbe,
     isProtectedBranch,
     needsPush,
     parseJobPoll,
@@ -19,8 +22,8 @@ import {
     splitUpstream,
 } from './gitShell';
 import { compareUrl, parseRemoteUrl, safeHttpsUrl } from './gitRemote';
-import { ciOverall, classifyPrView, mergeLookup, parsePrView, pollDelayFor, PR_POLL_MS, PR_UNAVAILABLE_POLL_MS, summarizeRollup } from './prStatus';
-import { composeCiFixMessage, composeFixFailureMessage, composeWriteCommitMessage, fenceFor, HANDOFF_OUTPUT_MAX, truncateTail } from './agentHandoff';
+import { ciOverall, classifyPrView, foldLookup, parsePrView, pollDelayFor, PR_FAILURES_BEFORE_UNAVAILABLE, PR_IDLE_POLL_MS, PR_POLL_MS, PR_UNAVAILABLE_POLL_MS, summarizeRollup } from './prStatus';
+import { composeCiFixMessage, composeFixFailureMessage, composeSyncRemoteMessage, composeWriteCommitMessage, fenceFor, HANDOFF_OUTPUT_MAX, truncateTail } from './agentHandoff';
 import { createdPrUrl, hostedRepoFor, outputTail, parseCommitSummary, pushPlan } from './gitFlow';
 import { parseStatusSummaryV2 } from '@/sync/git-parsers/parseStatusV2';
 
@@ -30,9 +33,11 @@ const ok = <T extends { ok: boolean }>(r: T) => {
 };
 
 describe('commit command', () => {
-    it('all files: add -A + plain commit, prompts disabled', () => {
-        const c = ok(buildCommitCommand({ files: [], all: true, message: 'fix: x', flavor: 'posix' }));
-        expect(c.command).toBe(`export GIT_TERMINAL_PROMPT=0 && git -c core.quotepath=false add -A && git -c core.quotepath=false commit -m 'fix: x'`);
+    it('all files on POSIX still commits the explicit snapshot, never add -A (review P2-1)', () => {
+        const c = ok(buildCommitCommand({ files: [{ path: 'a.ts' }], all: true, message: 'fix: x', flavor: 'posix' }));
+        expect(c.command).toBe(`export GIT_TERMINAL_PROMPT=0 && git -c core.quotepath=false add -A -- ':(literal)a.ts' && git -c core.quotepath=false commit -m 'fix: x' -- ':(literal)a.ts'`);
+        expect(c.allFallback).toBe(false);
+        expect(buildCommitCommand({ files: [], all: true, message: 'x', flavor: 'posix' })).toEqual({ ok: false, reason: 'empty' });
     });
 
     it('subset: literal pathspecs after --, rename source and staged deletion committed but not added', () => {
@@ -57,7 +62,7 @@ describe('commit command', () => {
         expect(c.command.startsWith('set "GIT_TERMINAL_PROMPT=0" && ')).toBe(true);
         expect(c.command).toContain(`-m "title" -m "body 100"^%`);
         expect(c.command).toContain(`"_(literal)a&b"`.replace('_', ':'));
-        expect(buildCommitCommand({ files: [], all: true, message: 'a\nb', flavor: 'cmd' })).toEqual({ ok: false, reason: 'newline' });
+        expect(buildCommitCommand({ files: [{ path: 'a' }], all: true, message: 'a\nb', flavor: 'cmd' })).toEqual({ ok: false, reason: 'newline' });
     });
 
     it('posix keeps newlines inside one -m; other control characters are refused', () => {
@@ -70,24 +75,62 @@ describe('commit command', () => {
     it('cmd command-line length is capped', () => {
         const files = Array.from({ length: 400 }, (_, i) => ({ path: `src/some/deep/path/file-${i}.ts` }));
         expect(buildCommitCommand({ files, all: false, message: 'm', flavor: 'cmd' })).toEqual({ ok: false, reason: 'too-long' });
+        const fallback = ok(buildCommitCommand({ files, all: true, message: 'm', flavor: 'cmd' }));
+        expect(fallback.allFallback).toBe(true);
+        expect(fallback.command).toContain('add -A && ');
         expect(buildCommitCommand({ files, all: false, message: 'm', flavor: 'posix' }).ok).toBe(true);
     });
 });
 
+const probeOf = (over: Partial<GitProbe>): GitProbe => ({
+    branch: 'feat/x', upstream: null, ahead: 0, behind: 0,
+    remotes: [{ name: 'origin', url: 'git@github.com:acme/app.git' }],
+    defaultBranches: { origin: 'main' }, lastCommitMessage: '', ...over,
+});
+
 describe('push command', () => {
     it('never forces', () => {
-        for (const upstream of [null, 'origin/feat', 'fork/x/y']) {
-            const r = buildPushCommand({ upstream, remotes: ['origin', 'fork/x'], flavor: 'posix' });
+        for (const upstream of [null, 'origin/feat/x', 'origin/main', 'fork/x/y']) {
+            const r = buildPushCommand({ target: pushTarget(probeOf({ upstream, remotes: [{ name: 'origin', url: 'u' }, { name: 'fork/x', url: 'u' }] })), flavor: 'posix' });
             if (r.ok) expect(r.command).not.toMatch(/--force|\s-f\b|\+HEAD|--force-with-lease|--mirror|--delete/);
         }
     });
 
-    it('upstream → explicit HEAD:refs/heads/<upstream branch>; none → -u <remote> HEAD', () => {
-        expect(ok(buildPushCommand({ upstream: 'origin/feat/x', remotes: ['origin'], flavor: 'posix' })).command)
-            .toBe(`export GIT_TERMINAL_PROMPT=0 && git push 'origin' 'HEAD:refs/heads/feat/x'`);
-        expect(ok(buildPushCommand({ upstream: null, remotes: ['upstream', 'origin'], flavor: 'posix' })).command)
-            .toBe(`export GIT_TERMINAL_PROMPT=0 && git push -u 'origin' HEAD`);
-        expect(buildPushCommand({ upstream: null, remotes: ['a', 'b'], flavor: 'posix' })).toEqual({ ok: false, reason: 'no-remote' });
+    it('same-named upstream → plain push to it; none → -u origin HEAD:refs/heads/<local>', () => {
+        expect(humanCommand(ok(buildPushCommand({ target: pushTarget(probeOf({ upstream: 'origin/feat/x' })), flavor: 'posix' })).command))
+            .toBe(`git push 'origin' 'HEAD:refs/heads/feat/x'`);
+        expect(humanCommand(ok(buildPushCommand({ target: pushTarget(probeOf({ remotes: [{ name: 'upstream', url: 'u' }, { name: 'origin', url: 'u' }] })), flavor: 'posix' })).command))
+            .toBe(`git push -u 'origin' 'HEAD:refs/heads/feat/x'`);
+        expect(buildPushCommand({ target: pushTarget(probeOf({ remotes: [{ name: 'a', url: 'u' }, { name: 'b', url: 'u' }] })), flavor: 'posix' })).toEqual({ ok: false, reason: 'no-remote' });
+    });
+
+    it('P0: feat/x tracking origin/main pushes to origin/feat/x (new, -u), never origin/main', () => {
+        const probe = probeOf({ upstream: 'origin/main', ahead: 3 });
+        const t = pushTarget(probe)!;
+        expect(t).toEqual({ remote: 'origin', branch: 'feat/x', setUpstream: true, divergentUpstream: 'origin/main' });
+        const cmd = ok(buildPushCommand({ target: t, flavor: 'posix' })).command;
+        expect(cmd).toContain(`git push -u 'origin' 'HEAD:refs/heads/feat/x'`);
+        expect(cmd).not.toContain('refs/heads/main');
+        expect(pushPlan(probe)).toMatchObject({ target: 'origin/feat/x', needsPush: true, protectedBranch: false });
+    });
+
+    it('P0: confirmation follows the TARGET branch — local main tracking origin/feat/x still asks', () => {
+        expect(pushPlan(probeOf({ branch: 'main', upstream: 'origin/feat/x' }))).toMatchObject({ target: 'origin/main', protectedBranch: true });
+        expect(pushPlan(probeOf({ branch: 'develop', upstream: 'origin/develop', defaultBranches: { origin: 'develop' } }))).toMatchObject({ protectedBranch: true });
+        expect(pushPlan(probeOf({ branch: 'release', upstream: 'origin/release' }))).toMatchObject({ protectedBranch: false });
+    });
+
+    it('remote ahead blocks the push (same-named upstream only)', () => {
+        expect(pushPlan(probeOf({ upstream: 'origin/feat/x', ahead: 1, behind: 2 })).remoteAhead).toBe(true);
+        expect(pushPlan(probeOf({ upstream: 'origin/main', ahead: 1, behind: 2 })).remoteAhead).toBe(false);
+    });
+
+    it('ssh runs in BatchMode, appended to the user\'s own ssh command', () => {
+        const cmd = ok(buildPushCommand({ target: pushTarget(probeOf({})), flavor: 'posix' })).command;
+        expect(cmd).toContain(`c="\${GIT_SSH_COMMAND:-$(git config --get core.sshCommand || true)}" && export GIT_SSH_COMMAND="\${c:-ssh} -o BatchMode=yes"`);
+        expect(cmd).toContain('GIT_TERMINAL_PROMPT=0');
+        expect(isAuthFailure('git@github.com: Permission denied (publickey).')).toBe(true);
+        expect(isAuthFailure('! [rejected] main -> main (fetch first)')).toBe(false);
     });
 
     it('splitUpstream prefers the longest known remote name', () => {
@@ -104,9 +147,9 @@ describe('gh commands', () => {
     });
 
     it('copyable commands drop the non-interactive env prefix', () => {
-        expect(humanCommand(ok(buildPushCommand({ upstream: null, remotes: ['origin'], flavor: 'posix' })).command)).toBe(`git push -u 'origin' HEAD`);
+        expect(humanCommand(ok(buildPushCommand({ target: pushTarget(probeOf({})), flavor: 'posix' })).command)).toBe(`git push -u 'origin' 'HEAD:refs/heads/feat/x'`);
         expect(humanCommand(ok(buildPrCreateCommand({ title: 't', body: '', draft: false, flavor: 'posix' })).command)).toBe(`gh pr create --title 't' --body ''`);
-        expect(humanCommand(ok(buildPushCommand({ upstream: null, remotes: ['origin'], flavor: 'cmd' })).command)).toBe('git push -u "origin" HEAD');
+        expect(humanCommand(ok(buildPushCommand({ target: pushTarget(probeOf({})), flavor: 'cmd' })).command)).toBe('git push -u "origin" "HEAD:refs/heads/feat/x"');
     });
 
     it('pr view asks for exactly the fields we read', () => {
@@ -201,6 +244,7 @@ describe('commit candidates', () => {
 
 describe('background job', () => {
     it('start/poll round trip parses', () => {
+        expect(buildJobStart('git push')).toMatch(/^find "\$\{TMPDIR:-\/tmp\}" -maxdepth 1 -type d -name 'vh-git\.\*' -mtime \+0 -exec rm -rf \{\} \+ 2>\/dev\/null; /);
         expect(buildJobStart('git push')).toContain('( ( git push ); echo $? >"$d/rc.tmp"; mv "$d/rc.tmp" "$d/rc" ) >"$d/out" 2>&1 </dev/null &');
         expect(parseJobStart('@@vh-job /var/folders/x/T//vh-git.AbC123\n')).toBe('/var/folders/x/T//vh-git.AbC123');
         expect(parseJobStart('@@vh-job /tmp/$(evil)/vh-git.a\n')).toBeNull();
@@ -289,9 +333,21 @@ describe('PR status', () => {
 
     it('a transient failure keeps the last PR; unavailable backs off', () => {
         const pr = classifyPrView({ success: true, exitCode: 0, stdout: json({}) });
-        expect(mergeLookup(pr, { kind: 'unavailable' })).toBe(pr);
-        expect(mergeLookup(pr, { kind: 'none' })).toEqual({ kind: 'none' });
-        expect(pollDelayFor({ kind: 'unavailable' })).toBe(PR_UNAVAILABLE_POLL_MS);
+        // single failures keep the last value and the normal cadence
+        let st = foldLookup(pr, 0, { kind: 'unavailable' });
+        expect(st).toEqual({ lookup: pr, failures: 1 });
+        expect(pollDelayFor(st.lookup, st.failures)).toBe(PR_POLL_MS);
+        expect(foldLookup(null, 0, { kind: 'unavailable' })).toEqual({ lookup: null, failures: 1 });
+        st = foldLookup(st.lookup, st.failures, { kind: 'unavailable' });
+        st = foldLookup(st.lookup, st.failures, { kind: 'unavailable' });
+        expect(st.failures).toBe(PR_FAILURES_BEFORE_UNAVAILABLE);
+        expect(pollDelayFor(st.lookup, st.failures)).toBe(PR_UNAVAILABLE_POLL_MS);
+        expect(foldLookup(null, 2, { kind: 'unavailable' }).lookup).toEqual({ kind: 'unavailable' });
+        expect(foldLookup(st.lookup, st.failures, { kind: 'none' })).toEqual({ lookup: { kind: 'none' }, failures: 0 });
+        // no PR / merged / closed poll slowly
+        expect(pollDelayFor({ kind: 'none' })).toBe(PR_IDLE_POLL_MS);
+        expect(pollDelayFor(classifyPrView({ success: true, exitCode: 0, stdout: json({ state: 'MERGED' }) }))).toBe(PR_IDLE_POLL_MS);
+        expect(pollDelayFor(classifyPrView({ success: true, exitCode: 0, stdout: json({ state: 'CLOSED' }) }))).toBe(PR_IDLE_POLL_MS);
         expect(pollDelayFor(pr)).toBe(PR_POLL_MS);
     });
 });
@@ -330,6 +386,12 @@ describe('agent hand-off', () => {
         expect(m).toContain('`gh run view 1 --log-failed`');
         expect(m).toContain('```text\nboom\n```');
         expect(composeCiFixMessage({ pr: { number: 7, url: null }, failed: [], logs: [], lang: 'zh' })).toContain('没有拿到失败日志');
+    });
+
+    it('pull-first request never suggests force', () => {
+        const m = composeSyncRemoteMessage({ target: 'origin/feat/x', behind: 2, lang: 'zh' });
+        expect(m).toContain('origin/feat/x 有 2 个');
+        expect(m).toContain('不要 force push');
     });
 
     it('write-commit request scopes to selected files and caps the list', () => {

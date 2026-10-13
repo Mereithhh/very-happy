@@ -81,3 +81,9 @@ export function composeWriteCommitMessage(opts: { files: string[]; all: boolean;
     const scope = opts.all ? 'commit all current changes' : 'commit only these files (leave other changes alone)';
     return `Review the changes, write a concise, accurate commit message, then ${scope}${opts.push ? ' and push to the remote' : ''}. Do not use --force or --no-verify; if a hook fails, fix it and commit again.\n\n${list}`;
 }
+
+export function composeSyncRemoteMessage(opts: { target: string; behind: number; lang: Lang }): string {
+    return opts.lang === 'zh'
+        ? `远端 ${opts.target} 有 ${opts.behind} 个本地没有的新提交，推送会被拒绝。请拉取并按项目习惯（rebase 或 merge）整合，解决冲突、确认测试通过后再推送。不要 force push；冲突需要取舍时先问我。`
+        : `The remote ${opts.target} has ${opts.behind} commit${opts.behind === 1 ? '' : 's'} we don't have, so a push would be rejected. Pull and integrate them the way this project does (rebase or merge), resolve conflicts, make sure tests pass, then push. Do not force push; ask me if a conflict needs a decision.`;
+}

@@ -112,15 +112,28 @@ export function classifyPrView(res: { success?: boolean; exitCode?: number; stdo
 }
 
 export const PR_POLL_MS = 60_000;
+/** no PR on the branch, or the PR is merged/closed: nothing moves fast */
+export const PR_IDLE_POLL_MS = 5 * 60_000;
 export const PR_UNAVAILABLE_POLL_MS = 10 * 60_000;
+/** consecutive failed lookups before we treat gh as unavailable and back off */
+export const PR_FAILURES_BEFORE_UNAVAILABLE = 3;
 
-/** Keep the last PR through a transient failure instead of flickering away. */
-export function mergeLookup(prev: PrLookup | undefined, next: PrLookup): PrLookup {
-    if (next.kind === 'unavailable' && prev?.kind === 'pr') return prev;
-    return next;
+/**
+ * Fold one lookup result into the stored state. A single failed RPC (relay
+ * hiccup, gh network blip) is not "unavailable": keep what we had and keep the
+ * normal cadence; only N failures in a row flip to unavailable (review P2-5).
+ */
+export function foldLookup(prev: PrLookup | null, failures: number, next: PrLookup): { lookup: PrLookup | null; failures: number } {
+    if (next.kind !== 'unavailable') return { lookup: next, failures: 0 };
+    const n = failures + 1;
+    if (n >= PR_FAILURES_BEFORE_UNAVAILABLE) return { lookup: prev?.kind === 'pr' ? prev : next, failures: n };
+    return { lookup: prev, failures: n };
 }
 
-/** Next poll delay for the current state: no gh / not GitHub backs off. */
-export function pollDelayFor(lookup: PrLookup | null): number {
-    return lookup?.kind === 'unavailable' ? PR_UNAVAILABLE_POLL_MS : PR_POLL_MS;
+/** Next poll delay for the current state. */
+export function pollDelayFor(lookup: PrLookup | null, failures = 0): number {
+    if (failures >= PR_FAILURES_BEFORE_UNAVAILABLE || lookup?.kind === 'unavailable') return PR_UNAVAILABLE_POLL_MS;
+    if (lookup?.kind === 'none') return PR_IDLE_POLL_MS;
+    if (lookup?.kind === 'pr' && (lookup.pr.state === 'merged' || lookup.pr.state === 'closed')) return PR_IDLE_POLL_MS;
+    return PR_POLL_MS;
 }

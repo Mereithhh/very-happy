@@ -49,7 +49,7 @@ export function GitActionsBar({
             </span>
             <span className="gab-actions">
                 <ActionDropdownMenu items={[
-                    { key: 'push', label: probe.ahead > 0 ? (zh ? `推送 ↑${probe.ahead}` : `Push ↑${probe.ahead}`) : (zh ? '推送' : 'Push'), icon: Upload, disabled: !plan.needsPush || !plan.remote, onSelect: () => setDialog('push') },
+                    { key: 'push', label: probe.ahead > 0 ? (zh ? `推送 ↑${probe.ahead}` : `Push ↑${probe.ahead}`) : (zh ? '推送' : 'Push'), icon: Upload, disabled: !plan.needsPush || !plan.pushTarget, onSelect: () => setDialog('push') },
                     { key: 'pr', label: zh ? `创建 ${noun}…` : `Create ${noun}…`, icon: GitPullRequest, disabled: !probe.branch || !plan.remote, onSelect: () => setDialog('pr') },
                 ]}>
                     <button type="button" className="fp-icon" aria-label={zh ? '更多 Git 操作' : 'More git actions'} title={zh ? '更多 Git 操作' : 'More git actions'}><MoreHorizontal size={15}/></button>

@@ -15,10 +15,10 @@ import { shellFlavorFor } from '../diffComments/gitDiff';
 import { platformOfSession } from '../diffComments/useGitFileDiff';
 import { prViewCommand } from './gitShell';
 import { runSync, sessionCwd } from './gitRunner';
-import { classifyPrView, mergeLookup, pollDelayFor, PR_POLL_MS, type PrLookup } from './prStatus';
+import { classifyPrView, foldLookup, pollDelayFor, PR_POLL_MS, type PrLookup } from './prStatus';
 
 
-type Entry = { cwd: string; lookup: PrLookup; fetchedAt: number };
+type Entry = { cwd: string; lookup: PrLookup | null; failures: number; fetchedAt: number };
 
 const entries = new Map<string, Entry>();
 const inflight = new Map<string, Promise<void>>();
@@ -45,7 +45,9 @@ export function refreshPrStatus(sessionId: string): Promise<void> {
         // Workspace changed while we were waiting: drop the reply.
         if (sessionCwd(sessionId) !== cwd) return;
         const prev = entries.get(sessionId);
-        entries.set(sessionId, { cwd, lookup: mergeLookup(prev?.cwd === cwd ? prev.lookup : undefined, lookup), fetchedAt: Date.now() });
+        const same = prev?.cwd === cwd;
+        const folded = foldLookup(same ? prev!.lookup : null, same ? prev!.failures : 0, lookup);
+        entries.set(sessionId, { cwd, ...folded, fetchedAt: Date.now() });
         emit();
     })().finally(() => inflight.delete(sessionId));
     inflight.set(sessionId, task);
@@ -82,7 +84,7 @@ export function usePrStatusPolling(sessionId: string, cwd: string | null | undef
         const tick = async () => {
             if (stopped) return;
             const entry = entries.get(sessionId);
-            const due = !entry || entry.cwd !== cwd || Date.now() - entry.fetchedAt >= pollDelayFor(entry.lookup) - 1000;
+            const due = !entry || entry.cwd !== cwd || Date.now() - entry.fetchedAt >= pollDelayFor(entry.lookup, entry.failures) - 1000;
             if (due && shouldPoll(sessionId)) await refreshPrStatus(sessionId);
             if (!stopped) timer = setTimeout(() => void tick(), PR_POLL_MS);
         };

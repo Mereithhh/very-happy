@@ -14,11 +14,11 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { Button, CopyButton, Spinner, toast } from '@/ui';
 import type { ShellFlavor } from '../diffComments/gitDiff';
 import { restoreToComposer, useHasComposer } from '../composerRestore';
-import { buildCommitCommand, buildPrCreateCommand, buildPushCommand, GH_AUTH_STATUS_COMMAND, humanCommand, type CommitCandidate, type GitProbe } from './gitShell';
+import { buildCommitCommand, buildPrCreateCommand, buildPushCommand, GH_AUTH_STATUS_COMMAND, humanCommand, isAuthFailure, type CommitCandidate, type GitProbe } from './gitShell';
 import { compareUrl, reviewNoun } from './gitRemote';
 import { buildFailureText, createdPrUrl, hostedRepoFor, outputTail, parseCommitSummary, pushPlan, remoteHeadBranch } from './gitFlow';
 import { runJob, runSync, type RunResult } from './gitRunner';
-import { composeFixFailureMessage, composeWriteCommitMessage, type FailedStage } from './agentHandoff';
+import { composeFixFailureMessage, composeSyncRemoteMessage, composeWriteCommitMessage, type FailedStage } from './agentHandoff';
 import { refreshPrStatus } from './prStatusStore';
 import '../sessionOptionsDialog.css';
 import './git.css';
@@ -109,6 +109,8 @@ export function GitActionDialog({
     const repo = useMemo(() => hostedRepoFor(probe), [probe]);
     const plan = useMemo(() => pushPlan(probe), [probe]);
     const noun = reviewNoun(repo?.provider ?? 'unknown');
+    /** a push may run: there is a target and the same-named upstream is not ahead of us */
+    const canPush = !!plan.pushTarget && !plan.remoteAhead;
 
     // Fresh state each time the dialog opens; stop polling when it closes
     // (the job itself still finishes on the machine).
@@ -166,7 +168,7 @@ export function GitActionDialog({
     };
 
     const doPush = async (steps: Step[]) => {
-        const cmd = buildPushCommand({ upstream: probe.upstream, remotes: probe.remotes.map((r) => r.name), flavor });
+        const cmd = buildPushCommand({ target: plan.pushTarget, flavor });
         if (!cmd.ok) { setBuildError(buildFailureText(cmd.reason, zh)); return null; }
         const step = await runStep('push', cmd.command);
         steps.push(step);
@@ -187,8 +189,8 @@ export function GitActionDialog({
     const submitCommit = () => {
         if (running || chosen.length === 0 || !message.trim()) return;
         writePushAfter(pushAfter);
-        if (pushAfter && plan.protectedBranch) { setPhase({ kind: 'confirm-push' }); return; }
-        void doCommit(pushAfter && !!plan.remote);
+        if (pushAfter && canPush && plan.protectedBranch) { setPhase({ kind: 'confirm-push' }); return; }
+        void doCommit(pushAfter && canPush);
     };
 
     const submitPush = async () => {
@@ -224,6 +226,20 @@ export function GitActionDialog({
         ? { commit: '正在提交…', push: '正在推送…', pr: `正在创建 ${noun}…` }[stage]
         : { commit: 'Committing…', push: 'Pushing…', pr: `Creating ${noun}…` }[stage];
 
+    const divergent = plan.pushTarget?.divergentUpstream;
+    const divergentNote = divergent && plan.target && (zh
+        ? `上游是 ${divergent}，与本地分支名不同：将推送到 ${plan.target}（新分支）并设为上游，不会推到 ${divergent}。`
+        : `The upstream is ${divergent}, which has a different name: this pushes to ${plan.target} (new branch) and makes it the upstream; ${divergent} is not touched.`);
+    const remoteAheadNote = plan.remoteAhead && (zh
+        ? `${plan.target} 有 ${probe.behind} 个本地没有的新提交。先拉取（或让 agent 处理）再推送。`
+        : `${plan.target} has ${probe.behind} commit${probe.behind === 1 ? '' : 's'} you don't have. Pull first (or ask the agent), then push.`);
+    const syncButton = plan.remoteAhead && hasComposer && plan.target && (
+        <button type="button" className="gd-link" disabled={running}
+            onClick={() => handOff(composeSyncRemoteMessage({ target: plan.target!, behind: probe.behind, lang: zh ? 'zh' : 'en' }))}>
+            <Bot size={14}/>{zh ? '让 agent 拉取并推送' : 'Ask the agent to pull and push'}
+        </button>
+    );
+    const commitPreview = buildCommitCommand({ files: chosen, all: allSelected, message: message || 'x', flavor });
     const protectedNote = zh
         ? `当前在 ${probe.branch}（默认分支），推送会直接更新 ${plan.target ?? '远端'}。`
         : `You are on ${probe.branch} (the default branch); pushing updates ${plan.target ?? 'the remote'} directly.`;
@@ -263,13 +279,18 @@ export function GitActionDialog({
                     onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitCommit(); } }}/>
             </label>
             <label className="gd-check">
-                <input type="checkbox" checked={pushAfter && !!plan.remote} disabled={running || !plan.remote} onChange={(e) => setPushAfter(e.target.checked)}/>
+                <input type="checkbox" checked={pushAfter && canPush} disabled={running || !canPush} onChange={(e) => setPushAfter(e.target.checked)}/>
                 <span>{zh ? '提交后推送' : 'Push after commit'}{plan.target && <span className="gd-mono"> · {plan.target}</span>}</span>
             </label>
             {!plan.remote && <p className="so-description">{buildFailureText('no-remote', zh)}</p>}
+            {pushAfter && canPush && divergentNote && <p className="so-description">{divergentNote}</p>}
+            {remoteAheadNote && <p className="gd-warn">{remoteAheadNote}</p>}
+            {commitPreview.ok && commitPreview.allFallback && <p className="gd-warn">{zh
+                ? '文件太多，超出 Windows 命令长度：将改用 git add -A，会包含打开对话框后新出现的改动。'
+                : 'Too many files for a Windows command line: falls back to git add -A, which also includes changes made after this dialog opened.'}</p>}
             {hasComposer && (
                 <button type="button" className="gd-link" disabled={running || chosen.length === 0}
-                    onClick={() => handOff(composeWriteCommitMessage({ files: chosen.map((c) => c.path), all: allSelected, push: pushAfter && !!plan.remote, lang: zh ? 'zh' : 'en' }))}>
+                    onClick={() => handOff(composeWriteCommitMessage({ files: chosen.map((c) => c.path), all: allSelected, push: pushAfter && canPush, lang: zh ? 'zh' : 'en' }))}>
                     <Bot size={14}/>{zh ? '让 agent 写提交信息并提交' : 'Let the agent write the message and commit'}
                 </button>
             )}
@@ -281,19 +302,24 @@ export function GitActionDialog({
             <p>{plan.needsPush
                 ? (zh ? `把 ${probe.branch} 推送到 ${plan.target ?? (plan.remote ? `${plan.remote}（新分支）` : '远端')}${probe.ahead > 0 ? `，${probe.ahead} 个提交` : ''}。` : `Push ${probe.branch} to ${plan.target ?? plan.remote ?? 'the remote'}${probe.ahead > 0 ? ` (${probe.ahead} commit${probe.ahead === 1 ? '' : 's'})` : ''}.`)
                 : (zh ? '远端已是最新，没有要推送的提交。' : 'The remote is up to date; nothing to push.')}</p>
-            {plan.protectedBranch && plan.needsPush && <p className="gd-warn">{protectedNote}</p>}
+            {divergentNote && plan.needsPush && <p className="so-description">{divergentNote}</p>}
+            {plan.protectedBranch && plan.needsPush && !plan.remoteAhead && <p className="gd-warn">{protectedNote}</p>}
+            {remoteAheadNote && <p className="gd-warn">{remoteAheadNote}</p>}
+            {syncButton}
             {!plan.remote && <p className="so-description">{buildFailureText('no-remote', zh)}</p>}
         </div>
     );
 
     const head = remoteHeadBranch(probe);
     const compare = repo && head && !plan.protectedBranch ? compareUrl(repo, plan.defaultBranch, head) : null;
-    const pushCmd = buildPushCommand({ upstream: probe.upstream, remotes: probe.remotes.map((r) => r.name), flavor: flavor ?? 'posix' });
+    const pushCmd = buildPushCommand({ target: plan.pushTarget, flavor: flavor ?? 'posix' });
     const ghCmd = buildPrCreateCommand({ title: prTitle || 'title', body: prBody, draft, flavor: flavor ?? 'posix' });
-    const canCreate = repo?.provider === 'github' && gh === 'ok' && !!probe.branch && !plan.protectedBranch && !!prTitle.trim();
+    const canCreate = repo?.provider === 'github' && gh === 'ok' && !!probe.branch && !plan.protectedBranch && !!prTitle.trim() && !(plan.needsPush && !canPush);
     const prBody_ = (
         <>
             {mode === 'pr' && gh === 'checking' && repo?.provider === 'github' && <p className="gd-stage" role="status"><Spinner size={12}/>{zh ? '检查执行电脑上的 gh…' : 'Checking gh on the machine…'}</p>}
+            {plan.needsPush && remoteAheadNote && <p className="gd-warn">{remoteAheadNote}</p>}
+            {plan.needsPush && syncButton}
             {plan.protectedBranch && <p className="gd-warn">{zh ? `当前在默认分支 ${probe.branch}，先切到新分支再创建 ${noun}。` : `You are on the default branch ${probe.branch}; switch to a new branch before creating a ${noun}.`}</p>}
             {repo?.provider === 'github' && gh === 'ok' ? (
                 <>
@@ -309,7 +335,7 @@ export function GitActionDialog({
                         <input type="checkbox" checked={draft} disabled={running} onChange={(e) => setDraft(e.target.checked)}/>
                         <span>{zh ? '草稿' : 'Draft'}</span>
                     </label>
-                    {plan.needsPush && !plan.protectedBranch && <p className="so-description">{zh ? `会先把 ${probe.branch} 推送到 ${plan.target ?? plan.remote ?? '远端'}。` : `${probe.branch} is pushed to ${plan.target ?? plan.remote ?? 'the remote'} first.`}</p>}
+                    {plan.needsPush && !plan.protectedBranch && canPush && <p className="so-description">{divergentNote || (zh ? `会先把 ${probe.branch} 推送到 ${plan.target ?? '远端'}。` : `${probe.branch} is pushed to ${plan.target ?? 'the remote'} first.`)}</p>}
                 </>
             ) : gh !== 'checking' || repo?.provider !== 'github' ? (
                 <div className="gd-summary">
@@ -370,9 +396,9 @@ export function GitActionDialog({
             )}
         </>;
     } else if (mode === 'commit') {
-        actions = <>{cancel}{primary(pushAfter && plan.remote ? (zh ? '提交并推送' : 'Commit & push') : (zh ? '提交' : 'Commit'), submitCommit, chosen.length === 0 || !message.trim())}</>;
+        actions = <>{cancel}{primary(pushAfter && canPush ? (zh ? '提交并推送' : 'Commit & push') : (zh ? '提交' : 'Commit'), submitCommit, chosen.length === 0 || !message.trim())}</>;
     } else if (mode === 'push') {
-        actions = <>{cancel}{primary(plan.protectedBranch ? (zh ? '仍然推送' : 'Push anyway') : (zh ? '推送' : 'Push'), () => void submitPush(), !plan.needsPush || !plan.remote)}</>;
+        actions = <>{cancel}{primary(plan.protectedBranch ? (zh ? '仍然推送' : 'Push anyway') : (zh ? '推送' : 'Push'), () => void submitPush(), !plan.needsPush || !canPush)}</>;
     } else {
         actions = <>{cancel}{canCreate && primary(plan.needsPush ? (zh ? `推送并创建 ${noun}` : `Push & create ${noun}`) : (zh ? `创建 ${noun}` : `Create ${noun}`), () => void submitPr(), !canCreate)}</>;
     }
@@ -430,6 +456,9 @@ function StepResult({ step, zh, noun, hasComposer, onFix }: { step: Step; zh: bo
     return (
         <div className="gd-fail" role="alert">
             <p className="gd-fail-title">{label}{result.exitCode !== null && <span className="gd-mono"> · exit {result.exitCode}</span>}</p>
+            {step.stage === 'push' && isAuthFailure(result.output) && <p className="gd-warn">{zh
+                ? '需要在终端完成认证（SSH 密钥口令、host key 或凭据），完成后再推送。'
+                : 'Authentication has to be completed in a terminal (SSH passphrase, host key or credentials); push again afterwards.'}</p>}
             {!expanded && tail && <pre className="gd-pre">{tail}</pre>}
             {expanded && <pre className="gd-pre gd-pre--full">{result.output}{result.truncated ? (zh ? '\n…（只保留最后 64KB）' : '\n…(last 64KB only)') : ''}</pre>}
             <div className="gd-fail-actions">

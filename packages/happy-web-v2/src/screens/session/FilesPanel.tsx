@@ -299,8 +299,12 @@ function FilesPanelContent({
                 )}
             </div>
             {fileTabs.tabs.map(file => <WorkspacePane className="fp-viewer" key={file.id} active={active && selected === file.id} order={fileTabs.tabs.map(tab => tab.id).join("\n")}>
-                {file.id === REVIEW_TAB_ID ? <ReviewAllPane sessionId={sessionId} files={reviewFiles} active={active && selected === file.id}
-                    refreshToken={gitStatusFiles} onOpenDiff={openDiff}/> : diffTabPath(file.id) !== null ? <ReviewDiffPane sessionId={sessionId} path={diffTabPath(file.id)!}
+                {file.id === REVIEW_TAB_ID ? <>
+                    <GitActionsBar sessionId={sessionId} gitStatus={gitStatusFiles} active={active && selected === file.id}
+                        onRefresh={() => void refresh()} onHandedOff={panelInline ? undefined : onClose}/>
+                    <ReviewAllPane sessionId={sessionId} files={reviewFiles} active={active && selected === file.id}
+                        refreshToken={gitStatusFiles} onOpenDiff={openDiff}/>
+                </> : diffTabPath(file.id) !== null ? <ReviewDiffPane sessionId={sessionId} path={diffTabPath(file.id)!}
                     untracked={changed.find(f => f.fullPath === diffTabPath(file.id))?.status === 'untracked'}
                     active={active && selected === file.id} refreshToken={gitStatusFiles} onOpenFile={() => setSelected(diffTabPath(file.id)!)}/> : <>
                 {!browseMachineId && <div className="fp-viewer-head"><span className="fp-viewer-path" title={file.id}>{file.id}</span></div>}

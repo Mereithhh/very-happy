@@ -77,7 +77,8 @@ export function PrStatusChip({ sessionId, compact }: { sessionId: string; compac
                 toast.show(zh ? '输入框不可用，内容未发送' : 'No composer here; nothing was sent', 'error');
                 return;
             }
-            toast.show(zh ? '已放入输入框，确认后发送' : 'Added to the composer — review and send', 'success');
+            // CI logs can echo env values, URLs with tokens, customer data… (review P2-6)
+            toast.show(zh ? '已放入输入框。日志可能包含敏感信息，发送前请检查' : 'Added to the composer. Logs may contain sensitive data — check before sending', 'success');
             setOpen(false);
         } finally {
             setFixing(false);

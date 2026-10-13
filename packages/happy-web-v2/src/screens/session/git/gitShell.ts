@@ -47,7 +47,21 @@ export function withEnv(flavor: ShellFlavor | null, vars: Record<string, string>
 
 /** The same command without our non-interactive env prefix — for copying into a terminal. */
 export function humanCommand(command: string): string {
-    return command.replace(/^export (?:[A-Z_]+=\w+ ?)+&& /, '').replace(/^(?:set "[A-Z_]+=\w+" && )+/, '');
+    const prefixes = [
+        /^export (?:[A-Z_]+=\w+ ?)+&& /,
+        /^c="[^"]*" && /,
+        /^export GIT_SSH_COMMAND="[^"]*" && /,
+        /^set "[A-Z_]+=\w+" && /,
+    ];
+    let out = command;
+    for (let changed = true; changed;) {
+        changed = false;
+        for (const re of prefixes) {
+            const next = out.replace(re, '');
+            if (next !== out) { out = next; changed = true; }
+        }
+    }
+    return out;
 }
 
 const GIT_ENV = { GIT_TERMINAL_PROMPT: '0' };
@@ -88,38 +102,37 @@ function literal(path: string, flavor: ShellFlavor | null) {
     return arg(`:(literal)${path}`, flavor);
 }
 
+export type CommitBuilt = { ok: true; command: string; /** cmd only: list too long, fell back to `add -A` */ allFallback: boolean } | { ok: false; reason: BuildFailure };
+
 /**
- * `all` = the user kept every changed file → `add -A` + plain commit (no
- * path list, so no command-length limit). Otherwise only the listed paths:
- * `commit -- <paths>` implies `--only`, so other staged entries stay staged.
+ * Always an explicit path list — a snapshot of what the dialog showed, so a
+ * file the agent creates/edits while the dialog is open is not swept in
+ * (review P2-1). `commit -- <paths>` implies `--only`, so other staged
+ * entries stay staged. Only when cmd.exe's length limit is hit AND every file
+ * is selected does it fall back to `add -A` (the UI says so).
  */
-export function buildCommitCommand(opts: { files: CommitFile[]; all: boolean; message: string; flavor: ShellFlavor | null }): Built {
+export function buildCommitCommand(opts: { files: CommitFile[]; all: boolean; message: string; flavor: ShellFlavor | null }): CommitBuilt {
     const msg = commitMessageArgs(opts.message, opts.flavor);
     if (!msg.ok) return msg;
-    let command: string;
-    if (opts.all) {
-        command = `${GIT} add -A && ${GIT} commit ${msg.command}`;
-    } else {
-        if (opts.files.length === 0) return { ok: false, reason: 'empty' };
-        const addArgs: string[] = [];
-        const commitArgs: string[] = [];
-        const seen = new Set<string>();
-        for (const f of opts.files) {
-            for (const p of [f.path, f.oldPath]) {
-                if (!p || seen.has(p)) continue;
-                seen.add(p);
-                const q = literal(p, opts.flavor);
-                if (!q.ok) return q;
-                commitArgs.push(q.arg);
-                if (p === f.path && !f.stagedDelete) addArgs.push(q.arg);
-            }
+    if (opts.files.length === 0) return { ok: false, reason: 'empty' };
+    const addArgs: string[] = [];
+    const commitArgs: string[] = [];
+    const seen = new Set<string>();
+    for (const f of opts.files) {
+        for (const p of [f.path, f.oldPath]) {
+            if (!p || seen.has(p)) continue;
+            seen.add(p);
+            const q = literal(p, opts.flavor);
+            if (!q.ok) return q;
+            commitArgs.push(q.arg);
+            if (p === f.path && !f.stagedDelete) addArgs.push(q.arg);
         }
-        const add = addArgs.length ? `${GIT} add -A -- ${addArgs.join(' ')} && ` : '';
-        command = `${add}${GIT} commit ${msg.command} -- ${commitArgs.join(' ')}`;
     }
-    command = withEnv(opts.flavor, GIT_ENV, command);
-    if (opts.flavor === 'cmd' && command.length > CMD_MAX) return { ok: false, reason: 'too-long' };
-    return { ok: true, command };
+    const add = addArgs.length ? `${GIT} add -A -- ${addArgs.join(' ')} && ` : '';
+    const command = withEnv(opts.flavor, GIT_ENV, `${add}${GIT} commit ${msg.command} -- ${commitArgs.join(' ')}`);
+    if (opts.flavor !== 'cmd' || command.length <= CMD_MAX) return { ok: true, command, allFallback: false };
+    if (!opts.all) return { ok: false, reason: 'too-long' };
+    return { ok: true, command: withEnv(opts.flavor, GIT_ENV, `${GIT} add -A && ${GIT} commit ${msg.command}`), allFallback: true };
 }
 
 /** Split `origin/feat/x` into remote + branch using the known remote names (longest match). */
@@ -130,33 +143,58 @@ export function splitUpstream(upstream: string, remotes: string[]): { remote: st
     return i > 0 ? { remote: upstream.slice(0, i), branch: upstream.slice(i + 1) } : null;
 }
 
-/** Remote a first push goes to: the upstream's, else `origin`, else the only one. */
-export function pushRemote(upstream: string | null, remotes: string[]): string | null {
-    if (upstream) return splitUpstream(upstream, remotes)?.remote ?? null;
-    if (remotes.includes('origin')) return 'origin';
-    return remotes.length === 1 ? remotes[0] : null;
+export type PushTarget = {
+    remote: string;
+    /** remote branch the push writes — ALWAYS the local branch name */
+    branch: string;
+    /** `-u`: the current upstream is missing or has a different name */
+    setUpstream: boolean;
+    /** current upstream (e.g. `origin/main`) when it differs from the target; shown in the dialog */
+    divergentUpstream: string | null;
+};
+
+/**
+ * Where a push goes. The target is the same-named branch on the remote, never
+ * "whatever the upstream is": `git worktree add -b x path origin/main` leaves
+ * `x` tracking `origin/main`, and pushing to the upstream there would
+ * fast-forward the remote default branch (review P0). Remote: the upstream's
+ * when it has the same name, else `origin`, else the upstream's, else the only one.
+ */
+export function pushTarget(probe: Pick<GitProbe, 'branch' | 'upstream' | 'remotes'>): PushTarget | null {
+    if (!probe.branch) return null;
+    const names = probe.remotes.map((r) => r.name);
+    const split = probe.upstream ? splitUpstream(probe.upstream, names) : null;
+    const tracksSame = !!split && split.branch === probe.branch;
+    const remote = tracksSame ? split!.remote
+        : names.includes('origin') ? 'origin'
+        : split?.remote ?? (names.length === 1 ? names[0] : null);
+    if (!remote) return null;
+    return { remote, branch: probe.branch, setUpstream: !tracksSame, divergentUpstream: split && !tracksSame ? probe.upstream : null };
 }
 
 /**
  * Never `--force`/`-f`/`--force-with-lease`/`+refspec`: a rejected push is
  * handed to the agent (or the user's terminal), not overridden here.
+ * SSH runs in BatchMode (appended to the user's own ssh command, not
+ * replacing it) so a passphrase/host-key prompt fails fast instead of hanging.
  */
-export function buildPushCommand(opts: { upstream: string | null; remotes: string[]; flavor: ShellFlavor | null }): Built {
-    const remote = pushRemote(opts.upstream, opts.remotes);
-    if (!remote) return { ok: false, reason: 'no-remote' };
-    const r = arg(remote, opts.flavor);
+export function buildPushCommand(opts: { target: PushTarget | null; flavor: ShellFlavor | null }): Built {
+    const t = opts.target;
+    if (!t) return { ok: false, reason: 'no-remote' };
+    const r = arg(t.remote, opts.flavor);
     if (!r.ok) return r;
-    let command: string;
-    if (opts.upstream) {
-        const split = splitUpstream(opts.upstream, opts.remotes);
-        if (!split || !split.branch) return { ok: false, reason: 'no-remote' };
-        const ref = arg(`HEAD:refs/heads/${split.branch}`, opts.flavor);
-        if (!ref.ok) return ref;
-        command = `git push ${r.arg} ${ref.arg}`;
-    } else {
-        command = `git push -u ${r.arg} HEAD`;
+    const ref = arg(`HEAD:refs/heads/${t.branch}`, opts.flavor);
+    if (!ref.ok) return ref;
+    const push = `git push${t.setUpstream ? ' -u' : ''} ${r.arg} ${ref.arg}`;
+    if (opts.flavor === 'posix') {
+        return { ok: true, command: `export GIT_TERMINAL_PROMPT=0 && c="\${GIT_SSH_COMMAND:-$(git config --get core.sshCommand || true)}" && export GIT_SSH_COMMAND="\${c:-ssh} -o BatchMode=yes" && ${push}` };
     }
-    return { ok: true, command: withEnv(opts.flavor, GIT_ENV, command) };
+    return { ok: true, command: withEnv(opts.flavor, GIT_ENV, push) };
+}
+
+/** Push output that means "authenticate in a terminal first". */
+export function isAuthFailure(output: string): boolean {
+    return /Permission denied \(publickey|Host key verification failed|could not read (Username|Password)|terminal prompts disabled|Authentication failed|passphrase|BatchMode/i.test(output);
 }
 
 export function buildPrCreateCommand(opts: { title: string; body: string; draft: boolean; flavor: ShellFlavor | null }): Built {
@@ -270,9 +308,9 @@ export function parseProbe(stdout: string): GitProbe | null {
     };
 }
 
-/** Default branch of the remote a push would go to, falling back to main/master by name. */
+/** Default branch of the remote a push would go to. */
 export function defaultBranchFor(probe: GitProbe): string | null {
-    const remote = pushRemote(probe.upstream, probe.remotes.map((r) => r.name));
+    const remote = pushTarget(probe)?.remote;
     return (remote && probe.defaultBranches[remote]) || null;
 }
 
@@ -282,9 +320,20 @@ export function isProtectedBranch(branch: string | null, defaultBranch: string |
     return branch === defaultBranch || branch === 'main' || branch === 'master';
 }
 
-/** Branch has commits the remote does not: no upstream yet, or ahead of it. */
-export function needsPush(probe: Pick<GitProbe, 'branch' | 'upstream' | 'ahead'>): boolean {
-    return !!probe.branch && (!probe.upstream || probe.ahead > 0);
+/**
+ * Branch has commits the remote does not: no same-named upstream yet, or
+ * ahead of it. (ahead/behind against a differently named upstream says
+ * nothing about the push target.)
+ */
+export function needsPush(probe: Pick<GitProbe, 'branch' | 'upstream' | 'ahead' | 'remotes'>): boolean {
+    const t = pushTarget(probe);
+    return !!t && (t.setUpstream || probe.ahead > 0);
+}
+
+/** Same-named upstream has commits we don't: pushing would be rejected — pull first. */
+export function remoteAhead(probe: Pick<GitProbe, 'branch' | 'upstream' | 'behind' | 'remotes'>): boolean {
+    const t = pushTarget(probe);
+    return !!t && !t.setUpstream && probe.behind > 0;
 }
 
 // ── POSIX background job: start returns at once, poll reads the exit code ──
@@ -292,7 +341,9 @@ export function needsPush(probe: Pick<GitProbe, 'branch' | 'upstream' | 'ahead'>
 export const JOB_OUTPUT_CAP = 65536;
 
 export function buildJobStart(body: string): string {
-    return `d=$(mktemp -d "\${TMPDIR:-/tmp}/vh-git.XXXXXX") || exit 97; ( ( ${body} ); echo $? >"$d/rc.tmp"; mv "$d/rc.tmp" "$d/rc" ) >"$d/out" 2>&1 </dev/null & echo "@@vh-job $d"`;
+    // Dirs are removed when the web reads the result; ones whose poll was
+    // abandoned (dialog closed, deadline) are swept here after a day.
+    return `find "\${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'vh-git.*' -mtime +0 -exec rm -rf {} + 2>/dev/null; d=$(mktemp -d "\${TMPDIR:-/tmp}/vh-git.XXXXXX") || exit 97; ( ( ${body} ); echo $? >"$d/rc.tmp"; mv "$d/rc.tmp" "$d/rc" ) >"$d/out" 2>&1 </dev/null & echo "@@vh-job $d"`;
 }
 
 export function parseJobStart(stdout: string): string | null {

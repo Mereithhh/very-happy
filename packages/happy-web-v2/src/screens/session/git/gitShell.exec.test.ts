@@ -9,7 +9,8 @@ import { mkdtempSync, rmSync, writeFileSync, unlinkSync, mkdirSync, chmodSync, e
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildCommitCommand, buildJobPoll, buildJobStart, buildProbeCommand, buildPushCommand, commitCandidates, parseJobPoll, parseJobStart, parseProbe } from './gitShell';
+import { buildCommitCommand, buildJobPoll, buildJobStart, buildProbeCommand, buildPushCommand, commitCandidates, parseJobPoll, parseJobStart, parseProbe, pushTarget } from './gitShell';
+import { pushPlan } from './gitFlow';
 import { parseStatusSummaryV2 } from '@/sync/git-parsers/parseStatusV2';
 
 const hasGit = (() => {
@@ -80,6 +81,28 @@ describe.skipIf(!hasGit)('git commands against a real repo', () => {
         expect(after).toContain(' M keep.txt');
     });
 
+    const probeNow = async () => {
+        const cmd = buildProbeCommand('posix');
+        if (!cmd.ok) throw new Error(cmd.reason);
+        return parseProbe((await sh(cmd.command, repo)).stdout)!;
+    };
+    const run = async (body: string) => {
+        const start = await sh(buildJobStart(body), repo);
+        const dir = parseJobStart(start.stdout);
+        expect(dir).toBeTruthy();
+        const poll = buildJobPoll(dir!);
+        if (!poll.ok) throw new Error('poll');
+        for (let i = 0; i < 100; i++) {
+            const state = parseJobPoll((await sh(poll.command, repo)).stdout);
+            if (state?.state === 'done') {
+                expect(existsSync(dir!)).toBe(false);
+                return state;
+            }
+            await new Promise((r) => setTimeout(r, 100));
+        }
+        throw new Error('job never finished');
+    };
+
     it('probe sees the branch, no upstream yet, default branch main', async () => {
         const probe = parseProbe((await sh(buildProbeCommand('posix').ok ? (buildProbeCommand('posix') as { command: string }).command : '', repo)).stdout)!;
         expect(probe).toMatchObject({ branch: 'feat/x', upstream: null, defaultBranches: { origin: 'main' } });
@@ -87,24 +110,8 @@ describe.skipIf(!hasGit)('git commands against a real repo', () => {
     });
 
     it('push as a background job: first push sets upstream; pre-push hook failure reported with exit code + output', async () => {
-        const push = buildPushCommand({ upstream: null, remotes: ['origin'], flavor: 'posix' });
+        const push = buildPushCommand({ target: pushTarget(await probeNow()), flavor: 'posix' });
         if (!push.ok) throw new Error(push.reason);
-        const run = async (body: string) => {
-            const start = await sh(buildJobStart(body), repo);
-            const dir = parseJobStart(start.stdout);
-            expect(dir).toBeTruthy();
-            const poll = buildJobPoll(dir!);
-            if (!poll.ok) throw new Error('poll');
-            for (let i = 0; i < 100; i++) {
-                const state = parseJobPoll((await sh(poll.command, repo)).stdout);
-                if (state?.state === 'done') {
-                    expect(existsSync(dir!)).toBe(false);
-                    return state;
-                }
-                await new Promise((r) => setTimeout(r, 100));
-            }
-            throw new Error('job never finished');
-        };
         const ok = await run(push.command);
         expect(ok.exitCode).toBe(0);
         expect(git('rev-parse --abbrev-ref --symbolic-full-name @{u}').trim()).toBe('origin/feat/x');
@@ -116,11 +123,44 @@ describe.skipIf(!hasGit)('git commands against a real repo', () => {
         writeFileSync(join(repo, 'more.txt'), 'm\n');
         git('add more.txt');
         git('commit -q -m more');
-        const again = buildPushCommand({ upstream: 'origin/feat/x', remotes: ['origin'], flavor: 'posix' });
+        const again = buildPushCommand({ target: pushTarget(await probeNow()), flavor: 'posix' });
         if (!again.ok) throw new Error(again.reason);
         const failed = await run(again.command);
         expect(failed.exitCode).not.toBe(0);
         expect(failed.output).toContain('lint: 2 errors in a.ts');
         unlinkSync(hook);
+    });
+
+    it('P0: a branch tracking origin/main (git worktree add -b default) pushes to its own name and leaves origin/main alone', async () => {
+        const mainBefore = git('rev-parse origin/main').trim();
+        git('checkout -q -b wt-x origin/main');
+        expect(git('rev-parse --abbrev-ref --symbolic-full-name @{u}').trim()).toBe('origin/main');
+        writeFileSync(join(repo, 'wt.txt'), 'w\n');
+        git('add wt.txt');
+        git('commit -q -m wt');
+        const probe = await probeNow();
+        const plan = pushPlan(probe);
+        expect(plan).toMatchObject({ target: 'origin/wt-x', protectedBranch: false, needsPush: true });
+        const cmd = buildPushCommand({ target: plan.pushTarget, flavor: 'posix' });
+        if (!cmd.ok) throw new Error(cmd.reason);
+        expect(cmd.command).not.toContain('refs/heads/main');
+        expect((await run(cmd.command)).exitCode).toBe(0);
+        expect(execSync('git rev-parse main', { cwd: join(root, 'remote.git'), encoding: 'utf8' }).trim()).toBe(mainBefore);
+        expect(execSync('git rev-parse wt-x', { cwd: join(root, 'remote.git'), encoding: 'utf8' }).trim()).toBe(git('rev-parse HEAD').trim());
+        expect(git('rev-parse --abbrev-ref --symbolic-full-name @{u}').trim()).toBe('origin/wt-x');
+
+        // and a local main (whatever it tracks) asks before pushing
+        git('checkout -q main');
+        expect(pushPlan(await probeNow()).protectedBranch).toBe(true);
+    });
+
+    it('remote ahead on the same-named branch is detected before pushing', async () => {
+        git('checkout -q wt-x');
+        const other = join(root, 'other');
+        execSync(`git clone -q remote.git other 2>/dev/null && cd other && git -c user.email=o@x -c user.name=O checkout -q wt-x && echo o > o.txt && git add o.txt && git -c user.email=o@x -c user.name=O commit -q -m o && git push -q origin wt-x 2>/dev/null`, { cwd: root, shell: '/bin/sh' });
+        git('fetch -q origin');
+        const plan = pushPlan(await probeNow());
+        expect(plan.remoteAhead).toBe(true);
+        rmSync(other, { recursive: true, force: true });
     });
 });

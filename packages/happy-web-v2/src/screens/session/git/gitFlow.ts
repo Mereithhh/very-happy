@@ -2,42 +2,43 @@
  * B-583: small pure helpers behind the git dialog (presentation decisions
  * that are worth a unit test).
  */
-import { defaultBranchFor, isProtectedBranch, needsPush, pushRemote, splitUpstream, type BuildFailure, type GitProbe } from './gitShell';
+import { defaultBranchFor, isProtectedBranch, needsPush, pushTarget, remoteAhead, type BuildFailure, type GitProbe, type PushTarget } from './gitShell';
 import { parseRemoteUrl, safeHttpsUrl, type HostedRepo } from './gitRemote';
 
 export function hostedRepoFor(probe: GitProbe): HostedRepo | null {
-    const names = probe.remotes.map((r) => r.name);
-    const remote = pushRemote(probe.upstream, names);
+    const remote = pushTarget(probe)?.remote;
     const url = probe.remotes.find((r) => r.name === remote)?.url;
     return url ? parseRemoteUrl(url) : null;
 }
 
-/** Branch name the remote knows this branch by (upstream name wins). */
+/** Branch name on the remote after a push: always the local name (see pushTarget). */
 export function remoteHeadBranch(probe: GitProbe): string | null {
-    if (probe.upstream) {
-        const split = splitUpstream(probe.upstream, probe.remotes.map((r) => r.name));
-        if (split?.branch) return split.branch;
-    }
-    return probe.branch;
+    return pushTarget(probe)?.branch ?? null;
 }
 
 export type PushPlan = {
     remote: string | null;
+    /** `origin/feat-x` — what the push actually writes */
     target: string | null;
+    pushTarget: PushTarget | null;
     needsPush: boolean;
-    /** current branch is the remote default (or main/master): ask twice */
+    /** the TARGET branch is the remote default (or main/master): ask twice */
     protectedBranch: boolean;
+    /** same-named upstream has new commits: pull first, don't push */
+    remoteAhead: boolean;
     defaultBranch: string | null;
 };
 
 export function pushPlan(probe: GitProbe): PushPlan {
-    const remote = pushRemote(probe.upstream, probe.remotes.map((r) => r.name));
+    const t = pushTarget(probe);
     const defaultBranch = defaultBranchFor(probe);
     return {
-        remote,
-        target: remote && remoteHeadBranch(probe) ? `${remote}/${remoteHeadBranch(probe)}` : null,
+        remote: t?.remote ?? null,
+        target: t ? `${t.remote}/${t.branch}` : null,
+        pushTarget: t,
         needsPush: needsPush(probe),
-        protectedBranch: isProtectedBranch(probe.branch, defaultBranch),
+        protectedBranch: isProtectedBranch(t?.branch ?? probe.branch, defaultBranch),
+        remoteAhead: remoteAhead(probe),
         defaultBranch,
     };
 }
