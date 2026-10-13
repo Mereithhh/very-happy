@@ -11,10 +11,14 @@
  *  - auto-copy on (default) + page focused AND visible + write accepted →
  *    silent write + light toast with a preview (see clipboardWriteGate for
  *    why hidden pages are excluded);
- *  - otherwise (auto-copy off, page hidden/unfocused, or the browser rejected
- *    the write — gesture policy, common on mobile/iOS PWA) → NO blocking
- *    modal: a sticky clickable toast retries the write inside the click's
- *    user gesture, and the text is already in history as the fallback.
+ *  - auto-copy on but the page is hidden/unfocused, or the browser rejected
+ *    the write (gesture policy, common on mobile/iOS PWA) → B-592: the text
+ *    waits (newest push wins) and is written by itself the moment the page is
+ *    focused + visible again, or on the next pointer/key gesture anywhere in
+ *    the page — no "tap to copy" chore. Only a write that fails even inside a
+ *    gesture falls back to the clickable toast;
+ *  - auto-copy off → the sticky clickable toast (the user opted out of silent
+ *    writes), and the text is already in history as the fallback.
  *
  * The old edit-before-copy modal moved into the history panel (expand a row
  * to edit, then copy). Every open web client receives and surfaces the push
@@ -100,31 +104,95 @@ function resolveSourceLabel(event: ClipboardPushEvent): string | undefined {
     return undefined;
 }
 
-/** Land the text in the clipboard, degrading to a sticky tap-to-copy toast
- *  when a silent write isn't allowed. Exported for reuse/tests. */
-export async function deliverToClipboard(text: string): Promise<void> {
-    const preview = clipboardPreview(text);
+/** B-592: the newest push still waiting for a write the browser allows. */
+let pending: { text: string; preview: string } | null = null;
+let listening = false;
+const GESTURE_EVENTS = ['pointerdown', 'keydown'] as const;
 
-    // Silent write only stands a chance while auto-copy is on and the document
-    // is focused AND visible (see canAttemptDirectWrite); even then some
-    // browsers (mobile Safari) reject writes outside a gesture — any failure
-    // falls through to the toast path.
-    const autoCopy = storage.getState().localSettings.clipboardAutoCopy;
-    const doc = typeof document !== 'undefined' ? document : undefined;
-    if (autoCopy && canAttemptDirectWrite(doc) && await tryWrite(text)) {
-        toast.success(t('clipboard.copiedPreview', { preview }));
+function stopWaiting(): void {
+    if (!listening) return;
+    listening = false;
+    window.removeEventListener('focus', onFocusLike);
+    document.removeEventListener('visibilitychange', onFocusLike);
+    for (const type of GESTURE_EVENTS) window.removeEventListener(type, onGesture, true);
+}
+
+async function flushPending(viaGesture: boolean): Promise<void> {
+    const item = pending;
+    if (!item) return;
+    // outside a gesture only a focused + visible page can be trusted (see
+    // clipboardWriteGate); inside one the browser decides
+    if (!viaGesture && !canAttemptDirectWrite(document)) return;
+    if (!(await tryWrite(item.text))) {
+        // focus alone is not enough on some browsers (Safari) — keep waiting
+        // for a gesture; a gesture that still fails means writes are blocked
+        if (viaGesture && pending === item) {
+            pending = null;
+            stopWaiting();
+            showTapToCopy(item.text, item.preview);
+        }
         return;
     }
+    if (pending === item) {
+        pending = null;
+        stopWaiting();
+    }
+    toast.success(t('clipboard.copiedPreview', { preview: item.preview }));
+}
 
-    // Non-blocking fallback: a sticky toast whose click IS the user gesture,
-    // so the retry write is allowed everywhere (iOS PWA included). The text
-    // is already in the history panel — nothing is lost if it's dismissed.
+function onFocusLike(): void { void flushPending(false); }
+function onGesture(): void { void flushPending(true); }
+
+function waitForWritableMoment(text: string, preview: string): void {
+    pending = { text, preview };
+    if (!listening && typeof window !== 'undefined') {
+        listening = true;
+        window.addEventListener('focus', onFocusLike);
+        document.addEventListener('visibilitychange', onFocusLike);
+        // capture: the write rides the gesture before any handler can stop it
+        for (const type of GESTURE_EVENTS) window.addEventListener(type, onGesture, true);
+    }
+    // already focused (the direct write was rejected, not deferred): the next
+    // gesture is the earliest moment that can work
+}
+
+/** Non-blocking fallback: a sticky toast whose click IS the user gesture,
+ *  so the retry write is allowed everywhere (iOS PWA included). The text is
+ *  already in the history panel — nothing is lost if it's dismissed. */
+function showTapToCopy(text: string, preview: string): void {
     toast.action(t('clipboard.tapToCopy', { preview }), () => {
         void tryWrite(text).then((ok) => {
             if (ok) toast.success(t('clipboard.copiedPreview', { preview }));
             else toast.error(t('markdown.copyFailed'));
         });
     });
+}
+
+/** Land the text in the clipboard: at once when allowed, otherwise as soon
+ *  as the browser allows it (B-592). Exported for reuse/tests. */
+export async function deliverToClipboard(text: string): Promise<void> {
+    const preview = clipboardPreview(text);
+    const autoCopy = storage.getState().localSettings.clipboardAutoCopy;
+    if (!autoCopy) {
+        showTapToCopy(text, preview);
+        return;
+    }
+    // Silent write only stands a chance while the document is focused AND
+    // visible (see canAttemptDirectWrite); even then some browsers (mobile
+    // Safari) reject writes outside a gesture.
+    const doc = typeof document !== 'undefined' ? document : undefined;
+    if (canAttemptDirectWrite(doc) && await tryWrite(text)) {
+        if (pending) { pending = null; stopWaiting(); } // a newer push superseded the waiting one
+        toast.success(t('clipboard.copiedPreview', { preview }));
+        return;
+    }
+    waitForWritableMoment(text, preview);
+}
+
+/** Test seam: drop any waiting push and its listeners. */
+export function resetClipboardDeliveryForTest(): void {
+    pending = null;
+    stopWaiting();
 }
 
 /** Entry point wired to `apiSocket.onMessage('clipboard-push', …)` in sync. */
