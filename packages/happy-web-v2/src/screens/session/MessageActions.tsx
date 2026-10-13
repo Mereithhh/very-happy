@@ -9,7 +9,6 @@ import { useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import { quoteMessage } from './messageQuote';
 import { getTouchQuoteOffer, setTouchQuoteOffer, useTouchQuoteOffer } from './selectionQuoteOffer';
-import { chatReadingAidsCopy } from './chatReadingAidsCopy';
 import { messageActionsCopy } from './messageActionsCopy';
 import { MessageTime } from './MessageTime';
 import { SendFailedActions, SendingIndicator } from './SendStatusView';
@@ -169,7 +168,7 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
                             quoteMessage(sessionId, offer?.text ?? selectionQuote, 'cursor');
                             setTouchQuoteOffer(null);
                         }}
-                    ><TextQuote size={14} aria-hidden /><span>{chatReadingAidsCopy(lang).quoteSelectionLong}</span></button>}
+                    ><TextQuote size={14} aria-hidden /><span>{t('session.chat.readingAids.quoteSelectionLong')}</span></button>}
                     {canRewind && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
                     {canRewind && <button ref={deleteButton} type="button" className="msg-action" aria-label={copy.delete} title={copy.delete} onClick={() => { setError(null); setMode('delete'); }}><Trash2 size={14} aria-hidden /></button>}
                 </div>}

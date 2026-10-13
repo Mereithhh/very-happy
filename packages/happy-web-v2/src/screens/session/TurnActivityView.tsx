@@ -49,7 +49,7 @@ function TurnActivityViewImpl({
 
     // B-260: a folded turn should still say how many sub-agents ran inside it.
     const subagentCount = useMemo(() => countSubagentCards(messages), [messages]);
-    const runningSubagents = useMemo(() => countRunningSubagentCards(messages), [messages]);
+    const runningSubagents = useMemo(() => countRunningSubagentCards(messages, liftedAbortedAt), [messages, liftedAbortedAt]);
     // B-317: a user abort inside this turn ends its sub-agents, whatever their
     // last lifecycle event said (subagentAbort.ts).
     const abortedAt = useMemo(() => liftedAbortedAt ?? userAbortedAt(messages), [liftedAbortedAt, messages]);

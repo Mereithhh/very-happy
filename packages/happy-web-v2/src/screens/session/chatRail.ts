@@ -153,3 +153,15 @@ export function railKeyStep(key: string, index: number, count: number): number |
 export function shouldShowRail(input: { finePointer: boolean; gutter: number; count: number }): boolean {
     return input.finePointer && input.gutter >= RAIL_MIN_GUTTER && input.count >= 2;
 }
+
+/**
+ * 刻度位置量化到 `step`%：流式输出时 scrollHeight 每帧都在长，原始比例每帧都变；
+ * 取整之后刻度不漂、轨道也不必每帧重渲染（ChatPromptRail 只在量化结果变化时 setState）。
+ */
+export function quantizeRailPercents(tops: readonly number[], total: number, step = 1): number[] {
+    return tops.map((top) => Math.round(railTickPercent(top, total) / step) * step);
+}
+
+export function sameNumbers(a: readonly number[], b: readonly number[]): boolean {
+    return a.length === b.length && a.every((value, i) => value === b[i]);
+}

@@ -21,10 +21,3 @@ export function continueOfferStopId(chronological: readonly Message[]): string |
     }
     return null;
 }
-
-/** 发出的那条消息就是按钮上的字：中文「继续」、繁中「繼續」，其余 Continue。 */
-export function continueMessageText(lang: string | undefined): string {
-    const code = lang ?? '';
-    if (/^zh[-_](hant|tw|hk|mo)/i.test(code)) return '繼續';
-    return code.startsWith('zh') ? '继续' : 'Continue';
-}

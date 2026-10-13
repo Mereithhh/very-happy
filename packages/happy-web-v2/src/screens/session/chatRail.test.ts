@@ -107,3 +107,14 @@ describe('rail geometry', () => {
         expect(shouldShowRail({ finePointer: true, gutter: 116, count: 1 })).toBe(false);
     });
 });
+
+describe('quantizeRailPercents', () => {
+    it('keeps tick positions still while the transcript grows by a few pixels', async () => {
+        const { quantizeRailPercents, sameNumbers } = await import('./chatRail');
+        const before = quantizeRailPercents([100, 900, 2000], 3000);
+        const growing = quantizeRailPercents([100, 900, 2000], 3006);
+        expect(before).toEqual([3, 30, 67]);
+        expect(sameNumbers(before, growing)).toBe(true);
+        expect(sameNumbers(before, quantizeRailPercents([100, 900, 2000], 3300))).toBe(false);
+    });
+});

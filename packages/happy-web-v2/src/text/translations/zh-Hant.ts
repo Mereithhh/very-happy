@@ -368,6 +368,20 @@ export const zhHant: PartialTranslationStructure = {
         forkErrorGeneric: '分叉會話失敗。',
         forkClaudeOnly: '目前僅支援 Claude 會話的分叉。',
         chat: {
+            // B-577/B-578/B-579 閱讀輔助
+            readingAids: {
+                quoteSelection: '引用',
+                quoteSelectionLong: '引用選取',
+                quoteSelectionHint: '把選取的文字引用到輸入框',
+                continue: '繼續',
+                continueHint: '傳送一則「繼續」，讓 agent 接著做',
+                railLabel: '你的提問',
+                railAttachment: '（附件）',
+                railNoReply: '還沒有回覆',
+                railOlderAction: '更早的訊息未載入，點擊載入',
+                prevPrompt: '上一則提問',
+                nextPrompt: '下一則提問',
+            },
             sessionSettings: '工作階段設定',
             sessionSettingsTitle: '工作階段設定',
             sessionSettingsDescription: 'Claude 執行中可即時切換權限；其他變更會套用到下一則訊息。',

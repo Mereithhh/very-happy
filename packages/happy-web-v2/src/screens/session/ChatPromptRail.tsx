@@ -13,31 +13,35 @@ import { ChevronsUp, ChevronUp, ChevronDown } from 'lucide-react';
 import { sync } from '@/sync/sync';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { ChatRow } from './chatTurns';
-import { chatReadingAidsCopy } from './chatReadingAidsCopy';
 import {
     activeRailIndex,
     adjacentPromptIndex,
     isAtBottom,
     railItemsFromRows,
     railKeyStep,
+    quantizeRailPercents,
     railScrollTarget,
-    railTickPercent,
+    sameNumbers,
     shouldShowRail,
     type RailItem,
 } from './chatRail';
 
 type Layout = {
-    /** 有 DOM 的条目与其在滚动内容中的 offsetTop（升序）。 */
+    /** 有 DOM 的条目。 */
     items: RailItem[];
-    tops: number[];
-    total: number;
+    /** 各条目的刻度位置（量化后的百分比）。 */
+    pcts: number[];
     gutter: number;
     /** 轨道在 `.cl` 内的上沿与高度（覆盖 transcript 可视区，不压排队 dock）。 */
     railTop: number;
     railHeight: number;
 };
 
-const EMPTY: Layout = { items: [], tops: [], total: 0, gutter: 0, railTop: 0, railHeight: 0 };
+/** 滚动位置推出来的状态：只在变化时重渲染，滚动本身不触发渲染。 */
+type Nav = { active: number; prev: number | null; next: number | null };
+
+const EMPTY: Layout = { items: [], pcts: [], gutter: 0, railTop: 0, railHeight: 0 };
+const NO_NAV: Nav = { active: -1, prev: null, next: null };
 const RAIL_INSET = 12;
 /** 底部留给「跳到最新」（36px + 16px 外边距 + 间隔），两者不重叠。 */
 const RAIL_BOTTOM_CLEARANCE = 64;
@@ -79,8 +83,7 @@ export function ChatPromptRail({
     /** 窄屏按钮的显示条件：离开底部且「跳到最新」在它的老位置（没有排队 dock）。 */
     navVisible: boolean;
 }) {
-    const { lang } = useTranslation();
-    const copy = chatReadingAidsCopy(lang);
+    const { t } = useTranslation();
     const fine = useFinePointer();
     // rows are rebuilt on every streamed chunk; keep the item list (and with it
     // the measuring layout effect) stable unless a prompt or its preview changed.
@@ -94,10 +97,27 @@ export function ChatPromptRail({
         return itemsRef.current;
     }, [rows]);
     const [layout, setLayout] = useState<Layout>(EMPTY);
-    const [view, setView] = useState({ scrollTop: 0, clientHeight: 0, scrollHeight: 0 });
+    const [nav, setNav] = useState<Nav>(NO_NAV);
     const [preview, setPreview] = useState<number | null>(null);
     const [focusIndex, setFocusIndex] = useState<number | null>(null);
     const railRef = useRef<HTMLDivElement>(null);
+    /** 原始 offsetTop（滚动目标与当前项用），不进 state。 */
+    const topsRef = useRef<number[]>([]);
+    const navVisibleRef = useRef(navVisible);
+    navVisibleRef.current = navVisible;
+
+    const updateNav = useCallback(() => {
+        const scroll = scrollRef.current;
+        if (!scroll) return;
+        const tops = topsRef.current;
+        const view = { scrollTop: scroll.scrollTop, clientHeight: scroll.clientHeight, scrollHeight: scroll.scrollHeight };
+        const next: Nav = {
+            active: activeRailIndex(tops, view),
+            prev: adjacentPromptIndex(tops, view.scrollTop, -1),
+            next: isAtBottom(view) ? null : adjacentPromptIndex(tops, view.scrollTop, 1),
+        };
+        setNav((prev) => (prev.active === next.active && prev.prev === next.prev && prev.next === next.next ? prev : next));
+    }, [scrollRef]);
 
     const measure = useCallback(() => {
         const scroll = scrollRef.current;
@@ -105,48 +125,53 @@ export function ChatPromptRail({
         const lane = scroll?.parentElement;
         if (!scroll || !inner || !lane) return;
         const scrollBox = scroll.getBoundingClientRect();
+        const laneBox = lane.getBoundingClientRect();
+        const gutter = Math.round(laneBox.right - inner.getBoundingClientRect().right);
+        const railTop = Math.round(scrollBox.top - laneBox.top + RAIL_INSET);
+        const railHeight = Math.round(Math.max(0, scrollBox.height - RAIL_INSET - RAIL_BOTTOM_CLEARANCE));
+        // Neither the rail nor the buttons can show: skip the per-prompt reads.
+        const wanted = shouldShowRail({ finePointer: fine, gutter, count: allItems.length }) || navVisibleRef.current;
         const items: RailItem[] = [];
         const tops: number[] = [];
-        for (const item of allItems) {
-            const el = inner.querySelector(`[data-chat-prompt-id="${CSS.escape(item.id)}"]`);
-            if (!el) continue;
-            items.push(item);
-            tops.push(el.getBoundingClientRect().top - scrollBox.top + scroll.scrollTop);
+        if (wanted) {
+            const byId = new Map<string, Element>();
+            for (const el of inner.querySelectorAll('[data-chat-prompt-id]')) {
+                const id = el.getAttribute('data-chat-prompt-id');
+                if (id) byId.set(id, el);
+            }
+            for (const item of allItems) {
+                const el = byId.get(item.id);
+                if (!el) continue;
+                items.push(item);
+                tops.push(el.getBoundingClientRect().top - scrollBox.top + scroll.scrollTop);
+            }
         }
-        const laneBox = lane.getBoundingClientRect();
-        const next: Layout = {
-            items,
-            tops,
-            total: scroll.scrollHeight,
-            gutter: laneBox.right - inner.getBoundingClientRect().right,
-            railTop: scrollBox.top - laneBox.top + RAIL_INSET,
-            railHeight: Math.max(0, scrollBox.height - RAIL_INSET - RAIL_BOTTOM_CLEARANCE),
-        };
+        topsRef.current = tops;
+        const pcts = quantizeRailPercents(tops, scroll.scrollHeight);
         setLayout((prev) => (
-            prev.total === next.total && prev.gutter === next.gutter && prev.railTop === next.railTop
-            && prev.railHeight === next.railHeight && prev.items.length === next.items.length
-            && prev.items.every((item, i) => item === next.items[i]) && prev.tops.every((top, i) => top === next.tops[i])
-        ) ? prev : next);
-        setView({ scrollTop: scroll.scrollTop, clientHeight: scroll.clientHeight, scrollHeight: scroll.scrollHeight });
-    }, [allItems, scrollRef, innerRef]);
+            prev.gutter === gutter && prev.railTop === railTop && prev.railHeight === railHeight
+            && prev.items.length === items.length && prev.items.every((item, i) => item === items[i])
+            && sameNumbers(prev.pcts, pcts)
+        ) ? prev : { items, pcts, gutter, railTop, railHeight });
+        updateNav();
+    }, [allItems, fine, scrollRef, innerRef, updateNav]);
 
-    useLayoutEffect(() => { measure(); }, [measure]);
+    useLayoutEffect(() => { measure(); }, [measure, navVisible]);
 
     useEffect(() => {
         const scroll = scrollRef.current;
         const inner = innerRef.current;
         if (!scroll || !inner) return;
-        let raf = 0;
+        // Separate frames: a pending scroll update must not swallow a resize.
+        let measureFrame = 0;
+        let scrollFrame = 0;
         const schedule = () => {
-            if (raf) return;
-            raf = requestAnimationFrame(() => { raf = 0; measure(); });
+            if (measureFrame) return;
+            measureFrame = requestAnimationFrame(() => { measureFrame = 0; measure(); });
         };
         const onScroll = () => {
-            if (raf) return;
-            raf = requestAnimationFrame(() => {
-                raf = 0;
-                setView({ scrollTop: scroll.scrollTop, clientHeight: scroll.clientHeight, scrollHeight: scroll.scrollHeight });
-            });
+            if (scrollFrame) return;
+            scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; updateNav(); });
         };
         const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
         observer?.observe(inner);
@@ -156,17 +181,18 @@ export function ChatPromptRail({
         return () => {
             observer?.disconnect();
             scroll.removeEventListener('scroll', onScroll);
-            if (raf) cancelAnimationFrame(raf);
+            if (measureFrame) cancelAnimationFrame(measureFrame);
+            if (scrollFrame) cancelAnimationFrame(scrollFrame);
         };
-    }, [measure, scrollRef, innerRef]);
+    }, [measure, updateNav, scrollRef, innerRef]);
 
-    const { items, tops } = layout;
-    const active = activeRailIndex(tops, view);
+    const { items, pcts } = layout;
+    const active = nav.active;
     const showRail = shouldShowRail({ finePointer: fine, gutter: layout.gutter, count: items.length });
 
     const scrollToIndex = (index: number) => {
         const scroll = scrollRef.current;
-        const top = tops[index];
+        const top = topsRef.current[index];
         if (!scroll || top === undefined) return;
         scroll.scrollTo({ top: railScrollTarget(top), behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     };
@@ -175,7 +201,7 @@ export function ChatPromptRail({
         const tabIndex = focusIndex ?? (active >= 0 ? active : 0);
         const trackTop = hasMoreOlder ? OLDER_SLOT : 0;
         const trackHeight = Math.max(0, layout.railHeight - trackTop);
-        const tickY = (index: number) => trackTop + (railTickPercent(tops[index], layout.total) / 100) * trackHeight;
+        const tickY = (index: number) => Math.round(trackTop + ((pcts[index] ?? 0) / 100) * trackHeight);
         const previewItem = preview !== null ? items[preview] : null;
         const focusTick = (index: number) => {
             setFocusIndex(index);
@@ -188,7 +214,7 @@ export function ChatPromptRail({
                 className="cl-rail"
                 role="toolbar"
                 aria-orientation="vertical"
-                aria-label={copy.railLabel}
+                aria-label={t('session.chat.readingAids.railLabel')}
                 style={{ top: layout.railTop, height: layout.railHeight }}
                 onPointerLeave={() => { if (!railRef.current?.contains(document.activeElement)) setPreview(null); }}
                 onBlur={(event) => {
@@ -219,8 +245,8 @@ export function ChatPromptRail({
                         type="button"
                         className="cl-rail-older"
                         tabIndex={-1}
-                        aria-label={copy.railOlderAction}
-                        title={copy.railOlderAction}
+                        aria-label={t('session.chat.readingAids.railOlderAction')}
+                        title={t('session.chat.readingAids.railOlderAction')}
                         disabled={isLoadingOlder}
                         onClick={() => void sync.loadOlderMessages(sessionId)}
                     >
@@ -234,7 +260,7 @@ export function ChatPromptRail({
                         className={`cl-rail-tick${index === active ? ' is-active' : ''}${index === preview ? ' is-preview' : ''}`}
                         style={{ top: tickY(index) }}
                         tabIndex={index === tabIndex ? 0 : -1}
-                        aria-label={item.text || copy.railAttachment}
+                        aria-label={item.text || t('session.chat.readingAids.railAttachment')}
                         aria-current={index === active ? 'true' : undefined}
                         onPointerEnter={(event) => { if (event.pointerType !== 'touch') setPreview(index); }}
                         onFocus={(event) => {
@@ -252,8 +278,8 @@ export function ChatPromptRail({
                         aria-hidden
                         style={{ top: Math.min(Math.max(0, tickY(preview) - 14), Math.max(0, layout.railHeight - 72)) }}
                     >
-                        <p className="cl-rail-preview-text">{previewItem.text || copy.railAttachment}</p>
-                        <p className="cl-rail-preview-reply">{previewItem.reply || copy.railNoReply}</p>
+                        <p className="cl-rail-preview-text">{previewItem.text || t('session.chat.readingAids.railAttachment')}</p>
+                        <p className="cl-rail-preview-reply">{previewItem.reply || t('session.chat.readingAids.railNoReply')}</p>
                     </div>
                 )}
             </div>
@@ -261,15 +287,14 @@ export function ChatPromptRail({
     }
 
     if (!navVisible || items.length === 0) return null;
-    const prev = adjacentPromptIndex(tops, view.scrollTop, -1);
-    const next = isAtBottom(view) ? null : adjacentPromptIndex(tops, view.scrollTop, 1);
+    const { prev, next } = nav;
     return (
-        <div className="cl-promptnav" role="group" aria-label={copy.railLabel}>
+        <div className="cl-promptnav" role="group" aria-label={t('session.chat.readingAids.railLabel')}>
             <button
                 type="button"
                 className="cl-promptnav-btn"
-                aria-label={copy.prevPrompt}
-                title={copy.prevPrompt}
+                aria-label={t('session.chat.readingAids.prevPrompt')}
+                title={t('session.chat.readingAids.prevPrompt')}
                 disabled={prev === null}
                 onClick={() => { if (prev !== null) scrollToIndex(prev); }}
             >
@@ -278,8 +303,8 @@ export function ChatPromptRail({
             <button
                 type="button"
                 className="cl-promptnav-btn"
-                aria-label={copy.nextPrompt}
-                title={copy.nextPrompt}
+                aria-label={t('session.chat.readingAids.nextPrompt')}
+                title={t('session.chat.readingAids.nextPrompt')}
                 disabled={next === null}
                 onClick={() => { if (next !== null) scrollToIndex(next); }}
             >

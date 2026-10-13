@@ -104,6 +104,9 @@ export function ChatList({
         [chronological, sessionLive],
     );
     const rowKeys = useMemo(() => rows.map((row) => row.key), [rows]);
+    // B-578: 「继续」 only while nothing runs or waits — same liveness verdict
+    // as the transcript, and a queued prompt already is the continuation.
+    const canOfferContinue = !sessionLive && queuedMessages.length === 0;
 
     const cancelQueued = async (index: number) => {
         const message = queuedMessages[index];
@@ -386,7 +389,7 @@ export function ChatList({
                                 thinkingDurationMs={row.thinkingDurationMs}
                                 attachments={row.attachments}
                                 optionsActive={row.optionsActive}
-                                continueOffer={row.continueOffer}
+                                continueOffer={row.continueOffer === true && canOfferContinue}
                             />
                         ),
                     )}

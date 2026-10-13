@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '@/sync/typesMessage';
 import { buildChatRows } from './chatTurns';
-import { continueMessageText, continueOfferStopId } from './continueOffer';
+import { continueOfferStopId } from './continueOffer';
 
 const user = (id: string, createdAt: number, text = id): Message => ({ kind: 'user-text', id, localId: null, createdAt, text });
 const agent = (id: string, createdAt: number): Message => ({ kind: 'agent-text', id, localId: null, createdAt, text: id });
@@ -46,10 +46,15 @@ describe('continueOfferStopId (B-578)', () => {
         expect(rows.map((row) => row.type)).toEqual(['message', 'activity']);
     });
 
-    it('sends the button text in the UI language', () => {
-        expect(continueMessageText('zh-Hans')).toBe('继续');
-        expect(continueMessageText('zh-Hant')).toBe('繼續');
-        expect(continueMessageText('en')).toBe('Continue');
-        expect(continueMessageText('ja')).toBe('Continue');
+});
+
+describe('「继续」 text (B-578)', () => {
+    it('is one key per language, so what the button shows is what gets sent', async () => {
+        const { en } = await import('@/text/_default');
+        const { zhHans } = await import('@/text/translations/zh-Hans');
+        const { zhHant } = await import('@/text/translations/zh-Hant');
+        expect(en.session.chat.readingAids.continue).toBe('Continue');
+        expect(zhHans.session.chat.readingAids.continue).toBe('继续');
+        expect(zhHant.session?.chat?.readingAids?.continue).toBe('繼續');
     });
 });

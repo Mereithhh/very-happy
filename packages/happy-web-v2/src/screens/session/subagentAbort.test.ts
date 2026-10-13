@@ -97,3 +97,19 @@ describe('B-317 user abort ends the sub-agents of the turn it interrupted', () =
         expect(countRunningSubagentCards([running, serviceEvent(T0 + 5, 'Aborted by user')])).toBe(0);
     });
 });
+
+describe('B-578: the stop line lifted out of the fold still stops the cards (B-317)', () => {
+    it('counts nothing running in a stopped turn whose stop row left the activity', async () => {
+        const { buildChatRows } = await import('./chatTurns');
+        const prompt: Message = { kind: 'user-text', id: 'u', localId: null, createdAt: T0 - 10, text: 'go' };
+        const rows = buildChatRows([prompt, card(T0, {}), serviceEvent(T0 + 100, 'Aborted by user')], false);
+        const activity = rows.find((row) => row.type === 'activity');
+        if (activity?.type !== 'activity') throw new Error('no activity row');
+        // the stop is no longer among the folded messages...
+        expect(activity.messages.some((m) => m.kind === 'agent-event')).toBe(false);
+        expect(countRunningSubagentCards(activity.messages)).toBe(1);
+        // ...so the header must count with the lifted abort time.
+        expect(activity.abortedAt).toBe(T0 + 100);
+        expect(countRunningSubagentCards(activity.messages, activity.abortedAt)).toBe(0);
+    });
+});

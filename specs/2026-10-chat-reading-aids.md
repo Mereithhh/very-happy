@@ -45,14 +45,14 @@
 
 ### B-577 选中引用
 
-**可引用范围**：带 `data-quote-source` 的元素——agent 正文 `.msg-agent-text`、用户气泡正文 `.msg-bubble-text`。思考块、工具输出、事件行不可引用。
+**可引用范围**：选择器 `QUOTE_SOURCE_SELECTOR = '.msg-agent-text > .md, .msg-bubble-text'`（按现有 class 判定，不新增 DOM 属性）——agent 正文的 markdown（不含其操作栏/时间）与用户气泡正文。思考块、工具输出、事件行不可引用。
 
 **选区判定**（`selectionQuoteRange.ts`；文件名避开组件 `SelectionQuote.tsx`，macOS 大小写不敏感）：
 
 - 选区必须非空、单 range，第一段真正选中的文字落在 transcript 内某个 quote source 里（起点在标题栏/输入框等 transcript 之外则不提供）。
 - **跨多条消息：桌面只取起点消息内的部分**——把选区本身收回到起点消息末尾（所见即所引，`selection.toString()` 保留块间换行）。三击选段时浏览器把终点放到下一个块的开头，这一规则顺带解决它。裁剪后为空则不提供。**触屏不改用户的选区，跨消息直接不提供。**
 - 选区起止都在同一个代码块 `.cv-body` 内 → 保持原文，用 ```` ```<lang> ```` 包起来再加 `> ` 前缀；否则按普通文本引用。
-- 引用格式与 B-454 一致：逐行 `> `，空行写成 `>`。
+- 引用格式与 B-454 一致（复用同一个逐行映射）：每行前加 `> `，空行也写成 `> `。
 
 **插入**：`messageQuote.ts` 的事件 detail 追加可选 `mode: 'cursor'`（旧监听者忽略），AgentInput 只追加这一个「引用插入」接口：
 
@@ -64,7 +64,7 @@
 
 - 鼠标单击/三击松开立即判定；**双击后等 500ms**再出，避免第三击正好落在按钮上（Orca 同款）；键盘选区（Shift+方向键）在 keyup 时判定。「选区有没有变」除了 `selectionchange` 标记，还比较按下时的选区文字——双击的选词发生在 mousedown，`selectionchange` 可能晚于 mouseup 才到（真浏览器实测漏掉过）。
 - 按钮 `mousedown` 阻止默认，点击不丢选区；点击后按钮消失、选区保留。
-- 选区变化、在别处按下、Esc、窗口失焦、视口尺寸变化 → 收起。transcript 滚动时按钮跟随选区，选区滚出 transcript 可视区则隐藏。
+- 选区变化、在别处按下、Esc、窗口失焦、视口尺寸变化 → 收起。transcript 滚动或自身尺寸变化（ResizeObserver：软键盘、侧栏、输入框长高）时按钮跟随选区重新定位，选区滚出 transcript 可视区则隐藏。
 - 没有输入框（镜像会话）不提供。
 
 **触屏（`pointer: coarse`）**：不画浮层，不干扰系统选区菜单。`selectionchange` 停止 500ms 后若选区可引用，该消息自己的操作栏（`MessageActions`）多出一个「引用选中」按钮（44px）；点击用的是当时记下的文字，按钮 `pointerdown` 阻止默认以保住选区。选区收起同样要静止 500ms 才撤掉按钮，避免「点按钮时系统先清选区」导致按钮消失点不到。
@@ -76,7 +76,7 @@
 **什么时候显示**（组件判定）：
 
 - 非镜像会话；
-- agent 不在工作（与 ChatList 同一个 `isAgentWorkLive` 判据）——工作中点继续会变成排队消息，语义不对；
+- agent 不在工作且没有排队消息——直接用 ChatList 的 `sessionLive`（同一个 `isAgentWorkLive` 判据，含本 turn 子代理）与 `queuedMessages`，由 ChatList 决定是否把 `continueOffer` 传下去；工作中点继续会变成排队消息，已有排队消息时它本身就是接续；
 - `composerGate(session) === 'send'`。已归档会话的输入框是「先恢复再发」，那条路径归输入框所有，这里不复制，按钮不出现，用户照旧在输入框发消息。
 
 **停止行不再被折叠**：已结束且没有最终回答的 turn，末尾的停止事件像 B-487 的失败一样提到 activity 抽屉外单独成行（否则按钮看不见）。有回答的 turn 停止行本来就在外面。
@@ -89,9 +89,9 @@
 
 **条目**（纯函数 `chatRail.ts`，由 ChatList 已有的 rows 推导）：每个渲染成用户气泡或 `/命令` 的 user-text 一条；不含 AskUserQuestion 的答案投影（`:answer`）、任务通知、team/peer 卡片。预览 = 你的话（压成一行，截 120 字）+ 该 turn 第一条可见 agent 正文的首个非空行（截 120 字）。顺序即 rows 顺序（旧→新）。
 
-**桌面轨道**（`pointer: fine`，且对话列右侧留白 ≥ 40px，即 `.cl` 宽度 − `.cl-inner` 宽度 ≥ 2×40；条目 ≥ 2 才出现）：
+**桌面轨道**（`pointer: fine`，且对话列右侧留白 ≥ 48px（`RAIL_MIN_GUTTER`：轨道 24px + 离滚动条 14px + 余量），即 `.cl` 右沿 − `.cl-inner` 右沿；条目 ≥ 2 才出现）：
 
-- 位于 `.cl` 右侧留白，纵向覆盖 transcript 可视高度（顶部留 12px，底部让出「跳到最新」按钮的 64px，两者不重叠），每条一个横向细刻度，`top = 消息 offsetTop / 内容总高`（按会话中的位置比例分布）。内容尺寸变化（ResizeObserver）与 rows 变化时重算。
+- 位于 `.cl` 右侧留白，纵向覆盖 transcript 可视高度（顶部留 12px，底部让出「跳到最新」按钮的 64px，两者不重叠），每条一个横向细刻度，`top = 消息 offsetTop / 内容总高`（按会话中的位置比例分布）。内容尺寸变化（ResizeObserver，rAF 合并）与提问列表变化时重算：一次 `querySelectorAll('[data-chat-prompt-id]')` 建 Map 取位置；轨道与窄屏按钮都不显示时不读各提问位置。刻度位置按 1% 量化，流式输出让总高逐帧变长时量化结果不变就不重渲染；滚动只在当前项/上一条/下一条变化时重渲染。
 - 当前提问高亮：贴底时取最后一条；否则取「顶部 1/4 处之上的最后一条」。高亮用 `--text`，普通刻度 `--text-faint`，**不用 accent**。
 - 悬停/键盘聚焦刻度 → 左侧出现单个预览卡（你的话 2 行截断 + 回复首行 2 行截断）。
 - 点击 → 只滚 `.cl-scroll` 到该消息上方 12px（`scrollTo`，系统减少动态效果时 `behavior: 'auto'`，否则 smooth），不用会滚祖先的 `scrollIntoView`。
@@ -104,7 +104,7 @@
 
 ### 挂载与文件
 
-- 新纯函数：`selectionQuoteRange.ts`、`chatRail.ts`、`continueOffer.ts`、`messageActionsModel.insertMessageQuoteAt`（含测试）；组件：`SelectionQuote.tsx`、`ChatPromptRail.tsx`、`selectionQuoteOffer.ts`（触屏选区 → 操作栏的小 store）、`chatReadingAidsCopy.ts`（中英文案，沿用 `messageActionsCopy` 的按语言模块写法，不动共享热区 `text/_default.ts`/`zh-Hans.ts`）、`chatReadingAids.css`。
+- 新纯函数：`selectionQuoteRange.ts`、`chatRail.ts`、`continueOffer.ts`、`messageActionsModel.insertMessageQuoteAt`（含测试）；组件：`SelectionQuote.tsx`、`ChatPromptRail.tsx`、`selectionQuoteOffer.ts`（触屏选区 → 操作栏的小 store）、`chatReadingAids.css`。文案在 `text/_default.ts` / `translations/zh-Hans.ts` 的 `session.chat.readingAids.*`（追加式，遵守 text/README），zh-Hant 补真实翻译；「继续」的按钮文字与发送内容是同一个 key 的当前语言值（繁中显示与发送都是「繼續」）。
 - ChatList 只做最小挂钩：渲染 `<SelectionQuote>` 与 `<ChatPromptRail>`。MessageView：quote source 标记、用户气泡的 `data-chat-prompt-id`、停止行的继续按钮。MessageActions：触屏「引用选中」。chatTurns：停止行提到抽屉外 + `continueOffer` 标记。
 
 ## 兼容矩阵与发布顺序
@@ -122,8 +122,10 @@
 
 ## 风险
 
+0. **已知限制**：触屏的「引用选中」挂在消息操作栏上，而工具之间的中间回复（activity 里的中间轮次）按 B-454 没有操作栏，所以触屏无法引用中间轮次的文字（桌面浮层不受影响）。
+
 1. **选区 DOM 判定在各浏览器不同**（三击、`user-select: none` 的行号）：用「裁到起点消息」+ 判空兜底；真机项进 verify queue。
-2. **触屏点按钮时系统先清选区**：按钮用记下的文字 + 延迟 400ms 移除；iOS 真机行为浏览器验不了，进 verify queue。
+2. **触屏点按钮时系统先清选区**：按钮用记下的文字，选区收起也要静止 500ms 才撤按钮；iOS 真机行为浏览器验不了，进 verify queue。
 3. **继续被误点两次**：点击即禁用，新用户消息落地后按钮按规则消失。
 4. **长会话轨道刻度过密**：刻度按位置比例绘制，相邻重叠可接受（悬停预览仍能区分）；ChatList 没虚拟化，测量为 O(提问数) 的 offsetTop 读取，只在尺寸/rows 变化与滚动（rAF 合并）时做。
 5. **停止行从抽屉移出**改变了无回答停止 turn 的外观：这正是本需求要的可见性，与 B-487 的失败行一致。

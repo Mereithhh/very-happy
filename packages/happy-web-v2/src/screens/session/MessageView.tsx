@@ -35,10 +35,6 @@ import { presentSessionPeerMessage } from './sessionPeerMessage';
 import { SessionPeerMessageCard } from './SessionPeerMessageCard';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { composerGate } from '@/app/sessionRestoreRules';
-import { isAgentWorkLive } from '@/sync/agentLiveness';
-import { useHeartbeatFresh } from '@/sync/heartbeatLease';
-import { continueMessageText } from './continueOffer';
-import { chatReadingAidsCopy } from './chatReadingAidsCopy';
 
 function UserText({ message, sessionId, attachments }: { message: UserTextMessage; sessionId: string; attachments?: ToolCallMessage[] }) {
     const { t } = useTranslation();
@@ -326,25 +322,20 @@ function ClaudeAuthFailedBlock({ sessionId }: { sessionId: string }) {
 
 /**
  * B-578: 「继续」 on the latest 「已由你停止」 (chatTurns marks which one). A
- * plain user message through the same path as B-520's option picks; hidden
- * while the agent works (it would queue), on mirrors (read-only) and on
- * archived sessions (the composer's restore-first path owns those).
+ * plain user message through the same path as B-520's option picks. ChatList
+ * withholds it while the agent works or a prompt is queued; hidden here on
+ * mirrors (read-only) and archived sessions (the composer's restore-first
+ * path owns those).
  */
 function ContinueAction({ sessionId }: { sessionId: string }) {
-    const { lang } = useTranslation();
-    const copy = chatReadingAidsCopy(lang);
+    const { t } = useTranslation();
     const session = useSession(sessionId);
-    const heartbeatFresh = useHeartbeatFresh(sessionId);
     const [busy, setBusy] = useState(false);
+    // Liveness and the queue are judged by ChatList (it only passes
+    // `continueOffer` while the session is idle with nothing queued).
     if (!session || isMirrorSession(session) || composerGate(session) !== 'send') return null;
-    const working = isAgentWorkLive({
-        presence: session.presence,
-        thinking: session.thinking,
-        runningSubagentsInTurn: 0,
-        heartbeatFresh,
-    });
-    if (working) return null;
-    const label = continueMessageText(lang);
+    // The button text is what gets sent, in the UI language (B-578).
+    const label = t('session.chat.readingAids.continue');
     const onContinue = () => {
         if (busy) return;
         setBusy(true);
@@ -357,7 +348,7 @@ function ContinueAction({ sessionId }: { sessionId: string }) {
         <button
             type="button"
             className="msg-event-continue"
-            title={copy.continueHint}
+            title={t('session.chat.readingAids.continueHint')}
             disabled={busy}
             onClick={onContinue}
         >

@@ -17,7 +17,6 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { quoteMessage } from './messageQuote';
 import { readQuotableSelection } from './selectionQuoteRange';
 import { setTouchQuoteOffer } from './selectionQuoteOffer';
-import { chatReadingAidsCopy } from './chatReadingAidsCopy';
 
 /** 双击之后再等这么久，第三击才不会点到按钮。触屏选区也要静止这么久才算选好。 */
 export const SELECTION_SETTLE_MS = 500;
@@ -40,8 +39,7 @@ function isCoarse(): boolean {
 export function SelectionQuote({ rootRef, sessionId }: { rootRef: RefObject<HTMLElement | null>; sessionId: string }) {
     const session = useSession(sessionId);
     const enabled = !!session && !isMirrorSession(session);
-    const { lang } = useTranslation();
-    const copy = chatReadingAidsCopy(lang);
+    const { t } = useTranslation();
     const [request, setRequest] = useState<Request | null>(null);
     const [position, setPosition] = useState<Position>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
@@ -154,7 +152,13 @@ export function SelectionQuote({ rootRef, sessionId }: { rootRef: RefObject<HTML
         window.addEventListener('blur', close);
         window.addEventListener('resize', close);
         root.addEventListener('scroll', onScroll, { passive: true });
+        // The transcript resizing (keyboard, side panel, composer growing)
+        // moves the text without a scroll: re-place, or hide once it is gone.
+        const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onScroll);
+        resize?.observe(root);
+        if (root.firstElementChild) resize?.observe(root.firstElementChild);
         return () => {
+            resize?.disconnect();
             close();
             window.clearTimeout(touchTimer);
             if (raf) cancelAnimationFrame(raf);
@@ -177,7 +181,7 @@ export function SelectionQuote({ rootRef, sessionId }: { rootRef: RefObject<HTML
             type="button"
             className="cl-selquote"
             style={position ? { left: position.left, top: position.top } : { visibility: 'hidden', left: 0, top: 0 }}
-            title={copy.quoteSelectionHint}
+            title={t('session.chat.readingAids.quoteSelectionHint')}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {
                 quoteMessage(sessionId, request.text, 'cursor');
@@ -186,7 +190,7 @@ export function SelectionQuote({ rootRef, sessionId }: { rootRef: RefObject<HTML
             }}
         >
             <Quote size={13} aria-hidden />
-            <span>{copy.quoteSelection}</span>
+            <span>{t('session.chat.readingAids.quoteSelection')}</span>
         </button>,
         document.body,
     );
