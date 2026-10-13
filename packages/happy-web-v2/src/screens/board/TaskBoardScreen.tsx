@@ -41,6 +41,7 @@ import { buildLifecycleColumns, groupBoardItems, type BoardItem, type CompletedE
 import { AttentionSection } from '@/screens/automations/AttentionSection';
 import { useAutomations } from '@/sync/automationsStore';
 import { automationsEntryVisible } from '@/sync/automationsPoll';
+import { useBoardFlip, type ColumnMap } from './boardFlip';
 import './board.css';
 
 function Column({
@@ -368,6 +369,22 @@ export function TaskBoardScreen() {
     [layout, items, tasks],
   );
 
+  // B-588: key → column, the only input of the column-change animation.
+  // Streaming updates keep this map equal, so they never animate.
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const flipColumns = useMemo<ColumnMap>(() => {
+    const map: Record<string, string> = {};
+    if (grouped) {
+      for (const lane of grouped.lanes) for (const it of lane.items) map[it.key] = `lane:${lane.task.id}`;
+      for (const it of grouped.ungrouped) map[it.key] = 'ungrouped';
+    } else {
+      for (const it of running) map[it.key] = 'running';
+      for (const it of waiting) map[it.key] = 'waiting';
+    }
+    return map;
+  }, [grouped, running, waiting]);
+  useBoardFlip(boardRef, flipColumns, grouped ? 'tasks' : 'lifecycle');
+
   // Task-level mark done: task record (existing setStatus) + ONE batch prompt
   // for the sessions currently on the lane + ONE task-level notification
   // (sessions completed in the batch don't notify individually).
@@ -509,7 +526,7 @@ export function TaskBoardScreen() {
   };
 
   return (
-    <div className="bd">
+    <div className="bd" ref={boardRef}>
       <header className="bd-header">
         <BackButton />
         <span className="bd-title">{t('board.title')}</span>
