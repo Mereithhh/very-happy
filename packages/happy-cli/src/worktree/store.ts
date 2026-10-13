@@ -3,7 +3,7 @@
  * `HAPPY_HOME/worktree-setup/` (0700 dir, 0600 files). Never synced to the
  * server: trusting a script is a fact about THIS machine.
  */
-import { existsSync, readFileSync, renameSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
 import type { SetupRunner, WorktreeOrigin } from './config';
@@ -11,6 +11,8 @@ import type { SkippedPath } from './materialize';
 
 export const MAX_APPROVALS = 500;
 export const MAX_WORKTREES = 500;
+/** Run directories (approved script snapshot + output log) kept on disk. */
+export const MAX_RUN_DIRS = 100;
 
 export interface Approval { machineId: string; repoRoot: string; hash: string; runner: SetupRunner; approvedAt: number }
 
@@ -68,6 +70,19 @@ export class WorktreeStore {
     }
 
     logPath(runId: string): string { return join(this.dir, 'runs', runId, 'output.log'); }
+
+    /** Keep the newest MAX_RUN_DIRS runs (run ids start with a base36 timestamp, so names sort by age). */
+    pruneRuns(keep: ReadonlySet<string> = new Set(), max = MAX_RUN_DIRS): number {
+        const root = join(this.dir, 'runs');
+        let names: string[];
+        try { names = readdirSync(root).sort(); } catch { return 0; }
+        let removed = 0;
+        for (const name of names.slice(0, Math.max(0, names.length - max))) {
+            if (keep.has(name)) continue;
+            try { rmSync(join(root, name), { recursive: true, force: true }); removed++; } catch { /* in use / gone */ }
+        }
+        return removed;
+    }
 
     // ── approvals ──
     approvals(): Approval[] {

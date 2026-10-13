@@ -359,7 +359,10 @@ export class ApiMachineClient {
         // see modules/todo/todoRpc.ts for why that config is machine-local only.
         registerTodoHandlers(this.rpcHandlerManager);
         // B-585/B-586: worktree create / setup trust / removal (worktree/worktreeRpc.ts).
-        registerWorktreeHandlers(this.rpcHandlerManager, configureWorktreeService({ home: configuration.happyHomeDir, machineId: this.machine.id, log: (msg, err) => logger.debug(msg, err) }));
+        // (Guarded: a daemon always has a home; partial test doubles of `configuration` may not.)
+        if (typeof configuration.happyHomeDir === 'string') {
+            registerWorktreeHandlers(this.rpcHandlerManager, configureWorktreeService({ home: configuration.happyHomeDir, machineId: this.machine.id, log: (msg, err) => logger.debug(msg, err) }));
+        }
         // B-150: route the auto-restore summary to the account notification.
         this.wireAutoRestoreReport();
     }

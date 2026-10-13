@@ -207,6 +207,8 @@ export class WorktreeService {
 
     private startRun(worktree: string, record: WorktreeRecord, script: string, runner: SetupRunner, hash: string, timeoutMinutes: number): WorktreeRecord {
         const runId = `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+        const active = new Set(Object.values(this.store.worktrees()).filter((r) => r.setup.state === 'running' && r.setup.runId).map((r) => r.setup.runId!));
+        try { this.store.pruneRuns(active); } catch (error) { this.debug('[worktree] run pruning failed', error); }
         const runDir = this.store.runDir(runId);
         const launch = prepareRunner(runDir, runner, script);
         const handle = startSetupRun({
