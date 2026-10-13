@@ -258,29 +258,50 @@ describe('automation runner: sticky and send', () => {
         clock += AUTOMATION_LEASE_RENEW_MS; await runner.renewAll();
         expect(client.report).toHaveBeenLastCalledWith('r1', { claimId: 'claim-1', leaseMs: 60_000 });
     });
-    it('B-587 review P2-5: a HIBERNATED send target is woken first, then receives the prompt', async () => {
+    it('B-587: a HIBERNATED send target is woken DETACHED — the tick returns, the lease keeps renewing — then receives the prompt', async () => {
         const target = automation({ action: { kind: 'send', sessionId: 'sleepy', prompt: 'ping {{run.id}}' } });
         const client = fakeClient([claimed(run(), target)]);
-        const wakeHibernated = vi.fn(async (id: string) => { live.add(id); return true; });
-        const runner = start(client, { wakeHibernated }); await settled(runner);
+        let wake!: (ok: boolean) => void;
+        const wakeHibernated = vi.fn((id: string) => new Promise<boolean>((resolve) => { wake = (ok) => { if (ok) live.add(id); resolve(ok); }; }));
+        const runner = start(client, { wakeHibernated, isHibernated: (id) => id === 'sleepy' });
+        await flush();                        // the start-up tick finished while the wake is still pending
         expect(wakeHibernated).toHaveBeenCalledWith('sleepy');
+        expect(runner.busy).toBe(true);       // a handover waits for it
+        expect(runner.trackedRunIds()).toEqual(['r1']);
+        clock += AUTOMATION_LEASE_RENEW_MS; await runner.renewAll();
+        expect(client.report).toHaveBeenLastCalledWith('r1', { claimId: 'claim-1', leaseMs: 60_000 });
+        await runner.tick();                  // the tick is free: it claims again and monitors…
+        expect(client.claim).toHaveBeenCalledTimes(2);
+        // …without settling a run whose session is still waking
+        expect(client.report).not.toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'failed' }));
+        wake(true); await flush();
         expect(send).toHaveBeenCalledWith('sleepy', expect.stringContaining('ping r1'), expect.anything());
-        expect(client.report).not.toHaveBeenCalledWith('r1', expect.objectContaining({ attentionReason: 'session_not_live' }));
+        expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'running', sessionId: 'sleepy' }));
+        expect(runner.busy).toBe(false);
         live.delete('sleepy');
     });
-    it('B-587 review P2-5: a wake that does not come back in time still fails as session_not_live', async () => {
+    it('B-587: a failed wake is reported as session_wake_failed (not "not running on this machine")', async () => {
         const target = automation({ action: { kind: 'send', sessionId: 'gone', prompt: 'ping' } });
         const client = fakeClient([claimed(run(), target)]);
-        const runner = start(client, { wakeHibernated: vi.fn(async () => false) }); await settled(runner);
+        const runner = start(client, { wakeHibernated: vi.fn(async () => false), isHibernated: () => true }); await settled(runner); await flush();
         expect(send).not.toHaveBeenCalled();
-        expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'failed', attentionReason: 'session_not_live' }));
+        expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'failed', attentionReason: 'session_wake_failed' }));
     });
-    it('B-587 review P2-5: a hibernated sticky session is woken and continued, not replaced', async () => {
+    it('B-587: a plain offline (not hibernated) target is not woken: session_not_live as before', async () => {
+        const target = automation({ action: { kind: 'send', sessionId: 'off', prompt: 'ping' } });
+        const client = fakeClient([claimed(run(), target)]);
+        const wakeHibernated = vi.fn(async () => true);
+        const runner = start(client, { wakeHibernated, isHibernated: () => false }); await settled(runner);
+        expect(wakeHibernated).not.toHaveBeenCalled();
+        expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ attentionReason: 'session_not_live' }));
+    });
+    it('B-587: a hibernated sticky session is woken and continued, not replaced', async () => {
         const target = automation({ action: { kind: 'spawn', agent: 'claude', directory: '/repo', prompt: 'go', sticky: { key: 'k' } } as never });
         const client = fakeClient([claimed(run(), target, [{ key: 'k', sessionId: 'stick', updatedAt: 1 }])]);
         const wakeHibernated = vi.fn(async (id: string) => { live.add(id); return true; });
-        const runner = start(client, { wakeHibernated }); await settled(runner);
+        const runner = start(client, { wakeHibernated, isHibernated: (id) => id === 'stick' }); await settled(runner); await flush();
         expect(send).toHaveBeenCalledWith('stick', expect.any(String), expect.anything());
+        expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'running', sessionId: 'stick', stickyKey: 'k' }));
         expect(spawn).not.toHaveBeenCalled();
         expect(client.deleteSticky).not.toHaveBeenCalled();
         live.delete('stick');

@@ -26,11 +26,13 @@ function client(opts: { onFlush?: () => void; stamp?: 'ok' | 'timeout' | 'throw'
         unfreezeInbound: vi.fn(() => { calls.push('unfreeze'); frozen = false; routed.push(...held.splice(0)); }),
         flush: vi.fn(async () => { calls.push('flush'); opts.onFlush?.(); }),
         updateMetadataAndWait: vi.fn(async (handler: (m: Metadata) => Metadata) => {
+            const next = handler(metadata);
+            if (!next.hibernation) { calls.push('clear'); metadata = next; return true; }
             calls.push('stamp');
             opts.onStamp?.();
             if (opts.stamp === 'throw') throw new Error('socket closed');
             if (opts.stamp === 'timeout') return false;
-            metadata = handler(metadata);
+            metadata = next;
             return true;
         }),
         updateMetadata: vi.fn((handler: (m: Metadata) => Metadata) => { calls.push('metadata'); metadata = handler(metadata); }),
@@ -126,7 +128,7 @@ describe('B-587 commitHibernation', () => {
             expect(await commitHibernation(h.deps)).toBe(false);
             expect(h.finish).not.toHaveBeenCalled();
             expect(c.routed).toEqual(['x']);
-            expect(c.calls).toContain('metadata'); // the clearing write
+            expect(c.calls).toContain('clear'); // the clearing write, awaited (review P3-2)
             expect(h.gate.current).toBeNull();
         }
     });
@@ -144,11 +146,30 @@ describe('B-587 commitHibernation', () => {
     it('a message arriving during the settle wait aborts: routed now, beats resume, stamp cleared', async () => {
         const c = client();
         c.lastHeartbeatAt = 1234;
-        const h = claudeLike(c, { sleep: async () => { c.deliver('during-settle'); } });
+        let once = false;
+        const h = claudeLike(c, { sleep: async () => { if (!once) { once = true; c.deliver('during-settle'); } } });
         expect(await commitHibernation(h.deps)).toBe(false);
         expect(c.routed).toEqual(['during-settle']);
         expect(c.calls).toContain('unmute');
         expect(c.metadata.hibernation).toBeUndefined();
+        expect(h.finish).not.toHaveBeenCalled();
+    });
+
+    it('review P3-3: a SIGTERM during the settle wait is acted on at once, not after the whole wait', async () => {
+        const c = client();
+        c.lastHeartbeatAt = 1234;               // a full 6 s settle is due
+        let polls = 0;
+        let h!: ReturnType<typeof claudeLike>;
+        const sleep = vi.fn((ms: number) => {
+            if (ms !== 100) return new Promise<void>(() => {}); // the settle itself never ends on its own
+            polls += 1;
+            if (polls === 3) h.requestExit(false);
+            return Promise.resolve();
+        });
+        h = claudeLike(c, { sleep, presenceSettleMs: 6000 });
+        expect(await commitHibernation(h.deps)).toBe(false);
+        expect(polls).toBe(3);
+        expect(h.cleanup).toHaveBeenCalledWith({ archive: false });
         expect(h.finish).not.toHaveBeenCalled();
     });
 

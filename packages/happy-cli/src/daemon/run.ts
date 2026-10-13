@@ -2054,9 +2054,11 @@ export async function startDaemon(): Promise<void> {
       backgroundTasks: id => backgroundTasks.count(id),
       // B-587 review P2-5: a hibernated target is woken (resume) and the send
       // waits until its wrapper is back; anything else stays session_not_live.
-      wakeHibernated: async (id) => {
+      isHibernated: (id) => {
         const record = readPersistedSessions()[id];
-        if (!record || typeof record.hibernatedAt !== 'number' || record.hibernatedAt < record.savedAt) return false;
+        return !!record && typeof record.hibernatedAt === 'number' && record.hibernatedAt >= record.savedAt;
+      },
+      wakeHibernated: async (id) => {
         const result = await resumeSession(id);
         if (result.type !== 'success') return false;
         return waitForSessionLive(id, (sid) => [...pidToTrackedSession.values()].some(s => s.happySessionId === sid && isPidAlive(s.pid)));

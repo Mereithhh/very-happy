@@ -83,11 +83,34 @@ export async function commitHibernation(deps: HibernationCommitDeps): Promise<bo
         return false;
     }
     const { client } = deps;
+    const now = deps.now ?? Date.now;
+    const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
     let frozen = false;
     let stamped = false;
-    const abort = (why: string): false => {
+    /**
+     * Review P3-3: every wait in the commit window ends early when an exit is
+     * requested (a stop-session SIGTERM is followed by SIGKILL after 2 s), so
+     * the deferred exit runs promptly instead of after the full wait.
+     */
+    const waitOrExit = async <T>(work: Promise<T>, fallback: T): Promise<T> => {
+        let settled = false;
+        const watched = work.finally(() => { settled = true; });
+        const exitWatch = (async (): Promise<T> => {
+            while (!settled && !deps.exitRequested()) await sleep(EXIT_POLL_MS);
+            return settled ? watched : fallback;
+        })();
+        return Promise.race([watched, exitWatch]);
+    };
+    const abort = async (why: string): Promise<false> => {
         log(`[hibernate] aborted at commit: ${why}`);
-        if (stamped) client.updateMetadata((metadata) => { const next = { ...metadata }; delete next.hibernation; return next; });
+        if (stamped) {
+            // Review P3-2: clear the stamp and WAIT for it (bounded; shorter when
+            // an exit is waiting) — a leftover stamp would show a running
+            // session as hibernated once it goes offline.
+            const clear = (metadata: Metadata) => { const next = { ...metadata }; delete next.hibernation; return next; };
+            const cleared = await client.updateMetadataAndWait(clear, deps.exitRequested() ? EXIT_CLEAR_TIMEOUT_MS : undefined).catch(() => false);
+            if (!cleared) log('[hibernate] stamp clear not confirmed (it keeps retrying in the background)');
+        }
         if (frozen) { client.unmuteHeartbeats(); client.unfreezeInbound(); }
         deps.releaseExit();
         return false;
@@ -109,21 +132,14 @@ export async function commitHibernation(deps: HibernationCommitDeps): Promise<bo
     client.freezeInbound();
     client.muteHeartbeats();
     frozen = true;
-    const stamp: HibernationStamp = { at: (deps.now ?? Date.now)(), seq: client.messageCursor, idleMs: deps.idleMs, v: 1 };
-    let landed = false;
-    try {
-        landed = await client.updateMetadataAndWait((metadata) => ({ ...metadata, hibernation: stamp }));
-    } catch {
-        landed = false;
-    }
-    // A timed-out write may still land later; clear it on abort either way.
+    const stamp: HibernationStamp = { at: now(), seq: client.messageCursor, idleMs: deps.idleMs, v: 1 };
+    // A timed-out / interrupted write may still land later; clear it on abort either way.
     stamped = true;
+    const landed = await waitOrExit(client.updateMetadataAndWait((metadata) => ({ ...metadata, hibernation: stamp })).catch(() => false), false);
+    if (deps.exitRequested()) return abort('exit requested');
     if (!landed) return abort('stamp not confirmed');
-    why = deps.exitRequested() ? 'exit requested' : null;
-    if (why) return abort(why);
-    const now = deps.now ?? Date.now;
     const settle = Math.max(0, client.lastHeartbeatAt + (deps.presenceSettleMs ?? PRESENCE_SETTLE_MS) - now());
-    if (settle > 0) await (deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(settle);
+    if (settle > 0) await waitOrExit(sleep(settle), undefined);
     why = moved();
     if (why) return abort(why);
     deps.markCommitted();
@@ -131,6 +147,11 @@ export async function commitHibernation(deps: HibernationCommitDeps): Promise<bo
     await deps.finish(stamp);
     return true;
 }
+
+/** How often a commit-window wait checks for a requested exit. */
+export const EXIT_POLL_MS = 100;
+/** Bounded stamp clear when an exit is waiting behind the abort. */
+export const EXIT_CLEAR_TIMEOUT_MS = 1_000;
 
 export interface HibernationProbeDeps {
     checkMs: number;

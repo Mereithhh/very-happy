@@ -21,14 +21,14 @@ very-happy 已经有「停进程不归档」（铁律 7，`POST /deactivate`）�
    体验上只多一个「正在唤醒…」状态；权限模式保持休眠前的值。
 3. 休眠不发「完成」通知、不改未读、不归档；休眠期间别人发进来的消息在唤醒后照常处理（不丢）。
 4. 兼容：旧 web 把休眠会话显示为 offline，现有「恢复」可用；新 web 连旧 CLI 不出现任何休眠 UI；
-   不加 Prisma migration，不改 server。
+   不加 Prisma migration；server 只做一处零依赖的 presence 修复（见 review 修订「实跑新发现」），协议不变。
 
 ## 非目标
 
 - 不休眠 web 终端（tmux）会话、终端 mirror、用户在自己终端里直接跑的 `very-happy`（local 模式）。
 - 不休眠 pi / gemini / openclaw 会话：web 的恢复只支持 claude / codex（`restoreEligibility`），休眠了就醒不过来。
 - 不做「打开即预热」「按内存压力动态调阈值」「休眠前截断/压缩上下文」。
-- 不改 server、不加 migration、不改 wire 包。
+- 不加 migration、不改 wire 包；server 不加新路由/字段（只修 presence 批量写的竞态）。
 
 ## 现状事实（代码已确认）
 
@@ -180,16 +180,17 @@ env `HAPPY_HIBERNATE_IDLE_MS`（覆盖设置，测试用，可到秒级）、`HA
 | 旧 daemon + 新 wrapper | 任意 | 任意 | `/session-hibernate-check` 404 → wrapper 退避 30min，不休眠 |
 | 新 | 旧/新 | 旧 | 休眠会话 = offline（非归档），横幅「恢复」/侧栏 Restore 可唤醒；旧 web 直接发的消息留在 server，唤醒后被重放处理（§4）；旧 web 改名会剥掉 `hibernation`/`keepAwake`（R5） |
 | 新 | 旧/新 | 新 | 完整体验：打开/发消息自动唤醒、排队、保持唤醒、机器设置 |
+| 新 | 旧 | 新/旧 | 旧 server 的心跳批量写可能在下线后把会话翻回 active；新 wrapper 冻结时停心跳并等一个批窗口（6s）再下线兜底，等待期间有入站或退出请求即放弃/立刻执行 |
 | 新休眠 → 降级旧 CLI 恢复 | 任意 | 新 | 旧 CLI 不清 `hibernation` 戳；会话 active 时 web 不看它；之后若再 offline，`activeAt` 已晚于戳 → 不误判为休眠。旧 CLI 不重放休眠期间的消息（同今天 offline） |
 
-server：零改动（metadata 是不透明加密串，`/deactivate` 已存在）。wire：零改动。
-发布顺序：server/web 先（新 web 对旧 CLI 无感）→ CLI。回滚：CLI 回旧版 = 不再休眠，已休眠会话用「恢复」照常接回；
+server：协议零改动（metadata 是不透明加密串，`/deactivate` 已存在）；presence 修复只改心跳批量写的条件（`lastActiveAt < 心跳到达时间`）与下线写入时丢弃排队心跳，对旧端无感。wire：零改动。
+发布顺序：server/web 先（新 web 对旧 CLI 无感，presence 修复对所有 CLI 生效）→ CLI；CLI 先于 server 也安全（6s 兜底）。回滚：CLI 回旧版 = 不再休眠，已休眠会话用「恢复」照常接回；
 web 回滚 = 显示为 offline + 恢复。
 
 ## 风险
 
 1. **误停正在用的会话**：判据多层 AND + 两次签名确认 + wrapper 提交前复核 + 提交窗口入站检测；任何一层不确定都不休眠。
-2. **休眠瞬间到达的消息**：提交窗口内到达 → 放弃休眠；freeze 之后到达 → seq 大于戳，下次唤醒时重放（不会自动唤醒，见 §5）。
+2. **休眠瞬间到达的消息**：提交窗口内到达 → 放弃休眠并按序路由；提交后到达 → seq 大于戳，唤醒时重放。开着该会话的新 web 看到 `createdAt` 晚于戳的用户消息会自动唤醒（review P2-3，取代 §5 早先「不会自动唤醒」的说法）；没有页面开着时等下次打开/发送/Automation 唤醒。
 3. **Automations 列表拉取失败**：本轮整体不休眠（fail-closed）。
 4. **恢复记录过期**：休眠记录保留 90 天；Claude transcript 被 Claude Code 自己清理（默认 30 天）时，恢复走既有「新对话 + 历史仍可见」降级。
 5. **旧 web 写 metadata 剥字段**：旧 web 改名会删掉 `hibernation`/`keepAwake`。`hibernation` 被删只是退化为普通 offline（仍可恢复）。`keepAwake` 被删若不处理会让用户要求常醒的会话被休眠，因此：新 web 关闭时写显式 `false`（不删键）；wrapper 与 daemon 都把 `true` 锁存（`latchKeepAwake`：缺键≠关闭，只有显式 `false` 解除），daemon 锁存落在 `sessions.json` 的恢复记录（`keepAwake`），跨 wrapper 重启/唤醒保留，记录重写时自动沿用。
@@ -225,3 +226,6 @@ web 回滚 = 显示为 offline + 恢复。
 | P3-2 | Codex 修复缺行为测试 | 抽出 `codex/codexTermination.ts`；行为测试覆盖 offline 不写 archived、archive 写；`registerKillSessionHandler` 测 archived 事件/killSession 仍走 archive、SIGTERM 只走 onSignal |
 | P3-4 | CronCreate / ScheduleWakeup 在 Claude 进程内排程，休眠会丢 | wrapper 跟踪：CronCreate 计数至 CronDelete（失败的 create 不计），ScheduleWakeup 计至 delay+60s；有待触发项 → `scheduled-wakeup` 不休眠 |
 | 实跑新发现 | server 心跳按 5s 批量落库（`activityCache`，写 `active:true`）；退出前刚排队的心跳会在 `session-end` / `/deactivate` **之后**被 flush，把会话翻回 active（无进程在线，`send` 等也误判为 live）。既有问题，休眠退出紧跟心跳时几乎必现 | server：`session-end` 与 `/deactivate` 写 offline 时丢弃该会话待 flush 的心跳（零依赖、无 migration，旧端无感）。wrapper：冻结时停止心跳，等一个批窗口（6s）再下线，兼容未升级的 server；等待期间有入站则放弃休眠 |
+| review 2 · P2-1 | Automation 唤醒同步等待卡住 claim/monitor tick、目标 run 不续租 | 唤醒改为 detached（计入 `busy`，同 precheck）：先 track（续租照常）、monitor 跳过 `waking` 项；只对恢复记录为休眠态的目标唤醒；失败报 `session_wake_failed`（普通 offline 仍是 `session_not_live`） |
+| review 2 · P2-2 | 在途 flush / 多实例 / 蓝绿双槽仍可翻回 active | 心跳 flush 的 where 加 `lastActiveAt < 心跳到达时间（server 时钟）`；所有下线/归档/恢复写入都以 server 时钟写 `lastActiveAt`（`session-end` 改为 `max(t, now)`）；`/deactivate` 先丢弃本实例排队心跳再写库。用到达时间而非 wrapper 时间：恢复后的新心跳一定晚于恢复写入，不受客户端时钟偏差影响 |
+| review 2 · P3 | 放弃休眠清戳未等待；退出请求被长等待拖住 | 清戳改为等待写入（有退出请求时上限 1s）；提交窗口内的 stamp 等待与 6s 心跳窗口都每 100ms 检查退出请求，一有请求立即放弃并执行。`daemon stop` 不停 wrapper；`stop-session`/重启的 SIGTERM→2s→SIGKILL 窗口内，延后的 offline 退出可在约 0.1s+清戳 ≤1s 内开始 |
