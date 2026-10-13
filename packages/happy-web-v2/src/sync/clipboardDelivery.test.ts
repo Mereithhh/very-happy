@@ -11,7 +11,7 @@ vi.mock('@/ui/Toast', () => ({ toast: toasts }));
 const settings = vi.hoisted(() => ({ clipboardAutoCopy: true }));
 vi.mock('@/sync/storage', () => ({ storage: { getState: () => ({ localSettings: settings, sessions: {}, machines: {} }) } }));
 
-import { deliverToClipboard, resetClipboardDeliveryForTest } from './clipboardPush';
+import { deliverToClipboard, isClipboardGestureKey, resetClipboardDeliveryForTest } from './clipboardPush';
 
 let focused = true;
 let visibility: 'visible' | 'hidden' = 'visible';
@@ -80,6 +80,38 @@ describe('clipboard push delivery (B-592)', () => {
         window.dispatchEvent(new Event('keydown'));
         await flush();
         expect(toasts.action).toHaveBeenCalledTimes(1);
+    });
+
+    it('the ⌘ of ⌘V / ⌘C is not the write gesture: the user\'s clipboard is left alone', async () => {
+        // Repro (headed Chromium, real macOS pasteboard): a waiting push was
+        // written on the Meta keydown of ⌘V, racing the paste — the push
+        // replaced what was pasted and the user's clipboard every time.
+        writeText.mockRejectedValueOnce(new Error('NotAllowedError'));
+        await deliverToClipboard('pushed');
+        writeText.mockClear();
+        for (const init of [
+            { key: 'Meta', metaKey: true },
+            { key: 'v', metaKey: true },
+            { key: 'c', metaKey: true },
+            { key: 'Control', ctrlKey: true },
+            { key: 'v', ctrlKey: true },
+            { key: 'Shift', shiftKey: true },
+        ]) window.dispatchEvent(new KeyboardEvent('keydown', init));
+        await flush();
+        expect(writeText).not.toHaveBeenCalled();
+        // still waiting: plain typing (or a click) is the gesture
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+        await flush();
+        expect(writeText).toHaveBeenCalledWith('pushed');
+    });
+
+    it('isClipboardGestureKey: plain keys yes, chords and bare modifiers no', () => {
+        expect(isClipboardGestureKey({ key: 'a' })).toBe(true);
+        expect(isClipboardGestureKey({ key: 'Enter' })).toBe(true);
+        expect(isClipboardGestureKey({ key: 'v', metaKey: true })).toBe(false);
+        expect(isClipboardGestureKey({ key: 'v', ctrlKey: true })).toBe(false);
+        expect(isClipboardGestureKey({ key: 'Meta' })).toBe(false);
+        expect(isClipboardGestureKey({ key: 'Alt' })).toBe(false);
     });
 
     it('auto-copy off keeps the explicit tap-to-copy toast', async () => {
