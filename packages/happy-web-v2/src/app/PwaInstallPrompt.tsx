@@ -19,6 +19,7 @@ import {
   shouldDeferPwaInstall,
   type PwaInstallGuide,
 } from './pwaInstallPolicy';
+import { setPwaInstallPromptVisible } from './pwaInstallVisibility';
 import './pwaInstallPrompt.css';
 
 const REVEAL_DELAY_MS = 1_800;
@@ -109,6 +110,12 @@ export function PwaInstallPrompt() {
       window.removeEventListener('appinstalled', onInstalled);
     };
   }, []);
+
+  // B-570: let the notification opt-in card yield while this card is up.
+  useEffect(() => {
+    setPwaInstallPromptVisible(guide !== null);
+    return () => setPwaInstallPromptVisible(false);
+  }, [guide]);
 
   useEffect(() => {
     if (!guide) return;
