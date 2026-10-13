@@ -45,6 +45,30 @@ export interface HibernateCheckReply {
     reason?: string;
     idleMs?: number;
     nextCheckMs?: number;
+    keepAwake?: boolean;
+}
+
+export const HIBERNATION_EXIT_WAIT_MS = 15_000;
+
+/**
+ * Review P1-2: a wake that lands between the hibernating wrapper's
+ * session-end and its process exit must not take the dying pid as "already
+ * running". Wait (bounded) for those pids to exit before the resume spawns.
+ * Resolves true when all exited, false on timeout.
+ */
+export async function waitForPidsToExit(
+    pids: number[],
+    isAlive: (pid: number) => boolean,
+    timeoutMs: number = HIBERNATION_EXIT_WAIT_MS,
+    sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => number = Date.now,
+): Promise<boolean> {
+    const deadline = now() + timeoutMs;
+    while (pids.some(isAlive)) {
+        if (now() >= deadline) return false;
+        await sleep(100);
+    }
+    return true;
 }
 
 export function createDaemonHibernation(deps: DaemonHibernationDeps) {
@@ -55,8 +79,9 @@ export function createDaemonHibernation(deps: DaemonHibernationDeps) {
     let bindings: { at: number; ids: Set<string> } | null = null;
     let bindingsInFlight: Promise<Set<string> | null> | null = null;
 
-    async function automationBound(): Promise<Set<string> | null> {
-        if (bindings && now() - bindings.at < AUTOMATION_BINDINGS_TTL_MS) return bindings.ids;
+    async function automationBound(fresh = false): Promise<Set<string> | null> {
+        if (!fresh && bindings && now() - bindings.at < AUTOMATION_BINDINGS_TTL_MS) return bindings.ids;
+        if (fresh && bindingsInFlight) await bindingsInFlight;
         if (!bindingsInFlight) {
             bindingsInFlight = deps.loadAutomationBindings()
                 .then((ids) => {
@@ -111,16 +136,21 @@ export function createDaemonHibernation(deps: DaemonHibernationDeps) {
         if (verdict.ok || verdict.reason === 'unconfirmed' || verdict.reason === 'busy') {
             verdict = decideDaemonHibernation({ ...base, automationBound: await automationBound() });
         }
+        // Review P2-5: the cache may predate a NEW send target / sticky binding —
+        // the final yes is always taken on a fresh Automations read.
+        if (verdict.ok) {
+            verdict = decideDaemonHibernation({ ...base, automationBound: await automationBound(true) });
+        }
         if (verdict.ok) {
             approved.set(request.sessionId, t);
             signatures.delete(request.sessionId);
             deps.log?.(`[hibernate] approved ${request.sessionId} (pid ${request.pid}, idle ${Math.round((t - request.report.lastActivityAt) / 1000)}s)`);
-            return { hibernate: true, idleMs };
+            return { hibernate: true, idleMs, ...(latched ? { keepAwake: true } : {}) };
         }
         const next = verdict.reason === 'unconfirmed'
             ? deps.checkMs
             : nextCheckDelay(verdict, request.report, idleMs, deps.checkMs, t);
-        return { hibernate: false, reason: verdict.reason, idleMs, nextCheckMs: next };
+        return { hibernate: false, reason: verdict.reason, idleMs, nextCheckMs: next, ...(latched ? { keepAwake: true } : {}) };
     }
 
     return {
@@ -130,6 +160,11 @@ export function createDaemonHibernation(deps: DaemonHibernationDeps) {
             const at = approved.get(sessionId);
             approved.delete(sessionId);
             signatures.delete(sessionId);
+            return at !== undefined && now() - at <= HIBERNATION_IN_FLIGHT_MS * 5;
+        },
+        /** Review P1-2: an approved hibernation whose wrapper has not exited yet. */
+        pendingExit(sessionId: string): boolean {
+            const at = approved.get(sessionId);
             return at !== undefined && now() - at <= HIBERNATION_IN_FLIGHT_MS * 5;
         },
         forget(sessionId: string): void {
@@ -161,4 +196,22 @@ export async function collectAutomationBindings(client: {
         }
     }
     return [...ids];
+}
+
+export const AUTOMATION_WAKE_TIMEOUT_MS = 60_000;
+
+/** Review P2-5: after a wake, wait (bounded) until the session's wrapper is live (webhook arrived). */
+export async function waitForSessionLive(
+    sessionId: string,
+    live: (sessionId: string) => boolean,
+    timeoutMs: number = AUTOMATION_WAKE_TIMEOUT_MS,
+    sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => number = Date.now,
+): Promise<boolean> {
+    const deadline = now() + timeoutMs;
+    while (!live(sessionId)) {
+        if (now() >= deadline) return false;
+        await sleep(250);
+    }
+    return true;
 }

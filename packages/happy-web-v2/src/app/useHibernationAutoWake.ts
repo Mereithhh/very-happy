@@ -5,7 +5,7 @@
 import { useEffect, useRef } from 'react';
 import { storage } from '@/sync/storage';
 import { restoreSession, useRestoreState } from './sessionRestore';
-import { shouldAutoWake } from './sessionHibernation';
+import { latestUserMessageAt, shouldAutoWake } from './sessionHibernation';
 
 const attempted = new Set<string>();
 
@@ -17,15 +17,16 @@ export function useHibernationAutoWake(sessionId: string | undefined): void {
         const mid = sessionId ? s.sessions[sessionId]?.metadata?.machineId : undefined;
         return !!(mid && s.machines[mid]?.active);
     });
+    const latestUserAt = storage((s) => (sessionId ? latestUserMessageAt(s.sessionMessages[sessionId]?.messages ?? []) : undefined));
     const restore = useRestoreState(sessionId ?? '');
     const restoreBusy = restore?.phase === 'spawning' || restore?.phase === 'awaiting-online';
     useEffect(() => {
         if (!sessionId) return;
-        const key = shouldAutoWake({ sessionId, session, machineOnline, restoreBusy, attempted, openedAt: opened.current.at });
+        const key = shouldAutoWake({ sessionId, session, machineOnline, restoreBusy, attempted, openedAt: opened.current.at, latestUserMessageAt: latestUserAt });
         if (!key) return;
         attempted.add(key);
         void restoreSession(sessionId);
-    }, [sessionId, session, machineOnline, restoreBusy]);
+    }, [sessionId, session, machineOnline, restoreBusy, latestUserAt]);
 }
 
 export function resetHibernationAutoWakeForTest(): void {

@@ -5,6 +5,7 @@
  * state getters and their own "go offline and exit" step.
  */
 import { logger } from '@/ui/logger';
+import type { Metadata } from '@/api/types';
 import {
     evaluateWrapperIdle,
     HIBERNATION_UNSUPPORTED_BACKOFF_MS,
@@ -18,6 +19,8 @@ export interface HibernateCheckAnswer {
     reason?: string;
     idleMs?: number;
     nextCheckMs?: number;
+    /** The daemon's keep-awake latch for this session (survives an old web stripping the field). */
+    keepAwake?: boolean;
 }
 
 /** `unsupported` = old daemon (404) / no daemon; `error` = transient. */
@@ -27,28 +30,51 @@ export interface HibernationCommitClient {
     beginHibernationCommit(): void;
     inboundRoutedSinceCommit(): boolean;
     freezeInbound(): void;
+    unfreezeInbound(): void;
     flush(): Promise<void>;
+    updateMetadataAndWait(handler: (metadata: Metadata) => Metadata, timeoutMs?: number): Promise<boolean>;
+    updateMetadata(handler: (metadata: Metadata) => Metadata): void;
     readonly messageCursor: number;
+    muteHeartbeats(): void;
+    unmuteHeartbeats(): void;
+    readonly lastHeartbeatAt: number;
 }
+
+/**
+ * The server batches heartbeats and flushes them every 5 s as `active: true`;
+ * an old server can flush a beat queued just before our offline write AFTER
+ * it (fixed server-side in B-587, kept here for old servers): stop beating and
+ * let one batch window pass before going offline.
+ */
+export const PRESENCE_SETTLE_MS = 6_000;
 
 export interface HibernationCommitDeps {
     client: HibernationCommitClient;
     /** Claim the session exit for 'hibernate'; false when cleanup already runs for another reason. */
     claimExit: () => boolean;
-    /** Undo the claim after an abort (the session keeps running). */
+    /** A user archive / kill or a signal arrived meanwhile (deferred by the gate). */
+    exitRequested: () => boolean;
+    /** Past the last check: later exit requests no longer abort. */
+    markCommitted: () => void;
+    /** Hand the exit back after an abort; the runner runs any deferred exit now. */
     releaseExit: () => void;
     /** Re-evaluate the wrapper-owned rules right now. */
     recheck: () => HibernationVerdict;
     idleMs: number;
-    /** Stamp metadata, go offline (deactivate — never archive) and exit. */
+    /** Go offline (deactivate — never archive) and exit. The stamp is already written. */
     finish: (stamp: HibernationStamp) => Promise<void>;
+    presenceSettleMs?: number;
+    sleep?: (ms: number) => Promise<void>;
     now?: () => number;
     log?: (message: string) => void;
 }
 
 /**
- * Spec §3: claim → watch inbound → flush → re-check → freeze → stamp → offline.
- * Returns false (and leaves the session running) when anything moved.
+ * Spec §3: claim → watch inbound → flush → check → freeze (hold inbound) →
+ * write the stamp and WAIT for it → check again → commit → offline.
+ * Any failure or movement aborts: held inbound is routed, the stamp (if it
+ * landed) is cleared, the exit is handed back (and a deferred archive / kill /
+ * SIGTERM runs at once). Returns true only when the session went offline.
  */
 export async function commitHibernation(deps: HibernationCommitDeps): Promise<boolean> {
     const log = deps.log ?? ((message: string) => logger.debug(message));
@@ -56,22 +82,51 @@ export async function commitHibernation(deps: HibernationCommitDeps): Promise<bo
         log('[hibernate] exit already claimed for another reason; not hibernating');
         return false;
     }
-    deps.client.beginHibernationCommit();
+    const { client } = deps;
+    let frozen = false;
+    let stamped = false;
+    const abort = (why: string): false => {
+        log(`[hibernate] aborted at commit: ${why}`);
+        if (stamped) client.updateMetadata((metadata) => { const next = { ...metadata }; delete next.hibernation; return next; });
+        if (frozen) { client.unmuteHeartbeats(); client.unfreezeInbound(); }
+        deps.releaseExit();
+        return false;
+    };
+    const moved = (): string | null => {
+        if (deps.exitRequested()) return 'exit requested';
+        if (client.inboundRoutedSinceCommit()) return 'inbound message';
+        const verdict = deps.recheck();
+        return verdict.ok ? null : verdict.reason;
+    };
+    client.beginHibernationCommit();
     try {
-        await deps.client.flush();
+        await client.flush();
     } catch (error) {
-        log(`[hibernate] flush failed, staying awake: ${error instanceof Error ? error.message : String(error)}`);
-        deps.releaseExit();
-        return false;
+        return abort(`flush failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const verdict = deps.recheck();
-    if (deps.client.inboundRoutedSinceCommit() || !verdict.ok) {
-        log(`[hibernate] aborted at commit: ${deps.client.inboundRoutedSinceCommit() ? 'inbound message' : (verdict as { reason: string }).reason}`);
-        deps.releaseExit();
-        return false;
+    let why = moved();
+    if (why) return abort(why);
+    client.freezeInbound();
+    client.muteHeartbeats();
+    frozen = true;
+    const stamp: HibernationStamp = { at: (deps.now ?? Date.now)(), seq: client.messageCursor, idleMs: deps.idleMs, v: 1 };
+    let landed = false;
+    try {
+        landed = await client.updateMetadataAndWait((metadata) => ({ ...metadata, hibernation: stamp }));
+    } catch {
+        landed = false;
     }
-    deps.client.freezeInbound();
-    const stamp: HibernationStamp = { at: (deps.now ?? Date.now)(), seq: deps.client.messageCursor, idleMs: deps.idleMs, v: 1 };
+    // A timed-out write may still land later; clear it on abort either way.
+    stamped = true;
+    if (!landed) return abort('stamp not confirmed');
+    why = deps.exitRequested() ? 'exit requested' : null;
+    if (why) return abort(why);
+    const now = deps.now ?? Date.now;
+    const settle = Math.max(0, client.lastHeartbeatAt + (deps.presenceSettleMs ?? PRESENCE_SETTLE_MS) - now());
+    if (settle > 0) await (deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(settle);
+    why = moved();
+    if (why) return abort(why);
+    deps.markCommitted();
     log(`[hibernate] committing: seq=${stamp.seq} idleMs=${stamp.idleMs}`);
     await deps.finish(stamp);
     return true;
@@ -83,6 +138,8 @@ export interface HibernationProbeDeps {
     ask: (snapshot: WrapperIdleSnapshot) => Promise<HibernateCheckResult>;
     /** Run the commit protocol with the daemon-confirmed threshold. */
     commit: (idleMs: number) => Promise<boolean>;
+    /** The daemon holds a keep-awake latch for this session (heal the stripped field). */
+    onKeepAwakeLatched?: () => void;
     now?: () => number;
     setTimer?: (fn: () => void, ms: number) => unknown;
     clearTimer?: (handle: unknown) => void;
@@ -129,7 +186,9 @@ export class HibernationProbe {
             const now = (this.deps.now ?? Date.now)();
             const snapshot = this.deps.snapshot();
             const local = evaluateWrapperIdle(snapshot, 1, now);
-            if (!local.ok) {
+            // keep-awake is still REPORTED (the daemon latches it, review P2-4);
+            // every other local refusal never bothers the daemon.
+            if (!local.ok && local.reason !== 'keep-awake') {
                 this.schedule(this.deps.checkMs);
                 return this.deps.checkMs;
             }
@@ -142,7 +201,8 @@ export class HibernationProbe {
                 this.schedule(this.deps.checkMs);
                 return this.deps.checkMs;
             }
-            if (answer.hibernate && typeof answer.idleMs === 'number' && answer.idleMs > 0) {
+            if (answer.keepAwake === true) this.deps.onKeepAwakeLatched?.();
+            if (local.ok && answer.hibernate && typeof answer.idleMs === 'number' && answer.idleMs > 0) {
                 const done = await this.deps.commit(answer.idleMs);
                 if (done) {
                     this.stopped = true;
@@ -162,5 +222,55 @@ export class HibernationProbe {
         } finally {
             this.running = false;
         }
+    }
+}
+
+/**
+ * Review P1-1 for runners without a SessionExitGate (Codex): while a
+ * hibernation is deciding, an archive / kill / signal is DEFERRED (archive
+ * outranks offline) instead of ignored; an aborted hibernation hands it back
+ * via `release()`. Once committed the process is leaving offline anyway.
+ */
+export class HibernationExitLatch<I extends string> {
+    private active = false;
+    private committed = false;
+    private deferredIntent: I | null = null;
+
+    constructor(private readonly outranks: (a: I, b: I) => boolean) {}
+
+    begin(): boolean {
+        if (this.active) return false;
+        this.active = true;
+        this.committed = false;
+        this.deferredIntent = null;
+        return true;
+    }
+
+    get hibernating(): boolean {
+        return this.active;
+    }
+
+    /** true = the caller must NOT run this exit now (deferred, or the process is already leaving). */
+    intercept(intent: I): boolean {
+        if (!this.active) return false;
+        if (!this.committed && (this.deferredIntent === null || this.outranks(intent, this.deferredIntent))) this.deferredIntent = intent;
+        return true;
+    }
+
+    get exitRequested(): boolean {
+        return this.deferredIntent !== null;
+    }
+
+    commit(): void {
+        if (this.active) this.committed = true;
+    }
+
+    /** Abort: returns the deferred exit to run now (or null). No-op once committed. */
+    release(): I | null {
+        if (!this.active || this.committed) return null;
+        this.active = false;
+        const deferred = this.deferredIntent;
+        this.deferredIntent = null;
+        return deferred;
     }
 }

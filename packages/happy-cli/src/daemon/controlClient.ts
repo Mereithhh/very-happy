@@ -517,5 +517,6 @@ export async function checkDaemonHibernation(
     ...(typeof result.reason === 'string' ? { reason: result.reason } : {}),
     ...(typeof result.idleMs === 'number' ? { idleMs: result.idleMs } : {}),
     ...(typeof result.nextCheckMs === 'number' ? { nextCheckMs: result.nextCheckMs } : {}),
+    ...(result.keepAwake === true ? { keepAwake: true } : {}),
   };
 }

@@ -611,7 +611,12 @@ export class ApiSessionClient extends EventEmitter {
         // B-587: a hibernating wrapper routes nothing more — whatever arrives
         // now has a seq above the stamp and is replayed by the next wrapper.
         if (this.inboundFrozen) {
-            logger.debug(`[API] Hibernating: leaving inbound ${sourceLocalId ?? '(no localId)'} for the next wrapper`);
+            // Held, not dropped: an aborted hibernation routes it after all;
+            // a committed one leaves it to the next wrapper's replay (seq).
+            logger.debug(`[API] Hibernating: holding inbound ${sourceLocalId ?? '(no localId)'}`);
+            this.frozenInbound.push({ message, sourceLocalId });
+            // Still "moved": a commit that has not passed its last check aborts.
+            this.inboundRoutedDuringCommit = true;
             return;
         }
         this.inboundRoutedDuringCommit = true;
@@ -1140,6 +1145,21 @@ export class ApiSessionClient extends EventEmitter {
     /** Last user/agent activity this wrapper saw (spec §2.1). */
     private lastActivity = Date.now();
     private inboundFrozen = false;
+    private frozenInbound: Array<{ message: unknown; sourceLocalId?: string | null }> = [];
+    private heartbeatsMuted = false;
+    private lastHeartbeat = 0;
+
+    get lastHeartbeatAt(): number {
+        return this.lastHeartbeat;
+    }
+
+    muteHeartbeats(): void {
+        this.heartbeatsMuted = true;
+    }
+
+    unmuteHeartbeats(): void {
+        this.heartbeatsMuted = false;
+    }
     private inboundRoutedDuringCommit = false;
 
     noteActivity(now: number = Date.now()): void {
@@ -1170,6 +1190,14 @@ export class ApiSessionClient extends EventEmitter {
         this.inboundFrozen = true;
     }
 
+    /** An aborted hibernation: route whatever arrived while frozen, in order. */
+    unfreezeInbound(): void {
+        this.inboundFrozen = false;
+        const held = this.frozenInbound;
+        this.frozenInbound = [];
+        for (const item of held) this.routeIncomingMessage(item.message, item.sourceLocalId);
+    }
+
     /**
      * Send a ping message to keep the connection alive
      */
@@ -1192,6 +1220,10 @@ export class ApiSessionClient extends EventEmitter {
     });
 
     keepAlive(thinking: boolean, mode: 'local' | 'remote', backgroundTasks?: readonly BackgroundTaskInfo[]) {
+        // B-587: a hibernating wrapper stops beating, so no beat can be
+        // flushed by the server's presence batch after it went offline.
+        if (this.heartbeatsMuted) return;
+        this.lastHeartbeat = Date.now();
         if (process.env.DEBUG) { // too verbose for production
             logger.debug(`[API] Sending keep alive message: ${thinking}`);
         }

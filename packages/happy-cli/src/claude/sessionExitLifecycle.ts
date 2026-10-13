@@ -85,12 +85,27 @@ export async function settleSessionOnExit(sessionId: string, intent: SessionExit
     }
 }
 
-/** First exit reason wins; every later request is reported and dropped. */
+/**
+ * First exit reason wins; every later request is reported and dropped —
+ * EXCEPT while an idle hibernation is still deciding (B-587 review P1-1):
+ * a user archive / kill or a SIGTERM that arrives then is DEFERRED, the
+ * hibernation sees `exitRequested` and aborts, and `release` hands the
+ * deferred intent back so the caller runs it at once. After the hibernation
+ * is committed the process is leaving anyway (offline, never archive), so
+ * later requests are dropped as before.
+ */
 export class SessionExitGate {
     private decided: SessionExitIntent | null = null;
+    private hibernateCommitted = false;
+    private deferred: SessionExitIntent | null = null;
 
     /** Returns the intent to act on, or null when cleanup already started. */
     claim(intent: SessionExitIntent): SessionExitIntent | null {
+        if (this.decided === 'hibernate' && !this.hibernateCommitted && intent !== 'hibernate') {
+            // archive outranks offline: a user's archive must not be downgraded.
+            if (this.deferred !== 'archive') this.deferred = intent;
+            return null;
+        }
         if (this.decided !== null) return null;
         this.decided = intent;
         return intent;
@@ -100,9 +115,26 @@ export class SessionExitGate {
         return this.decided;
     }
 
-    /** B-587: a hibernation that aborted at commit hands the exit back. */
-    release(intent: SessionExitIntent): void {
-        if (this.decided === intent) this.decided = null;
+    /** B-587: an exit was requested while the hibernation was deciding. */
+    get exitRequested(): boolean {
+        return this.deferred !== null;
+    }
+
+    /** B-587: the hibernation passed its last check — no more deferral. */
+    commitHibernate(): void {
+        if (this.decided === 'hibernate') this.hibernateCommitted = true;
+    }
+
+    /**
+     * B-587: a hibernation that aborted hands the exit back. Returns the exit
+     * deferred meanwhile (the caller must run it now), or null.
+     */
+    release(intent: SessionExitIntent): SessionExitIntent | null {
+        if (this.decided !== intent || (intent === 'hibernate' && this.hibernateCommitted)) return null;
+        this.decided = null;
+        const deferred = this.deferred;
+        this.deferred = null;
+        return deferred;
     }
 }
 

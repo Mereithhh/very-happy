@@ -61,6 +61,12 @@ export interface AutomationRunnerDeps {
     spawn: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     /** The daemon tracks a live wrapper process for this session. */
     live: (sessionId: string) => boolean;
+    /**
+     * B-587 review P2-5: bring a HIBERNATED target back (same path as the web's
+     * wake) and resolve true once it is live again; false = not hibernated /
+     * could not wake in time. Absent = old wiring: no wake attempt.
+     */
+    wakeHibernated?: (sessionId: string) => Promise<boolean>;
     /** A turn is in flight per the wrapper's B-466 heartbeat. */
     turnActive: (sessionId: string) => boolean;
     /** B-507: background tasks still in flight per the wrapper's report (0 when
@@ -291,6 +297,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         }
 
         if (action.kind === 'send') {
+            if (!deps.live(action.sessionId) && deps.wakeHibernated) await deps.wakeHibernated(action.sessionId).catch(() => false);
             if (!deps.live(action.sessionId)) { await failNow(claimed, 'send', `Session ${action.sessionId} is not running on this machine`, 'session_not_live', action.sessionId); return; }
             persist({ runId: run.id, automationId: automation.id, kind: 'send', phase: 'running', claimId: run.claimId, sessionId: action.sessionId });
             try { await send(action.sessionId, `${header}\n${action.prompt}`, { localId: `automation-${run.id}` }); }
@@ -307,6 +314,7 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         const stickyKey = action.sticky ? renderTemplate(action.sticky.key, context) : undefined;
         if (stickyKey) {
             const bound = claimed.stickies.find((sticky) => sticky.key === stickyKey);
+            if (bound && !deps.live(bound.sessionId) && deps.wakeHibernated) await deps.wakeHibernated(bound.sessionId).catch(() => false);
             if (bound && deps.live(bound.sessionId)) {
                 persist({ runId: run.id, automationId: automation.id, kind: 'send', phase: 'running', claimId: run.claimId, sessionId: bound.sessionId, stickyKey });
                 try { await send(bound.sessionId, `${header}\n${action.prompt}`, { localId: `automation-${run.id}` }); }

@@ -211,3 +211,17 @@ web 回滚 = 显示为 offline + 恢复。
 ## 留真机验证项
 
 - dev-sg / mac-office 上 6 小时真实阈值的内存释放量与唤醒时延（浏览器验不了长时间与真实内存）。
+
+## Review 修订（2026-10-13）
+
+| 项 | 问题 | 修订 |
+|---|---|---|
+| P1-1 | 休眠已 claim、flush 期间来的归档/kill/SIGTERM 被忽略，休眠又放弃 → 归档会话挂活 wrapper、daemon stop 无效 | `SessionExitGate`（Claude）/`HibernationExitLatch`（Codex）在休眠决策期**延后**这些退出（archive 优先于 offline）；提交流程见到 `exitRequested` 即放弃，`release` 交回延后的意图并立即执行。提交点之后进程反正以 offline 退出，迟到请求丢弃 |
+| P1-2 | session-end 后到进程退出的窗口里唤醒，resume 见 pid 活着就幂等成功，随后进程退出 → 不上线 | daemon 对已批准休眠且未退出的会话，resume 先等这些 pid 退出（≤15s），再 spawn；超时返回可重试错误 |
+| P2-3 | 休眠后才落到 server 的用户消息不触发唤醒 | web：本 tab 已加载消息中有 `createdAt > hibernation.at` 的用户消息 → 自动唤醒（每条消息一次，不依赖打开时间）；发送走 restore-first，横幅即显示「正在唤醒…」 |
+| P2-4 | keepAwake=true 时本地预检直接返回，daemon 写不进锁存 | keep-awake 拒绝仍上报；daemon 回复带 `keepAwake:true` 时 wrapper 把被剥的字段写回（各端菜单都显示已勾选，一次点击写显式 false 即解除） |
+| P2-5 | Automation `send` 指向已休眠会话 → session_not_live | runner 新增 `wakeHibernated`：目标的恢复记录是休眠态则先 resume，等 wrapper 上线（≤60s）再发送，超时仍记 session_not_live；sticky 同理续用。daemon 最终批准前强制重新读取 Automations（不信 10 分钟缓存） |
+| P3-1 | stamp 写入超时/失败仍下线 | 先冻结入站（暂存不丢）→ 写 stamp 并等待确认 → 失败即放弃：清 stamp、把暂存入站按序路由、交回退出 |
+| P3-2 | Codex 修复缺行为测试 | 抽出 `codex/codexTermination.ts`；行为测试覆盖 offline 不写 archived、archive 写；`registerKillSessionHandler` 测 archived 事件/killSession 仍走 archive、SIGTERM 只走 onSignal |
+| P3-4 | CronCreate / ScheduleWakeup 在 Claude 进程内排程，休眠会丢 | wrapper 跟踪：CronCreate 计数至 CronDelete（失败的 create 不计），ScheduleWakeup 计至 delay+60s；有待触发项 → `scheduled-wakeup` 不休眠 |
+| 实跑新发现 | server 心跳按 5s 批量落库（`activityCache`，写 `active:true`）；退出前刚排队的心跳会在 `session-end` / `/deactivate` **之后**被 flush，把会话翻回 active（无进程在线，`send` 等也误判为 live）。既有问题，休眠退出紧跟心跳时几乎必现 | server：`session-end` 与 `/deactivate` 写 offline 时丢弃该会话待 flush 的心跳（零依赖、无 migration，旧端无感）。wrapper：冻结时停止心跳，等一个批窗口（6s）再下线，兼容未升级的 server；等待期间有入站则放弃休眠 |

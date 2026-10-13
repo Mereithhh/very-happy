@@ -31,7 +31,8 @@ import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { checkDaemonHibernation, notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { HIBERNATION_CAPABILITY, evaluateWrapperIdle, latchKeepAwake, resolveCheckMs, type HibernationStamp, type WrapperIdleSnapshot } from '@/hibernation/hibernationPolicy';
-import { HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
+import { HibernationExitLatch, HibernationProbe, commitHibernation } from '@/hibernation/hibernationProbe';
+import { settleCodexSession } from './codexTermination';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { applyHibernationReplay, applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
@@ -465,8 +466,8 @@ export async function runCodex(opts: {
     // Turn cancellation uses client.interruptTurn() — no AbortController hack needed.
     let abortController = new AbortController();
     let shouldExit = false;
-    // B-587: set from the hibernation commit until the process exits.
-    let hibernating = false;
+    // B-587: a hibernation in progress; exits requested meanwhile are deferred (review P1-1).
+    const hibernationExit = new HibernationExitLatch<'archive' | 'offline'>((a, b) => a === 'archive' && b !== 'archive');
     let hibernationStamp: HibernationStamp | null = null;
     let hibernationProbe: HibernationProbe | null = null;
 
@@ -542,8 +543,8 @@ export async function runCodex(opts: {
     const handleKillSession = async (intent: 'archive' | 'offline' = 'archive') => {
         // B-587: a hibernation is already taking this process offline; never
         // let a late signal stamp it archived on the way out.
-        if (hibernating) {
-            logger.debug('[Codex] Kill/terminate ignored: hibernation in progress');
+        if (hibernationExit.intercept(intent)) {
+            logger.debug(`[Codex] ${intent} exit deferred: hibernation in progress`);
             return;
         }
         logger.debug('[Codex] Kill session requested - terminating process');
@@ -551,28 +552,9 @@ export async function runCodex(opts: {
         logger.debug('[Codex] Abort completed, proceeding with termination');
 
         try {
-            // Update lifecycle state to archived before closing — only for a
-            // user's archive/kill. AGENTS 7 / B-587: SIGTERM/SIGINT (daemon
-            // stop, upgrade, shutdown) go offline: no archived stamp.
-            if (session && intent === 'offline') {
-                session.sendSessionDeath();
-                await session.flush();
-                try { await api.deactivateSession(session.sessionId); } catch (error) { logger.debug('[Codex] deactivate on signal failed', safeCodexErrorMetadata(error)); }
-                await session.close();
-            } else if (session) {
-                session.updateMetadata((currentMetadata) => ({
-                    ...currentMetadata,
-                    lifecycleState: 'archived',
-                    lifecycleStateSince: Date.now(),
-                    archivedBy: 'cli',
-                    archiveReason: 'User terminated'
-                }));
-                
-                // Send session death message
-                session.sendSessionDeath();
-                await session.flush();
-                await session.close();
-            }
+            // AGENTS 7 / B-587: archived stamp only for a user's archive/kill;
+            // SIGTERM/SIGINT go offline (codexTermination.ts).
+            if (session) await settleCodexSession(session, intent, (id) => api.deactivateSession(id), (m, e) => logger.debug(m, safeCodexErrorMetadata(e)));
 
             // Force close Codex transport (best-effort) so we don't leave stray processes
             try {
@@ -937,27 +919,29 @@ export async function runCodex(opts: {
                     pendingRequests: Object.keys(session.getAgentState()?.requests ?? {}).length,
                     backgroundTasks: codexActiveSubagents.size,
                     lastActivityAt: session.lastActivityAt,
-                    ...(shouldExit && !hibernating ? { exiting: true } : {}),
+                    ...(shouldExit && !hibernationExit.hibernating ? { exiting: true } : {}),
                 };
             };
             hibernationProbe = new HibernationProbe({
+                onKeepAwakeLatched: () => {
+                    if (session.getMetadata()?.keepAwake === undefined) session.updateMetadata((m) => (m.keepAwake === undefined ? { ...m, keepAwake: true } : m));
+                },
                 checkMs: resolveCheckMs(),
                 snapshot: hibernationSnapshot,
                 ask: (report) => checkDaemonHibernation({ sessionId: session.sessionId, pid: process.pid, report }),
                 commit: (idleMs) => commitHibernation({
                     client: session,
-                    claimExit: () => {
-                        if (shouldExit || hibernating) return false;
-                        hibernating = true;
-                        return true;
+                    claimExit: () => !shouldExit && hibernationExit.begin(),
+                    exitRequested: () => hibernationExit.exitRequested,
+                    markCommitted: () => hibernationExit.commit(),
+                    releaseExit: () => {
+                        const deferred = hibernationExit.release();
+                        if (deferred) void handleKillSession(deferred);
                     },
-                    releaseExit: () => { hibernating = false; },
                     recheck: () => evaluateWrapperIdle(hibernationSnapshot(), idleMs, Date.now()),
                     idleMs,
                     finish: async (stamp) => {
                         hibernationStamp = stamp;
-                        const landed = await session.updateMetadataAndWait((meta) => ({ ...meta, hibernation: stamp }));
-                        if (!landed) logger.debug('[codex]: hibernation stamp not confirmed before going offline');
                         // Leave the main loop; the finally below goes offline and exits.
                         shouldExit = true;
                         abortController.abort();
@@ -1184,7 +1168,7 @@ export async function runCodex(opts: {
 
         logActiveHandles('cleanup-end');
         logger.debug('[codex]: Final cleanup completed');
-        if (hibernating && hibernationStamp) {
+        if (hibernationExit.hibernating && hibernationStamp) {
             // B-587: offline, never archive — the HTTP fallback for session-end.
             try { await api.deactivateSession(session.sessionId); } catch (error) { logger.debug('[codex]: deactivate after hibernation failed', safeCodexErrorMetadata(error)); }
             logger.debug('[codex]: hibernated; exiting');

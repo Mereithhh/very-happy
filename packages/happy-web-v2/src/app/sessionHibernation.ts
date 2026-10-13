@@ -74,11 +74,30 @@ export function shouldAutoWake(input: {
     attempted: ReadonlySet<string>;
     /** When the user opened this session on this screen (route change). */
     openedAt: number;
+    /** createdAt of the newest user message this tab knows for the session (review P2-3). */
+    latestUserMessageAt?: number;
 }): string | null {
     const key = autoWakeKey(input.sessionId, input.session);
-    if (!key || !input.machineOnline || input.restoreBusy || input.attempted.has(key)) return null;
+    if (!key || !input.machineOnline || input.restoreBusy) return null;
+    const stampAt = readHibernationStamp(input.session!.metadata)!.at;
+    // A user message that reached the server AFTER the wrapper hibernated
+    // (frozen inbound, an outbox retry, another device) is waiting for it:
+    // wake, whether or not this screen was just opened. One try per message.
+    if (typeof input.latestUserMessageAt === 'number' && input.latestUserMessageAt > stampAt) {
+        const messageKey = `${key}:msg:${input.latestUserMessageAt}`;
+        if (!input.attempted.has(messageKey)) return messageKey;
+    }
     // Opening wakes; hibernating WHILE on screen does not — otherwise a tab
     // left open would keep its session awake forever. The next send wakes it.
-    if (readHibernationStamp(input.session!.metadata)!.at > input.openedAt) return null;
+    if (input.attempted.has(key) || stampAt > input.openedAt) return null;
     return key;
+}
+
+/** Newest user-typed message time (ms) in a session's loaded messages. */
+export function latestUserMessageAt(messages: ReadonlyArray<{ kind: string; createdAt?: number }>): number | undefined {
+    let latest: number | undefined;
+    for (const message of messages) {
+        if (message.kind === 'user-text' && typeof message.createdAt === 'number' && (latest === undefined || message.createdAt > latest)) latest = message.createdAt;
+    }
+    return latest;
 }

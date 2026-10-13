@@ -35,6 +35,7 @@ const WrapperIdleSnapshotSchema = z.object({
   waitingForInput: z.boolean(),
   pendingRequests: z.number().int().nonnegative(),
   backgroundTasks: z.number().int().nonnegative(),
+  scheduledWakeups: z.number().int().nonnegative().optional(),
   lastActivityAt: z.number(),
   exiting: z.boolean().optional(),
 }).passthrough();
@@ -49,6 +50,7 @@ export interface HibernateCheckReply {
   reason?: string;
   idleMs?: number;
   nextCheckMs?: number;
+  keepAwake?: boolean;
 }
 
 const BackgroundTaskInfoSchema = z.object({
@@ -263,6 +265,7 @@ export function startDaemonControlServer({
               reason: z.string().optional(),
               idleMs: z.number().optional(),
               nextCheckMs: z.number().optional(),
+              keepAwake: z.boolean().optional(),
             }),
           },
         },

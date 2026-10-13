@@ -60,7 +60,7 @@ import { serialTask } from '@/update/serialTask';
 import { installCliSafely } from '@/update/npmInstall';
 import { createUpdateController } from '@/update/updateController';
 import { TurnActivityTracker } from '@/update/turnActivity';
-import { createDaemonHibernation, collectAutomationBindings } from '@/hibernation/daemonHibernation';
+import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
 import { createAutomationsClient, isAutomationsUnavailable } from '@/automations/client';
 import { BackgroundTaskTracker } from '@/update/backgroundTaskActivity';
@@ -1203,6 +1203,16 @@ export async function startDaemon(): Promise<void> {
 
     const resumeSessionImpl = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
       try {
+        // B-587 review P1-2: the wrapper we just let hibernate has sent
+        // session-end but may still be exiting. Its pid is not "already
+        // running" — wait for it (bounded) so this wake actually spawns.
+        if (daemonHibernation.pendingExit(happySessionId)) {
+          const dying = [...pidToTrackedSession.entries()].filter(([, s]) => s.happySessionId === happySessionId).map(([pid]) => pid);
+          const exited = await waitForPidsToExit(dying, isPidAlive);
+          logger.debug(`[DAEMON RUN] resume ${happySessionId}: waited for hibernating wrapper(s) ${dying.join(', ')} → ${exited ? 'exited' : 'still alive after timeout'}`);
+          if (!exited) return { type: 'error', errorMessage: `Session ${happySessionId} is still going to sleep; try again in a few seconds.` };
+          for (const pid of dying) if (pidToTrackedSession.has(pid)) onChildExited(pid);
+        }
         for (const [pid, live] of pidToTrackedSession.entries()) {
           if (live.happySessionId !== happySessionId) continue;
           if (isPidAlive(pid)) {
@@ -2042,6 +2052,15 @@ export async function startDaemon(): Promise<void> {
       live: id => [...pidToTrackedSession.values()].some(s => s.happySessionId === id && isPidAlive(s.pid)),
       turnActive: id => turnActivity.activeSessions().includes(id),
       backgroundTasks: id => backgroundTasks.count(id),
+      // B-587 review P2-5: a hibernated target is woken (resume) and the send
+      // waits until its wrapper is back; anything else stays session_not_live.
+      wakeHibernated: async (id) => {
+        const record = readPersistedSessions()[id];
+        if (!record || typeof record.hibernatedAt !== 'number' || record.hibernatedAt < record.savedAt) return false;
+        const result = await resumeSession(id);
+        if (result.type !== 'success') return false;
+        return waitForSessionLive(id, (sid) => [...pidToTrackedSession.values()].some(s => s.happySessionId === sid && isPidAlive(s.pid)));
+      },
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
 

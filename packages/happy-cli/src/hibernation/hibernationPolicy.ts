@@ -46,6 +46,7 @@ export type HibernationRefusal =
     | 'queued-input'
     | 'pending-request'
     | 'background-tasks'
+    | 'scheduled-wakeup'
     | 'recent-activity'
     | 'teams'
     | 'spawn-origin'
@@ -108,6 +109,8 @@ export interface WrapperIdleSnapshot {
     waitingForInput: boolean;
     pendingRequests: number;
     backgroundTasks: number;
+    /** CronCreate / ScheduleWakeup still pending inside the agent process (review P3-4). Absent = 0. */
+    scheduledWakeups?: number;
     lastActivityAt: number;
     /** Cleanup already running for another reason. */
     exiting?: boolean;
@@ -128,6 +131,7 @@ export function evaluateWrapperIdle(snapshot: WrapperIdleSnapshot, idleMs: numbe
     if (snapshot.queuedInputs > 0 || !snapshot.waitingForInput) return { ok: false, reason: 'queued-input' };
     if (snapshot.pendingRequests > 0) return { ok: false, reason: 'pending-request' };
     if (snapshot.backgroundTasks > 0) return { ok: false, reason: 'background-tasks' };
+    if ((snapshot.scheduledWakeups ?? 0) > 0) return { ok: false, reason: 'scheduled-wakeup' };
     if (!(now - snapshot.lastActivityAt >= idleMs)) return { ok: false, reason: 'recent-activity' };
     return { ok: true };
 }

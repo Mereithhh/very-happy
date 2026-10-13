@@ -64,3 +64,23 @@ describe('B-587 auto-wake on open', () => {
         expect(shouldAutoWake({ ...base, session: { ...hibernated, active: true } })).toBeNull();
     });
 });
+
+describe('B-587 review P2-3: a user message that landed after the hibernation wakes it', () => {
+    const base = { sessionId: 's1', session: hibernated, machineOnline: true, restoreBusy: false, attempted: new Set<string>(), openedAt: stamp.at - 1 };
+    it('wakes even though the page was open before it hibernated', () => {
+        expect(shouldAutoWake(base)).toBeNull();
+        const key = shouldAutoWake({ ...base, latestUserMessageAt: stamp.at + 500 });
+        expect(key).toMatch(/:msg:/);
+        expect(shouldAutoWake({ ...base, latestUserMessageAt: stamp.at + 500, attempted: new Set([key!]) })).toBeNull();
+        // a newer message gets its own attempt
+        expect(shouldAutoWake({ ...base, latestUserMessageAt: stamp.at + 900, attempted: new Set([key!]) })).toMatch(/:msg:/);
+    });
+    it('messages from before the hibernation do not', () => {
+        expect(shouldAutoWake({ ...base, latestUserMessageAt: stamp.at - 1 })).toBeNull();
+    });
+    it('latestUserMessageAt only counts user-typed messages', async () => {
+        const { latestUserMessageAt } = await import('./sessionHibernation');
+        expect(latestUserMessageAt([{ kind: 'agent-text', createdAt: 9 }, { kind: 'user-text', createdAt: 5 }, { kind: 'user-text', createdAt: 7 }])).toBe(7);
+        expect(latestUserMessageAt([])).toBeUndefined();
+    });
+});

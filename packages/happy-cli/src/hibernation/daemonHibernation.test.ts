@@ -126,3 +126,52 @@ describe('B-587 keep-awake latch (an old web strips metadata.keepAwake on rename
         expect(await h.check({ sessionId: 's1', pid: 1, report: off })).toMatchObject({ hibernate: true });
     });
 });
+
+describe('B-587 review P1-2: a wake racing the hibernating exit', () => {
+    it('pendingExit is true from approval until the exit is consumed', async () => {
+        const { h } = make();
+        await h.check({ sessionId: 's1', pid: 1, report: report() });
+        await h.check({ sessionId: 's1', pid: 1, report: report() });
+        expect(h.pendingExit('s1')).toBe(true);
+        h.consumeExit('s1');
+        expect(h.pendingExit('s1')).toBe(false);
+    });
+    it('waitForPidsToExit waits for the dying pid, bounded', async () => {
+        const { waitForPidsToExit } = await import('./daemonHibernation');
+        let t = 0;
+        let alive = true;
+        const sleep = async (ms: number) => { t += ms; if (t >= 1000) alive = false; };
+        expect(await waitForPidsToExit([7], () => alive, 15_000, sleep, () => t)).toBe(true);
+        expect(t).toBeGreaterThanOrEqual(1000);
+        t = 0;
+        expect(await waitForPidsToExit([7], () => true, 500, async (ms) => { t += ms; }, () => t)).toBe(false);
+    });
+});
+
+describe('B-587 review P2-5: the final yes uses a FRESH Automations read', () => {
+    it('a send target bound after the cache was filled is not hibernated', async () => {
+        let bound: string[] = [];
+        const load = vi.fn(async () => bound);
+        const { h } = make({ loadAutomationBindings: load });
+        await h.check({ sessionId: 's1', pid: 1, report: report() }); // fills the cache (empty)
+        bound = ['s1']; // an automation now targets s1
+        expect(await h.check({ sessionId: 's1', pid: 1, report: report() })).toMatchObject({ hibernate: false, reason: 'automation-bound' });
+    });
+    it('waitForSessionLive resolves when the woken wrapper is tracked again, false on timeout', async () => {
+        const { waitForSessionLive } = await import('./daemonHibernation');
+        let t = 0;
+        expect(await waitForSessionLive('s', () => t >= 750, 60_000, async (ms) => { t += ms; }, () => t)).toBe(true);
+        t = 0;
+        expect(await waitForSessionLive('s', () => false, 1000, async (ms) => { t += ms; }, () => t)).toBe(false);
+    });
+});
+
+describe('B-587 review P2-4: field stripped + NEW wrapper (and daemon restart) still stays awake', () => {
+    it('the persisted latch alone refuses, and the reply tells the wrapper to heal the field', async () => {
+        const store = new Map<string, boolean>([['s1', true]]); // written before the old web stripped the field
+        const { h } = make({ readKeepAwake: (id) => store.get(id) ?? false, writeKeepAwake: (id, v) => { store.set(id, v); } });
+        const fresh = report({ keepAwake: false }); // new wrapper, field absent, no local latch
+        await h.check({ sessionId: 's1', pid: 2, report: fresh });
+        expect(await h.check({ sessionId: 's1', pid: 2, report: fresh })).toMatchObject({ hibernate: false, reason: 'keep-awake', keepAwake: true });
+    });
+});

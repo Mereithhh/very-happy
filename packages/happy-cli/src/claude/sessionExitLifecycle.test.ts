@@ -139,15 +139,27 @@ describe('B-587 hibernate exit', () => {
         expect(d.archiveSession).not.toHaveBeenCalled();
     });
 
-    it('the gate can be handed back after an aborted hibernation, but only by the hibernation', () => {
+    it('the gate defers exits while a hibernation decides and hands them back on abort (review P1-1)', () => {
         const gate = new SessionExitGate();
         expect(gate.claim('hibernate')).toBe('hibernate');
+        expect(gate.claim('offline')).toBeNull();
         expect(gate.claim('archive')).toBeNull();
-        gate.release('offline');
+        expect(gate.exitRequested).toBe(true);
+        expect(gate.release('offline')).toBeNull();
         expect(gate.current).toBe('hibernate');
-        gate.release('hibernate');
+        expect(gate.release('hibernate')).toBe('archive');
         expect(gate.claim('archive')).toBe('archive');
-        gate.release('hibernate');
+        expect(gate.release('hibernate')).toBeNull();
         expect(gate.current).toBe('archive');
+    });
+
+    it('a committed hibernation keeps the gate: later exits are dropped, release is a no-op', () => {
+        const gate = new SessionExitGate();
+        gate.claim('hibernate');
+        gate.commitHibernate();
+        expect(gate.claim('archive')).toBeNull();
+        expect(gate.exitRequested).toBe(false);
+        expect(gate.release('hibernate')).toBeNull();
+        expect(gate.current).toBe('hibernate');
     });
 });

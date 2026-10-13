@@ -1181,7 +1181,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 await settleSessionOnExit(session.sessionId, intent, {
                     updateMetadata: (handler) => session.updateMetadata(handler),
                     updateMetadataAndWait: (handler) => session.updateMetadataAndWait(handler),
-                    hibernation: opts.hibernation,
                     sendSessionDeath: () => session.sendSessionDeath(),
                     archiveSession: (id) => api.archiveSession(id),
                     deactivateSession: (id) => api.deactivateSession(id),
@@ -1271,6 +1270,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             waitingForInput: messageQueue.isWaiting(),
             pendingRequests: Object.keys(agentState?.requests ?? {}).length,
             backgroundTasks: current?.backgroundTasks.length ?? 0,
+            scheduledWakeups: current?.scheduledWakeups.pending() ?? 0,
             lastActivityAt: session.lastActivityAt,
             ...(exitGate.current && exitGate.current !== 'hibernate' ? { exiting: true } : {}),
         };
@@ -1283,11 +1283,23 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             commit: (idleMs) => commitHibernation({
                 client: session,
                 claimExit: () => exitGate.claim('hibernate') !== null,
-                releaseExit: () => exitGate.release('hibernate'),
+                exitRequested: () => exitGate.exitRequested,
+                markCommitted: () => exitGate.commitHibernate(),
+                // Review P1-1: an archive / kill / SIGTERM deferred during the
+                // commit window runs now instead of being lost.
+                releaseExit: () => {
+                    const deferred = exitGate.release('hibernate');
+                    if (deferred) void cleanup({ archive: deferred === 'archive' });
+                },
                 recheck: () => evaluateWrapperIdle(hibernationSnapshot(), idleMs, Date.now()),
                 idleMs,
                 finish: (stamp) => cleanup({ archive: false, hibernation: stamp }),
             }),
+            // Review P3-3: the daemon still holds keep-awake but an old web
+            // stripped the field — put it back so every web shows it checked.
+            onKeepAwakeLatched: () => {
+                if (session.getMetadata()?.keepAwake === undefined) session.updateMetadata((m) => (m.keepAwake === undefined ? { ...m, keepAwake: true } : m));
+            },
         });
         hibernationProbe.start();
     }

@@ -258,6 +258,33 @@ describe('automation runner: sticky and send', () => {
         clock += AUTOMATION_LEASE_RENEW_MS; await runner.renewAll();
         expect(client.report).toHaveBeenLastCalledWith('r1', { claimId: 'claim-1', leaseMs: 60_000 });
     });
+    it('B-587 review P2-5: a HIBERNATED send target is woken first, then receives the prompt', async () => {
+        const target = automation({ action: { kind: 'send', sessionId: 'sleepy', prompt: 'ping {{run.id}}' } });
+        const client = fakeClient([claimed(run(), target)]);
+        const wakeHibernated = vi.fn(async (id: string) => { live.add(id); return true; });
+        const runner = start(client, { wakeHibernated }); await settled(runner);
+        expect(wakeHibernated).toHaveBeenCalledWith('sleepy');
+        expect(send).toHaveBeenCalledWith('sleepy', expect.stringContaining('ping r1'), expect.anything());
+        expect(client.report).not.toHaveBeenCalledWith('r1', expect.objectContaining({ attentionReason: 'session_not_live' }));
+        live.delete('sleepy');
+    });
+    it('B-587 review P2-5: a wake that does not come back in time still fails as session_not_live', async () => {
+        const target = automation({ action: { kind: 'send', sessionId: 'gone', prompt: 'ping' } });
+        const client = fakeClient([claimed(run(), target)]);
+        const runner = start(client, { wakeHibernated: vi.fn(async () => false) }); await settled(runner);
+        expect(send).not.toHaveBeenCalled();
+        expect(client.report).toHaveBeenCalledWith('r1', expect.objectContaining({ status: 'failed', attentionReason: 'session_not_live' }));
+    });
+    it('B-587 review P2-5: a hibernated sticky session is woken and continued, not replaced', async () => {
+        const target = automation({ action: { kind: 'spawn', agent: 'claude', directory: '/repo', prompt: 'go', sticky: { key: 'k' } } as never });
+        const client = fakeClient([claimed(run(), target, [{ key: 'k', sessionId: 'stick', updatedAt: 1 }])]);
+        const wakeHibernated = vi.fn(async (id: string) => { live.add(id); return true; });
+        const runner = start(client, { wakeHibernated }); await settled(runner);
+        expect(send).toHaveBeenCalledWith('stick', expect.any(String), expect.anything());
+        expect(spawn).not.toHaveBeenCalled();
+        expect(client.deleteSticky).not.toHaveBeenCalled();
+        live.delete('stick');
+    });
     it('sends into a fixed session only when it is live here', async () => {
         const target = automation({ action: { kind: 'send', sessionId: 'fixed', prompt: 'ping {{run.id}}' } });
         const client = fakeClient([claimed(run(), target)]);

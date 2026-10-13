@@ -56,9 +56,21 @@ it('B-587 / AGENTS 7: a signal runs onSignal (offline), never the archive kill; 
     } finally { dispose(); }
 });
 
-it('B-587: Codex wires signals to an offline exit and keeps the archived stamp for user kills only', () => {
-    const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'codex', 'runCodex.ts'), 'utf8');
-    expect(src).toContain("onSignal: () => handleKillSession('offline')");
-    expect(src).toContain("if (session && intent === 'offline') {");
-    expect(src).toContain("if (hibernating) {\n            logger.debug('[Codex] Kill/terminate ignored: hibernation in progress');");
+it('B-587: with onSignal, the archived event and the killSession RPC still run the archive kill', async () => {
+    const before = process.listeners('SIGTERM');
+    for (const trigger of ['archived', 'rpc'] as const) {
+        const kill = vi.fn(async () => {});
+        const onSignal = vi.fn(async () => {});
+        const events = new EventEmitter();
+        const handlers: Record<string, () => unknown> = {};
+        const dispose = registerKillSessionHandler({ registerHandler: (name: string, fn: () => unknown) => { handlers[name] = fn; } } as any, kill, events, { processSignals: true, onSignal });
+        try {
+            if (trigger === 'archived') events.emit('archived'); else await handlers.killSession();
+            const added = process.listeners('SIGTERM').filter(fn => !before.includes(fn));
+            added[0]('SIGTERM'); // a later signal is ignored
+            await Promise.resolve();
+            expect(kill).toHaveBeenCalledTimes(1);
+            expect(onSignal).not.toHaveBeenCalled();
+        } finally { dispose(); }
+    }
 });
