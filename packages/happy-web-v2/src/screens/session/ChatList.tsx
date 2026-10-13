@@ -40,6 +40,9 @@ import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { SendFailedActions, SendingIndicator, useSendSpinnerResetAll } from './SendStatusView';
 import { turnSendStatus } from './sendStatusModel';
 import { latestOwnSendKey, onChatFollowRequest } from './chatFollowRequest';
+import { SelectionQuote } from './SelectionQuote';
+import { ChatPromptRail } from './ChatPromptRail';
+import './chatReadingAids.css';
 
 export function ChatList({
     sessionId,
@@ -359,6 +362,7 @@ export function ChatList({
                                 sessionId={sessionId}
                                 durationSeconds={row.durationSeconds}
                                 trigger={row.trigger}
+                                abortedAt={row.abortedAt}
                             />
                         ) : row.type === 'turn-diff' ? (
                             <TurnDiffRollup key={row.key} sessionId={sessionId} diff={row.diff} />
@@ -382,6 +386,7 @@ export function ChatList({
                                 thinkingDurationMs={row.thinkingDurationMs}
                                 attachments={row.attachments}
                                 optionsActive={row.optionsActive}
+                                continueOffer={row.continueOffer}
                             />
                         ),
                     )}
@@ -399,6 +404,17 @@ export function ChatList({
                     {showLiveStatus && <SessionLiveStatusBar sessionId={sessionId} />}
                 </div>
             </div>
+            {/* B-577 / B-579: selection quote and the 「你的提问」 rail. */}
+            <SelectionQuote rootRef={scrollRef} sessionId={sessionId} />
+            <ChatPromptRail
+                rows={rows}
+                scrollRef={scrollRef}
+                innerRef={innerRef}
+                hasMoreOlder={!!hasMoreOlder}
+                isLoadingOlder={!!isLoadingOlder}
+                sessionId={sessionId}
+                navVisible={showJump && queuedMessages.length === 0}
+            />
             {queuedMessages.length > 0 && (
                 <section className="cl-queue" aria-label={t('session.chat.queuedTitle', { count: queuedMessages.length })}>
                     <div className="cl-queue-head">

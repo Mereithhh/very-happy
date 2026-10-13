@@ -47,10 +47,10 @@
 
 **可引用范围**：带 `data-quote-source` 的元素——agent 正文 `.msg-agent-text`、用户气泡正文 `.msg-bubble-text`。思考块、工具输出、事件行不可引用。
 
-**选区判定**（纯函数 `selectionQuote.ts`）：
+**选区判定**（`selectionQuoteRange.ts`；文件名避开组件 `SelectionQuote.tsx`，macOS 大小写不敏感）：
 
-- 选区必须非空、单 range，起点落在 transcript 内某个 quote source 里。
-- **跨多条消息：只取起点消息内的部分**（把 range 终点裁到起点消息的末尾）。三击选段时浏览器把终点放到下一个块的开头，这一规则顺带解决它。裁剪后为空则不提供。
+- 选区必须非空、单 range，第一段真正选中的文字落在 transcript 内某个 quote source 里（起点在标题栏/输入框等 transcript 之外则不提供）。
+- **跨多条消息：桌面只取起点消息内的部分**——把选区本身收回到起点消息末尾（所见即所引，`selection.toString()` 保留块间换行）。三击选段时浏览器把终点放到下一个块的开头，这一规则顺带解决它。裁剪后为空则不提供。**触屏不改用户的选区，跨消息直接不提供。**
 - 选区起止都在同一个代码块 `.cv-body` 内 → 保持原文，用 ```` ```<lang> ```` 包起来再加 `> ` 前缀；否则按普通文本引用。
 - 引用格式与 B-454 一致：逐行 `> `，空行写成 `>`。
 
@@ -62,12 +62,12 @@
 
 **桌面（`pointer: fine`）**：选区稳定后在选区**上方**、靠终点处浮出单个按钮「引用」（`Quote` 图标 + 文字，中性表面）。
 
-- 鼠标单击/三击松开立即判定；**双击后等 500ms**再出，避免第三击正好落在按钮上（Orca 同款）；键盘选区（Shift+方向键）在 keyup 时判定。
+- 鼠标单击/三击松开立即判定；**双击后等 500ms**再出，避免第三击正好落在按钮上（Orca 同款）；键盘选区（Shift+方向键）在 keyup 时判定。「选区有没有变」除了 `selectionchange` 标记，还比较按下时的选区文字——双击的选词发生在 mousedown，`selectionchange` 可能晚于 mouseup 才到（真浏览器实测漏掉过）。
 - 按钮 `mousedown` 阻止默认，点击不丢选区；点击后按钮消失、选区保留。
 - 选区变化、在别处按下、Esc、窗口失焦、视口尺寸变化 → 收起。transcript 滚动时按钮跟随选区，选区滚出 transcript 可视区则隐藏。
 - 没有输入框（镜像会话）不提供。
 
-**触屏（`pointer: coarse`）**：不画浮层，不干扰系统选区菜单。`selectionchange` 停止 500ms 后若选区可引用，该消息自己的操作栏（`MessageActions`）多出一个「引用选中」按钮（44px）；点击用的是当时记下的文字。选区收起后延迟 400ms 再移除按钮，避免「点按钮时系统先清选区」导致按钮消失点不到。
+**触屏（`pointer: coarse`）**：不画浮层，不干扰系统选区菜单。`selectionchange` 停止 500ms 后若选区可引用，该消息自己的操作栏（`MessageActions`）多出一个「引用选中」按钮（44px）；点击用的是当时记下的文字，按钮 `pointerdown` 阻止默认以保住选区。选区收起同样要静止 500ms 才撤掉按钮，避免「点按钮时系统先清选区」导致按钮消失点不到。
 
 ### B-578 中断后继续
 
@@ -91,7 +91,7 @@
 
 **桌面轨道**（`pointer: fine`，且对话列右侧留白 ≥ 40px，即 `.cl` 宽度 − `.cl-inner` 宽度 ≥ 2×40；条目 ≥ 2 才出现）：
 
-- 位于 `.cl` 右侧留白，纵向铺满 transcript 可视高度，每条一个横向细刻度，`top = 消息 offsetTop / 内容总高`（按会话中的位置比例分布）。内容尺寸变化（ResizeObserver）与 rows 变化时重算。
+- 位于 `.cl` 右侧留白，纵向覆盖 transcript 可视高度（顶部留 12px，底部让出「跳到最新」按钮的 64px，两者不重叠），每条一个横向细刻度，`top = 消息 offsetTop / 内容总高`（按会话中的位置比例分布）。内容尺寸变化（ResizeObserver）与 rows 变化时重算。
 - 当前提问高亮：贴底时取最后一条；否则取「顶部 1/4 处之上的最后一条」。高亮用 `--text`，普通刻度 `--text-faint`，**不用 accent**。
 - 悬停/键盘聚焦刻度 → 左侧出现单个预览卡（你的话 2 行截断 + 回复首行 2 行截断）。
 - 点击 → 只滚 `.cl-scroll` 到该消息上方 12px（`scrollTo`，系统减少动态效果时 `behavior: 'auto'`，否则 smooth），不用会滚祖先的 `scrollIntoView`。
@@ -104,7 +104,7 @@
 
 ### 挂载与文件
 
-- 新纯函数：`selectionQuote.ts`、`chatRail.ts`、`continueOffer.ts`（含测试）；组件：`SelectionQuote.tsx`、`ChatPromptRail.tsx`、`chatReadingAidsCopy.ts`（中英文案，沿用 `messageActionsCopy` 的按语言模块写法，不动共享热区 `text/_default.ts`/`zh-Hans.ts`）、`chatReadingAids.css`。
+- 新纯函数：`selectionQuoteRange.ts`、`chatRail.ts`、`continueOffer.ts`、`messageActionsModel.insertMessageQuoteAt`（含测试）；组件：`SelectionQuote.tsx`、`ChatPromptRail.tsx`、`selectionQuoteOffer.ts`（触屏选区 → 操作栏的小 store）、`chatReadingAidsCopy.ts`（中英文案，沿用 `messageActionsCopy` 的按语言模块写法，不动共享热区 `text/_default.ts`/`zh-Hans.ts`）、`chatReadingAids.css`。
 - ChatList 只做最小挂钩：渲染 `<SelectionQuote>` 与 `<ChatPromptRail>`。MessageView：quote source 标记、用户气泡的 `data-chat-prompt-id`、停止行的继续按钮。MessageActions：触屏「引用选中」。chatTurns：停止行提到抽屉外 + `continueOffer` 标记。
 
 ## 兼容矩阵与发布顺序

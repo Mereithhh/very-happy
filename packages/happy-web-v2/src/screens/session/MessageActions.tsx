@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Pencil, Quote, Trash2 } from 'lucide-react';
+import { Pencil, Quote, TextQuote, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { Button } from '@/ui/Button';
@@ -8,6 +8,8 @@ import type { UserTextMessage } from '@/sync/typesMessage';
 import { useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
 import { quoteMessage } from './messageQuote';
+import { getTouchQuoteOffer, setTouchQuoteOffer, useTouchQuoteOffer } from './selectionQuoteOffer';
+import { chatReadingAidsCopy } from './chatReadingAidsCopy';
 import { messageActionsCopy } from './messageActionsCopy';
 import { MessageTime } from './MessageTime';
 import { SendFailedActions, SendingIndicator } from './SendStatusView';
@@ -42,6 +44,9 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
     const editButton = useRef<HTMLButtonElement>(null);
     const deleteButton = useRef<HTMLButtonElement>(null);
     const textarea = useRef<HTMLTextAreaElement>(null);
+    // B-577 touch: a selection inside this message, still for 500ms (SelectionQuote).
+    const actionsRef = useRef<HTMLDivElement>(null);
+    const selectionQuote = useTouchQuoteOffer(actionsRef);
     const [mode, setMode] = useState<'idle' | 'edit' | 'delete'>('idle');
     const [edited, setEdited] = useState(text);
     const [busy, setBusy] = useState(false);
@@ -150,10 +155,21 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
                     <Button size="sm" variant="danger" loading={busy} onClick={() => void run({ action: 'delete' })}>{copy.delete}</Button>
                 </div>
             </div>
-            : <div className="msg-actions" role={text ? 'group' : undefined} aria-label={text ? copy.actions : undefined}>
+            : <div ref={actionsRef} className="msg-actions" role={text ? 'group' : undefined} aria-label={text ? copy.actions : undefined}>
                 {text && <div className="msg-actions-items">
                     <CopyButton text={text} size={14} label={t('message.copyMessage')} />
                     {!send && <button type="button" className="msg-action" aria-label={copy.quote} title={copy.quote} onClick={() => quoteMessage(sessionId, text)}><Quote size={14} aria-hidden /></button>}
+                    {!send && selectionQuote && <button
+                        type="button"
+                        className="msg-action msg-action--selection"
+                        // Keep the system selection while the tap lands.
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                            const offer = getTouchQuoteOffer();
+                            quoteMessage(sessionId, offer?.text ?? selectionQuote, 'cursor');
+                            setTouchQuoteOffer(null);
+                        }}
+                    ><TextQuote size={14} aria-hidden /><span>{chatReadingAidsCopy(lang).quoteSelectionLong}</span></button>}
                     {canRewind && <button ref={editButton} type="button" className="msg-action" aria-label={copy.edit} title={copy.edit} onClick={openEditor}><Pencil size={14} aria-hidden /></button>}
                     {canRewind && <button ref={deleteButton} type="button" className="msg-action" aria-label={copy.delete} title={copy.delete} onClick={() => { setError(null); setMode('delete'); }}><Trash2 size={14} aria-hidden /></button>}
                 </div>}
