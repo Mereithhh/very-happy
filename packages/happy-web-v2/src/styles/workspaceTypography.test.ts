@@ -10,7 +10,7 @@ describe('workspace typography contract', () => {
     expect(tokens).toContain('--chat-fs-body: calc(var(--fs-14) * var(--chat-scale));');
     expect(tokens).toContain('--conversation-size: var(--chat-fs-body);');
     expect(tokens).toContain('--conversation-leading: 1.6;');
-    expect(tokens).toMatch(/@media \(pointer: coarse\), \(max-width: 860px\)\s*\{\s*:root \{ --chat-fs-body: calc\(var\(--fs-15\) \* var\(--chat-scale\)\); \}/);
+    expect(tokens).toMatch(/@media \(pointer: coarse\), \(max-width: 860px\)\s*\{\s*:root,\s*:is\([^)]*\) \{ --chat-fs-body: calc\(var\(--fs-15\) \* var\(--chat-scale\)\); \}/);
   });
   it('uses the same body scale for both message roles', () => {
     const messages = css('../screens/session/message.css');

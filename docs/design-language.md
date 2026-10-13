@@ -420,7 +420,8 @@ Pi 框下上下文使用运行时当前估算与真实容量，前缀 ≈；未�
 - 间距单位 `--chat-space`（默认 4px）随档位缩放：对话区 gap/padding/margin 写 `calc(var(--chat-space) * N)`，行高度（工具行 7.5–8、子代理入口 9、实时状态 8）同样用倍数。首图标槽 `--conversation-icon-size` = 18·s，B-455 的首文字起点因此是 26·s。
 - 对话内 lucide 图标由 `.cl-inner` / `.sap-body` 的 `svg.lucide { zoom: var(--chat-scale) }` 统一缩放；直接给 svg 设宽度的规则要写 `calc(var(--conversation-icon-size) / var(--chat-scale))` 抵消 zoom。
 - 命中区只增不减：触屏一律 `max(44px, …)`。手机输入 `max(16px, var(--chat-fs-body))`。
-- 不缩放：终端 pane（铁律 9）、对话列宽 820px 与左右内边距、输入框工具栏控件、diff 视图、侧栏/顶栏/弹窗/菜单。设置作用于所有复用这些 token 的阅读面（对话、侧问、子代理面板、笔记，以及文件/skill 预览和团队详情里的 Markdown/代码块）。
+- 不缩放：终端 pane（铁律 9）、对话列宽 820px 与左右内边距（含输入框上方 dock 的水平内边距）、输入框工具栏控件、diff 视图、侧栏/顶栏/弹窗/菜单。
+- **浮层与弹窗一律不缩放**：浮在对话上的 chrome（选中引用、提问导航轨预览、悬浮时间）、弹窗/预览（运行控制、图片预览、skill 文档预览）和终端页的工具历史列在 tokens.css 的「固定比例岛」里，岛内 `--chat-scale` 恒为 1，档位 token 按默认值计算。新浮层若复用对话 css，要加入这份名单。弹窗正文需要对话正文字号时用不乘比例的 `--conversation-size-base`。设置作用于所有复用这些 token 的阅读面（对话、侧问、子代理面板、笔记，以及文件/skill 预览和团队详情里的 Markdown/代码块）。
 - 不做双指捏合调字号（会和页面缩放、长按选择冲突），理由见 [spec](../specs/2026-10-chat-type-scale.md)。
 
 ### 图片与 skill 预览（B-457）

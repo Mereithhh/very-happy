@@ -48,6 +48,47 @@ describe('chat type scale tokens', () => {
   });
 });
 
+describe('docks above the composer share its horizontal lane (B-455)', () => {
+  const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  // padding: <top> <horizontal> [<bottom>] → the horizontal part, which must never use --chat-space
+  const horizontal = (css: string, selector: string, from = 0) => {
+    const at = css.indexOf(selector + ' {', from);
+    const body = css.slice(at, css.indexOf('}', at));
+    const pad = /padding:\s*([^;]+);/.exec(body)?.[1].trim() ?? '';
+    const parts: string[] = [];
+    let depth = 0, cur = '';
+    for (const ch of pad) {
+      if (ch === ' ' && depth === 0) { if (cur) parts.push(cur); cur = ''; continue; }
+      if (ch === '(') depth++;
+      if (ch === ')') depth--;
+      cur += ch;
+    }
+    if (cur) parts.push(cur);
+    return parts[1];
+  };
+  it('perm-dock keeps --sp-4 desktop / --sp-3 touch like the composer and sa-dock', () => {
+    const perm = read('../screens/session/permission.css');
+    const input = read('../screens/session/input.css');
+    const sa = read('../screens/session/subagent.css');
+    expect(horizontal(perm, '.perm-dock')).toBe('var(--sp-4)');
+    expect(horizontal(sa, '.sa-dock')).toBe('var(--sp-4)');
+    expect(horizontal(input, '.ci')).toBe('var(--sp-4)');
+    const touchPerm = horizontal(perm, '.perm-dock', perm.indexOf('.perm-dock {') + 1);
+    const touchCi = horizontal(input, '.ci', input.indexOf('@media (max-width: 600px), (pointer: coarse)'));
+    expect(touchPerm).toBe('var(--sp-3)');
+    expect(touchCi).toBe(touchPerm);
+  });
+});
+
+describe('fixed-scale islands', () => {
+  it('re-declare the tiers under --chat-scale: 1 for floats, modals and the terminal tool history', () => {
+    for (const sel of ['.term-screen > .tool-history', '.cl-selquote', '.cl-rail', '.msg-hover-time', '.skill-preview', '.image-preview', '.runtime-controls']) {
+      expect(tokens).toMatch(new RegExp(`:is\\([^)]*${sel.replace(/[.>]/g, (c) => '\\' + c)}[^)]*\\) \\{ --chat-scale: 1; \\}`));
+    }
+    expect(tokens).toMatch(/:root,\s*:is\([^)]*\) \{\s*--chat-fs-body: calc/);
+  });
+});
+
 describe('chatTextSize setting', () => {
   it('normalizes unknown or missing stored values to the default', () => {
     expect(normalizeChatTextSize('lg')).toBe('lg');

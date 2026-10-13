@@ -107,7 +107,8 @@
   width: 100%;
   max-width: 820px;
   margin: 0 auto;
-  padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 4) 0;
+  /* horizontal inset = the composer / sa-dock lane (B-455), never scaled */
+  padding: calc(var(--chat-space) * 2) var(--sp-4) 0;
   box-sizing: border-box;
 }
 .perm-dock .perm-card {
@@ -188,7 +189,7 @@
 .perm-pointer-action:focus-visible { background: var(--bg-3); outline: none; }
 
 @media (max-width: 600px), (pointer: coarse) {
-  .perm-dock { padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3) 0; }
+  .perm-dock { padding: calc(var(--chat-space) * 2) var(--sp-3) 0; }
 }
 @media (pointer: coarse) {
   .perm-dock .perm-card-head,

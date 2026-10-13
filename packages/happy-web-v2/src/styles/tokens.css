@@ -232,16 +232,10 @@
      Hit areas never shrink with the scale: wrap touch minimums in max(44px, …);
      touch editable controls stay max(16px, …) (iOS focus zoom). */
   --chat-scale: 1;
-  --chat-fs-body: calc(var(--fs-14) * var(--chat-scale));      /* 正文：消息、工具/子代理行、输入框（触屏 15，见下方媒体查询） */
-  --chat-fs-control: calc(var(--fs-13) * var(--chat-scale));   /* 次级控件：卡片标题/按钮/权限说明 */
-  --chat-fs-secondary: calc(var(--fs-12) * var(--chat-scale)); /* 次级：标签、时间、计数、行下第二行 */
-  --chat-fs-caption: calc(var(--fs-11) * var(--chat-scale));   /* 说明：注脚、度量、分类小标题 */
-  --chat-fs-badge: calc(var(--fs-10) * var(--chat-scale));     /* 徽标：徽章、mono 小药丸 */
-  --chat-fs-code: calc(var(--fs-12) * var(--chat-scale));      /* 代码：代码块、diff、工具输出 */
-  --chat-space: calc(var(--sp-1) * var(--chat-scale));         /* 对话间距单位（默认 4px） */
-  --conversation-size: var(--chat-fs-body);
+  /* Unscaled body size for dialogs/previews that read like the conversation
+     but are chrome: modals never follow 对话字号. */
+  --conversation-size-base: var(--fs-14);
   --conversation-leading: 1.6;
-  --conversation-icon-size: calc(18px * var(--chat-scale));
 
   /* spacing (4px base) */
   --sp-1: 4px;
@@ -281,8 +275,31 @@
   }
 }
 
+/* Chat tiers are declared on :root AND re-declared on fixed-scale islands:
+   unregistered custom properties resolve var() where they are declared, so a
+   subtree only gets scale 1 by re-running the same calc() under --chat-scale: 1.
+   Islands = surfaces that reuse chat css but must not follow 对话字号:
+   floating chrome over the transcript (selection quote, prompt rail preview,
+   hover time), modals/previews, and the terminal screen's tool history
+   (terminal geometry is fixed, AGENTS 铁律 9). design-language「对话字号档位」. */
+:root,
+:is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls) {
+  --chat-fs-body: calc(var(--fs-14) * var(--chat-scale));      /* 正文：消息、工具/子代理行、输入框（触屏 15，见下方媒体查询） */
+  --chat-fs-control: calc(var(--fs-13) * var(--chat-scale));   /* 次级控件：卡片标题/按钮/权限说明 */
+  --chat-fs-secondary: calc(var(--fs-12) * var(--chat-scale)); /* 次级：标签、时间、计数、行下第二行 */
+  --chat-fs-caption: calc(var(--fs-11) * var(--chat-scale));   /* 说明：注脚、度量、分类小标题 */
+  --chat-fs-badge: calc(var(--fs-10) * var(--chat-scale));     /* 徽标：徽章、mono 小药丸 */
+  --chat-fs-code: calc(var(--fs-12) * var(--chat-scale));      /* 代码：代码块、diff、工具输出 */
+  --chat-space: calc(var(--sp-1) * var(--chat-scale));         /* 对话间距单位（默认 4px） */
+  --conversation-size: var(--chat-fs-body);
+  --conversation-icon-size: calc(18px * var(--chat-scale));
+}
+:is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls) { --chat-scale: 1; }
+
 @media (pointer: coarse), (max-width: 860px) {
-  :root { --chat-fs-body: calc(var(--fs-15) * var(--chat-scale)); }
+  :root,
+  :is(.term-screen > .tool-history, .cl-selquote, .cl-rail, .msg-hover-time, .skill-preview, .image-preview, .runtime-controls) { --chat-fs-body: calc(var(--fs-15) * var(--chat-scale)); }
+  :root { --conversation-size-base: var(--fs-15); }
 }
 
 /* 对话字号 setting (B-582): device-local, applied to <html> by

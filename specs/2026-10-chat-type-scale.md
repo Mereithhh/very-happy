@@ -79,6 +79,9 @@
 :root[data-chat-size='sm'|'lg'|'xl'] { --chat-scale: 0.9 | 1.125 | 1.25; }
 ```
 
+- **固定比例岛**（review 修订）：浮在对话上的 chrome（选中引用 `.cl-selquote`、提问导航轨预览 `.cl-rail`、悬浮时间 `.msg-hover-time`）、弹窗与预览（`.runtime-controls`、`.image-preview`、`.skill-preview`）、终端页的工具历史 `.term-screen > .tool-history`（铁律 9：终端几何固定）一律不随档位变化。tokens.css 在 `:root` 和这些选择器上声明同一组档位，并在岛上设 `--chat-scale: 1`，岛内的档位 token 就按默认值计算，组件 css 不用另写一套字号。弹窗另外显式改用不乘比例的 `--conversation-size-base`（14 / 触屏 15）。
+- 非对话区对 `--conversation-size` 的引用清单：`claudeRuntimeDialog.css`（L1/4/10）、`components/imagePreview.css`（L5/14）、`ui/skillDocumentPreview.css`（L2/6）已改为 `--conversation-size-base`；`screens/notes/notes.css` L156–157（笔记正文，B-451 规定与对话同字号，属于阅读面）保留缩放。
+- 输入框上方的 dock（`.perm-dock`、`.sa-dock`、`.ci`）水平内边距固定为 `--sp-4`（触屏 `--sp-3`，与 `.ci` 一致），只有纵向用 `--chat-space`，保证 B-455 左边界不随档位漂移。`.sa-dock` 触屏仍是 16px，这是改动前就有的差异，本次不改。
 - 全部定义在 `:root`、比例也放在 `<html>` 上：未注册的自定义属性在声明处做 var 替换后继承，若把比例放到对话子树上，`:root` 已算好的档位不会重算。代价是设置作用于所有复用这些 token 的阅读面：对话、侧问、子代理面板、笔记正文、文件/skill 预览与团队详情里的 Markdown/代码块。它们本来就共用对话字号，统一跟随是预期行为。
 - 档位数量：任务建议 4–5 档；本仓 §3 已有「次级控件 13px」，代码块存量是 12px，为了默认档零像素差，保留 6 个语义 token（5 个不同默认值）。`code` 与 `secondary` 同为 12，但语义分开，后续可以单独调整代码字号。
 - 比例只到 0.9：0.9 × 10px 徽标 = 9px 仍可读；更小的档位会让徽标低于可读下限。
@@ -116,7 +119,8 @@ Orca 的捏合是 React Native 原生手势。Web 上要接管两指手势，就
 
 1. **作用面比「对话」略宽**（笔记、文件/skill 预览、团队详情中的 Markdown/代码也跟随）：属于有意统一，已写入设置说明与 design-language。
 2. **5 个元素在触屏/≤860px 宽度下 +1px**：`.ci-queue-text`、`.peer-message-who`、`.peer-message-body`、`.team-message-summary`、`.team-message-work > strong` 原写 `--fs-14`（不随触屏变 15），归入正文档后与正文一致（14→15）。桌面不变；harness 未覆盖这几个元素，未做像素比对。接受，理由：它们都是消息内容，原先不跟正文触屏档是遗漏。
-3. **CSS `zoom` 兼容**：Chrome/Safari 长期支持，Firefox ≥126；不支持时图标保持原尺寸，不影响布局。
+3. **CSS `zoom` 兼容**：Chrome/Safari 长期支持，Firefox ≥126。Firefox <126 不支持 zoom：默认档不受影响；非默认档下，直接给 svg 设槽宽的规则（`calc(--conversation-icon-size / --chat-scale)`）没有 zoom 抵消，图标列与其他行相差约 4.5px（18 × 1.25 − 18）。接受：Firefox ESR 128 已支持 zoom。
+5. **已知限制：跨标签切换档位**时，另一个标签页在 `storage` 事件里立即换档，正在上翻阅读的位置会随内容高度变化而跳动。接受：换档是低频操作，贴底跟随不受影响。
 4. **小档位徽标 9px**：只在用户主动选择「小」时出现。
 
 ## 验收标准
@@ -126,6 +130,7 @@ Orca 的捏合是 React Native 原生手势。Web 上要接管两指手势，就
 - [x] 触屏输入在大/特大档放大（16.875 / 18.75px），默认/小档保持 16px。
 - [x] 设置页（1280 / 390-coarse）切换写入 localStorage、刷新保留、回默认移除属性与键；设置搜索 字号/字体大小/对话字号/font size/text size 首条命中。
 - [x] `check-design-lint` 规则②升级（含 `font:` 简写），整文件契约测试 `chatTypeScale.test.ts`。
+- [x] 固定比例岛在特大档仍为默认值（实测：终端工具历史 13/11、选中引用与导航轨 12、悬浮时间 11、运行控制弹窗 14/触屏 15）；`.perm-dock` 水平 16 / 触屏 12 不变，纵向 8 → 10。
 
 ## 留真机验证项
 
