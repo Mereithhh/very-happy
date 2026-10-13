@@ -23,6 +23,7 @@
 
 import crypto from 'node:crypto';
 import { log } from '@/utils/log';
+import { TTL_DEFAULT_S, WEB_PUSH_TOPIC_MAX } from '@/app/push/pushHygiene';
 
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY ?? '';
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY ?? '';
@@ -137,6 +138,31 @@ export interface WebPushResult {
     gone: boolean;
 }
 
+export interface WebPushOptions {
+    /** Seconds the push service may hold an undelivered message (default 24h). */
+    ttlSeconds?: number;
+    /**
+     * RFC 8030 Topic: a newer pending message with the same topic replaces the
+     * older one at the push service. ≤32 URL-safe base64 chars (see
+     * pushHygiene.webPushTopic); anything else is dropped rather than sent.
+     */
+    topic?: string;
+}
+
+const TOPIC_RE = /^[A-Za-z0-9_-]+$/;
+
+/** Pure: the per-message headers that depend on options (exported for tests). */
+export function webPushOptionHeaders(opts: WebPushOptions = {}): Record<string, string> {
+    const ttl = opts.ttlSeconds !== undefined && Number.isFinite(opts.ttlSeconds) && opts.ttlSeconds >= 0
+        ? Math.floor(opts.ttlSeconds)
+        : TTL_DEFAULT_S;
+    const headers: Record<string, string> = { TTL: String(ttl) };
+    if (opts.topic && opts.topic.length <= WEB_PUSH_TOPIC_MAX && TOPIC_RE.test(opts.topic)) {
+        headers.Topic = opts.topic;
+    }
+    return headers;
+}
+
 /**
  * Send an encrypted Web Push message. `payload` is JSON-serialized and handed
  * to the service worker's `push` event as `event.data.json()`.
@@ -144,6 +170,7 @@ export interface WebPushResult {
 export async function sendWebPush(
     sub: WebPushSubscription,
     payload: unknown,
+    opts: WebPushOptions = {},
 ): Promise<WebPushResult> {
     if (!webPushConfigured()) {
         return { ok: false, statusCode: 0, gone: false };
@@ -155,7 +182,9 @@ export async function sendWebPush(
             headers: {
                 'Content-Encoding': 'aes128gcm',
                 'Content-Type': 'application/octet-stream',
-                TTL: '2419200', // 28 days
+                // B-569: TTL by event class + per-target Topic (was a flat 28 days,
+                // which replayed a night's worth of stale "done" pushes on reconnect).
+                ...webPushOptionHeaders(opts),
                 Urgency: 'high',
                 Authorization: vapidAuthHeader(sub.endpoint),
             },

@@ -26,7 +26,15 @@
 import { db } from "@/storage/db";
 import { isUserActive } from "@/app/push/focusTracker";
 import { sendPushNotifications } from "@/app/push/pushSend";
-import { parseWebPushToken, sendWebPush } from "@/app/push/webPush";
+import { parseWebPushToken, sendWebPush, webPushConfigured } from "@/app/push/webPush";
+import {
+    buildWebPushPayload,
+    parseSeenKvValue,
+    pushTargetKey,
+    webPushTopic,
+    webPushTtlSeconds,
+    type SeenMap,
+} from "@/app/push/pushHygiene";
 import {
     WEBHOOK_TOKEN_PREFIX,
     buildWebhookPayload,
@@ -84,29 +92,74 @@ async function sendExpo(
     }
 }
 
+/** Account KV key the web app writes its cross-device read watermark to
+ * (web `sync/notificationSeenStore.ts` SEEN_KV_KEY). Read-only here. */
+export const NOTIFICATION_SEEN_KV_KEY = 'vh.notif-seen.v1';
+
+/**
+ * B-569: the account's read watermark for the push payload (`seen`). One
+ * unique-index lookup per dispatch; any failure → null (payload then matches
+ * what an old server sends, and the SW closes nothing).
+ */
+async function loadSeenWatermark(userId: string): Promise<SeenMap | null> {
+    try {
+        const row = await db.userKVStore.findUnique({
+            where: { accountId_key: { accountId: userId, key: NOTIFICATION_SEEN_KV_KEY } },
+            select: { value: true },
+        });
+        const seen = parseSeenKvValue(row?.value ?? null);
+        return Object.keys(seen).length > 0 ? seen : null;
+    } catch (error) {
+        log({ module: 'push', level: 'warn', error }, 'Seen watermark load failed; sending without it');
+        return null;
+    }
+}
+
+export interface WebPushFanoutResult {
+    total: number;
+    sent: number;
+    failed: number;
+    pruned: number;
+}
+
 async function sendWeb(
     params: { userId: string; sessionId: string; title: string; body: string; data: Record<string, unknown> },
     tokens: { id: string; token: string }[],
-): Promise<void> {
-    if (tokens.length === 0) return;
+): Promise<WebPushFanoutResult> {
+    const result: WebPushFanoutResult = { total: tokens.length, sent: 0, failed: 0, pruned: 0 };
+    if (tokens.length === 0) return result;
 
-    let okCount = 0;
-    let gone = 0;
+    // B-569: per-target Topic + per-class TTL; `sentAt` + `seen` ride along in
+    // the payload (old service workers ignore unknown top-level fields).
+    const key = pushTargetKey(params.data);
+    const opts = {
+        ttlSeconds: webPushTtlSeconds(params.data.kind),
+        ...(key ? { topic: webPushTopic(key) } : {}),
+    };
+    const seen = await loadSeenWatermark(params.userId);
+    const payload = buildWebPushPayload(
+        { title: params.title, body: params.body, data: params.data },
+        seen,
+        Date.now(),
+    );
+
     await Promise.all(tokens.map(async (t) => {
         const sub = parseWebPushToken(t.token);
         if (!sub) {
             // Malformed stored subscription — prune it.
+            result.pruned++;
+            result.failed++;
             void db.accountPushToken.deleteMany({ where: { id: t.id } });
             return;
         }
-        const res = await sendWebPush(sub, {
-            title: params.title,
-            body: params.body,
-            data: { sessionId: params.sessionId, ...params.data },
-        });
-        if (res.ok) okCount++;
+        const res = await sendWebPush(sub, payload, opts);
+        if (res.ok) {
+            result.sent++;
+        } else {
+            result.failed++;
+        }
         if (res.gone) {
-            gone++;
+            result.pruned++;
             void db.accountPushToken.deleteMany({ where: { id: t.id } });
         }
     }));
@@ -115,10 +168,11 @@ async function sendWeb(
         module: 'push',
         userId: params.userId,
         sessionId: params.sessionId,
-        okCount,
-        prunedCount: gone,
+        okCount: result.sent,
+        prunedCount: result.pruned,
         tokenCount: tokens.length,
     }, 'Web push completed');
+    return result;
 }
 
 /**
@@ -252,4 +306,31 @@ export async function dispatchSessionEventPush(params: {
     } catch (error) {
         log({ module: 'push', level: 'error', error }, 'Session-event push dispatch failed');
     }
+}
+
+/**
+ * B-570: "send test notification" from settings. Web Push subscriptions only
+ * (Expo app is retired; webhooks are a separate channel). NOT presence-
+ * suppressed — the user is looking at the page that asked for it. Dead
+ * subscriptions are pruned exactly like a real push.
+ */
+export async function sendTestWebPush(
+    userId: string,
+    copy: { title: string; body: string },
+): Promise<WebPushFanoutResult & { configured: boolean }> {
+    const tokens = await db.accountPushToken.findMany({
+        where: { accountId: userId, token: { startsWith: 'webpush:' } },
+    });
+    const configured = webPushConfigured();
+    if (!configured) {
+        return { configured, total: tokens.length, sent: 0, failed: 0, pruned: 0 };
+    }
+    const res = await sendWeb({
+        userId,
+        sessionId: 'test',
+        title: copy.title,
+        body: copy.body,
+        data: { kind: 'test', url: '/settings/notifications' },
+    }, tokens);
+    return { configured, ...res };
 }
