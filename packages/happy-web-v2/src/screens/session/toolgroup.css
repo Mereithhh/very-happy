@@ -3,7 +3,7 @@
   font-size: var(--conversation-size);
   line-height: var(--conversation-leading);
   display: flex;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   align-items: stretch;
   min-width: 0;
   max-width: 100%;
@@ -13,12 +13,12 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
 }
 .tg-head {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   font-family: var(--font-sans);
   font-size: var(--conversation-size);
   line-height: var(--conversation-leading);
@@ -26,7 +26,7 @@
   padding: 2px 0;
   width: 100%;
   text-align: left;
-  min-height: 32px;
+  min-height: calc(var(--chat-space) * 8);
   padding-inline: 0;
 }
 .tg-summary {
@@ -45,9 +45,9 @@
 .tg-elapsed {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--chat-space);
   margin-left: auto;
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
 }
 
 .tg-elapsed--live {
@@ -62,7 +62,7 @@
 .tg-tool-stalled {
   flex: none;
   color: var(--text-faint);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
 }
 .tg-chevron {
   flex: none;
@@ -72,7 +72,9 @@
 /* Share the leading icon column with live status, previews and subagents. */
 .tg-head > .tg-chevron,
 .tg-row-head > .tg-chevron {
-  width: var(--conversation-icon-size);
+  /* svg icons in the transcript are zoomed by --chat-scale (chatlist.css), so
+     the slot width is given unzoomed: zoom × this = --conversation-icon-size. */
+  width: calc(var(--conversation-icon-size) / var(--chat-scale));
 }
 .tg-chevron.is-open {
   transform: rotate(90deg);
@@ -80,7 +82,7 @@
 .tg-rows {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
 }
 /* Sub-agent pointer row extras (B-260): a neutral machine glyph instead of a
  * lying "done" dot, and an always-visible one-line process summary that stays
@@ -91,7 +93,7 @@
   font-size: var(--conversation-size);
   line-height: var(--conversation-leading);
   color: var(--text-dim);
-  padding: 0 0 2px 40px;
+  padding: 0 0 2px calc(var(--chat-space) * 10);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -106,14 +108,14 @@
 .tg-row {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
 }
 /* B-145: detail 从 toggle 按钮里挪出来做兄弟节点（可点路径不能是嵌套 button），
    所以外面加一层 flex 让两者仍在同一行；toggle 只占它自己的内容宽度。 */
 .tg-row-head-wrap {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   min-width: 0;
   font-family: var(--font-sans);
   font-size: var(--conversation-size);
@@ -122,14 +124,14 @@
 .tg-row-head {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   font-family: var(--font-sans);
   font-size: var(--conversation-size);
   line-height: var(--conversation-leading);
   color: var(--text-dim);
   min-width: 0;
   text-align: left;
-  min-height: 30px;
+  min-height: calc(var(--chat-space) * 7.5);
   padding: 2px 0;
 }
 /* detail 不在按钮里时，按钮只需要包住 label；detail 自己吃剩余宽度 */
@@ -163,7 +165,7 @@
 .tg-body {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
 }
 /* Tool bodies stay within the available conversation width. */
 .tg-row > .tv,
@@ -174,26 +176,26 @@
 }
 .tg-error {
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
   color: var(--danger);
   background: var(--danger-dim);
   border-radius: var(--r-sm);
-  padding: var(--sp-2) var(--sp-3);
+  padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.tg-preview-row { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-1) var(--sp-2); min-width:0; min-height:32px; padding:2px 0; }
+.tg-preview-row { display:flex; flex-wrap:wrap; align-items:center; gap:var(--chat-space) calc(var(--chat-space) * 2); min-width:0; min-height:calc(var(--chat-space) * 8); padding:2px 0; }
 /* B-562: Open / Download on the row; wraps under the path on narrow screens. */
-.tg-preview-actions { display:flex; align-items:flex-start; gap:var(--sp-1); margin-left:auto; min-width:0; flex-wrap:wrap; }
+.tg-preview-actions { display:flex; align-items:flex-start; gap:var(--chat-space); margin-left:auto; min-width:0; flex-wrap:wrap; }
 .tg-preview-actions .fdl--inline { max-width:min(42ch, 100%); }
 .tg-preview-row > .tg-preview-path { flex:1 1 14ch; }
-.tg-preview-note { margin-left:auto; font-size:var(--fs-12); color:var(--text-faint); }
-.tg-preview-row > svg { width:var(--conversation-icon-size); flex:none; color:var(--text-dim); }
+.tg-preview-note { margin-left:auto; font-size:var(--chat-fs-secondary); color:var(--text-faint); }
+.tg-preview-row > svg { width:calc(var(--conversation-icon-size) / var(--chat-scale)); flex:none; color:var(--text-dim); }
 .tg-preview-path { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-dim); }
 .tg-preview-path .fpl-icon { display:none; }
 .tg-preview-path .fpl-text { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 @media(pointer:coarse) {
-  .tg-head, .tg-row-head { min-height:44px; }
-  .tg-preview-path { min-height:44px; align-items:center; }
+  .tg-head, .tg-row-head { min-height:max(44px, calc(var(--chat-space) * 8)); }
+  .tg-preview-path { min-height:max(44px, calc(var(--chat-space) * 8)); align-items:center; }
 }

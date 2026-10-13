@@ -151,6 +151,10 @@ describe('searchSettings (B-575)', () => {
     expect(top('Dark')).toBe('appearance.theme');
   });
 
+  it('B-582: chat text size is found by 字号 / 字体大小 / font size / text size', () => {
+    for (const q of ['字号', '字体大小', '对话字号', 'font size', 'text size']) expect(top(q)).toBe('appearance.chatTextSize');
+  });
+
   it('a section name alone does not list the whole section; it narrows a combined query', () => {
     expect(searchSettings('诊断', { webPush: true })).toEqual([]);
     expect(top('通知 声音')).toBe('notifications.sound');

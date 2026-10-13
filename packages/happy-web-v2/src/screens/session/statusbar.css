@@ -1,13 +1,13 @@
 .lsb { width:100%; max-width:440px; padding:0; box-sizing:border-box; margin:0; flex:none; color:var(--text-dim); }
-.lsb-content { display:flex; width:fit-content; max-width:100%; align-items:center; gap:var(--sp-2); min-width:0; height:32px; padding-inline:0; box-sizing:border-box; cursor:default; border-radius:var(--r-sm); background:transparent; }
-.lsb-label { min-width:0; flex:0 1 auto; font-family:var(--font-sans); font-size:var(--fs-12); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; }
+.lsb-content { display:flex; width:fit-content; max-width:100%; align-items:center; gap:calc(var(--chat-space) * 2); min-width:0; height:calc(var(--chat-space) * 8); padding-inline:0; box-sizing:border-box; cursor:default; border-radius:var(--r-sm); background:transparent; }
+.lsb-label { min-width:0; flex:0 1 auto; font-family:var(--font-sans); font-size:var(--chat-fs-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; }
 .lsb-elapsed { flex:none; color:var(--text-faint); }
-.lsb-elapsed, .lsb-metric { font-family:var(--font-mono); font-size:var(--fs-11); font-variant-numeric:tabular-nums; }
+.lsb-elapsed, .lsb-metric { font-family:var(--font-mono); font-size:var(--chat-fs-caption); font-variant-numeric:tabular-nums; }
 .lsb-separator { color:var(--text-faint); flex:none; }
 .lsb-metric { display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
 .lsb-metric svg { flex:none; }
-.lsb-metrics { display:inline-flex; align-items:center; flex:none; gap:var(--sp-2); color:var(--text-faint); }
-@media (pointer: coarse) { .lsb-content { height:44px; } }
+.lsb-metrics { display:inline-flex; align-items:center; flex:none; gap:calc(var(--chat-space) * 2); color:var(--text-faint); }
+@media (pointer: coarse) { .lsb-content { height:max(44px, calc(var(--chat-space) * 8)); } }
 .lsb-mark { position: relative; display: grid; place-items: center; width: var(--conversation-icon-size); height: var(--conversation-icon-size); flex: none; color: var(--accent); }
 .lsb-orbit { position: absolute; inset: 0; width: 100%; height: 100%; animation: lsb-orbit 2.4s linear infinite; }
 .lsb-track { stroke: currentColor; stroke-width: 1; opacity: .18; }

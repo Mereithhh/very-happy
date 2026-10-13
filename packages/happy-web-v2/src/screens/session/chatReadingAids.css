@@ -15,7 +15,7 @@
   border-radius: var(--r-sm);
   background: var(--bg-2);
   color: var(--text);
-  font: var(--fs-12)/1 var(--font-sans);
+  font: var(--chat-fs-secondary)/1 var(--font-sans);
   white-space: nowrap;
   box-shadow: var(--shadow-pop);
   cursor: pointer;
@@ -45,7 +45,7 @@
   border-radius: var(--r-pill);
   background: var(--bg-1);
   color: var(--text);
-  font: var(--fs-12)/1.4 var(--font-sans);
+  font: var(--chat-fs-secondary)/1.4 var(--font-sans);
   cursor: pointer;
 }
 .msg-event-continue:hover:not(:disabled) { background: var(--bg-2); }
@@ -122,7 +122,7 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow-wrap: anywhere;
-  font: var(--fs-12)/1.45 var(--font-sans);
+  font: var(--chat-fs-secondary)/1.45 var(--font-sans);
 }
 .cl-rail-preview-text { color: var(--text); }
 .cl-rail-preview-reply { margin-top: var(--sp-1) !important; color: var(--text-dim); }

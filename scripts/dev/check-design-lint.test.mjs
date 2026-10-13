@@ -74,9 +74,20 @@ test('raw colors in comments are ignored; token file, tests and the xterm theme 
     assert.deepEqual(lintAll('screens/terminal/terminal.css', '.t { color: #34e2c4; }'), [['raw-color', 1]]);
 });
 
-test('conversation css must not hardcode font-size px; other css may', () => {
+test('conversation css font sizes must use the chat tiers (B-582); other css may use px / --fs-*', () => {
     const css = '.m { font-size: 13px; }\n.n { font-size: var(--fs-12); }\n.o { font-size: var(--conversation-size); }';
-    assert.deepEqual(lintAll('screens/session/message.css', css), [['conversation-font-size', 1]]);
+    assert.deepEqual(lintAll('screens/session/message.css', css), [['conversation-font-size', 1], ['conversation-font-size', 2]]);
+    const ok = [
+        '.a { font-size: var(--chat-fs-secondary); }',
+        '.b { font: var(--chat-fs-caption)/1.4 var(--font-mono); }',
+        '.c { font-size: max(16px, var(--chat-fs-body)); }',
+        '.d { font-size: 1.25em; }',
+        '.e { font: inherit; }',
+        '.f { font-size: calc(var(--workspace-primary-size) * var(--chat-scale)); }',
+    ].join('\n');
+    assert.deepEqual(lintAll('screens/session/markdown.css', ok), []);
+    const bad = '.a { font: var(--fs-12)/1 var(--font-sans); }\n.b { font-size: var(--workspace-primary-size); }\n.c { font: 12px/1.4 var(--font-sans); }';
+    assert.deepEqual(lintAll('screens/session/chatReadingAids.css', bad), [['conversation-font-size', 1], ['conversation-font-size', 2], ['conversation-font-size', 3]]);
     assert.deepEqual(lintAll('screens/session/toolgroup.css', '.g {\n  font-size:11px;\n}'), [['conversation-font-size', 2]]);
     assert.deepEqual(lintAll('screens/session/header.css', css), []);
     assert.deepEqual(lintAll('screens/settings/settings.css', css), []);

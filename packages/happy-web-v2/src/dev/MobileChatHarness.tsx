@@ -114,7 +114,7 @@ export function MobileChatHarness() {
         <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>Theme: {theme}</button>
         <section data-testid="reading-polish" style={{ display: 'grid', gap: 24 }}>
           <div style={{ display: 'flex', gap: 8 }}><RelayBadge status={{ transport: 'regional', state: 'connected', region: 'US West', relayId: 'example-us-west', rttMs: 128 }} /><RelayBadge status={{ transport: 'legacy', state: 'fallback' }} /></div>
-          <div className="msg-agent-text"><Markdown text={'这次更新让对话更容易阅读，也让工具执行过程更清楚。\n\n## 清楚的信息层级\n\n段落之间留出呼吸空间，`pnpm test` 保留代码的辨识度。\n\n- 统一正文与列表的阅读节奏。\n- 保留长命令和复杂内容的完整性。\n  - 嵌套列表有自己的间距。\n\n### 下一步\n\n检查两种主题以及手机上的输入体验。'} /></div>
+          <div className="msg-agent-text"><Markdown text={'这次更新让对话更容易阅读，也让工具执行过程更清楚。\n\n## 清楚的信息层级\n\n段落之间留出呼吸空间，`pnpm test` 保留代码的辨识度。\n\n- 统一正文与列表的阅读节奏。\n- 保留长命令和复杂内容的完整性。\n  - 嵌套列表有自己的间距。\n\n### 下一步\n\n检查两种主题以及手机上的输入体验。\n\n```ts\nexport const chatTextScale = { sm: 0.9, md: 1, lg: 1.125, xl: 1.25 } as const; // 长行在代码块内部横向滚动，不撑开页面\n```\n\n| 档位 | 正文 | 代码 |\n| --- | --- | --- |\n| 默认 | 14px | 13px |'} /></div>
           <CommandView command={'NODE_ENV=test pnpm test --filter "chat" && echo "完成"'} stdout={'Tests  48 passed\nDuration  1.2s'} />
         </section>
         <section data-testid="message-actions" style={{ display: 'grid', gap: 16 }}>

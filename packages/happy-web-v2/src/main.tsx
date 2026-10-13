@@ -16,6 +16,9 @@ try { (document as unknown as { fonts?: { load?: (q: string) => unknown } }).fon
 
 import './styles/tokens.css';
 import './styles/base.css';
+// B-582: the device's 对话字号 lands on <html> before the first render.
+import { installChatTextSize } from './ui/chatTextSize';
+installChatTextSize();
 
 // B-567: presence input listeners from the first tap (cold start), and the
 // push-click marker consumed before the router reads the URL.

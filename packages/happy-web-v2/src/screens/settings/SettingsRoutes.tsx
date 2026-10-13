@@ -1,4 +1,5 @@
 import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
+import { CHAT_TEXT_SCALE, CHAT_TEXT_SIZES, useChatTextSize } from '@/ui/chatTextSize';
 import { EffortSlider } from '@/components/EffortSlider';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
@@ -328,6 +329,8 @@ function Appearance() {
   // Consumed by DiffView on coarse-pointer (touch) devices only — desktop
   // diffs always use horizontal scroll (see DiffView for why).
   const [wrapDiffLines, setWrapDiffLines] = useSettingMutable('wrapLinesInDiffs');
+  // B-582: device-local chat type scale (ui/chatTextSize.ts), not synced.
+  const [chatTextSize, setChatTextSize] = useChatTextSize();
   const [preferredLanguage, setPreferredLanguage] = useSettingMutable('preferredLanguage');
   // device-local: what `/` shows when nothing is open (empty detail vs board)
   const [homeView, setHomeView] = useLocalSettingMutable('homeView');
@@ -388,6 +391,23 @@ function Appearance() {
               selected={preference === o.key}
               right={preference === o.key ? <Check size={16} /> : undefined}
               onClick={() => setPreference(o.key)}
+            />
+          ))}
+        </ItemGroup>
+
+        <ItemGroup
+          settingId="appearance.chatTextSize"
+          title={t('settingsAppearance.chatTextSize')}
+          footer={t('settingsAppearance.chatTextSizeDescription')}
+        >
+          {CHAT_TEXT_SIZES.map((size) => (
+            <Item
+              key={size}
+              title={t(`settingsAppearance.chatTextSizeOptions.${size}`)}
+              detail={`${Math.round(CHAT_TEXT_SCALE[size] * 100)}%`}
+              selected={chatTextSize === size}
+              right={chatTextSize === size ? <Check size={16} /> : undefined}
+              onClick={() => setChatTextSize(size)}
             />
           ))}
         </ItemGroup>

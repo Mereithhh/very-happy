@@ -49,6 +49,7 @@
 - 正文：`IBM Plex Sans`，400，App 14–16px，行高 1.45–1.55；长文可到 1.7。
 - 机器层：`IBM Plex Mono`，仅用于 session id、机器名、命令、路径、代码、时间戳、版本和度量值。
 - 移动端可编辑控件使用 16px，避免 iOS 聚焦缩放；xterm 的专属几何与 16px 隐藏输入底线保持独立。
+- 对话区字号只用下方「对话字号档位（B-582）」的 token，全部随「对话字号」设置等比缩放；本节与紧凑工作台标准里的 px 值均指默认档。
 - 对话正文遵循下方紧凑工作台标准：桌面 14px / 1.6、触屏 15px / 1.6，顶层段落间隔 12px、列表项间隔 4px；标题前增加分组留白。命令内容复用 Shiki 双主题高亮，输出保持原文。输入区与对话共用背景，不使用顶部横线或外层卡片；输入框用相邻底色与轻微焦点边界区分，队列不另套卡片。输入框正文独占一行，工具和发送位于底部工具栏。＋、权限、模型/强度与单一主按钮始终在同一工具栏水平对齐；窄屏收起权限文字、最窄屏思考档在模型弹层查看，上下文已用百分比与已用/总容量 tokens 直接置于输入框下方，附件和预设放入＋菜单；排队消息贴合输入框上沿，调整方向与删除可直接操作。历史消息原位编辑，主按钮明确“在新分支中发送”，工具之间的中间回复不显示复制/引用。
 
 ## 4. 语调
@@ -127,7 +128,7 @@
 `node scripts/dev/check-design-lint.mjs [--base <ref>]`（CI 的 Quality Gates 以 PR base 为基准运行）只检查 `packages/happy-web-v2/src` 下 .css/.tsx 的**新增行**，存量问题不要求迁移：
 
 1. 裸色值：`#hex`、`rgb()`/`hsl()` 字面量。参数里带 `var()` 的写法放行，比如 `color-mix(… var(--x) …)`；阴影和遮罩用 `--shadow-*` / `--scrim`。豁免 `tokens.css`、测试文件，以及只能写字面量的 xterm 主题（`WebTerminalScreen.tsx`）。
-2. 对话区 css（脚本里的 `CONVERSATION_CSS`：对话流、工具和子代理行、实时状态、输入框、侧问）不能写死 `font-size: <n>px`，改用 `var(--conversation-size)` 或 `var(--fs-*)`。
+2. 对话区 css（脚本里的 `CONVERSATION_CSS`：对话流、工具和子代理行、实时状态、输入框、侧问、提问步进、阅读辅助）的 `font-size` 与 `font` 简写只能用对话档位 `var(--chat-fs-*)` / `var(--conversation-size)`；写死 px、`var(--fs-*)`、未乘 `--chat-scale` 的 `--workspace-primary-size` 都报。触屏输入的 `max(16px, var(--chat-fs-body))` 和 em 放行。
 3. `outline: none|0`：同一文件里没有对应的 `:focus-visible` / `:focus-within` 替代样式就报。`X:focus { outline: none }` 这种程序化聚焦容器的写法放行。
 
 确实要保留时，在同一行或上一行写 `design-lint-allow: <理由>`，理由必填。规则本身宁可漏报、不要误报，误报应该修脚本，不要靠堆豁免。
@@ -402,6 +403,26 @@ Pi 框下上下文使用运行时当前估算与真实容量，前缀 ≈；未�
 ### 对话行左边界（B-455）
 
 正文列负责与输入框对齐；工具组、单工具、预览、子代理入口与 loading 不再各自添加横向内边距。首图标占位统一用 `--conversation-icon-size`（18px），与正文共用起点；工具组、预览、子代理及 loading 的首文字位于该起点后 26px（18px 图标＋8px 间距）。单工具保留独立状态标记，不为了补齐它的双图标而增加其他行缩进。主链路与子代理的思考块统一无左侧竖线或缩进；代码框与工具展开内容保留其内部阅读留白。纵向触屏命中高度保持至少 44px。
+
+### 对话字号档位（B-582）
+
+对话区只用 6 个字号 token，全部是 `calc(默认px × var(--chat-scale))`；`--chat-scale` 由「外观 → 对话字号」决定（小 0.9 / 默认 1 / 大 1.125 / 特大 1.25，本设备保存，`html[data-chat-size]`）。默认档与 B-582 之前逐像素一致。
+
+| token | 默认 | 用于 |
+|---|---|---|
+| `--chat-fs-body`（= `--conversation-size`） | 14 / 触屏 15 | 消息正文、工具/子代理行、卡片正文、输入正文 |
+| `--chat-fs-control` | 13 | 卡片标题、权限说明、对话内按钮文字、命令头 |
+| `--chat-fs-secondary` | 12 | 标签、时间、计数、行下第二行 |
+| `--chat-fs-code` | 12 | 代码块、命令输出、工具结果 |
+| `--chat-fs-caption` | 11 | 度量、注脚、mono 小标题 |
+| `--chat-fs-badge` | 10 | 徽章、附件文件名 |
+
+- 间距单位 `--chat-space`（默认 4px）随档位缩放：对话区 gap/padding/margin 写 `calc(var(--chat-space) * N)`，行高度（工具行 7.5–8、子代理入口 9、实时状态 8）同样用倍数。首图标槽 `--conversation-icon-size` = 18·s，B-455 的首文字起点因此是 26·s。
+- 对话内 lucide 图标由 `.cl-inner` / `.sap-body` 的 `svg.lucide { zoom: var(--chat-scale) }` 统一缩放；直接给 svg 设宽度的规则要写 `calc(var(--conversation-icon-size) / var(--chat-scale))` 抵消 zoom。
+- 命中区只增不减：触屏一律 `max(44px, …)`。手机输入 `max(16px, var(--chat-fs-body))`。
+- 不缩放：终端 pane（铁律 9）、对话列宽 820px 与左右内边距（含输入框上方 dock 的水平内边距）、输入框工具栏控件、diff 视图、侧栏/顶栏/弹窗/菜单。
+- **浮层与弹窗一律不缩放**：浮在对话上的 chrome（选中引用、提问导航轨预览、悬浮时间）、弹窗/预览（运行控制、图片预览、skill 文档预览）和终端页的工具历史列在 tokens.css 的「固定比例岛」里，岛内 `--chat-scale` 恒为 1，档位 token 按默认值计算。新浮层若复用对话 css，要加入这份名单。弹窗正文需要对话正文字号时用不乘比例的 `--conversation-size-base`。设置作用于所有复用这些 token 的阅读面（对话、侧问、子代理面板、笔记，以及文件/skill 预览和团队详情里的 Markdown/代码块）。
+- 不做双指捏合调字号（会和页面缩放、长按选择冲突），理由见 [spec](../specs/2026-10-chat-type-scale.md)。
 
 ### 图片与 skill 预览（B-457）
 

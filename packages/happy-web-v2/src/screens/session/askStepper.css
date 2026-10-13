@@ -2,7 +2,7 @@
  * surfaces only: the current step is ink-on-raised, never --accent (live). */
 .tv-ask-steps {
   display: flex;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   overflow-x: auto;
   min-width: 0;
   scrollbar-width: none;
@@ -11,16 +11,16 @@
 .tv-ask-step {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   flex: 0 0 auto;
   max-width: 16ch;
   min-height: 28px;
-  padding: 2px var(--sp-2);
+  padding: 2px calc(var(--chat-space) * 2);
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
   background: transparent;
   color: var(--text-dim);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
 }
 .tv-ask-step:not(:disabled):hover { background: var(--bg-2); }
 .tv-ask-step--current {
@@ -38,7 +38,7 @@
 .tv-ask-nav {
   display: flex;
   justify-content: flex-end;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
 }
 @media (pointer: coarse) {
   .tv-ask-step { min-height: 44px; }
@@ -47,5 +47,5 @@
 /* B-563: transcript receipt while the dock above the composer owns the answer. */
 .tv-ask-pinned {
   color: var(--text-dim);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
 }

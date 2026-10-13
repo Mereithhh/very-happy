@@ -61,7 +61,7 @@
   white-space: nowrap;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: var(--fs-10);
+  font-size: var(--chat-fs-badge);
 }
 .ci-att-remove {
   position: absolute;
@@ -99,7 +99,7 @@
   border-bottom: 1px solid var(--line);
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -144,14 +144,14 @@
   padding-top: 9px;
   color: var(--text-faint);
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
 }
 .ci-queue-text {
   min-width: 0;
   display: -webkit-box;
   overflow: hidden;
   color: var(--text);
-  font-size: var(--fs-14);
+  font-size: var(--chat-fs-body);
   line-height: 1.45;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -166,7 +166,7 @@
   background: var(--bg-0);
   color: var(--text);
   font: inherit;
-  font-size: var(--fs-14);
+  font-size: var(--chat-fs-body);
   line-height: 1.45;
   padding: 7px var(--sp-2);
 }
@@ -204,11 +204,11 @@
 
 /* composer */
 .ci-slash { display: flex; flex-direction: column; max-height: min(280px, 35vh); overflow-y: auto; background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-1); }
-.ci-slash-head { padding: var(--sp-1) var(--sp-2); color: var(--text-faint); font: var(--fs-11)/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
+.ci-slash-head { padding: var(--sp-1) var(--sp-2); color: var(--text-faint); font: var(--chat-fs-caption)/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
 .ci-slash-item { display: flex; align-items: center; gap: var(--sp-3); min-height: 36px; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); color: var(--text); text-align: left; }
 .ci-slash-item--active, .ci-slash-item:hover { background: var(--bg-2); }
 .ci-slash-command { flex: none; font-family: var(--font-mono); color: var(--text); }
-.ci-slash-desc { min-width: 0; overflow: hidden; color: var(--text-dim); font-size: var(--fs-12); text-overflow: ellipsis; white-space: nowrap; }
+.ci-slash-desc { min-width: 0; overflow: hidden; color: var(--text-dim); font-size: var(--chat-fs-secondary); text-overflow: ellipsis; white-space: nowrap; }
 
 .ci-composer {
   display: grid;
@@ -280,7 +280,7 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--workspace-primary-size);
+  font-size: calc(var(--workspace-primary-size) * var(--chat-scale));
   line-height: 1.6;
   min-height: 50px;
   width: 100%;
@@ -335,7 +335,7 @@
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-faint);
   flex-wrap: wrap;
 }
@@ -398,7 +398,7 @@
     grid-row: 1;
     width: 100%;
     min-height: 50px;
-    font-size: var(--fs-16);
+    font-size: max(16px, var(--chat-fs-body));
     padding: var(--sp-2);
   }
   .ci-composer-toolbar {
@@ -459,7 +459,7 @@
   }
 }
 
-.ci-attachment-hint { margin: 0 0 var(--sp-2); font-size: 12px; line-height: 1.4; color: var(--text-dim); }
+.ci-attachment-hint { margin: 0 0 var(--sp-2); font-size: var(--chat-fs-secondary); line-height: 1.4; color: var(--text-dim); }
 
 /* One composer surface owns text, configuration and delivery. */
 .ci { container-type: inline-size; container-name: composer; }
@@ -472,7 +472,7 @@
 .ci-model-controls { grid-column: 2; grid-row: 1; min-width: 0; display: flex; justify-content: flex-end; }
 .ci-model-controls .me-trigger { min-width: 0; }
 .ci-model-controls .mm-v { max-width: 24ch; }
-.ci-meter { border: 0; background: transparent; min-height: 24px; gap: var(--sp-2); padding: 0; color: var(--text-dim); margin-inline-start: 0; font-size: var(--fs-11); }
+.ci-meter { border: 0; background: transparent; min-height: 24px; gap: var(--sp-2); padding: 0; color: var(--text-dim); margin-inline-start: 0; font-size: var(--chat-fs-caption); }
 .ci-meter--warn { color: var(--warn); }
 .ci-meter--crit { color: var(--danger); }
 .ci-status { justify-content: space-between; gap: var(--sp-2); }
@@ -496,13 +496,23 @@
 .ci-queue { margin: 0 var(--sp-2) calc(-1 * var(--sp-2) - 1px); padding-bottom: var(--sp-2); border-radius: 20px 20px 0 0; }
 .ci-queue-head { position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ci-queue-index { align-self: center; padding: 0; }
-.ci-queue-action--intervene { order: -1; width: auto; padding-inline: var(--sp-2); gap: 5px; color: var(--text-dim); white-space: nowrap; font: var(--fs-12)/1.4 var(--font-sans); }
+.ci-queue-action--intervene { order: -1; width: auto; padding-inline: var(--sp-2); gap: 5px; color: var(--text-dim); white-space: nowrap; font: var(--chat-fs-secondary)/1.4 var(--font-sans); }
 .ci-queue-action--intervene:hover:not(:disabled) { background: var(--bg-3); color: var(--text); }
 @media (pointer: coarse) { .ci-queue-action { min-width: 44px; min-height: 44px; } }
 
-.ci-queue-failure { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); color: var(--danger); font-size: var(--fs-12); }
+.ci-queue-failure { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); color: var(--danger); font-size: var(--chat-fs-secondary); }
 .ci-queue-action--retry { width: auto; min-width: 44px; min-height: 44px; margin-left: auto; flex: none; color: var(--text); }
 
 .ci-meter-tokens { font-variant-numeric: tabular-nums; color: var(--text-dim); }
 .ci-meter > svg { flex: none; }
 .ci-status .ci-meter { flex-wrap: wrap; row-gap: 2px; }
+
+/* B-582: chat editors follow the 对话字号 setting above the 16px floor. The
+   global mobile-editable rule (base.css, `:is(#root, body) :where(…)`) pins
+   every input to 16px; these keep that floor (iOS focus zoom) but grow with
+   the larger chat sizes. Same media condition as base.css. */
+@media (pointer: coarse), (max-width: 860px) {
+  :is(#root, body) :is(.ci-textarea, .ci-queue-edit, .btw-textarea, .msg-edit-inline textarea) {
+    font-size: max(16px, var(--chat-fs-body));
+  }
+}

@@ -1,9 +1,9 @@
 .skill-preview-overlay { position:fixed; inset:0; z-index:4300; background:var(--scrim); }
-.skill-preview { position:fixed; inset:0; z-index:4301; display:flex; flex-direction:column; width:min(900px, calc(100vw - 32px)); height:min(820px, calc(100dvh - 32px)); margin:auto; min-width:0; min-height:0; overflow:hidden; background:var(--bg-1); color:var(--text); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow-modal); font-family:var(--font-sans); font-size:var(--conversation-size); line-height:var(--conversation-leading); }
+.skill-preview { position:fixed; inset:0; z-index:4301; display:flex; flex-direction:column; width:min(900px, calc(100vw - 32px)); height:min(820px, calc(100dvh - 32px)); margin:auto; min-width:0; min-height:0; overflow:hidden; background:var(--bg-1); color:var(--text); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow-modal); font-family:var(--font-sans); font-size:var(--conversation-size-base); line-height:var(--conversation-leading); }
 .skill-preview-head { display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-3) var(--sp-4); border-bottom:1px solid var(--line); flex:none; min-width:0; }
 .skill-preview-head > svg { flex:none; color:var(--text-dim); }
 .skill-preview-heading { flex:1; min-width:0; }
-.skill-preview-heading h2 { margin:0; font-size:var(--conversation-size); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.skill-preview-heading h2 { margin:0; font-size:var(--conversation-size-base); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .skill-preview-heading p { margin:var(--sp-1) 0 0; color:var(--text-faint); font:var(--fs-12)/1.5 var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:ltr; }
 .skill-preview-toolbar { display:flex; align-items:center; gap:var(--sp-1); flex:none; }
 .skill-preview-action, .skill-preview-toolbar .vh-copy { display:inline-flex; align-items:center; justify-content:center; gap:var(--sp-2); min-width:32px; min-height:32px; padding:var(--sp-1) var(--sp-2); border-radius:var(--r-sm); color:var(--text-dim); background:transparent; font:inherit; text-decoration:none; cursor:pointer; }

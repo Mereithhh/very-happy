@@ -11,7 +11,7 @@
    button. */
 .ls-thinking-head {
   cursor: default;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
 }
 
 /* Terminal-style caret on the block still receiving text. */

@@ -682,6 +682,15 @@ export const zhHans: TranslationStructure = {
         showLineNumbersInToolViewsDescription: '在工具视图差异中显示行号',
         wrapLinesInDiffs: '在差异中换行',
         wrapLinesInDiffsDescription: '在差异视图中换行显示长行而不是水平滚动（仅触屏设备；桌面端始终水平滚动）',
+        // B-582：本设备的对话字号档位。
+        chatTextSize: '对话字号',
+        chatTextSizeDescription: '同比缩放本设备上的对话正文、代码、工具行与间距；触屏命中区和输入框 16px 下限保持不变。',
+        chatTextSizeOptions: {
+            sm: '小',
+            md: '默认',
+            lg: '大',
+            xl: '特大',
+        },
         diffStyle: '差异视图',
         diffStyleDescription: '以单列（unified）或并排（split）显示差异。split 视图仅在 Web 上可用。',
         diffStyleOptions: {

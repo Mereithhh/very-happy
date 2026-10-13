@@ -4,14 +4,14 @@
 .ta-head {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   width: 100%;
   min-width: 0;
-  padding: 2px 0 var(--sp-3);
+  padding: 2px 0 calc(var(--chat-space) * 3);
   border-bottom: 1px solid var(--line);
   text-align: left;
   font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-size: var(--chat-fs-secondary);
   color: var(--text-dim);
 }
 .ta-head > .tg-chevron {
@@ -22,12 +22,12 @@
 /* Sub-agent count chip (B-260): identity/metadata, mono + dim — never accent. */
 .ta-subagents {
   font-family: var(--font-mono);
-  font-size: var(--fs-11);
+  font-size: var(--chat-fs-caption);
   color: var(--text-dim);
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
 }
 
 .ta-title {
@@ -38,8 +38,8 @@
 .ta-detail {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
-  padding-top: var(--sp-4);
+  gap: calc(var(--chat-space) * 3);
+  padding-top: calc(var(--chat-space) * 4);
 }
 
 /* Turn activity is a flat execution log: no outer rail and no nested spines. */
@@ -59,7 +59,7 @@
 .ta-trigger {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   min-width: 0;
   flex: 0 1 auto;
   color: var(--text-dim);
@@ -68,4 +68,4 @@
 .ta-trigger-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ta-trigger--error { color: var(--danger); }
 .ta--triggered .ta-title { color: var(--text-faint); font-weight: 400; }
-.ta--triggered .ta-title::before { content: '·'; margin-right: var(--sp-2); }
+.ta--triggered .ta-title::before { content: '·'; margin-right: calc(var(--chat-space) * 2); }

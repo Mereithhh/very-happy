@@ -3,22 +3,22 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   max-width: min(85%, 640px);
-  margin-bottom: var(--sp-1);
+  margin-bottom: var(--chat-space);
   min-width: 0;
 }
 .ua-file {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: calc(var(--chat-space) * 2);
   max-width: 100%;
-  padding: var(--sp-1) var(--sp-3);
+  padding: var(--chat-space) calc(var(--chat-space) * 3);
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   color: var(--text-dim);
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   min-width: 0;
 }
 .ua-file-name {

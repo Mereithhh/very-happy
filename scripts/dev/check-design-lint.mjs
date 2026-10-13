@@ -9,8 +9,11 @@
  * 检查范围：`git diff <base>...<head>` 中 packages/happy-web-v2/src 下 .css/.tsx 的新增行。
  *   ① raw-color      裸色值：#hex、rgb()/rgba()/hsl()/hsla() 字面量。
  *                    允许参数里带 var() 的写法（含 color-mix(… var(--x) …) 与相对色）。
- *   ② conversation-font-size  对话区 css 新增写死的 `font-size: <n>px`（用 var(--fs-*) /
- *                    var(--conversation-size)）。对话区集合见 CONVERSATION_CSS。
+ *   ② conversation-font-size  对话区 css 新增的字号（font-size 与 font 简写）只能用对话档位
+ *                    token var(--chat-fs-*) / var(--conversation-size)（B-582 对话字号比例化）：
+ *                    写死 px、var(--fs-*)、未乘 --chat-scale 的 --workspace-primary-size 都报；
+ *                    触屏输入的 `max(16px, var(--chat-fs-body))` 下限、em/%/inherit 放行。
+ *                    对话区集合见 CONVERSATION_CSS。
  *   ③ outline-none   `outline: none|0` 所在规则及同文件内，找不到同类名的 :focus* 替代样式。
  * 宁可漏报不误报：tsx 只认明显的色值字符串；③ 只查 css。
  *
@@ -34,11 +37,12 @@ const RAW_COLOR_EXEMPT_FILES = new Set(['screens/terminal/WebTerminalScreen.tsx'
 
 /**
  * 对话区 css（相对 WEB_SRC）：对话流、工具/子代理行、实时状态、输入框与侧问。
- * 这些文件的正文字号必须跟随 --conversation-size（桌面 14 / 触屏 15）与 --fs-* 阶梯。
+ * 这些文件的字号只用 tokens.css 的对话档位（--chat-fs-*，正文 = --conversation-size：桌面 14 /
+ * 触屏 15），全部 × 「对话字号」设置的 --chat-scale（B-582）。
  * 弹窗、菜单、顶栏、文件面板不在此列。
  */
 export const CONVERSATION_CSS = new Set([
-    'attachments', 'btw', 'builtinTool', 'chatlist', 'code', 'command', 'compaction',
+    'askStepper', 'attachments', 'btw', 'builtinTool', 'chatlist', 'chatReadingAids', 'code', 'command', 'compaction',
     'filepathlink', 'input', 'livestream', 'markdown', 'mermaid', 'message', 'messageActions',
     'meta', 'permission', 'sessionPeerMessage', 'sessionpreviews', 'statusbar', 'subagent',
     'teamMessage', 'toolgroup', 'toolHistory', 'toolview', 'turnactivity',
@@ -118,10 +122,19 @@ export function findRawColors(code, kind) {
     return hits;
 }
 
-const FONT_PX_RE = /(?:^|[\s;{])font-size\s*:\s*(\d+(?:\.\d+)?px)\b/g;
+const FONT_DECL_RE = /(?:^|[\s;{])font(?:-size)?\s*:\s*([^;}]+)/g;
 
-export function findFontPx(code) {
-    return [...code.matchAll(FONT_PX_RE)].map(m => m[1]);
+/** ②：对话区一行里不合档位的字号声明（返回声明值）。 */
+export function findConversationFontIssues(code) {
+    const hits = [];
+    for (const m of code.matchAll(FONT_DECL_RE)) {
+        const value = m[1].trim();
+        // 触屏可编辑控件的 iOS 16px 下限是允许的写死值
+        const v = value.replace(/max\(\s*16px\s*,/g, 'max(');
+        const unscaledWorkspace = /var\(--workspace-primary-size\)/.test(v) && !/--chat-scale/.test(v);
+        if (/var\(--fs-\d+\)/.test(v) || /(^|[^\w.-])\d+(?:\.\d+)?px\b/.test(v) || unscaledWorkspace) hits.push(value);
+    }
+    return hits;
 }
 
 /** 文件内所有规则：{ selector, body, start, end }（start/end 为 code 文本偏移）。 */
@@ -216,8 +229,8 @@ export function lintFile(rel, source, added) {
             }
         }
         if (kind === 'css' && CONVERSATION_CSS.has(rel)) {
-            for (const px of findFontPx(text)) {
-                problems.push({ rule: 'conversation-font-size', message: `对话区写死 font-size: ${px}：改用 var(--conversation-size) 或 var(--fs-*)` });
+            for (const value of findConversationFontIssues(text)) {
+                problems.push({ rule: 'conversation-font-size', message: `对话区字号 ${value} 不在档位内：改用 var(--chat-fs-body|control|secondary|caption|badge|code)（触屏输入用 max(16px, var(--chat-fs-body))），见 design-language「对话字号档位」` });
             }
         }
         if (kind === 'css' && OUTLINE_NONE_RE.test(text)) {

@@ -3,13 +3,13 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--sp-1);
+  gap: var(--chat-space);
   min-width: 0;
   max-width: 100%;
 }
 .mmd-svg {
   max-width: 100%;
-  padding: var(--sp-3);
+  padding: calc(var(--chat-space) * 3);
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -25,7 +25,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   color: var(--text-dim);
   background: none;
   border: none;
@@ -38,6 +38,6 @@
   background: var(--bg-2);
 }
 .mmd-note {
-  font-size: var(--fs-13);
+  font-size: var(--chat-fs-control);
   color: var(--text-faint);
 }
