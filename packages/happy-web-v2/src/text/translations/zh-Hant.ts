@@ -1285,8 +1285,6 @@ export const zhHant: PartialTranslationStructure = {
         showHelp: '顯示此說明',
     },
 
-    // open_preview 推送：檔案預覽浮層（B-131）
-
     // B-588：一次性功能提示 + 設定裡的重設
     featureTips: {
         gotIt: '知道了',
@@ -1295,7 +1293,7 @@ export const zhHant: PartialTranslationStructure = {
         promptRail: '右側刻度是你發過的每則訊息：懸停預覽，點擊跳過去。',
         promptNav: '用這組箭頭跳到上一則或下一則你發的訊息。',
         reviewAll: '「審閱全部」在右側一次看完這個工作階段所有未提交的變更，可逐一標記已看。',
-        sessionPeekHover: '滑鼠在工作階段上停一下就能預覽機器、模型和最近一輪；Alt+Enter 也可以。',
+        sessionPeekHover: ({ keys }: { keys: string }) => `滑鼠在工作階段上停一下就能預覽機器、模型和最近一輪；${keys} 也可以。`,
         sessionPeekMenu: '工作階段選單裡的「預覽」可以不進入就看機器、模型和最近一輪。',
         groupTitle: '功能提示',
         resetTitle: '重設功能提示',
@@ -1316,5 +1314,8 @@ export const zhHant: PartialTranslationStructure = {
         pending: ({ count }: { count: number }) => `待處理 ${count}`,
         notLoaded: '這個分頁還沒載入過對話',
     },
+
+    // open_preview 推送：檔案預覽浮層（B-131）
+
 
 } as const;

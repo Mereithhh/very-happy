@@ -10,12 +10,14 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
+import { IS_MAC } from '@/app/appChord';
 import {
   FEATURE_TIPS,
   FEATURE_TIP_STARTUP_MS,
   pickTip,
   placeTip,
   readSeen,
+  peekShortcutLabel,
   tipTextKey,
   tipToken,
   writeSeen,
@@ -49,6 +51,11 @@ function subscribe(l: () => void) {
 function seenSet(): Set<string> {
   if (!seen) seen = readSeen(storageOrNull());
   return seen;
+}
+
+function allSeen(): boolean {
+  const seenNow = seenSet();
+  return FEATURE_TIPS.every((d) => seenNow.has(tipToken(d)));
 }
 
 export function dismissFeatureTip(id: FeatureTipId): void {
@@ -132,6 +139,7 @@ function coarsePointer(): boolean {
 export function FeatureTipHost() {
   const { t } = useTranslation();
   useSyncExternalStore(subscribe, () => version);
+  const allSeenNow = allSeen();
   const [tick, setTick] = useState(0);
   const [pos, setPos] = useState<{ left: number; top: number; side: 'top' | 'bottom' } | null>(null);
   const tipRef = useRef<HTMLDivElement | null>(null);
@@ -148,6 +156,8 @@ export function FeatureTipHost() {
         setTick((n) => n + 1);
       });
     };
+    // Nothing left to show → no timer at all (re-armed by subscribe on reset).
+    if (allSeen()) return;
     const timer = window.setInterval(bump, 1000);
     window.addEventListener('scroll', bump, { capture: true, passive: true });
     window.addEventListener('resize', bump);
@@ -157,7 +167,7 @@ export function FeatureTipHost() {
       window.removeEventListener('scroll', bump, { capture: true } as EventListenerOptions);
       window.removeEventListener('resize', bump);
     };
-  }, []);
+  }, [allSeenNow]);
 
   let tip: FeatureTipDef | null = null;
   let anchor: HTMLElement | null = null;
@@ -194,18 +204,21 @@ export function FeatureTipHost() {
   void tick;
   if (!tip || !anchor) return null;
   const id = tip.id;
+  const textKey = tipTextKey(id, { coarse: coarsePointer(), compactNav: anchor.classList.contains('cl-promptnav') });
   return createPortal(
     <div
       ref={tipRef}
       className="vh-tip"
-      role="dialog"
-      aria-modal="false"
+      // Not a dialog: `[role="dialog"]` is the terminal's "an overlay is open"
+      // signal (termFocusOwnership.OVERLAY_SELECTOR) and would disable its
+      // focus watchdog for as long as a passive hint is on screen.
+      role="region"
       aria-labelledby="vh-tip-text"
       data-tip={id}
       data-side={pos?.side}
       style={pos ? { left: pos.left, top: pos.top } : { left: 0, top: 0, visibility: 'hidden' }}
     >
-      <p id="vh-tip-text" className="vh-tip-text">{t(tipTextKey(id, { coarse: coarsePointer(), compactNav: anchor.classList.contains('cl-promptnav') }))}</p>
+      <p id="vh-tip-text" className="vh-tip-text">{textKey === 'featureTips.sessionPeekHover' ? t(textKey, { keys: peekShortcutLabel(IS_MAC) }) : t(textKey)}</p>
       <div className="vh-tip-actions">
         <button type="button" className="vh-tip-ok" onClick={() => dismissFeatureTip(id)}>
           {t('featureTips.gotIt')}

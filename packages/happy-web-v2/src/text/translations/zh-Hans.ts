@@ -4324,7 +4324,7 @@ export const zhHans: TranslationStructure = {
         promptRail: '右侧刻度是你发过的每条消息：悬停预览，点击跳过去。',
         promptNav: '用这组箭头跳到上一条或下一条你发的消息。',
         reviewAll: '「审阅全部」在右侧一次看完这个会话所有未提交的改动，可逐个标记已看。',
-        sessionPeekHover: '鼠标在会话上停一下就能预览机器、模型和最近一轮；Alt+Enter 也可以。',
+        sessionPeekHover: ({ keys }: { keys: string }) => `鼠标在会话上停一下就能预览机器、模型和最近一轮；${keys} 也可以。`,
         sessionPeekMenu: '会话菜单里的「预览」可以不进会话就看机器、模型和最近一轮。',
         groupTitle: '功能提示',
         resetTitle: '重置功能提示',

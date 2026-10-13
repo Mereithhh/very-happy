@@ -116,6 +116,11 @@ export type FeatureTipTextKey =
 
 /** Which translation key a tip shows. `coarse`: touch pointer; `compactNav`:
  *  the prompt rail's phone form (prev/next buttons instead of the tick rail). */
+/** Alt+Enter as the platform writes it (⌥↩ on Apple keyboards). */
+export function peekShortcutLabel(isMac: boolean): string {
+  return isMac ? '⌥↩' : 'Alt+Enter';
+}
+
 export function tipTextKey(id: FeatureTipId, variant: { coarse: boolean; compactNav: boolean }): FeatureTipTextKey {
   switch (id) {
     case 'quick-open':

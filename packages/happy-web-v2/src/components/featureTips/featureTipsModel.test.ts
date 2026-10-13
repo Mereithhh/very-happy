@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FEATURE_TIPS, FEATURE_TIPS_SEEN_STORAGE, pickTip, placeTip, readSeen, tipTextKey, tipToken, writeSeen, type FeatureTipId } from './featureTipsModel';
+import { FEATURE_TIPS, FEATURE_TIPS_SEEN_STORAGE, pickTip, placeTip, peekShortcutLabel, readSeen, tipTextKey, tipToken, writeSeen, type FeatureTipId } from './featureTipsModel';
 
 function memStore(initial?: string) {
   const data = new Map<string, string>();
@@ -47,6 +47,11 @@ describe('feature tips (B-588)', () => {
     expect(tipTextKey('session-peek', { coarse: true, compactNav: false })).toBe('featureTips.sessionPeekMenu');
     expect(tipTextKey('session-peek', { coarse: false, compactNav: false })).toBe('featureTips.sessionPeekHover');
     expect(tipTextKey('quick-open', { coarse: false, compactNav: false })).toBe('featureTips.quickOpen');
+  });
+
+  it('writes the preview shortcut the way the platform does', () => {
+    expect(peekShortcutLabel(true)).toBe('⌥↩');
+    expect(peekShortcutLabel(false)).toBe('Alt+Enter');
   });
 
   describe('placeTip', () => {
