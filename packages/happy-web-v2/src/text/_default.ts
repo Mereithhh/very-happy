@@ -2193,13 +2193,17 @@ export const en = {
                 undo: 'Archive and Done can be undone for a few seconds. A broken message now shows a one-line error instead of blanking the page, and a desktop tab you walked away from no longer marks finished sessions as read.',
                 fontSize: 'Appearance → Conversation text size: small, default, large or extra large, on this device.',
             },
+            oct13e: {
+                title: 'Scrolling back stays put',
+                summary: 'Reading older messages no longer snaps you back to the bottom.',
+                scroll: 'Fixed: scrolling up slowly right after opening a chat snapped back to the bottom; it now stays where you scrolled while older messages load. The session\'s decision strip no longer appears twice and can be dismissed.'
+            },
             oct13d: {
                 title: 'Help covers the new features; archive asks again',
                 summary: 'The help page now explains how to use this week\'s features, archive confirms before it acts, and clipboard pushes land without a click.',
                 help: 'Help & getting started has new sections — reviewing changes, working in chat, worktree sessions and hibernation — plus ⌘P, settings search, session peek, terminal paths and file downloads.',
                 archive: 'Archive (menu, board or Command/Ctrl W) asks for confirmation again instead of offering Undo. Done on the board stays one click with a short Undo.',
                 clipboard: 'Text an agent copies for you goes straight into the clipboard; if the page was in the background it lands the moment you return, no toast to click.',
-                scroll: 'Fixed: scrolling up slowly right after opening a chat snapped back to the bottom; it now stays where you scrolled while older messages load. The session\'s decision strip no longer appears twice and can be dismissed.'
             },
             oct13c: {
                 title: 'Worktree sessions and idle hibernation',
