@@ -15,12 +15,6 @@ import { useSessionPreview } from '@/screens/board/useBoardItems';
 import { PEEK_HOVER_DELAY_MS, PEEK_HOVER_MEDIA, cachedBranch, lookupBranch, peekFacts } from './sessionPeekModel';
 import './sessionPeek.css';
 
-export function peekCopy(zh: boolean) {
-  return zh
-    ? { idle: '空闲', preview: '预览', branch: '分支', model: '模型', status: '状态', you: '你', unread: '未读', pending: (n: number) => `待处理 ${n}`, noRound: '这个标签页还没加载过对话', label: '会话预览' }
-    : { idle: 'Idle', preview: 'Preview', branch: 'Branch', model: 'Model', status: 'Status', you: 'You', unread: 'Unread', pending: (n: number) => `${n} pending`, noRound: 'Conversation not loaded in this tab yet', label: 'Session preview' };
-}
-
 type OpenReason = 'hover' | 'explicit';
 
 /** Hover/explicit open state for one row. */
@@ -91,39 +85,41 @@ export function SessionPeek({
   /** the row element — a virtual anchor, so the row keeps its own trigger wrappers (context menu) */
   anchorRef: React.RefObject<HTMLElement | null>;
 }) {
-  const { lang } = useTranslation();
-  const copy = peekCopy(lang.startsWith('zh'));
   return (
     <Popover.Root open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
       <Popover.Anchor virtualRef={anchorRef as React.RefObject<HTMLElement>} />
       <Popover.Portal>
         {open && (
-          <PeekBody session={session} title={title} agentLabel={agentLabel} statusLabel={statusLabel} unread={unread} copy={copy} />
+          <PeekBody session={session} title={title} agentLabel={agentLabel} statusLabel={statusLabel} unread={unread} />
         )}
       </Popover.Portal>
     </Popover.Root>
   );
 }
 
-function PeekBody({ session, title, agentLabel, statusLabel, unread, copy }: {
+function PeekBody({ session, title, agentLabel, statusLabel, unread }: {
   session: Session;
   title: string;
   agentLabel: string;
   statusLabel: string;
   unread: boolean;
-  copy: ReturnType<typeof peekCopy>;
 }) {
+  const { t } = useTranslation();
   const facts = peekFacts(session);
   const round = useSessionPreview(session.id);
-  const [branch, setBranch] = useState<string | undefined>(() => cachedBranch(session.id));
+  // B-586 worktree sessions carry their branch in metadata — no RPC for those.
+  const metaBranch = facts.branch;
+  const [lookedUp, setLookedUp] = useState<string | undefined>(() => cachedBranch(session.id));
+  const branch = metaBranch ?? lookedUp;
   const coarse = (() => { try { return window.matchMedia?.('(pointer: coarse)').matches === true; } catch { return false; } })();
   useEffect(() => {
+    if (metaBranch) return;
     let live = true;
     void lookupBranch(session.id, { active: session.active, path: session.metadata?.path },
       (cwd) => sessionBash(session.id, { command: 'git rev-parse --abbrev-ref HEAD', cwd, timeout: 3000 }))
-      .then((b) => { if (live) setBranch(b); });
+      .then((b) => { if (live) setLookedUp(b); });
     return () => { live = false; };
-  }, [session.id, session.active, session.metadata?.path]);
+  }, [metaBranch, session.id, session.active, session.metadata?.path]);
 
   const where = [facts.machine, facts.path].filter(Boolean).join(' · ');
   const runtime = [agentLabel, facts.model].filter(Boolean).join(' · ');
@@ -135,7 +131,7 @@ function PeekBody({ session, title, agentLabel, statusLabel, unread, copy }: {
       sideOffset={8}
       collisionPadding={12}
       hideWhenDetached
-      aria-label={copy.label}
+      aria-label={t('sessionPeek.label')}
       onOpenAutoFocus={(e) => e.preventDefault()}
       onCloseAutoFocus={(e) => e.preventDefault()}
       // The row menu hands focus back to its "…" button right as we open.
@@ -144,26 +140,26 @@ function PeekBody({ session, title, agentLabel, statusLabel, unread, copy }: {
       <div className="sb-peek-title">{title}</div>
       {where && <div className="sb-peek-where mono" title={session.metadata?.path}>{where}</div>}
       <dl className="sb-peek-facts">
-        {branch && (<><dt>{copy.branch}</dt><dd className="mono">{branch}</dd></>)}
-        {runtime && (<><dt>{copy.model}</dt><dd>{runtime}</dd></>)}
-        <dt>{copy.status}</dt>
+        {branch && (<><dt>{t('sessionPeek.branch')}</dt><dd className="mono">{branch}</dd></>)}
+        {runtime && (<><dt>{t('sessionPeek.model')}</dt><dd>{runtime}</dd></>)}
+        <dt>{t('sessionPeek.status')}</dt>
         <dd>
           {statusLabel}
           {(unread || facts.pending > 0) && (
             <span className="sb-peek-counts">
-              {unread && <span className="sb-peek-unread"><span className="sb-row-unread-dot" aria-hidden />{copy.unread}</span>}
-              {facts.pending > 0 && <span className="sb-peek-pending">{copy.pending(facts.pending)}</span>}
+              {unread && <span className="sb-peek-unread"><span className="sb-row-unread-dot" aria-hidden />{t('sessionPeek.unread')}</span>}
+              {facts.pending > 0 && <span className="sb-peek-pending">{t('sessionPeek.pending', { count: facts.pending })}</span>}
             </span>
           )}
         </dd>
       </dl>
       {round?.user || round?.agent ? (
         <div className="sb-peek-round">
-          {round.user && <p className="sb-peek-user"><span className="sb-peek-who">{copy.you}</span>{round.user}</p>}
+          {round.user && <p className="sb-peek-user"><span className="sb-peek-who">{t('sessionPeek.you')}</span>{round.user}</p>}
           {round.agent && <p className="sb-peek-agent"><span className="sb-peek-who">{agentLabel}</span>{round.agent}</p>}
         </div>
       ) : (
-        <p className="sb-peek-empty">{copy.noRound}</p>
+        <p className="sb-peek-empty">{t('sessionPeek.notLoaded')}</p>
       )}
     </Popover.Content>
   );

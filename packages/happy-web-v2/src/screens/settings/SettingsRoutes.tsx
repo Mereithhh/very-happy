@@ -320,7 +320,7 @@ function Overview() {
 // ===================================================================
 
 function Appearance() {
-  const { t, lang, setLanguage, useDeviceLanguage } = useTranslation();
+  const { t, setLanguage, useDeviceLanguage } = useTranslation();
   const { preference, setPreference } = useTheme();
   // NOTE: wired to `showLineNumbersInToolViews` — the key ToolView actually
   // reads. (The legacy `showLineNumbers` schema key has no web consumer.)
@@ -339,7 +339,6 @@ function Appearance() {
   const [closeTabWarning, setCloseTabWarning] = useLocalSettingMutable('closeTabWarning');
   // B-588: one-time feature tips are device-local; this brings them all back.
   const toast = useToast();
-  const tipsZh = lang.startsWith('zh');
 
   const themeOpts: { key: 'system' | 'dark' | 'light'; label: string; desc: string }[] = [
     {
@@ -511,14 +510,14 @@ function Appearance() {
           />
         </ItemGroup>
 
-        <ItemGroup title={tipsZh ? '功能提示' : 'Feature tips'}>
+        <ItemGroup title={t('featureTips.groupTitle')}>
           <Item
             settingId="appearance.featureTips"
-            title={tipsZh ? '重置功能提示' : 'Reset feature tips'}
-            subtitle={tipsZh ? '新功能入口旁的一次性提示会在本设备上重新出现。' : 'One-time hints next to new features show again on this device.'}
+            title={t('featureTips.resetTitle')}
+            subtitle={t('featureTips.resetDescription')}
             onClick={() => {
               resetFeatureTips();
-              toast.success(tipsZh ? '功能提示已重置' : 'Feature tips reset');
+              toast.success(t('featureTips.resetDone'));
             }}
           />
         </ItemGroup>

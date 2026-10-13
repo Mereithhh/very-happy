@@ -30,6 +30,9 @@ describe('session peek model (B-588)', () => {
     expect(facts).toEqual({ machine: 'mac-office', path: '~/code/app', model: 'opus-5', pending: 2 });
     expect(peekFacts(session({ latestUsage: { inputTokens: 0, outputTokens: 0, cacheCreation: 0, cacheRead: 0, contextSize: 0, model: 'gpt-5.5', timestamp: 0 } })).model).toBe('gpt-5.5');
     expect(peekFacts(session()).model).toBeUndefined();
+    // B-586 worktree sessions name their branch in metadata (no RPC needed)
+    expect(peekFacts(session({ metadata: { worktree: { branch: 'feat/x', root: '/r' } } })).branch).toBe('feat/x');
+    expect(peekFacts(session()).branch).toBeUndefined();
   });
 
   it('parses a branch; detached HEAD and empty output are not a branch', () => {

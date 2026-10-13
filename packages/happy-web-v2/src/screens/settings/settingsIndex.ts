@@ -63,7 +63,7 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: 'appearance.language', section: 'appearance', title: 'settingsLanguage.title', description: 'settingsLanguage.description', keywords: ['language', 'locale', 'english', 'chinese', 'i18n', '语言', '中文', '英文', '界面语言'] },
   { id: 'appearance.lineNumbers', section: 'appearance', title: 'settingsAppearance.showLineNumbersInDiffs', description: 'settingsAppearance.showLineNumbersInDiffsDescription', keywords: ['line numbers', 'diff', 'gutter', '行号', '代码', '差异'] },
   { id: 'appearance.wrapDiff', section: 'appearance', title: 'settingsAppearance.wrapLinesInDiffs', description: 'settingsAppearance.wrapLinesInDiffsDescription', keywords: ['wrap', 'soft wrap', 'line wrap', 'diff', '换行', '自动换行', '折行', '差异'] },
-  { id: 'appearance.featureTips', section: 'appearance', title: { en: 'Reset feature tips', zh: '重置功能提示' }, description: { en: 'One-time hints next to new features show again on this device.', zh: '新功能入口旁的一次性提示会在本设备上重新出现。' }, keywords: ['tips', 'hints', 'onboarding', 'reset', 'feature', '提示', '功能提示', '引导', '重置', '新功能'] },
+  { id: 'appearance.featureTips', section: 'appearance', title: 'featureTips.resetTitle', description: 'featureTips.resetDescription', keywords: ['tips', 'hints', 'onboarding', 'reset', 'feature', '提示', '功能提示', '引导', '重置', '新功能'] },
   // ── account ──
   { id: 'account.emailLogin', section: 'account', title: 'settingsAccount.emailLogin', keywords: ['email', 'mail', 'login', '邮箱', '邮件', '登录'] },
   { id: 'account.googleLogin', section: 'account', title: 'settingsAccount.googleLogin', keywords: ['google', 'oauth', 'login', '谷歌', '登录'] },

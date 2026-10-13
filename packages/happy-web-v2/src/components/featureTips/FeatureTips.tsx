@@ -16,7 +16,7 @@ import {
   pickTip,
   placeTip,
   readSeen,
-  tipCopy,
+  tipTextKey,
   tipToken,
   writeSeen,
   type Box,
@@ -130,8 +130,7 @@ function coarsePointer(): boolean {
 }
 
 export function FeatureTipHost() {
-  const { lang } = useTranslation();
-  const zh = lang.startsWith('zh');
+  const { t } = useTranslation();
   useSyncExternalStore(subscribe, () => version);
   const [tick, setTick] = useState(0);
   const [pos, setPos] = useState<{ left: number; top: number; side: 'top' | 'bottom' } | null>(null);
@@ -206,13 +205,13 @@ export function FeatureTipHost() {
       data-side={pos?.side}
       style={pos ? { left: pos.left, top: pos.top } : { left: 0, top: 0, visibility: 'hidden' }}
     >
-      <p id="vh-tip-text" className="vh-tip-text">{tipCopy(id, zh, coarsePointer())}</p>
+      <p id="vh-tip-text" className="vh-tip-text">{t(tipTextKey(id, { coarse: coarsePointer(), compactNav: anchor.classList.contains('cl-promptnav') }))}</p>
       <div className="vh-tip-actions">
         <button type="button" className="vh-tip-ok" onClick={() => dismissFeatureTip(id)}>
-          {zh ? '知道了' : 'Got it'}
+          {t('featureTips.gotIt')}
         </button>
       </div>
-      <button type="button" className="vh-tip-close" aria-label={zh ? '关闭提示' : 'Close tip'} onClick={() => dismissFeatureTip(id)}>
+      <button type="button" className="vh-tip-close" aria-label={t('featureTips.close')} onClick={() => dismissFeatureTip(id)}>
         <X size={14} />
       </button>
     </div>,

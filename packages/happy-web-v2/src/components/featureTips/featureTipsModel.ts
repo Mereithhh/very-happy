@@ -13,7 +13,7 @@ export const FEATURE_TIPS_SEEN_STORAGE = 'vh.featureTips.seen.v1';
 /** nothing pops up during the first seconds after a load */
 export const FEATURE_TIP_STARTUP_MS = 3000;
 
-export type FeatureTipId = 'review-all' | 'settings-search' | 'session-peek';
+export type FeatureTipId = 'quick-open' | 'prompt-rail' | 'review-all' | 'session-peek';
 
 export interface FeatureTipDef {
   id: FeatureTipId;
@@ -23,8 +23,9 @@ export interface FeatureTipDef {
 
 /** Display order: the first unseen tip with a visible anchor wins. */
 export const FEATURE_TIPS: readonly FeatureTipDef[] = [
+  { id: 'quick-open', version: 1 }, // B-576 ⌘P
+  { id: 'prompt-rail', version: 1 }, // B-579
   { id: 'review-all', version: 1 }, // B-572
-  { id: 'settings-search', version: 1 }, // B-575 / B-580
   { id: 'session-peek', version: 1 }, // B-588
 ];
 
@@ -105,15 +106,25 @@ export function placeTip(
   return null;
 }
 
-export function tipCopy(id: FeatureTipId, zh: boolean, coarse: boolean): string {
+export type FeatureTipTextKey =
+  | 'featureTips.quickOpen'
+  | 'featureTips.promptRail'
+  | 'featureTips.promptNav'
+  | 'featureTips.reviewAll'
+  | 'featureTips.sessionPeekHover'
+  | 'featureTips.sessionPeekMenu';
+
+/** Which translation key a tip shows. `coarse`: touch pointer; `compactNav`:
+ *  the prompt rail's phone form (prev/next buttons instead of the tick rail). */
+export function tipTextKey(id: FeatureTipId, variant: { coarse: boolean; compactNav: boolean }): FeatureTipTextKey {
   switch (id) {
+    case 'quick-open':
+      return 'featureTips.quickOpen';
+    case 'prompt-rail':
+      return variant.compactNav ? 'featureTips.promptNav' : 'featureTips.promptRail';
     case 'review-all':
-      return zh ? '「审阅全部」在右侧一次看完这个会话所有未提交的改动，可逐个标记已看。' : 'Review all opens every uncommitted change of this session on the right; mark files as viewed as you go.';
-    case 'settings-search':
-      return zh ? '设置可以直接搜具体选项；在 ⌘K 里输入设置名也能直达。' : 'Settings now search individual options — or type a setting name in ⌘K to jump there.';
+      return 'featureTips.reviewAll';
     case 'session-peek':
-      return coarse
-        ? (zh ? '会话菜单里的「预览」可以不进会话就看机器、模型和最近一轮。' : 'Use Preview in a session’s menu to see its machine, model and latest round without opening it.')
-        : (zh ? '鼠标在会话上停一下就能预览机器、模型和最近一轮；Alt+Enter 也可以。' : 'Rest the pointer on a session to preview its machine, model and latest round — or press Alt+Enter.');
+      return variant.coarse ? 'featureTips.sessionPeekMenu' : 'featureTips.sessionPeekHover';
   }
 }

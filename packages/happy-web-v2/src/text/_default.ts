@@ -4463,6 +4463,36 @@ export const en = {
         paletteAction: 'Open file…',
     },
 
+    // B-588: one-time feature tips + their reset row (Settings › Appearance)
+    featureTips: {
+        gotIt: 'Got it',
+        close: 'Close tip',
+        quickOpen: 'Press ⌘P (Ctrl+P) to fuzzy-open any file in this project — recently opened files come first.',
+        promptRail: 'Jump between your own messages: hover the marks on the right to preview, click to go there.',
+        promptNav: 'Use these arrows to jump to your previous or next message.',
+        reviewAll: 'Review all opens every uncommitted change of this session on the right; mark files as viewed as you go.',
+        sessionPeekHover: 'Rest the pointer on a session to preview its machine, model and latest round — or press Alt+Enter.',
+        sessionPeekMenu: 'Use Preview in a session’s menu to see its machine, model and latest round without opening it.',
+        groupTitle: 'Feature tips',
+        resetTitle: 'Reset feature tips',
+        resetDescription: 'One-time hints next to new features show again on this device.',
+        resetDone: 'Feature tips reset',
+    },
+
+    // B-588: sidebar session preview
+    sessionPeek: {
+        preview: 'Preview',
+        label: 'Session preview',
+        branch: 'Branch',
+        model: 'Model',
+        status: 'Status',
+        idle: 'Idle',
+        you: 'You',
+        unread: 'Unread',
+        pending: ({ count }: { count: number }) => `${count} pending`,
+        notLoaded: 'Conversation not loaded in this tab yet',
+    },
+
 } as const;
 
 export type Translations = typeof en;

@@ -24,7 +24,6 @@ Orca 对照第三轮列出的三件小体验，加上 B-570 上线后发现的�
 - 不做 Orca 式多步 contextual tour、带演示动画的大弹窗、遥测。
 - 预览卡不放任何操作按钮（「主要操作」仍在行本身和菜单），不做终端行预览。
 - 不引入新依赖、不加 View Transitions API 路径（FLIP 足够，且不受浏览器支持差异影响）。
-- ⌘P 打开文件（B-576）与提问导航轨（B-579）在本基线不存在，本轮不为它们接提示；它们合入后各自追加一条 tip 定义即可。
 
 ## 现状事实（代码已确认）
 
@@ -63,14 +62,15 @@ Orca 对照第三轮列出的三件小体验，加上 B-570 上线后发现的�
   - 行菜单「预览」（所有设备；触屏唯一入口）。
   - 行按钮聚焦时 Alt+Enter（Windows 资源管理器「属性」同键）。
 - 内容（只读，无按钮）：标题；机器 · 目录 · 分支；agent · 模型；状态（复用行的 `statusLabel`）；最近一轮（复用 `useSessionPreview`，未加载过消息就省略）；未读 / 待处理 N（`agentState.requests` 数）。
-- 分支：打开时若会话 active，经现有 `bash` RPC 跑 `git rev-parse --abbrev-ref HEAD`（3s 超时），按会话缓存 60s；失败/离线/非 git 目录不显示该段，不报错。
+- 分支：优先用 B-586 写入的 `metadata.worktree.branch`（不发 RPC）；没有时才在会话 active 时经现有 `bash` RPC 跑 `git rev-parse --abbrev-ref HEAD`（3s 超时），按会话缓存 60s；失败/离线/非 git 目录不显示该段，不报错。
 - 显示规则写回 design-language §6：只在 pointer: fine 悬停、600ms 延迟、离开即关、不含主要操作、触屏走菜单点击。
 
 ### 3. 功能提示（`components/featureTips/`）
 
 - `featureTipsModel.ts`（纯）：tip 定义（id、文案、版本）、已看集合读写（`FEATURE_TIPS_SEEN_STORAGE = 'vh.featureTips.seen.v1'`，try/catch，存 `id@version`）、`pickTip`（按定义顺序挑第一个「未看 + 有可见锚点」的）、`placeTip`（锚点下方/上方，夹在视口内，与避让矩形相交就换边，两边都撞就不显示）、启动门槛 `performance.now() >= 3000`。
-- `useFeatureTipAnchor(id, ref, enabled)`：入口组件登记锚点；`FeatureTipHost`（AppLayout 挂一次）选出唯一 tip，fixed 定位渲染：文案 + 「知道了」+ 关闭（44px 触屏命中），`role="dialog"` 非模态、不抢焦点；滚动/尺寸变化重新定位。避让矩形：`.sd-foot`（输入区、发送按钮、其上的固定区）以及 `.pwa-install` / `.notif-optin` / `.cli-update`；选 tip 时按「未看 + 锚点可见 + 有地方放」依次挑，放不下的不挡后面的。有 Radix 对话框/菜单打开时不显示。
-- 本轮 3 条：审阅全部改动（`.tdr-review`，B-572）、设置项搜索与 ⌘K 设置直达（侧栏设置按钮，B-575/B-580）、会话预览（侧栏第一条会话行，B-588；桌面说悬停、触屏说菜单）。
+- `useFeatureTipAnchor(id, ref, enabled)`：入口组件登记锚点；`FeatureTipHost`（AppLayout 挂一次）选出唯一 tip，fixed 定位渲染：文案 + 「知道了」+ 关闭（44px 触屏命中），`role="dialog"` 非模态、不抢焦点；滚动/尺寸变化重新定位。避让矩形：`.sd-foot`（输入区、发送按钮、其上的固定区）以及 `.pwa-install` / `.notif-optin` / `.cli-update`；选 tip 时按「未看 + 锚点可见 + 有地方放」依次挑，放不下的不挡后面的。有 Radix 对话框/菜单、待审批卡（`role=alertdialog`）或会话预览打开时不显示。
+- 本轮 4 条（顺序即优先级，全局仍最多 1 个）：⌘P 打开文件（B-576；键盘入口没有按钮，锚在会话顶栏文件按钮旁，只对 pointer: fine 提示，打开 QuickOpen 即算已看）、提问导航轨（B-579；桌面锚刻度轨，手机锚上一条/下一条按钮，文案随形态切换，跳转即算已看）、审阅全部改动（`.tdr-review`，B-572）、会话预览（侧栏第一条会话行，B-588；桌面说悬停、触屏说菜单）。
+- 文案走 `text/_default.ts` + `translations/zh-Hans.ts`（另补 zh-Hant），命名空间 `featureTips.*`、`sessionPeek.*`。
 - 设置 › 外观新增「重置功能提示」行（`settingId=appearance.featureTips`，入 `SETTINGS_INDEX`），点击清空记忆并 toast。
 
 ### 4. 引导卡位置统一（`app/floatingCards.css`）

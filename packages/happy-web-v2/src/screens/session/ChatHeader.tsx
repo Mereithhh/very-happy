@@ -8,7 +8,7 @@ import * as Popover from '@radix-ui/react-popover';
  * ChatHeader — title (editable rename), machine·cwd breadcrumb, relay badge,
  * and the global back button.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StickyNote, Check, FolderOpen, MessageCircleQuestion, MoreHorizontal, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useSession } from '@/sync/storage';
@@ -23,6 +23,7 @@ import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { RelayBadge } from '@/components/RelayBadge';
 import { sessionAgentLabel } from './sessionAgentLabel';
 import { PrStatusChip } from './git/PrStatusChip';
+import { useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 import './header.css';
 
 export function ChatHeader({
@@ -40,6 +41,11 @@ export function ChatHeader({
     onToggleBtw?: () => void;
 }) {
     const { t, lang } = useTranslation();
+    // B-588: the ⌘P tip sits next to the files button — the visible neighbour
+    // of a keyboard-only entry, so only offered to fine (keyboard) pointers.
+    const filesBtnRef = useRef<HTMLButtonElement | null>(null);
+    const finePointer = typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches === true;
+    useFeatureTipAnchor('quick-open', filesBtnRef, finePointer && !!onToggleFiles, { dismissOnClick: false });
     const navigateTeam = useNavigate();
     const showTeams = useLocalSetting('happyBotEntryVisible');
     const teams = useTeamNavigation();
@@ -155,6 +161,7 @@ export function ChatHeader({
                     <button
                         key={key}
                         type="button"
+                        ref={filesBtnRef}
                         className={`ch-icon ch-files-toggle${filesOpen ? ' is-active' : ''}`}
                         onClick={onToggleFiles}
                         aria-label={t('session.chat.files')}

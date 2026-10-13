@@ -23,6 +23,8 @@ export interface PeekFacts {
   model?: string;
   /** pending permission requests / questions */
   pending: number;
+  /** B-586: worktree sessions report their branch in metadata (preferred over the RPC lookup) */
+  branch?: string;
 }
 
 export function peekFacts(session: Session): PeekFacts {
@@ -33,6 +35,7 @@ export function peekFacts(session: Session): PeekFacts {
     path: meta?.path ? formatPathRelativeToHome(meta.path, meta.homeDir) : undefined,
     model: running ? compactResolvedModelCode(running) : undefined,
     pending: Object.keys(session.agentState?.requests ?? {}).length,
+    ...(typeof meta?.worktree?.branch === 'string' && meta.worktree.branch ? { branch: meta.worktree.branch } : {}),
   };
 }
 

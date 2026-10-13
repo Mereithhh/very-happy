@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FEATURE_TIPS, FEATURE_TIPS_SEEN_STORAGE, pickTip, placeTip, readSeen, tipToken, writeSeen, type FeatureTipId } from './featureTipsModel';
+import { FEATURE_TIPS, FEATURE_TIPS_SEEN_STORAGE, pickTip, placeTip, readSeen, tipTextKey, tipToken, writeSeen, type FeatureTipId } from './featureTipsModel';
 
 function memStore(initial?: string) {
   const data = new Map<string, string>();
@@ -32,12 +32,21 @@ describe('feature tips (B-588)', () => {
   });
 
   it('picks the first unseen tip in order that has a visible anchor; a bumped version shows again', () => {
-    const visible = new Set<FeatureTipId>(['settings-search', 'session-peek']);
-    expect(pickTip(FEATURE_TIPS, new Set(), visible)?.id).toBe('settings-search');
-    expect(pickTip(FEATURE_TIPS, new Set(['settings-search@1']), visible)?.id).toBe('session-peek');
-    expect(pickTip(FEATURE_TIPS, new Set(['settings-search@1', 'session-peek@1']), visible)).toBeNull();
+    expect(FEATURE_TIPS.map((d) => d.id)).toEqual(['quick-open', 'prompt-rail', 'review-all', 'session-peek']);
+    const visible = new Set<FeatureTipId>(['prompt-rail', 'session-peek']);
+    expect(pickTip(FEATURE_TIPS, new Set(), visible)?.id).toBe('prompt-rail');
+    expect(pickTip(FEATURE_TIPS, new Set(['prompt-rail@1']), visible)?.id).toBe('session-peek');
+    expect(pickTip(FEATURE_TIPS, new Set(['prompt-rail@1', 'session-peek@1']), visible)).toBeNull();
     expect(pickTip([{ id: 'session-peek', version: 2 }], new Set(['session-peek@1']), visible)?.id).toBe('session-peek');
     expect(pickTip(FEATURE_TIPS, new Set(), new Set())).toBeNull();
+  });
+
+  it('copy follows the entry form: phone prompt nav vs rail, touch preview via the menu', () => {
+    expect(tipTextKey('prompt-rail', { coarse: false, compactNav: false })).toBe('featureTips.promptRail');
+    expect(tipTextKey('prompt-rail', { coarse: true, compactNav: true })).toBe('featureTips.promptNav');
+    expect(tipTextKey('session-peek', { coarse: true, compactNav: false })).toBe('featureTips.sessionPeekMenu');
+    expect(tipTextKey('session-peek', { coarse: false, compactNav: false })).toBe('featureTips.sessionPeekHover');
+    expect(tipTextKey('quick-open', { coarse: false, compactNav: false })).toBe('featureTips.quickOpen');
   });
 
   describe('placeTip', () => {

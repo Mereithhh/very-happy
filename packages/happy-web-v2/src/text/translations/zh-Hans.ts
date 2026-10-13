@@ -4316,4 +4316,34 @@ export const zhHans: TranslationStructure = {
         paletteAction: '打开文件…',
     },
 
+    // B-588：一次性功能提示 + 设置里的重置
+    featureTips: {
+        gotIt: '知道了',
+        close: '关闭提示',
+        quickOpen: '按 ⌘P（Ctrl+P）模糊打开项目里的任意文件，最近打开的排在前面。',
+        promptRail: '右侧刻度是你发过的每条消息：悬停预览，点击跳过去。',
+        promptNav: '用这组箭头跳到上一条或下一条你发的消息。',
+        reviewAll: '「审阅全部」在右侧一次看完这个会话所有未提交的改动，可逐个标记已看。',
+        sessionPeekHover: '鼠标在会话上停一下就能预览机器、模型和最近一轮；Alt+Enter 也可以。',
+        sessionPeekMenu: '会话菜单里的「预览」可以不进会话就看机器、模型和最近一轮。',
+        groupTitle: '功能提示',
+        resetTitle: '重置功能提示',
+        resetDescription: '新功能入口旁的一次性提示会在本设备上重新出现。',
+        resetDone: '功能提示已重置',
+    },
+
+    // B-588：侧栏会话预览
+    sessionPeek: {
+        preview: '预览',
+        label: '会话预览',
+        branch: '分支',
+        model: '模型',
+        status: '状态',
+        idle: '空闲',
+        you: '你',
+        unread: '未读',
+        pending: ({ count }: { count: number }) => `待处理 ${count}`,
+        notLoaded: '这个标签页还没加载过对话',
+    },
+
 } as const;

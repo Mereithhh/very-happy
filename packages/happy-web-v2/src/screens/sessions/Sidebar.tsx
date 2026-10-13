@@ -82,7 +82,7 @@ import {
 import { SidebarRateLimit } from '@/screens/machine/rateLimits/SidebarRateLimit';
 import { archiveAndDeleteWorktree, canArchiveAndDeleteWorktree } from '@/app/worktreeArchive';
 import { worktreeCopy } from './worktreeCopy';
-import { SessionPeek, peekCopy, useSessionPeek } from './SessionPeek';
+import { SessionPeek, useSessionPeek } from './SessionPeek';
 import { dismissFeatureTip, useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 
 function rowHref(r: Row): string {
@@ -349,9 +349,6 @@ export function Sidebar() {
   // disappearing rows are handled). The decision is a pure function so it can
   // be unit-tested; this hook is only the plumbing.
   const listRef = useRef<HTMLDivElement | null>(null);
-  // B-588: one-time tip for item-level settings search (B-575/B-580)
-  const settingsBtnRef = useRef<HTMLButtonElement | null>(null);
-  useFeatureTipAnchor('settings-search', settingsBtnRef);
   const [heldKeys, setHeldKeys] = useState<string[] | null>(null);
   const heldRef = useRef<string[] | null>(null);
   /** Row keys as currently RENDERED — the snapshot taken when the hold arms. */
@@ -1311,7 +1308,7 @@ export function Sidebar() {
       {/* B-555: tightest subscription window (renders nothing until reported) */}
       <SidebarRateLimit />
       <footer className="sb-footer">
-        <button ref={settingsBtnRef} className="sb-footer-btn" onClick={() => navigate('/settings')}>
+        <button className="sb-footer-btn" onClick={() => navigate('/settings')}>
           <Settings size={16} /> <span>{t('tabs.settings')}</span>
         </button>
         {/* notes dock toggle (B-094) — app chrome, so it shares the footer row */}
@@ -1671,7 +1668,7 @@ function SidebarRow({
   }
 
   if (peekable) {
-    menuItems.unshift({ key: 'peek', label: peekCopy(lang.startsWith('zh')).preview, icon: Eye, onSelect: peek.openExplicit });
+    menuItems.unshift({ key: 'peek', label: t('sessionPeek.preview'), icon: Eye, onSelect: peek.openExplicit });
   }
 
   if (canKillAttached) {
@@ -1705,7 +1702,7 @@ function SidebarRow({
           onClose={peek.close}
           title={`${row.teamLabel ? `${row.teamLabel} · ` : ''}${row.title}`}
           agentLabel={agentLabel}
-          statusLabel={status ? statusLabel : peekCopy(lang.startsWith('zh')).idle}
+          statusLabel={status ? statusLabel : t('sessionPeek.idle')}
           unread={signal === 'unread'}
           anchorRef={rowRef}
         />
