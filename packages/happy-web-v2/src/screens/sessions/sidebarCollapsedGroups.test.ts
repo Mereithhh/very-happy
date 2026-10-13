@@ -8,6 +8,8 @@ import {
   isGroupCollapsed,
   nearestScrollTop,
   parseCollapsedGroups,
+  planReveal,
+  withTemporaryExpanded,
   resetCollapsedGroupsForTest,
   setGroupCollapsed,
   summarizeGroup,
@@ -108,5 +110,40 @@ describe('flattenOpenGroups (B-580)', () => {
     const id = (g: { key: string }) => `workspace:${g.key}`;
     expect(flattenOpenGroups(groups, id, {})).toEqual(['r1', 'r2', 'r3', 'r4']);
     expect(flattenOpenGroups(groups, id, { 'workspace:b': true })).toEqual(['r1', 'r2', 'r4']);
+  });
+});
+
+describe('temporary reveal expansion (review 中1)', () => {
+  it('opens groups in memory only — persisted choices and storage are untouched', () => {
+    const stored = { 'workspace:a': true };
+    const eff = withTemporaryExpanded(stored, new Set(['workspace:a', 'completed']));
+    expect(isGroupCollapsed(eff, 'workspace:a')).toBe(false);
+    expect(isGroupCollapsed(eff, 'completed')).toBe(false);
+    // the source object is not mutated, so clearing the override restores both folds
+    expect(stored).toEqual({ 'workspace:a': true });
+    expect(isGroupCollapsed(withTemporaryExpanded(stored, new Set()), 'workspace:a')).toBe(true);
+    expect(isGroupCollapsed(withTemporaryExpanded(stored, new Set()), 'completed')).toBe(true);
+  });
+});
+
+describe('planReveal (review 中2 / 低3)', () => {
+  const base = { armed: true, dataReady: true, found: false, expand: false, manual: false, inListView: true };
+  it('waits for a missing row only while session data is loading', () => {
+    expect(planReveal({ ...base, dataReady: false })).toBe('wait');
+    // loaded and still missing → pass ends: a later status change can't re-open folds
+    expect(planReveal(base)).toBe('done');
+  });
+  it('found rows expand first, then scroll', () => {
+    expect(planReveal({ ...base, found: true, expand: true })).toBe('expand');
+    expect(planReveal({ ...base, found: true })).toBe('scroll');
+  });
+  it('manual locate retries once in the list view, then ends', () => {
+    expect(planReveal({ ...base, manual: true, inListView: false })).toBe('switch-to-list');
+    // caller clears `manual` at the switch → the second miss is final, even if the user switches view again
+    expect(planReveal({ ...base, manual: false, inListView: false })).toBe('done');
+    expect(planReveal({ ...base, manual: true, inListView: true })).toBe('done');
+  });
+  it('disarmed passes do nothing', () => {
+    expect(planReveal({ ...base, armed: false, found: true, expand: true })).toBe('idle');
   });
 });

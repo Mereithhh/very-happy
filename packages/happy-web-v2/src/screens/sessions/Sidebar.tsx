@@ -72,8 +72,10 @@ import {
   flattenOpenGroups,
   isGroupCollapsed,
   nearestScrollTop,
+  planReveal,
   setGroupCollapsed,
   summarizeGroup,
+  withTemporaryExpanded,
   useCollapsedGroups,
   type GroupStatusSummary,
 } from './sidebarCollapsedGroups';
@@ -441,7 +443,11 @@ export function Sidebar() {
   // changes are what re-derive it; the window edge doesn't need a live clock.
   // B-580: every labelled group is collapsible; state is device-local
   // (sidebarCollapsedGroups.ts). 已完成 keeps its collapsed-by-default.
-  const collapsedGroups = useCollapsedGroups();
+  // `collapsedGroups` = persisted choices + the in-memory reveal override
+  // (groups temporarily opened to show the current row; cleared on route change).
+  const storedCollapsedGroups = useCollapsedGroups();
+  const [revealExpanded, setRevealExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const collapsedGroups = useMemo(() => withTemporaryExpanded(storedCollapsedGroups, revealExpanded), [storedCollapsedGroups, revealExpanded]);
   const completedOpen = !isGroupCollapsed(collapsedGroups, 'completed');
   const completedRows = useMemo<Row[]>(() => {
     if (view !== 'status' || !sessions) return [];
@@ -873,24 +879,44 @@ export function Sidebar() {
   const [revealSeq, setRevealSeq] = useState(1);
   const revealHandled = useRef(0);
   const revealManual = useRef(false);
-  useEffect(() => { setRevealSeq((n) => n + 1); }, [location.pathname, location.search]);
+  const dataReady = storage((st) => st.isDataReady);
+  useEffect(() => {
+    setRevealExpanded((cur) => (cur.size ? new Set() : cur)); // temporary opens end with the route
+    setRevealSeq((n) => n + 1);
+  }, [location.pathname, location.search]);
   const locateCurrent = useCallback(() => { revealManual.current = true; setRevealSeq((n) => n + 1); }, []);
   useEffect(() => {
-    if (revealHandled.current === revealSeq || displayRows === null) return;
+    if (displayRows === null) return;
     const target = findRevealTarget(
       sections.map((sec) => ({ id: sec.id, collapsible: sec.collapsible, keys: sec.allRows })),
       isCurrentRow,
       (id) => isGroupCollapsed(collapsedGroups, id),
     );
-    if (!target) {
+    const step = planReveal({
+      armed: revealHandled.current !== revealSeq,
+      dataReady,
+      found: target !== null,
+      expand: target?.expand ?? false,
+      manual: revealManual.current,
+      inListView: view === 'list',
+    });
+    if (step === 'idle' || step === 'wait') return;
+    if (step === 'switch-to-list') {
       // Asked by hand but the row isn't in this view (e.g. 归档 while the
-      // session is active): fall back to the list view and try again there.
-      if (revealManual.current && view !== 'list') selectView('list');
-      return; // stay armed: the row may appear once data lands
+      // session is active): one retry in the list view. The flag is cleared
+      // NOW, so a second miss ends the pass instead of pinning the list view.
+      revealManual.current = false;
+      selectView('list');
+      return;
     }
-    if (target.expand) { setGroupCollapsed(target.sectionId, false); return; } // next render scrolls
+    if (step === 'expand') {
+      // Memory-only: never persisted, so 已完成's default fold and the user's own folds survive.
+      setRevealExpanded((cur) => new Set([...cur, target!.sectionId]));
+      return; // next render scrolls
+    }
     revealHandled.current = revealSeq;
     revealManual.current = false;
+    if (step === 'done' || !target) return;
     const key = target.key.key;
     const raf = requestAnimationFrame(() => {
       const list = listRef.current;
@@ -902,7 +928,7 @@ export function Sidebar() {
       if (top !== null) list.scrollTop = top;
     });
     return () => cancelAnimationFrame(raf);
-  }, [revealSeq, sections, displayRows, isCurrentRow, collapsedGroups, view, selectView]);
+  }, [revealSeq, sections, displayRows, isCurrentRow, collapsedGroups, view, selectView, dataReady]);
 
   return (
     <div className="sb">
@@ -1094,7 +1120,11 @@ export function Sidebar() {
                         type="button"
                         className="sb-section-toggle"
                         aria-expanded={sec.open}
-                        onClick={() => setGroupCollapsed(sec.id, sec.open)}
+                        onClick={() => {
+                          // Only a click on the head persists; it also drops any temporary reveal-open.
+                          setRevealExpanded((cur) => { if (!cur.has(sec.id)) return cur; const next = new Set(cur); next.delete(sec.id); return next; });
+                          setGroupCollapsed(sec.id, sec.open);
+                        }}
                       >
                         <ChevronRight size={11} className={`sb-section-chevron${sec.open ? ' is-open' : ''}`} />
                         <span className="sb-section-label">{sec.label}</span>

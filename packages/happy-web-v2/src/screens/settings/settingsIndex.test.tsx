@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
+import { Window } from 'happy-dom';
 import { en } from '@/text/_default';
 import { zhHans } from '@/text/translations/zh-Hans';
 import {
@@ -16,6 +17,7 @@ import {
   SETTINGS_SECTION_TITLES,
   lookupText,
   searchSettings,
+  textVariants,
   settingHref,
   type SettingsText,
 } from './settingsIndex';
@@ -101,6 +103,23 @@ describe('settings index ↔ pages (B-575)', () => {
       const anchors = anchorsIn(render(section));
       for (const e of SETTINGS_INDEX.filter((x) => x.section === section)) {
         expect(anchors.has(e.id), `${e.id} missing on /settings/${section}`).toBe(true);
+      }
+    }
+  });
+
+  it("each anchor sits on the row/group whose visible title is the entry's title (no id on the wrong row)", () => {
+    push.supported = true;
+    const doc = new Window().document;
+    for (const section of [...new Set(SETTINGS_INDEX.map((e) => e.section))]) {
+      doc.body.innerHTML = render(section);
+      for (const e of SETTINGS_INDEX.filter((x) => x.section === section)) {
+        const el = doc.querySelector(`[data-setting-id="${e.id}"]`);
+        const titleEl = el?.classList.contains('vh-itemgroup')
+          ? [...el.children].find((c) => c.classList.contains('vh-itemgroup__title'))
+          : el?.querySelector('.vh-item__title');
+        const visible = (titleEl?.textContent ?? '').trim().toLowerCase();
+        // renders in en (test locale); the index title must be what the user sees there
+        expect(visible, `${e.id} on /settings/${section}`).toContain(textVariants(e.title).en.toLowerCase());
       }
     }
   });

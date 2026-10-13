@@ -78,7 +78,8 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
     return {
       id: `agents.${agent}`,
       section: 'agents',
-      title: { en: `${name} defaults`, zh: `${name} 默认设置` },
+      // = the group's visible title (agent name); results read "Agent defaults › Claude"
+      title: { en: name, zh: name },
       description: { en: 'Default permission, model and effort for new sessions', zh: '新会话的默认权限、模型与思考强度' },
       keywords: [agent, 'permission', 'model', 'effort', 'thinking', 'yolo', '权限', '模型', '思考强度', '默认'],
     };

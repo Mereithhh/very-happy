@@ -179,3 +179,44 @@ export function nearestScrollTop(input: {
   if (top < 0 || input.rowHeight + margin * 2 > input.containerHeight) return Math.max(0, Math.round(input.scrollTop + top - margin));
   return Math.max(0, Math.round(input.scrollTop + bottom - input.containerHeight + margin));
 }
+
+// ── temporary reveal expansion + reveal decision (review fixes) ──
+
+/**
+ * Groups opened by "reveal the current row" are a TEMPORARY in-memory
+ * override layered over the persisted choices — never written to
+ * localStorage, cleared on the next route change. Only a click on the group
+ * head persists (setGroupCollapsed). Otherwise one deep link would silently
+ * and permanently undo 已完成's default fold or the user's own fold.
+ */
+export function withTemporaryExpanded(state: CollapsedGroups, expanded: ReadonlySet<string>): CollapsedGroups {
+  if (expanded.size === 0) return state;
+  const next: CollapsedGroups = { ...state };
+  for (const id of expanded) next[id] = false;
+  return next;
+}
+
+export type RevealStep = 'idle' | 'wait' | 'switch-to-list' | 'expand' | 'scroll' | 'done';
+
+/**
+ * One armed reveal pass. Not found → wait ONLY while session data is still
+ * loading; once loaded, a missing row ends the pass ('done') so a later
+ * status change (no route change) can never pop open a group the user folded.
+ * A manual "locate" retries once in the list view ('switch-to-list'); the
+ * caller clears the manual flag at the switch, so a second miss is 'done'.
+ */
+export function planReveal(input: {
+  armed: boolean;
+  dataReady: boolean;
+  found: boolean;
+  expand: boolean;
+  manual: boolean;
+  inListView: boolean;
+}): RevealStep {
+  if (!input.armed) return 'idle';
+  if (!input.found) {
+    if (!input.dataReady) return 'wait';
+    return input.manual && !input.inListView ? 'switch-to-list' : 'done';
+  }
+  return input.expand ? 'expand' : 'scroll';
+}
