@@ -21,7 +21,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.oct14b.title',
     summaryKey: 'changelog.releases.oct14b.summary',
-    itemKeys: ['changelog.releases.oct14b.paste'],
+    itemKeys: ['changelog.releases.oct14b.scroll', 'changelog.releases.oct14b.importAgain', 'changelog.releases.oct14b.iosBar', 'changelog.releases.oct14b.paste'],
   },
   {
     id: '2026-10-14-pi-install-hints',

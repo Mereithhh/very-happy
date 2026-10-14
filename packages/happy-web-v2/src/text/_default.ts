@@ -2204,9 +2204,12 @@ export const en = {
                 fontSize: 'Appearance → Conversation text size: small, default, large or extra large, on this device.',
             },
             oct14b: {
-                title: 'Copy and paste no longer race a clipboard push',
-                summary: 'Text an agent copied for you no longer overwrites what you copy or paste with ⌘C / ⌘V.',
+                title: 'Scrolling, import and clipboard fixes',
+                summary: 'Scrolling up during a reply stays put, failed imports no longer hide the original conversation, and ⌘C / ⌘V no longer race a clipboard push.',
                 paste: 'Fixed: while a clipboard push was waiting to be written, pressing ⌘V or ⌘C could swap your clipboard for the pushed text. Modifier shortcuts no longer trigger that write; a normal key press or click still does.',
+                scroll: 'Fixed: scrolling up while a reply is streaming no longer snaps back to the bottom. Following resumes once you scroll back to the very bottom, send, or jump to latest.',
+                importAgain: 'Fixed: a conversation whose earlier import failed was hidden from the import list. It now shows as “imported before” and can be imported again (the original is untouched). Full-text search works with CLI 0.2.166+; the Recent list needs the next CLI release.',
+                iosBar: 'iPhone home-screen app: the gap under the composer reserved space for the home indicator twice; one is removed. Settings → Diagnosis → “Viewport & safe area” shows layout numbers if something still looks off.',
             },
             oct14: {
                 title: 'Missing pi setup says exactly what to install',
@@ -2964,7 +2967,7 @@ export const en = {
             sep05a: {
                 title: 'Every terminal on one machine showing up twice',
                 summary: 'A machine that upgraded itself could come back under a new identity, leaving its old entry behind — and both of them listed the same terminals.',
-                duplicates: 'The terminal list now shows each terminal once, from whichever machine entry is actually live. This takes effect as soon as you load the app; you do not need to upgrade anything. If you still have a stale machine listed, Settings → Diagnostics → the machine → Delete removes it, and its terminals stay where they are.',
+                duplicates: 'The terminal list now shows each terminal once, from whichever machine entry is actually live. This takes effect as soon as you load the app; you do not need to upgrade anything. If you still have a stale machine listed, Settings → Diagnosis → the machine → Delete removes it, and its terminals stay where they are.',
                 identity: 'The cause was on the machine: a settings file that could not be read for a moment was indistinguishable from a first install, so the CLI issued itself a new identity and registered a second machine. It now refuses to replace an identity it cannot read, and says so, instead of quietly starting over. Settings are no longer overwritten in that state either.',
             },
             sep04e: {
