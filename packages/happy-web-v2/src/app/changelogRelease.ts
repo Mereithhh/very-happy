@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-14-side-panel-history',
+    date: '2026-10-14',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct14c.title',
+    summaryKey: 'changelog.releases.oct14c.summary',
+    itemKeys: ['changelog.releases.oct14c.panel', 'changelog.releases.oct14c.actions'],
+  },
+  {
     id: '2026-10-14-paste-fix',
     date: '2026-10-14',
     buildVersion: __APP_VERSION__,

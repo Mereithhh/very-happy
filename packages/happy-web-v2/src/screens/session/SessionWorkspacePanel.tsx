@@ -1,4 +1,4 @@
-import { Globe, Plus, FolderOpen, Files, GitCompareArrows, MessageCircleQuestion, StickyNote } from 'lucide-react';
+import { Copy, FileSearch, Globe, Plus, FolderOpen, Files, GitCompareArrows, MessageCircleQuestion, StickyNote } from 'lucide-react';
 import { ActionDropdownMenu } from '@/ui/Menu';
 import { BrowserPreview } from '../workspace/BrowserPreview';
 import { useEffect, useRef } from 'react';
@@ -6,6 +6,7 @@ import { useMessage, useSession } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { FilesPanel } from './FilesPanel';
 import { BtwPanel } from './BtwPanel';
+import { SessionHistoryPanel } from './SessionPreviews';
 import { SubagentPanel } from './SubagentPanel';
 import { buildSubagentSummary } from './subagentSummary';
 import { useNotesWorkspace } from '../notes/useNotesWorkspace';
@@ -15,7 +16,7 @@ import { WorkspacePane } from '../workspace/WorkspacePane';
 import { useWorkspaceView } from '../workspace/workspaceViewStore';
 import { closeWorkspaceTab, openWorkspaceTab, moveWorkspaceTab, type WorkspaceTab } from '../workspace/workspaceTabModel';
 import './session.css';
-import type { SessionFilesTab, SessionPanelTab } from './sessionPanelState';
+import { isHistoryPanel, type SessionFilesTab, type SessionPanelTab } from './sessionPanelState';
 
 /** One tab strip, preserving existing URL deep links and each content owner. */
 export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAllowed, visible = true, refreshOnMount = true, onPanel, onSubagent, onClose }: {
@@ -31,16 +32,16 @@ export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAll
   const [tools, updateTools] = useWorkspaceView(identity);
   const filesTab = useRef<SessionFilesTab>('browse');
   const notes = useNotesWorkspace(visible && panel === 'notes');
-  const filesActive = visible && panel !== 'btw' && panel !== 'subagent' && panel !== 'notes' && panel !== 'web';
+  const filesActive = visible && panel !== 'btw' && panel !== 'subagent' && panel !== 'notes' && panel !== 'web' && !isHistoryPanel(panel);
   if (filesActive) filesTab.current = panel;
-  const activeTool = panel === 'web' ? 'web' : panel === 'notes' ? 'notes' : panel === 'btw' && btwAllowed ? 'btw' : panel === 'subagent' && subagentTarget ? `agent:${subagentTarget}` : null;
-  const current: WorkspaceTab | null = activeTool ? { id:activeTool, title: panel === 'web' ? (lang.startsWith('zh')?'网页预览':'Web preview') : panel === 'notes' ? t('notes.title') : panel === 'btw' ? t('session.btw.title') : agentTitle || t('session.chat.subagentPanelTitle') } : null;
+  const activeTool = isHistoryPanel(panel) ? panel : panel === 'web' ? 'web' : panel === 'notes' ? 'notes' : panel === 'btw' && btwAllowed ? 'btw' : panel === 'subagent' && subagentTarget ? `agent:${subagentTarget}` : null;
+  const current: WorkspaceTab | null = activeTool ? { id:activeTool, title: panel === 'previews' ? t('toolHistory.previewsTitle') : panel === 'clipboard' ? t('toolHistory.clipboardTitle') : panel === 'web' ? (lang.startsWith('zh')?'网页预览':'Web preview') : panel === 'notes' ? t('notes.title') : panel === 'btw' ? t('session.btw.title') : agentTitle || t('session.chat.subagentPanelTitle') } : null;
   // Include a just-opened URL target immediately; persist after render.
   const tabs = (current && !tools.tabs.some(tab => tab.id === current.id) ? [...tools.tabs,current] : tools.tabs).filter(tab => tab.id !== 'btw' || btwAllowed);
   useEffect(() => {
     if (current) updateTools(state => openWorkspaceTab(state,current));
   }, [identity, activeTool, current?.title]);
-  const selectTool = (id:string) => id === 'web' ? onPanel('web') : id === 'notes' ? onPanel('notes') : id === 'btw' ? onPanel('btw') : onSubagent(id.slice(6));
+  const selectTool = (id:string) => isHistoryPanel(id) ? onPanel(id) : id === 'web' ? onPanel('web') : id === 'notes' ? onPanel('notes') : id === 'btw' ? onPanel('btw') : onSubagent(id.slice(6));
   const closeTool = (id:string) => {
     if(id==='notes') setNotesPanelOpen(false);
     updateTools(state => closeWorkspaceTab(state,id));
@@ -60,6 +61,8 @@ export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAll
         {key:'web',label:lang.startsWith('zh')?'网页预览':'Web preview',icon:Globe,onSelect:()=>onPanel('web')},
         ...(btwAllowed?[{key:'btw',label:t('session.btw.title'),icon:MessageCircleQuestion,onSelect:()=>onPanel('btw')}]:[]),
         {key:'notes',label:t('notes.title'),icon:StickyNote,onSelect:()=>onPanel('notes')},
+        {key:'previews',label:t('toolHistory.previewsTitle'),icon:FileSearch,onSelect:()=>onPanel('previews')},
+        {key:'clipboard',label:t('toolHistory.clipboardTitle'),icon:Copy,onSelect:()=>onPanel('clipboard')},
       ]}><button className="fp-icon" aria-label={lang.startsWith('zh')?'打开工具':'Open tools'} title={lang.startsWith('zh')?'打开工具':'Open tools'}><Plus size={17}/></button></ActionDropdownMenu>{activeTool==='notes'&&notes.actions}{fileProps.actions}</>}
       onSelect={id=>{
         if(id.startsWith('notes:')) { notes.tabProps.onSelect(id.slice(6)); onPanel('notes'); }
@@ -82,7 +85,7 @@ export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAll
       }}
     />}>
     {tabs.map(tab=><WorkspacePane key={`${identity}:${tab.id}`} className="session-workspace-pane" active={visible && activeTool===tab.id} order={tabs.map(tab=>tab.id).join('\n')}>
-      {tab.id==='web'?<BrowserPreview identity={identity}/>:tab.id==='notes'?notes.content:tab.id==='btw'
+      {isHistoryPanel(tab.id)?<SessionHistoryPanel sessionId={sessionId} kind={tab.id}/>:tab.id==='web'?<BrowserPreview identity={identity}/>:tab.id==='notes'?notes.content:tab.id==='btw'
         ? <BtwPanel sessionId={sessionId} embedded active={visible && activeTool===tab.id} onClose={()=>closeTool(tab.id)}/>
         : <SubagentPanel sessionId={sessionId} messageId={tab.id.slice(6)} embedded onClose={()=>closeTool(tab.id)}/>}
     </WorkspacePane>)}

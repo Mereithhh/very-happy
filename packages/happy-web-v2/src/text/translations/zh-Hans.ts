@@ -1242,6 +1242,20 @@ export const zhHans: TranslationStructure = {
     rpc: {
         rateLimited: ({ seconds }: { seconds: number }) => `请求过于频繁，已暂停对机器的调用 ${seconds} 秒，稍后自动恢复。`,
     },
+    // B-602：会话内的预览 / 剪贴板记录（输入框上方计数 + 右侧面板标签）
+    toolHistory: {
+        dockLabel: '预览与剪贴板记录',
+        previews: '预览',
+        clipboard: '剪贴板',
+        previewsTitle: '预览记录',
+        clipboardTitle: '剪贴板记录',
+        openPanel: ({ name }: { name: string }) => `在侧边面板打开${name}`,
+        closePanel: ({ name }: { name: string }) => `收起${name}`,
+        emptyPreviews: '还没有预览。agent 用 open_preview 打开的文件会列在这里。',
+        emptyClipboard: '还没有复制内容。agent 用 copy_to_clipboard 复制的文本会列在这里。',
+        deviceClipboard: '本设备收到的全部内容',
+    },
+
     clipboard: {
         copiedPreview: ({ preview }: { preview: string }) => `已复制：${preview}`,
         tapToCopy: ({ preview }: { preview: string }) => `收到剪贴板内容，点击复制：${preview}`,
@@ -2352,6 +2366,12 @@ export const zhHans: TranslationStructure = {
                 notify: '同一会话的通知只留最新一条，过期的不再补发，在一台设备看过的会从其他设备清掉；设置里可以发一条测试通知。',
                 undo: '归档和「完成」几秒内可撤销。某条消息渲染出错时只显示一行错误，不再白屏；桌面标签页开着但人走开时，不再把完成的会话标成已读。',
                 fontSize: '外观 → 对话字号：小 / 默认 / 大 / 特大，只对当前设备生效。',
+            },
+            oct14c: {
+                title: '预览与剪贴板记录改在侧边面板查看',
+                summary: '输入框上方只留两个小计数，点一下在对话旁边看完整列表，不再在输入框上方展开一长条。',
+                panel: '「预览」和「剪贴板」各是右侧面板的一个标签，和文件、笔记、网页预览并排（手机上全屏打开）。再点一次计数即收起；面板＋菜单里也能打开。',
+                actions: '原有操作都在面板里：打开或下载预览过的文件、再次复制、展开长文本。剪贴板标签底部可跳到本设备收到的全部内容。',
             },
             oct14b: {
                 title: '滚动、导入与剪贴板修复',

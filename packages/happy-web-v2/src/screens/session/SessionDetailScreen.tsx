@@ -38,7 +38,7 @@ import { canOfferRestore } from '@/app/sessionRestore';
 import { useHibernationAutoWake } from '@/app/useHibernationAutoWake';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { newSessionTimingComposerMounted, newSessionTimingInStore, newSessionTimingPendingShown } from '@/app/newSessionTiming';
-import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
+import { isHistoryPanel, readSessionPanel, readSubagentTarget, toggleHistoryPanel, withSessionPanel, withSubagentPanel, type SessionPanelTab } from './sessionPanelState';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -89,8 +89,9 @@ export function SessionDetailScreen() {
     // clicking a card, so a `?panel=agent` without a target is not a panel.
     const subagentTarget = panelTab === 'subagent' ? readSubagentTarget(searchParams) : null;
     const subagentOpen = subagentTarget !== null;
-    const filesOpen = panelTab !== null && panelTab !== 'btw' && panelTab !== 'subagent' && panelTab !== 'notes';
-    const panelOpen = btwOpen || filesOpen || subagentOpen || panelTab === 'notes';
+    const historyTab = isHistoryPanel(panelTab) ? panelTab : null;
+    const filesOpen = panelTab !== null && panelTab !== 'btw' && panelTab !== 'subagent' && panelTab !== 'notes' && !historyTab;
+    const panelOpen = btwOpen || filesOpen || subagentOpen || panelTab === 'notes' || !!historyTab;
     const retainedPanel = useRetainedWorkspace(id ?? '', panelOpen ? { tab: panelTab!, subagentTarget } : null);
     const setPanel = (tab: SessionPanelTab | null, replace = false) => {
         setSearchParams(withSessionPanel(searchParams, tab), { replace });
@@ -284,7 +285,9 @@ export function SessionDetailScreen() {
                 </div>
                 {!mirror && (
                     <div className="sd-foot">
-                        {session && <SessionPreviews sessionId={id} />}
+                        {/* B-602: count chips only; the records open in the aside (toggle, replace while it is open). */}
+                        {session && <SessionPreviews sessionId={id} active={historyTab}
+                            onToggle={tab => setPanel(toggleHistoryPanel(panelTab, tab), panelOpen)} />}
                         {session && <SubagentDock sessionId={id} />}
                         {/* B-563: pending approvals / questions stay pinned right
                             above the composer while the transcript scrolls. */}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel } from './sessionPanelState';
+import { isHistoryPanel, readSessionPanel, readSubagentTarget, toggleHistoryPanel, withSessionPanel, withSubagentPanel } from './sessionPanelState';
 
 describe('session panel URL state (B-208)', () => {
   it('accepts the public panel names', () => {
@@ -33,5 +33,30 @@ describe('session panel URL state (B-208)', () => {
     expect(withSessionPanel(opened, 'notes').toString()).toBe('foo=1&panel=notes');
     expect(withSessionPanel(opened, 'web').toString()).toBe('foo=1&panel=web');
     expect(readSubagentTarget(new URLSearchParams('panel=agent'))).toBeNull();
+  });
+});
+
+describe('preview / clipboard history panel (B-602)', () => {
+  it('round-trips through ?panel= and clears a stale sub-agent target', () => {
+    expect(readSessionPanel('previews')).toBe('previews');
+    expect(readSessionPanel('clipboard')).toBe('clipboard');
+    const opened = withSubagentPanel(new URLSearchParams('foo=1'), 'msg-7');
+    expect(withSessionPanel(opened, 'previews').toString()).toBe('foo=1&panel=previews');
+    expect(withSessionPanel(opened, 'clipboard').toString()).toBe('foo=1&panel=clipboard');
+  });
+
+  it('only the two history tabs count as history', () => {
+    expect(isHistoryPanel('previews')).toBe(true);
+    expect(isHistoryPanel('clipboard')).toBe(true);
+    for (const tab of ['changed', 'all', 'browse', 'btw', 'subagent', 'notes', 'web', null] as const) {
+      expect(isHistoryPanel(tab)).toBe(false);
+    }
+  });
+
+  it('a dock chip toggles its own tab and switches from any other', () => {
+    expect(toggleHistoryPanel(null, 'previews')).toBe('previews');
+    expect(toggleHistoryPanel('previews', 'previews')).toBeNull();
+    expect(toggleHistoryPanel('previews', 'clipboard')).toBe('clipboard');
+    expect(toggleHistoryPanel('browse', 'clipboard')).toBe('clipboard');
   });
 });

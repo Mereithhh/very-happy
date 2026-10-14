@@ -1,5 +1,5 @@
 import {describe, it, expect, vi} from 'vitest';
-import {decodeToolHistory, mergeToolHistory, toolHistoryKey, transcriptClipboardHistory} from './toolHistory';
+import {countToolHistory, decodeToolHistory, mergeToolHistory, toolHistoryKey, transcriptClipboardHistory} from './toolHistory';
 import {createToolHistoryFeed} from './toolHistoryFeed';
 import type {Message} from './typesMessage';
 const encoded = (entries: unknown[]) => Buffer.from(JSON.stringify({version:1, entries})).toString('base64');
@@ -84,4 +84,14 @@ it('clears a deleted KV snapshot on reconnect without letting a stale 404 erase 
     let read=feed.refresh();finish({value:null,version:-1});await read;expect(outputs.at(-1)).toEqual([]);
     read=feed.refresh();feed.changes([{key:'mine',value:'new',version:2}]);await Promise.resolve();finish({value:null,version:-1});await read;
     expect(outputs.at(-1)[0].id).toBe('new');feed.dispose();
+});
+
+describe('tool history counts (B-602)', () => {
+    it('counts each kind for the composer dock chips', () => {
+        expect(countToolHistory([])).toEqual({preview:0, clipboard:0});
+        expect(countToolHistory([
+            entry('a'), entry('b'),
+            {id:'p', kind:'preview', createdAt:1, text:'/repo/a.html'},
+        ])).toEqual({preview:1, clipboard:2});
+    });
 });

@@ -75,3 +75,14 @@ export function mergeToolHistory(stored: ToolHistoryEntry[], transcript: ToolHis
     });
     return [...stored.map(entry => replacements.get(entry.id) ?? entry), ...older].sort((a, b) => b.createdAt - a.createdAt).slice(0, 50);
 }
+
+/** B-602 dock chips: one count per record kind. */
+export function countToolHistory(entries: readonly ToolHistoryEntry[]): { preview: number; clipboard: number } {
+    let preview = 0;
+    let clipboard = 0;
+    for (const entry of entries) {
+        if (entry.kind === 'preview') preview++;
+        else clipboard++;
+    }
+    return { preview, clipboard };
+}
