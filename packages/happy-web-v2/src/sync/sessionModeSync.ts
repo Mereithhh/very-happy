@@ -1,5 +1,6 @@
 import type { Message } from './typesMessage';
 import type { NormalizedMessage } from './typesRaw';
+import type { AgentState } from './storageTypes';
 
 type OrderedModeMessage = {
     id: string;
@@ -66,4 +67,45 @@ export function resolveSessionPermissionMode(input: {
     if (!publishedMode) return localMode;
     if (localMode === null || publishedMode !== previousPublishedMode) return publishedMode;
     return localMode;
+}
+
+type CompletedRequests = NonNullable<AgentState['completedRequests']>;
+
+const PLAN_FOLLOW_UP_MODES = new Set(['default', 'acceptEdits', 'bypassPermissions']);
+
+/**
+ * B-604: leave the web's local `plan` once the plan is approved.
+ *
+ * The local `plan` comes from the EnterPlanMode heuristic in
+ * storage.applyMessages. When Claude enters plan mode on its own (EnterPlanMode
+ * is auto-allowed in bypassPermissions and never reaches canUseTool), the CLI
+ * does not republish metadata.permissionMode, so resolveSessionPermissionMode
+ * sees no published change after the approval either and would keep `plan`
+ * forever — and the next message would carry meta.permissionMode=plan.
+ *
+ * An approved ExitPlanMode is recorded by every CLI ≥0.2.91 in
+ * agentState.completedRequests with the approval `mode`; the CLI then runs in
+ * that mode, or in bypassPermissions when it was missing/plan/unknown
+ * (permissionHandler.handlePermissionResponse). Mirror exactly that. Only a
+ * completion that is new relative to a known previous agentState counts: a
+ * cold load has no baseline and old completions must not override a plan mode
+ * picked later (published metadata covers cold loads anyway).
+ */
+export function resolvePlanExitPermissionMode(input: {
+    previous: CompletedRequests | null | undefined;
+    next: CompletedRequests | null | undefined;
+    mode: string | null;
+}): string | null {
+    const { previous, next, mode } = input;
+    if (mode !== 'plan' || !previous || !next) return null;
+    let latest: { completedAt: number; mode: string } | null = null;
+    for (const [id, request] of Object.entries(next)) {
+        if (previous[id]) continue;
+        if (request.tool !== 'ExitPlanMode' && request.tool !== 'exit_plan_mode') continue;
+        if (request.status !== 'approved') continue;
+        const followUp = request.mode && PLAN_FOLLOW_UP_MODES.has(request.mode) ? request.mode : 'bypassPermissions';
+        const completedAt = request.completedAt ?? 0;
+        if (!latest || completedAt >= latest.completedAt) latest = { completedAt, mode: followUp };
+    }
+    return latest?.mode ?? null;
 }
