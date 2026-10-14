@@ -117,7 +117,7 @@ export function SubagentHarness() {
                     </div>
                     {CARDS.map((c) => <ToolGroupView key={c.id} tools={[c]} />)}
                 </div></div></div></div>
-                <div className="sd-foot"><SessionPreviews sessionId={SESSION_ID} /><SubagentDock sessionId={SESSION_ID} /><div className="ci"><div className="ci-composer"><textarea className="ci-textarea" aria-label="Message" placeholder="本地预览 · 输入内容不会发送" rows={2} /></div></div></div>
+                <div className="sd-foot"><SessionPreviews sessionId={SESSION_ID} active={null} onToggle={() => {}} /><SubagentDock sessionId={SESSION_ID} /><div className="ci"><div className="ci-composer"><textarea className="ci-textarea" aria-label="Message" placeholder="本地预览 · 输入内容不会发送" rows={2} /></div></div></div>
             </div>
             {open && (
                 <>

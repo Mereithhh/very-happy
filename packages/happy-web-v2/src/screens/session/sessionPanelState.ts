@@ -1,7 +1,19 @@
-/** Files panel tabs, the `/btw` side-question panel (B-283), and the sub-agent
- *  drawer (B-317). One aside, several tenants — the tab lives in `?panel=`. */
-export type SessionPanelTab = 'changed' | 'all' | 'browse' | 'btw' | 'subagent' | 'notes' | 'web';
-export type SessionFilesTab = Exclude<SessionPanelTab, 'btw' | 'subagent' | 'notes' | 'web'>;
+/** Files panel tabs, the `/btw` side-question panel (B-283), the sub-agent
+ *  drawer (B-317) and the preview / clipboard history (B-602). One aside,
+ *  several tenants — the tab lives in `?panel=`. */
+export type SessionPanelTab = 'changed' | 'all' | 'browse' | 'btw' | 'subagent' | 'notes' | 'web' | 'previews' | 'clipboard';
+export type SessionHistoryTab = 'previews' | 'clipboard';
+export type SessionFilesTab = Exclude<SessionPanelTab, 'btw' | 'subagent' | 'notes' | 'web' | SessionHistoryTab>;
+
+/** B-602: the preview / clipboard records the composer dock used to expand inline. */
+export function isHistoryPanel(tab: string | null): tab is SessionHistoryTab {
+  return tab === 'previews' || tab === 'clipboard';
+}
+
+/** Dock chip click: the active history tab closes the aside, any other opens it there. */
+export function toggleHistoryPanel(current: SessionPanelTab | null, target: SessionHistoryTab): SessionPanelTab | null {
+  return current === target ? null : target;
+}
 
 const QUERY_TO_TAB: Record<string, SessionPanelTab> = {
   changes: 'changed',
@@ -11,6 +23,8 @@ const QUERY_TO_TAB: Record<string, SessionPanelTab> = {
   agent: 'subagent',
   notes: 'notes',
   web: 'web',
+  previews: 'previews',
+  clipboard: 'clipboard',
 };
 
 const TAB_TO_QUERY: Record<SessionPanelTab, string> = {
@@ -21,6 +35,8 @@ const TAB_TO_QUERY: Record<SessionPanelTab, string> = {
   subagent: 'agent',
   notes: 'notes',
   web: 'web',
+  previews: 'previews',
+  clipboard: 'clipboard',
 };
 
 /** Which tool-call message the sub-agent drawer is pointed at. */

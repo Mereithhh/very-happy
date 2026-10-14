@@ -1040,6 +1040,20 @@ export const en = {
     rpc: {
         rateLimited: ({ seconds }: { seconds: number }) => `Too many requests to the server — holding machine calls for ${seconds}s, then resuming.`,
     },
+    // B-602: per-session preview / clipboard records (composer dock chips + session aside tabs)
+    toolHistory: {
+        dockLabel: 'Preview and clipboard records',
+        previews: 'Previews',
+        clipboard: 'Clipboard',
+        previewsTitle: 'Preview history',
+        clipboardTitle: 'Clipboard history',
+        openPanel: ({ name }: { name: string }) => `Open ${name} in the side panel`,
+        closePanel: ({ name }: { name: string }) => `Close ${name}`,
+        emptyPreviews: 'No previews yet. Files the agent opens with open_preview are listed here.',
+        emptyClipboard: 'Nothing copied yet. Text the agent copies with copy_to_clipboard is listed here.',
+        deviceClipboard: 'Everything this device received',
+    },
+
     clipboard: {
         copiedPreview: ({ preview }: { preview: string }) => `Copied: ${preview}`,
         tapToCopy: ({ preview }: { preview: string }) => `Clipboard received — tap to copy: ${preview}`,
@@ -2202,6 +2216,12 @@ export const en = {
                 notify: 'Notifications for the same session replace each other, stale ones expire, and ones you have seen on another device are cleared. Settings can send a test notification.',
                 undo: 'Archive and Done can be undone for a few seconds. A broken message now shows a one-line error instead of blanking the page, and a desktop tab you walked away from no longer marks finished sessions as read.',
                 fontSize: 'Appearance → Conversation text size: small, default, large or extra large, on this device.',
+            },
+            oct14c: {
+                title: 'Preview and clipboard history open in the side panel',
+                summary: 'The records above the composer are now two small counts; click one to read the list beside the chat instead of a long strip over the composer.',
+                panel: 'Previews and Clipboard each open as a side-panel tab next to the conversation (full screen on phones), alongside files, notes and the web preview. Click the count again to close it; the + menu in the panel opens them too.',
+                actions: 'Everything still works from the panel: open or download a previewed file, copy a copied text again, and expand long text. The Clipboard tab links to everything this device received.',
             },
             oct14b: {
                 title: 'Scrolling, import and clipboard fixes',
