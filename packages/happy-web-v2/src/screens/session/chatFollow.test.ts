@@ -11,6 +11,10 @@ import {
     isUpwardWheel,
     isUpwardTouch,
     isUpwardScrollKey,
+    heldTranscript,
+    settleWait,
+    anchorIndex,
+    SCROLL_SETTLE_MS,
 } from './chatFollow';
 
 describe('nextAwaySnapshot', () => {
@@ -157,5 +161,33 @@ describe('upward intent (B-598)', () => {
         expect(isUpwardScrollKey({ key: 'ArrowUp', ctrlKey: true })).toBe(false);
         expect(isUpwardScrollKey({ key: 'ArrowUp', altKey: true })).toBe(false);
         expect(isUpwardScrollKey({ key: 'Home', metaKey: true })).toBe(false);
+    });
+});
+
+describe('B-603: hold older history while the transcript moves', () => {
+    it('heldTranscript renders from the held message on, older ones wait', () => {
+        const list = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+        expect(heldTranscript(list, null)).toBe(list);
+        expect(heldTranscript(list, 'b').map((m) => m.id)).toEqual(['b', 'c']);
+        expect(heldTranscript(list, 'a')).toBe(list);
+        // the held message is gone (rebuilt history): render everything rather than nothing
+        expect(heldTranscript(list, 'zz')).toBe(list);
+    });
+
+    it('settleWait: a finger down never settles; otherwise SCROLL_SETTLE_MS after the last motion', () => {
+        expect(settleWait(1000, 0, true)).toBe(SCROLL_SETTLE_MS);
+        expect(settleWait(1000, 1000, false)).toBe(SCROLL_SETTLE_MS);
+        expect(settleWait(1000, 1000 - SCROLL_SETTLE_MS + 30, false)).toBe(30);
+        expect(settleWait(1000, 1000 - SCROLL_SETTLE_MS, false)).toBe(0);
+    });
+
+    it('anchorIndex: first child reaching below the viewport top, never the rebuildable top row', () => {
+        const bottoms = [-300, -200, -100, 0, 100, 200];
+        const at = (line: number, min: number) => anchorIndex(bottoms.length, (i) => bottoms[i], line, min);
+        expect(at(-150, 1)).toBe(2);
+        expect(at(-1000, 1)).toBe(1); // reading the very top: skip row 0
+        expect(at(50, 1)).toBe(4);
+        expect(at(1000, 1)).toBe(5); // clamp to the last child
+        expect(anchorIndex(0, () => 0, 0, 1)).toBe(-1);
     });
 });

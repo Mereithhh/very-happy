@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-15-reading-while-history-loads',
+    date: '2026-10-15',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct15.title',
+    summaryKey: 'changelog.releases.oct15.summary',
+    itemKeys: ['changelog.releases.oct15.scroll'],
+  },
+  {
     id: '2026-10-14-side-panel-history',
     date: '2026-10-14',
     buildVersion: __APP_VERSION__,
