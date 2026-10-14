@@ -31,7 +31,7 @@ import { claimLiveStreamKeys } from '@/sync/liveStreamStore';
 import { streamKeysOf } from '@/sync/liveStream';
 import { resolvePlanModeFromBatch } from "./planModeBatch";
 import { supersededMachineIds, withoutSupersededMachines } from './supersededMachines';
-import { resolveIncomingPermissionMode, resolveSessionPermissionMode } from './sessionModeSync';
+import { resolveIncomingPermissionMode, resolvePlanExitPermissionMode, resolveSessionPermissionMode } from './sessionModeSync';
 import { NormalizedMessage } from "./typesRaw";
 import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
@@ -497,11 +497,19 @@ export const storage = create<StorageState>()((set, get) => {
                     ? null
                     : existingPermissionModeRaw;
                 const locallyResolvedPermissionMode = existingPermissionMode ?? savedPermissionMode ?? session.permissionMode ?? null;
-                const resolvedPermissionMode = resolveSessionPermissionMode({
+                const publishedResolvedMode = resolveSessionPermissionMode({
                     publishedMode: session.metadata?.permissionMode,
                     previousPublishedMode: state.sessions[session.id]?.metadata?.permissionMode,
                     localMode: locallyResolvedPermissionMode,
                 });
+                // B-604: an approved plan hands the mode back even when the CLI
+                // never published the plan detour (see sessionModeSync).
+                const previousSession = state.sessions[session.id];
+                const resolvedPermissionMode = resolvePlanExitPermissionMode({
+                    previous: previousSession ? (previousSession.agentState?.completedRequests ?? {}) : undefined,
+                    next: session.agentState?.completedRequests,
+                    mode: publishedResolvedMode,
+                }) ?? publishedResolvedMode;
                 if (resolvedPermissionMode !== locallyResolvedPermissionMode) {
                     sessionPermissionModes = withSessionPermissionMode(sessionPermissionModes, session.id, resolvedPermissionMode);
                     saveSessionPermissionModes(sessionPermissionModes);
