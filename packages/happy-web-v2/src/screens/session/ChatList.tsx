@@ -34,6 +34,10 @@ import {
     isUpwardWheel,
     isUpwardTouch,
     isUpwardScrollKey,
+    heldTranscript,
+    settleWait,
+    anchorIndex,
+    SCROLL_SETTLE_MS,
 } from './chatFollow';
 import { countRunningSubagentCards } from './subagentPills';
 import { transcriptChronological } from './transcriptMessages';
@@ -65,7 +69,6 @@ export function ChatList({
     const atBottomRef = useRef(true);
     const [showJump, setShowJump] = useState(false);
     const [cancelingLocalKey, setCancelingLocalKey] = useState<string | null>(null);
-    const prevHeightRef = useRef(0);
     // B-099 ②：离底时刻最新一行的 key（贴底时为 null）。排在它后面的 row 数
     // 渲染成 .cl-jump 上的数字 badge；回底清零。顶部插入的旧历史不计。
     const awaySnapshotRef = useRef<string | null>(null);
@@ -73,6 +76,8 @@ export function ChatList({
     // follow band no longer re-arms `atBottom` — only the real bottom does
     // (followAfterScroll), or send / jump / session switch clear it.
     const detachedRef = useRef(false);
+    // Last `.cl-inner` height the growth follower saw (shared with the prepend compensation).
+    const innerHeightRef = useRef(0);
 
     // storage keeps messages sorted NEWEST-FIRST (compareMessagesNewestFirst,
     // used by the sidebar's latest-message needs). The transcript reads top→
@@ -89,6 +94,11 @@ export function ChatList({
     // B-561: one derivation shared with the board/sidebar (transcriptMessages.ts)
     // — the filters below decide where a turn starts, so both must agree.
     const chronological = useMemo(() => transcriptChronological(messages), [messages]);
+    // B-603: while the transcript is moving (finger down, momentum / smooth
+    // scroll still emitting scroll events) older history is not rendered — it
+    // waits in the store and lands once the scroll settles (see chatFollow).
+    const [holdFromId, setHoldFromId] = useState<string | null>(null);
+    const shownChronological = useMemo(() => heldTranscript(chronological, holdFromId), [chronological, holdFromId]);
     // B-260-P2: a background sub-agent keeps the turn live after the main
     // agent's stub tool_result — the CLI publishes its lifecycle.
     // B-295: only the CURRENT turn's sub-agents vote, and a `running` tool call
@@ -109,8 +119,8 @@ export function ChatList({
         heartbeatFresh: leaseFresh,
     });
     const rows = useMemo(
-        () => buildChatRows(chronological, sessionLive, { turnDiffs: true }),
-        [chronological, sessionLive],
+        () => buildChatRows(shownChronological, sessionLive, { turnDiffs: true }),
+        [shownChronological, sessionLive],
     );
     const rowKeys = useMemo(() => rows.map((row) => row.key), [rows]);
     // B-578: 「继续」 only while nothing runs or waits — same liveness verdict
@@ -161,7 +171,48 @@ export function ChatList({
         const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
         const animate = smooth && !reduced && shouldSmoothJumpToLatest(distance, el.clientHeight);
         el.scrollTo({ top: el.scrollHeight, behavior: animate ? 'smooth' : 'auto' });
+        if (!animate) ownScrollTopRef.current = el.scrollTop;
     };
+
+    // B-603: scroll motion → hold older history until the scroll settles.
+    // An instant scroll we wrote ourselves (follow / compensation) is not
+    // motion: its scroll event lands on exactly the value we wrote.
+    const ownScrollTopRef = useRef<number | null>(null);
+    const motionRef = useRef({ touching: false, lastAt: 0 });
+    const holdRef = useRef<string | null>(null);
+    const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const chronologicalRef = useRef(chronological);
+    chronologicalRef.current = chronological;
+    const olderPendingRef = useRef(false);
+    olderPendingRef.current = !!hasMoreOlder || !!isLoadingOlder;
+    const releaseWhenSettled = () => {
+        if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+        const check = () => {
+            const wait = settleWait(performance.now(), motionRef.current.lastAt, motionRef.current.touching);
+            if (wait > 0) {
+                settleTimerRef.current = setTimeout(check, wait);
+                return;
+            }
+            settleTimerRef.current = null;
+            holdRef.current = null;
+            setHoldFromId(null);
+        };
+        settleTimerRef.current = setTimeout(check, SCROLL_SETTLE_MS);
+    };
+    const noteMotion = () => {
+        motionRef.current.lastAt = performance.now();
+        if (holdRef.current === null) {
+            // Nothing older can land: no need to freeze anything.
+            const oldest = chronologicalRef.current[0]?.id ?? null;
+            if (!olderPendingRef.current || oldest === null) return;
+            holdRef.current = oldest;
+            setHoldFromId(oldest);
+        }
+        releaseWhenSettled();
+    };
+    useEffect(() => () => {
+        if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+    }, []);
 
     // B-598: an upward scroll gesture leaves the live end immediately, whatever
     // the distance. Without it a trackpad / slow wheel / touch scroll moving a
@@ -190,6 +241,13 @@ export function ChatList({
     const touchAnchorYRef = useRef<number | null>(null);
     const onTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
         touchAnchorYRef.current = e.touches[0]?.clientY ?? null;
+        motionRef.current.touching = true;
+        noteMotion();
+    };
+    const onTouchEnd = (e: ReactTouchEvent<HTMLDivElement>) => {
+        if (e.touches.length > 0) return;
+        motionRef.current.touching = false;
+        noteMotion();
     };
     const onTouchMove = (e: ReactTouchEvent<HTMLDivElement>) => {
         onTouchMoveDismissKeyboard();
@@ -262,6 +320,12 @@ export function ChatList({
     const onScroll = () => {
         const el = scrollRef.current;
         if (!el) return;
+        if (ownScrollTopRef.current !== null && Math.abs(el.scrollTop - ownScrollTopRef.current) < 1) {
+            ownScrollTopRef.current = null;
+        } else {
+            ownScrollTopRef.current = null;
+            noteMotion();
+        }
         const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
         const movedUp = el.scrollTop < lastScrollTopRef.current;
         lastScrollTopRef.current = el.scrollTop;
@@ -277,6 +341,42 @@ export function ChatList({
     // 未读增量在渲染时现算：离底后快照不动，rows 变化本身就触发重渲染；
     // 回底由 onScroll 清快照并 setShowJump(false) 触发重渲染，badge 随之消失。
     const unseenLabel = formatUnseen(unseenRows(awaySnapshotRef.current, rowKeys));
+
+    // Older history landed at the top (prefetch page, 「加载更早」, a held
+    // page released after the scroll settled, the load-older slot going away):
+    // keep the reader's content where it was, in the same commit, before paint.
+    // Measured on an anchor row in the viewport — not the top row, which the
+    // insert may rebuild (its turn gains the older messages) — so growth at the
+    // bottom in the same commit is not mistaken for the prepend. Also keeps a
+    // reader at the very bottom at the bottom (distance unchanged).
+    const topEdge = `${hasMoreOlder ? 1 : 0}|${rows[0]?.key ?? ''}`;
+    const topEdgeRef = useRef(topEdge);
+    const anchorRef = useRef<{ node: Element; top: number } | null>(null);
+    useLayoutEffect(() => {
+        const el = scrollRef.current;
+        const inner = innerRef.current;
+        if (!el || !inner) {
+            anchorRef.current = null;
+            return;
+        }
+        const innerTop = () => inner.getBoundingClientRect().top;
+        const prev = anchorRef.current;
+        if (topEdgeRef.current !== topEdge && prev && prev.node.isConnected && prev.node.parentElement === inner) {
+            const delta = prev.node.getBoundingClientRect().top - innerTop() - prev.top;
+            if (delta !== 0) {
+                el.scrollTop += delta;
+                ownScrollTopRef.current = el.scrollTop;
+                // Not new content at the bottom: don't let the growth follower read it so.
+                innerHeightRef.current = inner.getBoundingClientRect().height;
+            }
+        }
+        topEdgeRef.current = topEdge;
+        const children = inner.children;
+        const firstRow = inner.firstElementChild?.classList.contains('cl-loadolder') ? 1 : 0;
+        const line = el.getBoundingClientRect().top;
+        const at = anchorIndex(children.length, (i) => children[i].getBoundingClientRect().bottom, line, firstRow + 1);
+        anchorRef.current = at < 0 ? null : { node: children[at], top: children[at].getBoundingClientRect().top - innerTop() };
+    });
 
     // Auto-stick to bottom on new content when already near the bottom. Keyed on
     // both row count (new messages) and the streaming message's growing length
@@ -327,7 +427,6 @@ export function ChatList({
     const hasTranscript = isLoaded && messages.length > 0;
     const isLoadingOlderRef = useRef(isLoadingOlder);
     isLoadingOlderRef.current = isLoadingOlder;
-    const innerHeightRef = useRef(0);
     useEffect(() => {
         const inner = innerRef.current;
         if (!hasTranscript || !inner || typeof ResizeObserver === 'undefined') return;
@@ -376,28 +475,6 @@ export function ChatList({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hasTranscript]);
 
-    // Preserve scroll position when older messages are prepended — for every
-    // reader, including one inside the follow band: their distance from the
-    // bottom is kept (still 0 for someone at the very bottom), so a slow
-    // scroll-up keeps its progress across prefetch pages.
-    useLayoutEffect(() => {
-        const el = scrollRef.current;
-        if (!el) return;
-        if (isLoadingOlder) {
-            prevHeightRef.current = el.scrollHeight;
-        } else if (prevHeightRef.current > 0) {
-            const delta = el.scrollHeight - prevHeightRef.current;
-            if (delta > 0) {
-                el.scrollTop += delta;
-            }
-            prevHeightRef.current = 0;
-            // The prepend is accounted for: don't let the growth follower
-            // read it as new content at the bottom.
-            const inner = innerRef.current;
-            if (inner) innerHeightRef.current = inner.getBoundingClientRect().height;
-        }
-    }, [isLoadingOlder]);
-
     // A route can reuse this component while switching between two already
     // cached sessions (`isLoaded` stays true). Reset the previous session's
     // mid-history state and land at latest BEFORE paint; late markdown/tool
@@ -407,7 +484,8 @@ export function ChatList({
         detachedRef.current = false;
         atBottomRef.current = true;
         awaySnapshotRef.current = null;
-        prevHeightRef.current = 0;
+        holdRef.current = null;
+        setHoldFromId(null);
         setShowJump(false);
         scrollToBottom(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -471,6 +549,8 @@ export function ChatList({
                 onWheel={onWheel}
                 onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+                onTouchCancel={onTouchEnd}
                 onPointerDown={onScrollerPointerDown}
             >
                 <div className="cl-inner" ref={innerRef}>

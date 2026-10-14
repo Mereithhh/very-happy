@@ -133,3 +133,52 @@ export function isUpwardScrollKey(e: { key: string; shiftKey?: boolean; altKey?:
     if (e.key === 'PageUp' || e.key === 'Home') return true;
     return (e.key === ' ' || e.key === 'Spacebar') && e.shiftKey === true;
 }
+
+/**
+ * B-603：transcript 在动（手指按着、惯性/平滑滚动还在出 scroll 事件）时，不往
+ * 顶部插旧历史。
+ *
+ * 后台预取每 ~0.5s 往顶部插一页，插完要 `scrollTop += 新增高度` 把读者留在原处。
+ * 但 iOS Safari（WebKit）在滚动进行中**不认**程序写 scrollTop：惯性滚动、
+ * `scrollTo({ behavior: 'smooth' })` 的动画都会接着往旧目标走，补偿丢失，
+ * 视图一下跳到更早的内容（新增的整页高度）。react-virtuoso 的
+ * upwardScrollFixSystem 也是同一结论（"mobile safari does not support scrollBy
+ * while scrolling is in progress"）。Chromium 则是补偿把平滑动画打断——没大跳，
+ * 但「跳到最新」停在半路。
+ *
+ * 所以滚动进行中把 transcript 冻结在开始滚动时最早那条消息上（更早的照常进
+ * store，只是先不渲染），停稳后一次性放出来、同一 commit 内按锚点补偿。
+ */
+export const SCROLL_SETTLE_MS = 180;
+
+/** 冻结期间只渲染 `holdFromId` 及之后的消息；它不在了（被替换）就不冻结。 */
+export function heldTranscript<T extends { id: string }>(chronological: T[], holdFromId: string | null): T[] {
+    if (holdFromId === null) return chronological;
+    const at = chronological.findIndex((message) => message.id === holdFromId);
+    return at <= 0 ? chronological : chronological.slice(at);
+}
+
+/** 还要等多久才算停稳：手指按着就一直等；否则距最后一次滚动满 settleMs。0 = 已停稳。 */
+export function settleWait(now: number, lastMotionAt: number, touching: boolean, settleMs = SCROLL_SETTLE_MS): number {
+    if (touching) return settleMs;
+    const left = lastMotionAt + settleMs - now;
+    return left > 0 ? Math.ceil(left) : 0;
+}
+
+/**
+ * 补偿用的锚点：可视区内第一个（底边在 `line` 之下的）子元素，且至少是第
+ * `minIndex` 个——最早那一行可能在插入时被重建（同一轮拼上更早的消息，换了
+ * key / DOM），拿它当锚点会丢补偿。`bottomOf(i)` 按文档顺序单调不减，二分查找。
+ * 没有子元素返回 -1。
+ */
+export function anchorIndex(count: number, bottomOf: (index: number) => number, line: number, minIndex: number): number {
+    if (count <= 0) return -1;
+    let lo = 0;
+    let hi = count - 1;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (bottomOf(mid) > line) hi = mid;
+        else lo = mid + 1;
+    }
+    return Math.min(count - 1, Math.max(lo, minIndex));
+}

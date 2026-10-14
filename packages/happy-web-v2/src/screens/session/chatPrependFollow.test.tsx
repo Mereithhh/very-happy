@@ -51,6 +51,7 @@ vi.mock('./MessageTimeTooltip', () => ({ MessageTimeTooltip: () => null }));
 vi.mock('./SelectionQuote', () => ({ SelectionQuote: () => null }));
 vi.mock('./ChatPromptRail', () => ({ ChatPromptRail: () => null }));
 import { ChatList } from './ChatList';
+import { SCROLL_SETTLE_MS } from './chatFollow';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -115,9 +116,16 @@ beforeEach(() => {
     });
     const rect = HTMLElement.prototype.getBoundingClientRect;
     restoreRect = () => { HTMLElement.prototype.getBoundingClientRect = rect; };
+    // Layout: the scroller's viewport starts at y=0, `.cl-inner` is shifted up
+    // by scrollTop, every row is ROW tall in document order.
     HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
         const box = rect.call(this);
-        return this.classList.contains('cl-inner') ? { ...box.toJSON(), height: heightOf(this) } as DOMRect : box;
+        if (this.classList.contains('cl-inner')) return { ...box.toJSON(), top: -top, bottom: heightOf(this.parentElement!) - top, height: heightOf(this.parentElement!) } as DOMRect;
+        if (this.hasAttribute('data-row')) {
+            const index = [...this.parentElement!.children].filter((c) => c.hasAttribute('data-row')).indexOf(this);
+            return { ...box.toJSON(), top: index * ROW - top, bottom: (index + 1) * ROW - top, height: ROW } as DOMRect;
+        }
+        return box;
     };
     HTMLElement.prototype.scrollTo = function (this: HTMLElement, opts?: ScrollToOptions | number) {
         if (this.classList.contains('cl-scroll') && typeof opts === 'object') top = Math.min(Math.max(0, opts.top ?? top), max(this));
@@ -321,5 +329,87 @@ describe('an upward gesture during streaming detaches from the live end', () => 
         act(() => { el.dispatchEvent(new WheelEvent('wheel', { deltaY: 10, bubbles: true })); });
         streamToken();
         expect(host.querySelector('.cl-jump')).toBeNull();
+    });
+});
+
+/**
+ * B-603 regression (Xu CHEN 2026-10-15, iPhone Safari tab, idle 13k-message
+ * session): reading back while the background prefetch landed a page every
+ * ~0.5 s, the view kept leaping to much older content, and 「跳到最新」 /
+ * 「上一条提问」 stopped far from where they aim. Each page was compensated with
+ * `scrollTop += height`, but WebKit ignores scrollTop writes while a scroll is
+ * in progress (iOS momentum, a smooth scrollTo animation — the animation keeps
+ * going to its old target), so the compensation was lost. Pages now wait while
+ * the transcript moves and land, compensated, once it settles.
+ */
+describe('older history waits while the transcript is moving', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+    const rowsInDom = () => el.querySelectorAll('[data-row]').length;
+    const touch = (type: 'touchstart' | 'touchend', touches: number) => act(() => {
+        const ev = new Event(type, { bubbles: true });
+        Object.defineProperty(ev, 'touches', { value: Array.from({ length: touches }, () => ({ clientY: 100 })) });
+        el.dispatchEvent(ev);
+    });
+    /** A WebKit-style scroll in progress: compensation writes are overridden by the next animation step. */
+    const animationStep = (to: number) => userScrollTo(to);
+
+    it('a page landing mid-scroll is not rendered until the scroll settles, then lands without moving the reader', () => {
+        userScrollTo(top - 500); // reader scrolls up (motion starts)
+        const before = rowsInDom();
+        const readingAt = distance();
+        prependOlderPage(90, 99);
+        expect(rowsInDom()).toBe(before); // held: nothing changed above the reader
+        animationStep(top - 20); // the scroll keeps moving: WebKit would have discarded a compensation here
+        expect(distance()).toBe(readingAt + 20);
+        act(() => { vi.advanceTimersByTime(SCROLL_SETTLE_MS + 50); });
+        expect(rowsInDom()).toBe(before + 10); // released once settled …
+        expect(distance()).toBe(readingAt + 20); // … and the reader's content did not move
+    });
+
+    it('keeps the content under the reader in place across release (anchor, not scrollTop)', () => {
+        userScrollTo(top - 500);
+        const anchorTop = () => {
+            const rows = [...el.querySelector('.cl-inner')!.children].filter((c) => c.hasAttribute('data-row'));
+            const i = Math.floor(top / ROW);
+            return { node: rows[i], y: rows[i].getBoundingClientRect().top };
+        };
+        const a = anchorTop();
+        prependOlderPage(90, 99);
+        act(() => { vi.advanceTimersByTime(SCROLL_SETTLE_MS + 50); });
+        expect(a.node.isConnected).toBe(true);
+        expect(a.node.getBoundingClientRect().top).toBe(a.y);
+    });
+
+    it('a finger still down keeps holding however long it rests', () => {
+        touch('touchstart', 1);
+        const before = rowsInDom();
+        prependOlderPage(90, 99);
+        act(() => { vi.advanceTimersByTime(SCROLL_SETTLE_MS * 10); });
+        expect(rowsInDom()).toBe(before);
+        touch('touchend', 0);
+        act(() => { vi.advanceTimersByTime(SCROLL_SETTLE_MS + 50); });
+        expect(rowsInDom()).toBe(before + 10);
+        expect(distance()).toBe(0); // was at the bottom, still is
+    });
+
+    it('a smooth 「跳到最新」 in progress is not cut short by a page landing', () => {
+        userScrollTo(top - 250); // within 2 viewports → smooth jump
+        act(() => { vi.advanceTimersByTime(SCROLL_SETTLE_MS + 50); });
+        const target = scrollHeight() - VIEW; // where the animation is heading
+        animationStep(top + 100); // animation frame
+        prependOlderPage(90, 99); // page lands mid-animation
+        animationStep(target); // the engine finishes at its original target
+        act(() => { vi.advanceTimersByTime(SCROLL_SETTLE_MS + 50); });
+        expect(distance()).toBe(0);
+    });
+
+    it('our own instant scroll (bottom follow) is not motion: pages still land right away', () => {
+        const before = rowsInDom();
+        act(() => store.set({ messages: [...messages(110, 110), ...store.get().messages] })); // follow → scrollTo bottom
+        act(() => { el.dispatchEvent(new Event('scroll')); }); // the event for our own write
+        prependOlderPage(90, 99);
+        expect(rowsInDom()).toBe(before + 1 + 10);
+        expect(distance()).toBe(0);
     });
 });

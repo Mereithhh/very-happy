@@ -2217,6 +2217,11 @@ export const en = {
                 undo: 'Archive and Done can be undone for a few seconds. A broken message now shows a one-line error instead of blanking the page, and a desktop tab you walked away from no longer marks finished sessions as read.',
                 fontSize: 'Appearance → Conversation text size: small, default, large or extra large, on this device.',
             },
+            oct15: {
+                title: 'Reading back no longer jumps while history loads',
+                summary: 'Right after a long conversation opens, older history keeps loading at the top. On iPhone Safari that made the view leap to much older messages while you scrolled, and could stop the jump buttons short.',
+                scroll: 'Older history now waits while you are touching or scrolling the conversation and appears once it settles, without moving what you are reading. Jump to latest and the previous / next prompt buttons land where they aim.',
+            },
             oct14c: {
                 title: 'Preview and clipboard history open in the side panel',
                 summary: 'The records above the composer are now two small counts; click one to read the list beside the chat instead of a long strip over the composer.',
