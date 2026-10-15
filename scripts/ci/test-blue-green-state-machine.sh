@@ -60,12 +60,20 @@ PRODUCTION_ENV_FILE="$migration_review_file"
 # Exercise the real host preflight; only unrelated host probes are stubbed.
 caddy() { echo v2.10.2; }
 df() { echo unused; }
-awk() { echo 10485760; }
+awk() { echo 20971520; }
+docker() { echo "docker $*" >> "$prune_log"; }
+prune_log=$(mktemp)
 printf 'REDIS_URL=redis://redis\nDATABASE_URL=postgresql://pool/happy?connection_limit=16\n' > "$migration_review_file"
 if (validate_host_contract) >/dev/null 2>&1; then fail 'production must require a separate migration endpoint'; fi
 printf 'DATABASE_MIGRATION_URL=postgresql://pool/happy_migrations\n' >> "$migration_review_file"
 (validate_host_contract) || fail 'configured migration endpoint must pass preflight'
-unset -f caddy df awk
+[ ! -s "$prune_log" ] || fail 'preflight must not prune images while disk is plentiful'
+# Low disk: preflight prunes old unreferenced images before the 5 GiB gate.
+awk() { echo 10485760; }
+(validate_host_contract) >/dev/null 2>&1 || fail 'low but sufficient disk must still pass preflight'
+grep -qx "docker image prune -af --filter until=72h" "$prune_log" || fail 'low disk must prune images older than 72h'
+rm -f "$prune_log"
+unset -f caddy df awk docker
 : > "$migration_review_file"
 migration_tree_digest() { if [ "$1" = active-image ]; then echo old; else echo new; fi; }
 if verify_migration_contract >/dev/null 2>&1; then fail 'changed migrations require commit-bound review'; fi

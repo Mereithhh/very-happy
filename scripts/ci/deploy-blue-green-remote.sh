@@ -67,6 +67,15 @@ validate_host_contract() {
         echo 'DATABASE_MIGRATION_URL must use a verified direct connection or session pool' >&2
         exit 3
     }
+    # Every release leaves a ~2.2 GB server image behind; at several releases a
+    # day the 58 GB disk fills in about a week and this preflight then refused
+    # the deploy (2026-10-14). Prune before checking, keeping anything a
+    # container references and anything younger than 72h (recent rollback
+    # targets); older images can be pulled again from ghcr.
+    if [ "$(df -Pk /opt/happy | awk 'NR==2 {print $4}')" -lt 15728640 ]; then
+        echo 'less than 15 GiB free disk; pruning unused images older than 72h' >&2
+        docker image prune -af --filter 'until=72h' >&2 || true
+    fi
     [ "$(df -Pk /opt/happy | awk 'NR==2 {print $4}')" -ge 5242880 ] || { echo 'less than 5 GiB free disk' >&2; exit 3; }
     [ "$(awk '/MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)" -ge 1024 ] || { echo 'less than 1 GiB available memory' >&2; exit 3; }
 }
