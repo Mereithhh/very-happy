@@ -2219,8 +2219,8 @@ export const en = {
             },
             oct15b: {
                 title: 'Import list: Recent shows earlier-imported conversations again',
-                summary: 'The CLI half of the import fix. Needs CLI 0.2.171.',
-                recent: 'With CLI 0.2.171 the Recent tab of the import list also shows a conversation whose earlier import failed, labelled “imported before”, so it can be imported again. Conversations a session is already driving stay hidden.',
+                summary: 'The CLI half of the import fix. Needs CLI 0.2.173.',
+                recent: 'With CLI 0.2.173 the Recent tab of the import list also shows a conversation whose earlier import failed, labelled “imported before”, so it can be imported again. Conversations a session is already driving stay hidden.',
             },
             oct15: {
                 title: 'Reading back no longer jumps while history loads',
@@ -2238,7 +2238,7 @@ export const en = {
                 summary: 'Scrolling up during a reply stays put, failed imports no longer hide the original conversation, and ⌘C / ⌘V no longer race a clipboard push.',
                 paste: 'Fixed: while a clipboard push was waiting to be written, pressing ⌘V or ⌘C could swap your clipboard for the pushed text. Modifier shortcuts no longer trigger that write; a normal key press or click still does.',
                 scroll: 'Fixed: scrolling up while a reply is streaming no longer snaps back to the bottom. Following resumes once you scroll back to the very bottom, send, or jump to latest.',
-                importAgain: 'Fixed: a conversation whose earlier import failed was hidden from the import list. It now shows as “imported before” and can be imported again (the original is untouched). Full-text search works with CLI 0.2.166+; the Recent list needs CLI 0.2.171.',
+                importAgain: 'Fixed: a conversation whose earlier import failed was hidden from the import list. It now shows as “imported before” and can be imported again (the original is untouched). Full-text search works with CLI 0.2.166+; the Recent list needs CLI 0.2.173.',
                 iosBar: 'iPhone home-screen app: the gap under the composer reserved space for the home indicator twice; one is removed. Settings → Diagnosis → “Viewport & safe area” shows layout numbers if something still looks off.',
             },
             oct14: {
