@@ -19,6 +19,10 @@ import './styles/base.css';
 // B-582: the device's 对话字号 lands on <html> before the first render.
 import { installChatTextSize } from './ui/chatTextSize';
 installChatTextSize();
+import { installPasteCapture } from './utils/pasteCapture';
+// First paste listener of the app: snapshot pasted text before anything can
+// see the pasteboard change (Wispr Flow; see utils/pasteCapture).
+installPasteCapture();
 
 // B-567: presence input listeners from the first tap (cold start), and the
 // push-click marker consumed before the router reads the URL.
