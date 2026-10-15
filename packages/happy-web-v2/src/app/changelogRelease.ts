@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-15-cli-import-recent',
+    cliVersion: '0.2.171',
+    date: '2026-10-15',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct15b.title',
+    summaryKey: 'changelog.releases.oct15b.summary',
+    itemKeys: ['changelog.releases.oct15b.recent'],
+  },
+  {
     id: '2026-10-15-reading-while-history-loads',
     date: '2026-10-15',
     buildVersion: __APP_VERSION__,
