@@ -60,25 +60,29 @@ export function isSoftKeyboardDevice(): boolean {
 }
 
 /**
- * Insert a newline at the caret of a (React-controlled) textarea. Prefers
+ * Insert text at the caret of a (React-controlled) textarea. Prefers
  * execCommand('insertText') so the edit lands on the native undo stack and
  * fires a real input event; falls back to setRangeText + a synthetic input
  * event, which React's value tracker still reports through onChange.
  */
-export function insertComposerNewline(ta: HTMLTextAreaElement): void {
+export function insertComposerText(ta: HTMLTextAreaElement, text: string): void {
     if (document.activeElement !== ta) ta.focus();
     const before = ta.value;
     let inserted = false;
     try {
         inserted = typeof document.execCommand === 'function'
-            && document.execCommand('insertText', false, '\n')
+            && document.execCommand('insertText', false, text)
             && ta.value !== before;
     } catch {
         inserted = false;
     }
     if (inserted) return;
-    const caret = ta.selectionStart + 1;
-    ta.setRangeText('\n', ta.selectionStart, ta.selectionEnd, 'end');
+    const caret = ta.selectionStart + text.length;
+    ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, 'end');
     ta.setSelectionRange(caret, caret);
     ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+export function insertComposerNewline(ta: HTMLTextAreaElement): void {
+    insertComposerText(ta, '\n');
 }

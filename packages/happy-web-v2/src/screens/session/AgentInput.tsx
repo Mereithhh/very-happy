@@ -33,7 +33,8 @@ import {
     relabelDefaultModel,
 } from '@/components/modelModeOptions';
 import { isImeGuardedEvent, useImeGuard } from '@/utils/ime';
-import { insertComposerNewline, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
+import { insertComposerNewline, insertComposerText, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
+import { pastedPlainText } from '@/utils/pasteCapture';
 import { onInsertToInput } from '@/app/insertToInput';
 import {
     isPiAgent,
@@ -909,19 +910,32 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         e.target.value = '';
     };
 
-    const onPaste = (e: React.ClipboardEvent) => {
+    // Insert the paste's earliest-read text instead of letting Chrome re-read
+    // the pasteboard (see utils/pasteCapture: Wispr Flow's second dictation vanished).
+    const insertPastedText = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const text = pastedPlainText(e.nativeEvent, e.clipboardData);
+        if (text === null) return;
+        e.preventDefault();
+        insertComposerText(e.currentTarget, text);
+    };
+
+    const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
         if (!supportsAttachments) {
             if (pending && getFilesFromClipboard(e.nativeEvent).length > 0) {
                 e.preventDefault();
                 toast.show(t('pendingSession.attachmentsLater'), 'info');
+                return;
             }
+            insertPastedText(e);
             return;
         }
         const files = getFilesFromClipboard(e.nativeEvent);
         if (files.length) {
             e.preventDefault();
             void addAttachmentFiles(files);
+            return;
         }
+        insertPastedText(e);
     };
 
     const onDrop = (e: React.DragEvent) => {

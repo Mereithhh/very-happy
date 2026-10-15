@@ -320,3 +320,36 @@ describe('AgentInput immediate send feedback', () => {
         expect(revoke).not.toHaveBeenCalled();
     });
 });
+
+describe('AgentInput paste', () => {
+    // A dispatched paste event has no default insertion — exactly what Chrome's
+    // default action amounts to once a pasteboard-swapping tool (Wispr Flow)
+    // has restored the old contents before Chrome's second read. The text must
+    // come from the event itself.
+    function paste(text: string) {
+        const data = { getData: (type: string) => (type === 'text/plain' ? text : ''), files: [], items: [], types: ['text/plain'] };
+        const event = new Event('paste', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'clipboardData', { value: data });
+        act(() => { input().dispatchEvent(event); });
+        return event;
+    }
+
+    it('inserts the paste event text at the caret even when the default insertion yields nothing', () => {
+        mocks.session.draft = 'first ';
+        render();
+        input().focus();
+        input().setSelectionRange(6, 6);
+        const event = paste('second dictation');
+        expect(event.defaultPrevented).toBe(true);
+        expect(input().value).toBe('first second dictation');
+        expect(input().selectionStart).toBe(22);
+    });
+
+    it('leaves a paste without plain text to the browser', () => {
+        mocks.session.draft = '';
+        render();
+        const event = paste('');
+        expect(event.defaultPrevented).toBe(false);
+        expect(input().value).toBe('');
+    });
+});
