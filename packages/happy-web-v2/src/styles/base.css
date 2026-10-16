@@ -160,13 +160,13 @@ pre,
   background: var(--accent-glow);
 }
 
-/* Shared keyboard focus is inset and quiet. Terminal-owned input machinery
-   paints its own cursor and remains excluded. Component-owned focus surfaces
-   may use a neutral background instead. */
+/* Shared keyboard focus (B-614, CDS §1.4.5): a canvas gap + 1.5px live-accent
+   ring, focus-visible only, no glow. Terminal-owned input machinery paints its
+   own cursor and remains excluded. Component-owned focus surfaces (transcript
+   disclosures below, the composer) keep their quieter treatment. */
 :focus-visible:not(:where(.xterm, .xterm *)) {
   outline: none;
-  border-color: var(--text-dim);
-  box-shadow: inset 0 -2px 0 var(--text-dim);
+  box-shadow: var(--focus-ring);
 }
 
 /* Conversation disclosures are dense transcript controls, not form fields.

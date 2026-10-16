@@ -1047,10 +1047,12 @@ export function Sidebar() {
       </nav>
 
       <div className="sb-list-controls">
-      <div className="sb-filter" role="tablist">
+      <div className="sb-filter vh-segmented" role="tablist">
         {(['list', 'status', 'archived'] as View[]).map((v) => (
           <button
             key={v}
+            role="tab"
+            aria-selected={view === v}
             className={`sb-filter-btn${view === v ? ' is-on' : ''}`}
             onClick={() => selectView(v)}
           >

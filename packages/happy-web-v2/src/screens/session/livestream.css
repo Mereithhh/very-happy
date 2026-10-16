@@ -14,13 +14,14 @@
   gap: calc(var(--chat-space) * 2);
 }
 
-/* Terminal-style caret on the block still receiving text. */
+/* Streaming caret on the block still receiving text (B-614, CDS §2.3: 2px ×
+   1.15em, live accent). */
 .ls-cursor {
   display: inline-block;
-  width: 0.5em;
-  height: 1em;
+  width: 2px;
+  height: 1.15em;
   margin-left: 1px;
-  vertical-align: text-bottom;
+  vertical-align: -0.2em;
   background: var(--accent);
   animation: vh-ls-caret 1.1s steps(1, end) infinite;
 }

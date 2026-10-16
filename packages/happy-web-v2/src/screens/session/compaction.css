@@ -30,7 +30,8 @@
 }
 .msg-compaction-time {
   flex: none;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
   font-size: var(--chat-fs-caption);
 }
 .msg-compaction-time::before {

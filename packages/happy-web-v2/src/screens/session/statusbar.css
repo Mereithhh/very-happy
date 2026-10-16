@@ -12,7 +12,7 @@
 .lsb-orbit { position: absolute; inset: 0; width: 100%; height: 100%; animation: lsb-orbit 2.4s linear infinite; }
 .lsb-track { stroke: currentColor; stroke-width: 1; opacity: .18; }
 .lsb-sweep { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 17 52.12; }
-.lsb-core { width: 6px; height: 6px; background: currentColor; border-radius: 50%; animation: lsb-breathe 1.8s ease-in-out infinite; }
+.lsb-core { width: 6px; height: 6px; background: currentColor; border-radius: 50%; animation: lsb-breathe 2.4s ease-in-out infinite; } /* B-614: CDS breathing 2.4s */
 .lsb[data-phase="tool"] .lsb-orbit { animation-duration: 1.4s; }
 .lsb[data-phase="compacting"] .lsb-orbit { animation-direction: reverse; animation-duration: 3.6s; }
 .lsb[data-phase="requesting"] .lsb-orbit { animation-duration: 3.6s; }

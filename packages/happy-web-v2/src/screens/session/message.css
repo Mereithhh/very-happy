@@ -30,8 +30,9 @@
   max-width: min(90%, 680px);
   background: var(--message-user-bg);
   border: 0;
-  border-radius: 20px;
-  padding: calc(var(--chat-space) * 3) calc(var(--chat-space) * 4.5);
+  /* B-614 (CDS §3.1): fill only, radius 18, padding 10/16 */
+  border-radius: var(--r-bubble);
+  padding: calc(var(--chat-space) * 2.5) calc(var(--chat-space) * 4);
   font-size: var(--conversation-size);
   line-height: var(--conversation-leading);
   color: var(--message-user-text);
@@ -109,11 +110,14 @@
   align-items: center;
 }
 .msg-event-line {
-  font-family: var(--font-mono);
+  /* B-614 (CDS): event rows are borderless system lines — Sans caption, faint,
+     numbers tabular; error/stopped variants below are fill-only pills. */
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
   font-size: var(--chat-fs-caption);
   color: var(--text-faint);
   padding: 2px calc(var(--chat-space) * 2);
-  border: 1px dashed var(--line);
+  border: 0;
   border-radius: var(--r-pill);
   max-width: 100%;
   text-align: center;
@@ -127,7 +131,7 @@
   align-items: center;
   gap: var(--chat-space);
   margin-top: 2px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--chat-fs-caption);
   color: var(--text-faint);
 }
@@ -144,10 +148,10 @@
   display: inline-flex;
   align-items: center;
   gap: calc(var(--chat-space) * 2);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--r-pill);
-  background: var(--bg-1);
-  padding: 2px calc(var(--chat-space) * 2);
+  background: var(--fill-soft);
+  padding: 2px calc(var(--chat-space) * 2.5);
 }
 .msg-event-line--stopped { color: var(--text-dim); }
 /* B-614: sub-agent lifecycle lines (Codex / older CLIs) and background-task
@@ -183,7 +187,6 @@
 .msg-event-line--notification.msg-event-line--error > svg { color: var(--danger); }
 .msg-event-line--error {
   color: var(--danger);
-  border-color: var(--danger);
   background: var(--danger-dim);
 }
 
@@ -197,7 +200,8 @@
   margin-top: var(--chat-space);
 }
 .msg-event-restart-btn {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  font-weight: 500;
   font-size: var(--chat-fs-caption);
   color: var(--text-dim);
   border: 1px solid var(--line);
@@ -215,7 +219,7 @@
   cursor: default;
 }
 .msg-event-restart-hint {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--chat-fs-caption);
   color: var(--text-faint);
   word-break: break-word;
@@ -226,29 +230,32 @@
   min-width: 0;
 }
 .msg-thinking-head {
-  /* B-614: header reads as a quiet chip (neutral tint), the icon stays on the
-   * column's first-icon slot (B-455) via the matching negative inset. */
-  background: var(--surface-card-head);
-  border-radius: var(--r-pill);
-  margin-left: calc(var(--chat-space) * -1);
+  /* B-614 (CDS §3.2): a borderless Sans-medium trigger with a ghost hover fill
+   * that bleeds past the column, so the icon stays on the B-455 start line. */
+  border-radius: var(--r-sm);
+  margin-left: calc(var(--chat-space) * -1.5);
   display: inline-flex;
   align-items: center;
   gap: var(--chat-space);
-  font-family: var(--font-sans); /* B-614: not code → not mono */
+  font-family: var(--font-sans);
   font-size: var(--chat-fs-secondary);
+  font-weight: 500;
   color: var(--text-dim);
   max-width: 100%;
   min-width: 0;
   min-height: calc(var(--chat-space) * 7.5);
-  padding: 2px calc(var(--chat-space) * 3) 2px var(--chat-space);
+  padding: 2px calc(var(--chat-space) * 2) 2px calc(var(--chat-space) * 1.5);
   white-space: nowrap;
+  transition: background-color var(--dur-hover) var(--ease-out);
 }
+@media (hover: hover) { .msg-thinking-head:hover { background: var(--fill-hover); } }
 .msg-thinking-head > .tg-chevron,
 .msg-thinking-head > .msg-thinking-icon:first-child { width:calc(var(--conversation-icon-size) / var(--chat-scale)); } /* zoomed svg, see chatlist.css */
 @media(pointer:coarse) { .msg-thinking-head { min-height:max(44px, calc(var(--chat-space) * 7.5)); } }
 /* collapsed-state peek: first non-empty thinking line, one line, faint */
 .msg-thinking-preview {
   margin-left: calc(var(--chat-space) * 2);
+  font-weight: 400;
   color: var(--text-faint);
   font-size: var(--chat-fs-caption);
   white-space: nowrap;
@@ -269,7 +276,7 @@
 
 @media (max-width: 600px) {
   .msg-bubble-wrap, .msg-bubble { max-width: 94%; }
-  .msg-bubble { padding: calc(var(--chat-space) * 2.5) calc(var(--chat-space) * 3.5); border-radius: 18px; }
+  .msg-bubble { padding: calc(var(--chat-space) * 2.5) calc(var(--chat-space) * 3.5); border-radius: var(--r-bubble); }
 }
 @media (pointer: coarse) {
   .msg-bubble-expand { min-height: max(44px, calc(var(--chat-space) * 7.5)); }

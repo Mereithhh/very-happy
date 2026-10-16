@@ -43,7 +43,7 @@ export function CodexChildDetail({sessionId,message}:{sessionId:string;message:T
     return <div className="sa">
         {typeof input?.model==='string'&&<div className="sa-head"><span className="sa-facts"><span className="sa-model">{t('session.chat.subagentRequestedModel')}: {input.model}</span></span></div>}
         {typeof input?.prompt==='string'&&<div className="sa-brief"><Markdown text={input.prompt}/></div>}
-        {ids.length>0&&<div className="sa-threads" role="group" aria-label={t('session.chat.subagentLog')}>{ids.map(id=><button key={id} type="button" className="sa-thread" aria-pressed={id===selected} title={id} onClick={()=>setSelected(id)}><AgentGlyph kind="codex" size={13}/><span>{shortThreadId(id)}</span></button>)}</div>}
+        {ids.length>0&&<div className="sa-threads vh-segmented" role="group" aria-label={t('session.chat.subagentLog')}>{ids.map(id=><button key={id} type="button" className="sa-thread" aria-pressed={id===selected} title={id} onClick={()=>setSelected(id)}><AgentGlyph kind="codex" size={13}/><span className="vh-segmented-label">{shortThreadId(id)}</span></button>)}</div>}
         {error&&<div role="status" className="tg-error">{error}</div>}
         {loading&&selected&&<div role="status" className="sa-empty">{t('session.chat.loadingMessages')}</div>}
         <div className="sa-log"><ActivityMessages messages={messages} sessionId={sessionId} subagentNavigation="inline"/></div>
