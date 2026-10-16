@@ -1,9 +1,6 @@
 .perm-card {
-  /* B-614: the one decision that blocks the agent — warn ring, lifted card,
-   * warn-tinted header bar (dock variant below), body on the card surface. */
   border: 1px solid var(--warn);
   background: var(--warn-dim);
-  box-shadow: var(--shadow-card);
   border-radius: var(--r-md);
   padding: calc(var(--chat-space) * 3);
   display: flex;
@@ -23,7 +20,7 @@
 }
 .perm-count {
   margin-left: auto;
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: var(--chat-fs-caption);
   color: var(--text-dim);
 }
@@ -118,21 +115,17 @@
   gap: 0;
   padding: 0;
   overflow: hidden;
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-raised);
 }
 .perm-dock .perm-card-head {
   width: 100%;
   min-height: 36px;
   padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
   border: 0;
-  /* B-614: a strong warn header — the one place the transcript asks for you */
-  background: color-mix(in srgb, var(--warn) 24%, var(--surface-raised));
+  background: transparent;
   text-align: left;
   font: inherit;
   cursor: pointer;
 }
-.perm-dock .perm-card:not(.perm-card--collapsed) .perm-card-head { border-bottom: 1px solid var(--card-border); }
 .perm-dock .perm-card-head > svg { flex: none; }
 .perm-dock .perm-card-head:focus-visible { background: var(--bg-3); outline: none; }
 .perm-summary {
@@ -147,7 +140,6 @@
 }
 .perm-dock .perm-title,
 .perm-dock .perm-count { flex: none; white-space: nowrap; }
-.perm-dock .perm-count { color: var(--text); } /* B-614: AA on the strong warn header */
 .perm-card--collapsed .perm-count { margin-left: 0; }
 /* Narrow + folded: the summary says more than the title. */
 @media (max-width: 600px) {
@@ -159,7 +151,7 @@
   gap: calc(var(--chat-space) * 3);
   max-height: min(45vh, 420px);
   overflow-y: auto;
-  padding: calc(var(--chat-space) * 3);
+  padding: 0 calc(var(--chat-space) * 3) calc(var(--chat-space) * 3);
 }
 .perm-dock-body[hidden] { display: none; }
 .sd[data-keyboard-open='true'] .perm-dock-body { max-height: 30vh; }

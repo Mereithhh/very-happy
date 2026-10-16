@@ -215,11 +215,9 @@
   grid-template-columns: minmax(0, 1fr);
   align-items: flex-end;
   gap: var(--sp-1);
-  /* B-614: the composer is the raised surface — ring + soft elevation. */
-  background: var(--surface-raised);
+  background: var(--bg-1);
   border: 1px solid transparent;
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-raised);
   padding: var(--sp-2);
   transition: border-color var(--motion-fast), background var(--motion-fast), box-shadow var(--motion-fast);
 }
@@ -250,7 +248,7 @@
   gap: var(--sp-1);
 }
 .ci-composer:focus-within {
-  border-color: var(--card-border-strong);
+  border-color: var(--line);
   outline: none;
 }
 .ci-composer--drag {

@@ -48,7 +48,7 @@ function themeVariables(): Record<string, string> {
         primaryTextColor: text,
         primaryBorderColor: line,
         secondaryColor: v('--bg-3', '#292a26'),
-        tertiaryColor: v('--bg-0', '#0c0d0b'),
+        tertiaryColor: v('--bg-0', '#151515'),
         lineColor: v('--line-2', '#41433d'),
         textColor: text,
         mainBkg: v('--bg-2', '#20211e'),

@@ -25,7 +25,7 @@
   border-radius: var(--r-md);
   box-shadow: var(--shadow-modal);
   overflow: hidden;
-  animation: cp-pop var(--motion-fast) ease-out;
+  animation: cp-pop var(--dur-snap) var(--ease-out);
 }
 @keyframes cp-pop {
   from { opacity: 0; transform: translateY(-6px); }

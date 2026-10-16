@@ -2,7 +2,7 @@
    code preview (themed surface, not the always-dark terminal pane). */
 .cv-shiki .line.vh-line-flash {
   background: var(--bg-3);
-  transition: background var(--motion-slow) ease-out;
+  transition: background var(--dur-sheet) var(--ease-out);
 }
 @media (prefers-reduced-motion: reduce) {
   .cv-shiki .line.vh-line-flash { transition: none; }
