@@ -72,3 +72,37 @@ export function diffStats(rows: DiffRow[]): { added: number; removed: number } {
     }
     return { added, removed };
 }
+
+/**
+ * B-613 side-by-side diff: one aligned row = the old line on the left and the
+ * new line on the right. Context rows sit on both sides. Within a change block
+ * (a maximal run of del/add rows between context rows) the i-th deletion is
+ * paired with the i-th addition; the shorter side is padded with `null`
+ * (an empty cell). Order inside each side is preserved, so reading one column
+ * top-to-bottom reproduces that side's text exactly.
+ */
+export type SplitRow = { old: DiffRow | null; new: DiffRow | null };
+
+export function pairSplitRows(rows: DiffRow[]): SplitRow[] {
+    const out: SplitRow[] = [];
+    let dels: DiffRow[] = [];
+    let adds: DiffRow[] = [];
+    const flush = () => {
+        const n = Math.max(dels.length, adds.length);
+        for (let i = 0; i < n; i++) out.push({ old: dels[i] ?? null, new: adds[i] ?? null });
+        dels = [];
+        adds = [];
+    };
+    for (const r of rows) {
+        if (r.type === 'ctx') {
+            flush();
+            out.push({ old: r, new: r });
+        } else if (r.type === 'del') {
+            dels.push(r);
+        } else {
+            adds.push(r);
+        }
+    }
+    flush();
+    return out;
+}

@@ -63,6 +63,6 @@ export function FsTree({ machineId, path, entries, showHidden, sortMode, selecte
     const filterLabel = lang.startsWith('zh') ? '筛选已加载的文件…' : 'Filter loaded files…';
     return <div className="fsb-tree">
         <label className="fsb-filter"><Search size={14}/><input aria-label={filterLabel} placeholder={filterLabel} value={query} onChange={event => setQuery(event.target.value)}/></label>
-        <div className="fsb-tree-list">{rows(entries, path, 0)}</div>
+        <div className="fsb-tree-list vh-scroll-fade">{rows(entries, path, 0)}</div>
     </div>;
 }
