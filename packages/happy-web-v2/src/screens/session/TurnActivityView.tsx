@@ -41,7 +41,10 @@ function TurnActivityViewImpl({
     const wasLiveRef = useRef(live);
     const detailId = useId();
     const detailRef = useRef<HTMLDivElement>(null);
-    const isFollowing = useContext(ReaderFollowContext);
+    const reader = useContext(ReaderFollowContext);
+    // B-607: the live→done fold was skipped for a detached reader; it runs when
+    // they follow the live end again, unless they toggled this turn by hand.
+    const foldPendingRef = useRef(false);
 
     // A running turn is transparent by default. The exact live→done transition
     // folds it once; subsequent renders never override a user's history toggle.
@@ -49,11 +52,25 @@ function TurnActivityViewImpl({
     // from under them and, on a live→done→live flicker, left them at the
     // start of the turn (the top, when the turn is the whole transcript).
     useEffect(() => {
-        if (live && !wasLiveRef.current) setExpanded(true);
-        if (!live && wasLiveRef.current && foldsAwayFromReader(detailRef.current, isFollowing)) setExpanded(false);
+        if (live && !wasLiveRef.current) {
+            foldPendingRef.current = false;
+            setExpanded(true);
+        }
+        if (!live && wasLiveRef.current) {
+            const fold = foldsAwayFromReader(detailRef.current, reader.isFollowing);
+            foldPendingRef.current = !fold;
+            if (fold) setExpanded(false);
+        }
         wasLiveRef.current = live;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [live]);
+    // Back at the live end, the turn sits entirely above a bottom-pinned
+    // viewport: folding it now moves nothing the reader sees.
+    useEffect(() => reader.onRefollow(() => {
+        if (!foldPendingRef.current) return;
+        foldPendingRef.current = false;
+        setExpanded(false);
+    }), [reader]);
 
     // B-260: a folded turn should still say how many sub-agents ran inside it.
     const subagentCount = useMemo(() => countSubagentCards(messages), [messages]);
@@ -72,7 +89,10 @@ function TurnActivityViewImpl({
             <button
                 type="button"
                 className="ta-head vh-disclosure-trigger"
-                onClick={() => setExpanded((value) => !value)}
+                onClick={() => {
+                    foldPendingRef.current = false; // a manual toggle wins over the deferred fold
+                    setExpanded((value) => !value);
+                }}
                 aria-expanded={expanded}
                 aria-controls={detailId}
             >

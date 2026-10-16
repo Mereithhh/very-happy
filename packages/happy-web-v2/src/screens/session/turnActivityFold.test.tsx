@@ -14,7 +14,9 @@
  * when that turn is the whole transcript.
  *
  * Rule: the finished turn folds only when the reader follows the live end or
- * the fold happens entirely below the viewport.
+ * the fold happens entirely below the viewport. A skipped fold is deferred to
+ * the moment the reader follows again (back at the bottom / 「跳到最新」),
+ * unless they toggled that turn by hand.
  */
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -25,7 +27,7 @@ vi.mock('@/ui', () => ({ StatusDot: () => null }));
 vi.mock('./ActivityMessages', () => ({ ActivityMessages: () => <div className="ta-steps" /> }));
 vi.mock('./useElapsed', () => ({ useElapsedSeconds: () => 0 }));
 import { TurnActivityView } from './TurnActivityView';
-import { ReaderFollowContext } from './readerFollow';
+import { ReaderFollowContext, createReaderFollow, type ReaderFollowSource } from './readerFollow';
 import { shouldFoldFinishedTurn } from './chatFollow';
 import type { Message } from '@/sync/typesMessage';
 
@@ -36,12 +38,12 @@ const messages = [{ kind: 'agent-text', id: 'a1', localId: null, createdAt: 1, t
 
 let host: HTMLDivElement;
 let root: Root;
-let following = false;
+let reader: ReaderFollowSource;
 let panelTop = 0;
 let restoreRect = () => {};
 
 beforeEach(() => {
-    following = false;
+    reader = createReaderFollow(false);
     panelTop = 0;
     const rect = HTMLElement.prototype.getBoundingClientRect;
     restoreRect = () => { HTMLElement.prototype.getBoundingClientRect = rect; };
@@ -64,7 +66,7 @@ afterEach(() => {
 
 function render(live: boolean): void {
     const tree: ReactNode = (
-        <ReaderFollowContext.Provider value={() => following}>
+        <ReaderFollowContext.Provider value={reader}>
             <div className="cl-scroll">
                 <TurnActivityView messages={messages} live={live} sessionId="s" />
             </div>
@@ -94,7 +96,7 @@ describe('B-607 a finished turn does not fold out from under its reader', () => 
 
     it('reader following the live end: the done turn folds as before', () => {
         render(true);
-        following = true;
+        reader.set(true);
         panelTop = -1200;
         render(false);
         expect(expanded()).toBe(false);
@@ -113,6 +115,70 @@ describe('B-607 a finished turn does not fold out from under its reader', () => 
         render(false);
         act(() => { host.querySelector<HTMLButtonElement>('.ta-head')!.click(); });
         expect(expanded()).toBe(false);
+    });
+});
+
+describe('B-607 the skipped fold is deferred until the reader re-follows', () => {
+    const finishWhileReading = () => {
+        render(true);
+        panelTop = -1200;
+        render(false);
+        expect(expanded()).toBe(true);
+    };
+
+    it('folds the moment the reader is back at the live end', () => {
+        finishWhileReading();
+        act(() => reader.set(true));
+        expect(expanded()).toBe(false);
+    });
+
+    it('does not fold while the reader stays detached (scrolling around up there)', () => {
+        finishWhileReading();
+        act(() => { reader.set(false); reader.set(false); });
+        expect(expanded()).toBe(true);
+    });
+
+    it('a manual toggle wins: re-following later does not fold a turn the reader opened/closed', () => {
+        finishWhileReading();
+        const head = () => host.querySelector<HTMLButtonElement>('.ta-head')!;
+        act(() => { head().click(); }); // fold by hand
+        act(() => { head().click(); }); // and open it again
+        expect(expanded()).toBe(true);
+        act(() => reader.set(true));
+        expect(expanded()).toBe(true);
+    });
+
+    it('fires once: after the deferred fold, a later re-follow leaves a re-opened turn alone', () => {
+        finishWhileReading();
+        act(() => reader.set(true));
+        act(() => { host.querySelector<HTMLButtonElement>('.ta-head')!.click(); });
+        act(() => { reader.set(false); reader.set(true); });
+        expect(expanded()).toBe(true);
+    });
+
+    it('the turn going live again cancels the pending fold', () => {
+        finishWhileReading();
+        render(true);
+        act(() => reader.set(true));
+        expect(expanded()).toBe(true);
+    });
+});
+
+describe('createReaderFollow', () => {
+    it('notifies only on the detached → following edge', () => {
+        const source = createReaderFollow(true);
+        const calls: number[] = [];
+        const off = source.onRefollow(() => calls.push(1));
+        source.set(true);
+        source.set(false);
+        source.set(false);
+        source.set(true);
+        source.set(true);
+        expect(calls.length).toBe(1);
+        off();
+        source.set(false);
+        source.set(true);
+        expect(calls.length).toBe(1);
     });
 });
 

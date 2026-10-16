@@ -11,7 +11,7 @@ describe('session-scoped transcript scrolling', () => {
     it('remounts the transcript by session and resets cached-session state before paint', () => {
         expect(detail).toContain('<ChatList key={id} sessionId={id}');
         expect(chat).toContain('useLayoutEffect(() => {\n        if (!isLoaded) return;');
-        expect(chat).toContain('atBottomRef.current = true;');
+        expect(chat).toContain('setAtBottom(true);'); // B-607: atBottomRef + the rows' follow source
         expect(chat).toContain('}, [sessionId, isLoaded]);');
     });
 
