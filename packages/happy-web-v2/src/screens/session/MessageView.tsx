@@ -3,7 +3,7 @@
  * upstream in ChatList; here we render the leaf kinds and (for grouped tool
  * runs) hand off to ToolGroupView.
  */
-import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { memo, useCallback, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Ban, Bot, Brain, Check, ChevronDown, ChevronRight, Play, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage, ToolCallMessage } from '@/sync/typesMessage';
@@ -13,6 +13,8 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { restartBrokenSession, useRestartState } from '@/app/sessionRestartAction';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
+import { CollapsePanel } from '@/ui/CollapsePanel';
+import { useLiveDisclosure } from './useLiveDisclosure';
 import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 import { Markdown } from './Markdown';
 import { MessageMetaRow } from './MessageMetaRow';
@@ -174,16 +176,10 @@ function AgentText({
             createdAt: message.createdAt,
             now: Date.now(),
         });
-    const [open, setOpen] = useState(live);
+    // B-612: the fold waits for a detached reader to follow again (useLiveDisclosure).
+    const thinkingRef = useRef<HTMLDivElement>(null);
+    const [open, toggleOpen] = useLiveDisclosure(live, thinkingRef);
     const thinkingId = useId();
-    const userToggledRef = useRef(false);
-    useEffect(() => {
-        if (!userToggledRef.current) setOpen(live);
-    }, [live]);
-    const toggleOpen = () => {
-        userToggledRef.current = true;
-        setOpen((v) => !v);
-    };
 
     // Must be stable: `Markdown` memoises its parsed tree on [segments,
     // components, onOption], and this component re-renders on every
@@ -208,20 +204,19 @@ function AgentText({
         const preview = thinkingPreview(content);
         return (
             <div className="msg msg--agent">
-                <div className="msg-thinking">
+                <div ref={thinkingRef} className="msg-thinking">
                     <button type="button" className="msg-thinking-head vh-disclosure-trigger" onClick={toggleOpen} aria-expanded={open} aria-controls={thinkingId}>
                         <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
                         <Brain size={13} className="msg-thinking-icon" aria-hidden />
                         <span>{durationLabel ?? t('session.chat.thinkingLabel')}</span>
                         {!open && preview && <span className="msg-thinking-preview">{preview}</span>}
                     </button>
-                    <div id={thinkingId} className="msg-thinking-body vh-copyhost vh-disclosure-panel" hidden={!open}>
-                        {open && <>
-                            <Markdown text={content} />
-                            {/* copies the thinking source text (wrapper stripped) */}
-                            <CopyButton text={content} className="vh-copy--overlay" label={t('message.copyMessage')} />
-                        </>}
-                    </div>
+                    {/* B-612: height-animated; unmounts once the close transition ends. */}
+                    <CollapsePanel id={thinkingId} open={open} className="msg-thinking-body vh-copyhost">
+                        <Markdown text={content} />
+                        {/* copies the thinking source text (wrapper stripped) */}
+                        <CopyButton text={content} className="vh-copy--overlay" label={t('message.copyMessage')} />
+                    </CollapsePanel>
                 </div>
             </div>
         );
