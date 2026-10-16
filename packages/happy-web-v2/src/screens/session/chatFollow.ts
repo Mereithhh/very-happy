@@ -222,3 +222,29 @@ export function shouldRequestOlder(input: {
     if (!input.hasMoreOlder || input.isLoadingOlder || !input.settled) return false;
     return input.scrollTop <= Math.max(LOAD_OLDER_NEAR_TOP_MIN_PX, input.clientHeight);
 }
+
+/**
+ * B-617：B-616 的两道真机保险（iOS 惯性滚动尾段与顶部回弹是模拟器验不到的）。
+ *
+ * ① 停稳后不立刻请求：再等一小段、两次读到的 scrollTop 一样才算真停——惯性
+ *    尾段 / 顶部回弹时 WebKit 可能几百毫秒不发 scroll 事件，位置却还在变。在最
+ *    顶端（scrollTop ≤ 0，回弹发生的地方）等得更久。
+ * ② 插页后的补偿写入要核对：WebKit 在滚动动画中会丢掉程序写的 scrollTop
+ *    （B-603 根因），丢了就是「跳到更早的内容」。逐帧检查写入有没有被丢——位置
+ *    仍停在写入前的地方（差不到四分之一页；正常惯性一帧只走几十 px）就是丢了，
+ *    重写，直到保住或超时。只对真正的整页插入做，首行重建带来的几十 px 不值得争。
+ */
+export const PARK_CONFIRM_MS = 150;
+export const PARK_CONFIRM_TOP_MS = 400;
+
+export function parkConfirmWait(scrollTop: number): number {
+    return scrollTop <= 0 ? PARK_CONFIRM_TOP_MS : PARK_CONFIRM_MS;
+}
+
+export const COMPENSATION_RETRY_MS = 1200;
+export const COMPENSATION_RETRY_MIN_DELTA = 200;
+
+/** 补偿写入丢了吗：当前位置仍贴着写入前的位置（没动够四分之一页）。 */
+export function compensationLost(current: number, before: number, delta: number): boolean {
+    return Math.abs(current - before) <= Math.abs(delta) / 4;
+}

@@ -40,6 +40,10 @@ import {
     anchorIndex,
     SCROLL_SETTLE_MS,
     shouldRequestOlder,
+    parkConfirmWait,
+    compensationLost,
+    COMPENSATION_RETRY_MS,
+    COMPENSATION_RETRY_MIN_DELTA,
 } from './chatFollow';
 import { countRunningSubagentCards } from './subagentPills';
 import { transcriptChronological } from './transcriptMessages';
@@ -224,22 +228,64 @@ export function ChatList({
     hasMoreOlderRef.current = !!hasMoreOlder;
     const isLoadingOlderRef = useRef(!!isLoadingOlder);
     isLoadingOlderRef.current = !!isLoadingOlder;
+    const settledNow = () => holdRef.current === null
+        && settleWait(performance.now(), motionRef.current.lastAt, motionRef.current.touching) === 0;
+    const olderWanted = (el: HTMLElement) => shouldRequestOlder({
+        scrollTop: el.scrollTop,
+        clientHeight: el.clientHeight,
+        hasMoreOlder: hasMoreOlderRef.current,
+        isLoadingOlder: isLoadingOlderRef.current,
+        settled: settledNow(),
+    });
+    const parkConfirmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const requestOlderIfParked = () => {
         const el = scrollRef.current;
-        if (!el) return;
-        const settled = holdRef.current === null
-            && settleWait(performance.now(), motionRef.current.lastAt, motionRef.current.touching) === 0;
-        const wanted = shouldRequestOlder({
-            scrollTop: el.scrollTop,
-            clientHeight: el.clientHeight,
-            hasMoreOlder: hasMoreOlderRef.current,
-            isLoadingOlder: isLoadingOlderRef.current,
-            settled,
-        });
-        if (wanted) void sync.loadOlderMessages(sessionId);
+        if (!el || parkConfirmRef.current !== null || !olderWanted(el)) return;
+        // B-617 ①: "settled" by events is not enough on iOS — confirm the
+        // position itself has not moved after a short wait (longer at the very
+        // top, where the bounce lives) before asking for a page.
+        const at = el.scrollTop;
+        parkConfirmRef.current = setTimeout(() => {
+            parkConfirmRef.current = null;
+            const now = scrollRef.current;
+            if (!now || now.scrollTop !== at || !olderWanted(now)) return;
+            void sync.loadOlderMessages(sessionId);
+        }, parkConfirmWait(at));
     };
     const requestOlderRef = useRef(requestOlderIfParked);
     requestOlderRef.current = requestOlderIfParked;
+
+    // B-617 ②: the prepend compensation, verified. WebKit drops a programmatic
+    // scrollTop while a scroll animation (momentum, smooth) is running (B-603)
+    // — the view then shows the inserted page: the jump. Re-apply every frame
+    // while the write is seen to be lost (position still where it was before
+    // the write), until it holds or the window runs out.
+    const compensationRef = useRef<number | null>(null);
+    const cancelCompensationRetry = () => {
+        if (compensationRef.current !== null) cancelAnimationFrame(compensationRef.current);
+        compensationRef.current = null;
+    };
+    const compensate = (el: HTMLElement, delta: number) => {
+        cancelCompensationRetry();
+        const write = () => {
+            const before = el.scrollTop;
+            const max = Math.max(0, el.scrollHeight - el.clientHeight);
+            el.scrollTop = Math.min(before + delta, max);
+            ownScrollTopRef.current = el.scrollTop;
+            return { before, clamped: before + delta > max };
+        };
+        let last = write();
+        if (last.clamped || Math.abs(delta) < COMPENSATION_RETRY_MIN_DELTA) return;
+        const until = performance.now() + COMPENSATION_RETRY_MS;
+        const verify = () => {
+            compensationRef.current = null;
+            if (!compensationLost(el.scrollTop, last.before, delta) || performance.now() >= until) return;
+            last = write();
+            if (last.clamped) return;
+            compensationRef.current = requestAnimationFrame(verify);
+        };
+        compensationRef.current = requestAnimationFrame(verify);
+    };
     const releaseWhenSettled = () => {
         if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
         const check = () => {
@@ -268,6 +314,9 @@ export function ChatList({
     };
     useEffect(() => () => {
         if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+        if (parkConfirmRef.current !== null) clearTimeout(parkConfirmRef.current);
+        cancelCompensationRetry();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // B-615: held turns are released once the reader follows the live end AND
@@ -446,8 +495,7 @@ export function ChatList({
         if (topEdgeRef.current !== topEdge && prev && prev.node.isConnected && prev.node.parentElement === inner) {
             const delta = prev.node.getBoundingClientRect().top - innerTop() - prev.top;
             if (delta !== 0) {
-                el.scrollTop += delta;
-                ownScrollTopRef.current = el.scrollTop;
+                compensate(el, delta);
                 // Not new content at the bottom: don't let the growth follower read it so.
                 innerHeightRef.current = inner.getBoundingClientRect().height;
             }
