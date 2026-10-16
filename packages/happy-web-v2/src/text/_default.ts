@@ -2207,7 +2207,7 @@ export const en = {
             oct16: {
                 title: 'Reading back stays put; zoomable images and side-by-side diffs',
                 summary: 'Scrolling up while a turn is running no longer throws you to the top, images can be pinch-zoomed and panned, and wide diffs can be read side by side.',
-                scroll: 'Fixed: when a turn finished while you were reading it further up, its steps folded away under you and the view could jump to the top of the conversation. The turn now stays open while you read and folds once you are back at the latest message. Thinking blocks above you wait the same way.',
+                scroll: 'Fixed: when a turn finished while you were reading it further up, its steps folded away under you and the view could jump to the top of the conversation. The turn now stays open while you read and folds once you are back at the latest message. Thinking blocks above you wait the same way. In Safari and the iPhone app, a reply landing or the next turn starting no longer throws you hundreds of lines up either.',
                 images: 'Image preview: pinch or ⌘-scroll to zoom where the pointer is (up to 8×), scroll or drag to move around a zoomed image, double-click to switch between fit and 2×. On phones, pinch with two fingers and pan with one. + / − / 0 work from the keyboard.',
                 diff: 'Diffs at least 720px wide get a Unified / Split switch; your choice is remembered on this device. Copying from the split view takes only the side you selected.',
                 panel: 'The side-panel divider works with touch and pen, Esc cancels a drag, double-click restores the default width, and dragging it almost closed closes the panel. It can also be focused and resized with the arrow keys.',

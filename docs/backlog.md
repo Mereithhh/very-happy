@@ -20,7 +20,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-615 | **Safari/iOS 上滚看回复时，回复落地/轮次结束把人往上甩 1–2.5k px**（B-610/612 合并探针发现，origin/main 同样复现；Chromium 0px）：WebKit 在同一 commit 里移除流式草稿或把回答从活动行移出成独立行时，按「旧布局减去被移除节点」夹 scrollTop。可能也是 Owner「滚动条回到最上面」在 Safari/PWA 上的触发源 | bug | 主 agent 2026-10-16 | doing | PR #545：草稿先隐藏一帧再移除（`draftRetire.ts`）；读者上滚时轮次结束保持原结构直到回到底部且停稳；草稿出现即建活动行。评审要求：按轮次保持（新一轮开始不释放）、被保持的回答保留操作栏、草稿阶段不显示「0s」 |
+| B-615 | **Safari/iOS 上滚看回复时，回复落地/轮次结束把人往上甩 1–2.5k px**（B-610/612 合并探针发现，origin/main 同样复现；Chromium 0px）：WebKit 在同一 commit 里移除流式草稿或把回答从活动行移出成独立行时，按「旧布局减去被移除节点」夹 scrollTop。可能也是 Owner「滚动条回到最上面」在 Safari/PWA 上的触发源 | bug | 主 agent 2026-10-16 | done | #545：草稿先隐藏一帧再移除（`draftRetire.ts`）；读者上滚时结束的轮次按开场消息 id 保持原结构（`turnHold.ts`，后续轮次不释放），回到底部且停稳后统一释放并贴底；被保持的回答照常有操作栏；草稿出现即建活动行（标题「处理中」）。探针：WebKit/Chromium 桌面与 390px 漂移 0；真机见 V-177。已知：保持期间停止后的「继续」按钮在释放后才出现 |
 | B-614 | **多 agent 交互界面不好看 → 按 open-claude-ui 设计准则改版**（Owner 2026-10-16：「多个 agent 交互的 UI 不太好看」「太素了，框里面里外颜色都差不多」「各种细节你抄一下这个项目里面的设计准则」「方框卡片里面包着一层卡片非常怪」）：子 agent、Codex 子线程、Teams、会话互发消息统一身份/状态/方向；全局采用单闭合边框原则、表面阶梯、圆角/阴影/动效/排版细则，保留 VH 品牌（accent=live、ink CTA、终端深色、AA） | ux | Owner 2026-10-16 | done | #543（Owner 看对比图后同意合并）；规格 `skills/tmp/vh-ui-borrow/multiagent-ui/CDS-SPEC.md`；嵌套审计 `scripts/dev/nesting-audit.mjs`：main 6 处→0；未采纳：陶土色/Anthropic 字体/音效/毛玻璃、暗色字重补偿（IBM Plex 静态字重）、三点波浪（已有 Spinner） |
 | B-613 | **diff 左右对比视图**：diff 容器 ≥720px 时可切统一/分栏，选择存本地设置；分栏复制只取一侧代码 | feat | open-claude-ui 借鉴 2026-10-16 | done | #541；`pairSplitRows` 纯函数 + 测试；ReviewDiffPane 仍为统一视图 |
 | B-612 | **thinking 块平滑展开/收起**：grid 0fr→1fr 200ms，减少动态时直接切换；读者上滚时自动收起延后到回到最新（同 B-607） | ux | open-claude-ui 借鉴 2026-10-16 | done | #544；`CollapsePanel`、`useLiveDisclosure`；不写 scrollTop |
