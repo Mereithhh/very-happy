@@ -60,7 +60,9 @@ describe('draft is gated on the turn being real', () => {
         const source = readFileSync(join(__dirname, '../screens/session/LiveStreamView.tsx'), 'utf8');
         // A draft is visually indistinguishable from a real reply, so frames
         // from anything that is not actually driving a turn must not paint.
-        expect(source).toContain('if (!live && stream.sweepAt === null) return null;');
+        // B-615: no blocks rather than unmounting, so a draft dropped here
+        // still leaves hidden-first (draftRetire.ts) — nothing paints either way.
+        expect(source).toContain('if (!live && stream.sweepAt === null) return <LiveStreamBlocks blocks={NO_BLOCKS} />;');
         expect(source).toContain('isAgentWorkLive({');
     });
 

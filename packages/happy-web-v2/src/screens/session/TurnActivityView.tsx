@@ -26,6 +26,7 @@ function TurnActivityViewImpl({
     durationSeconds,
     trigger,
     abortedAt: liftedAbortedAt,
+    holdsAnswer = false,
 }: {
     messages: Message[];
     live: boolean;
@@ -35,6 +36,8 @@ function TurnActivityViewImpl({
     trigger?: Message;
     /** B-578: set when the turn's stop line was lifted out of `messages`. */
     abortedAt?: number;
+    /** B-615: the turn's answer is still inside this row (chatTurns `keepLastTurnOpen`). */
+    holdsAnswer?: boolean;
 }) {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(live);
@@ -66,11 +69,21 @@ function TurnActivityViewImpl({
     }, [live]);
     // Back at the live end, the turn sits entirely above a bottom-pinned
     // viewport: folding it now moves nothing the reader sees.
+    // B-615: not while the answer is still inside this row — folding would
+    // hide it until ChatList lifts it out once the scroll settles. The fold
+    // runs when the answer leaves (below), the reader still following.
+    const holdsAnswerRef = useRef(holdsAnswer);
+    holdsAnswerRef.current = holdsAnswer;
     useEffect(() => reader.onRefollow(() => {
-        if (!foldPendingRef.current) return;
+        if (!foldPendingRef.current || holdsAnswerRef.current) return;
         foldPendingRef.current = false;
         setExpanded(false);
     }), [reader]);
+    useEffect(() => {
+        if (holdsAnswer || !foldPendingRef.current || !reader.isFollowing()) return;
+        foldPendingRef.current = false;
+        setExpanded(false);
+    }, [holdsAnswer, reader]);
 
     // B-260: a folded turn should still say how many sub-agents ran inside it.
     const subagentCount = useMemo(() => countSubagentCards(messages), [messages]);
@@ -145,4 +158,5 @@ export const TurnActivityView = memo(TurnActivityViewImpl, (prev, next) => (
     && prev.durationSeconds === next.durationSeconds
     && prev.trigger === next.trigger
     && prev.abortedAt === next.abortedAt
+    && prev.holdsAnswer === next.holdsAnswer
 ));

@@ -38,6 +38,9 @@ export type ChatRow = LeafRow | ({ type: 'compaction'; key: string } & Compactio
     /** B-578: the turn's user stop, when its line was lifted out of the fold —
      *  the folded sub-agent cards still need it (B-317, subagentAbort.ts). */
     abortedAt?: number;
+    /** B-615: a finished turn held in its live shape — its answer is still
+     *  inside this row, so the row must not fold yet (`keepLastTurnOpen`). */
+    holdsAnswer?: boolean;
 } | {
     /** B-571: the files a finished turn changed (one neutral line at its end). */
     type: 'turn-diff';
@@ -293,7 +296,32 @@ export function opensTurn(messages: readonly Message[], index: number, turnStart
  * moves out as the visible answer and the preceding work becomes collapsible.
  * Messages before the first user prompt stay as ordinary transcript rows.
  */
-export function buildChatRows(rawMessages: Message[], sessionLive: boolean, options: { turnDiffs?: boolean } = {}): ChatRow[] {
+export function buildChatRows(
+    rawMessages: Message[],
+    sessionLive: boolean,
+    options: {
+        turnDiffs?: boolean;
+        /**
+         * B-615: build the newest turn, just finished, in its live shape — its
+         * answer stays inside the (no longer live) activity row instead of
+         * moving out into a row of its own. ChatList sets this while a reader
+         * who was scrolled up when the turn ended has not followed the live
+         * end again: moving the answer means removing the row the reader is
+         * looking at and inserting another, and WebKit clamps scrollTop
+         * against the layout without the removed row (draftRetire.ts) — the
+         * reader was thrown 1222–2524px up.
+         */
+        keepLastTurnOpen?: boolean;
+        /**
+         * B-615: the live turn has draft text on screen (LiveStreamView). Its
+         * activity row exists from then on, even before any message of the
+         * turn is persisted: otherwise the row's header is inserted above the
+         * answer the moment it lands, and the reader's text moves down by
+         * the header's height (45–60px, every engine).
+         */
+        liveDraft?: boolean;
+    } = {},
+): ChatRow[] {
     // B-355: attachments belong to the user turn, so they leave the stream here —
     // BEFORE the leaf/activity split below, which has three different landing
     // places for them (see extractUserAttachments).
@@ -332,7 +360,7 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean, opti
             rows.push({ type: 'compaction', key: `compaction-${message.id}`, ...compaction });
         } else if (live) {
             const activity = turnMessages.filter(isRenderableActivityMessage);
-            if (activity.length > 0) {
+            if (activity.length > 0 || options.liveDraft) {
                 rows.push({
                     type: 'activity',
                     key: `activity-${message.id}`,
@@ -352,7 +380,22 @@ export function buildChatRows(rawMessages: Message[], sessionLive: boolean, opti
                 }
             }
 
-            if (finalIndex < 0) {
+            if (finalIndex >= 0 && options.keepLastTurnOpen && turnEnd === messages.length) {
+                const activity = turnMessages.filter(isRenderableActivityMessage);
+                const finalMessage = turnMessages[finalIndex];
+                rows.push({
+                    type: 'activity',
+                    key: `activity-${message.id}`,
+                    messages: activity,
+                    live: false,
+                    durationSeconds: finalMessage.kind === 'agent-text' && finalMessage.totalDurationMs != null
+                        ? Math.max(0, Math.round(finalMessage.totalDurationMs / 1000))
+                        : activityDurationSeconds(activity),
+                    ...(trigger ? { trigger } : {}),
+                    holdsAnswer: true,
+                });
+                rows.push(...askAnswerRows(turnMessages));
+            } else if (finalIndex < 0) {
                 // B-487: a turn that ended without an answer ends on its
                 // failure — keep that visible instead of folding it into the
                 // collapsed activity where nobody opens it.

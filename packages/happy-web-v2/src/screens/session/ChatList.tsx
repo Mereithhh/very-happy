@@ -17,7 +17,7 @@ import { MarkdownPathProvider } from './Markdown';
 import { PermissionPointer } from './PermissionCard';
 import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 import { LiveStreamView } from './LiveStreamView';
-import { endLiveStreamTurn } from '@/sync/liveStreamStore';
+import { endLiveStreamTurn, useHasLiveDraft } from '@/sync/liveStreamStore';
 import { TurnActivityView } from './TurnActivityView';
 import { TurnDiffRollup } from './TurnDiffRollup';
 import { CompactionDivider } from './CompactionDivider';
@@ -126,9 +126,20 @@ export function ChatList({
         runningSubagentsInTurn: runningSubagents,
         heartbeatFresh: leaseFresh,
     });
+    // B-615: a turn that ends while the reader is scrolled up keeps its live
+    // shape (answer inside the activity row) until they follow the live end
+    // again — see `keepLastTurnOpen`. Decided in the render that sees the
+    // live→done edge, so the restructure never reaches the DOM before it.
+    const [liveSeen, setLiveSeen] = useState(sessionLive);
+    const [lastTurnOpen, setLastTurnOpen] = useState(false);
+    if (liveSeen !== sessionLive) {
+        setLiveSeen(sessionLive);
+        setLastTurnOpen(!sessionLive && !atBottomRef.current);
+    }
+    const liveDraft = useHasLiveDraft(sessionId);
     const rows = useMemo(
-        () => buildChatRows(shownChronological, sessionLive, { turnDiffs: true }),
-        [shownChronological, sessionLive],
+        () => buildChatRows(shownChronological, sessionLive, { turnDiffs: true, keepLastTurnOpen: lastTurnOpen, liveDraft }),
+        [shownChronological, sessionLive, lastTurnOpen, liveDraft],
     );
     const rowKeys = useMemo(() => rows.map((row) => row.key), [rows]);
     // B-578: 「继续」 only while nothing runs or waits — same liveness verdict
@@ -220,6 +231,31 @@ export function ChatList({
     };
     useEffect(() => () => {
         if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+    }, []);
+
+    // B-615: the held turn shape is released once the reader follows the live
+    // end AND the scroll has settled. Restructuring mid-scroll (the smooth
+    // 「跳到最新」 still running) left WebKit 8–21px short of the bottom: it
+    // ignores the follow's scroll write while an animation runs (B-603).
+    useEffect(() => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const check = () => {
+            const wait = settleWait(performance.now(), motionRef.current.lastAt, motionRef.current.touching);
+            if (wait > 0) {
+                timer = setTimeout(check, wait);
+                return;
+            }
+            timer = null;
+            if (atBottomRef.current) setLastTurnOpen(false);
+        };
+        const stop = readerFollowRef.current!.onRefollow(() => {
+            if (timer !== null) clearTimeout(timer);
+            timer = setTimeout(check, 0);
+        });
+        return () => {
+            stop();
+            if (timer !== null) clearTimeout(timer);
+        };
     }, []);
 
     // B-598: an upward scroll gesture leaves the live end immediately, whatever
@@ -585,6 +621,7 @@ export function ChatList({
                                 durationSeconds={row.durationSeconds}
                                 trigger={row.trigger}
                                 abortedAt={row.abortedAt}
+                                holdsAnswer={row.holdsAnswer}
                             />
                         ) : row.type === 'turn-diff' ? (
                             <TurnDiffRollup key={row.key} sessionId={sessionId} diff={row.diff} />

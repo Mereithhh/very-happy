@@ -37,3 +37,11 @@
     opacity: 0.6;
   }
 }
+
+/* B-615 (draftRetire.ts): a draft block that just left is kept one frame,
+   hidden, before it is removed. `.ls` and `.msg` set their own display, which
+   outranks the UA `[hidden]` rule. */
+.ls[hidden],
+.ls > [hidden] {
+  display: none;
+}
