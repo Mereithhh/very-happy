@@ -210,6 +210,33 @@ pre,
     animation: none;
   }
 }
+/* B-612: height-animated disclosure (ui/CollapsePanel). Grid rows 0fr→1fr
+   animate to the content's real height; the inner wrapper clips the overflow.
+   `clip`, not `hidden`: a hidden ancestor is a scroll container and would pin
+   sticky table headers inside the panel (B-357). */
+.vh-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows var(--motion-med), opacity var(--motion-med);
+}
+.vh-collapse.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.vh-collapse[hidden] {
+  display: none;
+}
+.vh-collapse-inner {
+  min-height: 0;
+  overflow: hidden;
+  overflow: clip;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vh-collapse {
+    transition: none;
+  }
+}
 @media (pointer: coarse) {
   /* Dense 30–32px transcript rows suit a mouse, but are too easy to miss with
      a thumb. Grow only the hit area on touch hardware; typography and desktop

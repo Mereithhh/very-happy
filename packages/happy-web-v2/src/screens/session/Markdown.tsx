@@ -36,6 +36,7 @@ import { useSessionMessages } from '@/sync/storage';
 import { splitOptionSegments } from './optionsBlock';
 import { rehypeTableCellBreaks, rehypeTableScope, rehypeTextLeaves, safeUrlTransform } from './markdownPlugins';
 import { streamThrottleMs } from './streamThrottle';
+import { splitMarkdownBlocks } from './markdownBlocks';
 import { SkillDocumentLink } from '@/ui/SkillDocumentLink';
 import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 
@@ -289,6 +290,47 @@ function useThrottledText(text: string, enabled: boolean): string {
     return enabled ? shown : text;
 }
 
+/* ── per-block memo (B-610) ─────────────────────────────────────────────── */
+
+/**
+ * One top-level markdown block. Memoised on its source text, so while a draft
+ * streams only the growing tail block re-parses; completed blocks are skipped.
+ */
+const MarkdownChunk = React.memo(function MarkdownChunk({ text, components }: { text: string; components: Components }) {
+    return (
+        <ReactMarkdown
+            remarkPlugins={REMARK_PLUGINS}
+            rehypePlugins={REHYPE_PLUGINS}
+            urlTransform={safeUrlTransform}
+            components={components}
+        >
+            {text}
+        </ReactMarkdown>
+    );
+});
+
+/**
+ * Render `text` block by block (see markdownBlocks.ts). The `'\n'` between
+ * chunks is the text node react-markdown itself emits between top-level
+ * elements, so the DOM is identical to `<MarkdownChunk text={text} />`.
+ * Keys are the block index: while a draft streams the tail block keeps its
+ * fiber (no remount per tick), and a block whose text changes is re-rendered
+ * by the memo's text comparison.
+ */
+function MarkdownBlocks({ text, components }: { text: string; components: Components }) {
+    const blocks = splitMarkdownBlocks(text);
+    return (
+        <>
+            {blocks.map((block, index) => (
+                <React.Fragment key={index}>
+                    {index > 0 && '\n'}
+                    <MarkdownChunk text={block} components={components} />
+                </React.Fragment>
+            ))}
+        </>
+    );
+}
+
 /* ── public component ───────────────────────────────────────────────────── */
 
 export function Markdown({ text, onOption, hideOptions = false, plainCode = false, streaming = false, trustContent = false }: {
@@ -298,7 +340,7 @@ export function Markdown({ text, onOption, hideOptions = false, plainCode = fals
     hideOptions?: boolean;
     /** B-309: render fenced code without highlighting (streaming drafts). */
     plainCode?: boolean;
-    /** Live draft: throttle re-parse (react-markdown has no parse cache). */
+    /** Live draft: throttle re-parse and memo completed top-level blocks (B-354, B-610). */
     streaming?: boolean;
     /**
      * The text is the USER's own content (a local .md file preview), not agent
@@ -334,19 +376,16 @@ export function Markdown({ text, onOption, hideOptions = false, plainCode = fals
                 // table, mermaid…) degrades to one line, not a blank page.
                 return (
                     <RecoverableBoundary key={index} region="markdown" resetKey={segment.text} compact>
-                    <ReactMarkdown
-                        remarkPlugins={REMARK_PLUGINS}
-                        rehypePlugins={REHYPE_PLUGINS}
-                        urlTransform={safeUrlTransform}
-                        components={components}
-                    >
-                        {segment.text}
-                    </ReactMarkdown>
+                    {/* B-610: only the live draft is split — a committed message
+                        parses once, so blocks would only add overhead there. */}
+                    {streaming
+                        ? <MarkdownBlocks text={segment.text} components={components} />
+                        : <MarkdownChunk text={segment.text} components={components} />}
                     </RecoverableBoundary>
                 );
             })}
         </div>
-    ), [segments, components, onOption, hideOptions]);
+    ), [segments, components, onOption, hideOptions, streaming]);
 }
 
 /**
