@@ -25,6 +25,8 @@ import { buildSubagentSummary } from './subagentSummary';
 import { presentedSubagentStatus } from './subagentAbort';
 import { openSubagentPanel } from './subagentPanelState';
 import { useSubagentNavigation } from './subagentNavigation';
+import { AgentGlyph } from './AgentChip';
+import { codexChildThreadIds, codexChildTitle, notableSubagentType } from './agentIdentity';
 import { normalizePiToolCall } from '@/components/tools/piToolMapping';
 import { messageTimestamp, messageTimestampRange } from './messageTimestamp';
 import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
@@ -157,8 +159,32 @@ function ToolRow({
                     <span className="tg-subagent-status-slot" aria-hidden>{subagentGlyph(subagentStatus, tool.state, isAborted)}</span>
                     <span className="tg-subagent-open-title">{detail || label}</span>
                     <span className="tg-subagent-meta">
+                        {/* B-614: the agent's type is part of its identity, everywhere it shows. */}
+                        {notableSubagentType(subagentSummary?.subtype) && <span className="tg-subagent-kind"><AgentGlyph kind="subagent" size={13} />{notableSubagentType(subagentSummary?.subtype)}</span>}
                         {subagentStatus && <span>{t(`session.chat.subagentStatus.${subagentStatus}` as 'session.chat.subagentStatus.running')}</span>}
                         {subagentSummary && subagentSummary.toolCount > 0 && <span>{t('session.chat.usedTools', {count:subagentSummary.toolCount})}</span>}
+                    </span>
+                    <ChevronRight size={14} className="tg-subagent-open-cue" aria-hidden />
+                </button>
+            </div>
+        );
+    }
+
+    // B-614: a Codex collaboration call that spawned child threads is the same
+    // kind of thing as a Task sub-agent — a one-line pointer into the drawer,
+    // not a generic tool row hiding its only entry inside a disclosure.
+    const codexThreads = codexChildThreadIds(tool);
+    if (codexThreads.length && sessionId && subagentNavigation === 'session') {
+        const brief = typeof tool.input?.prompt === 'string' ? tool.input.prompt.trim().split('\n')[0] : '';
+        return (
+            <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`} title={messageTimestamp(message.createdAt, lang)}>
+                <button type="button" className={`tg-subagent-open tg-subagent-open--codex${tool.state === 'error' ? ' tg-subagent-open--failed' : ''}`}
+                    onClick={() => openSubagentPanel(sessionId, message.id)}>
+                    <span className="tg-subagent-status-slot" aria-hidden>{tool.state === 'running' ? <Spinner size={16} className="tg-subagent-spinner" /> : tool.state === 'error' ? <AlertTriangle size={16} className="tg-subagent-error" /> : <AgentGlyph kind="codex" size={14} />}</span>
+                    <span className="tg-subagent-open-title">{brief || codexChildTitle(tool)}</span>
+                    <span className="tg-subagent-meta">
+                        {brief && <span className="tg-subagent-kind"><AgentGlyph kind="codex" size={13} />{codexChildTitle(tool)}</span>}
+                        <span>{t('session.chat.subagentCount', { count: codexThreads.length })}</span>
                     </span>
                     <ChevronRight size={14} className="tg-subagent-open-cue" aria-hidden />
                 </button>

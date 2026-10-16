@@ -11,6 +11,7 @@ import { presentedSubagentStatus, userAbortedAt } from './subagentAbort';
 import { openSubagentPanel } from './subagentPanelState';
 import { backgroundTaskEntries, formatTaskAge, type BackgroundTaskEntry } from './backgroundTaskDock';
 import { stopBackgroundTask } from './claudeRuntimeControl';
+import { AgentGlyph } from './AgentChip';
 import './subagent.css';
 
 /** Uses the same lifecycle as the transcript; an async launch stub is not completion. */
@@ -58,12 +59,17 @@ export function SubagentDock({ sessionId }: { sessionId: string }) {
     return <nav className="sa-dock" aria-label={tasks.length ? t('session.chat.backgroundTasksDock', { count: tasks.length }) : t('session.chat.subagentPanelTitle')}>
         {cards.map(card => {
             const summary = buildSubagentSummary(card);
-            return <button type="button" key={card.id} className="sa-dock-item"
+            const command = card.subagent?.subagentType === 'background-command';
+            const title = summary.title ?? t(command ? 'session.chat.backgroundCommand' : 'session.chat.subagentPanelTitle');
+            const running = t('session.chat.subagentStatus.running');
+            // B-614: status slot (spinner) + identity glyph + name — same anatomy as
+            // the background-task chips beside it; the state word moves to the name.
+            return <button type="button" key={card.id} className="sa-dock-item" aria-label={`${title} · ${running}`} title={`${title} · ${running}`}
                 onClick={() => openSubagentPanel(sessionId, card.id)}>
                 <span aria-hidden><Spinner size={16} className="tg-subagent-spinner" /></span>
-                <span className="sa-dock-title">{summary.title ?? t(card.subagent?.subagentType === 'background-command' ? 'session.chat.backgroundCommand' : 'session.chat.subagentPanelTitle')}</span>
-                <span className="sa-dock-state">{t('session.chat.subagentStatus.running')}</span>
-                <ChevronRight size={14} aria-hidden />
+                <AgentGlyph kind={command ? 'terminal' : 'subagent'} size={13} />
+                <span className="sa-dock-title">{title}</span>
+                <ChevronRight size={14} aria-hidden className="sa-dock-kind" />
             </button>;
         })}
         {tasks.map(task => <BackgroundTaskChip key={task.id} sessionId={sessionId} task={task} now={now} canStop={canStop}

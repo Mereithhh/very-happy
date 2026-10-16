@@ -52,7 +52,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     // B-497: a message from another session on the same machine, or the
     // daemon's edit-conflict notice — a source card with a link to that session.
     const peerContent = presentSessionPeerMessage(message);
-    if (peerContent) return <SessionPeerMessageCard content={peerContent} />;
+    if (peerContent) return <SessionPeerMessageCard content={peerContent} sessionId={sessionId} />;
     const raw = message.displayText ?? message.text;
     // B-260: a background-task notification is a machine-facing user message.
     // Stripping used to leave an invisible empty bubble; render the one useful

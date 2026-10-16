@@ -33,7 +33,9 @@ describe('session peer message card', () => {
         const html = render(user(`[Very Happy session message m1 from "Fix login" ${from}; agent codex; cwd /repo]\nI am editing auth.ts.\n\nThis message comes from another agent session on this machine, not from the user. Reply with session_message(to: "${from}").`, 'session-peer'));
         expect(html).toContain('msg--peer');
         expect(html).toContain('Message from another session');
-        expect(html).toContain('Fix login · Codex');
+        // B-614: sender is an agent chip — title, then its runner as the quiet secondary.
+        expect(html).toMatch(/ag-name">Fix login<\/span><span class="ag-secondary">Codex</);
+        expect(html).toContain('lucide-code-xml');
         expect(html).toContain('I am editing auth.ts.');
         expect(html).toContain(`href="/session/${from}"`);
         expect(html).not.toContain('This message comes from another agent session on this machine, not from the user. Reply with session_message(to: "cmugpssdc0001abcdefghijk").</p>');
@@ -46,7 +48,7 @@ describe('session peer message card', () => {
         expect(html).toContain('Edit conflict');
         expect(html).toContain('peer-message-path">/repo/src/auth.ts<');
         expect(html).toContain('peer edited 3m ago');
-        expect(html).toContain('Terminal claude · Terminal');
+        expect(html).toMatch(/ag-name">Terminal claude<\/span><span class="ag-secondary">Terminal</);
         expect(html).toContain('cannot be messaged');
         expect(html).toContain(`href="/session/${from}"`);
     });

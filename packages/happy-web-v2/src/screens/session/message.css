@@ -150,15 +150,37 @@
   padding: 2px calc(var(--chat-space) * 2);
 }
 .msg-event-line--stopped { color: var(--text-dim); }
-.msg-event-line--subagent {
+/* B-614: sub-agent lifecycle lines (Codex / older CLIs) and background-task
+ * notifications are agent rows, not system pills: same left edge, 18px icon
+ * slot and Sans as the sub-agent pointer row. A past "started" event is not
+ * proof of live work, so it never takes --accent. */
+.msg--event:has(> .msg-event-line--subagent),
+.msg--event:has(> .msg-event-line--notification) { align-items: flex-start; }
+.msg-event-line--subagent,
+.msg-event-line--notification {
   display: inline-flex;
   align-items: center;
   gap: calc(var(--chat-space) * 2);
-  border-style: solid;
-  background: var(--bg-1);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  opacity: 1;
+  font-family: var(--font-sans);
+  font-size: var(--chat-fs-body);
+  line-height: var(--conversation-leading);
+  text-align: left;
 }
-.msg-event-line--running { color: var(--accent); }
+.msg-event-line--subagent > svg,
+.msg-event-line--notification > svg {
+  flex: none;
+  width: calc(var(--conversation-icon-size) / var(--chat-scale));
+  color: var(--text-faint);
+}
+.msg-event-line--running,
 .msg-event-line--completed { color: var(--text-dim); }
+.msg-event-line--notification.msg-event-line--error { color: var(--danger); background: transparent; border: 0; padding: 0; }
+.msg-event-line--notification.msg-event-line--error > svg { color: var(--danger); }
 .msg-event-line--error {
   color: var(--danger);
   border-color: var(--danger);

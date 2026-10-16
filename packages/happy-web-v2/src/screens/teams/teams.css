@@ -250,3 +250,10 @@
 .team-start-form .team-start-send { align-self: flex-end; display: inline-flex; align-items: center; gap: var(--sp-2); }
 .team-start-options { margin-top: var(--sp-3); }
 .teams-task .teams-error { overflow-wrap: anywhere; }
+
+/* B-614: members, roster and task owners use the shared agent glyph (Claude /
+   Codex / Pi) instead of one generic robot; live membership keeps the accent. */
+.teams-avatar .ag-glyph { color: var(--text-dim); }
+.teams-avatar[data-live=true] .ag-glyph { color: var(--accent); }
+.teams-roster .ag-glyph, .teams-task-owner .ag-glyph { color: var(--text-faint); }
+.teams-list-card h2 > svg, .teams-heading h1 > svg { flex: none; color: var(--text-dim); }

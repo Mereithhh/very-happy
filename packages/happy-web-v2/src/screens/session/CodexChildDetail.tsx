@@ -6,6 +6,8 @@ import { createReducer, reducer } from '@/sync/reducer/reducer';
 import { ActivityMessages } from './ActivityMessages';
 import { Markdown } from './Markdown';
 import { useTranslation } from '@/i18n/useTranslation';
+import { AgentGlyph } from './AgentChip';
+import { shortThreadId } from './agentIdentity';
 
 export function CodexChildDetail({sessionId,message}:{sessionId:string;message:ToolCallMessage}) {
     const {t}=useTranslation();
@@ -36,12 +38,14 @@ export function CodexChildDetail({sessionId,message}:{sessionId:string;message:T
         void refresh(); const timer=setInterval(()=>void refresh(),5000);
         return ()=>{canceled=true;clearInterval(timer);};
     },[sessionId,selected]);
+    // B-614: same anatomy as SubagentDetail — facts, briefing, then one
+    // segmented thread switcher (Codex glyph + short id; full id on hover).
     return <div className="sa">
-        {typeof input?.prompt==='string'&&<Markdown text={input.prompt}/>}
-        {typeof input?.model==='string'&&<span className="sa-model">{t('session.chat.subagentRequestedModel')}: {input.model}</span>}
-        <div className="sa-head">{ids.map(id=><button key={id} type="button" className="sa-dock-item" aria-pressed={id===selected} onClick={()=>setSelected(id)}>{id}</button>)}</div>
+        {typeof input?.model==='string'&&<div className="sa-head"><span className="sa-facts"><span className="sa-model">{t('session.chat.subagentRequestedModel')}: {input.model}</span></span></div>}
+        {typeof input?.prompt==='string'&&<div className="sa-brief"><Markdown text={input.prompt}/></div>}
+        {ids.length>0&&<div className="sa-threads" role="group" aria-label={t('session.chat.subagentLog')}>{ids.map(id=><button key={id} type="button" className="sa-thread" aria-pressed={id===selected} title={id} onClick={()=>setSelected(id)}><AgentGlyph kind="codex" size={13}/><span>{shortThreadId(id)}</span></button>)}</div>}
         {error&&<div role="status" className="tg-error">{error}</div>}
-        {loading&&selected&&<div role="status">{t('session.chat.loadingMessages')}</div>}
-        <ActivityMessages messages={messages} sessionId={sessionId} subagentNavigation="inline"/>
+        {loading&&selected&&<div role="status" className="sa-empty">{t('session.chat.loadingMessages')}</div>}
+        <div className="sa-log"><ActivityMessages messages={messages} sessionId={sessionId} subagentNavigation="inline"/></div>
     </div>;
 }

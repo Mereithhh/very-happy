@@ -11,13 +11,15 @@ import { CodexChildDetail } from './CodexChildDetail';
  * leaves the transcript a one-line pointer.
  */
 import { useMemo } from 'react';
-import { Bot, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useMessage, useSessionMessages } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { currentTurnMessages } from '@/sync/agentLiveness';
 import { SubagentDetail } from './SubagentDetail';
 import { buildSubagentSummary } from './subagentSummary';
 import { userAbortedAt } from './subagentAbort';
+import { AgentGlyph } from './AgentChip';
+import { codexChildTitle } from './agentIdentity';
 import './subagent.css';
 
 export function SubagentPanel({
@@ -42,12 +44,14 @@ export function SubagentPanel({
         [messages],
     );
     const card = message?.kind === 'tool-call' ? message : null;
-    const title = card ? buildSubagentSummary(card).title : null;
+    // B-614: the drawer names the agent the same way its transcript row does.
+    const isCodex = card?.tool.name === 'CodexCollaboration';
+    const title = card ? (isCodex ? codexChildTitle(card.tool) : buildSubagentSummary(card).title) : null;
 
     return (
         <div className="sap">
             {!embedded && <div className="sap-head">
-                <Bot size={14} className="sap-head-icon" aria-hidden />
+                <span className="sap-head-icon"><AgentGlyph kind={isCodex ? 'codex' : 'subagent'} /></span>
                 <span className="sap-title">{title ?? t('session.chat.subagentPanelTitle')}</span>
                 <button type="button" className="sap-icon" onClick={onClose} aria-label={t('common.close')}>
                     <X size={16} />

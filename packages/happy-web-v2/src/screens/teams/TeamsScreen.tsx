@@ -13,7 +13,7 @@ import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { TeamSchedules } from "./TeamSchedules";
 import { t as tr } from "@/text";
-import { Bot, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus, RefreshCw, Archive } from "lucide-react";
+import { Bot, UsersRound, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus, RefreshCw, Archive } from "lucide-react";
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
@@ -151,7 +151,7 @@ function TeamsContent() {
     <main className="teams-screen">
       <header className="teams-heading">
         <div><Link className="teams-back" to={teamId ? "/teams" : "/"}><ArrowLeft size={16} />{teamId ? c.title : tr("teams.sessions")}</Link>
-          <h1><Bot size={28} />{team?.name ?? c.title}</h1>
+          <h1><UsersRound size={26} aria-hidden />{team?.name ?? c.title}</h1>
           <p>{team ? <><span data-live={machineOnline}>{machineOnline ? c.online : c.offline}</span> · {executionMachine ? machineLabel(executionMachine) : c.unnamedMachine}</> : c.intro}</p>
           {team?.archivedAt !== undefined && <p role="status">{tr("teams.archived")} · {new Date(team.archivedAt).toLocaleString()}</p>}
         </div>
@@ -192,7 +192,7 @@ function TeamsContent() {
             navigate(`/teams/${created.id}?starting=1`);
           }} />
           </TeamDialog>}
-          {!teams.length && !unavailable && <div className="teams-empty"><Bot size={36} /><h2>{c.noTeams}</h2><p>{c.noTeamsHint}</p><Link to="/help">{c.guide} →</Link></div>}
+          {!teams.length && !unavailable && <div className="teams-empty"><UsersRound size={36} aria-hidden /><h2>{c.noTeams}</h2><p>{c.noTeamsHint}</p><Link to="/help">{c.guide} →</Link></div>}
           <div className="teams-list">{teams.map(item => <TeamListCard key={item.id} team={item} machine={machines.find(m => m.id === item.machineId) ? machineLabel(machines.find(m => m.id === item.machineId)!) : c.unnamedMachine} />)}</div>
         </>
       )}

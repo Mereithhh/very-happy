@@ -1,5 +1,9 @@
-.session-team-context { display: flex; align-items: center; gap: 8px; padding: 8px 14px; min-width: 0; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-dim); }
-.session-team-context a { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text); }
-.session-team-context a > span, .session-team-context > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.session-team-context svg { flex-shrink: 0; }
-.session-team-context-progress { margin-left: auto; flex-shrink: 0; }
+/* B-614: workspace chrome (not chat-scaled): tokens only, one hairline. */
+.session-team-context { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); min-width: 0; border-bottom: 1px solid var(--line); font-size: var(--fs-13); color: var(--text-dim); }
+.session-team-context a { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; color: var(--text); text-decoration: none; }
+.session-team-context a > svg, .session-team-context-sep { flex-shrink: 0; color: var(--text-faint); }
+.session-team-context a > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-team-context > .ag-chip { flex: 0 1 auto; }
+.session-team-context a.session-team-context-progress { margin-left: auto; flex-shrink: 0; color: var(--text-dim); }
+.session-team-context a.session-team-context-progress:hover { color: var(--text); }
+@media (pointer: coarse) { .session-team-context a { min-height: 44px; } }

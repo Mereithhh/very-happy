@@ -206,6 +206,12 @@ const ToolHistoryHarness = import.meta.env.DEV
 const SubagentHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/SubagentHarness').then((m) => ({ default: m.SubagentHarness })))
   : null;
+const MultiAgentHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/MultiAgentHarness').then((m) => ({ default: m.MultiAgentHarness })))
+  : null;
+const MultiAgentTeamsHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/MultiAgentHarness').then((m) => ({ default: m.MultiAgentTeamsHarness })))
+  : null;
 const BuiltinToolsHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/BuiltinToolsHarness').then((m) => ({ default: m.BuiltinToolsHarness })))
   : null;
@@ -261,6 +267,12 @@ const router = createBrowserRouter(
     ...(ToolHistoryHarness ? [{path:'/dev/tool-history',element:<Lazy><ToolHistoryHarness /></Lazy>}] : []),
     ...(SubagentHarness
       ? [{ path: '/dev/subagent/:id', element: <Lazy><SubagentHarness /></Lazy> }]
+      : []),
+    ...(MultiAgentHarness && MultiAgentTeamsHarness
+      ? [
+          { path: '/dev/multi-agent/:id', element: <Lazy><MultiAgentHarness /></Lazy> },
+          { path: '/dev/multi-agent-teams', element: <Lazy><MultiAgentTeamsHarness /></Lazy> },
+        ]
       : []),
     ...(BuiltinToolsHarness
       ? [{ path: '/dev/builtin-tools/:id', element: <Lazy><BuiltinToolsHarness /></Lazy> }]

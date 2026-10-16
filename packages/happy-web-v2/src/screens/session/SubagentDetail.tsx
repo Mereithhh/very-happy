@@ -25,6 +25,7 @@ import { formatDurationMs, formatTokens } from './format';
 import { ActivityMessages } from './ActivityMessages';
 import { messageTimestamp } from './messageTimestamp';
 import { compareMessagesNewestFirst } from '@/sync/messageOrder';
+import { AgentChip, AgentStatusIcon } from './AgentChip';
 import './subagent.css';
 
 function Fold({ label, children, defaultOpen = false }: { label: string; children: ReactNode; defaultOpen?: boolean }) {
@@ -74,16 +75,23 @@ export function SubagentDetail({ message, abortedAt = null }: { message: ToolCal
 
     return (
         <div className="sa" title="">
+            {/* B-614: identity line (status · type), then the quiet machine facts. */}
             <div className="sa-head">
-                {status && (
-                    <span className={`sa-status sa-status--${status}`}>
-                        {t(`session.chat.subagentStatus.${status}` as 'session.chat.subagentStatus.running')}
-                    </span>
-                )}
-                {summary.subtype && <span className="sa-kind">{summary.subtype === 'background-command' ? t('session.chat.backgroundCommand') : summary.subtype}</span>}
-                {summary.actualModels.map(model => <span key={model} className="sa-model">{t('session.chat.subagentActualModel')}: {model}</span>)}
-                {summary.requestedModel && <span className="sa-model">{t('session.chat.subagentRequestedModel')}: {summary.requestedModel}</span>}
-                {facts.length > 0 && <span className="sa-facts">{facts.join(' · ')}</span>}
+                <span className="sa-identity">
+                    {status && (
+                        <span className={`sa-status sa-status--${status}`}>
+                            <span className="sa-status-slot" aria-hidden><AgentStatusIcon status={status} /></span>
+                            {t(`session.chat.subagentStatus.${status}` as 'session.chat.subagentStatus.running')}
+                        </span>
+                    )}
+                    {summary.subtype && <AgentChip kind={summary.subtype === 'background-command' ? 'terminal' : 'subagent'}
+                        name={summary.subtype === 'background-command' ? t('session.chat.backgroundCommand') : summary.subtype} />}
+                </span>
+                {(summary.actualModels.length > 0 || summary.requestedModel || facts.length > 0) && <span className="sa-facts">
+                    {summary.actualModels.map(model => <span key={model} className="sa-model">{t('session.chat.subagentActualModel')}: {model}</span>)}
+                    {summary.requestedModel && <span className="sa-model">{t('session.chat.subagentRequestedModel')}: {summary.requestedModel}</span>}
+                    {facts.length > 0 && <span>{facts.join(' · ')}</span>}
+                </span>}
             </div>
 
             {command && (

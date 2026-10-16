@@ -1,6 +1,6 @@
 import type { TeamState } from '@slopus/happy-wire';
 import { Link } from 'react-router-dom';
-import { Bot, Circle, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor } from 'lucide-react';
+import { Circle, UsersRound, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor } from 'lucide-react';
 import { useWorkspaceCopy } from './workspaceCopy';
 import { t as tr } from '@/text';
 import { useFirstUseCopy } from './firstUseCopy';
@@ -8,6 +8,8 @@ import { memberTitle, teamRootTask, taskLaunchIssue } from './teamPresentation';
 import { Markdown } from '@/screens/session/Markdown';
 import { taskRows } from './teamView';
 import { botHistorySessionId } from '@/screens/sessions/teamNavigation';
+import { AgentGlyph } from '@/screens/session/AgentChip';
+import { agentKindLabel, agentKindOf } from '@/screens/session/agentIdentity';
 
 export function TeamProgress({ team }: { team: TeamState }) {
   const c = useWorkspaceCopy();
@@ -35,7 +37,7 @@ export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: 
       <div className="teams-members-grid">{team.bots.map(bot => {
         const historySessionId = botHistorySessionId(team, bot);
         const active = team.tasks.filter(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status));
-        const content = <><span className="teams-avatar" data-live={!!bot.sessionId && active.some(t => t.status === "running")}><Bot size={22} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{bot.root ? c.lead : bot.assistant === 'pi-acp' ? 'pi' : bot.assistant}</small><span>{active[0]?.goal ?? c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? f.starting : f.stopped}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
+        const content = <><span className="teams-avatar" data-live={!!bot.sessionId && active.some(t => t.status === "running")}><AgentGlyph kind={agentKindOf(bot.assistant)} size={18} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{agentKindLabel(agentKindOf(bot.assistant)) ?? bot.assistant}</small><span>{active[0]?.goal ?? c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? f.starting : f.stopped}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
         return historySessionId ? <Link key={bot.id} className="teams-member" to={`/session/${encodeURIComponent(historySessionId)}`}>{content}</Link> : <div key={bot.id} className="teams-member">{content}</div>;
       })}</div>
     </section>
@@ -47,7 +49,7 @@ export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: 
           const assignee = team.bots.find(b => b.id === task.assigneeBotId);
           return <button className="teams-task-preview" id={`team-task-${task.id}`} key={task.id} onClick={() => onTask(task.id)}>
             {depth > 0 && <small className="teams-parent-label"><GitBranch size={12} />{team.tasks.find(t => t.id === task.parentTaskId)?.goal.split('\n')[0]}</small>}
-            <strong>{task.goal}</strong><span className="teams-task-owner"><Bot size={14} />{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
+            <strong>{task.goal}</strong><span className="teams-task-owner">{assignee && <AgentGlyph kind={agentKindOf(assignee.assistant)} />}{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
             {taskLaunchIssue(team, task) && <span className="teams-error">{f.launchFailed} · {taskLaunchIssue(team, task)?.error}</span>}
             {result && <span className="teams-result-preview">{result}</span>}
             {['pending', 'failed'].includes(task.cleanup) && <small className={task.cleanup === 'failed' ? 'teams-error' : ''}>{task.cleanup === 'failed' ? c.cleanupFailed : c.cleanupPending}</small>}
@@ -60,5 +62,6 @@ export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: 
 
 export function TeamListCard({ team, machine }: { team: TeamState; machine: string }) {
   const c = useWorkspaceCopy();
-  return <Link className="teams-list-card" to={`/teams/${team.id}`}><div className="teams-section-heading"><h2><Bot size={24} />{team.name}</h2><ArrowUpRight size={18} /></div><p><Monitor size={14} />{machine}</p><div className="teams-roster">{team.bots.slice(0, 4).map(b => <span key={b.id}><Bot size={14} />{b.name}</span>)}{team.bots.length > 4 && <span>+{team.bots.length - 4}</span>}{!team.bots.length && <span>{c.noMembers}</span>}</div><TeamProgress team={team} />{team.tasks.filter(t => ['running', 'submitted'].includes(t.status)).slice(0, 2).map(t => <p className="teams-list-task" key={t.id}><span>{t.status === 'submitted' ? c.submitted : c.running}</span>{t.goal}</p>)}</Link>;
+  const f = useFirstUseCopy();
+  return <Link className="teams-list-card" to={`/teams/${team.id}`}><div className="teams-section-heading"><h2><UsersRound size={22} aria-hidden />{team.name}</h2><ArrowUpRight size={18} /></div><p><Monitor size={14} />{machine}</p><div className="teams-roster">{team.bots.slice(0, 4).map(b => <span key={b.id} title={agentKindLabel(agentKindOf(b.assistant)) ?? undefined}><AgentGlyph kind={agentKindOf(b.assistant)} />{memberTitle(b, f)}</span>)}{team.bots.length > 4 && <span>+{team.bots.length - 4}</span>}{!team.bots.length && <span>{c.noMembers}</span>}</div><TeamProgress team={team} />{team.tasks.filter(t => ['running', 'submitted'].includes(t.status)).slice(0, 2).map(t => <p className="teams-list-task" key={t.id}><span>{t.status === 'submitted' ? c.submitted : c.running}</span>{t.goal}</p>)}</Link>;
 }
