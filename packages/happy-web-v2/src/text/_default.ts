@@ -2204,6 +2204,15 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct16: {
+                title: 'Reading back stays put; zoomable images and side-by-side diffs',
+                summary: 'Scrolling up while a turn is running no longer throws you to the top, images can be pinch-zoomed and panned, and wide diffs can be read side by side.',
+                scroll: 'Fixed: when a turn finished while you were reading it further up, its steps folded away under you and the view could jump to the top of the conversation. The turn now stays open while you read and folds once you are back at the latest message. Thinking blocks above you wait the same way.',
+                images: 'Image preview: pinch or ⌘-scroll to zoom where the pointer is (up to 8×), scroll or drag to move around a zoomed image, double-click to switch between fit and 2×. On phones, pinch with two fingers and pan with one. + / − / 0 work from the keyboard.',
+                diff: 'Diffs at least 720px wide get a Unified / Split switch; your choice is remembered on this device. Copying from the split view takes only the side you selected.',
+                panel: 'The side-panel divider works with touch and pen, Esc cancels a drag, double-click restores the default width, and dragging it almost closed closes the panel. It can also be focused and resized with the arrow keys.',
+                smooth: 'Long replies stream more smoothly: only the paragraph being written is re-rendered. Lists in the sidebar and side panel fade at the edges that can still scroll, and thinking blocks open and close with a short animation.',
+            },
             oct13b: {
                 title: 'Review the agent\'s work without leaving the web',
                 summary: 'See what each turn changed, review everything in one place, and commit, push or open a PR from the session.',

@@ -16,6 +16,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-16-reading-images-diffs',
+    date: '2026-10-16',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct16.title',
+    summaryKey: 'changelog.releases.oct16.summary',
+    itemKeys: [
+      'changelog.releases.oct16.scroll',
+      'changelog.releases.oct16.images',
+      'changelog.releases.oct16.diff',
+      'changelog.releases.oct16.panel',
+      'changelog.releases.oct16.smooth',
+    ],
+  },
+  {
     id: '2026-10-15-cli-import-recent',
     cliVersion: '0.2.173',
     date: '2026-10-15',
