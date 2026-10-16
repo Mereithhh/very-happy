@@ -43,6 +43,7 @@
 .dv-no {
   flex: none;
   width: 38px;
+  font-variant-numeric: tabular-nums;
   padding: 0 8px;
   text-align: right;
   color: var(--text-faint);
@@ -103,4 +104,102 @@
 .dv--wrap .dv-no,
 .dv--wrap .dv-sign {
   position: static;
+}
+
+/* ── B-613 unified / side-by-side ────────────────────────────────────────────
+ * .dv--cq is the size container: split (and its toggle) exist only when the
+ * diff's own box is ≥720px. Below that the split body and toggle stay hidden
+ * and the unified body shows, whatever the saved preference. */
+.dv--cq {
+  container: dv / inline-size;
+}
+.dv-layout {
+  display: none;
+  margin-left: auto;
+  /* clear the hover copy button that floats at top/right: 4px, 24px wide */
+  margin-right: 28px;
+  gap: 2px;
+}
+.dv-layout-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.dv-layout-btn:hover {
+  color: var(--text);
+}
+.dv-layout-btn[aria-pressed='true'] {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.dv-layout-btn:focus-visible {
+  outline: none;
+  background: var(--bg-3);
+  color: var(--text);
+}
+.dv-body--split {
+  display: none;
+}
+@container dv (min-width: 720px) {
+  .dv-layout {
+    display: inline-flex;
+  }
+  .dv--split .dv-body--unified {
+    display: none;
+  }
+  .dv--split .dv-body--split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    overflow-x: hidden;
+  }
+}
+@media (pointer: coarse) {
+  .dv-layout-btn {
+    width: 32px;
+    height: 28px;
+  }
+}
+
+/* no-wrap: each side is its own horizontal scroller; the track is at least
+   the side's width and otherwise as wide as its longest line, so add/del
+   tints run edge to edge while scrolled */
+.dv-side {
+  display: grid;
+  grid-template-columns: minmax(100%, max-content);
+  align-content: start;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.dv-side--new {
+  border-left: 1px solid var(--line);
+}
+.dv--ln .dv-side .dv-sign {
+  left: 38px;
+}
+.dv-row--empty {
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+
+/* wrap (coarse + wrapLinesInDiffs): one grid row per pair */
+.dv-srow {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.dv-srow > [data-side='new'] {
+  border-left: 1px solid var(--line);
+}
+
+/* a drag that starts on one side selects only that side's code */
+.dv-body--split[data-select-side='old'] [data-side='new'],
+.dv-body--split[data-select-side='new'] [data-side='old'] {
+  user-select: none;
 }

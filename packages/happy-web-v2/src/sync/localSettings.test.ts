@@ -55,3 +55,16 @@ describe('optional Happy Bot entry', () => {
         expect(localSettingsParse({ sidebarView: 'list' }).happyBotEntryVisible).toBe(true);
     });
 });
+
+describe('B-613 diff layout preference', () => {
+    it('defaults to unified, including for a saved blob that predates the field', () => {
+        expect(localSettingsDefaults.diffLayout).toBe('unified');
+        expect(localSettingsParse({ themePreference: 'dark' }).diffLayout).toBe('unified');
+    });
+
+    it('keeps an explicit split choice without disturbing other device settings', () => {
+        const s = localSettingsParse({ diffLayout: 'split', sidebarView: 'status' });
+        expect(s.diffLayout).toBe('split');
+        expect(s.sidebarView).toBe('status');
+    });
+});

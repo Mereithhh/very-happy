@@ -1,0 +1,77 @@
+/*
+ * B-611 — `.vh-scroll-fade`: soften the top/bottom edges of a vertical scroll
+ * container so rows dissolve into the chrome instead of being cut by it.
+ *
+ * Mechanism (CSS only, no scroll listeners):
+ *   - Two registered lengths, --vh-fade-top / --vh-fade-bottom, size the
+ *     faded band at each edge. A scroll-driven animation on the container's
+ *     own block-axis scroll timeline grows the top band over the first
+ *     --vh-scroll-fade-size px of scroll and shrinks the bottom band over the
+ *     last ones, so an edge that is scrolled all the way is never faded.
+ *   - Content that does not overflow has an inactive timeline → the
+ *     animations do not apply → both bands stay at their 0px initial value.
+ *   - Engines without scroll timelines skip the whole @supports block: no
+ *     mask, no fade, nothing else changes.
+ *
+ * The ramp is an ease-in alpha curve (alpha = t^1.5 sampled at 7 stops) so
+ * the band has no visible start line, unlike a two-stop linear gradient.
+ *
+ * Use only on containers WITHOUT their own border, background-at-the-edge or
+ * box-shadow: a mask fades everything the element paints (it would cut a
+ * popover's shadow and fade its border). Not for the chat transcript or the
+ * terminal.
+ */
+@property --vh-fade-top {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --vh-fade-bottom {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes vh-scroll-fade-top {
+  from { --vh-fade-top: 0px; }
+  to { --vh-fade-top: var(--vh-scroll-fade-size); }
+}
+@keyframes vh-scroll-fade-bottom {
+  from { --vh-fade-bottom: var(--vh-scroll-fade-size); }
+  to { --vh-fade-bottom: 0px; }
+}
+
+.vh-scroll-fade {
+  --vh-scroll-fade-size: 22px;
+}
+
+@supports (animation-timeline: scroll()) {
+  .vh-scroll-fade {
+    /* keyboard focus / scrollIntoView lands a row outside the faded band, so
+       focus feedback at an edge is never half-transparent */
+    scroll-padding-block: var(--vh-scroll-fade-size);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      color-mix(in srgb, black 7%, transparent) calc(var(--vh-fade-top) * 1 / 6),
+      color-mix(in srgb, black 19%, transparent) calc(var(--vh-fade-top) * 2 / 6),
+      color-mix(in srgb, black 35%, transparent) calc(var(--vh-fade-top) * 3 / 6),
+      color-mix(in srgb, black 54%, transparent) calc(var(--vh-fade-top) * 4 / 6),
+      color-mix(in srgb, black 76%, transparent) calc(var(--vh-fade-top) * 5 / 6),
+      black var(--vh-fade-top),
+      black calc(100% - var(--vh-fade-bottom)),
+      color-mix(in srgb, black 76%, transparent) calc(100% - var(--vh-fade-bottom) * 5 / 6),
+      color-mix(in srgb, black 54%, transparent) calc(100% - var(--vh-fade-bottom) * 4 / 6),
+      color-mix(in srgb, black 35%, transparent) calc(100% - var(--vh-fade-bottom) * 3 / 6),
+      color-mix(in srgb, black 19%, transparent) calc(100% - var(--vh-fade-bottom) * 2 / 6),
+      color-mix(in srgb, black 7%, transparent) calc(100% - var(--vh-fade-bottom) * 1 / 6),
+      transparent 100%
+    );
+    animation-name: vh-scroll-fade-top, vh-scroll-fade-bottom;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(self block), scroll(self block);
+    animation-range: 0px var(--vh-scroll-fade-size), calc(100% - var(--vh-scroll-fade-size)) 100%;
+  }
+}

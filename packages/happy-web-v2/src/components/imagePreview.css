@@ -8,9 +8,13 @@
 .image-preview-button:focus-visible, .image-preview-retry:focus-visible { outline:none; box-shadow:inset 0 0 0 1px var(--text-faint); }
 .image-preview-button:disabled { opacity:.4; cursor:default; }
 .image-preview-button[aria-pressed='true'] { background:var(--bg-3); color:var(--text); }
-.image-preview-canvas { position:relative; flex:1; min-height:0; min-width:0; overflow:auto; overscroll-behavior:contain; background:var(--bg-0); }
-.image-preview-surface { display:flex; align-items:center; justify-content:center; width:max-content; min-width:100%; min-height:100%; padding:16px; box-sizing:border-box; }
-.image-preview-image { display:block; flex:none; max-width:none; max-height:none; object-fit:contain; }
+/* B-608: the image is positioned by transform (translate + scale, origin 0 0); the canvas
+   owns every gesture, so touch-action:none hands pinch/pan to the pointer handlers. */
+.image-preview-canvas { position:relative; flex:1; min-height:0; min-width:0; overflow:hidden; overscroll-behavior:contain; touch-action:none; user-select:none; -webkit-user-select:none; background:var(--bg-0); }
+.image-preview-canvas.is-pannable { cursor:grab; }
+.image-preview-canvas.is-panning { cursor:grabbing; }
+.image-preview-image { position:absolute; left:0; top:0; display:block; max-width:none; max-height:none; transform-origin:0 0; -webkit-user-drag:none; }
+.image-preview-image.is-animating { transition:transform var(--motion-fast); }
 .image-preview-status { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:var(--sp-3); padding:var(--sp-4); color:var(--text-faint); font-size:var(--conversation-size-base); text-align:center; }
 .image-preview-retry { min-height:36px; padding:6px 14px; border:1px solid var(--line); border-radius:var(--r-sm); color:var(--text); }
 .image-preview-error { flex:none; padding:8px 16px; color:var(--danger); font-size:var(--fs-13); }
@@ -24,4 +28,4 @@
 @media(max-width:800px) { .image-preview-dimensions { display:none; } }
 @media(max-width:600px) { .image-preview { inset:0; border:0; border-radius:0; } .image-preview-header { padding-top:max(4px,env(safe-area-inset-top)); } .image-preview-footer { padding-bottom:max(4px,env(safe-area-inset-bottom)); } }
 @media(pointer:coarse) { .image-preview-button { min-width:44px; height:44px; } .image-preview-button--original { min-width:48px; } .image-preview-retry { min-height:44px; } .image-preview-header, .image-preview-footer { min-height:52px; } }
-@media(prefers-reduced-motion:reduce) { .image-preview, .image-preview-overlay { animation:none; } }
+@media(prefers-reduced-motion:reduce) { .image-preview, .image-preview-overlay { animation:none; } .image-preview-image.is-animating { transition:none; } }

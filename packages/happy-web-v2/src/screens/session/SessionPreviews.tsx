@@ -77,7 +77,7 @@ export function SessionHistoryPanel({ sessionId, kind }: { sessionId: string; ki
     const { t } = useTranslation();
     const { entries, failed, retry, machineId } = useSessionToolHistory(sessionId);
     const wanted = kind === 'previews' ? 'preview' : 'clipboard';
-    return <div className="tool-history tool-history--panel">
+    return <div className="tool-history tool-history--panel vh-scroll-fade">
         <ToolHistoryEntries entries={entries.filter(entry => entry.kind === wanted)} machineId={machineId} sessionId={sessionId}
             failed={failed} onRetry={retry} showKind={false}
             empty={<p className="tool-history-empty">{t(kind === 'previews' ? 'toolHistory.emptyPreviews' : 'toolHistory.emptyClipboard')}</p>} />

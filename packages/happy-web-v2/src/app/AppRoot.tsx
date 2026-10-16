@@ -191,6 +191,9 @@ const MobileChatHarness = import.meta.env.DEV
 const ComposerUxHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/ComposerUxHarness').then((m) => ({ default: m.ComposerUxHarness })))
   : null;
+const DiffViewHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/DiffViewHarness').then((m) => ({ default: m.DiffViewHarness })))
+  : null;
 const ChatScrollHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/ChatScrollHarness').then((m) => ({ default: m.ChatScrollHarness })))
   : null;
@@ -254,6 +257,7 @@ const router = createBrowserRouter(
           { path: '/dev/changelog-history', element: <Lazy><ChangelogScreen /></Lazy> },
         ]
       : []),
+    ...(DiffViewHarness ? [{ path: '/dev/diff-view', element: <Lazy><DiffViewHarness /></Lazy> }] : []),
     ...(ToolHistoryHarness ? [{path:'/dev/tool-history',element:<Lazy><ToolHistoryHarness /></Lazy>}] : []),
     ...(SubagentHarness
       ? [{ path: '/dev/subagent/:id', element: <Lazy><SubagentHarness /></Lazy> }]

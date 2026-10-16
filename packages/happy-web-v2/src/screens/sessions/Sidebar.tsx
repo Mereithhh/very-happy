@@ -1102,7 +1102,7 @@ export function Sidebar() {
 </div></div>
       {showOrderHint && orderable && !teamHistory && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
 
-      <div className={`sb-list${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
+      <div className={`sb-list vh-scroll-fade${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
         <PendingSessionRows />
         {displayRows === null ? (
           <div className="sb-loading">

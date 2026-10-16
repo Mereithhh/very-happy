@@ -671,7 +671,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
           />
         </div>
 
-        <div className="cp-list" ref={listRef}>
+        <div className="cp-list vh-scroll-fade" ref={listRef}>
           {filtered.length === 0 ? (
             <div className="cp-empty">{t('commandPalette.empty')}</div>
           ) : (

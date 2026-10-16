@@ -233,7 +233,7 @@ function QuickOpenPanel({ sessionId, onClose }: { sessionId: string; onClose: ()
                         aria-label={t('quickOpen.title')}
                     />
                 </div>
-                <div className="cp-list" ref={listRef}>{body}</div>
+                <div className="cp-list vh-scroll-fade" ref={listRef}>{body}</div>
                 {!unavailable && results.length >= QUICK_OPEN_RESULT_LIMIT && (
                     <div className="cp-footer"><span>{t('quickOpen.truncatedHint', { count: QUICK_OPEN_RESULT_LIMIT })}</span></div>
                 )}
