@@ -77,6 +77,37 @@
   flex: none;
   width: 6px; /* visuals come from .app-resize-handle (layout.css) */
 }
+/* B-609: pointer-event separator — touch drags must not scroll the page;
+   keyboard focus shows on the seam itself (accent = focus). */
+.app-resize-handle.sd-files-handle {
+  touch-action: none;
+}
+.sd-files-handle:focus {
+  outline: none;
+}
+.sd-files-handle:focus-visible::after {
+  width: 2px;
+  background: var(--accent);
+}
+/* Coarse pointers (wide iPad): an invisible 24px hit area over the 6px handle. */
+@media (pointer: coarse) {
+  .sd-files-handle::before {
+    content: '';
+    position: absolute;
+    inset: 0 -9px;
+    z-index: 1;
+  }
+}
+/* Dragged past the collapse threshold: the panel fades to say "release closes it". */
+.sd-files {
+  transition: opacity var(--motion-fast);
+}
+.sd-files.sd-files--collapse-armed {
+  opacity: 0.45;
+}
+.sd-files-handle[data-collapse='armed']::after {
+  background: var(--text-faint);
+}
 /* the handle's 1px line IS the seam — a border-left too would double it */
 .sd-files-handle + .sd-files {
   border-left: none;
