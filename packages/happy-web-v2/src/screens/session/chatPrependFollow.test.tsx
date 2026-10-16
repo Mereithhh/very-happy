@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 /**
  * Regression (Owner 2026-10-13, veryhappy.dev eccf6b55): scrolling up an idle
- * chat snapped back to the bottom. Cause: after a session opens,
- * sync.prefetchOlderMessagesInBackground prepends a page of OLDER history at
- * the top every ~250 ms. Each page bumps rows.length and grows `.cl-inner`;
+ * chat snapped back to the bottom. Cause: after a session opened, the (pre-
+ * B-616) background prefetch prepended a page of OLDER history at the top
+ * every ~250 ms. Each page bumps rows.length and grows `.cl-inner`;
  * ChatList treated both as "new content" and scrolled to the bottom whenever
  * the reader was still inside the 80 px follow band — so a slow (trackpad)
  * scroll-up was reset to 0 on every page and could never leave the band.

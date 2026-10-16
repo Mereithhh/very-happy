@@ -23,6 +23,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     summaryKey: 'changelog.releases.oct16.summary',
     itemKeys: [
       'changelog.releases.oct16.scroll',
+      'changelog.releases.oct16.history',
       'changelog.releases.oct16.images',
       'changelog.releases.oct16.diff',
       'changelog.releases.oct16.panel',

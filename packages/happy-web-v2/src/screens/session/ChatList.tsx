@@ -39,6 +39,7 @@ import {
     settleWait,
     anchorIndex,
     SCROLL_SETTLE_MS,
+    shouldRequestOlder,
 } from './chatFollow';
 import { countRunningSubagentCards } from './subagentPills';
 import { transcriptChronological } from './transcriptMessages';
@@ -213,6 +214,32 @@ export function ChatList({
     chronologicalRef.current = chronological;
     const olderPendingRef = useRef(false);
     olderPendingRef.current = !!hasMoreOlder || !!isLoadingOlder;
+    // B-616: older history is fetched on demand — one page when the reader
+    // parks the top of the loaded history within a screen and the scroll has
+    // settled (chatFollow.shouldRequestOlder). Checked when a scroll settles
+    // and after each commit that changed the rows or the pagination flags, so
+    // a window shorter than the viewport fills up, and a landed page that
+    // left the reader still near the top is followed by the next one.
+    const hasMoreOlderRef = useRef(!!hasMoreOlder);
+    hasMoreOlderRef.current = !!hasMoreOlder;
+    const isLoadingOlderRef = useRef(!!isLoadingOlder);
+    isLoadingOlderRef.current = !!isLoadingOlder;
+    const requestOlderIfParked = () => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const settled = holdRef.current === null
+            && settleWait(performance.now(), motionRef.current.lastAt, motionRef.current.touching) === 0;
+        const wanted = shouldRequestOlder({
+            scrollTop: el.scrollTop,
+            clientHeight: el.clientHeight,
+            hasMoreOlder: hasMoreOlderRef.current,
+            isLoadingOlder: isLoadingOlderRef.current,
+            settled,
+        });
+        if (wanted) void sync.loadOlderMessages(sessionId);
+    };
+    const requestOlderRef = useRef(requestOlderIfParked);
+    requestOlderRef.current = requestOlderIfParked;
     const releaseWhenSettled = () => {
         if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
         const check = () => {
@@ -224,6 +251,7 @@ export function ChatList({
             settleTimerRef.current = null;
             holdRef.current = null;
             setHoldFromId(null);
+            requestOlderRef.current();
         };
         settleTimerRef.current = setTimeout(check, SCROLL_SETTLE_MS);
     };
@@ -395,9 +423,10 @@ export function ChatList({
     // 回底由 onScroll 清快照并 setShowJump(false) 触发重渲染，badge 随之消失。
     const unseenLabel = formatUnseen(unseenRows(awaySnapshotRef.current, rowKeys));
 
-    // Older history landed at the top (prefetch page, 「加载更早」, a held
-    // page released after the scroll settled, the load-older slot going away):
-    // keep the reader's content where it was, in the same commit, before paint.
+    // Older history landed at the top (a page requested while parked near the
+    // top, 「加载更早」, a held page released after the scroll settled, the
+    // load-older slot going away): keep the reader's content where it was, in
+    // the same commit, before paint.
     // Measured on an anchor row in the viewport — not the top row, which the
     // insert may rebuild (its turn gains the older messages) — so growth at the
     // bottom in the same commit is not mistaken for the prepend. Also keeps a
@@ -431,11 +460,17 @@ export function ChatList({
         anchorRef.current = at < 0 ? null : { node: children[at], top: children[at].getBoundingClientRect().top - innerTop() };
     });
 
+    // B-616: after the compensation above has run, see whether the reader is
+    // (still) parked near the top of what is loaded and ask for the next page.
+    useEffect(() => {
+        requestOlderRef.current();
+    }, [rows.length, hasMoreOlder, isLoadingOlder, isLoaded]);
+
     // Auto-stick to bottom on new content when already near the bottom. Keyed on
     // both row count (new messages) and the streaming message's growing length
     // (in-place text updates) so the view follows live streamed output.
     // Only a change at the BOTTOM edge follows: older history prepended at the
-    // top (background prefetch / 「加载更早」) also bumps rows.length, and
+    // top (a page loaded on demand / 「加载更早」) also bumps rows.length, and
     // snapping on it dragged a reader slowly scrolling up inside the 80px band
     // back to 0 on every page — they could never get out (isBottomEdgeChange).
     const newestRowKey = rowKeys[rowKeys.length - 1] ?? null;
@@ -491,8 +526,6 @@ export function ChatList({
     // reader (same trap as the row effect above). The baseline is shared so
     // that compensation can re-arm it.
     const hasTranscript = isLoaded && messages.length > 0;
-    const isLoadingOlderRef = useRef(isLoadingOlder);
-    isLoadingOlderRef.current = isLoadingOlder;
     useEffect(() => {
         const inner = innerRef.current;
         if (!hasTranscript || !inner || typeof ResizeObserver === 'undefined') return;

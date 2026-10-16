@@ -1,13 +1,18 @@
 /**
  * DEV-only harness: the REAL ChatList fed by the real store, with the two
- * things a long session does while the user is reading — the background
- * older-history prefetch (sync.prefetchOlderMessagesInBackground: a page
- * every 250 ms) and in-place growth of the last message (streaming). Drives
- * the scroll-follow bug hunt (B-467): a browser script wheels up while pages
- * land and records whether the view stays where the user put it.
+ * things a long session does while the user is reading — older history
+ * landing at the top (B-616: one page when the reader parks near the top;
+ * `startPrefetch` replays the pre-B-616 background loop) and in-place growth
+ * of the last message (streaming). Drives the scroll-follow bug hunt (B-467):
+ * a browser script wheels up while pages land and records whether the view
+ * stays where the user put it.
+ *
+ * `sync.loadOlderMessages` is patched to `prependPage(40)` so ChatList's own
+ * on-demand requests land here; `olderRequests()` counts them.
  *
  * Controls on `window.__chatScroll`:
  *   prependPage(n)        one older page, sequenced like sync.loadOlderMessages
+ *   olderRequests()       how many pages ChatList asked for by itself (B-616)
  *   startPrefetch(ms, n)  keep prepending every `ms` (default 250)
  *   stop()
  *   grow(chars)           append text to the newest message (streaming)
@@ -23,6 +28,7 @@ import { SessionDetailScreen } from '@/screens/session/SessionDetailScreen';
 import type { NormalizedMessage } from '@/sync/typesRaw';
 import type { Session } from '@/sync/storageTypes';
 import { storage } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 import { useLiveStreamStore } from '@/sync/liveStreamStore';
 import { recordHeartbeat } from '@/sync/heartbeatLease';
 import { ChatList } from '@/screens/session/ChatList';
@@ -60,6 +66,7 @@ declare global {
   interface Window {
     __chatScroll?: {
       prependPage: (n?: number) => Promise<void>;
+      olderRequests: () => number;
       startPrefetch: (ms?: number, n?: number) => void;
       stop: () => void;
       grow: (chars?: number) => void;
@@ -147,8 +154,20 @@ export function ChatScrollHarness() {
       for (let i = 0; i < 3; i++) await Promise.resolve();
       s.applyOlderMessagesLoading(SESSION_ID, false);
     };
+    // B-616: ChatList asks for older history by itself when parked near the
+    // top — route that to the harness pages and count it.
+    let olderRequests = 0;
+    const realLoadOlder = sync.loadOlderMessages;
+    sync.loadOlderMessages = async (sessionId: string) => {
+      if (sessionId !== SESSION_ID) return realLoadOlder(sessionId);
+      const current = storage.getState().sessionMessages[SESSION_ID];
+      if (!current || current.isLoadingOlder || !current.hasMoreOlder) return;
+      olderRequests += 1;
+      await prependPage(40);
+    };
     window.__chatScroll = {
       prependPage,
+      olderRequests: () => olderRequests,
       startPrefetch: (ms = 250, n = 40) => {
         if (timer) clearInterval(timer);
         timer = setInterval(() => { void prependPage(n); }, ms);
