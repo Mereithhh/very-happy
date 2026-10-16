@@ -227,7 +227,7 @@ function FsBrowserContent({
                 )}
             </div>
 
-            <div className="fsb-list">
+            <div className="fsb-list vh-scroll-fade">
                 {failure ? (
                     <div className="fsb-center">
                         <span>{fsFailureText(t, failure)}</span>

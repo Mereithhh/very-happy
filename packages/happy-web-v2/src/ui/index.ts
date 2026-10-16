@@ -1,4 +1,5 @@
 import './ui.css';
+import './scrollFade.css';
 
 export { Button } from './Button';
 export { Input } from './Input';

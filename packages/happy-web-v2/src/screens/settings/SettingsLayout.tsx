@@ -65,7 +65,7 @@ export function SettingsWorkspace({children,basePath='/settings'}:{children:Reac
   const openHit=(href:string)=>{setQuery('');setSearchOpen(false);navigate(href);};
   const searchLabel=zh?'搜索设置':'Search settings';
   return <div className="settings-workspace"><div className="settings-layout">
-    <aside className="settings-navigation" data-search-open={searchOpen} data-searching={Boolean(trimmed)}>
+    <aside className="settings-navigation vh-scroll-fade" data-search-open={searchOpen} data-searching={Boolean(trimmed)}>
       <div className="settings-navigation-top"><Link className="settings-return" to="/"><ArrowLeft size={16}/><span>{zh?'返回工作台':'Back to workspace'}</span></Link><button className="settings-search-toggle" aria-label={searchLabel} aria-expanded={searchOpen} onClick={()=>{setSearchOpen(!searchOpen);setQuery('');}}><Search size={16}/></button></div>
       <label className="settings-search"><Search size={14}/><input type="search" aria-label={searchLabel} placeholder={zh?'搜索设置…':'Search settings…'} value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'&&hits[0]&&!e.nativeEvent.isComposing){e.preventDefault();openHit(settingHref(hits[0].entry,basePath));} }}/></label>
       <nav aria-label={t('settings.title')}>

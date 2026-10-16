@@ -23,7 +23,7 @@ export function ToolHistoryView({entries, machineId, sessionId, failed = false, 
     const zh = lang.startsWith('zh');
     return <details className="tool-history">
         <summary>{zh ? '复制与预览记录' : 'Copy and preview history'}{entries.length > 0 && ` · ${entries.length}`}</summary>
-        <div className="tool-history-body">
+        <div className="tool-history-body vh-scroll-fade">
             <ToolHistoryEntries entries={entries} machineId={machineId} sessionId={sessionId} failed={failed} onRetry={onRetry} />
         </div>
     </details>;

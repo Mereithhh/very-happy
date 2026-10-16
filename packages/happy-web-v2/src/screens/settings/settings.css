@@ -535,7 +535,8 @@ input.set-value:focus {
 
 /* Shared settings shell: one category sidebar, all real route contents. */
 .settings-workspace { height:100%; min-height:0; width:100%; container-type:inline-size; }
-.settings-layout { display:grid; grid-template-columns:240px minmax(0,1fr); height:100%; min-height:0; }
+/* B-611: the nav paints its column via the layout so .vh-scroll-fade on the nav fades rows, not the bg-1 column */
+.settings-layout { display:grid; grid-template-columns:240px minmax(0,1fr); height:100%; min-height:0; background:var(--bg-1); }
 .settings-navigation { flex:none; width:240px; background:var(--bg-1); padding:var(--sp-3); overflow-y:auto; }
 .settings-navigation-top { display:flex; align-items:center; justify-content:space-between; }
 .settings-search-toggle { display:none; }
