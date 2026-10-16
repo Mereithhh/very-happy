@@ -147,10 +147,14 @@ export function SessionDetailScreen() {
     // (shared with the terminal's file browser, B-088). Narrow viewports keep
     // the full overlay: no handle, no inline width.
     const filesWide = useMediaQuery('(min-width: 1100px)');
-    // The drag handle needs a mouse — touch devices (wide iPad) keep the plain
-    // sidebar without it.
-    const filesResizable = useMediaQuery('(min-width: 1100px) and (pointer: fine)');
-    const { width: filesWidth, onHandleMouseDown: onFilesHandleDown } = useFilesPanelWidth();
+    // B-609: the handle is a pointer-event separator, so wide touch screens
+    // (iPad) get it too (coarse pointers get a wider hit area in CSS).
+    const filesResizable = filesWide;
+    // Dragging past the collapse threshold closes the aside through the same
+    // path as the scrim / close button; the stored width is left untouched.
+    const { width: filesWidth, collapseArmed: filesCollapseArmed, handleProps: filesHandleProps } = useFilesPanelWidth({
+        onCollapse: () => setPanelRef.current(null, true),
+    });
     // iOS: while the soft keyboard is up, pin this screen to the visual
     // viewport so the composer sits above the keyboard and the message list's
     // scroll math matches what's actually visible (see the hook's write-up).
@@ -315,14 +319,9 @@ export function SessionDetailScreen() {
                 <>
                     {panelOpen && <div className="sd-files-scrim" onClick={() => setPanel(null, true)} aria-hidden />}
                     {panelOpen && filesResizable && (
-                        <div
-                            className="app-resize-handle sd-files-handle"
-                            onMouseDown={onFilesHandleDown}
-                            role="separator"
-                            aria-orientation="vertical"
-                        />
+                        <div className="app-resize-handle sd-files-handle" {...filesHandleProps} />
                     )}
-                    <aside className="sd-files" hidden={!panelOpen} style={{ ...(filesWide ? { width: filesWidth } : {}), ...(!panelOpen ? { display: 'none' } : {}) }}>
+                    <aside className={`sd-files${filesCollapseArmed ? ' sd-files--collapse-armed' : ''}`} hidden={!panelOpen} style={{ ...(filesWide ? { width: filesWidth } : {}), ...(!panelOpen ? { display: 'none' } : {}) }}>
                         <SessionWorkspacePanel key={id} sessionId={id} visible={panelOpen} panel={retainedPanel.tab} subagentTarget={retainedPanel.subagentTarget}
                             btwAllowed={btwAllowed} onPanel={tab=>setPanel(tab,true)}
                             onSubagent={messageId=>openSubagent(messageId,true)} onClose={()=>setPanel(null,true)}/>

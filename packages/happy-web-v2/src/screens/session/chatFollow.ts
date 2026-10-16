@@ -182,3 +182,20 @@ export function anchorIndex(count: number, bottomOf: (index: number) => number, 
     }
     return Math.min(count - 1, Math.max(lo, minIndex));
 }
+
+/**
+ * B-607：一轮跑完（live → done）时自动折叠它的过程，**但不从读者眼皮底下折**。
+ *
+ * 读者上滚到正在跑的这一轮里看过程时，轮次结束（或活性闪断：thinking 租约/
+ * turn-end 与 2s keepAlive 先后到达，live→done→live）会把整段过程折成一行。
+ * 内容从视口里被抽走，scrollTop 被浏览器夹到新的最大值；闪断时紧接着又展开，
+ * 读者就停在这一轮的开头——年轻会话里这一轮就是整个 transcript，于是「滚动条
+ * 莫名其妙回到最上面」（Owner 2026-10-16 实报）。
+ *
+ * 只在两种情况下折：读者在跟随底部（折完照样贴底），或这段过程整个在视口
+ * 之下（折掉的内容读者看不见，也不在他上方）。否则保持展开，读者自己折。
+ */
+export function shouldFoldFinishedTurn(input: { following: boolean; panelTop: number | null; viewportBottom: number }): boolean {
+    if (input.following || input.panelTop === null) return true;
+    return input.panelTop >= input.viewportBottom;
+}

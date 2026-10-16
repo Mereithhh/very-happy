@@ -51,6 +51,7 @@ import { turnSendStatus } from './sendStatusModel';
 import { latestOwnSendKey, onChatFollowRequest } from './chatFollowRequest';
 import { SelectionQuote } from './SelectionQuote';
 import { ChatPromptRail } from './ChatPromptRail';
+import { ReaderFollowContext, createReaderFollow, type ReaderFollowSource } from './readerFollow';
 import './chatReadingAids.css';
 
 export function ChatList({
@@ -67,6 +68,13 @@ export function ChatList({
     const scrollRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
     const atBottomRef = useRef(true);
+    // B-607: mirrors atBottomRef for the rows (TurnActivityView's deferred fold).
+    const readerFollowRef = useRef<ReaderFollowSource | null>(null);
+    if (readerFollowRef.current === null) readerFollowRef.current = createReaderFollow(true);
+    const setAtBottom = (next: boolean) => {
+        atBottomRef.current = next;
+        readerFollowRef.current!.set(next);
+    };
     const [showJump, setShowJump] = useState(false);
     const [cancelingLocalKey, setCancelingLocalKey] = useState<string | null>(null);
     // B-099 ②：离底时刻最新一行的 key（贴底时为 null）。排在它后面的 row 数
@@ -224,7 +232,7 @@ export function ChatList({
         // stop following for a gesture that cannot move the view.
         if (!el || el.scrollTop <= 0) return;
         detachedRef.current = true;
-        atBottomRef.current = false;
+        setAtBottom(false);
         awaySnapshotRef.current = nextAwaySnapshot(awaySnapshotRef.current, false, rowKeys[rowKeys.length - 1] ?? null);
         setShowJump(true);
     };
@@ -333,7 +341,7 @@ export function ChatList({
         // B-598: once detached, the 80px band no longer re-arms following.
         const { atBottom, detached } = followAfterScroll(detachedRef.current, distance);
         detachedRef.current = detached;
-        atBottomRef.current = atBottom;
+        setAtBottom(atBottom);
         awaySnapshotRef.current = nextAwaySnapshot(awaySnapshotRef.current, atBottom, rowKeys[rowKeys.length - 1] ?? null);
         setShowJump(!atBottom);
     };
@@ -401,7 +409,7 @@ export function ChatList({
     // atBottom=true also arms the growth/row followers for the reply.
     const followNow = () => {
         detachedRef.current = false;
-        atBottomRef.current = true;
+        setAtBottom(true);
         awaySnapshotRef.current = null;
         setShowJump(false);
         scrollToBottom(false);
@@ -482,7 +490,7 @@ export function ChatList({
     useLayoutEffect(() => {
         if (!isLoaded) return;
         detachedRef.current = false;
-        atBottomRef.current = true;
+        setAtBottom(true);
         awaySnapshotRef.current = null;
         holdRef.current = null;
         setHoldFromId(null);
@@ -539,6 +547,7 @@ export function ChatList({
         // B-145 finding 2: 路径白名单在**会话根**挂一次。挂在每条消息上会让长会话
         // 变成 O(N²)（每条各订阅全量 messages 并各扫一遍），流式输出时尤其明显。
         <MarkdownPathProvider sessionId={sessionId}>
+        <ReaderFollowContext.Provider value={readerFollowRef.current}>
         <div className="cl">
             {/* B-473: one delegated hover-time bubble for every row below. */}
             <MessageTimeTooltip containerRef={scrollRef} />
@@ -701,6 +710,7 @@ export function ChatList({
                 </button>
             )}
         </div>
+        </ReaderFollowContext.Provider>
         </MarkdownPathProvider>
     );
 }
