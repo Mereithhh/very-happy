@@ -45,6 +45,13 @@
   gap: calc(var(--chat-space) * 3);
   padding-top: calc(var(--chat-space) * 4);
 }
+/* B-615: a live turn whose first output is still a draft (LiveStreamView,
+   right below this row) has an empty panel. Its height plus the transcript's
+   row gap (3 × chat-space) must equal the panel's top padding, so the draft
+   sits exactly where the persisted message lands inside the panel. */
+.ta-detail:empty {
+  padding-top: var(--chat-space);
+}
 
 /* Turn activity is a flat execution log: no outer rail and no nested spines. */
 .ta-detail .msg-thinking {

@@ -158,6 +158,12 @@ export function useLiveStream(sessionId: string): LiveStreamState {
     return useLiveStreamStore((state) => state.streams[sessionId] ?? EMPTY_LIVE_STREAM);
 }
 
+/** B-615: whether the session shows draft text right now. A boolean, so the
+ *  transcript re-renders when a draft appears or leaves, not on every delta. */
+export function useHasLiveDraft(sessionId: string): boolean {
+    return useLiveStreamStore((state) => (state.streams[sessionId]?.blocks ?? []).some((block) => block.text.length > 0));
+}
+
 /** Subscribe to just the quantified progress. Its identity is preserved
  *  across delta frames, so the status bar re-renders on real progress
  *  changes instead of ~12 times a second. */

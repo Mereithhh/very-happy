@@ -34,7 +34,7 @@ vi.mock('@/sync/storage', () => ({
 }));
 vi.mock('@/sync/sync', () => ({ sync: { loadOlderMessages: vi.fn() } }));
 vi.mock('@/sync/ops', () => ({ sessionCancelQueuedMessage: vi.fn() }));
-vi.mock('@/sync/liveStreamStore', () => ({ endLiveStreamTurn: vi.fn() }));
+vi.mock('@/sync/liveStreamStore', () => ({ endLiveStreamTurn: vi.fn(), useHasLiveDraft: () => false }));
 vi.mock('@/sync/heartbeatLease', () => ({ useHeartbeatFresh: () => false }));
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key, lang: 'en' }) }));
 vi.mock('@/ui', () => ({ Button: () => null, EmptyState: () => null, OrbitLoader: () => null, Spinner: () => null, useToast: () => ({}) }));

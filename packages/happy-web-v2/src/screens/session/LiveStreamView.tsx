@@ -14,7 +14,7 @@
  * (Claude sessions never get thinking text — the API redacts it — so this
  * branch is exercised by pi sessions, whose pi-acp relays real reasoning; B-371.)
  */
-import { memo } from 'react';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { Brain } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useLiveStream } from '@/sync/liveStreamStore';
@@ -24,6 +24,9 @@ import type { LiveStreamBlock } from '@/sync/liveStream';
 import { Markdown, NoPathLinks } from './Markdown';
 import './livestream.css';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
+import { draftRenderList } from './draftRetire';
+
+const NO_BLOCKS: readonly LiveStreamBlock[] = [];
 
 /**
  * Presentational half — takes the blocks directly so it can be rendered (and
@@ -35,7 +38,24 @@ import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 export const LiveStreamBlocks = memo(function LiveStreamBlocks({ blocks: allBlocks }: { blocks: readonly LiveStreamBlock[] }) {
     const { t } = useTranslation();
     const blocks = allBlocks.filter((block) => block.text.length > 0);
-    if (blocks.length === 0) return null;
+    // B-615 (draftRetire.ts): a block that left since the last commit stays
+    // in the DOM, hidden, for one frame — removing it in the commit that adds
+    // the persisted reply makes WebKit clamp the reader's scrollTop.
+    const slotRef = useRef<HTMLDivElement>(null);
+    const committedRef = useRef<readonly LiveStreamBlock[]>(NO_BLOCKS);
+    const [, setRetiredFrame] = useState(0);
+    const entries = draftRenderList(committedRef.current, blocks);
+    const retiring = entries.some((entry) => entry.hidden);
+    useLayoutEffect(() => {
+        committedRef.current = blocks;
+        if (!retiring) return;
+        // Lay the hidden blocks out of the flow now, so the removal that the
+        // next render makes has no boxes left to tear down.
+        slotRef.current?.getBoundingClientRect();
+        const frame = requestAnimationFrame(() => setRetiredFrame((n) => n + 1));
+        return () => cancelAnimationFrame(frame);
+    });
+    if (entries.length === 0) return null;
 
     return (
         // No aria-live: this subtree is replaced ~12 times a second while text
@@ -43,18 +63,18 @@ export const LiveStreamBlocks = memo(function LiveStreamBlocks({ blocks: allBloc
         // the whole answer or (with aria-busy, which never gets to flip false
         // here) silence it entirely. The persisted message that replaces this
         // draft is what gets announced.
-        <div className="ls">
+        <div className="ls" ref={slotRef} hidden={blocks.length === 0}>
             {/* Path links are pointless on a draft: findPathHits would run over
                 every leaf ~12 times a second, and the persisted message links
                 the same paths 1.5s later anyway. */}
             <NoPathLinks>
-            {blocks.map((block, index) => {
+            {entries.map(({ block, hidden }) => {
                 // Only the last unfinished block is still receiving text, so it
                 // is the only one that gets a cursor.
-                const streaming = !block.done && index === blocks.length - 1;
+                const streaming = !hidden && !block.done && block === blocks[blocks.length - 1];
                 if (block.kind === 'thinking') {
                     return (
-                        <div key={block.key} className="msg msg--agent">
+                        <div key={block.key} className="msg msg--agent" hidden={hidden}>
                             <div className="msg-thinking ls-thinking">
                                 <div className="msg-thinking-head ls-thinking-head">
                                     <Brain size={13} className="msg-thinking-icon" aria-hidden />
@@ -69,7 +89,7 @@ export const LiveStreamBlocks = memo(function LiveStreamBlocks({ blocks: allBloc
                     );
                 }
                 return (
-                    <div key={block.key} className="msg msg--agent">
+                    <div key={block.key} className="msg msg--agent" hidden={hidden}>
                         <div className="msg-agent-text ls-text">
                             <Markdown text={block.text} plainCode streaming />
                             {streaming && <span className="ls-cursor" aria-hidden />}
@@ -98,6 +118,8 @@ export const LiveStreamView = memo(function LiveStreamView({ sessionId }: { sess
     // — a session that went quiet, or frames from a producer that is not
     // actually driving a turn — must not paint into the transcript, where a
     // draft is visually indistinguishable from a real reply.
-    if (!live && stream.sweepAt === null) return null;
+    // B-615: rendered empty rather than unmounted, so a draft dropped here
+    // also retires hidden-first (draftRetire.ts).
+    if (!live && stream.sweepAt === null) return <LiveStreamBlocks blocks={NO_BLOCKS} />;
     return <LiveStreamBlocks blocks={stream.blocks} />;
 });

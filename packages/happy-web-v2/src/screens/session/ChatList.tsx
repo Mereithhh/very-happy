@@ -17,11 +17,12 @@ import { MarkdownPathProvider } from './Markdown';
 import { PermissionPointer } from './PermissionCard';
 import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 import { LiveStreamView } from './LiveStreamView';
-import { endLiveStreamTurn } from '@/sync/liveStreamStore';
+import { endLiveStreamTurn, useHasLiveDraft } from '@/sync/liveStreamStore';
 import { TurnActivityView } from './TurnActivityView';
 import { TurnDiffRollup } from './TurnDiffRollup';
 import { CompactionDivider } from './CompactionDivider';
-import { buildChatRows } from './chatTurns';
+import { buildChatRows, newestTurnOpenerId } from './chatTurns';
+import { NO_HELD_TURNS, holdEndedTurn } from './turnHold';
 import {
     nextAwaySnapshot,
     unseenRows,
@@ -126,9 +127,28 @@ export function ChatList({
         runningSubagentsInTurn: runningSubagents,
         heartbeatFresh: leaseFresh,
     });
+    // B-615 (turnHold.ts): a turn that stops being the live one while the
+    // reader is scrolled up — liveness dropped, or the next turn started —
+    // keeps its live shape (answer inside the activity row) until they follow
+    // the live end again. Decided in the render that sees the edge, so the
+    // restructure never reaches the DOM before it.
+    const liveTurn = useMemo(
+        () => (sessionLive ? newestTurnOpenerId(shownChronological) : null),
+        [sessionLive, shownChronological],
+    );
+    const [liveTurnSeen, setLiveTurnSeen] = useState({ sessionId, turn: liveTurn });
+    const [heldTurns, setHeldTurns] = useState(NO_HELD_TURNS);
+    if (liveTurnSeen.sessionId !== sessionId || liveTurnSeen.turn !== liveTurn) {
+        setLiveTurnSeen({ sessionId, turn: liveTurn });
+        if (liveTurnSeen.sessionId === sessionId) {
+            const following = atBottomRef.current;
+            setHeldTurns((held) => holdEndedTurn(held, liveTurnSeen.turn, liveTurn, following));
+        }
+    }
+    const liveDraft = useHasLiveDraft(sessionId);
     const rows = useMemo(
-        () => buildChatRows(shownChronological, sessionLive, { turnDiffs: true }),
-        [shownChronological, sessionLive],
+        () => buildChatRows(shownChronological, sessionLive, { turnDiffs: true, keepTurnsOpen: heldTurns, liveDraft }),
+        [shownChronological, sessionLive, heldTurns, liveDraft],
     );
     const rowKeys = useMemo(() => rows.map((row) => row.key), [rows]);
     // B-578: 「继续」 only while nothing runs or waits — same liveness verdict
@@ -220,6 +240,31 @@ export function ChatList({
     };
     useEffect(() => () => {
         if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+    }, []);
+
+    // B-615: held turns are released once the reader follows the live end AND
+    // the scroll has settled. Restructuring mid-scroll (the smooth 「跳到最新」
+    // still running) left WebKit 8–21px short of the bottom: it ignores the
+    // follow's scroll write while an animation runs (B-603).
+    useEffect(() => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const check = () => {
+            const wait = settleWait(performance.now(), motionRef.current.lastAt, motionRef.current.touching);
+            if (wait > 0) {
+                timer = setTimeout(check, wait);
+                return;
+            }
+            timer = null;
+            if (atBottomRef.current) setHeldTurns(NO_HELD_TURNS);
+        };
+        const stop = readerFollowRef.current!.onRefollow(() => {
+            if (timer !== null) clearTimeout(timer);
+            timer = setTimeout(check, 0);
+        });
+        return () => {
+            stop();
+            if (timer !== null) clearTimeout(timer);
+        };
     }, []);
 
     // B-598: an upward scroll gesture leaves the live end immediately, whatever
@@ -405,6 +450,19 @@ export function ChatList({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rows.length, lastContentLen, newestRowKey]);
 
+    // B-615: releasing held turns restructures rows above a reader pinned to
+    // the bottom (the answer leaves its activity row for a row of its own).
+    // WebKit clamps that commit short of the new bottom, and nothing at the
+    // bottom edge changed to trigger the follow above — re-pin explicitly.
+    // The scroll has settled by then (release waits for it).
+    const heldCountRef = useRef(heldTurns.size);
+    useLayoutEffect(() => {
+        const released = heldTurns.size < heldCountRef.current;
+        heldCountRef.current = heldTurns.size;
+        if (released && atBottomRef.current) scrollToBottom(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [heldTurns]);
+
     // B-520: sending is joining the live end — override a scrolled-back view.
     // atBottom=true also arms the growth/row followers for the reply.
     const followNow = () => {
@@ -585,6 +643,7 @@ export function ChatList({
                                 durationSeconds={row.durationSeconds}
                                 trigger={row.trigger}
                                 abortedAt={row.abortedAt}
+                                answer={row.answer}
                             />
                         ) : row.type === 'turn-diff' ? (
                             <TurnDiffRollup key={row.key} sessionId={sessionId} diff={row.diff} />
