@@ -15,8 +15,8 @@ function rule(source: string, selector: string): string {
 describe('app visual language', () => {
     it('keeps the documented neutral palette and a separate terminal palette', () => {
         const tokens = css('./tokens.css');
-        expect(tokens).toContain('--bg-0: #111210');
-        expect(tokens).toContain('--bg-0: #f4f4f1');
+        expect(tokens).toContain('--bg-0: #0c0d0b');
+        expect(tokens).toContain('--bg-0: #f2f0ea');
         expect(tokens).toContain('--accent: #56b8a7');
         expect(tokens).toContain('--accent: #167d70');
         expect(tokens).toContain('--term-bg: #06080c');

@@ -234,9 +234,9 @@
   display: inline-flex;
   align-items: center;
   gap: var(--chat-space);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); /* B-614: not code → not mono */
   font-size: var(--chat-fs-secondary);
-  color: var(--text-faint);
+  color: var(--text-dim);
   max-width: 100%;
   min-width: 0;
   min-height: calc(var(--chat-space) * 7.5);

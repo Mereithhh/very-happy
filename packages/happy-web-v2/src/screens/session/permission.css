@@ -23,7 +23,7 @@
 }
 .perm-count {
   margin-left: auto;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--chat-fs-caption);
   color: var(--text-dim);
 }
@@ -126,7 +126,8 @@
   min-height: 36px;
   padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
   border: 0;
-  background: var(--warn-dim);
+  /* B-614: a strong warn header — the one place the transcript asks for you */
+  background: color-mix(in srgb, var(--warn) 24%, var(--surface-raised));
   text-align: left;
   font: inherit;
   cursor: pointer;
@@ -146,6 +147,7 @@
 }
 .perm-dock .perm-title,
 .perm-dock .perm-count { flex: none; white-space: nowrap; }
+.perm-dock .perm-count { color: var(--text); } /* B-614: AA on the strong warn header */
 .perm-card--collapsed .perm-count { margin-left: 0; }
 /* Narrow + folded: the summary says more than the title. */
 @media (max-width: 600px) {

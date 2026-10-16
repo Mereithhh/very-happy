@@ -239,7 +239,7 @@ button.sa-dock-open:hover { background:var(--bg-2); }
 @media(pointer:coarse) { .sa-dock-stop { min-width:44px; } }
 
 /* B-614: the agent's type sits in the meta, glyph + name like every other agent chip. */
-.tg-subagent-kind { display:inline-flex; align-items:center; gap:var(--chat-space); min-width:0; color:var(--text-dim); }
+.tg-subagent-kind { display:inline-flex; align-items:center; gap:var(--chat-space); min-width:0; padding:0 calc(var(--chat-space) * 2); border-radius:var(--r-pill); background:var(--surface-card-head); box-shadow:inset 0 0 0 1px var(--card-border); color:var(--text-dim); font-size:var(--chat-fs-secondary); }
 .tg-subagent-kind > svg { flex:none; color:var(--text-faint); }
 .tg-subagent-open--codex .tg-subagent-status-slot > svg:not(.vh-spinner) { color:var(--text-faint); }
 

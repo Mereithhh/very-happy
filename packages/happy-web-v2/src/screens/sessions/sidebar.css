@@ -343,7 +343,7 @@
      unscoped hover used to drop the selected row BACK to --bg-2 (i.e. hovering
      the open session made its highlight weaker, the reported "选中态不明显"). */
   .sb-row:not(.is-selected):hover {
-    background: var(--bg-2);
+    background: color-mix(in srgb, var(--surface-selected) 55%, transparent);
   }
   .sb-row-menu {
     opacity: 0;

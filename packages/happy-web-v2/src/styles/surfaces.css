@@ -36,4 +36,4 @@
 }
 .vh-pill--live { background: var(--accent-dim); color: var(--accent-2); }
 .vh-pill--warn { background: var(--warn-dim); color: var(--warn); }
-.vh-pill--danger { background: var(--danger-dim); color: var(--danger); }
+.vh-pill--danger { background: var(--danger-dim); color: color-mix(in srgb, var(--danger) 80%, var(--text)); } /* AA on the tint in dark */

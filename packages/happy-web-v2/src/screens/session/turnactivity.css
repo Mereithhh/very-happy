@@ -10,7 +10,8 @@
   padding: 2px 0 calc(var(--chat-space) * 3);
   border-bottom: 1px solid var(--line);
   text-align: left;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans); /* B-614: a label, not code; numbers stay tabular */
+  font-variant-numeric: tabular-nums;
   font-size: var(--chat-fs-secondary);
   color: var(--text-dim);
 }
@@ -19,11 +20,14 @@
   align-self: center;
   transform-origin: 50% 50%;
 }
-/* Sub-agent count chip (B-260): identity/metadata, mono + dim — never accent. */
+/* Sub-agent count chip (B-260): identity/metadata, a neutral pill — never accent. */
 .ta-subagents {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--chat-fs-caption);
   color: var(--text-dim);
+  padding: 0 calc(var(--chat-space) * 2);
+  border-radius: var(--r-pill);
+  background: var(--bg-3);
   flex: none;
   display: inline-flex;
   align-items: center;
