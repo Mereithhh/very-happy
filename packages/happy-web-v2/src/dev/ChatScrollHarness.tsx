@@ -23,6 +23,8 @@ import { SessionDetailScreen } from '@/screens/session/SessionDetailScreen';
 import type { NormalizedMessage } from '@/sync/typesRaw';
 import type { Session } from '@/sync/storageTypes';
 import { storage } from '@/sync/storage';
+import { useLiveStreamStore } from '@/sync/liveStreamStore';
+import { recordHeartbeat } from '@/sync/heartbeatLease';
 import { ChatList } from '@/screens/session/ChatList';
 import '@/screens/session/session.css';
 
@@ -64,6 +66,13 @@ declare global {
       appendMessage: () => void;
       oldestSeq: () => number;
       patchSession: (patch: Partial<Session>) => void;
+      streamStart: () => string;
+      streamDelta: (chars?: number) => void;
+      streamCommit: () => void;
+      appendTools: (n?: number) => void;
+      resync: () => void;
+      longTurn: (tools?: number) => void;
+      setLive: (live: boolean) => void;
     };
   }
 }
@@ -72,6 +81,9 @@ export function ChatScrollHarness() {
   const [params] = useState(() => new URLSearchParams(window.location.search));
   const full = params.get('full') === '1';
   const idle = params.get('idle') === '1';
+  // B-607: `&fresh=1` — a young session with no older history (one long turn
+  // can be the whole transcript).
+  const fresh = params.get('fresh') === '1';
   const [seeded, setSeeded] = useState(false);
   useEffect(() => {
     const now = Date.now();
@@ -94,7 +106,9 @@ export function ChatScrollHarness() {
     // Newest page first, like fetchInitialLatestPage.
     let oldest = 1000;
     let newest = 1059;
-    storage.getState().applyMessages(SESSION_ID, page(oldest, 60));
+    if (fresh) newest = 1001;
+    storage.getState().applyMessages(SESSION_ID, page(oldest, fresh ? 2 : 60));
+    if (!fresh) {
     // A Bash call with a tall output near the bottom: its `.cmd-out` box is a
     // nested vertical scroller (max-height 360px) the reader's pointer lands on.
     const stdout = Array.from({ length: 140 }, (_, i) => `line ${i + 1}: drwxr-xr-x  12 jojo  staff   384 Sep 14 12:00 module-${i + 1}`).join('\n');
@@ -111,11 +125,15 @@ export function ChatScrollHarness() {
       { role: 'agent', id: 'm-1058-edit-r', localId: null, createdAt: BASE + 1058 * 60_000 + 4, isSidechain: false, seq: 1058.8,
         content: [{ type: 'tool-result', tool_use_id: 'call-2', content: 'ok', is_error: false, uuid: 'tr-2', parentUUID: null }] },
     ] as unknown as NormalizedMessage[]);
+    }
     storage.getState().applyMessagesLoaded(SESSION_ID);
-    storage.getState().applyOlderMessagesPagination(SESSION_ID, { hasMore: true });
+    storage.getState().applyOlderMessagesPagination(SESSION_ID, { hasMore: !fresh });
 
     setSeeded(true);
     let timer: ReturnType<typeof setInterval> | null = null;
+    let draftMid = 'draft-0';
+    let draftN = 0;
+    let draftText = '';
     const prependPage = async (n = 40) => {
       const s = storage.getState();
       s.applyOlderMessagesLoading(SESSION_ID, true);
@@ -147,6 +165,63 @@ export function ChatScrollHarness() {
         storage.getState().applyMessages(SESSION_ID, page(newest, 1));
       },
       oldestSeq: () => oldest,
+      // B-607: a live draft (LiveStreamView) that grows and is then claimed by
+      // the persisted message carrying the same streamKey.
+      streamStart: () => {
+        draftMid = `draft-${++draftN}`;
+        draftText = '';
+        useLiveStreamStore.getState().ingest(SESSION_ID, { t: 'block-start', mid: draftMid, idx: 0, kind: 'text' } as never);
+        return draftMid;
+      },
+      streamDelta: (chars = 120) => {
+        const chunk = `草稿流式 ${'字'.repeat(chars)}\n\n`;
+        draftText += chunk;
+        useLiveStreamStore.getState().ingest(SESSION_ID, { t: 'block-delta', mid: draftMid, idx: 0, text: chunk } as never);
+      },
+      streamCommit: () => {
+        newest += 1;
+        const message = { ...text(newest, 'agent', draftText || 'done'), streamKey: `${draftMid}:0` };
+        storage.getState().applyMessages(SESSION_ID, [message as NormalizedMessage]);
+        useLiveStreamStore.getState().ingest(SESSION_ID, { t: 'turn-end' } as never);
+      },
+      // New tool rows / a new turn group appended at the bottom.
+      appendTools: (n = 3) => {
+        const batch: NormalizedMessage[] = [];
+        for (let i = 0; i < n; i++) {
+          newest += 1;
+          const id = `tool-${newest}`;
+          batch.push({ role: 'agent', id: `${id}-call`, localId: null, createdAt: BASE + newest * 60_000, isSidechain: false, seq: newest,
+            content: [{ type: 'tool-call', id, name: 'Bash', input: { command: `echo ${newest}` }, description: null, uuid: `tc-${id}`, parentUUID: null }] } as unknown as NormalizedMessage);
+          batch.push({ role: 'agent', id: `${id}-res`, localId: null, createdAt: BASE + newest * 60_000 + 1, isSidechain: false, seq: newest + 0.5,
+            content: [{ type: 'tool-result', tool_use_id: id, content: `out ${newest}\n`.repeat(6), is_error: false, uuid: `tr-${id}`, parentUUID: null }] } as unknown as NormalizedMessage);
+        }
+        storage.getState().applyMessages(SESSION_ID, batch);
+      },
+      // B-607: a new user prompt followed by a long run of tool calls — the
+      // live turn's activity row (expanded while live, folded once done).
+      longTurn: (tools = 40) => {
+        newest += 1;
+        storage.getState().applyMessages(SESSION_ID, [text(newest % 2 === 0 ? newest : ++newest, 'user', `长任务 ${newest}`)]);
+        for (let i = 0; i < tools; i += 5) {
+          newest += 1;
+          storage.getState().applyMessages(SESSION_ID, [text(newest % 2 === 1 ? newest : ++newest, 'agent', `中间说明 ${newest}：先看一下这个模块。\n\n${'这一步的推理写得比较长，占好几行。'.repeat(8)}`)]);
+          window.__chatScroll!.appendTools(Math.min(5, tools - i));
+        }
+      },
+      setLive: (live) => {
+        recordHeartbeat(SESSION_ID, live);
+        const current = storage.getState().sessions[SESSION_ID];
+        storage.getState().applySessions([{ ...current, thinking: live, thinkingAt: Date.now(), presence: 'online' } as Session]);
+      },
+      // Session state resync: same messages re-applied (forward sync after a
+      // reconnect) + a new agentState version → a new messages array identity.
+      resync: () => {
+        const s = storage.getState();
+        const current = s.sessions[SESSION_ID];
+        s.applySessions([{ ...current, agentStateVersion: (current.agentStateVersion ?? 0) + 1, updatedAt: Date.now() } as Session]);
+        s.applyMessages(SESSION_ID, page(1050, 9));
+        s.applyMessagesLoaded(SESSION_ID);
+      },
       patchSession: (patch) => {
         const current = storage.getState().sessions[SESSION_ID];
         storage.getState().applySessions([{ ...current, ...patch } as Session]);

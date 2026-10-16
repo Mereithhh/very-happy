@@ -51,6 +51,7 @@ import { turnSendStatus } from './sendStatusModel';
 import { latestOwnSendKey, onChatFollowRequest } from './chatFollowRequest';
 import { SelectionQuote } from './SelectionQuote';
 import { ChatPromptRail } from './ChatPromptRail';
+import { ReaderFollowContext } from './readerFollow';
 import './chatReadingAids.css';
 
 export function ChatList({
@@ -341,6 +342,8 @@ export function ChatList({
     // 未读增量在渲染时现算：离底后快照不动，rows 变化本身就触发重渲染；
     // 回底由 onScroll 清快照并 setShowJump(false) 触发重渲染，badge 随之消失。
     const unseenLabel = formatUnseen(unseenRows(awaySnapshotRef.current, rowKeys));
+    // B-607: rows ask this before folding content away (TurnActivityView).
+    const isFollowingRef = useRef(() => atBottomRef.current);
 
     // Older history landed at the top (prefetch page, 「加载更早」, a held
     // page released after the scroll settled, the load-older slot going away):
@@ -539,6 +542,7 @@ export function ChatList({
         // B-145 finding 2: 路径白名单在**会话根**挂一次。挂在每条消息上会让长会话
         // 变成 O(N²)（每条各订阅全量 messages 并各扫一遍），流式输出时尤其明显。
         <MarkdownPathProvider sessionId={sessionId}>
+        <ReaderFollowContext.Provider value={isFollowingRef.current}>
         <div className="cl">
             {/* B-473: one delegated hover-time bubble for every row below. */}
             <MessageTimeTooltip containerRef={scrollRef} />
@@ -701,6 +705,7 @@ export function ChatList({
                 </button>
             )}
         </div>
+        </ReaderFollowContext.Provider>
         </MarkdownPathProvider>
     );
 }
