@@ -200,61 +200,32 @@
   .tg-preview-path { min-height:max(44px, calc(var(--chat-space) * 8)); align-items:center; }
 }
 
-/* B-614 depth pass. A run of tool rows inside a turn is ONE card
- * (`.tg-stack`, ActivityMessages): collapsed rows sit inside it with a hover
- * fill; an expanded row tints its head and its command/code stays an inset
- * well. A lone tool row outside a stack (live list) becomes its own card when
- * expanded. One elevation per object — wells never carry their own shadow. */
-.tg-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding: var(--chat-space) calc(var(--chat-space) * 1.5);
-  background: var(--surface-card);
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-card);
+/* B-614 (CDS 1-Border Rule): tool rows, the tool group and sub-agent / Codex
+ * rows are BORDERLESS lines on the canvas. Pointer surfaces get a ghost hover
+ * fill that bleeds slightly past the column so the first icon stays on the
+ * shared start line (B-455). The expanded output below a row is the one closed
+ * object (.cmd / .cv / .tv boxes own their ring) — never a card around
+ * header + output. */
+.tg-head,
+.tg-row-head-wrap,
+.tg-subagent-open,
+.tg-preview-row {
+  margin-inline: calc(var(--chat-space) * -1.5);
+  padding-inline: calc(var(--chat-space) * 1.5);
+  border-radius: var(--r-sm);
+  transition: background-color var(--dur-hover) var(--ease-out);
 }
-.tg-stack > .tg { padding-inline: calc(var(--chat-space) * 1.5); border-radius: var(--r-sm); }
-.tg-stack .tg-row-head-wrap,
-.tg-stack .tg-head,
-.tg-stack .tg-subagent-open,
-.tg-stack .tg-preview-row { border-radius: var(--r-sm); }
 @media (hover: hover) {
-  .tg-stack .tg-row-head-wrap:hover,
-  .tg-stack .tg-head:hover,
-  .tg-stack .tg-subagent-open:hover,
-  .tg-stack .tg-preview-row:hover { background: var(--surface-card-head); }
+  .tg-head:hover,
+  .tg-row-head-wrap:hover,
+  .tg-subagent-open:hover,
+  .tg-preview-row:hover { background: var(--fill-hover); }
 }
-.tg-stack .tg-row:has(> .vh-disclosure-panel:not([hidden])) > .tg-row-head-wrap {
-  background: var(--surface-card-head);
-}
-.tg-stack .tg-row > .vh-disclosure-panel:not([hidden]) { padding: var(--chat-space) 0 calc(var(--chat-space) * 2); }
-.tg-row > .vh-disclosure-panel .cmd,
-.tg-row > .vh-disclosure-panel .cv { box-shadow: none; }
+.tg-row-head-wrap:has(> .tg-row-head:active),
+.tg-head:active,
+.tg-subagent-open:active { background: var(--fill-selected); }
 
-.tg-row:not(.tg-stack .tg-row):has(> .vh-disclosure-panel:not([hidden])) {
-  gap: 0;
-  background: var(--surface-card);
-  border: 1px solid var(--card-border);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-}
-.tg-row:not(.tg-stack .tg-row):has(> .vh-disclosure-panel:not([hidden])) > .tg-row-head-wrap {
-  background: var(--surface-card-head);
-  border-bottom: 1px solid var(--card-border);
-  padding-inline: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
-}
-.tg-row:not(.tg-stack .tg-row):has(> .vh-disclosure-panel:not([hidden])) > .vh-disclosure-panel {
-  padding: calc(var(--chat-space) * 3);
-  min-width: 0;
-}
-.tg-row:not(.tg-stack .tg-row) > .vh-disclosure-panel:has(> .tv > .cmd:only-child) { padding: 0; }
-.tg-row:not(.tg-stack .tg-row) > .vh-disclosure-panel > .tv > .cmd:only-child { border: 0; border-radius: 0; }
-
-/* Sub-agent status reads as a tinted pill (accent-dim only when live). */
+/* Sub-agent status reads as a fill-only pill (accent-dim only when live). */
 .tg-subagent-meta > .vh-pill::before,
 .tg-subagent-meta > .vh-pill + span::before { content: none; }
 .tg-subagent-meta > .vh-pill { font-size: var(--chat-fs-secondary); }

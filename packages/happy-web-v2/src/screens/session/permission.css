@@ -1,6 +1,10 @@
 .perm-card {
-  border: 1px solid var(--warn);
-  background: var(--warn-dim);
+  /* B-614 (CDS 1-Border Rule): the decision card is ONE closed object — a warn
+   * ring (its identity) + shadow-sm on the card surface; inside it nothing has
+   * a closed border: fill-only command well, hairline splits, soft buttons. */
+  border: 0;
+  background: var(--bg-1);
+  box-shadow: 0 0 0 1px var(--warn), var(--shadow-sm);
   border-radius: var(--r-md);
   padding: calc(var(--chat-space) * 3);
   display: flex;
@@ -20,10 +24,13 @@
 }
 .perm-count {
   margin-left: auto;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
   font-size: var(--chat-fs-caption);
   color: var(--text-dim);
 }
+/* the command preview inside the card is a fill-only well (no second ring) */
+.perm-card .cv { box-shadow: none; border-radius: var(--r-btn); }
 .perm-list {
   display: flex;
   flex-direction: column;
@@ -56,7 +63,7 @@
   gap: calc(var(--chat-space) * 2);
 }
 .perm-batch {
-  border-top: 1px solid var(--line);
+  border-top: var(--hairline) solid var(--line);
   padding-top: calc(var(--chat-space) * 2);
 }
 
@@ -64,7 +71,7 @@
  * (the card's warn-dim wash stays behind it) */
 .perm-plan {
   border-left: 2px solid var(--line-2);
-  background: var(--bg-1);
+  background: var(--bg-2);
   border-radius: var(--r-sm);
   padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
   font-size: var(--chat-fs-control);
@@ -85,9 +92,9 @@
 }
 .perm-elicitation input,
 .perm-elicitation select {
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--bg-1);
+  border: 0;
+  border-radius: var(--r-btn);
+  background: var(--fill-soft);
   color: var(--text);
   padding: calc(var(--chat-space) * 2);
 }
@@ -121,11 +128,13 @@
   min-height: 36px;
   padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
   border: 0;
-  background: transparent;
+  /* header strip: warn fill, split from the body by one hairline (not a box) */
+  background: var(--warn-dim);
   text-align: left;
   font: inherit;
   cursor: pointer;
 }
+.perm-dock .perm-card:not(.perm-card--collapsed) .perm-card-head { border-bottom: var(--hairline) solid var(--line); }
 .perm-dock .perm-card-head > svg { flex: none; }
 .perm-dock .perm-card-head:focus-visible { background: var(--bg-3); outline: none; }
 .perm-summary {
@@ -151,7 +160,7 @@
   gap: calc(var(--chat-space) * 3);
   max-height: min(45vh, 420px);
   overflow-y: auto;
-  padding: 0 calc(var(--chat-space) * 3) calc(var(--chat-space) * 3);
+  padding: calc(var(--chat-space) * 3);
 }
 .perm-dock-body[hidden] { display: none; }
 .sd[data-keyboard-open='true'] .perm-dock-body { max-height: 30vh; }

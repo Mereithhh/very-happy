@@ -1,8 +1,11 @@
 .dv {
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  /* B-614 (CDS): a diff is tool output — the one closed object (ring + shadow-sm,
+     radius 12) in the code well; its stat strip is split by a hairline. */
+  border: 0;
+  box-shadow: var(--panel-shadow);
+  border-radius: var(--r-code);
   overflow: hidden;
-  background: var(--bg-0);
+  background: var(--surface-code);
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   line-height: 1.55;
@@ -11,9 +14,10 @@
   display: flex;
   gap: var(--sp-3);
   padding: 3px var(--sp-3);
-  background: var(--bg-1);
-  border-bottom: 1px solid var(--line);
+  background: transparent;
+  border-bottom: var(--hairline) solid var(--line);
   font-size: var(--fs-11);
+  font-variant-numeric: tabular-nums;
 }
 .dv-add {
   color: var(--accent-2);
@@ -118,30 +122,36 @@
   margin-left: auto;
   /* clear the hover copy button that floats at top/right: 4px, 24px wide */
   margin-right: 28px;
-  gap: 2px;
+  gap: 0;
+  /* B-614: the shared segmented-control look (track + thumb, 120ms snap) */
+  padding: 2px;
+  border-radius: var(--r-pill);
+  background: var(--segmented-track);
 }
 .dv-layout-btn {
   display: inline-grid;
   place-items: center;
-  width: 22px;
+  width: 26px;
   height: 18px;
   padding: 0;
   border: 0;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--text-faint);
   cursor: pointer;
+  transition: background-color var(--dur-snap) var(--ease-snap), color var(--dur-snap) var(--ease-snap);
 }
 .dv-layout-btn:hover {
   color: var(--text);
 }
 .dv-layout-btn[aria-pressed='true'] {
-  background: var(--bg-3);
+  background: var(--segmented-thumb);
+  box-shadow: var(--segmented-thumb-shadow);
   color: var(--text);
 }
 .dv-layout-btn:focus-visible {
   outline: none;
-  background: var(--bg-3);
+  box-shadow: var(--focus-ring);
   color: var(--text);
 }
 .dv-body--split {

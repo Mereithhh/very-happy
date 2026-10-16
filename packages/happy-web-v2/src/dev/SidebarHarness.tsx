@@ -177,7 +177,8 @@ export function SidebarHarness() {
           display: 'flex',
           flexDirection: 'column',
           borderRight: '1px solid var(--line)',
-          background: 'var(--bg-1)',
+          // mirrors .app-sidebar (B-614: the sidebar is CDS surface-0, below the canvas)
+          background: 'var(--surface-sidebar)',
         }}
       >
         <Sidebar />

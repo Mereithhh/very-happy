@@ -261,7 +261,7 @@
 }
 .md-tbl-expand:hover {
   color: var(--text);
-  background: var(--bg-2);
+  background: var(--fill-hover);
 }
 
 /* `clip`, not `auto`/`hidden`, is what makes the sticky header work: `overflow-x:auto`
@@ -279,7 +279,10 @@
   overflow-x: clip;
   overflow-y: visible;
   background: var(--bg-1);
-  border: 1px solid var(--line);
+  /* B-614 (CDS): a table is a closed object — ring + shadow-sm, radius 10;
+     rows are split by hairlines only. */
+  border: 0;
+  box-shadow: var(--panel-shadow);
   border-radius: var(--r-md);
   max-width: 100%;
 }
@@ -330,7 +333,7 @@
 .md-table td {
   text-align: left;
   padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--hairline) solid var(--line);
   white-space: normal;
   /* `overflow-wrap`, NOT `word-break: break-word`: the latter is spec'd as
      `overflow-wrap: anywhere`, which lets a cell's min-content width collapse to
