@@ -51,6 +51,16 @@ function button(name: string) {
     expect(found, name).toBeDefined(); return found!;
 }
 async function click(name: string) { await act(async () => button(name).click()); }
+/** B-608: the image keeps its natural box and is sized by transform scale. */
+function displayed(image: HTMLImageElement) {
+    const match = /translate\((-?[\d.e-]+)px, (-?[\d.e-]+)px\) scale\(([\d.e-]+)\)/.exec(image.style.transform);
+    expect(match, image.style.transform).not.toBeNull();
+    const [x, y, scale] = match!.slice(1).map(Number);
+    return { x, y, scale, width: Math.round(parseFloat(image.style.width) * scale), height: Math.round(parseFloat(image.style.height) * scale) };
+}
+async function key(value: string) {
+    await act(async () => dialog().dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true })));
+}
 async function load(width = 1600, height = 800) {
     const image = dialog().querySelector('img')!;
     Object.defineProperty(image, 'naturalWidth', { configurable: true, value: width });
@@ -87,19 +97,47 @@ describe('workspace image preview', () => {
         expect(dialog().textContent).toContain('Loading image');
         expect(button('Zoom in').disabled).toBe(true);
         const image = await load();
-        expect(image.style.width).toBe('608px');
-        expect(image.style.height).toBe('304px');
+        expect(displayed(image)).toMatchObject({ width: 608, height: 304, x: 16, y: 88 });
         expect(dialog().querySelector('output')?.textContent).toBe('38%');
         await click('Original size');
-        expect(image.style.width).toBe('1600px');
-        expect(image.style.height).toBe('800px');
+        expect(displayed(image)).toMatchObject({ width: 1600, height: 800 });
+        expect(button('Original size').getAttribute('aria-pressed')).toBe('true');
         await click('Zoom in');
-        expect(image.style.width).toBe('2000px');
+        expect(displayed(image).width).toBe(2000);
         expect(dialog().querySelector('output')?.textContent).toBe('125%');
         await click('Zoom out');
-        expect(image.style.width).toBe('1600px');
+        expect(displayed(image).width).toBe(1600);
         await click('Fit image to view');
-        expect(image.style.width).toBe('608px');
+        expect(displayed(image).width).toBe(608);
+    });
+
+    it('B-608: buttons zoom around the canvas centre and keys +/-/0 drive the same steps', async () => {
+        await show();
+        const image = await load();
+        await click('Original size');
+        // canvas centre (320, 240) maps to the image centre (800, 400) at 100%
+        const at100 = displayed(image);
+        expect(at100.x + 800).toBe(320);
+        expect(at100.y + 400).toBe(240);
+        await key('+');
+        expect(dialog().querySelector('output')?.textContent).toBe('125%');
+        const at125 = displayed(image);
+        expect(at125.x + 800 * 1.25).toBeCloseTo(320, 6);
+        await key('-');
+        expect(displayed(image).scale).toBeCloseTo(1, 9);
+        await key('ArrowLeft');
+        expect(displayed(image).x).toBe(at100.x + 48);
+        await key('0');
+        expect(displayed(image).width).toBe(608);
+        expect(button('Fit image to view').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('B-608: + keeps the pre-B-608 4× button cap (gestures alone reach 8×)', async () => {
+        await show();
+        const image = await load();
+        for (let i = 0; i < 12; i++) await key('+');
+        expect(displayed(image).scale).toBe(4);
+        expect(button('Zoom in').disabled).toBe(true);
     });
 
     it('keeps failures recoverable and resets the image and scale on a new source', async () => {
@@ -113,7 +151,7 @@ describe('workspace image preview', () => {
         expect(dialog().textContent).toContain('Loading image');
         expect(button('Zoom in').disabled).toBe(true);
         const next = await load(2000, 1000);
-        expect(next.style.width).toBe('608px');
+        expect(displayed(next).width).toBe(608);
         expect(button('Fit image to view').getAttribute('aria-pressed')).toBe('true');
     });
 
