@@ -1,0 +1,19 @@
+/* B-614 agent identity atoms. Neutral only: identity is a glyph + a name;
+   colour is reserved for status (accent=live, warn=waiting, danger=failed).
+   Sizes inherit from the host so the same chip reads right in the transcript
+   (chat scale) and on the Teams page (workspace scale). */
+.ag-chip { display:inline-flex; align-items:center; gap:0.375em; min-width:0; max-width:100%; vertical-align:middle; color:var(--text-dim); }
+.ag-chip--strong { color:var(--text); }
+.ag-chip--strong .ag-name { font-weight:600; }
+.ag-glyph { flex:none; color:var(--text-faint); }
+.ag-name { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* the secondary gives way first so the name stays readable */
+.ag-secondary { flex:0 100 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; color:var(--text-faint); white-space:nowrap; }
+.ag-secondary::before { content:'·'; margin-right:0.375em; }
+.ag-route { display:inline-flex; align-items:center; flex-wrap:wrap; gap:0.125em 0.5em; min-width:0; max-width:100%; }
+.ag-route > .ag-chip { max-width:100%; }
+.ag-route > .ag-chip { flex:0 1 auto; }
+.ag-route-arrow { flex:none; color:var(--text-faint); }
+.ag-status { flex:none; }
+.ag-status--done { color:var(--text-faint); }
+.ag-status--failed { color:var(--danger); }

@@ -776,7 +776,8 @@ describe('结构约束', () => {
         expect(/(^|\n):focus-visible\s*\{/.test(base)).toBe(false);
         // 环本身还在（无障碍要求：全站控件默认有可见焦点环，不是逐个 opt-in）。
         const ring = base.slice(base.indexOf(':focus-visible:not('));
-        expect(ring.includes('box-shadow: inset 0 -2px 0 var(--text-dim);')).toBe(true);
+        // B-614: the ring is the shared CDS focus token (canvas gap + accent, no glow).
+        expect(ring.includes('box-shadow: var(--focus-ring);')).toBe(true);
     });
 
     it('宿主的定时器不观测输入域 —— observe 只挂在三个真实边界上', () => {

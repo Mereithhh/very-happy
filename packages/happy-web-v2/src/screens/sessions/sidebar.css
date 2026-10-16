@@ -26,7 +26,7 @@
   color: var(--text);
   transition: background var(--motion-fast);
 }
-.sb-brand--button:hover { background: var(--bg-2); }
+.sb-brand--button:hover { background: var(--fill-hover); }
 .sb-header-right {
   display: flex;
   align-items: center;
@@ -43,14 +43,14 @@
   transition: background var(--motion-fast);
 }
 .sb-icon-btn:hover {
-  background: var(--bg-2);
+  background: var(--fill-hover);
   color: var(--text);
 }
 /* toggled-on icon button (B-091 tag grouping) — same "selected control"
- * treatment as .sb-filter-btn.is-on (accent-2 marks the active view choice,
- * an established exemption; the live-only rule applies to plain --accent). */
+ * treatment as a selected row (alpha-2 fill) with accent-2 ink marking the
+ * toggled state (established exemption; the live-only rule is for --accent). */
 .sb-icon-btn.is-on {
-  background: var(--bg-2);
+  background: var(--fill-selected);
   color: var(--accent-2);
 }
 
@@ -61,38 +61,17 @@
     width: 44px;
     height: 44px;
   }
-  .sb-filter-btn {
-    padding: 8px 0;
-  }
   .vh-menu-item {
     padding: 11px 10px;
   }
 }
 
 /* filter segmented (view switch: 列表 / 状态 / 归档) */
+/* B-614 (CDS §2.2): the view switch is the shared segmented control
+   (.vh-segmented in styles/surfaces.css) — track + neutral thumb, Sans 12. */
 .sb-filter {
   display: flex;
-  gap: 4px;
   margin: var(--sp-3) var(--sp-4) var(--sp-2);
-  padding: 3px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-}
-.sb-filter-btn {
-  flex: 1;
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 5px 0;
-  border-radius: var(--r-sm);
-  color: var(--text-dim);
-  transition: background var(--motion-fast), color var(--motion-fast);
-}
-.sb-filter-btn.is-on {
-  background: var(--bg-0);
-  color: var(--accent-2);
 }
 
 .sb-list {
@@ -163,7 +142,7 @@
 }
 .sb-workspace-new:hover,
 .sb-workspace-new:focus-visible {
-  background: var(--bg-3);
+  background: var(--fill-selected);
   color: var(--text);
 }
 @media (pointer: coarse) {
@@ -205,7 +184,7 @@
 .sb-section-toggle:focus-visible {
   outline: none;
   box-shadow: none;
-  background: var(--bg-2);
+  background: var(--fill-hover);
   color: var(--text);
 }
 .sb-section-summary {
@@ -245,7 +224,7 @@
 }
 /* Selection is a quiet surface; attention/unread keep their independent signals. */
 .sb-row { border-radius: var(--r-sm); }
-.sb-row.is-selected { background: var(--bg-3); }
+.sb-row.is-selected { background: var(--fill-selected); } /* B-614 (CDS): selected = alpha-2 fill, no ring */
 .sb-row.is-selected .sb-row-title, .sb-row--attention .sb-row-title { font-weight: 600; }
 .sb-row--unread .sb-row-title { font-weight: 500; }
 /* --text-faint sits at only ~2.4:1 on dark --bg-3, so the selected row lifts
@@ -258,7 +237,7 @@
 .sb-row.is-selected .vh-dot--offline {
   background: var(--text-dim);
 }
-@media (hover: none) { .sb-row:not(.is-selected):active { background: var(--bg-2); } }
+@media (hover: none) { .sb-row:not(.is-selected):active { background: var(--fill-hover); } }
 .sb-row-main {
   display: flex;
   align-items: center;
@@ -320,7 +299,7 @@
   padding: 0 5px;
   border-radius: 4px;
   color: var(--text-faint);
-  background: var(--bg-3);
+  background: var(--fill-soft);
   white-space: nowrap;
 }
 .sb-row-menu {
@@ -341,7 +320,7 @@
      unscoped hover used to drop the selected row BACK to --bg-2 (i.e. hovering
      the open session made its highlight weaker, the reported "选中态不明显"). */
   .sb-row:not(.is-selected):hover {
-    background: var(--bg-2);
+    background: var(--fill-hover);
   }
   .sb-row-menu {
     opacity: 0;
@@ -361,8 +340,8 @@
 .sb-drag-item.is-drag {
   position: relative;
   z-index: 1;
-  background: var(--bg-2);
-  box-shadow: inset 0 0 0 1px var(--line-2);
+  background: var(--bg-1);
+  box-shadow: var(--panel-shadow-hover);
   opacity: 0.9;
 }
 /* insertion line: the slot the drop would take. Accent = the live
@@ -444,7 +423,7 @@
   white-space: nowrap;
 }
 .sb-footer-btn:hover {
-  background: var(--bg-2);
+  background: var(--fill-hover);
   color: var(--text);
 }
 /* icon-only footer buttons (notes toggle, todos) must not stretch like the
@@ -463,11 +442,13 @@
 /* shared Radix dropdown menu */
 .vh-menu {
   min-width: 160px;
-  background: var(--bg-1);
-  border: 1px solid var(--line-2);
+  /* B-614 (CDS): a floating closed object — popover surface + popover shadow
+     (light: outer ring + drop; dark: inset chamfer + drop). */
+  background: var(--surface-popover);
+  border: 0;
   border-radius: var(--r-md);
   padding: 4px;
-  box-shadow: var(--shadow-pop);
+  box-shadow: var(--shadow-popover);
   z-index: 1500;
 }
 .vh-menu-item {
@@ -483,7 +464,7 @@
 }
 .vh-menu-item[data-highlighted],
 .vh-menu-item:focus-visible {
-  background: var(--bg-3);
+  background: var(--fill-selected);
   outline: none;
   box-shadow: none;
 }
@@ -505,7 +486,7 @@
   color: inherit;
 }
 .vh-menu-sep {
-  height: 1px;
+  height: var(--hairline);
   background: var(--line);
   margin: 4px 6px;
 }
@@ -514,8 +495,8 @@
   flex-shrink: 0;
   font-size: var(--fs-11);
   color: var(--text-dim);
-  background: var(--bg-2);
-  border: 1px solid var(--line);
+  background: var(--fill-soft);
+  border: 0;
   border-radius: var(--r-sm);
   padding: 1px 6px;
   margin-right: var(--sp-2);
@@ -585,7 +566,7 @@
 }
 .sb-closed-reopen:hover:not(:disabled) {
   color: var(--text);
-  background: var(--bg-2);
+  background: var(--fill-hover);
 }
 .sb-closed-reopen:disabled {
   color: var(--text-faint);
@@ -608,13 +589,13 @@
   padding: 4px 6px;
   border: 0;
   border-radius: var(--r-sm);
-  background: var(--bg-2);
+  background: var(--fill-soft);
   color: var(--text);
   font: inherit;
   cursor: pointer;
 }
-.sb-order-hint button:hover { background: var(--bg-3); }
-.sb-order-hint button:focus-visible { outline: none; background: var(--bg-3); }
+.sb-order-hint button:hover { background: var(--fill-soft-hover); }
+.sb-order-hint button:focus-visible { outline: none; background: var(--fill-soft-hover); }
 .sb-order-hint-coarse { display: none; }
 @media (pointer: coarse) {
   .sb-order-hint-fine { display: none; }
@@ -625,7 +606,7 @@
 
 
 .sb-team-row { display: flex; align-items: center; min-width: 0; border-radius: 6px; }
-.sb-team-row.is-selected { background: var(--bg-2); }
+.sb-team-row.is-selected { background: var(--fill-selected); }
 .sb-team-toggle { display: grid; place-items: center; width: 30px; min-height: 44px; flex-shrink: 0; color: var(--text-dim); }
 .sb-team-toggle .is-open { transform: rotate(90deg); }
 .sb-team-main { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; text-align: left; min-height: 52px; padding: 5px 8px 5px 0; }
@@ -637,12 +618,12 @@
 
 .sb-closed-row .sb-row-sub { display:block; }
 .sb-list-controls { display:flex; align-items:center; padding:0 var(--sp-2); gap:var(--sp-1); }
-.sb-list-controls .sb-filter { flex:1; min-width:0; margin:var(--sp-2) 0; border:0; background:transparent; padding:0; }
+.sb-list-controls .sb-filter { flex:1; min-width:0; margin:var(--sp-2) 0; }
 .sb-list-tools { display:flex; align-items:center; gap:2px; }
 .sb-list-tools .sb-icon-btn { width:26px; height:28px; }
 .sb-products { display:flex; flex-direction:column; gap:2px; padding:var(--sp-2); }
 .sb-products > button, .sb-products .sb-nav-btn { display:flex; align-items:center; gap:var(--sp-2); width:100%; min-height:32px; padding:5px var(--sp-2); font-size:var(--workspace-primary-size); text-align:left; border-radius:var(--r-sm); }
-.sb-products button:hover, .sb-products button:focus-visible { outline:none; box-shadow:none; background: var(--bg-2); }
+.sb-products button:hover, .sb-products button:focus-visible { outline:none; box-shadow:none; background: var(--fill-hover); }
 .sb-products > button > svg, .sb-products .sb-nav-btn > svg:first-child { width:18px; flex-shrink:0; }
 .sb-row-tags .vh-tag { border-color:transparent; }
 .sb-products kbd { margin-left:auto; color: var(--text-faint); font-size:var(--fs-10); }
@@ -657,7 +638,7 @@
 }
 
 .sb-new-chevron { margin-left:auto; flex:none; }
-.sb-nav-btn[data-state="open"] { background: var(--bg-2); }
+.sb-nav-btn[data-state="open"] { background: var(--fill-selected); }
 
 .sb-nav-btn[aria-busy="true"] { cursor: progress; }
 

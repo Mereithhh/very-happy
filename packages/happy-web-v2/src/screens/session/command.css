@@ -2,9 +2,12 @@
   font-family: var(--font-mono);
   font-size: var(--chat-fs-control);
   line-height: 1.65;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
+  /* B-614 (CDS): tool output is the ONE closed object under its row — ring +
+     shadow-sm, a well darker than the canvas, radius 12. */
+  border: 0;
+  border-radius: var(--r-code);
+  background: var(--surface-code);
+  box-shadow: var(--panel-shadow);
   overflow: hidden;
   max-width: 100%;
 }
@@ -12,8 +15,8 @@
   display: flex;
   gap: calc(var(--chat-space) * 2);
   padding: calc(var(--chat-space) * 3) 44px calc(var(--chat-space) * 3) calc(var(--chat-space) * 4);
-  background: var(--bg-1);
-  border-bottom: 1px solid var(--line);
+  background: transparent;
+  border-bottom: var(--hairline) solid var(--line);
   overflow-x: auto;
   overscroll-behavior-x: contain;
 }
@@ -23,7 +26,7 @@
   user-select: none;
   position: sticky;
   left: 0;
-  background: var(--bg-1);
+  background: var(--surface-code);
 }
 .cmd-cmd {
   color: var(--text);

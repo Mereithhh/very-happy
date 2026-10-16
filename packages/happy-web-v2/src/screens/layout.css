@@ -62,7 +62,7 @@ body.vh-col-resizing iframe {
   background: var(--bg-2);
 }
 .app-sidebar {
-  background: var(--bg-1);
+  background: var(--surface-sidebar); /* B-614: its own surface, distinct from the canvas */
   display: flex;
   flex-direction: column;
   min-height: 0;

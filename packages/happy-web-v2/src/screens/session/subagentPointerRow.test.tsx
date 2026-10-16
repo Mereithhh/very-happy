@@ -84,7 +84,7 @@ describe('sub-agent row (B-317)', () => {
         expect(html).not.toContain('vh-spinner');
         // The group spine's own live/stalled state is ChatList's job (B-295);
         // what this row owns is the sub-agent glyph and its summary line.
-        expect(html).toContain('<span>stopped</span>');
+        expect(html).toContain('<span class="vh-pill">stopped</span>');
         expect(html).toContain('lucide-square');
     });
 
@@ -104,7 +104,7 @@ describe('sub-agent row (B-317)', () => {
     it('keeps failure text accessible for older wrappers without lifecycle events', () => {
         const card=taskCard();delete card.subagent;card.tool.state='error';
         const html=inSession(<ToolGroupView tools={[card]} />);
-        expect(html).toContain('<span>failed</span>');
+        expect(html).toContain('<span class="vh-pill vh-pill--danger">failed</span>');
         expect(html).toContain('tg-subagent-open--failed');
     });
 
@@ -128,8 +128,13 @@ describe('sub-agent row (B-317)', () => {
         card.tool = {...card.tool, name: 'CodexCollaboration', input: {operation: 'spawn', receiverThreadIds: ['grandchild-thread'], prompt: 'Grandchild task'}};
         delete card.subagent;
         const parent = inSession(<ActivityMessages messages={[card]} sessionId="s1" />);
-        expect(parent).toContain('sa-dock-item');
+        // B-614: in a session the Codex call is the same one-line pointer as a Task row.
+        expect(parent).toContain('tg-subagent-open--codex');
+        expect(parent).toContain('Grandchild task');
+        expect(parent).toContain('lucide-code-xml');
+        expect(parent).not.toContain('vh-disclosure-panel');
         const nested = inSession(<ActivityMessages messages={[card]} sessionId="s1" subagentNavigation="inline" />);
+        expect(nested).not.toContain('tg-subagent-open--codex');
         expect(nested).not.toContain('sa-dock-item');
         expect(nested).toContain('grandchild-thread');
         expect(nested).toContain('Grandchild task');

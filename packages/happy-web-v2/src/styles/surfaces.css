@@ -1,0 +1,128 @@
+/* B-614 — shared atoms of the CDS-derived design language (docs/design-language.md
+ * §2 "表面与边框"). Values only from tokens.css.
+ *
+ * The 1-Border Rule: on any line of sight from the canvas inward there is at
+ * most ONE closed outline. `.vh-panel` is that outline for in-flow objects
+ * (permission / team / peer cards, tool output, tables); everything inside it
+ * is borderless — fill steps, a single-side hairline, ghost/soft buttons.
+ * Pills and chips are fill-only. */
+
+/* ── closed objects ──────────────────────────────────────────────────────── */
+.vh-panel {
+  background: var(--bg-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--panel-shadow);
+  min-width: 0;
+}
+/* header strip inside a closed object: split by one hairline, no own box */
+.vh-panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  border-bottom: var(--hairline) solid var(--line);
+}
+/* clickable cards only (teams page, attachments) — never transcript objects */
+.vh-card-interactive {
+  box-shadow: var(--panel-shadow);
+  transition:
+    box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+@media (hover: hover) {
+  .vh-card-interactive:hover {
+    box-shadow: var(--panel-shadow-hover);
+    transform: translateY(-1.5px);
+  }
+}
+.vh-card-interactive:active { transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  .vh-card-interactive:hover { transform: none; }
+}
+
+/* ── fill-only pills ─────────────────────────────────────────────────────── */
+.vh-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  flex: none;
+  padding: 0.1em 0.6em;
+  border-radius: var(--r-pill);
+  background: var(--fill-soft);
+  color: var(--text-dim);
+  font-size: 0.86em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.vh-pill--live { background: var(--accent-dim); color: var(--accent-2); }
+.vh-pill--warn { background: var(--warn-dim); color: var(--warn); }
+.vh-pill--danger { background: var(--danger-dim); color: color-mix(in srgb, var(--danger) 80%, var(--text)); } /* AA on the tint in dark */
+
+/* ── segmented control (CDS §2.2): 999 track, 2px inset, thumb on the active
+ *    item, 120ms snap. Items are buttons with aria-pressed / aria-selected /
+ *    aria-current; an optional .vh-segmented-label hides on inactive items
+ *    with an icon when the track is ≤254px wide. ── */
+.vh-segmented {
+  container-type: inline-size;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px;
+  border-radius: var(--r-pill);
+  background: var(--segmented-track);
+}
+.vh-segmented > :is(button, a) {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-sans);
+  font-size: var(--fs-12);
+  font-weight: 400;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    background-color var(--dur-snap) var(--ease-snap),
+    color var(--dur-snap) var(--ease-snap),
+    box-shadow var(--dur-snap) var(--ease-snap);
+}
+.vh-segmented > :is(button, a):hover { color: var(--text); }
+.vh-segmented > :is([aria-pressed='true'], [aria-selected='true'], [aria-current='page'], [aria-current='true'], .is-active) {
+  background: var(--segmented-thumb);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: var(--segmented-thumb-shadow);
+}
+.vh-segmented-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@container (width <= 254px) {
+  .vh-segmented > :is(button, a):not([aria-pressed='true'], [aria-selected='true'], [aria-current='page'], .is-active):has(svg) .vh-segmented-label { display: none; }
+  .vh-segmented > :is(button, a):not([aria-pressed='true'], [aria-selected='true'], [aria-current='page'], .is-active):has(svg) { flex: 0 0 auto; padding: 0 var(--sp-2); }
+}
+@media (pointer: coarse) {
+  .vh-segmented > :is(button, a) { min-height: 36px; }
+}
+
+/* ── typography details (CDS §1.5) ───────────────────────────────────────── */
+:where(h1, h2, h3, h4) { text-wrap: balance; }
+:where(p, li, dd, blockquote) { text-wrap: pretty; }
+.vh-tnum { font-variant-numeric: tabular-nums; }
+.vh-wrap-anywhere { overflow-wrap: anywhere; word-break: normal; }
+.vh-icon-inline { vertical-align: -0.125em; }
+.vh-icon-inline--sm { vertical-align: -0.075em; }
+.vh-clamp-1, .vh-clamp-2, .vh-clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.vh-clamp-1 { -webkit-line-clamp: 1; }
+.vh-clamp-2 { -webkit-line-clamp: 2; }
+.vh-clamp-3 { -webkit-line-clamp: 3; overflow-wrap: anywhere; }

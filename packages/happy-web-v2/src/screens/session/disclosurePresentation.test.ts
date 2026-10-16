@@ -12,7 +12,8 @@ describe('conversation disclosure presentation (B-209)', () => {
 
     expect(disclosureRule).toContain('box-shadow: inset 0 -2px 0 var(--accent)');
     expect(disclosureRule.slice(0, disclosureRule.indexOf('}'))).not.toContain('accent-glow');
-    expect(composerRule.slice(0, composerRule.indexOf('}'))).toContain('border-color: var(--line)');
+    // B-614 (CDS): the raised composer focuses with its neutral 3-state shadow (still no accent/glow).
+    expect(composerRule.slice(0, composerRule.indexOf('}'))).toContain('box-shadow: var(--shadow-composer-focus)');
     expect(composerRule.slice(0, composerRule.indexOf('}'))).toContain('outline: none');
     expect(composerRule.slice(0, composerRule.indexOf('}'))).not.toContain('accent-glow');
   });

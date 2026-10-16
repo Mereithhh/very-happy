@@ -36,3 +36,13 @@ export function taskLaunchIssue(team: TeamState, task: TeamTask) {
   if (task.status !== 'queued') return undefined;
   return team.operations.find(op => op.type === 'spawn' && op.taskId === task.id && op.attemptId === task.currentAttemptId && ['failed', 'unknown'].includes(op.status));
 }
+
+/** B-614: who sent a team transport message to whom — authoritative records only. */
+export function teamMessageRoute(team: TeamState, localId: string | null): { from: TeamBot | null; to: TeamBot | null } | undefined {
+  if (!localId) return undefined;
+  const bot = (id: string | null | undefined) => (id ? team.bots.find(b => b.id === id) ?? null : null);
+  const op = team.operations.find(o => localId === `teams-initial-${o.id}`);
+  if (op) return { from: bot(team.tasks.find(t => t.id === op.taskId)?.ownerBotId), to: bot(op.botId) };
+  const message = team.messages.find(m => localId.startsWith(`teams-message-${m.id}-`) && /^\d+$/.test(localId.slice(`teams-message-${m.id}-`.length)));
+  return message ? { from: bot(message.senderBotId), to: bot(message.recipientBotId) } : undefined;
+}

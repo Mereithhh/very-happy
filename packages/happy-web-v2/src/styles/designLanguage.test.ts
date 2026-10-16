@@ -15,8 +15,8 @@ function rule(source: string, selector: string): string {
 describe('app visual language', () => {
     it('keeps the documented neutral palette and a separate terminal palette', () => {
         const tokens = css('./tokens.css');
-        expect(tokens).toContain('--bg-0: #111210');
-        expect(tokens).toContain('--bg-0: #f4f4f1');
+        expect(tokens).toContain('--bg-0: #151515');
+        expect(tokens).toContain('--bg-0: #fcfcfb');
         expect(tokens).toContain('--accent: #56b8a7');
         expect(tokens).toContain('--accent: #167d70');
         expect(tokens).toContain('--term-bg: #06080c');
@@ -36,7 +36,8 @@ describe('app visual language', () => {
 
     it('the one sub-agent status that may wear the accent is a running one (B-317)', () => {
         const source = css('../screens/session/subagent.css');
-        expect(rule(source, '.sa-status--running')).toContain('var(--accent)');
+        // B-614: teal-as-text (--accent-2) keeps AA on the live tint in light.
+        expect(rule(source, '.sa-status--running')).toMatch(/var\(--accent(-2)?\)/);
         // Stopped is a user decision, not a fault: --warn, never --danger.
         expect(rule(source, '.sa-status--stopped')).toContain('var(--warn)');
         expect(rule(source, '.sa-status--failed')).toContain('var(--danger)');

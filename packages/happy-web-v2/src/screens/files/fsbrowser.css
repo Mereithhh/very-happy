@@ -355,7 +355,7 @@
 .fsb-shell.fsb--full > .fsb-split > .fsb > .fsb-bar,
 .fsb-shell.fsb--full > .fsb-split > .fsb-viewer > .fsb-viewer-head { padding-top:max(var(--sp-1),env(safe-area-inset-top)); }
 
-.fsb-viewer-body > .cv { border:0; border-radius:0; background:transparent; }
+.fsb-viewer-body > .cv { border:0; border-radius:0; background:transparent; box-shadow:none; --cv-surface:var(--bg-0); } /* B-614: the preview IS the canvas (B-448), no card lift */
 /* A file is the document surface, not a chat code card. Keep one inset,
    inside the pre, and let syntax highlighting use the host's canvas. */
 .fsb-viewer-body--code { padding:0; }

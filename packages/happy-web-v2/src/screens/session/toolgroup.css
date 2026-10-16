@@ -31,7 +31,7 @@
 }
 .tg-summary {
   flex: none;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
 }
 .tg-run-summary {
@@ -144,7 +144,7 @@
   font-size: var(--conversation-size);
   flex: none;
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500; /* B-614: names medium, metadata faint */
 }
 .tg-tool-detail {
   font-family: var(--font-mono);
@@ -199,3 +199,33 @@
   .tg-head, .tg-row-head { min-height:max(44px, calc(var(--chat-space) * 8)); }
   .tg-preview-path { min-height:max(44px, calc(var(--chat-space) * 8)); align-items:center; }
 }
+
+/* B-614 (CDS 1-Border Rule): tool rows, the tool group and sub-agent / Codex
+ * rows are BORDERLESS lines on the canvas. Pointer surfaces get a ghost hover
+ * fill that bleeds slightly past the column so the first icon stays on the
+ * shared start line (B-455). The expanded output below a row is the one closed
+ * object (.cmd / .cv / .tv boxes own their ring) — never a card around
+ * header + output. */
+.tg-head,
+.tg-row-head-wrap,
+.tg-subagent-open,
+.tg-preview-row {
+  margin-inline: calc(var(--chat-space) * -1.5);
+  padding-inline: calc(var(--chat-space) * 1.5);
+  border-radius: var(--r-sm);
+  transition: background-color var(--dur-hover) var(--ease-out);
+}
+@media (hover: hover) {
+  .tg-head:hover,
+  .tg-row-head-wrap:hover,
+  .tg-subagent-open:hover,
+  .tg-preview-row:hover { background: var(--fill-hover); }
+}
+.tg-row-head-wrap:has(> .tg-row-head:active),
+.tg-head:active,
+.tg-subagent-open:active { background: var(--fill-selected); }
+
+/* Sub-agent status reads as a fill-only pill (accent-dim only when live). */
+.tg-subagent-meta > .vh-pill::before,
+.tg-subagent-meta > .vh-pill + span::before { content: none; }
+.tg-subagent-meta > .vh-pill { font-size: var(--chat-fs-secondary); }

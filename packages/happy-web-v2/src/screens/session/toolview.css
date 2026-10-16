@@ -77,9 +77,9 @@
   font-family: var(--font-mono);
   font-size: var(--chat-fs-code);
   color: var(--text);
-  background: var(--bg-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  background: var(--surface-code); /* fill-only query echo (B-614) */
+  border: 0;
+  border-radius: var(--r-btn);
   padding: var(--chat-space) calc(var(--chat-space) * 2);
 }
 .tv-query-icon {
@@ -112,9 +112,11 @@
   font-size: var(--chat-fs-code);
   line-height: 1.5;
   color: var(--text-dim);
-  background: var(--bg-0);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  /* B-614 (CDS): tool output = the one closed object, in the code well */
+  background: var(--surface-code);
+  border: 0;
+  box-shadow: var(--panel-shadow);
+  border-radius: var(--r-code);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -189,8 +191,8 @@
   font-family: var(--font-mono);
   font-size: var(--chat-fs-caption);
   color: var(--text-dim);
-  background: var(--bg-2);
-  border: 1px solid var(--line);
+  background: var(--fill-soft);
+  border: 0;
   border-radius: var(--r-sm);
   padding: 0 6px;
 }
@@ -251,11 +253,11 @@
   flex-wrap: wrap;
 }
 .tv-ask-chip {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--chat-fs-caption);
   color: var(--text-dim);
-  background: var(--bg-2);
-  border: 1px solid var(--line);
+  background: var(--fill-soft);
+  border: 0;
   border-radius: var(--r-pill);
   padding: 1px calc(var(--chat-space) * 2);
   white-space: nowrap;
@@ -275,21 +277,23 @@
   flex-direction: column;
   gap: 2px;
   text-align: left;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-1);
+  /* B-614 (CDS): options are soft-fill buttons — they live inside a question
+   * card, so no ring of their own */
+  border: 0;
+  border-radius: var(--r-btn);
+  background: var(--fill-soft);
   padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
+  transition: background-color var(--dur-hover) var(--ease-out);
 }
 .tv-ask-opt:not(:disabled):hover {
-  background: var(--bg-2);
-  border-color: var(--line-2);
+  background: var(--fill-soft-hover);
 }
-/* picked / detected answer — stronger border + raised surface (no --accent:
- * that token strictly means live; an answered choice is history) */
+/* picked / detected answer — a stronger fill (no --accent: that token strictly
+ * means live; an answered choice is history) */
 .tv-ask-opt--selected {
-  border-color: var(--line-2);
-  background: var(--bg-2);
+  background: var(--fill-selected);
 }
+.tv-ask-opt--selected .tv-ask-opt-label { font-weight: 500; }
 .tv-ask-opt-label {
   display: inline-flex;
   align-items: center;
@@ -305,7 +309,7 @@
   color: var(--text-dim);
 }
 .tv-ask-opt--other {
-  border-style: dashed;
+  background: transparent; /* ghost: the free-text choice reads as secondary */
 }
 .tv-ask-other {
   display: flex;
@@ -317,26 +321,26 @@
   width: 100%;
   min-height: 72px;
   resize: vertical;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-0);
+  border: 0;
+  border-radius: var(--r-btn);
+  background: var(--fill-soft);
   color: var(--text);
   padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
   font: inherit;
   line-height: 1.5;
 }
 .tv-ask-other textarea:focus {
-  border-color: var(--text-faint);
-  outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);
+  outline: none; box-shadow: var(--focus-ring);
 }
 .tv-attachment {
   display: flex;
   align-items: center;
   gap: calc(var(--chat-space) * 3);
   padding: calc(var(--chat-space) * 3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-2);
+  border: 0;
+  box-shadow: var(--panel-shadow);
+  border-radius: var(--r-code);
+  background: var(--bg-1);
   color: var(--text-dim);
 }
 .tv-attachment-copy {

@@ -402,27 +402,32 @@ input.set-value:focus {
 }
 
 /* segmented period selector */
+/* B-614: the shared segmented-control look (styles/surfaces.css .vh-segmented):
+   999 track, 2px inset, neutral thumb, 120ms snap */
 .set-seg {
   display: inline-flex;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  background: var(--segmented-track);
+  border: 0;
+  border-radius: var(--r-pill);
   padding: 2px;
-  gap: 2px;
+  gap: 0;
 }
 .set-seg__btn {
-  padding: 5px 11px;
+  padding: 5px 12px;
   font-size: var(--fs-12);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-pill);
   color: var(--text-dim);
   transition:
-    background var(--motion-fast),
-    color var(--motion-fast);
+    background-color var(--dur-snap) var(--ease-snap),
+    color var(--dur-snap) var(--ease-snap),
+    box-shadow var(--dur-snap) var(--ease-snap);
 }
+.set-seg__btn:hover { color: var(--text); }
 .set-seg__btn.is-active {
-  background: var(--bg-0);
+  background: var(--segmented-thumb);
   color: var(--text);
-  box-shadow: inset 0 -1px 0 var(--accent);
+  font-weight: 500;
+  box-shadow: var(--segmented-thumb-shadow);
 }
 
 .set-center {

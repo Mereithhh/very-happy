@@ -7,16 +7,29 @@
  *    Never a generic "clickable" or primary-action color.
  *  - --accent-2 is teal-as-text/border (dark: same as accent; light: darkened for contrast).
  *  - Dark is the brand default; light is "the terminal by day".
- *  - Surfaces are matte black, layered by lightness — no shadows in dark mode.
+ *  - Depth follows the CDS ladder (B-614, docs/design-language.md §2): sidebar
+ *    (surface-0) BELOW the canvas, cards/dialogs/menus above it, composer and
+ *    popovers highest; plus ring + soft shadow on the few CLOSED objects.
+ *    Dark mode allows --shadow-sm/md/lg and the composer/popover shadows.
  *
- * ── Surface coloring discipline (2026-08 color audit) ─────────────────────────
- * Every visible surface sits on the bg ladder — NO raw color literals in
+ * ── Surface coloring discipline ───────────────────────────────────────────────
+ * Every visible surface sits on the ladder — NO raw color literals in
  * component CSS/TSX. Which step:
- *  - --bg-0  app floor: screen/page background, detail-pane floor, code-block canvas.
- *  - --bg-1  panel: sidebar, cards, modal/palette/dropdown panels, grouped lists.
- *  - --bg-2  raised: inputs, composer, chips, toasts, secondary buttons, hover-on-bg-1.
- *  - --bg-3  pressed/hover-on-bg-2.
- *  - --line / --line-2  every border and hairline divider.
+ *  - --surface-sidebar  sidebar / window root (CDS surface-0).
+ *  - --bg-0  main canvas: transcript, pages, detail-pane floor (surface-1).
+ *  - --bg-1  cards, panels, dialogs, menus, palette (surface-2).
+ *  - --bg-2  inputs, chips, secondary fills, hover-on-bg-1 (dark: surface-3).
+ *  - --bg-3  pressed / hover-on-bg-2.
+ *  - --surface-raised composer · --surface-popover floating layers ·
+ *    --surface-code code / terminal-output well (below the canvas).
+ *  - Alpha ladder: --fill-hover (ghost hover) · --fill-selected (selected row) ·
+ *    --fill-soft / --fill-soft-hover (secondary button, chip) · --line (border,
+ *    divider) · --line-2 (strong border) · --line-heavy (heavy divider).
+ *  - The 1-Border Rule: on any line of sight from the canvas inward at most ONE
+ *    closed outline. Closed objects (composer, code/tool output, tables,
+ *    permission/team/peer cards, dialogs, menus) use --panel-shadow /
+ *    --shadow-composer* / --shadow-popover; everything inside them is
+ *    borderless (fill steps, a single-side hairline, ghost/soft buttons).
  *  - text ladder: --text / --text-dim / --text-faint. Teal as text/border = --accent-2.
  *  - overlays: backdrop dim = --scrim; floating-panel shadows = --shadow-pop
  *    (dropdown/toast/hint) or --shadow-modal (modal/palette/auth card).
@@ -37,21 +50,36 @@
 
 :root,
 :root[data-theme='dark'] {
-  /* neutral-black surfaces, matching the landing/update material */
-  --bg-0: #111210;
-  --bg-1: #171815;
-  --bg-2: #20211e;
-  --bg-3: #292a26;
+  /* CDS surface ladder (docs/design-language.md §2). The canvas is the chat;
+     the sidebar sits BELOW it (darker); cards, then composer/popovers rise. */
+  --bg-0: #151515; /* surface-1 · main canvas */
+  --bg-1: #1a1a19; /* surface-2 · cards, panels, dialogs, menus */
+  --bg-2: #20201e; /* surface-3 · inputs, chips, secondary fill, hover-on-bg-1 */
+  --bg-3: #2a2a27; /* pressed / hover-on-bg-2 */
+  --surface-sidebar: #0b0b0a; /* surface-0 · sidebar, window root */
+  --surface-code: #0d0d0c; /* code / terminal-output well, darker than the canvas */
+  --surface-raised: #20201e; /* composer */
+  --surface-popover: #222220;
   /* User-authored content, independent of the live accent. */
   --message-user-bg: #242c31;
   --message-user-text: #e2eaf0;
-  --line: #30322d;
-  --line-2: #41433d;
+  /* alpha ladder (white on dark): a1 5% ghost hover · a2 9% border + soft fill ·
+     a3 18% strong border · a4 30% heavy divider */
+  --line: rgba(255, 255, 255, 0.09);
+  --line-2: rgba(255, 255, 255, 0.18);
+  --line-heavy: rgba(255, 255, 255, 0.3);
+  --fill-hover: rgba(255, 255, 255, 0.05);
+  --fill-selected: rgba(255, 255, 255, 0.09);
+  --fill-soft: rgba(255, 255, 255, 0.09);
+  --fill-soft-hover: rgba(255, 255, 255, 0.14);
+  --segmented-track: rgba(255, 255, 255, 0.08);
+  --segmented-thumb: #2c2c2a;
+  --segmented-thumb-shadow: 0 0 1px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(0, 0, 0, 0.4);
 
   /* ink */
   --text: #ecede8;
   --text-dim: #b2b4ad;
-  --text-faint: #92958d;
+  --text-faint: #9a9d95; /* AA ≥4.5 on every surface + fill (B-614 table) */
 
   --accent: #56b8a7;
   --accent-2: #75c8b9;
@@ -67,14 +95,24 @@
   --danger-dim: rgba(255, 107, 107, 0.14);
   --danger-ink: #1c0606; /* text/icon on --danger fill (dark danger is light-ish red) */
 
-  /* lift */
+  /* elevation (CDS §1.4.1): near ambient occlusion + far diffusion */
   --shadow-lift: none;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.5), 0 16px 36px -2px rgba(0, 0, 0, 0.4);
+  --panel-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+  --panel-shadow-hover: 0 0 0 1px var(--line-2), 0 6px 20px rgba(0, 0, 0, 0.6);
+  /* floating: dark = inset chamfer + drop, no outer ring */
+  --shadow-popover: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 28px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.45);
+  --shadow-composer: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 0 0 1px var(--line);
+  --shadow-composer-hover: 0 4px 24px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--line-2);
+  --shadow-composer-focus: 0 4px 24px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.22);
 
-  /* overlays: backdrop dim + floating-layer shadows (portals CAN'T layer by
-     lightness alone, so dark mode allows these two shadows and nothing else) */
+  /* overlays: backdrop dim + drop shadows for floating layers that keep their
+     own 1px --line border (dropdown/toast/hint; modal/palette/auth card) */
   --scrim: rgba(0, 0, 0, 0.55);
-  --shadow-pop: 0 12px 32px -14px rgba(0, 0, 0, 0.6); /* dropdown / toast / hint */
-  --shadow-modal: 0 24px 64px -24px rgba(0, 0, 0, 0.7); /* modal / palette / auth card */
+  --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 4px 8px rgba(0, 0, 0, 0.5), 0 16px 36px -2px rgba(0, 0, 0, 0.55);
 
   /* backdrop (grid + glow + vignette) */
   --bd-glow: rgba(86, 184, 167, 0.1);
@@ -84,23 +122,36 @@
   color-scheme: dark;
 }
 
-/* Light = restrained editorial gray, shared with landing/update surfaces.
-   Panels layer by a step of neutral value, not by shadow. All text/bg pairs
-   pass WCAG AA (4.5:1) on every surface bg-0..bg-3; accent as a non-text
-   indicator passes 3:1. */
+/* Light = editorial warm gray. Depth comes from the CDS ladder (sidebar below
+   the canvas, white cards/composer above it) plus rings and soft shadows on the
+   few closed objects. All text/bg pairs pass WCAG AA (4.5:1) on bg-0..bg-3,
+   the sidebar and the code well; accent as a non-text indicator passes 3:1. */
 :root[data-theme='light'] {
+  --bg-0: #fcfcfb; /* surface-1 · main canvas */
+  --bg-1: #ffffff; /* surface-2 · cards, panels, dialogs, menus */
+  --bg-2: #f3f3f1; /* fill step · inputs, chips, secondary fill, hover-on-bg-1 */
+  --bg-3: #ebebe8; /* pressed / hover-on-bg-2 */
+  --surface-sidebar: #f5f5f3; /* surface-0 · sidebar, window root */
+  --surface-code: #f5f5f3; /* code / terminal-output well, a step below the canvas */
+  --surface-raised: #ffffff; /* composer */
+  --surface-popover: #ffffff;
   --message-user-bg: #e6edf3;
   --message-user-text: #263d50;
-  --bg-0: #f4f4f1;
-  --bg-1: #fafaf7;
-  --bg-2: #fffefa;
-  --bg-3: #e9eae5;
-  --line: #dedfd9;
-  --line-2: #c7c9c2;
+  /* alpha ladder (ink on light): a1 5% · a2 10% · a3 20% · a4 35% */
+  --line: rgba(23, 23, 21, 0.1);
+  --line-2: rgba(23, 23, 21, 0.2);
+  --line-heavy: rgba(23, 23, 21, 0.35);
+  --fill-hover: rgba(23, 23, 21, 0.05);
+  --fill-selected: rgba(23, 23, 21, 0.1);
+  --fill-soft: rgba(23, 23, 21, 0.07);
+  --fill-soft-hover: rgba(23, 23, 21, 0.12);
+  --segmented-track: rgba(23, 23, 21, 0.06);
+  --segmented-thumb: #ffffff;
+  --segmented-thumb-shadow: 0 0 1px rgba(23, 23, 21, 0.3), 0 1px 2px rgba(23, 23, 21, 0.08);
 
   --text: #171715;
   --text-dim: #555650;
-  --text-faint: #666762;
+  --text-faint: #5f605b;
 
   --accent: #167d70;
   --accent-2: #126b61;
@@ -115,13 +166,22 @@
   --danger-dim: rgba(181, 47, 53, 0.1);
   --danger-ink: #ffffff; /* light danger fill is dark red — white reads ≥7:1 */
 
-  /* gray-on-gray layering carries depth by value; shadow is a whisper */
+  /* slate-tinted shadows (same hue family as --text), never pure black */
   --shadow-lift: 0 1px 2px rgba(23, 23, 21, 0.05), 0 8px 24px -18px rgba(23, 23, 21, 0.26);
+  --shadow-sm: 0 1px 2px rgba(23, 23, 21, 0.05), 0 2px 8px rgba(23, 23, 21, 0.08);
+  --shadow-md: 0 2px 4px rgba(23, 23, 21, 0.05), 0 6px 16px rgba(23, 23, 21, 0.08);
+  --shadow-lg: 0 4px 8px rgba(23, 23, 21, 0.06), 0 12px 28px -2px rgba(23, 23, 21, 0.08);
+  --panel-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+  --panel-shadow-hover: 0 0 0 1px var(--line-2), 0 4px 16px -2px rgba(23, 23, 21, 0.09);
+  /* floating: light = outer 1px ring + soft drop */
+  --shadow-popover: 0 0 0 1px var(--line), 0 8px 24px rgba(23, 23, 21, 0.12), 0 2px 6px rgba(23, 23, 21, 0.08);
+  --shadow-composer: 0 4px 20px rgba(23, 23, 21, 0.035), inset 0 0 0 1px var(--line);
+  --shadow-composer-hover: 0 4px 24px rgba(23, 23, 21, 0.06), inset 0 0 0 1px var(--line-2);
+  --shadow-composer-focus: 0 4px 24px rgba(23, 23, 21, 0.08), inset 0 0 0 1px var(--line-2), 0 0 0 1px var(--line-2);
 
-  /* overlays: slate-tinted (same hue family as --text), never pure black */
   --scrim: rgba(23, 23, 21, 0.28);
-  --shadow-pop: 0 2px 6px rgba(23, 23, 21, 0.07), 0 12px 32px -12px rgba(23, 23, 21, 0.22);
-  --shadow-modal: 0 2px 8px rgba(23, 23, 21, 0.07), 0 32px 80px -28px rgba(23, 23, 21, 0.3);
+  --shadow-pop: 0 8px 24px rgba(23, 23, 21, 0.12), 0 2px 6px rgba(23, 23, 21, 0.08);
+  --shadow-modal: 0 10px 25px -5px rgba(23, 23, 21, 0.1), 0 8px 10px -6px rgba(23, 23, 21, 0.1);
 
   --bd-glow: rgba(22, 125, 112, 0.06);
   --bd-grid: rgba(23, 23, 21, 0.04);
@@ -133,33 +193,66 @@
 /* follow system when no explicit data-theme is set */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
-    --bg-0: #f4f4f1;
-    --bg-1: #fafaf7;
-    --bg-2: #fffefa;
-    --bg-3: #e9eae5;
-    --line: #dedfd9;
-    --line-2: #c7c9c2;
+    --bg-0: #fcfcfb; /* surface-1 · main canvas */
+    --bg-1: #ffffff; /* surface-2 · cards, panels, dialogs, menus */
+    --bg-2: #f3f3f1; /* fill step · inputs, chips, secondary fill, hover-on-bg-1 */
+    --bg-3: #ebebe8; /* pressed / hover-on-bg-2 */
+    --surface-sidebar: #f5f5f3; /* surface-0 · sidebar, window root */
+    --surface-code: #f5f5f3; /* code / terminal-output well, a step below the canvas */
+    --surface-raised: #ffffff; /* composer */
+    --surface-popover: #ffffff;
+    --message-user-bg: #e6edf3;
+    --message-user-text: #263d50;
+    /* alpha ladder (ink on light): a1 5% · a2 10% · a3 20% · a4 35% */
+    --line: rgba(23, 23, 21, 0.1);
+    --line-2: rgba(23, 23, 21, 0.2);
+    --line-heavy: rgba(23, 23, 21, 0.35);
+    --fill-hover: rgba(23, 23, 21, 0.05);
+    --fill-selected: rgba(23, 23, 21, 0.1);
+    --fill-soft: rgba(23, 23, 21, 0.07);
+    --fill-soft-hover: rgba(23, 23, 21, 0.12);
+    --segmented-track: rgba(23, 23, 21, 0.06);
+    --segmented-thumb: #ffffff;
+    --segmented-thumb-shadow: 0 0 1px rgba(23, 23, 21, 0.3), 0 1px 2px rgba(23, 23, 21, 0.08);
+
     --text: #171715;
     --text-dim: #555650;
-    --text-faint: #666762;
+    --text-faint: #5f605b;
+
     --accent: #167d70;
     --accent-2: #126b61;
     --accent-press: #10685d;
     --accent-dim: rgba(22, 125, 112, 0.11);
     --accent-ink: #f7fffc;
     --accent-glow: rgba(22, 125, 112, 0.16);
+
     --warn: #845c09;
     --danger: #b52f35;
     --warn-dim: rgba(132, 92, 9, 0.12);
     --danger-dim: rgba(181, 47, 53, 0.1);
-    --danger-ink: #ffffff;
+    --danger-ink: #ffffff; /* light danger fill is dark red — white reads ≥7:1 */
+
+    /* slate-tinted shadows (same hue family as --text), never pure black */
     --shadow-lift: 0 1px 2px rgba(23, 23, 21, 0.05), 0 8px 24px -18px rgba(23, 23, 21, 0.26);
+    --shadow-sm: 0 1px 2px rgba(23, 23, 21, 0.05), 0 2px 8px rgba(23, 23, 21, 0.08);
+    --shadow-md: 0 2px 4px rgba(23, 23, 21, 0.05), 0 6px 16px rgba(23, 23, 21, 0.08);
+    --shadow-lg: 0 4px 8px rgba(23, 23, 21, 0.06), 0 12px 28px -2px rgba(23, 23, 21, 0.08);
+    --panel-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+    --panel-shadow-hover: 0 0 0 1px var(--line-2), 0 4px 16px -2px rgba(23, 23, 21, 0.09);
+    /* floating: light = outer 1px ring + soft drop */
+    --shadow-popover: 0 0 0 1px var(--line), 0 8px 24px rgba(23, 23, 21, 0.12), 0 2px 6px rgba(23, 23, 21, 0.08);
+    --shadow-composer: 0 4px 20px rgba(23, 23, 21, 0.035), inset 0 0 0 1px var(--line);
+    --shadow-composer-hover: 0 4px 24px rgba(23, 23, 21, 0.06), inset 0 0 0 1px var(--line-2);
+    --shadow-composer-focus: 0 4px 24px rgba(23, 23, 21, 0.08), inset 0 0 0 1px var(--line-2), 0 0 0 1px var(--line-2);
+
     --scrim: rgba(23, 23, 21, 0.28);
-    --shadow-pop: 0 2px 6px rgba(23, 23, 21, 0.07), 0 12px 32px -12px rgba(23, 23, 21, 0.22);
-    --shadow-modal: 0 2px 8px rgba(23, 23, 21, 0.07), 0 32px 80px -28px rgba(23, 23, 21, 0.3);
+    --shadow-pop: 0 8px 24px rgba(23, 23, 21, 0.12), 0 2px 6px rgba(23, 23, 21, 0.08);
+    --shadow-modal: 0 10px 25px -5px rgba(23, 23, 21, 0.1), 0 8px 10px -6px rgba(23, 23, 21, 0.1);
+
     --bd-glow: rgba(22, 125, 112, 0.06);
     --bd-grid: rgba(23, 23, 21, 0.04);
     --bd-vig: rgba(23, 23, 21, 0.04);
+
     color-scheme: light;
   }
 }
@@ -249,16 +342,38 @@
   --sp-10: 40px;
   --sp-12: 48px;
 
-  /* radius */
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
-  --r-pill: 999px;
+  /* radius ladder (CDS §1.3.1; nested corners are concentric: inner = outer − padding) */
+  --r-xs: 2px; /* dot, focus pip */
+  --r-kbd: 4px; /* kbd, checkbox, inline code */
+  --r-sm: 6px; /* XS button, menu row, small chip */
+  --r-btn: 8px; /* button, input, select */
+  --r-md: 10px; /* card, panel, attachment, permission/team/peer card, table */
+  --r-code: 12px; /* code block, tool output, LG button, drawer */
+  --r-lg: 16px; /* dialog, settings card */
+  --r-bubble: 18px; /* user message */
+  --r-composer: 20px; /* composer */
+  --r-pill: 999px; /* pill, segmented track, status dot */
 
-  /* motion (prefers-reduced-motion disables all) */
-  --motion-fast: 120ms ease;
-  --motion-med: 200ms ease;
-  --motion-slow: 320ms ease;
+  /* hairline for INTERNAL dividers (table rows, menu groups, card header split) */
+  --hairline: 1px;
+
+  /* keyboard focus (focus-visible only): canvas gap + live-accent ring. No glow —
+     zero-offset coloured glows stay banned (design-language §5). */
+  --focus-ring: inset 0 0 0 1px var(--bg-0), 0 0 0 1.5px var(--accent);
+
+  /* motion (CDS §1.6; prefers-reduced-motion zeroes the durations) */
+  --dur-micro: 60ms;
+  --dur-snap: 120ms;
+  --dur-base: 200ms;
+  --dur-sheet: 300ms;
+  --dur-slow: 450ms;
+  --dur-hover: 150ms; /* ghost / soft-fill hover fades */
+  --ease-out: cubic-bezier(0.165, 0.84, 0.44, 1);
+  --ease-snap: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-overshoot: cubic-bezier(0.34, 1.3, 0.64, 1); /* tiny entrances only, never transcript layout */
+  --motion-fast: var(--dur-snap) var(--ease-out);
+  --motion-med: var(--dur-base) var(--ease-out);
+  --motion-slow: var(--dur-sheet) var(--ease-out);
   --caret-blink: 1.1s;
   --progress-dur: 1.3s;
 
@@ -267,8 +382,21 @@
   --bp-desktop: 980px;
 }
 
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx) {
+  :root { --hairline: 0.5px; }
+}
+@media (-webkit-min-device-pixel-ratio: 3), (min-resolution: 3dppx) {
+  :root { --hairline: calc(1px / 3); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
+    --dur-micro: 0ms;
+    --dur-snap: 0ms;
+    --dur-base: 0ms;
+    --dur-sheet: 0ms;
+    --dur-slow: 0ms;
+    --dur-hover: 0ms;
     --motion-fast: 0ms;
     --motion-med: 0ms;
     --motion-slow: 0ms;

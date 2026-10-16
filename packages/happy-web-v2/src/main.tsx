@@ -16,6 +16,7 @@ try { (document as unknown as { fonts?: { load?: (q: string) => unknown } }).fon
 
 import './styles/tokens.css';
 import './styles/base.css';
+import './styles/surfaces.css';
 // B-582: the device's 对话字号 lands on <html> before the first render.
 import { installChatTextSize } from './ui/chatTextSize';
 installChatTextSize();

@@ -28,21 +28,42 @@
   gap: 8px;
   font-family: var(--font-sans);
   font-weight: 500;
-  border-radius: var(--r-sm);
+  /* B-614 (CDS §2.1): XS 24/6 · SM 28/8 · MD 32/8 · LG 40/12; press = scale .98 */
+  border-radius: var(--r-btn);
   border: 1px solid transparent;
   transition:
-    background var(--motion-fast),
+    background-color var(--dur-hover) var(--ease-out),
     border-color var(--motion-fast),
-    opacity var(--motion-fast);
+    opacity var(--motion-fast),
+    transform var(--dur-micro) var(--ease-out);
   white-space: nowrap;
+}
+.vh-btn:not(:disabled):active { transform: scale(0.98); }
+@media (prefers-reduced-motion: reduce) {
+  .vh-btn:not(:disabled):active { transform: none; }
+}
+.vh-btn:focus-visible { box-shadow: var(--focus-ring); border-color: transparent; }
+.vh-btn--xs {
+  font-size: var(--fs-12);
+  min-height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
 }
 .vh-btn--sm {
   font-size: var(--fs-12);
-  padding: 5px 11px;
+  min-height: 28px;
+  padding: 0 10px;
 }
 .vh-btn--md {
-  font-size: var(--fs-13);
-  padding: 8px 15px;
+  font-size: calc(var(--fs-13) + 0.5px);
+  min-height: 32px;
+  padding: 0 14px;
+}
+.vh-btn--lg {
+  font-size: var(--fs-15);
+  min-height: 40px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-code);
 }
 .vh-btn--full {
   width: 100%;
@@ -59,24 +80,27 @@
   background: var(--text-dim);
 }
 .vh-btn--secondary {
-  background: var(--bg-2);
-  border-color: var(--line-2);
+  /* soft fill, no ring: secondary buttons live inside closed objects
+     (dialogs, cards, popovers) where a second outline breaks the 1-Border Rule */
+  background: var(--fill-soft);
   color: var(--text);
 }
 .vh-btn--secondary:not(:disabled):hover {
-  background: var(--bg-3);
+  background: var(--fill-soft-hover);
 }
 .vh-btn--ghost {
   color: var(--text-dim);
 }
 .vh-btn--ghost:not(:disabled):hover {
-  background: var(--bg-2);
+  background: var(--fill-hover);
   color: var(--text);
 }
 .vh-btn--danger {
   background: var(--danger-dim);
   color: var(--danger);
-  border-color: var(--danger);
+}
+.vh-btn--danger:not(:disabled):hover {
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
 }
 
 /* field / input */
@@ -94,17 +118,20 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  /* B-614 (CDS): inputs are fill-only (they sit inside cards and dialogs);
+     the focus ring appears on focus only */
+  background: var(--fill-soft);
+  border: 1px solid transparent;
+  border-radius: var(--r-btn);
   padding: 0 12px;
   transition:
     border-color var(--motion-fast),
+    background-color var(--motion-fast),
     box-shadow var(--motion-fast);
 }
 .vh-input-wrap:focus-within {
-  border-color: var(--text-dim);
-  box-shadow: none;
+  border-color: transparent;
+  box-shadow: var(--focus-ring);
 }
 .vh-input-wrap.is-error {
   border-color: var(--danger);
@@ -178,7 +205,7 @@
    with a static shadow so only its scale/opacity move. */
 .vh-dot--pulse {
   position: relative;
-  animation: vh-dot-pulse 1.8s ease-in-out infinite;
+  animation: vh-dot-pulse 1.2s ease-in-out infinite; /* B-614: CDS live pulse 1.2s */
 }
 .vh-dot--pulse::after {
   content: '';
@@ -188,7 +215,7 @@
   box-shadow: 0 0 0 4px var(--accent-glow);
   transform: scale(0);
   opacity: 1;
-  animation: vh-dot-ring 1.8s ease-in-out infinite;
+  animation: vh-dot-ring 1.2s ease-in-out infinite;
   /* keep the stagger the element got via inline animation-delay */
   animation-delay: inherit;
   pointer-events: none;
