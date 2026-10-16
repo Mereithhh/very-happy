@@ -141,6 +141,11 @@ export const LocalSettingsSchema = z.object({
     // 分组维度：'group'（provider 给的分组）| 'priority'（按优先级 = 四象限）。
     // ⚠️ 铁律：schema 里不写 .default()，默认值只放 localSettingsDefaults。
     todoGroupBy: z.enum(['group', 'priority']).describe('How the /todos panel buckets rows'),
+    // B-613: tool/turn diff layout on wide containers. Device-local on purpose:
+    // side-by-side only exists at ≥720px container width, so it is a screen
+    // preference (desktop vs phone), not account state. Enum values are only
+    // ever ADDED (whole-blob safeParse — see boardLayout). No .default().
+    diffLayout: z.enum(['unified', 'split']).describe('Diff layout on wide containers: unified or side-by-side'),
 });
 
 //
@@ -231,6 +236,7 @@ export const localSettingsDefaults: LocalSettings = {
     notesSplitNote: null,
     todoMachineId: null,
     todoGroupBy: 'group',
+    diffLayout: 'unified',
 };
 Object.freeze(localSettingsDefaults);
 
