@@ -27,6 +27,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       'changelog.releases.oct16.diff',
       'changelog.releases.oct16.panel',
       'changelog.releases.oct16.smooth',
+      'changelog.releases.oct16.look',
     ],
   },
   {

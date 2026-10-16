@@ -2212,6 +2212,7 @@ export const en = {
                 diff: 'Diffs at least 720px wide get a Unified / Split switch; your choice is remembered on this device. Copying from the split view takes only the side you selected.',
                 panel: 'The side-panel divider works with touch and pen, Esc cancels a drag, double-click restores the default width, and dragging it almost closed closes the panel. It can also be focused and resized with the arrow keys.',
                 smooth: 'Long replies stream more smoothly: only the paragraph being written is re-rendered. Lists in the sidebar and side panel fade at the edges that can still scroll, and thinking blocks open and close with a short animation.',
+                look: 'A cleaner look: tool calls are plain rows instead of boxes inside boxes, and only real objects (code and command output, tables, approvals, team and cross-session messages, the composer) get a single outline. The sidebar sits darker than the conversation, code is set in darker wells, and sub-agents, Codex threads, teammates and other sessions show who is talking to whom.',
             },
             oct13b: {
                 title: 'Review the agent\'s work without leaving the web',
