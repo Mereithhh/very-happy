@@ -7,7 +7,9 @@
  *    Never a generic "clickable" or primary-action color.
  *  - --accent-2 is teal-as-text/border (dark: same as accent; light: darkened for contrast).
  *  - Dark is the brand default; light is "the terminal by day".
- *  - Surfaces are matte black, layered by lightness — no shadows in dark mode.
+ *  - Surfaces are matte black, layered by lightness. B-614 depth pass: dark mode
+ *    also allows the card/raised elevation pair (--shadow-card, --shadow-raised)
+ *    under a 10% ink ring — value steps alone measured CR≈1.05 and read as flat.
  *
  * ── Surface coloring discipline (2026-08 color audit) ─────────────────────────
  * Every visible surface sits on the bg ladder — NO raw color literals in
@@ -17,6 +19,13 @@
  *  - --bg-2  raised: inputs, composer, chips, toasts, secondary buttons, hover-on-bg-1.
  *  - --bg-3  pressed/hover-on-bg-2.
  *  - --line / --line-2  every border and hairline divider.
+ *  - B-614 card ladder (transcript/panel objects that are self-contained:
+ *    expanded tool calls, code blocks, team/peer cards, permission, composer):
+ *    --surface-card body · --surface-card-head tinted header bar ·
+ *    --surface-code recessed code well · --surface-raised composer ·
+ *    --surface-selected the open row in lists ·
+ *    --card-border / --card-border-strong ink rings · --shadow-card / --shadow-raised.
+ *    Shared classes: .vh-card / .vh-card-head / .vh-pill (ui/surfaces.css).
  *  - text ladder: --text / --text-dim / --text-faint. Teal as text/border = --accent-2.
  *  - overlays: backdrop dim = --scrim; floating-panel shadows = --shadow-pop
  *    (dropdown/toast/hint) or --shadow-modal (modal/palette/auth card).
@@ -39,11 +48,11 @@
 :root[data-theme='dark'] {
   /* neutral-black surfaces, matching the landing/update material */
   --bg-0: #111210;
-  --bg-1: #171815;
-  --bg-2: #20211e;
-  --bg-3: #292a26;
+  --bg-1: #1a1b18; /* B-614: was #171815 (CR 1.05 vs bg-0) */
+  --bg-2: #22231f;
+  --bg-3: #2c2d29;
   /* User-authored content, independent of the live accent. */
-  --message-user-bg: #242c31;
+  --message-user-bg: #28323a;
   --message-user-text: #e2eaf0;
   --line: #30322d;
   --line-2: #41433d;
@@ -70,6 +79,17 @@
   /* lift */
   --shadow-lift: none;
 
+  /* B-614 card ladder (see header). Rings are ink at 10/16%. */
+  --surface-card: #1b1c19;
+  --surface-card-head: #22231f;
+  --surface-code: #0b0c0a;
+  --surface-raised: #1f201c;
+  --surface-selected: #2c2d29;
+  --card-border: rgba(236, 237, 232, 0.1);
+  --card-border-strong: rgba(236, 237, 232, 0.16);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32), 0 4px 12px -4px rgba(0, 0, 0, 0.4);
+  --shadow-raised: 0 0 0 1px rgba(236, 237, 232, 0.1), 0 8px 28px -8px rgba(0, 0, 0, 0.6);
+
   /* overlays: backdrop dim + floating-layer shadows (portals CAN'T layer by
      lightness alone, so dark mode allows these two shadows and nothing else) */
   --scrim: rgba(0, 0, 0, 0.55);
@@ -89,7 +109,7 @@
    pass WCAG AA (4.5:1) on every surface bg-0..bg-3; accent as a non-text
    indicator passes 3:1. */
 :root[data-theme='light'] {
-  --message-user-bg: #e6edf3;
+  --message-user-bg: #dde7f0;
   --message-user-text: #263d50;
   --bg-0: #f4f4f1;
   --bg-1: #fafaf7;
@@ -117,6 +137,15 @@
 
   /* gray-on-gray layering carries depth by value; shadow is a whisper */
   --shadow-lift: 0 1px 2px rgba(23, 23, 21, 0.05), 0 8px 24px -18px rgba(23, 23, 21, 0.26);
+  --surface-card: #fffefb;
+  --surface-card-head: #f5f5f1;
+  --surface-code: #efefea;
+  --surface-raised: #fffefb;
+  --surface-selected: #fffefb;
+  --card-border: rgba(23, 23, 21, 0.11);
+  --card-border-strong: rgba(23, 23, 21, 0.18);
+  --shadow-card: 0 1px 2px rgba(23, 23, 21, 0.04), 0 2px 10px -3px rgba(23, 23, 21, 0.08);
+  --shadow-raised: 0 0 0 1px rgba(23, 23, 21, 0.11), 0 1px 2px rgba(23, 23, 21, 0.04), 0 8px 26px -8px rgba(23, 23, 21, 0.16);
 
   /* overlays: slate-tinted (same hue family as --text), never pure black */
   --scrim: rgba(23, 23, 21, 0.28);
@@ -133,6 +162,8 @@
 /* follow system when no explicit data-theme is set */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
+    --message-user-bg: #dde7f0;
+    --message-user-text: #263d50;
     --bg-0: #f4f4f1;
     --bg-1: #fafaf7;
     --bg-2: #fffefa;
@@ -154,6 +185,15 @@
     --danger-dim: rgba(181, 47, 53, 0.1);
     --danger-ink: #ffffff;
     --shadow-lift: 0 1px 2px rgba(23, 23, 21, 0.05), 0 8px 24px -18px rgba(23, 23, 21, 0.26);
+    --surface-card: #fffefb;
+    --surface-card-head: #f5f5f1;
+    --surface-code: #efefea;
+    --surface-raised: #fffefb;
+    --surface-selected: #fffefb;
+    --card-border: rgba(23, 23, 21, 0.11);
+    --card-border-strong: rgba(23, 23, 21, 0.18);
+    --shadow-card: 0 1px 2px rgba(23, 23, 21, 0.04), 0 2px 10px -3px rgba(23, 23, 21, 0.08);
+    --shadow-raised: 0 0 0 1px rgba(23, 23, 21, 0.11), 0 1px 2px rgba(23, 23, 21, 0.04), 0 8px 26px -8px rgba(23, 23, 21, 0.16);
     --scrim: rgba(23, 23, 21, 0.28);
     --shadow-pop: 0 2px 6px rgba(23, 23, 21, 0.07), 0 12px 32px -12px rgba(23, 23, 21, 0.22);
     --shadow-modal: 0 2px 8px rgba(23, 23, 21, 0.07), 0 32px 80px -28px rgba(23, 23, 21, 0.3);

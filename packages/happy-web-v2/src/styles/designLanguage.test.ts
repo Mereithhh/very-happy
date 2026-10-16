@@ -36,7 +36,8 @@ describe('app visual language', () => {
 
     it('the one sub-agent status that may wear the accent is a running one (B-317)', () => {
         const source = css('../screens/session/subagent.css');
-        expect(rule(source, '.sa-status--running')).toContain('var(--accent)');
+        // B-614: teal-as-text (--accent-2) keeps AA on the live tint in light.
+        expect(rule(source, '.sa-status--running')).toMatch(/var\(--accent(-2)?\)/);
         // Stopped is a user decision, not a fault: --warn, never --danger.
         expect(rule(source, '.sa-status--stopped')).toContain('var(--warn)');
         expect(rule(source, '.sa-status--failed')).toContain('var(--danger)');

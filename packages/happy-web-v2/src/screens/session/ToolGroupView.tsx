@@ -161,7 +161,7 @@ function ToolRow({
                     <span className="tg-subagent-meta">
                         {/* B-614: the agent's type is part of its identity, everywhere it shows. */}
                         {notableSubagentType(subagentSummary?.subtype) && <span className="tg-subagent-kind"><AgentGlyph kind="subagent" size={13} />{notableSubagentType(subagentSummary?.subtype)}</span>}
-                        {subagentStatus && <span>{t(`session.chat.subagentStatus.${subagentStatus}` as 'session.chat.subagentStatus.running')}</span>}
+                        {subagentStatus && <span className={`vh-pill${subagentStatus === 'running' ? ' vh-pill--live' : subagentStatus === 'failed' ? ' vh-pill--danger' : ''}`}>{t(`session.chat.subagentStatus.${subagentStatus}` as 'session.chat.subagentStatus.running')}</span>}
                         {subagentSummary && subagentSummary.toolCount > 0 && <span>{t('session.chat.usedTools', {count:subagentSummary.toolCount})}</span>}
                     </span>
                     <ChevronRight size={14} className="tg-subagent-open-cue" aria-hidden />

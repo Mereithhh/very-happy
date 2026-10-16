@@ -1,19 +1,22 @@
 .cv {
-  border: 1px solid var(--line);
+  /* B-614: ring + soft lift; the code itself sits in a recessed well
+   * (--surface-code) so it never matches the card or the canvas. */
+  border: 1px solid var(--card-border);
   border-radius: var(--r-md);
-  background: var(--bg-1);
+  background: var(--surface-code);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
   /* the surface the collapse fade dissolves into — matches whichever body is
-   * rendered (plain pre on --bg-1; shiki repaints it below) */
-  --cv-surface: var(--bg-1);
+   * rendered (plain pre and shiki both paint --surface-code) */
+  --cv-surface: var(--surface-code);
 }
 .cv-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 4px calc(var(--chat-space) * 2) 4px calc(var(--chat-space) * 3);
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--line);
+  background: var(--surface-card-head);
+  border-bottom: 1px solid var(--card-border);
 }
 .cv-lang {
   font-family: var(--font-mono);
@@ -64,7 +67,7 @@
   font-family: var(--font-mono) !important;
   font-size: var(--chat-fs-code);
   line-height: 1.55;
-  background: var(--cv-code-background, var(--bg-0)) !important;
+  background: var(--cv-code-background, var(--surface-code)) !important;
   color: var(--text);
 }
 .cv-shiki pre.shiki code {
@@ -86,14 +89,14 @@
   color: var(--shiki-light);
 }
 :root[data-theme='light'] .cv-shiki pre.shiki {
-  background: var(--cv-code-background, var(--bg-1)) !important;
+  background: var(--cv-code-background, var(--surface-code)) !important;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) .cv-shiki pre.shiki span {
     color: var(--shiki-light);
   }
   :root:not([data-theme]) .cv-shiki pre.shiki {
-    background: var(--cv-code-background, var(--bg-1)) !important;
+    background: var(--cv-code-background, var(--surface-code)) !important;
   }
 }
 /* line numbers (best-effort; shiki line spans) */
@@ -122,17 +125,9 @@
   min-width: 0;
 }
 /* shiki paints its own surface (see backgrounds above): dark default is
- * --bg-0, light theme uses --bg-1 — keep the fade endpoint in sync. */
+ * --surface-code in both themes (B-614) — keep the fade endpoint in sync. */
 .cv:has(.cv-shiki) {
-  --cv-surface: var(--bg-0);
-}
-:root[data-theme='light'] .cv:has(.cv-shiki) {
-  --cv-surface: var(--bg-1);
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme]) .cv:has(.cv-shiki) {
-    --cv-surface: var(--bg-1);
-  }
+  --cv-surface: var(--surface-code);
 }
 .cv-fade {
   position: absolute;
@@ -154,8 +149,8 @@
   font-size: var(--chat-fs-caption);
   color: var(--text-dim);
   text-align: center;
-  background: var(--bg-2);
-  border-top: 1px solid var(--line);
+  background: var(--surface-card-head);
+  border-top: 1px solid var(--card-border);
 }
 .cv-expand:hover {
   color: var(--text);

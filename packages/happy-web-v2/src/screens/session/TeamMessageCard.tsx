@@ -44,7 +44,7 @@ export function TeamMessageCardView({ content, team, localId }: { content: TeamM
                 {route?.from && route.to
                     ? <AgentRoute from={chip(route.from)} to={chip(route.to)} />
                     : <span>{copy.message}</span>}
-                <span className="team-message-status">{t(`teams.${task.status}`)}</span>
+                <span className={`team-message-status vh-pill${task.status === 'running' ? ' vh-pill--live' : task.status === 'submitted' ? ' vh-pill--warn' : ''}`}>{t(`teams.${task.status}`)}</span>
             </div>
             <strong>{task.goal}</strong>
             {assignee && route?.to?.id !== assignee.id && route?.from?.id !== assignee.id && <span className="team-message-assignee"><AgentChip kind={agentKindOf(assignee.assistant)} name={memberTitle(assignee, copy)} secondary={agentKindLabel(agentKindOf(assignee.assistant))} /></span>}

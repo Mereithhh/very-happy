@@ -1,0 +1,39 @@
+/* B-614 depth pass — the shared card / header / pill atoms. Values come only
+ * from the card ladder in tokens.css; components opt in with these classes or
+ * by reusing the same tokens, so every self-contained object in the app reads
+ * as one family: canvas → card (ring + soft elevation) → tinted head → code well.
+ * Rules (docs/design-language.md §2 B-614):
+ *  - one closed ring per object; inner structure uses single hairlines;
+ *  - pills tint by meaning: --accent-dim only for live, warn/danger dims for
+ *    their states, everything else neutral. */
+.vh-card {
+  background: var(--surface-card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+  min-width: 0;
+}
+.vh-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  background: var(--surface-card-head);
+  border-bottom: 1px solid var(--card-border);
+}
+.vh-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  flex: none;
+  padding: 0.1em 0.6em;
+  border-radius: var(--r-pill);
+  background: var(--bg-3);
+  color: var(--text-dim);
+  font-size: 0.86em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.vh-pill--live { background: var(--accent-dim); color: var(--accent-2); }
+.vh-pill--warn { background: var(--warn-dim); color: var(--warn); }
+.vh-pill--danger { background: var(--danger-dim); color: var(--danger); }

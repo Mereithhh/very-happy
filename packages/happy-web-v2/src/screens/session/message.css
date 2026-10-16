@@ -226,6 +226,11 @@
   min-width: 0;
 }
 .msg-thinking-head {
+  /* B-614: header reads as a quiet chip (neutral tint), the icon stays on the
+   * column's first-icon slot (B-455) via the matching negative inset. */
+  background: var(--surface-card-head);
+  border-radius: var(--r-pill);
+  margin-left: calc(var(--chat-space) * -1);
   display: inline-flex;
   align-items: center;
   gap: var(--chat-space);
@@ -235,7 +240,8 @@
   max-width: 100%;
   min-width: 0;
   min-height: calc(var(--chat-space) * 7.5);
-  padding: 2px 0;
+  padding: 2px calc(var(--chat-space) * 3) 2px var(--chat-space);
+  white-space: nowrap;
 }
 .msg-thinking-head > .tg-chevron,
 .msg-thinking-head > .msg-thinking-icon:first-child { width:calc(var(--conversation-icon-size) / var(--chat-scale)); } /* zoomed svg, see chatlist.css */

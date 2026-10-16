@@ -257,3 +257,13 @@
 .teams-avatar[data-live=true] .ag-glyph { color: var(--accent); }
 .teams-roster .ag-glyph, .teams-task-owner .ag-glyph { color: var(--text-faint); }
 .teams-list-card h2 > svg, .teams-heading h1 > svg { flex: none; color: var(--text-dim); }
+
+/* B-614 depth pass: task previews and team cards are self-contained objects —
+   card surface, ink ring, soft lift; hover strengthens the ring only. */
+.teams-screen .teams-task-preview,
+.teams-list-card { background: var(--surface-card); border: 1px solid var(--card-border); border-radius: var(--r-md); box-shadow: var(--shadow-card); }
+.teams-screen .teams-task-preview:hover,
+.teams-list-card:hover { border-color: var(--card-border-strong); }
+.teams-result-preview { border-top-color: var(--card-border); }
+.teams-full-result { background: var(--surface-code); border-color: var(--card-border); border-radius: var(--r-md); }
+.teams-avatar { background: var(--surface-card-head); box-shadow: inset 0 0 0 1px var(--card-border); }
