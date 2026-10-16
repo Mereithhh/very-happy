@@ -46,6 +46,11 @@ export function clampView(view: ZoomView, image: Size, canvas: Size, pad = IMAGE
     };
 }
 
+/** Whether the scaled image overflows the padded canvas on either axis (something to pan). */
+export function hasPanRoom(image: Size, scale: number, canvas: Size, pad = IMAGE_PREVIEW_PAD): boolean {
+    return image.width * scale > canvas.width - pad * 2 + 0.5 || image.height * scale > canvas.height - pad * 2 + 0.5;
+}
+
 /** The centred fit view. */
 export function fitView(image: Size, canvas: Size, pad = IMAGE_PREVIEW_PAD): ZoomView {
     return clampView({ scale: fitScale(image, canvas, pad), x: 0, y: 0 }, image, canvas, pad);
@@ -75,16 +80,46 @@ export function clampScale(scale: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, scale));
 }
 
+/** Normalise a wheel delta to CSS px (line = 16px, page = 400px). */
+export function wheelPixels(delta: number, deltaMode: number): number {
+    return deltaMode === 1 ? delta * 16 : deltaMode === 2 ? delta * 400 : delta;
+}
+
 /**
  * Wheel delta → multiplicative zoom factor. Trackpad pinch arrives as a
  * ctrlKey wheel with small pixel deltas and gets the steeper curve; a mouse
  * notch (~100px, or 3 lines) is ≈ ×1.22.
  */
 export function wheelZoomFactor(deltaY: number, deltaMode: number, ctrlKey: boolean): number {
-    const pixels = deltaMode === 1 ? deltaY * 16 : deltaMode === 2 ? deltaY * 400 : deltaY;
+    const pixels = wheelPixels(deltaY, deltaMode);
     const k = ctrlKey ? 0.01 : 0.002;
     // Cap a single event so a page-mode wheel cannot jump straight to a bound.
     return Math.exp(-Math.max(-100, Math.min(100, pixels)) * k);
+}
+
+export type WheelInput = { deltaX: number; deltaY: number; deltaMode: number; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean };
+export type WheelAction = { kind: 'zoom'; factor: number } | { kind: 'pan'; dx: number; dy: number };
+
+/**
+ * Platform convention (macOS Preview/Figma): pinch = zoom, scroll = pan.
+ * - ctrlKey wheel (trackpad pinch; Ctrl+wheel) or metaKey wheel (Cmd+mouse
+ *   wheel) → anchored zoom.
+ * - plain wheel → pan by the scroll delta while the image is larger than
+ *   the canvas (Shift+vertical wheel pans horizontally);
+ * - plain wheel with nothing to pan (image fits) → anchored zoom, so a mouse
+ *   wheel can still zoom in from fit.
+ */
+export function wheelAction(input: WheelInput, pannable: boolean): WheelAction {
+    if (input.ctrlKey || input.metaKey || !pannable) {
+        // Only a ctrlKey wheel is a pinch with small deltas; Cmd/plain wheels are mouse notches.
+        return { kind: 'zoom', factor: wheelZoomFactor(input.deltaY, input.deltaMode, input.ctrlKey) };
+    }
+    let dx = wheelPixels(input.deltaX, input.deltaMode);
+    let dy = wheelPixels(input.deltaY, input.deltaMode);
+    // Browsers that do not swap Shift+wheel themselves still pan horizontally.
+    if (input.shiftKey && dx === 0) { dx = dy; dy = 0; }
+    // Scrolling down moves the content up, like a scrolled page.
+    return { kind: 'pan', dx: -dx || 0, dy: -dy || 0 };
 }
 
 /**

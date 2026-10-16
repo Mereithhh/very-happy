@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-    GESTURE_MAX_SCALE, clampView, doubleTapScale, fitScale, fitView, gestureMinScale, isNearFit, pastDeadZone,
-    pinchView, wheelZoomFactor, zoomAt, type ZoomView,
+    GESTURE_MAX_SCALE, clampView, doubleTapScale, fitScale, fitView, gestureMinScale, hasPanRoom, isNearFit, pastDeadZone,
+    pinchView, wheelAction, wheelZoomFactor, zoomAt, type ZoomView,
 } from './imagePreviewZoom';
 
 const image = { width: 1600, height: 800 };
@@ -83,6 +83,32 @@ describe('B-608 pinch', () => {
     it('clamps to [min, 8×]', () => {
         expect(pinchView({ scale: 4, x: 0, y: 0 }, { x: 0, y: 0 }, 10, { x: 0, y: 0 }, 1000, 0.38).scale).toBe(GESTURE_MAX_SCALE);
         expect(pinchView({ scale: 1, x: 0, y: 0 }, { x: 0, y: 0 }, 1000, { x: 0, y: 0 }, 1, 0.38).scale).toBe(0.38);
+    });
+});
+
+describe('B-608 wheel semantics: pinch = zoom, scroll = pan', () => {
+    const wheel = (over: Partial<Parameters<typeof wheelAction>[0]>) => ({ deltaX: 0, deltaY: 0, deltaMode: 0, ctrlKey: false, metaKey: false, shiftKey: false, ...over });
+    it('trackpad pinch (ctrlKey) zooms with the steep curve, even when there is room to pan', () => {
+        expect(wheelAction(wheel({ deltaY: -10, ctrlKey: true }), true)).toEqual({ kind: 'zoom', factor: Math.exp(0.1) });
+    });
+    it('Cmd + mouse wheel zooms with the notch curve', () => {
+        expect(wheelAction(wheel({ deltaY: -100, metaKey: true }), true)).toEqual({ kind: 'zoom', factor: Math.exp(0.2) });
+    });
+    it('plain wheel / two-finger scroll pans by the delta when the image overflows', () => {
+        expect(wheelAction(wheel({ deltaX: 12, deltaY: 30 }), true)).toEqual({ kind: 'pan', dx: -12, dy: -30 });
+        expect(wheelAction(wheel({ deltaY: 3, deltaMode: 1 }), true)).toEqual({ kind: 'pan', dx: 0, dy: -48 });
+    });
+    it('Shift + vertical wheel pans horizontally unless the browser already swapped it', () => {
+        expect(wheelAction(wheel({ deltaY: 40, shiftKey: true }), true)).toEqual({ kind: 'pan', dx: -40, dy: 0 });
+        expect(wheelAction(wheel({ deltaX: 40, shiftKey: true }), true)).toEqual({ kind: 'pan', dx: -40, dy: 0 });
+    });
+    it('plain wheel zooms when the image fits, so a mouse can still zoom in from fit', () => {
+        expect(wheelAction(wheel({ deltaY: -100 }), false)).toEqual({ kind: 'zoom', factor: Math.exp(0.2) });
+    });
+    it('pan room means overflowing the padded canvas on either axis', () => {
+        expect(hasPanRoom(image, 0.38, canvas)).toBe(false); // exactly fit
+        expect(hasPanRoom(image, 0.4, canvas)).toBe(true); // 640 wide > 608
+        expect(hasPanRoom({ width: 100, height: 100 }, 1, canvas)).toBe(false);
     });
 });
 

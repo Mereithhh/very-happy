@@ -5,7 +5,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui/Spinner';
 import {
     BUTTON_MAX_SCALE, BUTTON_STEP, GESTURE_MAX_SCALE, clampScale, clampView, distance, doubleTapScale, fitScale as computeFitScale,
-    fitView, gestureMinScale, isNearFit, midpoint, pastDeadZone, pinchView, wheelZoomFactor, zoomAt, type Point, type ZoomView,
+    fitView, gestureMinScale, isNearFit, midpoint, hasPanRoom, pastDeadZone, pinchView, wheelAction, zoomAt, type Point, type ZoomView,
 } from './imagePreviewZoom';
 import './imagePreview.css';
 
@@ -58,7 +58,7 @@ export function ImagePreview({ src, name, onClose }: { src: string; name?: strin
     const view = loaded ? (zoomView ? clampView(zoomView, loaded, viewport) : fitView(loaded, viewport)) : { scale: 1, x: 0, y: 0 };
     const scale = view.scale;
     const minScale = Math.min(0.1, fitScale);
-    const pannable = !!loaded && (loaded.width * scale > viewport.width - 32 + 0.5 || loaded.height * scale > viewport.height - 32 + 0.5);
+    const pannable = !!loaded && hasPanRoom(loaded, scale, viewport);
     // Event handlers bound once (wheel is a native non-passive listener) read the latest geometry here.
     const geometryRef = useRef({ loaded, viewport, view, fitScale, ready: false });
     geometryRef.current = { loaded, viewport, view, fitScale, ready: !!loaded && errorSrc !== src };
@@ -125,7 +125,8 @@ export function ImagePreview({ src, name, onClose }: { src: string; name?: strin
         return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
     };
 
-    // Wheel / trackpad pinch (ctrlKey wheel) zooms at the cursor. React's onWheel is
+    // Pinch / Ctrl / Cmd wheel zooms at the cursor; plain wheel pans when there is
+    // room and zooms only from a fitting image (see wheelAction). React's onWheel is
     // passive, so preventDefault (page scroll, browser pinch-zoom) needs a native listener.
     useEffect(() => {
         if (!canvas) return;
@@ -133,13 +134,17 @@ export function ImagePreview({ src, name, onClose }: { src: string; name?: strin
             const { ready: isReady, view: current, fitScale: fit, loaded: image, viewport: size } = geometryRef.current;
             if (!isReady || !image) return;
             event.preventDefault();
+            const action = wheelAction(event, hasPanRoom(image, current.scale, size));
+            setAnimate(false);
+            if (action.kind === 'pan') {
+                setZoomView(clampView({ scale: current.scale, x: current.x + action.dx, y: current.y + action.dy }, image, size));
+                return;
+            }
             const rect = canvas.getBoundingClientRect();
             const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-            const next = clampScale(current.scale * wheelZoomFactor(event.deltaY, event.deltaMode, event.ctrlKey), gestureMinScale(fit, current.scale), GESTURE_MAX_SCALE);
+            const next = clampScale(current.scale * action.factor, gestureMinScale(fit, current.scale), GESTURE_MAX_SCALE);
             if (next === current.scale) return;
-            const zoomed = clampView(zoomAt(current, next, anchor), image, size);
-            setAnimate(false);
-            setZoomView(isNearFit(next, fit) ? null : zoomed);
+            setZoomView(isNearFit(next, fit) ? null : clampView(zoomAt(current, next, anchor), image, size));
         };
         canvas.addEventListener('wheel', onWheel, { passive: false });
         return () => canvas.removeEventListener('wheel', onWheel);
