@@ -21,17 +21,17 @@
 
 ## 2. 配色
 
-亮色基准：`--bg-0: #f2f0ea`（暖白画布）、`--text: #171715`、`--accent: #167d70`、
+亮色基准：`--bg-0: #fcfcfb`（画布）、`--text: #171715`、`--accent: #167d70`、
 `--text-faint: #5f605b`。
 
-暗色基准：`--bg-0: #0c0d0b`（更深的画布）、`--text: #ecede8`、`--accent: #56b8a7`、
+暗色基准：`--bg-0: #151515`（画布）、`--text: #ecede8`、`--accent: #56b8a7`、
 `--text-faint: #9a9d95`。
 
-- `--bg-0..3`、`--line*`、`--text*` 构成普通表面和信息层级。
+- 表面、边框与阴影按下方「§2.1 表面、边框与层级」的 CDS 阶梯；`--text*` 构成信息层级。
 - 主 CTA、提交与发送使用 `--text` 填充和 `--bg-0` 前景；hover 只改变中性色阶。
 - `--accent*` 只用于 connected、running、thinking、active/selected、focus 和实时拖放落点。
 - 最大思考强度为 Owner 明确指定的彩色动效例外：仅最高有效档使用 `--effort-max-gradient` 的流动轨道与能量扫光，档位文字保持高反差，不把 off/default 显示成最大；不复用 live accent、不改变布局，不使用强闪烁。遵循本次确认的持续动态效果，系统减少动态效果时显示静态彩条。
-- 用户消息使用独立 `--message-user-bg/text`：亮色为低饱和灰蓝、暗色为深灰蓝，表达作者身份而非实时状态。气泡右对齐、四角一致（桌面 20px / 窄屏 18px），无描边与阴影；宽度随内容收缩，长文本断行，展开渐隐匹配同一底色。操作留在气泡下方，触屏展开按钮至少 44px。
+- 用户消息使用独立 `--message-user-bg/text`：亮色为低饱和灰蓝、暗色为深灰蓝，表达作者身份而非实时状态。气泡右对齐、四角一致 18px（`--r-bubble`）、内边距 10/16，只有底色、无描边与阴影；宽度随内容收缩，长文本断行，展开渐隐匹配同一底色。操作留在气泡下方，触屏展开按钮至少 44px。
 - warn 只表达对应状态；组件 CSS/TSX 禁止裸色值。
 - `--danger` = 错误与破坏性操作，**外加一处经审的扩展**：侧边栏「未读」徽点
   （`.sb-row-unread-dot`）。理由是 accent 已被 live 占死、warn 已被
@@ -39,12 +39,59 @@
   与行内文字同色，Owner 用了数周都没发现这个功能存在（B-312）。除此之外
   `--danger` 仍然只表达 danger，新增用法要同样在这里登记。
   B-552：⌘K「等我看」行尾复用同一状态位（`.cp-status-dot`），语义同为「未读」，不算新用法。
-- **深度与卡片（B-614）**：Owner 反馈「框里面里外颜色都差不多，看起来非常寡淡」。实测旧暗色 bg-0→bg-1 对比度 1.05、亮色画布→卡片 1.09，而且对话里的自成一体对象（展开的工具、代码块、团队/会话消息、权限、输入框）大多没有自己的表面。现在统一用卡片阶梯：`--surface-card` 卡身、`--surface-card-head` 着色头栏、`--surface-code` 下沉代码槽、`--surface-raised` 输入框、`--surface-selected` 列表选中行，外加 10%/16% 墨色环 `--card-border(-strong)` 和 `--shadow-card` / `--shadow-raised`。**暗色模式允许这两档阴影**（之前只允许浮层阴影），前提是外面有墨色环；共享原子在 `styles/surfaces.css`（`.vh-card` / `.vh-card-head` / `.vh-pill`）。
-  第二轮（Owner 看图后要求「一眼更丰富」）定为醒目档：暗色画布 `#0c0d0b`、卡片 `#252622`（画布→卡片 CR 1.28），头栏再亮一档，代码/终端输出比卡片更暗（接近画布，读作下沉槽）；亮色暖白画布 `#f2f0ea` + 纯白卡片 + 可见细环与柔投影；侧栏用独立的 `--surface-sidebar`，选中行为填充的抬升胶囊。
-  一个对象只能有一道闭合环、一层抬升；内部结构用单向细线，卡里的命令/代码不再叠自己的阴影。一个回合里连续的工具行（含子代理行）合成一张卡 `.tg-stack`，折叠行在卡内带悬停填充，展开行头栏着色；正文、思考仍在画布上。工具名用 500 字重，元信息用 faint；非代码的标签（回合耗时、思考头、权限计数）不用 Mono。状态胶囊按语义着色：`--accent-dim` 只给 live，等待用户用 warn-dim，失败用 danger-dim，其余为中性 `--bg-3`。所有正文、次级文字与胶囊在两种主题下都满足 AA（≥4.5:1，脚本见 PR）。
 - **次级信号别用 text 阶充数**：着色纪律把 accent 锁死给 live，于是「不够格用 accent」的标记
   很容易被顺手画成 `--text`——那是**行内文字自己的颜色**，等于不存在。B-312 的未读点这样活了
   几周，Owner 直接当成功能缺失来报。次级标记要么给它一个自己的色相，要么承认它不该存在。
+
+## 2.1 表面、边框与层级（CDS，B-614）
+
+Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计准则。方框卡片里面包着一层卡片，我觉得这个是非常怪的。」
+来源是 open-claude-ui 的 CDS 文档（docs/v1/01 §1.2–1.6、02、03 §3.1–3.3、08 §8.4、code-examples/cds-theme.css）。我们只采纳规则，色值用自己的 token 实现，不照搬 CSS。
+两处来源互相矛盾时，以 01 §1.2 和 cds-theme.css 为准。
+品牌项保留：`--accent` 只表示 live，主 CTA 用 ink/canvas，字体用 IBM Plex，终端 pane 恒为深色，全部文字满足 AA（比 CDS 更严：它的 tertiary 不达标），保留对话字号设置。
+
+**1-Border Rule（最高优先级）**：从画布向内的任何一条视线上，最多只能穿过一道闭合边框（4 边 border、0 模糊的 ring 或 outline）。闭合容器内部不再出现闭合边框，只能用填充台阶、单边 hairline、ghost 或 soft-fill 控件。检查：dev server 起着时跑 `node scripts/dev/nesting-audit.mjs --base <url>`（审 dev harness 的对话、输入区、侧栏、右侧面板、团队页，明暗两套），目标 0 违规。
+
+| 元素 | 处理 |
+|---|---|
+| 助手正文、思考头与展开的思考、回合摘要、工具行、工具组、子代理行、Codex 子线程行、事件行、消息操作栏、侧栏行、状态胶囊 | **无边框**。行用 ghost hover（`--fill-hover`），选中用 `--fill-selected`，胶囊只有填充。工具组外面**不套卡片**。 |
+| 用户消息 | 只有填充（`--message-user-bg`），圆角 18，内边距 10/16。 |
+| 展开的工具输出（命令、文件、diff）、代码块、表格 | 行下面这一个对象就是唯一的闭合物：圆角 12（表格 10），`--panel-shadow`（1px 环 + shadow-sm），代码槽比画布更深（`--surface-code`）。工具行仍是对象上方的一行无边框标题，**不用卡片包住标题和内容**。语言栏、文件名、统一/分栏切换都是条带，只用一条 hairline 分隔，没有自己的框。 |
+| 输入框 | 唯一闭合物：`--surface-raised`，圆角 20，三态阴影（静止 / hover / focus-within：`--shadow-composer*`）。内部全部无边框（ghost 或 soft fill）。 |
+| 权限卡、团队消息卡、会话互发卡、附件磁贴、团队页任务卡 | 各自一个闭合物：圆角 10（磁贴 12），`--panel-shadow`；权限卡和冲突卡用 warn 色环。内部的命令预览只有填充，头部条用 hairline 分隔（可以有填充，不能有框），次级按钮用 soft fill。 |
+| 弹窗、菜单、浮层、toast、命令面板 | 一个闭合物，用 `--shadow-popover`：亮色是外 1px 环 + 柔投影，暗色是内 1px 倒角 + 投影、没有外环。菜单行高亮圆角 6，分组用 hairline。 |
+
+需要切换状态的东西，边框优先画成 `box-shadow` 环，避免 1px 抖动。
+**例外说明**：暗色模式下，流内的闭合物沿用 cds-theme.css 的外侧 9% 白环；内倒角只用于浮层，因为流内对象的头部填充会盖住内环。
+
+**表面阶梯**：`--surface-sidebar`（surface-0，侧栏，低于画布：暗 #0b0b0a / 亮 #f5f5f3）→ `--bg-0` 画布（#151515 / #fcfcfb）→ `--bg-1` 卡片、面板、弹窗、菜单（#1a1a19 / #fff）→ `--surface-raised`、`--surface-popover`（#20201e、#222220 / #fff）。
+另有 `--surface-code`，是比画布更深的代码槽（#0d0d0c / #f5f5f3）。`--bg-2` 和 `--bg-3` 是填充台阶（输入、chip、hover-on-bg-1、按下态）。
+**Alpha 阶梯**（亮色用墨，暗色用白）：`--fill-hover` 5%、`--fill-selected` 和 `--line` 10%（暗 9%）、`--fill-soft` / `--fill-soft-hover`、`--line-2` 20%（暗 18%）、`--line-heavy` 35%（暗 30%）。
+画面的丰富感来自真正需要对比的地方（侧栏与画布、输入框、代码槽、用户气泡、浮层），以及去掉多余的框，而不是把每样东西都框起来。
+
+**阴影**：`--shadow-sm/md/lg`（暗色同样的几何，0.4 透明度）；`--panel-shadow` = 1px 环 + sm；`--panel-shadow-hover`；`--shadow-popover`；`--shadow-composer`、`-hover`、`-focus`。
+**只有可点击的卡片**（团队页卡片、附件）在 hover 时上浮 -1.5px，阴影换成 `--panel-shadow-hover`；对话里的对象一律不上浮。
+内部分隔用 `--hairline`：1px，≥2dppx 时 0.5px，≥3dppx 时 1/3px。
+
+**圆角阶梯**（同心：内圆角 = 外圆角 − 内边距）：`--r-xs` 2 · `--r-kbd` 4 · `--r-sm` 6（XS 按钮、菜单行、小 chip）· `--r-btn` 8（按钮、输入）· `--r-md` 10（卡片、面板）· `--r-code` 12（代码、工具输出、LG 按钮、抽屉）· `--r-lg` 16（弹窗、设置卡）· `--r-bubble` 18 · `--r-composer` 20 · `--r-pill` 999。
+
+**字体细节**：
+- 工具名和按钮文字用 500，元信息用常规字重的 faint。
+- Mono 只用于代码、命令、路径和 id；时间、计数、耗时、token 数、行号改用 Sans 加 `tabular-nums`。
+- 标题用 `text-wrap: balance`，段落和列表用 `pretty`，长 id 和路径用 `overflow-wrap: anywhere`。
+- 行内图标 `vertical-align: -0.125em`（11–12px 文字用 -0.075em，见 `.vh-icon-inline`）。
+- 移动端输入框不小于 16px。
+- 暗色字重补偿不采用：IBM Plex 是静态字重，460 会吸附到 500。
+- 截断：侧栏标题 1 行，描述 3 行（`.vh-clamp-*`）。
+
+**动效**：`--dur-micro` 60 · `--dur-snap` 120 · `--dur-base` 200 · `--dur-sheet` 300 · `--dur-slow` 450；`--ease-out` / `--ease-snap` / `--ease-overshoot`（overshoot 只用于极小的入场，不用于对话布局）。
+`--motion-fast/med/slow` 映射到 snap、base、sheet 加 ease-out。按钮按下 `scale(.98)`，ghost hover 填充过渡 150ms。减少动效时所有时长归零。
+
+**控件**：
+- 按钮：XS 24/6/12，SM 28/8/12，MD 32/8/13.5，LG 40/12/15。变体有 primary（ink/canvas）、secondary（soft fill，无环；我们统一不画环，因为次级按钮几乎都在闭合物里）、ghost、danger（只有填充）。
+- 键盘焦点（仅 focus-visible）用 `--focus-ring`：1px 画布间隔 + 1.5px accent。**不加 CDS 的 glow**，零偏移彩色光晕仍在禁用之列。对话里的 disclosure 仍用安静的底边焦点轨（B-209）。
+- 分段控件统一用 `.vh-segmented`：999 圆角轨道、2px 内边距、轨道是 alpha 填充、thumb 是表面色加微投影、120ms snap；宽度 ≤254px 时，带图标的非激活项隐藏文字。用于侧栏「列表 / 状态 / 归档」和 Codex 线程切换。
+- live 指示：呼吸 2.4s、脉冲 1.2s、流式光标 2px × 1.15em。三点波浪和 shimmer 暂不采用，因为现有 Spinner 和 18px 轨迹已经承担这个角色。
 
 ## 3. 字体
 
@@ -191,8 +238,8 @@ Happy Bot 保留在历史记录与搜索别名中；既有设置键无需随显�
 - **风格**：Bespoke / Operate / Restrained。首要锚点是 Owner 提供的 Codex 完整工作区截图：
   单行项目会话列表、低高度顶栏、正文优先、贴近画布的输入区。辅助锚点为编辑器文件树的
   层级缩进与工作日志的紧凑时间线。保留 Very Happy 的实时状态语义。
-- **配色**：沿用 token：亮色 canvas `#f2f0ea`、ink `#171715`、muted `#5f605b`、
-  accent `#167d70`；暗色 canvas `#0c0d0b`、ink `#ecede8`、muted `#9a9d95`、accent `#56b8a7`（B-614 深度轮调整）。
+- **配色**：沿用 token：亮色 canvas `#fcfcfb`、ink `#171715`、muted `#5f605b`、
+  accent `#167d70`；暗色 canvas `#151515`、ink `#ecede8`、muted `#9a9d95`、accent `#56b8a7`（B-614 采用 CDS 阶梯，见 §2.1）。
   项目侧栏为相邻表面，选中任务只用中性底色和字重；实时/未读沿用现有语义。
   侧栏与正文只画一道 1px 分隔线，拖拽命中区与描线分开；底部工具区用留白分区，不再叠加横线。
   导航、会话行与底部工具共享左右 8px 外留白及 8px 内留白；辅助徽标保持低对比，排序说明按需展开。
@@ -228,8 +275,8 @@ Happy Bot 保留在历史记录与搜索别名中；既有设置键无需随显�
 
 - 常用入口不得因视觉收敛消失：侧栏常驻帮助、团队、待办、终端；帮助保留整页，快捷指令放输入区＋菜单并在设置中管理。
 - 设置用分类导航、可搜索的分组行与右侧控件；手机分类切换与搜索仍可达。
-- 控件聚焦不画外侧 outline 或 glow，键盘 focus-visible 使用局部底色/字色反馈；保留可辨识的键盘焦点。
-- 下拉、右键、权限、快捷指令和语言菜单的 hover／键盘高亮统一使用整行 `--bg-3`，不叠加底部焦点线；分隔线只用于菜单分组。
+- 键盘 focus-visible 用 `--focus-ring`（画布间隔 + 1.5px accent，不加 glow，B-614）；对话里的 disclosure 保留底边焦点轨；保留可辨识的键盘焦点。
+- 下拉、右键、权限、快捷指令和语言菜单的 hover／键盘高亮统一使用整行 `--fill-selected`（圆角 6），不叠加底部焦点线；分隔线只用于菜单分组（hairline）。
 - 手机输入、搜索、选择控件统一 16px，同时使用窄屏和 coarse 条件覆盖；不依赖浏览器缩放修复布局。
 
 ### 提交反馈与手机中继
