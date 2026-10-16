@@ -10,6 +10,7 @@ import { getAgentDefaultOverride, getCodeAgentDefaults } from '@/sync/agentDefau
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForSession } from '@/sync/activityOverlay';
+import { HISTORY_PAGE_SIZE, shouldExtendInitialWindow, windowHasTurnStart } from '@/sync/historyWindow';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { isHeartbeatFresh, recordBackgroundTasks, recordHeartbeat, setHeartbeatSocketStatusReader } from '@/sync/heartbeatLease';
 import { AuthCredentials } from '@/auth/tokenStorage';
@@ -191,9 +192,9 @@ class Sync {
     private sendAbortControllers = new Map<string, AbortController>();
     private sessionLastSeq = new Map<string, number>();
     // Lowest seq value we have already fetched and applied for a session.
-    // Used as the cursor for backward pagination when the user scrolls up to
-    // load older history. Set after the initial latest-page fetch and
-    // advanced downward by loadOlderMessages.
+    // Used as the cursor for backward pagination when the reader asks for
+    // older history (B-616: on demand only, no background fill). Set after
+    // the initial latest-page fetch and advanced downward by loadOlderMessages.
     private sessionOldestSeq = new Map<string, number>();
     private pendingOutbox = new Map<string, OutboxMessage[]>();
     private outboxRecords = new Map<string, OutboxRecord>();
@@ -2372,11 +2373,13 @@ class Sync {
             const knownLastSeq = this.sessionLastSeq.get(sessionId);
             const isInitialLoad = knownLastSeq === undefined;
             if (isInitialLoad) {
-                // Initial load. Pull only the most recent page so the user can
-                // start chatting immediately. Older history streams in lazily
-                // through loadOlderMessages() when the user scrolls up — and
-                // also through a background prefetch kicked off below, so the
-                // history fills in even when the user doesn't scroll.
+                // Initial load. Pull only the most recent page (extended to
+                // the newest turn's opener, bounded) so the user can start
+                // chatting immediately. Older history is fetched one page at
+                // a time through loadOlderMessages() when the reader parks
+                // the top of the loaded history in view or presses
+                // 「加载更早」 — B-616: there is deliberately NO background
+                // loop filling the history in (sync/historyWindow.ts).
                 //
                 // Previously this method walked forward from seq=0 until every
                 // page had been fetched and decrypted, which blocked the chat
@@ -2393,83 +2396,62 @@ class Sync {
 
             storage.getState().applyMessagesLoaded(sessionId);
             log.log(`💬 fetchMessages completed for session ${sessionId}`);
-
-            if (isInitialLoad) {
-                // Fire-and-forget. The chat is interactive at this point;
-                // background pages stream in without blocking either the
-                // surrounding lock or the UI. loadOlderMessages takes the
-                // same lock internally, so the loop naturally serialises
-                // with on-scroll triggers and live socket updates.
-                void this.prefetchOlderMessagesInBackground(sessionId);
-            }
         });
     }
 
-    private prefetchOlderMessagesInBackground = async (sessionId: string) => {
-        const SLEEP_BETWEEN_PAGES_MS = 250;
-        // While loadOlderMessages handles the actual work, this loop is what
-        // keeps it going without user input. We keep stepping until either:
-        //   - the server says there is no more older history, or
-        //   - the session is no longer present in the store (user navigated
-        //     away and the session was unloaded), or
-        //   - we hit seq = 1 (the very first message), or
-        //   - the encryption key is gone (logged out).
-        // The loop yields between pages to keep the UI thread responsive
-        // and to spread out server load.
-        while (true) {
-            const sessionMessages = storage.getState().sessionMessages[sessionId];
-            if (!sessionMessages || !sessionMessages.hasMoreOlder) {
-                return;
-            }
-            if (!this.encryption.getSessionEncryption(sessionId)) {
-                return;
-            }
-            const oldestSeq = this.sessionOldestSeq.get(sessionId);
-            if (oldestSeq === undefined || oldestSeq <= 1) {
-                return;
-            }
-
-            try {
-                await this.loadOlderMessages(sessionId);
-            } catch (error) {
-                log.log(`💬 prefetchOlderMessagesInBackground: error for ${sessionId}, stopping: ${String(error)}`);
-                return;
-            }
-
-            await new Promise((resolve) => setTimeout(resolve, SLEEP_BETWEEN_PAGES_MS));
+    /** One page of history older than `beforeSeq` (the server returns it newest-first). */
+    private fetchHistoryPage = async (sessionId: string, beforeSeq: number) => {
+        const response = await apiSocket.request(
+            `/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=${HISTORY_PAGE_SIZE}`
+        );
+        if (!response.ok) {
+            throw new Error(`Failed to fetch history before seq ${beforeSeq} for ${sessionId}: ${response.status}`);
         }
+        const data = await response.json() as V3GetSessionMessagesResponse;
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        return { messages, hasMore: !!data.hasMore && messages.length > 0 };
     }
 
     private fetchInitialLatestPage = async (
         sessionId: string,
         encryption: ReturnType<Encryption['getSessionEncryption']> & {}
     ) => {
-        const response = await apiSocket.request(
-            `/v3/sessions/${sessionId}/messages?before_seq=${SEQ_BACKWARD_INITIAL_SENTINEL}&limit=100`
-        );
-        if (!response.ok) {
-            throw new Error(`Failed to fetch initial page for ${sessionId}: ${response.status}`);
+        // B-616 (historyWindow.ts): the newest page, extended backwards only
+        // until the window starts at a turn opener (at most
+        // INITIAL_TURN_START_PAGES extra requests), applied as ONE batch so
+        // the first paint shows whole turns and tool results meet their
+        // calls in the same commit.
+        const window: NormalizedMessage[] = [];
+        let beforeSeq = SEQ_BACKWARD_INITIAL_SENTINEL;
+        let hasMore = false;
+        let extraPagesFetched = 0;
+        let maxSeq = 0;
+        let minSeq = Number.POSITIVE_INFINITY;
+        for (;;) {
+            const page = await this.fetchHistoryPage(sessionId, beforeSeq);
+            for (const message of page.messages) {
+                if (message.seq > maxSeq) maxSeq = message.seq;
+                if (message.seq < minSeq) minSeq = message.seq;
+            }
+            window.push(...await this.normalizeFetchedMessages(encryption, page.messages));
+            hasMore = page.hasMore;
+            if (!shouldExtendInitialWindow({ hasMore, hasTurnStart: windowHasTurnStart(window), extraPagesFetched })) break;
+            if (!(minSeq > 1)) break;
+            beforeSeq = minSeq;
+            extraPagesFetched += 1;
         }
-        const data = await response.json() as V3GetSessionMessagesResponse;
-        const messages = Array.isArray(data.messages) ? data.messages : [];
 
-        await this.applyFetchedMessages(sessionId, encryption, messages);
+        if (window.length > 0) {
+            this.applyMessages(sessionId, window);
+        }
 
         // Anchor both ends so future incremental forward sync resumes from
         // maxSeq, and loadOlderMessages can page backward from minSeq.
-        let maxSeq = 0;
-        let minSeq = Number.POSITIVE_INFINITY;
-        for (const message of messages) {
-            if (message.seq > maxSeq) maxSeq = message.seq;
-            if (message.seq < minSeq) minSeq = message.seq;
-        }
         this.sessionLastSeq.set(sessionId, maxSeq);
-        if (messages.length > 0) {
+        if (minSeq !== Number.POSITIVE_INFINITY) {
             this.sessionOldestSeq.set(sessionId, minSeq);
         }
-        storage.getState().applyOlderMessagesPagination(sessionId, {
-            hasMore: !!data.hasMore && messages.length > 0
-        });
+        storage.getState().applyOlderMessagesPagination(sessionId, { hasMore });
     }
 
     private fetchForwardSince = async (
@@ -2479,7 +2461,7 @@ class Sync {
     ) => {
         let afterSeq = fromSeq;
         while (true) {
-            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
+            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=${HISTORY_PAGE_SIZE}`);
             if (!response.ok) {
                 throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
             }
@@ -2508,7 +2490,18 @@ class Sync {
         encryption: ReturnType<Encryption['getSessionEncryption']> & {},
         messages: ApiMessage[]
     ) => {
-        if (messages.length === 0) return;
+        const normalizedMessages = await this.normalizeFetchedMessages(encryption, messages);
+        if (normalizedMessages.length > 0) {
+            this.applyMessages(sessionId, normalizedMessages);
+        }
+    }
+
+    /** Decrypt + normalize a fetched page, carrying the server `seq` through. */
+    private normalizeFetchedMessages = async (
+        encryption: ReturnType<Encryption['getSessionEncryption']> & {},
+        messages: ApiMessage[]
+    ): Promise<NormalizedMessage[]> => {
+        if (messages.length === 0) return [];
         const decryptedMessages = await encryption.decryptMessages(messages);
         const normalizedMessages: NormalizedMessage[] = [];
         for (let i = 0; i < decryptedMessages.length; i++) {
@@ -2525,17 +2518,16 @@ class Sync {
                 normalizedMessages.push(normalized);
             }
         }
-        if (normalizedMessages.length > 0) {
-            this.applyMessages(sessionId, normalizedMessages);
-        }
+        return normalizedMessages;
     }
 
     /**
      * Fetch one page of older messages for a session and prepend them to the
-     * store. Called from the chat UI when the user scrolls past the top of
-     * the currently loaded history. No-op when we have already fetched the
-     * earliest message, when no initial fetch has happened yet, or when an
-     * older-fetch is already in flight for this session.
+     * store. Called from the chat UI when the reader parks the top of the
+     * loaded history in view (B-616) or presses 「加载更早」. No-op when we
+     * have already fetched the earliest message, when no initial fetch has
+     * happened yet, or when an older-fetch is already in flight for this
+     * session.
      */
     loadOlderMessages = async (sessionId: string) => {
         const oldestSeq = this.sessionOldestSeq.get(sessionId);
@@ -2562,27 +2554,18 @@ class Sync {
                 if (beforeSeq === undefined || beforeSeq <= 1) {
                     return;
                 }
-                const response = await apiSocket.request(
-                    `/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=100`
-                );
-                if (!response.ok) {
-                    throw new Error(`Failed to load older messages for ${sessionId}: ${response.status}`);
-                }
-                const data = await response.json() as V3GetSessionMessagesResponse;
-                const messages = Array.isArray(data.messages) ? data.messages : [];
+                const page = await this.fetchHistoryPage(sessionId, beforeSeq);
 
-                await this.applyFetchedMessages(sessionId, encryption, messages);
+                await this.applyFetchedMessages(sessionId, encryption, page.messages);
 
                 let minSeq = beforeSeq;
-                for (const message of messages) {
+                for (const message of page.messages) {
                     if (message.seq < minSeq) minSeq = message.seq;
                 }
-                if (messages.length > 0) {
+                if (page.messages.length > 0) {
                     this.sessionOldestSeq.set(sessionId, minSeq);
                 }
-                storage.getState().applyOlderMessagesPagination(sessionId, {
-                    hasMore: !!data.hasMore && messages.length > 0
-                });
+                storage.getState().applyOlderMessagesPagination(sessionId, { hasMore: page.hasMore });
             });
         } finally {
             storage.getState().applyOlderMessagesLoading(sessionId, false);

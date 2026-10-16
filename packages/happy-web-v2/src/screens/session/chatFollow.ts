@@ -13,9 +13,9 @@
  * 离底快照的状态推进：贴底时无快照（null）；离底那一刻记下当时**最新一行**
  * 的 key，之后保持不变（增量以这一行为界）。
  *
- * 记 key 而不是 row 数：后台历史预取（sync.prefetchOlderMessagesInBackground，
- * 每 250ms 一页）把旧消息**插在顶部**，row 数照样涨。按 row 数算，离底后
- * badge 会被旧历史一路推到 99+（Xu CHEN 实报：「数字慢慢变到 99+」）。
+ * 记 key 而不是 row 数：旧历史（「加载更早」/ 停在顶部时按需加载的一页，
+ * B-616 之前还有每 250ms 一页的后台预取）把旧消息**插在顶部**，row 数照样涨。
+ * 按 row 数算，离底后 badge 会被旧历史一路推到 99+（Xu CHEN 实报：「数字慢慢变到 99+」）。
  */
 export function nextAwaySnapshot(
     prev: string | null,
@@ -57,8 +57,8 @@ export type BottomEdge = { newestKey: string | null; lastContentLen: number };
 
 /**
  * rows 变化是不是「底部来了新内容」：只有最新一行换了、或最新一条消息原地变长才算。
- * 后台历史预取（sync.prefetchOlderMessagesInBackground，每页 250ms）和「加载更早」
- * 把旧消息插在**顶部**——rows.length 照样涨，底端却没变。把它当新内容跟随，会把
+ * 旧历史的一页（「加载更早」/ 停在顶部时按需加载；B-616 之前是每 250ms 一页的后台预取）
+ * 插在**顶部**——rows.length 照样涨，底端却没变。把它当新内容跟随，会把
  * 80px 跟随带内正在慢慢上滚（触控板）的用户一页一页拽回底部，永远滚不出去。
  */
 export function isBottomEdgeChange(prev: BottomEdge, next: BottomEdge): boolean {
@@ -138,8 +138,8 @@ export function isUpwardScrollKey(e: { key: string; shiftKey?: boolean; altKey?:
  * B-603：transcript 在动（手指按着、惯性/平滑滚动还在出 scroll 事件）时，不往
  * 顶部插旧历史。
  *
- * 后台预取每 ~0.5s 往顶部插一页，插完要 `scrollTop += 新增高度` 把读者留在原处。
- * 但 iOS Safari（WebKit）在滚动进行中**不认**程序写 scrollTop：惯性滚动、
+ * 顶部插一页旧历史后要 `scrollTop += 新增高度` 把读者留在原处（B-616 之前的后台
+ * 预取每 ~0.5s 插一页）。但 iOS Safari（WebKit）在滚动进行中**不认**程序写 scrollTop：惯性滚动、
  * `scrollTo({ behavior: 'smooth' })` 的动画都会接着往旧目标走，补偿丢失，
  * 视图一下跳到更早的内容（新增的整页高度）。react-virtuoso 的
  * upwardScrollFixSystem 也是同一结论（"mobile safari does not support scrollBy
@@ -198,4 +198,27 @@ export function anchorIndex(count: number, bottomOf: (index: number) => number, 
 export function shouldFoldFinishedTurn(input: { following: boolean; panelTop: number | null; viewportBottom: number }): boolean {
     if (input.following || input.panelTop === null) return true;
     return input.panelTop >= input.viewportBottom;
+}
+
+/**
+ * B-616：旧历史只按需加载，不再有后台预取。
+ *
+ * 读者把已加载历史的顶部停在**一屏以内**、且滚动已停稳（手指抬起、settleMs 内没有
+ * 非自写的 scroll 事件、没有冻结中的页）时，请求一页；在动、在加载、或没有更早的
+ * 都不请求。插入只发生在读者静止时，WebKit 认程序写 scrollTop，锚点补偿才靠得住
+ * （B-603 的根因）。一页插完，顶部就退到一屏以外，自然停下；内容不足一屏时会连续
+ * 补到够一屏。Xu CHEN 2026-10-16 录屏：B-603 的「动时冻结」在真机惯性滚动里仍漏插，
+ * 一分钟内 134 页的后台预取是根子，于是去掉它。
+ */
+export const LOAD_OLDER_NEAR_TOP_MIN_PX = 480;
+
+export function shouldRequestOlder(input: {
+    scrollTop: number;
+    clientHeight: number;
+    hasMoreOlder: boolean;
+    isLoadingOlder: boolean;
+    settled: boolean;
+}): boolean {
+    if (!input.hasMoreOlder || input.isLoadingOlder || !input.settled) return false;
+    return input.scrollTop <= Math.max(LOAD_OLDER_NEAR_TOP_MIN_PX, input.clientHeight);
 }
