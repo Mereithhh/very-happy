@@ -1,4 +1,4 @@
-import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Bot, ChevronRight } from 'lucide-react';
 import { parseTaskNotification } from './harness';
 import type { Message } from '@/sync/typesMessage';
@@ -10,6 +10,8 @@ import { countRunningSubagentCards, countSubagentCards } from './subagentPills';
 import { userAbortedAt } from './subagentAbort';
 import { StatusDot } from '@/ui';
 import { useElapsedSeconds } from './useElapsed';
+import { shouldFoldFinishedTurn } from './chatFollow';
+import { ReaderFollowContext } from './readerFollow';
 import './turnactivity.css';
 
 function activityStart(messages: Message[]): number | null {
@@ -38,14 +40,37 @@ function TurnActivityViewImpl({
     const [expanded, setExpanded] = useState(live);
     const wasLiveRef = useRef(live);
     const detailId = useId();
+    const detailRef = useRef<HTMLDivElement>(null);
+    const reader = useContext(ReaderFollowContext);
+    // B-607: the live→done fold was skipped for a detached reader; it runs when
+    // they follow the live end again, unless they toggled this turn by hand.
+    const foldPendingRef = useRef(false);
 
     // A running turn is transparent by default. The exact live→done transition
     // folds it once; subsequent renders never override a user's history toggle.
+    // B-607: not while the reader is reading it — folding pulled the text out
+    // from under them and, on a live→done→live flicker, left them at the
+    // start of the turn (the top, when the turn is the whole transcript).
     useEffect(() => {
-        if (live && !wasLiveRef.current) setExpanded(true);
-        if (!live && wasLiveRef.current) setExpanded(false);
+        if (live && !wasLiveRef.current) {
+            foldPendingRef.current = false;
+            setExpanded(true);
+        }
+        if (!live && wasLiveRef.current) {
+            const fold = foldsAwayFromReader(detailRef.current, reader.isFollowing);
+            foldPendingRef.current = !fold;
+            if (fold) setExpanded(false);
+        }
         wasLiveRef.current = live;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [live]);
+    // Back at the live end, the turn sits entirely above a bottom-pinned
+    // viewport: folding it now moves nothing the reader sees.
+    useEffect(() => reader.onRefollow(() => {
+        if (!foldPendingRef.current) return;
+        foldPendingRef.current = false;
+        setExpanded(false);
+    }), [reader]);
 
     // B-260: a folded turn should still say how many sub-agents ran inside it.
     const subagentCount = useMemo(() => countSubagentCards(messages), [messages]);
@@ -64,7 +89,10 @@ function TurnActivityViewImpl({
             <button
                 type="button"
                 className="ta-head vh-disclosure-trigger"
-                onClick={() => setExpanded((value) => !value)}
+                onClick={() => {
+                    foldPendingRef.current = false; // a manual toggle wins over the deferred fold
+                    setExpanded((value) => !value);
+                }}
                 aria-expanded={expanded}
                 aria-controls={detailId}
             >
@@ -90,12 +118,22 @@ function TurnActivityViewImpl({
                 <ChevronRight size={14} className={`tg-chevron${expanded ? ' is-open' : ''}`} />
             </button>
             {expanded && (
-                <div id={detailId} className="ta-detail vh-disclosure-panel">
+                <div id={detailId} ref={detailRef} className="ta-detail vh-disclosure-panel">
                     <ActivityMessages messages={messages} sessionId={sessionId} stalled={!live} abortedAt={abortedAt} />
                 </div>
             )}
         </section>
     );
+}
+
+/** B-607: may the finished turn fold now without moving what the reader is looking at? */
+function foldsAwayFromReader(panel: HTMLElement | null, isFollowing: () => boolean): boolean {
+    const scroller = panel?.closest('.cl-scroll') ?? null;
+    return shouldFoldFinishedTurn({
+        following: isFollowing(),
+        panelTop: panel && scroller ? panel.getBoundingClientRect().top : null,
+        viewportBottom: scroller ? scroller.getBoundingClientRect().bottom : 0,
+    });
 }
 
 /** B-311: see rowMemo — same rebuilt-array-of-stable-elements shape as
