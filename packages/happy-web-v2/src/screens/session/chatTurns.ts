@@ -27,6 +27,10 @@ export type LeafRow =
     }
     | { type: 'toolgroup'; key: string; tools: ToolCallMessage[] };
 
+/** B-615: how a held answer renders inside its activity row — the props its
+ *  own answer row would get (see `heldAnswer`). */
+export type HeldAnswer = { id: string; showMeta: boolean; showActions: boolean; optionsActive: boolean };
+
 export type ChatRow = LeafRow | ({ type: 'compaction'; key: string } & CompactionSummary) | {
     type: 'activity';
     key: string;
@@ -38,9 +42,10 @@ export type ChatRow = LeafRow | ({ type: 'compaction'; key: string } & Compactio
     /** B-578: the turn's user stop, when its line was lifted out of the fold —
      *  the folded sub-agent cards still need it (B-317, subagentAbort.ts). */
     abortedAt?: number;
-    /** B-615: a finished turn held in its live shape — its answer is still
-     *  inside this row, so the row must not fold yet (`keepLastTurnOpen`). */
-    holdsAnswer?: boolean;
+    /** B-615: a finished turn held in its live shape (`keepTurnsOpen`) — its
+     *  answer is still inside this row, rendered as its own row would render
+     *  it; the row must not fold while it holds it. */
+    answer?: HeldAnswer;
 } | {
     /** B-571: the files a finished turn changed (one neutral line at its end). */
     type: 'turn-diff';
@@ -302,16 +307,15 @@ export function buildChatRows(
     options: {
         turnDiffs?: boolean;
         /**
-         * B-615: build the newest turn, just finished, in its live shape — its
+         * B-615: finished turns (by opener id) built in their live shape — the
          * answer stays inside the (no longer live) activity row instead of
-         * moving out into a row of its own. ChatList sets this while a reader
-         * who was scrolled up when the turn ended has not followed the live
-         * end again: moving the answer means removing the row the reader is
-         * looking at and inserting another, and WebKit clamps scrollTop
-         * against the layout without the removed row (draftRetire.ts) — the
-         * reader was thrown 1222–2524px up.
+         * moving out into a row of its own. ChatList holds a turn that stopped
+         * being the live one while the reader was scrolled up, until they
+         * follow the live end again (turnHold.ts): moving the answer removes
+         * the row the reader is looking at, and WebKit clamps scrollTop
+         * against the layout without it — the reader was thrown 1222–2524px up.
          */
-        keepLastTurnOpen?: boolean;
+        keepTurnsOpen?: ReadonlySet<string>;
         /**
          * B-615: the live turn has draft text on screen (LiveStreamView). Its
          * activity row exists from then on, even before any message of the
@@ -380,7 +384,7 @@ export function buildChatRows(
                 }
             }
 
-            if (finalIndex >= 0 && options.keepLastTurnOpen && turnEnd === messages.length) {
+            if (finalIndex >= 0 && options.keepTurnsOpen?.has(message.id)) {
                 const activity = turnMessages.filter(isRenderableActivityMessage);
                 const finalMessage = turnMessages[finalIndex];
                 rows.push({
@@ -392,7 +396,7 @@ export function buildChatRows(
                         ? Math.max(0, Math.round(finalMessage.totalDurationMs / 1000))
                         : activityDurationSeconds(activity),
                     ...(trigger ? { trigger } : {}),
-                    holdsAnswer: true,
+                    answer: heldAnswer(turnMessages.slice(finalIndex), finalAgentId),
                 });
                 rows.push(...askAnswerRows(turnMessages));
             } else if (finalIndex < 0) {
@@ -473,8 +477,48 @@ export function buildChatRows(
     if (optionsId) {
         const index = rows.findIndex((row) => row.type === 'message' && row.message.id === optionsId);
         if (index >= 0) rows[index] = { ...(rows[index] as Extract<LeafRow, { type: 'message' }>), optionsActive: true };
+        // B-615: a held answer offers its suggestions where it is.
+        const held = rows.findIndex((row) => row.type === 'activity' && row.answer?.id === optionsId);
+        const row = rows[held];
+        if (row?.type === 'activity' && row.answer) rows[held] = { ...row, answer: { ...row.answer, optionsActive: true } };
     }
     return rows;
+}
+
+/** B-615: the props the held answer would get as its own row — the leaf row
+ *  `buildChatRows` builds for it once the turn is released. */
+function heldAnswer(tail: Message[], finalAgentId: string | null): HeldAnswer {
+    const answer = tail[0];
+    const own = buildLeafRows(tail, finalAgentId).find((leaf) => leaf.type === 'message' && leaf.message.id === answer.id);
+    const leaf = own?.type === 'message' ? own : null;
+    return {
+        id: answer.id,
+        showMeta: leaf?.showMeta ?? false,
+        showActions: leaf?.showActions ?? true,
+        optionsActive: false,
+    };
+}
+
+/**
+ * B-615: the opener id of the turn `buildChatRows` treats as the newest — the
+ * live turn while the session is live. Same walk as `buildChatRows`.
+ */
+export function newestTurnOpenerId(rawMessages: Message[]): string | null {
+    const { messages } = extractUserAttachments(rawMessages);
+    let opener: string | null = null;
+    let i = 0;
+    while (i < messages.length) {
+        if (messages[i].kind !== 'user-text') {
+            i++;
+            continue;
+        }
+        opener = messages[i].id;
+        const turnStart = i + 1;
+        let turnEnd = turnStart;
+        while (turnEnd < messages.length && !opensTurn(messages, turnEnd, turnStart)) turnEnd++;
+        i = turnEnd;
+    }
+    return opener;
 }
 
 /**

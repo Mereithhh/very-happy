@@ -21,9 +21,12 @@
  *   - a draft block that leaves stays in the DOM, hidden, for one frame
  *     (draftRetire.ts) — the same DOM node, so nothing is torn down;
  *   - the live turn's activity row exists while a draft is on screen, and a
- *     turn ending under a detached reader keeps that shape until the reader
- *     follows again and the scroll settles: row keys do not change at either
- *     edge (chatTurns `liveDraft` / `keepLastTurnOpen`).
+ *     turn that stops being the live one under a detached reader (liveness
+ *     dropped, or the next turn started) keeps that shape — by turn, later
+ *     turns do not release it — until the reader follows again and the scroll
+ *     settles (chatTurns `liveDraft` / `keepTurnsOpen`, turnHold.ts);
+ *   - a held answer renders as its own row would (actions, meta, suggestions)
+ *     and its activity row does not fold while it holds it.
  */
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -46,7 +49,8 @@ vi.mock('@/sync/agentLiveness', () => ({ isAgentWorkLive: () => false }));
 
 import { LiveStreamBlocks } from './LiveStreamView';
 import { draftRenderList } from './draftRetire';
-import { buildChatRows } from './chatTurns';
+import { buildChatRows, newestTurnOpenerId } from './chatTurns';
+import { NO_HELD_TURNS, holdEndedTurn } from './turnHold';
 import { TurnActivityView } from './TurnActivityView';
 import { ReaderFollowContext, createReaderFollow, type ReaderFollowSource } from './readerFollow';
 import type { LiveStreamBlock } from '@/sync/liveStream';
@@ -130,9 +134,14 @@ describe('B-615 LiveStreamBlocks: the claim commit hides the draft, the next fra
 });
 
 const user = (id: string, createdAt: number): Message => ({ kind: 'user-text', id, localId: null, createdAt, text: id });
-const reply = (id: string, createdAt: number): Message => ({ kind: 'agent-text', id, localId: null, createdAt, text: id, totalDurationMs: 4000 });
+const reply = (id: string, createdAt: number, text = id): Message => ({ kind: 'agent-text', id, localId: null, createdAt, text, totalDurationMs: 4000 });
+const tool = (id: string, createdAt: number): Message => ({
+    kind: 'tool-call', id, localId: null, createdAt, children: [],
+    tool: { name: id, state: 'completed', input: {}, createdAt, startedAt: createdAt, completedAt: createdAt + 1, description: null },
+} as Message);
 const keys = (messages: Message[], live: boolean, options: Parameters<typeof buildChatRows>[2] = {}) =>
     buildChatRows(messages, live, options).map((row) => row.key);
+const held = (...ids: string[]) => new Set(ids);
 
 describe('B-615 row keys do not change while the reader may be in the reply', () => {
     const history = [user('u0', 1), reply('a0', 2)];
@@ -147,25 +156,98 @@ describe('B-615 row keys do not change while the reader may be in the reply', ()
 
     it('turn end under a detached reader: the answer stays inside the same row', () => {
         const live = buildChatRows(landed, true);
-        const held = buildChatRows(landed, false, { keepLastTurnOpen: true });
-        expect(held.map((row) => row.key)).toEqual(live.map((row) => row.key));
-        expect(held.at(-1)).toMatchObject({ type: 'activity', live: false, holdsAnswer: true, durationSeconds: 4, messages: [{ id: 'a1' }] });
+        const rows = buildChatRows(landed, false, { keepTurnsOpen: held('u1') });
+        expect(rows.map((row) => row.key)).toEqual(live.map((row) => row.key));
+        expect(rows.at(-1)).toMatchObject({ type: 'activity', live: false, durationSeconds: 4, messages: [{ id: 'a1' }], answer: { id: 'a1' } });
         // released: the answer moves to its own row — the remount the hold defers
         expect(keys(landed, false)).toEqual(['u0', 'a0', 'u1', 'a1']);
     });
 
-    it('only the newest turn is held; older turns keep their finished shape', () => {
-        const rows = buildChatRows(landed, false, { keepLastTurnOpen: true });
+    it('a held turn stays held while the next turn starts, lands and ends', () => {
+        const opts = { keepTurnsOpen: held('u1') };
+        const heldRow = (rows: ReturnType<typeof buildChatRows>) => rows.find((row) => row.key === 'activity-u1');
+        const started = [...landed, user('u2', 5)];
+        const answered = [...started, reply('a2', 6)];
+        for (const [messages, live] of [[started, true], [answered, true], [answered, false]] as const) {
+            const rows = buildChatRows([...messages], live, opts);
+            expect(rows.slice(0, 4).map((row) => row.key)).toEqual(['u0', 'a0', 'u1', 'activity-u1']);
+            expect(heldRow(rows)).toMatchObject({ type: 'activity', live: false, messages: [{ id: 'a1' }], answer: { id: 'a1' } });
+        }
+        // the newer turn finishes normally unless it is held too
+        expect(keys(answered, false, opts).slice(4)).toEqual(['u2', 'a2']);
+        expect(keys(answered, false, { keepTurnsOpen: held('u1', 'u2') }).slice(4)).toEqual(['u2', 'activity-u2']);
+        expect(keys(answered, false).slice(2)).toEqual(['u1', 'a1', 'u2', 'a2']);
+    });
+
+    it('older turns keep their finished shape', () => {
+        const rows = buildChatRows(landed, false, { keepTurnsOpen: held('u1') });
         expect(rows.slice(0, 2).map((row) => row.key)).toEqual(['u0', 'a0']);
     });
 });
 
-describe('B-615 a held turn does not fold until its answer is lifted out', () => {
+describe('B-615 a held answer renders as its own answer row would', () => {
+    const asked = [user('u0', 1), tool('read', 2), user('u1', 3)];
+
+    it('actions always; meta while it is the newest answer; suggestions until something user-side follows', () => {
+        const text = 'Done.\n<options><option>Ship it</option></options>';
+        const landed = [...asked, reply('a1', 4, text)];
+        const [answer] = buildChatRows(landed, false, { keepTurnsOpen: held('u1') }).flatMap((row) => (row.type === 'activity' && row.answer ? [row.answer] : []));
+        const own = buildChatRows(landed, false).find((row) => row.type === 'message' && row.message.id === 'a1');
+        expect(answer).toEqual({ id: 'a1', showMeta: true, showActions: true, optionsActive: true });
+        expect(own).toMatchObject({ showMeta: true, optionsActive: true });
+        expect(own).not.toHaveProperty('showActions', false);
+
+        const next = [...landed, user('u2', 5), reply('a2', 6)];
+        const [later] = buildChatRows(next, false, { keepTurnsOpen: held('u1') }).flatMap((row) => (row.type === 'activity' && row.answer ? [row.answer] : []));
+        expect(later).toEqual({ id: 'a1', showMeta: false, showActions: true, optionsActive: false });
+    });
+
+    it('an answer the agent followed with a tool call has no actions — as its own row', () => {
+        const landed = [...asked, reply('a1', 4), tool('late', 5)];
+        const [answer] = buildChatRows(landed, false, { keepTurnsOpen: held('u1') }).flatMap((row) => (row.type === 'activity' && row.answer ? [row.answer] : []));
+        const own = buildChatRows(landed, false).find((row) => row.type === 'message' && row.message.id === 'a1');
+        expect(own).toMatchObject({ showActions: false });
+        expect(answer).toMatchObject({ id: 'a1', showActions: false });
+    });
+});
+
+describe('B-615 newestTurnOpenerId / holdEndedTurn', () => {
+    it('names the turn buildChatRows treats as live', () => {
+        const messages = [user('u0', 1), reply('a0', 2), user('u1', 3), tool('read', 4)];
+        expect(newestTurnOpenerId(messages)).toBe('u1');
+        const live = buildChatRows(messages, true).find((row) => row.type === 'activity' && row.live);
+        expect(live?.key).toBe(`activity-${newestTurnOpenerId(messages)}`);
+        expect(newestTurnOpenerId([reply('a', 1)])).toBeNull();
+        expect(newestTurnOpenerId([])).toBeNull();
+    });
+
+    it('holds the turn that stopped being live — liveness dropped or the next turn started — for a detached reader only', () => {
+        expect([...holdEndedTurn(NO_HELD_TURNS, 'u1', null, false)]).toEqual(['u1']);
+        expect([...holdEndedTurn(NO_HELD_TURNS, 'u1', 'u2', false)]).toEqual(['u1']);
+        expect([...holdEndedTurn(held('u1'), 'u2', null, false)]).toEqual(['u1', 'u2']);
+        expect(holdEndedTurn(NO_HELD_TURNS, 'u1', null, true)).toBe(NO_HELD_TURNS);
+        expect(holdEndedTurn(NO_HELD_TURNS, null, 'u2', false)).toBe(NO_HELD_TURNS);
+        expect(holdEndedTurn(NO_HELD_TURNS, 'u1', 'u1', false)).toBe(NO_HELD_TURNS);
+        const once = held('u1');
+        expect(holdEndedTurn(once, 'u1', null, false)).toBe(once);
+    });
+});
+
+describe('B-615 TurnActivityView with a held answer', () => {
     let host: HTMLDivElement;
     let root: Root;
     let reader: ReaderFollowSource;
+    let panelTop = -1200;
+    const rect = HTMLElement.prototype.getBoundingClientRect;
     beforeEach(() => {
         reader = createReaderFollow(false);
+        panelTop = -1200;
+        HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+            const box = rect.call(this);
+            if (this.classList.contains('cl-scroll')) return { ...box.toJSON(), top: 0, bottom: 600 } as DOMRect;
+            if (this.classList.contains('ta-detail')) return { ...box.toJSON(), top: panelTop, bottom: panelTop + 3000 } as DOMRect;
+            return box;
+        };
         host = document.createElement('div');
         document.body.appendChild(host);
         root = createRoot(host);
@@ -173,12 +255,14 @@ describe('B-615 a held turn does not fold until its answer is lifted out', () =>
     afterEach(() => {
         act(() => root.unmount());
         host.remove();
+        HTMLElement.prototype.getBoundingClientRect = rect;
     });
+    const answer = { id: 'a1', showMeta: true, showActions: true, optionsActive: false };
     const messages = [{ kind: 'agent-text', id: 'a1', localId: null, createdAt: 1, text: 'answer' }] as unknown as Message[];
-    const render = (live: boolean, holdsAnswer: boolean) => act(() => root.render(
+    const render = (live: boolean, held: boolean, items = messages) => act(() => root.render(
         <ReaderFollowContext.Provider value={reader}>
             <div className="cl-scroll">
-                <TurnActivityView messages={messages} live={live} sessionId="s" holdsAnswer={holdsAnswer} />
+                <TurnActivityView messages={items} live={live} sessionId="s" answer={held ? answer : undefined} />
             </div>
         </ReaderFollowContext.Provider>,
     ));
@@ -186,23 +270,33 @@ describe('B-615 a held turn does not fold until its answer is lifted out', () =>
 
     it('re-follow while held: stays open; folds when the answer leaves', () => {
         render(true, false);
-        const rect = HTMLElement.prototype.getBoundingClientRect;
-        HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
-            const box = rect.call(this);
-            if (this.classList.contains('cl-scroll')) return { ...box.toJSON(), top: 0, bottom: 600 } as DOMRect;
-            if (this.classList.contains('ta-detail')) return { ...box.toJSON(), top: -1200, bottom: 1800 } as DOMRect;
-            return box;
-        };
-        try {
-            render(false, true);
-            expect(expanded()).toBe(true);
-            act(() => reader.set(true));
-            expect(expanded()).toBe(true);
-            render(false, false);
-            expect(expanded()).toBe(false);
-        } finally {
-            HTMLElement.prototype.getBoundingClientRect = rect;
-        }
+        render(false, true);
+        expect(expanded()).toBe(true);
+        act(() => reader.set(true));
+        expect(expanded()).toBe(true);
+        render(false, false);
+        expect(expanded()).toBe(false);
+    });
+
+    it('ends entirely below the reader: still not folded while it holds the answer', () => {
+        render(true, false);
+        panelTop = 900;
+        render(false, true);
+        expect(expanded()).toBe(true);
+    });
+
+    it('without a held answer the B-607 rule is unchanged (below the reader → folds)', () => {
+        render(true, false);
+        panelTop = 900;
+        render(false, false);
+        expect(expanded()).toBe(false);
+    });
+
+    it('a live row with only a draft below it shows no 「0s」 duration', () => {
+        render(true, false, []);
+        expect(host.querySelector('.ta-title')?.textContent).toBe('session.chat.liveProcessing');
+        render(true, false);
+        expect(host.querySelector('.ta-title')?.textContent).toBe('session.chat.activityElapsed');
     });
 });
 
@@ -211,15 +305,18 @@ describe('B-615 ChatList wiring', () => {
     const chatList = strip(readFileSync(resolve(__dirname, 'ChatList.tsx'), 'utf8'));
     const liveView = strip(readFileSync(resolve(__dirname, 'LiveStreamView.tsx'), 'utf8'));
 
-    it('holds the turn shape on a live→done edge only for a detached reader', () => {
-        expect(chatList).toContain('setLastTurnOpen(!sessionLive && !atBottomRef.current);');
+    it('tracks the live turn by its opener and holds the one that stopped being live, for a detached reader', () => {
+        expect(chatList).toContain('(sessionLive ? newestTurnOpenerId(shownChronological) : null)');
+        expect(chatList).toContain('const following = atBottomRef.current;');
+        expect(chatList).toContain('setHeldTurns((held) => holdEndedTurn(held, liveTurnSeen.turn, liveTurn, following));');
     });
-    it('releases it only once following and settled', () => {
-        expect(chatList).toMatch(/if \(wait > 0\) \{\s*timer = setTimeout\(check, wait\);\s*return;\s*\}\s*timer = null;\s*if \(atBottomRef\.current\) setLastTurnOpen\(false\);/);
+    it('releases them only once following and settled, then re-pins to the bottom', () => {
+        expect(chatList).toMatch(/if \(wait > 0\) \{\s*timer = setTimeout\(check, wait\);\s*return;\s*\}\s*timer = null;\s*if \(atBottomRef\.current\) setHeldTurns\(NO_HELD_TURNS\);/);
+        expect(chatList).toContain('if (released && atBottomRef.current) scrollToBottom(false);');
     });
-    it('feeds both options to the rows and the hold flag to the activity row', () => {
-        expect(chatList).toContain('keepLastTurnOpen: lastTurnOpen, liveDraft }');
-        expect(chatList).toContain('holdsAnswer={row.holdsAnswer}');
+    it('feeds both options to the rows and the held answer to the activity row', () => {
+        expect(chatList).toContain('keepTurnsOpen: heldTurns, liveDraft }');
+        expect(chatList).toContain('answer={row.answer}');
     });
     it('an empty live panel + the row gap equals the panel padding the answer lands under', () => {
         const css = strip(readFileSync(resolve(__dirname, 'turnactivity.css'), 'utf8'));

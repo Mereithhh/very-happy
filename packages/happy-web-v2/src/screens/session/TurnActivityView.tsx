@@ -5,7 +5,7 @@ import type { Message } from '@/sync/typesMessage';
 import { sameItems } from './rowMemo';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ActivityMessages } from './ActivityMessages';
-import { activityDurationSeconds } from './chatTurns';
+import { activityDurationSeconds, type HeldAnswer } from './chatTurns';
 import { countRunningSubagentCards, countSubagentCards } from './subagentPills';
 import { userAbortedAt } from './subagentAbort';
 import { StatusDot } from '@/ui';
@@ -26,7 +26,7 @@ function TurnActivityViewImpl({
     durationSeconds,
     trigger,
     abortedAt: liftedAbortedAt,
-    holdsAnswer = false,
+    answer,
 }: {
     messages: Message[];
     live: boolean;
@@ -36,8 +36,8 @@ function TurnActivityViewImpl({
     trigger?: Message;
     /** B-578: set when the turn's stop line was lifted out of `messages`. */
     abortedAt?: number;
-    /** B-615: the turn's answer is still inside this row (chatTurns `keepLastTurnOpen`). */
-    holdsAnswer?: boolean;
+    /** B-615: the finished turn's answer, still inside this row (chatTurns `keepTurnsOpen`). */
+    answer?: HeldAnswer;
 }) {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(live);
@@ -48,6 +48,9 @@ function TurnActivityViewImpl({
     // B-607: the live→done fold was skipped for a detached reader; it runs when
     // they follow the live end again, unless they toggled this turn by hand.
     const foldPendingRef = useRef(false);
+    const holdsAnswer = answer !== undefined;
+    const holdsAnswerRef = useRef(holdsAnswer);
+    holdsAnswerRef.current = holdsAnswer;
 
     // A running turn is transparent by default. The exact live→done transition
     // folds it once; subsequent renders never override a user's history toggle.
@@ -60,7 +63,9 @@ function TurnActivityViewImpl({
             setExpanded(true);
         }
         if (!live && wasLiveRef.current) {
-            const fold = foldsAwayFromReader(detailRef.current, reader.isFollowing);
+            // B-615: a held answer is in here — folding would hide it, even
+            // below the viewport where the reader is about to scroll to it.
+            const fold = !holdsAnswerRef.current && foldsAwayFromReader(detailRef.current, reader.isFollowing);
             foldPendingRef.current = !fold;
             if (fold) setExpanded(false);
         }
@@ -72,8 +77,6 @@ function TurnActivityViewImpl({
     // B-615: not while the answer is still inside this row — folding would
     // hide it until ChatList lifts it out once the scroll settles. The fold
     // runs when the answer leaves (below), the reader still following.
-    const holdsAnswerRef = useRef(holdsAnswer);
-    holdsAnswerRef.current = holdsAnswer;
     useEffect(() => reader.onRefollow(() => {
         if (!foldPendingRef.current || holdsAnswerRef.current) return;
         foldPendingRef.current = false;
@@ -118,7 +121,11 @@ function TurnActivityViewImpl({
                     </span>
                 )}
                 <span className="ta-title">
-                    {t('session.chat.activityElapsed', { seconds: duration })}
+                    {/* B-615: a live row with only a draft below it has no
+                        persisted step to time yet — no 「0s」. */}
+                    {live && messages.length === 0
+                        ? t('session.chat.liveProcessing')
+                        : t('session.chat.activityElapsed', { seconds: duration })}
                 </span>
                 {subagentCount > 0 && (
                     <span className={`ta-subagents${runningSubagents > 0 ? ' ta-subagents--live' : ''}`}>
@@ -132,7 +139,7 @@ function TurnActivityViewImpl({
             </button>
             {expanded && (
                 <div id={detailId} ref={detailRef} className="ta-detail vh-disclosure-panel">
-                    <ActivityMessages messages={messages} sessionId={sessionId} stalled={!live} abortedAt={abortedAt} />
+                    <ActivityMessages messages={messages} sessionId={sessionId} stalled={!live} abortedAt={abortedAt} answer={answer} />
                 </div>
             )}
         </section>
@@ -158,5 +165,11 @@ export const TurnActivityView = memo(TurnActivityViewImpl, (prev, next) => (
     && prev.durationSeconds === next.durationSeconds
     && prev.trigger === next.trigger
     && prev.abortedAt === next.abortedAt
-    && prev.holdsAnswer === next.holdsAnswer
+    && sameHeldAnswer(prev.answer, next.answer)
 ));
+
+function sameHeldAnswer(a?: HeldAnswer, b?: HeldAnswer): boolean {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    return a.id === b.id && a.showMeta === b.showMeta && a.showActions === b.showActions && a.optionsActive === b.optionsActive;
+}
