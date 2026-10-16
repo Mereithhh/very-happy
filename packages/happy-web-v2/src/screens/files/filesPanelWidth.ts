@@ -53,3 +53,43 @@ export function resolveFilesPanelWidth(stored: number | null | undefined, viewpo
 export function filesPanelWidthFromPointer(clientX: number, panelRightEdge: number, viewportWidth: number): number {
     return clampFilesPanelWidth(panelRightEdge - clientX, viewportWidth);
 }
+
+/** B-609: pointer travel before a press on the handle becomes a drag (double-click stays a click). */
+export const FILES_PANEL_DRAG_DEAD_ZONE = 4;
+/**
+ * B-609: dragging the panel narrower than this (well past the 320px minimum)
+ * arms collapse; releasing there closes the panel instead of resizing it.
+ */
+export const FILES_PANEL_COLLAPSE_THRESHOLD = 200;
+export const FILES_PANEL_KEY_STEP = 16;
+export const FILES_PANEL_KEY_STEP_LARGE = 64;
+
+export function filesPanelPastDeadZone(startX: number, startY: number, x: number, y: number): boolean {
+    return Math.hypot(x - startX, y - startY) > FILES_PANEL_DRAG_DEAD_ZONE;
+}
+
+/**
+ * Collapse decision for a drag. `rawWidth` is the UNCLAMPED width the pointer
+ * implies (edge − clientX): the rendered width stops at MIN, the pointer
+ * does not.
+ */
+export function shouldCollapseFilesPanel(rawWidth: number, canCollapse: boolean): boolean {
+    return canCollapse && Number.isFinite(rawWidth) && rawWidth < FILES_PANEL_COLLAPSE_THRESHOLD;
+}
+
+/**
+ * Keyboard resize for the separator. The handle sits on the panel's LEFT
+ * edge, so ArrowLeft moves it left = wider, ArrowRight = narrower; Shift
+ * takes the large step. Home/End jump to the min/max (aria-valuemin/max).
+ * Returns null for keys the separator does not own.
+ */
+export function filesPanelKeyboardWidth(current: number, key: string, shiftKey: boolean, viewportWidth: number): number | null {
+    const step = shiftKey ? FILES_PANEL_KEY_STEP_LARGE : FILES_PANEL_KEY_STEP;
+    switch (key) {
+        case 'ArrowLeft': return clampFilesPanelWidth(current + step, viewportWidth);
+        case 'ArrowRight': return clampFilesPanelWidth(current - step, viewportWidth);
+        case 'Home': return FILES_PANEL_MIN;
+        case 'End': return filesPanelMaxWidth(viewportWidth);
+        default: return null;
+    }
+}

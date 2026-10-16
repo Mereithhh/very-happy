@@ -6,6 +6,10 @@ import {
     filesPanelDefaultWidth,
     resolveFilesPanelWidth,
     filesPanelWidthFromPointer,
+    filesPanelPastDeadZone,
+    shouldCollapseFilesPanel,
+    filesPanelKeyboardWidth,
+    FILES_PANEL_COLLAPSE_THRESHOLD,
 } from './filesPanelWidth';
 
 describe('filesPanelMaxWidth', () => {
@@ -70,5 +74,46 @@ describe('filesPanelWidthFromPointer', () => {
     it('dragging past the right edge clamps to MIN, past 60vw clamps to max', () => {
         expect(filesPanelWidthFromPointer(1430, 1440, 1440)).toBe(FILES_PANEL_MIN);
         expect(filesPanelWidthFromPointer(0, 1440, 1440)).toBe(864);
+    });
+});
+
+describe('B-609 drag dead zone', () => {
+    it('ignores jitter up to 4px so a double-click never resizes', () => {
+        expect(filesPanelPastDeadZone(100, 100, 103, 102)).toBe(false);
+        expect(filesPanelPastDeadZone(100, 100, 96, 100)).toBe(false);
+        expect(filesPanelPastDeadZone(100, 100, 95, 100)).toBe(true);
+    });
+});
+
+describe('B-609 shouldCollapseFilesPanel', () => {
+    it('arms only below the threshold, which sits past the 320px minimum', () => {
+        expect(FILES_PANEL_COLLAPSE_THRESHOLD).toBeLessThan(FILES_PANEL_MIN);
+        expect(shouldCollapseFilesPanel(320, true)).toBe(false);
+        expect(shouldCollapseFilesPanel(200, true)).toBe(false);
+        expect(shouldCollapseFilesPanel(199, true)).toBe(true);
+        expect(shouldCollapseFilesPanel(-40, true)).toBe(true);
+    });
+    it('never collapses a host without a close path or on garbage input', () => {
+        expect(shouldCollapseFilesPanel(50, false)).toBe(false);
+        expect(shouldCollapseFilesPanel(NaN, true)).toBe(false);
+    });
+});
+
+describe('B-609 filesPanelKeyboardWidth', () => {
+    it('ArrowLeft widens and ArrowRight narrows by 16px, Shift by 64px', () => {
+        expect(filesPanelKeyboardWidth(500, 'ArrowLeft', false, 1440)).toBe(516);
+        expect(filesPanelKeyboardWidth(500, 'ArrowRight', false, 1440)).toBe(484);
+        expect(filesPanelKeyboardWidth(500, 'ArrowLeft', true, 1440)).toBe(564);
+        expect(filesPanelKeyboardWidth(500, 'ArrowRight', true, 1440)).toBe(436);
+    });
+    it('clamps steps and maps Home/End to the aria min/max', () => {
+        expect(filesPanelKeyboardWidth(330, 'ArrowRight', true, 1440)).toBe(FILES_PANEL_MIN);
+        expect(filesPanelKeyboardWidth(860, 'ArrowLeft', true, 1440)).toBe(864);
+        expect(filesPanelKeyboardWidth(500, 'Home', false, 1440)).toBe(FILES_PANEL_MIN);
+        expect(filesPanelKeyboardWidth(500, 'End', false, 1440)).toBe(864);
+    });
+    it('leaves other keys to the page', () => {
+        expect(filesPanelKeyboardWidth(500, 'ArrowUp', false, 1440)).toBeNull();
+        expect(filesPanelKeyboardWidth(500, 'Enter', false, 1440)).toBeNull();
     });
 });
