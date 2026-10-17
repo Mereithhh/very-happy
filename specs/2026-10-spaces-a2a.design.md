@@ -118,3 +118,32 @@ P3 延伸
 3. Tanka 三接口以"仓库内可插拔 provider"还是"独立 adapter 仓库"交付。
 4. P0 范围：是否先只做 1–4（Space/Agent/决策队列），把 OIDC 和信任模型并入 P1。
 5. 公司 Space 是否从 Ridge 组织树自动 provision，还是手工建。
+
+## 8. 分步路线（2026-10-17 Owner 调整：不一口气做完）
+
+Owner 决定按小步走：先账号体系，再分开源版/公司版，再消息中转，session 分享优先级最高。以下为核验后的顺序与前提（证据见 `docs/research/2026-10-spaces/`）。
+
+### Step 1 · Session 分享（最高优先，不依赖后面任何一步）
+- 现状四道门：被授权者拿不到 owner content 私钥解 DEK；REST/列表按 accountId 过滤；RPC 房间按 userId；新消息只推 owner。daemon 不校验发送者，只看 seq 和能否解密。
+- 最小路径：`SessionGrant(sessionId, granteeAccountId, role: viewer|driver)`；服务器（已在信任边界内）解出 DEK 再 box 给被授权者 content 公钥；读写路由放宽为 owner-or-grant；被授权者消息以 owner 身份落库，正文头注明真实发送者（沿用 Teams/peer 头部格式）；推送与 RPC 扇出到被授权者房间。
+- 分享对象：同服务器账号，按 email/handle 查找；可复用上游残留的 `UserRelationship` 作好友表，不需要 Team 对象。
+- 单驱动者规则：同一时刻一个 driver，其余 viewer；每轮署名。
+- 与 2026-09 UX review 拒绝的"只读快照/公开链接"不同：这是登录态、定向授权。
+
+### Step 2 · 开源版通用 OIDC
+- 现状：Google 只走 GIS ID-token，issuer/JWKS 写死，无 client secret、无回调；多身份绑定已有（`AccountIdentity(provider, providerSubject)`），但每账号限一个 Google/一个 Email。
+- 要补：discovery + 动态 JWKS、authorization code + PKCE、回调与 state、issuer/clientId/clientSecret 配置、provider 键 `oidc:<issuer>`。账号创建/注册限额/登录 session 复用。
+
+### Step 3 · 开源版 / 公司版分拆与迁移
+- 不 fork：同一代码库，公司版 = 部署配置（域名 vibe.apodex.site、OIDC=Authentik 含 Tanka 源、SIGNUP_MODE、全局配置）+ 可选私有模块。现状只有全局 env 开关，没有 edition/插件机制，先用 env + 配置文件即可。
+- 迁移：没有账号级导出/导入工具；所有 JWT 和 AccountSecret 都系于 `HANDY_MASTER_SECRET`。最省事的做法是**域名切换而非数据搬家**：现有 DB 与 master secret 原样挂到新域名，用户只改 `HAPPY_SERVER_URL` 并在 web 重新登录；veryhappy.dev 之后重置为开源公共实例。若必须分库，走 pg_dump/pg_restore 并用新 master 重加密 AccountSecret。
+- 群通知在切换窗口前发，内容含：新域名、CLI 改 server URL 的命令、web 重新登录、旧域名停服时间。
+
+### Step 4 · 消息中转（message adapter）
+- 抽象为 transport：VH server 自带（默认）、Tanka、Slack……每个用户自带凭证，以本人身份发言。Room 绑定到一个外部群。
+- Tanka 可行性（官方 MCP）：每人自建个人 API key，Chat 权限须勾选具体群，读/发不可分开授权；`send_group_message` 发言、`page_room_messages` 读历史（游标分页）；**没有消息推送**，只能按人×群轮询（0.25s 间隔基本安全，约 1/100 次限流）；**不能建群/拉人**，群需人工预建；key 有效期未知，需实测；key = 本人完整发言权，必须按用户加密保管。
+- Claude Code Channels 作参照：本地 MCP server 以 `claude/channel` 能力把消息推进会话，Telegram/Discord 以 bot 身份发言，无历史读取，多人靠 sender allowlist。它解决的是"IM → 会话"入站，不是"以用户身份在群里对话"；可借鉴其 sender 鉴权与 permission relay 设计。
+- 两个要先定的口径：① Tanka 群是"记录之地"，VH 仍保留工作副本（UI、agent 上下文、无 key 的用户都要用）；② agent 的输出用谁的身份发到群：用用户 key 则看起来像本人说话，建议 agent 输出走 bot（apodex-bot/Ridge notify），人类消息走本人 key。
+
+### 之后
+Space/Agent 一等化、A2A 信封、事件触发器、Ridge 曝光按第 6 节顺序继续；Step 1–4 完成后再启动。
