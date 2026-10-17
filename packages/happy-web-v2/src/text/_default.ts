@@ -1648,6 +1648,58 @@ export const en = {
         tagPlaceholder: 'Add tag…',
     },
 
+    // B-619 session sharing — share dialog (owner), invitations + banner + composer (grantee)
+    share: {
+        menu: 'Share…',
+        roleViewer: 'View only',
+        roleDriver: 'Can send',
+        banner: {
+            viewer: ({ owner }: { owner: string }) => `Shared by ${owner} · view only · permissions and interrupts stay with the owner`,
+            driver: ({ owner }: { owner: string }) => `Shared by ${owner} · you can send messages as yourself · permissions and interrupts stay with the owner`,
+        },
+        composer: {
+            placeholder: 'Message this session as yourself…',
+            send: 'Send',
+            sendHint: 'Sent under your name; the owner\'s agent reads it on its next turn (Cmd/Ctrl/Shift+Enter for a newline)',
+            archived: 'This session is archived — nothing can be sent',
+            noAccess: 'You no longer have send access to this session',
+            sendFailed: ({ error }: { error: string }) => `Send failed: ${error}`,
+        },
+        invites: {
+            title: 'Shared with you',
+            shared: 'shared',
+            accept: 'Accept',
+            decline: 'Ignore',
+            failed: 'That did not go through — try again',
+        },
+        dialog: {
+            title: 'Share session',
+            description: 'Give another account on this server access to this conversation. They see the same transcript you do; your machine stays yours.',
+            targetLabel: 'Email or username',
+            targetPlaceholder: 'name@company.com',
+            roleLabel: 'Access',
+            roleViewerHint: 'Reads the transcript live. Cannot send.',
+            roleDriverHint: 'Sends messages under their own name.',
+            driverWarning: 'A driver\'s message makes your agent act on your machine under your current permission mode. Approvals, interrupts, model and mode changes stay with you. Share driver access only with people you would hand your keyboard to.',
+            shareButton: 'Share',
+            listTitle: 'People with access',
+            statusPending: 'waiting for them to accept',
+            revoke: 'Revoke',
+            revokeConfirm: ({ name }: { name: string }) => `Revoke ${name}'s access? They will stop receiving this session immediately.`,
+            empty: 'Nobody yet.',
+            errors: {
+                targetNotFound: 'No account with that email or username on this server.',
+                alreadyShared: 'Already shared with that account.',
+                self: 'That is you.',
+                notShareable: 'This session uses the legacy key format and cannot be shared. Start a new session.',
+                ownerKey: 'Your account\'s key is not available to the server, so this session cannot be re-keyed. Sign in with email or Google once and try again.',
+                granteeKey: 'That account has not opened the web app since sharing arrived — ask them to sign in once, then share again.',
+                tooMany: 'This session is shared with the maximum number of people.',
+                serverTooOld: 'The server does not support sharing yet.',
+                generic: ({ error }: { error: string }) => `Could not share: ${error}`,
+            },
+        },
+    },
     sidebar: {
         agentStatusUnknown: 'Status unknown — waiting for a fresh agent observation',
         // B-465: the daemon predates observation stamps; the verdict is an estimate.
@@ -1676,6 +1728,11 @@ export const en = {
         viewList: 'List',
         viewStatus: 'Status',
         groupWaiting: 'Waiting on me',
+        // B-619: sessions other people shared with me
+        groupShared: 'Shared with me',
+        sharedFrom: ({ owner }: { owner: string }) => `Shared by ${owner}`,
+        sharedLeave: 'Leave shared session',
+        sharedLeaveConfirm: ({ owner }: { owner: string }) => `Leave ${owner}'s session? You can be invited again later.`,
         groupRunning: 'Running',
         // B-507: the turn ended but background tasks (async sub-agents,
         // backgrounded commands) are still running — the session is not idle.

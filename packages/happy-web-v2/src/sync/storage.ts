@@ -529,7 +529,8 @@ export const storage = create<StorageState>()((set, get) => {
                     const candidates = cameOnline
                         ? Object.entries(session.agentState?.requests ?? {}).map(([id, r]) => ({ id, tool: r.tool, kind: r.kind }))
                         : fresh;
-                    enforcement.push(...collectYoloDecisions({
+                    // B-619: a grantee's web never auto-approves the OWNER's permission cards.
+                    if (!session.share) enforcement.push(...collectYoloDecisions({
                         sessionId: session.id,
                         metadata: session.metadata,
                         controlledByUser: session.agentState?.controlledByUser,

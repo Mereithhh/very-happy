@@ -29,6 +29,9 @@ import { canOfferBtw, supportsBtw } from './btwCommand';
 import { btwStore } from '@/sync/btwStore';
 import { MirrorBanner } from './MirrorBanner';
 import { MirrorInputBar } from './MirrorInputBar';
+import { SharedSessionBanner } from './SharedSessionBanner';
+import { SharedComposer } from './SharedComposer';
+import { canSendAsGrantee, isSharedWithMe } from '@/app/sessionAccess';
 import { SessionArchivedBanner } from './SessionArchivedBanner';
 import { StaleWrapperBanner } from './StaleWrapperBanner';
 import { ModelSupportBanner } from './ModelSupportBanner';
@@ -72,13 +75,16 @@ export function SessionDetailScreen() {
     // side-question panel (B-283). `filesOpen` drives the files toggle only.
     // `?panel=btw` on a session that cannot host it (codex/gemini, terminal
     // mirror, pasted URL) is ignored rather than mounting a dead panel.
-    const btwAllowed = !!session && !isMirrorSession(session) && canOfferBtw(session);
+    // B-619: a session shared WITH me has no machine access from this account —
+    // no files panel, no /btw, no session RPC of any kind.
+    const sharedWithMe = !!session && isSharedWithMe(session);
+    const btwAllowed = !!session && !isMirrorSession(session) && !sharedWithMe && canOfferBtw(session);
     const btwOpen = panelTab === 'btw' && btwAllowed;
     // B-512 timing: store arrival (fallback when the update path didn't mark
     // it) and composer mount end a pending new-session trace. Effects run
     // after children mount, so AgentInput is on screen here. No-ops unless a
     // new-session trace for this id is open.
-    const composerShown = !!session && !isMirrorSession(session);
+    const composerShown = !!session && !isMirrorSession(session) && !sharedWithMe;
     useEffect(() => {
         if (!id || !session || pendingMode) return;
         newSessionTimingInStore(id);
@@ -263,7 +269,7 @@ export function SessionDetailScreen() {
                 {!session ? <PendingSessionHeader record={pending!} /> : <ChatHeader
                     sessionId={id}
                     filesOpen={filesOpen}
-                    onToggleFiles={() => panelTab === 'browse' ? setPanel(null, true) : setPanel('browse')}
+                    onToggleFiles={sharedWithMe ? undefined : () => panelTab === 'browse' ? setPanel(null, true) : setPanel('browse')}
                     btwOpen={btwOpen}
                     onToggleBtw={btwAllowed
                         ? () => (btwOpen ? setPanel(null, true) : setPanel('btw'))
@@ -271,23 +277,25 @@ export function SessionDetailScreen() {
                 />}
                 {session && <SessionTeamContext sessionId={id} />}
                 {mirror && <MirrorBanner sessionId={id} />}
+                {/* B-619: whose session this is and what I may do here. */}
+                {sharedWithMe && <SharedSessionBanner sessionId={id} />}
                 {/* B-508: an automation run is waiting on this session → say which and offer 「知道了」.
                     Sibling keys MUST differ (`<slot>:<id>`, never a bare id): `.sd-main` has false holes,
                     so React reconciles it by key map, and two same-key siblings orphan one fiber —
                     its DOM stays and a fresh copy is inserted on every re-render (duplicated strip). */}
-                {session && !mirror && <AutomationAttentionBanner key={`automation-attention:${id}`} sessionId={id} />}
+                {session && !mirror && !sharedWithMe && <AutomationAttentionBanner key={`automation-attention:${id}`} sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}
-                {session && !mirror && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
+                {session && !mirror && !sharedWithMe && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
                 {/* B-462: live session still on an older wrapper than the machine runs → offer a restart */}
-                {session && !mirror && !canOfferRestore(session, bannerMachine) && <StaleWrapperBanner sessionId={id} />}
+                {session && !mirror && !sharedWithMe && !canOfferRestore(session, bannerMachine) && <StaleWrapperBanner sessionId={id} />}
                 {/* B-487: the wanted model cannot run on this wrapper / agent CLI → say so and offer the fix */}
-                {session && !mirror && !canOfferRestore(session, bannerMachine) && <ModelSupportBanner sessionId={id} />}
+                {session && !mirror && !sharedWithMe && !canOfferRestore(session, bannerMachine) && <ModelSupportBanner sessionId={id} />}
                 {/* B-585: this session's worktree setup is waiting for approval / running / failed */}
-                {session && !mirror && <WorktreeSetupBanner key={`worktree-setup:${id}`} sessionId={id} />}
+                {session && !mirror && !sharedWithMe && <WorktreeSetupBanner key={`worktree-setup:${id}`} sessionId={id} />}
                 <div className="sd-body">
                     {session ? <ChatList key={id} sessionId={id} showLiveStatus={!mirror} /> : <PendingSessionBody record={pending!} />}
                 </div>
-                {!mirror && (
+                {!mirror && !sharedWithMe && (
                     <div className="sd-foot">
                         {/* B-602: count chips only; the records open in the aside (toggle, replace while it is open). */}
                         {session && <SessionPreviews sessionId={id} active={historyTab}
@@ -314,6 +322,9 @@ export function SessionDetailScreen() {
                     read-only, input flows back via the transcript). The bar
                     self-hides when the terminal is gone or claude exited. */}
                 {mirror && <MirrorInputBar sessionId={id} />}
+                {/* B-619: a driver's only write path; viewers get nothing below the transcript.
+                    PermissionCard is deliberately absent — approvals stay with the owner. */}
+                {sharedWithMe && session && canSendAsGrantee(session) && <SharedComposer sessionId={id} />}
             </div>
             {retainedPanel && session && (
                 <>

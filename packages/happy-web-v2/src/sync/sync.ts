@@ -1,4 +1,8 @@
 import { supportsSessionAttachments } from './attachmentCapabilities';
+import type { SessionShareInfo } from './sessionShareTypes';
+import { useSessionShares } from './sessionSharesStore';
+import { uploadContentPublicKey } from './apiSessionShares';
+import { encodeBase64 as encodeBase64ForShare } from '@/encryption/base64';
 import Constants from 'expo-constants';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
 import { attachResumeListeners } from '@/sync/resumeSync';
@@ -1401,6 +1405,8 @@ class Sync {
             createdAt: number;
             updatedAt: number;
             lastMessage: ApiMessage | null;
+            /** B-619: only on rows shared WITH this account. */
+            share?: SessionShareInfo;
         }>;
 
         // Key init + metadata/agentState decryption (one bad row is skipped,
@@ -3096,6 +3102,21 @@ class Sync {
                 this.encryption.removeMachineEncryption(machineId);
                 this.machineDataKeys.delete(machineId);
             }
+        } else if (updateData.body.t === 'session-share') {
+            // B-619: someone shared a session with me — it lands in the sidebar as an invitation.
+            useSessionShares.getState().onInvite(updateData.body.invite);
+        } else if (updateData.body.t === 'session-share-updated') {
+            // B-619: an invitation I sent was answered / a role changed. Owners refresh the
+            // dialog list; a grantee whose role changed needs the session row re-read.
+            const { sessionId, grantId, role, status } = updateData.body;
+            useSessionShares.getState().onGrantUpdated(sessionId, grantId, role, status);
+            if (storage.getState().sessions[sessionId]?.share) this.sessionsSync.invalidate();
+        } else if (updateData.body.t === 'session-share-revoked') {
+            // B-619: the owner took the share back (or deleted the session). Purge it like a delete:
+            // the key leaves memory and the row leaves the sidebar.
+            const { sessionId, grantId } = updateData.body;
+            useSessionShares.getState().onRevoked(sessionId, grantId);
+            if (storage.getState().sessions[sessionId]?.share) this.onSessionDeleted(sessionId);
         } else if (updateData.body.t === 'relationship-updated') {
             log.log('👥 Received relationship-updated update');
             const relationshipUpdate = updateData.body;
@@ -3495,6 +3516,9 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
     const API_ENDPOINT = getServerUrl();
     apiSocket.initialize({ endpoint: API_ENDPOINT, token: credentials.token }, encryption);
     installRpcRateLimitNotice();
+    // B-619: publish the content public key so this account can RECEIVE shared
+    // sessions even when its master secret is not server-held. Best effort.
+    void uploadContentPublicKey(encodeBase64ForShare(encryption.contentDataKey)).catch(() => { /* old server */ });
 
     // Wire socket status to storage
     apiSocket.onStatusChange((status) => {

@@ -1,5 +1,6 @@
 import { ContextUsageSchema } from '@slopus/happy-wire';
 import { z } from "zod";
+import type { SessionShareInfo } from './sessionShareTypes';
 
 //
 // Agent states
@@ -234,6 +235,8 @@ export type TodoItem = z.infer<typeof TodoItemSchema>;
 export interface Session {
     id: string,
     seq: number,
+    /** B-619: present only on a session shared WITH this account (viewer / driver). Owner sessions carry nothing. */
+    share?: SessionShareInfo,
     createdAt: number,
     updatedAt: number,
     active: boolean,

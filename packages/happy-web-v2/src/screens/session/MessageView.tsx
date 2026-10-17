@@ -34,6 +34,9 @@ import './message.css';
 import { presentTeamMessage } from './teamMessage';
 import { TeamMessageCard } from './TeamMessageCard';
 import { presentSessionPeerMessage } from './sessionPeerMessage';
+import { presentSharedMessage } from './sharedMessage';
+import { Users } from 'lucide-react';
+import './shared.css';
 import { SessionPeerMessageCard } from './SessionPeerMessageCard';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { composerGate } from '@/app/sessionRestoreRules';
@@ -53,7 +56,10 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     // daemon's edit-conflict notice — a source card with a link to that session.
     const peerContent = presentSessionPeerMessage(message);
     if (peerContent) return <SessionPeerMessageCard content={peerContent} sessionId={sessionId} />;
-    const raw = message.displayText ?? message.text;
+    // B-619: a message another person wrote into this (shared) session — an
+    // ordinary user bubble with the sender's name above it.
+    const shared = presentSharedMessage(message);
+    const raw = shared ? shared.body : (message.displayText ?? message.text);
     // B-260: a background-task notification is a machine-facing user message.
     // Stripping used to leave an invisible empty bubble; render the one useful
     // line instead (summary + status), mono, event-styled — not a user bubble.
@@ -112,6 +118,9 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     const discarded = discardedReasonKey(message);
     return (
         <div className="msg msg--user" data-chat-prompt-id={message.id}>
+            {shared && shared.displayName && (
+                <span className="msg-sender" title={shared.accountId ?? undefined}><Users size={11} aria-hidden />{shared.displayName}</span>
+            )}
             <UserAttachments sessionId={sessionId} items={attachmentItems} />
             <div className={`msg-bubble-wrap vh-copyhost${send ? ' msg-bubble-wrap--unsent' : ''}`}>
                 <MessageActions text={text} sessionId={sessionId} userMessage={message} hasAttachments={attachmentItems.length > 0} send={send}>
