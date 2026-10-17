@@ -21,6 +21,7 @@ import { usePendingSessionBridge } from '@/sync/pendingSessionsRuntime';
 import { prefetchSessionDetailWhenIdle } from '@/app/prefetchSessionDetail';
 import { useAllMachines, useIsDataReady, useSessions } from '@/sync/storage';
 import { shouldShowFirstRun, shouldShowWorkspaceGuide } from '@/screens/onboarding/firstRun';
+import { useSessionInvites } from '@/sync/sessionSharesStore';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { AppShell, type AppShellMode } from './AppShell';
 import './layout.css';
@@ -59,7 +60,9 @@ export function AppLayout() {
   const allMachines = useAllMachines({ includeOffline: true });
   const sessions = useSessions();
   const terminalCount = useTerminalSessions((state) => state.terminals.length);
-  const firstRun = shouldShowFirstRun(dataReady, allMachines.length);
+  // B-619: shared sessions / invitations keep the list reachable on a machine-less account.
+  const inviteCount = useSessionInvites().length;
+  const firstRun = shouldShowFirstRun(dataReady, allMachines.length, (sessions?.length ?? 0) + inviteCount);
   const workspaceGuide = shouldShowWorkspaceGuide(dataReady, allMachines.length, sessions?.length ?? 0, terminalCount);
   const { width, collapsed, setWidth, setCollapsed } = useSidebarPrefs();
   const draggingRef = useRef(false);

@@ -1827,9 +1827,11 @@ export const zhHans: TranslationStructure = {
     // B-619 会话分享——分享对话框（owner）、邀请 + 横幅 + 输入框（被分享者）
     share: {
         menu: '分享…',
+        revokedToast: '这个分享的会话已被所有者收回。',
         roleViewer: '只看',
         roleDriver: '可发消息',
         banner: {
+            short: ({ owner }: { owner: string }) => `${owner} 分享给你`,
             viewer: ({ owner }: { owner: string }) => `${owner} 分享给你 · 只读 · 权限批准和中断仍由会话所有者操作`,
             driver: ({ owner }: { owner: string }) => `${owner} 分享给你 · 你可以用自己的身份发消息 · 权限批准和中断仍由所有者操作`,
         },
@@ -2410,6 +2412,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            oct18: {
+                title: '把会话分享给同事',
+                summary: '让同一服务器上的另一个账号实时看一段对话，或者让对方用自己的名字往里发消息。',
+                share: '会话菜单 → 分享…：输入邮箱或用户名，选「只看」或「可发消息」。对方侧栏会出现邀请，接受后会话出现在「分享给我的」分组里。',
+                driver: '「可发消息」的人用自己的名字发消息，所有者的 agent 下一轮读取。批准、中断、改模型和改模式仍只有所有者能做——对方拿不到你的机器。',
+                revoke: '在同一个对话框里改权限或撤销；撤销后对方那边立刻看不到这个会话。旧密钥格式（没有每会话密钥）的会话无法分享。',
+            },
             oct16: {
                 title: '往上看时不再乱跳；图片可缩放，diff 可左右对比',
                 summary: '一轮还在跑时往上翻看，不会再被甩到顶部；图片能捏合缩放和拖动；宽的 diff 可以左右对比着看。',

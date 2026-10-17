@@ -10,7 +10,7 @@ import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { useMediaQuery } from '@/app/useMediaQuery';
 import { useFilesPanelWidth } from '@/screens/files/useFilesPanelWidth';
 import { useTranslation } from '@/i18n/useTranslation';
-import { EmptyState, Button, OrbitLoader } from '@/ui';
+import { EmptyState, Button, OrbitLoader, toast } from '@/ui';
 import { SessionTeamContext } from './SessionTeamContext';
 import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
@@ -78,6 +78,18 @@ export function SessionDetailScreen() {
     // B-619: a session shared WITH me has no machine access from this account —
     // no files panel, no /btw, no session RPC of any kind.
     const sharedWithMe = !!session && isSharedWithMe(session);
+    // B-619: the owner withdrew the share (or deleted the session) while I was
+    // looking at it — the row is purged by sync; say so and go home instead of
+    // leaving a spinner that would wait forever.
+    const wasSharedRef = useRef(false);
+    useEffect(() => {
+        if (sharedWithMe) { wasSharedRef.current = true; return; }
+        if (wasSharedRef.current && !session && !pendingMode) {
+            wasSharedRef.current = false;
+            toast.error(t('share.revokedToast'));
+            navigate('/', { replace: true });
+        }
+    }, [sharedWithMe, session, pendingMode, navigate, t]);
     const btwAllowed = !!session && !isMirrorSession(session) && !sharedWithMe && canOfferBtw(session);
     const btwOpen = panelTab === 'btw' && btwAllowed;
     // B-512 timing: store arrival (fallback when the update path didn't mark

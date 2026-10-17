@@ -17,6 +17,11 @@
 }
 .shb > svg { flex: none; color: var(--text-faint); }
 .shb-text { flex: 1; min-width: 0; }
+.shb-text--short { display: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) {
+  .shb-text--full { display: none; }
+  .shb-text--short { display: block; }
+}
 .shb-text strong { color: var(--text); font-weight: 600; }
 .shb-role {
   flex: none;
@@ -111,20 +116,22 @@
   text-overflow: ellipsis;
 }
 .sb-invites { display: flex; flex-direction: column; }
+/* One invitation = a small block: who shared what, my role, then the answer. */
 .sb-invite {
   display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: 44px;
-  padding: 6px var(--sp-4) 6px var(--sp-3);
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-4) var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--line);
 }
-.sb-invite > svg { flex: none; color: var(--text-faint); }
-.sb-invite-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.sb-invite-line { color: var(--text); font-size: var(--fs-13); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-invite-head { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-faint); }
+.sb-invite-head > svg { flex: none; }
+.sb-invite-line { min-width: 0; color: var(--text); font-size: var(--fs-13); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-invite-line strong { font-weight: 600; }
-.sb-invite-sub { color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-11); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sb-invite-actions { flex: none; display: inline-flex; gap: var(--sp-1); }
+.sb-invite-line q { quotes: '“' '”'; }
+.sb-invite-sub { padding-left: 20px; color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-11); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-invite-actions { display: flex; gap: var(--sp-1); padding-left: 20px; margin-top: 2px; }
+@media (pointer: coarse) { .sb-invite-actions .vh-btn { min-height: 36px; } }
 
 /* ── share dialog (owner) — reuses the sessionOptionsDialog surface tokens ── */
 .shd-form { display: grid; gap: var(--sp-3); margin-top: var(--sp-4); }
@@ -155,6 +162,7 @@
 .shd-list-title { margin: 0 0 var(--sp-2); color: var(--text-dim); font-size: var(--fs-12); font-weight: 600; }
 .shd-grant { display: flex; align-items: center; gap: var(--sp-3); min-height: 44px; padding: 6px 0; border-top: 1px solid var(--line); }
 .shd-grant:last-child { border-bottom: 1px solid var(--line); }
+.shd-grant--confirm .shd-grant-name { white-space: normal; line-height: 1.4; }
 .shd-grant-avatar { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--fill-soft); color: var(--text-dim); display: grid; place-items: center; font-size: var(--fs-12); font-weight: 600; overflow: hidden; }
 .shd-grant-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .shd-grant-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }

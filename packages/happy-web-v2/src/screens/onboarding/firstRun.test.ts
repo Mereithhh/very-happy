@@ -98,3 +98,12 @@ describe('first-machine command sequence', () => {
     expect(styles).not.toMatch(/\.fr-page \{[^}]*text-align: center;/s);
   });
 });
+
+describe('B-619 first run with shared sessions', () => {
+  it('a machine-less account that has a shared session or an invitation sees the list, not the connect screen', () => {
+    expect(shouldShowFirstRun(true, 0, 0)).toBe(true);
+    expect(shouldShowFirstRun(true, 0, 1)).toBe(false);
+    expect(shouldShowFirstRun(true, 1, 0)).toBe(false);
+    expect(shouldShowFirstRun(false, 0, 1)).toBe(false);
+  });
+});

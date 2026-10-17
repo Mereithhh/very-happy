@@ -11,7 +11,6 @@ import { useEffect, useState } from 'react';
 import { useSessionShares } from '@/sync/sessionSharesStore';
 import { SessionShareApiError } from '@/sync/apiSessionShares';
 import type { SessionGrantView, SessionShareRole } from '@/sync/sessionShareTypes';
-import { Modal } from '@/modal';
 import { Button, Input } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import './sessionOptionsDialog.css';
@@ -49,10 +48,12 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [listError, setListError] = useState<string | null>(null);
+    // Inline two-step revoke: a global confirm modal would sit UNDER this Radix dialog.
+    const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
 
     useEffect(() => {
         if (!open) return;
-        setError(null); setListError(null);
+        setError(null); setListError(null); setConfirmRevoke(null);
         refreshGrants(sessionId).catch((e) => setListError(shareErrorCopy(t, e instanceof SessionShareApiError ? e.code : 'unknown')));
     }, [open, sessionId, refreshGrants, t]);
 
@@ -71,8 +72,7 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
     };
 
     const onRevoke = async (grant: SessionGrantView) => {
-        const ok = await Modal.confirm(t('share.dialog.revokeConfirm', { name: grant.grantee.displayName }), undefined, { confirmText: t('share.dialog.revoke'), destructive: true });
-        if (!ok) return;
+        setConfirmRevoke(null);
         try { await revoke(sessionId, grant.grantee.id); }
         catch (e) { setListError(shareErrorCopy(t, e instanceof SessionShareApiError ? e.code : 'unknown')); }
     };
@@ -132,7 +132,15 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
                         {listError && <p className="shd-error" role="alert">{listError}</p>}
                         {grants === undefined && !listError && <p className="shd-empty">{t('common.loading')}</p>}
                         {grants && grants.length === 0 && <p className="shd-empty">{t('share.dialog.empty')}</p>}
-                        {grants?.map((grant) => (
+                        {grants?.map((grant) => confirmRevoke === grant.id ? (
+                            <div key={grant.id} className="shd-grant shd-grant--confirm" role="group" aria-label={t('share.dialog.revoke')}>
+                                <span className="shd-grant-text">
+                                    <span className="shd-grant-name">{t('share.dialog.revokeConfirm', { name: grant.grantee.displayName })}</span>
+                                </span>
+                                <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmRevoke(null)}>{t('common.cancel')}</Button>
+                                <Button type="button" variant="danger" size="sm" onClick={() => void onRevoke(grant)}>{t('share.dialog.revoke')}</Button>
+                            </div>
+                        ) : (
                             <div key={grant.id} className="shd-grant">
                                 <span className="shd-grant-avatar" aria-hidden>
                                     {grant.grantee.avatar?.url ? <img src={grant.grantee.avatar.url} alt="" /> : initials(grant.grantee.displayName)}
@@ -150,7 +158,7 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
                                     <option value="viewer">{t('share.roleViewer')}</option>
                                     <option value="driver">{t('share.roleDriver')}</option>
                                 </select>
-                                <Button type="button" variant="ghost" size="sm" onClick={() => void onRevoke(grant)}>{t('share.dialog.revoke')}</Button>
+                                <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmRevoke(grant.id)}>{t('share.dialog.revoke')}</Button>
                             </div>
                         ))}
                     </div>

@@ -18,11 +18,13 @@ export function SharedSessionBanner({ sessionId }: { sessionId: string }) {
     return (
         <div className="shb" role="status">
             <Users size={14} aria-hidden />
-            <span className="shb-text">
+            <span className="shb-text shb-text--full">
                 {access === 'driver'
                     ? t('share.banner.driver', { owner: share.owner.displayName })
                     : t('share.banner.viewer', { owner: share.owner.displayName })}
             </span>
+            {/* phones: one line — the role chip already says what I may do */}
+            <span className="shb-text shb-text--short">{t('share.banner.short', { owner: share.owner.displayName })}</span>
             <span className="shb-role">{access === 'driver' ? t('share.roleDriver') : t('share.roleViewer')}</span>
         </div>
     );

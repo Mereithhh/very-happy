@@ -1651,9 +1651,11 @@ export const en = {
     // B-619 session sharing — share dialog (owner), invitations + banner + composer (grantee)
     share: {
         menu: 'Share…',
+        revokedToast: 'That shared session was withdrawn by its owner.',
         roleViewer: 'View only',
         roleDriver: 'Can send',
         banner: {
+            short: ({ owner }: { owner: string }) => `Shared by ${owner}`,
             viewer: ({ owner }: { owner: string }) => `Shared by ${owner} · view only · permissions and interrupts stay with the owner`,
             driver: ({ owner }: { owner: string }) => `Shared by ${owner} · you can send messages as yourself · permissions and interrupts stay with the owner`,
         },
@@ -2261,6 +2263,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct18: {
+                title: 'Share a session with a colleague',
+                summary: 'Give another account on your server a live view of a conversation — or let them send messages into it under their own name.',
+                share: 'Session menu → Share…: enter an email or username, choose View only or Can send. They see an invitation in their sidebar and the session appears under “Shared with me” once they accept.',
+                driver: 'A “Can send” driver writes messages under their own name; the owner\'s agent reads them on its next turn. Approvals, interrupts, model and mode changes stay with the owner — a driver never gets your machine.',
+                revoke: 'Change a person\'s access or revoke it from the same dialog; revoking removes the session from their side immediately. Sessions created before per-session keys (legacy format) cannot be shared.',
+            },
             oct16: {
                 title: 'Reading back stays put; zoomable images and side-by-side diffs',
                 summary: 'Scrolling up while a turn is running no longer throws you to the top, images can be pinch-zoomed and panned, and wide diffs can be read side by side.',

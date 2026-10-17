@@ -85,7 +85,10 @@ export async function requireSessionAccess(userId: string, sessionId: string, mi
 const dekCache = new Map<string, { dek: Uint8Array; at: number }>();
 
 async function loadMasterSecret(accountId: string): Promise<Uint8Array | null> {
-    const secret = await loadAccountSecret(db, accountId);
+    // Accounts from before AccountSecret existed only hold the sealed secret on
+    // their password credential; loadAccountSecret migrates it forward.
+    const credential = await db.accountCredential.findUnique({ where: { accountId }, select: { secretEnc: true } });
+    const secret = await loadAccountSecret(db, accountId, credential?.secretEnc);
     if (!secret) return null;
     try { return decodeAccountSecret(secret); } catch { return null; }
 }
@@ -151,11 +154,13 @@ function profileOf(account: ProfileAccount): UserProfile {
     return buildUserProfile(account, RelationshipStatus.none);
 }
 
-export function displayNameOf(account: { firstName: string | null; lastName: string | null; username: string | null }, email?: string | null): string {
+/** Profile name → profile username → login username (password accounts keep theirs on AccountCredential) → email local part. */
+export function displayNameOf(account: { firstName: string | null; lastName: string | null; username: string | null }, identity?: { handle?: string | null; email?: string | null }): string {
     const full = [account.firstName, account.lastName].filter(Boolean).join(' ').trim();
     if (full) return full;
     if (account.username) return account.username;
-    if (email) return email.split('@')[0];
+    if (identity?.handle) return identity.handle;
+    if (identity?.email) return identity.email.split('@')[0];
     return 'someone';
 }
 
@@ -171,12 +176,24 @@ async function resolveTargetAccount(target: string): Promise<ProfileAccount | nu
         if (!identity) return null;
         return db.account.findUnique({ where: { id: identity.accountId }, include: profileInclude });
     }
-    return db.account.findFirst({ where: { username: { equals: trimmed, mode: 'insensitive' } }, include: profileInclude });
+    const byProfile = await db.account.findFirst({ where: { username: { equals: trimmed, mode: 'insensitive' } }, include: profileInclude });
+    if (byProfile) return byProfile;
+    // Password sign-ups (B-528) keep the login username on AccountCredential only.
+    const credential = await db.accountCredential.findFirst({ where: { username: { equals: trimmed, mode: 'insensitive' } }, select: { accountId: true } });
+    return credential ? db.account.findUnique({ where: { id: credential.accountId }, include: profileInclude }) : null;
 }
 
 async function primaryEmail(accountId: string): Promise<string | null> {
     const identity = await db.accountIdentity.findFirst({ where: { accountId, email: { not: null } }, select: { email: true }, orderBy: { createdAt: 'asc' } });
     return identity?.email ?? null;
+}
+
+async function identityOf(accountId: string): Promise<{ handle: string | null; email: string | null }> {
+    const [credential, email] = await Promise.all([
+        db.accountCredential.findUnique({ where: { accountId }, select: { username: true } }),
+        primaryEmail(accountId),
+    ]);
+    return { handle: credential?.username ?? null, email };
 }
 
 // ---------------------------------------------------------------- views
@@ -202,7 +219,7 @@ export type SharedSessionInvite = {
 };
 
 async function grantView(grant: { id: string; sessionId: string; role: SessionGrantRole; status: SessionGrantStatus; createdAt: Date; acceptedAt: Date | null; grantee: ProfileAccount }): Promise<SessionGrantView> {
-    const email = await primaryEmail(grant.grantee.id);
+    const identity = await identityOf(grant.grantee.id);
     return {
         id: grant.id,
         sessionId: grant.sessionId,
@@ -210,7 +227,7 @@ async function grantView(grant: { id: string; sessionId: string; role: SessionGr
         status: grant.status,
         createdAt: grant.createdAt.getTime(),
         acceptedAt: grant.acceptedAt ? grant.acceptedAt.getTime() : null,
-        grantee: { ...profileOf(grant.grantee), email, displayName: displayNameOf(grant.grantee, email) },
+        grantee: { ...profileOf(grant.grantee), username: grant.grantee.username ?? identity.handle ?? '', email: identity.email, displayName: displayNameOf(grant.grantee, identity) },
     };
 }
 
@@ -222,7 +239,7 @@ async function inviteView(grant: { id: string; sessionId: string; role: SessionG
         role: grant.role,
         status: grant.status,
         createdAt: grant.createdAt.getTime(),
-        owner: { id: owner.id, displayName: displayNameOf(grant.grantedBy, await primaryEmail(owner.id)), username: grant.grantedBy.username, avatarUrl: owner.avatar?.url ?? null },
+        owner: { id: owner.id, displayName: displayNameOf(grant.grantedBy, await identityOf(owner.id)), username: grant.grantedBy.username, avatarUrl: owner.avatar?.url ?? null },
         session: await sessionPreview(grant.session),
     };
 }
@@ -354,7 +371,7 @@ export async function listSharedSessionRows<T extends SessionKeyRow & { metadata
         if (!metadata) continue; // owner secret missing: nothing we can safely show
         out.push({
             row,
-            share: { grantId: grant.id, role: grant.role, owner: { id: grant.grantedBy.id, displayName: displayNameOf(grant.grantedBy) } },
+            share: { grantId: grant.id, role: grant.role, owner: { id: grant.grantedBy.id, displayName: displayNameOf(grant.grantedBy, await identityOf(grant.grantedBy.id)) } },
             dataEncryptionKey: Buffer.from(grant.granteeDataEncryptionKey),
             metadata,
         });
@@ -389,7 +406,7 @@ export async function postSharedMessage(input: { granteeAccountId: string; sessi
     const dek = await openSessionDataKey(session);
     if (!dek) throw new SessionShareError('session_key_unavailable', 409);
     const sender = await db.account.findUniqueOrThrow({ where: { id: input.granteeAccountId }, select: { id: true, firstName: true, lastName: true, username: true } });
-    const displayName = displayNameOf(sender, await primaryEmail(sender.id));
+    const displayName = displayNameOf(sender, await identityOf(sender.id));
     // Charge the grantee's own write budget too, so a noisy driver cannot exhaust the owner's.
     await enforceAccountWriteRate({ accountId: input.granteeAccountId, resource: 'message', units: 1, envName: 'MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE', fallback: 600 });
     const record = {

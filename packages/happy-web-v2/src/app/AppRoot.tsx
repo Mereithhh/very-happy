@@ -24,6 +24,7 @@ import { useAllMachines, useIsDataReady, useLocalSetting, useSessions } from '@/
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useGlobalBackNav } from '@/app/appBack';
 import { FirstRunScreen } from '@/screens/onboarding/FirstRunScreen';
+import { useSessionInvites } from '@/sync/sessionSharesStore';
 import { shouldShowFirstRun } from '@/screens/onboarding/firstRun';
 import { subscribeFirstMachineConnected } from '@/screens/onboarding/firstMachineWelcome';
 import { PrivacyScreen, TermsScreen } from '@/screens/legal/PublicLegalScreen';
@@ -139,10 +140,12 @@ function HomeGate() {
   const machines = useAllMachines({ includeOffline: true });
   const sessions = useSessions();
   const terminalCount = useTerminalSessions((state) => state.terminals.length);
+  // B-619: sessions shared with me / invitations count as a reason to show the list.
+  const inviteCount = useSessionInvites().length;
   if (!dataReady) {
     return <RouteLoading fullViewport label={t('common.loading')} />;
   }
-  if (shouldShowFirstRun(dataReady, machines.length)) return <FirstRunScreen />;
+  if (shouldShowFirstRun(dataReady, machines.length, (sessions?.length ?? 0) + inviteCount)) return <FirstRunScreen />;
   if (dataReady && (sessions?.length ?? 0) === 0 && terminalCount === 0) return <HelpScreen />;
   if (homeView === 'board') {
     return (

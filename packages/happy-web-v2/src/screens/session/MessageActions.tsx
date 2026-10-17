@@ -54,7 +54,8 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
 
     // Only a Claude runner can rewind its own conversation; mirrors are read-only.
     const flavor = session?.metadata?.flavor ?? 'claude';
-    const canRewind = !!userMessage && !send && flavor === 'claude' && typeof userMessage.seq === 'number';
+    // B-619: rewind / edit-and-resend are owner operations (session RPC); a grantee only reads.
+    const canRewind = !!userMessage && !send && flavor === 'claude' && typeof userMessage.seq === 'number' && !session?.share;
 
     // Grow with the text, like the bubble it replaces.
     useLayoutEffect(() => {

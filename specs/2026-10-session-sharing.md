@@ -1,6 +1,6 @@
 # Session 分享：把我的会话交给同服务器的另一个人继续聊
 
-> 状态：Draft（2026-10-18，Owner 已定方向：Step 1，优先于账号分拆与 OIDC）
+> 状态：Final（2026-10-18，Owner「如果都没有问题你就去实现吧」；实现见 B-619，待 PR 合并后回标 Shipped）
 > 关联：specs/2026-10-spaces-a2a.design.md §8；前置事实见 docs/research/2026-10-spaces/very-happy-baseline.md
 > 基线：main 2ab14e26d
 
@@ -92,6 +92,18 @@ agent 本身一轮只处理一条消息，队列就是并发控制，不需要�
 - [ ] 撤销后 A 的列表里会话消失，不再收到推送。
 - [ ] 审计日志有 grant 建立/撤销记录。
 - [ ] 老 Web 与老 CLI 不受影响（daemon 零改动）。
+
+## 实现记录（2026-10-18，与设计稿的差异）
+
+安全审计（spec 定稿前对 grantee 攻击面的只读审计）推翻了设计里两处"最小改动"，实现按审计结论落地：
+
+- **grantee 不拿任何 RPC**。session RPC 的参数用会话 DEK 加密，服务器看不到内容，`permission` 请求体还能带 `mode`/`allowTools`/`updatedInput`；所以 rpc-call 继续按 userId 房间路由，跨账号一律不通。权限卡、中断、改模式/模型、文件面板、`/btw`、消息编辑/删除在 grantee 侧不渲染。
+- **driver 的消息由服务器加密**（`POST /v1/sessions/:id/shared-messages` 收明文）。服务器用 owner 的主密钥解出 DEK（`app/session/sessionCrypto.ts`，与 CLI/web 的密钥树、box、AES-GCM 逐字节同格式），写入 `{role:'user', content.text: "[Very Happy shared session message from \"<name>\" <id>]\n<text>", meta:{sentFrom:'shared', displayText, sharedBy}}`，**不含** permissionMode/model/delivery，以 owner 名义入库并推送。daemon 零改动，老 wrapper 也能收。
+- **grant 先 pending、对方接受才 active**，不需要好友表；分享对象按 email 或用户名（含密码账号的登录名）查找。
+- **DEK 由服务器重包**给 grantee 的 content 公钥（web 登录时上报 `contentPublicKey`，没有就从服务器持有的 secret 派生）；grantee 拿到的 metadata 是重加密的脱敏副本（去掉 homeDir/happy*Dir/hostPid/terminalId/mcpServers），`update-session` 扇出同样脱敏。
+- **扇出**挂在 eventRouter：`all-interested-in-session` 的 update 与 session 的 activity/usage ephemeral 镜像到各 grantee 的 user-scoped 房间；归档状态单独补发；删除会话通知 grantee。push/webhook 不扇出。
+- **撤销**：行标记 revoked，服务器各读路径立即 404，grantee 页面提示并回首页；已持有的 DEK 不轮换（历史本已可见）。
+- 验证：server pglite 集成测试 9 条（含越权、脱敏、信封内容、撤销）；本地 standalone 双账号 + 真实 CLI daemon + 一轮 Claude：driver 消息被 daemon 正常解密、agent 回复双方同时可见；viewer POST 403、owner-only 路由 404、撤销后全部 404。
 
 ## 留待后续
 

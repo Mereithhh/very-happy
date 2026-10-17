@@ -4,7 +4,7 @@
  * invitation, accept / ignore inline. Accepting lands the session in the
  * 「分享给我的」 group and opens it.
  */
-import { Check, Users, X } from 'lucide-react';
+import { Check, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useSessionInvites, useSessionShares } from '@/sync/sessionSharesStore';
@@ -46,19 +46,19 @@ export function SharedInvites() {
                 const sub = [invite.session.host, invite.session.path].filter(Boolean).join(' · ');
                 return (
                     <div key={invite.id} className="sb-invite" role="listitem">
-                        <Users size={15} aria-hidden />
-                        <span className="sb-invite-text">
+                        <div className="sb-invite-head">
+                            <Users size={14} aria-hidden />
                             <span className="sb-invite-line" title={`${invite.owner.displayName} · ${name}`}>
-                                <strong>{invite.owner.displayName}</strong> {t('share.invites.shared')} {name}
+                                <strong>{invite.owner.displayName}</strong> {t('share.invites.shared')} <q>{name}</q>
                             </span>
-                            <span className="sb-invite-sub">{[invite.role === 'driver' ? t('share.roleDriver') : t('share.roleViewer'), sub].filter(Boolean).join(' · ')}</span>
-                        </span>
+                        </div>
+                        <span className="sb-invite-sub" title={sub || undefined}>{[invite.role === 'driver' ? t('share.roleDriver') : t('share.roleViewer'), sub].filter(Boolean).join(' · ')}</span>
                         <span className="sb-invite-actions">
-                            <button type="button" className="vh-btn vh-btn--primary vh-btn--sm" disabled={busy === invite.id} aria-busy={busy === invite.id} onClick={() => void onAccept(invite.id, invite.sessionId)} aria-label={t('share.invites.accept')}>
+                            <button type="button" className="vh-btn vh-btn--primary vh-btn--sm" disabled={busy === invite.id} aria-busy={busy === invite.id} onClick={() => void onAccept(invite.id, invite.sessionId)}>
                                 <Check size={14} aria-hidden /> {t('share.invites.accept')}
                             </button>
-                            <button type="button" className="vh-btn vh-btn--ghost vh-btn--sm" disabled={busy === invite.id} onClick={() => void onDecline(invite.id)} aria-label={t('share.invites.decline')} title={t('share.invites.decline')}>
-                                <X size={14} aria-hidden />
+                            <button type="button" className="vh-btn vh-btn--ghost vh-btn--sm" disabled={busy === invite.id} onClick={() => void onDecline(invite.id)}>
+                                {t('share.invites.decline')}
                             </button>
                         </span>
                     </div>
