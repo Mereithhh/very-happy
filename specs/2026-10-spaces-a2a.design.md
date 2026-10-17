@@ -145,5 +145,10 @@ Owner 决定按小步走：先账号体系，再分开源版/公司版，再消�
 - Claude Code Channels 作参照：本地 MCP server 以 `claude/channel` 能力把消息推进会话，Telegram/Discord 以 bot 身份发言，无历史读取，多人靠 sender allowlist。它解决的是"IM → 会话"入站，不是"以用户身份在群里对话"；可借鉴其 sender 鉴权与 permission relay 设计。
 - 两个要先定的口径：① Tanka 群是"记录之地"，VH 仍保留工作副本（UI、agent 上下文、无 key 的用户都要用）；② agent 的输出用谁的身份发到群：用用户 key 则看起来像本人说话，建议 agent 输出走 bot（apodex-bot/Ridge notify），人类消息走本人 key。
 
+### Owner 2026-10-18 拍板
+- Step 1 session 分享按 `specs/2026-10-session-sharing.md` 做；多人同用一个会话靠队列顺序 + 署名 + 只有轮发起者/owner 可中断，不加排他锁。
+- Step 3 走域名切换，不搬数据；切换开销要尽量小（目标：用户只改一次 server URL + 重新登录一次，机器不重配对）。
+- Step 4 做 transport 抽象（自家 IM 或任意外部 IM）。Tanka 是记录之地，VH 内必有副本，Tanka 只是双写；Tanka 群里大家的聊天 VH 要能感知（轮询读回）。不加 bot：一律用本人 key 发言，agent 输出在正文前加 agent 标识。
+
 ### 之后
 Space/Agent 一等化、A2A 信封、事件触发器、Ridge 曝光按第 6 节顺序继续；Step 1–4 完成后再启动。
