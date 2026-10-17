@@ -1,4 +1,5 @@
 import { PROMPT_QUEUE_MAX_ITEMS, type PromptQueueItem } from '@slopus/happy-wire';
+import { resolveSessionAccess } from '@/app/session/sessionShares';
 import { SESSION_MESSAGE_CONTENT_MAX_BYTES, storeSessionMessagesInTx } from '@/app/api/sessionMessageStore';
 import { lockAccountResources } from '@/app/api/resourceLimits';
 import { buildNewMessageUpdate, buildPromptQueueUpdate, eventRouter } from '@/app/events/eventRouter';
@@ -79,8 +80,9 @@ function broadcastAfterTx(tx: Tx, accountId: string, sessionId: string, rows: Ro
 }
 
 export async function listPromptQueue(accountId: string, sessionId: string): Promise<PromptQueueItem[]> {
-    const session = await db.session.findFirst({ where: { id: sessionId, accountId }, select: { id: true } });
-    if (!session) throw new PromptQueueError('session_not_found', 404);
+    // Owner or grantee (B-619): the queue is part of the shared transcript view; writes stay owner-only.
+    const access = await resolveSessionAccess(accountId, sessionId);
+    if (!access) throw new PromptQueueError('session_not_found', 404);
     const rows = await db.sessionPromptQueueItem.findMany({
         where: { sessionId },
         orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],

@@ -40,6 +40,7 @@ import { resolveTrustProxy, type TrustedProxyConfig } from './trustProxy';
 import { configureClientIpTrust, requestLogSerializer } from './clientIp';
 import { configuredResourceLimit } from './resourceLimits';
 import { relayRoutes } from './routes/relayRoutes';
+import { sessionShareRoutes } from './routes/sessionShareRoutes';
 import { connectionDiagnosticsRoutes } from './routes/connectionDiagnosticsRoutes';
 import { relayFeatureConfig } from '@/app/relay/relayConfig';
 
@@ -147,6 +148,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     v3SessionRoutes(typed);
     attachmentRoutes(typed);
     relayRoutes(typed);
+    sessionShareRoutes(typed);
     connectionDiagnosticsRoutes(typed);
 
     // Static webapp (self-host mode)

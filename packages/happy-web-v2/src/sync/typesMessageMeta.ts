@@ -17,7 +17,10 @@ export const MessageMetaSchema = z.object({
     // Web-only compatibility hint: this ordinary chat input was submitted
     // while the current agent turn was still running. Old CLIs strip this
     // unknown field; the Web clears the visual queue at the next turn-end.
-    queuedAt: z.number().optional()
+    queuedAt: z.number().optional(),
+    // B-619: the server stamps this on a message a shared-session driver wrote
+    // (sentFrom === 'shared'). Display only — never a privilege.
+    sharedBy: z.object({ accountId: z.string(), displayName: z.string() }).optional(),
 });
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>;

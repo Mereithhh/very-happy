@@ -8,6 +8,7 @@ import {
     storeSessionMessages,
 } from "@/app/api/sessionMessageStore";
 import { db } from "@/storage/db";
+import { resolveSessionAccess } from "@/app/session/sessionShares";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { z } from "zod";
 import { type Fastify } from "../types";
@@ -82,15 +83,9 @@ export function v3SessionRoutes(app: Fastify) {
         const { sessionId } = request.params;
         const { after_seq, before_seq, limit } = request.query;
 
-        const session = await db.session.findFirst({
-            where: {
-                id: sessionId,
-                accountId: userId
-            },
-            select: { id: true }
-        });
-
-        if (!session) {
+        // Owner, or an account the session is shared with (B-619): both read the same ciphertext.
+        const access = await resolveSessionAccess(userId, sessionId);
+        if (!access) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 

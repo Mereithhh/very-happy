@@ -39,6 +39,10 @@ model Account {
     username  String? @unique
     /// [ImageRef]
     avatar    Json?
+    /// B-619: libsodium box public key of the content key pair (base64), uploaded by
+    /// the web client so a session DEK can be re-wrapped for this account even when
+    /// its master secret is not server-held (QR-paired accounts).
+    contentPublicKey String?
 
     Session             Session[]
     AccountPushToken    AccountPushToken[]
@@ -62,6 +66,8 @@ model Account {
     AccountLoginSession AccountLoginSession[]
     Automation          Automation[]
     AgentTeams AgentTeam[]
+    SessionGrantsReceived SessionGrant[] @relation("SessionGrantGrantee")
+    SessionGrantsGiven    SessionGrant[] @relation("SessionGrantGrantedBy")
 }
 
 model AccountCredential {
@@ -218,6 +224,7 @@ model Session {
     usageReports      UsageReport[]
     accessKeys        AccessKey[]
     promptQueue       SessionPromptQueueItem[]
+    grants            SessionGrant[]
 
     @@unique([accountId, tag])
     @@index([accountId, updatedAt(sort: Desc)])
@@ -237,6 +244,42 @@ model SessionMessage {
 
     @@unique([sessionId, localId])
     @@index([sessionId, seq])
+}
+
+/// B-619 session sharing: the owner lets another account on this server read
+/// (viewer) or also write (driver) ONE session. `granteeDataEncryptionKey` is
+/// the session DEK re-wrapped for the grantee's content public key, so the
+/// grantee decrypts the same ciphertext the owner does. A grant starts
+/// `pending` and only turns `active` when the grantee accepts.
+enum SessionGrantRole {
+    viewer
+    driver
+}
+
+enum SessionGrantStatus {
+    pending
+    active
+    revoked
+}
+
+model SessionGrant {
+    id                       String             @id @default(cuid())
+    sessionId                String
+    session                  Session            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    granteeAccountId         String
+    grantee                  Account            @relation("SessionGrantGrantee", fields: [granteeAccountId], references: [id], onDelete: Cascade)
+    grantedByAccountId       String
+    grantedBy                Account            @relation("SessionGrantGrantedBy", fields: [grantedByAccountId], references: [id], onDelete: Cascade)
+    role                     SessionGrantRole
+    status                   SessionGrantStatus @default(pending)
+    granteeDataEncryptionKey Bytes
+    createdAt                DateTime           @default(now())
+    updatedAt                DateTime           @updatedAt
+    acceptedAt               DateTime?
+    revokedAt                DateTime?
+
+    @@unique([sessionId, granteeAccountId])
+    @@index([granteeAccountId, status])
 }
 
 /// B-509 server-side prompt queue: prompts queued from a client while the

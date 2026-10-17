@@ -31,6 +31,7 @@ beforeEach(() => {
             deleteMany: vi.fn(async () => ({ count: 2 })),
         },
         session: { findFirst: vi.fn(async () => null), count: vi.fn(async () => 0), create: vi.fn(async () => snapshot), delete: vi.fn(async () => snapshot) },
+        sessionGrant: { findMany: vi.fn(async () => []) },
         usageReport: { deleteMany: async () => ({ count: 0 }) }, accessKey: { deleteMany: async () => ({ count: 0 }) }, uploadedFile: { deleteMany: async () => ({ count: 0 }) },
     };
     mocks.transaction.mockImplementation(async (fn: any) => { const result = await fn(mocks.tx); mocks.committed = true; return result; });
