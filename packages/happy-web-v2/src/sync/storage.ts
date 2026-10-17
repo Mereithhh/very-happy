@@ -1522,6 +1522,12 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: remainingSessions,
+                // B-619: the sidebar reads THIS lane (useSessions); without this
+                // line a deleted / un-shared session kept its row until the next
+                // /v1/sessions refetch. Marker strings ('online'/'offline') stay.
+                sessionsData: state.sessionsData
+                    ? state.sessionsData.filter((item) => typeof item === 'string' || item.id !== sessionId)
+                    : state.sessionsData,
                 sessionMessages: remainingSessionMessages,
                 sessionFileCache: remainingFileCache,
                 sessionListViewData,
