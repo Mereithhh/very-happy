@@ -23,6 +23,16 @@ describe('shouldUsePublicRoot', () => {
     },
   );
 
+  it('B-624: with the landing page off, / and /welcome go to the app root while docs and legal stay public', () => {
+    for (const path of ['/', '/welcome', '/welcome/']) {
+      expect(shouldUsePublicRoot(path, false, false)).toBe(false);
+      expect(shouldUsePublicRoot(path, true, false)).toBe(false);
+    }
+    expect(shouldUsePublicRoot('/docs', false, false)).toBe(true);
+    expect(shouldUsePublicRoot('/privacy', false, false)).toBe(true);
+    expect(shouldUsePublicRoot('/', false, true)).toBe(true);
+  });
+
   it.each(['/login', '/signup', '/session/example', '/terminal/connect', '/welcomes'])(
     'uses the authenticated application root for non-public paths: %s',
     (path) => {

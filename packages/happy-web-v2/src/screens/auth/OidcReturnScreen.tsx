@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { CloudAuthError, completeOidcLogin } from '@/auth/cloudAuth';
 import { useAuth } from '@/auth/AuthContext';
-import { Button, CyberMark, Spinner } from '@/ui';
+import { Button, Spinner } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { authReturnTarget } from '@/app/authReturnTarget';
 import { oidcCompleteErrorKey, parseOidcReturn, type OidcReturnErrorKey } from './oidcReturnPresentation';
 import './auth.css';
+import { BrandMark } from '@/ui/BrandMark';
 
 /**
  * B-620: landing page after the identity provider sends the browser back.
@@ -54,10 +55,7 @@ export function OidcReturnScreen() {
     <div className="auth-page">
       <CyberBackdrop />
       <div className="auth-card auth-card--oidc-return">
-        <div className="auth-brand">
-          <CyberMark size={40} />
-          <div className="auth-wordmark">very happy</div>
-        </div>
+        <BrandMark size={40} className="auth-brand" wordmarkClassName="auth-wordmark" />
         {errorKey === null ? (
           <div className="auth-oidc-status" role="status" aria-live="polite">
             <Spinner size={18} />

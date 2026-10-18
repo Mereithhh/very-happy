@@ -30,6 +30,7 @@ import { subscribeFirstMachineConnected } from '@/screens/onboarding/firstMachin
 import { PrivacyScreen, TermsScreen } from '@/screens/legal/PublicLegalScreen';
 import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
 import { LandingScreen } from '@/screens/public/LandingScreen';
+import { BRAND } from './brand';
 import { DocsScreen } from '@/screens/public/DocsScreen';
 import { PwaInstallPrompt } from './PwaInstallPrompt';
 import { CliUpdateBanner } from './CliUpdateBanner';
@@ -96,7 +97,8 @@ function RequireAuth() {
 function RootGate() {
   const { isAuthenticated } = useAuth();
   useGlobalBackNav();
-  if (!isAuthenticated) return <LandingScreen />;
+  // B-624: a white-labelled relay has no marketing page — straight to login.
+  if (!isAuthenticated) return BRAND.landingEnabled ? <LandingScreen /> : <Navigate to="/login" replace />;
   return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
@@ -316,7 +318,7 @@ const router = createBrowserRouter(
     { path: '/terms', element: <TermsScreen /> },
     { path: '/changelog', element: <Lazy><ChangelogScreen /></Lazy> },
     { path: '/diag/viewport', element: <Lazy><ViewportDiagScreen /></Lazy> },
-    { path: '/welcome', element: <LandingScreen /> },
+    { path: '/welcome', element: BRAND.landingEnabled ? <LandingScreen /> : <Navigate to="/login" replace /> },
     { path: '/docs', element: <DocsScreen /> },
     { path: '/docs/:slug', element: <DocsScreen /> },
     {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isStandaloneEntrypoint, resolveBindHost, resolveDatabaseProvider, resolveHtmlConfig } from "./standalone";
+import { isStandaloneEntrypoint, resolveBindHost, resolveBrandHtmlConfig, resolveDatabaseProvider, resolveHtmlConfig } from "./standalone";
 
 describe("isStandaloneEntrypoint", () => {
     it("recognizes standalone script paths on Windows and POSIX", () => {
@@ -39,6 +39,18 @@ describe("resolveHtmlConfig", () => {
             .toEqual({ serverUrl: "same-origin", buildCommitSha: "abc" });
         expect(resolveHtmlConfig({ HAPPY_INJECT_HTML_CONFIG: 'not-json' } as NodeJS.ProcessEnv))
             .toEqual({ serverUrl: "same-origin" });
+    });
+
+    it("B-624: emits brand and landing keys only when the operator sets them, and rejects unsafe values", () => {
+        expect(resolveBrandHtmlConfig({} as NodeJS.ProcessEnv)).toEqual({});
+        expect(resolveHtmlConfig({ BRAND_NAME: " Apodex Vibe ", BRAND_LOGO_URL: "https://cdn.example/logo.svg", WEB_LANDING: "off" } as NodeJS.ProcessEnv))
+            .toEqual({ serverUrl: "same-origin", brand: { name: "Apodex Vibe", logoUrl: "https://cdn.example/logo.svg" }, landing: false });
+        expect(resolveBrandHtmlConfig({ BRAND_LOGO_URL: "/brand/logo.png", WEB_LANDING: "on" } as NodeJS.ProcessEnv)).toEqual({ brand: { logoUrl: "/brand/logo.png" } });
+        expect(() => resolveBrandHtmlConfig({ BRAND_LOGO_URL: "javascript:alert(1)" } as NodeJS.ProcessEnv)).toThrow("BRAND_LOGO_URL");
+        expect(() => resolveBrandHtmlConfig({ BRAND_LOGO_URL: "//evil.example/x.png" } as NodeJS.ProcessEnv)).toThrow("BRAND_LOGO_URL");
+        expect(() => resolveBrandHtmlConfig({ WEB_LANDING: "false" } as NodeJS.ProcessEnv)).toThrow("WEB_LANDING");
+        // Explicit JSON still wins over env for operators who already inject it.
+        expect(resolveHtmlConfig({ BRAND_NAME: "A", HAPPY_INJECT_HTML_CONFIG: '{"brand":{"name":"B"}}' } as NodeJS.ProcessEnv)).toEqual({ serverUrl: "same-origin", brand: { name: "B" } });
     });
 });
 

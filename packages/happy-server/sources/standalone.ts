@@ -32,8 +32,27 @@ export function resolveDatabaseProvider(env: NodeJS.ProcessEnv = process.env): "
     return "pglite";
 }
 
+/**
+ * B-624 white-label: `BRAND_NAME` / `BRAND_LOGO_URL` rename the product in the
+ * Web UI and `WEB_LANDING=off` sends anonymous visitors to login instead of the
+ * marketing page. Only set keys are emitted so the default bundle is unchanged.
+ */
+export function resolveBrandHtmlConfig(env: NodeJS.ProcessEnv = process.env): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    const name = env.BRAND_NAME?.trim().slice(0, 64);
+    const logoUrl = env.BRAND_LOGO_URL?.trim();
+    if (logoUrl && !/^(https?:\/\/|\/(?!\/))/i.test(logoUrl)) {
+        throw new Error("BRAND_LOGO_URL must be an http(s) URL or an absolute path");
+    }
+    if (name || logoUrl) out.brand = { ...(name ? { name } : {}), ...(logoUrl ? { logoUrl } : {}) };
+    const landing = env.WEB_LANDING?.trim().toLowerCase();
+    if (landing && landing !== "on" && landing !== "off") throw new Error("WEB_LANDING must be on, off, or unset");
+    if (landing === "off") out.landing = false;
+    return out;
+}
+
 export function resolveHtmlConfig(env: NodeJS.ProcessEnv = process.env): Record<string, unknown> {
-    const defaults: Record<string, unknown> = { serverUrl: env.PUBLIC_URL || "same-origin" };
+    const defaults: Record<string, unknown> = { serverUrl: env.PUBLIC_URL || "same-origin", ...resolveBrandHtmlConfig(env) };
     if (!env.HAPPY_INJECT_HTML_CONFIG) return defaults;
     try {
         const parsed = JSON.parse(env.HAPPY_INJECT_HTML_CONFIG);
