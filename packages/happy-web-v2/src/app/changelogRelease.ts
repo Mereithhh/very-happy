@@ -26,6 +26,8 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       'changelog.releases.oct18.driver',
       'changelog.releases.oct18.revoke',
       'changelog.releases.oct18.oidc',
+      'changelog.releases.oct18.people',
+      'changelog.releases.oct18.profile',
     ],
   },
   {

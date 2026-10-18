@@ -104,7 +104,9 @@ agent 本身一轮只处理一条消息，队列就是并发控制，不需要�
 - **扇出**挂在 eventRouter：`all-interested-in-session` 的 update 与 session 的 activity/usage ephemeral 镜像到各 grantee 的 user-scoped 房间；归档状态单独补发；删除会话通知 grantee。push/webhook 不扇出。
 - **撤销**：行标记 revoked，服务器各读路径立即 404，grantee 页面提示并回首页；已持有的 DEK 不轮换（历史本已可见）。
 - 验证：server pglite 集成测试 9 条（含越权、脱敏、信封内容、撤销）；本地 standalone 双账号 + 真实 CLI daemon + 一轮 Claude：driver 消息被 daemon 正常解密、agent 回复双方同时可见；viewer POST 403、owner-only 路由 404、撤销后全部 404。
+- **B-621 补：分享对象的解析不再是分享模块私有**。「这个人是谁」统一在 `app/social/accountDirectory.ts`（email 精确 / 资料用户名 / 登录名，不做前缀猜测），好友、搜索、分享、以后的 Space 共用；`POST /shares` 另接受 `accountId`（好友芯片一键分享）。grant 不要求好友关系——分享仍是定向授权，好友只是更快的入口。
 
 ## 留待后续
 
-- 跨机器 fork；分享给整个 Team/Space；Tanka 等 transport 的双写（见 design §8 Step 4）。
+- 跨机器 fork；分享给整个 Team/Space（对象层已就位：`SessionGrant` 可加 `spaceId` 维度，解析走 accountDirectory）；Tanka 等 transport 的双写（见 design §8 Step 4）。
+- 分享邀请走 feed/push（现在只走 socket update；好友申请已走 feed `friend_request`，两者合流后手机才有推送）。

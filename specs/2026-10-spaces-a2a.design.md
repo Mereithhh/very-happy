@@ -150,5 +150,10 @@ Owner 决定按小步走：先账号体系，再分开源版/公司版，再消�
 - Step 3 走域名切换，不搬数据；切换开销要尽量小（目标：用户只改一次 server URL + 重新登录一次，机器不重配对）。
 - Step 4 做 transport 抽象（自家 IM 或任意外部 IM）。Tanka 是记录之地，VH 内必有副本，Tanka 只是双写；Tanka 群里大家的聊天 VH 要能感知（轮询读回）。不加 bot：一律用本人 key 发言，agent 输出在正文前加 agent 标识。
 
+### 进度（2026-10-18）
+- Step 1 已实现（B-619，PR #554）。Step 2 已实现（B-620：`OIDC_ISSUER`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`，authorization code + PKCE，provider 键 `oidc:<issuer>`；现有账号绑定 OIDC 身份留后续）。
+- 账号/好友地基（B-621）：`app/social/accountDirectory.ts` 统一「这个人是谁」；People 页 + 资料用户名；分享对话框好友芯片。Space 成员、Tanka 映射以后都挂在这一层。
+- Step 3 的前置：公司测试环境已起（部署事实在公司 infra 仓，不进本仓）；公司版 = 同一镜像 + 环境变量（OIDC/SIGNUP），不 fork。
+
 ### 之后
 Space/Agent 一等化、A2A 信封、事件触发器、Ridge 曝光按第 6 节顺序继续；Step 1–4 完成后再启动。

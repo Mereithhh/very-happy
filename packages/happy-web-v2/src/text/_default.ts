@@ -2272,6 +2272,8 @@ export const en = {
                 driver: 'A “Can send” driver writes messages under their own name; the owner\'s agent reads them on its next turn. Approvals, interrupts, model and mode changes stay with the owner — a driver never gets your machine.',
                 revoke: 'Change a person\'s access or revoke it from the same dialog; revoking removes the session from their side immediately. Sessions created before per-session keys (legacy format) cannot be shared.',
                 oidc: 'Single sign-on: a server can point at any OpenID Connect provider (OIDC_ISSUER / OIDC_CLIENT_ID); the sign-in page then offers “Continue with <provider>” and creates or reuses the account for that identity under the same signup policy.',
+                people: 'People: a sidebar entry lists your friends and requests waiting for you; search a colleague by handle or exact email and add them. Friends show up as one-tap chips at the top of the Share dialog.',
+                profile: 'Settings → Account → Name & handle: choose the display name and the @handle colleagues search for and share to. Password accounts got their login name as handle automatically; the handle can be changed without touching the login.',
             },
             oct16: {
                 title: 'Reading back stays put; zoomable images and side-by-side diffs',

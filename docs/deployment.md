@@ -104,6 +104,7 @@ dependency surface. Do not install the upstream-owned
   `0` disables). Teams and Automations themselves are server-wide switches
   (`VH_AGENT_TEAMS_ENABLED` / `VH_AUTOMATIONS_ENABLED`) with no per-account
   allowlist.
+- Profile guard: `MAX_PROFILE_WRITES_PER_ACCOUNT_PER_MINUTE` (`20`) for display name / handle edits.
 - Social graph guards: `MAX_RELATIONSHIP_WRITES_PER_ACCOUNT_PER_MINUTE` (`60`)
   and `MAX_RELATIONSHIPS_PER_ACCOUNT` (`2000`). Two-sided mutations lock both
   accounts in stable order; existing relationships remain updatable at capacity.

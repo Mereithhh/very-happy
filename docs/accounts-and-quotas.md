@@ -54,6 +54,20 @@ takes `preferred_username` as the handle when it is free. Linking an OIDC
 identity to an existing password/email/Google account is not available yet; sign
 in with the existing method instead.
 
+## Profile handle and People
+
+Every account has an optional public **handle** (`Account.username`): what
+colleagues type into People search and the share dialog. It is separate from a
+password account's login username, which keeps working unchanged; a password
+sign-up seeds the handle from the login username when it is free (existing rows
+were backfilled once). Lookups for sharing and friend requests accept a handle,
+a login username or an exact verified email — never a prefix. **Settings →
+Account → Name & handle** edits the display name and handle (handle rules:
+lowercase letters, digits, `.`, `-`, `_`; 3–64 characters; unique across both
+handles and login usernames). People (sidebar) lists friends and requests;
+friends appear as one-tap chips in the share dialog, but sharing never requires
+friendship.
+
 ## Signup policy
 
 - `open`: anyone may create an account until capacity is reached.

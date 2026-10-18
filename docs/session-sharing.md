@@ -7,7 +7,9 @@ into it under their own name. Your machine stays yours.
 ## Share a session
 
 1. Open the session → `…` (More session actions) → **Share…**
-2. Enter the person's email or username (an account on this server).
+2. Pick a friend from the chips at the top of the dialog, or enter the person's
+   email or username (an account on this server). Friends come from **People**
+   in the sidebar — search by handle or exact email, send a request, they accept.
 3. Choose **View only** or **Can send**, then **Share**.
 
 They get an invitation at the top of their sidebar. Once they accept, the
