@@ -28,11 +28,11 @@ describe('Claude wrapper ↔ Orca alignment wiring (B-631)', () => {
     const runClaude = read('./runClaude.ts');
     const permissionHandler = read('./utils/permissionHandler.ts');
 
-    it('a dead Claude Code process is reported with its exit reason, on the turn-end and as a line', () => {
+    it('a dead Claude Code process is reported with its exit reason exactly once: on the turn-end, or as a line when no turn was open', () => {
         const scope = between(launcher, 'if (isClaudeEdeOnlySdkError(e)) {', '} finally {');
         expect(scope).toContain('const exit = describeClaudeProcessExit(e);');
-        expect(scope).toContain("session.client.closeClaudeSessionTurn('failed', { error: exit });");
-        expect(scope).toContain("session.client.sendSessionEvent({ type: 'message', message: exit, kind: 'claude-process-exit' });");
+        expect(scope).toContain("const closed = session.client.closeClaudeSessionTurn('failed', { error: exit });");
+        expect(scope).toContain("if (!closed) session.client.sendSessionEvent({ type: 'message', message: exit, kind: 'claude-process-exit' });");
         expect(scope).toContain('session.onSessionError(exit);');
     });
 
@@ -46,23 +46,30 @@ describe('Claude wrapper ↔ Orca alignment wiring (B-631)', () => {
         expect(scope).toContain("} else if (message.type === 'result') {\n            apiRetryGate.reset();");
     });
 
-    it('a steer carries the web localKey end to end, and a swept steer gets the B-332 tombstone', () => {
+    it('a steer carries the web localKey end to end, and a swept user message gets the B-332 tombstone', () => {
         const trySteer = between(runClaude, 'currentSession?.trySteer({', '}) === true;');
         expect(trySteer).toContain('localKey: message.localKey,');
         const steer = between(launcher, 'session.setSteerHandler(async (input) => {', 'return true;');
         expect(steer).toContain('q.steer(message, input.mode, input.localKey);');
-        const dropped = between(launcher, 'onSteerDropped: (uuids) => {', '},');
+        const dropped = between(launcher, 'onCommandsDropped: (uuids) => {', '},');
         expect(dropped).toContain("session.client.sendQueueCancelReason(uuids, 'aborted');");
     });
 
     it('claudeRemote feature-detects the CLI from system/init and runs the turn lifecycle once per turn', () => {
-        expect(remote).toContain('cliCapabilities = new Set(Array.isArray(systemInit.capabilities) ? systemInit.capabilities : []);');
+        const init = between(remote, "if (message.type === 'system' && message.subtype === 'init') {", 'if (opts.onSDKMetadata) {');
+        expect(init).toContain('cliCapabilities = new Set(Array.isArray(systemInit.capabilities) ? systemInit.capabilities : []);');
+        // Only a turn the CLI announced may be ended by an idle (review 2).
+        expect(init).toContain('turn.announced();');
         const result = between(remote, "if (message.type === 'result') {", "if (message.type === 'user') {");
         expect(result).toContain('const endsTurn = turn.onResult();');
         expect(result).toContain('if (endsTurn) opts.onReady(message);');
+        expect(result).toContain('if (recycleIfPoisoned(message)) continue;');
         expect(result).toContain('if (endsTurn) pullNextMessage();');
         const sessionState = between(remote, 'const sessionState = readClaudeSessionState(message);', "if (message.type === 'system' && message.subtype === 'init') {");
         expect(sessionState).toContain("if (verdict === 'end') {\n                    endTurnWithoutResult();");
+        // The idle end goes through the same poisoned-Query check as a result (review 5).
+        const idleEnd = between(remote, 'const endTurnWithoutResult = () => {', 'updateThinking(true);\n    try {');
+        expect(idleEnd).toContain('if (!recycleIfPoisoned()) pullNextMessage();');
     });
 
     it('the live control requests have deadlines', () => {

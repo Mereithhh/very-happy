@@ -5,9 +5,12 @@ import { withTimeout } from './utils/withTimeout';
  * `interrupt` control request. The SDK applies no deadline of its own (Orca,
  * claude-agent-sdk-control-requests.ts), so a wedged CLI used to hold the stop
  * button forever; on timeout the launcher's existing fallback — the hard
- * AbortController abort — takes over.
+ * AbortController abort — takes over. That fallback restarts the process (a
+ * new transcript id, see claudeRemoteLauncher doAbort), so the budget is
+ * generous: a CLI busy flushing its transcript or in a GC pause for a few
+ * seconds should still be waited for, not killed.
  */
-export const INTERRUPT_TIMEOUT_MS = 3000;
+export const INTERRUPT_TIMEOUT_MS = 8000;
 
 /** Session-local controller for interrupting one SDK turn without aborting its query. */
 export function createTurnSteeringController(opts: { interruptTimeoutMs?: number } = {}) {

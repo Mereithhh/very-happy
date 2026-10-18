@@ -20,10 +20,10 @@ import type { ClaudeSdkMetadata } from './claudeSdkMetadata';
 import { modelSwitchFailureNotice, modelTarget, needsModelSwitch } from './claudeLiveModel';
 import { formatClaudeTimingLine, type ClaudeTurnMarks } from './claudeTiming';
 import { decideWarmAdoption, formatPrewarmLine, type ClaudePrewarmLease, type WarmAdoptionDecision } from './claudePrewarm';
-import { withTimeout } from './utils/withTimeout';
+import { TimeoutError, withTimeout } from './utils/withTimeout';
 import { createClaudeTurnTracker, readClaudeSessionState } from './claudeTurnEnd';
 import {
-    createClaudeSteerTracker,
+    createClaudeCommandTracker,
     INTERRUPT_CANCEL_QUEUED_CAPABILITY,
     readClaudeCommandLifecycle,
     type ClaudeInterruptReceipt,
@@ -92,8 +92,8 @@ export async function claudeRemote(opts: {
     onAuthFailure?: (reason: string) => void,
     onSessionReset?: () => void,
     onSDKMetadata?: (metadata: ClaudeSdkMetadata) => void,
-    /** B-631: steered messages Claude Code confirmed it never read (a Stop swept them); the launcher tombstones them (B-332). */
-    onSteerDropped?: (uuids: string[]) => void,
+    /** B-631: uuid-stamped user messages (prompts, steers) Claude Code confirmed it never read — a Stop swept them; the launcher tombstones them (B-332). */
+    onCommandsDropped?: (uuids: string[]) => void,
     /**
      * B-515: start a warm Query with this lease's predicted mode BEFORE the
      * first message; adopted when the first message matches, closed otherwise.
@@ -153,17 +153,17 @@ export async function claudeRemote(opts: {
         }
     };
 
-    // B-631: when a turn is over (claudeTurnEnd.ts) and which steers a Stop
-    // swept (claudeCommandLifecycle.ts). Declared before the Query controls
-    // below close over them.
+    // B-631: when a turn is over (claudeTurnEnd.ts) and which user messages a
+    // Stop swept before the model read them (claudeCommandLifecycle.ts).
+    // Declared before the Query controls below close over them.
     const turn = createClaudeTurnTracker();
-    const steerTracker = createClaudeSteerTracker();
+    const commandTracker = createClaudeCommandTracker();
     /** Protocol capabilities from the latest system/init — an open set; feature-detect, never version-sniff. */
     let cliCapabilities = new Set<string>();
-    const reportDroppedSteers = (uuids: string[]) => {
+    const reportDroppedCommands = (uuids: string[]) => {
         if (uuids.length === 0) return;
-        logger.debug(`[claudeRemote] ${uuids.length} steered message(s) were never read by Claude Code: ${uuids.join(', ')}`);
-        opts.onSteerDropped?.(uuids);
+        logger.debug(`[claudeRemote] ${uuids.length} user message(s) were never read by Claude Code: ${uuids.join(', ')}`);
+        opts.onCommandsDropped?.(uuids);
     };
 
     let callbackDepth = 0;
@@ -476,7 +476,7 @@ export async function claudeRemote(opts: {
                 const receipt = await (response as unknown as {
                     interrupt: (options?: { cancelQueued?: boolean }) => Promise<ClaudeInterruptReceipt>;
                 }).interrupt(cancelQueued ? { cancelQueued: true } : undefined);
-                const { dropped, stillQueued } = steerTracker.onInterruptReceipt(receipt);
+                const { dropped, stillQueued } = commandTracker.onInterruptReceipt(receipt);
                 if (!cancelQueued && stillQueued.length > 0) {
                     // interrupt_receipt_v1 without cancel_queued: withdraw each
                     // survivor by uuid. `false` = the drain loop already took it;
@@ -487,11 +487,11 @@ export async function claudeRemote(opts: {
                     if (typeof cancelAsyncMessage === 'function') {
                         for (const uuid of stillQueued) {
                             const cancelled = await cancelAsyncMessage.call(response, uuid).then((value) => value === true, () => false);
-                            dropped.push(...steerTracker.onCancelResponse(uuid, cancelled));
+                            dropped.push(...commandTracker.onCancelResponse(uuid, cancelled));
                         }
                     }
                 }
-                reportDroppedSteers(dropped);
+                reportDroppedCommands(dropped);
             },
             // `request` is the SDK's generic control-request sender (every typed
             // method wraps it); the public types omit `side_question`, the CLI
@@ -512,7 +512,7 @@ export async function claudeRemote(opts: {
                 // the interrupt receipt can name it; a non-UUID key keeps the
                 // steer untracked, as before.
                 const uuid = promptUuid(localKey);
-                if (uuid.uuid) steerTracker.track(uuid.uuid);
+                if (uuid.uuid) commandTracker.track(uuid.uuid);
                 messages.push({
                     type: 'user',
                     parent_tool_use_id: null,
@@ -530,8 +530,18 @@ export async function claudeRemote(opts: {
     // utils/remoteQueryRecycle.ts). Reset when the turn's result is handled.
     let lastAssistantError: string | undefined;
 
-    // The first prompt is in the Query's input: a turn is open.
-    turn.begin();
+    // The first prompt is in the Query's input (pushed; the CLI announces its
+    // turn with running/init). Uuid-stamped when the web gave it one, and
+    // tracked like every other command, so a Stop that sweeps it before it
+    // starts is reported (B-631).
+    turn.pushed();
+    if (initialUserMessage.uuid) commandTracker.track(initialUserMessage.uuid);
+
+    // B-631: a `set_model` the CLI never answered may still land late. Until
+    // the next boundary re-sends (whatever model that turn wants), `mode.model`
+    // does not reliably describe the loaded model, so the usual "unchanged,
+    // skip the request" short-cut is suspended for that one boundary.
+    let modelUnconfirmed = false;
 
     // Hand the next queued message to the Query once the current turn is over.
     // Runs without blocking the message loop: background task frames
@@ -559,26 +569,31 @@ export async function claudeRemote(opts: {
             // from a stale client) must not take the turn down: report it
             // and keep running the model that is already loaded. B-631: a
             // switch the CLI never answers is given up after a budget the
-            // same way.
-            if (needsModelSwitch(mode.model, next.mode.model)) {
+            // same way, and the next boundary re-sends even when that turn
+            // keeps the model, because the late answer may have landed.
+            if (modelUnconfirmed || needsModelSwitch(mode.model, next.mode.model)) {
                 try {
                     await withTimeout(response.setModel(modelTarget(next.mode.model)), SET_MODEL_TIMEOUT_MS, 'set_model');
+                    modelUnconfirmed = false;
                     logger.debug(`[claudeRemote] Model switched to ${modelTarget(next.mode.model) ?? 'default'}`);
                 } catch (e) {
                     logger.debug(`[claudeRemote] setModel failed: ${e instanceof Error ? e.message : String(e)}`);
                     opts.onCompletionEvent?.(modelSwitchFailureNotice(next.mode.model, e));
+                    if (e instanceof TimeoutError) modelUnconfirmed = true;
                     next = { ...next, mode: { ...next.mode, model: mode.model } };
                 }
             }
             mode = next.mode;
             updateThinking(true);
-            turn.begin();
+            turn.pushed();
+            const uuid = promptUuid(next.uuid);
+            if (uuid.uuid) commandTracker.track(uuid.uuid);
             timingMarks = { pushedAt: next.enqueuedAt ?? Date.now() };
             messages.push({
                 type: 'user',
                 parent_tool_use_id: null,
                 origin: { kind: 'human' },
-                ...promptUuid(next.uuid),
+                ...uuid,
                 message: { role: 'user', content: next.message },
             });
         }).catch(() => {
@@ -586,6 +601,23 @@ export async function claudeRemote(opts: {
         }).finally(() => {
             pullingNext = false;
         });
+    };
+
+    // A turn that ended in a failed OAuth refresh poisons this process for
+    // good (Claude Code caches the verdict): end the Query so the launcher's
+    // next iteration spawns a fresh one for the next queued message, instead
+    // of replaying the error. True = the Query was ended. `result` is absent
+    // for a turn that ended by idle (B-631): the flagged assistant frame is
+    // the signal either way.
+    const recycleIfPoisoned = (result?: SDKResultMessage): boolean => {
+        const recycleReason = queryRecycleReason(result ?? { subtype: 'success' }, lastAssistantError);
+        lastAssistantError = undefined;
+        if (!recycleReason) return false;
+        logger.warn(`[claudeRemote] Ending SDK query after ${recycleReason}; the next message starts a fresh Claude Code process`);
+        opts.onCompletionEvent?.(QUERY_RECYCLE_NOTICE[recycleReason]);
+        opts.onAuthFailure?.(recycleReason);
+        messages.end();
+        return true;
     };
 
     // B-631: Claude Code said the turn is over (session_state_changed idle) and
@@ -602,9 +634,8 @@ export async function claudeRemote(opts: {
             logger.debug('[claudeRemote] /compact ended without a result; outcome unknown');
             isCompactCommand = false;
         }
-        lastAssistantError = undefined;
         opts.onReady(undefined);
-        pullNextMessage();
+        if (!recycleIfPoisoned()) pullNextMessage();
     };
 
     updateThinking(true);
@@ -667,10 +698,11 @@ export async function claudeRemote(opts: {
                 : message;
             opts.onMessage(outboundMessage);
 
-            // B-631: queue bookkeeping for the steers we stamped — a terminal
-            // state for one that never started means the model never read it.
+            // B-631: queue bookkeeping for the user messages we stamped — a
+            // terminal state for one that never started means the model never
+            // read it.
             const lifecycle = readClaudeCommandLifecycle(message);
-            if (lifecycle) reportDroppedSteers(steerTracker.observe(lifecycle));
+            if (lifecycle) reportDroppedCommands(commandTracker.observe(lifecycle));
 
             // B-631: the CLI's own turn-over signal (see claudeTurnEnd.ts).
             const sessionState = readClaudeSessionState(message);
@@ -687,7 +719,9 @@ export async function claudeRemote(opts: {
             if (message.type === 'system' && message.subtype === 'init') {
                 // Start thinking when session initializes
                 updateThinking(true);
-                turn.begin();
+                // B-631: the CLI announced the turn; only an announced turn can
+                // be ended by an idle (claudeTurnEnd.ts).
+                turn.announced();
 
                 const systemInit = message as SDKSystemMessage;
                 // B-631: feature-detect what this Claude Code can do (interrupt
@@ -778,21 +812,7 @@ export async function claudeRemote(opts: {
 
                 // Send ready event
                 if (endsTurn) opts.onReady(message);
-
-                // A turn that ended in a failed OAuth refresh poisons this
-                // process for good (Claude Code caches the verdict): end the
-                // Query so the launcher's next iteration spawns a fresh one
-                // for the next queued message, instead of replaying the error.
-                const recycleReason = queryRecycleReason(message, lastAssistantError);
-                lastAssistantError = undefined;
-                if (recycleReason) {
-                    logger.warn(`[claudeRemote] Ending SDK query after ${recycleReason}; the next message starts a fresh Claude Code process`);
-                    opts.onCompletionEvent?.(QUERY_RECYCLE_NOTICE[recycleReason]);
-                    opts.onAuthFailure?.(recycleReason);
-                    messages.end();
-                    continue;
-                }
-
+                if (recycleIfPoisoned(message)) continue;
                 if (endsTurn) pullNextMessage();
             }
 

@@ -1055,7 +1055,13 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed', meta?: { error?: string }) {
+    /**
+     * Returns true when a `turn-end` envelope went out, false when no turn was
+     * open to close (B-631: the web renders a failed turn-end's `error` as its
+     * own line, so a launcher sends the matching session event only when this
+     * says the turn-end did not carry it).
+     */
+    closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed', meta?: { error?: string }): boolean {
         // Turn-end tap (boardAnalyzer): single choke point both launchers
         // (local + remote) route through, for every end status.
         this.emit('turn-ended', status);
@@ -1064,6 +1070,7 @@ export class ApiSessionClient extends EventEmitter {
         for (const envelope of mapped.envelopes) {
             this.sendSessionProtocolMessage(envelope);
         }
+        return mapped.envelopes.some((envelope) => envelope.ev.t === 'turn-end');
     }
 
     sendCodexMessage(body: any) {

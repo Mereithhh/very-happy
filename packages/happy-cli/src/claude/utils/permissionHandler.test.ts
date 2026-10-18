@@ -185,20 +185,38 @@ describe('PermissionHandler SDK protocol', () => {
         await vi.waitFor(() => expect(setPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
     });
 
-    it('B-631: a live mode change the CLI never answers times out, rolls back and surfaces as the RPC error', async () => {
+    it('B-631: a live mode change the CLI never answers times out, rolls back locally AND re-asserts the old mode at the SDK, and surfaces as the RPC error', async () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setImmediate'] });
         try {
             const { handler } = fixture();
             handler.handleModeChange('acceptEdits');
-            handler.setPermissionModeUpdater(vi.fn(() => new Promise<void>(() => {})));
+            const calls: string[] = [];
+            // The first request hangs (a wedged CLI); whatever comes after is answered.
+            handler.setPermissionModeUpdater(vi.fn(async (mode: string) => {
+                calls.push(mode);
+                if (calls.length === 1) await new Promise<void>(() => {});
+            }));
             const change = handler.setLivePermissionMode('bypassPermissions');
             const rejected = expect(change).rejects.toThrow('set_permission_mode timed out after 15000ms');
             await vi.advanceTimersByTimeAsync(15_000);
             await rejected;
             expect(handler.getPermissionMode()).toBe('acceptEdits');
+            // The hung request may still land late and flip the SDK to bypass;
+            // the handler's own mode is sent behind it so the two agree again.
+            expect(calls).toEqual(['bypassPermissions', 'acceptEdits']);
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('B-631: a live mode change the CLI refuses outright is rolled back without a re-assert (nothing is in flight)', async () => {
+        const { handler } = fixture();
+        handler.handleModeChange('acceptEdits');
+        const calls: string[] = [];
+        handler.setPermissionModeUpdater(vi.fn(async (mode: string) => { calls.push(mode); throw new Error('sdk refused'); }));
+        await expect(handler.setLivePermissionMode('bypassPermissions')).rejects.toThrow('sdk refused');
+        expect(handler.getPermissionMode()).toBe('acceptEdits');
+        expect(calls).toEqual(['bypassPermissions']);
     });
 
     it('rolls the handler back when the SDK rejects a live mode change', async () => {

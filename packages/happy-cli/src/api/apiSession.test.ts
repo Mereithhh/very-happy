@@ -599,6 +599,23 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 
+    it('B-631: closeClaudeSessionTurn says whether a turn-end actually went out', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValue({ data: { messages: [] } });
+
+        // Nothing open: nothing to close, and the caller must say it itself.
+        expect(client.closeClaudeSessionTurn('failed', { error: 'Process exited unexpectedly (code 1)' })).toBe(false);
+
+        // Agent output opened a turn: the failed turn-end carries the error.
+        client.sendClaudeSessionMessage({
+            type: 'assistant',
+            uuid: 'a-1',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'working' }] },
+        } as any);
+        expect(client.closeClaudeSessionTurn('failed', { error: 'Process exited unexpectedly (code 1)' })).toBe(true);
+        expect(client.closeClaudeSessionTurn('completed')).toBe(false);
+    });
+
     it('sends session events through enqueueMessage', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValueOnce({
