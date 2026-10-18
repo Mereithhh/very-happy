@@ -19,6 +19,13 @@ describe('Claude SDK query adapter', () => {
         expect(sdkQuery.mock.calls[0][0].options).toMatchObject({ enableFileCheckpointing: true, extraArgs: { 'replay-user-messages': null } });
     });
 
+    it('asks Claude Code for its session_state_changed frames, unless the operator decided otherwise (B-631)', () => {
+        query({ prompt: 'hello' });
+        expect(sdkQuery.mock.calls[0][0].options.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS).toBe('1');
+        query({ prompt: 'hello', options: { env: { CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '' } } });
+        expect(sdkQuery.mock.calls[1][0].options.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS).toBe('');
+    });
+
     it('sets the SDK safety acknowledgement for bypassPermissions', () => {
         query({ prompt: 'hello', options: { permissionMode: 'bypassPermissions' } });
         expect(sdkQuery.mock.calls[0][0].options).toEqual(expect.objectContaining({

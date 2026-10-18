@@ -1111,6 +1111,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 message: message.content.text,
                 mode: enhancedMode,
                 attachments: attachmentsForThisMessage,
+                // B-631: the localKey rides along as the steer's uuid, so Claude
+                // Code's command_lifecycle / interrupt receipt can name it when a
+                // Stop sweeps it before the model read it.
+                localKey: message.localKey,
             }) === true;
             if (accepted) {
                 logger.debug('User message steered into current turn:', {
