@@ -2265,6 +2265,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct18e: {
+                title: 'Single sign-on finds your existing account',
+                summary: 'A server can let a verified SSO email claim the account that already owns it, so people who used to sign in by email or Google keep their sessions and machines.',
+                link: 'Operators set OIDC_LINK_BY_EMAIL=verified. A first SSO login whose provider vouches for the email attaches itself to the account holding that email through Email or Google login; otherwise it creates a new account as before. Two accounts on one email are refused with a clear message.',
+            },
             oct18b: {
                 title: 'Single sign-on without an invite code',
                 summary: 'A server can let its identity provider vouch for new accounts: people the provider (and the allowed email domains) admit sign in straight away, while other sign-up methods keep their invite code.',
@@ -4554,6 +4559,7 @@ export const en = {
             exchange_failed: 'The identity provider did not accept the sign-in. Try again; if it keeps failing, ask the server operator to check the OIDC client settings.',
             invalid_id_token: 'The identity provider returned a token this server could not verify.',
             email_domain_not_allowed: 'This server only admits accounts from approved email domains.',
+            account_link_ambiguous: 'More than one account on this server already uses this email, so single sign-on could not pick one. Sign in with your existing email or Google login instead.',
             provider_error: 'The identity provider cancelled the sign-in.',
             not_configured: 'Single sign-on is not enabled on this server.',
             invalid_handoff: 'This sign-in handoff has expired. Start again from the sign-in page.',

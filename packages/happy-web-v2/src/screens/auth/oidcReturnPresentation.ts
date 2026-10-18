@@ -9,6 +9,7 @@ export type OidcReturnErrorKey =
   | 'oidc.errors.exchange_failed'
   | 'oidc.errors.invalid_id_token'
   | 'oidc.errors.email_domain_not_allowed'
+  | 'oidc.errors.account_link_ambiguous'
   | 'oidc.errors.provider_error'
   | 'oidc.errors.not_configured'
   | 'oidc.errors.invalid_handoff'
@@ -38,6 +39,7 @@ export function oidcCallbackErrorCopy(error: string): { messageKey: OidcReturnEr
     case 'exchange_failed': return { messageKey: 'oidc.errors.exchange_failed', sendToSignup: false };
     case 'invalid_id_token': return { messageKey: 'oidc.errors.invalid_id_token', sendToSignup: false };
     case 'email_domain_not_allowed': return { messageKey: 'oidc.errors.email_domain_not_allowed', sendToSignup: false };
+    case 'account_link_ambiguous': return { messageKey: 'oidc.errors.account_link_ambiguous', sendToSignup: false };
     case 'provider_error': return { messageKey: 'oidc.errors.provider_error', sendToSignup: false };
     case 'not_configured': return { messageKey: 'oidc.errors.not_configured', sendToSignup: false };
     default: return { messageKey: 'oidc.errors.invalid_state', sendToSignup: false };

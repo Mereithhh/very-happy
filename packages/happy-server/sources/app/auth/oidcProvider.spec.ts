@@ -46,6 +46,13 @@ describe('B-620 OIDC provider (discovery, JWKS, id_token)', () => {
         expect(isEmailDomainAllowed(undefined, { ...config, allowedEmailDomains: new Set() })).toBe(true);
     });
 
+    it('B-626: OIDC_LINK_BY_EMAIL is off unless set to "verified"', () => {
+        expect(resolveOidcConfig(env())!.linkByEmail).toBe(false);
+        expect(resolveOidcConfig({ ...env(), OIDC_LINK_BY_EMAIL: 'off' })!.linkByEmail).toBe(false);
+        expect(resolveOidcConfig({ ...env(), OIDC_LINK_BY_EMAIL: ' Verified ' })!.linkByEmail).toBe(true);
+        expect(() => resolveOidcConfig({ ...env(), OIDC_LINK_BY_EMAIL: 'on' })).toThrow(/OIDC_LINK_BY_EMAIL/);
+    });
+
     it('derives redirect and return URLs from PUBLIC_URL, proxy headers, or explicit overrides', () => {
         const config = resolveOidcConfig(env())!;
         const headers = { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'vibe-test.apodex.site', host: '10.0.0.5:3005' };

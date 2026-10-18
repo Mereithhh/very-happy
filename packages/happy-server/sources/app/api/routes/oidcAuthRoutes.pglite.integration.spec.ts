@@ -31,6 +31,7 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         process.env.PUBLIC_URL = 'https://api.test';
         process.env.OIDC_WEB_RETURN_URL = 'https://web.test';
         process.env.SIGNUP_MODE = 'open';
+        process.env.OIDC_LINK_BY_EMAIL = 'verified';
         const { runMigrations } = await import('../../../standalone');
         await runMigrations({ pgliteDir: process.env.PGLITE_DIR, migrationsDir: join(process.cwd(), 'prisma/migrations') });
         await (await import('@/modules/encrypt')).initEncrypt();
@@ -199,6 +200,89 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
             await strict.close();
         }
         expect(await db.account.findFirst({ where: { AccountIdentity: { some: { providerSubject: 'outsider' } } } })).toBeNull();
+    });
+
+    async function seedAccount(key: string, identity: { provider: 'email' | 'google'; email: string }, secret: string | null) {
+        const { upsertAccountSecret } = await import('@/app/auth/accountSecrets');
+        const account = await db.account.create({ data: { publicKey: `pk-${key}` } });
+        await db.accountIdentity.create({ data: { accountId: account.id, provider: identity.provider, providerSubject: `${identity.provider}-${key}`, email: identity.email } });
+        if (secret) await upsertAccountSecret(db, account.id, secret);
+        return account.id;
+    }
+
+    async function login(claims: Record<string, unknown>, via: FastifyInstance = app) {
+        const started = await via.inject({ method: 'POST', url: '/v1/auth/oidc/start', payload: {} });
+        const params = Object.fromEntries(new URL(started.json().authorizationUrl).searchParams);
+        idp.expect = { nonce: params.nonce, codeChallenge: params.code_challenge, redirectUri: params.redirect_uri };
+        idp.claims = claims;
+        const cb = await via.inject({ method: 'GET', url: '/v1/auth/oidc/callback', query: { code: 'good-code', state: params.state } });
+        const outcome = returned(cb.headers.location as string);
+        if (outcome.error) return { error: outcome.error, secret: null };
+        const complete = await via.inject({ method: 'POST', url: '/v1/auth/oidc/complete', payload: { handoff: outcome.handoff } });
+        expect(complete.statusCode).toBe(200);
+        return { error: null, secret: complete.json().secret as string };
+    }
+
+    it('B-626: a verified SSO email claims the Email/Google account that owns it, once; unverified or ambiguous emails do not', async () => {
+        const before = await db.account.count();
+        const seededSecret = Buffer.alloc(32, 7).toString('base64url');
+        const owner = await seedAccount('link', { provider: 'email', email: 'lin@apodex.com' }, seededSecret);
+
+        // Verified + unique owner → same account, same secret, one new oidc identity, no signup needed.
+        process.env.SIGNUP_MODE = 'closed';
+        const first = await login({ sub: 'subject-link', email: 'Lin@Apodex.com', email_verified: true, name: 'Lin Den' });
+        expect(first.error).toBeNull();
+        expect(first.secret).toBe(seededSecret);
+        expect(await db.account.count()).toBe(before + 1);
+        const linked = await db.accountIdentity.findMany({ where: { accountId: owner }, orderBy: { provider: 'asc' } });
+        expect(linked.map((row) => [row.provider, row.providerSubject])).toEqual([['email', 'email-link'], [`oidc:${idp.issuer}`, 'subject-link']]);
+
+        // Next login resolves by subject, not by email: no second identity row.
+        const again = await login({ sub: 'subject-link', email: 'lin@apodex.com', email_verified: true });
+        expect(again.secret).toBe(seededSecret);
+        expect(await db.accountIdentity.count({ where: { accountId: owner } })).toBe(2);
+
+        // Unverified email never links: a fresh account instead (signup open), owner untouched.
+        process.env.SIGNUP_MODE = 'open';
+        const googleOwner = await seedAccount('unverified', { provider: 'google', email: 'g@apodex.com' }, Buffer.alloc(32, 8).toString('base64url'));
+        const unverified = await login({ sub: 'subject-unverified', email: 'g@apodex.com', email_verified: false });
+        expect(unverified.error).toBeNull();
+        expect(await db.accountIdentity.count({ where: { accountId: googleOwner } })).toBe(1);
+        expect(await db.account.count()).toBe(before + 3);
+
+        // Two accounts own the email → refused, nothing created.
+        await seedAccount('dup-a', { provider: 'email', email: 'dup@apodex.com' }, Buffer.alloc(32, 9).toString('base64url'));
+        await seedAccount('dup-b', { provider: 'google', email: 'dup@apodex.com' }, Buffer.alloc(32, 10).toString('base64url'));
+        const ambiguous = await login({ sub: 'subject-dup', email: 'dup@apodex.com', email_verified: true });
+        expect(ambiguous.error).toBe('account_link_ambiguous');
+        expect(await db.account.count()).toBe(before + 5);
+        expect(await db.accountIdentity.count({ where: { providerSubject: 'subject-dup' } })).toBe(0);
+
+        // A key-only owner (no stored secret) cannot be signed into from the Web: fresh account.
+        const keyOnly = await seedAccount('key-only', { provider: 'email', email: 'key@apodex.com' }, null);
+        const fallback = await login({ sub: 'subject-key', email: 'key@apodex.com', email_verified: true });
+        expect(fallback.error).toBeNull();
+        expect(await db.accountIdentity.count({ where: { accountId: keyOnly } })).toBe(1);
+        expect(await db.account.count()).toBe(before + 7);
+
+        // With the switch off (default), a verified email still creates a separate account.
+        delete process.env.OIDC_LINK_BY_EMAIL;
+        const { oidcAuthRoutes } = await import('./oidcAuthRoutes');
+        const off = fastify();
+        off.setValidatorCompiler(validatorCompiler);
+        off.setSerializerCompiler(serializerCompiler);
+        oidcAuthRoutes(off.withTypeProvider<ZodTypeProvider>() as unknown as Fastify);
+        await off.ready();
+        try {
+            const offOwner = await seedAccount('off', { provider: 'email', email: 'off@apodex.com' }, Buffer.alloc(32, 11).toString('base64url'));
+            const separate = await login({ sub: 'subject-off', email: 'off@apodex.com', email_verified: true }, off);
+            expect(separate.error).toBeNull();
+            expect(await db.accountIdentity.count({ where: { accountId: offOwner } })).toBe(1);
+            expect(await db.account.count()).toBe(before + 9);
+        } finally {
+            process.env.OIDC_LINK_BY_EMAIL = 'verified';
+            await off.close();
+        }
     });
 
     it('reports 501 everywhere when OIDC is not configured and never reads an id_token from the query', async () => {

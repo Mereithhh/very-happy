@@ -2414,6 +2414,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            oct18e: {
+                title: '单点登录直接找到你原来的账号',
+                summary: '服务器可以让经过验证的 SSO 邮箱认领已经拥有它的账号，以前用邮箱或 Google 登录的人保留全部会话和机器。',
+                link: '运维设置 OIDC_LINK_BY_EMAIL=verified 后，身份提供方为邮箱背书的首次 SSO 登录会挂到通过邮箱或 Google 登录持有该邮箱的账号上；否则照旧新建账号。同一邮箱对应两个账号时会明确拒绝。',
+            },
             oct18b: {
                 title: '单点登录无需邀请码',
                 summary: '服务器可以让身份提供方为新账号背书：提供方（及允许的邮箱域名）放行的人直接登录，其他注册方式仍然需要邀请码。',
@@ -4408,6 +4413,7 @@ export const zhHans: TranslationStructure = {
             exchange_failed: '身份提供方没有接受这次登录。请重试；一直失败的话请服务器管理员检查 OIDC 客户端配置。',
             invalid_id_token: '身份提供方返回的令牌无法被本服务器验证。',
             email_domain_not_allowed: '本服务器只允许指定邮箱域名的账号。',
+            account_link_ambiguous: '本服务器上已有不止一个账号使用这个邮箱，单点登录无法判断是哪一个。请改用原来的邮箱或 Google 方式登录。',
             provider_error: '身份提供方取消了这次登录。',
             not_configured: '本服务器未启用单点登录。',
             invalid_handoff: '这次登录交接已过期，请从登录页重新开始。',

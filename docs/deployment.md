@@ -136,7 +136,10 @@ dependency surface. Do not install the upstream-owned
   `OIDC_ALLOWED_EMAIL_DOMAINS` makes an invite-only relay self-service for the
   provider's users while password/email/Google sign-up keeps asking for a code;
   `SIGNUP_MAX_ACCOUNTS` still applies. An identity is keyed `oidc:<issuer>` +
-  `sub`, so the same person always lands on the same account. A configured issuer counts as an interactive
+  `sub`, so the same person always lands on the same account; `OIDC_LINK_BY_EMAIL=verified`
+  (B-626, default `off`) additionally lets a first SSO login with a
+  provider-verified email attach to the existing Email/Google account that owns
+  that address — only set it when the provider really verifies emails. A configured issuer counts as an interactive
   login path for the `AUTH_PASSWORD_LOGIN_DISABLED` startup check.
 - White-label (B-624, standalone entrypoint): `BRAND_NAME` renames the product in
   the Web UI (auth cards, loaders, Settings → About, document title; max 64
