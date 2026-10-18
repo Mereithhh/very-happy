@@ -55,9 +55,17 @@ replaces `SIGNUP_MODE` for SSO first logins only (`open` = the provider plus
 leads with the SSO button and says only the other methods need a code). The
 account's first/last name come from the token's `name` (split at the first
 space; a single-token name stays whole), and `preferred_username` becomes the
-handle when it is free. Linking an OIDC
-identity to an existing password/email/Google account is not available yet; sign
-in with the existing method instead.
+handle when it is free. With `OIDC_LINK_BY_EMAIL=verified` (B-626, off by
+default) a first SSO login whose token says `email_verified: true` attaches the
+`oidc:<issuer>`+`sub` identity to the account that already owns that email
+through an Email-OTP or Google identity (both provider-verified; password
+identities carry no email), so the person keeps their sessions, machines and
+contacts; the link happens inside the signup gate's transaction and counts as a
+login, not a signup. Unverified emails, unknown emails and key-only accounts
+without a stored secret fall through to the normal first-login path. When two
+accounts own the same email the callback returns `account_link_ambiguous` and the
+person signs in with the old method. Linking an OIDC identity from inside an
+existing session is still not available.
 
 ## Profile handle and People
 

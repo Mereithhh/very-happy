@@ -53,6 +53,14 @@ export interface OidcConfig {
     /** Explicit Web origin to send the browser back to; null → derived. */
     webReturnUrl: string | null;
     allowedEmailDomains: ReadonlySet<string>;
+    /**
+     * B-626: a first SSO login whose token carries `email_verified: true` may
+     * attach itself to the existing account that already owns that email
+     * through an Email-OTP or Google identity (both provider-verified), instead
+     * of creating a second account. Off by default: a provider that does not
+     * verify emails would otherwise let anyone claim a colleague's account.
+     */
+    linkByEmail: boolean;
 }
 
 function normalizeIssuer(value: string): string {
@@ -90,7 +98,15 @@ export function resolveOidcConfig(env: NodeJS.ProcessEnv = process.env): OidcCon
         redirectUrl,
         webReturnUrl,
         allowedEmailDomains,
+        linkByEmail: parseLinkByEmail(env.OIDC_LINK_BY_EMAIL),
     };
+}
+
+function parseLinkByEmail(raw: string | undefined): boolean {
+    const value = raw?.trim().toLowerCase();
+    if (!value || value === 'off') return false;
+    if (value === 'verified') return true;
+    throw new Error('OIDC_LINK_BY_EMAIL must be "verified" or "off"');
 }
 
 export function oidcPublicConfig(

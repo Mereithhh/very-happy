@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-18-sso-link-by-email',
+    date: '2026-10-18',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct18e.title',
+    summaryKey: 'changelog.releases.oct18e.summary',
+    itemKeys: ['changelog.releases.oct18e.link'],
+  },
+  {
     id: '2026-10-18-codex-threads-and-exits',
     cliVersion: '0.2.175',
     date: '2026-10-18',

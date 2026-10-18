@@ -10,6 +10,7 @@
  * goes through the same signup gate as Google/Email login.
  */
 import { randomBytes, randomUUID } from 'crypto';
+import type { Prisma } from '@prisma/client';
 import tweetnacl from 'tweetnacl';
 import { z } from 'zod';
 import type { Fastify } from '../types';
@@ -50,6 +51,7 @@ export type OidcCallbackError =
     | 'invite-required'
     | 'capacity-reached'
     | 'email_domain_not_allowed'
+    | 'account_link_ambiguous'
     | 'provider_error'
     | 'not_configured';
 
@@ -83,8 +85,64 @@ async function freeUsername(tx: { $queryRawUnsafe: (sql: string, ...values: unkn
 
 type OidcAccount = { accountId: string; secret: string; session: { token: string; expiresAt: Date } };
 
+export class OidcAccountLinkAmbiguousError extends Error {
+    constructor() {
+        super('More than one account owns this verified email');
+        this.name = 'OidcAccountLinkAmbiguousError';
+    }
+}
+
+type RawClient = { $queryRawUnsafe: (sql: string, ...values: unknown[]) => Promise<unknown> };
+
+/**
+ * B-626: the account a verified SSO email already belongs to, through an
+ * Email-OTP or Google identity (both are verified by their provider). Password
+ * identities carry no email and never match. Returns null when nobody owns the
+ * address; throws when two different accounts do, so the person signs in with
+ * one of the old methods instead of silently getting a third account.
+ */
+export async function findAccountByVerifiedEmail(tx: RawClient, email: string): Promise<string | null> {
+    const rows = await tx.$queryRawUnsafe(
+        `SELECT DISTINCT "accountId" FROM "AccountIdentity"
+         WHERE "provider" IN ('email', 'google') AND LOWER("email") = LOWER($1)
+         LIMIT 2`,
+        email,
+    ) as Array<{ accountId: string }>;
+    if (rows.length > 1) throw new OidcAccountLinkAmbiguousError();
+    return rows[0]?.accountId ?? null;
+}
+
 async function findOrCreateOidcAccount(config: OidcConfig, claims: OidcIdentityClaims, inviteCode: string | undefined): Promise<{ value: OidcAccount; created: boolean }> {
     const provider = oidcProviderKey(config.issuer);
+    const profile = JSON.stringify({ name: claims.name, picture: claims.picture, emailVerified: claims.emailVerified, preferredUsername: claims.preferredUsername });
+
+    // B-626: attach this SSO subject to the account that already owns the verified email.
+    const linkByVerifiedEmail = async (tx: Prisma.TransactionClient): Promise<OidcAccount | null> => {
+        if (!config.linkByEmail || claims.emailVerified !== true || !claims.email) return null;
+        const accountId = await findAccountByVerifiedEmail(tx, claims.email);
+        if (!accountId) return null;
+        const secret = await loadAccountSecret(tx, accountId);
+        if (!secret) {
+            // A key-only (legacy pairing) account has nothing the Web can sign in with; fall back to a fresh account.
+            log({ module: 'oidc-auth', level: 'warn', accountId }, 'Verified-email account has no stored secret; not linking');
+            return null;
+        }
+        await tx.$executeRawUnsafe(
+            `INSERT INTO "AccountIdentity"
+             ("id", "accountId", "provider", "providerSubject", "email", "profile", "updatedAt")
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, now())`,
+            randomUUID(),
+            accountId,
+            provider,
+            claims.sub,
+            claims.email,
+            profile,
+        );
+        log({ module: 'oidc-auth', accountId }, 'Linked SSO identity to the account owning the verified email');
+        const session = await auth.createLoginToken(accountId, tx, { cache: false });
+        return { accountId, secret, session };
+    };
+
     return withSignupGate<OidcAccount>({
         provider: 'oidc',
         inviteCode,
@@ -95,7 +153,7 @@ async function findOrCreateOidcAccount(config: OidcConfig, claims: OidcIdentityC
                 provider,
                 claims.sub,
             );
-            if (!identities[0]) return null;
+            if (!identities[0]) return linkByVerifiedEmail(tx);
             const accountId = identities[0].accountId;
             const secret = await loadAccountSecret(tx, accountId);
             if (!secret) throw new Error('oidc-account-secret-missing');
@@ -242,6 +300,7 @@ export function oidcAuthRoutes(app: Fastify, options: { fetchImpl?: typeof fetch
             result = await findOrCreateOidcAccount(config, claims, challenge.inviteCode);
         } catch (error) {
             if (error instanceof SignupPolicyError) return fail(error.reason);
+            if (error instanceof OidcAccountLinkAmbiguousError) return fail('account_link_ambiguous');
             throw error;
         }
 
