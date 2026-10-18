@@ -2430,6 +2430,12 @@ export const zhHans: TranslationStructure = {
                 people: '联系人：侧栏新增入口，列出好友和等你回应的申请；按用户名或完整邮箱搜索同事并添加。分享对话框顶部会把好友列成一键芯片。',
                 profile: '设置 → 账号 → 名字与用户名：设置显示名和同事搜索、分享时用的 @用户名。密码账号自动把登录名作为用户名；改用户名不影响登录。',
             },
+            oct18b: {
+                title: 'Codex 子 agent 不再把会话切成空闲；Codex 挂了会说原因',
+                summary: 'Codex 会话的第二批 CLI 修复，需要 CLI 0.2.175。',
+                children: 'Codex 把活分给子 agent 时，子 agent 跑完不再让会话显示空闲或提前推「完成」，主 agent 仍在跑；「停止」现在打断的是主 agent，不是子 agent。一轮只在 Codex 报告结束时结束，线程安静下来只作兜底。',
+                exits: 'Codex 进程在一轮中途挂掉或关掉线程时，对话里会直接写出来，并附上它挂掉前最后几行输出。',
+            },
             oct18a: {
                 title: 'Codex 会话能看出还在跑，停了也会说原因',
                 summary: 'CLI 侧修复，针对 Codex 会话，需要 CLI 0.2.174。',
