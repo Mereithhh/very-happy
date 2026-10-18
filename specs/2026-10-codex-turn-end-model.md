@@ -1,6 +1,6 @@
 # Codex wrapper：一轮何时结束（thread 作用域 + turn/completed 唯一判据）
 
-- 状态：Final
+- 状态：Shipped（PR #559 → `main@22ac3e37f`，CLI v0.2.175；真机项 V-180）
 - 关联 backlog：B-625（承接 B-622）
 - 包：仅 `packages/happy-cli`（`src/codex/codexAppServerClient.ts`、`runCodex.ts`、`codexFailureText.ts`）
 - 参照：stablyai/orca `src/main/codex/`（MIT；只借做法，不拷代码）：
