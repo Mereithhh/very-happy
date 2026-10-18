@@ -1208,9 +1208,9 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
-    // B-623 — frames are scoped to the session's own thread, and a turn ends the way
+    // B-625 — frames are scoped to the session's own thread, and a turn ends the way
     // Orca ends it: on Codex's `turn/completed` (src/main/codex/codex-structured-*.ts).
-    it('B-623: a child thread never ends or retargets the session\'s own turn', async () => {
+    it('B-625: a child thread never ends or retargets the session\'s own turn', async () => {
         const requests: MockRpcMessage[] = [];
         const proc = createMockProcess({
             pid: 3009,
@@ -1272,7 +1272,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
-    it('B-623: an idle thread ends the turn only after a grace, and never before the turn opened', async () => {
+    it('B-625: an idle thread ends the turn only after a grace, and never before the turn opened', async () => {
         const proc = createMockProcess({
             pid: 3010,
             onRequest: (msg, stdout) => {
@@ -1323,7 +1323,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
-    it('B-623: before codex 0.148 the final error of a turn that never opened is its end, reported once', async () => {
+    it('B-625: before codex 0.148 the final error of a turn that never opened is its end, reported once', async () => {
         const proc = createMockProcess({
             pid: 3011,
             onRequest: (msg, stdout) => {
@@ -1365,7 +1365,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
-    it('B-623: the app-server dying mid-turn ends the turn with Codex\'s last words', async () => {
+    it('B-625: the app-server dying mid-turn ends the turn with Codex\'s last words', async () => {
         const proc = createMockProcess({
             pid: 3012,
             onRequest: (msg, stdout) => {
@@ -1402,7 +1402,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
-    it('B-623: thread/closed on the session\'s own thread ends a pending turn', async () => {
+    it('B-625: thread/closed on the session\'s own thread ends a pending turn', async () => {
         const proc = createMockProcess({
             pid: 3013,
             onRequest: (msg, stdout) => {

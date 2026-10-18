@@ -1109,7 +1109,7 @@ export async function runCodex(opts: {
                     messageBuffer.addMessage(`Task failed: ${reason}`, 'status');
                     session.sendSessionEvent({ type: 'message', message: `Codex error: ${reason}` });
                 } else {
-                    // B-623: with Codex's own last words (its stderr tail) when it has any.
+                    // B-625: with Codex's own last words (its stderr tail) when it has any.
                     const tail = codexStderrTailOf(error);
                     messageBuffer.addMessage('Process exited unexpectedly', 'status');
                     session.sendSessionEvent({ type: 'message', message: tail ? `Process exited unexpectedly: ${tail}` : 'Process exited unexpectedly' });

@@ -1,7 +1,7 @@
 # Codex wrapper：一轮何时结束（thread 作用域 + turn/completed 唯一判据）
 
 - 状态：Final
-- 关联 backlog：B-623（承接 B-622）
+- 关联 backlog：B-625（承接 B-622）
 - 包：仅 `packages/happy-cli`（`src/codex/codexAppServerClient.ts`、`runCodex.ts`、`codexFailureText.ts`）
 - 参照：stablyai/orca `src/main/codex/`（MIT；只借做法，不拷代码）：
   `codex-structured-journal-translation-turn-boundaries.ts`、`codex-structured-turn-end-settlement.ts`、
@@ -87,7 +87,7 @@ B-622 修掉了「agent message 当一轮结束」。对照 Orca 的 Codex wrapp
 
 ## 验收标准
 
-- `codexAppServerClient.test.ts` B-623 五例：子 thread 全生命周期不动主轮且 interrupt 打主轮；
+- `codexAppServerClient.test.ts` B-625 五例：子 thread 全生命周期不动主轮且 interrupt 打主轮；
   陈旧 idle 不结束、opened 后 idle 经宽限结束一次；0.148 前未 opened 失败轮由 error 结束且只报一次失败；
   进程退出带 stderr 尾；`thread/closed` 结束。B-622 的「失败帧放行」改走宽限路径。
 - CLI 门禁全绿；本地 `codex app-server` 0.154.0 mock 探针（`skills/tmp/vh-codex-thinking/probe/`）顺序不变。

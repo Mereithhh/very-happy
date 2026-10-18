@@ -2281,7 +2281,7 @@ export const en = {
                 people: 'People: a sidebar entry lists your friends and requests waiting for you; search a colleague by handle or exact email and add them. Friends show up as one-tap chips at the top of the Share dialog.',
                 profile: 'Settings → Account → Name & handle: choose the display name and the @handle colleagues search for and share to. Password accounts got their login name as handle automatically; the handle can be changed without touching the login.',
             },
-            oct18b: {
+            oct18d: {
                 title: 'Codex sub-agents no longer switch the session to idle; a dead Codex says why',
                 summary: 'The second CLI half for Codex sessions. Needs CLI 0.2.175.',
                 children: 'When Codex delegates to sub-agents, their finishing no longer makes the session look idle or push “done” while the main agent is still working, and Stop now interrupts the main agent rather than a sub-agent. A turn ends when Codex reports it finished; the thread going quiet is only a fallback.',

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { codexStderrTailOf, describeCodexFailure, describeCodexRetry, describeThrownTurnError, readableCodexErrorText } from './codexFailureText';
 
 describe('codexStderrTailOf', () => {
-    it('B-623: reads the stderr tail a dead app-server left on its rejection, or null', () => {
+    it('B-625: reads the stderr tail a dead app-server left on its rejection, or null', () => {
         const error = Object.assign(new Error('Codex process exited (code=1) while waiting for turn/start'), { codexStderrTail: ' thread panicked: boom ' });
         expect(codexStderrTailOf(error)).toBe('thread panicked: boom');
         expect(codexStderrTailOf(Object.assign(new Error('x'), { codexStderrTail: '   ' }))).toBeNull();

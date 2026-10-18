@@ -94,7 +94,7 @@ export function describeCodexRetry(msg: any): string {
 }
 
 /**
- * B-623: the app-server's last stderr lines, carried on the error a dead process
+ * B-625: the app-server's last stderr lines, carried on the error a dead process
  * rejected a request with (`codexAppServerClient` `proc.on('exit')`), or null.
  */
 export function codexStderrTailOf(error: unknown): string | null {

@@ -191,7 +191,7 @@ export class CodexAppServerClient {
     private pendingTurnCompletion: {
         resolve: (aborted: boolean) => void;
         turnId: string | null;
-        /** B-623: Codex reported this turn running (`turn/started` / legacy task_started). */
+        /** B-625: Codex reported this turn running (`turn/started` / legacy task_started). */
         opened: boolean;
         /** How long an own-thread idle/systemError waits for Codex's `turn/completed` (see armThreadStopGrace). */
         threadStopGraceMs: number;
@@ -205,9 +205,9 @@ export class CodexAppServerClient {
     private idleRelease: Promise<boolean> | null = null;
     private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
     private completedTurnIds = new Set<string>();
-    /** B-623: turns whose failure has already been forwarded, so a second failed frame is not. */
+    /** B-625: turns whose failure has already been forwarded, so a second failed frame is not. */
     private failedTurnIds = new Set<string>();
-    // B-623: the app-server speaks for every thread it hosts — the session's own and the
+    // B-625: the app-server speaks for every thread it hosts — the session's own and the
     // children `spawn_agent` opens — so a lifecycle frame (turn/started, turn/completed,
     // thread/status/changed, error, thread/closed) is the session's only when its `threadId`
     // is ours; a frame naming no thread belongs to the thread it was asked on (Orca's rule,
@@ -306,7 +306,7 @@ export class CodexAppServerClient {
         return typeof threadId === 'string' && threadId.length > 0 ? threadId : null;
     }
 
-    /** B-623: whether a lifecycle frame is about the session's own thread (see the field comment). */
+    /** B-625: whether a lifecycle frame is about the session's own thread (see the field comment). */
     private isOwnThreadFrame(params: any): boolean {
         const threadId = this.extractThreadId(params);
         return threadId === null || this._threadId === null || threadId === this._threadId;
@@ -365,7 +365,7 @@ export class CodexAppServerClient {
             // `turn/completed` with `status: failed` is the only place the
             // upstream error (a 504 from the model gateway, a rejected model)
             // is reported, and dropping it as a duplicate is how a failed Codex
-            // turn ended in silence (Wei FANG 2026-10-18). B-623: the failure
+            // turn ended in silence (Wei FANG 2026-10-18). B-625: the failure
             // itself is forwarded once.
             if (!failed || this.failedTurnIds.has(turnId)) return;
         }
@@ -431,7 +431,7 @@ export class CodexAppServerClient {
         if (method === 'thread/status/changed') {
             if (!this.isOwnThreadFrame(params)) return true;
             const statusType = params?.status?.type;
-            // B-623: a stopped thread is not a turn end by itself. Codex ends every
+            // B-625: a stopped thread is not a turn end by itself. Codex ends every
             // turn it opened with exactly one `turn/completed` (a failed one after its
             // `error`), normally within a millisecond of the idle/systemError status;
             // a status seen before the turn opened is stale (a resumed thread
@@ -651,7 +651,7 @@ export class CodexAppServerClient {
                 req.reject(error);
                 this.pending.delete(id);
             }
-            // B-623: a turn that was pending when the app-server died ends here, and
+            // B-625: a turn that was pending when the app-server died ends here, and
             // says so — with Codex's own last words — instead of resolving quietly.
             if (this.pendingTurnCompletion) {
                 const turnId = this.pendingTurnCompletion.turnId ?? this._turnId;
@@ -1038,7 +1038,7 @@ export class CodexAppServerClient {
     private static readonly THREAD_STOP_GRACE_MS = 1_500;
 
     /**
-     * B-623: the own thread stopped (idle / systemError) while a turn was pending and
+     * B-625: the own thread stopped (idle / systemError) while a turn was pending and
      * had opened. Codex's `turn/completed` follows at once in every probed release
      * (0.154.0: 1 ms); this is the net under a release that does not send it, so the
      * session never waits on the silence watchdog for a turn Codex has already left.
@@ -1224,7 +1224,7 @@ export class CodexAppServerClient {
         sandbox?: SandboxMode;
         effort?: ReasoningEffort;
         turnTimeoutMs?: number;
-        /** B-623: test hook for the thread-stop grace (see armThreadStopGrace). */
+        /** B-625: test hook for the thread-stop grace (see armThreadStopGrace). */
         threadStopGraceMs?: number;
     }): Promise<{ aborted: boolean }> {
         // Wait for any in-flight interruptTurn() to complete before starting a new
@@ -1663,7 +1663,7 @@ export class CodexAppServerClient {
         if (method === 'thread/started' || method === 'turn/started' ||
             method === 'turn/completed' || method === 'thread/status/changed') {
             logger.debug(`[CodexAppServer] Lifecycle notification: ${method}`);
-            // B-623: a child thread's lifecycle is the child's (see isOwnThreadFrame).
+            // B-625: a child thread's lifecycle is the child's (see isOwnThreadFrame).
             if (!this.isOwnThreadFrame(params)) return;
             // Mark the turn as started so the completion guard lets it through.
             if (method === 'turn/started') {
@@ -1701,7 +1701,7 @@ export class CodexAppServerClient {
         }
 
         if (method === 'error') {
-            // B-623: a child thread's error is the child's.
+            // B-625: a child thread's error is the child's.
             if (!this.isOwnThreadFrame(params)) return;
             const error = params?.error ?? {};
             const turnId = typeof params?.turnId === 'string' && params.turnId.length > 0 ? params.turnId : null;
@@ -1723,7 +1723,7 @@ export class CodexAppServerClient {
                 });
                 return;
             }
-            // B-623: the final error. Kept for a turn end that arrives without a
+            // B-625: the final error. Kept for a turn end that arrives without a
             // verdict (the thread-stop grace), and — before codex 0.148 — for a
             // turn that never opened it IS the end: such a turn reports no
             // `turn/completed` (Orca, codex-structured-turn-end-settlement.ts
