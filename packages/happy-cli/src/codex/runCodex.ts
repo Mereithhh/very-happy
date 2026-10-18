@@ -43,7 +43,7 @@ import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { unsupportedEffortReason } from './effortSupport';
-import { describeCodexFailure, describeThrownTurnError } from './codexFailureText';
+import { describeCodexFailure, describeCodexRetry, describeThrownTurnError } from './codexFailureText';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
@@ -731,6 +731,12 @@ export async function runCodex(opts: {
             } else {
                 messageBuffer.addMessage('Turn aborted', 'status');
             }
+        } else if (msg.type === 'turn_retry') {
+            // B-622: Codex is retrying a model request (5xx / dropped stream).
+            // Without this line the session just sits through the whole backoff.
+            const notice = describeCodexRetry(msg);
+            messageBuffer.addMessage(notice, 'status');
+            session.sendSessionEvent({ type: 'message', message: notice });
         }
 
         if (msg.type === 'task_started') {
@@ -978,6 +984,18 @@ export async function runCodex(opts: {
             // Defensive check for TS narrowing
             if (!message) {
                 break;
+            }
+
+            // B-622: the wrapper owns a prompt from here — respawning a released
+            // app-server (B-461 drops it after 5 idle minutes), resuming the
+            // thread, starting the turn — and the web reads `thinking` as "is
+            // anything happening". Claude raises it when it dispatches the
+            // prompt; raising it only on Codex's own task_started left the
+            // spinner off for the whole restart plus whatever the model gateway
+            // took before Codex reported the turn (Wei FANG 2026-10-18).
+            if (!thinking) {
+                thinking = true;
+                session.keepAlive(thinking, 'remote');
             }
 
             idleRelease.cancel();
