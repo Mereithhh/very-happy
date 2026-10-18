@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-18-codex-turn-liveness',
+    cliVersion: '0.2.174',
+    date: '2026-10-18',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct18a.title',
+    summaryKey: 'changelog.releases.oct18a.summary',
+    itemKeys: ['changelog.releases.oct18a.spinner', 'changelog.releases.oct18a.errors', 'changelog.releases.oct18a.long'],
+  },
+  {
     id: '2026-10-18-session-sharing',
     date: '2026-10-18',
     buildVersion: __APP_VERSION__,

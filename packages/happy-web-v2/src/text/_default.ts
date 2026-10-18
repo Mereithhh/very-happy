@@ -2275,6 +2275,13 @@ export const en = {
                 people: 'People: a sidebar entry lists your friends and requests waiting for you; search a colleague by handle or exact email and add them. Friends show up as one-tap chips at the top of the Share dialog.',
                 profile: 'Settings → Account → Name & handle: choose the display name and the @handle colleagues search for and share to. Password accounts got their login name as handle automatically; the handle can be changed without touching the login.',
             },
+            oct18a: {
+                title: 'Codex sessions show when they are still working, and say why they stopped',
+                summary: 'The CLI half, for Codex sessions. Needs CLI 0.2.174.',
+                spinner: 'A Codex turn now counts as running from the moment you send the message until Codex reports it finished — including the seconds it takes to bring an idle Codex back, and after a progress message Codex posts while it keeps working on the task. Before, the activity indicator stayed off during those stretches, so a busy session looked idle.',
+                errors: 'When the model API fails behind Codex, the conversation says so: each retry Codex makes shows as it happens (“retrying after HTTP 504…”), and a turn that gives up ends with the error instead of going quiet.',
+                long: 'Turns longer than 10 minutes are no longer cut off by the CLI while Codex is still working; a turn is only given up after Codex has been completely silent for 10 minutes (time spent waiting for your approval does not count).',
+            },
             oct16: {
                 title: 'Reading back stays put; zoomable images and side-by-side diffs',
                 summary: 'Scrolling up while a turn is running no longer throws you to the top, images can be pinch-zoomed and panned, and wide diffs can be read side by side.',
