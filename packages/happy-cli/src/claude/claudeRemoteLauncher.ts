@@ -765,11 +765,12 @@ export async function claudeRemoteLauncher(
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
                     },
-                    // B-631: a Stop swept these steers before the model read them —
-                    // the same tombstone a destroyed queue item gets (B-332), so
-                    // the web shows them as not delivered instead of answered.
-                    onSteerDropped: (uuids) => {
-                        logger.debug(`[remote]: ${uuids.length} steered message(s) not read before the turn ended`);
+                    // B-631: a Stop swept these user messages (steers, or prompts
+                    // queued behind a pre-empting steer's turn) before the model
+                    // read them — the same tombstone a destroyed queue item gets
+                    // (B-332), so the web shows them as not delivered, not answered.
+                    onCommandsDropped: (uuids) => {
+                        logger.debug(`[remote]: ${uuids.length} user message(s) never read before the turn ended`);
                         session.client.sendQueueCancelReason(uuids, 'aborted');
                     },
                     onReady: (result) => {
@@ -830,10 +831,12 @@ export async function claudeRemoteLauncher(
                         continue;
                     }
                     // B-631: the SDK's error already says why (`exited with code N.
-                    // stderr: …`); the turn-end and the visible line carry it.
+                    // stderr: …`). The web renders a failed turn-end's `error` as
+                    // its own line, so the session event is the outlet only when
+                    // no turn was open to carry it — never both.
                     const exit = describeClaudeProcessExit(e);
-                    session.client.closeClaudeSessionTurn('failed', { error: exit });
-                    session.client.sendSessionEvent({ type: 'message', message: exit, kind: 'claude-process-exit' });
+                    const closed = session.client.closeClaudeSessionTurn('failed', { error: exit });
+                    if (!closed) session.client.sendSessionEvent({ type: 'message', message: exit, kind: 'claude-process-exit' });
                     // Account-encrypted feed notification (best-effort).
                     session.onSessionError(exit);
                     continue;

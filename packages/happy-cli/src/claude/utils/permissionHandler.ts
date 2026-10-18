@@ -20,7 +20,7 @@ import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import { mapToClaudeMode, type ClaudeSdkPermissionMode } from './permissionMode';
-import { withTimeout } from './withTimeout';
+import { TimeoutError, withTimeout } from './withTimeout';
 
 /**
  * B-631: budget for the SDK `set_permission_mode` control request. The SDK
@@ -190,6 +190,17 @@ export class PermissionHandler {
         } catch (error) {
             this.permissionMode = previousMode;
             if (this.deferredPermissionMode === mode) this.deferredPermissionMode = undefined;
+            // B-631: a timed-out set_permission_mode is still in flight at the
+            // CLI. If it lands late, the SDK would enforce `mode` (a late
+            // bypassPermissions stops asking can_use_tool) while this handler
+            // enforces previousMode. Re-assert ours behind it; the wire is FIFO,
+            // so a later live selection queued after this still wins.
+            if (error instanceof TimeoutError && this.setPermissionModeCallback) {
+                this.setPermissionModeCallback(previousMode).then(
+                    () => logger.debug(`[PermissionHandler] Re-asserted ${previousMode} after the switch to ${mode} timed out`),
+                    (reassertError) => logger.debug('[PermissionHandler] Re-asserting the previous permission mode failed', reassertError),
+                );
+            }
             throw error;
         }
     }

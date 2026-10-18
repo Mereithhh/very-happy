@@ -30,9 +30,10 @@ B-625/B-628 把 Codex wrapper 对照 Orca 修了一遍。Claude 这边的 wrappe
 - idle 是轮结束的权威信号：有 `result` 时 idle 去重，没有 `result` 时 idle 关轮（completed，无判决）并派发下一条。
 - 任何进程退出给用户一行可读原因（code/signal + stderr 尾），turn-end 带 `error`。
 - api_retry 第一次就看得见，同一串重试不刷屏；warning 级 informational 落一条 session event。
-- interrupt 3 s、setModel 30 s、setPermissionMode 15 s 有界；超时各走既有兜底（硬中止 / 沿用旧模型 / RPC 返回 error）。
-- 插话带网页 localKey 作 uuid；Stop 用 `interrupt({cancelQueued:true})`（能力存在时）或回执 `still_queued` 逐条
-  `cancel_async_message`；被 CLI 确认「从未运行」的插话打 B-332 `queue-cancel reason=aborted` 墓碑。
+- interrupt 8 s、setModel 30 s、setPermissionMode 15 s 有界；超时各走既有兜底（硬中止 / 沿用旧模型 / RPC 返回 error），
+  且不假装请求没发出去：权限模式超时后向 SDK 补发旧模式，模型超时后下个边界无条件重发。
+- 所有带 uuid 推入的用户消息（prompt 与插话）都被追踪；Stop 用 `interrupt({cancelQueued:true})`（能力存在时）或回执
+  `still_queued` 逐条 `cancel_async_message`；被 CLI 确认「从未运行」的消息打 B-332 `queue-cancel reason=aborted` 墓碑。
 
 ## 非目标
 
@@ -69,16 +70,20 @@ B-625/B-628 把 Codex wrapper 对照 Orca 修了一遍。Claude 这边的 wrappe
 
 - `sdk/query.ts` 给子进程环境补 `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1`（操作者已显式设置则不覆盖）。这是帧能到我们手里的前提（事实 ③）；
   SDK 自己的 run-end 逻辑不受影响（两种变量它都处理）。
-- 纯状态机 `createClaudeTurnTracker()`：
-  - `begin()`：我们推了一条用户消息，或 CLI 宣告一轮开始（`running` / `init`）→ 轮打开（幂等）。
-  - `onResult()`：轮打开 → 关闭并返回 true，同时 `idleOwed += 1`（这条 result 之后应有一个 idle）；未打开 → false（idle 已先关过，不重复）。
-  - `onSessionState('idle')`：`idleOwed > 0` → 扣一次、返回 `duplicate`（正常 result 后的 idle）；否则轮打开 → 关闭、返回 `end`（没有 result 的结束）；否则 `ignore`。
-  - `onSessionState('running')`：`idleOwed = 0` 并 `begin()`。流里 `running(N+1)` 只会在 `idle(N)` 之后出现，所以到了 running 还欠着的 idle 永远不会来（事实 ⑦ 的抢占轮正是这种 result 没有 idle 的形状），清零即可。
+- 纯状态机 `createClaudeTurnTracker()`，区分「wrapper 已推」与「CLI 已宣告」（review 2）：
+  - `pushed()`：我们把一条用户消息交给了 Query → `pending`。这还不是一轮：CLI 要先取走它。
+  - `announced()`（`init`）与 `running` → `open`（幂等），清 `pending`。
+  - `onResult()`：`open || pending` → 关闭并返回 true，同时 `idleOwed += 1`（这条 result 之后应有一个 idle）；都不是 → false（idle 已先关过，不重复）。
+  - `onSessionState('idle')`：`idleOwed > 0` → 扣一次、返回 `duplicate`（正常 result 后的 idle）；否则 **`open`** → 关闭、返回 `end`（没有 result 的结束）；否则（含只 `pending`）`ignore`。
+    CLI 的状态通知器有多个 idle 发射点且不做同态去重（prompt 结算 flipBackFromRequiresAction、task 状态订阅、decideIdleReport），
+    一条多余的 idle 落在「wrapper 已推 N+1、CLI 尚未 running/init」的窗口里（现实触发：权限弹窗期间按 Stop 且队列有后续消息）
+    不得把 N+1 关掉——只有 CLI 宣告过的轮才能被 idle 结束。
+  - `onSessionState('running')`：`idleOwed = 0` 并打开。流里 `running(N+1)` 只会在 `idle(N)` 之后出现，所以到了 running 还欠着的 idle 永远不会来（事实 ⑦ 的抢占轮正是这种 result 没有 idle 的形状），清零即可。
   - `requires_action` → `ignore`（轮停在用户身上，不是结束）。
   - 为什么用计数而不是「idle 时 thinking 是否为 true」：`result(N)` 之后 wrapper 异步拉下一条并立刻 `thinking=true`，而 `idle(N)` 可能晚于这次 push 才被 for-await 读到；只看 thinking 会把 N+1 当成结束。计数只依赖流内顺序（result 先于它自己的 idle，idle 先于下一个 running），与 push 时机无关。
 - `claudeRemote.ts`：
-  - `result` 分支：`turn.onResult()` 为 true 才 `onReady(result)` + 拉下一条；timing 日志、/compact 完成通知、OAuth 回收判定照旧。
-  - `session_state_changed`：`end` → `updateThinking(false)`、清 `isCompactCommand`/`lastAssistantError`、`onReady(undefined)`（launcher 现有逻辑按 completed 关轮、发 done 推送；若 stop 在飞则仍按 consumeInterrupted 关为 cancelled）、拉下一条。`duplicate`/`ignore` → 只记 debug。
+  - `result` 分支：`turn.onResult()` 为 true 才 `onReady(result)` + 拉下一条；timing 日志、/compact 完成通知照旧；OAuth 回收判定抽成 `recycleIfPoisoned(result?)`。
+  - `session_state_changed`：`end` → `updateThinking(false)`、清 `isCompactCommand`、`onReady(undefined)`（launcher 现有逻辑按 completed 关轮、发 done 推送；若 stop 在飞则仍按 consumeInterrupted 关为 cancelled），然后**同样经 `recycleIfPoisoned()`**：本轮有 `authentication_failed` 的 assistant 帧就结束 Query（review nit 5：中毒的 Query 不能因为没有 result 就留下来重放错误），否则拉下一条。`duplicate`/`ignore` → 只记 debug。
   - 拉下一条改为单飞（`pullNextMessage`）：同一时刻只允许一个 `nextMessage()` 在等。今天两个 result（抢占场景）会挂两个等待者，把两条排队消息背靠背推进 CLI；B-509 语义是一轮边界一条。
   - mapper 不改：轮在 mapper 里由 launcher 的 `closeClaudeSessionTurn` 关（与 result 路径相同），idle 帧本身在出站队列被丢弃，不进 transcript。
 
@@ -87,8 +92,11 @@ B-625/B-628 把 Codex wrapper 对照 Orca 修了一遍。Claude 这边的 wrappe
 - `describeClaudeProcessExit(error)` 一行文案：`Process exited unexpectedly (code 1): <stderr 尾>` / `… (signal SIGKILL): <尾>` /
   `Process exited unexpectedly: <其它错误原文>` / `Process exited unexpectedly`。去 ANSI、折空白、尾部最多 400 字（更长保留**末** 400 字并以 `…` 开头）。
   识别 SDK 文案（事实 ⑧）与本地模式的 `ExitCodeError`（`Process exited with code: N`）/ `Process terminated with signal: SIGX`。
-- `claudeRemoteLauncher` catch：`closeClaudeSessionTurn('failed', { error })` + `sendSessionEvent({type:'message', message, kind:'claude-process-exit'})` + `session.onSessionError(message)`；EDE-only 噪音分支不变。
-- `claudeLocalLauncher`：`ExitCodeError` 两条分支 `closeClaudeSessionTurn('failed', { error })` 并补发同文案 session event；signal 分支的事件改为带 signal 的文案。
+- 网页只显示一行（review 3）：web 会把失败 turn-end 的 `error` 渲染成一行（`reducer`/`typesRaw` 既有逻辑），而没有开轮时
+  `closeTurn` 什么都不发（mapper `closeTurn` 的 `currentTurnId` 守卫）。`apiSession.closeClaudeSessionTurn` 改为返回「是否真发了 turn-end」，
+  两个 launcher 只在它返回 false 时才发 `sendSessionEvent({type:'message', message, kind:'claude-process-exit'})`。
+- `claudeRemoteLauncher` catch：`closeClaudeSessionTurn('failed', { error })` → 未开轮才发事件 → `session.onSessionError(message)`；EDE-only 噪音分支不变。
+- `claudeLocalLauncher`：`ExitCodeError` 两条分支同上；signal 分支（本来就不关轮）的事件改为带 signal 的文案。
 
 ### 3. api_retry / warning 可见（`claudeSystemNotices.ts`）
 
@@ -101,23 +109,35 @@ B-625/B-628 把 Codex wrapper 对照 Orca 修了一遍。Claude 这边的 wrappe
 
 ### 4. 控制请求截止（`utils/withTimeout.ts`）
 
-- `withTimeout` 从 `claudeRemote.ts` 抽到 `utils/withTimeout.ts`（行为不变：输家的晚到拒绝已被处理）。
-- `turnSteering`：`createTurnSteeringController({ interruptTimeoutMs = 3000 })`，`steer()`/`interruptTurn()` 都经 `withTimeout`；超时 = 抛错 →
-  `doAbort` 现有 catch 走硬中止；`steer` RPC 返回 error。
-- `claudeRemote` 推下一条前 `withTimeout(response.setModel(...), 30_000)`：超时进现有 catch → `modelSwitchFailureNotice` session event，沿用旧模型继续推。
+- `withTimeout` 从 `claudeRemote.ts` 抽到 `utils/withTimeout.ts`（行为不变：输家的晚到拒绝已被处理）；超时抛 `TimeoutError`，
+  让调用方分得清「CLI 拒绝了」和「CLI 没答、请求可能迟到落地」。
+- `turnSteering`：`createTurnSteeringController({ interruptTimeoutMs = 8000 })`，`steer()`/`interruptTurn()` 都经 `withTimeout`；超时 = 抛错 →
+  `doAbort` 现有 catch 走硬中止；`steer` RPC 返回 error。8 s 而非 3 s（review 7）：硬中止等于进程重启（新 transcript id，
+  `doAbort` 自述的 restore 风险），CLI 刷 transcript / GC 卡几秒的情形应该等它，不该杀它。
+- `claudeRemote` 推下一条前 `withTimeout(response.setModel(...), 30_000)`：超时进现有 catch → `modelSwitchFailureNotice` session event，沿用旧模型继续推；
+  并置哨兵 `modelUnconfirmed`（review 4）：迟到的 `set_model` 可能已落地而 `mode.model` 仍是旧值，于是**下个边界无条件重发**该轮想要的模型
+  （即便与上一轮相同），成功后清哨兵。中间那一轮 `modelIsDefault` 可能与 init.model 不一致，接受（下一轮即自愈）。
 - `permissionHandler.applyLivePermissionMode` 与 deferred 路径：`withTimeout(this.setPermissionModeCallback(mode), 15_000)`；超时抛错 → 现有回滚 `permissionMode` → RPC `{ error }`（铁律 17）。15 s 是为了让错误在 relay 30 s 上限内回到网页。
+  回滚不只回滚本地（review 4）：`TimeoutError` 时再 fire-and-forget 发一次 `setPermissionModeCallback(previousMode)`，结果只记日志——
+  挂着的请求若迟到落地（如 bypassPermissions 之后不再问 can_use_tool），SDK 与 wrapper 会重新一致；控制请求走 stdin FIFO，
+  之后用户的新选择仍排在它后面、仍然胜出。CLI 明确拒绝（非超时）时没有在飞的请求，不补发。
 
 ### 5. Stop 回收插话 + 插话可追踪（`claudeCommandLifecycle.ts`）
 
 - `ClaudeSteerInput.localKey?`；`runClaude` 传 `message.localKey`；launcher 传给 `q.steer(message, mode, localKey)`；`claudeRemote.steer` 用
-  `promptUuid(localKey)` 作 `uuid`（非 UUID 的 localKey 不加 uuid = 现状），并 `steerTracker.track(uuid)`。
+  `promptUuid(localKey)` 作 `uuid`（非 UUID 的 localKey 不加 uuid = 现状）。
+- **所有**带 uuid 推入的用户消息都 `commandTracker.track(uuid)`——首条 prompt、`pullNextMessage` 推的 prompt、插话（review 1）。
+  场景：轮 N 被插话 S 抢占 → result(N) 让 wrapper 拉下一条 → 用户的普通消息 M 被推入、CLI 排队（S 仍在跑）→ 按 Stop →
+  `cancelQueued` 回执 `cancelled:[M]`：M 从未运行，必须打墓碑，否则网页显示已送达而消息静默消失。追踪集上限 256（老 CLI 不发 lifecycle，不能随会话无限增长）。
+- `sdkToLogConverter` 对顶层 `command_lifecycle` 帧返回 null（review nit 6）：它以前落进 `default` 分支原样进出站队列被持久化；
+  生命周期追踪在 `claudeRemote` 的 for-await 里直接读帧，不经过转换器。
 - init 的 `capabilities` 记入 `cliCapabilities`。`interrupt()`：有 `interrupt_cancel_queued_v1` → `interrupt({cancelQueued:true})`（窄类型断言，d.ts 未声明）；
   否则普通 `interrupt()`，回执 `still_queued` 中我们追踪的 uuid 逐条 `cancelAsyncMessage`（运行时方法，同样窄断言；返回 false = 已开跑，不打墓碑）。
   回执 `cancelled` ∩ 追踪集 → 报丢。老 CLI 回执为 undefined → 什么都不扫（现状）。
-- `readClaudeCommandLifecycle(frame)` 读顶层 `command_lifecycle`（事实 ⑤）。`createClaudeSteerTracker()`：`started` 记为已开跑；`completed` 移除；
+- `readClaudeCommandLifecycle(frame)` 读顶层 `command_lifecycle`（事实 ⑤）。`createClaudeCommandTracker()`：`started` 记为已开跑；`completed` 移除；
   `cancelled/discarded/refused` **且未见 `started`** → 判决「从未运行」→ 报丢；已 `started` 后的 `cancelled` 只移除不报（它所在的轮被 Stop 中止，网页已有「Aborted by user」；模型可能已读到，Orca 同判「doubt, never a verdict」）。
-- 报丢 → `claudeRemote` 新回调 `onSteerDropped(uuids)` → launcher `session.client.sendQueueCancelReason(uuids, 'aborted')`（B-332 墓碑，web 已识别）。同一 uuid 只报一次。
-- Query 结束时不扫残留（老 CLI 不发 lifecycle 帧，扫了会把送达的插话标成丢弃）。
+- 报丢 → `claudeRemote` 新回调 `onCommandsDropped(uuids)` → launcher `session.client.sendQueueCancelReason(uuids, 'aborted')`（B-332 墓碑，web 已识别，对任意 inputState 生效）。同一 uuid 只报一次。
+- Query 结束时不扫残留（老 CLI 不发 lifecycle 帧，扫了会把送达的消息标成丢弃）。
 
 ## 兼容矩阵与发布顺序
 
@@ -140,19 +160,22 @@ B-625/B-628 把 Codex wrapper 对照 Orca 修了一遍。Claude 这边的 wrappe
 
 1. **idle 计数漂移**：某个 Claude Code 版本在 result 后既不发 idle 也不在下一轮前发 running → 欠账吞掉一次真正的无 result 结束 → 该轮退回今天的「挂住」，不比现状差；running 一到即清零。
 2. **抢占语义**（事实 ⑦）：插话让尚未出文本的轮以 `success/aborted_streaming` 结束并触发 done 推送，这是现状；本项的单飞拉取让这种场景只推一条排队消息，不再两条背靠背。
-3. **lifecycle 判决保守**：`started` 后被 Stop 扫掉的插话不打墓碑（模型可能已读到），用户需自行重发；与 Orca 一致。
-4. **setPermissionMode 15 s**：CLI 正常几 ms 应答；真卡住时 RPC 得到 error 而非挂到 relay 30 s。
+3. **lifecycle 判决保守**：`started` 后被 Stop 扫掉的消息不打墓碑（模型可能已读到），用户需自行重发；与 Orca 一致。
+4. **setPermissionMode 15 s**：CLI 正常几 ms 应答；真卡住时 RPC 得到 error 而非挂到 relay 30 s；补发旧模式本身也可能挂着，只记日志。
 5. 探针跑在 haiku + 空 settingSources 上，未覆盖 hooks/MCP 很多的会话里 idle 相对 result 的延迟；设计不依赖延迟大小。
+6. **多余 idle 落在已宣告、仍在跑的轮里**（CLI 发射点无同态去重）会被当成结束：turn-end + done 推送 + 提前拉下一条（进 CLI 队列，等当前轮完再跑，不丢）。
+   review 判定现实窗口是「已推未宣告」（已堵住）；mapper 遇到后续输出会 `ensureTurn` 重开轮，不丢内容。接受。
+7. **interrupt 8 s**：Stop 按钮在 CLI 真卡死时多等 5 s 才硬中止；换来 transcript 刷盘 / GC 停顿期间不被误杀重启。
 
 ## 验收标准
 
-- [ ] `claudeTurnEnd.test.ts`：result→idle 去重、无 result 的 idle 关轮、晚到 idle 不关新轮、running 清欠账、requires_action 忽略、启动前 idle 忽略。
-- [ ] `claudeRemote.test.ts` B-631：idle 无 result → thinking false + onReady(undefined) 一次 + 拉下一条；result+idle 只关一次；interrupt 按能力带 `cancelQueued`、回执 `cancelled` 报丢；无能力时 `cancelAsyncMessage` 只对 true 报丢；steer 带 localKey uuid；lifecycle 未 started 的 cancelled 报丢、started 后不报；setModel 超时沿用旧模型并通知。
-- [ ] `claudeProcessExit.test.ts`、`claudeSystemNotices.test.ts`、`claudeCommandLifecycle.test.ts`、`utils/withTimeout.test.ts` 纯函数用例。
-- [ ] `turnSteering.test.ts`：interrupt 超时拒绝且标记清空；`permissionHandler.test.ts`：live 切换超时 → 拒绝并回滚；`claudeLocalLauncher.test.ts`：ExitCodeError/signal 的文案与 `{ error }`。
-- [ ] `sdk/query.test.ts`：子进程 env 带 `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1` 且不覆盖显式值。
-- [ ] `claudeOrcaAlignWiring.test.ts` 源码断言全部过 `scripts/dev/mutation-check.mjs`。
-- [ ] `tsc --noEmit` 零错误；`pnpm build` + `node dist/index.mjs --version`；gitleaks 零报错。
+- [x] `claudeTurnEnd.test.ts`：result→idle 去重、无 result 的 idle 关已宣告的轮、已推未宣告的轮不被晚到/多余 idle 关掉（`pushed; onResult; pushed; idle→duplicate; idle→ignore; running; idle→end`）、running 清欠账、无宣告的 result 容忍、requires_action/启动前 idle 忽略。
+- [x] `claudeRemote.test.ts` B-631：idle 无 result → thinking false + onReady(undefined) 一次 + 拉下一条；result+idle 只关一次；晚到 idle 与多余 idle 都不关已推未宣告的轮；interrupt 按能力带 `cancelQueued`、回执 `cancelled` 报丢（插话与排队 prompt 皆然）；无能力时 `cancelAsyncMessage` 只对 true 报丢；老 CLI 无回执不报；steer 带 localKey uuid；lifecycle 未 started 的 cancelled 报丢、started 后不报；setModel 超时沿用旧模型并通知且下个边界重发；idle 结束 + authentication_failed 帧 → 回收 Query。
+- [x] `claudeProcessExit.test.ts`、`claudeSystemNotices.test.ts`、`claudeCommandLifecycle.test.ts`（含追踪集上限）、`utils/withTimeout.test.ts`（含 `TimeoutError`）纯函数用例；`sdkToLogConverter.test.ts`：`command_lifecycle` 不入 transcript。
+- [x] `turnSteering.test.ts`：interrupt 8 s 超时拒绝且标记清空；`permissionHandler.test.ts`：live 切换超时 → 拒绝、本地回滚并向 SDK 补发旧模式，拒绝（非超时）不补发；`claudeLocalLauncher.test.ts`：ExitCodeError 开轮时只走 turn-end、未开轮时只走事件，signal 文案；`apiSession.test.ts`：`closeClaudeSessionTurn` 返回是否真发了 turn-end。
+- [x] `sdk/query.test.ts`：子进程 env 带 `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1` 且不覆盖显式值。
+- [x] `claudeOrcaAlignWiring.test.ts` 源码断言全部过 `scripts/dev/mutation-check.mjs`。
+- [x] `tsc --noEmit` 零错误；`pnpm build` + `node dist/index.mjs --version`；gitleaks 零报错。
 
 ## 留真机验证项
 
