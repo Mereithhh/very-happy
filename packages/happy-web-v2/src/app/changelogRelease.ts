@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-19-agent-wrappers-orca-align',
+    cliVersion: '0.2.177',
+    date: '2026-10-19',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct19a.title',
+    summaryKey: 'changelog.releases.oct19a.summary',
+    itemKeys: ['changelog.releases.oct19a.death', 'changelog.releases.oct19a.turns', 'changelog.releases.oct19a.failures', 'changelog.releases.oct19a.claude'],
+  },
+  {
     id: '2026-10-18-codex-steer-subagents',
     cliVersion: '0.2.176',
     date: '2026-10-18',

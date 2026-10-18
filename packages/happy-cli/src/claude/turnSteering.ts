@@ -1,5 +1,20 @@
+import { withTimeout } from './utils/withTimeout';
+
+/**
+ * B-631: how long a stop/steer waits for Claude Code to acknowledge the
+ * `interrupt` control request. The SDK applies no deadline of its own (Orca,
+ * claude-agent-sdk-control-requests.ts), so a wedged CLI used to hold the stop
+ * button forever; on timeout the launcher's existing fallback — the hard
+ * AbortController abort — takes over. That fallback restarts the process (a
+ * new transcript id, see claudeRemoteLauncher doAbort), so the budget is
+ * generous: a CLI busy flushing its transcript or in a GC pause for a few
+ * seconds should still be waited for, not killed.
+ */
+export const INTERRUPT_TIMEOUT_MS = 8000;
+
 /** Session-local controller for interrupting one SDK turn without aborting its query. */
-export function createTurnSteeringController() {
+export function createTurnSteeringController(opts: { interruptTimeoutMs?: number } = {}) {
+    const interruptTimeoutMs = opts.interruptTimeoutMs ?? INTERRUPT_TIMEOUT_MS;
     let interrupt: (() => Promise<void>) | null = null;
     let steering = false;
     // B-468: a stop-button interrupt in flight. The SDK answers it with an
@@ -7,6 +22,8 @@ export function createTurnSteeringController() {
     // flag that result read as a failed turn — an error push and NO transcript
     // marker, so a stopped turn looked like "nothing happened".
     let interrupting = false;
+
+    const boundedInterrupt = (run: () => Promise<void>) => withTimeout(run(), interruptTimeoutMs, 'interrupt');
 
     return {
         setInterrupt(next: (() => Promise<void>) | null) {
@@ -16,7 +33,7 @@ export function createTurnSteeringController() {
             if (!interrupt) return false;
             steering = true;
             try {
-                await interrupt();
+                await boundedInterrupt(interrupt);
                 return true;
             } catch (error) {
                 steering = false;
@@ -34,7 +51,7 @@ export function createTurnSteeringController() {
             if (!interrupt) return false;
             interrupting = true;
             try {
-                await interrupt();
+                await boundedInterrupt(interrupt);
                 return true;
             } catch (error) {
                 interrupting = false;

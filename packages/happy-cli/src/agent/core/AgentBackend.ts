@@ -90,6 +90,11 @@ export interface StartSessionResult {
   sessionId: SessionId;
 }
 
+/** B-629: how a prompt's turn ended, as far as the backend's protocol says. */
+export interface PromptOutcome {
+  stopReason?: string;
+}
+
 /**
  * Handler function type for agent messages
  */
@@ -111,12 +116,14 @@ export interface AgentBackend {
   startSession(initialPrompt?: string): Promise<StartSessionResult>;
   
   /**
-   * Send a prompt to an existing session.
-   * 
+   * Send a prompt to an existing session and resolve when the agent ended the turn.
+   *
    * @param sessionId - The session to send the prompt to
    * @param prompt - The user's prompt text
+   * @returns B-629: the agent's stop reason when the protocol reports one (ACP `stopReason`:
+   *   `end_turn`, `cancelled`, `max_tokens`, `refusal`, …); backends without one resolve void.
    */
-  sendPrompt(sessionId: SessionId, prompt: string): Promise<void>;
+  sendPrompt(sessionId: SessionId, prompt: string): Promise<PromptOutcome | void>;
   
   /**
    * Cancel the current operation in a session.

@@ -37,6 +37,8 @@ import { pendingResumeId } from './rewindReconcile';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { wrapperRateLimitReporter } from '@/rateLimits/rateLimitReporter';
+import { describeClaudeProcessExit } from './claudeProcessExit';
+import { createClaudeApiRetryGate, describeClaudeApiRetry, describeClaudeInformational } from './claudeSystemNotices';
 
 interface PermissionsField {
     date: number;
@@ -303,6 +305,8 @@ export async function claudeRemoteLauncher(
     const streamRelay = new StreamRelay({
         send: (frame) => session.client.sendStreamFrame(frame),
     });
+    // B-631: which api_retry frames become a persisted row (claudeSystemNotices.ts).
+    const apiRetryGate = createClaudeApiRetryGate();
 
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
@@ -335,6 +339,25 @@ export async function claudeRemoteLauncher(
         backgroundTasks.observe(message);
         session.setBackgroundTasks(backgroundTasks.list());
         session.scheduledWakeups.observe(message);
+        // B-631: retries and warnings used to vanish with every other system
+        // frame (OutgoingMessageQueue keeps only task_*): a person sitting
+        // through a 529 backoff saw a spinner. The first attempt of a retry run
+        // is persisted, later ones throttled; every attempt reaches the terminal.
+        if (message.type === 'system' && message.subtype === 'api_retry') {
+            const notice = describeClaudeApiRetry(message);
+            messageBuffer.addMessage(notice, 'status');
+            if (apiRetryGate.observe(message, Date.now())) {
+                session.client.sendSessionEvent({ type: 'message', message: notice, kind: 'claude-api-retry' });
+            }
+        } else if (message.type === 'system' && message.subtype === 'informational') {
+            const warning = describeClaudeInformational(message);
+            if (warning) {
+                messageBuffer.addMessage(warning, 'status');
+                session.client.sendSessionEvent({ type: 'message', message: warning, kind: 'claude-warning' });
+            }
+        } else if (message.type === 'result') {
+            apiRetryGate.reset();
+        }
         // SDK prompt echoes supply checkpoint UUIDs; the app already owns the user bubble.
         if (isRuntimeCheckpointReplay(message)) return;
 
@@ -708,7 +731,7 @@ export async function claudeRemoteLauncher(
                             // to the ordinary durable queue in runClaude.
                             if (!session.thinking || !modeGate.matches(input.mode)) return false;
                             if (typeof message === 'string') onPromptFinalized?.(message);
-                            q.steer(message, input.mode);
+                            q.steer(message, input.mode, input.localKey);
                             return true;
                         });
                         permissionHandler.setPermissionModeUpdater(async (mode) => {
@@ -741,6 +764,14 @@ export async function claudeRemoteLauncher(
                     onSessionReset: () => {
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
+                    },
+                    // B-631: a Stop swept these user messages (steers, or prompts
+                    // queued behind a pre-empting steer's turn) before the model
+                    // read them — the same tombstone a destroyed queue item gets
+                    // (B-332), so the web shows them as not delivered, not answered.
+                    onCommandsDropped: (uuids) => {
+                        logger.debug(`[remote]: ${uuids.length} user message(s) never read before the turn ended`);
+                        session.client.sendQueueCancelReason(uuids, 'aborted');
                     },
                     onReady: (result) => {
                         if (turnSteering.consumeReady()) {
@@ -799,10 +830,15 @@ export async function claudeRemoteLauncher(
                         session.client.closeClaudeSessionTurn('cancelled');
                         continue;
                     }
-                    session.client.closeClaudeSessionTurn('failed');
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    // B-631: the SDK's error already says why (`exited with code N.
+                    // stderr: …`). The web renders a failed turn-end's `error` as
+                    // its own line, so the session event is the outlet only when
+                    // no turn was open to carry it — never both.
+                    const exit = describeClaudeProcessExit(e);
+                    const closed = session.client.closeClaudeSessionTurn('failed', { error: exit });
+                    if (!closed) session.client.sendSessionEvent({ type: 'message', message: exit, kind: 'claude-process-exit' });
                     // Account-encrypted feed notification (best-effort).
-                    session.onSessionError(e instanceof Error ? e.message : 'Process exited unexpectedly');
+                    session.onSessionError(exit);
                     continue;
                 }
             } finally {

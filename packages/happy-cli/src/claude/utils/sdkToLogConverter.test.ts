@@ -543,4 +543,25 @@ describe('SDKToLogConverter', () => {
             expect((logMessage as any).mode).toBe('plan')
         })
     })
+
+    describe('command_lifecycle frames (B-631)', () => {
+        it('are queue bookkeeping, not transcript content, and do not disturb parent tracking', () => {
+            const assistant = converter.convert({
+                type: 'assistant',
+                message: { role: 'assistant', content: [{ type: 'text', text: 'working' }] },
+            } as unknown as SDKMessage)
+            expect(assistant).toBeTruthy()
+
+            const lifecycle = converter.convert({
+                type: 'command_lifecycle', command_uuid: 'c-1', state: 'queued', uuid: 'f-1', session_id: 's-1',
+            } as unknown as SDKMessage)
+            expect(lifecycle).toBeNull()
+
+            const next = converter.convert({
+                type: 'assistant',
+                message: { role: 'assistant', content: [{ type: 'text', text: 'still working' }] },
+            } as unknown as SDKMessage)
+            expect((next as any).parentUuid).toBe((assistant as any).uuid)
+        })
+    })
 })

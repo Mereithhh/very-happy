@@ -56,7 +56,9 @@ const mocks = vi.hoisted(() => {
     disposeCalls: 0,
     constructorArgs: null as any,
     /** Per-test override of the backend's sendPrompt emission sequence (null = default script). */
-    sendPromptScript: null as null | ((emit: (message: any) => void) => Promise<void>),
+    sendPromptScript: null as null | ((emit: (message: any) => void) => Promise<unknown>),
+    /** B-629: makes the mock's startSession throw (a restart that fails). */
+    startSessionError: null as null | Error,
   };
 
   return {
@@ -80,7 +82,7 @@ const mocks = vi.hoisted(() => {
       userMessageHandler = handler;
     },
     /** Replace the default sendPrompt emission script (see `sendPromptScript`). */
-    setSendPromptScript: (script: null | ((emit: (message: any) => void) => Promise<void>)) => {
+    setSendPromptScript: (script: null | ((emit: (message: any) => void) => Promise<unknown>)) => {
       mocks.backendState.sendPromptScript = script;
     },
     getKillHandler: () => killHandler,
@@ -198,6 +200,9 @@ vi.mock('./AcpBackend', () => ({
 
     async startSession() {
       mocks.backendState.startSessionCalls += 1;
+      if (mocks.backendState.startSessionError) {
+        throw mocks.backendState.startSessionError;
+      }
       for (const message of mocks.backendState.startSessionMessages) {
         for (const listener of mocks.backendState.listeners) {
           listener(message);
@@ -214,14 +219,14 @@ vi.mock('./AcpBackend', () => ({
         }
       };
       if (mocks.backendState.sendPromptScript) {
-        await mocks.backendState.sendPromptScript(emit);
-        return;
+        return await mocks.backendState.sendPromptScript(emit);
       }
       emit({ type: 'status', status: 'running' });
       emit({ type: 'model-output', textDelta: 'hello' });
       emit({ type: 'tool-call', toolName: 'ReadFile', args: { path: 'README.md' }, callId: 'tool-1' });
       emit({ type: 'tool-result', toolName: 'ReadFile', result: { ok: true }, callId: 'tool-1' });
       emit({ type: 'status', status: 'idle' });
+      return undefined;
     }
 
     async setSessionConfigOption(configId: string, value: string) {
@@ -289,6 +294,7 @@ describe('runAcp', () => {
     mocks.backendState.disposeCalls = 0;
     mocks.backendState.constructorArgs = null;
     mocks.backendState.sendPromptScript = null;
+    mocks.backendState.startSessionError = null;
 
     mocks.mockApiCreate.mockResolvedValue({
       getOrCreateMachine: mocks.mockGetOrCreateMachine,
@@ -1340,6 +1346,145 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
     expect(mocks.backendState.setModeCalls).toEqual([]);
     expect(mocks.backendState.setModelCalls).toEqual([]);
   });
+
+  it("B-629: the agent dying mid-turn ends the turn with its reason, keeps the session, and the next message restarts the agent", async () => {
+    const exit = Object.assign(new Error('pi process exited (code=137): FATAL ERROR: heap limit'), {
+      agentExited: true, agentExitCode: 137, agentExitSignal: null, agentStderrTail: 'FATAL ERROR: heap limit',
+    });
+    mocks.backendState.sendPromptScript = async (emit) => {
+      emit({ type: 'status', status: 'running' });
+      emit({ type: 'status', status: 'stopped', detail: exit.message });
+      throw exit;
+    };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'first' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m]) => m.ev.t === 'turn-end' && m.ev.status === 'failed')).toBe(true));
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'Process exited unexpectedly: pi process exited (code=137): FATAL ERROR: heap limit' });
+      // The session is not archived and the runner is still here.
+      expect(mocks.mockSession.close).not.toHaveBeenCalled();
+      expect(mocks.backendState.startSessionCalls).toBe(1);
+      expect(mocks.mockSession.keepAlive).toHaveBeenLastCalledWith(false, 'remote');
+
+      mocks.backendState.sendPromptScript = null;
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'second' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(2));
+      expect(mocks.backendState.startSessionCalls).toBe(2);
+      expect(mocks.backendState.disposeCalls).toBe(1);
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: expect.stringContaining('pi was restarted after its process exited') });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'turn-end').map(([m]) => m.ev.status)).toEqual(['failed', 'completed']));
+      // A fresh agent gets the Todo discovery again.
+      expect(mocks.backendState.prompts[1].prompt).toContain(BUILTIN_TODO_DISCOVERY);
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it("B-629: a refused prompt fails that turn in the agent's words and keeps the session", async () => {
+    mocks.backendState.sendPromptScript = async (emit) => {
+      emit({ type: 'status', status: 'running' });
+      emit({ type: 'status', status: 'error', detail: 'Authentication required' });
+      throw { code: -32000, message: 'Authentication required', data: { details: 'OPENAI_API_KEY missing' } };
+    };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'first' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m]) => m.ev.t === 'turn-end' && m.ev.status === 'failed')).toBe(true));
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi error: Authentication required: OPENAI_API_KEY missing' });
+      expect(mocks.mockSession.close).not.toHaveBeenCalled();
+      // No restart for a refusal: the same agent takes the next message.
+      mocks.backendState.sendPromptScript = null;
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'second' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(2));
+      expect(mocks.backendState.startSessionCalls).toBe(1);
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'turn-end').map(([m]) => m.ev.status)).toEqual(['failed', 'completed']));
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-629: pi-acp retry / compaction lines are service events, never part of the answer', async () => {
+    mocks.backendState.sendPromptScript = async (emit) => {
+      emit({ type: 'status', status: 'running' });
+      emit({ type: 'event', name: 'notice', payload: { kind: 'retry', text: 'Retrying (attempt 1/3, waiting 2s)...' } });
+      emit({ type: 'event', name: 'notice', payload: { kind: 'compaction', text: 'Context nearing limit, running automatic compaction...' } });
+      emit({ type: 'model-output', textDelta: 'done' });
+      emit({ type: 'status', status: 'idle' });
+    };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'first' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m]) => m.ev.t === 'turn-end')).toBe(true));
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi is retrying the model request (attempt 1/3, waiting 2s)' });
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi is compacting its context (nearing the limit)' });
+      const texts = mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'text').map(([m]) => m.ev.text);
+      expect(texts).toEqual(['done']);
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-629: a restart that fails keeps the session and is tried again on the next message', async () => {
+    const exit = Object.assign(new Error('pi process exited (code=1): bad config'), {
+      agentExited: true, agentExitCode: 1, agentExitSignal: null, agentStderrTail: 'bad config',
+    });
+    mocks.backendState.sendPromptScript = async (emit) => {
+      emit({ type: 'status', status: 'stopped', detail: exit.message });
+      throw exit;
+    };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'first' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'turn-end')).toHaveLength(1));
+
+      // The new agent cannot be started either.
+      mocks.backendState.sendPromptScript = null;
+      mocks.backendState.startSessionError = new Error('Initialize timeout after 60000ms - pi did not respond');
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'second' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'turn-end').map(([m]) => m.ev.status)).toEqual(['failed', 'failed']));
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi error: Initialize timeout after 60000ms - pi did not respond' });
+      expect(mocks.backendState.startSessionCalls).toBe(2);
+      expect(mocks.backendState.prompts).toHaveLength(1);
+      expect(mocks.mockSession.close).not.toHaveBeenCalled();
+
+      // Next message: the restart is tried again, and this time it works.
+      mocks.backendState.startSessionError = null;
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'third' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(2));
+      expect(mocks.backendState.startSessionCalls).toBe(3);
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'turn-end').map(([m]) => m.ev.status)).toEqual(['failed', 'failed', 'completed']));
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it("B-629: pi-acp answering a turn with stopReason 'error' is a failed turn, not a finished one", async () => {
+    mocks.backendState.sendPromptScript = async (emit) => {
+      emit({ type: 'status', status: 'running' });
+      return { stopReason: 'error' };
+    };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'first' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m]) => m.ev.t === 'turn-end')).toBe(true));
+      expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'turn-end').map(([m]) => m.ev.status)).toEqual(['failed']);
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi error: the turn ended with an error reported by the agent' });
+      expect(mocks.backendState.startSessionCalls).toBe(1);
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
 });
 
 describe('extractConfigSelector (B-351)', () => {

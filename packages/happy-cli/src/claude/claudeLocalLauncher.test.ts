@@ -124,4 +124,72 @@ describe('claudeLocalLauncher', () => {
         await expect(launcher).resolves.toEqual({ type: 'switch' });
         expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('completed');
     });
+
+    /** B-631: a local Claude Code that dies says how, on the turn-end and as a line. */
+    describe('process exit reason (B-631)', () => {
+        function sessionFixture() {
+            return {
+                sessionId: 'claude-session-1',
+                path: '/tmp/project',
+                client: {
+                    sendClaudeSessionMessage: vi.fn(),
+                    closeClaudeSessionTurn: vi.fn(),
+                    sendSessionEvent: vi.fn(),
+                    rpcHandlerManager: { registerHandler: vi.fn() },
+                },
+                queue: { reset: vi.fn(), setOnMessage: vi.fn(), size: vi.fn(() => 0) },
+                addSessionFoundCallback: vi.fn(),
+                removeSessionFoundCallback: vi.fn(),
+                onAbort: vi.fn(),
+                onSessionFound: vi.fn(),
+                onThinkingChange: vi.fn(),
+                consumeOneTimeFlags: vi.fn(),
+                claudeEnvVars: undefined,
+                claudeArgs: undefined,
+                mcpServers: {},
+                allowedTools: [],
+                hookSettingsPath: '/tmp/hook-settings.json',
+                sandboxConfig: undefined,
+            };
+        }
+
+        it('a non-zero exit closes the open turn as failed WITH the code; the turn-end is the one line the web shows', async () => {
+            const { ExitCodeError } = await import('./claudeLocal');
+            mockClaudeLocal.mockRejectedValueOnce(new ExitCodeError(2));
+            const session = sessionFixture();
+            session.client.closeClaudeSessionTurn.mockReturnValue(true);
+
+            await expect(claudeLocalLauncher(session as any)).resolves.toEqual({ type: 'exit', code: 2 });
+
+            expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('failed', { error: 'Process exited unexpectedly (code 2)' });
+            expect(session.client.sendSessionEvent).not.toHaveBeenCalled();
+        });
+
+        it('a non-zero exit with no turn open is told through the session event instead', async () => {
+            const { ExitCodeError } = await import('./claudeLocal');
+            mockClaudeLocal.mockRejectedValueOnce(new ExitCodeError(2));
+            const session = sessionFixture();
+            session.client.closeClaudeSessionTurn.mockReturnValue(false);
+
+            await expect(claudeLocalLauncher(session as any)).resolves.toEqual({ type: 'exit', code: 2 });
+
+            expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+                type: 'message', message: 'Process exited unexpectedly (code 2)', kind: 'claude-process-exit',
+            });
+        });
+
+        it('a signal death names the signal before relaunching', async () => {
+            mockClaudeLocal
+                .mockRejectedValueOnce(new Error('Process terminated with signal: SIGKILL'))
+                .mockResolvedValueOnce(undefined);
+            const session = sessionFixture();
+
+            await expect(claudeLocalLauncher(session as any)).resolves.toEqual({ type: 'exit', code: 0 });
+
+            expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+                type: 'message', message: 'Process exited unexpectedly (signal SIGKILL)', kind: 'claude-process-exit',
+            });
+            expect(mockClaudeLocal).toHaveBeenCalledTimes(2);
+        });
+    });
 });

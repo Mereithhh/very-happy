@@ -39,6 +39,36 @@ describe('turn steering controller', () => {
         expect(controller.consumeInterrupted()).toBe(false);
     });
 
+    it('B-631: an interrupt the CLI never answers is given up after the budget, with no pending mark left', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        try {
+            // The default budget: the fallback is a process restart, so a CLI
+            // that is merely slow (transcript flush, GC) gets 8 s, not 3.
+            const controller = createTurnSteeringController();
+            controller.setInterrupt(() => new Promise<void>(() => {}));
+            const stop = controller.interruptTurn();
+            const rejected = expect(stop).rejects.toThrow('interrupt timed out after 8000ms');
+            await vi.advanceTimersByTimeAsync(7999);
+            let settled = false;
+            void stop.catch(() => { settled = true; });
+            await Promise.resolve();
+            expect(settled).toBe(false);   // one millisecond short of the budget: still waiting for the CLI
+            await vi.advanceTimersByTimeAsync(1);
+            await rejected;
+            // The launcher escalates to the hard abort, whose own "Aborted by
+            // user" must not be followed by a second cancelled result.
+            expect(controller.consumeInterrupted()).toBe(false);
+
+            const steer = controller.steer();
+            const steerRejected = expect(steer).rejects.toThrow('interrupt timed out after 8000ms');
+            await vi.advanceTimersByTimeAsync(8000);
+            await steerRejected;
+            expect(controller.consumeReady()).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('B-468: interruptTurn marks exactly one result as user-interrupted', async () => {
         const controller = createTurnSteeringController();
         controller.setInterrupt(async () => undefined);

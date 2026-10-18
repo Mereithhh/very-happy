@@ -2414,6 +2414,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            oct19a: {
+                title: 'pi、Gemini、Claude 会话：agent 挂了会说、轮次按时结束、失败说原因',
+                summary: 'Codex 之后的第三批 wrapper 修复，覆盖另外三个 agent。需要 CLI 0.2.177；网页会把新的失败行标红。',
+                death: 'pi 或 Gemini 会话背后的 agent 进程挂掉（内存不足、崩溃、被杀）时，对话里会写出退出码和最后几行错误输出，会话保留，下一条消息自动重新启动 agent（pi 会从头开始并说明，Gemini 会带上之前的对话作上下文）。以前会话会永远显示「工作中」，之后每条消息都卡住。',
+                turns: 'pi 或 Gemini 的一轮在 agent 报告完成的那一刻结束——不再等它的文字「安静下来」，不再有 120 秒超时被当成回答发出来，「停止」立刻生效（待审批卡片会收回）。超过两分钟的工具调用也能保留输出。',
+                failures: '一轮失败只显示一行红色、用 agent 自己的话（配额、限流、登录、模型不存在……），不再重复报错或让会话消失；Gemini 的重试实时显示；pi 自己的重试和上下文压缩提示显示为灰色小字，不再混进回答里。',
+                claude: 'Claude 会话：没有 result 就结束的一轮不再让转圈常亮；Claude 进程退出会写明退出码和错误；API 重试（529 等）实时显示；「停止」不再被卡死的进程拖住，停止时丢掉的插话会标成未送达。',
+            },
             oct18c: {
                 title: '运行中的 Codex 轮次可以调整方向；Codex 子 agent 有自己的卡片',
                 summary: '网页部分所有会话可用；Codex 部分需要 CLI 0.2.176。',

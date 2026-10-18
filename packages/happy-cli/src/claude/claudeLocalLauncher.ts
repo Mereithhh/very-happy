@@ -3,6 +3,7 @@ import { claudeLocal, ExitCodeError } from "./claudeLocal";
 import { Session } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
+import { describeClaudeProcessExit } from "./claudeProcessExit";
 
 export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number };
 
@@ -136,17 +137,20 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     if (exitReason) {
                         break; // preserve existing exit reason (e.g. switch intent) — SIGTERM is expected
                     }
-                    if (switchRequested || session.queue.size() > 0) {
-                        session.client.closeClaudeSessionTurn('failed');
-                        exitReason = { type: 'switch' };
-                        break;
-                    }
-                    session.client.closeClaudeSessionTurn('failed');
-                    exitReason = { type: 'exit', code: e.exitCode };
+                    // B-631: the exit code travels with the turn-end (the web
+                    // renders a failed turn-end's error as its own line); the
+                    // event is the outlet only when no turn was open to carry it.
+                    // Local mode inherits stderr, so there is no tail.
+                    const exit = describeClaudeProcessExit(e);
+                    const closed = session.client.closeClaudeSessionTurn('failed', { error: exit });
+                    if (!closed) session.client.sendSessionEvent({ type: 'message', message: exit, kind: 'claude-process-exit' });
+                    exitReason = (switchRequested || session.queue.size() > 0)
+                        ? { type: 'switch' }
+                        : { type: 'exit', code: e.exitCode };
                     break;
                 }
                 if (!exitReason) {
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    session.client.sendSessionEvent({ type: 'message', message: describeClaudeProcessExit(e), kind: 'claude-process-exit' });
                     continue;
                 } else {
                     break;
