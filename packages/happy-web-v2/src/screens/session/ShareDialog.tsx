@@ -9,6 +9,8 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ShieldAlert, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSessionShares } from '@/sync/sessionSharesStore';
+import { useAcceptedFriends } from '@/sync/storage';
+import { getDisplayName } from '@/sync/friendTypes';
 import { SessionShareApiError } from '@/sync/apiSessionShares';
 import type { SessionGrantView, SessionShareRole } from '@/sync/sessionShareTypes';
 import { Button, Input } from '@/ui';
@@ -44,6 +46,11 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
     const setRole = useSessionShares((s) => s.setRole);
     const revoke = useSessionShares((s) => s.revoke);
     const [target, setTarget] = useState('');
+    // B-621: friends first — one tap, no typing. Already-granted people drop out of the row.
+    const friends = useAcceptedFriends();
+    const grantedIds = new Set((grants ?? []).map((g) => g.grantee.id));
+    const pickable = friends.filter((f) => !grantedIds.has(f.id));
+    const [picking, setPicking] = useState<string | null>(null);
     const [role, setRoleChoice] = useState<SessionShareRole>('viewer');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -62,12 +69,24 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
         if (!value || busy) return;
         setBusy(true); setError(null);
         try {
-            await share(sessionId, value, role);
+            await share(sessionId, { target: value }, role);
             setTarget('');
         } catch (e) {
             setError(shareErrorCopy(t, e instanceof SessionShareApiError ? e.code : 'unknown'));
         } finally {
             setBusy(false);
+        }
+    };
+
+    const shareWithFriend = async (accountId: string) => {
+        if (busy || picking) return;
+        setPicking(accountId); setError(null);
+        try {
+            await share(sessionId, { accountId }, role);
+        } catch (e) {
+            setError(shareErrorCopy(t, e instanceof SessionShareApiError ? e.code : 'unknown'));
+        } finally {
+            setPicking(null);
         }
     };
 
@@ -97,6 +116,22 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
                     </div>
 
                     <form className="shd-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+                        {pickable.length > 0 && (
+                            <div className="shd-friends" role="group" aria-label={t('share.dialog.friendsLabel')}>
+                                <span className="shd-friends-label">{t('share.dialog.friendsLabel')}</span>
+                                <div className="shd-friends-row">
+                                    {pickable.map((f) => {
+                                        const name = getDisplayName(f);
+                                        return (
+                                            <button key={f.id} type="button" className="shd-friend" disabled={busy || picking !== null} aria-busy={picking === f.id} title={t('share.dialog.friendHint', { name })} onClick={() => void shareWithFriend(f.id)}>
+                                                <span className="shd-grant-avatar" aria-hidden>{f.avatar?.url ? <img src={f.avatar.url} alt="" /> : initials(name)}</span>
+                                                <span className="shd-friend-name">{name}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                         <div className="shd-row">
                             <Input
                                 label={t('share.dialog.targetLabel')}

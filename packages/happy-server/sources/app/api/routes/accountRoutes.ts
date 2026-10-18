@@ -11,7 +11,8 @@ import {
     accountSettingsUpdateSchema,
     enforceAccountSettingsWriteRate,
 } from '@/app/account/accountSettingsLimits';
-import { isAccountResourceLimitError } from '@/app/api/resourceLimits';
+import { enforceAccountWriteRate, isAccountResourceLimitError } from '@/app/api/resourceLimits';
+import { ProfileUsernameTakenError, profileUsernameSchema, updateAccountProfile } from '@/app/social/accountDirectory';
 import { aggregateUsageReports, serializeUsageReports } from '@/app/usage/usageQuery';
 
 export function accountRoutes(app: Fastify) {
@@ -40,6 +41,44 @@ export function accountRoutes(app: Fastify) {
             github: user.githubUser ? user.githubUser.profile : null,
             connectedServices: Array.from(connectedVendors)
         });
+    });
+
+    // B-621: editable profile (display name + public handle). The handle is what
+    // colleagues search for and share to; it is independent of the login username.
+    app.patch('/v1/account/profile', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                firstName: z.string().max(80).nullable().optional(),
+                lastName: z.string().max(80).nullable().optional(),
+                username: z.string().max(64).nullable().optional(),
+            }).strict(),
+            response: {
+                200: z.object({ firstName: z.string().nullable(), lastName: z.string().nullable(), username: z.string().nullable() }),
+                400: z.object({ error: z.literal('invalid_username') }),
+                409: z.object({ error: z.literal('username_taken') }),
+                429: z.object({ error: z.literal('too_many_requests') }),
+            },
+        },
+    }, async (request, reply) => {
+        try {
+            await enforceAccountWriteRate({ accountId: request.userId, resource: 'profile', envName: 'MAX_PROFILE_WRITES_PER_ACCOUNT_PER_MINUTE', fallback: 20 });
+        } catch (error) {
+            if (isAccountResourceLimitError(error)) return reply.code(429).send({ error: 'too_many_requests' as const });
+            throw error;
+        }
+        if (request.body.username && !profileUsernameSchema.safeParse(request.body.username).success) {
+            return reply.code(400).send({ error: 'invalid_username' as const });
+        }
+        try {
+            const account = await updateAccountProfile(request.userId, request.body);
+            const seq = await allocateUserSeq(request.userId);
+            eventRouter.emitUpdate({ userId: request.userId, payload: buildUpdateAccountUpdate(request.userId, { firstName: account.firstName, lastName: account.lastName, username: account.username } as any, seq, randomKeyNaked(12)) });
+            return reply.send({ firstName: account.firstName, lastName: account.lastName, username: account.username });
+        } catch (error) {
+            if (error instanceof ProfileUsernameTakenError) return reply.code(409).send({ error: 'username_taken' as const });
+            throw error;
+        }
     });
 
     // Get Account Settings API

@@ -1434,6 +1434,11 @@ class Sync {
         return this.sessionsSync.invalidateAndAwait();
     }
 
+    /** B-621: People screen / share picker after a friend action (the socket event also lands, this is the no-wait path). */
+    public refreshFriends = async () => {
+        return this.friendsSync.invalidateAndAwait();
+    }
+
     /**
      * Purge a deleted session from local state. Called from the
      * `delete-session` socket update AND directly after a successful
@@ -2940,6 +2945,7 @@ class Sync {
                 ...currentProfile,
                 firstName: accountUpdate.firstName !== undefined ? accountUpdate.firstName : currentProfile.firstName,
                 lastName: accountUpdate.lastName !== undefined ? accountUpdate.lastName : currentProfile.lastName,
+                username: accountUpdate.username !== undefined ? accountUpdate.username : currentProfile.username,
                 avatar: accountUpdate.avatar !== undefined ? accountUpdate.avatar : currentProfile.avatar,
                 github: accountUpdate.github !== undefined ? accountUpdate.github : currentProfile.github,
                 timestamp: updateData.createdAt // Update timestamp to latest

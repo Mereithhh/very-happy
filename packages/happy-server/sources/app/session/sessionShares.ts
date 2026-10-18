@@ -26,6 +26,7 @@ import { storeSessionMessages, SESSION_MESSAGE_CONTENT_MAX_BYTES } from '@/app/a
 import { enforceAccountWriteRate } from '@/app/api/resourceLimits';
 import { businessAuditEnabled, publishAudit } from '@/app/audit/producer';
 import { buildUserProfile, type UserProfile } from '@/app/social/type';
+import { displayNameOf, identityOf, profileInclude, resolveAccountByHandle, type ProfileAccount } from '@/app/social/accountDirectory';
 import { RelationshipStatus } from '@prisma/client';
 import {
     contentKeyPairFromSecret,
@@ -146,54 +147,11 @@ async function sessionPreview(session: SessionKeyRow & { metadata: string }): Pr
 }
 
 // ---------------------------------------------------------------- profiles
-
-const profileInclude = { githubUser: true } as const;
-type ProfileAccount = Prisma.AccountGetPayload<{ include: typeof profileInclude }>;
+// Who-is-this lives in the account directory (B-621) so sharing, friends and
+// later Spaces resolve people the same way.
 
 function profileOf(account: ProfileAccount): UserProfile {
     return buildUserProfile(account, RelationshipStatus.none);
-}
-
-/** Profile name → profile username → login username (password accounts keep theirs on AccountCredential) → email local part. */
-export function displayNameOf(account: { firstName: string | null; lastName: string | null; username: string | null }, identity?: { handle?: string | null; email?: string | null }): string {
-    const full = [account.firstName, account.lastName].filter(Boolean).join(' ').trim();
-    if (full) return full;
-    if (account.username) return account.username;
-    if (identity?.handle) return identity.handle;
-    if (identity?.email) return identity.email.split('@')[0];
-    return 'someone';
-}
-
-async function resolveTargetAccount(target: string): Promise<ProfileAccount | null> {
-    const trimmed = target.trim();
-    if (!trimmed) return null;
-    if (trimmed.includes('@')) {
-        const identity = await db.accountIdentity.findFirst({
-            where: { email: { equals: trimmed, mode: 'insensitive' } },
-            select: { accountId: true },
-            orderBy: { createdAt: 'asc' },
-        });
-        if (!identity) return null;
-        return db.account.findUnique({ where: { id: identity.accountId }, include: profileInclude });
-    }
-    const byProfile = await db.account.findFirst({ where: { username: { equals: trimmed, mode: 'insensitive' } }, include: profileInclude });
-    if (byProfile) return byProfile;
-    // Password sign-ups (B-528) keep the login username on AccountCredential only.
-    const credential = await db.accountCredential.findFirst({ where: { username: { equals: trimmed, mode: 'insensitive' } }, select: { accountId: true } });
-    return credential ? db.account.findUnique({ where: { id: credential.accountId }, include: profileInclude }) : null;
-}
-
-async function primaryEmail(accountId: string): Promise<string | null> {
-    const identity = await db.accountIdentity.findFirst({ where: { accountId, email: { not: null } }, select: { email: true }, orderBy: { createdAt: 'asc' } });
-    return identity?.email ?? null;
-}
-
-async function identityOf(accountId: string): Promise<{ handle: string | null; email: string | null }> {
-    const [credential, email] = await Promise.all([
-        db.accountCredential.findUnique({ where: { accountId }, select: { username: true } }),
-        primaryEmail(accountId),
-    ]);
-    return { handle: credential?.username ?? null, email };
 }
 
 // ---------------------------------------------------------------- views
@@ -260,11 +218,14 @@ function audit(kind: string, accountId: string, sessionId: string, payload: Reco
     if (businessAuditEnabled()) publishAudit({ kind, accountId, sessionId, payload });
 }
 
-export async function createSessionGrant(input: { ownerId: string; sessionId: string; target: string; role: SessionGrantRole }): Promise<SessionGrantView> {
+export async function createSessionGrant(input: { ownerId: string; sessionId: string; target?: string; granteeAccountId?: string; role: SessionGrantRole }): Promise<SessionGrantView> {
     const session = await db.session.findUnique({ where: { id: input.sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true, metadata: true } });
     if (!session || session.accountId !== input.ownerId) throw new SessionShareError('session_not_found', 404);
     if (!session.dataEncryptionKey) throw new SessionShareError('session_not_shareable', 409);
-    const grantee = await resolveTargetAccount(input.target);
+    // A friend picked from the directory arrives as an id; typed input is resolved by handle / email.
+    const grantee = input.granteeAccountId
+        ? await db.account.findUnique({ where: { id: input.granteeAccountId }, include: profileInclude })
+        : await resolveAccountByHandle(input.target ?? '');
     if (!grantee) throw new SessionShareError('target_not_found', 404);
     if (grantee.id === input.ownerId) throw new SessionShareError('cannot_share_with_self', 400);
 

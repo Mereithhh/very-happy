@@ -24,7 +24,10 @@ export const UserProfileSchema = z.object({
     }).nullable(),
     username: z.string(),
     bio: z.string().nullable(),
-    status: RelationshipStatusSchema
+    status: RelationshipStatusSchema,
+    // B-621 directory fields — optional so an older server still parses.
+    displayName: z.string().optional(),
+    email: z.string().nullable().optional(),
 });
 
 export type UserProfile = z.infer<typeof UserProfileSchema>;
@@ -74,8 +77,9 @@ export type UsersSearchResponse = z.infer<typeof UsersSearchResponseSchema>;
 //
 
 export function getDisplayName(profile: UserProfile): string {
+    if (profile.displayName) return profile.displayName;
     const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
-    return fullName || profile.username;
+    return fullName || profile.username || profile.email || profile.id;
 }
 
 export function isFriend(status: RelationshipStatus): boolean {

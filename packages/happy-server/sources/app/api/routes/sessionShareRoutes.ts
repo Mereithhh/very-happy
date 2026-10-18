@@ -42,9 +42,15 @@ export function sessionShareRoutes(app: Fastify) {
 
     app.post('/v1/sessions/:sessionId/shares', {
         ...auth,
-        schema: { params: sessionParams, body: z.object({ target: z.string().min(1).max(320), role: roleSchema }) },
+        // Either a typed target (email / handle / login username) or a directory
+        // account id (friend picker). Exactly one of the two.
+        schema: { params: sessionParams, body: z.object({
+            target: z.string().min(1).max(320).optional(),
+            accountId: z.string().min(1).max(256).optional(),
+            role: roleSchema,
+        }).refine((b) => Boolean(b.target) !== Boolean(b.accountId), { message: 'target xor accountId' }) },
     }, async (request, reply) => handle(reply, async () => ({
-        grant: await createSessionGrant({ ownerId: request.userId, sessionId: request.params.sessionId, target: request.body.target, role: request.body.role }),
+        grant: await createSessionGrant({ ownerId: request.userId, sessionId: request.params.sessionId, target: request.body.target, granteeAccountId: request.body.accountId, role: request.body.role }),
     })));
 
     app.patch('/v1/sessions/:sessionId/shares/:accountId', {

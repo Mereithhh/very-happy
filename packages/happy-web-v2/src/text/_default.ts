@@ -1679,6 +1679,8 @@ export const en = {
             description: 'Give another account on this server access to this conversation. They see the same transcript you do; your machine stays yours.',
             targetLabel: 'Email or username',
             targetPlaceholder: 'name@company.com',
+            friendsLabel: 'Friends',
+            friendHint: ({ name }: { name: string }) => `Share with ${name}`,
             roleLabel: 'Access',
             roleViewerHint: 'Reads the transcript live. Cannot send.',
             roleDriverHint: 'Sends messages under their own name.',
@@ -4730,6 +4732,38 @@ export const en = {
         saveFailed: 'Could not update idle hibernation',
     },
 
+    // B-621: people directory (friends) — the share picker and later Spaces build on it.
+    people: {
+        title: 'People',
+        friendCount: ({ count }: { count: number }) => count === 1 ? '1 friend' : `${count} friends`,
+        searchLabel: 'Find people',
+        searchPlaceholder: 'Handle or exact email…',
+        searchHint: 'Search by handle prefix, or paste an exact email. Only accounts on this server.',
+        results: 'Search results',
+        noResults: 'No account matches. Ask them to sign in here once, then search again.',
+        incoming: 'Waiting for you',
+        friends: 'Friends',
+        friendsEmpty: 'Nobody yet. Find a colleague above — friends show up first when you share a session.',
+        outgoing: 'Sent',
+        add: 'Add',
+        accept: 'Accept',
+        decline: 'Decline',
+        cancelRequest: 'Cancel request',
+        remove: 'Remove',
+        removeConfirm: ({ name }: { name: string }) => `Remove ${name} from your friends?`,
+        alreadyFriends: 'Friends',
+        actionFailed: 'That did not go through — try again',
+    },
+    settingsProfile: {
+        title: 'Name & handle',
+        subtitle: 'How you appear to people you share with',
+        notSet: 'Not set — tap to choose a name and handle',
+        handle: 'Handle',
+        handleHint: 'Lowercase letters, digits, dots, dashes, underscores; 3–64 characters. Colleagues search for this and type it when sharing a session. It is separate from your login username.',
+        handleInvalid: 'Use 3–64 lowercase letters, digits, dots, dashes or underscores.',
+        handleTaken: 'That handle is already taken.',
+        tooMany: 'Too many changes — wait a minute and try again.',
+    },
 } as const;
 
 export type Translations = typeof en;

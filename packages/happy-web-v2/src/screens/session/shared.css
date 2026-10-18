@@ -135,6 +135,17 @@
 
 /* ── share dialog (owner) — reuses the sessionOptionsDialog surface tokens ── */
 .shd-form { display: grid; gap: var(--sp-3); margin-top: var(--sp-4); }
+/* B-621 friends row: one chip per friend not yet on the list; tap = share with the chosen role */
+.shd-friends { display: grid; gap: var(--sp-1); }
+.shd-friends-label { font-size: var(--fs-11); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); }
+.shd-friends-row { display: flex; gap: var(--sp-1); overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.shd-friends-row::-webkit-scrollbar { display: none; }
+.shd-friend { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--bg-1); color: var(--text); font: inherit; font-size: var(--fs-12); cursor: pointer; }
+.shd-friend:hover:not(:disabled) { border-color: var(--line-heavy); background: var(--bg-2); }
+.shd-friend:disabled { opacity: .6; cursor: default; }
+.shd-friend .shd-grant-avatar { width: 22px; height: 22px; font-size: var(--fs-10); }
+.shd-friend-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (pointer: coarse) { .shd-friend { min-height: 36px; } }
 .shd-row { display: flex; gap: var(--sp-2); align-items: flex-end; }
 .shd-row > .vh-field { flex: 1; min-width: 0; }
 .shd-role { display: flex; gap: var(--sp-1); }

@@ -66,6 +66,7 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: 'appearance.wrapDiff', section: 'appearance', title: 'settingsAppearance.wrapLinesInDiffs', description: 'settingsAppearance.wrapLinesInDiffsDescription', keywords: ['wrap', 'soft wrap', 'line wrap', 'diff', '换行', '自动换行', '折行', '差异'] },
   { id: 'appearance.featureTips', section: 'appearance', title: 'featureTips.resetTitle', description: 'featureTips.resetDescription', keywords: ['tips', 'hints', 'onboarding', 'reset', 'feature', '提示', '功能提示', '引导', '重置', '新功能'] },
   // ── account ──
+  { id: 'account.profile', section: 'account', title: 'settingsProfile.title', description: 'settingsProfile.subtitle', keywords: ['profile', 'name', 'handle', 'username', 'display name', '资料', '昵称', '名字', '用户名', '句柄'] },
   { id: 'account.emailLogin', section: 'account', title: 'settingsAccount.emailLogin', keywords: ['email', 'mail', 'login', '邮箱', '邮件', '登录'] },
   { id: 'account.googleLogin', section: 'account', title: 'settingsAccount.googleLogin', keywords: ['google', 'oauth', 'login', '谷歌', '登录'] },
   { id: 'account.password', section: 'account', title: 'settingsAccount.password', keywords: ['password', 'change password', '密码', '修改密码'] },

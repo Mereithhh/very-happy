@@ -84,6 +84,7 @@ export const ApiUpdateAccountSchema = z.object({
         version: z.number()
     }).nullish(),
     firstName: z.string().nullish(),
+    username: z.string().nullish(),
     lastName: z.string().nullish(),
     avatar: ImageRefSchema.nullish(),
     github: GitHubProfileSchema.nullish(),

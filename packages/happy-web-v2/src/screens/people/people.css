@@ -1,0 +1,48 @@
+/* People (B-621) — Console styling. Same discipline as todos.css: bg ladder,
+ * no raw colors, --accent is for live activity only (a person is not live),
+ * the only status color is --danger on the incoming-request count. Names are
+ * human text; handles / emails / counts are the machine layer → mono. */
+.pp { display: flex; flex-direction: column; flex: 1; min-height: 0; background: var(--bg-0); }
+.pp-header {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.pp-title { font-weight: 600; font-size: var(--fs-14); color: var(--text); }
+.pp-count { margin-left: auto; color: var(--text-faint); font-size: var(--fs-11); }
+.pp-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-4) var(--sp-5) calc(var(--sp-8) + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: var(--sp-6); max-width: 720px; width: 100%; margin: 0 auto; }
+.pp-section { display: flex; flex-direction: column; gap: var(--sp-2); }
+.pp-section-title { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-11); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); }
+.pp-badge { font-size: var(--fs-10); line-height: 16px; padding: 0 6px; border-radius: var(--r-pill); color: var(--danger); border: 1px solid var(--danger); background: var(--danger-dim); }
+
+/* search field: one bordered surface (1-Border rule), icon + input + spinner */
+.pp-search { display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3); min-height: 40px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-1); color: var(--text-faint); }
+.pp-search:focus-within { border-color: var(--line-heavy); }
+.pp-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-14); }
+.pp-search input::placeholder { color: var(--text-faint); }
+.pp-hint { color: var(--text-faint); font-size: var(--fs-12); line-height: 1.4; }
+
+.pp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-1); overflow: hidden; }
+.pp-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); min-height: 52px; }
+.pp-row + .pp-row { border-top: 1px solid var(--line); }
+.pp-avatar { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-2); color: var(--text-dim); font-size: var(--fs-12); font-weight: 600; overflow: hidden; }
+.pp-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.pp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pp-name { font-size: var(--fs-14); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-sub { font-family: var(--font-mono); font-size: var(--fs-11); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-actions { flex: none; display: flex; align-items: center; gap: var(--sp-1); }
+.pp-actions .vh-btn svg { margin-right: 2px; }
+.pp-confirm { font-size: var(--fs-12); color: var(--text-dim); max-width: 240px; }
+.pp-tag { font-size: var(--fs-11); color: var(--text-faint); padding: 0 var(--sp-2); }
+.pp-empty { padding: var(--sp-3); color: var(--text-faint); font-size: var(--fs-13); }
+.pp-loading { display: grid; place-items: center; padding: var(--sp-6); }
+
+@media (max-width: 600px) {
+  .pp-body { padding-left: var(--sp-4); padding-right: var(--sp-4); }
+  .pp-row { flex-wrap: wrap; }
+  .pp-actions { width: 100%; justify-content: flex-end; padding-left: 44px; }
+  .pp-confirm { max-width: none; flex: 1; }
+}
+@media (pointer: coarse) { .pp-actions .vh-btn { min-height: 36px; } }

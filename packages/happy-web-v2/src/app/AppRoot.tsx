@@ -62,6 +62,8 @@ const AutomationFormScreen = lazy(() => import('@/screens/automations/Automation
 const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen').then((m) => ({ default: m.AssistantScreen })));
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
 const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
+// B-621: people directory (friends) — the share picker and later Spaces build on it.
+const PeopleScreen = lazy(() => import('@/screens/people/PeopleScreen').then((m) => ({ default: m.PeopleScreen })));
 const ChangelogScreen = lazy(() => import('@/screens/changelog/ChangelogScreen').then((m) => ({ default: m.ChangelogScreen })));
 // B-599: iOS standalone viewport diagnostics — no auth, reached from 设置 → 诊断.
 const ViewportDiagScreen = lazy(() => import('@/diag/ViewportDiagScreen').then((m) => ({ default: m.ViewportDiagScreen })));
@@ -344,6 +346,7 @@ const router = createBrowserRouter(
             { path: 'board/automations/:id', element: <LegacyAutomationRedirect /> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
             { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },
+            { path: 'people', element: <Lazy><PeopleScreen /></Lazy> },
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
             { path: 'terminal/:machineId', element: <Lazy fullViewport={false} centered><WebTerminalRoute /></Lazy> },

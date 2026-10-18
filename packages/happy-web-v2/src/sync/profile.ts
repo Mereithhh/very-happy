@@ -26,6 +26,8 @@ export const ProfileSchema = z.object({
     timestamp: z.number(),
     firstName: z.string().nullable(),
     lastName: z.string().nullable(),
+    // B-621: public handle (what others search for / share to); independent of the login username.
+    username: z.string().nullable().default(null),
     avatar: ImageRefSchema.nullable(),
     github: GitHubProfileSchema.nullable(),
     connectedServices: z.array(z.string()).default([])
@@ -44,6 +46,7 @@ export const profileDefaults: Profile = {
     timestamp: 0,
     firstName: null,
     lastName: null,
+    username: null,
     avatar: null,
     github: null,
     connectedServices: []

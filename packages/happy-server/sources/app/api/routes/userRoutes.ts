@@ -9,6 +9,7 @@ import { friendList } from "@/app/social/friendList";
 import { buildUserProfile } from "@/app/social/type";
 import { enforceRelationshipWriteRate } from '@/app/social/relationshipLimits';
 import { isAccountResourceLimitError } from '../resourceLimits';
+import { displayNameOf, identityOf, searchAccounts } from '@/app/social/accountDirectory';
 
 const userIdSchema = z.string().min(1).max(256);
 
@@ -78,34 +79,8 @@ export async function userRoutes(app: Fastify) {
     }, async (request, reply) => {
         const { query } = request.query;
 
-        // Search for users by username, first 10 matches
-        const users = await db.account.findMany({
-            where: {
-                username: {
-                    startsWith: query,
-                    mode: 'insensitive'
-                }
-            },
-            include: {
-                githubUser: true
-            },
-            take: 10,
-            orderBy: {
-                username: 'asc'
-            }
-        });
-
-        // Resolve relationship status for each user
-        const userProfiles = await Promise.all(users.map(async (user) => {
-            const relationship = await db.userRelationship.findFirst({
-                where: {
-                    fromUserId: request.userId,
-                    toUserId: user.id
-                }
-            });
-            const status: RelationshipStatus = relationship?.status || RelationshipStatus.none;
-            return buildUserProfile(user, status);
-        }));
+        // B-621: directory search — profile handle / login username prefix, or exact email.
+        const userProfiles = await searchAccounts(request.userId, query, 10);
 
         return reply.send({
             users: userProfiles
@@ -182,7 +157,7 @@ export async function userRoutes(app: Fastify) {
         preHandler: app.authenticate
     }, async (request, reply) => {
         const friends = await friendList(Context.create(request.userId));
-        return reply.send({ friends });
+        return reply.send({ friends: await Promise.all(friends.map((f) => withDirectoryFields(f))) });
     });
 };
 
@@ -201,5 +176,19 @@ const UserProfileSchema = z.object({
     }).nullable(),
     username: z.string(),
     bio: z.string().nullable(),
-    status: RelationshipStatusSchema
+    status: RelationshipStatusSchema,
+    // B-621 directory fields (optional so older callers keep parsing).
+    displayName: z.string().optional(),
+    email: z.string().nullable().optional(),
 });
+
+/** Friends list rows carry the same display fields as search results. */
+async function withDirectoryFields<P extends { id: string; firstName: string; lastName: string | null; username: string }>(profile: P) {
+    const identity = await identityOf(profile.id);
+    return {
+        ...profile,
+        username: profile.username || identity.handle || '',
+        displayName: displayNameOf({ firstName: profile.firstName || null, lastName: profile.lastName, username: profile.username || null }, identity),
+        email: identity.email,
+    };
+}

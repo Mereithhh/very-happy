@@ -4,7 +4,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, Contact } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -85,6 +85,7 @@ import { archiveAndDeleteWorktree, canArchiveAndDeleteWorktree } from '@/app/wor
 import { worktreeCopy } from './worktreeCopy';
 import { SessionPeek, peekDomId, useSessionPeek } from './SessionPeek';
 import { SharedInvites } from './SharedInvites';
+import { useFriendRequests } from '@/sync/storage';
 import { useSessionShares } from '@/sync/sessionSharesStore';
 import { Modal } from '@/modal';
 import '../session/shared.css';
@@ -172,6 +173,7 @@ export function Sidebar() {
   const sessions = useSessions();
   const teams = useTeamNavigation();
   const teamCopy = useTeamNavigationCopy();
+  const incomingPeople = useFriendRequests().length;
   const happyBotEntryVisible = useLocalSetting('happyBotEntryVisible');
   // B-498/B-504: the Automations entry is visible unless the server said
   // 404 automations_disabled (the feature is open to everyone); the badge is
@@ -1061,6 +1063,10 @@ export function Sidebar() {
           </button>
         )}
         <button onClick={() => navigate('/todos')}><ListChecks size={18} /><span>{t('todos.title')}</span></button>
+        <button onClick={() => navigate('/people')}>
+          <Contact size={18} /><span>{t('people.title')}</span>
+          {incomingPeople > 0 && <span className="sb-nav-attn mono" title={t('people.incoming')}>{incomingPeople}</span>}
+        </button>
         <button onClick={() => navigate('/help')}><CircleHelp size={17}/><span>{t('sidebar.openHelp')}</span></button>
       </nav>
 

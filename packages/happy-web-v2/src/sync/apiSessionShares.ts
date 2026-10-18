@@ -42,8 +42,11 @@ export function listSessionGrants(sessionId: string): Promise<SessionGrantView[]
     return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares`, z.object({ grants: z.array(SessionGrantViewSchema) })).then((r) => r.grants);
 }
 
-export function createSessionGrant(sessionId: string, target: string, role: SessionShareRole): Promise<SessionGrantView> {
-    return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares`, z.object({ grant: SessionGrantViewSchema }), json({ target, role })).then((r) => r.grant);
+/** B-621: share to a typed target (email / handle) or to a directory account id (friend picker). */
+export type ShareTarget = { target: string } | { accountId: string };
+
+export function createSessionGrant(sessionId: string, who: ShareTarget, role: SessionShareRole): Promise<SessionGrantView> {
+    return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares`, z.object({ grant: SessionGrantViewSchema }), json({ ...who, role })).then((r) => r.grant);
 }
 
 export function updateSessionGrantRole(sessionId: string, accountId: string, role: SessionShareRole): Promise<SessionGrantView> {

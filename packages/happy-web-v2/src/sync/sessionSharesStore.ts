@@ -16,6 +16,7 @@ import {
     listSessionGrants,
     revokeSessionGrant,
     updateSessionGrantRole,
+    type ShareTarget,
 } from './apiSessionShares';
 import type { SessionGrantView, SessionShareRole, SharedSessionInvite } from './sessionShareTypes';
 
@@ -25,7 +26,7 @@ export interface SessionSharesState {
     grantsBySession: Record<string, SessionGrantView[]>;
     refreshInvites: () => Promise<void>;
     refreshGrants: (sessionId: string) => Promise<void>;
-    share: (sessionId: string, target: string, role: SessionShareRole) => Promise<SessionGrantView>;
+    share: (sessionId: string, who: ShareTarget, role: SessionShareRole) => Promise<SessionGrantView>;
     setRole: (sessionId: string, accountId: string, role: SessionShareRole) => Promise<void>;
     revoke: (sessionId: string, accountId: string) => Promise<void>;
     accept: (grantId: string) => Promise<SharedSessionInvite | null>;
@@ -56,8 +57,8 @@ export const useSessionShares = create<SessionSharesState>((set, get) => ({
         const grants = await listSessionGrants(sessionId);
         set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: grants } }));
     },
-    share: async (sessionId, target, role) => {
-        const grant = await createSessionGrant(sessionId, target, role);
+    share: async (sessionId, who, role) => {
+        const grant = await createSessionGrant(sessionId, who, role);
         set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: upsertGrant(s.grantsBySession[sessionId] ?? [], grant) } }));
         return grant;
     },

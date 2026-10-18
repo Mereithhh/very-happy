@@ -1,4 +1,5 @@
 import { auditLogin } from '@/app/audit/requestAudit';
+import { seedProfileUsername } from '@/app/social/accountDirectory';
 import { clientRateLimitKey } from "@/app/api/clientIp";
 import { z } from 'zod';
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'crypto';
@@ -388,6 +389,8 @@ export function accountAuthRoutes(app: Fastify) {
                 },
                 create: async (tx) => {
                     const account = await tx.account.create({ data: { publicKey } });
+                    // B-621: the login username seeds the public profile handle when free.
+                    await seedProfileUsername(tx, account.id, username);
                     const secretEnc = await upsertAccountSecret(tx, account.id, request.body.secret);
                     await tx.$executeRawUnsafe(
                         `INSERT INTO "AccountCredential"
