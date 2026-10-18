@@ -20,6 +20,15 @@ import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import { mapToClaudeMode, type ClaudeSdkPermissionMode } from './permissionMode';
+import { withTimeout } from './withTimeout';
+
+/**
+ * B-631: budget for the SDK `set_permission_mode` control request. The SDK
+ * applies no deadline; a wedged Claude Code used to hold the web's RPC until
+ * the relay's 30 s cap. Inside that cap the handler rolls back and the RPC
+ * answers `{ error }` (AGENTS 铁律 17).
+ */
+export const LIVE_PERMISSION_MODE_TIMEOUT_MS = 15_000;
 
 interface PermissionResponse {
     id: string;
@@ -177,7 +186,7 @@ export class PermissionHandler {
             // Give an auto-resolved canUseTool continuation one event-loop turn
             // to send its response before issuing the mode control request.
             await new Promise<void>((resolve) => setImmediate(resolve));
-            await this.setPermissionModeCallback(mode);
+            await withTimeout(this.setPermissionModeCallback(mode), LIVE_PERMISSION_MODE_TIMEOUT_MS, 'set_permission_mode');
         } catch (error) {
             this.permissionMode = previousMode;
             if (this.deferredPermissionMode === mode) this.deferredPermissionMode = undefined;
@@ -195,7 +204,7 @@ export class PermissionHandler {
                 // interaction completed but before this deferred update ran.
                 // Never let the older control request overwrite it in the SDK.
                 if (!this.setPermissionModeCallback || this.permissionMode !== mode) return;
-                await this.setPermissionModeCallback(mode);
+                await withTimeout(this.setPermissionModeCallback(mode), LIVE_PERMISSION_MODE_TIMEOUT_MS, 'set_permission_mode');
             });
             this.modeChangeQueue = task.catch((error) => {
                 logger.debug('[PermissionHandler] Deferred SDK permission mode update failed', error);
