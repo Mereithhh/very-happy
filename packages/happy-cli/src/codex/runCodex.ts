@@ -1,4 +1,5 @@
-import { PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
+import { CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
+import { unlink } from 'node:fs/promises';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { readChildThread } from './readChildThread';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
@@ -147,7 +148,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -328,6 +329,37 @@ export async function runCodex(opts: {
     let discoveredModels: Awaited<ReturnType<CodexAppServerClient['listModels']>> = [];
 
     registerAgentAttachmentDownloads(session);
+    const CODEX_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    // B-628: a message the web sends with `delivery: 'steer'` (the「Steer」button on a
+    // queued message) goes into the running turn through `turn/steer` instead of waiting
+    // behind it — the Codex twin of runClaude's trySteer. Anything short of `steered`
+    // (nothing running, this codex has no turn/steer, Codex refused, transport) falls
+    // back to the ordinary queue, so the message becomes the next turn exactly as before.
+    // The turn keeps its model / approval policy; the overrides this message carried were
+    // already folded into current* above and apply from the next turn/start.
+    const steerIntoRunningTurn = async (text: string, attachments: PendingAttachment[] | undefined, localKey: string | undefined): Promise<boolean> => {
+        if (!turnActive || abortInProgress || shouldExit) return false;
+        const staged = attachments?.length ? await stageClaudeAttachments(attachments, {
+            happyHomeDir: configuration.happyHomeDir, sessionId: session.sessionId,
+        }) : [];
+        try {
+            const outcome = await client.steerTurn({
+                text: appendStagedAttachmentsToPrompt(text, staged),
+                images: staged.filter((file) => CODEX_IMAGE_MIME_TYPES.includes(file.mimeType)).map((file) => file.path),
+                clientId: localKey,
+            });
+            if (outcome === 'steered') {
+                messageBuffer.addMessage(text, 'user');
+                return true;
+            }
+            logger.debug(`[Codex] Steer not taken (${outcome}); queuing the message for the next turn`);
+        } catch (error) {
+            logger.debug('[Codex] Steer failed; queuing the message for the next turn', safeCodexErrorMetadata(error));
+        }
+        // The queue stages the attachments again when it dequeues them.
+        await Promise.all(staged.map((file) => unlink(file.path).catch(() => undefined)));
+        return false;
+    };
     let userMessageDelivery = Promise.resolve();
     session.onUserMessage((message) => {
         // Claim synchronously, then preserve message order while downloads finish.
@@ -395,6 +427,12 @@ export async function runCodex(opts: {
                 appendSystemPrompt: messageAppendSystemPrompt,
                 effort: messageEffort,
             };
+            if (message.meta?.delivery === 'steer' && !isCodexClearText(message.content.text)) {
+                if (await steerIntoRunningTurn(message.content.text, attachments, message.localKey)) {
+                    logger.debug('[Codex] User message steered into the current turn');
+                    return;
+                }
+            }
             const enqueueResult = enqueueCodexUserText({
                 text: message.content.text,
                 mode: enhancedMode,
@@ -737,6 +775,16 @@ export async function runCodex(opts: {
             const notice = describeCodexRetry(msg);
             messageBuffer.addMessage(notice, 'status');
             session.sendSessionEvent({ type: 'message', message: notice });
+        } else if (msg.type === 'steer_dropped') {
+            // B-628: the turn ended (stopped / failed / app-server died) before the model
+            // read a steered message — Codex never echoed it. The same tombstone a destroyed
+            // queue item gets (B-332), so the message shows as not delivered instead of
+            // looking answered.
+            const clientIds = Array.isArray(msg.client_ids) ? msg.client_ids.filter((id): id is string => typeof id === 'string' && id.length > 0) : [];
+            if (clientIds.length > 0) {
+                session.sendQueueCancelReason(clientIds, 'aborted');
+                messageBuffer.addMessage('A steered message was not read before the turn ended', 'status');
+            }
         }
 
         if (msg.type === 'task_started') {

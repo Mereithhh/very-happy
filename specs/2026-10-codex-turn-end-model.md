@@ -29,9 +29,10 @@ B-622 修掉了「agent message 当一轮结束」。对照 Orca 的 Codex wrapp
 
 ## 非目标
 
-- 子 thread 的 item（命令、消息）如何在对话里呈现（现状：扁平进主对话 + B-614 的子线程卡）不改。
-- `turn/steer`（Orca 轮中插话）不做；轮中消息仍排队到下一轮（B-509）。
-- 进程树杀（Orca `killCodexAppServerProcessTree`）不做；app-server 自己回收子进程。
+- 子 thread 的 item（命令、消息）如何在对话里呈现（现状：扁平进主对话 + B-614 的子线程卡）不改
+  → **B-628 做了**（`specs/2026-10-codex-steer-subagents-process-tree.md`）。
+- `turn/steer`（Orca 轮中插话）不做；轮中消息仍排队到下一轮（B-509）→ **B-628 做了**。
+- 进程树杀（Orca `killCodexAppServerProcessTree`）不做；app-server 自己回收子进程 → **B-628 做了**。
 
 ## 现状事实（代码已确认）
 

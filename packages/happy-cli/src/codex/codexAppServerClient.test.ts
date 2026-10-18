@@ -1437,6 +1437,213 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('B-628: a steered message goes into the running turn by name and is settled by its echo', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3011,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-11') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => turnStartedLines(stdout, msg.id!, 'thread-raw-11', 'turn-raw-11'), 0);
+                }
+                if (msg.method === 'turn/steer' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: { turnId: 'turn-raw-11' } });
+                        // Codex records the steered input as a user message once the model takes it.
+                        pushJsonLine(stdout, { method: 'item/completed', params: { threadId: 'thread-raw-11', turnId: 'turn-raw-11', item: { type: 'userMessage', id: 'item-u1', clientId: 'local-key-1', content: [{ type: 'text', text: 'also run the linter' }] } } });
+                        pushJsonLine(stdout, { method: 'thread/status/changed', params: { threadId: 'thread-raw-11', status: { type: 'idle' } } });
+                        pushJsonLine(stdout, { method: 'turn/completed', params: { threadId: 'thread-raw-11', turn: { id: 'turn-raw-11', items: [], status: 'completed', error: null } } });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => { events.push(msg as Record<string, unknown>); });
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+
+        // Nothing running yet: not steered, and quickly.
+        expect(await client.steerTurn({ text: 'early' }, { waitForTurnMs: 10 })).toBe('no-turn');
+
+        const turn = client.sendTurnAndWait('build it');
+        await waitFor(() => events.some((event) => event.type === 'task_started'));
+        expect(await client.steerTurn({ text: 'also run the linter', images: ['/tmp/shot.png'], clientId: 'local-key-1' })).toBe('steered');
+        const steer = requests.find((request) => request.method === 'turn/steer');
+        expect(steer?.params).toEqual({
+            threadId: 'thread-raw-11',
+            expectedTurnId: 'turn-raw-11',
+            clientUserMessageId: 'local-key-1',
+            input: [{ type: 'text', text: 'also run the linter' }, { type: 'localImage', path: '/tmp/shot.png' }],
+        });
+
+        await expect(turn).resolves.toEqual({ aborted: false });
+        // Echoed before the turn ended: nothing was dropped.
+        expect(events.filter((event) => event.type === 'steer_dropped')).toHaveLength(0);
+        // The echo itself is not re-rendered as an agent message.
+        expect(events.filter((event) => event.type === 'agent_message')).toHaveLength(0);
+        await client.disconnect();
+    });
+
+    it('B-628: a steer waits for the turn to open; one the turn never read is reported dropped when the turn ends', async () => {
+        const requests: MockRpcMessage[] = [];
+        let releaseTurnStart: (() => void) | null = null;
+        const proc = createMockProcess({
+            pid: 3012,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-12') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    // Codex is slow to open the turn (a resume under the turn/start).
+                    releaseTurnStart = () => turnStartedLines(stdout, msg.id!, 'thread-raw-12', 'turn-raw-12');
+                }
+                if (msg.method === 'turn/steer' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: { turnId: 'turn-raw-12' } }), 0);
+                }
+                if (msg.method === 'turn/interrupt' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: {} });
+                        pushJsonLine(stdout, { method: 'turn/completed', params: { threadId: 'thread-raw-12', turn: { id: 'turn-raw-12', items: [], status: 'interrupted', error: null } } });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => { events.push(msg as Record<string, unknown>); });
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+
+        const turn = client.sendTurnAndWait('build it');
+        await waitFor(() => requests.some((request) => request.method === 'turn/start'));
+        const steer = client.steerTurn({ text: 'and the docs', clientId: 'local-key-2' });
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        // Still waiting for turn/started — no steer on the wire yet.
+        expect(requests.some((request) => request.method === 'turn/steer')).toBe(false);
+        releaseTurnStart!();
+        expect(await steer).toBe('steered');
+        expect(requests.find((request) => request.method === 'turn/steer')?.params).toMatchObject({ expectedTurnId: 'turn-raw-12' });
+
+        // The user stops the turn before the model read the steered message.
+        await client.interruptTurn();
+        await expect(turn).resolves.toEqual({ aborted: true });
+        const dropped = events.filter((event) => event.type === 'steer_dropped');
+        expect(dropped).toEqual([expect.objectContaining({ client_ids: ['local-key-2'], turn_id: 'turn-raw-12' })]);
+        // Reported before the turn's own end event, once.
+        expect(events.findIndex((event) => event.type === 'steer_dropped')).toBeLessThan(events.findIndex((event) => event.type === 'turn_aborted'));
+        await client.disconnect();
+    });
+
+    it('B-628: a refused steer is not retried into the queue path twice, and a codex without turn/steer is remembered', async () => {
+        const requests: MockRpcMessage[] = [];
+        let steerError: { code: number; message: string } = { code: -32600, message: 'no active turn to steer' };
+        const proc = createMockProcess({
+            pid: 3013,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-13') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => turnStartedLines(stdout, msg.id!, 'thread-raw-13', 'turn-raw-13'), 0);
+                }
+                if (msg.method === 'turn/steer' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, error: steerError }), 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => { events.push(msg as Record<string, unknown>); });
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        const turn = client.sendTurnAndWait('build it');
+        await waitFor(() => events.some((event) => event.type === 'task_started'));
+
+        // Codex declined this one (the turn it named is gone): the caller queues; nothing is remembered.
+        expect(await client.steerTurn({ text: 'a', clientId: 'k-a' })).toBe('refused');
+        steerError = { code: -32601, message: 'Method not found' };
+        expect(await client.steerTurn({ text: 'b', clientId: 'k-b' })).toBe('unsupported');
+        // Remembered: no third request leaves this process.
+        expect(await client.steerTurn({ text: 'c', clientId: 'k-c' })).toBe('unsupported');
+        expect(requests.filter((request) => request.method === 'turn/steer')).toHaveLength(2);
+
+        // A declined steer took no input, so nothing can be "dropped" when the turn ends.
+        proc.stdout.push(JSON.stringify({ method: 'turn/completed', params: { threadId: 'thread-raw-13', turn: { id: 'turn-raw-13', items: [], status: 'completed', error: null } } }) + '\n');
+        await expect(turn).resolves.toEqual({ aborted: false });
+        expect(events.filter((event) => event.type === 'steer_dropped')).toHaveLength(0);
+        await client.disconnect();
+    });
+
+    it('B-628: a child thread\'s items are filed under the child, named after its spawn prompt; its turn end closes the card', async () => {
+        const proc = createMockProcess({
+            pid: 3014,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-14') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        turnStartedLines(stdout, msg.id!, 'thread-raw-14', 'turn-raw-14');
+                        // The parent spawns a helper…
+                        pushJsonLine(stdout, { method: 'item/started', params: { threadId: 'thread-raw-14', turnId: 'turn-raw-14', item: { type: 'collabAgentToolCall', id: 'spawn-1', tool: 'spawnAgent', status: 'inProgress', receiverThreadIds: [], agentsStates: {}, prompt: 'Review the\n  test suite for flaky cases' } } });
+                        pushJsonLine(stdout, { method: 'item/completed', params: { threadId: 'thread-raw-14', turnId: 'turn-raw-14', item: { type: 'collabAgentToolCall', id: 'spawn-1', tool: 'spawnAgent', status: 'completed', receiverThreadIds: ['thread-child-14'], agentsStates: { 'thread-child-14': { status: 'running' } }, prompt: 'Review the\n  test suite for flaky cases' } } });
+                        // …whose own thread runs a command, says something, and finishes its turn.
+                        pushJsonLine(stdout, { method: 'turn/started', params: { threadId: 'thread-child-14', turn: { id: 'turn-child-14', items: [], status: 'inProgress', error: null } } });
+                        pushJsonLine(stdout, { method: 'item/started', params: { threadId: 'thread-child-14', turnId: 'turn-child-14', item: { type: 'commandExecution', id: 'call-c1', command: 'pnpm test --retry 3', cwd: '/tmp/project', status: 'inProgress' } } });
+                        pushJsonLine(stdout, { method: 'item/completed', params: { threadId: 'thread-child-14', turnId: 'turn-child-14', item: { type: 'commandExecution', id: 'call-c1', command: 'pnpm test --retry 3', cwd: '/tmp/project', aggregatedOutput: 'ok\n', exitCode: 0, durationMs: 5, status: 'completed' } } });
+                        pushJsonLine(stdout, { method: 'item/completed', params: { threadId: 'thread-child-14', turnId: 'turn-child-14', item: { type: 'agentMessage', id: 'msg-c1', text: 'No flaky tests found.' } } });
+                        pushJsonLine(stdout, { method: 'thread/tokenUsage/updated', params: { threadId: 'thread-child-14', tokenUsage: { total: { totalTokens: 999 } } } });
+                        pushJsonLine(stdout, { method: 'turn/completed', params: { threadId: 'thread-child-14', turn: { id: 'turn-child-14', items: [], status: 'completed', error: null } } });
+                        // The parent's own work carries no child marker.
+                        pushJsonLine(stdout, { method: 'item/completed', params: { threadId: 'thread-raw-14', turnId: 'turn-raw-14', item: { type: 'agentMessage', id: 'msg-p1', text: 'The helper found nothing.' } } });
+                        pushJsonLine(stdout, { method: 'thread/tokenUsage/updated', params: { threadId: 'thread-raw-14', tokenUsage: { total: { totalTokens: 42 } } } });
+                        pushJsonLine(stdout, { method: 'turn/completed', params: { threadId: 'thread-raw-14', turn: { id: 'turn-raw-14', items: [], status: 'completed', error: null } } });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => { events.push(msg as Record<string, unknown>); });
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        await expect(client.sendTurnAndWait('delegate')).resolves.toEqual({ aborted: false });
+
+        const child = { subagent: 'thread-child-14', subagent_label: 'Review the test suite for flaky cases' };
+        expect(events.find((event) => event.type === 'exec_command_begin')).toMatchObject({ callId: 'call-c1', ...child });
+        expect(events.find((event) => event.type === 'exec_command_end')).toMatchObject({ callId: 'call-c1', ...child });
+        expect(events.filter((event) => event.type === 'agent_message')).toEqual([
+            expect.objectContaining({ message: 'No flaky tests found.', ...child }),
+            expect.objectContaining({ message: 'The helper found nothing.' }),
+        ]);
+        expect(events.find((event) => event.type === 'agent_message' && event.message === 'The helper found nothing.')).not.toHaveProperty('subagent');
+        expect(events.filter((event) => event.type === 'subagent_turn_end')).toEqual([expect.objectContaining({ ...child, status: 'completed' })]);
+        // The spawn call itself stays the parent's; the child's token total never replaces the session's.
+        expect(events.filter((event) => event.type === 'collab_agent_item').every((event) => !('subagent' in event))).toBe(true);
+        expect(events.filter((event) => event.type === 'token_count')).toEqual([expect.objectContaining({ total: { totalTokens: 42 } })]);
+        // The parent's turn ended once, after the child's.
+        expect(events.filter((event) => event.type === 'task_complete')).toEqual([expect.objectContaining({ turn_id: 'turn-raw-14' })]);
+        await client.disconnect();
+    });
+
     it('B-622: forwards Codex retry notices as turn_retry and leaves the final error to turn/completed', async () => {
         const proc = createMockProcess({
             pid: 3006,

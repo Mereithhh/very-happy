@@ -9,6 +9,14 @@
 import { createId, isCuid } from '@paralleldrive/cuid2';
 import * as z from 'zod';
 
+/**
+ * B-628: the Codex wrapper takes a user message sent with `meta.delivery === 'steer'`
+ * into the turn that is running (`turn/steer`) instead of queuing it for the next one —
+ * the Codex twin of `claude-steer-v1`. The web shows「Steer」on a queued message only
+ * when the session advertises this (AGENTS #14: capabilities, never CLI versions).
+ */
+export const CODEX_STEER_CAPABILITY = 'codex-steer-v1';
+
 export const sessionRoleSchema = z.enum(['user', 'agent']);
 export type SessionRole = z.infer<typeof sessionRoleSchema>;
 

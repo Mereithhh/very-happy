@@ -2265,6 +2265,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct18c: {
+                title: 'Steer a running Codex turn; Codex sub-agents get their own cards',
+                summary: 'The web half works for every session; the Codex half needs CLI 0.2.176.',
+                steer: 'On a Codex session, a message queued while the agent works now has “Steer” too: it goes straight into the running turn and the model reads it before its next step, instead of waiting for the turn to finish. When Codex cannot take it (the turn just ended, an older Codex without turn/steer), it is queued for the next turn as before. A steered message the turn never got to read is marked as not delivered, so it is never silently lost.',
+                children: 'When Codex delegates to sub-agents, each sub-agent’s commands and messages now appear under its own card, titled by the task it was given, instead of being mixed into the main conversation as if the main agent did them; the card closes when that sub-agent finishes, and a sub-agent’s token count no longer replaces the session’s own context usage.',
+                stop: 'Stopping or restarting Codex now ends the whole process tree (the npm launcher and the Codex process under it), on Windows too, so a force-stop leaves no stray Codex behind.',
+            },
             oct18f: {
                 title: 'Move a relay without losing anyone',
                 summary: 'A retiring server can send its people to a new one: a banner, one click, and the same account is waiting on the other side — with single sign-on attached.',
