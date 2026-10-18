@@ -1,4 +1,5 @@
-import { PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
+import { CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
+import { unlink } from 'node:fs/promises';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { readChildThread } from './readChildThread';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
@@ -54,6 +55,7 @@ import { importCodexThread, IMPORT_CODEX_THREAD_ENV } from './importCodexThread'
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseMs, shouldReleaseIdleCodex } from './codexIdleRelease';
 import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
+import { steerIntoRunningTurn } from './codexSteer';
 import {
     buildCodexTurnPrompt,
     hashCodexEnhancedMode,
@@ -147,7 +149,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -328,6 +330,23 @@ export async function runCodex(opts: {
     let discoveredModels: Awaited<ReturnType<CodexAppServerClient['listModels']>> = [];
 
     registerAgentAttachmentDownloads(session);
+    const CODEX_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    // B-628: `delivery: 'steer'` → the running turn (codexSteer.ts). `ownsTurn` is true from
+    // dequeue to the turn's finally — including the seconds a released app-server takes to
+    // come back (B-461), which is exactly when client.steerTurn waits (≤5 s) for the turn
+    // to open; that wait holds the serialized user-message chain below, bounded.
+    const steerDeps = {
+        ownsTurn: () => turnActive && !abortInProgress && !shouldExit,
+        steer: (input: { text: string; images: string[]; clientId?: string }) => client.steerTurn(input),
+        stage: (attachments: PendingAttachment[]) => stageClaudeAttachments(attachments, {
+            happyHomeDir: configuration.happyHomeDir, sessionId: session.sessionId,
+        }),
+        withAttachments: appendStagedAttachmentsToPrompt,
+        unlink: (path: string) => unlink(path),
+        isImage: (file: { mimeType: string }) => CODEX_IMAGE_MIME_TYPES.includes(file.mimeType),
+        onSteered: (text: string) => messageBuffer.addMessage(text, 'user'),
+        log: (message: string) => logger.debug(message),
+    };
     let userMessageDelivery = Promise.resolve();
     session.onUserMessage((message) => {
         // Claim synchronously, then preserve message order while downloads finish.
@@ -395,6 +414,12 @@ export async function runCodex(opts: {
                 appendSystemPrompt: messageAppendSystemPrompt,
                 effort: messageEffort,
             };
+            if (message.meta?.delivery === 'steer' && !isCodexClearText(message.content.text)) {
+                if (await steerIntoRunningTurn(steerDeps, message.content.text, attachments, message.localKey)) {
+                    logger.debug('[Codex] User message steered into the current turn');
+                    return;
+                }
+            }
             const enqueueResult = enqueueCodexUserText({
                 text: message.content.text,
                 mode: enhancedMode,
@@ -415,6 +440,8 @@ export async function runCodex(opts: {
     let codexStartedSubagents = new Set<string>();
     let codexActiveSubagents = new Set<string>();
     let codexProviderSubagentToSessionSubagent = new Map<string, string>();
+    // B-628: child-thread cards whose title (spawn prompt) has been sent.
+    let codexLabeledSubagents = new Set<string>();
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
@@ -737,6 +764,16 @@ export async function runCodex(opts: {
             const notice = describeCodexRetry(msg);
             messageBuffer.addMessage(notice, 'status');
             session.sendSessionEvent({ type: 'message', message: notice });
+        } else if (msg.type === 'steer_dropped') {
+            // B-628: the turn ended (stopped / failed / app-server died) before the model
+            // read a steered message — Codex never echoed it. The same tombstone a destroyed
+            // queue item gets (B-332), so the message shows as not delivered instead of
+            // looking answered.
+            const clientIds = Array.isArray(msg.client_ids) ? msg.client_ids.filter((id): id is string => typeof id === 'string' && id.length > 0) : [];
+            if (clientIds.length > 0) {
+                session.sendQueueCancelReason(clientIds, 'aborted');
+                messageBuffer.addMessage('A steered message was not read before the turn ended', 'status');
+            }
         }
 
         if (msg.type === 'task_started') {
@@ -798,11 +835,13 @@ export async function runCodex(opts: {
                 startedSubagents: codexStartedSubagents,
                 activeSubagents: codexActiveSubagents,
                 providerSubagentToSessionSubagent: codexProviderSubagentToSessionSubagent,
+                labeledSubagents: codexLabeledSubagents,
             });
             currentTurnId = mapped.currentTurnId;
             codexStartedSubagents = mapped.startedSubagents;
             codexActiveSubagents = mapped.activeSubagents;
             codexProviderSubagentToSessionSubagent = mapped.providerSubagentToSessionSubagent;
+            codexLabeledSubagents = mapped.labeledSubagents;
             for (const envelope of mapped.envelopes) {
                 session.sendSessionProtocolMessage(envelope);
             }
@@ -1008,6 +1047,7 @@ export async function runCodex(opts: {
                 codexStartedSubagents = new Set<string>();
                 codexActiveSubagents = new Set<string>();
                 codexProviderSubagentToSessionSubagent = new Map<string, string>();
+                codexLabeledSubagents = new Set<string>();
                 permissionHandler.reset();
                 reasoningProcessor.abort();
                 diffProcessor.reset();

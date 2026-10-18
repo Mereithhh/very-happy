@@ -11,7 +11,9 @@ describe('AgentInput queue controls', () => {
         // report was "点停止也无法停止" with no error anywhere.
         expect(source).toContain('void doAbort().then((outcome) =>');
         expect(source).not.toContain('void doAbort()}');
-        expect(source).toContain("metadata?.capabilities?.includes('claude-steer-v1')");
+        // B-628: Steer is gated per agent by its wrapper's capability (steerSupport.ts),
+        // Claude's claude-steer-v1 and Codex's codex-steer-v1 alike.
+        expect(source).toContain('const supportsSteer = wrapperSupportsSteer(flavor, metadata?.capabilities)');
         expect(source).toContain("aria-label={t('session.chat.queueIntervene')}");
         expect(source).toContain("await sendQueuedItem(item, 'steer')");
         expect(source).toContain("aria-label={sending ? t('session.chat.sending') : gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}");

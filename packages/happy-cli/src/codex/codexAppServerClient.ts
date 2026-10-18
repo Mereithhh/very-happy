@@ -49,6 +49,17 @@ import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
 import packageJson from '../../package.json';
 import { isUnsupportedCodexMethodError, shouldReadCodexRateLimits } from '@/rateLimits/rateLimitWindows';
+import { codexChildAnnouncements } from './codexChildThreads';
+import { killCodexProcessTree, stopCodexProcess } from './codexProcessTree';
+
+/** JSON-RPC error code carried by a rejected `request()`, when Codex answered with one. */
+export function jsonRpcErrorCodeOf(error: unknown): number | null {
+    const code = (error as { jsonRpcCode?: unknown } | null)?.jsonRpcCode;
+    return typeof code === 'number' ? code : null;
+}
+
+/** B-628: why `steerTurn` did not steer, for the caller to queue the message instead. */
+export type CodexSteerOutcome = 'steered' | 'no-turn' | 'unsupported' | 'refused' | 'failed';
 
 type PendingRequest = {
     resolve: (result: unknown) => void;
@@ -228,6 +239,18 @@ export class CodexAppServerClient {
     // Approval / elicitation requests we are still answering: a human may take
     // longer than the watchdog to decide, and that is not Codex going silent.
     private inflightServerRequests = 0;
+    // B-628: `turn/steer` — a message sent into the running turn (approach from Orca,
+    // src/main/codex/codex-structured-turn-start.ts). This app-server has no such
+    // method (-32601) until it is respawned; a refusal is per call (the turn it named
+    // ended or changed meanwhile, a review/compact turn).
+    private steerUnsupported = false;
+    /** Steered inputs Codex has not echoed back as a `userMessage` item yet: clientId → turnId. */
+    private steeredAwaitingEcho = new Map<string, string>();
+    /** Waiters for the pending turn to open (steerTurn); released when it opens or ends. */
+    private turnOpenWaiters: Array<() => void> = [];
+    /** B-628: the names Codex gave the child threads it spawned (see codexChildThreads.ts). */
+    private childThreadLabels = new Map<string, string>();
+    private static readonly MAX_CHILD_LABELS = 128;
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -312,6 +335,62 @@ export class CodexAppServerClient {
         return threadId === null || this._threadId === null || threadId === this._threadId;
     }
 
+    /** B-628: the child thread a frame belongs to, or null for the session's own. */
+    private childThreadIdOf(params: any): string | null {
+        return this.isOwnThreadFrame(params) ? null : this.extractThreadId(params);
+    }
+
+    /**
+     * B-628: what a child thread's item carries so the mapper files it under the child's
+     * card (`subagent` → the session protocol's sub-agent envelope, as a Claude Task's
+     * children are) instead of in the main conversation as the session's own work.
+     */
+    private childItemFields(params: any): { subagent?: string; subagent_label?: string } {
+        const child = this.childThreadIdOf(params);
+        if (!child) return {};
+        const label = this.childThreadLabels.get(child);
+        return { subagent: child, ...(label ? { subagent_label: label } : {}) };
+    }
+
+    private rememberChildLabels(item: Record<string, unknown>): void {
+        for (const { threadId, label } of codexChildAnnouncements(item)) {
+            if (!label || this.childThreadLabels.has(threadId)) continue;
+            if (this.childThreadLabels.size >= CodexAppServerClient.MAX_CHILD_LABELS) {
+                const oldest = this.childThreadLabels.keys().next().value;
+                if (oldest !== undefined) this.childThreadLabels.delete(oldest);
+            }
+            this.childThreadLabels.set(threadId, label);
+        }
+    }
+
+    /**
+     * B-628: steered inputs the ended turn never echoed. `report` = the turn did not complete
+     * (interrupted, failed, app-server gone, given up): Codex never read them, tell the runner.
+     * A turn that *completed* drains its pending input before it ends (core/src/session/turn.rs),
+     * so an unechoed input there is a codex that accepted the steer but echoes no `clientId` —
+     * forgotten silently, because a false「not delivered」on a message the model did read would
+     * be worse than today's silence.
+     */
+    private dropUnechoedSteers(turnId: string | null, report: boolean): void {
+        const dropped: string[] = [];
+        for (const [clientId, steeredTurn] of this.steeredAwaitingEcho) {
+            if (turnId === null || steeredTurn === turnId) {
+                dropped.push(clientId);
+                this.steeredAwaitingEcho.delete(clientId);
+            }
+        }
+        if (dropped.length === 0) return;
+        if (!report) {
+            logger.debug(`[CodexAppServer] ${dropped.length} steered message(s) completed without an echo; not reported`);
+            return;
+        }
+        this.eventHandler?.({
+            type: 'steer_dropped',
+            client_ids: dropped,
+            ...(turnId ? { turn_id: turnId } : {}),
+        });
+    }
+
     /** Codex's last stderr lines, one line, for a message a person reads. */
     stderrTail(): string {
         return this.stderrRing.replace(/\x1b\[[0-9;]*m/g, '').replace(/\s+/g, ' ').trim();
@@ -373,6 +452,7 @@ export class CodexAppServerClient {
             this.completedTurnIds.add(turnId);
             if (failed) this.failedTurnIds.add(turnId);
         }
+        this.dropUnechoedSteers(turnId, aborted || failed);
 
         if (aborted) {
             this.eventHandler?.({
@@ -417,6 +497,13 @@ export class CodexAppServerClient {
         if (method === 'turn/completed') {
             if (!this.isOwnThreadFrame(params)) {
                 logger.debug(`[CodexAppServer] Child thread ${this.extractThreadId(params)} ended a turn`);
+                // B-628: the child's card ends with the child's own turn (mapper: → `stop`),
+                // not only when the parent's turn ends.
+                this.eventHandler?.({
+                    type: 'subagent_turn_end',
+                    ...this.childItemFields(params),
+                    status: this.extractTurnStatus(params),
+                });
                 return true;
             }
             this.emitRawTurnCompletion(
@@ -458,6 +545,9 @@ export class CodexAppServerClient {
         }
 
         if (method === 'thread/tokenUsage/updated') {
+            // B-628: per thread (a running total, Orca codex-subagent-activity.ts); a child's
+            // would overwrite the session's own context-usage figure.
+            if (!this.isOwnThreadFrame(params)) return true;
             const tokenUsage = params?.tokenUsage;
             if (tokenUsage && typeof tokenUsage === 'object') {
                 this.eventHandler?.({
@@ -473,8 +563,20 @@ export class CodexAppServerClient {
             return method.startsWith('item/');
         }
 
+        // B-628: an item from a child thread is the child's work (see childItemFields).
+        const child = this.childItemFields(params);
+
         if ((method === 'item/started' || method === 'item/completed') && (item.type === 'collabAgentToolCall' || item.type === 'subAgentActivity')) {
-            this.eventHandler?.({ type: 'collab_agent_item', item });
+            this.rememberChildLabels(item);
+            this.eventHandler?.({ type: 'collab_agent_item', item, ...child });
+            return true;
+        }
+
+        if (method === 'item/completed' && item.type === 'userMessage') {
+            // B-628: Codex echoes a steered input as a userMessage item once the model took it
+            // (`clientId` = our `clientUserMessageId`); until then it may still be dropped.
+            const clientId = typeof item.clientId === 'string' ? item.clientId : null;
+            if (clientId && !child.subagent) this.steeredAwaitingEcho.delete(clientId);
             return true;
         }
 
@@ -487,6 +589,7 @@ export class CodexAppServerClient {
                 command: item.command,
                 cwd: item.cwd,
                 description: item.command,
+                ...child,
             });
             return true;
         }
@@ -503,6 +606,7 @@ export class CodexAppServerClient {
                 status: item.status,
                 cwd: item.cwd,
                 command: item.command,
+                ...child,
             });
             return true;
         }
@@ -521,6 +625,7 @@ export class CodexAppServerClient {
                     call_id: callId,
                     callId,
                     changes: changes ?? {},
+                    ...child,
                 });
                 return true;
             }
@@ -531,6 +636,7 @@ export class CodexAppServerClient {
                     call_id: callId,
                     callId,
                     status: item.status,
+                    ...child,
                 });
 
                 if (callId && (item.status === 'completed' || item.status === 'failed' || item.status === 'declined')) {
@@ -548,6 +654,7 @@ export class CodexAppServerClient {
                     message: text,
                     item_id: item.id,
                     phase: item.phase,
+                    ...child,
                 });
             }
 
@@ -655,6 +762,7 @@ export class CodexAppServerClient {
             // says so — with Codex's own last words — instead of resolving quietly.
             if (this.pendingTurnCompletion) {
                 const turnId = this.pendingTurnCompletion.turnId ?? this._turnId;
+                this.dropUnechoedSteers(null, true);
                 this.eventHandler?.({
                     type: 'turn_aborted',
                     reason: 'process-exit',
@@ -668,6 +776,10 @@ export class CodexAppServerClient {
 
         // Pipe stderr for debug logging; keep a tail for the exit message.
         this.stderrRing = '';
+        // B-628: a respawned app-server may be a newer codex; its children are new too.
+        this.steerUnsupported = false;
+        this.steeredAwaitingEcho.clear();
+        this.childThreadLabels.clear();
         proc.stderr?.on('data', (chunk: Buffer) => {
             if (this.process !== proc || this.processEpoch !== epoch) return;
             const text = chunk.toString().trim();
@@ -713,20 +825,14 @@ export class CodexAppServerClient {
         this.readline?.close();
         this.readline = null;
 
-        try {
-            proc?.stdin?.end();
-            proc?.kill('SIGTERM');
-        } catch { /* ignore */ }
-
-        // Force kill after 2s (unref so timer doesn't block process exit)
-        if (pid) {
-            const killTimer = setTimeout(() => {
-                try {
-                    process.kill(pid, 0); // check alive
-                    process.kill(pid, 'SIGKILL');
-                } catch { /* already dead */ }
-            }, 2000);
-            killTimer.unref();
+        // B-628: graceful first, then the whole tree under the launcher after 2s
+        // (codexProcessTree.ts); unref so the timer never keeps this process alive.
+        if (proc) {
+            stopCodexProcess(proc);
+            if (pid) {
+                const killTimer = setTimeout(() => killCodexProcessTree(proc), CodexAppServerClient.FORCE_KILL_AFTER_MS);
+                killTimer.unref();
+            }
         }
 
         this.process = null;
@@ -750,6 +856,7 @@ export class CodexAppServerClient {
         }
 
         // Resolve pending turn completion (treat as abort)
+        this.dropUnechoedSteers(null, true);
         this.resolvePendingTurn(true);
 
         if (this.sandboxCleanup) {
@@ -1013,6 +1120,8 @@ export class CodexAppServerClient {
 
     /** Default grace period after interrupt before forcing a restart (ms). */
     private static readonly ABORT_GRACE_MS = 3_000;
+    /** How long the graceful stop gets before the process tree is killed (disconnectInternal). */
+    private static readonly FORCE_KILL_AFTER_MS = 2_000;
 
     private hasPendingTurnCompletion(): boolean {
         return this.pendingTurnCompletion !== null;
@@ -1024,6 +1133,7 @@ export class CodexAppServerClient {
         this.clearThreadStopGrace();
         this.pendingTurnCompletion.resolve(aborted);
         this.pendingTurnCompletion = null;
+        this.releaseTurnOpenWaiters();
     }
 
     private markPendingTurnStarted(turnId?: string | null): void {
@@ -1031,6 +1141,92 @@ export class CodexAppServerClient {
         this.pendingTurnCompletion.opened = true;
         if (turnId) {
             this.pendingTurnCompletion.turnId = turnId;
+        }
+        this.releaseTurnOpenWaiters();
+    }
+
+    // ─── B-628: steering the running turn ───────────────────────
+
+    /** How long a steer waits for the pending turn to open before the message is queued instead. */
+    private static readonly STEER_OPEN_WAIT_MS = 5_000;
+
+    /** A turn Codex has reported running, under an id `turn/steer` can name. */
+    private turnIsOpen(): boolean {
+        return this.pendingTurnCompletion?.opened === true && this._turnId !== null;
+    }
+
+    private releaseTurnOpenWaiters(): void {
+        const waiters = this.turnOpenWaiters;
+        this.turnOpenWaiters = [];
+        for (const release of waiters) release();
+    }
+
+    /**
+     * Waits for the pending turn to open — `turn/start` is in flight, or the runner is still
+     * bringing a released app-server back before sending it (B-461) — as Orca's send does
+     * (codex-structured-turn-open-wait.ts, 5 s). Resolves early when the turn ends instead.
+     */
+    private async waitForTurnOpen(timeoutMs: number): Promise<boolean> {
+        if (this.turnIsOpen()) return true;
+        if (timeoutMs <= 0) return false;
+        await new Promise<void>((resolve) => {
+            const release = () => {
+                clearTimeout(timer);
+                resolve();
+            };
+            const timer = setTimeout(release, timeoutMs);
+            timer.unref();
+            this.turnOpenWaiters.push(release);
+        });
+        return this.turnIsOpen();
+    }
+
+    /**
+     * B-628: send a message into the turn running right now (`turn/steer`, codex ≥ 0.148 /
+     * app-server-protocol v2 `TurnSteerParams`). Codex appends it to that turn's pending input
+     * and the model reads it before its next call; the turn keeps its own model, approval
+     * policy and sandbox — the runner applies any change on the next `turn/start`. Codex
+     * refuses before taking any input (expectedTurnId is a precondition), so a non-`steered`
+     * outcome always means "queue it for the next turn as before": `no-turn` (nothing running,
+     * or it ended while we waited), `unsupported` (this app-server has no `turn/steer`,
+     * remembered until it is respawned), `refused` (Codex declined this one), `failed`
+     * (transport — the turn itself is reported through its own events).
+     */
+    async steerTurn(input: { text: string; images?: string[]; clientId?: string }, opts?: { waitForTurnMs?: number }): Promise<CodexSteerOutcome> {
+        if (this.steerUnsupported) return 'unsupported';
+        if (this.pendingInterrupt) return 'no-turn';
+        const opened = await this.waitForTurnOpen(opts?.waitForTurnMs ?? CodexAppServerClient.STEER_OPEN_WAIT_MS);
+        const threadId = this._threadId;
+        const turnId = this._turnId;
+        if (!opened || !threadId || !turnId || !this.connected || this.pendingInterrupt) return 'no-turn';
+        const params = {
+            threadId,
+            expectedTurnId: turnId,
+            ...(input.clientId ? { clientUserMessageId: input.clientId } : {}),
+            input: [
+                { type: 'text', text: input.text },
+                ...(input.images ?? []).map((path): InputItem => ({ type: 'localImage', path })),
+            ] satisfies InputItem[],
+        };
+        try {
+            const result = await this.request('turn/steer', params) as { turnId?: unknown } | null;
+            const steeredTurnId = typeof result?.turnId === 'string' && result.turnId.length > 0 ? result.turnId : turnId;
+            if (input.clientId) this.steeredAwaitingEcho.set(input.clientId, steeredTurnId);
+            logger.debug(`[CodexAppServer] Steered a message into turn ${steeredTurnId}`);
+            return 'steered';
+        } catch (error) {
+            const code = jsonRpcErrorCodeOf(error);
+            if (code === -32601) {
+                this.steerUnsupported = true;
+                logger.debug('[CodexAppServer] turn/steer is not supported by this codex; queuing instead');
+                return 'unsupported';
+            }
+            if (code !== null) {
+                logger.debug('[CodexAppServer] turn/steer refused:', errorLogMetadata(error));
+                return 'refused';
+            }
+            logger.debug('[CodexAppServer] turn/steer failed:', errorLogMetadata(error));
+            return 'failed';
         }
     }
 
@@ -1267,6 +1463,8 @@ export class CodexAppServerClient {
         } catch (err) {
             this.clearTurnWatchdog();
             this.pendingTurnCompletion = null;
+            // B-628: a steer waiting for this turn to open learns now that it never will.
+            this.releaseTurnOpenWaiters();
             throw err;
         }
 
@@ -1287,6 +1485,8 @@ export class CodexAppServerClient {
             }
             logger.warn(`[CodexAppServer] No notification from Codex for ${timeoutMs}ms — giving the turn up as aborted`);
             const turnId = this.pendingTurnCompletion.turnId ?? this._turnId;
+            // B-628: this end bypasses emitRawTurnCompletion; what was steered into it was never read.
+            this.dropUnechoedSteers(turnId, true);
             this.eventHandler?.({
                 type: 'turn_aborted',
                 reason: 'timeout',
@@ -1344,6 +1544,7 @@ export class CodexAppServerClient {
         logger.debug(
             `[CodexAppServer] Clearing thread state: thread=${this._threadId ?? 'none'} turn=${this._turnId ?? 'none'}`,
         );
+        this.dropUnechoedSteers(null, true);
         this.resolvePendingTurn(true);
         this._threadId = null;
         this._turnId = null;
@@ -1352,6 +1553,7 @@ export class CodexAppServerClient {
         this.failedTurnIds.clear();
         this.lastTurnError = null;
         this.rawFileChangesByItemId.clear();
+        this.childThreadLabels.clear();
     }
 
     // ─── JSON-RPC transport ─────────────────────────────────────
@@ -1441,7 +1643,10 @@ export class CodexAppServerClient {
                 }
                 this.pending.delete(msg.id);
                 if (msg.error) {
-                    pending.reject(new Error(`${pending.method}: ${msg.error.message} (code=${msg.error.code})`));
+                    const error = new Error(`${pending.method}: ${msg.error.message} (code=${msg.error.code})`);
+                    // B-628: the code itself, for callers that tell "no such method" from "refused".
+                    if (typeof msg.error.code === 'number') (error as Error & { jsonRpcCode?: number }).jsonRpcCode = msg.error.code;
+                    pending.reject(error);
                 } else {
                     pending.resolve(msg.result);
                 }

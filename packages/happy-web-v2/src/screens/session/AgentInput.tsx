@@ -1,4 +1,5 @@
 import { selectDisplayedEffortKey } from './effortSelection';
+import { wrapperSupportsSteer } from './steerSupport';
 import { supportsSessionAttachments } from '@/sync/attachmentCapabilities';
 import { ModelEffortMenu } from './ModelEffortMenu';
 import { onMessageQuote } from './messageQuote';
@@ -274,11 +275,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     // pi (flavor 'acp') is its own agent key (B-370) but shares two Claude traits: the
     // CLI publishes the permission mode really in effect (metadata.permissionMode,
     // B-350) and the model really running (metadata.currentModelCode, B-362), so the
-    // honesty subtitles below apply to both. Steer / live permission RPC / the
-    // explicit 「default」 effort option stay Claude-only.
+    // honesty subtitles below apply to both. Live permission RPC / the explicit
+    // 「default」 effort option stay Claude-only; Steer is Claude's and (B-628) Codex's,
+    // each behind its own capability (steerSupport.ts).
     const publishesModeFacts = isClaudeFlavor || isPiAgent(flavor);
-    const supportsSteer = isClaudeFlavor
-        && metadata?.capabilities?.includes('claude-steer-v1') === true
+    const supportsSteer = wrapperSupportsSteer(flavor, metadata?.capabilities)
         && session?.agentState?.controlledByUser === false;
     const supportsLivePermissionMode = shouldApplyPermissionModeLive({
         isClaude: isClaudeFlavor,

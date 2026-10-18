@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-18-codex-steer-subagents',
+    cliVersion: '0.2.176',
+    date: '2026-10-18',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct18c.title',
+    summaryKey: 'changelog.releases.oct18c.summary',
+    itemKeys: ['changelog.releases.oct18c.steer', 'changelog.releases.oct18c.children', 'changelog.releases.oct18c.stop'],
+  },
+  {
     id: '2026-10-18-relay-migration',
     date: '2026-10-18',
     buildVersion: __APP_VERSION__,

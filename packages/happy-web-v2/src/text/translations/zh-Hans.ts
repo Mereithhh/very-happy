@@ -2414,6 +2414,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            oct18c: {
+                title: '运行中的 Codex 轮次可以调整方向；Codex 子 agent 有自己的卡片',
+                summary: '网页部分所有会话可用；Codex 部分需要 CLI 0.2.176。',
+                steer: 'Codex 会话里，agent 干活时排队的消息现在也有「调整方向」：直接送进正在跑的这一轮，模型下一步就能读到，不用等整轮结束。Codex 接不了时（这一轮刚结束、旧版 Codex 没有 turn/steer）照旧排到下一轮。调整方向后这一轮没来得及读就结束的消息会标成未送达，不会悄悄丢掉。',
+                children: 'Codex 把活分给子 agent 时，每个子 agent 的命令和消息会归到它自己的卡片下，卡片标题是它领到的任务，不再混进主对话里像是主 agent 做的；子 agent 跑完卡片就收起，子 agent 的 token 数也不再覆盖会话自己的上下文用量。',
+                stop: '停止或重启 Codex 现在会结束整棵进程树（npm 启动器和它下面的 Codex 进程），Windows 也是，强制停止不再留下游离的 Codex 进程。',
+            },
             oct18f: {
                 title: '服务器搬家，一个人都不落下',
                 summary: '要退役的服务器可以把人送到新服务器：一条横幅、一次点击，同一个账号在对面等着——而且已经接上单点登录。',

@@ -10,6 +10,8 @@ export type CodexTurnState = {
     startedSubagents?: Set<string>;
     activeSubagents?: Set<string>;
     providerSubagentToSessionSubagent?: Map<string, string>;
+    /** B-628: session sub-agents whose card title (`description`) has been sent. */
+    labeledSubagents?: Set<string>;
 };
 
 type CodexMapperResult = {
@@ -17,6 +19,7 @@ type CodexMapperResult = {
     startedSubagents: Set<string>;
     activeSubagents: Set<string>;
     providerSubagentToSessionSubagent: Map<string, string>;
+    labeledSubagents: Set<string>;
     envelopes: SessionEnvelope[];
 };
 
@@ -45,20 +48,47 @@ function getProviderSubagentToSessionSubagent(state: CodexTurnState): Map<string
     return state.providerSubagentToSessionSubagent ?? new Map<string, string>();
 }
 
+function getLabeledSubagents(state: CodexTurnState): Set<string> {
+    return state.labeledSubagents ?? new Set<string>();
+}
+
 function maybeEmitSubagentStart(
     subagent: string | undefined,
     opts: CreateEnvelopeOptions,
     startedSubagents: Set<string>,
     activeSubagents: Set<string>,
     envelopes: SessionEnvelope[],
+    label?: string,
+    labeledSubagents: Set<string> = new Set<string>(),
 ): void {
-    if (!subagent || startedSubagents.has(subagent)) {
+    if (!subagent) {
+        return;
+    }
+    // B-628: a Codex child thread's card is titled by the name Codex gave it (the
+    // prompt it was spawned with / its agentPath leaf) — `description` is what the
+    // web reads for the title; without it the card is the generic「子代理」. The name
+    // can arrive after the child's first item (the parent's spawn call completes with
+    // the child's thread id while the child already runs), so a started card gets a
+    // second `start` carrying it: the web's reducer takes the newer event's fields.
+    if (startedSubagents.has(subagent)) {
+        if (label && !labeledSubagents.has(subagent)) {
+            envelopes.push(createEnvelope('agent', { t: 'start', description: label }, { ...opts, subagent }));
+            labeledSubagents.add(subagent);
+        }
         return;
     }
 
-    envelopes.push(createEnvelope('agent', { t: 'start' }, { ...opts, subagent }));
+    envelopes.push(createEnvelope('agent', { t: 'start', ...(label ? { description: label } : {}) }, { ...opts, subagent }));
     startedSubagents.add(subagent);
     activeSubagents.add(subagent);
+    if (label) labeledSubagents.add(subagent);
+}
+
+/** B-628: `completed` / `failed` / `interrupted` as the session protocol's stop status. */
+function subagentStopStatus(status: unknown): 'completed' | 'failed' | 'stopped' {
+    if (status === 'failed') return 'failed';
+    if (status === 'interrupted' || status === 'cancelled' || status === 'canceled' || status === 'aborted') return 'stopped';
+    return 'completed';
 }
 
 function emitSubagentStops(
@@ -90,6 +120,12 @@ function pickProviderSubagent(message: Record<string, unknown>): string | undefi
         }
     }
     return undefined;
+}
+
+/** B-628: the name the app-server client attached to a child thread's item (codexChildThreads.ts). */
+function pickSubagentLabel(message: Record<string, unknown>): string | undefined {
+    const label = message.subagent_label;
+    return typeof label === 'string' && label.length > 0 ? label : undefined;
 }
 
 function resolveSessionSubagent(
@@ -422,10 +458,31 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     const startedSubagents = getStartedSubagents(state);
     const activeSubagents = getActiveSubagents(state);
     const providerSubagentToSessionSubagent = getProviderSubagentToSessionSubagent(state);
+    const labeledSubagents = getLabeledSubagents(state);
 
     if (type === 'collab_agent_item') {
-        return {currentTurnId:state.currentTurnId, startedSubagents, activeSubagents, providerSubagentToSessionSubagent,
-            envelopes:mapCodexCollaborationItem(message.item as Record<string, unknown>, buildEnvelopeOptions(state.currentTurnId), 'live')};
+        // B-628: a collab call a child thread makes (a grandchild's spawn) nests under the child's card.
+        const subagent = resolveSessionSubagent(message, providerSubagentToSessionSubagent);
+        const opts = buildEnvelopeOptions(state.currentTurnId, subagent);
+        const envelopes: SessionEnvelope[] = [];
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes, pickSubagentLabel(message), labeledSubagents);
+        envelopes.push(...mapCodexCollaborationItem(message.item as Record<string, unknown>, opts, 'live'));
+        return {currentTurnId:state.currentTurnId, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, labeledSubagents, envelopes};
+    }
+
+    if (type === 'subagent_turn_end') {
+        // B-628: a child thread's own `turn/completed` ends its card now, not only when the
+        // parent's turn ends (emitSubagentStops). A later turn of the same child (send_input)
+        // starts the card again under the same session sub-agent id.
+        const providerSubagent = pickProviderSubagent(message);
+        const sessionSubagent = providerSubagent ? providerSubagentToSessionSubagent.get(providerSubagent) : undefined;
+        const envelopes: SessionEnvelope[] = [];
+        if (sessionSubagent && activeSubagents.has(sessionSubagent)) {
+            envelopes.push(createEnvelope('agent', { t: 'stop', status: subagentStopStatus(message.status) }, buildEnvelopeOptions(state.currentTurnId, sessionSubagent)));
+            activeSubagents.delete(sessionSubagent);
+            startedSubagents.delete(sessionSubagent);
+        }
+        return { currentTurnId: state.currentTurnId, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, labeledSubagents, envelopes };
     }
 
     if (type === 'task_started') {
@@ -434,11 +491,13 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         startedSubagents.clear();
         activeSubagents.clear();
         providerSubagentToSessionSubagent.clear();
+        labeledSubagents.clear();
         return {
             currentTurnId: turnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            labeledSubagents,
             envelopes: [turnStart],
         };
     }
@@ -450,17 +509,20 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                 startedSubagents,
                 activeSubagents,
                 providerSubagentToSessionSubagent,
+                labeledSubagents,
                 envelopes: [],
             };
         }
 
         const lifecycleOpts = { turn: state.currentTurnId } satisfies CreateEnvelopeOptions;
         providerSubagentToSessionSubagent.clear();
+        labeledSubagents.clear();
         return {
             currentTurnId: null,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            labeledSubagents,
             envelopes: [
                 ...emitSubagentStops(lifecycleOpts, startedSubagents, activeSubagents),
                 createEnvelope('agent', {
@@ -477,6 +539,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            labeledSubagents,
             envelopes: [],
         };
     }
@@ -491,18 +554,20 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                 startedSubagents,
                 activeSubagents,
                 providerSubagentToSessionSubagent,
+                labeledSubagents,
                 envelopes: [],
             };
         }
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes, pickSubagentLabel(message), labeledSubagents);
         envelopes.push(createEnvelope('agent', { t: 'text', text: message.message }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            labeledSubagents,
             envelopes,
         };
     }
@@ -518,18 +583,20 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                 startedSubagents,
                 activeSubagents,
                 providerSubagentToSessionSubagent,
+                labeledSubagents,
                 envelopes: [],
             };
         }
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes, pickSubagentLabel(message), labeledSubagents);
         envelopes.push(createEnvelope('agent', { t: 'text', text, thinking: true }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            labeledSubagents,
             envelopes,
         };
     }
@@ -547,7 +614,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             : (command ?? 'Execute command');
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes, pickSubagentLabel(message), labeledSubagents);
         envelopes.push(
             createEnvelope('agent', {
                 t: 'tool-call-start',
@@ -563,6 +630,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            labeledSubagents,
             envelopes,
         };
     }
@@ -570,13 +638,14 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     if (type === 'exec_command_end') {
         const call = pickCallId(message);
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes, pickSubagentLabel(message), labeledSubagents);
         envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            labeledSubagents,
             envelopes,
         };
     }
@@ -587,7 +656,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         const changes = (message as { changes?: unknown }).changes;
 
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes, pickSubagentLabel(message), labeledSubagents);
         envelopes.push(
             createEnvelope('agent', {
                 t: 'tool-call-start',
@@ -606,6 +675,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            labeledSubagents,
             envelopes,
         };
     }
@@ -613,13 +683,14 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     if (type === 'patch_apply_end') {
         const call = pickCallId(message);
         const envelopes: SessionEnvelope[] = [];
-        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes);
+        maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, envelopes, pickSubagentLabel(message), labeledSubagents);
         envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
+            labeledSubagents,
             envelopes,
         };
     }
@@ -629,6 +700,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         startedSubagents,
         activeSubagents,
         providerSubagentToSessionSubagent,
+        labeledSubagents,
         envelopes: [],
     };
 }
