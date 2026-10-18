@@ -185,6 +185,22 @@ describe('PermissionHandler SDK protocol', () => {
         await vi.waitFor(() => expect(setPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
     });
 
+    it('B-631: a live mode change the CLI never answers times out, rolls back and surfaces as the RPC error', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setImmediate'] });
+        try {
+            const { handler } = fixture();
+            handler.handleModeChange('acceptEdits');
+            handler.setPermissionModeUpdater(vi.fn(() => new Promise<void>(() => {})));
+            const change = handler.setLivePermissionMode('bypassPermissions');
+            const rejected = expect(change).rejects.toThrow('set_permission_mode timed out after 15000ms');
+            await vi.advanceTimersByTimeAsync(15_000);
+            await rejected;
+            expect(handler.getPermissionMode()).toBe('acceptEdits');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('rolls the handler back when the SDK rejects a live mode change', async () => {
         const { handler } = fixture();
         handler.setPermissionModeUpdater(vi.fn(async () => { throw new Error('sdk failed'); }));

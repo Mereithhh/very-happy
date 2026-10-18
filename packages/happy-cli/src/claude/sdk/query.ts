@@ -95,6 +95,15 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         if (typeof value === 'string') env[key] = value
     }
     env.CLAUDE_CODE_ENTRYPOINT = resolveHappyEntrypoint(env.CLAUDE_CODE_ENTRYPOINT)
+    // B-631: Claude Code states that a turn is over with
+    // `system/session_state_changed state=idle` — the end a turn that dies
+    // without a `result` otherwise never gets (claudeTurnEnd.ts). It only
+    // emits the frame when asked: by default the SDK asks for a host-only copy
+    // (CLAUDE_CODE_SDK_READS_SESSION_STATE) and swallows it. Ask for the
+    // real one; an operator's explicit value wins.
+    if (env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS === undefined) {
+        env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS = '1'
+    }
     // Keep background/utility calls (built-in session-title generation etc.)
     // on haiku instead of the session's main model. Main model is unaffected.
     pinSmallFastModel(env)

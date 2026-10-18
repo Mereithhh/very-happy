@@ -614,4 +614,252 @@ describe('claudeRemote', () => {
         expect(nextMessage).toHaveBeenCalledTimes(3);
         expect(onCompletionEvent).not.toHaveBeenCalled();
     });
+
+    /**
+     * B-631: the wrapper reads Claude Code's own turn-over signal and its queue
+     * bookkeeping (spec specs/2026-10-claude-wrapper-orca-align.md). Frame shapes
+     * are the ones Claude Code 2.1.296 emitted in the 2026-10-19 probe.
+     */
+    describe('idle turn end, interrupt receipts and steer lifecycle (B-631)', () => {
+        const STEER_A = '11111111-1111-4111-8111-111111111111';
+        const STEER_B = '22222222-2222-4222-8222-222222222222';
+        const state = (s: 'idle' | 'running') => ({ type: 'system', subtype: 'session_state_changed', state: s });
+        const lifecycle = (command_uuid: string, s: string) => ({ type: 'command_lifecycle', command_uuid, state: s, uuid: 'f', session_id: 's' });
+        const baseOpts = () => ({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onMessage: vi.fn(),
+        });
+
+        it('an idle with no result ends the turn: thinking off, closed without a verdict, next message pulled; the idle after a result is not a second end', async () => {
+            const observedInputs: string[] = [];
+            vi.mocked(query).mockImplementation((args: any) => ({
+                setPermissionMode: vi.fn(),
+                async *[Symbol.asyncIterator]() {
+                    const input = args.prompt[Symbol.asyncIterator]();
+                    observedInputs.push((await input.next()).value.message.content);
+                    yield state('running');
+                    yield { type: 'system', subtype: 'init', capabilities: ['msg_lifecycle_v1'] };
+                    yield { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'half an answer' }] } };
+                    // The model request threw: Claude Code reports no result, only that it is idle.
+                    yield state('idle');
+                    observedInputs.push((await input.next()).value.message.content);
+                    yield state('running');
+                    yield { type: 'result', subtype: 'success' };
+                    yield state('idle');
+                    expect((await input.next()).done).toBe(true);
+                },
+            } as any));
+
+            const nextMessage = vi.fn()
+                .mockResolvedValueOnce({ message: 'first', mode })
+                .mockResolvedValueOnce({ message: 'second', mode })
+                .mockResolvedValue(null);
+            const onReady = vi.fn();
+            const onThinkingChange = vi.fn();
+            await claudeRemote({ ...baseOpts(), nextMessage, onReady, onThinkingChange });
+
+            expect(observedInputs).toEqual(['first', 'second']);
+            // Turn 1 ended by idle (no verdict), turn 2 by its result — and the
+            // trailing idle did not end anything a third time.
+            expect(onReady.mock.calls).toEqual([[undefined], [expect.objectContaining({ type: 'result' })]]);
+            expect(onThinkingChange.mock.calls.map(([thinking]) => thinking)).toEqual([true, false, true, false]);
+            expect(nextMessage).toHaveBeenCalledTimes(3);
+        });
+
+        it('a late idle of the previous turn does not end the turn that was pushed meanwhile', async () => {
+            const observedInputs: string[] = [];
+            vi.mocked(query).mockImplementation((args: any) => ({
+                setPermissionMode: vi.fn(),
+                async *[Symbol.asyncIterator]() {
+                    const input = args.prompt[Symbol.asyncIterator]();
+                    observedInputs.push((await input.next()).value.message.content);
+                    yield state('running');
+                    yield { type: 'result', subtype: 'success' };
+                    // The wrapper pulls and pushes the second prompt here, before
+                    // reading the idle that belongs to the first result.
+                    observedInputs.push((await input.next()).value.message.content);
+                    yield state('idle');
+                    yield state('running');
+                    yield { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'second answer' }] } };
+                    yield { type: 'result', subtype: 'success' };
+                    yield state('idle');
+                    expect((await input.next()).done).toBe(true);
+                },
+            } as any));
+
+            const nextMessage = vi.fn()
+                .mockResolvedValueOnce({ message: 'first', mode })
+                .mockResolvedValueOnce({ message: 'second', mode })
+                .mockResolvedValue(null);
+            const onReady = vi.fn();
+            const onThinkingChange = vi.fn();
+            await claudeRemote({ ...baseOpts(), nextMessage, onReady, onThinkingChange });
+
+            expect(observedInputs).toEqual(['first', 'second']);
+            expect(onReady).toHaveBeenCalledTimes(2);
+            expect(onReady.mock.calls.every(([result]) => result?.type === 'result')).toBe(true);
+            expect(onThinkingChange.mock.calls.map(([thinking]) => thinking)).toEqual([true, false, true, false]);
+        });
+
+        /** Drives one Query to its init, hands the controls to `act`, then lets the turn end. */
+        async function withLiveTurn(opts: {
+            capabilities: string[];
+            interrupt: ReturnType<typeof vi.fn>;
+            cancelAsyncMessage?: ReturnType<typeof vi.fn>;
+            /** Frames yielded after `act` released the turn, before its result. */
+            afterAct?: () => unknown[];
+            act: (controls: any, observedInputs: any[]) => Promise<void>;
+        }) {
+            const observedInputs: any[] = [];
+            let controls: any;
+            let release!: () => void;
+            const released = new Promise<void>((resolve) => { release = resolve; });
+            const onMessage = vi.fn();
+            vi.mocked(query).mockImplementation((args: any) => ({
+                setPermissionMode: vi.fn(),
+                interrupt: opts.interrupt,
+                ...(opts.cancelAsyncMessage ? { cancelAsyncMessage: opts.cancelAsyncMessage } : {}),
+                async *[Symbol.asyncIterator]() {
+                    const input = args.prompt[Symbol.asyncIterator]();
+                    observedInputs.push((await input.next()).value);
+                    yield { type: 'system', subtype: 'init', capabilities: opts.capabilities };
+                    await released;
+                    for (const frame of opts.afterAct?.() ?? []) yield frame;
+                    yield { type: 'result', subtype: 'success' };
+                },
+            } as any));
+            const onSteerDropped = vi.fn();
+            const running = claudeRemote({
+                ...baseOpts(),
+                onMessage,
+                nextMessage: vi.fn().mockResolvedValueOnce({ message: 'first', mode }).mockResolvedValue(null),
+                onReady: vi.fn(),
+                onThinkingChange: vi.fn(),
+                onQueryReady: (q) => { controls = q; },
+                onSteerDropped,
+            });
+            await vi.waitFor(() => expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ subtype: 'init' })));
+            await opts.act(controls, observedInputs);
+            release();
+            await running;
+            return { onSteerDropped, observedInputs };
+        }
+
+        it('Stop on a CLI with interrupt_cancel_queued_v1 sweeps the queue in one round trip and tombstones the steers it swept', async () => {
+            const interrupt = vi.fn(async () => ({ still_queued: [], cancelled: [STEER_A, 'someone-elses-prompt'] }));
+            const cancelAsyncMessage = vi.fn();
+            const { onSteerDropped, observedInputs } = await withLiveTurn({
+                capabilities: ['interrupt_receipt_v1', 'interrupt_cancel_queued_v1', 'msg_lifecycle_v1'],
+                interrupt,
+                cancelAsyncMessage,
+                act: async (controls) => {
+                    controls.steer('swept before the model saw it', mode, STEER_A);
+                    controls.steer('untracked: not a uuid', mode, 'web-local-key-7');
+                    await controls.interrupt();
+                },
+            });
+            expect(interrupt).toHaveBeenCalledWith({ cancelQueued: true });
+            expect(cancelAsyncMessage).not.toHaveBeenCalled();
+            expect(onSteerDropped).toHaveBeenCalledTimes(1);
+            expect(onSteerDropped).toHaveBeenCalledWith([STEER_A]);
+            expect(observedInputs[0]).toMatchObject({ message: { content: 'first' } });
+        });
+
+        it('without cancel_queued, each still_queued steer is withdrawn by uuid and only a confirmed withdrawal is reported', async () => {
+            const interrupt = vi.fn(async () => ({ still_queued: [STEER_A, STEER_B, 'someone-elses-prompt'] }));
+            // A: still in the queue → withdrawn. B: the drain loop already took it → it runs.
+            const cancelAsyncMessage = vi.fn(async (uuid: string) => uuid === STEER_A);
+            const { onSteerDropped } = await withLiveTurn({
+                capabilities: ['interrupt_receipt_v1'],
+                interrupt,
+                cancelAsyncMessage,
+                act: async (controls) => {
+                    controls.steer('a', mode, STEER_A);
+                    controls.steer('b', mode, STEER_B);
+                    await controls.interrupt();
+                },
+            });
+            expect(interrupt).toHaveBeenCalledWith(undefined);
+            expect(cancelAsyncMessage.mock.calls.map(([uuid]) => uuid)).toEqual([STEER_A, STEER_B]);
+            expect(onSteerDropped).toHaveBeenCalledTimes(1);
+            expect(onSteerDropped).toHaveBeenCalledWith([STEER_A]);
+        });
+
+        it('an older CLI answers interrupt without a receipt: nothing is swept, nothing is reported', async () => {
+            const interrupt = vi.fn(async () => undefined);
+            const cancelAsyncMessage = vi.fn();
+            const { onSteerDropped } = await withLiveTurn({
+                capabilities: [],
+                interrupt,
+                cancelAsyncMessage,
+                act: async (controls) => {
+                    controls.steer('a', mode, STEER_A);
+                    await controls.interrupt();
+                },
+            });
+            expect(interrupt).toHaveBeenCalledWith(undefined);
+            expect(cancelAsyncMessage).not.toHaveBeenCalled();
+            expect(onSteerDropped).not.toHaveBeenCalled();
+        });
+
+        it('command_lifecycle: a steer cancelled before it started is reported once; one that started is settled silently', async () => {
+            const { onSteerDropped } = await withLiveTurn({
+                capabilities: ['msg_lifecycle_v1'],
+                interrupt: vi.fn(),
+                afterAct: () => [
+                    lifecycle(STEER_A, 'queued'),
+                    lifecycle(STEER_B, 'queued'),
+                    lifecycle(STEER_B, 'started'),
+                    lifecycle(STEER_A, 'cancelled'),
+                    lifecycle(STEER_A, 'cancelled'),
+                    lifecycle(STEER_B, 'cancelled'),
+                    lifecycle('someone-elses-prompt', 'cancelled'),
+                ],
+                act: async (controls) => {
+                    controls.steer('a', mode, STEER_A);
+                    controls.steer('b', mode, STEER_B);
+                },
+            });
+            expect(onSteerDropped).toHaveBeenCalledTimes(1);
+            expect(onSteerDropped).toHaveBeenCalledWith([STEER_A]);
+        });
+
+        it('stamps the steer with the localKey as its transcript uuid, keeping priority now', async () => {
+            const observedInputs: any[] = [];
+            let controls: any;
+            vi.mocked(query).mockImplementation((args: any) => ({
+                setPermissionMode: vi.fn(),
+                interrupt: vi.fn(),
+                async *[Symbol.asyncIterator]() {
+                    const input = args.prompt[Symbol.asyncIterator]();
+                    observedInputs.push((await input.next()).value);
+                    yield { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'working' }] } };
+                    observedInputs.push((await input.next()).value);
+                    observedInputs.push((await input.next()).value);
+                    yield { type: 'result', subtype: 'success' };
+                },
+            } as any));
+            const running = claudeRemote({
+                ...baseOpts(),
+                nextMessage: vi.fn().mockResolvedValueOnce({ message: 'first', mode }).mockResolvedValue(null),
+                onReady: vi.fn(),
+                onThinkingChange: vi.fn(),
+                onQueryReady: (q) => { controls = q; },
+            });
+            await vi.waitFor(() => expect(observedInputs).toHaveLength(1));
+            controls.steer('tracked', mode, STEER_A);
+            controls.steer('untracked', mode, 'web-local-key-7');
+            await running;
+
+            expect(observedInputs[1]).toMatchObject({ type: 'user', priority: 'now', uuid: STEER_A, message: { content: 'tracked' } });
+            expect(observedInputs[2]).toMatchObject({ type: 'user', priority: 'now', message: { content: 'untracked' } });
+            expect(observedInputs[2]).not.toHaveProperty('uuid');
+        });
+    });
 });

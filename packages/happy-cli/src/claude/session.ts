@@ -16,6 +16,8 @@ export type ClaudeSteerInput = {
     message: string;
     mode: EnhancedMode;
     attachments?: PendingAttachment[];
+    /** B-631: the web message's localKey; becomes the steer's transcript uuid so a Stop that sweeps it can be reported (B-332). */
+    localKey?: string;
 };
 
 export class Session {

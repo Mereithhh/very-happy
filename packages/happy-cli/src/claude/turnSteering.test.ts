@@ -39,6 +39,29 @@ describe('turn steering controller', () => {
         expect(controller.consumeInterrupted()).toBe(false);
     });
 
+    it('B-631: an interrupt the CLI never answers is given up after the budget, with no pending mark left', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        try {
+            const controller = createTurnSteeringController({ interruptTimeoutMs: 3000 });
+            controller.setInterrupt(() => new Promise<void>(() => {}));
+            const stop = controller.interruptTurn();
+            const rejected = expect(stop).rejects.toThrow('interrupt timed out after 3000ms');
+            await vi.advanceTimersByTimeAsync(3000);
+            await rejected;
+            // The launcher escalates to the hard abort, whose own "Aborted by
+            // user" must not be followed by a second cancelled result.
+            expect(controller.consumeInterrupted()).toBe(false);
+
+            const steer = controller.steer();
+            const steerRejected = expect(steer).rejects.toThrow('interrupt timed out after 3000ms');
+            await vi.advanceTimersByTimeAsync(3000);
+            await steerRejected;
+            expect(controller.consumeReady()).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('B-468: interruptTurn marks exactly one result as user-interrupted', async () => {
         const controller = createTurnSteeringController();
         controller.setInterrupt(async () => undefined);
