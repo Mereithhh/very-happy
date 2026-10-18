@@ -2414,6 +2414,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            oct18b: {
+                title: '单点登录无需邀请码',
+                summary: '服务器可以让身份提供方为新账号背书：提供方（及允许的邮箱域名）放行的人直接登录，其他注册方式仍然需要邀请码。',
+                selfServe: '运维在仅邀请或关闭注册的服务器上设置 OIDC_SIGNUP_MODE=open，注册页就会把 SSO 按钮放在最前并说明只有其他方式需要邀请码；也可以单独关闭 SSO 注册。',
+                name: '通过 SSO 创建的账号现在会把提供方的显示名拆成名和姓，联系人搜索与分享对话框能显示全名。',
+            },
             oct18: {
                 title: '把会话分享给同事',
                 summary: '让同一服务器上的另一个账号实时看一段对话，或者让对方用自己的名字往里发消息。',
@@ -4303,6 +4309,8 @@ export const zhHans: TranslationStructure = {
         errorPasswordShort: ({ count }: { count: number }) => `密码至少需要 ${count} 个字符。`,
         errorMismatch: '两次输入的密码不一致。',
         errorInviteRequired: '注册需要有效的邀请码。',
+        errorInviteRequiredExceptSso: ({ name }: { name: string }) => `使用 ${name} 登录无需邀请码；其他方式需要有效邀请码。`,
+        errorSignupClosedExceptSso: ({ name }: { name: string }) => `新账户只能通过 ${name} 创建。`,
         errorInviteRequiredGoogle: '请进入创建账户页面并输入有效邀请码，再使用 Google 继续。',
         errorSignupClosed: '当前未开放注册。现有用户仍可登录，也可以使用自托管中继。',
         errorCapacityReached: '此服务器的账户数量已达上限。现有用户仍可登录；请稍后重试或使用自托管中继。',
@@ -4383,6 +4391,7 @@ export const zhHans: TranslationStructure = {
     oidc: {
         continueWith: ({ name }: { name: string }) => `使用 ${name} 登录`,
         orOther: '或使用其他方式',
+        orWithInvite: '或使用邀请码注册',
         finishingTitle: '正在登录…',
         finishing: '正在与身份提供方完成登录。',
         failedTitle: '登录没有完成',

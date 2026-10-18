@@ -10,7 +10,7 @@ import { db } from '@/storage/db';
 import { auth } from '@/app/auth/auth';
 import { log } from '@/utils/log';
 import { loadAccountSecret, upsertAccountSecret } from '@/app/auth/accountSecrets';
-import { getSignupStatus, resolveSignupPolicy, SignupPolicyError, withSignupGate } from '@/app/auth/signupPolicy';
+import { getSignupStatus, resolveSignupPolicy, signupModeFor, SignupPolicyError, withSignupGate } from '@/app/auth/signupPolicy';
 import { verifyGoogleIdToken } from '@/app/auth/googleOidc';
 import { oidcPublicConfig, resolveOidcConfig } from '@/app/auth/oidcProvider';
 import {
@@ -248,7 +248,7 @@ export function accountAuthRoutes(app: Fastify) {
             response: {
                 200: z.object({
                     googleClientId: z.string().optional(),
-                    oidc: z.object({ displayName: z.string() }).optional(),
+                    oidc: z.object({ displayName: z.string(), signupMode: z.enum(['open', 'invite', 'closed']) }).optional(),
                     emailOtpEnabled: z.boolean(),
                     passwordLoginEnabled: z.boolean(),
                     signup: z.object({
@@ -266,7 +266,7 @@ export function accountAuthRoutes(app: Fastify) {
         const googleClientId = googleConfig.clientId ?? undefined;
         return reply.send({
             googleClientId,
-            oidc: oidcPublicConfig(oidcConfig),
+            oidc: oidcPublicConfig(oidcConfig, signupModeFor(resolveSignupPolicy(), 'oidc')),
             emailOtpEnabled: emailConfig !== null,
             passwordLoginEnabled,
             signup: status,

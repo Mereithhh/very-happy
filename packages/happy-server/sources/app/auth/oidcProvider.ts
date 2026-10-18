@@ -93,8 +93,20 @@ export function resolveOidcConfig(env: NodeJS.ProcessEnv = process.env): OidcCon
     };
 }
 
-export function oidcPublicConfig(config: OidcConfig | null): { displayName: string } | undefined {
-    return config ? { displayName: config.displayName } : undefined;
+export function oidcPublicConfig(
+    config: OidcConfig | null,
+    signupMode: 'open' | 'invite' | 'closed',
+): { displayName: string; signupMode: 'open' | 'invite' | 'closed' } | undefined {
+    return config ? { displayName: config.displayName, signupMode } : undefined;
+}
+
+/** "Zhaopeng Feng" → first/last; a single token (e.g. a CJK full name) stays in firstName. */
+export function splitDisplayName(name: string | undefined): { firstName: string | null; lastName: string | null } {
+    const trimmed = name?.trim();
+    if (!trimmed) return { firstName: null, lastName: null };
+    const space = trimmed.search(/\s/);
+    if (space < 0) return { firstName: trimmed, lastName: null };
+    return { firstName: trimmed.slice(0, space), lastName: trimmed.slice(space).trim() || null };
 }
 
 export function maxPendingOidcLoginChallenges(): number {

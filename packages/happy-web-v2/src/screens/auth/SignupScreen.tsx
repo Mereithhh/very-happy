@@ -153,7 +153,7 @@ export function SignupScreen() {
     navigate(authReturnTarget(location.state), { replace: true });
   }
 
-  const { emailEnabled, passwordEnabled, googleEnabled, oidcEnabled, oidcDisplayName } = publicAuthMethodState(authConfig);
+  const { emailEnabled, passwordEnabled, googleEnabled, oidcEnabled, oidcDisplayName, oidcSignupMode, oidcSelfServe } = publicAuthMethodState(authConfig);
 
   return (
     <div className="auth-page" ref={pageRef}>
@@ -166,12 +166,19 @@ export function SignupScreen() {
         <LanguageSwitcher className="auth-language-switcher" />
         <div className="auth-eyebrow eyebrow">{t('signup.title')}</div>
 
+        {oidcSelfServe && !authConfig?.signup.atCapacity && <OidcLoginButton
+          displayName={oidcDisplayName}
+          disabled={busy}
+          trailingDividerLabel={registrationBlocked ? undefined : t('oidc.orWithInvite')}
+          onBusyChange={setBusy}
+        />}
+
         {authConfig?.signup.atCapacity ? (
           <div className="auth-policy" role="status">{t('signup.errorCapacityReached')}</div>
         ) : authConfig?.signup.mode === 'closed' ? (
-          <div className="auth-policy" role="status">{t('signup.errorSignupClosed')}</div>
+          <div className="auth-policy" role="status">{t(oidcSelfServe ? 'signup.errorSignupClosedExceptSso' : 'signup.errorSignupClosed', { name: oidcDisplayName })}</div>
         ) : authConfig?.signup.mode === 'invite' ? (
-          <div className="auth-policy" role="status">{t('signup.errorInviteRequired')}</div>
+          <div className="auth-policy" role="status">{t(oidcSelfServe ? 'signup.errorInviteRequiredExceptSso' : 'signup.errorInviteRequired', { name: oidcDisplayName })}</div>
         ) : null}
 
         {(authConfig?.signup.mode === 'invite' || authConfig === null) && <Input
@@ -182,7 +189,7 @@ export function SignupScreen() {
             placeholder={t('signup.inviteCodePlaceholder')}
           />}
 
-        {oidcEnabled && !registrationBlocked && <OidcLoginButton
+        {oidcEnabled && !oidcSelfServe && !registrationBlocked && oidcSignupMode !== 'closed' && <OidcLoginButton
           displayName={oidcDisplayName}
           inviteCode={invite.trim() || undefined}
           disabled={busy}

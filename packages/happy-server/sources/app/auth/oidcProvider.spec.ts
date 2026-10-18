@@ -17,7 +17,7 @@ import {
     resolveOidcConfig,
     resolveRedirectUri,
     resolveWebReturnBase,
-    verifyOidcIdToken,
+    verifyOidcIdToken, splitDisplayName,
 } from './oidcProvider';
 
 describe('B-620 OIDC provider (discovery, JWKS, id_token)', () => {
@@ -102,5 +102,13 @@ describe('B-620 OIDC provider (discovery, JWKS, id_token)', () => {
         await expect(loadOidcDiscovery('http://127.0.0.1:9', { fetchImpl: fetch })).rejects.toThrow('discovery_failed');
         const lying = vi.fn(async () => new Response(JSON.stringify({ issuer: 'https://other', authorization_endpoint: 'a', token_endpoint: 'b', jwks_uri: 'c' }), { status: 200, headers: { 'content-type': 'application/json' } }));
         await expect(loadOidcDiscovery(idp.issuer, { fetchImpl: lying as unknown as typeof fetch })).rejects.toThrow('discovery_failed');
+    });
+
+    it('splits an IdP display name into first/last and keeps single-token names whole', () => {
+        expect(splitDisplayName('Zhaopeng Feng')).toEqual({ firstName: 'Zhaopeng', lastName: 'Feng' });
+        expect(splitDisplayName('  Mary Ann  Lee ')).toEqual({ firstName: 'Mary', lastName: 'Ann  Lee' });
+        expect(splitDisplayName('魏晨')).toEqual({ firstName: '魏晨', lastName: null });
+        expect(splitDisplayName('   ')).toEqual({ firstName: null, lastName: null });
+        expect(splitDisplayName(undefined)).toEqual({ firstName: null, lastName: null });
     });
 });

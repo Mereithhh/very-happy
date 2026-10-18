@@ -40,8 +40,7 @@ import {
     resolveWebReturnBase,
     verifyOidcIdToken,
     type OidcConfig,
-    type OidcIdentityClaims,
-} from '@/app/auth/oidcProvider';
+    type OidcIdentityClaims, splitDisplayName } from '@/app/auth/oidcProvider';
 
 export type OidcCallbackError =
     | 'invalid_state'
@@ -117,10 +116,12 @@ async function findOrCreateOidcAccount(config: OidcConfig, claims: OidcIdentityC
             const secret = secretBytes.toString('base64url');
             const publicKey = tweetnacl.sign.keyPair.fromSeed(secretBytes).publicKey;
             const username = await freeUsername(tx, claims.preferredUsername);
+            const { firstName, lastName } = splitDisplayName(claims.name);
             const account = await tx.account.create({
                 data: {
                     publicKey: Buffer.from(publicKey).toString('hex'),
-                    firstName: claims.name ?? null,
+                    firstName,
+                    lastName,
                     username,
                 },
             });

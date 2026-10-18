@@ -131,8 +131,12 @@ dependency surface. Do not install the upstream-owned
   refused), and `MAX_PENDING_OIDC_LOGIN_CHALLENGES` (default `10000`). The flow is
   authorization code + PKCE with server-held state/nonce; id_tokens are verified
   with the provider's JWKS (RS256/ES256 family). Account creation obeys
-  `SIGNUP_MODE`; an identity is keyed `oidc:<issuer>` + `sub`, so the same person
-  always lands on the same account. A configured issuer counts as an interactive
+  `SIGNUP_MODE` unless `OIDC_SIGNUP_MODE` (`open`/`invite`/`closed`, B-623)
+  overrides it for SSO first logins only — `OIDC_SIGNUP_MODE=open` with
+  `OIDC_ALLOWED_EMAIL_DOMAINS` makes an invite-only relay self-service for the
+  provider's users while password/email/Google sign-up keeps asking for a code;
+  `SIGNUP_MAX_ACCOUNTS` still applies. An identity is keyed `oidc:<issuer>` +
+  `sub`, so the same person always lands on the same account. A configured issuer counts as an interactive
   login path for the `AUTH_PASSWORD_LOGIN_DISABLED` startup check.
 - Passwordless email login: set `AUTH_EMAIL_PROVIDER=resend` with `AUTH_EMAIL_FROM` and `RESEND_API_KEY`, or `AUTH_EMAIL_PROVIDER=cloudflare` with `AUTH_EMAIL_FROM`, `CLOUDFLARE_EMAIL_ACCOUNT_ID`, and `CLOUDFLARE_EMAIL_API_TOKEN`. Verify the sender domain first. Deploy and smoke-test a real code before optionally setting `AUTH_PASSWORD_LOGIN_DISABLED=true`; the server fails startup if that would leave no email or Google login path.
 
