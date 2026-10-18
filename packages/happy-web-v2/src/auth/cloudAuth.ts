@@ -7,8 +7,12 @@ export type SignupMode = 'open' | 'invite' | 'closed';
 
 export interface PublicAuthConfig {
     googleClientId?: string;
-    /** B-620: present when the server has a generic OIDC issuer configured. */
-    oidc?: { displayName: string };
+    /**
+     * B-620: present when the server has a generic OIDC issuer configured.
+     * B-623: `signupMode` is the policy for first logins through SSO (may differ
+     * from `signup.mode`); older servers omit it and fall back to `signup.mode`.
+     */
+    oidc?: { displayName: string; signupMode?: SignupMode };
     emailOtpEnabled: boolean;
     passwordLoginEnabled: boolean;
     signup: {

@@ -57,6 +57,7 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         idp.expect = null;
         process.env.SIGNUP_MODE = 'open';
         delete process.env.SIGNUP_INVITE_CODES;
+        delete process.env.OIDC_SIGNUP_MODE;
     });
 
     async function start(inviteCode?: string) {
@@ -107,7 +108,7 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         const accounts = await db.account.findMany({ include: { AccountIdentity: true } });
         expect(accounts).toHaveLength(1);
         expect(accounts[0].username).toBe('jodoe');
-        expect(accounts[0].firstName).toBe('Jo Doe');
+        expect(accounts[0]).toMatchObject({ firstName: 'Jo', lastName: 'Doe' });
         expect(accounts[0].AccountIdentity[0]).toMatchObject({ provider: `oidc:${idp.issuer}`, providerSubject: 'subject-1', email: 'jo@apodex.com' });
         expect(await db.oidcLoginChallenge.count()).toBe(0);
         expect(await db.oidcLoginHandoff.count()).toBe(0);
@@ -141,6 +142,30 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         const withCode = await start('team-2026');
         expect(returned((await callback({ code: 'good-code', state: withCode.params.state })).headers.location as string).handoff).toBeTruthy();
         expect(await db.account.count()).toBe(2);
+    });
+
+    it('OIDC_SIGNUP_MODE admits IdP-vouched first logins on an invite-only relay without a code, and can close OIDC alone', async () => {
+        process.env.SIGNUP_MODE = 'invite';
+        process.env.SIGNUP_INVITE_CODES = 'team-2026';
+        process.env.OIDC_SIGNUP_MODE = 'open';
+        idp.claims = { sub: 'subject-selfserve', email: 'self@apodex.com', name: 'Zhaopeng Feng' };
+        const before = await db.account.count();
+        const selfServe = await start();
+        expect(returned((await callback({ code: 'good-code', state: selfServe.params.state })).headers.location as string).handoff).toBeTruthy();
+        expect(await db.account.count()).toBe(before + 1);
+        const created = await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-selfserve' }, include: { account: true } });
+        expect(created?.account).toMatchObject({ firstName: 'Zhaopeng', lastName: 'Feng' });
+
+        process.env.SIGNUP_MODE = 'open';
+        process.env.OIDC_SIGNUP_MODE = 'closed';
+        idp.claims = { sub: 'subject-oidc-closed', email: 'late@apodex.com' };
+        const closed = await start();
+        expect(returned((await callback({ code: 'good-code', state: closed.params.state })).headers.location as string).error).toBe('signup-closed');
+        expect(await db.account.count()).toBe(before + 1);
+        // Existing OIDC identities keep logging in while OIDC signup is closed.
+        idp.claims = { sub: 'subject-selfserve', email: 'self@apodex.com' };
+        const again = await start();
+        expect(returned((await callback({ code: 'good-code', state: again.params.state })).headers.location as string).handoff).toBeTruthy();
     });
 
     it('rejects state mismatch, provider errors, a nonce that does not match, and a disallowed email domain', async () => {

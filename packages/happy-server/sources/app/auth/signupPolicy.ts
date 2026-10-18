@@ -9,6 +9,13 @@ export interface SignupPolicy {
     mode: SignupMode;
     maxAccounts: number | null;
     inviteCodes: readonly string[];
+    /**
+     * `OIDC_SIGNUP_MODE`: mode applied to first logins through the generic OIDC
+     * issuer instead of `SIGNUP_MODE`; null inherits. Lets an invite-only relay
+     * admit everyone the IdP (plus `OIDC_ALLOWED_EMAIL_DOMAINS`) vouches for
+     * without handing out codes. Capacity still applies.
+     */
+    oidcMode: SignupMode | null;
 }
 
 export interface SignupStatus {
@@ -38,18 +45,23 @@ function parsePositiveInteger(value: string | undefined): number | null {
     return parsed;
 }
 
+function parseSignupMode(raw: string | undefined, name: string): SignupMode | null {
+    const value = raw?.trim().toLowerCase();
+    if (!value) return null;
+    if (value === 'open' || value === 'invite' || value === 'closed') return value;
+    throw new Error(`${name} must be open, invite, or closed`);
+}
+
 export function resolveSignupPolicy(env: NodeJS.ProcessEnv = process.env): SignupPolicy {
     const inviteCodes = (env.SIGNUP_INVITE_CODES ?? '')
         .split(',')
         .map((code) => code.trim())
         .filter(Boolean);
 
-    const explicitMode = env.SIGNUP_MODE?.trim().toLowerCase();
+    const explicitMode = parseSignupMode(env.SIGNUP_MODE, 'SIGNUP_MODE');
     let mode: SignupMode;
-    if (explicitMode === 'open' || explicitMode === 'invite' || explicitMode === 'closed') {
+    if (explicitMode) {
         mode = explicitMode;
-    } else if (explicitMode) {
-        throw new Error('SIGNUP_MODE must be open, invite, or closed');
     } else if (env.SIGNUP_CLOSED === '1' || env.SIGNUP_CLOSED === 'true') {
         mode = 'closed';
     } else if (inviteCodes.length > 0) {
@@ -64,16 +76,24 @@ export function resolveSignupPolicy(env: NodeJS.ProcessEnv = process.env): Signu
         mode,
         maxAccounts: parsePositiveInteger(env.SIGNUP_MAX_ACCOUNTS),
         inviteCodes,
+        oidcMode: parseSignupMode(env.OIDC_SIGNUP_MODE, 'OIDC_SIGNUP_MODE'),
     };
+}
+
+/** Mode that gates a first login through `provider`. */
+export function signupModeFor(policy: SignupPolicy, provider?: SignupProvider): SignupMode {
+    return provider === 'oidc' && policy.oidcMode ? policy.oidcMode : policy.mode;
 }
 
 export function getSignupRejection(
     policy: SignupPolicy,
     registeredAccounts: number,
     inviteCode?: string,
+    provider?: SignupProvider,
 ): SignupRejectionReason | null {
-    if (policy.mode === 'closed') return 'signup-closed';
-    if (policy.mode === 'invite') {
+    const mode = signupModeFor(policy, provider);
+    if (mode === 'closed') return 'signup-closed';
+    if (mode === 'invite') {
         const normalized = inviteCode?.trim();
         if (!normalized || !policy.inviteCodes.includes(normalized)) return 'invite-required';
     }
@@ -125,7 +145,7 @@ export async function withSignupGate<T>(options: WithSignupGateOptions<T>): Prom
         if (existing !== null) return { value: existing, created: false };
 
         const registeredAccounts = await tx.account.count();
-        const rejection = getSignupRejection(resolveSignupPolicy(), registeredAccounts, options.inviteCode);
+        const rejection = getSignupRejection(resolveSignupPolicy(), registeredAccounts, options.inviteCode, options.provider);
         if (rejection) {
             options.onRejected?.(rejection, options.provider);
             throw new SignupPolicyError(rejection);

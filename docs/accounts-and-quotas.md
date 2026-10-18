@@ -49,8 +49,13 @@ browser to `/login/oidc?handoff=<one-time code>`. The Web client then calls
 handoff expires after two minutes and works once. The identity key is
 `oidc:<issuer>` + the provider's `sub`; email strings never merge accounts. A
 first login creates an Account under the usual signup policy (invite code
-accepted on the signup page), sets the display name from the token's `name`, and
-takes `preferred_username` as the handle when it is free. Linking an OIDC
+accepted on the signup page) unless the server sets `OIDC_SIGNUP_MODE`, which
+replaces `SIGNUP_MODE` for SSO first logins only (`open` = the provider plus
+`OIDC_ALLOWED_EMAIL_DOMAINS` vouch for the person, no code; the signup page then
+leads with the SSO button and says only the other methods need a code). The
+account's first/last name come from the token's `name` (split at the first
+space; a single-token name stays whole), and `preferred_username` becomes the
+handle when it is free. Linking an OIDC
 identity to an existing password/email/Google account is not available yet; sign
 in with the existing method instead.
 

@@ -178,6 +178,24 @@ describe('public Email OTP and password policy', () => {
         await app.close();
     });
 
+    it('B-623: advertises the SSO-only signup mode next to the relay policy', async () => {
+        enableEmail();
+        process.env.OIDC_ISSUER = 'https://idp.example.com';
+        process.env.OIDC_CLIENT_ID = 'relay';
+        process.env.OIDC_DISPLAY_NAME = 'Apodex SSO';
+        process.env.SIGNUP_MODE = 'invite';
+        process.env.SIGNUP_INVITE_CODES = 'code';
+        process.env.OIDC_SIGNUP_MODE = 'open';
+        try {
+            const app = await buildApp();
+            const response = await app.inject({ method: 'GET', url: '/v1/auth/config' });
+            expect(response.json()).toMatchObject({ oidc: { displayName: 'Apodex SSO', signupMode: 'open' }, signup: { mode: 'invite' } });
+            await app.close();
+        } finally {
+            for (const key of ['OIDC_ISSUER', 'OIDC_CLIENT_ID', 'OIDC_DISPLAY_NAME', 'OIDC_SIGNUP_MODE', 'SIGNUP_INVITE_CODES']) delete process.env[key];
+        }
+    });
+
     it('uses long-window email, IP, and global delivery budgets', () => {
         const send = emailCodeRateBuckets('203.0.113.1', 'person@example.com', {
             globalDailySendLimit: 200,

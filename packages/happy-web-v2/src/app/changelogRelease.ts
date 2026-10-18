@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-18-sso-self-serve',
+    date: '2026-10-18',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct18b.title',
+    summaryKey: 'changelog.releases.oct18b.summary',
+    itemKeys: ['changelog.releases.oct18b.selfServe', 'changelog.releases.oct18b.name'],
+  },
+  {
     id: '2026-10-18-codex-turn-liveness',
     cliVersion: '0.2.174',
     date: '2026-10-18',

@@ -15,12 +15,16 @@ export function publicAuthMethodState(config: PublicAuthConfig | null) {
   const emailEnabled = config?.emailOtpEnabled === true;
   const passwordEnabled = config?.passwordLoginEnabled !== false;
   const oidcEnabled = !!config?.oidc;
+  const oidcSignupMode = config?.oidc?.signupMode ?? config?.signup.mode ?? 'closed';
   return {
     emailEnabled,
     passwordEnabled,
     googleEnabled: !!config?.googleClientId,
     oidcEnabled,
     oidcDisplayName: config?.oidc?.displayName ?? '',
+    oidcSignupMode,
+    /** SSO creates accounts on its own while the other methods still need an invite code. */
+    oidcSelfServe: oidcEnabled && oidcSignupMode === 'open' && config?.signup.mode !== 'open',
     // With SSO on the page the password form stays folded: SSO is the primary path.
     expandPasswordAfterLoad: !emailEnabled && !oidcEnabled && passwordEnabled,
   };

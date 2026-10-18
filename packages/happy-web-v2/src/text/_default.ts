@@ -2265,6 +2265,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct18b: {
+                title: 'Single sign-on without an invite code',
+                summary: 'A server can let its identity provider vouch for new accounts: people the provider (and the allowed email domains) admit sign in straight away, while other sign-up methods keep their invite code.',
+                selfServe: 'Operators set OIDC_SIGNUP_MODE=open on an invite-only or closed server. The sign-up page then shows the SSO button first and explains that only the other methods need a code; SSO can also be closed on its own.',
+                name: 'Accounts created through SSO now split the provider\'s display name into first and last name, so People search and share dialogs show the full name.',
+            },
             oct18: {
                 title: 'Share a session with a colleague',
                 summary: 'Give another account on your server a live view of a conversation — or let them send messages into it under their own name.',
@@ -4449,6 +4455,8 @@ export const en = {
         errorPasswordShort: ({ count }: { count: number }) => `Password must be at least ${count} characters.`,
         errorMismatch: 'Passwords do not match.',
         errorInviteRequired: 'A valid invite code is required to sign up.',
+        errorInviteRequiredExceptSso: ({ name }: { name: string }) => `${name} signs you in without a code. Other methods need a valid invite code.`,
+        errorSignupClosedExceptSso: ({ name }: { name: string }) => `New accounts are created through ${name} only.`,
         errorInviteRequiredGoogle: 'Create an account and enter a valid invite code before continuing with Google.',
         errorSignupClosed: 'Signups are currently closed. Existing users can still sign in; you can also use a self-hosted relay.',
         errorCapacityReached: 'This server has reached its account limit. Existing users can still sign in; try later or use a self-hosted relay.',
@@ -4529,6 +4537,7 @@ export const en = {
     oidc: {
         continueWith: ({ name }: { name: string }) => `Continue with ${name}`,
         orOther: 'or use another method',
+        orWithInvite: 'or sign up with an invite code',
         finishingTitle: 'Signing you in…',
         finishing: 'Finishing sign-in with your identity provider.',
         failedTitle: 'Sign-in did not complete',
