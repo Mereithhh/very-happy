@@ -12,27 +12,39 @@
  * set on the child (sdk/query.ts); without it the SDK consumes the frame.
  *
  * Measured against Claude Code 2.1.296 (2026-10-19, skills/tmp/vh-orca-lessons/
- * b631-scratch/probe): one turn is `running` → … → `result` → `idle`; no idle
- * before the first turn; a turn pre-empted by a `priority: 'now'` message ends
- * with a `result` that has NO idle after it (the follow-up's turn starts at
- * once). `requires_action` parks the turn on the user and is not an end.
+ * b631-scratch/probe): one turn is `running` → … → `init` → … → `result` →
+ * `idle`; no idle before the first turn; a turn pre-empted by a
+ * `priority: 'now'` message ends with a `result` that has NO idle after it
+ * (the follow-up's turn starts at once). `requires_action` parks the turn on
+ * the user and is not an end.
  *
- * Why a counter and not "thinking at idle time": after `result(N)` the
- * wrapper asynchronously pulls the next message and flips thinking back to
- * true, and `idle(N)` may be read from the stream only after that push — read
- * naively it would end turn N+1. The counter depends on stream order alone:
- * a result precedes its own idle, and an idle precedes the next `running`.
+ * Two distinctions carry the whole design:
+ *
+ *  - **Pushed is not announced.** The wrapper hands a prompt to the Query
+ *    (`pushed`) some time before the CLI dequeues it and says so (`running`,
+ *    then `init` → `announced`). The CLI's state notifier has several idle
+ *    emitters and no same-state dedupe (a prompt settling after
+ *    requires_action, a task-status subscription, decideIdleReport), so a
+ *    stray idle can land in that window. Only an ANNOUNCED turn is ended by an
+ *    idle; a pending prompt is left to the `running` that will come.
+ *
+ *  - **An idle owed to a result is not an end.** After `result(N)` the wrapper
+ *    pulls the next message asynchronously, and `idle(N)` may be read from the
+ *    stream only after that push. The counter depends on stream order alone:
+ *    a result precedes its own idle, and an idle precedes the next `running`
+ *    — so a `running` clears whatever is still owed (the pre-empted turn's
+ *    result never gets its idle).
  */
 
 export type ClaudeSessionState = 'idle' | 'running' | 'requires_action';
 
 /** What an `idle` frame means for the open turn. */
 export type ClaudeIdleVerdict =
-    /** No result ended this turn: the idle is its end. */
+    /** No result ended this announced turn: the idle is its end. */
     | 'end'
     /** The idle that follows a result which already ended the turn. */
     | 'duplicate'
-    /** No turn is open (startup, or a non-idle state). */
+    /** Nothing announced is running (startup, a pending prompt only, or a non-idle state). */
     | 'ignore';
 
 export function readClaudeSessionState(message: unknown): ClaudeSessionState | null {
@@ -42,19 +54,28 @@ export function readClaudeSessionState(message: unknown): ClaudeSessionState | n
 }
 
 export function createClaudeTurnTracker() {
-    /** A user message was handed to the Query, or the CLI announced a turn, and no end was seen yet. */
+    /** The wrapper handed a prompt to the Query and the CLI has not announced a turn for it yet. */
+    let pending = false;
+    /** The CLI announced a turn (`running` / `init`) that no result or idle has ended. */
     let open = false;
     /** Results seen whose idle has not arrived yet; a `running` says it never will. */
     let idleOwed = 0;
 
     return {
         get isOpen(): boolean { return open; },
-        /** A prompt was pushed, or the CLI reported `init` for a turn. Idempotent. */
-        begin(): void { open = true; },
-        /** A `result` frame: true when it ends the open turn (the caller runs its turn-end), false when the turn already ended. */
+        get isPending(): boolean { return pending; },
+        /** A prompt was pushed into the Query. Not a turn yet: the CLI has to pick it up. */
+        pushed(): void { pending = true; },
+        /** The CLI reported `init` for a turn: it is running. Idempotent. */
+        announced(): void {
+            open = true;
+            pending = false;
+        },
+        /** A `result` frame: true when it ends the turn (the caller runs its turn-end), false when the turn already ended. */
         onResult(): boolean {
-            if (!open) return false;
+            if (!open && !pending) return false;
             open = false;
+            pending = false;
             idleOwed += 1;
             return true;
         },
@@ -64,6 +85,7 @@ export function createClaudeTurnTracker() {
                 // one can no longer come (idle precedes running in the stream).
                 idleOwed = 0;
                 open = true;
+                pending = false;
                 return 'ignore';
             }
             if (state !== 'idle') return 'ignore';

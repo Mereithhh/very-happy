@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { withTimeout } from './withTimeout';
+import { TimeoutError, withTimeout } from './withTimeout';
 
 describe('withTimeout (B-631)', () => {
     // Only the timers withTimeout uses; setImmediate stays real so the
@@ -13,16 +13,24 @@ describe('withTimeout (B-631)', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('rejects with the label and budget when the promise is late', async () => {
+    it('rejects with a TimeoutError naming the label and budget when the promise is late', async () => {
         const never = new Promise<string>(() => {});
         const result = withTimeout(never, 3000, 'interrupt');
-        const settled = expect(result).rejects.toThrow('interrupt timed out after 3000ms');
+        const settled = result.then(
+            () => { throw new Error('resolved'); },
+            (error: unknown) => error,
+        );
         await vi.advanceTimersByTimeAsync(3000);
-        await settled;
+        const error = await settled;
+        expect(error).toBeInstanceOf(TimeoutError);
+        expect((error as Error).message).toBe('interrupt timed out after 3000ms');
     });
 
-    it('propagates the promise rejection when it comes first', async () => {
-        await expect(withTimeout(Promise.reject(new Error('refused')), 1000)).rejects.toThrow('refused');
+    it('propagates the promise rejection when it comes first, which is not a TimeoutError', async () => {
+        const error = await withTimeout(Promise.reject(new Error('refused')), 1000).catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(Error);
+        expect(error).not.toBeInstanceOf(TimeoutError);
+        expect((error as Error).message).toBe('refused');
         expect(vi.getTimerCount()).toBe(0);
     });
 

@@ -1,24 +1,28 @@
 /**
- * Which steered messages a Stop made disappear (B-631; approach from Orca,
- * src/main/claude/claude-command-lifecycle.ts and
+ * Which user messages a Stop made disappear before the model read them
+ * (B-631; approach from Orca, src/main/claude/claude-command-lifecycle.ts and
  * claude-structured-control-actions.ts).
  *
- * A steer is pushed into the running turn as an async user message with
- * `priority: 'now'`. Claude Code 2.1.296 emits a top-level
- * `command_lifecycle` frame for every uuid-stamped command (`command_uuid`,
- * `state`: queued → started → completed | cancelled | discarded | refused;
- * capability `msg_lifecycle_v1`), and an interrupt's receipt lists the
- * commands it swept (`cancelled`, with `interrupt_cancel_queued_v1`) or left
- * (`still_queued`, `interrupt_receipt_v1`). Measured 2026-10-19
+ * Every user message the wrapper hands to the Query carries a uuid when the
+ * web gave it one (B-528 prompts, B-631 steers). Claude Code 2.1.296 emits a
+ * top-level `command_lifecycle` frame for every uuid-stamped command
+ * (`command_uuid`, `state`: queued → started → completed | cancelled |
+ * discarded | refused; capability `msg_lifecycle_v1`), and an interrupt's
+ * receipt lists the commands it swept (`cancelled`, with
+ * `interrupt_cancel_queued_v1`) or left (`still_queued`,
+ * `interrupt_receipt_v1`). Measured 2026-10-19
  * (skills/tmp/vh-orca-lessons/b631-scratch/probe).
  *
  * A terminal state for a command that never `started` is a verdict: the model
  * never read it, and the web should see the B-332 tombstone instead of a
- * message that looks answered. After `started`, `cancelled` only says the
- * turn it was in ended (an interrupt, a hard failure) — the model may have
- * read it, the web already shows that Stop, so it is settled silently (Orca:
- * "any end is doubt"). Commands without a uuid emit no lifecycle at all, and
- * older CLIs emit none: a steer that is never tracked is simply never reported.
+ * message that looks answered. This covers a steer queued behind the running
+ * turn as much as a prompt the wrapper pushed while a pre-empting steer's
+ * turn was still running — a Stop with cancel_queued sweeps both. After
+ * `started`, `cancelled` only says the turn it was in ended (an interrupt, a
+ * hard failure) — the model may have read it, the web already shows that
+ * Stop, so it is settled silently (Orca: "any end is doubt"). Commands
+ * without a uuid emit no lifecycle at all, and older CLIs emit none: a
+ * message that is never settled is simply never reported.
  */
 
 export const CLAUDE_COMMAND_LIFECYCLE_STATES = ['queued', 'started', 'completed', 'cancelled', 'discarded', 'refused'] as const;
@@ -45,10 +49,12 @@ const uuidList = (value: unknown): string[] =>
 /** Capability a CLI advertises on system/init when `interrupt({cancelQueued:true})` is honored. */
 export const INTERRUPT_CANCEL_QUEUED_CAPABILITY = 'interrupt_cancel_queued_v1';
 
+/** A CLI without lifecycle frames never settles anything; the tracked set must not grow with the session. */
+const PENDING_MAX = 256;
 const REPORTED_MAX = 512;
 
-export function createClaudeSteerTracker() {
-    /** Steered uuids the CLI has not settled: whether it reported `started`. */
+export function createClaudeCommandTracker() {
+    /** Uuid-stamped user messages the CLI has not settled: whether it reported `started`. */
     const pending = new Map<string, { started: boolean }>();
     /** Reported once, whichever of receipt / frame / cancel response said it first. */
     const reported = new Set<string>();
@@ -62,7 +68,11 @@ export function createClaudeSteerTracker() {
     };
 
     return {
-        track(uuid: string): void { pending.set(uuid, { started: false }); },
+        /** A uuid-stamped user message (prompt or steer) was handed to the Query. */
+        track(uuid: string): void {
+            if (!pending.has(uuid) && pending.size >= PENDING_MAX) pending.delete(pending.keys().next().value!);
+            pending.set(uuid, { started: false });
+        },
         isTracked(uuid: string): boolean { return pending.has(uuid); },
         /** A lifecycle frame; returns the uuids now known to have never run. */
         observe(lifecycle: ClaudeCommandLifecycle): string[] {
