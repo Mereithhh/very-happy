@@ -48,6 +48,7 @@ installAuthGuards();
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
 // markdown renderer, terminal pulls xterm, settings is large).
 const SignupScreen = lazy(() => import('@/screens/auth/SignupScreen').then((m) => ({ default: m.SignupScreen })));
+const OidcReturnScreen = lazy(() => import('@/screens/auth/OidcReturnScreen').then((m) => ({ default: m.OidcReturnScreen })));
 const SessionDetailScreen = lazy(() => import('@/screens/session/SessionDetailScreen').then((m) => ({ default: m.SessionDetailScreen })));
 const SettingsRoutes = lazy(() => import('@/screens/settings/SettingsRoutes').then((m) => ({ default: m.SettingsRoutes })));
 const WebTerminalRoute = lazy(() => import('@/screens/terminal/WebTerminalRoute').then((m) => ({ default: m.WebTerminalRoute })));
@@ -306,6 +307,9 @@ const router = createBrowserRouter(
         </RedirectIfAuthed>
       ),
     },
+    // B-620: the identity provider sends the browser back here with a one-time
+    // handoff; not wrapped in RedirectIfAuthed so a stale session cannot swallow it.
+    { path: '/login/oidc', element: <Lazy><OidcReturnScreen /></Lazy> },
     { path: '/privacy', element: <PrivacyScreen /> },
     { path: '/terms', element: <TermsScreen /> },
     { path: '/changelog', element: <Lazy><ChangelogScreen /></Lazy> },

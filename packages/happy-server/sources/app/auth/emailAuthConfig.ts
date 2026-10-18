@@ -71,8 +71,10 @@ export function assertUsableInteractiveAuth(options: {
     email: EmailAuthConfig | null;
     googleClientId: string | null;
     passwordLoginEnabled: boolean;
+    /** B-620: a configured generic OIDC issuer is an interactive login path too. */
+    oidcConfigured?: boolean;
 }): void {
-    if (!options.passwordLoginEnabled && !options.email && !options.googleClientId) {
-        throw new Error('Password login is disabled but neither Email OTP nor Google login is configured');
+    if (!options.passwordLoginEnabled && !options.email && !options.googleClientId && !options.oidcConfigured) {
+        throw new Error('Password login is disabled but neither Email OTP, Google nor OIDC login is configured');
     }
 }

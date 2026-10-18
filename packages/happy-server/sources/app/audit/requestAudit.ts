@@ -35,7 +35,7 @@ export function auditLogin(request: Request, accountId: string, method: string):
 }
 const loginRoutes = new Set([
     '/v1/auth', '/v1/auth/request', '/v1/auth/account/request', '/v1/account/signup/password', '/v1/account/login', '/v1/account/login/email',
-    '/v1/account/login/google', '/v1/account/login/refresh', '/v1/account/credentials',
+    '/v1/account/login/google', '/v1/account/login/refresh', '/v1/account/credentials', '/v1/auth/oidc/complete',
 ]);
 export function auditLoginFailure(request: Request, statusCode: number): void {
     if (request.method !== 'POST' || !request.routeOptions?.url || !loginRoutes.has(request.routeOptions.url) || statusCode < 400) return;

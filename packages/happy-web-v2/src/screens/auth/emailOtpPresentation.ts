@@ -14,10 +14,14 @@ export function shouldResetEmailChallenge(code: CloudAuthErrorCode): boolean {
 export function publicAuthMethodState(config: PublicAuthConfig | null) {
   const emailEnabled = config?.emailOtpEnabled === true;
   const passwordEnabled = config?.passwordLoginEnabled !== false;
+  const oidcEnabled = !!config?.oidc;
   return {
     emailEnabled,
     passwordEnabled,
     googleEnabled: !!config?.googleClientId,
-    expandPasswordAfterLoad: !emailEnabled && passwordEnabled,
+    oidcEnabled,
+    oidcDisplayName: config?.oidc?.displayName ?? '',
+    // With SSO on the page the password form stays folded: SSO is the primary path.
+    expandPasswordAfterLoad: !emailEnabled && !oidcEnabled && passwordEnabled,
   };
 }

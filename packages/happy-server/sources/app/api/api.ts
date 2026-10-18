@@ -29,6 +29,7 @@ import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { unlockRoutes } from "./routes/unlockRoutes";
 import { accountAuthRoutes } from "./routes/accountAuthRoutes";
+import { oidcAuthRoutes } from "./routes/oidcAuthRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
 import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 import { attachmentRoutes } from "./routes/attachmentRoutes";
@@ -144,6 +145,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     feedRoutes(typed);
     unlockRoutes(typed);
     accountAuthRoutes(typed);
+    oidcAuthRoutes(typed);
     kvRoutes(typed);
     v3SessionRoutes(typed);
     attachmentRoutes(typed);

@@ -37,6 +37,23 @@ UI, so confirm the account in Google's chooser before continuing. An operator
 can resolve a mistaken link only after verifying ownership and a safe fallback
 login method; never edit ownership by matching Email strings.
 
+## Generic OIDC login
+
+A server can offer "Continue with <provider>" for any OpenID Connect provider
+(`OIDC_ISSUER` + `OIDC_CLIENT_ID`, see [deployment.md](deployment.md)). The Web
+client asks the server for an authorization URL (`POST /v1/auth/oidc/start`),
+the browser visits the provider, and the provider returns to
+`GET /v1/auth/oidc/callback`, which exchanges the code (PKCE) and redirects the
+browser to `/login/oidc?handoff=<one-time code>`. The Web client then calls
+`POST /v1/auth/oidc/complete` to receive the login token and account secret; the
+handoff expires after two minutes and works once. The identity key is
+`oidc:<issuer>` + the provider's `sub`; email strings never merge accounts. A
+first login creates an Account under the usual signup policy (invite code
+accepted on the signup page), sets the display name from the token's `name`, and
+takes `preferred_username` as the handle when it is free. Linking an OIDC
+identity to an existing password/email/Google account is not available yet; sign
+in with the existing method instead.
+
 ## Signup policy
 
 - `open`: anyone may create an account until capacity is reached.
