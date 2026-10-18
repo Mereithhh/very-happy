@@ -1,6 +1,6 @@
 # Codex wrapper 对齐 Orca 第二批：轮中插话、子 agent 归属、进程树回收
 
-- 状态：Implemented（本 PR）；发布后改 Shipped
+- 状态：Shipped（PR #566 → `main@a293c4a15`，CLI v0.2.176；web 随 deploy run 39141539345 切流，`ACTIVE_RELEASE=a293c4a15` generation 200；真机项 V-181）
 - 关联 backlog：B-628（承接 B-625 spec 的三条「非目标」）
 - 包：`packages/happy-cli`（`src/codex/codexAppServerClient.ts`、`runCodex.ts`、`utils/sessionProtocolMapper.ts`、
   新增 `codexChildThreads.ts`、`codexProcessTree.ts`）、`packages/happy-wire`（常量 `CODEX_STEER_CAPABILITY`）、
