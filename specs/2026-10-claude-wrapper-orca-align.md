@@ -1,6 +1,6 @@
 # Claude Code wrapper 对齐 Orca：轮结束判据、退出原因、重试可见、控制请求截止、Stop 回收插话
 
-- 状态：Implemented（分支 `feat/b631-claude-wrapper`，基线 `origin/main@520aecd23`；合并发布后回标 Shipped）
+- 状态：Shipped（PR #568 → `main@ddc0bd458`，CLI v0.2.177；真机项 V-182）
 - 日期：2026-10-19 ｜ 关联 backlog：B-631（承接 B-625 / B-628 的 Codex 同批思路）
 - 包：仅 `packages/happy-cli`（`src/claude/claudeRemote.ts`、`claudeRemoteLauncher.ts`、`claudeLocalLauncher.ts`、
   `turnSteering.ts`、`runClaude.ts`、`session.ts`、`sdk/query.ts`、`utils/permissionHandler.ts`；

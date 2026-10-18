@@ -1,6 +1,6 @@
 # pi / Gemini wrapper 对照 Orca：agent 进程死亡可见、一轮以协议应答结束、失败不归档
 
-- 状态：Implemented（本 PR）；发布后改 Shipped
+- 状态：Shipped（PR #568 → `main@ddc0bd458`，CLI v0.2.177；web deploy run 39152485734；真机项 V-182）
 - 关联 backlog：B-629（共享 ACP backend + pi runner）、B-630（Gemini runner）；同批的 Claude 项见 B-631
   `specs/2026-10-claude-wrapper-orca-align.md`
 - 包：`packages/happy-cli`（`src/agent/acp/AcpBackend.ts`、`runAcp.ts`、`sessionUpdateHandlers.ts`、
