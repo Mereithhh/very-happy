@@ -9,6 +9,8 @@ import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
+import { acpNoticeMessage, type AcpNotice } from './acpNotices';
+import { describeAcpTurnFailure } from './acpTurnFailure';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import { PROMPT_QUEUE_CAPABILITY, type SessionEnvelope } from '@slopus/happy-wire';
@@ -45,7 +47,6 @@ import type { SessionConfigOption, SessionModeState, SessionModelState } from '@
 import { EditReportThrottle, extractAcpEditPaths } from '@/sessions/editPaths';
 import { reportSessionEditToDaemon } from '@/daemon/controlClient';
 
-const TURN_TIMEOUT_MS = 5 * 60 * 1000;
 const ACP_EVENT_PREVIEW_CHARS = 240;
 const ACP_RAW_PREVIEW_CHARS = 2000;
 const ACP_COLOR_RESET = '\u001b[0m';
@@ -457,12 +458,6 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
   }
 }
 
-type PendingTurn = {
-  resolve: () => void;
-  reject: (err: Error) => void;
-  timeout: NodeJS.Timeout;
-};
-
 function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' {
   if (agentName === 'gemini') {
     return 'gemini';
@@ -649,7 +644,7 @@ export async function runAcp(opts: {
   // connect to HAPPY_MCP_URL directly. `mcpServers` stays for agents that do
   // honour the ACP handoff.
   const teamsPiEnv = opts.agentName === 'pi' ? await preparePiTeamsRuntime() : {};
-  const backend = new AcpBackend({
+  const createBackend = () => new AcpBackend({
     agentName: opts.agentName,
     cwd: process.cwd(),
     command: opts.command,
@@ -668,6 +663,8 @@ export async function runAcp(opts: {
     transportHandler: new DefaultTransport(opts.agentName),
     verbose,
   });
+  // B-629: `let` — the agent process can die mid-session, and the next message starts a new one.
+  let backend = createBackend();
 
   // The keepAlive `thinking` lease is TURN-scoped, not backend-status-scoped
   // (B-376). The web has exactly one liveness signal — this 2s heartbeat
@@ -693,30 +690,14 @@ export async function runAcp(opts: {
   let acpSessionId: string | null = null;
   let shouldExit = false;
   let abortController = new AbortController();
-  let pendingTurn: PendingTurn | null = null;
   let turnCancelled = false;
-
-  const clearPendingTurn = (error?: Error) => {
-    if (!pendingTurn) {
-      return;
-    }
-    clearTimeout(pendingTurn.timeout);
-    const current = pendingTurn;
-    pendingTurn = null;
-    if (error) {
-      current.reject(error);
-      return;
-    }
-    current.resolve();
-  };
-
-  const waitForTurnEnd = () => new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      pendingTurn = null;
-      reject(new Error(`Timed out waiting for ${opts.agentName} to finish the turn`));
-    }, TURN_TIMEOUT_MS);
-    pendingTurn = { resolve, reject, timeout };
-  });
+  // B-629: before the agent's first session is up, a terminal status ends the runner (the
+  // agent could not be started at all); after that the session outlives the agent process
+  // (Orca, src/main/acp/acp-structured-session-adapter.ts): a death ends the turn in
+  // flight with its reason and the next message starts a fresh agent process.
+  let backendStarted = false;
+  let backendGone: Error | null = null;
+  let todoDiscoverySent = false;
 
   const stopRunnerFromBackendStatus = (status: 'error' | 'stopped', detail?: string) => {
     const reason = detail
@@ -725,7 +706,6 @@ export async function runAcp(opts: {
     logger.debug(`[${opts.agentName}] ${reason}; stopping ACP runner`);
     shouldExit = true;
     messageQueue.close();
-    clearPendingTurn(new Error(reason));
   };
 
   const sendEnvelopes = (envelopes: SessionEnvelope[]) => {
@@ -1009,13 +989,27 @@ export async function runAcp(opts: {
       const statusLine = `Status: ${msg.status}${suffix}`;
       logAcp('muted', statusLine);
       // Deliberately NOT touching `thinking` here — see setThinking above.
-      if (msg.status === 'idle') {
-        clearPendingTurn();
-      }
       if (msg.status === 'error' || msg.status === 'stopped') {
         if (msg.status === 'error') opts.onBackendError?.(msg.detail);
-        stopRunnerFromBackendStatus(msg.status, msg.detail);
+        if (!backendStarted) {
+          stopRunnerFromBackendStatus(msg.status, msg.detail);
+        } else if (msg.status === 'stopped') {
+          // B-629: the agent process died. A turn in flight ends through its own
+          // rejection (AcpBackend races the prompt against the exit); the next
+          // message restarts the agent. A mid-session `error` is that prompt's own
+          // failure and is reported once, by the loop's catch.
+          backendGone = new Error(msg.detail ?? `${opts.agentName} process exited`);
+        }
       }
+    }
+
+    if (msg.type === 'event' && msg.name === 'notice') {
+      // B-629: pi's own retry / compaction / notify lines (acpNotices.ts) are service
+      // lines, never part of the answer.
+      const message = acpNoticeMessage(opts.agentName, msg.payload as AcpNotice);
+      logAcp('muted', message);
+      session.sendSessionEvent({ type: 'message', message });
+      return;
     }
 
     const frontendMessage = formatAcpMessageForFrontend(opts.agentName, msg, verbose);
@@ -1127,13 +1121,30 @@ export async function runAcp(opts: {
   const disposeTermination = registerKillSessionHandler(session.rpcHandlerManager, async () => {
     shouldExit = true;
     messageQueue.close();
-    clearPendingTurn(new Error('Session terminated'));
     await handleAbort();
   }, session, { processSignals: true });
+
+  // B-629: a fresh agent process after the previous one died. The session (and its
+  // transcript on the server) is kept; the agent itself starts without memory, and the
+  // session says so — pi-acp has no resume for us yet (follow-up).
+  const restartBackend = async () => {
+    const gone = backendGone;
+    backendGone = null;
+    backend.offMessage?.(onBackendMessage);
+    try { await backend.dispose(); } catch (error) { logger.debug(`[${opts.agentName}] dispose of the dead backend failed:`, error); }
+    backend = createBackend();
+    backend.onMessage(onBackendMessage);
+    const started = await backend.startSession();
+    acpSessionId = started.sessionId;
+    todoDiscoverySent = false;
+    logger.debug(`[${opts.agentName}] Restarted the agent after it exited: ${gone?.message ?? 'unknown'}`);
+    session.sendSessionEvent({ type: 'message', message: `${opts.agentName} was restarted after its process exited; it does not remember the earlier conversation (the transcript here is kept).` });
+  };
 
   try {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
+    backendStarted = true;
     if (opts.model) {
       await switchModelIfRequested(opts.model);
       const applied = isCurrentRequestedModel(opts.model);
@@ -1160,7 +1171,6 @@ export async function runAcp(opts: {
       }
     }
 
-    let todoDiscoverySent = false;
     while (!shouldExit) {
       const waitSignal = abortController.signal;
       const batch = await messageQueue.waitForMessagesAndGetAsString(waitSignal);
@@ -1174,19 +1184,17 @@ export async function runAcp(opts: {
         break;
       }
 
-      if (!acpSessionId) {
-        throw new Error('ACP session is not started');
-      }
-
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());
       turnCancelled = false;
       setThinking(true);
-      const turnEnded = waitForTurnEnd();
-      // A backend error can reject this while sendPrompt is still pending.
-      // Observe it immediately; the awaited promise below retains the error.
-      void turnEnded.catch(() => {});
       try {
+        if (backendGone) {
+          await restartBackend();
+        }
+        if (!acpSessionId) {
+          throw new Error('ACP session is not started');
+        }
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
           await switchPermissionModeIfRequested(batch.mode.permissionMode);
         }
@@ -1200,10 +1208,17 @@ export async function runAcp(opts: {
         const staged = attachments.length ? await stageClaudeAttachments(attachments, {
           happyHomeDir: configuration.happyHomeDir, sessionId: session.sessionId,
         }) : [];
-        await backend.sendPrompt(acpSessionId, appendStagedAttachmentsToPrompt(prompt, staged), attachments);
+        // B-629: the turn is over when the prompt is answered (ACP sends every update
+        // before its response); no idle heuristic, no deadline (Orca: none either).
+        const outcome = await backend.sendPrompt(acpSessionId, appendStagedAttachmentsToPrompt(prompt, staged), attachments);
         todoDiscoverySent = true;
-        await turnEnded;
-        sendEnvelopes(sessionManager.endTurn(turnCancelled ? 'cancelled' : 'completed'));
+        const stopReason = outcome && typeof outcome === 'object' ? outcome.stopReason : undefined;
+        const cancelled = turnCancelled || stopReason === 'cancelled';
+        sendEnvelopes(sessionManager.endTurn(cancelled ? 'cancelled' : 'completed'));
+        if (!cancelled && stopReason && stopReason !== 'end_turn') {
+          // `max_tokens` / `refusal`: the agent stopped short and said why.
+          session.sendSessionEvent({ type: 'message', message: `${opts.agentName} stopped the turn: ${stopReason}` });
+        }
         // Sweep AFTER the turn's envelopes are queued: `turn-end` starts the
         // web's 1.5s countdown for unclaimed drafts.
         streamRelay.endTurn();
@@ -1215,14 +1230,18 @@ export async function runAcp(opts: {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
       } catch (error) {
-        session.sendSessionEvent({ type: 'message', message: 'The agent could not process this message or its attachments. Please check the agent and try again.' });
+        // B-629: a failed turn is this turn's failure, not the session's (Orca: a rejected
+        // send). Say what the agent said; keep the session; the next message runs anew.
+        const failure = describeAcpTurnFailure(opts.agentName, error);
+        session.sendSessionEvent({ type: 'message', message: failure.message });
         sendEnvelopes(sessionManager.endTurn('failed'));
         streamRelay.endTurn();
         setThinking(false);
         session.sendSessionEvent({ type: 'ready' });
         logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
-        clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
-        throw error;
+        if (failure.exited && error instanceof Error) {
+          backendGone = error;
+        }
       }
     }
   } finally {
@@ -1237,7 +1256,6 @@ export async function runAcp(opts: {
     streamRelay.endTurn();
     streamRelay.dispose();
     reconnectionHandle?.cancel();
-    clearPendingTurn(new Error('ACP runner shutting down'));
 
     try {
       permissionHandler.reset();

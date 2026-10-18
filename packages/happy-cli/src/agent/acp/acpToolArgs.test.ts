@@ -160,7 +160,7 @@ describe('handleToolCall args shape (pi-acp probe payloads)', () => {
     expect(emitted.filter((m) => m.type === 'tool-call')).toHaveLength(1);
   });
 
-  it('tool-call timeout drops the buffered bash output', () => {
+  it('B-629: a long-running tool call keeps its buffered bash output — there is no deadline on a call any more', () => {
     vi.useFakeTimers();
     try {
       const { ctx } = makeCtx();
@@ -168,9 +168,13 @@ describe('handleToolCall args shape (pi-acp probe payloads)', () => {
       handleToolCall(probe.bash, ctx);
       handleToolCallUpdate({ sessionUpdate: 'tool_call_update', toolCallId: 'tc-bash', status: 'in_progress', _meta: { terminal_output: { terminal_id: 'tc-bash', data: 'partial' } } }, ctx);
       expect(ctx.toolCallOutputs.get('tc-bash')).toBe('partial');
-      vi.advanceTimersByTime(1000);
-      expect(ctx.activeToolCalls.has('tc-bash')).toBe(false);
-      expect(ctx.toolCallOutputs.has('tc-bash')).toBe(false);
+      // The old 120 s (here 1 s) timer evicted the call and threw its output away, so a
+      // test run longer than two minutes showed only an exit code. The turn ends on the
+      // prompt's answer (AcpBackend.sendPrompt), not on a timer.
+      vi.advanceTimersByTime(10_000);
+      expect(ctx.activeToolCalls.has('tc-bash')).toBe(true);
+      expect(ctx.toolCallOutputs.get('tc-bash')).toBe('partial');
+      expect(ctx.toolCallTimeouts.size).toBe(0);
     } finally {
       vi.useRealTimers();
     }

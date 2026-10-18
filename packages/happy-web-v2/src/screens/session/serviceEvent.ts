@@ -49,10 +49,17 @@ export function presentServiceEvent(message: string): ServiceEventPresentation {
     if (normalized === 'process exited unexpectedly') {
         return { kind: 'error', textKey: 'session.chat.processFailed' };
     }
+    // B-625/B-629: the wrappers now append the agent's exit code and last stderr lines
+    // (`Process exited unexpectedly: codex process exited (code=1): …`); shown as the
+    // error it is, with those words, instead of a grey note.
+    if (/^process exited unexpectedly:\s*\S/i.test(visibleMessage)) {
+        return { kind: 'agent-error', text: visibleMessage };
+    }
     if (visibleEntries.some((entry) => CLAUDE_AUTH_FAILURE.test(entry))) {
         return { kind: 'claude-auth' };
     }
-    if (/^codex error:\s*\S/i.test(visibleMessage) || GENERIC_TURN_FAILURE.test(visibleMessage)) {
+    // B-487 Codex; B-629/B-630/B-631 pi, Gemini and Claude report a refused turn the same way.
+    if (/^(codex|pi|gemini|claude) error:\s*\S/i.test(visibleMessage) || GENERIC_TURN_FAILURE.test(visibleMessage)) {
         return { kind: 'agent-error', text: visibleMessage };
     }
     return { kind: 'subtle', text: visibleMessage };

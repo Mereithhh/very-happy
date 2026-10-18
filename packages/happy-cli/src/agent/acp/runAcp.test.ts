@@ -1340,6 +1340,90 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
     expect(mocks.backendState.setModeCalls).toEqual([]);
     expect(mocks.backendState.setModelCalls).toEqual([]);
   });
+
+  it("B-629: the agent dying mid-turn ends the turn with its reason, keeps the session, and the next message restarts the agent", async () => {
+    const exit = Object.assign(new Error('pi process exited (code=137): FATAL ERROR: heap limit'), {
+      agentExited: true, agentExitCode: 137, agentExitSignal: null, agentStderrTail: 'FATAL ERROR: heap limit',
+    });
+    mocks.backendState.sendPromptScript = async (emit) => {
+      emit({ type: 'status', status: 'running' });
+      emit({ type: 'status', status: 'stopped', detail: exit.message });
+      throw exit;
+    };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'first' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m]) => m.ev.t === 'turn-end' && m.ev.status === 'failed')).toBe(true));
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'Process exited unexpectedly: pi process exited (code=137): FATAL ERROR: heap limit' });
+      // The session is not archived and the runner is still here.
+      expect(mocks.mockSession.close).not.toHaveBeenCalled();
+      expect(mocks.backendState.startSessionCalls).toBe(1);
+      expect(mocks.mockSession.keepAlive).toHaveBeenLastCalledWith(false, 'remote');
+
+      mocks.backendState.sendPromptScript = null;
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'second' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(2));
+      expect(mocks.backendState.startSessionCalls).toBe(2);
+      expect(mocks.backendState.disposeCalls).toBe(1);
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: expect.stringContaining('pi was restarted after its process exited') });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'turn-end').map(([m]) => m.ev.status)).toEqual(['failed', 'completed']));
+      // A fresh agent gets the Todo discovery again.
+      expect(mocks.backendState.prompts[1].prompt).toContain(BUILTIN_TODO_DISCOVERY);
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it("B-629: a refused prompt fails that turn in the agent's words and keeps the session", async () => {
+    mocks.backendState.sendPromptScript = async (emit) => {
+      emit({ type: 'status', status: 'running' });
+      emit({ type: 'status', status: 'error', detail: 'Authentication required' });
+      throw { code: -32000, message: 'Authentication required', data: { details: 'OPENAI_API_KEY missing' } };
+    };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'first' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m]) => m.ev.t === 'turn-end' && m.ev.status === 'failed')).toBe(true));
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi error: Authentication required: OPENAI_API_KEY missing' });
+      expect(mocks.mockSession.close).not.toHaveBeenCalled();
+      // No restart for a refusal: the same agent takes the next message.
+      mocks.backendState.sendPromptScript = null;
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'second' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(2));
+      expect(mocks.backendState.startSessionCalls).toBe(1);
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'turn-end').map(([m]) => m.ev.status)).toEqual(['failed', 'completed']));
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-629: pi-acp retry / compaction lines are service events, never part of the answer', async () => {
+    mocks.backendState.sendPromptScript = async (emit) => {
+      emit({ type: 'status', status: 'running' });
+      emit({ type: 'event', name: 'notice', payload: { kind: 'retry', text: 'Retrying (attempt 1/3, waiting 2s)...' } });
+      emit({ type: 'event', name: 'notice', payload: { kind: 'compaction', text: 'Context nearing limit, running automatic compaction...' } });
+      emit({ type: 'model-output', textDelta: 'done' });
+      emit({ type: 'status', status: 'idle' });
+    };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'first' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m]) => m.ev.t === 'turn-end')).toBe(true));
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi is retrying the model request (attempt 1/3, waiting 2s)' });
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi is compacting its context (nearing the limit)' });
+      const texts = mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'text').map(([m]) => m.ev.text);
+      expect(texts).toEqual(['done']);
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
 });
 
 describe('extractConfigSelector (B-351)', () => {

@@ -52,6 +52,8 @@ import {
   formatOptionsXml,
 } from '@/gemini/utils/optionsParser';
 import { ConversationHistory } from '@/gemini/utils/conversationHistory';
+import { describeGeminiFailure, describeGeminiRetry, isRetryableGeminiError } from '@/gemini/utils/turnFailure';
+import { settleCodexSession } from '@/codex/codexTermination';
 
 
 /**
@@ -355,21 +357,32 @@ export async function runGemini(opts: {
   let geminiBackend: AgentBackend | null = null;
   let acpSessionId: string | null = null;
   let wasSessionCreated = false;
+  // B-630: how the turn in progress ended, so the finally reports it once: the abort RPC
+  // already announced `turn_aborted`, a failure announces it from the catch, and only a turn
+  // that ran to the end gets `task_complete`.
+  let turnEnding: 'completed' | 'aborted' | 'failed' = 'completed';
+  // B-630: the Gemini process exited (its reason); the next message starts a fresh one.
+  let backendGone: Error | null = null;
 
   async function handleAbort() {
     logger.debug('[Gemini] Abort requested - stopping current task');
-    
+
     // Send turn_aborted event (like Codex) when abort is requested
+    turnEnding = 'aborted';
     session.sendAgentMessage('gemini', {
       type: 'turn_aborted',
       id: randomUUID(),
     });
-    
+
     // Abort reasoning processor and reset diff processor
     reasoningProcessor.abort();
     diffProcessor.reset();
-    
+
     try {
+      // B-630: a Stop withdraws the approvals still open (Orca answers every open
+      // request `cancelled` on stop); before, the card stayed up on the web until
+      // the turn's own cleanup, and Gemini's request_permission waited with it.
+      permissionHandler.abortAll();
       abortController.abort();
       messageQueue.reset();
       if (geminiBackend && acpSessionId) {
@@ -383,24 +396,19 @@ export async function runGemini(opts: {
     }
   }
 
-  const handleKillSession = async () => {
-    logger.debug('[Gemini] Kill session requested - terminating process');
+  /**
+   * B-630 / AGENTS 7: `archive` for the user's kill/archive (stamps archived);
+   * `offline` for SIGTERM/SIGINT — daemon stop, upgrade, shutdown — which only sends
+   * session-end + deactivate, so the session comes back instead of reading as archived.
+   */
+  const handleKillSession = async (intent: 'archive' | 'offline' = 'archive') => {
+    logger.debug(`[Gemini] Kill session requested (${intent}) - terminating process`);
     await handleAbort();
     logger.debug('[Gemini] Abort completed, proceeding with termination');
 
     try {
       if (session) {
-        session.updateMetadata((currentMetadata) => ({
-          ...currentMetadata,
-          lifecycleState: 'archived',
-          lifecycleStateSince: Date.now(),
-          archivedBy: 'cli',
-          archiveReason: 'User terminated'
-        }));
-
-        session.sendSessionDeath();
-        await session.flush();
-        await session.close();
+        await settleCodexSession(session, intent, (id) => api.deactivateSession(id), (m, e) => logger.debug(m, e));
       }
 
       happyServer.stop();
@@ -418,7 +426,7 @@ export async function runGemini(opts: {
   };
 
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
-  registerKillSessionHandler(session.rpcHandlerManager, handleKillSession, session);
+  registerKillSessionHandler(session.rpcHandlerManager, () => handleKillSession('archive'), session, { processSignals: true, onSignal: () => handleKillSession('offline') });
 
   //
   // Initialize Ink UI
@@ -584,17 +592,18 @@ export async function runGemini(opts: {
           detail: contentLogMetadata(statusDetail),
         });
         
-        // Log error status with details
+        // B-630: a `status: error` is the prompt's own failure, which the main loop's
+        // catch reports once (it used to be announced here AND there: two `turn_aborted`,
+        // two error lines). `stopped` = the Gemini process is gone (with its last stderr
+        // lines in `detail`); the prompt in flight rejects by itself and the next message
+        // starts a fresh process.
         if (msg.status === 'error') {
           logger.debug('[gemini] Error status received:', contentLogMetadata(statusDetail));
-          
-          // Send turn_aborted event (like Codex) when error occurs
-          session.sendAgentMessage('gemini', {
-            type: 'turn_aborted',
-            id: randomUUID(),
-          });
         }
-        
+        if (msg.status === 'stopped') {
+          backendGone = new Error(statusDetail || 'gemini process exited');
+        }
+
         if (msg.status === 'running') {
           thinking = true;
           session.keepAlive(thinking, 'remote');
@@ -627,42 +636,6 @@ export async function runGemini(opts: {
           // Only complete if there's actually reasoning content to complete
           // Skip if this is just the initial idle status after session creation
           reasoningProcessor.complete();
-        } else if (msg.status === 'error') {
-          thinking = false;
-          session.keepAlive(thinking, 'remote');
-          accumulatedResponse = '';
-          isResponseInProgress = false;
-          currentResponseMessageId = null;
-          
-          // Show error in CLI UI - handle object errors properly
-          let errorMessage = 'Unknown error';
-          if (msg.detail) {
-            if (typeof msg.detail === 'object') {
-              // Extract message from error object
-              const detailObj = msg.detail as Record<string, unknown>;
-              errorMessage = (detailObj.message as string) || 
-                           (detailObj.details as string) || 
-                           JSON.stringify(detailObj);
-            } else {
-              errorMessage = String(msg.detail);
-            }
-          }
-          
-          // Check for authentication error and provide helpful message
-          if (errorMessage.includes('Authentication required')) {
-            errorMessage = `Authentication required.\n` +
-              `For Google Workspace accounts, run: very-happy gemini project set <project-id>\n` +
-              `Or use a different Google account: very-happy connect gemini\n` +
-              `Guide: https://goo.gle/gemini-cli-auth-docs#workspace-gca`;
-          }
-          
-          messageBuffer.addMessage(`Error: ${errorMessage}`, 'status');
-          
-          // Use sendAgentMessage for consistency with ACP format
-          session.sendAgentMessage('gemini', {
-            type: 'message',
-            message: `Error: ${errorMessage}`,
-          });
         }
         break;
 
@@ -933,21 +906,41 @@ export async function runGemini(opts: {
         break;
       }
 
+      // B-622's lesson (Codex): the wrapper owns a prompt from here — starting or
+      // restarting the Gemini process, creating the ACP session — and the web reads
+      // `thinking` as "is anything happening"; raising it only on Gemini's own
+      // `running` status left the spinner off for all of that.
+      if (!thinking) {
+        thinking = true;
+        session.keepAlive(thinking, 'remote');
+      }
+      turnEnding = 'completed';
+
       // Track if we need to inject conversation history (after model change)
       let injectHistoryContext = false;
-      
+
+      // B-630: the Gemini process died (OOM, crash, killed): the backend that owned it
+      // takes no more prompts. Start a fresh one for this message, and re-seed it with
+      // the conversation so far — the same path a model change takes.
+      const restartAfterExit = backendGone !== null;
+      if (restartAfterExit) {
+        logger.debug(`[Gemini] Restarting Gemini after it exited: ${backendGone?.message ?? 'unknown'}`);
+        backendGone = null;
+        session.sendSessionEvent({ type: 'message', message: `Gemini was restarted after its process exited; the conversation so far is re-sent to it as context.` });
+      }
+
       // Handle mode change (like Codex) - restart session if permission mode or model changed
-      if (wasSessionCreated && currentModeHash && message.hash !== currentModeHash) {
-        logger.debug('[Gemini] Mode changed – restarting Gemini session');
+      if (restartAfterExit || (wasSessionCreated && currentModeHash && message.hash !== currentModeHash)) {
+        logger.debug('[Gemini] Mode changed or process gone – restarting Gemini session');
         messageBuffer.addMessage('═'.repeat(40), 'status');
-        
+
         // Check if we have conversation history to preserve
         if (conversationHistory.hasHistory()) {
-          messageBuffer.addMessage(`Switching model (preserving ${conversationHistory.size()} messages of context)...`, 'status');
+          messageBuffer.addMessage(`${restartAfterExit ? 'Restarting Gemini' : 'Switching model'} (preserving ${conversationHistory.size()} messages of context)...`, 'status');
           injectHistoryContext = true;
           logger.debug('[Gemini] Will inject conversation history');
         } else {
-          messageBuffer.addMessage('Starting new Gemini session (mode changed)...', 'status');
+          messageBuffer.addMessage(restartAfterExit ? 'Restarting Gemini...' : 'Starting new Gemini session (mode changed)...', 'status');
         }
         
         // Reset permission handler and reasoning processor on mode change (like Codex)
@@ -1092,71 +1085,45 @@ export async function runGemini(opts: {
         
         logger.debug('[gemini] Sending prompt to Gemini:', contentLogMetadata(promptToSend));
         
-        // Retry logic for transient Gemini API errors (empty response, internal errors)
+        // Retry logic for transient Gemini API errors (empty response, overloaded)
         const MAX_RETRIES = 3;
         const RETRY_DELAY_MS = 2000;
-        let lastError: unknown = null;
-        
+
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
-            await geminiBackend.sendPrompt(acpSessionId, promptToSend);
-            logger.debug('[gemini] Prompt sent successfully');
-            
-            // Wait for Gemini to finish responding (all chunks received + final idle)
-            // This ensures we don't send task_complete until response is truly done
-            if (geminiBackend.waitForResponseComplete) {
-              await geminiBackend.waitForResponseComplete(120000);
-              logger.debug('[gemini] Response complete');
+            // B-630: each attempt is a fresh answer — text streamed by a failed attempt
+            // must not be glued in front of the retry's.
+            accumulatedResponse = '';
+            isResponseInProgress = false;
+            // B-629/B-630: the turn is over when the ACP prompt is answered (Gemini sends
+            // every update before its response); no more waiting for the text to go
+            // quiet, no 120 s timeout surfacing as an assistant message. The agent's
+            // `stopReason` tells a Stop from a finished turn.
+            const outcome = await geminiBackend.sendPrompt(acpSessionId, promptToSend);
+            const stopReason = outcome && typeof outcome === 'object' ? outcome.stopReason : undefined;
+            logger.debug(`[gemini] Prompt answered (stopReason=${stopReason ?? 'none'})`);
+            if (stopReason === 'cancelled') {
+              turnEnding = 'aborted';
+            } else if (stopReason && stopReason !== 'end_turn') {
+              session.sendSessionEvent({ type: 'message', message: `Gemini stopped the turn: ${stopReason}` });
             }
-            
             break; // Success, exit retry loop
           } catch (promptError) {
-            lastError = promptError;
-            const errObj = promptError as any;
-            const errorDetails = errObj?.data?.details || errObj?.details || errObj?.message || '';
-            const errorCode = errObj?.code;
-            
-            // Check for quota exhausted - this is NOT retryable
-            const isQuotaError = errorDetails.includes('exhausted') || 
-                                 errorDetails.includes('quota') ||
-                                 errorDetails.includes('capacity');
-            if (isQuotaError) {
-              // Extract reset time from error message like "Your quota will reset after 3h20m35s."
-              const resetTimeMatch = errorDetails.match(/reset after (\d+h)?(\d+m)?(\d+s)?/i);
-              let resetTimeMsg = '';
-              if (resetTimeMatch) {
-                const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
-                resetTimeMsg = ` Quota resets in ${parts}.`;
-              }
-              const quotaMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
-              messageBuffer.addMessage(quotaMsg, 'status');
-              session.sendAgentMessage('gemini', { type: 'message', message: quotaMsg });
-              throw promptError; // Don't retry quota errors
-            }
-            
-            // Check if this is a retryable error (empty response, internal error -32603)
-            const isEmptyResponseError = errorDetails.includes('empty response') || 
-                                         errorDetails.includes('Model stream ended');
-            const isInternalError = errorCode === -32603;
-            const isRetryable = isEmptyResponseError || isInternalError;
-            
-            if (isRetryable && attempt < MAX_RETRIES) {
-              logger.debug(`[gemini] Retryable error on attempt ${attempt}/${MAX_RETRIES}:`, contentLogMetadata(errorDetails));
-              messageBuffer.addMessage(`Gemini returned empty response, retrying (${attempt}/${MAX_RETRIES})...`, 'status');
+            if (isRetryableGeminiError(promptError) && attempt < MAX_RETRIES) {
+              const notice = describeGeminiRetry(attempt, MAX_RETRIES, promptError);
+              logger.debug(`[gemini] Retryable error on attempt ${attempt}/${MAX_RETRIES}:`, errorLogMetadata(promptError));
+              messageBuffer.addMessage(notice, 'status');
+              // B-630: the backoff used to be silent on the web (Codex B-622 shows its retries).
+              session.sendSessionEvent({ type: 'message', message: notice });
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
               continue;
             }
-            
+
             // Not retryable or max retries reached
             throw promptError;
           }
         }
-        
-        if (lastError && MAX_RETRIES > 1) {
-          // If we had errors but eventually succeeded, log it
-          logger.debug('[gemini] Prompt succeeded after retries');
-        }
-        
+
         // Mark as not first message after sending prompt
         if (first) {
           first = false;
@@ -1166,79 +1133,22 @@ export async function runGemini(opts: {
         const isAbortError = error instanceof Error && error.name === 'AbortError';
 
         if (isAbortError) {
+          turnEnding = 'aborted';
           messageBuffer.addMessage('Aborted by user', 'status');
           session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
         } else {
-          // Parse error message
-          let errorMsg = 'Process error occurred';
-          
-          if (typeof error === 'object' && error !== null) {
-            const errObj = error as any;
-            
-            // Extract error information from various possible formats
-            const errorDetails = errObj.data?.details || errObj.details || '';
-            const errorCode = errObj.code || errObj.status || (errObj.response?.status);
-            const errorMessage = errObj.message || errObj.error?.message || '';
-            const errorString = String(error);
-            
-            // Check for 404 error (model not found)
-            if (errorCode === 404 || errorDetails.includes('notFound') || errorDetails.includes('404') || 
-                errorMessage.includes('not found') || errorMessage.includes('404')) {
-              const currentModel = displayedModel || 'gemini-2.5-pro';
-              errorMsg = `Model "${currentModel}" not found. Available models: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite`;
-            }
-            // Check for empty response / internal error after retries exhausted
-            else if (errorCode === -32603 || 
-                     errorDetails.includes('empty response') || errorDetails.includes('Model stream ended')) {
-              errorMsg = 'Gemini API returned empty response after retries. This is a temporary issue - please try again.';
-            }
-            // Check for rate limit error (429) - multiple possible formats
-            else if (errorCode === 429 || 
-                     errorDetails.includes('429') || errorMessage.includes('429') || errorString.includes('429') ||
-                     errorDetails.includes('rateLimitExceeded') || errorDetails.includes('RESOURCE_EXHAUSTED') ||
-                     errorMessage.includes('Rate limit exceeded') || errorMessage.includes('Resource exhausted') ||
-                     errorString.includes('rateLimitExceeded') || errorString.includes('RESOURCE_EXHAUSTED')) {
-              errorMsg = 'Gemini API rate limit exceeded. Please wait a moment and try again. The API will retry automatically.';
-            }
-            // Check for quota/capacity exceeded error
-            else if (errorDetails.includes('quota') || errorMessage.includes('quota') || errorString.includes('quota') ||
-                     errorDetails.includes('exhausted') || errorDetails.includes('capacity')) {
-              // Extract reset time from error message like "Your quota will reset after 3h20m35s."
-              const resetTimeMatch = (errorDetails + errorMessage + errorString).match(/reset after (\d+h)?(\d+m)?(\d+s)?/i);
-              let resetTimeMsg = '';
-              if (resetTimeMatch) {
-                const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
-                resetTimeMsg = ` Quota resets in ${parts}.`;
-              }
-              errorMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
-            }
-            // Check for authentication error (Google Workspace accounts need project ID)
-            else if (errorMessage.includes('Authentication required') || 
-                     errorDetails.includes('Authentication required') ||
-                     errorCode === -32000) {
-              errorMsg = `Authentication required. For Google Workspace accounts, you need to set a Google Cloud Project:\n` +
-                         `  very-happy gemini project set <your-project-id>\n` +
-                         `Or use a different Google account: very-happy connect gemini\n` +
-                         `Guide: https://goo.gle/gemini-cli-auth-docs#workspace-gca`;
-            }
-            // Check for empty error (command not found)
-            else if (Object.keys(error).length === 0) {
-              errorMsg = 'Failed to start Gemini. Is "gemini" CLI installed? Run: npm install -g @google/gemini-cli';
-            }
-            // Use message from error object
-            else if (errObj.message || errorMessage) {
-              errorMsg = errorDetails || errorMessage || errObj.message;
-            }
-          } else if (error instanceof Error) {
-            errorMsg = error.message;
+          // B-630: one line per failed turn, as a service event (not the assistant
+          // speaking), classified in utils/turnFailure.ts; one `turn_aborted`.
+          const failure = describeGeminiFailure(error, { model: displayedModel || 'gemini-2.5-pro' });
+          if (failure.kind === 'exited' && error instanceof Error) {
+            backendGone = error;
           }
-          
-          messageBuffer.addMessage(errorMsg, 'status');
-          // Use sendAgentMessage for consistency with ACP format
-          session.sendAgentMessage('gemini', {
-            type: 'message',
-            message: errorMsg,
-          });
+          messageBuffer.addMessage(failure.message, 'status');
+          session.sendSessionEvent({ type: 'message', message: failure.message });
+          if (turnEnding !== 'aborted') {
+            turnEnding = 'failed';
+            session.sendAgentMessage('gemini', { type: 'turn_aborted', id: randomUUID() });
+          }
         }
       } finally {
         // Reset permission handler, reasoning processor, and diff processor after turn (like Codex)
@@ -1278,11 +1188,15 @@ export async function runGemini(opts: {
         }
         
         // Send task_complete ONCE at the end of turn (not on every idle)
-        // This signals to the UI that the agent has finished processing
-        session.sendAgentMessage('gemini', {
-          type: 'task_complete',
-          id: randomUUID(),
-        });
+        // This signals to the UI that the agent has finished processing.
+        // B-630: not after a turn that was stopped or failed — those announced
+        // `turn_aborted` already; a `task_complete` on top painted them as finished.
+        if (turnEnding === 'completed') {
+          session.sendAgentMessage('gemini', {
+            type: 'task_complete',
+            id: randomUUID(),
+          });
+        }
         
         // Reset tracking flags
         hadToolCallInTurn = false;

@@ -42,6 +42,21 @@ describe('presentServiceEvent', () => {
     });
 });
 
+it('shows a pi / Gemini / Claude turn failure and a process exit with its last words as errors (B-629)', () => {
+    for (const message of [
+        'pi error: Authentication required (401)',
+        'Gemini error: quota exceeded. Quota resets in 3h20m35s.',
+        'Claude error: model_not_found',
+        'Process exited unexpectedly: pi process exited (code=3): FATAL ERROR: Reached heap limit',
+    ]) {
+        expect(presentServiceEvent(message)).toEqual({ kind: 'agent-error', text: message });
+    }
+    // The bare line keeps its fixed text and the restart action.
+    expect(presentServiceEvent('Process exited unexpectedly')).toEqual({ kind: 'error', textKey: 'session.chat.processFailed' });
+    // pi's own retry / compaction lines stay quiet notes.
+    expect(presentServiceEvent('pi is retrying the model request (attempt 1/3, waiting 2s)')).toEqual({ kind: 'subtle', text: 'pi is retrying the model request (attempt 1/3, waiting 2s)' });
+});
+
 it('shows a Codex turn refusal as an error with its reason (B-487)', () => {
     const message = "Codex error: The 'gpt-6-sol' model is not supported when using Codex with a ChatGPT account.";
     expect(presentServiceEvent(message)).toEqual({ kind: 'agent-error', text: message });

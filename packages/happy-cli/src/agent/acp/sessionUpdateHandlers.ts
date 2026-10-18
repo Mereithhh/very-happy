@@ -13,6 +13,7 @@ import type { TransportHandler } from '../transport';
 import { logger } from '@/ui/logger';
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import { appendTerminalOutput, buildAcpBashResult, deriveAcpToolArgs, readAcpTerminalMeta } from './acpToolArgs';
+import { classifyPiAcpNotice } from './acpNotices';
 
 /**
  * Default timeout for idle detection after message chunks (ms)
@@ -169,6 +170,15 @@ export function handleAgentMessageChunk(
     return { handled: false };
   }
 
+  // B-629: pi-acp's retry / compaction / notify lines are not the model talking (acpNotices.ts).
+  if (ctx.transport.agentName === 'pi') {
+    const notice = classifyPiAcpNotice(text, (update as { _meta?: unknown })._meta);
+    if (notice) {
+      ctx.emit({ type: 'event', name: 'notice', payload: notice });
+      return { handled: true };
+    }
+  }
+
   // Filter out "thinking" messages (start with **...**)
   const isThinking = /^\*\*[^*]+\*\*\n/.test(text);
 
@@ -269,30 +279,10 @@ export function startToolCall(
     logger.debug(`[AcpBackend] 🔍 Investigation tool detected - extended timeout (10min) will be used`);
   }
 
-  // Set timeout for tool call completion
-  const timeoutMs = ctx.transport.getToolCallTimeout?.(toolCallId, toolKindStr) ?? DEFAULT_TOOL_CALL_TIMEOUT_MS;
-
-  if (!ctx.toolCallTimeouts.has(toolCallId)) {
-    const timeout = setTimeout(() => {
-      const duration = formatDuration(ctx.toolCallStartTimes.get(toolCallId));
-      logger.debug(`[AcpBackend] Tool call TIMEOUT (from ${source}): ${toolCallId} after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${duration}, removing from active set`);
-
-      ctx.activeToolCalls.delete(toolCallId);
-      ctx.toolCallStartTimes.delete(toolCallId);
-      ctx.toolCallTimeouts.delete(toolCallId);
-      ctx.toolCallOutputs.delete(toolCallId);
-
-      if (ctx.activeToolCalls.size === 0) {
-        logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
-        ctx.emitIdleStatus();
-      }
-    }, timeoutMs);
-
-    ctx.toolCallTimeouts.set(toolCallId, timeout);
-    logger.debug(`[AcpBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`);
-  } else {
-    logger.debug(`[AcpBackend] Timeout already set for ${toolCallId}, skipping`);
-  }
+  // B-629: no deadline on a tool call. The 120 s timer that used to evict a running call
+  // (and throw away its streamed output, so a long test run showed only an exit code) only
+  // served the idle heuristic, and the turn now ends on the prompt's answer (AcpBackend.
+  // sendPrompt), as Orca's does (src/main/pi/rpc-turns.ts). The agent owns its tools' time.
 
   // Clear idle timeout - tool call is starting
   ctx.clearIdleTimeout();

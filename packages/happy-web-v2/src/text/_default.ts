@@ -2265,6 +2265,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct19a: {
+                title: 'pi, Gemini and Claude sessions survive their agent dying, end turns on time, and say why something failed',
+                summary: 'The third wrapper batch after the Codex one, for the three other agents. Needs CLI 0.2.177; the web shows the new failure lines in red.',
+                death: 'When the agent process behind a pi or Gemini session dies (out of memory, crashed, killed), the conversation now says so with its exit code and last error output, the session stays, and the next message starts the agent again (pi starts fresh and says so; Gemini gets the conversation so far as context). Before, the session stayed “working” forever and every later message hung.',
+                turns: 'A pi or Gemini turn ends the moment the agent reports it finished — no more waiting for its text to go quiet, no more 120-second timeout showing up as an answer, and a Stop takes effect at once (open approval cards are withdrawn). Tool calls longer than two minutes keep their output.',
+                failures: 'A failed turn is one red line in the agent’s own words (quota, rate limit, sign-in, model not found…) instead of a repeated error or a vanished session; a Gemini retry shows as it happens; pi’s own retry and context-compaction notices show as quiet notes instead of inside the answer.',
+                claude: 'Claude sessions: a turn that ends without a result no longer leaves the spinner on; a Claude process that exits says with which code and error; API retries (529 and friends) show as they happen; Stop no longer waits forever on a stuck process, and a steered message that Stop discarded is marked as not delivered.',
+            },
             oct18c: {
                 title: 'Steer a running Codex turn; Codex sub-agents get their own cards',
                 summary: 'The web half works for every session; the Codex half needs CLI 0.2.176.',

@@ -36,7 +36,14 @@ import type {
 import { logger } from '@/ui/logger';
 import { delay } from '@/utils/time';
 import { contentLogMetadata, errorLogMetadata } from '@/utils/contentLogMetadata';
+import { appendStderrRing, killProcessTree, readableStderrTail, stopProcessGracefully } from '@/utils/processTree';
+import { agentExitError, isAgentExitError, type AgentExitError } from './acpAgentExit';
 import packageJson from '../../../package.json';
+
+export { isAgentExitError, type AgentExitError };
+
+/** B-629: what `sendPrompt` resolves with once the agent ended the turn (ACP `PromptResponse`). */
+export type AcpPromptOutcome = { stopReason?: string };
 
 /**
  * Retry configuration for ACP operations
@@ -352,6 +359,24 @@ export class AcpBackend implements AgentBackend {
   /** Timeout for emitting 'idle' status after last message chunk */
   private idleTimeout: NodeJS.Timeout | null = null;
 
+  // B-629 (approach from Orca, src/main/acp/acp-agent-connection.ts): the agent process is
+  // part of the turn. Its last stderr lines are kept so its death can be explained, any exit
+  // (code or signal) is announced as `stopped`, and a request in flight when it dies rejects
+  // at once instead of waiting forever on a stream that will never answer.
+  /** Last stderr output of the agent process, bounded. */
+  private stderrRing = '';
+  private static readonly STDERR_TAIL_CHARS = 2_000;
+  /** Set when the current agent process exited; the backend takes no further prompt. */
+  private exited: { code: number | null; signal: NodeJS.Signals | null; error: AgentExitError } | null = null;
+  /** Rejects with the exit error when the current agent process exits (one per spawn). */
+  private processGone: Promise<never> | null = null;
+  /** Fails the request in flight (an oversized frame that was its answer, see MAX_FRAME_CHARS). */
+  private inflightReject: ((error: Error) => void) | null = null;
+  /** A single JSON-RPC line longer than this is dropped rather than buffered (Orca: 16 MiB). */
+  private static readonly MAX_FRAME_CHARS = 16 * 1024 * 1024;
+  /** How long the graceful stop gets on dispose before the process tree is killed. */
+  private static readonly DISPOSE_GRACE_MS = 4_000;
+
   /** Transport handler for agent-specific behavior */
   private readonly transport: TransportHandler;
 
@@ -368,6 +393,26 @@ export class AcpBackend implements AgentBackend {
     if (index !== -1) {
       this.listeners.splice(index, 1);
     }
+  }
+
+  /** B-629: the agent's last stderr lines, one line, for a message a person reads. */
+  stderrTail(): string {
+    return readableStderrTail(this.stderrRing);
+  }
+
+  /** B-629: the agent process exited; this backend cannot take another prompt. */
+  get hasExited(): boolean {
+    return this.exited !== null;
+  }
+
+  /** B-629: a frame that cannot be read in full. One that answers a request fails that request. */
+  private onOversizedFrame(head: string, chars: number): void {
+    const looksLikeResponse = /"id"\s*:\s*\d+/.test(head) && /"(result|error)"\s*:/.test(head);
+    logger.debug(`[AcpBackend] Dropped an oversized ${this.transport.agentName} frame (${Math.round(chars / 1024 / 1024)} MiB${looksLikeResponse ? ', a response' : ''})`);
+    if (!looksLikeResponse) return;
+    const error = new Error(`${this.transport.agentName} sent a ${Math.round(chars / 1024 / 1024)} MiB response frame that cannot be read; the turn was given up`);
+    this.inflightReject?.(error);
+    this.emit({ type: 'status', status: 'error', detail: error.message });
   }
 
   private emit(msg: AgentMessage): void {
@@ -426,6 +471,15 @@ export class AcpBackend implements AgentBackend {
         throw new Error('Failed to create stdio pipes');
       }
 
+      // B-629: one exit promise per spawn; a later generation never sees an older exit.
+      const child = this.process;
+      let rejectGone!: (error: Error) => void;
+      const processGone = new Promise<never>((_, reject) => { rejectGone = reject; });
+      processGone.catch(() => undefined);
+      this.processGone = processGone;
+      this.exited = null;
+      this.stderrRing = '';
+
       let startupFailure: Error | null = null;
       let startupFailureSettled = false;
       let rejectStartupFailure: ((error: Error) => void) | null = null;
@@ -447,6 +501,9 @@ export class AcpBackend implements AgentBackend {
       this.process.stderr.on('data', (data: Buffer) => {
         const text = data.toString();
         if (!text.trim()) return;
+        if (this.process === child) {
+          this.stderrRing = appendStderrRing(this.stderrRing, text, AcpBackend.STDERR_TAIL_CHARS);
+        }
 
         // Build context for transport handler
         const hasActiveInvestigation = this.transport.isInvestigationTool
@@ -482,10 +539,16 @@ export class AcpBackend implements AgentBackend {
       });
 
       this.process.on('exit', (code, signal) => {
-        if (!this.disposed && code !== 0 && code !== null) {
-          signalStartupFailure(new Error(`Exit code: ${code}`));
-          logger.debug(`[AcpBackend] Process exited with code ${code}, signal ${signal}`);
-          this.emit({ type: 'status', status: 'stopped', detail: `Exit code: ${code}` });
+        // B-629: any exit ends every request in flight and is announced with the agent's
+        // last words — before this, exit 0 and a signal were silent and `prompt()` hung.
+        const error = agentExitError(this.transport.agentName, code, signal, this.stderrTail());
+        rejectGone(error);
+        if (this.process !== child) return; // a newer generation owns this backend now
+        this.exited = { code, signal, error };
+        signalStartupFailure(error);
+        logger.debug(`[AcpBackend] Process exited with code ${code}, signal ${signal}`);
+        if (!this.disposed) {
+          this.emit({ type: 'status', status: 'stopped', detail: error.message });
         }
       });
 
@@ -500,6 +563,7 @@ export class AcpBackend implements AgentBackend {
       // Filter stdout via transport handler before ACP parsing
       // Some agents output debug info that breaks JSON-RPC parsing
       const transport = this.transport;
+      const backend = this;
       const filteredReadable = new ReadableStream<Uint8Array>({
         async start(controller) {
           const reader = readable.getReader();
@@ -536,9 +600,20 @@ export class AcpBackend implements AgentBackend {
               // Process line by line (ndJSON is line-delimited)
               const lines = buffer.split('\n');
               buffer = lines.pop() || ''; // Keep last incomplete line in buffer
+              // B-629: a line that never ends is not buffered without bound.
+              if (buffer.length > AcpBackend.MAX_FRAME_CHARS) {
+                backend.onOversizedFrame(buffer.slice(0, 200), buffer.length);
+                buffer = '';
+                filteredCount++;
+              }
 
               for (const line of lines) {
                 if (!line.trim()) continue;
+                if (line.length > AcpBackend.MAX_FRAME_CHARS) {
+                  backend.onOversizedFrame(line.slice(0, 200), line.length);
+                  filteredCount++;
+                  continue;
+                }
 
                 // Use transport handler to filter lines
                 // Note: filterStdoutLine returns null to filter out, string to keep
@@ -1043,19 +1118,27 @@ export class AcpBackend implements AgentBackend {
 
   get supportsImageAttachments(): boolean { return this.supportsImagePrompt; }
 
-  async sendPrompt(sessionId: SessionId, prompt: string, attachments: PendingAttachment[] = []): Promise<void> {
+  /**
+   * B-629: the turn is over when ACP's `prompt` answers (the agent sends every update before
+   * its response on the same ordered stream), never when the text goes quiet — the idle
+   * heuristic below is only a status hint now. Resolves with the agent's `stopReason`.
+   */
+  async sendPrompt(sessionId: SessionId, prompt: string, attachments: PendingAttachment[] = []): Promise<AcpPromptOutcome> {
     // Check if prompt contains change_title instruction (via optional callback)
     const promptHasChangeTitle = this.options.hasChangeTitleInstruction?.(prompt) ?? false;
 
     // Reset tool call counter and set flag
     this.toolCallCountSincePrompt = 0;
     this.recentPromptHadChangeTitle = promptHasChangeTitle;
-    
+
     if (promptHasChangeTitle) {
       logger.debug('[AcpBackend] Prompt contains change_title instruction - will auto-approve first "other" tool call if it matches pattern');
     }
     if (this.disposed) {
       throw new Error('Backend has been disposed');
+    }
+    if (this.exited) {
+      throw this.exited.error;
     }
 
     if (!this.connection || !this.acpSessionId) {
@@ -1064,6 +1147,8 @@ export class AcpBackend implements AgentBackend {
 
     this.emit({ type: 'status', status: 'running' });
     this.waitingForResponse = true;
+    const inflight = new Promise<never>((_, reject) => { this.inflightReject = reject; });
+    inflight.catch(() => undefined);
 
     try {
       logger.debug('[AcpBackend] Sending prompt:', {
@@ -1085,21 +1170,25 @@ export class AcpBackend implements AgentBackend {
         sessionId: this.acpSessionId,
         blockCount: promptRequest.prompt.length,
       });
-      const response = await this.connection.prompt(promptRequest);
+      const response = await Promise.race([
+        this.connection.prompt(promptRequest),
+        this.processGone ?? new Promise<never>(() => undefined),
+        inflight,
+      ]);
       if (response.usage) {
         // ACP's unstable PromptResponse.usage is the one protocol-level token
         // source shared by Gemini, OpenCode, and custom ACP agents.
         this.emit({ type: 'token-count', ...response.usage });
       }
-      logger.debug('[AcpBackend] Prompt request sent to ACP connection');
-      
-      // Don't emit 'idle' here - it will be emitted after all message chunks are received
-      // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
+      const stopReason = typeof response.stopReason === 'string' ? response.stopReason : undefined;
+      logger.debug(`[AcpBackend] Prompt answered (stopReason=${stopReason ?? 'none'})`);
+      this.finishTurn();
+      return stopReason ? { stopReason } : {};
 
     } catch (error) {
       logger.debug('[AcpBackend] Error sending prompt:', errorLogMetadata(error));
-      this.waitingForResponse = false;
-      
+      this.finishTurn(false);
+
       // Extract error details for better error handling
       let errorDetail: string;
       if (error instanceof Error) {
@@ -1119,13 +1208,36 @@ export class AcpBackend implements AgentBackend {
         errorDetail = String(error);
       }
       
-      this.emit({ 
-        type: 'status', 
-        status: 'error', 
+      this.emit({
+        type: 'status',
+        status: 'error',
         detail: errorDetail
       });
       throw error;
+    } finally {
+      this.inflightReject = null;
     }
+  }
+
+  /**
+   * B-629: the turn's bookkeeping ends with the prompt answer: no response is awaited any
+   * more, the idle timer and per-call timers are dropped, and the calls still marked active
+   * belong to a turn that is over. `idle` is emitted once for status listeners.
+   */
+  private finishTurn(announceIdle = true): void {
+    this.waitingForResponse = false;
+    if (this.idleTimeout) {
+      clearTimeout(this.idleTimeout);
+      this.idleTimeout = null;
+    }
+    for (const timeout of this.toolCallTimeouts.values()) {
+      clearTimeout(timeout);
+    }
+    this.toolCallTimeouts.clear();
+    this.activeToolCalls.clear();
+    this.toolCallStartTimes.clear();
+    this.toolCallOutputs.clear();
+    if (announceIdle) this.emitIdleStatus();
   }
 
   /**
@@ -1294,8 +1406,9 @@ export class AcpBackend implements AgentBackend {
     logger.debug('[AcpBackend] Disposing backend');
     this.disposed = true;
 
-    // Try graceful shutdown first
-    if (this.connection && this.acpSessionId) {
+    // Try graceful shutdown first (B-629: not on a process that already exited — the SDK
+    // would only log a write error against the closed stream)
+    if (this.connection && this.acpSessionId && !this.exited) {
       try {
         // Send cancel to stop any ongoing work
         await Promise.race([
@@ -1307,27 +1420,26 @@ export class AcpBackend implements AgentBackend {
       }
     }
 
-    // Kill the process
+    // Kill the process — B-629: gracefully first, then the whole tree under the launcher
+    // (utils/processTree.ts), so an agent's node launcher never leaves its children behind.
     if (this.process) {
-      // Try SIGTERM first, then SIGKILL after timeout
-      this.process.kill('SIGTERM');
-      
-      // Give process 1 second to terminate gracefully
+      const proc = this.process;
+      stopProcessGracefully(proc);
       await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          if (this.process) {
-            logger.debug('[AcpBackend] Force killing process');
-            this.process.kill('SIGKILL');
-          }
+        if (proc.exitCode != null || proc.signalCode != null) {
           resolve();
-        }, 1000);
-        
-        this.process?.once('exit', () => {
+          return;
+        }
+        const timeout = setTimeout(() => {
+          logger.debug('[AcpBackend] Force killing process tree');
+          killProcessTree(proc);
+          resolve();
+        }, AcpBackend.DISPOSE_GRACE_MS);
+        proc.once('exit', () => {
           clearTimeout(timeout);
           resolve();
         });
       });
-      
       this.process = null;
     }
 
