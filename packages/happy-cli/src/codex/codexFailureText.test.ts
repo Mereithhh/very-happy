@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { describeCodexFailure, describeCodexRetry, describeThrownTurnError, readableCodexErrorText } from './codexFailureText';
+import { codexStderrTailOf, describeCodexFailure, describeCodexRetry, describeThrownTurnError, readableCodexErrorText } from './codexFailureText';
+
+describe('codexStderrTailOf', () => {
+    it('B-623: reads the stderr tail a dead app-server left on its rejection, or null', () => {
+        const error = Object.assign(new Error('Codex process exited (code=1) while waiting for turn/start'), { codexStderrTail: ' thread panicked: boom ' });
+        expect(codexStderrTailOf(error)).toBe('thread panicked: boom');
+        expect(codexStderrTailOf(Object.assign(new Error('x'), { codexStderrTail: '   ' }))).toBeNull();
+        expect(codexStderrTailOf(new Error('Codex process exited (code=1) while waiting for turn/start'))).toBeNull();
+        expect(codexStderrTailOf(undefined)).toBeNull();
+        // The generic line still owns a transport loss; the tail is what gets appended to it.
+        expect(describeThrownTurnError(error)).toBeNull();
+    });
+});
 
 // Exact turn/completed error shape from codex 0.150.0 with a ChatGPT sign-in (2026-09-24).
 const CHATGPT_400 = '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-6-sol\' model is not supported when using Codex with a ChatGPT account."}}';

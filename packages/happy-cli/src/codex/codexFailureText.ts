@@ -93,6 +93,15 @@ export function describeCodexRetry(msg: any): string {
     return message ? `Codex is retrying after ${cause} (${message})` : `Codex is retrying after ${cause}`;
 }
 
+/**
+ * B-623: the app-server's last stderr lines, carried on the error a dead process
+ * rejected a request with (`codexAppServerClient` `proc.on('exit')`), or null.
+ */
+export function codexStderrTailOf(error: unknown): string | null {
+    const tail = (error as { codexStderrTail?: unknown } | null)?.codexStderrTail;
+    return typeof tail === 'string' && tail.trim() ? tail.trim() : null;
+}
+
 /** Losing the app-server itself — the only case the generic line is right for. */
 const TRANSPORT_LOSS = /^Codex process (exited|disconnected)\b|stdin not writable| timed out after \d+ms/;
 

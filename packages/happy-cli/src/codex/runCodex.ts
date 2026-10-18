@@ -43,7 +43,7 @@ import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
 import { unsupportedEffortReason } from './effortSupport';
-import { describeCodexFailure, describeCodexRetry, describeThrownTurnError } from './codexFailureText';
+import { codexStderrTailOf, describeCodexFailure, describeCodexRetry, describeThrownTurnError } from './codexFailureText';
 import {
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
@@ -1109,8 +1109,10 @@ export async function runCodex(opts: {
                     messageBuffer.addMessage(`Task failed: ${reason}`, 'status');
                     session.sendSessionEvent({ type: 'message', message: `Codex error: ${reason}` });
                 } else {
+                    // B-623: with Codex's own last words (its stderr tail) when it has any.
+                    const tail = codexStderrTailOf(error);
                     messageBuffer.addMessage('Process exited unexpectedly', 'status');
-                    session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    session.sendSessionEvent({ type: 'message', message: tail ? `Process exited unexpectedly: ${tail}` : 'Process exited unexpectedly' });
                 }
             } finally {
                 // Reset permission handler, reasoning processor, and diff processor
