@@ -124,6 +124,13 @@ export class SDKToLogConverter {
 
         let logMessage: RawJSONLines | null = null
 
+        // B-631: Claude Code's per-command queue bookkeeping (`command_uuid` +
+        // state) is a top-level type the SDK union does not declare, so it used
+        // to fall through `default` and be persisted verbatim. claudeRemote
+        // reads it off the stream before this converter runs
+        // (claudeCommandLifecycle.ts); it is not transcript content.
+        if ((sdkMessage as { type: string }).type === 'command_lifecycle') return null
+
         switch (sdkMessage.type) {
             case 'user': {
                 const userMsg = sdkMessage as SDKUserMessage

@@ -137,11 +137,13 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     if (exitReason) {
                         break; // preserve existing exit reason (e.g. switch intent) — SIGTERM is expected
                     }
-                    // B-631: the exit code travels with the turn-end and as a
-                    // visible line (local mode inherits stderr, so no tail).
+                    // B-631: the exit code travels with the turn-end (the web
+                    // renders a failed turn-end's error as its own line); the
+                    // event is the outlet only when no turn was open to carry it.
+                    // Local mode inherits stderr, so there is no tail.
                     const exit = describeClaudeProcessExit(e);
-                    session.client.closeClaudeSessionTurn('failed', { error: exit });
-                    session.client.sendSessionEvent({ type: 'message', message: exit, kind: 'claude-process-exit' });
+                    const closed = session.client.closeClaudeSessionTurn('failed', { error: exit });
+                    if (!closed) session.client.sendSessionEvent({ type: 'message', message: exit, kind: 'claude-process-exit' });
                     exitReason = (switchRequested || session.queue.size() > 0)
                         ? { type: 'switch' }
                         : { type: 'exit', code: e.exitCode };

@@ -153,14 +153,26 @@ describe('claudeLocalLauncher', () => {
             };
         }
 
-        it('a non-zero exit closes the turn as failed WITH the code and tells the web', async () => {
+        it('a non-zero exit closes the open turn as failed WITH the code; the turn-end is the one line the web shows', async () => {
             const { ExitCodeError } = await import('./claudeLocal');
             mockClaudeLocal.mockRejectedValueOnce(new ExitCodeError(2));
             const session = sessionFixture();
+            session.client.closeClaudeSessionTurn.mockReturnValue(true);
 
             await expect(claudeLocalLauncher(session as any)).resolves.toEqual({ type: 'exit', code: 2 });
 
             expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('failed', { error: 'Process exited unexpectedly (code 2)' });
+            expect(session.client.sendSessionEvent).not.toHaveBeenCalled();
+        });
+
+        it('a non-zero exit with no turn open is told through the session event instead', async () => {
+            const { ExitCodeError } = await import('./claudeLocal');
+            mockClaudeLocal.mockRejectedValueOnce(new ExitCodeError(2));
+            const session = sessionFixture();
+            session.client.closeClaudeSessionTurn.mockReturnValue(false);
+
+            await expect(claudeLocalLauncher(session as any)).resolves.toEqual({ type: 'exit', code: 2 });
+
             expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
                 type: 'message', message: 'Process exited unexpectedly (code 2)', kind: 'claude-process-exit',
             });
