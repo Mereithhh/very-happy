@@ -188,10 +188,13 @@ export class CodexAppServerClient {
     } | null = null;
 
     // Turn completion tracking for the currently active sendTurnAndWait call.
-    // A completion event only resolves once we have seen task_started for this turn.
     private pendingTurnCompletion: {
         resolve: (aborted: boolean) => void;
         turnId: string | null;
+        /** B-625: Codex reported this turn running (`turn/started` / legacy task_started). */
+        opened: boolean;
+        /** How long an own-thread idle/systemError waits for Codex's `turn/completed` (see armThreadStopGrace). */
+        threadStopGraceMs: number;
     } | null = null;
 
     // Tracks in-flight interruptTurn() RPCs so sendTurnAndWait can wait for them
@@ -202,6 +205,22 @@ export class CodexAppServerClient {
     private idleRelease: Promise<boolean> | null = null;
     private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
     private completedTurnIds = new Set<string>();
+    /** B-625: turns whose failure has already been forwarded, so a second failed frame is not. */
+    private failedTurnIds = new Set<string>();
+    // B-625: the app-server speaks for every thread it hosts — the session's own and the
+    // children `spawn_agent` opens — so a lifecycle frame (turn/started, turn/completed,
+    // thread/status/changed, error, thread/closed) is the session's only when its `threadId`
+    // is ours; a frame naming no thread belongs to the thread it was asked on (Orca's rule,
+    // src/main/codex/codex-structured-turn-open-wait.ts). Before this, a child's
+    // `turn/completed` ended the parent's turn in the UI and a child's `turn/started`
+    // retargeted `turn/interrupt` at the child.
+    /** The own thread's last turn-ending `error` (willRetry=false), for a turn end that arrives without a verdict. */
+    private lastTurnError: { turnId: string | null; error: unknown } | null = null;
+    /** Own thread reported idle/systemError while a turn was pending: Codex's `turn/completed`
+     *  follows within a millisecond; this ends the turn if it does not (see armThreadStopGrace). */
+    private threadStopGrace: ReturnType<typeof setTimeout> | null = null;
+    /** Last few hundred chars of the app-server's stderr: Codex's own last words when it dies. */
+    private stderrRing = '';
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
     // B-622: inactivity watchdog for the pending turn — re-armed by every
     // notification, never a cap on how long a turn may run (see sendTurnAndWait).
@@ -282,11 +301,28 @@ export class CodexAppServerClient {
         return typeof status === 'string' && status.length > 0 ? status : null;
     }
 
+    private extractThreadId(params: any): string | null {
+        const threadId = params?.threadId ?? params?.thread_id ?? params?.thread?.id ?? null;
+        return typeof threadId === 'string' && threadId.length > 0 ? threadId : null;
+    }
+
+    /** B-625: whether a lifecycle frame is about the session's own thread (see the field comment). */
+    private isOwnThreadFrame(params: any): boolean {
+        const threadId = this.extractThreadId(params);
+        return threadId === null || this._threadId === null || threadId === this._threadId;
+    }
+
+    /** Codex's last stderr lines, one line, for a message a person reads. */
+    stderrTail(): string {
+        return this.stderrRing.replace(/\x1b\[[0-9;]*m/g, '').replace(/\s+/g, ' ').trim();
+    }
+
     private shouldHandleRawNotification(method: string): boolean {
         const isRawNotification = method === 'thread/started'
             || method === 'turn/started'
             || method === 'turn/completed'
             || method === 'thread/status/changed'
+            || method === 'thread/closed'
             || method === 'thread/tokenUsage/updated'
             || method.startsWith('item/');
 
@@ -314,22 +350,28 @@ export class CodexAppServerClient {
         const aborted = status === 'cancelled' || status === 'canceled' || status === 'aborted' || status === 'interrupted';
         const failed = status === 'failed' || (error !== undefined && error !== null);
 
+        this.clearThreadStopGrace();
         this.tryResolvePendingTurn(aborted, turnId, source);
         this._turnId = null;
         this.maybeRefreshRateLimits();
+        if (this.lastTurnError && (!turnId || !this.lastTurnError.turnId || this.lastTurnError.turnId === turnId)) {
+            this.lastTurnError = null;
+        }
 
         if (turnId && this.completedTurnIds.has(turnId)) {
             // B-622: one completion per turn — except the frame that carries the
-            // failure. Whatever resolved this turn first (`thread/status/changed:
-            // idle`, a legacy task_complete) said nothing about *why* it ended;
+            // failure. Whatever resolved this turn first (a thread-stop grace, a
+            // legacy task_complete) said nothing about *why* it ended;
             // `turn/completed` with `status: failed` is the only place the
             // upstream error (a 504 from the model gateway, a rejected model)
             // is reported, and dropping it as a duplicate is how a failed Codex
-            // turn ended in silence (Wei FANG 2026-10-18).
-            if (!failed) return;
+            // turn ended in silence (Wei FANG 2026-10-18). B-625: the failure
+            // itself is forwarded once.
+            if (!failed || this.failedTurnIds.has(turnId)) return;
         }
         if (turnId) {
             this.completedTurnIds.add(turnId);
+            if (failed) this.failedTurnIds.add(turnId);
         }
 
         if (aborted) {
@@ -356,6 +398,10 @@ export class CodexAppServerClient {
         }
 
         if (method === 'turn/started') {
+            if (!this.isOwnThreadFrame(params)) {
+                logger.debug(`[CodexAppServer] Child thread ${this.extractThreadId(params)} started a turn`);
+                return true;
+            }
             const turnId = this.extractTurnId(params);
             if (turnId) {
                 this._turnId = turnId;
@@ -369,6 +415,10 @@ export class CodexAppServerClient {
         }
 
         if (method === 'turn/completed') {
+            if (!this.isOwnThreadFrame(params)) {
+                logger.debug(`[CodexAppServer] Child thread ${this.extractThreadId(params)} ended a turn`);
+                return true;
+            }
             this.emitRawTurnCompletion(
                 this.extractTurnId(params),
                 this.extractTurnStatus(params),
@@ -379,9 +429,30 @@ export class CodexAppServerClient {
         }
 
         if (method === 'thread/status/changed') {
+            if (!this.isOwnThreadFrame(params)) return true;
             const statusType = params?.status?.type;
-            if (statusType === 'idle' && this.pendingTurnCompletion) {
-                this.emitRawTurnCompletion(this._turnId, 'completed', null, method);
+            // B-625: a stopped thread is not a turn end by itself. Codex ends every
+            // turn it opened with exactly one `turn/completed` (a failed one after its
+            // `error`), normally within a millisecond of the idle/systemError status;
+            // a status seen before the turn opened is stale (a resumed thread
+            // reporting itself idle under the turn/start in flight). So the status
+            // only starts a short grace for a `turn/completed` that never comes.
+            if ((statusType === 'idle' || statusType === 'systemError') && this.pendingTurnCompletion?.opened) {
+                this.armThreadStopGrace(statusType);
+            } else if (statusType === 'active') {
+                this.clearThreadStopGrace();
+            }
+            return true;
+        }
+
+        if (method === 'thread/closed') {
+            if (this.isOwnThreadFrame(params) && this.pendingTurnCompletion) {
+                this.emitRawTurnCompletion(
+                    this.pendingTurnCompletion.turnId ?? this._turnId,
+                    'aborted',
+                    { message: 'Codex closed the thread before the turn ended.' },
+                    method,
+                );
             }
             return true;
         }
@@ -570,21 +641,40 @@ export class CodexAppServerClient {
                 return;
             }
             this.connected = false;
+            const tail = this.stderrTail();
+            const exited = `Codex process exited (code=${code ?? 'null'}${signal ? `, signal=${signal}` : ''})`;
             // Reject all pending requests
             for (const [id, req] of this.pending) {
                 if (req.epoch !== epoch) continue;
-                req.reject(new Error(`Codex process exited (code=${code}) while waiting for ${req.method}`));
+                const error = new Error(`${exited} while waiting for ${req.method}`);
+                (error as Error & { codexStderrTail?: string }).codexStderrTail = tail;
+                req.reject(error);
                 this.pending.delete(id);
+            }
+            // B-625: a turn that was pending when the app-server died ends here, and
+            // says so — with Codex's own last words — instead of resolving quietly.
+            if (this.pendingTurnCompletion) {
+                const turnId = this.pendingTurnCompletion.turnId ?? this._turnId;
+                this.eventHandler?.({
+                    type: 'turn_aborted',
+                    reason: 'process-exit',
+                    ...(turnId ? { turn_id: turnId } : {}),
+                    error: { message: `${exited}${tail ? `: ${tail}` : ''}` },
+                });
             }
             // Resolve pending turn completion (treat as abort)
             this.resolvePendingTurn(true);
         });
 
-        // Pipe stderr for debug logging
+        // Pipe stderr for debug logging; keep a tail for the exit message.
+        this.stderrRing = '';
         proc.stderr?.on('data', (chunk: Buffer) => {
             if (this.process !== proc || this.processEpoch !== epoch) return;
             const text = chunk.toString().trim();
-            if (text) logger.debug('[CodexAppServer:stderr]', contentLogMetadata(text));
+            if (text) {
+                logger.debug('[CodexAppServer:stderr]', contentLogMetadata(text));
+                this.stderrRing = `${this.stderrRing}\n${text}`.slice(-CodexAppServerClient.STDERR_TAIL_CHARS);
+            }
         });
 
         // Parse newline-delimited JSON from stdout
@@ -644,6 +734,9 @@ export class CodexAppServerClient {
         this._turnId = null;
         this.notificationProtocol = 'unknown';
         this.completedTurnIds.clear();
+        this.failedTurnIds.clear();
+        this.lastTurnError = null;
+        this.clearThreadStopGrace();
         if (!opts?.preserveThreadState) {
             this._threadId = null;
             this.threadDefaults = null;
@@ -928,15 +1021,54 @@ export class CodexAppServerClient {
     private resolvePendingTurn(aborted: boolean): void {
         if (!this.pendingTurnCompletion) return;
         this.clearTurnWatchdog();
+        this.clearThreadStopGrace();
         this.pendingTurnCompletion.resolve(aborted);
         this.pendingTurnCompletion = null;
     }
 
     private markPendingTurnStarted(turnId?: string | null): void {
         if (!this.pendingTurnCompletion) return;
+        this.pendingTurnCompletion.opened = true;
         if (turnId) {
             this.pendingTurnCompletion.turnId = turnId;
         }
+    }
+
+    /** Default wait for Codex's `turn/completed` after its thread reported idle/systemError. */
+    private static readonly THREAD_STOP_GRACE_MS = 1_500;
+
+    /**
+     * B-625: the own thread stopped (idle / systemError) while a turn was pending and
+     * had opened. Codex's `turn/completed` follows at once in every probed release
+     * (0.154.0: 1 ms); this is the net under a release that does not send it, so the
+     * session never waits on the silence watchdog for a turn Codex has already left.
+     */
+    private armThreadStopGrace(statusType: 'idle' | 'systemError'): void {
+        this.clearThreadStopGrace();
+        const graceMs = this.pendingTurnCompletion?.threadStopGraceMs ?? CodexAppServerClient.THREAD_STOP_GRACE_MS;
+        this.threadStopGrace = setTimeout(() => {
+            this.threadStopGrace = null;
+            const pending = this.pendingTurnCompletion;
+            if (!pending) return;
+            const turnId = pending.turnId ?? this._turnId;
+            const lastError = this.lastTurnError && (!turnId || !this.lastTurnError.turnId || this.lastTurnError.turnId === turnId)
+                ? this.lastTurnError.error
+                : null;
+            logger.warn(`[CodexAppServer] Thread went ${statusType} and no turn/completed followed for turn ${turnId ?? '?'}; ending the turn`);
+            const failed = statusType === 'systemError' || lastError !== null;
+            this.emitRawTurnCompletion(
+                turnId,
+                failed ? 'failed' : 'completed',
+                lastError ?? (failed ? { message: 'Codex reported a system error and ended the turn without a verdict.' } : null),
+                `thread/status/changed:${statusType}`,
+            );
+        }, graceMs);
+    }
+
+    private clearThreadStopGrace(): void {
+        if (!this.threadStopGrace) return;
+        clearTimeout(this.threadStopGrace);
+        this.threadStopGrace = null;
     }
 
     private tryResolvePendingTurn(aborted: boolean, turnId: string | null, source: string): void {
@@ -1077,6 +1209,8 @@ export class CodexAppServerClient {
 
     /** Default timeout for waiting on turn completion (ms). 10 minutes. */
     private static readonly TURN_TIMEOUT_MS = 10 * 60 * 1000;
+    /** How much of the app-server's stderr is kept for its exit message. */
+    private static readonly STDERR_TAIL_CHARS = 400;
 
     /**
      * Send a user turn and wait for it to complete (task_complete or turn_aborted).
@@ -1090,6 +1224,8 @@ export class CodexAppServerClient {
         sandbox?: SandboxMode;
         effort?: ReasoningEffort;
         turnTimeoutMs?: number;
+        /** B-625: test hook for the thread-stop grace (see armThreadStopGrace). */
+        threadStopGraceMs?: number;
     }): Promise<{ aborted: boolean }> {
         // Wait for any in-flight interruptTurn() to complete before starting a new
         // turn. Otherwise the stale turn/interrupt RPC can reach Codex after our
@@ -1113,7 +1249,10 @@ export class CodexAppServerClient {
             this.pendingTurnCompletion = {
                 resolve,
                 turnId: null,
+                opened: false,
+                threadStopGraceMs: opts?.threadStopGraceMs ?? CodexAppServerClient.THREAD_STOP_GRACE_MS,
             };
+            this.lastTurnError = null;
             // B-622: a bound on Codex going *silent*, re-armed by every
             // notification (handleNotification) — not a cap on turn length.
             // The old fixed 10-minute timer resolved every longer max-effort
@@ -1210,6 +1349,8 @@ export class CodexAppServerClient {
         this._turnId = null;
         this.threadDefaults = null;
         this.completedTurnIds.clear();
+        this.failedTurnIds.clear();
+        this.lastTurnError = null;
         this.rawFileChangesByItemId.clear();
     }
 
@@ -1522,6 +1663,8 @@ export class CodexAppServerClient {
         if (method === 'thread/started' || method === 'turn/started' ||
             method === 'turn/completed' || method === 'thread/status/changed') {
             logger.debug(`[CodexAppServer] Lifecycle notification: ${method}`);
+            // B-625: a child thread's lifecycle is the child's (see isOwnThreadFrame).
+            if (!this.isOwnThreadFrame(params)) return;
             // Mark the turn as started so the completion guard lets it through.
             if (method === 'turn/started') {
                 const turnId = this.extractTurnId(params);
@@ -1557,24 +1700,39 @@ export class CodexAppServerClient {
             return;
         }
 
-        // B-622: Codex's own retry notice — a 5xx or a dropped stream it is about
-        // to retry ("Reconnecting... 2/5", codex 0.154.0). Only the retrying ones
-        // are forwarded: the final failure arrives again on turn/completed.
-        if (method === 'error' && params?.willRetry === true) {
+        if (method === 'error') {
+            // B-625: a child thread's error is the child's.
+            if (!this.isOwnThreadFrame(params)) return;
             const error = params?.error ?? {};
-            const message = typeof error.message === 'string' ? error.message : '';
-            const info = error.codexErrorInfo;
-            const httpStatus = info && typeof info === 'object'
-                ? (info.responseStreamDisconnected?.httpStatusCode ?? info.httpStatusCode ?? null)
-                : null;
-            const turnId = typeof params?.turnId === 'string' ? params.turnId : null;
-            this.eventHandler?.({
-                type: 'turn_retry',
-                message,
-                ...(typeof httpStatus === 'number' ? { http_status: httpStatus } : {}),
-                ...(turnId ? { turn_id: turnId } : {}),
-                ...(typeof error.additionalDetails === 'string' ? { details: error.additionalDetails } : {}),
-            });
+            const turnId = typeof params?.turnId === 'string' && params.turnId.length > 0 ? params.turnId : null;
+            // B-622: Codex's own retry notice — a 5xx or a dropped stream it is about
+            // to retry ("Reconnecting... 2/5", codex 0.154.0). Only the retrying ones
+            // are forwarded: the final failure arrives again on turn/completed.
+            if (params?.willRetry === true) {
+                const message = typeof error.message === 'string' ? error.message : '';
+                const info = error.codexErrorInfo;
+                const httpStatus = info && typeof info === 'object'
+                    ? (info.responseStreamDisconnected?.httpStatusCode ?? info.httpStatusCode ?? null)
+                    : null;
+                this.eventHandler?.({
+                    type: 'turn_retry',
+                    message,
+                    ...(typeof httpStatus === 'number' ? { http_status: httpStatus } : {}),
+                    ...(turnId ? { turn_id: turnId } : {}),
+                    ...(typeof error.additionalDetails === 'string' ? { details: error.additionalDetails } : {}),
+                });
+                return;
+            }
+            // B-625: the final error. Kept for a turn end that arrives without a
+            // verdict (the thread-stop grace), and — before codex 0.148 — for a
+            // turn that never opened it IS the end: such a turn reports no
+            // `turn/completed` (Orca, codex-structured-turn-end-settlement.ts
+            // `unopenedTurnFailure`). One that opened still reports its own.
+            this.lastTurnError = { turnId, error };
+            const pending = this.pendingTurnCompletion;
+            if (pending && !pending.opened && (turnId === null || pending.turnId === null || pending.turnId === turnId)) {
+                this.emitRawTurnCompletion(turnId ?? pending.turnId, 'failed', error, 'error:unopened-turn');
+            }
             return;
         }
 

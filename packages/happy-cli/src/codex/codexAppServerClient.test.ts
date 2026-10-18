@@ -1168,9 +1168,11 @@ describe('CodexAppServerClient sandbox integration', () => {
                 if (msg.method === 'turn/start' && msg.id != null) {
                     setTimeout(() => {
                         turnStartedLines(stdout, msg.id!, 'thread-raw-5', 'turn-raw-5');
-                        // Something resolved the turn first without a verdict…
+                        // The thread stops and no turn/completed follows within the grace…
                         pushJsonLine(stdout, { method: 'thread/status/changed', params: { threadId: 'thread-raw-5', status: { type: 'idle' } } });
-                        // …and the verdict is a gateway failure.
+                    }, 0);
+                    // …then the verdict arrives late: a gateway failure.
+                    setTimeout(() => {
                         pushJsonLine(stdout, {
                             method: 'turn/completed',
                             params: {
@@ -1178,6 +1180,62 @@ describe('CodexAppServerClient sandbox integration', () => {
                                 turn: { id: 'turn-raw-5', items: [], status: 'failed', error: { message: GATEWAY_504, codexErrorInfo: 'other', additionalDetails: null } },
                             },
                         });
+                    }, 90);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        await expect(client.sendTurnAndWait('hi', { threadStopGraceMs: 30 })).resolves.toEqual({ aborted: false });
+        await waitFor(() => events.some((event) => event.type === 'task_complete' && event.status === 'failed'));
+
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'task_complete', turn_id: 'turn-raw-5', status: 'failed', error: expect.objectContaining({ message: GATEWAY_504 }) }),
+        ]));
+        // Still exactly one *successful* completion frame for the turn.
+        expect(events.filter((event) => event.type === 'task_complete' && event.status !== 'failed')).toHaveLength(1);
+
+        await client.disconnect();
+    });
+
+    // B-625 — frames are scoped to the session's own thread, and a turn ends the way
+    // Orca ends it: on Codex's `turn/completed` (src/main/codex/codex-structured-*.ts).
+    it('B-625: a child thread never ends or retargets the session\'s own turn', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 3009,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-9') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        turnStartedLines(stdout, msg.id!, 'thread-raw-9', 'turn-raw-9');
+                        // A spawn_agent child runs a whole turn of its own…
+                        pushJsonLine(stdout, { method: 'thread/started', params: { thread: { id: 'thread-child-1' } } });
+                        pushJsonLine(stdout, { method: 'turn/started', params: { threadId: 'thread-child-1', turn: { id: 'turn-child-1', items: [], status: 'inProgress', error: null } } });
+                        pushJsonLine(stdout, { method: 'thread/status/changed', params: { threadId: 'thread-child-1', status: { type: 'active', activeFlags: [] } } });
+                        pushJsonLine(stdout, { method: 'error', params: { error: { message: 'child upstream failure', codexErrorInfo: 'other' }, willRetry: false, threadId: 'thread-child-1', turnId: 'turn-child-1' } });
+                        pushJsonLine(stdout, { method: 'thread/status/changed', params: { threadId: 'thread-child-1', status: { type: 'idle' } } });
+                        pushJsonLine(stdout, { method: 'turn/completed', params: { threadId: 'thread-child-1', turn: { id: 'turn-child-1', items: [], status: 'failed', error: { message: 'child upstream failure' } } } });
+                        pushJsonLine(stdout, { method: 'thread/closed', params: { threadId: 'thread-child-1' } });
+                    }, 0);
+                }
+                if (msg.method === 'turn/interrupt' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: {} });
+                        pushJsonLine(stdout, { method: 'turn/completed', params: { threadId: 'thread-raw-9', turn: { id: 'turn-raw-9', items: [], status: 'interrupted', error: null } } });
                     }, 0);
                 }
             },
@@ -1194,14 +1252,187 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         await client.connect();
         await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
-        await expect(client.sendTurnAndWait('hi')).resolves.toEqual({ aborted: false });
-        await waitFor(() => events.some((event) => event.type === 'task_complete' && event.status === 'failed'));
 
-        expect(events).toEqual(expect.arrayContaining([
-            expect.objectContaining({ type: 'task_complete', turn_id: 'turn-raw-5', status: 'failed', error: expect.objectContaining({ message: GATEWAY_504 }) }),
-        ]));
-        // Still exactly one *successful* completion frame for the turn.
-        expect(events.filter((event) => event.type === 'task_complete' && event.status !== 'failed')).toHaveLength(1);
+        let settled = false;
+        const turn = client.sendTurnAndWait('delegate', { threadStopGraceMs: 20 }).then((result) => { settled = true; return result; });
+        await waitFor(() => requests.some((request) => request.method === 'turn/start'));
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        // The child's whole lifecycle went by: the parent's turn is still running, nothing ended.
+        expect(settled).toBe(false);
+        expect(events.filter((event) => event.type === 'task_complete' || event.type === 'turn_aborted')).toHaveLength(0);
+        expect(events.filter((event) => event.type === 'task_started')).toEqual([expect.objectContaining({ turn_id: 'turn-raw-9' })]);
+
+        // A stop interrupts the parent's turn, not the child's.
+        await client.interruptTurn();
+        await expect(turn).resolves.toEqual({ aborted: true });
+        const interrupt = requests.find((request) => request.method === 'turn/interrupt');
+        expect(interrupt?.params).toEqual({ threadId: 'thread-raw-9', turnId: 'turn-raw-9' });
+        expect(events.filter((event) => event.type === 'turn_aborted')).toEqual([expect.objectContaining({ turn_id: 'turn-raw-9', status: 'interrupted' })]);
+
+        await client.disconnect();
+    });
+
+    it('B-625: an idle thread ends the turn only after a grace, and never before the turn opened', async () => {
+        const proc = createMockProcess({
+            pid: 3010,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-10') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: { turn: { id: 'turn-raw-10', items: [], status: 'inProgress', error: null } } });
+                        // A stale idle from the resumed thread lands under the turn/start in flight.
+                        pushJsonLine(stdout, { method: 'thread/status/changed', params: { threadId: 'thread-raw-10', status: { type: 'idle' } } });
+                    }, 0);
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { method: 'thread/status/changed', params: { threadId: 'thread-raw-10', status: { type: 'active', activeFlags: [] } } });
+                        pushJsonLine(stdout, { method: 'turn/started', params: { threadId: 'thread-raw-10', turn: { id: 'turn-raw-10', items: [], status: 'inProgress', error: null } } });
+                        // The turn ends; this (hypothetical) Codex sends no turn/completed.
+                        pushJsonLine(stdout, { method: 'thread/status/changed', params: { threadId: 'thread-raw-10', status: { type: 'idle' } } });
+                    }, 60);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+
+        const startedAt = Date.now();
+        let settled = false;
+        const turn = client.sendTurnAndWait('hi', { threadStopGraceMs: 40 }).then((result) => { settled = true; return result; });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        // The stale idle (turn not opened) ended nothing.
+        expect(settled).toBe(false);
+        expect(events.filter((event) => event.type === 'task_complete')).toHaveLength(0);
+
+        await expect(turn).resolves.toEqual({ aborted: false });
+        // Opened at ~60ms, idle right after, grace 40ms: ended by the grace, not before it.
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(60 + 40 - 5);
+        expect(events.filter((event) => event.type === 'task_complete')).toEqual([expect.objectContaining({ turn_id: 'turn-raw-10', status: 'completed' })]);
+
+        await client.disconnect();
+    });
+
+    it('B-625: before codex 0.148 the final error of a turn that never opened is its end, reported once', async () => {
+        const proc = createMockProcess({
+            pid: 3011,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-11') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: { turn: { id: 'turn-raw-11', items: [], status: 'inProgress', error: null } } });
+                        // No turn/started: the turn fails before it opens.
+                        pushJsonLine(stdout, { method: 'error', params: { error: { message: GATEWAY_504, codexErrorInfo: 'other', additionalDetails: null }, willRetry: false, threadId: 'thread-raw-11', turnId: 'turn-raw-11' } });
+                    }, 0);
+                    // A newer Codex still sends the failed turn/completed afterwards.
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { method: 'turn/completed', params: { threadId: 'thread-raw-11', turn: { id: 'turn-raw-11', items: [], status: 'failed', error: { message: GATEWAY_504 } } } });
+                    }, 30);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        await expect(client.sendTurnAndWait('hi')).resolves.toEqual({ aborted: false });
+        await new Promise((resolve) => setTimeout(resolve, 80));
+
+        expect(events.filter((event) => event.type === 'task_complete')).toEqual([
+            expect.objectContaining({ turn_id: 'turn-raw-11', status: 'failed', error: expect.objectContaining({ message: GATEWAY_504 }) }),
+        ]);
+
+        await client.disconnect();
+    });
+
+    it('B-625: the app-server dying mid-turn ends the turn with Codex\'s last words', async () => {
+        const proc = createMockProcess({
+            pid: 3012,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-12') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => turnStartedLines(stdout, msg.id!, 'thread-raw-12', 'turn-raw-12'), 0);
+                    setTimeout(() => {
+                        (proc.stderr as unknown as { push: (chunk: string) => void }).push('2026-10-18T10:00:00Z ERROR codex_core: thread panicked: boom\n');
+                    }, 20);
+                    setTimeout(() => proc.emit('exit', 1, null), 40);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        await expect(client.sendTurnAndWait('hi')).resolves.toEqual({ aborted: true });
+
+        expect(events.filter((event) => event.type === 'turn_aborted')).toEqual([
+            expect.objectContaining({ reason: 'process-exit', turn_id: 'turn-raw-12', error: expect.objectContaining({ message: expect.stringMatching(/^Codex process exited \(code=1\): .*thread panicked: boom$/) }) }),
+        ]);
+
+        await client.disconnect();
+    });
+
+    it('B-625: thread/closed on the session\'s own thread ends a pending turn', async () => {
+        const proc = createMockProcess({
+            pid: 3013,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-13') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        turnStartedLines(stdout, msg.id!, 'thread-raw-13', 'turn-raw-13');
+                        pushJsonLine(stdout, { method: 'thread/closed', params: { threadId: 'thread-raw-13' } });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        await expect(client.sendTurnAndWait('hi')).resolves.toEqual({ aborted: true });
+        expect(events.filter((event) => event.type === 'turn_aborted')).toEqual([
+            expect.objectContaining({ turn_id: 'turn-raw-13', error: expect.objectContaining({ message: expect.stringContaining('closed the thread') }) }),
+        ]);
 
         await client.disconnect();
     });

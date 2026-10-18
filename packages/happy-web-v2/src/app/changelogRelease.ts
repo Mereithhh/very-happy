@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-18-codex-threads-and-exits',
+    cliVersion: '0.2.175',
+    date: '2026-10-18',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct18d.title',
+    summaryKey: 'changelog.releases.oct18d.summary',
+    itemKeys: ['changelog.releases.oct18d.children', 'changelog.releases.oct18d.exits'],
+  },
+  {
     id: '2026-10-18-sso-self-serve',
     date: '2026-10-18',
     buildVersion: __APP_VERSION__,
