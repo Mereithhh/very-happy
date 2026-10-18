@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { killCodexProcessTree, stopCodexProcess } from './codexProcessTree';
 
-function fakeProc(pid: number | undefined = 4242) {
-    return { pid, kill: vi.fn(), stdin: { end: vi.fn() } };
+/** A live ChildProcess as Node presents it: pid known, exit not seen yet. */
+function liveProc(pid = 4242) {
+    return { pid, kill: vi.fn(), stdin: { end: vi.fn() }, exitCode: null as number | null, signalCode: null as NodeJS.Signals | null };
 }
 
 function fakeSpawn() {
@@ -17,14 +18,14 @@ function fakeSpawn() {
 
 describe('stopCodexProcess (B-628)', () => {
     it('closes stdin and SIGTERMs the launcher on POSIX', () => {
-        const proc = fakeProc();
+        const proc = liveProc();
         stopCodexProcess(proc, { platform: 'darwin' });
         expect(proc.stdin.end).toHaveBeenCalled();
         expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
     });
 
     it('on Windows only closes stdin — TerminateProcess on the root would orphan the server', () => {
-        const proc = fakeProc();
+        const proc = liveProc();
         stopCodexProcess(proc, { platform: 'win32' });
         expect(proc.stdin.end).toHaveBeenCalled();
         expect(proc.kill).not.toHaveBeenCalled();
@@ -32,50 +33,49 @@ describe('stopCodexProcess (B-628)', () => {
 });
 
 describe('killCodexProcessTree (B-628)', () => {
-    it('does nothing for a launcher that already exited', () => {
-        const proc = fakeProc();
+    it('does nothing for a launcher Node has seen exit — its pid may be someone else\'s by now', () => {
         const { spawn } = fakeSpawn();
-        const kill = vi.fn(() => { throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' }); });
-        killCodexProcessTree(proc, { platform: 'linux', spawn, kill });
-        expect(spawn).not.toHaveBeenCalled();
-        expect(kill).toHaveBeenCalledTimes(1);
-        expect(kill).toHaveBeenCalledWith(4242, 0);
+        for (const exited of [{ ...liveProc(), exitCode: 0 }, { ...liveProc(), signalCode: 'SIGTERM' as const }]) {
+            killCodexProcessTree(exited, { platform: 'linux', spawn });
+            expect(spawn).not.toHaveBeenCalled();
+            expect(exited.kill).not.toHaveBeenCalled();
+        }
     });
 
-    it('reaps the launcher\'s direct children, then the launcher, on POSIX', () => {
-        const proc = fakeProc();
+    it('reaps the launcher\'s direct children by pid, then the launcher through its handle, on POSIX', () => {
+        const proc = liveProc();
         const { spawn, child } = fakeSpawn();
-        const kill = vi.fn();
-        killCodexProcessTree(proc, { platform: 'darwin', spawn, kill });
+        killCodexProcessTree(proc, { platform: 'darwin', spawn });
         expect(spawn).toHaveBeenCalledWith('pkill', ['-KILL', '-P', '4242'], { stdio: 'ignore', windowsHide: true });
         expect(child.unref).toHaveBeenCalled();
-        expect(kill.mock.calls).toEqual([[4242, 0], [4242, 'SIGKILL']]);
+        expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
     });
 
-    it('walks the tree with taskkill on Windows and falls back to the root when taskkill fails', () => {
-        const proc = fakeProc();
+    it('walks the tree with taskkill on Windows and falls back to the root handle when taskkill fails', () => {
+        const proc = liveProc();
         const { spawn, handlers } = fakeSpawn();
-        const kill = vi.fn();
-        killCodexProcessTree(proc, { platform: 'win32', spawn, kill });
+        killCodexProcessTree(proc, { platform: 'win32', spawn });
         expect(spawn).toHaveBeenCalledWith('taskkill', ['/pid', '4242', '/t', '/f'], { stdio: 'ignore', windowsHide: true });
-        expect(kill.mock.calls).toEqual([[4242, 0]]);
-        handlers.exit?.(1);
-        expect(kill.mock.calls).toEqual([[4242, 0], [4242, 'SIGKILL']]);
+        expect(proc.kill).not.toHaveBeenCalled();
+        handlers.exit?.(128);
+        expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
     });
 
     it('kills the root directly when taskkill cannot start', () => {
-        const proc = fakeProc();
+        const proc = liveProc();
         const spawn = vi.fn(() => { throw new Error('ENOENT'); });
-        const kill = vi.fn();
-        killCodexProcessTree(proc, { platform: 'win32', spawn, kill });
-        expect(kill.mock.calls).toEqual([[4242, 0], [4242, 'SIGKILL']]);
+        killCodexProcessTree(proc, { platform: 'win32', spawn });
+        expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
     });
 
-    it('still signals a process without a pid', () => {
-        const proc = { pid: undefined, kill: vi.fn(), stdin: { end: vi.fn() } };
-        const kill = vi.fn();
-        killCodexProcessTree(proc, { platform: 'linux', spawn: vi.fn(), kill });
-        expect(proc.kill).toHaveBeenCalledWith('SIGKILL');
-        expect(kill).not.toHaveBeenCalled();
+    it('never aims a pid at a handle that does not track exit (a test double, no pid): root kill only', () => {
+        const { spawn } = fakeSpawn();
+        const untracked = { pid: 3011, kill: vi.fn(), stdin: { end: vi.fn() } };
+        killCodexProcessTree(untracked, { platform: 'linux', spawn });
+        const noPid = { ...liveProc(), pid: undefined };
+        killCodexProcessTree(noPid, { platform: 'linux', spawn });
+        expect(spawn).not.toHaveBeenCalled();
+        expect(untracked.kill).toHaveBeenCalledWith('SIGKILL');
+        expect(noPid.kill).toHaveBeenCalledWith('SIGKILL');
     });
 });

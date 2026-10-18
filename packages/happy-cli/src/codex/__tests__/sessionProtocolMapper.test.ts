@@ -51,6 +51,34 @@ describe('B-628: Codex child threads as sub-agent cards', () => {
         expect(parentEnd.envelopes.map((e) => e.ev.t)).toEqual(['turn-end']);
     });
 
+    it('a name that arrives after the child\'s first item retitles the card once', () => {
+        const state = { currentTurnId: 'turn-1' };
+        // The child's command lands before the parent's spawn call completed with its prompt.
+        const first = mapCodexMcpMessageToSessionEnvelopes({ type: 'exec_command_begin', call_id: 'c1', command: 'ls', subagent: 'thread-child-1' }, state);
+        expect(first.envelopes[0].ev).toEqual({ t: 'start' });
+        const sessionSubagent = first.envelopes[0].subagent!;
+        const named = mapCodexMcpMessageToSessionEnvelopes({ type: 'exec_command_end', call_id: 'c1', ...child }, first);
+        expect(named.envelopes.map((e) => e.ev.t)).toEqual(['start', 'tool-call-end']);
+        expect(named.envelopes[0]).toMatchObject({ subagent: sessionSubagent, ev: { t: 'start', description: 'Review the test suite' } });
+        // Once is enough: the next labelled item does not repeat it.
+        const more = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', message: 'done', ...child }, named);
+        expect(more.envelopes.map((e) => e.ev.t)).toEqual(['text']);
+    });
+
+    it('the parent\'s turn end stops a child still running, and the next turn knows the child under a new id', () => {
+        const state = { currentTurnId: 'turn-1' };
+        const running = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', message: 'one', ...child }, state);
+        const firstId = running.envelopes[0].subagent!;
+        const parentEnd = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_complete' }, running);
+        expect(parentEnd.envelopes.map((e) => e.ev.t)).toEqual(['stop', 'turn-end']);
+        expect(parentEnd.envelopes[0]).toMatchObject({ subagent: firstId, ev: { t: 'stop' } });
+        const nextTurn = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_started' }, parentEnd);
+        const again = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', message: 'two', ...child }, nextTurn);
+        expect(again.envelopes.map((e) => e.ev.t)).toEqual(['start', 'text']);
+        expect(again.envelopes[0].subagent).not.toBe(firstId);
+        expect(again.envelopes[0].ev).toEqual({ t: 'start', description: 'Review the test suite' });
+    });
+
     it('a turn end for a child never seen emits nothing', () => {
         const result = mapCodexMcpMessageToSessionEnvelopes({ type: 'subagent_turn_end', status: 'completed', subagent: 'thread-unknown' }, { currentTurnId: 'turn-1' });
         expect(result.envelopes).toEqual([]);

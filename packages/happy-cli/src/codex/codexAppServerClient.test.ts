@@ -1589,6 +1589,91 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('B-628: a steer the silence watchdog gives up on is reported dropped; one in a turn that completed without an echo is not', async () => {
+        const proc = createMockProcess({
+            pid: 3015,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-15') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    const turnId = (msg.params?.input?.[0]?.text as string) === 'first' ? 'turn-raw-15a' : 'turn-raw-15b';
+                    setTimeout(() => turnStartedLines(stdout, msg.id!, 'thread-raw-15', turnId), 0);
+                    if (turnId === 'turn-raw-15b') {
+                        // The second turn completes without ever echoing the steered input (a codex that accepts
+                        // clientUserMessageId but echoes no clientId): forgotten, not tombstoned.
+                        setTimeout(() => pushJsonLine(stdout, { method: 'turn/completed', params: { threadId: 'thread-raw-15', turn: { id: 'turn-raw-15b', items: [], status: 'completed', error: null } } }), 60);
+                    }
+                }
+                if (msg.method === 'turn/steer' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: { turnId: msg.params.expectedTurnId } }), 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => { events.push(msg as Record<string, unknown>); });
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+
+        // Turn A: steered, then Codex goes silent until the watchdog gives the turn up.
+        const turnA = client.sendTurnAndWait('first', { turnTimeoutMs: 120 });
+        await waitFor(() => events.some((event) => event.type === 'task_started'));
+        expect(await client.steerTurn({ text: 'more', clientId: 'k-a' })).toBe('steered');
+        await expect(turnA).resolves.toEqual({ aborted: true });
+        expect(events.filter((event) => event.type === 'steer_dropped')).toEqual([expect.objectContaining({ client_ids: ['k-a'], turn_id: 'turn-raw-15a' })]);
+        expect(events.findIndex((event) => event.type === 'steer_dropped')).toBeLessThan(events.findIndex((event) => event.type === 'turn_aborted' && event.reason === 'timeout'));
+
+        // Turn B: steered, completes with no echo — nothing reported.
+        events.length = 0;
+        const turnB = client.sendTurnAndWait('second');
+        await waitFor(() => events.some((event) => event.type === 'task_started'));
+        expect(await client.steerTurn({ text: 'more', clientId: 'k-b' })).toBe('steered');
+        await expect(turnB).resolves.toEqual({ aborted: false });
+        expect(events.filter((event) => event.type === 'steer_dropped')).toHaveLength(0);
+        await client.disconnect();
+    });
+
+    it('B-628: frames naming no thread stay the session\'s own — nothing is tagged, token usage still flows', async () => {
+        const proc = createMockProcess({
+            pid: 3016,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: threadStartResult('thread-raw-16') }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, { id: msg.id, result: { turn: { id: 'turn-raw-16', items: [], status: 'inProgress', error: null } } });
+                        // An older v2 that puts no threadId on its notifications.
+                        pushJsonLine(stdout, { method: 'turn/started', params: { turn: { id: 'turn-raw-16', items: [], status: 'inProgress', error: null } } });
+                        pushJsonLine(stdout, { method: 'item/started', params: { item: { type: 'commandExecution', id: 'call-16', command: 'ls', cwd: '/tmp/project', status: 'inProgress' } } });
+                        pushJsonLine(stdout, { method: 'item/completed', params: { item: { type: 'commandExecution', id: 'call-16', command: 'ls', cwd: '/tmp/project', aggregatedOutput: '', exitCode: 0, durationMs: 1, status: 'completed' } } });
+                        pushJsonLine(stdout, { method: 'thread/tokenUsage/updated', params: { tokenUsage: { total: { totalTokens: 7 } } } });
+                        pushJsonLine(stdout, { method: 'turn/completed', params: { turn: { id: 'turn-raw-16', items: [], status: 'completed', error: null } } });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => { events.push(msg as Record<string, unknown>); });
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        await expect(client.sendTurnAndWait('go')).resolves.toEqual({ aborted: false });
+        for (const type of ['exec_command_begin', 'exec_command_end']) {
+            expect(events.find((event) => event.type === type)).not.toHaveProperty('subagent');
+        }
+        expect(events.filter((event) => event.type === 'token_count')).toEqual([expect.objectContaining({ total: { totalTokens: 7 } })]);
+        expect(events.filter((event) => event.type === 'subagent_turn_end')).toHaveLength(0);
+        await client.disconnect();
+    });
+
     it('B-628: a child thread\'s items are filed under the child, named after its spawn prompt; its turn end closes the card', async () => {
         const proc = createMockProcess({
             pid: 3014,

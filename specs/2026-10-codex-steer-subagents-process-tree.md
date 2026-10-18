@@ -85,9 +85,11 @@ B-625 把一轮的开始/结束按 thread 作用域修好后，还剩 Orca 做�
     `request()` 的拒绝错误现在挂 `jsonRpcCode`。
 - 回显：own thread 的 `item/completed` `userMessage.clientId` 命中 → 从 `steeredAwaitingEcho` 删除；不渲染
   （用户消息网页已有）。
-- 这一轮结束（`emitRawTurnCompletion` / 进程退出 / disconnect / clearThreadState）时仍未回显的 →
+- 这一轮**非正常结束**（interrupted / failed / 看门狗放弃 / 进程退出 / disconnect / clearThreadState）时仍未回显的 →
   事件 `steer_dropped {client_ids}` → runner `sendQueueCancelReason(ids, 'aborted')`，网页按 B-332 把该消息
-  标为「aborted」可见，而不是看起来已答复。
+  标为「aborted」可见，而不是看起来已答复。一轮 **completed** 却未回显：Codex 在结束前会取尽 pending input
+  （`core/src/session/turn.rs`），所以这只可能是某个接受 steer 但回显不带 `clientId` 的 codex 版本——只记 debug
+  不报，宁可漏一次「未送达」也不把模型读过的消息标成没送达（review 发现 3）。
 
 ### 2. 子 thread 的 item 归子代理卡片
 
@@ -97,7 +99,9 @@ B-625 把一轮的开始/结束按 thread 作用域修好后，还剩 Orca 做�
   `agentPath` 叶子；最多记 128 个。
 - 子 thread 的 `turn/completed` → 事件 `subagent_turn_end {subagent, status}`。
 - 子 thread 的 `thread/tokenUsage/updated` 不再转发（它是每 thread 的累计值，会盖掉会话自己的）。
-- mapper：`maybeEmitSubagentStart` 带 `description: label`；`subagent_turn_end` → 对已 active 的子代理发
+- mapper：`maybeEmitSubagentStart` 带 `description: label`；名字晚于子 thread 第一条 item 到达时（父的 spawn 调用
+  结束才带 receiverThreadIds，而子 thread 已在跑）对已开卡的子代理补发一次带 `description` 的 `start`
+  （`labeledSubagents` 状态；网页 reducer 取较新事件的字段，status 仍 running）；`subagent_turn_end` → 对已 active 的子代理发
   `{t:'stop', status}` 并从 started/active 移除（同一子 thread 下一轮再来 item 会再发 `start`，cuid 不变，
   网页 reducer 以较新事件为准）；`collab_agent_item` 带 `subagent` 时嵌进子卡片。主轮结束仍对所有 active
   子代理兜底发 `stop`（原逻辑）。
@@ -105,8 +109,10 @@ B-625 把一轮的开始/结束按 thread 作用域修好后，还剩 Orca 做�
 ### 3. 进程树
 
 - `codexProcessTree.ts`：`stopCodexProcess`（POSIX：stdin EOF + SIGTERM；Windows：只 stdin EOF，因为
-  `kill` 只会终结根 cmd.exe 让树游离）；2 s 后 `killCodexProcessTree`：根已退出则不动；POSIX
-  `pkill -KILL -P <pid>` 再 SIGKILL 根；Windows `taskkill /pid <pid> /t /f`，起不来或非 0 退出则 SIGKILL 根。
+  `kill` 只会终结根 cmd.exe 让树游离）；2 s 后 `killCodexProcessTree`：Node 已见到退出（`exitCode`/`signalCode`
+  非空）则不动——pid 可能已被复用；pid 只用于回收直接子进程，且只在 Node 仍持有活 ChildProcess 时（没有
+  `exitCode` 字段的句柄只走根 kill）；根一律经 `proc.kill('SIGKILL')`（退出后是 no-op）。POSIX
+  `pkill -KILL -P <pid>` 再杀根；Windows `taskkill /pid <pid> /t /f`，起不来或非 0 退出则杀根。
 - `disconnectInternal` 改用这两个函数（空闲释放、强制重启、退出三条路径共用）。
 
 ## 兼容矩阵与发布顺序
@@ -134,10 +140,13 @@ B-625 把一轮的开始/结束按 thread 作用域修好后，还剩 Orca 做�
 
 ## 验收标准
 
-- `codexAppServerClient.test.ts` B-628 四例：steer 参数形状 + 回显不报丢；等轮打开再 steer、打断后报
-  `steer_dropped`；拒绝/不支持的分类与记忆；子 thread item 带 subagent 与标签、子轮结束事件、子 tokenUsage
-  不转发。`sessionProtocolMapper.test.ts` B-628 六例。`codexChildThreads.test.ts`、`codexProcessTree.test.ts`
-  纯函数。`__tests__/codexSteer.test.ts` 源码断言（mutation-check 5/5）。web `steerSupport.test.ts`。
+- `codexAppServerClient.test.ts` B-628 六例：steer 参数形状 + 回显不报丢；等轮打开再 steer、打断后报
+  `steer_dropped`；拒绝/不支持的分类与记忆；看门狗放弃的轮报丢、completed 无回显不报；不带 threadId 的帧不打标且
+  tokenUsage 照转；子 thread item 带 subagent 与标签、子轮结束事件、子 tokenUsage 不转发。
+  `sessionProtocolMapper.test.ts` B-628 八例（含名字晚到补发、父轮结束兜底 stop 与下一轮新 id）。
+  `codexSteer.test.ts`（runner 的 steer-or-queue 可执行用例）、`codexChildThreads.test.ts`、
+  `codexProcessTree.test.ts` 纯函数。`__tests__/codexSteerWiring.test.ts` 源码断言（mutation-check）。
+  web `steerSupport.test.ts`。
 - CLI/web 门禁全绿；design-lint 零新增。
 
 ## 留真机验证项

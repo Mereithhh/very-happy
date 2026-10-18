@@ -55,6 +55,7 @@ import { importCodexThread, IMPORT_CODEX_THREAD_ENV } from './importCodexThread'
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { CODEX_IDLE_RELEASE_ENV, CodexIdleReleaseTimer, resolveCodexIdleReleaseMs, shouldReleaseIdleCodex } from './codexIdleRelease';
 import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
+import { steerIntoRunningTurn } from './codexSteer';
 import {
     buildCodexTurnPrompt,
     hashCodexEnhancedMode,
@@ -330,35 +331,21 @@ export async function runCodex(opts: {
 
     registerAgentAttachmentDownloads(session);
     const CODEX_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    // B-628: a message the web sends with `delivery: 'steer'` (the「Steer」button on a
-    // queued message) goes into the running turn through `turn/steer` instead of waiting
-    // behind it — the Codex twin of runClaude's trySteer. Anything short of `steered`
-    // (nothing running, this codex has no turn/steer, Codex refused, transport) falls
-    // back to the ordinary queue, so the message becomes the next turn exactly as before.
-    // The turn keeps its model / approval policy; the overrides this message carried were
-    // already folded into current* above and apply from the next turn/start.
-    const steerIntoRunningTurn = async (text: string, attachments: PendingAttachment[] | undefined, localKey: string | undefined): Promise<boolean> => {
-        if (!turnActive || abortInProgress || shouldExit) return false;
-        const staged = attachments?.length ? await stageClaudeAttachments(attachments, {
+    // B-628: `delivery: 'steer'` → the running turn (codexSteer.ts). `ownsTurn` is true from
+    // dequeue to the turn's finally — including the seconds a released app-server takes to
+    // come back (B-461), which is exactly when client.steerTurn waits (≤5 s) for the turn
+    // to open; that wait holds the serialized user-message chain below, bounded.
+    const steerDeps = {
+        ownsTurn: () => turnActive && !abortInProgress && !shouldExit,
+        steer: (input: { text: string; images: string[]; clientId?: string }) => client.steerTurn(input),
+        stage: (attachments: PendingAttachment[]) => stageClaudeAttachments(attachments, {
             happyHomeDir: configuration.happyHomeDir, sessionId: session.sessionId,
-        }) : [];
-        try {
-            const outcome = await client.steerTurn({
-                text: appendStagedAttachmentsToPrompt(text, staged),
-                images: staged.filter((file) => CODEX_IMAGE_MIME_TYPES.includes(file.mimeType)).map((file) => file.path),
-                clientId: localKey,
-            });
-            if (outcome === 'steered') {
-                messageBuffer.addMessage(text, 'user');
-                return true;
-            }
-            logger.debug(`[Codex] Steer not taken (${outcome}); queuing the message for the next turn`);
-        } catch (error) {
-            logger.debug('[Codex] Steer failed; queuing the message for the next turn', safeCodexErrorMetadata(error));
-        }
-        // The queue stages the attachments again when it dequeues them.
-        await Promise.all(staged.map((file) => unlink(file.path).catch(() => undefined)));
-        return false;
+        }),
+        withAttachments: appendStagedAttachmentsToPrompt,
+        unlink: (path: string) => unlink(path),
+        isImage: (file: { mimeType: string }) => CODEX_IMAGE_MIME_TYPES.includes(file.mimeType),
+        onSteered: (text: string) => messageBuffer.addMessage(text, 'user'),
+        log: (message: string) => logger.debug(message),
     };
     let userMessageDelivery = Promise.resolve();
     session.onUserMessage((message) => {
@@ -428,7 +415,7 @@ export async function runCodex(opts: {
                 effort: messageEffort,
             };
             if (message.meta?.delivery === 'steer' && !isCodexClearText(message.content.text)) {
-                if (await steerIntoRunningTurn(message.content.text, attachments, message.localKey)) {
+                if (await steerIntoRunningTurn(steerDeps, message.content.text, attachments, message.localKey)) {
                     logger.debug('[Codex] User message steered into the current turn');
                     return;
                 }
@@ -453,6 +440,8 @@ export async function runCodex(opts: {
     let codexStartedSubagents = new Set<string>();
     let codexActiveSubagents = new Set<string>();
     let codexProviderSubagentToSessionSubagent = new Map<string, string>();
+    // B-628: child-thread cards whose title (spawn prompt) has been sent.
+    let codexLabeledSubagents = new Set<string>();
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
@@ -846,11 +835,13 @@ export async function runCodex(opts: {
                 startedSubagents: codexStartedSubagents,
                 activeSubagents: codexActiveSubagents,
                 providerSubagentToSessionSubagent: codexProviderSubagentToSessionSubagent,
+                labeledSubagents: codexLabeledSubagents,
             });
             currentTurnId = mapped.currentTurnId;
             codexStartedSubagents = mapped.startedSubagents;
             codexActiveSubagents = mapped.activeSubagents;
             codexProviderSubagentToSessionSubagent = mapped.providerSubagentToSessionSubagent;
+            codexLabeledSubagents = mapped.labeledSubagents;
             for (const envelope of mapped.envelopes) {
                 session.sendSessionProtocolMessage(envelope);
             }
@@ -1056,6 +1047,7 @@ export async function runCodex(opts: {
                 codexStartedSubagents = new Set<string>();
                 codexActiveSubagents = new Set<string>();
                 codexProviderSubagentToSessionSubagent = new Map<string, string>();
+                codexLabeledSubagents = new Set<string>();
                 permissionHandler.reset();
                 reasoningProcessor.abort();
                 diffProcessor.reset();

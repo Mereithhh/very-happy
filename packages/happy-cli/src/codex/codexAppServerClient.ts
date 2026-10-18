@@ -363,8 +363,15 @@ export class CodexAppServerClient {
         }
     }
 
-    /** B-628: steered inputs the ended turn never echoed were never read — tell the runner. */
-    private dropUnechoedSteers(turnId: string | null): void {
+    /**
+     * B-628: steered inputs the ended turn never echoed. `report` = the turn did not complete
+     * (interrupted, failed, app-server gone, given up): Codex never read them, tell the runner.
+     * A turn that *completed* drains its pending input before it ends (core/src/session/turn.rs),
+     * so an unechoed input there is a codex that accepted the steer but echoes no `clientId` —
+     * forgotten silently, because a false「not delivered」on a message the model did read would
+     * be worse than today's silence.
+     */
+    private dropUnechoedSteers(turnId: string | null, report: boolean): void {
         const dropped: string[] = [];
         for (const [clientId, steeredTurn] of this.steeredAwaitingEcho) {
             if (turnId === null || steeredTurn === turnId) {
@@ -373,6 +380,10 @@ export class CodexAppServerClient {
             }
         }
         if (dropped.length === 0) return;
+        if (!report) {
+            logger.debug(`[CodexAppServer] ${dropped.length} steered message(s) completed without an echo; not reported`);
+            return;
+        }
         this.eventHandler?.({
             type: 'steer_dropped',
             client_ids: dropped,
@@ -441,7 +452,7 @@ export class CodexAppServerClient {
             this.completedTurnIds.add(turnId);
             if (failed) this.failedTurnIds.add(turnId);
         }
-        this.dropUnechoedSteers(turnId);
+        this.dropUnechoedSteers(turnId, aborted || failed);
 
         if (aborted) {
             this.eventHandler?.({
@@ -751,7 +762,7 @@ export class CodexAppServerClient {
             // says so — with Codex's own last words — instead of resolving quietly.
             if (this.pendingTurnCompletion) {
                 const turnId = this.pendingTurnCompletion.turnId ?? this._turnId;
-                this.dropUnechoedSteers(null);
+                this.dropUnechoedSteers(null, true);
                 this.eventHandler?.({
                     type: 'turn_aborted',
                     reason: 'process-exit',
@@ -845,7 +856,7 @@ export class CodexAppServerClient {
         }
 
         // Resolve pending turn completion (treat as abort)
-        this.dropUnechoedSteers(null);
+        this.dropUnechoedSteers(null, true);
         this.resolvePendingTurn(true);
 
         if (this.sandboxCleanup) {
@@ -1452,6 +1463,8 @@ export class CodexAppServerClient {
         } catch (err) {
             this.clearTurnWatchdog();
             this.pendingTurnCompletion = null;
+            // B-628: a steer waiting for this turn to open learns now that it never will.
+            this.releaseTurnOpenWaiters();
             throw err;
         }
 
@@ -1472,6 +1485,8 @@ export class CodexAppServerClient {
             }
             logger.warn(`[CodexAppServer] No notification from Codex for ${timeoutMs}ms — giving the turn up as aborted`);
             const turnId = this.pendingTurnCompletion.turnId ?? this._turnId;
+            // B-628: this end bypasses emitRawTurnCompletion; what was steered into it was never read.
+            this.dropUnechoedSteers(turnId, true);
             this.eventHandler?.({
                 type: 'turn_aborted',
                 reason: 'timeout',
@@ -1529,7 +1544,7 @@ export class CodexAppServerClient {
         logger.debug(
             `[CodexAppServer] Clearing thread state: thread=${this._threadId ?? 'none'} turn=${this._turnId ?? 'none'}`,
         );
-        this.dropUnechoedSteers(null);
+        this.dropUnechoedSteers(null, true);
         this.resolvePendingTurn(true);
         this._threadId = null;
         this._turnId = null;

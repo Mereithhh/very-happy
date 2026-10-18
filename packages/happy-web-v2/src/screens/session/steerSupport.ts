@@ -1,9 +1,9 @@
+import { CODEX_STEER_CAPABILITY } from '@slopus/happy-wire';
 import { normalizeAgentKey } from '@/sync/agentDefaults';
 
 /** Claude's wrapper injects a `delivery: 'steer'` message into its live query. */
 export const CLAUDE_STEER_CAPABILITY = 'claude-steer-v1';
-/** B-628: the Codex wrapper sends it into the running turn (`turn/steer`). */
-export const CODEX_STEER_CAPABILITY = 'codex-steer-v1';
+export { CODEX_STEER_CAPABILITY };
 
 /**
  * Whether the wrapper behind a session takes a message into the turn that is running,
