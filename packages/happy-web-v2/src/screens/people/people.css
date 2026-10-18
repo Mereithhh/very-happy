@@ -41,8 +41,10 @@
 
 @media (max-width: 600px) {
   .pp-body { padding-left: var(--sp-4); padding-right: var(--sp-4); }
-  .pp-row { flex-wrap: wrap; }
-  .pp-actions { width: 100%; justify-content: flex-end; padding-left: 44px; }
+  /* One action stays on the name's line (name truncates); only the two-step
+     remove confirmation drops to a second line so its sentence has room. */
+  .pp-row:has(.pp-confirm) { flex-wrap: wrap; }
+  .pp-row:has(.pp-confirm) .pp-actions { width: 100%; justify-content: flex-end; padding-left: 44px; }
   .pp-confirm { max-width: none; flex: 1; }
 }
 @media (pointer: coarse) { .pp-actions .vh-btn { min-height: 36px; } }
