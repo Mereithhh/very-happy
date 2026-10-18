@@ -143,8 +143,19 @@ model OidcLoginChallenge {
     codeVerifierEnc String
     redirectUri     String
     inviteCode      String?
+    /// B-627: encrypted relay-migration handoff carried through the SSO round trip.
+    migrationHandoffEnc String?
     expiresAt       DateTime
     createdAt       DateTime @default(now())
+
+    @@index([expiresAt])
+}
+
+/// B-627: relay-migration handoff nonces already spent on this relay.
+model MigrationHandoffUse {
+    nonce     String   @id
+    expiresAt DateTime
+    usedAt    DateTime @default(now())
 
     @@index([expiresAt])
 }

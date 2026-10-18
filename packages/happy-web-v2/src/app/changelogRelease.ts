@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-18-relay-migration',
+    date: '2026-10-18',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct18f.title',
+    summaryKey: 'changelog.releases.oct18f.summary',
+    itemKeys: ['changelog.releases.oct18f.banner', 'changelog.releases.oct18f.daemons'],
+  },
+  {
     id: '2026-10-18-sso-link-by-email',
     date: '2026-10-18',
     buildVersion: __APP_VERSION__,

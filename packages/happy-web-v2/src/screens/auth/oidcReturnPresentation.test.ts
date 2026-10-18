@@ -15,6 +15,8 @@ describe('B-620 OIDC return page state', () => {
     expect(oidcCallbackErrorCopy('capacity-reached').messageKey).toBe('signup.errorCapacityReached');
     expect(oidcCallbackErrorCopy('email_domain_not_allowed').messageKey).toBe('oidc.errors.email_domain_not_allowed');
     expect(oidcCallbackErrorCopy('account_link_ambiguous')).toEqual({ messageKey: 'oidc.errors.account_link_ambiguous', sendToSignup: false });
+    expect(oidcCallbackErrorCopy('invalid_migration_handoff').messageKey).toBe('oidc.errors.invalid_migration_handoff');
+    expect(oidcCallbackErrorCopy('migration_conflict').messageKey).toBe('oidc.errors.migration_conflict');
     expect(oidcCallbackErrorCopy('provider_error').messageKey).toBe('oidc.errors.provider_error');
     expect(oidcCallbackErrorCopy('exchange_failed').messageKey).toBe('oidc.errors.exchange_failed');
     expect(oidcCallbackErrorCopy('invalid_id_token').messageKey).toBe('oidc.errors.invalid_id_token');

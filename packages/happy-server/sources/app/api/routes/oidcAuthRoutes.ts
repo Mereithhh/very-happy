@@ -23,6 +23,9 @@ import { hashPairingValue } from '@/app/auth/pairingSecurity';
 import { loadAccountSecret, upsertAccountSecret } from '@/app/auth/accountSecrets';
 import { SignupPolicyError, withSignupGate } from '@/app/auth/signupPolicy';
 import { signupRejectionsCounter } from '@/app/monitoring/metrics2';
+import { verifyMigrationHandoff } from '@/app/migration/handoff';
+import { consumeMigrationHandoffNonce } from '@/app/migration/handoffUse';
+import { resolveMigrationHandoffSecret } from '@/app/migration/migrationConfig';
 import {
     buildAuthorizationUrl,
     consumeOidcLoginChallenge,
@@ -52,6 +55,8 @@ export type OidcCallbackError =
     | 'capacity-reached'
     | 'email_domain_not_allowed'
     | 'account_link_ambiguous'
+    | 'invalid_migration_handoff'
+    | 'migration_conflict'
     | 'provider_error'
     | 'not_configured';
 
@@ -92,6 +97,14 @@ export class OidcAccountLinkAmbiguousError extends Error {
     }
 }
 
+/** B-627: the handoff was bad, spent, or the SSO subject already owns a live account. */
+export class OidcMigrationError extends Error {
+    constructor(readonly code: 'invalid_migration_handoff' | 'migration_conflict') {
+        super(code);
+        this.name = 'OidcMigrationError';
+    }
+}
+
 type RawClient = { $queryRawUnsafe: (sql: string, ...values: unknown[]) => Promise<unknown> };
 
 /**
@@ -112,9 +125,58 @@ export async function findAccountByVerifiedEmail(tx: RawClient, email: string): 
     return rows[0]?.accountId ?? null;
 }
 
-async function findOrCreateOidcAccount(config: OidcConfig, claims: OidcIdentityClaims, inviteCode: string | undefined): Promise<{ value: OidcAccount; created: boolean }> {
+async function findOrCreateOidcAccount(
+    config: OidcConfig,
+    claims: OidcIdentityClaims,
+    inviteCode: string | undefined,
+    migration?: { handoff: string; secret: string },
+): Promise<{ value: OidcAccount; created: boolean }> {
     const provider = oidcProviderKey(config.issuer);
     const profile = JSON.stringify({ name: claims.name, picture: claims.picture, emailVerified: claims.emailVerified, preferredUsername: claims.preferredUsername });
+
+    // B-627: the person arrived from the old relay with a signed ticket for their
+    // account there (same id here, the database was copied). Attach this SSO
+    // subject to that account. A subject that already owns an EMPTY account on
+    // this relay (signed in before clicking the banner) is moved over; one with
+    // sessions or machines is a conflict the person has to resolve by hand.
+    const claimByMigrationHandoff = async (tx: Prisma.TransactionClient): Promise<OidcAccount | null> => {
+        if (!migration) return null;
+        const payload = verifyMigrationHandoff(migration.secret, migration.handoff);
+        if (!payload || payload.kind !== 'web') throw new OidcMigrationError('invalid_migration_handoff');
+        if (!(await consumeMigrationHandoffNonce(tx, payload.nonce, payload.exp))) throw new OidcMigrationError('invalid_migration_handoff');
+        const accountId = payload.accountId;
+        const secret = await loadAccountSecret(tx, accountId);
+        if (!secret) throw new OidcMigrationError('invalid_migration_handoff');
+        const owner = await tx.$queryRawUnsafe<Array<{ accountId: string }>>(
+            `SELECT "accountId" FROM "AccountIdentity" WHERE "provider" = $1 AND "providerSubject" = $2 LIMIT 1`,
+            provider,
+            claims.sub,
+        );
+        if (!owner[0]) {
+            await tx.$executeRawUnsafe(
+                `INSERT INTO "AccountIdentity"
+                 ("id", "accountId", "provider", "providerSubject", "email", "profile", "updatedAt")
+                 VALUES ($1, $2, $3, $4, $5, $6::jsonb, now())`,
+                randomUUID(), accountId, provider, claims.sub, claims.email ?? null, profile,
+            );
+            log({ module: 'oidc-auth', accountId }, 'Migration handoff: linked SSO identity to the migrated account');
+        } else if (owner[0].accountId !== accountId) {
+            const stray = owner[0].accountId;
+            const [sessions, machines] = await Promise.all([
+                tx.session.count({ where: { accountId: stray } }),
+                tx.machine.count({ where: { accountId: stray } }),
+            ]);
+            if (sessions > 0 || machines > 0) throw new OidcMigrationError('migration_conflict');
+            await tx.$executeRawUnsafe(
+                `UPDATE "AccountIdentity" SET "accountId" = $3, "email" = $4, "profile" = $5::jsonb, "updatedAt" = now()
+                 WHERE "provider" = $1 AND "providerSubject" = $2`,
+                provider, claims.sub, accountId, claims.email ?? null, profile,
+            );
+            log({ module: 'oidc-auth', accountId, strayAccountId: stray }, 'Migration handoff: moved SSO identity off an empty account');
+        }
+        const session = await auth.createLoginToken(accountId, tx, { cache: false });
+        return { accountId, secret, session };
+    };
 
     // B-626: attach this SSO subject to the account that already owns the verified email.
     const linkByVerifiedEmail = async (tx: Prisma.TransactionClient): Promise<OidcAccount | null> => {
@@ -147,6 +209,8 @@ async function findOrCreateOidcAccount(config: OidcConfig, claims: OidcIdentityC
         provider: 'oidc',
         inviteCode,
         findExisting: async (tx) => {
+            const claimed = await claimByMigrationHandoff(tx);
+            if (claimed) return claimed;
             const identities = await tx.$queryRawUnsafe<Array<{ accountId: string }>>(
                 `SELECT "accountId" FROM "AccountIdentity"
                  WHERE "provider" = $1 AND "providerSubject" = $2 LIMIT 1`,
@@ -205,14 +269,18 @@ async function findOrCreateOidcAccount(config: OidcConfig, claims: OidcIdentityC
 export function oidcAuthRoutes(app: Fastify, options: { fetchImpl?: typeof fetch } = {}) {
     const config = resolveOidcConfig();
     const fetchImpl = options.fetchImpl ?? fetch;
+    const migrationSecret = resolveMigrationHandoffSecret();
 
     app.post('/v1/auth/oidc/start', {
         schema: {
             body: z.object({
                 inviteCode: z.string().trim().max(256).optional(),
+                /** B-627: signed ticket from the old relay; the callback then claims that account. */
+                migrationHandoff: z.string().min(16).max(4096).optional(),
             }).strict().optional(),
             response: {
                 200: z.object({ authorizationUrl: z.string() }),
+                401: z.object({ error: z.literal('invalid_migration_handoff') }),
                 429: z.object({ error: z.literal('too_many_requests') }),
                 501: z.object({ error: z.literal('oidc_not_configured') }),
                 503: z.object({ error: z.enum(['oidc_challenge_capacity', 'oidc_provider_unavailable']) }),
@@ -232,9 +300,13 @@ export function oidcAuthRoutes(app: Fastify, options: { fetchImpl?: typeof fetch
             return reply.code(503).send({ error: 'oidc_provider_unavailable' as const });
         }
         const redirectUri = resolveRedirectUri(config, request);
+        const migrationHandoff = request.body?.migrationHandoff;
+        if (migrationHandoff && (!migrationSecret || verifyMigrationHandoff(migrationSecret, migrationHandoff)?.kind !== 'web')) {
+            return reply.code(401).send({ error: 'invalid_migration_handoff' as const });
+        }
         let challenge;
         try {
-            challenge = await issueOidcLoginChallenge({ redirectUri, inviteCode: request.body?.inviteCode });
+            challenge = await issueOidcLoginChallenge({ redirectUri, inviteCode: request.body?.inviteCode, migrationHandoff });
         } catch (error) {
             if (error instanceof OidcLoginChallengeCapacityError) {
                 return reply.code(503).send({ error: 'oidc_challenge_capacity' as const });
@@ -297,10 +369,16 @@ export function oidcAuthRoutes(app: Fastify, options: { fetchImpl?: typeof fetch
 
         let result: { value: OidcAccount; created: boolean };
         try {
-            result = await findOrCreateOidcAccount(config, claims, challenge.inviteCode);
+            result = await findOrCreateOidcAccount(
+                config,
+                claims,
+                challenge.inviteCode,
+                challenge.migrationHandoff && migrationSecret ? { handoff: challenge.migrationHandoff, secret: migrationSecret } : undefined,
+            );
         } catch (error) {
             if (error instanceof SignupPolicyError) return fail(error.reason);
             if (error instanceof OidcAccountLinkAmbiguousError) return fail('account_link_ambiguous');
+            if (error instanceof OidcMigrationError) return fail(error.code);
             throw error;
         }
 

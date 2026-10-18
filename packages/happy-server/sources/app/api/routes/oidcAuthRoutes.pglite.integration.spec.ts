@@ -32,6 +32,7 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
         process.env.OIDC_WEB_RETURN_URL = 'https://web.test';
         process.env.SIGNUP_MODE = 'open';
         process.env.OIDC_LINK_BY_EMAIL = 'verified';
+        process.env.MIGRATION_HANDOFF_SECRET = 'migration-handoff-secret-for-tests-0123456789';
         const { runMigrations } = await import('../../../standalone');
         await runMigrations({ pgliteDir: process.env.PGLITE_DIR, migrationsDir: join(process.cwd(), 'prisma/migrations') });
         await (await import('@/modules/encrypt')).initEncrypt();
@@ -283,6 +284,66 @@ describe('B-620 generic OIDC login routes (pglite)', () => {
             process.env.OIDC_LINK_BY_EMAIL = 'verified';
             await off.close();
         }
+    });
+
+    it('B-627: an SSO login carrying a relay-migration handoff claims the migrated account, folds in an empty stray account, and refuses a busy one', async () => {
+        const { issueMigrationHandoff } = await import('@/app/migration/handoff');
+        const secret = process.env.MIGRATION_HANDOFF_SECRET!;
+        const before = await db.account.count();
+        const migratedSecret = Buffer.alloc(32, 21).toString('base64url');
+        const migrated = await seedAccount('migrated', { provider: 'google', email: 'moved@gmail.com' }, migratedSecret);
+
+        // Start refuses a forged or daemon-kind ticket outright.
+        expect((await app.inject({ method: 'POST', url: '/v1/auth/oidc/start', payload: { migrationHandoff: 'vh1.forged.signature' } })).statusCode).toBe(401);
+        const daemonTicket = issueMigrationHandoff(secret, { kind: 'daemon', accountId: migrated, machineId: 'm' });
+        expect((await app.inject({ method: 'POST', url: '/v1/auth/oidc/start', payload: { migrationHandoff: daemonTicket } })).statusCode).toBe(401);
+
+        async function loginWithHandoff(handoff: string, claims: Record<string, unknown>) {
+            const started = await app.inject({ method: 'POST', url: '/v1/auth/oidc/start', payload: { migrationHandoff: handoff } });
+            expect(started.statusCode).toBe(200);
+            const params = Object.fromEntries(new URL(started.json().authorizationUrl).searchParams);
+            idp.expect = { nonce: params.nonce, codeChallenge: params.code_challenge, redirectUri: params.redirect_uri };
+            idp.claims = claims;
+            const cb = await callback({ code: 'good-code', state: params.state });
+            const outcome = returned(cb.headers.location as string);
+            if (outcome.error) return { error: outcome.error, secret: null };
+            const complete = await app.inject({ method: 'POST', url: '/v1/auth/oidc/complete', payload: { handoff: outcome.handoff } });
+            return { error: null, secret: complete.json().secret as string };
+        }
+
+        // Fresh subject + valid ticket → the migrated account, even with signup closed and a non-matching email.
+        process.env.SIGNUP_MODE = 'closed';
+        const ticket = issueMigrationHandoff(secret, { kind: 'web', accountId: migrated });
+        const claimed = await loginWithHandoff(ticket, { sub: 'subject-mig', email: 'moved@apodex.com', email_verified: true, name: 'Moved Person' });
+        expect(claimed.error).toBeNull();
+        expect(claimed.secret).toBe(migratedSecret);
+        expect(await db.account.count()).toBe(before + 1);
+        expect((await db.accountIdentity.findMany({ where: { accountId: migrated } })).map((row) => row.provider).sort()).toEqual(['google', `oidc:${idp.issuer}`]);
+        // The ticket is spent: the same one cannot be used for a second SSO round trip.
+        expect((await loginWithHandoff(ticket, { sub: 'subject-mig' })).error).toBe('invalid_migration_handoff');
+
+        // A subject that already made an EMPTY account here is folded into the migrated one.
+        process.env.SIGNUP_MODE = 'open';
+        const stray = await login({ sub: 'subject-stray', email: 'stray@apodex.com', email_verified: false });
+        expect(stray.error).toBeNull();
+        const strayAccount = (await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-stray' } }))!.accountId;
+        const migrated2 = await seedAccount('migrated-2', { provider: 'email', email: 'two@gmail.com' }, Buffer.alloc(32, 22).toString('base64url'));
+        const folded = await loginWithHandoff(issueMigrationHandoff(secret, { kind: 'web', accountId: migrated2 }), { sub: 'subject-stray', email: 'stray@apodex.com' });
+        expect(folded.error).toBeNull();
+        expect(folded.secret).toBe(Buffer.alloc(32, 22).toString('base64url'));
+        expect((await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-stray' } }))!.accountId).toBe(migrated2);
+        expect(await db.accountIdentity.count({ where: { accountId: strayAccount } })).toBe(0);
+
+        // A subject whose account here already has a machine is a conflict; nothing moves.
+        const busy = await login({ sub: 'subject-busy', email: 'busy@apodex.com', email_verified: false });
+        expect(busy.error).toBeNull();
+        const busyAccount = (await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-busy' } }))!.accountId;
+        await db.machine.create({ data: { id: 'busy-machine', accountId: busyAccount, metadata: '' } });
+        const migrated3 = await seedAccount('migrated-3', { provider: 'email', email: 'three@gmail.com' }, Buffer.alloc(32, 23).toString('base64url'));
+        const conflict = await loginWithHandoff(issueMigrationHandoff(secret, { kind: 'web', accountId: migrated3 }), { sub: 'subject-busy' });
+        expect(conflict.error).toBe('migration_conflict');
+        expect((await db.accountIdentity.findFirst({ where: { providerSubject: 'subject-busy' } }))!.accountId).toBe(busyAccount);
+        expect(await db.accountIdentity.count({ where: { accountId: migrated3 } })).toBe(1);
     });
 
     it('reports 501 everywhere when OIDC is not configured and never reads an id_token from the query', async () => {

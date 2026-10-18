@@ -65,7 +65,12 @@ login, not a signup. Unverified emails, unknown emails and key-only accounts
 without a stored secret fall through to the normal first-login path. When two
 accounts own the same email the callback returns `account_link_ambiguous` and the
 person signs in with the old method. Linking an OIDC identity from inside an
-existing session is still not available.
+existing session is still not available. When a relay is being retired
+(B-627, `MIGRATION_*` in [deployment.md](deployment.md)), the old relay's
+banner carries a signed ticket for the person's account to the new relay's
+`/login/migrate`; `POST /v1/auth/oidc/start` accepts it as `migrationHandoff`
+and the callback attaches the SSO identity to that account instead of
+creating one (or moves it off an empty account the subject made meanwhile).
 
 ## Profile handle and People
 

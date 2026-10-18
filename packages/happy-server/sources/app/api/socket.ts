@@ -22,6 +22,7 @@ import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { parseSocketClientType, validateSocketOwnership } from './socket/socketIdentity';
 import { recordClientVersion } from './socket/clientVersion';
+import { emitServerMigrateIfTargeted } from '@/app/migration/daemonNotice';
 import { AccountTerminalRateLimiter, resolveRpcRelayLimit, resolveSessionStreamRelayLimit, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
 import { resolveSocketConnectionLimit } from './socket/socketConnectionLimit';
 import { resolveReleaseConfig } from '@/app/release/releaseConfig';
@@ -381,6 +382,8 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         // Broadcast daemon online status
         if (connection.connectionType === 'machine-scoped') {
             void socket.join(machinePresenceRoom(userId, machineId!));
+            // B-627: a retiring relay sends targeted daemons to their new home.
+            void emitServerMigrateIfTargeted(socket, userId, machineId!);
             // Broadcast daemon online
             const machineActivity = buildMachineActivityEphemeral(machineId!, true, Date.now());
             eventRouter.emitEphemeral({

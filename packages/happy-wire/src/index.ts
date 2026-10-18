@@ -18,3 +18,5 @@ export * from './agentVersions';
 export * from './agentCodeDefaults';
 
 export * from './promptQueue';
+
+export * from './migrationProtocol';

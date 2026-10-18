@@ -47,6 +47,8 @@ export type CloudAuthErrorCode =
     | 'oidc-not-configured'
     | 'oidc-provider-unavailable'
     | 'invalid-handoff'
+    | 'invalid-migration-handoff'
+    | 'not-targeted'
     | 'network';
 
 export class CloudAuthError extends Error {
@@ -269,16 +271,21 @@ export async function loginWithGoogle(
  * returns the provider's authorization URL; the caller navigates the browser
  * there. The provider sends the browser back to `/login/oidc?handoff=…`.
  */
-export async function startOidcLogin(inviteCode?: string): Promise<{ authorizationUrl: string }> {
+export async function startOidcLogin(inviteCode?: string, migrationHandoff?: string): Promise<{ authorizationUrl: string }> {
     try {
         const response = await axios.post<{ authorizationUrl: string }>(
             `${getServerUrl()}/v1/auth/oidc/start`,
-            inviteCode?.trim() ? { inviteCode: inviteCode.trim() } : {},
+            {
+                ...(inviteCode?.trim() ? { inviteCode: inviteCode.trim() } : {}),
+                // B-627: the callback then claims the account this ticket names.
+                ...(migrationHandoff ? { migrationHandoff } : {}),
+            },
             { headers: { 'X-Happy-Client': getHappyClientId() } },
         );
         return { authorizationUrl: response.data.authorizationUrl };
     } catch (error: any) {
         const status = error?.response?.status;
+        if (status === 401) throw new CloudAuthError('invalid-migration-handoff');
         if (status === 501) throw new CloudAuthError('oidc-not-configured');
         if (status === 503) throw new CloudAuthError('oidc-provider-unavailable');
         if (status === 429) throw new CloudAuthError('rate-limited');
@@ -299,6 +306,55 @@ export async function completeOidcLogin(handoff: string): Promise<AuthCredential
         const status = error?.response?.status;
         if (status === 401) throw new CloudAuthError('invalid-handoff');
         if (status === 501) throw new CloudAuthError('oidc-not-configured');
+        if (status === 429) throw new CloudAuthError('rate-limited');
+        throw new CloudAuthError('network');
+    }
+}
+
+// B-627: relay-to-relay account migration.
+
+export interface MigrationTarget { url: string; name: string }
+
+/** The old relay's answer to "should this account see the move banner?" (null = no). */
+export async function loadMigrationTarget(credentials: AuthCredentials): Promise<MigrationTarget | null> {
+    try {
+        const response = await axios.get<{ target: MigrationTarget | null }>(`${getServerUrl()}/v1/migration`, {
+            headers: { Authorization: `Bearer ${credentials.token}`, 'X-Happy-Client': getHappyClientId() },
+        });
+        return response.data.target;
+    } catch {
+        // 404 = a relay without the feature; anything else is not worth a banner either.
+        return null;
+    }
+}
+
+/** Mints the signed ticket and returns the new relay's `/login/migrate` URL to navigate to. */
+export async function requestMigrationHandoff(credentials: AuthCredentials): Promise<string> {
+    try {
+        const response = await axios.post<{ url: string }>(`${getServerUrl()}/v1/migration/handoff`, {}, {
+            headers: { Authorization: `Bearer ${credentials.token}`, 'X-Happy-Client': getHappyClientId() },
+        });
+        return response.data.url;
+    } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 403) throw new CloudAuthError('not-targeted');
+        if (status === 429) throw new CloudAuthError('rate-limited');
+        throw new CloudAuthError('network');
+    }
+}
+
+/** On the new relay: spend the ticket for a login without SSO (used when the relay has no OIDC issuer). */
+export async function completeMigrationLogin(handoff: string): Promise<AuthCredentials & { expiresAt?: string }> {
+    try {
+        const response = await axios.post<{ kind: 'web'; token: string; secret: string; expiresAt?: string }>(
+            `${getServerUrl()}/v1/auth/migrate/complete`,
+            { handoff },
+            { headers: { 'X-Happy-Client': getHappyClientId() } },
+        );
+        return { token: response.data.token, secret: response.data.secret, expiresAt: response.data.expiresAt };
+    } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 401) throw new CloudAuthError('invalid-migration-handoff');
         if (status === 429) throw new CloudAuthError('rate-limited');
         throw new CloudAuthError('network');
     }
