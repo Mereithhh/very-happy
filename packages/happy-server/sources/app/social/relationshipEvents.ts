@@ -16,7 +16,7 @@ export function notifyRelationshipChanged(tx: Tx, pairs: Array<{ userId: string;
             const seq = await allocateUserSeq(pair.userId);
             eventRouter.emitUpdate({
                 userId: pair.userId,
-                payload: buildRelationshipUpdatedEvent({ uid: pair.uid, status: pair.status, timestamp }, seq, randomKeyNaked(12)),
+                payload: buildRelationshipUpdatedEvent({ fromUserId: pair.userId, toUserId: pair.uid, status: pair.status, timestamp }, seq, randomKeyNaked(12)),
                 recipientFilter: { type: 'user-scoped-only' },
             });
         }

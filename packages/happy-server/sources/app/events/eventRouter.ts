@@ -688,8 +688,11 @@ export function buildDeleteArtifactUpdate(artifactId: string, updateSeq: number,
 
 export function buildRelationshipUpdatedEvent(
     data: {
-        uid: string;
+        /** The recipient (whose row changed). Web V2 reads fromUserId/toUserId/action. */
+        fromUserId: string;
+        toUserId: string;
         status: 'none' | 'requested' | 'pending' | 'friend' | 'rejected';
+        action?: 'created' | 'updated' | 'deleted';
         timestamp: number;
     },
     updateSeq: number,
@@ -700,6 +703,7 @@ export function buildRelationshipUpdatedEvent(
         seq: updateSeq,
         body: {
             t: 'relationship-updated',
+            action: 'updated',
             ...data
         },
         createdAt: Date.now()

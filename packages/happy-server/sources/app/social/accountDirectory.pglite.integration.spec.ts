@@ -104,8 +104,8 @@ describe('B-621 account directory (pglite)', () => {
         expect((await friendAdd(Context.create(aliceId), bobId))?.status).toBe('requested');
         await flush();
         expect(await dir.relationshipStatusBetween(bobId, aliceId)).toBe('pending');
-        let bodies = emitUpdate.mock.calls.map((c) => [c[0].userId, c[0].payload.body.t, c[0].payload.body.status]);
-        expect(bodies).toEqual(expect.arrayContaining([[aliceId, 'relationship-updated', 'requested'], [bobId, 'relationship-updated', 'pending']]));
+        let bodies = emitUpdate.mock.calls.map((c) => [c[0].userId, c[0].payload.body.t, c[0].payload.body.status, c[0].payload.body.fromUserId, c[0].payload.body.toUserId, c[0].payload.body.action]);
+        expect(bodies).toEqual(expect.arrayContaining([[aliceId, 'relationship-updated', 'requested', aliceId, bobId, 'updated'], [bobId, 'relationship-updated', 'pending', bobId, aliceId, 'updated']]));
 
         emitUpdate.mockClear();
         expect((await friendAdd(Context.create(bobId), aliceId))?.status).toBe('friend');
