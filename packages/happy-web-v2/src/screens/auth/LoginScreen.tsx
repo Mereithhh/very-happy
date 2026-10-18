@@ -16,7 +16,7 @@ import { publicAuthMethodState } from './emailOtpPresentation';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { BrandMark } from '@/ui/BrandMark';
-import { BRAND } from '@/app/brand';
+import { BRAND, brandText } from '@/app/brand';
 
 export function LoginScreen() {
   const { login } = useAuth();
@@ -27,7 +27,7 @@ export function LoginScreen() {
   const pageRef = useRef<HTMLDivElement>(null);
   useKeyboardViewportPin(pageRef);
 
-  useEffect(() => { document.title = t('login.pageTitle'); }, [lang, t]);
+  useEffect(() => { document.title = brandText(t('login.pageTitle')); }, [lang, t]);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');

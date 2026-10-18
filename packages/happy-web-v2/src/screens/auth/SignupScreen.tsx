@@ -17,6 +17,7 @@ import { publicAuthMethodState } from './emailOtpPresentation';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { BrandMark } from '@/ui/BrandMark';
+import { brandText } from '@/app/brand';
 
 const MIN_USERNAME = 3;
 const MIN_PASSWORD = 8;
@@ -30,7 +31,7 @@ export function SignupScreen() {
   const pageRef = useRef<HTMLDivElement>(null);
   useKeyboardViewportPin(pageRef);
 
-  useEffect(() => { document.title = t('signup.pageTitle'); }, [lang, t]);
+  useEffect(() => { document.title = brandText(t('signup.pageTitle')); }, [lang, t]);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');

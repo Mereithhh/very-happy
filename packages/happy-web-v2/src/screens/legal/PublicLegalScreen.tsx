@@ -3,6 +3,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import { useEffect } from 'react';
 import './publicLegal.css';
+import { BRAND } from '@/app/brand';
 
 const UPDATED = 'August 24, 2026';
 const PRIVATE_CONTACT_URL = 'https://github.com/Mereithhh/very-happy/security/advisories/new';
@@ -85,7 +86,7 @@ export function TermsScreen() {
 
 function LegalPage({ title, children }: { title: string; children: React.ReactNode }) {
   const { language, copy } = usePublicI18n();
-  useEffect(() => { document.title = `${title} — Very Happy`; }, [language, title]);
+  useEffect(() => { document.title = `${title} — ${BRAND.name}`; }, [language, title]);
   return (
     <main className="legal-page">
       <article className="legal-card">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBrandToDocument, DEFAULT_BRAND_NAME, readBrandConfig } from './brand';
+import { applyBrandToDocument, brandText, DEFAULT_BRAND_NAME, readBrandConfig } from './brand';
 
 describe('B-624 brand config', () => {
   it('defaults to the Very Happy lockup with the landing page on', () => {
@@ -17,6 +17,13 @@ describe('B-624 brand config', () => {
     expect(readBrandConfig({ brand: { logoUrl: '//evil.example.com/x.png' } }).logoUrl).toBeNull();
     expect(readBrandConfig({ brand: { name: 'x'.repeat(100) } }).name).toHaveLength(64);
     expect(readBrandConfig({ landing: 'off' }).landingEnabled).toBe(true);
+  });
+
+  it('rewrites product-name copy only for a custom brand', () => {
+    expect(brandText('Sign in — Very Happy', readBrandConfig(undefined))).toBe('Sign in — Very Happy');
+    const apodex = readBrandConfig({ brand: { name: 'Apodex Vibe' } });
+    expect(brandText('登录 — Very Happy', apodex)).toBe('登录 — Apodex Vibe');
+    expect(brandText('very happy · Very Happy CLI', apodex)).toBe('Apodex Vibe · Apodex Vibe CLI');
   });
 
   it('retitles the document only for a custom brand', () => {

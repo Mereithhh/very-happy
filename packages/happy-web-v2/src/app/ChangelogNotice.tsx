@@ -14,6 +14,7 @@ import {
   unseenChangelogReleases,
 } from './changelogRelease';
 import './changelogNotice.css';
+import { BRAND } from './brand';
 
 function readSeen(): string | null {
   try { return localStorage.getItem(CHANGELOG_STORAGE_KEY); } catch { return null; }
@@ -82,7 +83,7 @@ export function ChangelogNotice() {
           <button type="button" className="wn-close" aria-label={t('common.close')} onClick={acknowledge}>
             <X size={18} />
           </button>
-          {head?.featured && <div className="wn-brand"><img src="/icon-192.png" width={44} height={44} alt=""/><span>Very Happy<span>{lang.startsWith('zh') ? '全新工作台 · 重大界面更新' : 'A new workspace · Major UI update'}</span></span></div>}
+          {head?.featured && <div className="wn-brand"><img src="/icon-192.png" width={44} height={44} alt=""/><span>{BRAND.name}<span>{lang.startsWith('zh') ? '全新工作台 · 重大界面更新' : 'A new workspace · Major UI update'}</span></span></div>}
           <div className="wn-eyebrow"><Sparkles size={14} />{t('changelog.eyebrow')}</div>
           {head && (multiple ? (
             <>

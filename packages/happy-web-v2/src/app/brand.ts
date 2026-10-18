@@ -49,6 +49,12 @@ export function readBrandConfig(runtime: unknown = (globalThis as { __HAPPY_CONF
 
 export const BRAND: BrandConfig = readBrandConfig();
 
+/** Swaps the product name inside copy that names it (page titles, shell chrome); no-op on the default brand. */
+export function brandText(text: string, brand: BrandConfig = BRAND): string {
+  if (brand.isDefault) return text;
+  return text.replace(/Very Happy/g, brand.name).replace(/very happy/g, brand.wordmark);
+}
+
 /** Title + PWA title follow the brand; the default build keeps what index.html ships. */
 export function applyBrandToDocument(brand: BrandConfig, doc: Document = document): void {
   if (brand.isDefault) return;

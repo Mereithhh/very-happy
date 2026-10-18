@@ -9,6 +9,7 @@ import { authReturnTarget } from '@/app/authReturnTarget';
 import { oidcCompleteErrorKey, parseOidcReturn, type OidcReturnErrorKey } from './oidcReturnPresentation';
 import './auth.css';
 import { BrandMark } from '@/ui/BrandMark';
+import { brandText } from '@/app/brand';
 
 /**
  * B-620: landing page after the identity provider sends the browser back.
@@ -24,7 +25,7 @@ export function OidcReturnScreen() {
   const [sendToSignup, setSendToSignup] = useState(false);
   const started = useRef(false);
 
-  useEffect(() => { document.title = t('login.pageTitle'); }, [lang, t]);
+  useEffect(() => { document.title = brandText(t('login.pageTitle')); }, [lang, t]);
 
   useEffect(() => {
     // The handoff is single-use: guard against StrictMode's double effect.
