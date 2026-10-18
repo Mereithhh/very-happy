@@ -1,6 +1,6 @@
 # Session 分享：把我的会话交给同服务器的另一个人继续聊
 
-> 状态：Final（2026-10-18，Owner「如果都没有问题你就去实现吧」；实现见 B-619，待 PR 合并后回标 Shipped）
+> 状态：Shipped（2026-10-18，PR #554 merge `8256be92`；实现见 B-619/B-621，真机项 V-178/V-179 在 `docs/verify-queue.md`）
 > 关联：specs/2026-10-spaces-a2a.design.md §8；前置事实见 docs/research/2026-10-spaces/very-happy-baseline.md
 > 基线：main 2ab14e26d
 
