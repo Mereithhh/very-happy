@@ -138,6 +138,13 @@ dependency surface. Do not install the upstream-owned
   `SIGNUP_MAX_ACCOUNTS` still applies. An identity is keyed `oidc:<issuer>` +
   `sub`, so the same person always lands on the same account. A configured issuer counts as an interactive
   login path for the `AUTH_PASSWORD_LOGIN_DISABLED` startup check.
+- White-label (B-624, standalone entrypoint): `BRAND_NAME` renames the product in
+  the Web UI (auth cards, loaders, Settings → About, document title; max 64
+  chars), `BRAND_LOGO_URL` (http(s) URL or absolute path) replaces the brand mark
+  on those screens, and `WEB_LANDING=off` removes the marketing page so anonymous
+  visitors to `/` and `/welcome` go straight to `/login` (docs and legal pages
+  stay public). Values are injected into `window.__HAPPY_CONFIG__` as `brand` /
+  `landing`; an explicit `HAPPY_INJECT_HTML_CONFIG` JSON still wins.
 - Passwordless email login: set `AUTH_EMAIL_PROVIDER=resend` with `AUTH_EMAIL_FROM` and `RESEND_API_KEY`, or `AUTH_EMAIL_PROVIDER=cloudflare` with `AUTH_EMAIL_FROM`, `CLOUDFLARE_EMAIL_ACCOUNT_ID`, and `CLOUDFLARE_EMAIL_API_TOKEN`. Verify the sender domain first. Deploy and smoke-test a real code before optionally setting `AUTH_PASSWORD_LOGIN_DISABLED=true`; the server fails startup if that would leave no email or Google login path.
 
 Before deploying the one-Google-identity-per-account constraint, run this read-only

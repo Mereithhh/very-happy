@@ -9,7 +9,11 @@ const ANONYMOUS_PUBLIC_PATH = /^\/(?:$|docs(?:\/|$)|privacy\/?$|terms\/?$)/;
  * behavior: anonymous visitors see the landing page, returning users enter
  * the workspace.
  */
-export function shouldUsePublicRoot(routePath: string, hasStoredCredentials: boolean): boolean {
+export function shouldUsePublicRoot(routePath: string, hasStoredCredentials: boolean, landingEnabled = true): boolean {
+  if (!landingEnabled && (ALWAYS_PUBLIC_PATH.test(routePath) || /^\/?$/.test(routePath))) {
+    // B-624: no marketing page — `/` and `/welcome` belong to the app root, which sends anonymous visitors to login.
+    return false;
+  }
   return ALWAYS_PUBLIC_PATH.test(routePath)
     || (!hasStoredCredentials && ANONYMOUS_PUBLIC_PATH.test(routePath));
 }

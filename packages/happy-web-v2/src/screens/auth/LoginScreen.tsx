@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { loginWithPassword } from '@/auth/passwordUnlock';
 import { CloudAuthError, loadPublicAuthConfig, loginWithGoogle, type PublicAuthConfig } from '@/auth/cloudAuth';
 import { useAuth } from '@/auth/AuthContext';
-import { Button, Input, CyberMark, useToast } from '@/ui';
+import { Button, Input, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { GoogleLoginButton } from './GoogleLoginButton';
@@ -15,6 +15,8 @@ import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
+import { BrandMark } from '@/ui/BrandMark';
+import { BRAND, brandText } from '@/app/brand';
 
 export function LoginScreen() {
   const { login } = useAuth();
@@ -25,7 +27,7 @@ export function LoginScreen() {
   const pageRef = useRef<HTMLDivElement>(null);
   useKeyboardViewportPin(pageRef);
 
-  useEffect(() => { document.title = t('login.pageTitle'); }, [lang, t]);
+  useEffect(() => { document.title = brandText(t('login.pageTitle')); }, [lang, t]);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -112,10 +114,7 @@ export function LoginScreen() {
       <CyberBackdrop />
       <main className="auth-card auth-card--login">
         <section className="auth-brand-panel" aria-labelledby="login-brand-title">
-          <div className="auth-brand">
-            <CyberMark size={44} />
-            <div className="auth-wordmark">very happy</div>
-          </div>
+          <BrandMark size={44} className="auth-brand" wordmarkClassName="auth-wordmark" />
           <div className="auth-brand-message">
             <div className="auth-brand-label">{t('login.consoleLabel')}</div>
             <h1 id="login-brand-title">{t('login.title')}</h1>
@@ -123,7 +122,7 @@ export function LoginScreen() {
           </div>
           <div className="auth-console" aria-hidden="true">
             <div className="auth-console-bar">
-              <span>very-happy://web</span>
+              <span>{BRAND.isDefault ? 'very-happy' : BRAND.name.toLowerCase().replace(/\s+/g, '-')}://web</span>
               <span>AUTH</span>
             </div>
             <div className="auth-console-line">
@@ -136,7 +135,7 @@ export function LoginScreen() {
 
         <section className="auth-form-panel" aria-labelledby="login-form-title">
           <LanguageSwitcher className="auth-language-switcher" />
-          <div className="auth-mobile-brand"><CyberMark size={28}/><span>Very Happy</span></div>
+          <BrandMark size={28} className="auth-mobile-brand" wordmark={BRAND.name} />
           <header className="auth-form-header">
             <span>{t('login.accountStep')}</span>
             <h2 id="login-form-title">{t('settings.connectAccount')}</h2>

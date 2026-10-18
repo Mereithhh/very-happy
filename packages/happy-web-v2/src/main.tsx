@@ -35,6 +35,7 @@ import { flushPendingDrafts } from './app/draftFlush';
 import { installStaleBundleReload, recoverChunkLoad } from './app/staleBundleReload.ts';
 import { markProgrammaticReload } from './app/programmaticReload.ts';
 import { shouldUsePublicRoot } from './app/rootSelection.ts';
+import { applyBrandToDocument, BRAND } from './app/brand.ts';
 import { dismissPrepaintSplash } from './app/prepaintSplash.ts';
 
 // Capture Chrome's one-shot install event before the public/authenticated root
@@ -83,7 +84,8 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const routePath = basePath && window.location.pathname.startsWith(basePath)
   ? window.location.pathname.slice(basePath.length) || '/'
   : window.location.pathname;
-const usePublicRoot = shouldUsePublicRoot(routePath, hasStoredCredentials);
+applyBrandToDocument(BRAND);
+const usePublicRoot = shouldUsePublicRoot(routePath, hasStoredCredentials, BRAND.landingEnabled);
 
 // This boundary is the anonymous performance contract: public visitors never
 // import account crypto, sync, realtime, or the authenticated application shell.

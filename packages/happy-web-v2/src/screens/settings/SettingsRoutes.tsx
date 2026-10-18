@@ -134,6 +134,7 @@ import { resetFeatureTips } from '@/components/featureTips/FeatureTips';
 import { CodeView } from '@/screens/session/CodeView';
 import { SettingsPage as Page, SettingsHeader as Header, SettingsWorkspace } from './SettingsLayout';
 import { ProfileSettings } from './ProfileSettings';
+import { BRAND } from '@/app/brand';
 
 const MIN_PASSWORD = 8;
 
@@ -225,7 +226,7 @@ function Overview() {
           />
           <Item
             title={t('settings.about')}
-            subtitle={`Very Happy · v${__APP_VERSION__}`}
+            subtitle={`${BRAND.name} · v${__APP_VERSION__}`}
             left={<Info size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => Modal.show({ component: AboutModal })}

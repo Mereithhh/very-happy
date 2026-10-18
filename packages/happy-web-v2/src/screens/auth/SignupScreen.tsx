@@ -5,7 +5,7 @@ import { encodeBase64 } from '@/encryption/base64';
 import { signupWithPassword, AccountAuthError } from '@/auth/passwordUnlock';
 import { CloudAuthError, loadPublicAuthConfig, loginWithGoogle, type PublicAuthConfig } from '@/auth/cloudAuth';
 import { useAuth } from '@/auth/AuthContext';
-import { Button, Input, CyberMark, useToast } from '@/ui';
+import { Button, Input, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { GoogleLoginButton } from './GoogleLoginButton';
@@ -16,6 +16,8 @@ import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
+import { BrandMark } from '@/ui/BrandMark';
+import { brandText } from '@/app/brand';
 
 const MIN_USERNAME = 3;
 const MIN_PASSWORD = 8;
@@ -29,7 +31,7 @@ export function SignupScreen() {
   const pageRef = useRef<HTMLDivElement>(null);
   useKeyboardViewportPin(pageRef);
 
-  useEffect(() => { document.title = t('signup.pageTitle'); }, [lang, t]);
+  useEffect(() => { document.title = brandText(t('signup.pageTitle')); }, [lang, t]);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -159,10 +161,7 @@ export function SignupScreen() {
     <div className="auth-page" ref={pageRef}>
       <CyberBackdrop />
       <div className="auth-card">
-        <div className="auth-brand">
-          <CyberMark size={40} />
-          <div className="auth-wordmark">very happy</div>
-        </div>
+        <BrandMark size={40} className="auth-brand" wordmarkClassName="auth-wordmark" />
         <LanguageSwitcher className="auth-language-switcher" />
         <div className="auth-eyebrow eyebrow">{t('signup.title')}</div>
 

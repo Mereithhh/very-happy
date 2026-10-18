@@ -5,10 +5,11 @@ import { useAuth } from '@/auth/AuthContext';
 import { authApprove } from '@/auth/authApprove';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { sync } from '@/sync/sync';
-import { Button, CyberMark } from '@/ui';
+import { Button } from '@/ui';
 import { buildTerminalApproval, terminalPublicKeyFromHash } from './terminalConnect';
 import './terminalConnect.css';
 import { useTranslation } from '@/i18n/useTranslation';
+import { BrandMark } from '@/ui/BrandMark';
 
 type State = 'ready' | 'approving' | 'done' | 'error';
 
@@ -49,7 +50,7 @@ export function TerminalConnectScreen() {
   return (
     <main className="tc-page">
       <section className="tc-card" aria-labelledby="terminal-connect-title">
-        <div className="tc-brand"><CyberMark size={36} /><span>very happy</span></div>
+        <BrandMark size={36} className="tc-brand" />
         {state === 'done' ? (
           <>
             <CheckCircle2 className="tc-status tc-status--live" size={42} />
