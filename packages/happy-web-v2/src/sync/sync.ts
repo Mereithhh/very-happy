@@ -435,7 +435,6 @@ class Sync {
 
     onSessionVisible = (sessionId: string) => {
         this.getMessagesSync(sessionId).invalidate();
-        this.alignPermissionModeIfNeeded(sessionId);
         // T-014: there is deliberately NO git-status refresh here. This method
         // is called for EVERY incoming message of ANY session (the "Ping
         // session" below), so a refresh here fanned 4 `bash` RPCs out to every
@@ -446,9 +445,12 @@ class Sync {
         // Notify voice assistant about session visibility
         const session = storage.getState().sessions[sessionId];
         if (session) {
-            if (session.metadata?.machineId) {
+            // B-619: a session shared WITH me has no relay / RPC path — the machine is
+            // not this account's; warming its relay only yields diagnostics 422s.
+            if (session.metadata?.machineId && !session.share) {
                 apiSocket.prepareMachineRelay(session.metadata.machineId);
             }
+            if (!session.share) this.alignPermissionModeIfNeeded(sessionId);
             voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
         }
     }
