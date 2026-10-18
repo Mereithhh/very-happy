@@ -635,7 +635,7 @@ describe('public documentation registry', () => {
     expect(main).toContain("import('./app/PublicRoot.tsx')");
     expect(main).toContain("import('./app/AppRoot.tsx')");
     expect(main).toContain('auth_credentials');
-    expect(main).toContain('shouldUsePublicRoot(routePath, hasStoredCredentials)');
+    expect(main).toContain('shouldUsePublicRoot(routePath, hasStoredCredentials, BRAND.landingEnabled)');
     expect(publicRoot).toContain("path: '/welcome'");
     expect(appRoot).toContain("path: '/welcome'");
     expect(publicShell).toContain('to="/welcome"');
