@@ -542,7 +542,9 @@ export class AcpBackend implements AgentBackend {
         // B-629: any exit ends every request in flight and is announced with the agent's
         // last words — before this, exit 0 and a signal were silent and `prompt()` hung.
         const error = agentExitError(this.transport.agentName, code, signal, this.stderrTail());
-        rejectGone(error);
+        // `exit` can precede the last stdout chunk: an agent that answered the prompt and then
+        // quit must settle as answered, so the rejection waits a beat (a settled race ignores it).
+        setTimeout(() => rejectGone(error), 50);
         if (this.process !== child) return; // a newer generation owns this backend now
         this.exited = { code, signal, error };
         signalStartupFailure(error);

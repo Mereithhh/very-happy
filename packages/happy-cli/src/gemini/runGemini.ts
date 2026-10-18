@@ -361,6 +361,9 @@ export async function runGemini(opts: {
   // already announced `turn_aborted`, a failure announces it from the catch, and only a turn
   // that ran to the end gets `task_complete`.
   let turnEnding: 'completed' | 'aborted' | 'failed' = 'completed';
+  // Read through a call: the abort RPC flips it from another task, which TypeScript's
+  // narrowing of the local cannot see.
+  const turnAborted = () => turnEnding === 'aborted';
   // B-630: the Gemini process exited (its reason); the next message starts a fresh one.
   let backendGone: Error | null = null;
 
@@ -918,82 +921,7 @@ export async function runGemini(opts: {
 
       // Track if we need to inject conversation history (after model change)
       let injectHistoryContext = false;
-
-      // B-630: the Gemini process died (OOM, crash, killed): the backend that owned it
-      // takes no more prompts. Start a fresh one for this message, and re-seed it with
-      // the conversation so far — the same path a model change takes.
-      const restartAfterExit = backendGone !== null;
-      if (restartAfterExit) {
-        logger.debug(`[Gemini] Restarting Gemini after it exited: ${backendGone?.message ?? 'unknown'}`);
-        backendGone = null;
-        session.sendSessionEvent({ type: 'message', message: `Gemini was restarted after its process exited; the conversation so far is re-sent to it as context.` });
-      }
-
-      // Handle mode change (like Codex) - restart session if permission mode or model changed
-      if (restartAfterExit || (wasSessionCreated && currentModeHash && message.hash !== currentModeHash)) {
-        logger.debug('[Gemini] Mode changed or process gone – restarting Gemini session');
-        messageBuffer.addMessage('═'.repeat(40), 'status');
-
-        // Check if we have conversation history to preserve
-        if (conversationHistory.hasHistory()) {
-          messageBuffer.addMessage(`${restartAfterExit ? 'Restarting Gemini' : 'Switching model'} (preserving ${conversationHistory.size()} messages of context)...`, 'status');
-          injectHistoryContext = true;
-          logger.debug('[Gemini] Will inject conversation history');
-        } else {
-          messageBuffer.addMessage(restartAfterExit ? 'Restarting Gemini...' : 'Starting new Gemini session (mode changed)...', 'status');
-        }
-        
-        // Reset permission handler and reasoning processor on mode change (like Codex)
-        permissionHandler.reset();
-        reasoningProcessor.abort();
-        
-        // Dispose old backend and create new one with new model
-        if (geminiBackend) {
-          await geminiBackend.dispose();
-          geminiBackend = null;
-        }
-
-        // Create new backend with new model
-        const modelToUse = message.mode?.model === undefined ? undefined : (message.mode.model || null);
-        const backendResult = createGeminiBackend({
-          cwd: process.cwd(),
-          mcpServers,
-          permissionHandler,
-          cloudToken,
-          currentUserEmail,
-          // Pass model from message - if undefined, will use local config/env/default
-          // If explicitly null, will skip local config and use env/default
-          model: modelToUse,
-        });
-        geminiBackend = backendResult.backend;
-
-        // Set up message handler again
-        setupGeminiMessageHandler(geminiBackend);
-
-        // Use model from factory result (single source of truth - no duplicate resolution)
-        const actualModel = backendResult.model;
-        logger.debug(`[gemini] Model change - modelToUse=${modelToUse}, actualModel=${actualModel} (from ${backendResult.modelSource})`);
-        
-        // Update conversation history with new model
-        conversationHistory.setCurrentModel(actualModel);
-        
-        logger.debug('[gemini] Starting new ACP session with model:', actualModel);
-        const { sessionId } = await geminiBackend.startSession();
-        acpSessionId = sessionId;
-        logger.debug(`[gemini] New ACP session started: ${acpSessionId}`);
-        
-        // Update displayed model in UI (don't save to config - this is backend initialization)
-        logger.debug(`[gemini] Calling updateDisplayedModel with: ${actualModel}`);
-        updateDisplayedModel(actualModel, false);
-        // Don't add "Using model" message - model is shown in status bar
-        
-        // Update permission handler with current permission mode
-        updatePermissionMode(message.mode.permissionMode);
-        
-        wasSessionCreated = true;
-        currentModeHash = message.hash;
-        first = false; // Not first message anymore
-      }
+      let restartAfterExit = false;
 
       currentModeHash = message.hash;
       // Show only original user message in UI, not the full prompt with system prompt
@@ -1004,6 +932,85 @@ export async function runGemini(opts: {
       isProcessingMessage = true;
 
       try {
+        // B-630: the Gemini process died (OOM, crash, killed): the backend that owned it
+        // takes no more prompts. Start a fresh one for this message, and re-seed it with
+        // the conversation so far — the same path a model change takes.
+        restartAfterExit = backendGone !== null;
+        if (restartAfterExit) {
+          logger.debug(`[Gemini] Restarting Gemini after it exited: ${backendGone?.message ?? 'unknown'}`);
+          backendGone = null;
+          session.sendSessionEvent({ type: 'message', message: `Gemini was restarted after its process exited; the conversation so far is re-sent to it as context.` });
+        }
+
+        // Handle mode change (like Codex) - restart session if permission mode or model changed
+        if (restartAfterExit || (wasSessionCreated && currentModeHash && message.hash !== currentModeHash)) {
+          logger.debug('[Gemini] Mode changed or process gone – restarting Gemini session');
+          messageBuffer.addMessage('═'.repeat(40), 'status');
+
+          // Check if we have conversation history to preserve
+          if (conversationHistory.hasHistory()) {
+            messageBuffer.addMessage(`${restartAfterExit ? 'Restarting Gemini' : 'Switching model'} (preserving ${conversationHistory.size()} messages of context)...`, 'status');
+            injectHistoryContext = true;
+            logger.debug('[Gemini] Will inject conversation history');
+          } else {
+            messageBuffer.addMessage(restartAfterExit ? 'Restarting Gemini...' : 'Starting new Gemini session (mode changed)...', 'status');
+          }
+        
+          // Reset permission handler and reasoning processor on mode change (like Codex)
+          permissionHandler.reset();
+          reasoningProcessor.abort();
+        
+          // Dispose old backend and create new one with new model
+          if (geminiBackend) {
+            await geminiBackend.dispose();
+            geminiBackend = null;
+          }
+          // No session until the new one is up: a restart that fails below must not leave
+          // the dead one's id to be prompted.
+          acpSessionId = null;
+
+          // Create new backend with new model
+          const modelToUse = message.mode?.model === undefined ? undefined : (message.mode.model || null);
+          const backendResult = createGeminiBackend({
+            cwd: process.cwd(),
+            mcpServers,
+            permissionHandler,
+            cloudToken,
+            currentUserEmail,
+            // Pass model from message - if undefined, will use local config/env/default
+            // If explicitly null, will skip local config and use env/default
+            model: modelToUse,
+          });
+          geminiBackend = backendResult.backend;
+
+          // Set up message handler again
+          setupGeminiMessageHandler(geminiBackend);
+
+          // Use model from factory result (single source of truth - no duplicate resolution)
+          const actualModel = backendResult.model;
+          logger.debug(`[gemini] Model change - modelToUse=${modelToUse}, actualModel=${actualModel} (from ${backendResult.modelSource})`);
+        
+          // Update conversation history with new model
+          conversationHistory.setCurrentModel(actualModel);
+        
+          logger.debug('[gemini] Starting new ACP session with model:', actualModel);
+          const { sessionId } = await geminiBackend.startSession();
+          acpSessionId = sessionId;
+          logger.debug(`[gemini] New ACP session started: ${acpSessionId}`);
+        
+          // Update displayed model in UI (don't save to config - this is backend initialization)
+          logger.debug(`[gemini] Calling updateDisplayedModel with: ${actualModel}`);
+          updateDisplayedModel(actualModel, false);
+          // Don't add "Using model" message - model is shown in status bar
+        
+          // Update permission handler with current permission mode
+          updatePermissionMode(message.mode.permissionMode);
+        
+          wasSessionCreated = true;
+          currentModeHash = message.hash;
+          first = false; // Not first message anymore
+        }
+
         if (first || !wasSessionCreated) {
           // First message or session not created yet - create backend and start session
           if (!geminiBackend) {
@@ -1103,7 +1110,13 @@ export async function runGemini(opts: {
             const stopReason = outcome && typeof outcome === 'object' ? outcome.stopReason : undefined;
             logger.debug(`[gemini] Prompt answered (stopReason=${stopReason ?? 'none'})`);
             if (stopReason === 'cancelled') {
-              turnEnding = 'aborted';
+              if (!turnAborted()) {
+                // Cancelled by something other than the user's Stop (which announced it already).
+                turnEnding = 'aborted';
+                session.sendAgentMessage('gemini', { type: 'turn_aborted', id: randomUUID() });
+              }
+            } else if (stopReason === 'error') {
+              throw new Error('the turn ended with an error reported by the agent');
             } else if (stopReason && stopReason !== 'end_turn') {
               session.sendSessionEvent({ type: 'message', message: `Gemini stopped the turn: ${stopReason}` });
             }
@@ -1116,6 +1129,7 @@ export async function runGemini(opts: {
               // B-630: the backoff used to be silent on the web (Codex B-622 shows its retries).
               session.sendSessionEvent({ type: 'message', message: notice });
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+              if (turnAborted()) throw promptError; // the user stopped the turn during the backoff
               continue;
             }
 
@@ -1142,10 +1156,14 @@ export async function runGemini(opts: {
           const failure = describeGeminiFailure(error, { model: displayedModel || 'gemini-2.5-pro' });
           if (failure.kind === 'exited' && error instanceof Error) {
             backendGone = error;
+          } else if (restartAfterExit && !acpSessionId && error instanceof Error) {
+            // The restart itself failed (spawn, initialize, session/new): the next message
+            // tries again instead of prompting a backend that has no session.
+            backendGone = error;
           }
           messageBuffer.addMessage(failure.message, 'status');
           session.sendSessionEvent({ type: 'message', message: failure.message });
-          if (turnEnding !== 'aborted') {
+          if (!turnAborted()) {
             turnEnding = 'failed';
             session.sendAgentMessage('gemini', { type: 'turn_aborted', id: randomUUID() });
           }

@@ -17,7 +17,8 @@ describe('runGemini wiring (B-630)', () => {
     it('ends the turn on the prompt answer and reads the stop reason', () => {
         expect(source).not.toContain('waitForResponseComplete');
         expect(source).toContain('const outcome = await geminiBackend.sendPrompt(acpSessionId, promptToSend);');
-        expect(source).toContain("if (stopReason === 'cancelled') {\n              turnEnding = 'aborted';");
+        expect(source).toContain("if (stopReason === 'cancelled') {\n              if (!turnAborted()) {");
+        expect(source).toContain("} else if (stopReason === 'error') {\n              throw new Error('the turn ended with an error reported by the agent');");
     });
 
     it('withdraws open approvals on Stop, before cancelling the prompt', () => {
@@ -45,9 +46,14 @@ describe('runGemini wiring (B-630)', () => {
 
     it('restarts Gemini on the next message after its process exited, re-seeding the conversation', () => {
         expect(source).toContain("if (msg.status === 'stopped') {\n          backendGone = new Error(statusDetail || 'gemini process exited');");
-        expect(source).toContain('const restartAfterExit = backendGone !== null;');
+        expect(source).toContain('restartAfterExit = backendGone !== null;');
         expect(source).toContain('if (restartAfterExit || (wasSessionCreated && currentModeHash && message.hash !== currentModeHash)) {');
         expect(source).toContain("if (failure.kind === 'exited' && error instanceof Error) {\n            backendGone = error;");
+        // The restart runs inside the turn's try: a restart that fails is that turn's failure
+        // (reported, re-armed for the next message), never the end of the session.
+        expect(source.indexOf('isProcessingMessage = true;\n      try {')).toBeLessThan(source.indexOf('restartAfterExit = backendGone !== null;'));
+        expect(source).toContain('} else if (restartAfterExit && !acpSessionId && error instanceof Error) {');
+        expect(source).toContain("if (turnAborted()) throw promptError;");
     });
 
     it('raises thinking at dequeue and goes offline (not archived) on a signal', () => {

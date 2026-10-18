@@ -1081,8 +1081,11 @@ export async function runAcp(opts: {
     session.keepAlive(thinking, 'remote');
   }, 2000);
 
+  // B-629: set around `sendPrompt` only, so a Stop pressed while the agent is being
+  // restarted does not mark the turn that then runs in full as cancelled.
+  let promptInFlight = false;
   async function handleAbort() {
-    turnCancelled = thinking;
+    turnCancelled = thinking && promptInFlight;
     try {
       if (acpSessionId) {
         await backend.cancel(acpSessionId);
@@ -1127,27 +1130,12 @@ export async function runAcp(opts: {
   // B-629: a fresh agent process after the previous one died. The session (and its
   // transcript on the server) is kept; the agent itself starts without memory, and the
   // session says so — pi-acp has no resume for us yet (follow-up).
-  const restartBackend = async () => {
-    const gone = backendGone;
-    backendGone = null;
-    backend.offMessage?.(onBackendMessage);
-    try { await backend.dispose(); } catch (error) { logger.debug(`[${opts.agentName}] dispose of the dead backend failed:`, error); }
-    backend = createBackend();
-    backend.onMessage(onBackendMessage);
-    const started = await backend.startSession();
-    acpSessionId = started.sessionId;
-    todoDiscoverySent = false;
-    logger.debug(`[${opts.agentName}] Restarted the agent after it exited: ${gone?.message ?? 'unknown'}`);
-    session.sendSessionEvent({ type: 'message', message: `${opts.agentName} was restarted after its process exited; it does not remember the earlier conversation (the transcript here is kept).` });
-  };
-
-  try {
-    const started = await backend.startSession();
-    acpSessionId = started.sessionId;
-    backendStarted = true;
-    if (opts.model) {
-      await switchModelIfRequested(opts.model);
-      const applied = isCurrentRequestedModel(opts.model);
+  // What a freshly started agent session needs before its first prompt: the saved or
+  // web-chosen model, the attachment kinds it accepts, the file-backed permission mode.
+  const afterSessionStarted = async (requestedModel: string | null | undefined) => {
+    if (requestedModel) {
+      await switchModelIfRequested(requestedModel);
+      const applied = isCurrentRequestedModel(requestedModel);
       if (!applied) session.sendSessionEvent({ type: 'message', message: 'The saved model is unavailable for this agent; using its current model.' });
     }
     session.updateMetadata((current) => ({
@@ -1157,8 +1145,35 @@ export async function runAcp(opts: {
     }));
     if (permissionModeIsFileBacked()) {
       fileBackedModeActive = true;
-      publishFileBackedPermissionMode(initialPermissionMode);
+      publishFileBackedPermissionMode(fileBackedPermissionMode ?? initialPermissionMode);
     }
+  };
+
+  const restartBackend = async () => {
+    const gone = backendGone;
+    backend.offMessage?.(onBackendMessage);
+    // No session until the new agent has one: a failed restart must not leave the old id
+    // behind to be prompted (every later turn would fail with "Session not started").
+    acpSessionId = null;
+    try { await backend.dispose(); } catch (error) { logger.debug(`[${opts.agentName}] dispose of the dead backend failed:`, error); }
+    backend = createBackend();
+    backend.onMessage(onBackendMessage);
+    const started = await backend.startSession();
+    acpSessionId = started.sessionId;
+    // Only now is the death dealt with; a restart that threw above keeps `backendGone`,
+    // so the next message tries again instead of prompting nothing.
+    backendGone = null;
+    todoDiscoverySent = false;
+    await afterSessionStarted(currentModel ?? opts.model);
+    logger.debug(`[${opts.agentName}] Restarted the agent after it exited: ${gone?.message ?? 'unknown'}`);
+    session.sendSessionEvent({ type: 'message', message: `${opts.agentName} was restarted after its process exited; it does not remember the earlier conversation (the transcript here is kept).` });
+  };
+
+  try {
+    const started = await backend.startSession();
+    acpSessionId = started.sessionId;
+    backendStarted = true;
+    await afterSessionStarted(opts.model);
     if (verbose) {
       if (!sawSlashCommands) {
         logAcp('muted', `Outgoing slash commands from ${opts.agentName}: not reported yet`);
@@ -1210,9 +1225,20 @@ export async function runAcp(opts: {
         }) : [];
         // B-629: the turn is over when the prompt is answered (ACP sends every update
         // before its response); no idle heuristic, no deadline (Orca: none either).
-        const outcome = await backend.sendPrompt(acpSessionId, appendStagedAttachmentsToPrompt(prompt, staged), attachments);
+        promptInFlight = true;
+        let outcome: Awaited<ReturnType<typeof backend.sendPrompt>>;
+        try {
+          outcome = await backend.sendPrompt(acpSessionId, appendStagedAttachmentsToPrompt(prompt, staged), attachments);
+        } finally {
+          promptInFlight = false;
+        }
         todoDiscoverySent = true;
         const stopReason = outcome && typeof outcome === 'object' ? outcome.stopReason : undefined;
+        if (stopReason === 'error') {
+          // pi-acp 0.0.33 answers a turn pi's provider failed with `stopReason: "error"` and
+          // no text at all; that is a failed turn, not a finished one.
+          throw new Error('the turn ended with an error reported by the agent');
+        }
         const cancelled = turnCancelled || stopReason === 'cancelled';
         sendEnvelopes(sessionManager.endTurn(cancelled ? 'cancelled' : 'completed'));
         if (!cancelled && stopReason && stopReason !== 'end_turn') {
