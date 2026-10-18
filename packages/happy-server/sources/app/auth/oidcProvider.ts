@@ -443,7 +443,7 @@ export interface IssuedOidcChallenge {
 }
 
 export async function issueOidcLoginChallenge(
-    params: { redirectUri: string; inviteCode?: string },
+    params: { redirectUri: string; inviteCode?: string; migrationHandoff?: string },
     client?: SqlClient,
     nowMs = Date.now(),
 ): Promise<IssuedOidcChallenge> {
@@ -476,14 +476,15 @@ export async function issueOidcLoginChallenge(
     }
     await client.$executeRawUnsafe(
         `INSERT INTO "OidcLoginChallenge"
-         ("id", "stateHash", "nonceHash", "codeVerifierEnc", "redirectUri", "inviteCode", "expiresAt", "createdAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, now())`,
+         ("id", "stateHash", "nonceHash", "codeVerifierEnc", "redirectUri", "inviteCode", "migrationHandoffEnc", "expiresAt", "createdAt")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())`,
         id,
         hashOidcValue(state),
         hashOidcValue(nonce),
         toStored(encryptString(['oidc', 'challenge', id], codeVerifier)),
         params.redirectUri,
         params.inviteCode?.trim() || null,
+        params.migrationHandoff ? toStored(encryptString(['oidc', 'challenge', id, 'migration'], params.migrationHandoff)) : null,
         expiresAt,
     );
     return { state, nonce, codeChallenge, expiresAt };
@@ -494,15 +495,17 @@ export interface ConsumedOidcChallenge {
     codeVerifier: string;
     redirectUri: string;
     inviteCode?: string;
+    /** B-627: relay-migration handoff to claim the old account with. */
+    migrationHandoff?: string;
 }
 
 /** Deletes and returns the unexpired challenge for `state`; exactly one caller wins. */
 export async function consumeOidcLoginChallenge(state: string, client: SqlClient = db): Promise<ConsumedOidcChallenge | null> {
     if (!state || state.length > 256) return null;
-    const rows = await client.$queryRawUnsafe<Array<{ id: string; nonceHash: string; codeVerifierEnc: string; redirectUri: string; inviteCode: string | null }>>(
+    const rows = await client.$queryRawUnsafe<Array<{ id: string; nonceHash: string; codeVerifierEnc: string; redirectUri: string; inviteCode: string | null; migrationHandoffEnc: string | null }>>(
         `DELETE FROM "OidcLoginChallenge"
          WHERE "stateHash" = $1 AND "expiresAt" > now()
-         RETURNING "id", "nonceHash", "codeVerifierEnc", "redirectUri", "inviteCode"`,
+         RETURNING "id", "nonceHash", "codeVerifierEnc", "redirectUri", "inviteCode", "migrationHandoffEnc"`,
         hashOidcValue(state),
     );
     const row = rows[0];
@@ -512,6 +515,7 @@ export async function consumeOidcLoginChallenge(state: string, client: SqlClient
         codeVerifier: decryptString(['oidc', 'challenge', row.id], fromStored(row.codeVerifierEnc)),
         redirectUri: row.redirectUri,
         inviteCode: row.inviteCode ?? undefined,
+        migrationHandoff: row.migrationHandoffEnc ? decryptString(['oidc', 'challenge', row.id, 'migration'], fromStored(row.migrationHandoffEnc)) : undefined,
     };
 }
 

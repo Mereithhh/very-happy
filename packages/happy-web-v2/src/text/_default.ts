@@ -2265,6 +2265,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct18f: {
+                title: 'Move a relay without losing anyone',
+                summary: 'A retiring server can send its people to a new one: a banner, one click, and the same account is waiting on the other side — with single sign-on attached.',
+                banner: 'Operators set MIGRATION_TARGET_URL plus who moves (account ids or verified email domains) on the old relay and share MIGRATION_HANDOFF_SECRET with the new one. Targeted accounts see a "moved" banner; the click carries a signed, single-use ticket to the new relay\'s /login/migrate, where SSO (or a direct login) claims the copied account.',
+                daemons: 'The old relay also tells each targeted machine\'s daemon where to go, so terminals follow on their own once the CLI supports it.',
+            },
             oct18e: {
                 title: 'Single sign-on finds your existing account',
                 summary: 'A server can let a verified SSO email claim the account that already owns it, so people who used to sign in by email or Google keep their sessions and machines.',
@@ -4544,6 +4550,24 @@ export const en = {
         google: 'Reauthentication required: sign in with a method already linked to the account you were using. Do not use the Google identity you are adding yet.',
     },
 
+    // B-627: relay-to-relay account migration (old-relay banner + new-relay landing).
+    migration: {
+        eyebrow: 'MOVED',
+        title: ({ brand, target }: { brand: string; target: string }) => `${brand} has moved to ${target}`,
+        body: ({ target }: { target: string }) => `One click takes your account, sessions, machines and contacts to ${target}. This server will be switched off afterwards.`,
+        move: ({ target }: { target: string }) => `Move to ${target}`,
+        moving: 'Preparing your move…',
+        later: 'Later',
+        failed: 'Could not prepare the move. Check the connection and try again.',
+        loginTitle: 'Moving your account',
+        loginEyebrow: 'ACCOUNT MOVE',
+        loginHeading: ({ name }: { name: string }) => `Welcome to ${name}`,
+        loginSso: ({ provider }: { provider: string }) => `Sign in with ${provider} once and your old account — sessions, machines, contacts — becomes yours here.`,
+        loginSsoButton: ({ provider }: { provider: string }) => `Sign in with ${provider} and move my account`,
+        finishingTitle: 'Moving your account…',
+        finishing: 'Signing you in on this server with the account you had before.',
+    },
+
     // B-620: generic OIDC (single sign-on) login.
     oidc: {
         continueWith: ({ name }: { name: string }) => `Continue with ${name}`,
@@ -4560,6 +4584,8 @@ export const en = {
             invalid_id_token: 'The identity provider returned a token this server could not verify.',
             email_domain_not_allowed: 'This server only admits accounts from approved email domains.',
             account_link_ambiguous: 'More than one account on this server already uses this email, so single sign-on could not pick one. Sign in with your existing email or Google login instead.',
+            invalid_migration_handoff: 'This move ticket has expired or was already used. Go back to the old server and click "Move" again.',
+            migration_conflict: 'This single sign-on identity already owns an account here with sessions or machines, so the old account cannot be attached to it automatically. Ask the server operator to merge them.',
             provider_error: 'The identity provider cancelled the sign-in.',
             not_configured: 'Single sign-on is not enabled on this server.',
             invalid_handoff: 'This sign-in handoff has expired. Start again from the sign-in page.',

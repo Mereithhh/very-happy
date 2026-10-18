@@ -141,6 +141,28 @@ dependency surface. Do not install the upstream-owned
   provider-verified email attach to the existing Email/Google account that owns
   that address — only set it when the provider really verifies emails. A configured issuer counts as an interactive
   login path for the `AUTH_PASSWORD_LOGIN_DISABLED` startup check.
+- Moving everyone to another relay (B-627): copy the database to the new relay
+  first (same account/session/machine ids on both sides; re-encrypt the
+  master-secret-wrapped columns if the new relay has a different
+  `HANDY_MASTER_SECRET`), then on the OLD relay set `MIGRATION_TARGET_URL` (API
+  origin of the new relay), optionally `MIGRATION_TARGET_WEBAPP_URL` (Web
+  origin, defaults to the API origin) and `MIGRATION_TARGET_NAME` (banner
+  wording, defaults to the host), and say who moves with `MIGRATION_ACCOUNT_IDS`
+  (comma-separated) and/or `MIGRATION_EMAIL_DOMAINS` (comma-separated; matched
+  against provider-verified Email/Google/OIDC identity emails). Both relays
+  share `MIGRATION_HANDOFF_SECRET` (≥32 chars). Targeted accounts then see a
+  "moved" banner (`GET /v1/migration`); the click mints a signed ten-minute,
+  single-use ticket (`POST /v1/migration/handoff`) and sends the browser to
+  `<new web origin>/login/migrate?handoff=…`. On the new relay that page runs
+  the SSO round trip with the ticket (the `oidc:<issuer>`+`sub` identity is
+  attached to the copied account, or moved off an empty account the person
+  created meanwhile; an account with sessions or machines is reported as
+  `migration_conflict`), or, without an OIDC issuer, spends it at
+  `POST /v1/auth/migrate/complete` for a direct login. The old relay also sends
+  every targeted daemon a `server-migrate` socket event (`{ url, webappUrl,
+  handoff }`) on connect; a daemon that understands it buys a machine token at
+  the new relay with the same endpoint and re-points itself. Keep the old relay
+  up (read-mostly) until the banner has done its job, then switch it off.
 - White-label (B-624, standalone entrypoint): `BRAND_NAME` renames the product in
   the Web UI (auth cards, loaders, Settings → About, document title; max 64
   chars), `BRAND_LOGO_URL` (http(s) URL or absolute path) replaces the brand mark

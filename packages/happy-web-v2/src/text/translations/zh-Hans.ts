@@ -2414,6 +2414,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            oct18f: {
+                title: '服务器搬家，一个人都不落下',
+                summary: '要退役的服务器可以把人送到新服务器：一条横幅、一次点击，同一个账号在对面等着——而且已经接上单点登录。',
+                banner: '运维在旧服务器设置 MIGRATION_TARGET_URL 和谁要搬（账号 ID 或已验证邮箱域名），并与新服务器共享 MIGRATION_HANDOFF_SECRET。被点名的账号会看到「已搬家」横幅；点击时带着一张签名、一次性的票去新服务器的 /login/migrate，由单点登录（或直接登录）认领复制过来的账号。',
+                daemons: '旧服务器也会告诉每台被点名机器的 daemon 该去哪，CLI 支持后终端会自己跟过去。',
+            },
             oct18e: {
                 title: '单点登录直接找到你原来的账号',
                 summary: '服务器可以让经过验证的 SSO 邮箱认领已经拥有它的账号，以前用邮箱或 Google 登录的人保留全部会话和机器。',
@@ -4399,6 +4405,23 @@ export const zhHans: TranslationStructure = {
     },
 
     // B-620: generic OIDC (single sign-on) login.
+    migration: {
+        eyebrow: '已搬家',
+        title: ({ brand, target }: { brand: string; target: string }) => `${brand} 已搬到 ${target}`,
+        body: ({ target }: { target: string }) => `点一下，你的账号、会话、机器和联系人都会搬到 ${target}。之后这台服务器会关闭。`,
+        move: ({ target }: { target: string }) => `搬到 ${target}`,
+        moving: '正在准备搬家…',
+        later: '稍后',
+        failed: '没能准备搬家，请检查网络后重试。',
+        loginTitle: '正在搬家',
+        loginEyebrow: '账号搬家',
+        loginHeading: ({ name }: { name: string }) => `欢迎来到 ${name}`,
+        loginSso: ({ provider }: { provider: string }) => `用 ${provider} 登录一次，原来的账号——会话、机器、联系人——就归你了。`,
+        loginSsoButton: ({ provider }: { provider: string }) => `用 ${provider} 登录并搬家`,
+        finishingTitle: '正在搬家…',
+        finishing: '正在用你原来的账号登录这台服务器。',
+    },
+
     oidc: {
         continueWith: ({ name }: { name: string }) => `使用 ${name} 登录`,
         orOther: '或使用其他方式',
@@ -4414,6 +4437,8 @@ export const zhHans: TranslationStructure = {
             invalid_id_token: '身份提供方返回的令牌无法被本服务器验证。',
             email_domain_not_allowed: '本服务器只允许指定邮箱域名的账号。',
             account_link_ambiguous: '本服务器上已有不止一个账号使用这个邮箱，单点登录无法判断是哪一个。请改用原来的邮箱或 Google 方式登录。',
+            invalid_migration_handoff: '这张搬家票已过期或已用过。回旧服务器再点一次「搬家」。',
+            migration_conflict: '这个单点登录身份在本服务器上已经有一个带会话或机器的账号，旧账号无法自动挂到它上面。请服务器管理员帮忙合并。',
             provider_error: '身份提供方取消了这次登录。',
             not_configured: '本服务器未启用单点登录。',
             invalid_handoff: '这次登录交接已过期，请从登录页重新开始。',

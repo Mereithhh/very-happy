@@ -34,6 +34,7 @@ import { BRAND } from './brand';
 import { DocsScreen } from '@/screens/public/DocsScreen';
 import { PwaInstallPrompt } from './PwaInstallPrompt';
 import { CliUpdateBanner } from './CliUpdateBanner';
+import { MigrationBanner } from './MigrationBanner';
 import { useTranslation } from '@/i18n/useTranslation';
 import { RouteLoading } from './RouteLoading';
 import { dismissPrepaintSplashWhenRouteReady } from './prepaintSplash';
@@ -50,6 +51,7 @@ installAuthGuards();
 // markdown renderer, terminal pulls xterm, settings is large).
 const SignupScreen = lazy(() => import('@/screens/auth/SignupScreen').then((m) => ({ default: m.SignupScreen })));
 const OidcReturnScreen = lazy(() => import('@/screens/auth/OidcReturnScreen').then((m) => ({ default: m.OidcReturnScreen })));
+const MigrateLoginScreen = lazy(() => import('@/screens/auth/MigrateLoginScreen').then((m) => ({ default: m.MigrateLoginScreen })));
 const SessionDetailScreen = lazy(() => import('@/screens/session/SessionDetailScreen').then((m) => ({ default: m.SessionDetailScreen })));
 const SettingsRoutes = lazy(() => import('@/screens/settings/SettingsRoutes').then((m) => ({ default: m.SettingsRoutes })));
 const WebTerminalRoute = lazy(() => import('@/screens/terminal/WebTerminalRoute').then((m) => ({ default: m.WebTerminalRoute })));
@@ -91,7 +93,7 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <><Outlet /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
+  return <><Outlet /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
 function RootGate() {
@@ -99,7 +101,7 @@ function RootGate() {
   useGlobalBackNav();
   // B-624: a white-labelled relay has no marketing page — straight to login.
   if (!isAuthenticated) return BRAND.landingEnabled ? <LandingScreen /> : <Navigate to="/login" replace />;
-  return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
+  return <><AppLayout /><CliUpdateBanner /><MigrationBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /><AuthExpiredNotice /></>;
 }
 
 /** B-315: the auto-update reload is silent by design — it must not ask
@@ -314,6 +316,8 @@ const router = createBrowserRouter(
     // B-620: the identity provider sends the browser back here with a one-time
     // handoff; not wrapped in RedirectIfAuthed so a stale session cannot swallow it.
     { path: '/login/oidc', element: <Lazy><OidcReturnScreen /></Lazy> },
+    // B-627: arrival from a retiring relay's move banner, ticket in the query.
+    { path: '/login/migrate', element: <Lazy><MigrateLoginScreen /></Lazy> },
     { path: '/privacy', element: <PrivacyScreen /> },
     { path: '/terms', element: <TermsScreen /> },
     { path: '/changelog', element: <Lazy><ChangelogScreen /></Lazy> },
