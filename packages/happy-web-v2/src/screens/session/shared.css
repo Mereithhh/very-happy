@@ -1,0 +1,183 @@
+/* B-619 shared sessions — banner, grantee composer, sender labels, share dialog
+ * and sidebar invitations. Same material as the mirror strips: bg ladder,
+ * hairlines, no accent (a shared session is not "live" by itself). */
+
+/* ── banner under the header ── */
+.shb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  line-height: 1.4;
+}
+.shb > svg { flex: none; color: var(--text-faint); }
+.shb-text { flex: 1; min-width: 0; }
+.shb-text--short { display: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) {
+  .shb-text--full { display: none; }
+  .shb-text--short { display: block; }
+}
+.shb-text strong { color: var(--text); font-weight: 600; }
+.shb-role {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--fill-soft);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+/* ── grantee composer (a plain text row; no mode/model/steer by design) ── */
+.shc {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.shc-input {
+  flex: 1;
+  min-width: 0;
+  max-height: 160px;
+  resize: none;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px; /* mobile: no zoom-on-focus */
+  line-height: 1.4;
+}
+@media (min-width: 640px) { .shc-input { font-size: var(--fs-14); } }
+.shc-input:focus { outline: none; border-color: var(--text-faint); }
+.shc-input::placeholder { color: var(--text-faint); }
+.shc-send {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--text);
+  color: var(--bg-0);
+  cursor: pointer;
+}
+.shc-send:disabled { opacity: 0.45; cursor: default; }
+.shc-send:focus-visible { box-shadow: var(--focus-ring); }
+@media (pointer: coarse) { .shc-send { width: 44px; height: 44px; } }
+.shc-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+}
+.shc { flex-wrap: wrap; }
+
+/* ── sender label above a user bubble written by someone else ── */
+.msg-sender {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 var(--sp-2) 2px;
+  color: var(--text-faint);
+  font-size: var(--chat-fs-caption);
+  line-height: 1.4;
+}
+.msg-sender > svg { flex: none; }
+
+/* ── sidebar: role chip on a shared row, invitations block ── */
+.sb-row-shared {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--fs-11);
+  line-height: 1.5;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: var(--text-faint);
+  background: var(--fill-soft);
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sb-invites { display: flex; flex-direction: column; }
+/* One invitation = a small block: who shared what, my role, then the answer. */
+.sb-invite {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-4) var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.sb-invite-head { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-faint); }
+.sb-invite-head > svg { flex: none; }
+.sb-invite-line { min-width: 0; color: var(--text); font-size: var(--fs-13); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-invite-line strong { font-weight: 600; }
+.sb-invite-line q { quotes: '“' '”'; }
+.sb-invite-sub { padding-left: 20px; color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-11); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-invite-actions { display: flex; gap: var(--sp-1); padding-left: 20px; margin-top: 2px; }
+@media (pointer: coarse) { .sb-invite-actions .vh-btn { min-height: 36px; } }
+
+/* ── share dialog (owner) — reuses the sessionOptionsDialog surface tokens ── */
+.shd-form { display: grid; gap: var(--sp-3); margin-top: var(--sp-4); }
+/* B-621 friends row: one chip per friend not yet on the list; tap = share with the chosen role */
+.shd-friends { display: grid; gap: var(--sp-1); }
+.shd-friends-label { font-size: var(--fs-11); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); }
+.shd-friends-row { display: flex; gap: var(--sp-1); overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.shd-friends-row::-webkit-scrollbar { display: none; }
+.shd-friend { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--bg-1); color: var(--text); font: inherit; font-size: var(--fs-12); cursor: pointer; }
+.shd-friend:hover:not(:disabled) { border-color: var(--line-heavy); background: var(--bg-2); }
+.shd-friend:disabled { opacity: .6; cursor: default; }
+.shd-friend .shd-grant-avatar { width: 22px; height: 22px; font-size: var(--fs-10); }
+.shd-friend-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (pointer: coarse) { .shd-friend { min-height: 36px; } }
+.shd-row { display: flex; gap: var(--sp-2); align-items: flex-end; }
+.shd-row > .vh-field { flex: 1; min-width: 0; }
+.shd-role { display: flex; gap: var(--sp-1); }
+.shd-role-btn {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+}
+.shd-role-btn[aria-pressed='true'] { border-color: var(--text); color: var(--text); background: var(--bg-1); }
+.shd-role-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.shd-role-name { font-size: var(--fs-13); font-weight: 600; }
+.shd-role-hint { font-size: var(--fs-11); line-height: 1.35; color: var(--text-faint); }
+.shd-warn { display: flex; gap: var(--sp-2); align-items: flex-start; margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--warn-dim); color: var(--text); font-size: var(--fs-12); line-height: 1.45; }
+.shd-warn > svg { flex: none; margin-top: 1px; color: var(--warn); }
+.shd-error { margin: 0; color: var(--danger); font-size: var(--fs-12); }
+.shd-list { display: flex; flex-direction: column; margin-top: var(--sp-5); }
+.shd-list-title { margin: 0 0 var(--sp-2); color: var(--text-dim); font-size: var(--fs-12); font-weight: 600; }
+.shd-grant { display: flex; align-items: center; gap: var(--sp-3); min-height: 44px; padding: 6px 0; border-top: 1px solid var(--line); }
+.shd-grant:last-child { border-bottom: 1px solid var(--line); }
+.shd-grant--confirm .shd-grant-name { white-space: normal; line-height: 1.4; }
+.shd-grant-avatar { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--fill-soft); color: var(--text-dim); display: grid; place-items: center; font-size: var(--fs-12); font-weight: 600; overflow: hidden; }
+.shd-grant-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.shd-grant-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.shd-grant-name { color: var(--text); font-size: var(--fs-13); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shd-grant-sub { color: var(--text-faint); font-family: var(--font-mono); font-size: var(--fs-11); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shd-grant-role { flex: none; min-height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-2); color: var(--text); font: var(--fs-12)/1.2 var(--font-mono); }
+.shd-empty { margin: 0; padding: var(--sp-3) 0; color: var(--text-faint); font-size: var(--fs-12); }

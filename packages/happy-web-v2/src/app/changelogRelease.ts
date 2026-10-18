@@ -16,6 +16,21 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-18-session-sharing',
+    date: '2026-10-18',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct18.title',
+    summaryKey: 'changelog.releases.oct18.summary',
+    itemKeys: [
+      'changelog.releases.oct18.share',
+      'changelog.releases.oct18.driver',
+      'changelog.releases.oct18.revoke',
+      'changelog.releases.oct18.oidc',
+      'changelog.releases.oct18.people',
+      'changelog.releases.oct18.profile',
+    ],
+  },
+  {
     id: '2026-10-16-reading-images-diffs',
     date: '2026-10-16',
     buildVersion: __APP_VERSION__,

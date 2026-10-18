@@ -7,6 +7,7 @@ import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { log } from "@/utils/log";
 import { deleteSessionAttachments } from "@/storage/files";
+import { notifyGranteesSessionDeleted } from "@/app/session/sessionShares";
 
 /**
  * Delete a session and all its related data.
@@ -81,6 +82,9 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
             where: { accountId: ctx.uid, path: { startsWith: `sessions/${sessionId}/attachments/` } }
         });
 
+        // B-619: grants cascade with the row; remember who to tell.
+        const granteeIds = (await tx.sessionGrant.findMany({ where: { sessionId, status: 'active' }, select: { granteeAccountId: true } })).map((g) => g.granteeAccountId);
+
         // 4. Delete the session itself
         await tx.session.delete({
             where: { id: sessionId }
@@ -114,6 +118,9 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
                 payload: updatePayload,
                 recipientFilter: { type: 'user-scoped-only' }
             });
+            if (granteeIds.length > 0) {
+                notifyGranteesSessionDeleted(sessionId, granteeIds).catch((err) => log({ module: 'session-delete', sessionId, err }, 'Failed to notify grantees (non-fatal)'));
+            }
 
             // Delete attachment blobs (local dir or S3 prefix)
             try {

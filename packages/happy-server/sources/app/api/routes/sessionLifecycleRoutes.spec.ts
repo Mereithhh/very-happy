@@ -37,6 +37,8 @@ const { row, dbMock, emitArchived, emitEphemeral, emitUpdate, discardPending } =
                     where.id === row.id && where.accountId === row.accountId ? { ...row } : null
                 )),
             },
+            // B-619: no shares in these fixtures.
+            sessionGrant: { findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []) },
         },
         emitArchived: vi.fn(),
         emitEphemeral: vi.fn(),

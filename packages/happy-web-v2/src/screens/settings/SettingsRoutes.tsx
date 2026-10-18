@@ -90,7 +90,7 @@ import { persistAuthReturnTarget } from '@/app/authReturnTarget';
 import { accountIdentityAction, accountIdentityState, type AccountIdentityState } from './accountIdentityPresentation';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
-import { getDisplayName, getAvatarUrl } from '@/sync/profile';
+import { getDisplayName } from '@/sync/profile';
 import {
   isWebPushSupported,
   enableWebPush,
@@ -133,6 +133,7 @@ import { MachinesSettings } from './MachinesSettings';
 import { resetFeatureTips } from '@/components/featureTips/FeatureTips';
 import { CodeView } from '@/screens/session/CodeView';
 import { SettingsPage as Page, SettingsHeader as Header, SettingsWorkspace } from './SettingsLayout';
+import { ProfileSettings } from './ProfileSettings';
 
 const MIN_PASSWORD = 8;
 
@@ -595,7 +596,6 @@ function Account() {
   }, [credentials, loginMethodsReload, authConfigReload]);
 
   const displayName = getDisplayName(profile);
-  const avatarUrl = getAvatarUrl(profile);
   const serverInfo = getServerInfo();
 
   async function onDisconnectGithub() {
@@ -745,9 +745,14 @@ function Account() {
           <Item settingId="account.server" title={t('settingsAccount.server')} detail={serverInfo.hostname} />
         </ItemGroup>
 
-        {(profile.github || displayName || avatarUrl) && (
-          <ItemGroup title={t('settingsAccount.profile')}>
-            {displayName && <Item title={t('settingsAccount.name')} subtitle={displayName} />}
+        <ItemGroup title={t('settingsAccount.profile')}>
+            <Item
+              settingId="account.profile"
+              title={t('settingsProfile.title')}
+              subtitle={[displayName, profile.username ? `@${profile.username}` : null].filter(Boolean).join(' · ') || t('settingsProfile.notSet')}
+              right={<ChevronRight size={16} />}
+              onClick={() => navigate('/settings/profile')}
+            />
             {profile.github && (
               <Item
                 title={t('settingsAccount.github')}
@@ -769,7 +774,6 @@ function Account() {
               />
             ))}
           </ItemGroup>
-        )}
 
         <ItemGroup title={t('settingsAccount.dangerZone')}>
           <Item
@@ -2674,6 +2678,7 @@ export function SettingsRoutes({ basePath }: { basePath?: string } = {}) {
       <Route path="usage" element={<Usage />} />
       <Route path="diagnostics" element={<Diagnostics />} />
       <Route path="password" element={<Password />} />
+      <Route path="profile" element={<ProfileSettings />} />
       <Route path="email" element={<EmailIdentity />} />
       <Route path="google" element={<GoogleIdentity />} />
     </Routes></SettingsWorkspace>

@@ -7,6 +7,8 @@ export type SignupMode = 'open' | 'invite' | 'closed';
 
 export interface PublicAuthConfig {
     googleClientId?: string;
+    /** B-620: present when the server has a generic OIDC issuer configured. */
+    oidc?: { displayName: string };
     emailOtpEnabled: boolean;
     passwordLoginEnabled: boolean;
     signup: {
@@ -38,6 +40,9 @@ export type CloudAuthErrorCode =
     | 'google-not-configured'
     | 'reauth-required'
     | 'invalid-account-secret'
+    | 'oidc-not-configured'
+    | 'oidc-provider-unavailable'
+    | 'invalid-handoff'
     | 'network';
 
 export class CloudAuthError extends Error {
@@ -251,6 +256,46 @@ export async function loginWithGoogle(
         if (reason === 'origin_not_allowed') throw new CloudAuthError('origin-not-allowed');
         if (status === 429) throw new CloudAuthError('rate-limited');
         if (status === 401) throw new CloudAuthError('invalid-credential');
+        throw new CloudAuthError('network');
+    }
+}
+
+/**
+ * B-620: begin a generic OIDC login. The server creates the PKCE challenge and
+ * returns the provider's authorization URL; the caller navigates the browser
+ * there. The provider sends the browser back to `/login/oidc?handoff=…`.
+ */
+export async function startOidcLogin(inviteCode?: string): Promise<{ authorizationUrl: string }> {
+    try {
+        const response = await axios.post<{ authorizationUrl: string }>(
+            `${getServerUrl()}/v1/auth/oidc/start`,
+            inviteCode?.trim() ? { inviteCode: inviteCode.trim() } : {},
+            { headers: { 'X-Happy-Client': getHappyClientId() } },
+        );
+        return { authorizationUrl: response.data.authorizationUrl };
+    } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 501) throw new CloudAuthError('oidc-not-configured');
+        if (status === 503) throw new CloudAuthError('oidc-provider-unavailable');
+        if (status === 429) throw new CloudAuthError('rate-limited');
+        throw new CloudAuthError('network');
+    }
+}
+
+/** B-620: exchange the one-time handoff code from `/login/oidc` for the login token + account secret. */
+export async function completeOidcLogin(handoff: string): Promise<AuthCredentials & { expiresAt?: string }> {
+    try {
+        const response = await axios.post<{ token: string; secret: string; expiresAt?: string }>(
+            `${getServerUrl()}/v1/auth/oidc/complete`,
+            { handoff },
+            { headers: { 'X-Happy-Client': getHappyClientId() } },
+        );
+        return { token: response.data.token, secret: response.data.secret, expiresAt: response.data.expiresAt };
+    } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 401) throw new CloudAuthError('invalid-handoff');
+        if (status === 501) throw new CloudAuthError('oidc-not-configured');
+        if (status === 429) throw new CloudAuthError('rate-limited');
         throw new CloudAuthError('network');
     }
 }

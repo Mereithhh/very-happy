@@ -50,8 +50,11 @@ describe('email auth config', () => {
 
     it('refuses to start with every interactive login mechanism disabled', () => {
         expect(() => assertUsableInteractiveAuth({ email: null, googleClientId: null, passwordLoginEnabled: false }))
-            .toThrow('neither Email OTP nor Google');
+            .toThrow('neither Email OTP, Google nor OIDC');
         expect(() => assertUsableInteractiveAuth({ email: null, googleClientId: 'google', passwordLoginEnabled: false }))
+            .not.toThrow();
+        // B-620: a generic OIDC issuer keeps the server startable on its own.
+        expect(() => assertUsableInteractiveAuth({ email: null, googleClientId: null, passwordLoginEnabled: false, oidcConfigured: true }))
             .not.toThrow();
     });
 });

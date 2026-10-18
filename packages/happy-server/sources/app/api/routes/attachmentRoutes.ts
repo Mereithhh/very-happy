@@ -18,6 +18,7 @@ import { s3client, s3bucket, isLocalStorage, getLocalFilesDir, putLocalFile, del
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
 import { assertAccountResourceQuota, configuredResourceLimit, isAccountResourceLimitError, lockAccountResources } from '../resourceLimits';
 import { inTx } from '@/storage/inTx';
+import { resolveSessionAccess } from '@/app/session/sessionShares';
 
 const MAX_SOURCE_FILE_SIZE = 50 * 1024 * 1024;
 const ENCRYPTED_BLOB_OVERHEAD = 40; // secretbox nonce (24) + auth tag (16)
@@ -314,11 +315,9 @@ export function attachmentRoutes(app: Fastify) {
         const { sessionId, attachmentFile } = request.params;
         const userId = request.userId;
 
-        // Verify session ownership
-        const session = await db.session.findFirst({
-            where: { id: sessionId, accountId: userId },
-        });
-        if (!session) {
+        // Verify session ownership or an active share (B-619)
+        const access = await resolveSessionAccess(userId, sessionId);
+        if (!access) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
@@ -382,10 +381,9 @@ export function attachmentRoutes(app: Fastify) {
         const { ref } = request.body;
         const userId = request.userId;
 
-        const session = await db.session.findFirst({
-            where: { id: sessionId, accountId: userId },
-        });
-        if (!session) {
+        // Owner or grantee (B-619): attachments are part of the shared transcript.
+        const access = await resolveSessionAccess(userId, sessionId);
+        if (!access) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
@@ -409,7 +407,7 @@ export function attachmentRoutes(app: Fastify) {
         // read compatibility with attachments created before reservations were
         // introduced; upload endpoints still require a live reservation.
         await markAttachmentStatus(
-            userId,
+            access.ownerId,
             ref,
             [RESERVATION_STATUS, UPLOADING_STATUS, COMPLETE_STATUS],
             COMPLETE_STATUS,

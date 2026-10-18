@@ -2,7 +2,10 @@ import { ClaudeRuntimeDialog } from './ClaudeRuntimeDialog';
 import { useTeamNavigation } from '@/screens/sessions/useTeamNavigation';
 import { useLocalSetting } from '@/sync/storage';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Moon } from 'lucide-react';
+import { Bot, Moon, Users } from 'lucide-react';
+import { ShareDialog } from './ShareDialog';
+import { isSharedWithMe } from '@/app/sessionAccess';
+import { isMirrorSession } from '@/assistant/assistantSession';
 import * as Popover from '@radix-ui/react-popover';
 /**
  * ChatHeader — title (editable rename), machine·cwd breadcrumb, relay badge,
@@ -54,9 +57,13 @@ export function ChatHeader({
     const session = useSession(sessionId);
     const [editing, setEditing] = useState(false);
     const [runtimeOpen, setRuntimeOpen] = useState(false);
-    const canControlRuntime = session?.metadata?.capabilities?.includes('claude-runtime-controls-v1') === true;
+    const [shareOpen, setShareOpen] = useState(false);
+    // B-619: shared WITH me → every owner-only control disappears (the server refuses them anyway).
+    const sharedWithMe = !!session && isSharedWithMe(session);
+    const canShare = !!session && !sharedWithMe && !isMirrorSession(session) && session.archivedAt == null;
+    const canControlRuntime = !sharedWithMe && session?.metadata?.capabilities?.includes('claude-runtime-controls-v1') === true;
     // B-587: only a wrapper that can hibernate offers「保持唤醒」(AGENTS #14).
-    const canKeepAwake = supportsKeepAwake(session?.metadata);
+    const canKeepAwake = !sharedWithMe && supportsKeepAwake(session?.metadata);
     const keepAwake = session?.metadata?.keepAwake === true;
     const toggleKeepAwake = () => {
         const next = !keepAwake;
@@ -86,6 +93,7 @@ export function ChatHeader({
     }, [machineId]);
 
     const startEdit = () => {
+        if (sharedWithMe) return; // B-619: the title is the owner's metadata
         setDraft(meta?.summary?.text ?? '');
         setEditing(true);
     };
@@ -121,7 +129,7 @@ export function ChatHeader({
         hasBtw: !!onToggleBtw,
         hasFiles: !!onToggleFiles,
     });
-    const canStartTeam = showTeams && session?.metadata?.capabilities?.includes('teams-adopt-v1') && session.archivedAt == null && !teams.some(t => t.bots.some(b => b.sessionId === sessionId));
+    const canStartTeam = !sharedWithMe && showTeams && session?.metadata?.capabilities?.includes('teams-adopt-v1') && session.archivedAt == null && !teams.some(t => t.bots.some(b => b.sessionId === sessionId));
     const overflowHasActive = plan.overflow.some(
         (key) => (key === 'btw' && btwOpen) || (key === 'files' && filesOpen),
     );
@@ -210,7 +218,7 @@ export function ChatHeader({
                         </button>
                     </div>
                 ) : (
-                    <button type="button" className="ch-title-btn" onClick={startEdit} title={t('session.renameTitle')}>
+                    <button type="button" className="ch-title-btn" onClick={startEdit} disabled={sharedWithMe} title={sharedWithMe ? undefined : t('session.renameTitle')}>
                         <span className="ch-title">{title}</span>
                         <Pencil size={13} className="ch-title-pencil" />
                     </button>
@@ -235,8 +243,8 @@ export function ChatHeader({
                 </div>
             )}
             {!editing && plan.inline.map(renderAction)}
-            {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake) && (
-                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : [])]}>
+            {!editing && (plan.overflow.length > 0 || canStartTeam || canControlRuntime || canKeepAwake || canShare) && (
+                <ActionDropdownMenu items={[...plan.overflow.map(menuItem), ...(canShare ? [{key:'share',label:t('share.menu'),icon:Users,onSelect:()=>setShareOpen(true)}] : []), ...(canControlRuntime ? [{key:'runtime-controls',label:t('runtimeControls.title'),icon:Bot,onSelect:()=>setRuntimeOpen(true)}] : []), ...(canStartTeam ? [{key:'team-adopt',label:lang.startsWith('zh') ? '用这个对话组建团队' : 'Start a team from this conversation',icon:Bot,onSelect:()=>navigateTeam(`/teams?fromSession=${encodeURIComponent(sessionId)}`)}] : []), ...(canKeepAwake ? [{key:'keep-awake',label:t('hibernation.keepAwake'),icon:Moon,checked:keepAwake,onSelect:toggleKeepAwake}] : [])]}>
                     <button
                         type="button"
                         className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}
@@ -248,6 +256,7 @@ export function ChatHeader({
                 </ActionDropdownMenu>
             )}
             {canControlRuntime && <ClaudeRuntimeDialog key={sessionId} sessionId={sessionId} open={runtimeOpen} onOpenChange={setRuntimeOpen}/>}
+            {canShare && <ShareDialog key={`share:${sessionId}`} sessionId={sessionId} open={shareOpen} onOpenChange={setShareOpen} />}
         </header>
     );
 }

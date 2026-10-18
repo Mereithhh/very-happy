@@ -269,6 +269,13 @@ class ApiSocket {
      * RPC call for sessions - uses session-specific encryption
      */
     async sessionRPC<R, A>(sessionId: string, method: string, params: A, opts?: { timeoutMs?: number }): Promise<R> {
+        // B-619: a session shared WITH me has no RPC path at all (the server never
+        // routes it, the UI hides every RPC-backed control). Fail here, before any
+        // relay discovery, so a stray hook cannot start diagnostics against a
+        // machine this account does not own (422 diagnostics_target_unavailable).
+        if (storage.getState().sessions[sessionId]?.share) {
+            throw new Error(`Session ${sessionId} is shared with this account: RPC '${method}' is owner-only`);
+        }
         const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
         if (!sessionEncryption) {
             throw new Error(`Session encryption not found for ${sessionId}`);

@@ -29,6 +29,7 @@ import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { unlockRoutes } from "./routes/unlockRoutes";
 import { accountAuthRoutes } from "./routes/accountAuthRoutes";
+import { oidcAuthRoutes } from "./routes/oidcAuthRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
 import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 import { attachmentRoutes } from "./routes/attachmentRoutes";
@@ -40,6 +41,7 @@ import { resolveTrustProxy, type TrustedProxyConfig } from './trustProxy';
 import { configureClientIpTrust, requestLogSerializer } from './clientIp';
 import { configuredResourceLimit } from './resourceLimits';
 import { relayRoutes } from './routes/relayRoutes';
+import { sessionShareRoutes } from './routes/sessionShareRoutes';
 import { connectionDiagnosticsRoutes } from './routes/connectionDiagnosticsRoutes';
 import { relayFeatureConfig } from '@/app/relay/relayConfig';
 
@@ -143,10 +145,12 @@ export async function startApi(opts: StartApiOptions = {}) {
     feedRoutes(typed);
     unlockRoutes(typed);
     accountAuthRoutes(typed);
+    oidcAuthRoutes(typed);
     kvRoutes(typed);
     v3SessionRoutes(typed);
     attachmentRoutes(typed);
     relayRoutes(typed);
+    sessionShareRoutes(typed);
     connectionDiagnosticsRoutes(typed);
 
     // Static webapp (self-host mode)

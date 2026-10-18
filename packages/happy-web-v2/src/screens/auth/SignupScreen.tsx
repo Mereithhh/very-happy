@@ -9,6 +9,7 @@ import { Button, Input, CyberMark, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { GoogleLoginButton } from './GoogleLoginButton';
+import { OidcLoginButton } from './OidcLoginButton';
 import './auth.css';
 import { authReturnTarget } from '@/app/authReturnTarget';
 import { EmailOtpForm } from './EmailOtpForm';
@@ -152,7 +153,7 @@ export function SignupScreen() {
     navigate(authReturnTarget(location.state), { replace: true });
   }
 
-  const { emailEnabled, passwordEnabled, googleEnabled } = publicAuthMethodState(authConfig);
+  const { emailEnabled, passwordEnabled, googleEnabled, oidcEnabled, oidcDisplayName } = publicAuthMethodState(authConfig);
 
   return (
     <div className="auth-page" ref={pageRef}>
@@ -180,6 +181,14 @@ export function SignupScreen() {
             onChange={(e) => setInvite(e.target.value)}
             placeholder={t('signup.inviteCodePlaceholder')}
           />}
+
+        {oidcEnabled && !registrationBlocked && <OidcLoginButton
+          displayName={oidcDisplayName}
+          inviteCode={invite.trim() || undefined}
+          disabled={busy}
+          trailingDividerLabel={(emailEnabled || googleEnabled || passwordEnabled) ? t('oidc.orOther') : undefined}
+          onBusyChange={setBusy}
+        />}
 
         {emailEnabled && <EmailOtpForm
           busy={busy}

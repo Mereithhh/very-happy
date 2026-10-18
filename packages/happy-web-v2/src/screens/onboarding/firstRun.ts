@@ -1,5 +1,8 @@
-export function shouldShowFirstRun(dataReady: boolean, machineCount: number): boolean {
-  return dataReady && machineCount === 0;
+/** B-619: an account with no machine of its own can still have sessions
+ * (shared with it) or invitations waiting — those must not be hidden behind
+ * the connect-a-machine screen, which is where a phone would otherwise land. */
+export function shouldShowFirstRun(dataReady: boolean, machineCount: number, reachableCount = 0): boolean {
+  return dataReady && machineCount === 0 && reachableCount === 0;
 }
 
 /** Mobile normally renders the session list at `/`, so the Outlet-based home

@@ -1648,6 +1648,62 @@ export const en = {
         tagPlaceholder: 'Add tag…',
     },
 
+    // B-619 session sharing — share dialog (owner), invitations + banner + composer (grantee)
+    share: {
+        menu: 'Share…',
+        revokedToast: 'That shared session was withdrawn by its owner.',
+        roleViewer: 'View only',
+        roleDriver: 'Can send',
+        banner: {
+            short: ({ owner }: { owner: string }) => `Shared by ${owner}`,
+            viewer: ({ owner }: { owner: string }) => `Shared by ${owner} · view only · permissions and interrupts stay with the owner`,
+            driver: ({ owner }: { owner: string }) => `Shared by ${owner} · you can send messages as yourself · permissions and interrupts stay with the owner`,
+        },
+        composer: {
+            placeholder: 'Message this session as yourself…',
+            send: 'Send',
+            sendHint: 'Sent under your name; the owner\'s agent reads it on its next turn (Cmd/Ctrl/Shift+Enter for a newline)',
+            archived: 'This session is archived — nothing can be sent',
+            noAccess: 'You no longer have send access to this session',
+            sendFailed: ({ error }: { error: string }) => `Send failed: ${error}`,
+        },
+        invites: {
+            title: 'Shared with you',
+            shared: 'shared',
+            accept: 'Accept',
+            decline: 'Ignore',
+            failed: 'That did not go through — try again',
+        },
+        dialog: {
+            title: 'Share session',
+            description: 'Give another account on this server access to this conversation. They see the same transcript you do; your machine stays yours.',
+            targetLabel: 'Email or username',
+            targetPlaceholder: 'name@company.com',
+            friendsLabel: 'Friends',
+            friendHint: ({ name }: { name: string }) => `Share with ${name}`,
+            roleLabel: 'Access',
+            roleViewerHint: 'Reads the transcript live. Cannot send.',
+            roleDriverHint: 'Sends messages under their own name.',
+            driverWarning: 'A driver\'s message makes your agent act on your machine under your current permission mode. Approvals, interrupts, model and mode changes stay with you. Share driver access only with people you would hand your keyboard to.',
+            shareButton: 'Share',
+            listTitle: 'People with access',
+            statusPending: 'waiting for them to accept',
+            revoke: 'Revoke',
+            revokeConfirm: ({ name }: { name: string }) => `Revoke ${name}'s access? They will stop receiving this session immediately.`,
+            empty: 'Nobody yet.',
+            errors: {
+                targetNotFound: 'No account with that email or username on this server.',
+                alreadyShared: 'Already shared with that account.',
+                self: 'That is you.',
+                notShareable: 'This session uses the legacy key format and cannot be shared. Start a new session.',
+                ownerKey: 'Your account\'s key is not available to the server, so this session cannot be re-keyed. Sign in with email or Google once and try again.',
+                granteeKey: 'That account has not opened the web app since sharing arrived — ask them to sign in once, then share again.',
+                tooMany: 'This session is shared with the maximum number of people.',
+                serverTooOld: 'The server does not support sharing yet.',
+                generic: ({ error }: { error: string }) => `Could not share: ${error}`,
+            },
+        },
+    },
     sidebar: {
         agentStatusUnknown: 'Status unknown — waiting for a fresh agent observation',
         // B-465: the daemon predates observation stamps; the verdict is an estimate.
@@ -1676,6 +1732,11 @@ export const en = {
         viewList: 'List',
         viewStatus: 'Status',
         groupWaiting: 'Waiting on me',
+        // B-619: sessions other people shared with me
+        groupShared: 'Shared with me',
+        sharedFrom: ({ owner }: { owner: string }) => `Shared by ${owner}`,
+        sharedLeave: 'Leave shared session',
+        sharedLeaveConfirm: ({ owner }: { owner: string }) => `Leave ${owner}'s session? You can be invited again later.`,
         groupRunning: 'Running',
         // B-507: the turn ended but background tasks (async sub-agents,
         // backgrounded commands) are still running — the session is not idle.
@@ -2204,6 +2265,16 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct18: {
+                title: 'Share a session with a colleague',
+                summary: 'Give another account on your server a live view of a conversation — or let them send messages into it under their own name.',
+                share: 'Session menu → Share…: enter an email or username, choose View only or Can send. They see an invitation in their sidebar and the session appears under “Shared with me” once they accept.',
+                driver: 'A “Can send” driver writes messages under their own name; the owner\'s agent reads them on its next turn. Approvals, interrupts, model and mode changes stay with the owner — a driver never gets your machine.',
+                revoke: 'Change a person\'s access or revoke it from the same dialog; revoking removes the session from their side immediately. Sessions created before per-session keys (legacy format) cannot be shared.',
+                oidc: 'Single sign-on: a server can point at any OpenID Connect provider (OIDC_ISSUER / OIDC_CLIENT_ID); the sign-in page then offers “Continue with <provider>” and creates or reuses the account for that identity under the same signup policy.',
+                people: 'People: a sidebar entry lists your friends and requests waiting for you; search a colleague by handle or exact email and add them. Friends show up as one-tap chips at the top of the Share dialog.',
+                profile: 'Settings → Account → Name & handle: choose the display name and the @handle colleagues search for and share to. Password accounts got their login name as handle automatically; the handle can be changed without touching the login.',
+            },
             oct16: {
                 title: 'Reading back stays put; zoomable images and side-by-side diffs',
                 summary: 'Scrolling up while a turn is running no longer throws you to the top, images can be pinch-zoomed and panned, and wide diffs can be read side by side.',
@@ -4447,6 +4518,27 @@ export const en = {
         google: 'Reauthentication required: sign in with a method already linked to the account you were using. Do not use the Google identity you are adding yet.',
     },
 
+    // B-620: generic OIDC (single sign-on) login.
+    oidc: {
+        continueWith: ({ name }: { name: string }) => `Continue with ${name}`,
+        orOther: 'or use another method',
+        finishingTitle: 'Signing you in…',
+        finishing: 'Finishing sign-in with your identity provider.',
+        failedTitle: 'Sign-in did not complete',
+        backToLogin: 'Back to sign in',
+        goToSignup: 'Go to sign up',
+        errors: {
+            invalid_state: 'This sign-in link has expired or was already used. Start again from the sign-in page.',
+            exchange_failed: 'The identity provider did not accept the sign-in. Try again; if it keeps failing, ask the server operator to check the OIDC client settings.',
+            invalid_id_token: 'The identity provider returned a token this server could not verify.',
+            email_domain_not_allowed: 'This server only admits accounts from approved email domains.',
+            provider_error: 'The identity provider cancelled the sign-in.',
+            not_configured: 'Single sign-on is not enabled on this server.',
+            invalid_handoff: 'This sign-in handoff has expired. Start again from the sign-in page.',
+            network: 'Could not reach the server to finish signing in.',
+        },
+    },
+
     // Per-agent defaults settings screen.
     settingsAgents: {
         title: 'Agent defaults',
@@ -4664,6 +4756,38 @@ export const en = {
         saveFailed: 'Could not update idle hibernation',
     },
 
+    // B-621: people directory (friends) — the share picker and later Spaces build on it.
+    people: {
+        title: 'People',
+        friendCount: ({ count }: { count: number }) => count === 1 ? '1 friend' : `${count} friends`,
+        searchLabel: 'Find people',
+        searchPlaceholder: 'Handle or exact email…',
+        searchHint: 'Search by handle prefix, or paste an exact email. Only accounts on this server.',
+        results: 'Search results',
+        noResults: 'No account matches. Ask them to sign in here once, then search again.',
+        incoming: 'Waiting for you',
+        friends: 'Friends',
+        friendsEmpty: 'Nobody yet. Find a colleague above — friends show up first when you share a session.',
+        outgoing: 'Sent',
+        add: 'Add',
+        accept: 'Accept',
+        decline: 'Decline',
+        cancelRequest: 'Cancel request',
+        remove: 'Remove',
+        removeConfirm: ({ name }: { name: string }) => `Remove ${name} from your friends?`,
+        alreadyFriends: 'Friends',
+        actionFailed: 'That did not go through — try again',
+    },
+    settingsProfile: {
+        title: 'Name & handle',
+        subtitle: 'How you appear to people you share with',
+        notSet: 'Not set — tap to choose a name and handle',
+        handle: 'Handle',
+        handleHint: 'Lowercase letters, digits, dots, dashes, underscores; 3–64 characters. Colleagues search for this and type it when sharing a session. It is separate from your login username.',
+        handleInvalid: 'Use 3–64 lowercase letters, digits, dots, dashes or underscores.',
+        handleTaken: 'That handle is already taken.',
+        tooMany: 'Too many changes — wait a minute and try again.',
+    },
 } as const;
 
 export type Translations = typeof en;

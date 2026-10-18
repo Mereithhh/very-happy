@@ -168,6 +168,22 @@ export type UpdateEvent = {
 
 // === EPHEMERAL EVENT TYPES (Transient) ===
 
+/** B-619 session sharing — delivered to the grantee (share / revoked) or the owner (updated). */
+export type SessionShareUpdateEvent = {
+    type: 'session-share';
+    invite: unknown;
+} | {
+    type: 'session-share-updated';
+    sessionId: string;
+    grantId: string;
+    role: 'viewer' | 'driver';
+    status: 'pending' | 'active' | 'revoked';
+} | {
+    type: 'session-share-revoked';
+    sessionId: string;
+    grantId: string | null;
+};
+
 export type EphemeralEvent = {
     type: 'activity';
     id: string;
@@ -208,7 +224,7 @@ export interface UpdatePayload {
     id: string;
     seq: number;
     body: {
-        t: UpdateEvent['type'];
+        t: UpdateEvent['type'] | SessionShareUpdateEvent['type'];
         [key: string]: any;
     };
     createdAt: number;
@@ -223,11 +239,23 @@ export interface EphemeralPayload {
 
 class EventRouter {
     private io!: Server;
+    /** B-619: mirrors session-scoped traffic to the session's grantees (installed by sessionShares). */
+    private sessionFanout: { update: (sessionId: string, payload: UpdatePayload) => void; ephemeral: (sessionId: string, payload: EphemeralPayload) => void } | null = null;
 
     // === INITIALIZATION ===
 
     init(io: Server): void {
         this.io = io;
+    }
+
+    setSessionFanout(fanout: { update: (sessionId: string, payload: UpdatePayload) => void; ephemeral: (sessionId: string, payload: EphemeralPayload) => void } | null): void {
+        this.sessionFanout = fanout;
+    }
+
+    /** Raw emit to explicit rooms (B-619 grantee fan-out). Rooms belong to OTHER users, so no filter helper applies. */
+    emitToRooms(rooms: string[], eventName: 'update' | 'ephemeral', payload: any): void {
+        if (rooms.length === 0) return;
+        this.io.to(rooms).emit(eventName, payload);
     }
 
     // === CONNECTION MANAGEMENT (via Socket.IO rooms) ===
@@ -283,6 +311,9 @@ class EventRouter {
             recipientFilter: params.recipientFilter || { type: 'all-user-authenticated-connections' },
             skipSenderConnection: params.skipSenderConnection
         });
+        if (this.sessionFanout && params.recipientFilter?.type === 'all-interested-in-session') {
+            this.sessionFanout.update(params.recipientFilter.sessionId, params.payload);
+        }
     }
 
     emitEphemeral(params: {
@@ -298,6 +329,11 @@ class EventRouter {
             recipientFilter: params.recipientFilter || { type: 'all-user-authenticated-connections' },
             skipSenderConnection: params.skipSenderConnection
         });
+        // Session liveness (activity / usage) is user-scoped on the owner side; a grantee's
+        // transcript would otherwise never show "thinking" or "online".
+        if (this.sessionFanout && (params.payload.type === 'activity' || params.payload.type === 'usage') && typeof params.payload.id === 'string') {
+            this.sessionFanout.ephemeral(params.payload.id, params.payload);
+        }
     }
 
     // === PRESENCE QUERIES ===
@@ -652,8 +688,11 @@ export function buildDeleteArtifactUpdate(artifactId: string, updateSeq: number,
 
 export function buildRelationshipUpdatedEvent(
     data: {
-        uid: string;
+        /** The recipient (whose row changed). Web V2 reads fromUserId/toUserId/action. */
+        fromUserId: string;
+        toUserId: string;
         status: 'none' | 'requested' | 'pending' | 'friend' | 'rejected';
+        action?: 'created' | 'updated' | 'deleted';
         timestamp: number;
     },
     updateSeq: number,
@@ -664,6 +703,7 @@ export function buildRelationshipUpdatedEvent(
         seq: updateSeq,
         body: {
             t: 'relationship-updated',
+            action: 'updated',
             ...data
         },
         createdAt: Date.now()

@@ -1,4 +1,8 @@
 import { supportsSessionAttachments } from './attachmentCapabilities';
+import type { SessionShareInfo } from './sessionShareTypes';
+import { useSessionShares } from './sessionSharesStore';
+import { uploadContentPublicKey } from './apiSessionShares';
+import { encodeBase64 as encodeBase64ForShare } from '@/encryption/base64';
 import Constants from 'expo-constants';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
 import { attachResumeListeners } from '@/sync/resumeSync';
@@ -431,7 +435,6 @@ class Sync {
 
     onSessionVisible = (sessionId: string) => {
         this.getMessagesSync(sessionId).invalidate();
-        this.alignPermissionModeIfNeeded(sessionId);
         // T-014: there is deliberately NO git-status refresh here. This method
         // is called for EVERY incoming message of ANY session (the "Ping
         // session" below), so a refresh here fanned 4 `bash` RPCs out to every
@@ -442,9 +445,12 @@ class Sync {
         // Notify voice assistant about session visibility
         const session = storage.getState().sessions[sessionId];
         if (session) {
-            if (session.metadata?.machineId) {
+            // B-619: a session shared WITH me has no relay / RPC path — the machine is
+            // not this account's; warming its relay only yields diagnostics 422s.
+            if (session.metadata?.machineId && !session.share) {
                 apiSocket.prepareMachineRelay(session.metadata.machineId);
             }
+            if (!session.share) this.alignPermissionModeIfNeeded(sessionId);
             voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
         }
     }
@@ -1401,6 +1407,8 @@ class Sync {
             createdAt: number;
             updatedAt: number;
             lastMessage: ApiMessage | null;
+            /** B-619: only on rows shared WITH this account. */
+            share?: SessionShareInfo;
         }>;
 
         // Key init + metadata/agentState decryption (one bad row is skipped,
@@ -1426,6 +1434,11 @@ class Sync {
 
     public refreshSessions = async () => {
         return this.sessionsSync.invalidateAndAwait();
+    }
+
+    /** B-621: People screen / share picker after a friend action (the socket event also lands, this is the no-wait path). */
+    public refreshFriends = async () => {
+        return this.friendsSync.invalidateAndAwait();
     }
 
     /**
@@ -2934,6 +2947,7 @@ class Sync {
                 ...currentProfile,
                 firstName: accountUpdate.firstName !== undefined ? accountUpdate.firstName : currentProfile.firstName,
                 lastName: accountUpdate.lastName !== undefined ? accountUpdate.lastName : currentProfile.lastName,
+                username: accountUpdate.username !== undefined ? accountUpdate.username : currentProfile.username,
                 avatar: accountUpdate.avatar !== undefined ? accountUpdate.avatar : currentProfile.avatar,
                 github: accountUpdate.github !== undefined ? accountUpdate.github : currentProfile.github,
                 timestamp: updateData.createdAt // Update timestamp to latest
@@ -3096,6 +3110,21 @@ class Sync {
                 this.encryption.removeMachineEncryption(machineId);
                 this.machineDataKeys.delete(machineId);
             }
+        } else if (updateData.body.t === 'session-share') {
+            // B-619: someone shared a session with me — it lands in the sidebar as an invitation.
+            useSessionShares.getState().onInvite(updateData.body.invite);
+        } else if (updateData.body.t === 'session-share-updated') {
+            // B-619: an invitation I sent was answered / a role changed. Owners refresh the
+            // dialog list; a grantee whose role changed needs the session row re-read.
+            const { sessionId, grantId, role, status } = updateData.body;
+            useSessionShares.getState().onGrantUpdated(sessionId, grantId, role, status);
+            if (storage.getState().sessions[sessionId]?.share) this.sessionsSync.invalidate();
+        } else if (updateData.body.t === 'session-share-revoked') {
+            // B-619: the owner took the share back (or deleted the session). Purge it like a delete:
+            // the key leaves memory and the row leaves the sidebar.
+            const { sessionId, grantId } = updateData.body;
+            useSessionShares.getState().onRevoked(sessionId, grantId);
+            if (storage.getState().sessions[sessionId]?.share) this.onSessionDeleted(sessionId);
         } else if (updateData.body.t === 'relationship-updated') {
             log.log('👥 Received relationship-updated update');
             const relationshipUpdate = updateData.body;
@@ -3495,6 +3524,9 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
     const API_ENDPOINT = getServerUrl();
     apiSocket.initialize({ endpoint: API_ENDPOINT, token: credentials.token }, encryption);
     installRpcRateLimitNotice();
+    // B-619: publish the content public key so this account can RECEIVE shared
+    // sessions even when its master secret is not server-held. Best effort.
+    void uploadContentPublicKey(encodeBase64ForShare(encryption.contentDataKey)).catch(() => { /* old server */ });
 
     // Wire socket status to storage
     apiSocket.onStatusChange((status) => {

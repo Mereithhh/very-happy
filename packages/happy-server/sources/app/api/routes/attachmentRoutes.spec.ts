@@ -77,6 +77,8 @@ const {
             return 1;
         }),
         session: { findFirst: sessionFindFirst },
+        // B-619: no shares in these fixtures — a non-owner stays a 404.
+        sessionGrant: { findFirst: vi.fn(async () => null) },
         uploadedFile: {
             deleteMany: vi.fn(async ({ where }: any) => {
                 let count = 0;

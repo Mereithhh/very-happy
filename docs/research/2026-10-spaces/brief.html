@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Very Happy Spaces 设计草案</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Lora:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#fafaf7;--ink:#1a1a1a;--muted:#6a6a6a;--rule:#e5e3dc;--code:#f1efe8;--soft:#f4f2ec}
+@media (prefers-color-scheme: dark){:root{--canvas:#141312;--ink:#fafaf7;--muted:#8e8e8e;--rule:#2a2a28;--code:#1f1d1c;--soft:#1b1a18}}
+*{box-sizing:border-box}
+html{background:var(--canvas)}
+body{font-family:"Libre Baskerville",Lora,Charter,"Iowan Old Style","Source Serif 4",Georgia,"Noto Serif SC","Source Han Serif SC",serif;font-size:17px;line-height:1.5;color:var(--ink);background:var(--canvas);max-width:720px;margin:0 auto;padding:48px 24px 96px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+@media (min-width:640px){body{font-size:18px;padding:64px 28px 120px}}
+.kicker{font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin:0 0 1.2em}
+h1{font-size:34px;font-weight:600;line-height:1.2;margin:0 0 .6em;letter-spacing:0}
+@media (min-width:640px){h1{font-size:42px}}
+.lede{font-size:1.05em;color:var(--muted);margin:0 0 2.5em}
+h2{font-size:24px;font-weight:600;line-height:1.3;margin:3em 0 .8em;letter-spacing:0}
+@media (min-width:640px){h2{font-size:27px}}
+h3{font-size:19px;font-weight:600;line-height:1.4;margin:2em 0 .6em}
+@media (min-width:640px){h3{font-size:21px}}
+p{margin:0 0 1.5em}
+ul,ol{margin:0 0 1.5em;padding-left:1.3em}
+li{margin:0 0 .55em}
+li>ul{margin:.4em 0 0}
+strong{font-weight:600}
+a{color:inherit;text-decoration:underline;text-underline-offset:3px}
+hr{border:0;border-top:1px solid var(--rule);margin:3em 0}
+.num{font-feature-settings:"tnum"}
+/* TL;DR */
+.tldr{border-top:2px solid var(--ink);border-bottom:1px solid var(--rule);padding:1.4em 0 .6em;margin:0 0 1em}
+.tldr ol{padding-left:1.4em;margin:0 0 .8em}
+.tldr li{margin:0 0 .9em}
+/* tables */
+.tw{overflow-x:auto;margin:0 0 1.8em;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:.88em;line-height:1.45;min-width:520px}
+th,td{text-align:left;vertical-align:top;padding:.6em .7em;border-bottom:1px solid var(--rule)}
+th{font-weight:600;border-bottom:1px solid var(--ink);white-space:nowrap}
+td:first-child,th:first-child{padding-left:0}
+td:last-child,th:last-child{padding-right:0}
+.cmp td:first-child{white-space:nowrap;font-weight:600}
+/* definition rows */
+.defs{margin:0 0 1.8em}
+.defs>div{display:grid;grid-template-columns:7.5em 1fr;gap:.8em;padding:.7em 0;border-bottom:1px solid var(--rule)}
+.defs>div:first-child{border-top:1px solid var(--ink)}
+.defs dt{font-weight:600;margin:0}
+.defs dd{margin:0;color:var(--ink)}
+@media (max-width:480px){.defs>div{grid-template-columns:1fr;gap:.15em}}
+/* phases */
+.phase{margin:0 0 2.2em}
+.phase h3{margin-top:1.4em;display:flex;align-items:baseline;gap:.6em}
+.phase h3 small{font-weight:400;color:var(--muted);font-size:.72em;letter-spacing:.04em}
+.phase ol{counter-reset:none}
+/* diagram */
+figure{margin:0 0 2em}
+figure svg{width:100%;height:auto;display:block}
+figcaption{font-size:.85em;color:var(--muted);margin-top:.6em}
+.note{background:var(--soft);padding:1em 1.1em;margin:0 0 1.8em;font-size:.95em}
+.note p:last-child{margin-bottom:0}
+.verdict{border-left:3px solid var(--ink);padding-left:1em;margin:0 0 1.8em}
+.muted{color:var(--muted)}
+.q li{margin-bottom:1em}
+.q li span{display:block;color:var(--muted);font-size:.92em;margin-top:.2em}
+@media (max-width:639px){
+  figure.diagram{display:none}
+  table.stack{min-width:0;font-size:.95em}
+  table.stack thead{display:none}
+  table.stack tr{display:block;padding:.9em 0;border-bottom:1px solid var(--rule)}
+  table.stack td{display:block;padding:.15em 0;border:0}
+  table.stack td:first-child{font-weight:600;padding-bottom:.35em}
+  table.stack td[data-l]::before{content:attr(data-l) " · ";color:var(--muted)}
+  table.stack td:first-child::before{content:none}
+}
+footer{margin-top:4em;padding-top:1.2em;border-top:1px solid var(--rule);font-size:.85em;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<p class="kicker">Very Happy · 设计草案 · 2026-10-17</p>
+<h1>Spaces：多人空间、Agent 互通与 Tanka 接入</h1>
+<p class="lede">对 Orca、Mirasim 和 Tanka/Ridge 接入面做了一轮调研，加上 very-happy 代码现状盘点，整理成一份高层设计和分阶段清单。本页只讲概念、取舍与顺序，不进实现细节。</p>
+
+<div class="tldr">
+<ol>
+<li><strong>very-happy 今天的一切都挂在单个账号下。</strong>没有组织、成员、权限；Agent Teams 是同账号同机器的编排；agent 不是实体，只是会话上的一个字段；Tanka 接入是仓库外的私有适配器，全部以 owner 身份执行。</li>
+<li><strong>Orca 和 Mirasim 各强一半。</strong>Orca 强在「编排契约给 agent 用」和「状态机三处投影」，但没有账号与团队。Mirasim 强在「空间即服务端」、群聊 @助手、会话互联协议、事项枢纽，但桌面优先、数据留在自己云、没有 Tanka。</li>
+<li><strong>「数据在 Tanka 体系内」的可达上限是三件事：</strong>Tanka 身份、Tanka AI 经 Ridge 查到 very-happy 数据、事件进 Tanka 群。开放平台没有自定义 agent 注册、没有普通消息事件、建群拉人受限，所以空间状态和 agent 间消息只能留在 very-happy 自己的 server。</li>
+<li><strong>核心保持 provider-neutral。</strong>Space、Actor、消息信封、事件是产品内一等概念；Tanka 只通过「身份源、渠道、数据曝光」三个可插拔接口进来。这与现有「核心不认识 Tanka」原则一致，也保住开源边界。</li>
+</ol>
+</div>
+
+<h2>一、三家对照</h2>
+<p>先把三个参照物放在一起看。very-happy 要补的，正好是 Orca 缺的团队层和 Mirasim 缺的 Tanka 层。</p>
+<div class="tw">
+<table class="cmp stack">
+<thead><tr><th>维度</th><th>Orca</th><th>Mirasim</th><th>very-happy 现状</th></tr></thead>
+<tbody>
+<tr><td>定位</td><td data-l="Orca">桌面 ADE，一个任务一个 worktree，跑 10–100 个并行 agent</td><td data-l="Mirasim">团队和智能体的协作工作间，桌面优先，Alpha</td><td data-l="very-happy 现状">Web/PWA 指挥面板，一人多机多 agent</td></tr>
+<tr><td>账号与团队</td><td data-l="Orca">无账号体系；共享靠同一台 server + 每设备 token</td><td data-l="Mirasim">空间、四种角色、席位、观察者、访问记录</td><td data-l="very-happy 现状">单账号，无组织或成员表</td></tr>
+<tr><td>agent 身份</td><td data-l="Orca">无独立对象，只是 CLI 启动配置</td><td data-l="Mirasim">「助手」：命名、模型、默认目录、skills、所有者</td><td data-l="very-happy 现状">会话上的 flavor 字段；Team 里的 Bot JSON</td></tr>
+<tr><td>agent 互通</td><td data-l="Orca">Run / Task / Dispatch / Message 契约，CLI+skill 暴露；worker_done、heartbeat、ask、decision gate</td><td data-l="Mirasim">@会话 + 五个工具；按目标状态投递；限流、链深、乒乓熔断、账本</td><td data-l="very-happy 现状">team_message 文本头 + sentFrom，投进用户消息队列；同账号点对点</td></tr>
+<tr><td>人与 agent</td><td data-l="Orca">Needs You 一等队列，看板 + feed + 手机推送</td><td data-l="Mirasim">Room 里 @助手开会话、结果回帖；单驱动者；分叉、接管、验收</td><td data-l="very-happy 现状">需要我决策列表（单人）</td></tr>
+<tr><td>自动化</td><td data-l="Orca">只有 cron；precheck；先 disabled 再手动 run</td><td data-l="Mirasim">cron（最短 10 min）、/goal 持续推进、接口应用事件</td><td data-l="very-happy 现状">cron / 间隔 / 一次性；本机 auto fire；precheck</td></tr>
+<tr><td>数据归属</td><td data-l="Orca">本机 / 自建 server</td><td data-l="Mirasim">Mirasim 云，与「数据进 Tanka」冲突</td><td data-l="very-happy 现状">自有 server，服务器可信、客户端加密</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>值得借的</h3>
+<ul>
+<li><strong>Orca：</strong>编排契约写给 agent 而不是写给人；Working / Needs You / Done / Idle 一个状态机投影到卡片、看板、feed、推送四处；自动化先禁用创建、手动跑通再启用。</li>
+<li><strong>Mirasim：</strong>Room 与 Session 分离，@助手在 Room 里开会话、结果回帖；会话互联有明确投递语义和熔断；「事项」把聊天、会话、待办串起来；面板的每个动作都有等价 CLI。</li>
+</ul>
+<h3>不照搬的</h3>
+<ul>
+<li>Orca 默认 yolo 权限、无 org；Mirasim 桌面优先、额度经济复杂、数据留自己云、共享会话一次只能一人驱动的体验要改良而非复制。</li>
+</ul>
+
+<h2>二、目标概念模型</h2>
+<p>新增或升级为一等对象的东西，以及它们的归属关系。单人用法不变：每个账号自带一个 personal Space。</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" font-family="Libre Baskerville, Lora, 'Noto Serif SC', serif" font-size="14">
+<defs><style>.b{fill:none;stroke:currentColor;stroke-width:1.2}.t{fill:currentColor}.m{fill:#8e8e8e}.l{stroke:currentColor;stroke-width:1}</style></defs>
+<g color="var(--ink)">
+<rect class="b" x="10" y="12" width="140" height="40" rx="2"/><text class="t" x="80" y="37" text-anchor="middle">Account</text>
+<line class="l" x1="150" y1="32" x2="220" y2="32"/><text class="m" x="185" y="26" text-anchor="middle" font-size="11">belongs</text>
+<rect class="b" x="220" y="12" width="300" height="40" rx="2"/><text class="t" x="370" y="37" text-anchor="middle">Space（personal 默认 / shared）</text>
+<line class="l" x1="370" y1="52" x2="370" y2="80"/>
+<rect class="b" x="560" y="12" width="150" height="40" rx="2" stroke-dasharray="4 3"/><text class="t" x="635" y="31" text-anchor="middle" font-size="12">Decision queue</text><text class="m" x="635" y="46" text-anchor="middle" font-size="10.5">按人、跨 Space</text>
+
+<g id="row1">
+<rect class="b" x="30" y="80" width="150" height="44" rx="2"/><text class="t" x="105" y="99" text-anchor="middle">Member</text><text class="m" x="105" y="116" text-anchor="middle" font-size="11">四种角色，占席或观察</text>
+<rect class="b" x="200" y="80" width="150" height="44" rx="2"/><text class="t" x="275" y="99" text-anchor="middle">Actor</text><text class="m" x="275" y="116" text-anchor="middle" font-size="11">统一 @地址</text>
+<rect class="b" x="370" y="80" width="150" height="44" rx="2"/><text class="t" x="445" y="99" text-anchor="middle">Agent</text><text class="m" x="445" y="116" text-anchor="middle" font-size="11">命名、持久、有 owner</text>
+<rect class="b" x="540" y="80" width="150" height="44" rx="2"/><text class="t" x="615" y="99" text-anchor="middle">Room</text><text class="m" x="615" y="116" text-anchor="middle" font-size="11">频道 / 话题 / DM</text>
+</g>
+<line class="l" x1="445" y1="124" x2="445" y2="150"/>
+<rect class="b" x="370" y="150" width="150" height="44" rx="2"/><text class="t" x="445" y="169" text-anchor="middle">Session</text><text class="m" x="445" y="186" text-anchor="middle" font-size="11">Agent 的一次实例</text>
+<line class="l" x1="540" y1="102" x2="520" y2="102" stroke-dasharray="3 3"/>
+<text class="m" x="445" y="212" text-anchor="middle" font-size="10.5">Room 里 @Agent → 开 Session → 结果回帖</text>
+
+<g id="row2">
+<rect class="b" x="30" y="220" width="150" height="44" rx="2"/><text class="t" x="105" y="239" text-anchor="middle">Task</text><text class="m" x="105" y="256" text-anchor="middle" font-size="11">Room↔Session↔决策 枢纽</text>
+<rect class="b" x="200" y="220" width="150" height="44" rx="2"/><text class="t" x="275" y="239" text-anchor="middle">Team</text><text class="m" x="275" y="256" text-anchor="middle" font-size="11">成员可来自不同账号</text>
+<rect class="b" x="370" y="220" width="150" height="44" rx="2"/><text class="t" x="445" y="239" text-anchor="middle">Automation</text><text class="m" x="445" y="256" text-anchor="middle" font-size="11">cron 或事件触发</text>
+<rect class="b" x="540" y="220" width="150" height="44" rx="2"/><text class="t" x="615" y="239" text-anchor="middle">Machine grant</text><text class="m" x="615" y="256" text-anchor="middle" font-size="11">按目录 / agent 出借</text>
+</g>
+<rect class="b" x="30" y="300" width="660" height="44" rx="2"/><text class="t" x="360" y="319" text-anchor="middle">Event log</text><text class="m" x="360" y="336" text-anchor="middle" font-size="11">feed、看板、自动化触发、Ridge 曝光的唯一来源</text>
+
+<line class="l" x1="40" y1="60" x2="40" y2="322" stroke-dasharray="2 3" opacity=".5"/>
+<line class="l" x1="40" y1="60" x2="370" y2="60" stroke-dasharray="2 3" opacity=".5"/>
+
+</g>
+</svg>
+<figcaption>图 1 · 一等对象与归属。虚线框的决策队列不属于某个 Space，按人聚合。</figcaption>
+</figure>
+
+<h3>四条取舍</h3>
+<ul>
+<li><strong>Space 是共享边界，不是运行边界。</strong>运行仍发生在 Machine 上。</li>
+<li><strong>信任分两档。</strong>共享的 Room、Task、Event、Team 是服务器可信明文（Teams 现状）；私有 Session 继续客户端加密。</li>
+<li><strong>「发布到 Space」是投影。</strong>owner 的 daemon 解密后产出一份 Space 可见的副本，不把密钥交给别人。</li>
+<li><strong>单驱动者。</strong>一个 Session 同时只有一个人或 Actor 能驱动，其余观看、评论、分叉或申请接管。</li>
+</ul>
+<dl class="defs">
+<div><dt>Space</dt><dd>共享边界。成员、角色、邀请；资源（会话、机器、Team、自动化）可授权给它。</dd></div>
+<div><dt>Agent</dt><dd>从会话上的一个字段升格为命名、持久的对象：模型、默认机器与目录、skills/MCP、权限策略、owner。没有稳定身份就无法被 @、被授权、被审计。</dd></div>
+<div><dt>Actor</dt><dd>统一可寻址身份：人类成员、命名 Agent、渠道 bot 都用同一种 @地址。</dd></div>
+<div><dt>Room</dt><dd>人与 Actor 的对话面，和 Session（agent 工作记录）分离。不做把 bot 塞进群聊的模式。</dd></div>
+<div><dt>Task</dt><dd>事项：负责人、协作人、状态、验收。从 Room 某条消息「记为事项」，从事项「开会话」，会话显示所属事项。</dd></div>
+<div><dt>Event log</dt><dd>所有对象的状态变化统一进一条事件流，是「automate everything」的基础。</dd></div>
+</dl>
+
+<h2>三、Agent 互通：结构化信封</h2>
+<p>在现有 team_message 和 session_message 之上定义信封 v1，不另起协议。</p>
+<ul>
+<li><strong>谁发给谁：</strong>发送方 Actor（账号、Space、Agent、Session、代数）与接收地址（@agent、@session、@room，群发 @all / @idle）。</li>
+<li><strong>意图枚举：</strong>status、question、handoff、result、heartbeat、escalation。</li>
+<li><strong>授权上下文：</strong>发送方在目标 Space 的角色、本次允许的动作范围。</li>
+<li><strong>安全规则：</strong>信封不能批准任何事、不能改配置、内含命令不执行；跨权限等级默认暂挂进决策队列。沿用已有的 T-39 规则。</li>
+<li><strong>投递语义：</strong>目标空闲就开新一轮，运行中就作引导输入，离线就缓存并超时退回。回执分「已入队、已被模型读取、已回复」三档。</li>
+<li><strong>熔断：</strong>每会话限流、链深上限、乒乓检测、账本保留，全部作为 Space 策略可配。</li>
+<li><strong>暴露方式：</strong>官方 skill + MCP 工具（list_actors、read_session、send、start_session、ask、gate），与 Teams 现有 team_* 合并成一套。</li>
+</ul>
+<p>跨账号路由：RPC 房间从按账号改成按 Space；跨机器派发复用已有的白名单 RPC；Team 成员允许是其他账号的 Agent，任务可跨账号认领与验收。</p>
+
+<h2>四、Automate everything</h2>
+<ul>
+<li><strong>事件是一等对象。</strong>会话状态、事项流转、Room 消息与 @、决策产生与消解、自动化运行、成员与机器变更、入站渠道事件，统一进 Event log。</li>
+<li><strong>触发器从 cron 扩到事件。</strong>「当某事件满足条件时」，加 precheck、去重键、sticky key。公网入站 webhook 仍不做，入站统一经渠道进来。</li>
+<li><strong>两种观测视图并存。</strong>feed 时间线用于离开后追赶；看板用于看现在谁卡住。</li>
+<li><strong>面板即 CLI。</strong>UI 的每个动作都有等价命令，含脚本化批准和配置树 dry-run，让自动化和 agent 都能驱动面板本身。</li>
+<li><strong>自动化属于 Space。</strong>成员可查看、复制、禁用；先禁用创建、手动跑通再启用。</li>
+</ul>
+
+<h2>五、Tanka 接入：三个可插拔接口</h2>
+<div class="verdict"><p>推荐路径：Authentik OIDC 作身份源（内含 Tanka 登录源，带组织树）；注册 Ridge provider 做只读曝光，同一曝光自动进 Tanka AI 与 MCP；事件经 Ridge 通知接口或 apodex-bot 推进 Tanka 群。三者都是已上线、有 owner 的面。</p></div>
+<div class="tw">
+<table class="stack">
+<thead><tr><th>接口</th><th>落地</th><th>得到什么</th><th>现状与依赖</th></tr></thead>
+<tbody>
+<tr><td><strong>身份源</strong></td><td data-l="落地">新增 OIDC 身份；email 为映射键</td><td data-l="得到什么">Tanka 用户对应账号；部门与团队成为 Space 成员和角色的建议值</td><td data-l="现状与依赖">账号已支持多登录身份；个人开源产品接公司身份源需公司侧确认</td></tr>
+<tr><td><strong>渠道</strong></td><td data-l="落地">把仓库外的 Tanka 适配器产品化：入站发送人按 email 映射成 Space 成员，群与 Room 绑定，出站可靠投递，引用回复回流</td><td data-l="得到什么">在 Tanka 群里 @agent、收结果、回复决策</td><td data-l="现状与依赖">事件订阅只有 app_mention；bot 不能私聊；出站失败不重试是已知欠账</td></tr>
+<tr><td><strong>数据曝光</strong></td><td data-l="落地">Ridge provider：只读查询空间、Room 摘要、会话摘要、事项、决策队列；按 JWT 主体做访问控制</td><td data-l="得到什么">Tanka AI 和同事的 agent 能查 very-happy 数据，有审计</td><td data-l="现状与依赖">需 Ridge 管理员激活；Ridge 的事件推送与统一凭证未上线，先只读</td></tr>
+</tbody>
+</table>
+</div>
+<div class="note">
+<p><strong>做不到、也不做的：</strong>把 Tanka 群当 Space 的存储或消息总线（建群拉人受限、无普通消息事件）；在 open.tanka.ai 注册自定义 agent（无此能力）；workmemory 以外的记忆写入（API 未披露）。</p>
+<p><strong>以后再接：</strong>Ridge 事件推送与统一凭证上线后，把 Event log 接进 Ridge；可选用 Ridge 组织树自动开出公司 Space。</p>
+</div>
+
+<h2>六、分阶段清单</h2>
+<p>顺序原则：先把单人路径不变的地基打好，再做协作，再做自动化与 Tanka 产品化。</p>
+
+<div class="phase">
+<h3>P0 地基 <small>单人路径零改动</small></h3>
+<ol>
+<li>Space、Member、角色、邀请；personal Space 默认存在。</li>
+<li>资源归属加 Space 维度：会话、机器、Team、自动化可授权给 Space。</li>
+<li>Agent 一等化；Actor 统一地址。</li>
+<li>决策队列按人跨 Space 聚合：permission、question、acceptance、gate。</li>
+<li>通用 OIDC 身份源，Authentik 作为公司部署配置。</li>
+<li>信任模型定稿：共享明文投影与私有加密的边界，「发布到 Space」的语义。</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>P1 协作</h3>
+<ol start="7">
+<li>Room、话题、DM；@Agent 开会话并回帖；来源芯片（如 tanka:群名）。</li>
+<li>会话发布与单驱动者：观看、评论、分叉、接管申请。</li>
+<li>信封 v1、投递语义、熔断；skill 与 MCP 工具合并。</li>
+<li>跨账号路由与跨机器派发；Team 成员可跨账号。</li>
+<li>机器出借：目录、agent、驱动者白名单。</li>
+<li>Task 事项作为 Room、Session、决策的枢纽。</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>P2 Automate everything</h3>
+<ol start="13">
+<li>Event log 一等化；事件触发器；自动化归属 Space。</li>
+<li>feed 时间线与看板并存。</li>
+<li>面板即 CLI，含脚本化批准与配置 dry-run。</li>
+<li>Tanka 渠道产品化：身份映射、群绑定、可靠出站、回流。</li>
+<li>Ridge provider 只读曝光与 MCP。</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>P3 延伸</h3>
+<ol start="18">
+<li>目标持续推进与任务图（对应 Mirasim 的 /goal、Orca 的 Run）。</li>
+<li>Ridge 事件流接入；公司 Space 自动开出。</li>
+<li>在 Space 前提下重新评估上一轮 UX review 的拒绝项（bot 群聊、多租户触发服务）。</li>
+</ol>
+</div>
+
+<h2>七、需要你拍板的五件事</h2>
+<ol class="q">
+<li>共享内容走服务器可信明文（Teams 现状）是否可接受为产品承诺。<span>私有会话「发布到 Space」用持续流还是一次性快照。</span></li>
+<li>开源核心只做通用 OIDC，Authentik 和 Tanka 作为部署配置。<span>公司侧接入是否需要先与负责人确认。</span></li>
+<li>Tanka 三个接口放仓库内的可插拔 provider，还是独立 adapter 仓库。</li>
+<li>P0 是否先只做前四项（Space、归属、Agent、决策队列），OIDC 与信任模型并入 P1。</li>
+<li>公司 Space 从 Ridge 组织树自动开出，还是手工建。</li>
+</ol>
+<p class="muted">回答第 1 和第 4 条，就能把 P0 细化成可开工的 spec。</p>
+
+<footer>
+<p>完整设计稿与调研底稿在 very-happy 仓库 <code>design/spaces-a2a</code> 分支：specs/2026-10-spaces-a2a.design.md、docs/research/2026-10-spaces/（Orca、Mirasim、Tanka 接入面、very-happy 基线，均带来源）。</p>
+</footer>
+</body>
+</html>

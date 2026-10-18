@@ -1,4 +1,5 @@
 import { auditLogin } from '@/app/audit/requestAudit';
+import { seedProfileUsername } from '@/app/social/accountDirectory';
 import { clientRateLimitKey } from "@/app/api/clientIp";
 import { z } from 'zod';
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'crypto';
@@ -11,6 +12,7 @@ import { log } from '@/utils/log';
 import { loadAccountSecret, upsertAccountSecret } from '@/app/auth/accountSecrets';
 import { getSignupStatus, resolveSignupPolicy, SignupPolicyError, withSignupGate } from '@/app/auth/signupPolicy';
 import { verifyGoogleIdToken } from '@/app/auth/googleOidc';
+import { oidcPublicConfig, resolveOidcConfig } from '@/app/auth/oidcProvider';
 import {
     consumeGoogleLoginChallenge,
     GoogleLoginChallengeCapacityError,
@@ -217,10 +219,12 @@ export function accountAuthRoutes(app: Fastify) {
     const googleConfig = resolveGoogleLoginConfig();
     const emailConfig = resolveEmailAuthConfig();
     const passwordLoginEnabled = isPasswordLoginEnabled();
+    const oidcConfig = resolveOidcConfig();
     assertUsableInteractiveAuth({
         email: emailConfig,
         googleClientId: googleConfig.clientId,
         passwordLoginEnabled,
+        oidcConfigured: oidcConfig !== null,
     });
     app.addHook('onReady', async () => {
         if (passwordLoginEnabled) return;
@@ -244,6 +248,7 @@ export function accountAuthRoutes(app: Fastify) {
             response: {
                 200: z.object({
                     googleClientId: z.string().optional(),
+                    oidc: z.object({ displayName: z.string() }).optional(),
                     emailOtpEnabled: z.boolean(),
                     passwordLoginEnabled: z.boolean(),
                     signup: z.object({
@@ -261,6 +266,7 @@ export function accountAuthRoutes(app: Fastify) {
         const googleClientId = googleConfig.clientId ?? undefined;
         return reply.send({
             googleClientId,
+            oidc: oidcPublicConfig(oidcConfig),
             emailOtpEnabled: emailConfig !== null,
             passwordLoginEnabled,
             signup: status,
@@ -388,6 +394,8 @@ export function accountAuthRoutes(app: Fastify) {
                 },
                 create: async (tx) => {
                     const account = await tx.account.create({ data: { publicKey } });
+                    // B-621: the login username seeds the public profile handle when free.
+                    await seedProfileUsername(tx, account.id, username);
                     const secretEnc = await upsertAccountSecret(tx, account.id, request.body.secret);
                     await tx.$executeRawUnsafe(
                         `INSERT INTO "AccountCredential"

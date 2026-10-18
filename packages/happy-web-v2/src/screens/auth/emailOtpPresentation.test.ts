@@ -21,12 +21,21 @@ describe('Email OTP presentation state', () => {
       passwordLoginEnabled: true,
       googleClientId: 'google',
       signup: { mode: 'open', maxAccounts: null, registeredAccounts: 0, remainingAccounts: null, atCapacity: false },
-    })).toEqual({ emailEnabled: true, passwordEnabled: true, googleEnabled: true, expandPasswordAfterLoad: false });
+    })).toEqual({ emailEnabled: true, passwordEnabled: true, googleEnabled: true, oidcEnabled: false, oidcDisplayName: '', expandPasswordAfterLoad: false });
     expect(publicAuthMethodState({
       emailOtpEnabled: true,
       passwordLoginEnabled: false,
       signup: { mode: 'open', maxAccounts: null, registeredAccounts: 0, remainingAccounts: null, atCapacity: false },
-    })).toEqual({ emailEnabled: true, passwordEnabled: false, googleEnabled: false, expandPasswordAfterLoad: false });
-    expect(publicAuthMethodState(null)).toEqual({ emailEnabled: false, passwordEnabled: true, googleEnabled: false, expandPasswordAfterLoad: true });
+    })).toEqual({ emailEnabled: true, passwordEnabled: false, googleEnabled: false, oidcEnabled: false, oidcDisplayName: '', expandPasswordAfterLoad: false });
+    expect(publicAuthMethodState(null)).toEqual({ emailEnabled: false, passwordEnabled: true, googleEnabled: false, oidcEnabled: false, oidcDisplayName: '', expandPasswordAfterLoad: true });
+  });
+
+  it('B-620: SSO keeps the password form folded and carries the provider name', () => {
+    expect(publicAuthMethodState({
+      emailOtpEnabled: false,
+      passwordLoginEnabled: true,
+      oidc: { displayName: 'Apodex SSO' },
+      signup: { mode: 'invite', maxAccounts: null, registeredAccounts: 3, remainingAccounts: null, atCapacity: false },
+    })).toEqual({ emailEnabled: false, passwordEnabled: true, googleEnabled: false, oidcEnabled: true, oidcDisplayName: 'Apodex SSO', expandPasswordAfterLoad: false });
   });
 });

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ApiSessionShareRevokedSchema, ApiSessionShareUpdateSchema, ApiSessionShareUpdatedSchema } from './sessionShareTypes';
 import {
     ApiMessageSchema,
     ApiUpdateMachineStateSchema,
@@ -83,6 +84,7 @@ export const ApiUpdateAccountSchema = z.object({
         version: z.number()
     }).nullish(),
     firstName: z.string().nullish(),
+    username: z.string().nullish(),
     lastName: z.string().nullish(),
     avatar: ImageRefSchema.nullish(),
     github: GitHubProfileSchema.nullish(),
@@ -174,6 +176,9 @@ export type ApiPromptQueueUpdate = z.infer<typeof ApiPromptQueueUpdateSchema>;
 // Use a plain union here to avoid runtime discriminator extraction issues
 // when some schemas come from shared package exports.
 export const ApiUpdateSchema = z.union([
+    ApiSessionShareUpdateSchema,
+    ApiSessionShareUpdatedSchema,
+    ApiSessionShareRevokedSchema,
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
     ApiDeleteSessionSchema,

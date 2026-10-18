@@ -1,6 +1,7 @@
 import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
 import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
+import { installSessionShareFanout } from '@/app/session/sessionShares';
 import { Server } from "socket.io";
 import { Redis, type RedisOptions } from "ioredis";
 import { decode as msgpackDecode } from "@msgpack/msgpack";
@@ -216,6 +217,7 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
 
     // Initialize event router with Socket.IO server instance
     eventRouter.init(io);
+    installSessionShareFanout();
 
     // Auth runs in middleware so it completes BEFORE the client's `connect`
     // event fires. Without this, the async verifyToken in the connection

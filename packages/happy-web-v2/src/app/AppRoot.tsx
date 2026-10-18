@@ -24,6 +24,7 @@ import { useAllMachines, useIsDataReady, useLocalSetting, useSessions } from '@/
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useGlobalBackNav } from '@/app/appBack';
 import { FirstRunScreen } from '@/screens/onboarding/FirstRunScreen';
+import { useSessionInvites } from '@/sync/sessionSharesStore';
 import { shouldShowFirstRun } from '@/screens/onboarding/firstRun';
 import { subscribeFirstMachineConnected } from '@/screens/onboarding/firstMachineWelcome';
 import { PrivacyScreen, TermsScreen } from '@/screens/legal/PublicLegalScreen';
@@ -47,6 +48,7 @@ installAuthGuards();
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
 // markdown renderer, terminal pulls xterm, settings is large).
 const SignupScreen = lazy(() => import('@/screens/auth/SignupScreen').then((m) => ({ default: m.SignupScreen })));
+const OidcReturnScreen = lazy(() => import('@/screens/auth/OidcReturnScreen').then((m) => ({ default: m.OidcReturnScreen })));
 const SessionDetailScreen = lazy(() => import('@/screens/session/SessionDetailScreen').then((m) => ({ default: m.SessionDetailScreen })));
 const SettingsRoutes = lazy(() => import('@/screens/settings/SettingsRoutes').then((m) => ({ default: m.SettingsRoutes })));
 const WebTerminalRoute = lazy(() => import('@/screens/terminal/WebTerminalRoute').then((m) => ({ default: m.WebTerminalRoute })));
@@ -61,6 +63,8 @@ const AutomationFormScreen = lazy(() => import('@/screens/automations/Automation
 const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen').then((m) => ({ default: m.AssistantScreen })));
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
 const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
+// B-621: people directory (friends) — the share picker and later Spaces build on it.
+const PeopleScreen = lazy(() => import('@/screens/people/PeopleScreen').then((m) => ({ default: m.PeopleScreen })));
 const ChangelogScreen = lazy(() => import('@/screens/changelog/ChangelogScreen').then((m) => ({ default: m.ChangelogScreen })));
 // B-599: iOS standalone viewport diagnostics — no auth, reached from 设置 → 诊断.
 const ViewportDiagScreen = lazy(() => import('@/diag/ViewportDiagScreen').then((m) => ({ default: m.ViewportDiagScreen })));
@@ -139,10 +143,12 @@ function HomeGate() {
   const machines = useAllMachines({ includeOffline: true });
   const sessions = useSessions();
   const terminalCount = useTerminalSessions((state) => state.terminals.length);
+  // B-619: sessions shared with me / invitations count as a reason to show the list.
+  const inviteCount = useSessionInvites().length;
   if (!dataReady) {
     return <RouteLoading fullViewport label={t('common.loading')} />;
   }
-  if (shouldShowFirstRun(dataReady, machines.length)) return <FirstRunScreen />;
+  if (shouldShowFirstRun(dataReady, machines.length, (sessions?.length ?? 0) + inviteCount)) return <FirstRunScreen />;
   if (dataReady && (sessions?.length ?? 0) === 0 && terminalCount === 0) return <HelpScreen />;
   if (homeView === 'board') {
     return (
@@ -303,6 +309,9 @@ const router = createBrowserRouter(
         </RedirectIfAuthed>
       ),
     },
+    // B-620: the identity provider sends the browser back here with a one-time
+    // handoff; not wrapped in RedirectIfAuthed so a stale session cannot swallow it.
+    { path: '/login/oidc', element: <Lazy><OidcReturnScreen /></Lazy> },
     { path: '/privacy', element: <PrivacyScreen /> },
     { path: '/terms', element: <TermsScreen /> },
     { path: '/changelog', element: <Lazy><ChangelogScreen /></Lazy> },
@@ -341,6 +350,7 @@ const router = createBrowserRouter(
             { path: 'board/automations/:id', element: <LegacyAutomationRedirect /> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
             { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },
+            { path: 'people', element: <Lazy><PeopleScreen /></Lazy> },
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
             { path: 'terminal/:machineId', element: <Lazy fullViewport={false} centered><WebTerminalRoute /></Lazy> },

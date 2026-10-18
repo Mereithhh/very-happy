@@ -4,7 +4,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, Contact } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -84,6 +84,11 @@ import { SidebarRateLimit } from '@/screens/machine/rateLimits/SidebarRateLimit'
 import { archiveAndDeleteWorktree, canArchiveAndDeleteWorktree } from '@/app/worktreeArchive';
 import { worktreeCopy } from './worktreeCopy';
 import { SessionPeek, peekDomId, useSessionPeek } from './SessionPeek';
+import { SharedInvites } from './SharedInvites';
+import { useFriendRequests } from '@/sync/storage';
+import { useSessionShares } from '@/sync/sessionSharesStore';
+import { Modal } from '@/modal';
+import '../session/shared.css';
 import { dismissFeatureTip, useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 
 function rowHref(r: Row): string {
@@ -126,6 +131,8 @@ interface Row {
   direct?: boolean;
   /** B-273/B-282: terminal attached to this user tmux session (name). */
   attachTmux?: string;
+  /** B-619: session shared WITH me — owner's name + my role. Such rows live in their own group. */
+  share?: { owner: string; role: 'viewer' | 'driver'; grantId: string };
 }
 
 interface SidebarSection {
@@ -157,6 +164,7 @@ function sessionRow(s: Session): Row {
     title: getSessionName(s),
     subtitle: getSessionSidebarSubtitle(s),
     tags: s.metadata?.tags,
+    ...(s.share ? { share: { owner: s.share.owner.displayName, role: s.share.role, grantId: s.share.grantId } } : {}),
   };
 }
 
@@ -165,6 +173,7 @@ export function Sidebar() {
   const sessions = useSessions();
   const teams = useTeamNavigation();
   const teamCopy = useTeamNavigationCopy();
+  const incomingPeople = useFriendRequests().length;
   const happyBotEntryVisible = useLocalSetting('happyBotEntryVisible');
   // B-498/B-504: the Automations entry is visible unless the server said
   // 404 automations_disabled (the feature is open to everyone); the badge is
@@ -296,7 +305,9 @@ export function Sidebar() {
     // visibleSidebarSessions also excludes the assistant meta-session (B-091
     // leak fix: this inline filter used to miss it — regression-tested in
     // sidebarRows.test.ts). Applies to the archived view too.
-    const sessRows = visibleSidebarSessions(sessions, view).map(sessionRow);
+    // B-619: sessions shared WITH me are listed in their own group (sharedRows),
+    // never ordered / grouped with my own.
+    const sessRows = visibleSidebarSessions(sessions, view).filter((s) => !s.share).map(sessionRow);
     // terminals are always "live"; hidden only by the archived-only view
     const termRows: Row[] =
       view === 'archived'
@@ -525,6 +536,11 @@ export function Sidebar() {
   // Group only the normal flat history. Explicit status/workspace/tag lenses
   // and archive retain their existing behavior and ordering.
   const teamHistory = view === 'list' && !grouped && teams.some((team) => !team.archivedAt);
+  // B-619: 「分享给我的」 — a trailing group in every view mode; not draggable, no ⌘N badge.
+  const sharedRows = useMemo<Row[]>(
+    () => (sessions ? sortRowsByRecent(visibleSidebarSessions(sessions, view).filter((s) => !!s.share).map(sessionRow)) : []),
+    [sessions, view],
+  );
   const displayRows = useMemo<Row[] | null>(() => {
     if (!plainDisplayRows || !teamHistory) return plainDisplayRows;
     const visibleTeams = teams.filter(team => !team.archivedAt);
@@ -825,24 +841,27 @@ export function Sidebar() {
   // lifecycle sections. `rows` holds only the VISIBLE rows (collapsed 已完成
   // → []), `count` the section's real size for the header.
   const sections = useMemo<SidebarSection[]>(() => {
+    // B-619: shared-with-me rows always tail the list as their own labelled group.
+    const shared: SidebarSection[] = sharedRows.length > 0 ? [collapsibleSection('shared', t('sidebar.groupShared'), sharedRows, collapsedGroups)] : [];
     if (view === 'status' && statusGroups) {
       return [
         collapsibleSection('waiting', t('sidebar.groupWaiting'), statusGroups.waiting, collapsedGroups),
         collapsibleSection('running', t('sidebar.groupRunning'), statusGroups.running, collapsedGroups),
         collapsibleSection('completed', t('sidebar.groupDoneToday'), completedRows, collapsedGroups),
+        ...shared,
       ];
     }
     // 列表 + 按 tag 分组: one section per tag group, same sb-section-head
     // chrome as the status view. Untagged rows tail as 未分组.
     if (tagGroups) {
-      return tagGroups.map((g) => collapsibleSection(tagGroupId(g), g.tag ?? (t('sidebar.groupUntagged') as string), g.rows, collapsedGroups));
+      return [...tagGroups.map((g) => collapsibleSection(tagGroupId(g), g.tag ?? (t('sidebar.groupUntagged') as string), g.rows, collapsedGroups)), ...shared];
     }
     if (workspaceGroups) {
-      return workspaceGroups.map((g: SidebarWorkspaceGroup<Row>) => ({
+      return [...workspaceGroups.map((g: SidebarWorkspaceGroup<Row>) => ({
         ...collapsibleSection(workspaceGroupId(g), g.name ?? (t('sidebar.workspaceUnassigned') as string), g.rows, collapsedGroups),
         detail: [g.machineName, g.path].filter(Boolean).join(' · '),
         createLocation: g.machineId && g.path ? { machineId: g.machineId, path: g.rows.find(r => r.workspacePath)?.workspacePath ?? g.path } : undefined,
-      }));
+      })), ...shared];
     }
     return [
       {
@@ -854,8 +873,9 @@ export function Sidebar() {
         collapsible: false,
         open: true,
       },
+      ...shared,
     ];
-  }, [view, statusGroups, completedRows, collapsedGroups, tagGroups, workspaceGroups, displayRows, t]);
+  }, [view, statusGroups, completedRows, collapsedGroups, tagGroups, workspaceGroups, displayRows, sharedRows, t]);
 
   // ----- collapsed-header status summary (B-580) -----
   // Same inputs as the row's own status slot (SidebarRow → agentStatusSignal),
@@ -1043,6 +1063,10 @@ export function Sidebar() {
           </button>
         )}
         <button onClick={() => navigate('/todos')}><ListChecks size={18} /><span>{t('todos.title')}</span></button>
+        <button onClick={() => navigate('/people')}>
+          <Contact size={18} /><span>{t('people.title')}</span>
+          {incomingPeople > 0 && <span className="sb-nav-attn mono" title={t('people.incoming')}>{incomingPeople}</span>}
+        </button>
         <button onClick={() => navigate('/help')}><CircleHelp size={17}/><span>{t('sidebar.openHelp')}</span></button>
       </nav>
 
@@ -1106,6 +1130,8 @@ export function Sidebar() {
 
       <div className={`sb-list vh-scroll-fade${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
         <PendingSessionRows />
+        {/* B-619: invitations first — they need an answer before anything else shows. */}
+        <SharedInvites />
         {displayRows === null ? (
           <div className="sb-loading">
             <StatusDot status="thinking" pulse /> {t('common.loading')}
@@ -1151,7 +1177,8 @@ export function Sidebar() {
                     </div>
                   )}
                   {sec.rows.map((r) => {
-                    const i = flat++;
+                    // B-619: shared rows are outside displayRows — no ⌘N slot, no reorder.
+                    const i = r.share ? -1 : flat++;
                     if (r.team) {
                       const team = r.team;
                       const open = expandedTeams.has(team.id);
@@ -1200,10 +1227,10 @@ export function Sidebar() {
                                 !!r.terminalId &&
                                 unreadTerminalIds.has(r.terminalId)),
                           })}
-                          badge={cmdHeld && i < 9 ? i + 1 : undefined}
+                          badge={cmdHeld && i >= 0 && i < 9 ? i + 1 : undefined}
                           canMoveUp={i > 0}
-                          canMoveDown={i < displayRows.length - 1}
-                          onMove={orderable && !grouped && !teamHistory ? (dir) => moveRow(r.key, i, dir) : undefined}
+                          canMoveDown={i >= 0 && i < displayRows.length - 1}
+                          onMove={orderable && !grouped && !teamHistory && !r.share ? (dir) => moveRow(r.key, i, dir) : undefined}
                           onRenameRequest={() => setRenameTarget(r)}
                           peekTipAnchor={peekTipAnchor}
                         />
@@ -1597,7 +1624,7 @@ function SidebarRow({
   const onRestore = () => { void restoreSessionOrAlert(s!.id); };
   // Decoupled from restore: a non-archived (incl. merely offline) session can
   // still be archived; an already-archived one cannot.
-  const canArchiveOrClose = isTerminal || (!!s && s.archivedAt == null);
+  const canArchiveOrClose = isTerminal || (!!s && s.archivedAt == null && !s.share);
 
   // Archive (session) / close (terminal) — the flows, confirms included,
   // live in rowActions.ts and are shared with the board. Archive-only (B-083):
@@ -1624,8 +1651,29 @@ function SidebarRow({
   const attachKillMachine = storage((st) => (isTerminal && row.attachTmux && row.machineId ? st.machines[row.machineId] : undefined));
   const canKillAttached = !!row.attachTmux && killAttachedSupported(attachKillMachine?.daemonState);
 
+  // B-619: a shared-with-me row has exactly one action — leave it. Rename,
+  // priority, archive and restore all write the OWNER's session.
+  const leaveShared = useSessionShares((st) => st.decline);
+  const sharedMenuItems: MenuItemDef[] = row.share ? [{
+    key: 'leave-shared',
+    label: t('sidebar.sharedLeave'),
+    icon: X,
+    onSelect: () => {
+      void (async () => {
+        const ok = await Modal.confirm(t('sidebar.sharedLeaveConfirm', { owner: row.share!.owner }), undefined, { confirmText: t('sidebar.sharedLeave'), destructive: true });
+        if (!ok) return;
+        try {
+          await leaveShared(row.share!.grantId);
+          sync.onSessionDeleted(row.session!.id);
+          if (selected) navigate('/');
+        } catch {
+          Modal.alert(t('common.error'), t('share.invites.failed'));
+        }
+      })();
+    },
+  }] : [];
   // ONE item list feeds both the "…" dropdown and the right-click menu.
-  const menuItems = rowMenuItems({
+  const menuItems = row.share ? sharedMenuItems : rowMenuItems({
     t,
     isTerminal,
     supportsTags: !isTerminal || row.tags !== undefined,
@@ -1744,6 +1792,12 @@ function SidebarRow({
             {row.direct && (
               <span className="sb-row-restored" title={t('sidebar.terminalDirectHint')}>
                 {t('sidebar.terminalDirect')}
+              </span>
+            )}
+            {/* B-619: whose session this is (the group header already says it is shared). */}
+            {row.share && (
+              <span className="sb-row-shared" title={t('sidebar.sharedFrom', { owner: row.share.owner })}>
+                <UsersRound size={10} aria-hidden />{row.share.owner}
               </span>
             )}
             {automationAttention && (

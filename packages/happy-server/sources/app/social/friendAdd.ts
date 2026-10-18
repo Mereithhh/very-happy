@@ -5,6 +5,7 @@ import { RelationshipStatus } from "@prisma/client";
 import { relationshipSet } from "./relationshipSet";
 import { sendFriendRequestNotification, sendFriendshipEstablishedNotification } from "./friendNotification";
 import { assertRelationshipCapacity, lockRelationshipAccounts } from './relationshipLimits';
+import { notifyRelationshipChanged } from './relationshipEvents';
 
 /**
  * Add a friend or accept a friend request.
@@ -56,6 +57,10 @@ export async function friendAdd(ctx: Context, uid: string): Promise<UserProfile 
 
             // Send friendship established notifications to both users
             await sendFriendshipEstablishedNotification(tx, currentUser.id, targetUser.id);
+            notifyRelationshipChanged(tx, [
+                { userId: currentUser.id, uid: targetUser.id, status: RelationshipStatus.friend },
+                { userId: targetUser.id, uid: currentUser.id, status: RelationshipStatus.friend },
+            ]);
 
             // Return the target user profile
             return buildUserProfile(targetUser, RelationshipStatus.friend);
@@ -75,6 +80,10 @@ export async function friendAdd(ctx: Context, uid: string): Promise<UserProfile 
 
             // Send friend request notification to the receiver
             await sendFriendRequestNotification(tx, targetUser.id, currentUser.id);
+            notifyRelationshipChanged(tx, [
+                { userId: currentUser.id, uid: targetUser.id, status: RelationshipStatus.requested },
+                { userId: targetUser.id, uid: currentUser.id, status: targetUserRelationship === RelationshipStatus.none ? RelationshipStatus.pending : targetUserRelationship },
+            ]);
 
             // Return the target user profile
             return buildUserProfile(targetUser, RelationshipStatus.requested);

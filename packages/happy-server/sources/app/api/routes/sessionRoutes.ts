@@ -12,6 +12,7 @@ import { createSessionWithQuota, sessionCreateSchema } from '@/app/state/account
 import { activityCache } from '@/app/presence/sessionCache';
 import { allocateUserSeq } from '@/storage/seq';
 import { noteSessionArchived } from '@/app/automations/attentionLifecycle';
+import { fanoutSessionUpdateToGrantees, listSharedSessionRows, resolveSessionAccess, sharedSessionRowFor } from '@/app/session/sessionShares';
 
 /** B-265: one projection for the list and the by-id read, so the web sees the
  *  same shape (incl. the server-owned `archivedAt`) on both paths. */
@@ -29,6 +30,12 @@ const sessionProjection = {
     lastActiveAt: true,
     archivedAt: true,
 } as const;
+
+type SessionProjectionRow = {
+    id: string; seq: number; createdAt: Date; updatedAt: Date; metadata: string; metadataVersion: number;
+    agentState: string | null; agentStateVersion: number; dataEncryptionKey: Uint8Array | Buffer | null;
+    active: boolean; lastActiveAt: Date; archivedAt: Date | null; accountId: string;
+};
 
 function projectSession(v: {
     id: string; seq: number; createdAt: Date; updatedAt: Date; metadata: string; metadataVersion: number;
@@ -57,11 +64,14 @@ function projectSession(v: {
  *  recipient — on archive it is being disconnected right now. */
 async function emitArchivedAtUpdate(userId: string, sessionId: string, archivedAt: Date | null): Promise<void> {
     const updateSeq = await allocateUserSeq(userId);
+    const archivedAtPayload = buildSessionArchivedAtUpdate(sessionId, updateSeq, randomKeyNaked(12), archivedAt ? archivedAt.getTime() : null);
     eventRouter.emitUpdate({
         userId,
-        payload: buildSessionArchivedAtUpdate(sessionId, updateSeq, randomKeyNaked(12), archivedAt ? archivedAt.getTime() : null),
+        payload: archivedAtPayload,
         recipientFilter: { type: 'user-scoped-only' },
     });
+    // B-619: grantees learn the archive state too (user-scoped filters do not fan out by themselves).
+    void fanoutSessionUpdateToGrantees(sessionId, archivedAtPayload).catch(() => { /* best effort */ });
 }
 
 export function sessionRoutes(app: Fastify) {
@@ -79,7 +89,18 @@ export function sessionRoutes(app: Fastify) {
             select: sessionProjection,
         });
 
-        return reply.send({ sessions: sessions.map(projectSession) });
+        // B-619: sessions shared WITH this account ride along in the same list,
+        // keyed for the grantee and with machine-private metadata removed.
+        const shared = await listSharedSessionRows<SessionProjectionRow>(userId, sessionProjection);
+        return reply.send({
+            sessions: [
+                ...sessions.map(projectSession),
+                ...shared.map((entry) => ({
+                    ...projectSession({ ...entry.row, metadata: entry.metadata, dataEncryptionKey: entry.dataEncryptionKey }),
+                    share: entry.share,
+                })),
+            ],
+        });
     });
 
     // B-265: one session by id, same projection as the list. Lets a resuming
@@ -96,7 +117,10 @@ export function sessionRoutes(app: Fastify) {
             select: sessionProjection,
         });
         if (!session) {
-            return reply.code(404).send({ error: 'Session not found' });
+            // B-619: a grantee reads the owner's row through its grant.
+            const shared = await sharedSessionRowFor<SessionProjectionRow>(request.userId, request.params.sessionId, sessionProjection);
+            if (!shared) return reply.code(404).send({ error: 'Session not found' });
+            return reply.send({ session: { ...projectSession({ ...shared.row, metadata: shared.metadata, dataEncryptionKey: shared.dataEncryptionKey }), share: shared.share } });
         }
         return reply.send({ session: projectSession(session) });
     });
@@ -338,15 +362,9 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { sessionId } = request.params;
 
-        // Verify session belongs to user
-        const session = await db.session.findFirst({
-            where: {
-                id: sessionId,
-                accountId: userId
-            }
-        });
-
-        if (!session) {
+        // Verify session belongs to user, or is shared with them (B-619)
+        const access = await resolveSessionAccess(userId, sessionId);
+        if (!access) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
