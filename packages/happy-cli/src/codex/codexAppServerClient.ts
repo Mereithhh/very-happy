@@ -203,6 +203,12 @@ export class CodexAppServerClient {
     private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
     private completedTurnIds = new Set<string>();
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
+    // B-622: inactivity watchdog for the pending turn — re-armed by every
+    // notification, never a cap on how long a turn may run (see sendTurnAndWait).
+    private turnWatchdog: { timer: ReturnType<typeof setTimeout>; timeoutMs: number } | null = null;
+    // Approval / elicitation requests we are still answering: a human may take
+    // longer than the watchdog to decide, and that is not Codex going silent.
+    private inflightServerRequests = 0;
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -306,13 +312,21 @@ export class CodexAppServerClient {
         source: string,
     ): void {
         const aborted = status === 'cancelled' || status === 'canceled' || status === 'aborted' || status === 'interrupted';
+        const failed = status === 'failed' || (error !== undefined && error !== null);
 
         this.tryResolvePendingTurn(aborted, turnId, source);
         this._turnId = null;
         this.maybeRefreshRateLimits();
 
         if (turnId && this.completedTurnIds.has(turnId)) {
-            return;
+            // B-622: one completion per turn — except the frame that carries the
+            // failure. Whatever resolved this turn first (`thread/status/changed:
+            // idle`, a legacy task_complete) said nothing about *why* it ended;
+            // `turn/completed` with `status: failed` is the only place the
+            // upstream error (a 504 from the model gateway, a rejected model)
+            // is reported, and dropping it as a duplicate is how a failed Codex
+            // turn ended in silence (Wei FANG 2026-10-18).
+            if (!failed) return;
         }
         if (turnId) {
             this.completedTurnIds.add(turnId);
@@ -466,14 +480,17 @@ export class CodexAppServerClient {
                 });
             }
 
-            if (item.phase === 'final_answer' && this.pendingTurnCompletion) {
-                this.emitRawTurnCompletion(
-                    this.extractTurnId(params),
-                    'completed',
-                    null,
-                    `${method}:final_answer`,
-                );
-            }
+            // B-622: an agent message never ends the turn — not even one with
+            // `phase: final_answer`. Codex's `send_message_to_user_async` tool
+            // (0.154.0, core/src/tools/handlers/send_message_to_user_async.rs)
+            // emits exactly that item *mid-turn* — "still working on it, now
+            // checking X" — and then keeps running tools. Treating it as the
+            // completion dropped `thinking` while Codex was still busy (no
+            // spinner, "done" pushed early) and, via completedTurnIds above,
+            // swallowed the real `turn/completed` — including its failure.
+            // `turn/completed` (and `thread/status/changed: idle`, which the
+            // app-server only reports with no turn in progress) end the turn;
+            // probed on 0.154.0 for both the success and the 504 path.
             return true;
         }
 
@@ -910,6 +927,7 @@ export class CodexAppServerClient {
 
     private resolvePendingTurn(aborted: boolean): void {
         if (!this.pendingTurnCompletion) return;
+        this.clearTurnWatchdog();
         this.pendingTurnCompletion.resolve(aborted);
         this.pendingTurnCompletion = null;
     }
@@ -1090,33 +1108,67 @@ export class CodexAppServerClient {
         await this.ensureConnected();
 
         const timeoutMs = opts?.turnTimeoutMs ?? CodexAppServerClient.TURN_TIMEOUT_MS;
-        let timer: ReturnType<typeof setTimeout> | null = null;
 
         const completion = new Promise<boolean>((resolve) => {
             this.pendingTurnCompletion = {
                 resolve,
                 turnId: null,
             };
-
-            timer = setTimeout(() => {
-                if (this.pendingTurnCompletion) {
-                    logger.warn(`[CodexAppServer] Turn timed out after ${timeoutMs}ms — treating as abort`);
-                    this.resolvePendingTurn(true);
-                }
-            }, timeoutMs);
+            // B-622: a bound on Codex going *silent*, re-armed by every
+            // notification (handleNotification) — not a cap on turn length.
+            // The old fixed 10-minute timer resolved every longer max-effort
+            // turn as "aborted" while Codex kept working: the wrapper dropped
+            // `thinking`, pushed "done", and the rest of the turn rendered
+            // into a session that looked idle.
+            this.armTurnWatchdog(timeoutMs);
         });
 
         try {
             await this.sendTurn(prompt, opts);
         } catch (err) {
-            if (timer) clearTimeout(timer);
+            this.clearTurnWatchdog();
             this.pendingTurnCompletion = null;
             throw err;
         }
 
         const aborted = await completion;
-        if (timer) clearTimeout(timer);
+        this.clearTurnWatchdog();
         return { aborted };
+    }
+
+    private armTurnWatchdog(timeoutMs: number): void {
+        this.clearTurnWatchdog();
+        const timer = setTimeout(() => {
+            this.turnWatchdog = null;
+            if (!this.pendingTurnCompletion) return;
+            if (this.inflightServerRequests > 0) {
+                // Codex is waiting on us (an approval the user has not answered).
+                this.armTurnWatchdog(timeoutMs);
+                return;
+            }
+            logger.warn(`[CodexAppServer] No notification from Codex for ${timeoutMs}ms — giving the turn up as aborted`);
+            const turnId = this.pendingTurnCompletion.turnId ?? this._turnId;
+            this.eventHandler?.({
+                type: 'turn_aborted',
+                reason: 'timeout',
+                ...(turnId ? { turn_id: turnId } : {}),
+                error: { message: `Codex sent nothing for ${Math.max(1, Math.round(timeoutMs / 60_000))} minutes; this turn was given up. Send the message again, or restart the session if it keeps happening.` },
+            });
+            this.resolvePendingTurn(true);
+        }, timeoutMs);
+        this.turnWatchdog = { timer, timeoutMs };
+    }
+
+    /** Any sign of life from the app-server while a turn is pending restarts the clock. */
+    private touchTurnWatchdog(): void {
+        if (!this.turnWatchdog || !this.pendingTurnCompletion) return;
+        this.armTurnWatchdog(this.turnWatchdog.timeoutMs);
+    }
+
+    private clearTurnWatchdog(): void {
+        if (!this.turnWatchdog) return;
+        clearTimeout(this.turnWatchdog.timer);
+        this.turnWatchdog = null;
     }
 
     async interruptTurn(): Promise<void> {
@@ -1350,6 +1402,18 @@ export class CodexAppServerClient {
     }
 
     private async handleServerRequest(id: number, method: string, params: any): Promise<void> {
+        // B-622: while Codex waits on our answer (approval, elicitation) the
+        // turn watchdog must not count the silence against it.
+        this.inflightServerRequests += 1;
+        try {
+            await this.handleServerRequestInner(id, method, params);
+        } finally {
+            this.inflightServerRequests -= 1;
+            this.touchTurnWatchdog();
+        }
+    }
+
+    private async handleServerRequestInner(id: number, method: string, params: any): Promise<void> {
         if (method === 'mcpServer/elicitation/request') {
             const toolName = this.parseToolNameFromElicitationMessage(params?.message) ?? params?.serverName ?? 'McpTool';
             const decision = await this.handleApproval({
@@ -1413,6 +1477,9 @@ export class CodexAppServerClient {
     }
 
     private handleNotification(method: string, params: any): void {
+        // B-622: anything the app-server says while a turn is pending is a sign of life.
+        this.touchTurnWatchdog();
+
         // codex/event notifications: either `codex/event` or `codex/event/<type>`
         if (method === 'codex/event' || method.startsWith('codex/event/')) {
             this.notificationProtocol = 'legacy';
@@ -1487,6 +1554,27 @@ export class CodexAppServerClient {
         // (e.g. happy-mcp bridge failing on Windows due to shebang execution).
         if (method === 'mcpServer/startupStatus/updated') {
             logger.debug(`[CodexAppServer] mcpServer startup status:`, params);
+            return;
+        }
+
+        // B-622: Codex's own retry notice — a 5xx or a dropped stream it is about
+        // to retry ("Reconnecting... 2/5", codex 0.154.0). Only the retrying ones
+        // are forwarded: the final failure arrives again on turn/completed.
+        if (method === 'error' && params?.willRetry === true) {
+            const error = params?.error ?? {};
+            const message = typeof error.message === 'string' ? error.message : '';
+            const info = error.codexErrorInfo;
+            const httpStatus = info && typeof info === 'object'
+                ? (info.responseStreamDisconnected?.httpStatusCode ?? info.httpStatusCode ?? null)
+                : null;
+            const turnId = typeof params?.turnId === 'string' ? params.turnId : null;
+            this.eventHandler?.({
+                type: 'turn_retry',
+                message,
+                ...(typeof httpStatus === 'number' ? { http_status: httpStatus } : {}),
+                ...(turnId ? { turn_id: turnId } : {}),
+                ...(typeof error.additionalDetails === 'string' ? { details: error.additionalDetails } : {}),
+            });
             return;
         }
 
