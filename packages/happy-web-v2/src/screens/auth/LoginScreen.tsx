@@ -7,6 +7,7 @@ import { Button, Input, CyberMark, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { GoogleLoginButton } from './GoogleLoginButton';
+import { OidcLoginButton } from './OidcLoginButton';
 import './auth.css';
 import { authReturnTarget, peekPersistedAuthReturnTarget } from '@/app/authReturnTarget';
 import { classifyPasswordLoginFailure } from './loginErrorPresentation';
@@ -98,7 +99,7 @@ export function LoginScreen() {
     navigate(authReturnTarget(location.state), { replace: true });
   }
 
-  const { emailEnabled, passwordEnabled, googleEnabled } = publicAuthMethodState(authConfig);
+  const { emailEnabled, passwordEnabled, googleEnabled, oidcEnabled, oidcDisplayName } = publicAuthMethodState(authConfig);
   const reauthTarget = peekPersistedAuthReturnTarget();
   const reauthMessage = reauthTarget === '/settings/google'
     ? t('reauth.google')
@@ -141,6 +142,13 @@ export function LoginScreen() {
             <h2 id="login-form-title">{t('settings.connectAccount')}</h2>
           </header>
           {reauthMessage && <div className="auth-reauth-note" role="status">{reauthMessage}</div>}
+
+          {oidcEnabled && <OidcLoginButton
+            displayName={oidcDisplayName}
+            disabled={busy}
+            trailingDividerLabel={(emailEnabled || googleEnabled || passwordEnabled) ? t('oidc.orOther') : undefined}
+            onBusyChange={setBusy}
+          />}
 
           {emailEnabled && <EmailOtpForm busy={busy} onBusyChange={setBusy} onCredentials={finishLogin} />}
 

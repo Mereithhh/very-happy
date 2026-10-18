@@ -2271,6 +2271,7 @@ export const en = {
                 share: 'Session menu → Share…: enter an email or username, choose View only or Can send. They see an invitation in their sidebar and the session appears under “Shared with me” once they accept.',
                 driver: 'A “Can send” driver writes messages under their own name; the owner\'s agent reads them on its next turn. Approvals, interrupts, model and mode changes stay with the owner — a driver never gets your machine.',
                 revoke: 'Change a person\'s access or revoke it from the same dialog; revoking removes the session from their side immediately. Sessions created before per-session keys (legacy format) cannot be shared.',
+                oidc: 'Single sign-on: a server can point at any OpenID Connect provider (OIDC_ISSUER / OIDC_CLIENT_ID); the sign-in page then offers “Continue with <provider>” and creates or reuses the account for that identity under the same signup policy.',
             },
             oct16: {
                 title: 'Reading back stays put; zoomable images and side-by-side diffs',
@@ -4513,6 +4514,27 @@ export const en = {
     reauth: {
         email: 'Reauthentication required: sign in with a method already linked to the account you were using. Do not use the email address you are adding yet.',
         google: 'Reauthentication required: sign in with a method already linked to the account you were using. Do not use the Google identity you are adding yet.',
+    },
+
+    // B-620: generic OIDC (single sign-on) login.
+    oidc: {
+        continueWith: ({ name }: { name: string }) => `Continue with ${name}`,
+        orOther: 'or use another method',
+        finishingTitle: 'Signing you in…',
+        finishing: 'Finishing sign-in with your identity provider.',
+        failedTitle: 'Sign-in did not complete',
+        backToLogin: 'Back to sign in',
+        goToSignup: 'Go to sign up',
+        errors: {
+            invalid_state: 'This sign-in link has expired or was already used. Start again from the sign-in page.',
+            exchange_failed: 'The identity provider did not accept the sign-in. Try again; if it keeps failing, ask the server operator to check the OIDC client settings.',
+            invalid_id_token: 'The identity provider returned a token this server could not verify.',
+            email_domain_not_allowed: 'This server only admits accounts from approved email domains.',
+            provider_error: 'The identity provider cancelled the sign-in.',
+            not_configured: 'Single sign-on is not enabled on this server.',
+            invalid_handoff: 'This sign-in handoff has expired. Start again from the sign-in page.',
+            network: 'Could not reach the server to finish signing in.',
+        },
     },
 
     // Per-agent defaults settings screen.

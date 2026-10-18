@@ -2420,6 +2420,7 @@ export const zhHans: TranslationStructure = {
                 share: '会话菜单 → 分享…：输入邮箱或用户名，选「只看」或「可发消息」。对方侧栏会出现邀请，接受后会话出现在「分享给我的」分组里。',
                 driver: '「可发消息」的人用自己的名字发消息，所有者的 agent 下一轮读取。批准、中断、改模型和改模式仍只有所有者能做——对方拿不到你的机器。',
                 revoke: '在同一个对话框里改权限或撤销；撤销后对方那边立刻看不到这个会话。旧密钥格式（没有每会话密钥）的会话无法分享。',
+                oidc: '单点登录：服务器可以接任意 OpenID Connect 提供方（OIDC_ISSUER / OIDC_CLIENT_ID），登录页随即出现「使用 <提供方> 登录」，按同样的注册策略为该身份创建或复用账号。',
             },
             oct16: {
                 title: '往上看时不再乱跳；图片可缩放，diff 可左右对比',
@@ -4367,6 +4368,27 @@ export const zhHans: TranslationStructure = {
     reauth: {
         email: '需要重新认证：请使用当前账户已经关联的登录方式。此时不要使用正在添加的邮箱。',
         google: '需要重新认证：请使用当前账户已经关联的登录方式。此时不要使用正在添加的 Google 身份。',
+    },
+
+    // B-620: generic OIDC (single sign-on) login.
+    oidc: {
+        continueWith: ({ name }: { name: string }) => `使用 ${name} 登录`,
+        orOther: '或使用其他方式',
+        finishingTitle: '正在登录…',
+        finishing: '正在与身份提供方完成登录。',
+        failedTitle: '登录没有完成',
+        backToLogin: '返回登录',
+        goToSignup: '去注册',
+        errors: {
+            invalid_state: '这个登录链接已过期或已用过，请从登录页重新开始。',
+            exchange_failed: '身份提供方没有接受这次登录。请重试；一直失败的话请服务器管理员检查 OIDC 客户端配置。',
+            invalid_id_token: '身份提供方返回的令牌无法被本服务器验证。',
+            email_domain_not_allowed: '本服务器只允许指定邮箱域名的账号。',
+            provider_error: '身份提供方取消了这次登录。',
+            not_configured: '本服务器未启用单点登录。',
+            invalid_handoff: '这次登录交接已过期，请从登录页重新开始。',
+            network: '无法连接服务器完成登录。',
+        },
     },
 
     // Per-agent defaults settings screen.

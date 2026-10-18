@@ -133,6 +133,34 @@ model GoogleLoginChallenge {
     @@index([expiresAt])
 }
 
+/// B-620: one pending generic-OIDC authorization round trip (authorization code +
+/// PKCE). The state is the lookup key; the code verifier is stored encrypted under
+/// the server master key so a database read alone cannot finish the exchange.
+model OidcLoginChallenge {
+    id              String   @id
+    stateHash       String   @unique
+    nonceHash       String
+    codeVerifierEnc String
+    redirectUri     String
+    inviteCode      String?
+    expiresAt       DateTime
+    createdAt       DateTime @default(now())
+
+    @@index([expiresAt])
+}
+
+/// B-620: one-time handoff from the OIDC callback redirect to the Web client.
+/// The browser receives only an opaque code; the login token and account secret
+/// stay server-side (encrypted) until `POST /v1/auth/oidc/complete` consumes it.
+model OidcLoginHandoff {
+    codeHash   String   @id
+    payloadEnc String
+    expiresAt  DateTime
+    createdAt  DateTime @default(now())
+
+    @@index([expiresAt])
+}
+
 model EmailLoginChallenge {
     id         String    @id
     email      String

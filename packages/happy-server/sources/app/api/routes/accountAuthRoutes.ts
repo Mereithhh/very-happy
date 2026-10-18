@@ -12,6 +12,7 @@ import { log } from '@/utils/log';
 import { loadAccountSecret, upsertAccountSecret } from '@/app/auth/accountSecrets';
 import { getSignupStatus, resolveSignupPolicy, SignupPolicyError, withSignupGate } from '@/app/auth/signupPolicy';
 import { verifyGoogleIdToken } from '@/app/auth/googleOidc';
+import { oidcPublicConfig, resolveOidcConfig } from '@/app/auth/oidcProvider';
 import {
     consumeGoogleLoginChallenge,
     GoogleLoginChallengeCapacityError,
@@ -218,10 +219,12 @@ export function accountAuthRoutes(app: Fastify) {
     const googleConfig = resolveGoogleLoginConfig();
     const emailConfig = resolveEmailAuthConfig();
     const passwordLoginEnabled = isPasswordLoginEnabled();
+    const oidcConfig = resolveOidcConfig();
     assertUsableInteractiveAuth({
         email: emailConfig,
         googleClientId: googleConfig.clientId,
         passwordLoginEnabled,
+        oidcConfigured: oidcConfig !== null,
     });
     app.addHook('onReady', async () => {
         if (passwordLoginEnabled) return;
@@ -245,6 +248,7 @@ export function accountAuthRoutes(app: Fastify) {
             response: {
                 200: z.object({
                     googleClientId: z.string().optional(),
+                    oidc: z.object({ displayName: z.string() }).optional(),
                     emailOtpEnabled: z.boolean(),
                     passwordLoginEnabled: z.boolean(),
                     signup: z.object({
@@ -262,6 +266,7 @@ export function accountAuthRoutes(app: Fastify) {
         const googleClientId = googleConfig.clientId ?? undefined;
         return reply.send({
             googleClientId,
+            oidc: oidcPublicConfig(oidcConfig),
             emailOtpEnabled: emailConfig !== null,
             passwordLoginEnabled,
             signup: status,

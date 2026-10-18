@@ -114,6 +114,25 @@ dependency surface. Do not install the upstream-owned
 
 **Optional integrations**
 - Google account login: `GOOGLE_CLIENT_ID` (Web OAuth client ID) and `GOOGLE_ALLOWED_ORIGINS` (comma-separated exact browser origins). No client secret is needed for Google Identity Services ID-token login.
+- Generic OpenID Connect login (B-620; any provider with a discovery document, for
+  example Authentik, Keycloak, Okta, Entra ID): `OIDC_ISSUER` (the issuer URL,
+  https except loopback; its `/.well-known/openid-configuration` must be reachable
+  from the server) and `OIDC_CLIENT_ID` enable it; `OIDC_CLIENT_SECRET` is used
+  when the client is confidential (`client_secret_post`, or `client_secret_basic`
+  when the provider advertises only that). Register the redirect URI
+  `<server origin>/v1/auth/oidc/callback` at the provider. Optional:
+  `OIDC_DISPLAY_NAME` (button label, default `SSO`), `OIDC_SCOPES` (default
+  `openid profile email`; `openid` is always added), `OIDC_REDIRECT_URL` (explicit
+  callback URL when `PUBLIC_URL`/proxy headers would derive the wrong origin),
+  `OIDC_WEB_RETURN_URL` (Web origin to land on, when the Web UI is not served from
+  the API origin; `PUBLIC_WEBAPP_URL` is also honoured), `OIDC_ALLOWED_EMAIL_DOMAINS`
+  (comma-separated; accounts whose token email is missing or outside the list are
+  refused), and `MAX_PENDING_OIDC_LOGIN_CHALLENGES` (default `10000`). The flow is
+  authorization code + PKCE with server-held state/nonce; id_tokens are verified
+  with the provider's JWKS (RS256/ES256 family). Account creation obeys
+  `SIGNUP_MODE`; an identity is keyed `oidc:<issuer>` + `sub`, so the same person
+  always lands on the same account. A configured issuer counts as an interactive
+  login path for the `AUTH_PASSWORD_LOGIN_DISABLED` startup check.
 - Passwordless email login: set `AUTH_EMAIL_PROVIDER=resend` with `AUTH_EMAIL_FROM` and `RESEND_API_KEY`, or `AUTH_EMAIL_PROVIDER=cloudflare` with `AUTH_EMAIL_FROM`, `CLOUDFLARE_EMAIL_ACCOUNT_ID`, and `CLOUDFLARE_EMAIL_API_TOKEN`. Verify the sender domain first. Deploy and smoke-test a real code before optionally setting `AUTH_PASSWORD_LOGIN_DISABLED=true`; the server fails startup if that would leave no email or Google login path.
 
 Before deploying the one-Google-identity-per-account constraint, run this read-only

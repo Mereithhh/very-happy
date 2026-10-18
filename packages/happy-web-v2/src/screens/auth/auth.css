@@ -319,6 +319,19 @@
   font-size: var(--fs-12);
   line-height: 1.5;
 }
+/* B-620: `/login/oidc` landing state while the handoff is exchanged. */
+.auth-oidc-status {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.auth-oidc-status > div { display: grid; gap: var(--sp-1); min-width: 0; }
+.auth-oidc-status strong { color: var(--text); font-size: var(--fs-14); }
+.auth-oidc-status span { color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
 .auth-alt {
   padding: var(--sp-1);
   color: var(--text-dim);
