@@ -1,0 +1,108 @@
+/**
+ * Which steered messages a Stop made disappear (B-631; approach from Orca,
+ * src/main/claude/claude-command-lifecycle.ts and
+ * claude-structured-control-actions.ts).
+ *
+ * A steer is pushed into the running turn as an async user message with
+ * `priority: 'now'`. Claude Code 2.1.296 emits a top-level
+ * `command_lifecycle` frame for every uuid-stamped command (`command_uuid`,
+ * `state`: queued → started → completed | cancelled | discarded | refused;
+ * capability `msg_lifecycle_v1`), and an interrupt's receipt lists the
+ * commands it swept (`cancelled`, with `interrupt_cancel_queued_v1`) or left
+ * (`still_queued`, `interrupt_receipt_v1`). Measured 2026-10-19
+ * (skills/tmp/vh-orca-lessons/b631-scratch/probe).
+ *
+ * A terminal state for a command that never `started` is a verdict: the model
+ * never read it, and the web should see the B-332 tombstone instead of a
+ * message that looks answered. After `started`, `cancelled` only says the
+ * turn it was in ended (an interrupt, a hard failure) — the model may have
+ * read it, the web already shows that Stop, so it is settled silently (Orca:
+ * "any end is doubt"). Commands without a uuid emit no lifecycle at all, and
+ * older CLIs emit none: a steer that is never tracked is simply never reported.
+ */
+
+export const CLAUDE_COMMAND_LIFECYCLE_STATES = ['queued', 'started', 'completed', 'cancelled', 'discarded', 'refused'] as const;
+export type ClaudeCommandLifecycleState = typeof CLAUDE_COMMAND_LIFECYCLE_STATES[number];
+export type ClaudeCommandLifecycle = { uuid: string; state: ClaudeCommandLifecycleState };
+
+/** The lifecycle a frame carries, or null for every other frame. */
+export function readClaudeCommandLifecycle(frame: unknown): ClaudeCommandLifecycle | null {
+    const m = frame as { type?: unknown; subtype?: unknown; command_uuid?: unknown; state?: unknown } | null;
+    if (!m) return null;
+    // 2.1.296 emits it as its own top-level type; a system subtype of the same
+    // name is accepted too, should a later CLI fold it in.
+    const isLifecycle = m.type === 'command_lifecycle' || (m.type === 'system' && m.subtype === 'command_lifecycle');
+    if (!isLifecycle || typeof m.command_uuid !== 'string' || m.command_uuid.length === 0) return null;
+    const state = CLAUDE_COMMAND_LIFECYCLE_STATES.find((candidate) => candidate === m.state);
+    return state ? { uuid: m.command_uuid, state } : null;
+}
+
+export type ClaudeInterruptReceipt = { still_queued?: unknown; cancelled?: unknown } | null | undefined;
+
+const uuidList = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : [];
+
+/** Capability a CLI advertises on system/init when `interrupt({cancelQueued:true})` is honored. */
+export const INTERRUPT_CANCEL_QUEUED_CAPABILITY = 'interrupt_cancel_queued_v1';
+
+const REPORTED_MAX = 512;
+
+export function createClaudeSteerTracker() {
+    /** Steered uuids the CLI has not settled: whether it reported `started`. */
+    const pending = new Map<string, { started: boolean }>();
+    /** Reported once, whichever of receipt / frame / cancel response said it first. */
+    const reported = new Set<string>();
+
+    const drop = (uuid: string): string | null => {
+        pending.delete(uuid);
+        if (reported.has(uuid)) return null;
+        reported.add(uuid);
+        if (reported.size > REPORTED_MAX) reported.delete(reported.values().next().value!);
+        return uuid;
+    };
+
+    return {
+        track(uuid: string): void { pending.set(uuid, { started: false }); },
+        isTracked(uuid: string): boolean { return pending.has(uuid); },
+        /** A lifecycle frame; returns the uuids now known to have never run. */
+        observe(lifecycle: ClaudeCommandLifecycle): string[] {
+            const entry = pending.get(lifecycle.uuid);
+            if (!entry) return [];
+            switch (lifecycle.state) {
+                case 'queued': return [];
+                case 'started': entry.started = true; return [];
+                case 'completed': pending.delete(lifecycle.uuid); return [];
+                default: {
+                    if (entry.started) {
+                        pending.delete(lifecycle.uuid);
+                        return [];
+                    }
+                    const dropped = drop(lifecycle.uuid);
+                    return dropped ? [dropped] : [];
+                }
+            }
+        },
+        /**
+         * An interrupt's receipt: `cancelled` members we track never ran;
+         * `still_queued` members we track are returned for the per-uuid
+         * follow-up (`cancel_async_message`) a CLI without cancel_queued needs.
+         */
+        onInterruptReceipt(receipt: ClaudeInterruptReceipt): { dropped: string[]; stillQueued: string[] } {
+            const dropped: string[] = [];
+            for (const uuid of uuidList(receipt?.cancelled)) {
+                if (!pending.has(uuid)) continue;
+                const result = drop(uuid);
+                if (result) dropped.push(result);
+            }
+            const stillQueued = uuidList(receipt?.still_queued).filter((uuid) => pending.has(uuid));
+            return { dropped, stillQueued };
+        },
+        /** The answer to `cancel_async_message`: true = withdrawn before it ran; false = already dequeued, its lifecycle frames follow. */
+        onCancelResponse(uuid: string, cancelled: boolean): string[] {
+            if (!cancelled || !pending.has(uuid)) return [];
+            const dropped = drop(uuid);
+            return dropped ? [dropped] : [];
+        },
+        clear(): void { pending.clear(); },
+    };
+}
