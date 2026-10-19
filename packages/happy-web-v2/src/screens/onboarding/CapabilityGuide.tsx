@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { MonitorSmartphone, TerminalSquare, FolderOpen, ArrowRight } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
+import { brandText } from '@/app/brand';
 import { Command } from './ConnectMachineGuide';
 import { SkillDocumentLink } from '@/ui/SkillDocumentLink';
 import './capabilityGuide.css';
@@ -19,7 +20,7 @@ export function MachineWorkflowGuide() {
     ['Keep the work within reach', 'Open Files in the chat header to browse the execution computer, preview code and inspect changes. Notes, todos, teams and automations help you track the next step and review results.', '/docs/architecture', 'Explore the capabilities'],
   ];
   const icons = [MonitorSmartphone, TerminalSquare, FolderOpen];
-  return <section className="cap-guide" aria-label={zh ? 'Very Happy 能做什么' : 'What Very Happy can do'}>
+  return <section className="cap-guide" aria-label={brandText(zh ? 'Very Happy 能做什么' : 'What Very Happy can do')}>
     <h2>{zh ? '你的电脑运行 Agent，你在哪里都能接续' : 'Your computers run the agents. You can work from anywhere.'}</h2>
     <div className="cap-guide__steps">{steps.map(([title, description, to, action], index) => {
       const Icon = icons[index];
@@ -33,7 +34,7 @@ export function AgentSkillsGuide() {
   const { lang } = useTranslation();
   const zh = lang.startsWith('zh');
   return <section className="cap-guide" aria-labelledby="cap-skills-title">
-    <h2 id="cap-skills-title">{zh ? '把 Very Happy 的能力交给你的 Agent' : 'Give your agent the Very Happy instructions'}</h2>
+    <h2 id="cap-skills-title">{brandText(zh ? '把 Very Happy 的能力交给你的 Agent' : 'Give your agent the Very Happy instructions')}</h2>
     <p>{zh ? '官方 skills 说明如何操作团队、待办、自动化与外部来源。按需要阅读或安装，不必全部配置后才能开始聊天。' : 'Official skills explain teams, todos, automations and external providers. Read or install what you need; none is a prerequisite for ordinary chat.'}</p>
     <div className="cap-guide__skills">
       <article><h3>{zh ? '团队协作 skill' : 'Teams skill'}</h3><p>{zh ? '网页创建团队会自动准备协作指引。从终端发起时，展开上方“从终端发起团队”，选择 Claude Code、Codex 或 pi，复制安装命令。让托管会话读取安装返回的绝对路径；安装本身不会自动接管终端或修改宿主的 skill 发现目录。' : 'The app prepares team instructions automatically. For terminal use, expand “Start from a terminal” above, select Claude Code, Codex or pi, and copy the install command. Have the managed conversation read the returned path. Installation does not attach a terminal or modify host skill discovery.'}</p><a href="#team-skill-install" onClick={() => { const panel = document.getElementById('team-skill-install'); if (panel instanceof HTMLDetailsElement) panel.open = true; }}>{zh ? '选择 Agent 并查看安装命令' : 'Choose an agent and get the install command'}<ArrowRight size={14}/></a><br/><Link to="/docs/agent-teams">{zh ? '团队安装与使用教程' : 'Teams installation guide'}<ArrowRight size={14}/></Link></article>
