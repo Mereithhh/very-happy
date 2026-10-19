@@ -1,5 +1,5 @@
 import { Link, NavLink } from 'react-router-dom';
-import { CyberMark } from '@/ui/CyberMark';
+import { BrandIcon, BrandEnvBadge } from '@/ui/BrandMark';
 import { BRAND } from '@/app/brand';
 import { QuickThemeToggle } from '@/ui/QuickThemeToggle';
 import { GITHUB_URL } from './publicContent';
@@ -12,8 +12,10 @@ export function PublicHeader() {
   return (
     <><a className="pub-skip" href="#main-content">{copy.shell.skip}</a><header className="pub-header">
       <Link className="pub-brand" to="/welcome" aria-label={copy.shell.homeLabel}>
-        {BRAND.logoUrl ? <img src={BRAND.logoUrl} alt="" width={28} height={28} style={{ width: 28, height: 28, objectFit: 'contain' }} /> : <CyberMark size={28} />}
-        <span>{BRAND.wordmark}</span>
+        {BRAND.wordmarkUrl
+          ? <img className="pub-brand-lockup" src={BRAND.wordmarkUrl} alt={BRAND.name} style={{ height: 28, width: 'auto' }} />
+          : <><BrandIcon size={28} /><span>{BRAND.wordmark}</span></>}
+        <BrandEnvBadge />
       </Link>
       <nav aria-label={copy.shell.navLabel}>
         <LanguageSwitcher />

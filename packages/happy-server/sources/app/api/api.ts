@@ -36,7 +36,8 @@ import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 import { attachmentRoutes } from "./routes/attachmentRoutes";
 import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
 import * as path from "path";
-import { injectRuntimeConfig, runtimeConfigScript } from './htmlConfigInjection';
+import { runtimeConfigScript, transformIndexHtml, applyBrandToManifest, readHtmlBrand } from './htmlConfigInjection';
+import { requestOrigin } from './requestOrigin';
 import * as fs from "fs";
 import { resolveTrustProxy, type TrustedProxyConfig } from './trustProxy';
 import { configureClientIpTrust, requestLogSerializer } from './clientIp';
@@ -51,6 +52,8 @@ export interface StartApiOptions {
     host?: string;
     staticDir?: string;
     injectHtmlConfig?: Record<string, unknown>;
+    /** B-638: operator brand files served read-only at `/brand/` (see standalone `BRAND_ASSETS_DIR`). */
+    brandAssetsDir?: string;
     trustProxy?: TrustedProxyConfig;
 }
 
@@ -164,10 +167,17 @@ export async function startApi(opts: StartApiOptions = {}) {
         // SPA fallback (not-found handler below) instead of wildcard; hashed
         // build output is immutable, everything else revalidates.
         app.register(fastifyStatic, webStaticOptions(opts.staticDir));
-        if (injectScript) {
+        if (opts.brandAssetsDir) {
+            app.register(fastifyStatic, { root: opts.brandAssetsDir, prefix: '/brand/', decorateReply: false, maxAge: 3_600_000 });
+        }
+        const brand = readHtmlBrand(opts.injectHtmlConfig);
+        if (injectScript || brand) {
             app.addHook('onSend', async (request, reply, payload) => {
                 const contentType = reply.getHeader('content-type');
-                if (typeof contentType !== 'string' || !contentType.includes('text/html')) return payload;
+                if (typeof contentType !== 'string') return payload;
+                const isHtml = contentType.includes('text/html');
+                const isManifest = brand !== null && contentType.includes('application/manifest+json');
+                if (!isHtml && !isManifest) return payload;
                 let html: string;
                 if (typeof payload === 'string') {
                     html = payload;
@@ -183,12 +193,14 @@ export async function startApi(opts: StartApiOptions = {}) {
                 } else {
                     return payload;
                 }
-                const injected = injectRuntimeConfig(html, injectScript);
+                const injected = isManifest
+                    ? applyBrandToManifest(html, brand)
+                    : transformIndexHtml(html, injectScript, brand, requestOrigin(request));
                 reply.header('content-length', Buffer.byteLength(injected));
                 return injected;
             });
         }
-        app.setNotFoundHandler(spaFallback(opts.staticDir, injectScript));
+        app.setNotFoundHandler(spaFallback(opts.staticDir, injectScript, brand));
     }
 
     // Socket.IO and release-admin routes must be registered before Fastify

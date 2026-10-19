@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { injectRuntimeConfig, runtimeConfigScript } from './htmlConfigInjection';
+import { applyBrandToHtml, applyBrandToManifest, injectRuntimeConfig, readHtmlBrand, runtimeConfigScript, transformIndexHtml } from './htmlConfigInjection';
 
 describe('runtime HTML config injection', () => {
     it('serializes the config into a stable marked script', () => {
@@ -14,5 +14,54 @@ describe('runtime HTML config injection', () => {
         const twice = injectRuntimeConfig(once, script);
         expect(twice).toBe(once);
         expect(twice.match(/__HAPPY_CONFIG__/g)).toHaveLength(1);
+    });
+
+    const INDEX = `<html><head><title>Very Happy</title>
+<meta name="apple-mobile-web-app-title" content="Very Happy" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="icon" type="image/png" href="favicon.png" />
+<meta property="og:title" content="Very Happy — tagline" />
+<meta property="og:image" content="https://veryhappy.dev/icon-512.png" />
+</head><body><strong class="vh-startup-wordmark">Very Happy</strong></body></html>`;
+
+    it('B-638: rewrites title, icons, link preview and the splash for an operator brand', () => {
+        const brand = readHtmlBrand({ brand: { name: 'Apodex Vibe', iconUrl: '/brand/icon-512.png', wordmarkUrl: '/brand/w.svg', wordmarkDarkUrl: '/brand/w-dark.svg', envLabel: 'Staging' } });
+        const html = applyBrandToHtml(INDEX, brand, 'https://vibe.example');
+        expect(html).toContain('<title>Apodex Vibe · Staging</title>');
+        expect(html).toContain('<meta name="apple-mobile-web-app-title" content="Apodex Vibe" />');
+        expect(html).toContain('<link rel="apple-touch-icon" href="/brand/icon-512.png" />');
+        expect(html).toContain('<link rel="icon" type="image/png" href="/brand/icon-512.png" />');
+        expect(html).toContain('<meta property="og:title" content="Apodex Vibe" />');
+        expect(html).toContain('<meta property="og:image" content="https://vibe.example/brand/icon-512.png" />');
+        expect(html).toContain('<img class="vh-startup-lockup vh-brand-light" src="/brand/w.svg" alt="Apodex Vibe">');
+        expect(html).toContain('<img class="vh-startup-lockup vh-brand-dark" src="/brand/w-dark.svg" alt="Apodex Vibe">');
+        expect(html).not.toContain('vh-startup-wordmark');
+        expect(html.match(/id="vh-brand-style"/g)).toHaveLength(1);
+        expect(applyBrandToHtml(html, brand, 'https://vibe.example')).toBe(html);
+    });
+
+    it('B-638: a name-only brand keeps the text wordmark and the shipped icons; no brand is a no-op', () => {
+        const html = applyBrandToHtml(INDEX, readHtmlBrand({ brand: { name: 'Acme' } }));
+        expect(html).toContain('<title>Acme</title>');
+        expect(html).toContain('<strong class="vh-startup-wordmark">Acme</strong>');
+        expect(html).toContain('href="favicon.png"');
+        expect(html).toContain('og:image" content="https://veryhappy.dev/icon-512.png"');
+        expect(applyBrandToHtml(INDEX, null)).toBe(INDEX);
+        expect(readHtmlBrand({ serverUrl: 'same-origin' })).toBeNull();
+        expect(transformIndexHtml(INDEX, runtimeConfigScript({ a: 1 }), null)).toContain('__HAPPY_CONFIG__');
+    });
+
+    it('B-638: the PWA manifest follows the brand name, label and icon', () => {
+        const manifest = JSON.stringify({ name: 'Very Happy', short_name: 'Very Happy', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }], start_url: '/' });
+        const out = JSON.parse(applyBrandToManifest(manifest, readHtmlBrand({ brand: { name: 'Apodex Vibe', envLabel: 'Staging', iconUrl: '/brand/icon-512.png' } })));
+        expect(out).toMatchObject({ name: 'Apodex Vibe (Staging)', short_name: 'Apodex Vibe', start_url: '/' });
+        expect(out.icons).toEqual([
+            { src: '/brand/icon-512.png', sizes: '192x192', type: 'image/png' },
+            { src: '/brand/icon-512.png', sizes: '512x512', type: 'image/png' },
+            { src: '/brand/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ]);
+        expect(JSON.parse(applyBrandToManifest(manifest, readHtmlBrand({ brand: { name: 'Acme' } }))).icons).toHaveLength(1);
+        expect(applyBrandToManifest('not json', readHtmlBrand({ brand: { name: 'Acme' } }))).toBe('not json');
+        expect(applyBrandToManifest(manifest, null)).toBe(manifest);
     });
 });

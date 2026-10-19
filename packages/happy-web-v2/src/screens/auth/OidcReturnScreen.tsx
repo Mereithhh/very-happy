@@ -8,7 +8,7 @@ import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { authReturnTarget } from '@/app/authReturnTarget';
 import { oidcCompleteErrorKey, parseOidcReturn, type OidcReturnErrorKey } from './oidcReturnPresentation';
 import './auth.css';
-import { BrandMark } from '@/ui/BrandMark';
+import { BrandLockup } from '@/ui/BrandMark';
 import { brandText } from '@/app/brand';
 
 /**
@@ -56,7 +56,7 @@ export function OidcReturnScreen() {
     <div className="auth-page">
       <CyberBackdrop />
       <div className="auth-card auth-card--oidc-return">
-        <BrandMark size={40} className="auth-brand" wordmarkClassName="auth-wordmark" />
+        <BrandLockup height={36} size={40} className="auth-brand" wordmarkClassName="auth-wordmark" />
         {errorKey === null ? (
           <div className="auth-oidc-status" role="status" aria-live="polite">
             <Spinner size={18} />

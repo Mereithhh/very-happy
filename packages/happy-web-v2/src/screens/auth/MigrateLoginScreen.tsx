@@ -6,7 +6,7 @@ import { Button, Spinner } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { authReturnTarget } from '@/app/authReturnTarget';
-import { BrandMark } from '@/ui/BrandMark';
+import { BrandLockup } from '@/ui/BrandMark';
 import { BRAND, brandText } from '@/app/brand';
 import { OidcLoginButton } from './OidcLoginButton';
 import { migrateLoginMode, parseMigrationHandoff } from './migrateLoginPresentation';
@@ -61,7 +61,7 @@ export function MigrateLoginScreen() {
     <div className="auth-page">
       <CyberBackdrop />
       <div className="auth-card auth-card--oidc-return">
-        <BrandMark size={40} className="auth-brand" wordmarkClassName="auth-wordmark" />
+        <BrandLockup height={36} size={40} className="auth-brand" wordmarkClassName="auth-wordmark" />
         {mode === 'invalid' || error ? (
           <>
             <div className="auth-eyebrow eyebrow">{t('oidc.failedTitle')}</div>

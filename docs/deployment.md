@@ -174,11 +174,21 @@ dependency surface. Do not install the upstream-owned
   mid-turn (a daemon whose environment pins `HAPPY_SERVER_URL` refuses and logs
   why; running session wrappers finish on the old relay). Keep the old relay
   up (read-mostly) until the banner has done its job, then switch it off.
-- White-label (B-624 / B-637, standalone entrypoint): `BRAND_NAME` renames the
+- White-label (B-624 / B-637 / B-638, standalone entrypoint): `BRAND_NAME` renames the
   product in every Web UI string that names it (auth cards, loaders, Settings →
   About, document title, the PWA install card, first-machine guide, notifications,
-  release notes; max 64 chars), `BRAND_LOGO_URL` (http(s) URL or absolute path)
-  replaces the brand mark on those screens and the install card, and `WEB_LANDING=off` removes the marketing page so anonymous
+  release notes; max 64 chars). Brand assets, each an http(s) URL or absolute path:
+  `BRAND_LOGO_URL` (square mark: sidebar, auth cards, empty states, install card,
+  splash) with optional `BRAND_LOGO_DARK_URL` for the dark theme; `BRAND_WORDMARK_URL`
+  (+ `_DARK_URL`, horizontal logo-with-text lockup: auth cards, splash, public
+  header); `BRAND_ICON_URL` (opaque square PNG ≥ 512 px: favicon, apple-touch-icon,
+  PWA manifest icons, `og:image`). The server rewrites `index.html` and
+  `manifest.webmanifest` on the way out, so the first paint, the tab and the
+  home-screen icon already carry the brand. `BRAND_ASSETS_DIR=/some/dir` serves that
+  directory read-only at `/brand/` (mount a ConfigMap and point the URLs at
+  `/brand/<file>`). `BRAND_ENV_LABEL` (max 24 chars, e.g. `Staging`) adds a badge
+  next to the name and suffixes the title / PWA name so a test relay is never
+  mistaken for production. Finally, `WEB_LANDING=off` removes the marketing page so anonymous
   visitors to `/` and `/welcome` go straight to `/login` (docs and legal pages
   stay public). Values are injected into `window.__HAPPY_CONFIG__` as `brand` /
   `landing`; an explicit `HAPPY_INJECT_HTML_CONFIG` JSON still wins.

@@ -42,6 +42,7 @@ export async function startServer(opts: StartServerOptions): Promise<{ port: num
             host: opts.host,
             staticDir: opts.staticDir,
             injectHtmlConfig: opts.injectHtmlConfig,
+            brandAssetsDir: opts.brandAssetsDir,
         });
         await startMetricsServer();
         startDatabaseMetricsUpdater();

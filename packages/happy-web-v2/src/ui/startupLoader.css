@@ -26,3 +26,5 @@
 @media (prefers-reduced-motion:reduce) { .vh-startup-signal,.vh-startup-dot { animation:none; } #vh-splash { transition:none; } }
 .vh-startup--compact { padding:16px; }
 .vh-startup--presentation .vh-startup-signal { animation:none; stroke:var(--line-2); }
+.vh-startup-lockup { display:flex; align-items:center; justify-content:center; gap:8px; margin:0 auto; }
+.vh-startup-lockup > img { height:34px; width:auto; max-width:240px; }
