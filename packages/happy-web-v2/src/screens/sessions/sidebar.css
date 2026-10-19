@@ -16,11 +16,11 @@
   align-items: center;
   gap: var(--sp-2);
 }
-/* B-638: the name never truncates; the environment badge wraps onto its own line under it
+/* B-638: icon | name on row 1, the environment badge under the name on row 2
    (the sidebar is too narrow for icon + name + badge + header buttons in one row). */
-.sb-brand--button { min-width: 0; flex-wrap: wrap; row-gap: 0; }
-.sb-brand--button > span { white-space: nowrap; }
-.sb-brand--button .brand-env { flex-basis: 100%; width: fit-content; margin-left: calc(18px + var(--sp-2)); margin-top: -2px; }
+.sb-brand--button { display: grid; grid-template-columns: 18px minmax(0, max-content); column-gap: var(--sp-2); align-items: center; justify-items: start; min-width: 0; }
+.sb-brand--button > span { grid-column: 2; grid-row: 1; white-space: nowrap; }
+.sb-brand--button .brand-env { grid-column: 2; grid-row: 2; margin: -2px 0 0; }
 .sb-brand .brand-env { margin-left: var(--sp-1); padding: 0 5px; font-size: 9px; }
 .sb-brand--button {
   min-height: 32px;
