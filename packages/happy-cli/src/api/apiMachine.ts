@@ -73,6 +73,8 @@ interface ServerToDaemonEvents {
     'terminal-close': (data: { terminalId: string }) => void;
     'session-archive': (data: { sessionId: string }) => void;
     'server-draining': (data: ReleaseDrainNotice) => void;
+    /** B-635: the relay is retiring; `data` is a ServerMigrateNotice (validated by the daemon). */
+    'server-migrate': (data: unknown) => void;
 }
 
 interface DaemonToServerEvents {
@@ -1465,6 +1467,18 @@ export class ApiMachineClient {
             if (!parsed.success || parsed.data.deadline <= Date.now()) return;
             void this.startReleaseHandover(parsed.data);
         });
+
+        socket.on('server-migrate', (data) => {
+            if (this.socket !== socket) return;
+            this.serverMigrateHandler?.(data);
+        });
+    }
+
+    private serverMigrateHandler: ((notice: unknown) => void) | null = null;
+
+    /** B-635: the daemon decides what to do with a relay-migration notice (daemon/serverMigration.ts). */
+    setServerMigrateHandler(handler: ((notice: unknown) => void) | null): void {
+        this.serverMigrateHandler = handler;
     }
 
     private startReleaseHandover(notice: ReleaseDrainNotice): Promise<void> {
