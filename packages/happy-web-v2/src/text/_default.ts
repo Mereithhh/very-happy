@@ -2265,6 +2265,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct19b: {
+                title: 'Terminals follow a moved relay on their own',
+                summary: 'When a relay retires and sends your account to a new one, the daemon on each machine moves itself: no command to type, no re-pairing.',
+                follow: 'On the retiring relay\'s notice the daemon obtains a token from the new relay with a signed ticket, rewrites its settings and credentials, and restarts itself once no agent is mid-turn. Sessions already running finish on the old relay; new ones start on the new one.',
+                refuse: 'A daemon whose environment pins HAPPY_SERVER_URL, or that cannot reach the new relay, stays put and says why in its log instead of ending up half-moved.',
+            },
             oct19a: {
                 title: 'pi, Gemini and Claude sessions survive their agent dying, end turns on time, and say why something failed',
                 summary: 'The third wrapper batch after the Codex one, for the three other agents. Needs CLI 0.2.177; the web shows the new failure lines in red.',

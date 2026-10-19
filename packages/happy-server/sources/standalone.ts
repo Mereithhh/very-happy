@@ -164,6 +164,42 @@ export async function runMigrations(opts: { pgliteDir: string; migrationsDir?: s
     }
 }
 
+/** B-636: operator tools for moving a copied database under another relay. */
+async function runRekey(args: string[]) {
+    process.env.DB_PROVIDER = resolveDatabaseProvider();
+    process.env.PGLITE_DIR = process.env.PGLITE_DIR || pgliteDir;
+    const from = process.env.OLD_HANDY_MASTER_SECRET;
+    const to = process.env.HANDY_MASTER_SECRET;
+    if (!from || !to) throw new Error('OLD_HANDY_MASTER_SECRET and HANDY_MASTER_SECRET are both required');
+    const apply = args.includes('--apply');
+    const { db } = await import('./storage/db');
+    const { rekeyMasterSecret } = await import('./app/migration/rekey');
+    const report = await db.$transaction((tx) => rekeyMasterSecret(tx, { from, to, apply }), { timeout: 10 * 60_000 });
+    console.log(`${apply ? 'Rekeyed' : 'Would rekey'}: ${JSON.stringify({ ...report, failed: report.failed.length })}`);
+    for (const row of report.failed) console.log(`  could not open with the old secret: ${row}`);
+    if (!apply) console.log('Dry run. Re-run with --apply to write.');
+    await db.$disconnect();
+}
+
+async function runPruneAccounts(args: string[]) {
+    process.env.DB_PROVIDER = resolveDatabaseProvider();
+    process.env.PGLITE_DIR = process.env.PGLITE_DIR || pgliteDir;
+    const apply = args.includes('--apply');
+    const keepArg = args[args.indexOf('--keep') + 1];
+    const keepFile = args[args.indexOf('--keep-file') + 1];
+    let keep: string[] = [];
+    if (args.includes('--keep') && keepArg) keep = keepArg.split(',');
+    else if (args.includes('--keep-file') && keepFile) keep = fs.readFileSync(keepFile, 'utf8').split(/\r?\n/).map((line) => line.replace(/#.*$/, '').trim()).filter(Boolean);
+    else throw new Error('--keep <id,id,…> or --keep-file <path> is required');
+    const { db } = await import('./storage/db');
+    const { pruneAccounts } = await import('./app/migration/prune');
+    const report = await db.$transaction((tx) => pruneAccounts(tx, { keep, apply }), { timeout: 10 * 60_000 });
+    console.log(`${apply ? 'Deleted' : 'Would delete'} ${report.deletedAccounts} account(s), keeping ${report.keptAccounts}:`);
+    for (const row of report.rows) console.log(`  ${row.table}: ${row.count}`);
+    if (!apply) console.log('Dry run. Re-run with --apply to delete.');
+    await db.$disconnect();
+}
+
 async function serve() {
     // Ensure DB_PROVIDER is set for db.ts
     process.env.DB_PROVIDER = resolveDatabaseProvider();
@@ -266,6 +302,18 @@ if (isDirectInvocation) {
                 process.exit(1);
             });
             break;
+        case "rekey":
+            runRekey(process.argv.slice(3)).catch(e => {
+                console.error('Rekey failed', safeErrorMetadata(e));
+                process.exit(1);
+            });
+            break;
+        case "prune-accounts":
+            runPruneAccounts(process.argv.slice(3)).catch(e => {
+                console.error('Prune failed', safeErrorMetadata(e));
+                process.exit(1);
+            });
+            break;
         default:
             console.log(`happy-server - portable distribution
 
@@ -273,6 +321,11 @@ Usage:
   happy-server migrate    Apply database migrations
   happy-server serve      Start the server
   happy-server relay      Start a database-free regional realtime relay
+  happy-server rekey [--apply]
+                          Re-wrap master-secret-protected columns from OLD_HANDY_MASTER_SECRET
+                          to HANDY_MASTER_SECRET (dry run unless --apply); drops login sessions
+  happy-server prune-accounts --keep <id,id,…> | --keep-file <path> [--apply]
+                          Delete every account NOT listed, with all its rows (dry run unless --apply)
 
 Environment variables:
   DATA_DIR          Base data directory (default: ./data)

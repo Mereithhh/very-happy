@@ -2414,6 +2414,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            oct19b: {
+                title: '服务器搬家，终端自己跟过去',
+                summary: '服务器退役、把你的账号送到新服务器时，每台机器上的 daemon 会自己搬过去：不用敲命令，不用重新配对。',
+                follow: '收到退役服务器的通知后，daemon 用签名票到新服务器换 token，改写自己的设置和凭据，并在没有 agent 进行中时自行重启。已经在跑的会话在旧服务器跑完，新会话从新服务器开始。',
+                refuse: '环境里固定了 HAPPY_SERVER_URL、或连不上新服务器的 daemon 会原地不动，并在日志里说明原因，不会搬到一半。',
+            },
             oct19a: {
                 title: 'pi、Gemini、Claude 会话：agent 挂了会说、轮次按时结束、失败说原因',
                 summary: 'Codex 之后的第三批 wrapper 修复，覆盖另外三个 agent。需要 CLI 0.2.177；网页会把新的失败行标红。',

@@ -142,9 +142,17 @@ dependency surface. Do not install the upstream-owned
   that address — only set it when the provider really verifies emails. A configured issuer counts as an interactive
   login path for the `AUTH_PASSWORD_LOGIN_DISABLED` startup check.
 - Moving everyone to another relay (B-627): copy the database to the new relay
-  first (same account/session/machine ids on both sides; re-encrypt the
-  master-secret-wrapped columns if the new relay has a different
-  `HANDY_MASTER_SECRET`), then on the OLD relay set `MIGRATION_TARGET_URL` (API
+  first (`pg_dump` → restore; account/session/machine ids stay the same on both
+  sides). If the new relay has a different `HANDY_MASTER_SECRET`, run
+  `happy-server rekey` against the copy with `OLD_HANDY_MASTER_SECRET=<old>` and
+  `HANDY_MASTER_SECRET=<new>` (B-636; dry run by default, `--apply` to write): it
+  re-wraps account secrets, GitHub/vendor tokens and team credentials and drops
+  the old relay's login sessions, so everyone signs in once more. To take only
+  some people along, run `happy-server prune-accounts --keep-file ids.txt`
+  (one account id per line, `#` comments; dry run by default, `--apply` to
+  delete) on the copy: every account not listed is removed with all its rows,
+  walking the real foreign-key graph, and GitHub tokens nobody references any
+  more go with them. Then on the OLD relay set `MIGRATION_TARGET_URL` (API
   origin of the new relay), optionally `MIGRATION_TARGET_WEBAPP_URL` (Web
   origin, defaults to the API origin) and `MIGRATION_TARGET_NAME` (banner
   wording, defaults to the host), and say who moves with `MIGRATION_ACCOUNT_IDS`

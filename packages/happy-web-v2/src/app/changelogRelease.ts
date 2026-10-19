@@ -16,6 +16,15 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-19-daemon-follows-relay',
+    cliVersion: '0.2.178',
+    date: '2026-10-19',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct19b.title',
+    summaryKey: 'changelog.releases.oct19b.summary',
+    itemKeys: ['changelog.releases.oct19b.follow', 'changelog.releases.oct19b.refuse'],
+  },
+  {
     id: '2026-10-19-agent-wrappers-orca-align',
     cliVersion: '0.2.177',
     date: '2026-10-19',
