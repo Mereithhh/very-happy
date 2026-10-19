@@ -55,6 +55,26 @@ export function brandText(text: string, brand: BrandConfig = BRAND): string {
   return text.replace(/Very Happy/g, brand.name).replace(/very happy/g, brand.wordmark);
 }
 
+/**
+ * Deep copy of a string dictionary with every product-name mention swapped
+ * (public landing/docs/PWA copy, which does not go through `t()`); returns the
+ * same object on the default brand so React memoisation keeps working.
+ */
+export function brandCopy<T>(value: T, brand: BrandConfig = BRAND): T {
+  if (brand.isDefault) return value;
+  const visit = (node: unknown): unknown => {
+    if (typeof node === 'string') return brandText(node, brand);
+    if (Array.isArray(node)) return node.map(visit);
+    if (node && typeof node === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(node as Record<string, unknown>)) out[key] = visit(child);
+      return out;
+    }
+    return node;
+  };
+  return visit(value) as T;
+}
+
 /** Title + PWA title follow the brand; the default build keeps what index.html ships. */
 export function applyBrandToDocument(brand: BrandConfig, doc: Document = document): void {
   if (brand.isDefault) return;

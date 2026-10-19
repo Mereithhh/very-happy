@@ -10,6 +10,7 @@ import { zhHant } from './translations/zh-Hant';
 import { ja } from './translations/ja';
 import { loadSettings } from '@/sync/persistence';
 import { type SupportedLanguage, DEFAULT_LANGUAGE } from './_all';
+import { brandText } from '@/app/brand';
 import { announceLanguageChange, browserLanguageTags, LANGUAGE_CHANGE_EVENT, resolveLanguageFromTags, setDocumentLanguage } from '@/i18n/localeCore';
 
 /**
@@ -177,15 +178,17 @@ export function t<K extends TranslationKey>(
             return key;
         }
 
-        // If it's a function, call it with the provided parameters
+        // If it's a function, call it with the provided parameters.
+        // B-637: a white-labelled relay (B-624) renames the product in every
+        // string the app shows, not only in the auth cards.
         if (typeof value === 'function') {
             const params = args[0];
-            return value(params);
+            return brandText(value(params));
         }
 
         // If it's a string constant, return it directly
         if (typeof value === 'string') {
-            return value;
+            return brandText(value);
         }
 
         // Fallback for unexpected types

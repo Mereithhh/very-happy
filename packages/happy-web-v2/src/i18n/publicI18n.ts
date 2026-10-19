@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { BRAND, brandCopy } from '@/app/brand';
 import { SUPPORTED_LANGUAGE_CODES, type SupportedLanguage } from '@/text/_all';
 import {
   LANGUAGE_CHANGE_EVENT,
@@ -145,7 +146,9 @@ const zhHans: PublicCopy = {
   },
 };
 
-const dictionaries: Partial<Record<SupportedLanguage, PublicCopy>> = { en, 'zh-Hans': zhHans };
+// B-637: the public/PWA copy names the product too; swap it once per language
+// for a white-labelled relay (B-624) and keep the default build's objects as-is.
+const dictionaries: Partial<Record<SupportedLanguage, PublicCopy>> = { en: brandCopy(en, BRAND), 'zh-Hans': brandCopy(zhHans, BRAND) };
 let liveLanguage: SupportedLanguage | null = null;
 const listeners = new Set<() => void>();
 
@@ -175,7 +178,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function getPublicLanguage(): SupportedLanguage { return resolveLanguage(); }
-export function getPublicCopy(language = resolveLanguage()): PublicCopy { return dictionaries[language] ?? en; }
+export function getPublicCopy(language = resolveLanguage()): PublicCopy { return dictionaries[language] ?? dictionaries.en ?? en; }
 
 export function usePublicI18n() {
   const language = useSyncExternalStore(

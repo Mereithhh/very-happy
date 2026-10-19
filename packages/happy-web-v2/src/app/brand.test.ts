@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBrandToDocument, brandText, DEFAULT_BRAND_NAME, readBrandConfig } from './brand';
+import { applyBrandToDocument, brandCopy, brandText, DEFAULT_BRAND_NAME, readBrandConfig } from './brand';
 
 describe('B-624 brand config', () => {
   it('defaults to the Very Happy lockup with the landing page on', () => {
@@ -24,6 +24,13 @@ describe('B-624 brand config', () => {
     const apodex = readBrandConfig({ brand: { name: 'Apodex Vibe' } });
     expect(brandText('登录 — Very Happy', apodex)).toBe('登录 — Apodex Vibe');
     expect(brandText('very happy · Very Happy CLI', apodex)).toBe('Apodex Vibe · Apodex Vibe CLI');
+  });
+
+  it('B-637: deep-copies a dictionary with the name swapped, and keeps the default object identity', () => {
+    const copy = { pwa: { title: 'Install Very Happy', steps: ['Open very happy', 'Done'] }, n: 3 };
+    expect(brandCopy(copy, readBrandConfig(undefined))).toBe(copy);
+    expect(brandCopy(copy, readBrandConfig({ brand: { name: 'Apodex Vibe' } }))).toEqual({ pwa: { title: 'Install Apodex Vibe', steps: ['Open Apodex Vibe', 'Done'] }, n: 3 });
+    expect(copy.pwa.title).toBe('Install Very Happy');
   });
 
   it('retitles the document only for a custom brand', () => {

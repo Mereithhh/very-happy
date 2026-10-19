@@ -174,10 +174,11 @@ dependency surface. Do not install the upstream-owned
   mid-turn (a daemon whose environment pins `HAPPY_SERVER_URL` refuses and logs
   why; running session wrappers finish on the old relay). Keep the old relay
   up (read-mostly) until the banner has done its job, then switch it off.
-- White-label (B-624, standalone entrypoint): `BRAND_NAME` renames the product in
-  the Web UI (auth cards, loaders, Settings → About, document title; max 64
-  chars), `BRAND_LOGO_URL` (http(s) URL or absolute path) replaces the brand mark
-  on those screens, and `WEB_LANDING=off` removes the marketing page so anonymous
+- White-label (B-624 / B-637, standalone entrypoint): `BRAND_NAME` renames the
+  product in every Web UI string that names it (auth cards, loaders, Settings →
+  About, document title, the PWA install card, first-machine guide, notifications,
+  release notes; max 64 chars), `BRAND_LOGO_URL` (http(s) URL or absolute path)
+  replaces the brand mark on those screens and the install card, and `WEB_LANDING=off` removes the marketing page so anonymous
   visitors to `/` and `/welcome` go straight to `/login` (docs and legal pages
   stay public). Values are injected into `window.__HAPPY_CONFIG__` as `brand` /
   `landing`; an explicit `HAPPY_INJECT_HTML_CONFIG` JSON still wins.
