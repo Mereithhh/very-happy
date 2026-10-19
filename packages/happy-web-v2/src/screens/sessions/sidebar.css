@@ -15,9 +15,10 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  min-width: 0;
 }
-.sb-brand > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* B-638: name + environment badge stay on one line; the public product preview keeps its own brand sizing. */
+.sb-brand--button { min-width: 0; }
+.sb-brand--button > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-brand .brand-env { margin-left: var(--sp-1); padding: 0 5px; font-size: 9px; }
 .sb-brand--button {
   min-height: 32px;
