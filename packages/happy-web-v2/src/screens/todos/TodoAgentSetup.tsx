@@ -2,23 +2,24 @@ import { useId, useRef, useState } from 'react';
 import { Copy } from 'lucide-react';
 import { BUILTIN_TODO_SKILL } from '@slopus/happy-wire';
 import { useTranslation } from '@/i18n/useTranslation';
+import { brandText } from '@/app/brand';
 import { getServerUrl } from '@/sync/serverConfig';
 
 function serverHint(): string {
     try {
         const url = new URL(getServerUrl());
         // Copy the service address only, never URL credentials or query tokens.
-        if (url.protocol !== 'https:' && url.protocol !== 'http:') return '(confirm in Very Happy settings)';
+        if (url.protocol !== 'https:' && url.protocol !== 'http:') return brandText('(confirm in Very Happy settings)');
         return `${url.origin}${url.pathname.replace(/\/$/, '')}`;
     } catch {
-        return '(confirm in Very Happy settings)';
+        return brandText('(confirm in Very Happy settings)');
     }
 }
 
 export function TodoAgentSetup() {
     const { lang } = useTranslation();
     const zh = lang.startsWith('zh');
-    const words = (cn: string, en: string) => zh ? cn : en;
+    const words = (cn: string, en: string) => brandText(zh ? cn : en);
     const [state, setState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
     const [expanded, setExpanded] = useState(false);
     const inFlight = useRef(false);

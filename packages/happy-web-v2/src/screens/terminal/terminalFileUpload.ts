@@ -1,3 +1,4 @@
+import { brandText } from '@/app/brand';
 import {
   machineUploadFile,
   machineUploadFileChunk,
@@ -88,7 +89,7 @@ export async function uploadTerminalFile(
     if (isLegacyDaemonError(started.error)) {
       return {
         success: false,
-        error: 'This file needs a newer Very Happy daemon. Update the CLI and restart the daemon.',
+        error: brandText('This file needs a newer Very Happy daemon. Update the CLI and restart the daemon.'),
       };
     }
     return started;
