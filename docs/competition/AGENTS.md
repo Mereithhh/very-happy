@@ -36,8 +36,11 @@ docs/competition/
 │   └── artifacts/                  # screenshots, tiny trace snippets, diagrams
 ├── codex/
 │   └── ...
-└── opencode/
-    └── ...
+├── opencode/
+│   └── ...
+└── orca/                           # wrapper-lifecycle reference (turn end, exit, process tree, steer)
+    ├── README.md
+    └── sources.md
 ```
 
 ## Per-vendor file expectations
