@@ -2,7 +2,7 @@ const DEFAULT_SERVER_URL = 'https://veryhappy.dev';
 const LEGACY_CLOUD_SERVER_URL = 'https://happy.mereith.com';
 const CLOUD_SERVER_URLS = [DEFAULT_SERVER_URL, LEGACY_CLOUD_SERVER_URL] as const;
 
-function sameRelay(left: string, right: string): boolean {
+export function sameRelay(left: string, right: string): boolean {
   try {
     return new URL(left).origin === new URL(right).origin;
   } catch {

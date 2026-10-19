@@ -53,7 +53,8 @@ import { getInitialMachineMetadata, getStartupCliAvailability } from './machineM
 import { currentWorktreeService } from '@/worktree/service';
 import { WORKTREE_CAPABILITY_VERSION } from '@/worktree/worktreeRpc';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
-import { readSettings, updateSettings, writeSettings } from '@/persistence';
+import { readSettings, updateSettings, writeSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
+import { applyServerMigration } from './serverMigration';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
 import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
@@ -1884,6 +1885,28 @@ export async function startDaemon(): Promise<void> {
     });
     apiMachine.setCliUpdateRetryHandler(updateController.retry);
     apiMachine.setCliUpdateRequestHandler(updateController.request);
+    // B-635: the relay is retiring and told us where the account now lives.
+    // serverMigration.ts rewrites settings + credentials; the heartbeat below
+    // then hands over to a fresh `daemon start` the same way a CLI update does.
+    let pendingRelayMove: { serverUrl: string } | null = null;
+    let relayMoveInFlight: Promise<void> | null = null;
+    apiMachine.setServerMigrateHandler((notice) => {
+      if (relayMoveInFlight || pendingRelayMove) return;
+      relayMoveInFlight = applyServerMigration(notice, {
+        configuredServerUrl: configuration.serverUrl,
+        env: process.env,
+        clientId: `cli-daemon/${configuration.currentCliVersion}`,
+        fetch,
+        readCredentials,
+        rewriteCredentials: rewriteCredentialsForRelay,
+        updateSettings,
+        log: (message) => logger.warn(message),
+      }).then((outcome) => {
+        if (outcome.action === 'moved') pendingRelayMove = { serverUrl: outcome.serverUrl };
+      }).catch((error) => {
+        logger.warn('[RELAY MOVE] Failed:', error);
+      }).finally(() => { relayMoveInFlight = null; });
+    });
     const refreshCliUpdate = () => updateController.refresh().catch((error) => {
       logger.debug('[DAEMON RUN] CLI update policy check failed:', error);
     });
@@ -1942,7 +1965,8 @@ export async function startDaemon(): Promise<void> {
           // File temporarily missing (e.g. mid-install) — retry on next heartbeat.
         }
       }
-      if (bundleReplaced && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {
+      const relayMove = pendingRelayMove;
+      if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
@@ -1952,7 +1976,8 @@ export async function startDaemon(): Promise<void> {
         // released this process exits no matter what happens, and a handed-over
         // daemon lives outside launchd, so a bad bundle means a machine that
         // stays offline until a person notices.
-        const preflight = await preflightNewBundle(bundlePath);
+        // (A relay move hands over on the bundle we already run: nothing to preflight.)
+        const preflight = bundleReplaced ? await preflightNewBundle(bundlePath) : { action: 'proceed' as const };
         if (preflight.action === 'hold') {
           if (lastHandoverHold !== preflight.reason) {
             lastHandoverHold = preflight.reason;
@@ -1965,7 +1990,9 @@ export async function startDaemon(): Promise<void> {
         }
         if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;
         lastHandoverHold = null;
-        logger.debug('[DAEMON RUN] Daemon bundle replaced on disk and verified, handing off to new daemon');
+        logger.debug(relayMove
+          ? `[DAEMON RUN] Relay moved to ${relayMove.serverUrl}; handing off to a new daemon on the new settings`
+          : '[DAEMON RUN] Daemon bundle replaced on disk and verified, handing off to new daemon');
         teamWorker?.stop();
         automationRunner?.stop();
 

@@ -458,6 +458,23 @@ export async function writeCredentialsDataKey(credentials: { publicKey: Uint8Arr
   }, null, 2));
 }
 
+/**
+ * B-635: the relay moved. Keep this machine's key material exactly as it is
+ * (the account's content keys are the same on the new relay — its database is
+ * a copy) and swap only the token and the relay the token belongs to.
+ */
+export async function rewriteCredentialsForRelay(credentials: Credentials, next: { token: string; authServerUrl: string }): Promise<void> {
+  await ensurePrivateDirectory(configuration.happyHomeDir)
+  const body = credentials.encryption.type === 'legacy'
+    ? { secret: encodeBase64(credentials.encryption.secret), token: next.token, authServerUrl: next.authServerUrl }
+    : {
+      encryption: { publicKey: encodeBase64(credentials.encryption.publicKey), machineKey: encodeBase64(credentials.encryption.machineKey) },
+      token: next.token,
+      authServerUrl: next.authServerUrl,
+    };
+  await writePrivateFile(configuration.privateKeyFile, JSON.stringify(body, null, 2));
+}
+
 export async function clearCredentials(): Promise<void> {
   if (existsSync(configuration.privateKeyFile)) {
     await unlink(configuration.privateKeyFile);

@@ -168,8 +168,11 @@ dependency surface. Do not install the upstream-owned
   `migration_conflict`), or, without an OIDC issuer, spends it at
   `POST /v1/auth/migrate/complete` for a direct login. The old relay also sends
   every targeted daemon a `server-migrate` socket event (`{ url, webappUrl,
-  handoff }`) on connect; a daemon that understands it buys a machine token at
-  the new relay with the same endpoint and re-points itself. Keep the old relay
+  handoff }`) on connect; a daemon with B-635 buys a machine token at the new
+  relay with the same endpoint, rewrites `settings.serverUrl`/`webappUrl` and its
+  credentials, and hands over to a fresh daemon process once no agent is
+  mid-turn (a daemon whose environment pins `HAPPY_SERVER_URL` refuses and logs
+  why; running session wrappers finish on the old relay). Keep the old relay
   up (read-mostly) until the banner has done its job, then switch it off.
 - White-label (B-624, standalone entrypoint): `BRAND_NAME` renames the product in
   the Web UI (auth cards, loaders, Settings → About, document title; max 64
