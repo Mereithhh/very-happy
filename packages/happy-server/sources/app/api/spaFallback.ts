@@ -1,9 +1,10 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import fs from 'node:fs';
 import path from 'node:path';
-import { injectRuntimeConfig } from './htmlConfigInjection';
+import { transformIndexHtml, type HtmlBrand } from './htmlConfigInjection';
+import { requestOrigin } from './requestOrigin';
 
-export function spaFallback(staticDir: string, injectScript: string | null) {
+export function spaFallback(staticDir: string, injectScript: string | null, brand: HtmlBrand | null = null) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
         const pathname = new URL(request.raw.url || '/', 'http://localhost').pathname;
         // A retired hashed chunk is not an SPA route. A 200 HTML response would
@@ -17,7 +18,7 @@ export function spaFallback(staticDir: string, injectScript: string | null) {
         if (!fs.existsSync(indexPath)) return reply.code(404).send({ error: 'Not found' });
         const html = fs.readFileSync(indexPath, 'utf8');
         return reply.header('cache-control', 'no-cache').type('text/html').send(
-            injectScript ? injectRuntimeConfig(html, injectScript) : html,
+            transformIndexHtml(html, injectScript, brand, requestOrigin(request)),
         );
     };
 }

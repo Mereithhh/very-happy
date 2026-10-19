@@ -14,6 +14,15 @@ export interface BrandConfig {
   wordmark: string;
   /** Optional logo replacing the CyberMark; http(s) URL or an absolute path. */
   logoUrl: string | null;
+  /** B-638: dark-theme variant of `logoUrl` (shown via `brand.css` when the theme is dark). */
+  logoDarkUrl: string | null;
+  /** B-638: horizontal logo-with-text lockup used where there is room (auth cards, splash, public header). */
+  wordmarkUrl: string | null;
+  wordmarkDarkUrl: string | null;
+  /** B-638: opaque square icon for the tab, home screen and link previews. */
+  iconUrl: string | null;
+  /** B-638: environment tag such as "Staging", shown as a badge next to the name and in the title. */
+  envLabel: string | null;
   /** False hides `/` + `/welcome` marketing pages: anonymous visitors go straight to login. */
   landingEnabled: boolean;
   isDefault: boolean;
@@ -38,13 +47,25 @@ export function readBrandConfig(runtime: unknown = (globalThis as { __HAPPY_CONF
   const rawName = typeof brand.name === 'string' ? brand.name.trim().slice(0, 64) : '';
   const name = rawName || DEFAULT_BRAND_NAME;
   const isDefault = name === DEFAULT_BRAND_NAME;
+  const assets = brand as { logoDarkUrl?: unknown; wordmarkUrl?: unknown; wordmarkDarkUrl?: unknown; iconUrl?: unknown; envLabel?: unknown };
+  const envLabel = typeof assets.envLabel === 'string' ? assets.envLabel.trim().slice(0, 24) : '';
   return {
     name,
     wordmark: isDefault ? 'very happy' : name,
     logoUrl: readLogoUrl(brand.logoUrl),
+    logoDarkUrl: readLogoUrl(assets.logoDarkUrl),
+    wordmarkUrl: readLogoUrl(assets.wordmarkUrl),
+    wordmarkDarkUrl: readLogoUrl(assets.wordmarkDarkUrl),
+    iconUrl: readLogoUrl(assets.iconUrl),
+    envLabel: envLabel || null,
     landingEnabled: config.landing !== false,
     isDefault,
   };
+}
+
+/** Browser-tab title for a brand: the name, plus the environment tag when one is set. */
+export function brandTitle(brand: BrandConfig = BRAND): string {
+  return brand.envLabel ? `${brand.name} · ${brand.envLabel}` : brand.name;
 }
 
 export const BRAND: BrandConfig = readBrandConfig();
@@ -77,8 +98,19 @@ export function brandCopy<T>(value: T, brand: BrandConfig = BRAND): T {
 
 /** Title + PWA title follow the brand; the default build keeps what index.html ships. */
 export function applyBrandToDocument(brand: BrandConfig, doc: Document = document): void {
-  if (brand.isDefault) return;
-  doc.title = brand.name;
+  if (brand.isDefault && !brand.envLabel && !brand.iconUrl) return;
+  doc.title = brandTitle(brand);
   const pwaTitle = doc.querySelector('meta[name="apple-mobile-web-app-title"]');
   if (pwaTitle) pwaTitle.setAttribute('content', brand.name);
+  if (brand.iconUrl) {
+    // The server already rewrites these for self-hosted bundles; this keeps
+    // dev servers and injected configs consistent.
+    for (const selector of ['link[rel="icon"]', 'link[rel="apple-touch-icon"]']) {
+      const link = doc.querySelector(selector);
+      if (link && link.getAttribute('href') !== brand.iconUrl) {
+        link.setAttribute('href', brand.iconUrl);
+        if (selector === 'link[rel="icon"]') link.removeAttribute('type');
+      }
+    }
+  }
 }

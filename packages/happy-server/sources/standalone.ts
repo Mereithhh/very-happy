@@ -33,22 +33,50 @@ export function resolveDatabaseProvider(env: NodeJS.ProcessEnv = process.env): "
 }
 
 /**
- * B-624 white-label: `BRAND_NAME` / `BRAND_LOGO_URL` rename the product in the
- * Web UI and `WEB_LANDING=off` sends anonymous visitors to login instead of the
+ * B-624 / B-638 white-label: `BRAND_NAME` and the `BRAND_*_URL` assets rename
+ * and re-skin the Web UI, `BRAND_ENV_LABEL` tags an environment ("Staging"),
+ * and `WEB_LANDING=off` sends anonymous visitors to login instead of the
  * marketing page. Only set keys are emitted so the default bundle is unchanged.
  */
+const BRAND_ASSET_ENV = {
+    BRAND_LOGO_URL: "logoUrl",
+    BRAND_LOGO_DARK_URL: "logoDarkUrl",
+    BRAND_WORDMARK_URL: "wordmarkUrl",
+    BRAND_WORDMARK_DARK_URL: "wordmarkDarkUrl",
+    BRAND_ICON_URL: "iconUrl",
+} as const;
+
 export function resolveBrandHtmlConfig(env: NodeJS.ProcessEnv = process.env): Record<string, unknown> {
     const out: Record<string, unknown> = {};
+    const brand: Record<string, string> = {};
     const name = env.BRAND_NAME?.trim().slice(0, 64);
-    const logoUrl = env.BRAND_LOGO_URL?.trim();
-    if (logoUrl && !/^(https?:\/\/|\/(?!\/))/i.test(logoUrl)) {
-        throw new Error("BRAND_LOGO_URL must be an http(s) URL or an absolute path");
+    if (name) brand.name = name;
+    for (const [envKey, field] of Object.entries(BRAND_ASSET_ENV)) {
+        const url = env[envKey]?.trim();
+        if (!url) continue;
+        if (!/^(https?:\/\/|\/(?!\/))/i.test(url)) {
+            throw new Error(`${envKey} must be an http(s) URL or an absolute path`);
+        }
+        brand[field] = url;
     }
-    if (name || logoUrl) out.brand = { ...(name ? { name } : {}), ...(logoUrl ? { logoUrl } : {}) };
+    const envLabel = env.BRAND_ENV_LABEL?.trim().slice(0, 24);
+    if (envLabel) brand.envLabel = envLabel;
+    if (Object.keys(brand).length > 0) out.brand = brand;
     const landing = env.WEB_LANDING?.trim().toLowerCase();
     if (landing && landing !== "on" && landing !== "off") throw new Error("WEB_LANDING must be on, off, or unset");
     if (landing === "off") out.landing = false;
     return out;
+}
+
+/** B-638: a directory of operator brand files served at `/brand/` (mount a ConfigMap, point the `BRAND_*_URL`s at `/brand/<file>`). */
+export function resolveBrandAssetsDir(env: NodeJS.ProcessEnv = process.env): string | undefined {
+    const dir = env.BRAND_ASSETS_DIR?.trim();
+    if (!dir) return undefined;
+    const resolved = path.resolve(dir);
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+        throw new Error(`BRAND_ASSETS_DIR is not a directory: ${dir}`);
+    }
+    return resolved;
 }
 
 export function resolveHtmlConfig(env: NodeJS.ProcessEnv = process.env): Record<string, unknown> {
@@ -218,6 +246,7 @@ async function serve() {
     process.env.SIGNUP_MODE ||= "closed";
     const staticDir = findStaticDir();
     const injectHtmlConfig = resolveHtmlConfig();
+    const brandAssetsDir = resolveBrandAssetsDir();
 
     const { startServer } = await import("./index");
     await startServer({
@@ -227,6 +256,7 @@ async function serve() {
         host,
         staticDir,
         injectHtmlConfig,
+        brandAssetsDir,
     });
 
     // Block until shutdown so the process stays alive.

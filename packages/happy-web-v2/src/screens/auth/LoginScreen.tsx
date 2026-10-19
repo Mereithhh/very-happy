@@ -15,7 +15,7 @@ import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
-import { BrandMark } from '@/ui/BrandMark';
+import { BrandLockup, BrandMark } from '@/ui/BrandMark';
 import { BRAND, brandText } from '@/app/brand';
 
 export function LoginScreen() {
@@ -114,7 +114,7 @@ export function LoginScreen() {
       <CyberBackdrop />
       <main className="auth-card auth-card--login">
         <section className="auth-brand-panel" aria-labelledby="login-brand-title">
-          <BrandMark size={44} className="auth-brand" wordmarkClassName="auth-wordmark" />
+          <BrandLockup height={40} size={44} className="auth-brand" wordmarkClassName="auth-wordmark" />
           <div className="auth-brand-message">
             <div className="auth-brand-label">{t('login.consoleLabel')}</div>
             <h1 id="login-brand-title">{t('login.title')}</h1>

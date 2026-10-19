@@ -1,6 +1,6 @@
 import { agentStatusSignal, codingAgentLabel, type AgentExecution } from '@/sync/agentStatus';
 import type { RecentMachinePath } from '@/utils/quickChat';
-import { CyberMark } from '@/ui/CyberMark';
+import { BrandIcon, BrandEnvBadge } from '@/ui/BrandMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -961,7 +961,7 @@ export function Sidebar() {
       <header className="sb-header">
 
         <button className="sb-brand sb-brand--button" type="button" onClick={() => navigate('/help')} title={t('sidebar.openHelp')} aria-label={t('sidebar.openHelp')}>
-          <CyberMark size={18} /><span>{BRAND.name}</span>
+          <BrandIcon size={18} /><span>{BRAND.name}</span><BrandEnvBadge />
         </button>
         <div className="sb-header-right">
           <button className="sb-icon-btn" aria-label={t("sidebar.openSearch")} title={`${t("sidebar.openSearch")} · ⌘K`} onClick={openCommandPalette}><Search size={17}/></button>

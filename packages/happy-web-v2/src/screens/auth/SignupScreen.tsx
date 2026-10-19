@@ -16,7 +16,7 @@ import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
-import { BrandMark } from '@/ui/BrandMark';
+import { BrandLockup } from '@/ui/BrandMark';
 import { brandText } from '@/app/brand';
 
 const MIN_USERNAME = 3;
@@ -161,7 +161,7 @@ export function SignupScreen() {
     <div className="auth-page" ref={pageRef}>
       <CyberBackdrop />
       <div className="auth-card">
-        <BrandMark size={40} className="auth-brand" wordmarkClassName="auth-wordmark" />
+        <BrandLockup height={36} size={40} className="auth-brand" wordmarkClassName="auth-wordmark" />
         <LanguageSwitcher className="auth-language-switcher" />
         <div className="auth-eyebrow eyebrow">{t('signup.title')}</div>
 

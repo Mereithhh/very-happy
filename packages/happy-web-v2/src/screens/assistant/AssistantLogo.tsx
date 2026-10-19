@@ -1,5 +1,5 @@
 /** Static Very Happy identity with separate listening, thinking and speaking signals. */
-import { CyberMark } from '@/ui/CyberMark';
+import { BrandIcon } from '@/ui/BrandMark';
 
 export type AssistantLogoState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
@@ -27,7 +27,7 @@ export function AssistantLogo({
                 <span />
                 <span />
             </div>
-            <div className="as-logo-glyph"><CyberMark size={44} /></div>
+            <div className="as-logo-glyph"><BrandIcon size={44} /></div>
         </div>
     );
 }

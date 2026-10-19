@@ -1,7 +1,6 @@
 import { Download, MoreVertical, Share2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { CyberMark } from '@/ui/CyberMark';
-import { BRAND } from './brand';
+import { BrandIcon } from '@/ui/BrandMark';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import {
   clearCapturedPwaInstallPrompt,
@@ -165,11 +164,7 @@ export function PwaInstallPrompt() {
   return (
     <aside className="pwa-install" role="region" aria-live="polite" aria-atomic="true" aria-labelledby="pwa-install-title" aria-describedby="pwa-install-description">
       <button className="pwa-install-close" type="button" onClick={dismiss} aria-label={copy.close}><X size={19} /></button>
-      <div className="pwa-install-mark" aria-hidden>
-        {BRAND.logoUrl
-          ? <img src={BRAND.logoUrl} alt="" width={30} height={30} style={{ width: 30, height: 30, objectFit: 'contain' }} />
-          : <CyberMark size={30} />}
-      </div>
+      <div className="pwa-install-mark" aria-hidden><BrandIcon size={30} /></div>
       <div className="pwa-install-copy">
         <div className="pwa-install-eyebrow mono">{copy.eyebrow}</div>
         <h2 id="pwa-install-title">{copy.title}</h2>

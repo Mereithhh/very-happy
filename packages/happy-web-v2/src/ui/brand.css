@@ -1,0 +1,30 @@
+/* B-638: operator brand assets. Light/dark pairs follow the theme attribute or,
+   without one, the system scheme — same rules the server injects for the splash. */
+:root[data-theme='dark'] .vh-brand-light,
+:root[data-theme='light'] .vh-brand-dark { display: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .vh-brand-light { display: none; } }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .vh-brand-dark { display: none; } }
+
+.brand-icon { flex: none; object-fit: contain; }
+.brand-lockup { display: inline-flex; align-items: center; }
+.brand-lockup > img { width: auto; max-width: 100%; object-fit: contain; }
+
+/* Environment tag ("Staging"): mono pill in the warn tone so it reads as a status, not a name. */
+.brand-env {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--sp-2);
+  padding: 1px 6px;
+  border: 1px solid var(--warn);
+  border-radius: 999px;
+  background: var(--warn-dim);
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  font-weight: 600;
+  letter-spacing: .08em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+}
