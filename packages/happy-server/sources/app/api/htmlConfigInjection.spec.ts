@@ -22,10 +22,10 @@ describe('runtime HTML config injection', () => {
 <link rel="icon" type="image/png" href="favicon.png" />
 <meta property="og:title" content="Very Happy — tagline" />
 <meta property="og:image" content="https://veryhappy.dev/icon-512.png" />
-</head><body><strong class="vh-startup-wordmark">Very Happy</strong></body></html>`;
+</head><body><div class="vh-startup-hub"><svg viewBox="0 0 32 32"><rect/></svg></div><strong class="vh-startup-wordmark">Very Happy</strong></body></html>`;
 
     it('B-638: rewrites title, icons, link preview and the splash for an operator brand', () => {
-        const brand = readHtmlBrand({ brand: { name: 'Apodex Vibe', iconUrl: '/brand/icon-512.png', wordmarkUrl: '/brand/w.svg', wordmarkDarkUrl: '/brand/w-dark.svg', envLabel: 'Staging' } });
+        const brand = readHtmlBrand({ brand: { name: 'Apodex Vibe', logoUrl: '/brand/i.svg', logoDarkUrl: '/brand/i-dark.svg', iconUrl: '/brand/icon-512.png', wordmarkUrl: '/brand/w.svg', wordmarkDarkUrl: '/brand/w-dark.svg', envLabel: 'Staging' } });
         const html = applyBrandToHtml(INDEX, brand, 'https://vibe.example');
         expect(html).toContain('<title>Apodex Vibe · Staging</title>');
         expect(html).toContain('<meta name="apple-mobile-web-app-title" content="Apodex Vibe" />');
@@ -36,6 +36,8 @@ describe('runtime HTML config injection', () => {
         expect(html).toContain('<img class="vh-startup-lockup vh-brand-light" src="/brand/w.svg" alt="Apodex Vibe">');
         expect(html).toContain('<img class="vh-startup-lockup vh-brand-dark" src="/brand/w-dark.svg" alt="Apodex Vibe">');
         expect(html).not.toContain('vh-startup-wordmark');
+        expect(html).toContain('<div class="vh-startup-hub"><img class="vh-startup-hub-logo vh-brand-light" src="/brand/i.svg" alt=""><img class="vh-startup-hub-logo vh-brand-dark" src="/brand/i-dark.svg" alt=""></div>');
+        expect(html).not.toContain('<svg viewBox="0 0 32 32">');
         expect(html.match(/id="vh-brand-style"/g)).toHaveLength(1);
         expect(applyBrandToHtml(html, brand, 'https://vibe.example')).toBe(html);
     });
@@ -44,6 +46,7 @@ describe('runtime HTML config injection', () => {
         const html = applyBrandToHtml(INDEX, readHtmlBrand({ brand: { name: 'Acme' } }));
         expect(html).toContain('<title>Acme</title>');
         expect(html).toContain('<strong class="vh-startup-wordmark">Acme</strong>');
+        expect(html).toContain('<div class="vh-startup-hub"><svg viewBox="0 0 32 32"><rect/></svg></div>');
         expect(html).toContain('href="favicon.png"');
         expect(html).toContain('og:image" content="https://veryhappy.dev/icon-512.png"');
         expect(applyBrandToHtml(INDEX, null)).toBe(INDEX);

@@ -69,6 +69,7 @@ export const BRAND_THEME_STYLE = `<style id="${BRAND_STYLE_ID}">
 @media (prefers-color-scheme:dark){:root:not([data-theme]) .vh-brand-light{display:none}}
 @media (prefers-color-scheme:light){:root:not([data-theme]) .vh-brand-dark{display:none}}
 .vh-startup-lockup{height:34px;width:auto;max-width:240px;margin:0 auto;display:block}
+.vh-startup-hub-logo{width:42px;height:42px;object-fit:contain}
 </style>`;
 
 /**
@@ -90,6 +91,11 @@ export function applyBrandToHtml(html: string, brand: HtmlBrand | null, origin: 
         out = out.replace(/<link rel="apple-touch-icon" href="[^"]*" \/>/i, `<link rel="apple-touch-icon" href="${escapeHtml(brand.iconUrl)}" />`);
         out = out.replace(/<link rel="icon"[^>]*\/>/i, `<link rel="icon"${type ? ` type="${type}"` : ''} href="${escapeHtml(brand.iconUrl)}" />`);
         out = out.replace(/(<meta property="og:image" content=")[^"]*(")/i, `$1${escapeHtml(absoluteUrl(brand.iconUrl, origin))}$2`);
+    }
+    if (brand.logoUrl) {
+        // The splash network's hub is the default mark; show the operator's.
+        out = out.replace(/(<div class="vh-startup-hub">)<svg[\s\S]*?<\/svg>(<\/div>)/i, (_m, open, close) =>
+            `${open}${brandImagePair(brand.logoUrl!, brand.logoDarkUrl, 'vh-startup-hub-logo', '')}${close}`);
     }
     if (brand.name || brand.wordmarkUrl) {
         out = out.replace(/<strong class="vh-startup-wordmark">[^<]*<\/strong>/i, () => brand.wordmarkUrl
