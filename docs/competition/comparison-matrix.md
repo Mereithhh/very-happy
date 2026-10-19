@@ -1,6 +1,6 @@
 # Competitor Protocol Matrix
 
-Reviewed on 2026-03-20. Superset added 2026-04-08.
+Reviewed on 2026-03-20. Superset added 2026-04-08. Orca added 2026-10-19.
 
 This is the short version of what matters most for Happy.
 
@@ -17,6 +17,7 @@ This is the short version of what matters most for Happy.
 | Codex | JSON-RPC 2.0 over stdio or websocket | typed `thread` / `turn` / `item` graph | typed collab-agent items | explicit server requests for approvals | strongest real sandbox policy surface of the three | robust live subscription, replay, resume, overload handling | best backend protocol reference |
 | Claude | ACP JSON-RPC plus local filesystem state | streamed session updates + local transcript files | agent teams, inboxes, tasks, subagent JSONL | mode + permission are first-class, but split across ACP and local settings | narrower shell sandbox plus trust / permission layers | local-first, remote-control bridge exists, rich state still leaks to disk | best agent workflow reference, weaker as a single clean protocol |
 | Superset | Hono HTTP + tRPC + WebSocket EventBus | opaque — doesn't parse agent output, observes lifecycle via hooks | agent-agnostic launch in real PTY + git worktree isolation per task | not applicable — delegates to each agent's own permission model | worktree isolation, agents run in real terminals with their own sandboxing | Electric SQL cloud→local sync + cloud DB command queue for CLI→desktop control + manifest-based host-service durability | best orchestration-layer reference; strongest package boundaries; Electric SQL sync and cloud command queue patterns worth studying |
+| Orca | wraps each agent's own transport in-process: Codex app-server JSON-RPC, Claude Agent SDK stream-json, ACP for pi / Gemini / others | per-agent "structured journal" translation into one row model; turn end taken only from the agent's own signal | Codex child-thread linkage and ACP subagent rows | passes each agent's approval / control requests through with deadlines (not compared further) | not compared (desktop app, agent's own sandbox) | not compared (local Electron app) | best **wrapper-lifecycle** reference — turn end, failure surfacing, exit proof, process tree, steer; see `orca/README.md` |
 
 ## Current read
 
@@ -24,6 +25,7 @@ This is the short version of what matters most for Happy.
 - Codex has the cleanest typed app-server model for thread, turn, item, approval, and sandbox policy.
 - Claude has the most mature agent-team workflow, but its useful state is split across ACP, hooks, changelog behavior, and `~/.claude/`.
 - Superset is the strongest reference for orchestration-layer design — doesn't own agent protocols, just coordinates. Remarkable ship velocity (3 people, 2,100+ commits in 5 months).
+- Orca is the reference for the layer very-happy's CLI wrappers occupy (agent process ↔ session protocol). The four 2026-10 wrapper specs (Codex B-625/B-628, pi + Gemini B-629/B-630, Claude B-631) borrow from it; what was taken, what was left and how to compare again is in `orca/README.md`.
 
 ## Suggested design direction for Happy
 
