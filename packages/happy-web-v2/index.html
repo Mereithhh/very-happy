@@ -5,13 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>Very Happy</title>
     <meta name="description" content="Your coding agent hub: connect computers, agents, conversations, and real terminals in one workspace. Work from anywhere, on your own or with Teams." />
-    <!-- browser chrome tint follows the theme: dark bg-0 / light bg-0 -->
+    <!-- Browser chrome and the iOS home-screen status bar take this colour: dark bg-0 / light bg-0
+         (tokens.css). An explicit in-app theme rewrites all three (src/ui/themeColor.ts). -->
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151515" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fcfcfb" />
     <meta name="theme-color" content="#151515" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- B-643: not black-translucent. iOS 26+ lays a frosted Liquid Glass band over the status
+         bar strip a translucent home-screen app draws under, blurring the header there; with
+         `default` the page starts below an opaque bar tinted by theme-color. iOS reads this only
+         when the app is added to the Home Screen, so existing installs must be re-added. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Very Happy" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <link rel="icon" type="image/png" href="favicon.png" />
