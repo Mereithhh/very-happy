@@ -59,6 +59,31 @@ function toolCallEndResult(result: unknown): { text: string; isError?: boolean; 
   };
 }
 
+/**
+ * B-632 ③: pi's `subagent` tool (pi example extension: single `{agent, task}`,
+ * parallel `{tasks:[…]}`, chain `{chain:[…]}`) runs another pi agent. Its call
+ * gets a sub-agent card like Claude's Agent / Codex's child threads: a `start`
+ * envelope with the delegated task as the title, a `stop` when the call ends.
+ */
+export function piSubagentLabel(args: Record<string, unknown>): { description: string; subagentType?: string } | null {
+  if (args.piTool !== 'subagent') return null;
+  const raw = (args.rawInput && typeof args.rawInput === 'object' ? args.rawInput : {}) as Record<string, unknown>;
+  const clip = (text: string) => { const flat = text.replace(/\s+/g, ' ').trim(); return flat.length > 120 ? `${flat.slice(0, 119)}…` : flat; };
+  const agent = typeof raw.agent === 'string' ? raw.agent : undefined;
+  if (typeof raw.task === 'string' && raw.task.trim()) return { description: clip(raw.task), ...(agent ? { subagentType: agent } : {}) };
+  if (Array.isArray(raw.tasks)) return { description: `${raw.tasks.length} parallel task${raw.tasks.length === 1 ? '' : 's'}`, ...(agent ? { subagentType: agent } : {}) };
+  if (Array.isArray(raw.chain)) return { description: `chain of ${raw.chain.length} step${raw.chain.length === 1 ? '' : 's'}` };
+  return { description: agent ? `${agent} sub-agent` : 'sub-agent', ...(agent ? { subagentType: agent } : {}) };
+}
+
+function subagentStopStatus(result: unknown): 'completed' | 'failed' | 'stopped' {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return 'completed';
+  const record = result as { error?: unknown; status?: unknown; exitCode?: unknown };
+  if (record.status === 'cancelled' || record.status === 'canceled') return 'stopped';
+  if (record.error !== undefined || record.status === 'failed' || (typeof record.exitCode === 'number' && record.exitCode !== 0)) return 'failed';
+  return 'completed';
+}
+
 function parseThinkingPayload(payload: unknown): { text: string; streaming: boolean } {
   if (typeof payload === 'string') {
     return { text: payload, streaming: false };
@@ -75,6 +100,8 @@ function parseThinkingPayload(payload: unknown): { text: string; streaming: bool
 
 export class AcpSessionManager {
   private currentTurnId: string | null = null;
+  /** B-632 ③: ACP call id → sub-agent id of a running pi `subagent` call. */
+  private readonly subagentByCall = new Map<string, string>();
   private readonly acpCallToSessionCall = new Map<string, string>();
   private readonly stream: AcpStreamSink | null;
 
@@ -194,10 +221,15 @@ export class AcpSessionManager {
     }
 
     const turnId = this.currentTurnId;
+    // A sub-agent call the turn ended without (Stop, agent death) is over too.
+    const stops = [...this.subagentByCall.values()].map((subagent) =>
+      createEnvelope('agent', { t: 'stop', status: status === 'completed' ? 'completed' : 'stopped' }, { turn: turnId, time: this.nextTime(), subagent }));
+    this.subagentByCall.clear();
     this.currentTurnId = null;
     this.acpCallToSessionCall.clear();
     return [
       ...flushed,
+      ...stops,
       createEnvelope('agent', { t: 'turn-end', status }, { turn: turnId, time: this.nextTime() }),
     ];
   }
@@ -241,6 +273,10 @@ export class AcpSessionManager {
     if (msg.type === 'tool-call') {
       const flushed = this.flush();
       const call = this.ensureSessionCallId(msg.callId);
+      const label = piSubagentLabel(msg.args ?? {});
+      const subagent = label ? (this.subagentByCall.get(msg.callId) ?? createId()) : undefined;
+      const started = subagent !== undefined && !this.subagentByCall.has(msg.callId);
+      if (subagent) this.subagentByCall.set(msg.callId, subagent);
       return [
         ...flushed,
         createEnvelope('agent', {
@@ -249,8 +285,10 @@ export class AcpSessionManager {
           name: msg.toolName,
           title: buildToolTitle(msg.toolName),
           description: buildToolDescription(msg.toolName),
-          args: msg.args,
+          // The web links the call row to the sub-agent card by this id (as for Claude's Agent).
+          args: subagent ? { ...msg.args, sessionSubagent: subagent } : msg.args,
         }, turnOptions(this.currentTurnId, this.nextTime())),
+        ...(started && label ? [createEnvelope('agent', { t: 'start', ...label }, { ...turnOptions(this.currentTurnId, this.nextTime()), subagent })] : []),
       ];
     }
 
@@ -258,9 +296,12 @@ export class AcpSessionManager {
       const flushed = this.flush();
       const call = this.ensureSessionCallId(msg.callId);
       const result = toolCallEndResult(msg.result);
+      const subagent = this.subagentByCall.get(msg.callId);
+      if (subagent) this.subagentByCall.delete(msg.callId);
       return [
         ...flushed,
         createEnvelope('agent', { t: 'tool-call-end', call, ...(result ? { result } : {}) }, turnOptions(this.currentTurnId, this.nextTime())),
+        ...(subagent ? [createEnvelope('agent', { t: 'stop', status: subagentStopStatus(msg.result) }, { ...turnOptions(this.currentTurnId, this.nextTime()), subagent })] : []),
       ];
     }
 

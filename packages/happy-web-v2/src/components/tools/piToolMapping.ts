@@ -15,6 +15,8 @@ export type PiToolArgs = {
     piTool?: unknown;
     rawInput?: unknown;
     command?: unknown;
+    /** B-632: the sub-agent card id the CLI stamps on a pi `subagent` call. */
+    sessionSubagent?: unknown;
 };
 
 export type MappedKnownTool = { name: string; input: Record<string, unknown> };
@@ -102,6 +104,16 @@ export function mapPiToolToKnown(args: PiToolArgs | null | undefined): MappedKno
             const path = str(raw.path);
             if (!path) return null;
             return { name: 'LS', input: { path } };
+        }
+        case 'subagent': {
+            // B-632: pi's subagent tool ({agent, task} | {tasks} | {chain}) renders as
+            // Claude's Agent card; the CLI's start/stop lifecycle carries the same id.
+            const sessionSubagent = str(args?.sessionSubagent);
+            if (!sessionSubagent) return null;
+            const task = str(raw.task);
+            const count = Array.isArray(raw.tasks) ? raw.tasks.length : Array.isArray(raw.chain) ? raw.chain.length : undefined;
+            const description = task ?? (Array.isArray(raw.tasks) ? `${count} parallel tasks` : Array.isArray(raw.chain) ? `chain of ${count} steps` : 'sub-agent');
+            return { name: 'Agent', input: compact({ description: description.length > 120 ? `${description.slice(0, 119)}…` : description, prompt: task, subagent_type: str(raw.agent), sessionSubagent }) };
         }
         default:
             return null;

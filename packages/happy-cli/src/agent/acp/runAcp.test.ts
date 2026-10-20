@@ -1481,6 +1481,25 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
     }
   });
 
+  it('B-632: agent output with no prompt running gets its own turn and lease, closed by idle', async () => {
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      const emit = (m: any) => { for (const l of mocks.backendState.listeners) l(m); };
+      const events = () => mocks.mockSession.sendSessionProtocolMessage.mock.calls.map(([m]: any[]) => m.ev.t);
+      const before = events().length;
+      emit({ type: 'model-output', textDelta: 'background result arrived' });
+      expect(events().slice(before)).toContain('turn-start');
+      expect(mocks.mockSession.keepAlive).toHaveBeenLastCalledWith(true, 'remote');
+      emit({ type: 'status', status: 'idle' });
+      expect(events().slice(before)).toEqual(expect.arrayContaining(['turn-start', 'text', 'turn-end']));
+      expect(mocks.mockSession.keepAlive).toHaveBeenLastCalledWith(false, 'remote');
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
   it('B-629: a restart that fails keeps the session and is tried again on the next message', async () => {
     const exit = Object.assign(new Error('pi process exited (code=1): bad config'), {
       agentExited: true, agentExitCode: 1, agentExitSignal: null, agentStderrTail: 'bad config',

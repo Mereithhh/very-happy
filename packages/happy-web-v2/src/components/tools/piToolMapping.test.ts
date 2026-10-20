@@ -95,3 +95,13 @@ describe('pi edit tool shape (probed pi-acp 0.0.33)', () => {
         expect(mapPiToolToKnown({ piTool: 'edit', rawInput: { path: 'a.json' } })).toBeNull();
     });
 });
+
+describe('pi subagent → Agent card (B-632 ③)', () => {
+    it('maps a subagent call that carries the CLI card id; without the id it stays a plain row', () => {
+        expect(mapPiToolToKnown({ piTool: 'subagent', sessionSubagent: 'sub-1', rawInput: { agent: 'scout', task: 'Find callers of foo()' } }))
+            .toEqual({ name: 'Agent', input: { description: 'Find callers of foo()', prompt: 'Find callers of foo()', subagent_type: 'scout', sessionSubagent: 'sub-1' } });
+        expect(mapPiToolToKnown({ piTool: 'subagent', sessionSubagent: 'sub-2', rawInput: { tasks: [{}, {}] } }))
+            .toEqual({ name: 'Agent', input: { description: '2 parallel tasks', sessionSubagent: 'sub-2' } });
+        expect(mapPiToolToKnown({ piTool: 'subagent', rawInput: { task: 'x' } })).toBeNull();
+    });
+});

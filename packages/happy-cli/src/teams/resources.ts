@@ -53,6 +53,36 @@ export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport
       });
     }
   }
+  const steerEndpoint = managed && process.env.HAPPY_PI_STEER_URL;
+  if (steerEndpoint && pi.sendUserMessage) {
+    // B-632: 「Steer」 from the web — taken from the wrapper's long poll while pi runs,
+    // handed to pi as a steer, acknowledged (agent/acp/piSteerChannel.ts).
+    const target = new URL(steerEndpoint);
+    if (target.origin !== url.origin || !target.pathname.startsWith('/runtime-steer/')) throw new Error('Very Happy steer must be local');
+    const post = (suffix, body) => fetch(steerEndpoint + suffix, {method:'POST', redirect:'error', headers:{'content-type':'application/json'}, body:JSON.stringify(body || {}), signal:AbortSignal.timeout(2000)}).catch(() => {});
+    let running = false, polling = false;
+    const poll = async () => {
+      if (polling) return;
+      polling = true;
+      try {
+        while (running) {
+          let item = null;
+          try {
+            const response = await fetch(steerEndpoint, {redirect:'error', signal:AbortSignal.timeout(30000)});
+            if (response.status === 200) item = await response.json();
+            else if (response.status !== 204) await new Promise(r => setTimeout(r, 1000));
+          } catch { await new Promise(r => setTimeout(r, 1000)); continue; }
+          if (!item || typeof item.text !== 'string') continue;
+          if (!running) { await post('/ack', {id:item.id, delivered:false}); continue; }
+          try { pi.sendUserMessage(item.text, {deliverAs:'steer'}); await post('/ack', {id:item.id, delivered:true}); }
+          catch { await post('/ack', {id:item.id, delivered:false}); }
+        }
+      } finally { polling = false; }
+    };
+    pi.on('agent_start', async () => { running = true; void poll(); });
+    pi.on('agent_end', async () => { running = false; });
+    await post('/hello');
+  }
   if (managed) pi.on('tool_call', async (event, ctx) => {
     let mode = process.env.HAPPY_PERMISSION_MODE || 'default';
     const sid = process.env.HAPPY_SESSION_ID;

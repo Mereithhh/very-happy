@@ -562,3 +562,45 @@ describe('AcpSessionManager live draft sink (B-371)', () => {
     expect(ended[0].streamKey).toBeUndefined();
   });
 });
+
+describe('pi subagent cards (B-632 ③)', () => {
+  const subagentCall = (callId: string, rawInput: Record<string, unknown>) => ({ type: 'tool-call' as const, toolName: 'other', callId, args: { piTool: 'subagent', acpTitle: 'subagent', rawInput } });
+
+  it('a subagent call opens a card titled by its task, linked from the call row, and closes it when the call ends', () => {
+    const manager = new AcpSessionManager();
+    manager.startTurn();
+    const started = manager.mapMessage(subagentCall('call-1', { agent: 'scout', task: 'Find every caller of foo()' }));
+    expect(started.map((e) => e.ev.t)).toEqual(['tool-call-start', 'start']);
+    const subagent = started[1].subagent!;
+    expect(subagent).toBeTruthy();
+    expect((started[0].ev as any).args.sessionSubagent).toBe(subagent);
+    expect(started[1].ev).toEqual({ t: 'start', description: 'Find every caller of foo()', subagentType: 'scout' });
+    expect(started[1].turn).toBe(started[0].turn);
+
+    const ended = manager.mapMessage({ type: 'tool-result', toolName: 'other', callId: 'call-1', result: { text: 'done' } } as any);
+    expect(ended.map((e) => e.ev.t)).toEqual(['tool-call-end', 'stop']);
+    expect(ended[1]).toMatchObject({ subagent, ev: { t: 'stop', status: 'completed' } });
+  });
+
+  it('a failed call stops the card as failed; parallel / chain calls get a count title', () => {
+    const manager = new AcpSessionManager();
+    manager.startTurn();
+    const parallel = manager.mapMessage(subagentCall('call-2', { tasks: [{ agent: 'a', task: 'x' }, { agent: 'b', task: 'y' }] }));
+    expect(parallel[1].ev).toEqual({ t: 'start', description: '2 parallel tasks' });
+    const ended = manager.mapMessage({ type: 'tool-result', toolName: 'other', callId: 'call-2', result: { error: 'boom', status: 'failed' } } as any);
+    expect(ended[1].ev).toEqual({ t: 'stop', status: 'failed' });
+    const chain = manager.mapMessage(subagentCall('call-3', { chain: [{ agent: 'a', task: 'x' }] }));
+    expect(chain[1].ev).toEqual({ t: 'start', description: 'chain of 1 step' });
+  });
+
+  it('a card still open when the turn ends is stopped before turn-end; other tools get no card', () => {
+    const manager = new AcpSessionManager();
+    manager.startTurn();
+    const plain = manager.mapMessage({ type: 'tool-call', toolName: 'execute', callId: 'call-9', args: { piTool: 'bash' } } as any);
+    expect(plain.map((e) => e.ev.t)).toEqual(['tool-call-start']);
+    const open = manager.mapMessage(subagentCall('call-4', { agent: 'scout', task: 'long job' }));
+    const end = manager.endTurn('cancelled');
+    expect(end.map((e) => e.ev.t)).toEqual(['stop', 'turn-end']);
+    expect(end[0]).toMatchObject({ subagent: open[1].subagent, ev: { t: 'stop', status: 'stopped' } });
+  });
+});
