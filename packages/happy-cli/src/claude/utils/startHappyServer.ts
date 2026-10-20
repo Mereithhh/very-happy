@@ -1,3 +1,4 @@
+import { registerProjectTools, createProjectToolExecutor, PROJECT_TOOL_NAMES } from '@/projects/tools';
 import { ContextUsageSchema, type ContextUsage } from '@slopus/happy-wire';
 /**
  * Happy MCP server
@@ -69,6 +70,8 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
     registerAutomationTools(mcp);
     // B-497: message / list the other sessions on this machine (identity = this session).
     if (client) registerSessionPeerTools(mcp, createSessionPeerToolExecutor(client));
+    // B-645: project_context / project_note — always registered (a fixed tools prefix); "not in a project" otherwise.
+    if (client) registerProjectTools(mcp, createProjectToolExecutor(() => client.sessionId));
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -346,6 +349,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             ...TEAM_TOOL_NAMES,
             ...AUTOMATION_TOOL_NAMES,
             ...SESSION_PEER_TOOL_NAMES,
+            ...PROJECT_TOOL_NAMES,
             ...(options?.assistant && !process.env.VH_TEAM_SCOPE_FILE ? ASSISTANT_TOOL_NAMES : []),
         ],
         stop: () => {

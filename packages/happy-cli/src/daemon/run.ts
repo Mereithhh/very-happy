@@ -60,6 +60,8 @@ import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
 import { installCliSafely } from '@/update/npmInstall';
 import { createUpdateController } from '@/update/updateController';
+import { createProjectPresenceReporter } from './projectPresence';
+import { createProjectsClient } from '@/projects/client';
 import { TurnActivityTracker } from '@/update/turnActivity';
 import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
@@ -335,6 +337,7 @@ export async function startDaemon(): Promise<void> {
     const sessionIdToFinishedSession = new Map<string, TrackedSession>();
     let teamWorker: ReturnType<typeof createTeamWorker> | undefined;
     let automationRunner: ReturnType<typeof createAutomationRunner> | undefined;
+    let projectPresence: ReturnType<typeof createProjectPresenceReporter> | undefined;
     const persisted = readPersistedSessions();
     const liveHappyProcesses = await findAllHappyProcesses();
     for (const [id, s] of Object.entries(persisted)) {
@@ -1995,6 +1998,7 @@ export async function startDaemon(): Promise<void> {
           : '[DAEMON RUN] Daemon bundle replaced on disk and verified, handing off to new daemon');
         teamWorker?.stop();
         automationRunner?.stop();
+        projectPresence?.stop();
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
         clearInterval(cliUpdateInterval);
@@ -2093,6 +2097,23 @@ export async function startDaemon(): Promise<void> {
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
 
+    // B-645: coarse project presence (agent, branch, running/idle) for every live
+    // session, one batched PUT per minute on its own rate bucket; an old server
+    // 404s and the client backs off for 10 minutes.
+    projectPresence = createProjectPresenceReporter({
+      machineId,
+      client: createProjectsClient({ token: async () => credentials.token }),
+      live: () => [...pidToTrackedSession.values()]
+        .filter(s => s.happySessionId && isPidAlive(s.pid))
+        .map(s => ({
+          sessionId: s.happySessionId!,
+          flavor: s.happySessionMetadataFromLocalWebhook?.flavor ?? null,
+          branch: (s.happySessionMetadataFromLocalWebhook as { worktree?: { branch?: string } } | undefined)?.worktree?.branch ?? null,
+          running: turnActivity.activeSessions().includes(s.happySessionId!),
+        })),
+      log: message => logger.debug(`[DAEMON RUN] ${message}`),
+    });
+
     // Existing machine rows retain their original metadata at registration.
     // Publish the executing daemon's capability after the worker is installed.
     void apiMachine.updateMachineMetadata(current => ({
@@ -2110,6 +2131,7 @@ export async function startDaemon(): Promise<void> {
       teamWorker?.stop();
       // Real shutdown: kill live script trees; the next daemon reports them from the receipt, never re-runs them.
       automationRunner?.stop({ killScripts: true });
+      projectPresence?.stop();
       // B-585: kill running worktree setup trees; the next daemon records them as interrupted.
       currentWorktreeService()?.stopAll();
 
