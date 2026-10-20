@@ -57,7 +57,7 @@ CLI 改动也会影响 Web `src/screens/public` 的契约测试，不能只跑 C
 
 ## 验收与 UI
 
-- 自动化和浏览器能验的当批验完。仅真机专属项（IME、触屏、多设备时序）留 verify queue，并写明浏览器为何验不了。
+- 自动化和浏览器能验的当批验完。仅真机专属项（IME、触屏、多设备时序）写进 PR「未验证」一节并写明浏览器为何验不了（verify-queue 已于 2026-10-21 停用）。
 - 窄屏/主题/嵌入组件改动要真浏览器验证交互、溢出与布局；用 `scripts/dev/css-probe.mjs` 修前修后取证，移动尺寸按 `pointer: coarse`。渐变、遮挡、层叠效果要采像素，不能只断言类名存在。
 - 刷新前保留当前 entry/CSS、computed style 与关键变量。SW 更新必须核对 `controllerchange`、实际 controller 与加载 entry；reload 或 `registration.update()` 返回都不能证明已换版本。
   更新链路用两个真实构建 + 本地静态 server + Chromium 验证，保留旧 hashed assets 模拟部署；机制见 `src/app/swTakeover.ts`。
