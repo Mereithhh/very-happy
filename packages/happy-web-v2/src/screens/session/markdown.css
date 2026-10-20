@@ -263,6 +263,17 @@
   color: var(--text);
   background: var(--fill-hover);
 }
+/* B-359: "Show all" and "Full screen" share one row under the table. */
+.md-tbl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+@media (pointer: coarse) {
+  .md-tbl-actions .md-tbl-expand { min-height: 44px; padding: 0 var(--sp-2); }
+}
+
 
 /* `clip`, not `auto`/`hidden`, is what makes the sticky header work: `overflow-x:auto`
    computes `overflow-y` to `auto` as well, turning the wrapper into a scroll container
@@ -354,6 +365,95 @@
 }
 .md-table tr:last-child td {
   border-bottom: none;
+}
+
+/* B-359 full-screen table viewer. The scroll box is the table's ONLY scroll
+   container (both axes), so `thead th { position: sticky; top: 0 }` from the
+   in-flow rule resolves against it, and the first column can stick left — the
+   row label is what a sideways scroll on a phone loses. Phones get the whole
+   viewport (safe areas padded); wider screens a 24px-inset sheet like the image
+   preview. Kept AFTER the .md-table rules: the overrides below have the same
+   specificity as the in-flow ones and must win on order. */
+.md-tbl-full-overlay { position: fixed; inset: 0; z-index: 4600; background: var(--scrim); }
+.md-tbl-full {
+  position: fixed;
+  z-index: 4601;
+  inset: 24px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  color: var(--text);
+  box-shadow: var(--shadow-modal);
+  font-family: var(--font-sans);
+}
+.md-tbl-full:focus { outline: none; }
+.md-tbl-full-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 48px;
+  padding: 4px 8px 4px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.md-tbl-full-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--chat-fs-body);
+  font-weight: 500;
+}
+.md-tbl-full-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+}
+.md-tbl-full-close:hover { background: var(--bg-3); color: var(--text); }
+.md-tbl-full-close:focus-visible, .md-tbl-full-scroll:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint); }
+.md-tbl-full-scroll {
+  flex: 1;
+  min-height: 0;
+  /* no overscroll containment needed (chatScrollWiring): Radix locks body
+     scroll while the dialog is open */
+  overflow: auto;
+}
+/* Unlike the in-flow table (see "NOT max-content" above), the viewer has room to
+   scroll, so columns take their natural width up to the 40ch cell cap instead of
+   being squeezed into the viewport (measured: a 12-column table's last column
+   wrapped two CJK characters per line at width:auto). */
+.md-table--full { width: max-content; min-width: 100%; }
+.md-table--full th,
+.md-table--full td { max-width: min(40ch, 75vw); }
+.md-table--full td:first-child,
+.md-table--full th:first-child {
+  position: sticky;
+  left: 0;
+  /* a stuck cell needs its own opaque surface + a divider that travels with it */
+  box-shadow: inset -1px 0 0 var(--line);
+}
+.md-table--full td:first-child { z-index: 1; background: var(--bg-1); }
+.md-table--full thead th:first-child { z-index: 2; box-shadow: inset -1px 0 0 var(--line), inset 0 -1px 0 var(--line); }
+@media (max-width: 640px), (pointer: coarse) and (max-width: 900px) {
+  .md-tbl-full {
+    inset: 0;
+    border: 0;
+    border-radius: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .md-tbl-full-close { width: 44px; height: 44px; }
 }
 
 /* B-145: 正文里可点的文件路径（白名单命中）。

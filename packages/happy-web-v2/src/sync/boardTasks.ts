@@ -17,6 +17,7 @@
  */
 import { create } from 'zustand';
 import { getCurrentAuth } from '@/auth/AuthContext';
+import type { AuthCredentials } from '@/auth/tokenStorage';
 import { MMKV } from '@/storage/mmkv-web';
 import { kvGet, kvSet } from '@/sync/apiKv';
 import { isAuthFailure, isAuthLatched } from '@/auth/authLatch';
@@ -93,11 +94,10 @@ let pushTimer: ReturnType<typeof setTimeout> | null = null;
 /** Push the CURRENT store list to KV (debounced). On a version conflict
  *  (another device wrote first) merge their list with ours per-task and push
  *  the merged view — a blind re-push would clobber the other device. */
-function scheduleKvPush() {
-  const auth = getCurrentAuth();
-  if (!auth?.credentials) return; // not logged in → local cache only
+function scheduleKvPush(credentials?: AuthCredentials | null) {
+  const creds = credentials ?? getCurrentAuth()?.credentials;
+  if (!creds) return; // not logged in → local cache only
   if (isAuthLatched()) return; // B-490: token rejected — local cache only
-  const creds = auth.credentials;
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
     const snapshot = () => useBoardTasks.getState().tasks;
@@ -129,8 +129,12 @@ function scheduleKvPush() {
 interface BoardTasksState {
   tasks: BoardTask[];
   initialized: boolean;
-  /** Load the server-backed list (call once per board mount). Merges into local cache. */
-  initialize(): Promise<void>;
+  /** Load the server-backed list (call once per board mount). Merges into local cache.
+   *  B-068: pass the credentials from `useAuth()` — the `getCurrentAuth()`
+   *  global is published by AuthProvider's effect, which runs AFTER the board's
+   *  own mount effect on a cold load straight into /board, so reading it here
+   *  silently skipped the load. The global stays only as a fallback. */
+  initialize(credentials?: AuthCredentials | null): Promise<void>;
   create(title: string, description?: string): BoardTask;
   setStatus(id: string, status: 'open' | 'done'): void;
   /** Edit title/description — a record mutation (bumps updatedAt). */
@@ -149,12 +153,12 @@ interface BoardTasksState {
 export const useBoardTasks = create<BoardTasksState>((set, get) => ({
   tasks: load(),
   initialized: false,
-  initialize: async () => {
-    const auth = getCurrentAuth();
-    if (!auth?.credentials) return;
+  initialize: async (credentials) => {
+    const creds = credentials ?? getCurrentAuth()?.credentials;
+    if (!creds) return;
     // Same defense-in-depth as the terminal registry: a cache that outlived a
     // logout must not merge a stranger's tasks into THIS account's KV list.
-    const fp = accountFingerprint(auth.credentials.token);
+    const fp = accountFingerprint(creds.token);
     if (cachedAccount !== fp) {
       cachedAccount = fp;
       if (get().tasks.length > 0) {
@@ -163,18 +167,18 @@ export const useBoardTasks = create<BoardTasksState>((set, get) => ({
       }
     }
     try {
-      const item = await kvGet(auth.credentials, KV_KEY);
+      const item = await kvGet(creds, KV_KEY);
       if (item) {
         kvVersion = item.version;
         const remote = parseKvTasks(item.value);
         const merged = mergeBoardTasks(get().tasks, remote);
         persistLocal(merged);
         set({ tasks: merged, initialized: true });
-        if (JSON.stringify(merged) !== JSON.stringify(remote)) scheduleKvPush();
+        if (JSON.stringify(merged) !== JSON.stringify(remote)) scheduleKvPush(creds);
       } else {
         kvVersion = -1;
         set({ initialized: true });
-        if (get().tasks.length) scheduleKvPush();
+        if (get().tasks.length) scheduleKvPush(creds);
       }
     } catch (e: any) {
       console.warn('[boardTasks] KV load failed; using local cache', e?.message);

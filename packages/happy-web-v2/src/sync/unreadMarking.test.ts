@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { showsUnreadDot } from './unreadTransition';
 import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
 
 let storage: typeof import('./storage').storage;
@@ -56,25 +58,55 @@ describe('unread marking (B-312)', () => {
     });
 });
 
-describe('unread marking — the cases that produce NO dot', () => {
+describe('unread marking — runs that end offline (B-331)', () => {
     beforeEach(() => {
         storage.setState({ sessions: {}, unreadSessionIds: new Set(), currentViewingSessionId: null } as never);
     });
 
-    it('a session that goes offline in the same update is never marked', () => {
+    it('a session that finishes and goes offline in the same update IS marked', () => {
+        storage.getState().applySessions([session({ thinking: true })]);
+        storage.getState().applySessions([session({ thinking: false, active: false, updatedAt: NOW + 1000 })]);
+        expect(storage.getState().sessions['s1'].presence).not.toBe('online');
+        expect(storage.getState().unreadSessionIds.has('s1')).toBe(true);
+    });
+
+    it('a wrapper that exits mid-turn (thinking never cleared) is marked too', () => {
+        storage.getState().applySessions([session({ thinking: true })]);
+        storage.getState().applySessions([session({ thinking: true, active: false, updatedAt: NOW + 1000 })]);
+        expect(storage.getState().unreadSessionIds.has('s1')).toBe(true);
+    });
+
+    it('still not marked while the user is looking at it', () => {
+        storage.setState({ currentViewingSessionId: 's1' } as never);
         storage.getState().applySessions([session({ thinking: true })]);
         storage.getState().applySessions([session({ thinking: false, active: false, updatedAt: NOW + 1000 })]);
         expect(storage.getState().unreadSessionIds.has('s1')).toBe(false);
     });
 
-    it('a session marked while online keeps the flag after it goes offline', () => {
+    it('an idle session going offline (hibernate, daemon restart) is not marked', () => {
+        storage.getState().applySessions([session({ thinking: false })]);
+        storage.getState().applySessions([session({ thinking: false, active: false, updatedAt: NOW + 1000 })]);
+        expect(storage.getState().unreadSessionIds.has('s1')).toBe(false);
+    });
+
+    it('the dot shows on an offline row and hides only once the user archives it', () => {
         storage.getState().applySessions([session({ thinking: true })]);
-        storage.getState().applySessions([session({ thinking: false, updatedAt: NOW + 1000 })]);
-        expect(storage.getState().unreadSessionIds.has('s1')).toBe(true);
-        storage.getState().applySessions([session({ thinking: false, active: false, updatedAt: NOW + 2000 })]);
-        // The flag survives — but Sidebar gates the dot on `session.active`,
-        // so the row shows nothing once the wrapper is gone.
-        expect(storage.getState().unreadSessionIds.has('s1')).toBe(true);
-        expect(storage.getState().sessions['s1'].presence).not.toBe('online');
+        storage.getState().applySessions([session({ thinking: false, active: false, updatedAt: NOW + 1000 })]);
+        const ids = storage.getState().unreadSessionIds;
+        const offline = storage.getState().sessions['s1'];
+        expect(offline.active).toBe(false);
+        expect(showsUnreadDot({ ...offline, archivedAt: null }, ids)).toBe(true);
+        expect(showsUnreadDot({ ...offline, archivedAt: undefined }, ids)).toBe(true);
+        expect(showsUnreadDot({ ...offline, archivedAt: NOW + 2000 }, ids)).toBe(false);
+        expect(showsUnreadDot(undefined, ids)).toBe(false);
+    });
+});
+
+describe('Sidebar paints the dot through showsUnreadDot, not session.active (B-331)', () => {
+    const src = readFileSync(new URL('../screens/sessions/Sidebar.tsx', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    it('both the row signal and the folded-group summary use it', () => {
+        expect(src.match(/r\.kind === 'session' &&\s*showsUnreadDot\(r\.session, unreadIds\)/g)).toHaveLength(2);
+        expect(src).not.toMatch(/!!r\.session\?\.active\s*&&\s*unreadIds\.has/);
     });
 });
