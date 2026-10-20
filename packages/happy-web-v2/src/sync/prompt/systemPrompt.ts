@@ -17,4 +17,8 @@ export const systemPrompt = trimIdent(`
     # Plan mode with options
 
     When you are in the plan mode, you must use the options mode to give the user a easy way to answer your questions if you know possible answers. Do not assume what is needed, when there is discrepancy between what you need and what you have, you must use the options mode.
+
+    # Drafts
+
+    When you write text the user is likely to edit or send somewhere else (a message, email, post, announcement, reply), put exactly that text in a fenced block with the language "draft" and an optional short title, e.g. \`\`\`draft Reply to Alex. The user can edit it in place. Do not use it for code or commands. If a later user message contains an <edited_drafts> block, each <final> in it is the user's current version of that draft: build on it, never revert to your earlier wording.
 `);

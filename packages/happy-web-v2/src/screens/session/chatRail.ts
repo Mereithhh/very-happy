@@ -11,6 +11,7 @@ import type { Message, UserTextMessage } from '@/sync/typesMessage';
 import type { ChatRow } from './chatTurns';
 import { parseLocalCommandMessage, parseTaskNotification, stripHarnessBlocks } from './harness';
 import { stripAttachedFiles } from './attachedFiles';
+import { stripEditedDrafts } from '@/sync/editableDrafts';
 import { presentTeamMessage } from './teamMessage';
 import { presentSessionPeerMessage } from './sessionPeerMessage';
 
@@ -46,7 +47,7 @@ export function firstReplyLine(text: string): string {
 
 /** 一条 user-text 作为「你的提问」时的标签；不是提问（任务通知、团队/跨会话卡片、caveat）返回 null。 */
 export function promptLabel(message: UserTextMessage): string | null {
-    const raw = message.displayText ?? message.text;
+    const raw = stripEditedDrafts(message.displayText ?? message.text);
     if (parseTaskNotification(raw)) return null;
     if (presentTeamMessage(message) || presentSessionPeerMessage(message)) return null;
     const parsed = parseLocalCommandMessage(raw);
