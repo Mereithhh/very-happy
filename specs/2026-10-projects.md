@@ -302,3 +302,27 @@ Phase 3（随 Spaces）：项目协调者（= Spaces 命名 Agent 绑定到项�
 - [ ] 侧栏默认按项目分组，标签分组入口已移除，旧设置平滑迁移。
 - [ ] 会话搜索能跨机器搜到对话内容并跳到命中。
 - [ ] 每个新界面的 PR 附竞品对照截图。
+
+## 实现记录
+
+### B-644 server（API 与存储）
+
+协议定义在 `packages/happy-wire/src/projects.ts`；存储与规则在 `packages/happy-server/sources/app/projects/`；迁移 `20261021120000_projects` 只增表和两列可空列（旧镜像在新库上照常运行，已用 origin/main 代码实测）。开关：`VH_PROJECTS_ENABLED=false` 关闭，返回 404 `projects_disabled`，形状和旧 server 的未知路由一样，客户端只需一条「不支持」分支。
+
+| 方法 + 路径 | 用途 | 调用方 |
+|---|---|---|
+| `GET /v1/projects[?includeArchived=1]` | 项目列表 + 全部成员映射（显式 ∪ 团队派生） | Web 侧栏 |
+| `POST /v1/projects` | 新建（`requestId` 幂等；可带 `sessionIds` 一步移入） | Web / CLI |
+| `GET/PATCH/DELETE /v1/projects/:id` | 详情（成员、presence、记录）/ 改名·目录·默认值·归档 / 删除（团队、自动化 SET NULL） | Web |
+| `PUT /v1/projects/:id/instructions` | 说明 CAS（`ifVersion`），冲突 409 `instructions_version_conflict` + `project`（最新） | Web |
+| `GET /v1/projects/:id/instructions/history` | 历史版本 | Web |
+| `POST /v1/projects/:id/members`、`DELETE …/members/:sessionId` | 移入（move 语义）/ 移出；只收本账号会话 | Web / CLI |
+| `POST /v1/projects/:id/attach-team`、`detach-team` | 团队挂载；校验团队机器 ∈ 目录机器；只把项目默认值填进团队未设的字段 | Web |
+| `GET/POST /v1/projects/:id/log`、`POST …/log/:entry/revoke` | 记录；agent 写带 `authorSessionId`（wrapper 盖），每小时 ≤5 条其中决定 ≤2，超额 429 `project_note_quota_exceeded` + `suggestion`；`#seq` 可作引用 | Web / wrapper |
+| `PUT /v1/projects/presence` | daemon 批量写 presence，独立限流桶 `project_presence`（默认 120/分钟/账号），回包 `memberships` | daemon |
+| `GET /v1/projects/session/:sid` | 会话归属 | daemon / CLI |
+| `GET /v1/projects/session/:sid/context[?full=1&peek=1]` | 首轮前缀与 `project_context` 的数据；非 `peek` 时推进游标 | wrapper |
+| `GET /v1/projects/session/:sid/digest?since=<ms>` | 下一轮顺带（只读，不唤醒） | wrapper |
+| `POST /v1/projects/:id/messages`、`GET …/session/:sid/messages`、`POST /v1/projects/messages/delivered` | 离线留言；送达 7 天后清正文 | wrapper |
+
+`Automation.projectId` 走现有 `POST/PATCH /v1/automations`（可空；旧 server 会剥掉，客户端看回显）。
