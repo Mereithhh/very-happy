@@ -22,7 +22,7 @@ commits or tags to it and do not use it as a deployment source.
 | Daemon | published `very-happy-cli` on `mac-office` / `mac-main` (launchd) and `dev-sg` (Linux dev machine, systemd user unit — [`ops/dev-sg/README.md`](../ops/dev-sg/README.md)) |
 | Singapore relay | `sg-hw`, `https://relay-sg.veryhappy.dev`, Docker + Caddy on `hw-sg` |
 | US relay | `us-fb`, `https://relay-us.veryhappy.dev`, Docker + Caddy on `dmit-la` (Los Angeles). Moved off `fb-us`/k8sus on 2026-09-11 (B-459); the k3s deployment there is scaled to 0 and kept only as a rollback |
-| Retired origin | `vh-us` (Tokyo VPS, 69.8.128.238) — server stopped 2026-09-07; keeps a frozen PostgreSQL copy for rollback until ~2026-09-21. Its Caddy now 301-redirects `happy.mereith.com` page loads to `veryhappy.dev` and transparently proxies `/v1|/v2|/v3|/files|/health` (websocket included) to `vh-sg`, so a client still configured with the legacy host keeps working |
+| Retired origin | `vh-us` (Tokyo ByteVirt VPS, 69.8.128.238) — server stopped 2026-09-07, PostgreSQL frozen at 08:14 UTC that day; retired by B-365. Final encrypted backup (pg_dump -Fc of the frozen DB + `/opt/happy`, `/opt/vh-admin`, `/opt/happy-rollbacks`, `/etc/caddy`, the `happy-data` volume) is in B2 `mereith-rustfs-backup/vh-us-final-20261021/` (sha256 in `SHA256SUMS`; passphrase with the operator, see B-365), restore-verified (row counts and last timestamps equal). `happy.mereith.com` now resolves to `vh-sg` (DNSPod A record, TTL 300); `Caddyfile.blue-green` keeps `/v1|/v2|/v3|/files|/health|/logs-*` working on that host and 301-redirects every other request to `veryhappy.dev`. `vh-admin` runs on `vh-sg` (the copy on `vh-us` was only its rollback point) |
 
 ### Client IP (B-491)
 
@@ -122,9 +122,9 @@ Lessons that are now encoded in the host:
   `PAUSE` and `RESUME`; compute row counts with `psql -f` (quoted identifiers
   through ssh → sh → psql broke twice), and resume unconditionally on mismatch.
 
-Rollback window: until the Tokyo PostgreSQL is deleted, Cloudflare can be
-re-pointed at 69.8.128.238 and `happy-server-green` restarted there; data written
-to RDS after 08:15 UTC 2026-09-07 would have to be re-imported (dump RDS → Tokyo).
+Rollback window: closed by B-365 (2026-10). The Tokyo host is retired; its frozen
+database survives only as the encrypted B2 dump above, which predates everything
+written to RDS after 08:15 UTC 2026-09-07 — it is an archive, not a rollback target.
 
 ## Supported deployment paths
 
