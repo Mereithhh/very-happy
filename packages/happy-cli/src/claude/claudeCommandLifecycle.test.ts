@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createClaudeCommandTracker, readClaudeCommandLifecycle } from './claudeCommandLifecycle';
+import { createClaudeCommandTracker, planUnconfirmedCommands, readClaudeCommandLifecycle } from './claudeCommandLifecycle';
 
 /** The frame Claude Code 2.1.296 emits (probe 2026-10-19). */
 const frame = (state: string, command_uuid = 'steer-1') => ({
@@ -83,5 +83,35 @@ describe('Claude command tracker (B-631)', () => {
         // Re-tracking a known uuid evicts nothing.
         tracker.track('u-299');
         expect(tracker.isTracked('u-44')).toBe(true);
+    });
+});
+
+describe('unconfirmed commands (B-634 ②)', () => {
+    it('takeUnconfirmed returns tracked messages that never started, once, in send order', () => {
+        const tracker = createClaudeCommandTracker<string>();
+        tracker.track('a', 'A');
+        tracker.track('b', 'B');
+        tracker.track('c', 'C');
+        tracker.track('untracked-payload');
+        tracker.observe({ uuid: 'a', state: 'started' });
+        tracker.observe({ uuid: 'c', state: 'cancelled' }); // reported as dropped already
+        expect(tracker.takeUnconfirmed()).toEqual([{ uuid: 'b', payload: 'B' }]);
+        expect(tracker.takeUnconfirmed()).toEqual([]);
+    });
+
+    it('plan: an abort tombstones everything; a fault re-sends the first one once, tombstones the rest', () => {
+        const cmds = [{ uuid: 'x', payload: 1 }, { uuid: 'y', payload: 2 }];
+        expect(planUnconfirmedCommands(cmds, { aborted: true, parkFree: true, redelivered: new Set() }))
+            .toEqual({ redeliver: null, tombstone: ['x', 'y'] });
+        expect(planUnconfirmedCommands(cmds, { aborted: false, parkFree: true, redelivered: new Set() }))
+            .toEqual({ redeliver: cmds[0], tombstone: ['y'] });
+        // x already had its second chance: y gets it instead.
+        expect(planUnconfirmedCommands(cmds, { aborted: false, parkFree: true, redelivered: new Set(['x']) }))
+            .toEqual({ redeliver: cmds[1], tombstone: ['x'] });
+        expect(planUnconfirmedCommands([cmds[0]], { aborted: false, parkFree: true, redelivered: new Set(['x']) }))
+            .toEqual({ redeliver: null, tombstone: ['x'] });
+        // Something else is parked for the next launch (a mode change): never overwrite it.
+        expect(planUnconfirmedCommands(cmds, { aborted: false, parkFree: false, redelivered: new Set() }))
+            .toEqual({ redeliver: null, tombstone: ['x', 'y'] });
     });
 });
