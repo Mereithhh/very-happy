@@ -12,7 +12,7 @@
  *   very-happy sessions archive <id> [--json]
  *   very-happy sessions approve <id> <requestId> [--for-session] [--json]
  *   very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
- *   very-happy sessions peers [--scope repo|cwd|machine] [--cwd <dir>] [--json]
+ *   very-happy sessions peers [--scope repo|cwd|machine|project] [--cwd <dir>] [--json]
  *   very-happy sessions message <id> <text> [--reply-to <msgId>] [--json]
  *
  * `peers` / `message` (B-497) are the CLI face of the `session_peers` /
@@ -58,7 +58,7 @@ import {
 } from '@/sessions/sessionOps'
 import { resolvePermissionRequest, type PermissionVerdict } from '@/sessions/permissionOps'
 import { isValidSessionId } from '@/assistant/ids'
-import { cliPeerSelf, listPeerSessions, sendPeerMessage, type PeerToolContext } from '@/sessions/peerTools'
+import { cliPeerSelf, executeSessionPeerTool, listPeerSessions, sendPeerMessage, type PeerToolContext, type ProjectPeerListing } from '@/sessions/peerTools'
 import { PEER_SCOPES, type PeerScope } from '@/sessions/repoIdentity'
 import { readPersistedSessions } from '@/persistence'
 import { resolve as resolvePath } from 'node:path'
@@ -99,7 +99,7 @@ export interface SessionsCommandOptions {
     /** read --wait: give up after this many seconds (default 600). */
     timeoutSec?: number
     /** peers: repo (default) | cwd | machine. */
-    scope?: PeerScope
+    scope?: PeerScope | 'project'
     /** peers: compute the scope from this directory instead of the process cwd. */
     cwd?: string
     /** message: the text to send. */
@@ -163,8 +163,8 @@ export function parseSessionsArgs(args: string[]): SessionsCommandOptions {
         } else if (arg === '--scope') {
             const value = args[++i]
             if (value === undefined) throw new Error('--scope requires a value')
-            if (!(PEER_SCOPES as readonly string[]).includes(value)) throw new Error(`--scope must be one of ${PEER_SCOPES.join(', ')}`)
-            options.scope = value as PeerScope
+            if (value !== 'project' && !(PEER_SCOPES as readonly string[]).includes(value)) throw new Error(`--scope must be one of ${[...PEER_SCOPES, 'project'].join(', ')}`)
+            options.scope = value as PeerScope | 'project'
         } else if (arg === '--cwd') {
             const value = args[++i]
             if (value === undefined) throw new Error('--cwd requires a value')
@@ -267,7 +267,7 @@ ${chalk.bold('Usage:')}
   very-happy sessions archive <id> [--json]
   very-happy sessions approve <id> <requestId> [--for-session] [--json]
   very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
-  very-happy sessions peers [--scope repo|cwd|machine] [--cwd <dir>] [--machine <id>] [--json]
+  very-happy sessions peers [--scope repo|cwd|machine|project] [--cwd <dir>] [--machine <id>] [--json]
   very-happy sessions message <id> <text> [--reply-to <msgId>] [--machine <id>] [--json]
 
 ${chalk.bold('Actions:')}
@@ -330,7 +330,9 @@ ${chalk.bold('Options:')}
   --timeout <s>      read --wait only: give up after <s> seconds (default 600).
   --for-session      approve only: approved_for_session instead of approved.
   --reason <text>    deny only: reason forwarded to the wrapper.
-  --scope <s>        peers only: repo (default) | cwd | machine.
+  --scope <s>        peers only: repo (default) | cwd | machine | project
+                     (project = the other sessions of the calling session's
+                     Very Happy project on any machine).
   --cwd <dir>        peers only: directory the scope is computed from
                      (default: the process cwd, or HAPPY_SESSION_ID's cwd).
   --reply-to <id>    message only: the peer message id being answered.
@@ -500,10 +502,22 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
             const cwd = options.cwd ? resolvePath(options.cwd) : process.cwd()
             const persisted = readPersistedSessions()
             const context: PeerToolContext = { self: () => cliPeerSelf(process.env, cwd, persisted), readPersisted: () => persisted }
+            if (options.action === 'peers' && options.scope === 'project') {
+                // B-645: the project's sessions on any machine, from server-side presence.
+                // Identity = the calling session (VH_PEER_SESSION_ID inside a managed shell).
+                const self = cliPeerSelf(process.env, cwd, persisted)
+                const listing = await executeSessionPeerTool('session_peers', { scope: 'project' }, context) as ProjectPeerListing
+                if (options.json) console.log(JSON.stringify(listing))
+                else if (!listing.project) console.log(`Not in a project (${self.sessionId}).`)
+                else if (listing.peers.length === 0) console.log(`No other sessions in project "${listing.project.name}".`)
+                else for (const peer of listing.peers) console.log([peer.sessionId, `[${peer.state ?? '?'}]`, peer.title ? `title="${peer.title}"` : '', peer.agent ? `agent=${peer.agent}` : '', peer.machine ? `machine=${peer.machine}` : '', peer.doing ? `doing="${peer.doing}"` : '', peer.url].filter(Boolean).join(' '))
+                process.exit(0)
+            }
             if (options.action === 'peers') {
+                const scope = options.scope === 'project' ? undefined : options.scope
                 const listing = options.machine
-                    ? await listRemotePeers(options.machine, { ...(options.scope ? { scope: options.scope } : {}), ...(options.cwd ? { cwd: options.cwd } : {}) })
-                    : await listPeerSessions(context, options.scope ?? 'repo')
+                    ? await listRemotePeers(options.machine, { ...(scope ? { scope } : {}), ...(options.cwd ? { cwd: options.cwd } : {}) })
+                    : await listPeerSessions(context, scope ?? 'repo')
                 if (options.json) {
                     console.log(JSON.stringify(listing))
                 } else if (listing.peers.length === 0) {

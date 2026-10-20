@@ -22,6 +22,7 @@ import { sendUserMessage, sessionWebUrl } from '@/commands/sessionMessage'
 import { deliverToSession, type DeliveryResult } from '@/commands/sessionDelivery'
 import { CLI_PEER_SENDER_ID, formatSessionPeerMessage, SESSION_PEER_SENT_FROM, type PeerSender } from './peerMessage'
 import { isPeerInScope, PEER_SCOPES, resolveRepoIdentity, type PeerScope, type RepoIdentity } from './repoIdentity'
+import { ProjectsUnsupportedError, sharedProjectsClient } from '@/projects/client'
 import { listRemotePeers, sendRemotePeerMessage, type RemotePeerListing, type RemotePeerMessageResult } from './remoteSessionClient'
 
 export const SESSION_PEER_TOOL_NAMES = ['session_message', 'session_peers'] as const
@@ -42,9 +43,9 @@ export const SESSION_PEER_TOOL_SCHEMAS: Record<SessionPeerToolName, { descriptio
     session_peers: {
         title: 'List Peer Sessions',
         readOnly: true,
-        description: 'List the other agent sessions running on this machine and the files each edited in the last 30 minutes. Default scope "repo": sessions in the same git repository, including its other worktrees (sameWorktree says whether they share your checkout). "cwd": the same directory only. "machine": every live session here. With machineId, list the live sessions on that other machine of this account instead (scope "machine" unless you pass a cwd that exists there).',
+        description: 'List the other agent sessions running on this machine and the files each edited in the last 30 minutes. Default scope "repo": sessions in the same git repository, including its other worktrees (sameWorktree says whether they share your checkout). "cwd": the same directory only. "machine": every live session here. "project": the other sessions of your Very Happy project on any machine (title, agent, what it is doing). With machineId, list the live sessions on that other machine of this account instead (scope "machine" unless you pass a cwd that exists there).',
         inputSchema: {
-            scope: z.enum(['repo', 'cwd', 'machine']).optional().describe('repo (default) | cwd | machine'),
+            scope: z.enum(['repo', 'cwd', 'machine', 'project']).optional().describe('repo (default) | cwd | machine | project'),
             machineId: z.string().min(1).max(128).optional().describe('Another machine of this account (from the web\'s machine list) to list instead of this one'),
             cwd: z.string().min(1).max(4096).optional().describe('With machineId: a directory on that machine to compute repo/cwd scope from'),
         },
@@ -80,6 +81,23 @@ export interface PeerToolContext {
     remoteMessage?: ((args: { to: string; body: string; replyTo?: string; from: PeerSender; machineId?: string }) => Promise<RemotePeerMessageResult>) | null
     /** B-506: list peers on another machine (default = proxy through its daemon). */
     remotePeers?: (machineId: string, options: { scope?: PeerScope; cwd?: string }) => Promise<RemotePeerListing>
+    /** B-645: scope "project" — read from server-side project presence (no per-machine fan-out). */
+    projectPeers?: (sessionId: string) => Promise<ProjectPeerListing>
+}
+
+export interface ProjectPeerListing {
+    scope: 'project'
+    project: { id: string; name: string } | null
+    peers: Array<{ sessionId: string; title: string | null; agent: string | null; machine: string | null; branch: string | null; state: string | null; doing: string | null; updatedAt: number; url: string }>
+}
+
+async function defaultProjectPeers(sessionId: string): Promise<ProjectPeerListing> {
+    const ctx = await sharedProjectsClient().context(sessionId, { full: true, peek: true })
+    return {
+        scope: 'project',
+        project: ctx.project ? { id: ctx.project.id, name: ctx.project.name } : null,
+        peers: ctx.sessions.map((s) => ({ sessionId: s.sessionId, title: s.title, agent: s.agent, machine: s.machine, branch: s.branch, state: s.state, doing: s.doing, updatedAt: s.updatedAt, url: sessionWebUrl(s.sessionId) })),
+    }
 }
 
 export interface PeerListing {
@@ -201,6 +219,13 @@ export async function executeSessionPeerTool(name: SessionPeerToolName, args: an
         })
         case 'session_peers': {
             const scope = args?.scope
+            if (scope === 'project') {
+                try { return await (context.projectPeers ?? defaultProjectPeers)(context.self().sessionId) }
+                catch (error) {
+                    if (error instanceof ProjectsUnsupportedError) throw new Error('This Very Happy server does not support projects yet; use scope "repo"')
+                    throw error
+                }
+            }
             if (scope !== undefined && !PEER_SCOPES.includes(scope)) throw new Error(`scope must be one of ${PEER_SCOPES.join(', ')}`)
             if (args?.machineId) {
                 // B-506: another machine's live sessions, computed there.

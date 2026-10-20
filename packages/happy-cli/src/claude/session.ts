@@ -11,6 +11,8 @@ import { notifyDaemonSessionEvent } from "@/daemon/controlClient";
 import { sameBackgroundTasks, type BackgroundTaskInfo } from "./backgroundTasks";
 import { createScheduledWakeupTracker } from "@/hibernation/scheduledWakeups";
 import type { ClaudePrewarmLease } from "./claudePrewarm";
+import { createProjectInjector, type ProjectInjector } from "@/projects/injector";
+import { sharedProjectsClient } from "@/projects/client";
 
 export type ClaudeSteerInput = {
     message: string;
@@ -108,6 +110,21 @@ export class Session {
     
     /** Keep alive interval reference for cleanup */
     private keepAliveInterval: NodeJS.Timeout;
+
+    /**
+     * B-645: project context rides in front of real user messages (never the
+     * system prompt), so it survives relaunches without touching the mode hash
+     * or prewarm key. One per session process; created on first use.
+     */
+    private _projectInjector: ProjectInjector | null = null;
+    get projectInjector(): ProjectInjector {
+        return this._projectInjector ??= createProjectInjector({
+            client: sharedProjectsClient(),
+            sessionId: () => this.client.sessionId,
+            metadata: () => (this.client.getMetadata?.() ?? null) as Record<string, any> | null,
+            agent: 'claude',
+        });
+    }
 
     constructor(opts: {
         api: ApiClient,

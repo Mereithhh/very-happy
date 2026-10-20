@@ -31,6 +31,7 @@ import { COMMAND_PALETTE_OPEN_EVENT, matchQuickOpenChord, onQuickOpen, openQuick
 import '../command/commandpalette.css';
 import './quickopen.css';
 import { dismissFeatureTip } from '@/components/featureTips/FeatureTips';
+import { listArrowDelta } from '@/utils/listArrowKey';
 
 export function QuickOpen({ sessionId }: { sessionId: string }) {
     const [open, setOpen] = useState(false);
@@ -149,9 +150,10 @@ function QuickOpenPanel({ sessionId, onClose }: { sessionId: string; onClose: ()
 
     const onKeyDown = (e: React.KeyboardEvent) => {
         if (ime.isGuarded(e)) return;
+        // B-655: only a bare ↑/↓ moves the list; ⌘/Shift+↑/↓ edit the query.
+        const delta = listArrowDelta(e);
         if (e.key === 'Escape') { e.preventDefault(); onClose(); }
-        else if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => (results.length ? (a + 1) % results.length : 0)); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => (results.length ? (a - 1 + results.length) % results.length : 0)); }
+        else if (delta !== null) { e.preventDefault(); setActive((a) => (results.length ? (a + delta + results.length) % results.length : 0)); }
         else if (e.key === 'Enter') {
             e.preventDefault();
             const hit = results[active];

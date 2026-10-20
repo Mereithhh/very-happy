@@ -125,7 +125,7 @@ describe('projects store (pglite)', () => {
         const p = await newProject();
         const s = await newSession(); const outsider = await newSession();
         await store.addMembers(accountId, p.id, { sessionIds: [s] });
-        await expect(store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'x', authorSessionId: outsider })).rejects.toMatchObject({ code: 'not_a_project_member', status: 403 });
+        await expect(store.createLogEntry(accountId, p.id, { kind: 'finding', title: 'x', authorSessionId: outsider })).rejects.toMatchObject({ code: 'not_a_project_member', status: 409 });
         const d1 = await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'use pnpm', authorSessionId: s });
         await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'no zod default', authorSessionId: s });
         const third = await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'one more', authorSessionId: s }).catch(e => e);
@@ -144,7 +144,7 @@ describe('projects store (pglite)', () => {
         expect(new Set(log.map(e => e.seq)).size).toBe(log.length);
         const other = await newSession();
         await store.addMembers(accountId, p.id, { sessionIds: [other] });
-        await expect(store.revokeLogEntry(accountId, p.id, d1.id, other)).rejects.toMatchObject({ code: 'log_entry_not_owned', status: 403 });
+        await expect(store.revokeLogEntry(accountId, p.id, d1.id, other)).rejects.toMatchObject({ code: 'log_entry_not_owned', status: 409 });
         const revoked = await store.revokeLogEntry(accountId, p.id, String(d1.seq), s);
         expect(revoked.revokedAt).not.toBeNull();
         expect((await store.revokeLogEntry(accountId, p.id, d1.id)).revokedAt).toBe(revoked.revokedAt);
