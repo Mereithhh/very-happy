@@ -17,12 +17,20 @@ let base: string;
 const previousHome = configuration.happyHomeDir;
 const previousScope = process.env.VH_TEAM_SCOPE_FILE;
 let fetchMock: ReturnType<typeof vi.fn>;
+const isPending = (result: TeamAdoptResult) => 'status' in result && result.status === 'pending';
+/**
+ * Poll the RPC the way the UI does until it leaves `pending`. B-618: this used
+ * to give up after 100 × 5ms — a wall-clock budget for background work that
+ * does real fs writes + fsync (intent receipt, scope file), so a slow CI disk
+ * returned the still-pending result (`expected { status: 'pending' }`, PR #551).
+ * Wait on the condition instead; the timeout only bounds a real hang.
+ */
 async function settle(adopt: ReturnType<typeof createTeamAdoption>, payload = input): Promise<TeamAdoptResult> {
     let result = adopt(payload);
-    for (let i = 0; i < 100 && 'status' in result && result.status === 'pending'; i++) {
-        await new Promise(resolve => setTimeout(resolve, 5));
-        result = adopt(payload);
-    }
+    await vi.waitFor(() => {
+        if (isPending(result)) result = adopt(payload);
+        if (isPending(result)) throw new Error('adoption still pending');
+    }, { timeout: 15_000, interval: 5 });
     return result;
 }
 beforeEach(async () => {
