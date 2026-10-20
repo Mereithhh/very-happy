@@ -263,3 +263,12 @@ components.pre
 
 - 手机上长表格折叠/展开的手感，与展开后吸顶表头在触屏滚动下的表现。
 - mermaid 大图在手机上的可读性（缩放后是否还看得清）。
+
+## Follow-up：全屏看表（B-359，2026-10-21）
+
+- 触发：表格横向溢出（`is-scrollable`）**或**可折叠（>16 行）时，表格下方操作行出现「全屏查看」（与「展开全部」同一行，触屏 44px）。判定是纯函数 `tableFullscreen.ts`。
+- 视图：Radix Dialog；手机（≤640px 或 coarse ≤900px）铺满视口并让出安全区，宽屏为 24px 内缩面板（同图片预览）。
+  滚动盒是表格**唯一**滚动容器（双轴），所以 in-flow 规则里的 `thead th { position: sticky; top: 0 }` 直接对它生效，首列再加 `left: 0` 吸附；
+  表宽改 `max-content`（单元格仍受 `min(40ch, 75vw)` 上限），不再被挤进视口宽。
+- 不碰 in-flow 的 overflow / sticky / 折叠模型（§B 三条 CSS 事实原样成立）；全屏块放在 `.md-table` 规则之后——同优先级的覆盖靠顺序生效，放前面会静默失效（实测 `width: auto` 赢）。
+- 实测（Chromium 390×844 coarse）：12 列表 in-flow 662px 挤在 358px 内只能横滚；全屏后表宽 949px、每行单行，横滚 300px 后首列 left 仍为 0；页面无横向溢出。

@@ -27,6 +27,7 @@ export { claudeCheckSession } from '@/claude/utils/claudeCheckSession';
 export { createSessionScanner } from '@/claude/utils/sessionScanner';
 export { getProjectPath } from './utils/path';
 export { RawJSONLinesSchema } from './types';
+export { replayClaudeForkJsonl } from './utils/claudeForkBackfill';
 export { TitleGenerator } from './utils/titleGenerator';
 export { BoardAnalyzer, FileRateLimiter } from './utils/boardAnalyzer';
 export { createSelfReportState } from './utils/boardReport';
