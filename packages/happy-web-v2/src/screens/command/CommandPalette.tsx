@@ -61,6 +61,7 @@ import { displayText, searchSettings, sectionTitle, settingHref } from '@/screen
 import { isWebPushSupported } from '@/sync/webPush';
 import { getNotificationPermission } from '@/sync/webNotifications';
 import { PaletteStatusMark } from './PaletteStatusMark';
+import { listArrowDelta } from '@/utils/listArrowKey';
 import './commandpalette.css';
 
 /**
@@ -599,15 +600,15 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       // operate the candidate window — they must not run items, move the
       // selection, or close the palette.
       if (ime.isGuarded(e)) return;
+      // B-655: only a bare ↑/↓ moves the selection; with a modifier it is a
+      // caret/selection key for the search field.
+      const delta = listArrowDelta(e);
       if (e.key === 'Escape') {
         e.preventDefault();
         close();
-      } else if (e.key === 'ArrowDown') {
+      } else if (delta !== null) {
         e.preventDefault();
-        setActive((a) => moveActive(keys, a, 1));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setActive((a) => moveActive(keys, a, -1));
+        setActive((a) => moveActive(keys, a, delta));
       } else if (e.key === 'Enter') {
         e.preventDefault();
         runItem(activeIndex >= 0 ? filtered[activeIndex] : undefined);
