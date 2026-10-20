@@ -68,6 +68,7 @@ import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
+import { sidebarNavEntries, navAttentionTotal, navMenuLabel, type SidebarNavKey } from './sidebarNavEntries';
 import {
   findRevealTarget,
   flattenOpenGroups,
@@ -956,6 +957,87 @@ export function Sidebar() {
     return () => cancelAnimationFrame(raf);
   }, [revealSeq, sections, displayRows, isCurrentRow, collapsedGroups, view, selectView, dataReady]);
 
+  // Quick create: spawns directly with the remembered machine/directory and
+  // the settings defaults; falls back to the full dialog only when it can't
+  // decide (or always-ask is on). Shared by the desktop 新建会话 button and the
+  // phone header's ＋ (B-641) — same menu, same first item, same step count.
+  const createItems: MenuItemDef[] = [
+    {
+      key: 'chat',
+      disabled: creatingChat,
+      label: t('newSessionModal.chatTitle'),
+      icon: MessageSquare,
+      onSelect: () => void createChatOrConfigure(navigate, configureNew, { location }),
+    },
+    {
+      key: 'advanced',
+      label: t('newSessionModal.advancedTitle'),
+      icon: SlidersHorizontal,
+      onSelect: () => configureNew(),
+    },
+    {
+      key: 'terminal',
+      label: t('newSessionModal.terminalTitle'),
+      icon: TerminalSquare,
+      onSelect: () => createTerminalOrPick(navigate),
+    },
+    {
+      // B-144: same terminal, but pick the working directory first —
+      // the startup command then runs in the project, not in $HOME.
+      // ⌘N / ⌥N deliberately stay on the one-click path above.
+      key: 'terminal-at',
+      label: t('newSessionModal.terminalAtTitle'),
+      icon: FolderOpen,
+      onSelect: () => setShowNewTerminal(true),
+    },
+    {
+      // B-281: the dedicated picker — lists the machine's OWN tmux
+      // sessions directly, click = attach (B-273 machinery).
+      key: 'terminal-attach',
+      label: t('newSessionModal.terminalAttachTitle'),
+      icon: Cable,
+      onSelect: () => setShowAttachTmux(true),
+    },
+    {
+      // B-290: import a Claude Code conversation (CLI / desktop app /
+      // claude.ai) that was never started through very-happy.
+      key: 'import-claude',
+      label: t('newSessionModal.importClaudeTitle'),
+      icon: History,
+      onSelect: () => setShowImport('claude'),
+    },
+    {
+      // B-464: same dialog, Codex source (codex TUI / exec / desktop).
+      key: 'import-codex',
+      label: t('newSessionModal.importCodexTitle'),
+      icon: History,
+      onSelect: () => setShowImport('codex'),
+    },
+    {
+      // B-300: everything above needs a machine, so the way to get
+      // one belongs in the same menu — separated, because it creates
+      // no session. B-296 gave it a page; this is where people look.
+      key: 'connect-machine',
+      label: t('connectMachine.cta'),
+      icon: HardDrive,
+      separatorBefore: true,
+      onSelect: () => navigate('/machine/connect'),
+    },
+  ];
+
+  // B-641: secondary entries — a nav column on desktop, the ⋯ menu on phones.
+  const navEntries = sidebarNavEntries({ teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople });
+  const navAttention = navAttentionTotal(navEntries);
+  const navName: Record<SidebarNavKey, string> = {
+    teams: teamCopy.title,
+    automations: t('automations.sidebarEntry'),
+    todos: t('todos.title'),
+    people: t('people.title'),
+    help: t('sidebar.openHelp'),
+  };
+  const navIcon = { teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact, help: CircleHelp } as const;
+  const navBadgeTitle: Partial<Record<SidebarNavKey, string>> = { automations: t('automations.decisions'), people: t('people.incoming') };
+
   return (
     <div className="sb">
       <header className="sb-header">
@@ -965,6 +1047,28 @@ export function Sidebar() {
         </button>
         <div className="sb-header-right">
           <button className="sb-icon-btn" aria-label={t("sidebar.openSearch")} title={`${t("sidebar.openSearch")} · ⌘K`} onClick={openCommandPalette}><Search size={17}/></button>
+          {/* B-641: the phone list keeps its height — new session and the
+              secondary entries live in the header instead of six nav rows. */}
+          {!isDesktop && (
+            <ActionDropdownMenu align="end" sideOffset={4} contentClassName="sb-touch-menu" items={createItems}>
+              <button className="sb-icon-btn sb-new-icon" disabled={creatingChat} aria-busy={creatingChat} aria-label={t('sidebar.newSession')} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail}>
+                {creatingChat ? <Spinner size={17} /> : <Plus size={19} />}
+              </button>
+            </ActionDropdownMenu>
+          )}
+          {!isDesktop && (
+            <ActionDropdownMenu
+              align="end"
+              sideOffset={4}
+              contentClassName="sb-touch-menu"
+              items={navEntries.map((e) => ({ key: e.key, label: navMenuLabel(navName[e.key], e.attention), icon: navIcon[e.key], onSelect: () => navigate(e.path) }))}
+            >
+              <button className="sb-icon-btn sb-more-btn" aria-label={t('sidebar.moreEntries')} title={t('sidebar.moreEntries')}>
+                <MoreHorizontal size={18} />
+                {navAttention > 0 && <span className="sb-more-attn mono" aria-hidden>{navAttention}</span>}
+              </button>
+            </ActionDropdownMenu>
+          )}
           {/* Collapse only exists in the two-pane desktop layout. On mobile
               (single pane) AppLayout ignores `collapsed` entirely, so this
               button did nothing visible — worse, it silently wrote
@@ -980,96 +1084,27 @@ export function Sidebar() {
         </div>
       </header>
 
-      <nav className="sb-products" aria-label="Workspace">
-          {/* Quick create: spawns directly with the remembered machine/
-              directory and the settings defaults; falls back to the full
-              dialog only when it can't decide (or always-ask is on). */}
+      {isDesktop && <nav className="sb-products" aria-label="Workspace">
           <ActionDropdownMenu
             align="start"
             sideOffset={4}
             matchTriggerWidth
-            items={[
-              {
-                key: 'chat',
-                disabled: creatingChat,
-                label: t('newSessionModal.chatTitle'),
-                icon: MessageSquare,
-                onSelect: () => void createChatOrConfigure(navigate, configureNew, { location }),
-              },
-              {
-                key: 'advanced',
-                label: t('newSessionModal.advancedTitle'),
-                icon: SlidersHorizontal,
-                onSelect: () => configureNew(),
-              },
-              {
-                key: 'terminal',
-                label: t('newSessionModal.terminalTitle'),
-                icon: TerminalSquare,
-                onSelect: () => createTerminalOrPick(navigate),
-              },
-              {
-                // B-144: same terminal, but pick the working directory first —
-                // the startup command then runs in the project, not in $HOME.
-                // ⌘N / ⌥N deliberately stay on the one-click path above.
-                key: 'terminal-at',
-                label: t('newSessionModal.terminalAtTitle'),
-                icon: FolderOpen,
-                onSelect: () => setShowNewTerminal(true),
-              },
-              {
-                // B-281: the dedicated picker — lists the machine's OWN tmux
-                // sessions directly, click = attach (B-273 machinery).
-                key: 'terminal-attach',
-                label: t('newSessionModal.terminalAttachTitle'),
-                icon: Cable,
-                onSelect: () => setShowAttachTmux(true),
-              },
-              {
-                // B-290: import a Claude Code conversation (CLI / desktop app /
-                // claude.ai) that was never started through very-happy.
-                key: 'import-claude',
-                label: t('newSessionModal.importClaudeTitle'),
-                icon: History,
-                onSelect: () => setShowImport('claude'),
-              },
-              {
-                // B-464: same dialog, Codex source (codex TUI / exec / desktop).
-                key: 'import-codex',
-                label: t('newSessionModal.importCodexTitle'),
-                icon: History,
-                onSelect: () => setShowImport('codex'),
-              },
-              {
-                // B-300: everything above needs a machine, so the way to get
-                // one belongs in the same menu — separated, because it creates
-                // no session. B-296 gave it a page; this is where people look.
-                key: 'connect-machine',
-                label: t('connectMachine.cta'),
-                icon: HardDrive,
-                separatorBefore: true,
-                onSelect: () => navigate('/machine/connect'),
-              },
-            ]}
+            items={createItems}
           >
             <button className="sb-nav-btn" disabled={creatingChat} aria-busy={creatingChat} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail}>
               {creatingChat ? <Spinner size={17} /> : <Plus size={17} />}<span>{creatingChat ? (lang.startsWith('zh') ? '正在创建…' : 'Creating…') : t('sidebar.newSession')}</span><ChevronDown size={14} className="sb-new-chevron"/>
             </button>
           </ActionDropdownMenu>
-        {happyBotEntryVisible && <button onClick={() => navigate('/teams')}><UsersRound size={18} /><span>{teamCopy.title}</span></button>}
-        {automationsEnabled && (
-          <button onClick={() => navigate('/automations')}>
-            <Zap size={18} /><span>{t('automations.sidebarEntry')}</span>
-            {automationAttention > 0 && <span className="sb-nav-attn mono" title={t('automations.decisions')}>{automationAttention}</span>}
-          </button>
-        )}
-        <button onClick={() => navigate('/todos')}><ListChecks size={18} /><span>{t('todos.title')}</span></button>
-        <button onClick={() => navigate('/people')}>
-          <Contact size={18} /><span>{t('people.title')}</span>
-          {incomingPeople > 0 && <span className="sb-nav-attn mono" title={t('people.incoming')}>{incomingPeople}</span>}
-        </button>
-        <button onClick={() => navigate('/help')}><CircleHelp size={17}/><span>{t('sidebar.openHelp')}</span></button>
-      </nav>
+        {navEntries.map((e) => {
+          const Icon = navIcon[e.key];
+          return (
+            <button key={e.key} onClick={() => navigate(e.path)}>
+              <Icon size={e.key === 'help' ? 17 : 18} /><span>{navName[e.key]}</span>
+              {e.attention > 0 && <span className="sb-nav-attn mono" title={navBadgeTitle[e.key]}>{e.attention}</span>}
+            </button>
+          );
+        })}
+      </nav>}
 
       <div className="sb-list-controls">
       <div className="sb-filter vh-segmented" role="tablist">
