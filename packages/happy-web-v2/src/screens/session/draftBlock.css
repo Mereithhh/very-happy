@@ -1,0 +1,97 @@
+/* B-642: editable draft — same closed object as a code block (.cv: one ring,
+ * --r-code, the code well), but the body is prose in the chat font. The
+ * textarea itself is borderless (1-Border Rule: the block is the one outline);
+ * focus shows as an inset ring on the block. */
+.dft {
+  border-radius: var(--r-code);
+  background: var(--surface-code);
+  box-shadow: var(--panel-shadow);
+  overflow: hidden;
+}
+.dft:focus-within {
+  box-shadow: var(--panel-shadow), inset 0 0 0 1px var(--line-2);
+}
+.dft-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 4px calc(var(--chat-space) * 2) 4px calc(var(--chat-space) * 3);
+  border-bottom: var(--hairline) solid var(--line);
+  min-width: 0;
+}
+.dft-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: var(--chat-fs-caption);
+}
+.dft-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dft-badge {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  font-size: var(--chat-fs-badge);
+  line-height: 1.6;
+}
+.dft-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.dft-restore {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--chat-fs-caption);
+  cursor: pointer;
+}
+.dft-restore:hover { background: var(--bg-3); color: var(--text); }
+.dft-restore:focus-visible { outline: 1px solid var(--line-2); outline-offset: 1px; }
+.dft-text {
+  display: block;
+  width: 100%;
+  min-height: 3em;
+  margin: 0;
+  padding: calc(var(--chat-space) * 3);
+  border: 0;
+  outline: none; /* design-lint-allow: focus is shown by .dft:focus-within */
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--chat-fs-body);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* same as .ci-textarea: the global input ring (base.css) would draw a second
+ * outline inside the block; .dft:focus-within above is the focus signal. */
+.dft-text:focus,
+.dft-text:focus-visible {
+  box-shadow: none;
+}
+@media (pointer: coarse) {
+  .dft-restore { min-height: 36px; padding: 0 10px; }
+}
+/* iOS focus zoom floor, same rule as the composer editors (input.css B-582) */
+@media (pointer: coarse), (max-width: 860px) {
+  :is(#root, body) .dft-text {
+    font-size: max(16px, var(--chat-fs-body));
+  }
+}
