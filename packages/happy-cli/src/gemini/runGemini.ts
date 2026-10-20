@@ -9,6 +9,9 @@
 import { render } from 'ink';
 import React from 'react';
 import { randomUUID } from 'node:crypto';
+import { PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
+import { createProjectInjector } from '@/projects/injector';
+import { sharedProjectsClient } from '@/projects/client';
 import os from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -133,6 +136,7 @@ export async function runGemini(opts: {
     machineId,
     startedBy: opts.startedBy,
     sandbox: sandboxConfig,
+    capabilities: [PROJECT_SESSION_CAPABILITY],
   });
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
@@ -880,6 +884,8 @@ export async function runGemini(opts: {
   // This allows us to support model changes by recreating the backend
 
   let first = true;
+  // B-645: project prefix / digest on the prompt actually sent (a model switch starts a fresh ACP session → reset).
+  const projectInjector = createProjectInjector({ client: sharedProjectsClient(), sessionId: () => session?.sessionId, metadata: () => (session?.getMetadata?.() ?? null) as Record<string, any> | null, agent: 'gemini' });
 
   try {
     let currentModeHash: string | null = null;
@@ -1080,7 +1086,8 @@ export async function runGemini(opts: {
         
         // The prompt already includes system prompt and change_title instruction (added in onUserMessage handler)
         // This is done in the message queue, so message.message already contains everything
-        let promptToSend = message.message;
+        if (injectHistoryContext) projectInjector.reset();
+        let promptToSend = await projectInjector.decorate(message.message);
         
         // Inject conversation history context if model was just changed
         if (injectHistoryContext && conversationHistory.hasHistory()) {

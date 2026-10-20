@@ -48,9 +48,12 @@ describe('prompt dedupe wiring', () => {
         // replayed parked message / with attachments / plain — named one by one
         // so mangling any single call site turns this red (a bare count does not:
         // `mutation-check` mangles the identifier inside the literal, not the line).
-        expect(scope).toContain('onPromptFinalized?.(parked.message)');
-        expect(scope).toContain('onPromptFinalized?.(withAttachments)');
-        expect(scope).toContain('onPromptFinalized?.(msg.message)');
+        // B-645: every path goes through `finalize`, which stamps exactly what
+        // reaches the SDK — the project prefix/digest included.
+        expect(scope).toContain('const out = await session.projectInjector.decorate(text);\n                            onPromptFinalized?.(out);');
+        expect(scope).toContain('message: await finalize(parked.message)');
+        expect(scope).toContain('await finalize(appendStagedAttachmentsToPrompt(msg.message, staged))');
+        expect(scope).toContain('const finalized = await finalize(msg.message);');
         // steering injects into the running turn and lands in the transcript too
         const steer = launcher.slice(launcher.indexOf('setSteerHandler'));
         expect(steer.slice(0, steer.indexOf('q.steer('))).toContain('onPromptFinalized?.');

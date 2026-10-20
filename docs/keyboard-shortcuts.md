@@ -10,7 +10,10 @@ Press `Command+K` on macOS or `Ctrl+K` on Windows/Linux. The command palette
 searches shipped actions, active chats, and terminals. It supports the same
 `#tag` query grammar as sidebar search.
 
-- `Arrow Up` / `Arrow Down`: move through matches.
+- `Arrow Up` / `Arrow Down`: move through matches. Only the bare keys do;
+  with `Shift`, `Command`/`Ctrl` or `Alt` they move the caret or extend the
+  selection in the search box, as in any text field. The same holds for the
+  `Command+P` / `Ctrl+P` file finder (B-655).
 - `Enter`: run the highlighted action or open the selected work.
 - `Escape`: close the palette.
 - Touch: tap the search button in the session sidebar; it opens the same

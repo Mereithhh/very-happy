@@ -148,7 +148,8 @@ async function membershipOf(tx: Tx, accountId: string, sessionId: string): Promi
 }
 async function requireMember(tx: Tx, accountId: string, projectId: string, sessionId: string): Promise<Membership> {
     const m = await membershipOf(tx, accountId, sessionId);
-    requireProject(m && m.projectId === projectId, 'not_a_project_member', 403);
+    // 409, never 401/403: Web clients treat 401/403 as "signed out" (authLatch).
+    requireProject(m && m.projectId === projectId, 'not_a_project_member', 409);
     return m;
 }
 /** Only this account's own sessions may join (a session shared TO me is someone else's row). Unknown and foreign look the same. */
@@ -400,7 +401,7 @@ export async function revokeLogEntry(accountId: string, projectId: string, ref: 
     return run(async tx => {
         await loadProject(tx, accountId, projectId);
         const row = await resolveLogRef(tx, projectId, ref);
-        if (bySessionId) requireProject(row.authorSessionId === bySessionId, 'log_entry_not_owned', 403);
+        if (bySessionId) requireProject(row.authorSessionId === bySessionId, 'log_entry_not_owned', 409);
         const updated = row.revokedAt ? row : await tx.projectLogEntry.update({ where: { id: row.id }, data: { revokedAt: new Date() } });
         return logView(updated);
     });
