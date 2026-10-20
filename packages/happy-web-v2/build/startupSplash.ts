@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 import { readThemePreference } from '../src/ui/themePreference';
+import { syncThemeColorMeta } from '../src/ui/themeColor';
 
 const read = (path:string) => readFileSync(new URL(path,import.meta.url),'utf8');
 export function startupSplash(): Plugin {
@@ -19,7 +20,7 @@ export function renderStartupSplash(html:string): string {
   const tokens=read('../src/styles/tokens.css');
   const css=read('../src/ui/startupLoader.css');
   const artwork=read('../src/ui/startupArtwork.html');
-  const themeScript=`const preference=(${readThemePreference.toString()})();if(preference==='system')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',preference);`;
+  const themeScript=`const preference=(${readThemePreference.toString()})();if(preference==='system')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',preference);(${syncThemeColorMeta.toString()})(preference);`;
   return html.replace('<!-- vh-startup-style -->',`<style>${(tokens+'\n'+css).replace(/\/\*[\s\S]*?\*\//g,'')}</style><script>${themeScript}</script>`)
     .replace('<!-- vh-startup-artwork -->',artwork);
 }

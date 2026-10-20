@@ -41,7 +41,7 @@ describe('Sidebar wiring (B-641)', () => {
 
   it('the nav column is desktop-only; phones get header ＋ and ⋯ menus', () => {
     expect(src).toContain('{isDesktop && <nav className="sb-products"');
-    expect(src).toContain('{!isDesktop && (\n            <ActionDropdownMenu align="end" sideOffset={4} contentClassName="sb-touch-menu" items={createItems}>');
+    expect(src).toContain('{!isDesktop && (\n            <ActionDropdownMenu align="end" sideOffset={4} items={createItems}>');
     expect(src).toContain('items={navEntries.map((e) => ({ key: e.key, label: navMenuLabel(navName[e.key], e.attention)');
     expect(src).toContain('{navAttention > 0 && <span className="sb-more-attn mono"');
   });
