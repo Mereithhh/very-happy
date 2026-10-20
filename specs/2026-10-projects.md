@@ -355,3 +355,23 @@ Phase 3（随 Spaces）：项目协调者（= Spaces 命名 Agent 绑定到项�
 - **下一轮顺带（D）** 随 B-645 的 injector 已上线：只在本来就要跑的轮次前拉 `digest`；服务端对说明更新 / 新决定 / 撤销 / 留言都**不写会话消息**（pglite 测试断言 `SessionMessage` 数与 `seq` 不变），所以不可能唤醒空闲会话。
 - **离线留言**：`session_message` 的目标在本机不在跑、或在另一台机器上够不着时，若发送方与目标同属一个项目 → `POST /v1/projects/:id/messages` 存下，返回 `{stored: true, status: "offline-stored"}`（原先直接报错）；不在同一项目或旧 server → 维持原报错。回复环预算同样计入。接收方下一次跑的轮次（新进程的首轮前缀或 digest）带上并标记送达，送达 7 天后清正文（B-644）。
 - 目标机 CLI 旧：留言一直存着，直到该会话换上新 wrapper；项目页成员行会显示「未注入 · 重启会话以启用」。
+
+### B-651（度量与上线前 A/B：本批只做埋点与基线采集）
+
+| 度量 | 采集方式 | 位置 |
+|---|---|---|
+| ① 派发交互 | Web 上报 `dispatch{entry, inProject}`（pending 会话落地时、移到项目时）→ `project_dispatch_total{entry,in_project}` | `sync/projectUx.ts`、`pendingSessionsRuntime.ts`、`POST /v1/projects/ux-events` |
+| ② 等你处理 → 打开 | 打开一个正处于「等你处理」的会话时上报一次（每个等待段一次，按 `attentionSince` 去重）→ `attention_open_seconds{in_project}` | `AttentionOpenReporter`（挂在 AppLayout，按路由识别，覆盖侧栏/看板/通知直达） |
+| ③ peer 引发轮次 | 服务端按消息 `localId` 前缀 `session-message-` 计数 → `session_peer_messages_total{in_project}`；token 占比由 transcript 脚本算 | `v3SessionRoutes.ts`、`scripts/dev/project-metrics.mjs` |
+| ④ project_context 调用 | `project_ops_total{op="context_read"}`（含首轮前缀读取）；每会话中位数由 transcript 脚本算 | `projectRoutes.ts`、脚本 |
+| 其他运行面 | 记录写入/配额拒绝/撤销、离线留言存/送达、digest 非空次数、presence 写入 | `project_ops_total{op,actor}` |
+
+标签只有低基数枚举（无账号/项目/会话 id）；Web 只上报计数和时长。面板：`docs/monitoring/projects.dashboard.json`（安装方式同 connection-quality，需 Owner 授权写集群 ConfigMap）。
+
+**基线（上线前，dev-sg 本机 Claude transcript，2026-10-07 起，`project-metrics.mjs --since 2026-10-07`）**：1048 个会话、8167 轮；peer 消息引发的轮次占 1.44%、token 占 1.35%；带项目前缀的会话只有本批 e2e 的 11 个（不作数）。mac-office 需在该机同样运行脚本补齐。
+
+**A/B 结论要等上线后两周数据**（Phase 1 验收里的 S1/S2/S4/S6）：
+- S1 一句话问答零次 project 工具调用、token 增量 ≤ 前缀长度 + 5%：脚本 `s1OneLinerProjectToolCalls`（去掉注入前缀后判断一行问答）+ 同题有/无项目两组会话的每轮 token 对比（沿用 B-493：真 Claude、真 systemPrompt、真 happy MCP）。
+- S2 五个不相干会话 peer 消息 ≈0：`s2SessionsThatSentPeerMessages` / `session_peer_messages_total{in_project="no"}`。
+- S4 不唤醒：已由 B-646 机制测试 + e2e 证明（0/5 唤醒）；上线后看 `session_peer_messages_total` 与说明更新时间点无相关。
+- S6 团队 worker 越过 lead 发消息 0 次：`s6TeamWorkerPeerMessages`（当前基线 9 个团队 worker 会话、0 次）。

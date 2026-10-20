@@ -3,6 +3,7 @@
  * plus the React bindings. The state machine itself lives in
  * ./pendingSessions.ts (dependency-injected, unit-tested without React).
  */
+import { dispatchEntryOf, reportProjectUx } from './projectUx';
 import { applyLocalMembership, projectsApi, refreshProjects } from './projects';
 import { useEffect, useSyncExternalStore } from 'react';
 import { randomUUID } from 'expo-crypto';
@@ -102,6 +103,8 @@ export const pendingSessions = createPendingSessionStore({
     },
     onSpawned(record, realId) {
         recordRecentMachinePath(record.machineId, record.path);
+        // B-651 ①: where sessions are dispatched from, and whether they land in a project.
+        reportProjectUx({ kind: 'dispatch', entry: dispatchEntryOf(record.source), inProject: !!record.onSpawnedProject });
         if (record.onSpawnedTask) useBoardTasks.getState().attachSession(record.onSpawnedTask.taskId, realId);
         // B-648: join the project before the first message goes out (held back by the store).
         if (record.onSpawnedProject) {

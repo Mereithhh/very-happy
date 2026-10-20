@@ -283,3 +283,15 @@ export const PROJECT_ERROR_CODES = [
     'project_presence_rate_quota_exceeded', 'transaction_conflict', 'invalid_folders',
 ] as const;
 export type ProjectErrorCode = typeof PROJECT_ERROR_CODES[number];
+
+// ─── B-651 UX telemetry (counts and durations only; no titles, ids or text) ──
+
+export const PROJECT_UX_DISPATCH_ENTRIES = ['quick', 'dialog', 'project', 'sidebar_group', 'move', 'other'] as const;
+export const ProjectUxEventSchema = z.discriminatedUnion('kind', [
+    /** A session was created (or moved) — where from, and whether it landed in a project. */
+    z.object({ kind: z.literal('dispatch'), entry: z.enum(PROJECT_UX_DISPATCH_ENTRIES), inProject: z.boolean() }),
+    /** The owner opened a session that was waiting for them: how long it had been waiting. */
+    z.object({ kind: z.literal('attention_open'), latencyMs: z.number().int().min(0).max(7 * 86400_000), inProject: z.boolean() }),
+]);
+export type ProjectUxEvent = z.infer<typeof ProjectUxEventSchema>;
+export const ProjectUxBatchSchema = z.object({ events: z.array(ProjectUxEventSchema).min(1).max(20) });
