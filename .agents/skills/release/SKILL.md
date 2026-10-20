@@ -320,8 +320,8 @@ git merge-base --is-ancestor <your-sha> <live-sha> && echo "yours is in"
 
 For browser acceptance, record the loaded entry/CSS and controlling service
 worker before refreshing. Verify takeover via `controllerchange` and the actual
-loaded entry; reload alone does not prove a version migration. Complete relevant items in
-`docs/verify-queue.md`.
+loaded entry; reload alone does not prove a version migration. Anything only a real
+device can check goes in the PR's "not verified" section (`docs/verify-queue.md` is retired).
 
 ## Rollback
 

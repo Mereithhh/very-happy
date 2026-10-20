@@ -26,7 +26,7 @@ daemon 主机：mac-office（launchd）与主力开发机 **dev-sg**（Linux，s
 | 发布 / 回滚 | [operations](docs/operations.md)、[release skill](.agents/skills/release/SKILL.md) |
 | 指标 / 托管看板 | [monitoring](docs/monitoring/README.md)、[metrics skill](.agents/skills/metrics-graphana/SKILL.md) |
 | 外部接口 | [channels](docs/channels.md) |
-| 设计 / 验收 | [design-language](docs/design-language.md)、[verify-queue](docs/verify-queue.md) |
+| 设计 / 验收 | [design-language](docs/design-language.md) |
 
 旧 `docs/plans/` 只读；新设计进 `specs/`。历史架构描述与代码冲突时先核实现况。
 
