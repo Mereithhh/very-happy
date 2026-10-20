@@ -117,6 +117,11 @@ export function MobileChatHarness() {
           <div className="msg-agent-text"><Markdown text={'这次更新让对话更容易阅读，也让工具执行过程更清楚。\n\n## 清楚的信息层级\n\n段落之间留出呼吸空间，`pnpm test` 保留代码的辨识度。\n\n- 统一正文与列表的阅读节奏。\n- 保留长命令和复杂内容的完整性。\n  - 嵌套列表有自己的间距。\n\n### 下一步\n\n检查两种主题以及手机上的输入体验。\n\n```ts\nexport const chatTextScale = { sm: 0.9, md: 1, lg: 1.125, xl: 1.25 } as const; // 长行在代码块内部横向滚动，不撑开页面\n```\n\n| 档位 | 正文 | 代码 |\n| --- | --- | --- |\n| 默认 | 14px | 13px |'} /></div>
           <CommandView command={'NODE_ENV=test pnpm test --filter "chat" && echo "完成"'} stdout={'Tests  48 passed\nDuration  1.2s'} />
         </section>
+        <section data-testid="wide-tables" className="msg-agent-text" style={{ display: 'grid', gap: 16 }}>
+          <span style={{fontSize:'var(--fs-12)',color:'var(--text-faint)'}}>本地示例 · 宽表与长表（B-359 全屏查看）</span>
+          <Markdown text={['| 服务 | 区域 | 实例 | CPU | 内存 | 磁盘 | 网络 | 状态 | 版本 | 负责人 | 告警 | 备注 |', '|' + ' --- |'.repeat(12), ...['api', 'relay', 'worker'].map((name, i) => `| ${name} | ap-southeast-1 | ${i + 2} | ${40 + i * 7}% | ${3 + i} GiB | 120 GiB | 1 Gbps | healthy | v0.2.${180 + i} | ops | 0 | 滚动发布中，等待第二批实例就绪 |`)].join('\n')} />
+          <Markdown text={['| # | 文件 | 结果 |', '| --- | --- | --- |', ...Array.from({ length: 20 }, (_, i) => `| ${i + 1} | src/module${i}.ts | passed |`)].join('\n')} />
+        </section>
         <section data-testid="message-actions" style={{ display: 'grid', gap: 16 }}>
           <span style={{fontSize:'var(--fs-12)',color:'var(--text-faint)'}}>本地示例 · 消息操作与时间</span>
           <MessageView sessionId="mobile-chat-edit" showMeta={false} message={{ kind: 'user-text', id: 'edit-point', localId: null, createdAt: Date.now(), seq: 1, claudeUuid: '22222222-2222-4222-8222-222222222222', text: '请检查 @example 的实现，然后解释这一处为什么要这样写。' }} />
