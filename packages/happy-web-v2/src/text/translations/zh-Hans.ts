@@ -4584,6 +4584,18 @@ export const zhHans: TranslationStructure = {
     },
 
     diagnostics: {
+        webhookDelivery: 'Webhook 投递',
+        webhookStatus: '状态',
+        webhookHealthFailing: '投递失败',
+        webhookHealthRecovered: '已恢复',
+        webhookHealthOk: '正常',
+        webhookHealthIdle: '尚未发送',
+        webhookLastFailure: '最近失败',
+        webhookDelivered: '已送达',
+        webhookRetries: '重试次数',
+        webhookFailed: '失败（已放弃）',
+        webhookSettings: 'Webhook 设置',
+        webhookFooter: ({ since }: { since: string }) => `服务器自 ${since} 起统计。请求失败会重试最多 3 次（约 45 秒）；「失败」是最终没送达的通知数。`,
         webBuild: 'Web 构建',
         webBuildVersion: '构建版本',
         webBuildCheck: '检查更新',

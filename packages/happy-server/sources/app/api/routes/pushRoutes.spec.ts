@@ -222,3 +222,46 @@ describe("pushRoutes — POST /v1/webhook/notify event filtering & link", () => 
         expect(deviceEventPushSpy).not.toHaveBeenCalled();
     });
 });
+
+describe("B-026 — GET /v1/webhook reports this account's delivery counters", () => {
+    let app: Fastify;
+    beforeEach(async () => {
+        resetState();
+        sendWebhookSpy.mockReset();
+        app = await createApp();
+    });
+    afterEach(async () => { if (app) await app.close(); });
+
+    it("counts a delivered and a permanently failed notification, with the last error", async () => {
+        configureWebhook(["completed", "permission"]);
+        const userId = nextUser();
+        sendWebhookSpy.mockResolvedValueOnce({ ok: true, status: 200 });
+        expect((await notify(app, { title: "ok" }, userId)).json()).toEqual({ ok: true, delivered: true });
+        sendWebhookSpy.mockResolvedValueOnce({ ok: false, status: 404 });
+        expect((await notify(app, { title: "gone" }, userId)).json()).toEqual({ ok: true, delivered: false });
+        // 404 is an answer, not a blip: exactly one attempt each.
+        expect(sendWebhookSpy).toHaveBeenCalledTimes(2);
+
+        const res = await app.inject({ method: "GET", url: "/v1/webhook", headers: { "x-user-id": userId } });
+        expect(res.statusCode).toBe(200);
+        const body = res.json();
+        expect(body.webhook).toEqual({ url: WEBHOOK_URL, events: ["completed", "permission"] });
+        expect(body.delivery).toMatchObject({ delivered: 1, failed: 1, retries: 0, lastError: "HTTP 404" });
+        expect(typeof body.delivery.since).toBe("number");
+
+        const other = await app.inject({ method: "GET", url: "/v1/webhook", headers: { "x-user-id": nextUser() } });
+        expect(other.json().delivery).toMatchObject({ delivered: 0, failed: 0 });
+    });
+
+    it("a transient failure answers delivered:false at once and is not yet counted (retries run in the background)", async () => {
+        configureWebhook(["completed", "permission"]);
+        const userId = nextUser();
+        sendWebhookSpy.mockResolvedValueOnce({ ok: false, status: 502 });
+        sendWebhookSpy.mockResolvedValue({ ok: true, status: 200 });
+        const started = Date.now();
+        expect((await notify(app, { title: "blip" }, userId)).json()).toEqual({ ok: true, delivered: false });
+        expect(Date.now() - started).toBeLessThan(1_500); // not held for the backoff
+        const res = await app.inject({ method: "GET", url: "/v1/webhook", headers: { "x-user-id": userId } });
+        expect(res.json().delivery).toMatchObject({ delivered: 0, failed: 0 });
+    });
+});
