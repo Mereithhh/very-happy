@@ -37,6 +37,15 @@ describe('B-265 restoreEligibility', () => {
     expect(restoreEligibility({ ...base, metadata: { ...base.metadata, machineId: 'zz' } }, machines)).toEqual({ ok: false, reason: 'no-machine' });
     expect(restoreEligibility({ ...base, metadata: { ...base.metadata, machineId: 'm2' } }, machines)).toEqual({ ok: false, reason: 'machine-offline' });
   });
+  it('B-633: a pi session (acp flavor) is restorable once its wrapper recorded the pi session id', () => {
+    const pi = { ...base, metadata: { machineId: 'm1', flavor: 'acp', piSessionId: 'pi-1' } as any };
+    expect(restoreEligibility(pi, machines)).toEqual({ ok: true, machineId: 'm1' });
+    expect(canOfferRestore(pi, machines.m1)).toBe(true);
+    // An older pi wrapper (no id) or another ACP agent stays unsupported.
+    const old = { ...base, metadata: { machineId: 'm1', flavor: 'acp' } as any };
+    expect(restoreEligibility(old, machines)).toEqual({ ok: false, reason: 'unsupported-flavor' });
+    expect(canOfferRestore(old, machines.m1)).toBe(false);
+  });
 });
 
 describe('recoverability canOfferRestore (button visibility, archivedAt-independent)', () => {

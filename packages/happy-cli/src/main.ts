@@ -489,6 +489,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         command: resolved.command,
         args: resolved.args,
         onBackendError: printHint,
+        resumeAgentSessionId: parsed.resume,
       });
       if (hintPrinted) process.exit(1)
     } catch (error) {
