@@ -1276,6 +1276,7 @@ export const zhHans: TranslationStructure = {
     filePreview: {
         history: '预览记录',
         openPath: ({ path }: { path: string }) => `在预览面板里打开 ${path}`,
+        linkUnavailable: ({ path }: { path: string }) => `无法在这里打开 ${path}：这是 agent 机器上的本地文件`,
         title: '文件预览',
         receiveTitle: '接收预览推送',
         receiveSubtitle: 'agent 调用 open_preview 时，在本设备弹出文件预览。关闭后本设备忽略这类推送（其他设备照旧弹出）。',
