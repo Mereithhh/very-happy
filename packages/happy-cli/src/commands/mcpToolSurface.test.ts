@@ -8,7 +8,7 @@
  *    assistant's six session tools, and nothing else.
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CLIPBOARD_TOOL_NAME } from '@/clipboard/limits'
 import { ASSISTANT_SESSION_TOOL_NAMES, ASSISTANT_TOOL_NAMES, type AssistantToolRegistrar } from '@/assistant/assistantTools'
 import { mcpToolNamesForSurface, resolveMcpTerminalId, resolveMcpToolSurface } from './mcpToolSurface'
@@ -110,6 +110,17 @@ describe('registerMcpTools', () => {
         const { names, server } = recorder()
         registerMcpTools(server, 'assistant')
         expect(names).toEqual([...mcpToolNamesForSurface('assistant')])
+    })
+
+    describe('under a team scope (VH_TEAM_SCOPE_FILE)', () => {
+        afterEach(() => { vi.unstubAllEnvs() })
+
+        it('keeps the account-wide session tools away from a scoped worker', () => {
+            vi.stubEnv('VH_TEAM_SCOPE_FILE', '/tmp/scope.json')
+            const { names, server } = recorder()
+            registerMcpTools(server, 'assistant')
+            expect(names).toEqual([...mcpToolNamesForSurface('clipboard')])
+        })
     })
 
     it.each(['clipboard', 'assistant'] as const)('registers the terminal row on top of the %s surface', (surface) => {

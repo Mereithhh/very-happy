@@ -187,7 +187,7 @@ according to your environment.
 | The friction | What carries it for you |
 |---|---|
 | “This goal has several independent pieces of work.” | A lead can delegate to Claude Code, Codex, and pi teammates, with progress and submitted results in one team view. |
-| “My agents and terminals are scattered across several machines.” | One account sidebar and task board aggregate their sessions and attention state; start new work on the machine and agent you choose. |
+| “My agents and terminals are scattered across several machines.” | One account sidebar and task board aggregate their sessions and attention state — grouped by project by default, with sessions outside any project grouped by folder; start new work on the machine and agent you choose. |
 | “Structured chat is pleasant, but sometimes I need the actual tool.” | Keep SDK-backed Claude and drop into a durable, unmodified agent TTY/TUI when necessary. |
 | “I left my desk, so the work stopped being legible.” | A responsive Web/PWA workspace keeps conversations, terminals, files, tasks, notifications, and decisions within reach. |
 | “Remote control must fit my operating model.” | Start with Very Happy Cloud for the fastest setup, or deploy the same open-source stack under your control. |
