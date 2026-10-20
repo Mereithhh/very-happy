@@ -66,6 +66,7 @@ model Account {
     AccountLoginSession AccountLoginSession[]
     Automation          Automation[]
     AgentTeams AgentTeam[]
+    Projects   Project[]
     SessionGrantsReceived SessionGrant[] @relation("SessionGrantGrantee")
     SessionGrantsGiven    SessionGrant[] @relation("SessionGrantGrantedBy")
 }
@@ -264,6 +265,7 @@ model Session {
     accessKeys        AccessKey[]
     promptQueue       SessionPromptQueueItem[]
     grants            SessionGrant[]
+    projectMember     ProjectMember?
 
     @@unique([accountId, tag])
     @@index([accountId, updatedAt(sort: Desc)])
@@ -608,7 +610,11 @@ model AgentTeam {
     state Json
     createdAt DateTime @default(now())
     updatedAt DateTime @default(now())
+    /// B-644: project this team is attached to (1 project : N teams). Set only via `attach-team`.
+    projectId String?
+    project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
     @@index([accountId, machineId])
+    @@index([projectId])
 }
 
 model TeamAgentCredential {
@@ -680,6 +686,9 @@ model Automation {
     updatedAt     DateTime        @default(now())
     runs          AutomationRun[]
     stickies      AutomationSticky[]
+    /// B-644: sessions this automation spawns join this project.
+    projectId     String?
+    project       Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
     @@unique([accountId, name])
     @@index([accountId, machineId, status, nextRunAt])
 }
@@ -738,4 +747,130 @@ model AutomationSticky {
     sessionId    String
     updatedAt    DateTime   @default(now())
     @@id([automationId, key])
+}
+
+//
+// Projects (B-644, specs/2026-10-projects.md): account-owned long-lived work
+// containers. Plaintext server-side (same trust tier as Teams).
+//
+
+model Project {
+    id                     String    @id
+    accountId              String
+    account                Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    name                   String
+    goal                   String?
+    instructions           String    @default("")
+    instructionsVersion    Int       @default(0)
+    instructionsUpdatedBy  String?
+    instructionsUpdatedAt  DateTime?
+    instructionsSummary    String?
+    /// [ProjectFolders]
+    folders                Json      @default("[]")
+    /// [ProjectDefaults]
+    defaults               Json      @default("{}")
+    /// Monotonic counter behind `ProjectLogEntry.seq` ("#12").
+    logSeq                 Int       @default(0)
+    /// Idempotency key of the create request (hash of accountId + requestId).
+    requestKey             String?   @unique
+    archivedAt             DateTime?
+    createdAt              DateTime  @default(now())
+    updatedAt              DateTime  @default(now())
+    members                ProjectMember[]
+    revisions              ProjectInstructionsRevision[]
+    log                    ProjectLogEntry[]
+    presence               ProjectPresence[]
+    messages               ProjectMessage[]
+    teams                  AgentTeam[]
+    automations            Automation[]
+    @@index([accountId, archivedAt])
+}
+
+model ProjectInstructionsRevision {
+    projectId    String
+    project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+    version      Int
+    instructions String
+    updatedBy    String?
+    summary      String?
+    createdAt    DateTime @default(now())
+    @@id([projectId, version])
+}
+
+/// Explicit membership. Each session belongs to at most one project (`sessionId` unique).
+/// Team-derived members are computed at read time and never stored here.
+model ProjectMember {
+    id        String   @id
+    projectId String
+    project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+    sessionId String   @unique
+    session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    accountId String
+    /// Self-reported by the daemon through presence writes.
+    machineId String?
+    via       String   @default("explicit")
+    createdAt DateTime @default(now())
+    @@index([projectId])
+    @@index([accountId])
+}
+
+model ProjectLogEntry {
+    id              String    @id
+    projectId       String
+    project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+    seq             Int
+    kind            String
+    title           String
+    body            String    @default("")
+    authorSessionId String?
+    authorUser      Boolean   @default(false)
+    supersedes      String?
+    revokedAt       DateTime?
+    createdAt       DateTime  @default(now())
+    @@unique([projectId, seq])
+    @@index([projectId, createdAt])
+    @@index([authorSessionId, createdAt])
+}
+
+/// Written by the daemon (the server cannot read encrypted session metadata).
+model ProjectPresence {
+    sessionId                   String   @id
+    projectId                   String
+    project                     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+    accountId                   String
+    machineId                   String
+    title                       String?
+    agent                       String?
+    machine                     String?
+    branch                      String?
+    state                       String?
+    doing                       String?
+    injectedInstructionsVersion Int?
+    /// [ProjectCapabilities]
+    capabilities                Json     @default("[]")
+    updatedAt                   DateTime @default(now())
+    @@index([projectId])
+    @@index([accountId])
+}
+
+/// Offline peer message inside one project. Body erased 7 days after delivery.
+model ProjectMessage {
+    id            String    @id
+    projectId     String
+    project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+    accountId     String
+    fromSessionId String
+    toSessionId   String
+    body          String?
+    deliveredAt   DateTime?
+    createdAt     DateTime  @default(now())
+    @@index([toSessionId, deliveredAt])
+    @@index([projectId, createdAt])
+}
+
+/// Per-session "since last read" cursor for `project_context`.
+model ProjectReadCursor {
+    sessionId String   @id
+    projectId String
+    readAt    DateTime
 }
