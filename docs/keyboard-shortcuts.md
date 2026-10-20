@@ -70,5 +70,21 @@ navigation keys while an IME composition is active.
 Safari may reserve `Command+.` for stopping a load. Use `Ctrl+.` or the visible
 Shortcuts button there.
 
+## Caret keys in the message box
+
+The composer never handles caret or selection keys itself, so they behave
+exactly like any other text box in the same browser. The platforms differ:
+
+| Move to | macOS | Windows / Linux |
+|---|---|---|
+| Start / end of line | `Command+Left` / `Command+Right` | `Home` / `End` |
+| Start / end of text | `Command+Up` / `Command+Down` | `Ctrl+Home` / `Ctrl+End` |
+| Select to start / end of line | `Shift+Command+Left` / `Right` | `Shift+Home` / `Shift+End` |
+
+On macOS, `Home` and `End` scroll instead of moving the caret, and Safari leaves
+the caret where it is. While the `/` command list is open, only a bare
+`Arrow Up` / `Arrow Down` moves through it; with a modifier they edit the text
+(B-640).
+
 See [Getting started](getting-started.md) for installation and first connection,
 including `very-happy daemon start`.
