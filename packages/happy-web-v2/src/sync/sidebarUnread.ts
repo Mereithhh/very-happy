@@ -26,9 +26,9 @@
  * (notificationSeen.ts — that one is cross-device and merges by per-key max).
  *
  * Restoring is deliberately NOT gated on the session still existing: the store
- * seeds before any session has synced, and rows for missing/archived sessions
- * are never rendered anyway (Sidebar only asks about `r.kind === 'session' &&
- * r.session?.active`), so a stale id is invisible until age/cap reaps it.
+ * seeds before any session has synced, and rows for missing or user-archived
+ * sessions never paint it anyway (Sidebar asks `showsUnreadDot`, which skips
+ * `archivedAt` — B-331), so a stale id is invisible until age/cap reaps it.
  */
 
 /** session id → wall clock ms when the turn finished unseen */

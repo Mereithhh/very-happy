@@ -57,7 +57,7 @@ export function toAutomationView(row: AutomationRow): Automation {
         id: row.id, name: row.name, description: row.description, machineId: row.machineId, status: row.status as Automation['status'],
         trigger: row.trigger, action: stored.action, precheck: stored.precheck, concurrency: row.concurrency as Automation['concurrency'], maxRuntimeMs: row.maxRuntimeMs,
         nextRunAt: ms(row.nextRunAt), version: row.version, lastRunAt: ms(row.lastRunAt), lastRunStatus: (row.lastRunStatus ?? null) as AutomationRunStatus | null,
-        createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(),
+        createdAt: row.createdAt.getTime(), updatedAt: row.updatedAt.getTime(), projectId: row.projectId ?? null,
     };
 }
 /** Run rows are read with this automation projection so the view can carry the folded skip count. */
@@ -102,6 +102,10 @@ async function loadAutomationByName(tx: Tx, accountId: string, name: string): Pr
 }
 async function requireMachine(tx: Tx, accountId: string, machineId: string) {
     requireAutomation(await tx.machine.findFirst({ where: { id: machineId, accountId }, select: { id: true } }), 'machine_not_found', 404);
+}
+/** B-644: an automation may only point at a project of the same account. */
+async function requireProject(tx: Tx, accountId: string, projectId: string) {
+    requireAutomation(await tx.project.findFirst({ where: { id: projectId, accountId }, select: { id: true } }), 'project_not_found', 404);
 }
 async function requireSession(tx: Tx, accountId: string, sessionId: string) {
     requireAutomation(await tx.session.findFirst({ where: { id: sessionId, accountId }, select: { id: true } }), 'session_not_found', 404);
@@ -212,12 +216,13 @@ export async function createAutomation(accountId: string, input: AutomationCreat
             await requireMachine(tx, accountId, input.machineId);
             await requireAutomationCapacity(tx, accountId);
             if (input.action.kind === 'send') await requireSession(tx, accountId, input.action.sessionId);
+            if (input.projectId) await requireProject(tx, accountId, input.projectId);
             const status = input.status ?? 'active';
             const nextRunAt = status === 'active' ? initialRunAt(trigger, now.getTime()) : null;
             const row = await tx.automation.create({ data: {
                 id: randomUUID(), accountId, name: input.name, description: input.description ?? null, machineId: input.machineId, status,
                 trigger, action: storeAction({ action: input.action, precheck: input.precheck ?? null, skipCounts: {} }), concurrency: input.concurrency ?? 'skip', maxRuntimeMs: input.maxRuntimeMs ?? defaultMaxRuntime(input.action),
-                nextRunAt: nextRunAt === null ? null : new Date(nextRunAt), createdAt: now, updatedAt: now,
+                nextRunAt: nextRunAt === null ? null : new Date(nextRunAt), createdAt: now, updatedAt: now, projectId: input.projectId ?? null,
             } });
             return toAutomationView(row);
         });
@@ -248,6 +253,7 @@ export async function updateAutomation(accountId: string, id: string, input: Aut
             const row = await loadAutomation(tx, accountId, id);
             requireAutomation(row.version === input.version, 'stale_automation', 409, { version: row.version });
             if (input.machineId) await requireMachine(tx, accountId, input.machineId);
+            if (input.projectId) await requireProject(tx, accountId, input.projectId);
             // B-548: the action, its precheck and the skip bookkeeping change independently — an action-only edit (old clients) keeps the gate.
             const stored = decodeStoredAction(row.action);
             const action = storeAction({ action: input.action ?? stored.action, precheck: input.precheck !== undefined ? input.precheck : stored.precheck, skipCounts: stored.skipCounts });
@@ -264,6 +270,7 @@ export async function updateAutomation(accountId: string, id: string, input: Aut
                 ...(input.machineId !== undefined ? { machineId: input.machineId } : {}),
                 ...(input.concurrency !== undefined ? { concurrency: input.concurrency } : {}),
                 ...(input.maxRuntimeMs !== undefined ? { maxRuntimeMs: input.maxRuntimeMs } : {}),
+                ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
                 trigger, action, nextRunAt: nextRunAt === null ? null : new Date(nextRunAt), version: { increment: 1 }, updatedAt: now,
             } });
             return toAutomationView(updated);
