@@ -141,7 +141,13 @@ phase=old-slot-retained` is reported as success (2026-10-07), `exit=5` with the
 same phase as failure (2026-10-02, 2026-10-06). After every switch, grep the
 Deploy log for `left running`; if present, confirm `active-upstream.caddy` and
 `state.env` name the new slot, then `docker stop happy-server-<old>` (operations
-§Stop the old slot). Why drain keeps timing out is B-546.
+§Stop the old slot). The run also prints a `::warning title=old slot retained`
+annotation. B-546 cause: Fastify runs no request hook for a POST/PUT whose client
+disconnects mid-handler, so `inFlightHttp` leaked +1 per such request for the
+slot's lifetime; since B-546 the count is released on the response's `close`, and
+`/_vh/release/status` lists `oldestInFlightHttp` (method/url/age) so a stuck drain
+names what it waits on. The first switch after B-546 ships still drains a slot
+running the old code — judge the fix from the switch after that.
 
 Environment changes: `docker compose restart` does not reread `env_file`. Deploy
 the active merged `main` with `rollout=switch`, so candidate reads the new env
