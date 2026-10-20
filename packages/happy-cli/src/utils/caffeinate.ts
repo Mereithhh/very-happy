@@ -34,11 +34,11 @@ export function startCaffeinate(): boolean {
         return true
     }
 
-    // Kill any orphaned caffeinate -im processes from previous daemon instances
+    // Kill caffeinate processes orphaned by OLD daemons (spawned without -w)
     killOrphanedCaffeinateProcesses()
 
     try {
-        caffeinateProcess = spawn('caffeinate', ['-im'], {
+        caffeinateProcess = spawn('caffeinate', caffeinateArgs(process.pid), {
             stdio: 'ignore',
             detached: false
         })
@@ -139,12 +139,52 @@ function setupCleanupHandlers(): void {
     })
 }
 
+/**
+ * B-517: `-w <pid>` ties the assertion to this daemon — caffeinate exits by
+ * itself when the daemon dies, even on SIGKILL, so no new orphan can exist and
+ * nothing has to be killed by name. (A name match — the old
+ * `pkill -f "caffeinate -im"` — also killed a SIBLING daemon's caffeinate,
+ * e.g. an isolated HAPPY_HOME_DIR test daemon starting on the production Mac,
+ * which then never re-spawns it and the Mac can sleep.)
+ */
+export function caffeinateArgs(daemonPid: number): string[] {
+    return ['-im', '-w', String(daemonPid)]
+}
+
+/**
+ * Orphans from daemons older than B-517: exactly `caffeinate -im` (no `-w`),
+ * already re-parented to launchd (ppid 1) because their daemon is gone. A live
+ * daemon's caffeinate keeps that daemon as its parent and is never matched.
+ * Input is `ps -A -o pid=,ppid=,command=`.
+ */
+export function orphanedLegacyCaffeinatePids(psOutput: string): number[] {
+    const pids: number[] = []
+    for (const line of psOutput.split('\n')) {
+        const m = /^\s*(\d+)\s+(\d+)\s+(.*?)\s*$/.exec(line)
+        if (!m) continue
+        const [, pid, ppid, command] = m
+        if (ppid !== '1') continue
+        if (!/^(?:\/usr\/bin\/)?caffeinate -im$/.test(command)) continue
+        pids.push(Number(pid))
+    }
+    return pids
+}
+
 export function killOrphanedCaffeinateProcesses(): void {
     if (process.platform !== 'darwin') return
+    let ps: string
     try {
-        execSync('pkill -f "caffeinate -im"', { timeout: 5000, stdio: 'ignore' })
-        logger.debug('[caffeinate] Killed orphaned caffeinate processes')
-    } catch {
-        // pkill exits with 1 if no processes matched — expected
+        ps = execSync('ps -A -o pid=,ppid=,command=', { timeout: 5000, encoding: 'utf8' })
+    } catch (error) {
+        logger.debug('[caffeinate] Could not list processes; skipping orphan cleanup:', error)
+        return
+    }
+    for (const pid of orphanedLegacyCaffeinatePids(ps)) {
+        try {
+            process.kill(pid, 'SIGTERM')
+            logger.debug(`[caffeinate] Killed orphaned legacy caffeinate PID ${pid}`)
+        } catch {
+            // already gone
+        }
     }
 }
