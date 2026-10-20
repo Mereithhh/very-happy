@@ -18,7 +18,11 @@ body,
    (~47–59pt), so the app ends that far above the screen edge: a blank band
    under the composer (Xu CHEN 2026-10-10, iOS 26.5, present before any
    keyboard). Only 100lvh reads the full height there. Scoped to standalone
-   WebKit so Safari tabs and Android keep the dynamic viewport. */
+   WebKit so Safari tabs and Android keep the dynamic viewport.
+   B-643 switched new installs to status-bar-style=default (the page starts
+   below the bar, no top inset), where a standalone app has no retractable UA
+   chrome and 100lvh equals the web view height; the rule stays for installs
+   still on black-translucent until they are re-added. */
 :root {
   --app-h: 100dvh;
 }
