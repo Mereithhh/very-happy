@@ -24,6 +24,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-653 | **触屏下全局 `.vh-menu-item` 只有约 35px 高**，低于 design-language 要求的 44px（会话行 ⋯ 菜单、分组菜单等）；B-641 只给新加的两个菜单补了 `.sb-touch-menu`，全局统一修并合并掉它 | ux | B-641 review 10-21 | doing | VeryHappy 研发团队 |
 | B-652 | **项目 Phase 2 总项**：项目消息并入 Spaces 信封 v1（服务端受理 + daemon 拉取、两态回执、唤醒预算/链深/乒乓/去重）、沟通档位 quiet/normal/active、跨 worktree/机器改动重叠检测、压缩后重附前缀、项目级合并通知、团队组队/结束沉淀交接、`BoardTask.projectId`、`vh_proj_` token、搜索扩展 pi/Gemini 索引 | feat | Owner 2026-10-21 | todo | spec `specs/2026-10-projects.md` §分期；P1 上线 + 两周数据后启动 |
 | B-651 | **项目 P1：度量与上线前 A/B**（沿用 B-493 方法）：S1 一句话问答零次 project 工具调用、S2 不相干会话 peer≈0、S4 说明更新不唤醒、S6 团队 worker 不越过 lead；四个指标先采两周基线 | debt | Owner 2026-10-21 | todo | spec `specs/2026-10-projects.md` |
 | B-650 | **会话搜索**：侧栏 🔍 / ⌘K「搜索会话…」/ ⌘⇧F 打开面板；元数据（Web 本地）+ 对话内容（所有在线机器并发 `history-search`）+ 本地缓存消息三路合并；按会话聚合、命中高亮、点击跳到命中；离线机器/旧 daemon 明示结果不全；筛选项目/agent/机器/状态/时间 | feat | Owner 2026-10-21「趁这个机会做一个支持 session 搜索的功能」 | todo | spec `specs/2026-10-projects.md` §7；复用 B-549 的 daemon 索引 |
