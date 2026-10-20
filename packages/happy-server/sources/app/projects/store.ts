@@ -418,6 +418,7 @@ export async function listLog(accountId: string, projectId: string): Promise<Pro
 /**
  * The daemon reports what it knows about its live sessions (the server cannot
  * decrypt metadata). Only rows for sessions that are project members are kept.
+ * Fields are merged (omitted = unchanged), so daemon and wrapper writes compose.
  * It has its own rate bucket (`project_presence`), so presence never spends
  * the `session_state` budget (B-644 acceptance: no session-state 429). The
  * answer maps each reported session to its project so the daemon learns
@@ -438,12 +439,15 @@ export async function putPresence(accountId: string, input: ProjectPresencePut):
             const m = await membershipOf(tx, accountId, entry.sessionId);
             if (!m) { await tx.projectPresence.deleteMany({ where: { sessionId: entry.sessionId, accountId } }); continue; }
             memberships[entry.sessionId] = m.projectId;
-            const data = {
-                projectId: m.projectId, accountId, machineId: input.machineId, title: entry.title ?? null, agent: entry.agent ?? null, machine: entry.machine ?? null,
-                branch: entry.branch ?? null, state: entry.state ?? null, doing: entry.doing ?? null,
-                injectedInstructionsVersion: entry.injectedInstructionsVersion ?? null, capabilities: entry.capabilities ?? [], updatedAt: now,
+            // Partial update: the daemon (agent/state/branch) and the wrapper (title/doing/injected version)
+            // both report; a field left out keeps its stored value instead of being nulled.
+            const fields = {
+                title: entry.title, agent: entry.agent, machine: entry.machine, branch: entry.branch, state: entry.state, doing: entry.doing,
+                injectedInstructionsVersion: entry.injectedInstructionsVersion, capabilities: entry.capabilities,
             };
-            await tx.projectPresence.upsert({ where: { sessionId: entry.sessionId }, create: { sessionId: entry.sessionId, ...data }, update: data });
+            const given = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+            const base = { projectId: m.projectId, accountId, machineId: input.machineId, updatedAt: now };
+            await tx.projectPresence.upsert({ where: { sessionId: entry.sessionId }, create: { sessionId: entry.sessionId, ...base, ...given }, update: { ...base, ...given } });
             await tx.projectMember.updateMany({ where: { sessionId: entry.sessionId, accountId }, data: { machineId: input.machineId } });
         }
         if (input.gone?.length) {

@@ -171,6 +171,9 @@ describe('projects store (pglite)', () => {
         expect(await db.projectPresence.count({ where: { sessionId: { in: [loose, foreign] } } })).toBe(0);
         const bucketKeys = (await db.authRateLimitBucket.findMany({ where: { key: { contains: accountId } } })).map(b => b.key);
         expect(bucketKeys).toContain(`resource-write:project_presence:${accountId}`);
+        // A coarse daemon write keeps the wrapper's richer fields.
+        await store.putPresence(accountId, { machineId, sessions: [{ sessionId: s, state: 'idle' }] });
+        expect((await store.getProject(accountId, p.id)).presence[0]).toMatchObject({ state: 'idle', doing: 'writing tests', title: 'fix sidebar', capabilities: ['project-v1'] });
         await store.putPresence(accountId, { machineId, sessions: [], gone: [s] });
         expect((await store.getProject(accountId, p.id)).presence[0].state).toBe('offline');
         process.env.MAX_PROJECT_PRESENCE_WRITES_PER_ACCOUNT_PER_MINUTE = '1';
