@@ -1,0 +1,69 @@
+name: Browser smoke
+
+# B-024: after every successful `Deploy production`, a real browser logs in to
+# production, checks the sidebar, opens a web terminal on the smoke account's
+# machine and asserts that a command really ran (packages/happy-web-v2/e2e/smoke.mjs).
+# Also runnable by hand against any URL.
+#
+# Credentials come ONLY from repository secrets VH_SMOKE_USERNAME /
+# VH_SMOKE_PASSWORD (a dedicated account with one always-online machine).
+# Optional repository variable VH_SMOKE_MACHINE picks the machine by name.
+# Without the secrets the job prints a notice and passes (skip), so forks and
+# the time before the account exists stay green.
+#
+# It runs as its own workflow, never inside the deploy job: a red smoke is a
+# signal to look (and maybe roll back by hand), not an automatic rollback.
+
+on:
+  workflow_run:
+    workflows: ['Deploy production']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Web origin to smoke
+        type: string
+        default: https://veryhappy.dev
+
+concurrency:
+  group: e2e-smoke
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The commit that was just deployed (main for a manual run).
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium for the locked playwright-core
+        run: pnpm -C packages/happy-web-v2 exec playwright-core install --with-deps chromium
+      - name: Smoke — login, sidebar, web terminal echo
+        env:
+          VH_SMOKE_URL: ${{ inputs.url || 'https://veryhappy.dev' }}
+          VH_SMOKE_USERNAME: ${{ secrets.VH_SMOKE_USERNAME }}
+          VH_SMOKE_PASSWORD: ${{ secrets.VH_SMOKE_PASSWORD }}
+          VH_SMOKE_MACHINE: ${{ vars.VH_SMOKE_MACHINE }}
+          VH_SMOKE_ARTIFACTS: ${{ runner.temp }}/smoke-artifacts
+        run: pnpm -C packages/happy-web-v2 exec node e2e/smoke.mjs
+      - name: Upload failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: smoke-failure
+          path: ${{ runner.temp }}/smoke-artifacts
+          retention-days: 7
