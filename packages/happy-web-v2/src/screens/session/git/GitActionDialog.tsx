@@ -12,6 +12,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Bot, ChevronRight, ExternalLink, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Button, CopyButton, Spinner, toast } from '@/ui';
+import { useDelayedFlag } from '@/ui/useDelayedFlag';
 import type { ShellFlavor } from '../diffComments/gitDiff';
 import { restoreToComposer, useHasComposer } from '../composerRestore';
 import { buildCommitCommand, buildPrCreateCommand, buildPushCommand, GH_AUTH_STATUS_COMMAND, humanCommand, isAuthFailure, type CommitCandidate, type GitProbe } from './gitShell';
@@ -48,17 +49,6 @@ function readPushAfter(): boolean {
 }
 function writePushAfter(value: boolean) {
     try { localStorage.setItem(PUSH_AFTER_STORAGE, value ? '1' : '0'); } catch { /* per-viewer convenience only */ }
-}
-
-/** Visible-loading delay (design-language §6): fast paths show nothing. */
-function useDelayed(flag: boolean, ms = 200): boolean {
-    const [shown, setShown] = useState(false);
-    useEffect(() => {
-        if (!flag) { setShown(false); return; }
-        const timer = setTimeout(() => setShown(true), ms);
-        return () => clearTimeout(timer);
-    }, [flag, ms]);
-    return shown;
 }
 
 function splitMessage(message: string): { title: string; body: string } {
@@ -140,7 +130,7 @@ export function GitActionDialog({
     }, [open, mode, repo?.provider, sessionId]);
 
     const running = phase.kind === 'running';
-    const showSpinner = useDelayed(running);
+    const showSpinner = useDelayedFlag(running);
     const allSelected = candidates.length > 0 && candidates.every((c) => selected.has(c.path));
     const chosen = candidates.filter((c) => selected.has(c.path));
 
