@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ProjectsApiError } from './projects';
+import { ProjectsApiError } from './projectsError';
 
 describe('ProjectsApiError.unavailable (old server / kill switch → group by folder, never an error)', () => {
   it('treats an unknown route and projects_disabled as unavailable', () => {

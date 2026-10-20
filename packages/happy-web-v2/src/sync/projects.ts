@@ -18,17 +18,9 @@ import { assertNotAuthFailure } from '@/auth/authLatch';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 import { sync } from './sync';
+import { ProjectsApiError } from './projectsError';
 
-export class ProjectsApiError extends Error {
-  constructor(public status: number, public code: string, public details?: Record<string, unknown>) {
-    super(code);
-    this.name = 'ProjectsApiError';
-  }
-  /** Old server (unknown route) or the server-side kill switch. */
-  get unavailable(): boolean {
-    return this.status === 404 && (this.code === 'projects_disabled' || !this.code.startsWith('project'));
-  }
-}
+export { ProjectsApiError };
 
 const PROJECT_OBJECT_404 = new Set(['project_not_found', 'session_not_found', 'log_entry_not_found', 'team_not_found']);
 
