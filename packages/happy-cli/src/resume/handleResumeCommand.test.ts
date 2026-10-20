@@ -92,6 +92,23 @@ describe('buildResumeLaunch', () => {
         });
     });
 
+    it('B-633: builds a pi resume command from the recorded pi session id (fresh: none)', () => {
+        const session = {
+            id: 'session-pi',
+            active: false,
+            metadata: {
+                path: '/tmp/repo', flavor: 'acp', piSessionId: 'pi-sess-1',
+                host: 'localhost', homeDir: '/tmp', happyHomeDir: '/tmp/.happy', happyLibDir: '/tmp/happy', happyToolsDir: '/tmp/happy/tools',
+            },
+        };
+        expect(buildResumeLaunch(session, { startedBy: 'daemon', claudeStartingMode: 'remote' })).toEqual({
+            cwd: '/tmp/repo',
+            args: ['pi', '--started-by', 'daemon', '--resume', 'pi-sess-1'],
+        });
+        expect(buildResumeLaunch(session, { startedBy: 'daemon', freshConversation: true }).args).toEqual(['pi', '--started-by', 'daemon']);
+        expect(() => buildResumeLaunch({ ...session, metadata: { ...session.metadata, piSessionId: undefined } })).toThrow('unsupported flavor "acp"');
+    });
+
     it('rejects unsupported flavors', () => {
         expect(() => buildResumeLaunch({
             id: 'session-3',

@@ -44,7 +44,11 @@ export function parseResumeCommandArgs(args: string[]): { showHelp: boolean; ses
     };
 }
 
-function resolveFlavor(metadata: Metadata): 'codex' | 'claude' | null {
+function resolveFlavor(metadata: Metadata): 'codex' | 'claude' | 'pi' | null {
+    // B-633: pi runs on the generic ACP flavor; its recorded pi session id is what marks it.
+    if (metadata.flavor === 'acp' && metadata.piSessionId) {
+        return 'pi';
+    }
     if (metadata.flavor === 'codex' || metadata.codexThreadId) {
         return 'codex';
     }
@@ -70,6 +74,20 @@ export function buildResumeLaunch(session: ResumableHappySession, options: Resum
         }
         if (options.startedBy) {
             args.push('--started-by', options.startedBy);
+        }
+        return {
+            cwd: metadata.path,
+            args,
+        };
+    }
+
+    if (flavor === 'pi') {
+        const args = ['pi'];
+        if (options.startedBy) {
+            args.push('--started-by', options.startedBy);
+        }
+        if (!options.freshConversation) {
+            args.push('--resume', metadata.piSessionId!);
         }
         return {
             cwd: metadata.path,
