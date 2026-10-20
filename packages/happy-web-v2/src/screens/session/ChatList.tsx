@@ -4,6 +4,7 @@
  * when the user is already near it. Consecutive tool-calls collapse into a
  * single ToolGroupView. "Load older" appears when hasMoreOlder.
  */
+import { stripEditedDrafts } from '@/sync/editableDrafts';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { ChevronDown, Trash2 } from 'lucide-react';
 import { useSession, useSessionMessages } from '@/sync/storage';
@@ -807,7 +808,7 @@ export function ChatList({
                                 <span className="cl-queue-index">{index + 1}</span>
                                 <span className="cl-queue-text">
                                     {message.kind === 'user-text'
-                                        ? (message.displayText ?? message.text)
+                                        ? stripEditedDrafts(message.displayText ?? message.text)
                                         : message.kind === 'tool-call' && message.tool.name === 'file'
                                             ? t('session.chat.queuedFile', { name: String(message.tool.input?.name ?? '') })
                                             : ''}
