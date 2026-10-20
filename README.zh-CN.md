@@ -274,8 +274,9 @@ very-happy daemon start
   &nbsp; 笔记
 </p>
 
-生产命令面板可搜索操作、对话与终端。已保存 Prompt 使用 `Command/Ctrl+.`；移动端用户可从
-侧栏的“搜索”按钮打开同一命令界面。
+生产命令面板可搜索操作、对话与终端。会话搜索（`Command/Ctrl+Shift+F`，手机上点侧栏“搜索”）
+同时搜标题、项目、标签和每台在线机器上的对话内容，点结果直接打开到命中的消息。已保存 Prompt
+使用 `Command/Ctrl+.`。
 
 Very Happy 保留终端肌肉记忆：在 macOS 上，`Ctrl+K/J/N/R` 仍交给 readline 与真实 TUI。
 浏览器保留的新建/关闭快捷键只有在平台把它们交给已安装 PWA 时才有效；普通标签页使用明确的

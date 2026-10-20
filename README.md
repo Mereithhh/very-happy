@@ -338,9 +338,10 @@ package. See [Self-hosting](docs/deployment.md).
   &nbsp; notes
 </p>
 
-The production command palette searches actions, chats, and terminals. Saved
-prompts use `Command/Ctrl+.`; mobile users open the same command surface from
-the sidebar Search control.
+The production command palette searches actions, chats, and terminals. Session
+search (`Command/Ctrl+Shift+F`, or the sidebar Search control on a phone)
+searches titles, projects and tags plus what was said on every online machine,
+then opens the session on the hit. Saved prompts use `Command/Ctrl+.`.
 
 Very Happy preserves terminal muscle memory: on macOS, `Ctrl+K/J/N/R` stay with
 readline and the real TUI. Browser-reserved new/close chords work only where the

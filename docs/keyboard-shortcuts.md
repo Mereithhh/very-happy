@@ -16,8 +16,8 @@ searches shipped actions, active chats, and terminals. It supports the same
   `Command+P` / `Ctrl+P` file finder (B-655).
 - `Enter`: run the highlighted action or open the selected work.
 - `Escape`: close the palette.
-- Touch: tap the search button in the session sidebar; it opens the same
-  palette without requiring a hardware keyboard.
+- Touch: the sidebar search button opens session search (below); its empty
+  state links to this palette, so it never needs a hardware keyboard.
 
 Current actions include new chat, new terminal, new terminal in a chosen
 directory, voice assistant, clipboard history, notes, todo list, and settings.
@@ -27,11 +27,40 @@ On macOS the application chord is `Command`, not `Control`. This is deliberate:
 `Ctrl+K`, `Ctrl+J`, `Ctrl+N`, and `Ctrl+R` continue to reach readline and the
 actual agent TUI in a Very Happy terminal.
 
+## Session search
+
+Press `Command+Shift+F` on macOS or `Ctrl+Shift+F` on Windows/Linux, tap the
+sidebar search button, or pick **Search sessions…** in the command palette.
+One panel searches every session of the account, archived and terminal mirrors
+included:
+
+- titles, folders, machines, agents, projects and tags — instantly, in the
+  browser (`#tag` filters by tag, as in the sidebar);
+- what was said — every online machine searches its own Claude Code / Codex
+  history index in parallel (CLI 0.2.166 or newer); a conversation no session
+  owns yet shows as **Importable**;
+- messages this tab has already loaded, for every agent (pi and Gemini included).
+
+Each session is one row with up to three highlighted snippets. Clicking a row or
+a snippet opens the session on that message (older history is loaded when
+needed) and highlights the terms. Filters: status (all / in progress / waiting
+for you / archived), project, agent, machine and time.
+
+When a machine is offline, runs an older CLI, does not answer within 5 seconds
+or is still building its index, the top of the results says so — for example
+"2 machines offline · 1 machine runs an old CLI — content results are
+incomplete" — with the machine names underneath. Offline machines are never
+reported as "no results".
+
+Inside a web terminal on Windows/Linux, `Ctrl+Shift+F` stays the terminal's own
+find; use the sidebar button or the palette there.
+
 ## Shortcut reference
 
 | Action | macOS | Windows / Linux | Touch |
 |---|---|---|---|
-| Command palette | `Command+K` | `Ctrl+K` | Sidebar Search |
+| Command palette | `Command+K` | `Ctrl+K` | Session search → "Commands and quick jump" |
+| Session search | `Command+Shift+F` | `Ctrl+Shift+F` (outside a terminal) | Sidebar Search |
 | Switch visible sidebar rows 1–9 | `Command+1` … `Command+9` | `Ctrl+1` … `Ctrl+9` | Tap the row |
 | Saved prompt menu | `Command+.` | `Ctrl+.` | Prompt shortcut button |
 | Toggle notes | `Command+J` | `Ctrl+J` | Notes header button |

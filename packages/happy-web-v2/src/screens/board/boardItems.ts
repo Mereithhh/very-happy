@@ -182,7 +182,7 @@ export function formatCwd(path: string | undefined, homeDir?: string): string {
   return path;
 }
 
-function sessionHasPendingRequests(s: Session): boolean {
+export function sessionHasPendingRequests(s: Session): boolean {
   return !!s.agentState?.requests && Object.keys(s.agentState.requests).length > 0;
 }
 

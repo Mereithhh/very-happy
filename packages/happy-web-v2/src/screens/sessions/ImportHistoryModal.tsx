@@ -64,7 +64,7 @@ const MODES: readonly ImportHistoryMode[] = ['recent', 'search'];
 
 const AGENTS: readonly HistoryAgent[] = ['claude', 'codex'];
 
-export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = 'claude', initialMode = 'recent' }: {
+export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = 'claude', initialMode = 'recent', initialQuery }: {
   onClose: () => void;
   /** Preselect this machine (the machine page opens the dialog for its own
    *  machine; without this the picker would default to the newest one). */
@@ -73,6 +73,8 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
   initialAgent?: HistoryAgent;
   /** B-549: open straight into full-text search (⌘K entry). */
   initialMode?: ImportHistoryMode;
+  /** B-650: the session search hands over its query for an importable hit. */
+  initialQuery?: string;
 }) {
   const navigate = useNavigate();
   const toast = useToast();
@@ -370,6 +372,7 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
                     rowStates={rowStates}
                     busy={running}
                     importBlocked={codexMissing}
+                    initialQuery={initialQuery}
                     onImport={(entry) => void runSingle(entry)}
                     onOpen={() => onClose()}
                   />

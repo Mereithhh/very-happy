@@ -62,6 +62,7 @@ import { isWebPushSupported } from '@/sync/webPush';
 import { getNotificationPermission } from '@/sync/webNotifications';
 import { PaletteStatusMark } from './PaletteStatusMark';
 import { listArrowDelta } from '@/utils/listArrowKey';
+import { openSessionSearch, SESSION_SEARCH_HINT } from '@/screens/search/sessionSearchEvents';
 import './commandpalette.css';
 
 /**
@@ -302,6 +303,16 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
       icon: <History size={16} />,
       haystack: `import codex history thread conversation desktop resume ${(t('commandPalette.actionImportCodex') as string).toLowerCase()}`,
       run: () => dialogs.importHistory('codex'),
+    });
+    out.push({
+      // B-650: the cross-session search panel (titles + every machine's content).
+      key: 'action:search-sessions',
+      group: 'actions',
+      title: t('commandPalette.actionSearchSessions'),
+      icon: <Search size={16} />,
+      haystack: `search sessions find conversation content full text grep ${(t('commandPalette.actionSearchSessions') as string).toLowerCase()}`,
+      hint: SESSION_SEARCH_HINT,
+      run: openSessionSearch,
     });
     out.push({
       // B-549: search what was said in a machine's Claude Code / Codex history.
