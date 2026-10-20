@@ -1290,14 +1290,25 @@ export function Sidebar() {
                         }}
                       >
                         <ChevronRight size={11} className={`sb-section-chevron${sec.open ? ' is-open' : ''}`} />
-                        <span className="sb-section-label">{sec.label}</span>
-                        {sec.project
-                          ? (sec.attention ? <span className="sb-section-attention" title={t('sidebar.projectAttention', { count: sec.attention }) as string} aria-label={t('sidebar.projectAttention', { count: sec.attention }) as string}>{sec.attention}</span> : null)
-                          : <span className="sb-section-count mono">{sec.count}</span>}
-                        {!sec.open && <GroupSummary summary={summarizeGroup(sec.allRows.map(rowStatusOf))} zh={lang.startsWith('zh')} />}
+                        {/* B-648: a project's name opens its page; the chevron alone folds it. */}
+                        {sec.project ? <span className="sb-visually-hidden">{sec.label}</span> : <span className="sb-section-label">{sec.label}</span>}
+                        {!sec.project && <span className="sb-section-count mono">{sec.count}</span>}
+                        {!sec.open && !sec.project && <GroupSummary summary={summarizeGroup(sec.allRows.map(rowStatusOf))} zh={lang.startsWith('zh')} />}
                         {/* folded: the summary needs the room; machine · path stays in the head's tooltip */}
-                        {sec.detail && sec.open && <span className="sb-section-detail">{sec.detail}</span>}
+                        {sec.detail && sec.open && !sec.project && <span className="sb-section-detail">{sec.detail}</span>}
                       </button>
+                      {sec.project && (
+                        <button
+                          type="button"
+                          className={`sb-section-name${location.pathname === `/projects/${encodeURIComponent(sec.project.id)}` ? ' is-selected' : ''}`}
+                          aria-current={location.pathname === `/projects/${encodeURIComponent(sec.project.id)}` ? 'page' : undefined}
+                          onClick={() => navigate(`/projects/${encodeURIComponent(sec.project!.id)}`)}
+                        >
+                          <span className="sb-section-label">{sec.label}</span>
+                          {sec.attention ? <span className="sb-section-attention" title={t('sidebar.projectAttention', { count: sec.attention }) as string} aria-label={t('sidebar.projectAttention', { count: sec.attention }) as string}>{sec.attention}</span> : null}
+                          {!sec.open && <GroupSummary summary={summarizeGroup(sec.allRows.map(rowStatusOf))} zh={lang.startsWith('zh')} />}
+                        </button>
+                      )}
                       {sec.createLocation && <button
                         type="button" className="sb-workspace-new" disabled={creatingChat}
                         title={lang.startsWith('zh') ? `在此目录新建会话：${sec.createLocation.path}` : `New chat here: ${sec.createLocation.path}`}

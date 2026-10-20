@@ -82,3 +82,43 @@ describe('AcpBackend lifecycle (B-629)', () => {
         await expect(backend.sendPrompt(sessionId, 'go')).rejects.toThrow(/oversized|cannot be read/);
     }, 30_000);
 });
+
+describe('AcpBackend session/load (B-633)', () => {
+    it('reopens a known agent session, drops the replayed conversation, keeps command/model updates', async () => {
+        const { backend, messages } = backendFor('loadable');
+        backends.push(backend);
+        const started = await backend.startSession(undefined, { loadSessionId: 'known-session' });
+        expect(started).toMatchObject({ agentSessionId: 'known-session', resumed: 'loaded' });
+        expect(messages.some((m) => m.type === 'model-output')).toBe(false);
+        expect(messages.some((m) => m.type === 'tool-call')).toBe(false);
+        expect(messages.some((m) => m.type === 'event' && m.name === 'available_commands')).toBe(true);
+        expect(messages.some((m) => m.type === 'event' && m.name === 'models_update')).toBe(true);
+        // Live updates after the load are no longer suppressed.
+        await backend.sendPrompt(started.sessionId, 'go');
+        expect(messages.some((m) => m.type === 'model-output' && m.textDelta === 'working on it')).toBe(true);
+    });
+
+    it('falls back to a new session and says why when the agent does not know the id', async () => {
+        const { backend } = backendFor('loadable');
+        backends.push(backend);
+        const started = await backend.startSession(undefined, { loadSessionId: 'gone-session' });
+        expect(started).toMatchObject({ agentSessionId: 'fake-session', resumed: 'fresh' });
+        expect(started.loadFailure).toMatch(/Unknown sessionId: gone-session/);
+    });
+
+    it('an agent without loadSession starts fresh without asking', async () => {
+        const { backend } = backendFor('end-turn');
+        backends.push(backend);
+        const started = await backend.startSession(undefined, { loadSessionId: 'known-session' });
+        expect(started).toMatchObject({ agentSessionId: 'fake-session', resumed: 'fresh' });
+        expect(started.loadFailure).toMatch(/cannot reopen sessions/);
+    });
+
+    it('a plain start reports the agent session id and no resume verdict', async () => {
+        const { backend } = backendFor('end-turn');
+        backends.push(backend);
+        const started = await backend.startSession();
+        expect(started.agentSessionId).toBe('fake-session');
+        expect(started.resumed).toBeUndefined();
+    });
+});

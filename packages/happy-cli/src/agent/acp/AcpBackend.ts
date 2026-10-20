@@ -21,6 +21,7 @@ import {
   type InitializeRequest,
   type NewSessionRequest,
   type NewSessionResponse,
+  type LoadSessionRequest,
   type PromptRequest,
   type ContentBlock,
 } from '@agentclientprotocol/sdk';
@@ -31,6 +32,7 @@ import type {
   AgentMessageHandler,
   SessionId,
   StartSessionResult,
+  StartSessionOptions,
   McpServerConfig,
 } from '../core';
 import { logger } from '@/ui/logger';
@@ -48,6 +50,19 @@ export type AcpPromptOutcome = { stopReason?: string };
 /**
  * Retry configuration for ACP operations
  */
+/** B-633: `session/load` replays the whole conversation before it answers — longer than a new session. */
+const LOAD_SESSION_TIMEOUT_MS = 60_000;
+
+/** B-633: session updates that carry conversation content (what a `session/load` replays). */
+export function isReplayedConversationUpdate(updateType: string | undefined): boolean {
+  return updateType === 'user_message_chunk'
+    || updateType === 'agent_message_chunk'
+    || updateType === 'agent_thought_chunk'
+    || updateType === 'tool_call'
+    || updateType === 'tool_call_update'
+    || updateType === 'plan';
+}
+
 const RETRY_CONFIG = {
   /** Maximum number of retry attempts for init/newSession */
   maxAttempts: 3,
@@ -333,6 +348,13 @@ export class AcpBackend implements AgentBackend {
   private process: ChildProcess | null = null;
   private connection: ClientSideConnection | null = null;
   private acpSessionId: string | null = null;
+  /**
+   * B-633: true while `session/load` runs. pi-acp replays the whole earlier
+   * conversation as user/agent/tool updates before it answers; the web already
+   * holds that transcript, so those updates are dropped (config, mode, model
+   * and command updates still apply).
+   */
+  private replayingHistory = false;
   private disposed = false;
   /** Track active tool calls to prevent duplicate events */
   private activeToolCalls = new Set<string>();
@@ -426,7 +448,7 @@ export class AcpBackend implements AgentBackend {
     }
   }
 
-  async startSession(initialPrompt?: string): Promise<StartSessionResult> {
+  async startSession(initialPrompt?: string, options: StartSessionOptions = {}): Promise<StartSessionResult> {
     if (this.disposed) {
       throw new Error('Backend has been disposed');
     }
@@ -871,6 +893,56 @@ export class AcpBackend implements AgentBackend {
         mcpServers: mcpServers as unknown as NewSessionRequest['mcpServers'],
       };
 
+      // B-633: reopen the earlier agent session (pi-acp `session/load`) when
+      // asked and advertised. Any failure falls through to a new session and
+      // is reported, never thrown: a fresh conversation beats no agent.
+      let resumed: StartSessionResult['resumed'];
+      let loadFailure: string | undefined;
+      if (options.loadSessionId) {
+        if (initializeResponse.agentCapabilities?.loadSession !== true) {
+          resumed = 'fresh';
+          loadFailure = `${this.transport.agentName} cannot reopen sessions`;
+        } else {
+          const loadRequest: LoadSessionRequest = { ...newSessionRequest, sessionId: options.loadSessionId };
+          let timeoutHandle: NodeJS.Timeout | null = null;
+          this.replayingHistory = true;
+          try {
+            const loaded = await Promise.race([
+              startupFailurePromise,
+              this.connection!.loadSession(loadRequest),
+              new Promise<never>((_, reject) => {
+                timeoutHandle = setTimeout(() => reject(new Error(`Load session timeout after ${LOAD_SESSION_TIMEOUT_MS}ms`)), LOAD_SESSION_TIMEOUT_MS);
+              }),
+            ]);
+            this.acpSessionId = options.loadSessionId;
+            resumed = 'loaded';
+            logger.debug(`[AcpBackend] Session reopened: ${this.acpSessionId}`);
+            this.emitInitialSessionMetadata(loaded as NewSessionResponse);
+          } catch (error) {
+            if (startupFailure && error === startupFailure) throw error;
+            resumed = 'fresh';
+            // The ACP SDK rejects with the JSON-RPC error object, not an Error.
+            const message = (error as { message?: unknown } | null)?.message;
+            loadFailure = typeof message === 'string' ? message : String(error);
+            logger.debug(`[AcpBackend] Reopening session ${options.loadSessionId} failed; starting a new one: ${loadFailure}`);
+          } finally {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            this.replayingHistory = false;
+          }
+        }
+      }
+
+      if (resumed === 'loaded') {
+        this.emitIdleStatus();
+        if (initialPrompt) {
+          this.sendPrompt(sessionId, initialPrompt).catch((error) => {
+            logger.debug('[AcpBackend] Error sending initial prompt:', errorLogMetadata(error));
+            this.emit({ type: 'status', status: 'error', detail: String(error) });
+          });
+        }
+        return { sessionId, agentSessionId: this.acpSessionId!, resumed };
+      }
+
       logger.debug(`[AcpBackend] Creating new session...`);
 
       const sessionResponse = await withRetry(
@@ -927,7 +999,11 @@ export class AcpBackend implements AgentBackend {
         });
       }
 
-      return { sessionId };
+      return {
+        sessionId,
+        agentSessionId: this.acpSessionId ?? undefined,
+        ...(resumed ? { resumed, ...(loadFailure ? { loadFailure } : {}) } : {}),
+      };
 
     } catch (error) {
       // Log to file only, not console
@@ -1022,6 +1098,11 @@ export class AcpBackend implements AgentBackend {
       logAcpBackendMuted(
         `Incoming session update from ${this.options.agentName}: type=${sessionUpdateType ?? 'unknown'} payloadBytes=${String(updateMetadata.payloadBytes ?? 'unknown')}`,
       );
+    }
+
+    // B-633: the history a `session/load` replays is already in the transcript.
+    if (this.replayingHistory && isReplayedConversationUpdate(updateType)) {
+      return;
     }
 
     const ctx = this.createHandlerContext();
