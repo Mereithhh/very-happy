@@ -66,6 +66,15 @@ export const LocalSettingsSchema = z.object({
     // apply, but the schema stays uniform: defaults live in
     // localSettingsDefaults only).
     sidebarGroupByTag: z.boolean().describe('Group the sidebar list view by each session\'s first tag'),
+    // B-647: the list lens since projects — 'project' (default; unassigned
+    // sessions sub-grouped by folder) or 'none'. A NEW field rather than a new
+    // `sidebarGroupMode` value: saved blobs carry the old default 'none', so
+    // reusing that field could not move existing devices to the new default.
+    // `sidebarGroupMode` / `sidebarGroupByTag` stay readable (add-only) and are
+    // mirrored for an old-Web rollback; tag grouping is gone from the menu.
+    sidebarGrouping: z.enum(['project', 'none']).describe('Sidebar list grouping: by project (default) or flat'),
+    // B-647: one-time 「标签分组已合并到项目」 notice for devices that used tag grouping.
+    projectsTagNoticeDismissed: z.boolean().describe('The tag-grouping-merged-into-projects notice was dismissed'),
     // Web terminal (mobile): line-input mode — a plain textarea below the key
     // bar composes whole lines (IME/dictation-friendly, no xterm composition
     // quirks) and sends them to the pty on Enter, instead of per-key input
@@ -197,6 +206,9 @@ export const localSettingsDefaults: LocalSettings = {
     sidebarGroupMode: 'none',
     // Flat list by default; tag grouping is an opt-in lens.
     sidebarGroupByTag: false,
+    // B-647: projects are the default organisation.
+    sidebarGrouping: 'project',
+    projectsTagNoticeDismissed: false,
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,

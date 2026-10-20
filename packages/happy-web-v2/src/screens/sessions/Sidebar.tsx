@@ -5,7 +5,7 @@ import { BrandIcon, BrandEnvBadge } from '@/ui/BrandMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, Contact } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Flag, StickyNote, ListChecks, FolderOpen, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, Contact, FolderKanban, FolderPlus } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -22,8 +22,10 @@ import { isHibernated } from '@/app/sessionHibernation';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { priorityLevel, setPriorityLevel, sortByPriority, PRIORITY_LEVELS, priorityTag, type PriorityLevel } from '@/utils/tags';
 import { visibleSidebarSessions } from './sidebarRows';
-import { groupRowsByTag } from './sidebarTagGroups';
-import { groupRowsByWorkspace, resolveSidebarGroupMode, type SidebarGroupMode, type SidebarWorkspaceGroup } from './sidebarWorkspaceGroups';
+import { groupRowsByProject, foldersOfRows, legacyGroupModeFor, tagCandidates, usedTagGrouping } from './sidebarProjectGroups';
+import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
+import { toast } from '@/ui/Toast';
+import type { ProjectView } from '@slopus/happy-wire';
 import type { Session } from '@/sync/storageTypes';
 // aliased: `Settings` is already taken by the lucide gear icon above
 import type { Settings as SyncedSettings } from '@/sync/settings';
@@ -72,7 +74,6 @@ import { SidebarOrderHint } from './SidebarOrderHint';
 import { sidebarNavEntries, navAttentionTotal, navMenuLabel, type SidebarNavKey } from './sidebarNavEntries';
 import {
   findRevealTarget,
-  flattenOpenGroups,
   isGroupCollapsed,
   nearestScrollTop,
   planReveal,
@@ -150,6 +151,13 @@ interface SidebarSection {
   open: boolean;
   detail?: string;
   createLocation?: RecentMachinePath;
+  /** B-647: a project group (header shows 等你处理 instead of a row count). */
+  project?: ProjectView;
+  attention?: number;
+  /** B-647: small label above the first 未归属 folder group. */
+  kicker?: string;
+  /** B-647: 「设为项目」 for an unassigned folder group. */
+  makeProject?: { name: string; machineId: string; path: string; sessionIds: string[] };
 }
 
 function sessionRow(s: Session): Row {
@@ -247,16 +255,21 @@ export function Sidebar() {
   // when true so devices that opted into tag grouping keep that choice.
   // While grouped, drag/move reordering is disabled: the sequence is derived
   // from a grouping key, so a positional drop has nothing meaningful to write.
+  // B-647: the lens is `sidebarGrouping` (project by default | none). Tag and
+  // workspace lenses are gone; the old fields are only read for the one-time
+  // tag notice and mirrored so a Web rollback still shows a sensible lens.
   const [groupByTag, setGroupByTag] = useLocalSettingMutable('sidebarGroupByTag');
   const [savedGroupMode, setSavedGroupMode] = useLocalSettingMutable('sidebarGroupMode');
-  const groupMode = resolveSidebarGroupMode(savedGroupMode, groupByTag);
+  const [grouping, setGrouping] = useLocalSettingMutable('sidebarGrouping');
+  const [tagNoticeDismissed, setTagNoticeDismissed] = useLocalSettingMutable('projectsTagNoticeDismissed');
+  const groupMode: 'project' | 'none' = grouping === 'none' ? 'none' : 'project';
   const grouped = orderable && groupMode !== 'none';
-  const selectGroupMode = useCallback((mode: SidebarGroupMode) => {
-    setSavedGroupMode(mode);
-    // Mirror tag into B-091's old flag so a Web rollback keeps the user's tag
-    // choice instead of silently presenting a flat list.
-    setGroupByTag(mode === 'tag');
-  }, [setGroupByTag, setSavedGroupMode]);
+  const selectGroupMode = useCallback((mode: 'project' | 'none') => {
+    setGrouping(mode);
+    setSavedGroupMode(legacyGroupModeFor(mode));
+    if (groupByTag) setGroupByTag(false);
+  }, [setGrouping, setSavedGroupMode, groupByTag, setGroupByTag]);
+  const projectsSnap = useProjects();
   /** Surfaces whose order can shift WITHOUT the user acting — the ones the
    *  hover hold below has to protect. (Manual mode reorders only on a drag,
    *  which must apply instantly.) */
@@ -515,30 +528,76 @@ export function Sidebar() {
     const { pinned, rest } = splitPinnedRows(rows, pinnedSetting ?? []);
     return priorityFirst([...pinned, ...rest]);
   }, [rows, view, statusGroups, completedRows, completedOpen, collapsedGroups, orderSetting, pinnedSetting, orderable, sortMode, heldKeys]);
-  // Tag grouping (列表 view): group the ordered sequence by first tag; the
-  // FLAT displayRows below stays the exact rendered order (⌘1-9 badges and
-  // the quick-switch read it), so it must be the groups flattened.
-  const tagGroups = useMemo(
-    () => (orderable && groupMode === 'tag' && orderedRows ? groupRowsByTag(orderedRows) : null),
-    [orderable, groupMode, orderedRows],
+  // ----- teams (B-480) and the project lens (B-647) -----
+  const liveTeams = useMemo(() => teams.filter((team) => !team.archivedAt), [teams]);
+  // Receipt-backed team sessions that are no longer in the visible list keep a history link.
+  const teamHistoryRows = useMemo<Row[]>(() => {
+    if (!orderedRows || liveTeams.length === 0) return [];
+    const membership = teamSessionMembership(liveTeams);
+    const existingIds = new Set(orderedRows.flatMap(row => row.sessionId ? [row.sessionId] : []));
+    return missingTeamSessionIds(existingIds, liveTeams).map((sessionId): Row => {
+      const { bot } = membership.get(sessionId)!;
+      return { key: sessionId, sessionId, kind: 'session', href: `/session/${encodeURIComponent(sessionId)}`, title: bot.name, subtitle: teamCopy.history, ts: 0, createdAt: 0, teamHistoryLink: true };
+    });
+  }, [orderedRows, liveTeams, teamCopy.history]);
+  /** Team header + (expanded) member rows in place of the members, ordinary rows untouched. */
+  const nestTeams = useCallback((groupRows: Row[], groupTeams: TeamState[]): Row[] => {
+    if (groupTeams.length === 0) return groupRows;
+    return groupTeamNavigation(groupRows, groupTeams, expandedTeams).flatMap((entry): Row[] => {
+      if (entry.kind === 'row') return [entry.team ? { ...entry.row, teamChild: true, href: `/session/${encodeURIComponent(entry.row.sessionId!)}`, teamLabel: entry.bot?.root ? teamCopy.lead : entry.bot?.name || teamCopy.member } : entry.row];
+      const header: Row = { key: `team:${entry.team.id}`, kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: entry.team.name, subtitle: '', ts: entry.team.createdAt, createdAt: entry.team.createdAt, team: entry.team };
+      const pending: Row[] = expandedTeams.has(entry.team.id) ? unstartedTeamMembers(entry.team).map(({bot, task, failed, href}) => ({ key: `member:${entry.team.id}:${bot.id}`, kind: 'session', href, title: bot.root ? teamCopy.lead : bot.name, subtitle: failed ? teamCopy.failed : task ? teamCopy.preparing : teamCopy.noSession, ts: entry.team.createdAt, createdAt: entry.team.createdAt, teamHistoryLink: true })) : [];
+      return [header, ...pending];
+    });
+  }, [expandedTeams, teamCopy.lead, teamCopy.member, teamCopy.failed, teamCopy.preparing, teamCopy.noSession]);
+  // Default lens: project groups, then 未归属 sub-grouped by folder. Teams nest
+  // inside their group, so they stay visible while grouped (spec §6.1).
+  const projectGrouping = useMemo(
+    () => (orderable && groupMode === 'project' && orderedRows
+      ? groupRowsByProject([...orderedRows, ...teamHistoryRows], projectsSnap.projects, projectsSnap.members, liveTeams)
+      : null),
+    [orderable, groupMode, orderedRows, teamHistoryRows, projectsSnap.projects, projectsSnap.members, liveTeams],
   );
-  const workspaceGroups = useMemo(
-    () => (orderable && groupMode === 'workspace' && orderedRows ? groupRowsByWorkspace(orderedRows) : null),
-    [orderable, groupMode, orderedRows],
-  );
+  const projectSections = useMemo<SidebarSection[] | null>(() => {
+    if (!projectGrouping) return null;
+    const out: SidebarSection[] = [];
+    const sessionCount = (groupRows: Row[]) => groupRows.filter((r) => !r.teamHistoryLink).length;
+    for (const g of projectGrouping.projects) {
+      const primary = g.project.folders.find((f) => f.primary) ?? g.project.folders[0];
+      out.push({
+        ...collapsibleSection(`project:${g.project.id}`, g.project.name, nestTeams(g.rows, g.teams), collapsedGroups),
+        count: sessionCount(g.rows),
+        project: g.project,
+        attention: g.rows.filter((r) => attentionKeys.has(r.key)).length,
+        ...(primary ? { createLocation: { machineId: primary.machineId, path: primary.path }, detail: primary.path } : {}),
+      });
+    }
+    const unassignedLabel = t('sidebar.projectsUnassigned') as string;
+    projectGrouping.unassigned.forEach((g, i) => {
+      const extra = i === 0 ? projectGrouping.orphanTeams : [];
+      const sessionIds = g.rows.flatMap((r) => (r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink ? [r.sessionId] : []));
+      out.push({
+        ...collapsibleSection(workspaceGroupId(g), g.name ?? (t('sidebar.workspaceUnassigned') as string), nestTeams(g.rows, [...g.teams, ...extra]), collapsedGroups),
+        count: sessionCount(g.rows),
+        detail: [g.machineName, g.path].filter(Boolean).join(' · '),
+        createLocation: g.machineId && g.path ? { machineId: g.machineId, path: g.rows.find(r => r.workspacePath)?.workspacePath ?? g.path } : undefined,
+        kicker: i === 0 && projectGrouping.projects.length > 0 ? unassignedLabel : undefined,
+        makeProject: projectsSnap.status === 'ready' && g.machineId && g.path && sessionIds.length > 0 ? { name: g.name ?? g.path, machineId: g.machineId, path: g.path, sessionIds } : undefined,
+      });
+    });
+    if (projectGrouping.unassigned.length === 0 && projectGrouping.orphanTeams.length > 0) {
+      out.push({ ...collapsibleSection('unassigned:teams', unassignedLabel, nestTeams([], projectGrouping.orphanTeams), collapsedGroups), count: 0 });
+    }
+    return out;
+  }, [projectGrouping, nestTeams, collapsedGroups, attentionKeys, projectsSnap.status, t]);
   // Collapsed groups' rows are not rendered, so they take no ⌘1-9 number
   // and no move-up/down position either (B-580).
   const plainDisplayRows = useMemo<Row[] | null>(
-    () => workspaceGroups
-      ? flattenOpenGroups(workspaceGroups, workspaceGroupId, collapsedGroups)
-      : tagGroups
-        ? flattenOpenGroups(tagGroups, tagGroupId, collapsedGroups)
-        : orderedRows,
-    [workspaceGroups, tagGroups, orderedRows, collapsedGroups],
+    () => (projectSections ? projectSections.flatMap((sec) => sec.rows) : orderedRows),
+    [projectSections, orderedRows],
   );
-  // Group only the normal flat history. Explicit status/workspace/tag lenses
-  // and archive retain their existing behavior and ordering.
-  const teamHistory = view === 'list' && !grouped && teams.some((team) => !team.archivedAt);
+  // The flat list (不分组) nests teams over the whole list; the project lens did it per group.
+  const teamHistory = view === 'list' && !grouped && liveTeams.length > 0;
   // B-619: 「分享给我的」 — a trailing group in every view mode; not draggable, no ⌘N badge.
   const sharedRows = useMemo<Row[]>(
     () => (sessions ? sortRowsByRecent(visibleSidebarSessions(sessions, view).filter((s) => !!s.share).map(sessionRow)) : []),
@@ -546,20 +605,8 @@ export function Sidebar() {
   );
   const displayRows = useMemo<Row[] | null>(() => {
     if (!plainDisplayRows || !teamHistory) return plainDisplayRows;
-    const visibleTeams = teams.filter(team => !team.archivedAt);
-    const membership = teamSessionMembership(visibleTeams);
-    const existingIds = new Set(plainDisplayRows.flatMap(row => row.sessionId ? [row.sessionId] : []));
-    const historicalRows = missingTeamSessionIds(existingIds, visibleTeams).map((sessionId): Row => {
-      const { bot } = membership.get(sessionId)!;
-      return { key: sessionId, sessionId, kind: 'session', href: `/session/${encodeURIComponent(sessionId)}`, title: bot.name, subtitle: teamCopy.history, ts: 0, createdAt: 0, teamHistoryLink: true };
-    });
-    return groupTeamNavigation([...plainDisplayRows, ...historicalRows], visibleTeams, expandedTeams).flatMap((entry): Row[] => {
-      if (entry.kind === 'row') return [entry.team ? { ...entry.row, teamChild: true, href: `/session/${encodeURIComponent(entry.row.sessionId!)}`, teamLabel: entry.bot?.root ? teamCopy.lead : entry.bot?.name || teamCopy.member } : entry.row];
-      const header: Row = { key: `team:${entry.team.id}`, kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: entry.team.name, subtitle: '', ts: entry.team.createdAt, createdAt: entry.team.createdAt, team: entry.team };
-      const pending: Row[] = expandedTeams.has(entry.team.id) ? unstartedTeamMembers(entry.team).map(({bot, task, failed, href}) => ({ key: `member:${entry.team.id}:${bot.id}`, kind: 'session', href, title: bot.root ? teamCopy.lead : bot.name, subtitle: failed ? teamCopy.failed : task ? teamCopy.preparing : teamCopy.noSession, ts: entry.team.createdAt, createdAt: entry.team.createdAt, teamHistoryLink: true })) : [];
-      return [header, ...pending];
-    });
-  }, [plainDisplayRows, teamHistory, teams, expandedTeams, teamCopy.lead, teamCopy.member, teamCopy.history, teamCopy.failed, teamCopy.preparing, teamCopy.noSession]);
+    return nestTeams([...plainDisplayRows, ...teamHistoryRows], liveTeams);
+  }, [plainDisplayRows, teamHistory, teamHistoryRows, liveTeams, nestTeams]);
   // Feeds the hold's arming snapshot (assigned during render, read by the
   // pointer listeners) — always the sequence actually on screen.
   displayedKeysRef.current = displayRows?.map((r) => r.key) ?? [];
@@ -854,18 +901,8 @@ export function Sidebar() {
         ...shared,
       ];
     }
-    // 列表 + 按 tag 分组: one section per tag group, same sb-section-head
-    // chrome as the status view. Untagged rows tail as 未分组.
-    if (tagGroups) {
-      return [...tagGroups.map((g) => collapsibleSection(tagGroupId(g), g.tag ?? (t('sidebar.groupUntagged') as string), g.rows, collapsedGroups)), ...shared];
-    }
-    if (workspaceGroups) {
-      return [...workspaceGroups.map((g: SidebarWorkspaceGroup<Row>) => ({
-        ...collapsibleSection(workspaceGroupId(g), g.name ?? (t('sidebar.workspaceUnassigned') as string), g.rows, collapsedGroups),
-        detail: [g.machineName, g.path].filter(Boolean).join(' · '),
-        createLocation: g.machineId && g.path ? { machineId: g.machineId, path: g.rows.find(r => r.workspacePath)?.workspacePath ?? g.path } : undefined,
-      })), ...shared];
-    }
+    // 列表 + 按项目 (B-647, default): project groups, then 未归属 folder groups.
+    if (projectSections) return [...projectSections, ...shared];
     return [
       {
         id: 'all',
@@ -878,7 +915,7 @@ export function Sidebar() {
       },
       ...shared,
     ];
-  }, [view, statusGroups, completedRows, collapsedGroups, tagGroups, workspaceGroups, displayRows, sharedRows, t]);
+  }, [view, statusGroups, completedRows, collapsedGroups, projectSections, displayRows, sharedRows, t]);
 
   // ----- collapsed-header status summary (B-580) -----
   // Same inputs as the row's own status slot (SidebarRow → agentStatusSignal),
@@ -962,7 +999,51 @@ export function Sidebar() {
   // the settings defaults; falls back to the full dialog only when it can't
   // decide (or always-ask is on). Shared by the desktop 新建会话 button and the
   // phone header's ＋ (B-641) — same menu, same first item, same step count.
+  // ----- project actions (B-647) -----
+  const makeProjectFrom = useCallback(async (spec: { name: string; machineId: string; path: string; sessionIds: string[] }) => {
+    try {
+      const { project } = await projectsApi.create({ name: spec.name.slice(0, 120), folders: [{ machineId: spec.machineId, path: spec.path, primary: true }], sessionIds: spec.sessionIds.slice(0, 200), requestId: `folder:${spec.machineId}:${spec.path}:${spec.sessionIds.length}` });
+      applyLocalMembership(project.id, spec.sessionIds);
+      toast.success(t('sidebar.makeProjectDone', { name: project.name }) as string);
+    } catch {
+      toast.error(t('sidebar.makeProjectFailed') as string);
+    } finally {
+      void refreshProjects();
+    }
+  }, [t]);
+  const createNamedProject = useCallback(async () => {
+    const name = (await Modal.prompt(t('sidebar.newProject') as string, t('sidebar.newProjectPrompt') as string))?.trim();
+    if (!name) return;
+    await makeProjectFromRows(name, []);
+  }, [t]);
+  /** Project from a set of rows: folders = their machine+path pairs, the first one primary. */
+  const makeProjectFromRows = useCallback(async (name: string, sourceRows: Row[]) => {
+    const folders = foldersOfRows(sourceRows).map((f, i) => ({ ...f, primary: i === 0 }));
+    const sessionIds = sourceRows.flatMap((r) => (r.kind === 'session' && r.sessionId && !r.share ? [r.sessionId] : []));
+    try {
+      const { project } = await projectsApi.create({ name: name.slice(0, 120), folders, sessionIds: sessionIds.slice(0, 200) });
+      if (sessionIds.length) applyLocalMembership(project.id, sessionIds);
+      toast.success(t('sidebar.makeProjectDone', { name: project.name }) as string);
+    } catch {
+      toast.error(t('sidebar.makeProjectFailed') as string);
+    } finally {
+      void refreshProjects();
+    }
+  }, [t]);
+  const convertTagToProject = useCallback(async (tag: string) => {
+    const key = tag.toLowerCase();
+    await makeProjectFromRows(tag, (orderedRows ?? []).filter((r) => r.tags?.[0]?.trim().toLowerCase() === key));
+  }, [orderedRows, makeProjectFromRows]);
+  const tagNoticeVisible = orderable && !tagNoticeDismissed && projectsSnap.status === 'ready' && usedTagGrouping(savedGroupMode, groupByTag);
+
   const createItems: MenuItemDef[] = [
+    ...(projectsSnap.status === 'ready' ? [{
+      // B-647: 新建 ▾ → 新项目 (name only; folders and defaults live on the project page).
+      key: 'project',
+      label: t('sidebar.newProject'),
+      icon: FolderKanban,
+      onSelect: () => void createNamedProject(),
+    } satisfies MenuItemDef] : []),
     {
       key: 'chat',
       disabled: creatingChat,
@@ -1147,8 +1228,8 @@ export function Sidebar() {
               align="end"
               sideOffset={6}
               items={[
-                { key: 'workspace', disabled: !orderable, label: `${groupMode === 'workspace' ? '✓ ' : ''}${t('sidebar.groupWorkspace')}`, icon: FolderTree, onSelect: () => selectGroupMode('workspace') },
-                { key: 'tag', disabled: !orderable, label: `${groupMode === 'tag' ? '✓ ' : ''}${t('sidebar.groupTags')}`, icon: Tags, onSelect: () => selectGroupMode('tag') },
+                // B-647: only 项目 (default) / 不分组 — tag grouping moved into projects.
+                { key: 'project', disabled: !orderable, label: `${groupMode === 'project' ? '✓ ' : ''}${t('sidebar.groupProjects')}`, icon: FolderKanban, onSelect: () => selectGroupMode('project') },
                 { key: 'none', disabled: !orderable, label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Rows3, onSelect: () => selectGroupMode('none') },
                 { key: 'ordering-help', disabled: !orderable || Boolean(teamHistory), label: lang.startsWith('zh') ? '排序说明' : 'Reordering help', icon: CircleHelp, checked: showOrderHint, onSelect: () => setShowOrderHint((shown) => !shown) },
                 { key: 'locate-current', disabled: !onRowRoute, label: lang.startsWith('zh') ? '定位当前会话' : 'Locate current session', icon: LocateFixed, separatorBefore: true, onSelect: locateCurrent },
@@ -1156,7 +1237,7 @@ export function Sidebar() {
               ]}
             >
               <button className={`sb-icon-btn${groupMode !== 'none' ? ' is-on' : ''}`} title={t('sidebar.groupMenu')} aria-label={t('sidebar.groupMenu')}>
-                {groupMode === 'workspace' ? <FolderTree size={17} /> : groupMode === 'tag' ? <Tags size={17} /> : <Rows3 size={17} />}
+                {groupMode === 'project' ? <FolderKanban size={17} /> : <Rows3 size={17} />}
               </button>
             </ActionDropdownMenu>
           )}
@@ -1164,6 +1245,17 @@ export function Sidebar() {
 </div></div>
       {showOrderHint && orderable && !teamHistory && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
 
+      {tagNoticeVisible && (
+        <ProjectsTagNotice
+          candidates={tagCandidates(orderedRows ?? [])}
+          onConvert={(tag) => void convertTagToProject(tag)}
+          onDismiss={() => setTagNoticeDismissed(true)}
+          title={t('sidebar.tagNoticeTitle') as string}
+          body={t('sidebar.tagNoticeBody') as string}
+          convertLabel={t('sidebar.tagNoticeConvert') as string}
+          dismissLabel={t('sidebar.tagNoticeDismiss') as string}
+        />
+      )}
       <div className={`sb-list vh-scroll-fade${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
         <PendingSessionRows />
         {/* B-619: invitations first — they need an answer before anything else shows. */}
@@ -1172,7 +1264,7 @@ export function Sidebar() {
           <div className="sb-loading">
             <StatusDot status="thinking" pulse /> {t('common.loading')}
           </div>
-        ) : sections.every((sec) => sec.count === 0) && closedRows.length === 0 ? (
+        ) : sections.every((sec) => sec.count === 0 && !sec.project) && closedRows.length === 0 ? (
           <div className="sb-empty">{t('sidebar.empty')}</div>
         ) : (
           <>
@@ -1183,8 +1275,9 @@ export function Sidebar() {
               let peekTipPlaced = false; // B-588: the session-preview tip anchors to the first chat row
               return sections.map((sec) => (
                 <div key={sec.id} className="sb-section">
+                  {sec.kicker && <div className="sb-section-kicker">{sec.kicker}</div>}
                   {sec.label !== undefined && (
-                    <div className={`sb-section-head sb-section-head--toggle${sec.createLocation ? ' sb-section-head--workspace' : ''}`} title={sec.detail || undefined}>
+                    <div className={`sb-section-head sb-section-head--toggle${sec.createLocation || sec.makeProject ? ' sb-section-head--workspace' : ''}${sec.project ? ' sb-section-head--project' : ''}`} title={sec.detail || undefined}>
                       {/* B-580: every labelled group folds; Enter/Space via the native button. */}
                       <button
                         type="button"
@@ -1198,7 +1291,9 @@ export function Sidebar() {
                       >
                         <ChevronRight size={11} className={`sb-section-chevron${sec.open ? ' is-open' : ''}`} />
                         <span className="sb-section-label">{sec.label}</span>
-                        <span className="sb-section-count mono">{sec.count}</span>
+                        {sec.project
+                          ? (sec.attention ? <span className="sb-section-attention" title={t('sidebar.projectAttention', { count: sec.attention }) as string} aria-label={t('sidebar.projectAttention', { count: sec.attention }) as string}>{sec.attention}</span> : null)
+                          : <span className="sb-section-count mono">{sec.count}</span>}
                         {!sec.open && <GroupSummary summary={summarizeGroup(sec.allRows.map(rowStatusOf))} zh={lang.startsWith('zh')} />}
                         {/* folded: the summary needs the room; machine · path stays in the head's tooltip */}
                         {sec.detail && sec.open && <span className="sb-section-detail">{sec.detail}</span>}
@@ -1210,6 +1305,12 @@ export function Sidebar() {
                         onPointerDown={prefetchSessionDetail}
                         onClick={() => void createChatOrConfigure(navigate, configureNew, { target: sec.createLocation })}
                       ><Plus size={14} /></button>}
+                      {sec.makeProject && <button
+                        type="button" className="sb-workspace-new sb-workspace-make-project"
+                        title={`${t('sidebar.makeProject')}：${sec.makeProject.path}`}
+                        aria-label={`${t('sidebar.makeProject')}：${sec.label}`}
+                        onClick={() => void makeProjectFrom(sec.makeProject!)}
+                      ><FolderPlus size={14} /></button>}
                     </div>
                   )}
                   {sec.rows.map((r) => {
@@ -1436,9 +1537,6 @@ export function Sidebar() {
  * dropdown (all pointers) and the right-click context menu (fine pointers /
  * long-press). Icon, label, danger tone and disabled state live here only.
  */
-function tagGroupId(g: { tag: string | null }): string {
-  return g.tag === null ? 'untagged' : `tag:${g.tag.toLowerCase()}`;
-}
 function workspaceGroupId(g: { key: string }): string {
   return `workspace:${g.key}`;
 }
@@ -1878,5 +1976,35 @@ function SidebarRow({
       </ActionDropdownMenu>
     </div>
     </ActionContextMenu>
+  );
+}
+
+/**
+ * B-647: one-time notice on devices that used tag grouping — the lens is gone,
+ * the data is not: turn a first tag into a project in one step.
+ */
+function ProjectsTagNotice({ candidates, onConvert, onDismiss, title, body, convertLabel, dismissLabel }: {
+  candidates: { tag: string; count: number }[];
+  onConvert: (tag: string) => void;
+  onDismiss: () => void;
+  title: string; body: string; convertLabel: string; dismissLabel: string;
+}) {
+  const [tag, setTag] = useState(candidates[0]?.tag ?? '');
+  const selected = candidates.some((c) => c.tag === tag) ? tag : candidates[0]?.tag ?? '';
+  return (
+    <div className="sb-tag-notice" role="status">
+      <div className="sb-tag-notice__text"><strong>{title}</strong><span>{body}</span></div>
+      <div className="sb-tag-notice__actions">
+        {candidates.length > 0 && (
+          <>
+            <select className="sb-tag-notice__select" value={selected} onChange={(e) => setTag(e.target.value)} aria-label={convertLabel}>
+              {candidates.map((c) => <option key={c.tag} value={c.tag}>#{c.tag} · {c.count}</option>)}
+            </select>
+            <button type="button" className="sb-tag-notice__convert" onClick={() => selected && onConvert(selected)}>{convertLabel}</button>
+          </>
+        )}
+        <button type="button" className="sb-tag-notice__dismiss" onClick={onDismiss}>{dismissLabel}</button>
+      </div>
+    </div>
   );
 }
