@@ -417,7 +417,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         reportSessionEditToDaemon, generateHookSettingsFile, cleanupHookSettingsFile,
         registerKillSessionHandler, SessionExitGate, exitIntentFromArchiveFlag, settleSessionOnExit,
         registerSideQuestionHandler, writeSideQuestionSettingsFile, claudeCheckSession,
-        createSessionScanner, getProjectPath, replayClaudeForkJsonl, TitleGenerator, BoardAnalyzer,
+        createSessionScanner, getProjectPath, replayClaudeForkJsonl, snapshotTree, terminateSurvivors, TitleGenerator, BoardAnalyzer,
         FileRateLimiter, createSelfReportState, withAssistantDenylist, contentLogMetadata,
         resolveMessageMode, claudePrewarmEligibility, claudePrewarmSessionEligibility, prewarmCacheFile,
         readPrewarmCache, writePrewarmCache, prewarmPredictionMeta, evaluatePrewarmPrediction,
@@ -1164,6 +1164,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         promptQueueDrain.close();
         // B-515: a warm Claude process never outlives the wrapper.
         cleanupPrewarm();
+        // B-634 ①: what runs under this wrapper (Claude Code, its MCP servers,
+        // tool commands), snapshotted while it is all still parented here.
+        const wrapperTree = snapshotTree(process.pid);
 
         try {
             if (session) {
@@ -1198,9 +1201,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             await remoteScanner.cleanup();
 
             logger.debug('[START] Cleanup complete, exiting');
+            await terminateSurvivors(wrapperTree);
             process.exit(0);
         } catch (error) {
             logger.debug('[START] Error during cleanup:', error);
+            await terminateSurvivors(wrapperTree).catch(() => undefined);
             process.exit(1);
         }
     };

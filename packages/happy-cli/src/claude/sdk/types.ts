@@ -35,6 +35,8 @@ export type CanCallToolCallback = CanUseTool
  */
 export interface QueryOptions {
     abort?: AbortSignal
+    /** B-634 ①: the Claude Code child's pid (SDK `onProcessSpawned`, untyped in 0.3.296). */
+    onProcessSpawned?: (pid: number) => void
     allowedTools?: string[]
     appendSystemPrompt?: string
     customSystemPrompt?: string
