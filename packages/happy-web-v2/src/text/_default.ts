@@ -701,6 +701,18 @@ export const en = {
             sendFailed: 'Not sent',
             sendRetry: 'Retry',
             sendRestore: 'Back to input',
+            // B-642: editable drafts (```draft fences) and their composer chips.
+            draft: {
+                label: 'Draft',
+                edited: 'Edited',
+                restore: 'Restore original',
+                edit: 'Edit draft',
+                editNamed: ({ title }: { title: string }) => `Edit draft: ${title}`,
+                chipsLabel: 'Edited drafts sent with your next message',
+                chipTitle: 'Your edited version goes with the next message',
+                chipRemove: ({ title }: { title: string }) => `Don't send edited draft: ${title}`,
+                attached: ({ count }: { count: number }) => count === 1 ? 'Sent 1 edited draft' : `Sent ${count} edited drafts`,
+            },
             discarded: {
                 cleared: 'Not run — dropped by /clear or /compact',
                 aborted: 'Not run — dropped when the turn was stopped',

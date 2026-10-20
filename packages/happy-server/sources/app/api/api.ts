@@ -3,6 +3,7 @@ import { webStaticOptions } from './staticCache';
 import { startBusinessAudit, stopBusinessAudit } from '@/app/audit/producer';
 import { auditLoginFailure } from '@/app/audit/requestAudit';
 import { teamRoutes } from './routes/teamRoutes';
+import { projectRoutes } from './routes/projectRoutes';
 import { automationRoutes } from './routes/automationRoutes';
 import { promptQueueRoutes } from './routes/promptQueueRoutes';
 import fastify from "fastify";
@@ -135,6 +136,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     pushRoutes(typed);
     sessionRoutes(typed);
     teamRoutes(typed);
+    projectRoutes(typed);
     automationRoutes(typed);
     promptQueueRoutes(typed);
     accountRoutes(typed);

@@ -9,6 +9,48 @@
 }
 
 /* attachment previews */
+.ci-drafts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+/* B-642: an edited draft that rides along with the next message. Fill step,
+ * no outline (the composer is the one closed object). */
+.ci-draft-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 2px 2px 8px;
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  font-size: var(--chat-fs-secondary);
+}
+.ci-draft-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ci-draft-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.ci-draft-chip-remove:hover { background: var(--bg-3); color: var(--text); }
+.ci-draft-chip-remove:focus-visible { outline: 1px solid var(--line-2); outline-offset: 0; }
+@media (pointer: coarse) { .ci-draft-chip-remove { width: 36px; height: 36px; } }
 .ci-attachments {
   display: flex;
   flex-wrap: wrap;

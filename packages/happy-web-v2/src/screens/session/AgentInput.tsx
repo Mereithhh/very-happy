@@ -12,7 +12,7 @@ import { appendMessageQuote, insertMessageQuoteAt } from './messageActionsModel'
  * Sending: see utils/composerEnter (desktop Enter sends, Cmd/Ctrl/Shift+Enter
  * newline; soft keyboards newline). IME-safe: never sends mid-composition.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, CornerDownRight, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { randomUUID } from 'expo-crypto';
@@ -102,6 +102,9 @@ import {
 } from './composerExpand';
 import './input.css';
 import { ComposerAttachments } from './ComposerAttachments';
+import { EditedDraftChips } from './EditedDraftChips';
+import { appendEditedDrafts, buildEditedDraftsBlock, splitEditedDrafts } from '@/sync/editableDrafts';
+import { ensureDraftsLoaded, markDraftsAttached, selectPendingDrafts, useEditableDrafts } from '@/sync/editableDraftsStore';
 import { shouldApplyPermissionModeLive } from './livePermissionMode';
 import { derivePermissionModeDisplay } from './permissionModeDisplay';
 import { resolveIntentSource } from '@/sync/yoloEnforcement';
@@ -156,6 +159,10 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const { t } = useTranslation();
     const toast = useToast();
     const session = useSession(sessionId);
+    // B-642: edited drafts ride along with the next message (chips above the input).
+    const draftRecords = useEditableDrafts((state) => state.drafts);
+    const pendingDrafts = useMemo(() => selectPendingDrafts(draftRecords, sessionId), [draftRecords, sessionId]);
+    useEffect(() => { ensureDraftsLoaded(sessionId); }, [sessionId]);
     const usage = useSessionUsage(sessionId);
     const enterToSend = useSetting('agentInputEnterToSend');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
@@ -565,6 +572,10 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
         sendingRef.current = true;
         setSending(true);
         const createdAt = Date.now();
+        // B-642: snapshot the pending edited drafts at submit time; they are
+        // marked as seen by the model only once this submission is accepted.
+        const attachedDrafts = selectPendingDrafts(useEditableDrafts.getState().drafts, sessionId);
+        const sendValue = appendEditedDrafts(value, buildEditedDraftsBlock(attachedDrafts.map(({ rec }) => ({ title: rec.title, base: rec.base, text: rec.text }))));
         let takenAttachments: QueuedMessage['attachments'];
         let draftTaken = false;
         let queueOwnsItem = false;
@@ -582,7 +593,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             storage.getState().updateSessionDraft(sessionId, null);
             const makeItem = (): QueuedMessage => ({
                 id: randomUUID(),
-                text: value,
+                text: sendValue,
                 createdAt,
                 modeMeta: resolveMessageModeMeta(session, storage.getState().settings),
                 attachments: takenAttachments,
@@ -610,14 +621,16 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
 
             if (serverQueueOwnsItem) {
                 const item = makeItem();
-                let outcome: 'queued' | 'unsupported';
+                // B-654: its own name — shadowing `outcome` left the caret
+                // decision below reading 'failed' after a successful enqueue.
+                let enqueued: 'queued' | 'unsupported';
                 try {
-                    outcome = await enqueuePrompt(sessionId, item.text, item.modeMeta);
+                    enqueued = await enqueuePrompt(sessionId, item.text, item.modeMeta);
                 } catch (error) {
                     toast.error(t('session.chat.queueDeliveryFailed'));
                     throw error;
                 }
-                if (outcome === 'unsupported') {
+                if (enqueued === 'unsupported') {
                     // Old server: this session falls back to the tab-local queue.
                     const next = [...queuedRef.current, item];
                     persistSessionQueue(sessionId, next);
@@ -650,6 +663,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             }
             if (takenAttachments && !queueOwnsItem) restore(takenAttachments);
         } finally {
+            // `queueOwnsItem` too: the server-queue branch assigns a block-scoped
+            // `outcome`, so the outer one still reads 'failed' after a successful enqueue.
+            if ((outcome !== 'failed' || queueOwnsItem) && attachedDrafts.length > 0) {
+                markDraftsAttached(attachedDrafts.map(({ kvKey, rec }) => ({ kvKey, text: rec.text })));
+            }
             sendingRef.current = false;
             setSending(false);
             // B-568: a touch send that reached the agent puts the keyboard away;
@@ -847,12 +865,14 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
 
     // B-509: one list for the composer. Server items first (the wrapper runs
     // them in this order); tab-local items (old wrapper, or attachments) after.
-    const queueRows: Array<{ id: string; text: string; source: 'server' | 'local' }> = serverQueue
+    const queueRows: Array<{ id: string; text: string; draftBlock: string; source: 'server' | 'local' }> = (serverQueue
         ? [
             ...serverQueueState.items.map((item) => ({ id: item.id, text: item.text, source: 'server' as const })),
             ...queued.filter((item) => !!item.attachments?.length).map((item) => ({ id: item.id, text: item.text, source: 'local' as const })),
         ]
-        : queued.map((item) => ({ id: item.id, text: item.text, source: 'local' as const }));
+        : queued.map((item) => ({ id: item.id, text: item.text, source: 'local' as const })))
+        // B-642: the attached-drafts block is for the model; the dock shows and edits the user's text.
+        .map((row) => ({ ...row, ...splitEditedDraftsRow(row.text) }));
 
     // Focus the textarea with the caret at the end — after an insert the next
     // keystroke (Enter to send, or more typing) must land after the new text.
@@ -1049,6 +1069,7 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     // home-indicator gap; a second one doubled the band under the composer.
     return (
         <div className="ci">
+            <EditedDraftChips drafts={pendingDrafts} />
             <ComposerAttachments attachments={attachments} onRemove={remove} />
 
             {isPiAgent(flavor) && attachments.some((attachment) => attachment.mimeType.startsWith('image/')) && (
@@ -1075,9 +1096,10 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                             const busy = row.source === 'server' && serverBusyId === row.id;
                             const saveEdit = () => {
                                 if (!editingText.trim()) return;
-                                if (row.source === 'server') void saveServerEdit(row.id, editingText);
+                                const nextText = appendEditedDrafts(editingText.trim(), row.draftBlock);
+                                if (row.source === 'server') void saveServerEdit(row.id, nextText);
                                 else {
-                                    setQueued((current) => updateQueuedMessage(current, row.id, editingText));
+                                    setQueued((current) => updateQueuedMessage(current, row.id, nextText));
                                     setEditingId(null);
                                 }
                             };
@@ -1304,4 +1326,10 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             </div>
         </div>
     );
+}
+
+/** B-642: a queue row's text split into what the user wrote and the attached-drafts block. */
+function splitEditedDraftsRow(text: string): { text: string; draftBlock: string } {
+    const { body, block } = splitEditedDrafts(text);
+    return { text: body, draftBlock: block };
 }

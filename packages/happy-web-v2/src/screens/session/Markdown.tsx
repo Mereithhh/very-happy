@@ -28,6 +28,8 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ChevronDown, FileText, Maximize2, X } from 'lucide-react';
 import { CodeView } from './CodeView';
 import { MermaidView } from './MermaidView';
+import { DraftBlock } from './DraftBlock';
+import { DRAFT_FENCE_LANG, draftTitleFromMeta } from '@/sync/editableDrafts';
 import { shouldCollapseTable } from './codeCollapse';
 import { countTableColumns, shouldOfferTableFullscreen } from './tableFullscreen';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -306,7 +308,7 @@ function buildComponents(plainCode: boolean, trustContent: boolean): Components 
         // fenced block without inspecting the parent, and CodeView needs the raw
         // source anyway (rehypeTextLeaves skips <pre> so the hast is intact).
         pre({ node }) {
-            const first = (node as { children?: Array<{ properties?: { className?: unknown } }> } | undefined)?.children?.[0];
+            const first = (node as { children?: Array<{ properties?: { className?: unknown }; data?: { meta?: unknown } }> } | undefined)?.children?.[0];
             const classes = Array.isArray(first?.properties?.className) ? first.properties.className as string[] : [];
             const lang = classes.map((c) => /^language-(.+)$/.exec(c)?.[1]).find(Boolean) ?? null;
             const code = hastText(first).replace(/\n$/, '');
@@ -314,6 +316,9 @@ function buildComponents(plainCode: boolean, trustContent: boolean): Components 
             // A half-written diagram cannot parse, and the draft re-renders several
             // times a second, so it would be a stream of failed renders.
             if (lang === 'mermaid' && !plainCode) return <RecoverableBoundary region="mermaid" resetKey={code} compact><MermaidView code={code} /></RecoverableBoundary>;
+            // B-642: a draft fence becomes an editable box once committed (the
+            // streaming preview keeps the plain block — it is about to be replaced).
+            if (lang === DRAFT_FENCE_LANG && !plainCode) return <DraftBlock code={code} title={draftTitleFromMeta(first?.data?.meta)} />;
             return <CodeView code={code} lang={lang} plain={plainCode} />;
         },
         code({ children, className }) {
