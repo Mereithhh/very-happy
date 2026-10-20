@@ -16,6 +16,7 @@ import type { Message } from '@/sync/typesMessage';
 import { stripHarnessBlocks, parseTaskNotification } from '@/screens/session/harness';
 import { presentServiceEvent } from '@/screens/session/serviceEvent';
 import { stripAttachedFiles } from '@/screens/session/attachedFiles';
+import { stripEditedDrafts } from '@/sync/editableDrafts';
 import { extractOptions } from '@/screens/session/optionsBlock';
 
 /** hard cap before CSS line-clamp does the visual truncation */
@@ -73,7 +74,7 @@ export function plainPreviewText(raw: string, max = PREVIEW_MAX_CHARS): string {
 }
 
 function userPreviewText(message: Extract<Message, { kind: 'user-text' }>): string {
-  return plainPreviewText(stripAttachedFiles(stripHarnessBlocks(message.displayText ?? message.text)));
+  return plainPreviewText(stripAttachedFiles(stripHarnessBlocks(stripEditedDrafts(message.displayText ?? message.text))));
 }
 
 /** A user message that opens a round the user actually wrote. */
