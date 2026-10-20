@@ -604,10 +604,18 @@ export async function claudeRemoteLauncher(
                         // takeParked() adopts as it hands the message over — this
                         // launch exists BECAUSE of that mode. (The two used to be
                         // separate steps and the adopt was missing: B-292.)
+                        // B-645: the project prefix / digest is added to exactly what reaches
+                        // the SDK, and `onPromptFinalized` records that same string (the JSONL
+                        // dedupe compares against what the SDK writes).
+                        const finalize = async (text: string): Promise<string> => {
+                            const out = await session.projectInjector.decorate(text);
+                            onPromptFinalized?.(out);
+                            return out;
+                        };
                         const parked = modeGate.takeParked();
                         if (parked) {
                             permissionHandler.handleModeChange(parked.mode.permissionMode);
-                            if (typeof parked.message === 'string') onPromptFinalized?.(parked.message);
+                            if (typeof parked.message === 'string') return { ...parked, message: await finalize(parked.message) };
                             return parked;
                         }
 
@@ -659,8 +667,7 @@ export async function claudeRemoteLauncher(
                                     sessionId: session.client.sessionId,
                                 });
                                 logger.debug(`[remote] Staged ${staged.length} attachment(s) for the coding agent`);
-                                const withAttachments = appendStagedAttachmentsToPrompt(msg.message, staged);
-                                onPromptFinalized?.(withAttachments);
+                                const withAttachments = await finalize(appendStagedAttachmentsToPrompt(msg.message, staged));
                                 return {
                                     message: withAttachments,
                                     mode: msg.mode,
@@ -669,9 +676,9 @@ export async function claudeRemoteLauncher(
                                 };
                             }
 
-                            onPromptFinalized?.(msg.message);
+                            const finalized = await finalize(msg.message);
                             return {
-                                message: msg.message,
+                                message: finalized,
                                 mode: msg.mode,
                                 enqueuedAt: msg.enqueuedAt,
                                 uuid: promptUuidFor(msg.sourceIds),
