@@ -89,5 +89,19 @@ the caret where it is. While the `/` command list is open, only a bare
 `Arrow Up` / `Arrow Down` moves through it; with a modifier they edit the text
 (B-640).
 
+## Mention a file with `@`
+
+Type `@` at the start of a word anywhere in the message box to search the
+session's project files (the same list and ranking as `Command+P` /
+`Ctrl+P`). Bare `Arrow Up` / `Arrow Down` move through matches; `Enter` or
+`Tab` inserts `@path/relative/to/the/project` and a space; `Escape` closes the
+list for that word. On a phone, tap a match. Paths with spaces are inserted as
+`@"dir x/file.md"`.
+
+Claude Code reads a mentioned file into the conversation itself (a folder gives
+its listing); other agents receive the path as text. The list needs a git
+repository and an online machine; otherwise it says so. `a@b` (an e-mail
+address) never opens it (B-035).
+
 See [Getting started](getting-started.md) for installation and first connection,
 including `very-happy daemon start`.
