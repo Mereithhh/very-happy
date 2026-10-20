@@ -21,14 +21,14 @@
  *   - redirects are not followed, responses are capped, and resolution or
  *     validation failures fail closed.
  *
- * Delivery is best-effort: 5s timeout, no retry, failures only logged. A
- * webhook must never affect the main request path.
+ * Delivery: 5s timeout per attempt; transient failures are retried with
+ * backoff by webhookDelivery.ts (B-026) and counted for the diagnostics page.
+ * A webhook must never affect the main request path.
  */
 
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
-import { log } from '@/utils/log';
 
 export const WEBHOOK_TOKEN_PREFIX = 'webhook:';
 export const WEBHOOK_URL_MAX_LENGTH = 2048;
@@ -459,6 +459,7 @@ export type WebhookResolver = (hostname: string) => Promise<WebhookAddress[]>;
 export type WebhookTransport = (
     target: WebhookDeliveryTarget,
     body: string,
+    deliveryId?: string,
 ) => Promise<WebhookSendResult>;
 
 async function resolveWithSystemDns(hostname: string): Promise<WebhookAddress[]> {
@@ -482,8 +483,30 @@ export async function resolveWebhookTarget(rawUrl: string, resolve: WebhookResol
     return { url, hostname, ...addresses[0] };
 }
 
+/**
+ * `lookup` for https.request that can only ever answer the validated address.
+ * Node ≥ 20 enables autoSelectFamily by default and then calls lookup with
+ * `{ all: true }`, expecting an ARRAY of `{ address, family }`. Answering the
+ * single-address form there throws ERR_INVALID_IP_ADDRESS ("Invalid IP
+ * address: undefined") before any socket opens — which failed every delivery
+ * from 2026-08-24 (da730f2d) until B-026. Both forms are answered here.
+ */
+export function pinnedLookup(target: WebhookAddress) {
+    return (
+        _hostname: string,
+        options: { all?: boolean } | number | undefined,
+        callback: (...args: any[]) => void,
+    ): void => {
+        if (typeof options === 'object' && options?.all) {
+            callback(null, [{ address: target.address, family: target.family }]);
+        } else {
+            callback(null, target.address, target.family);
+        }
+    };
+}
+
 /** HTTPS transport whose lookup callback can return only the validated IP. */
-export async function sendPinnedHttps(target: WebhookDeliveryTarget, body: string): Promise<WebhookSendResult> {
+export async function sendPinnedHttps(target: WebhookDeliveryTarget, body: string, deliveryId?: string): Promise<WebhookSendResult> {
     return new Promise((resolve, reject) => {
         const request = httpsRequest(target.url, {
             method: 'POST',
@@ -494,10 +517,12 @@ export async function sendPinnedHttps(target: WebhookDeliveryTarget, body: strin
             headers: {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(body),
+                // B-026: same id on every retry of one notification, so a receiver can dedupe.
+                ...(deliveryId ? { 'X-Very-Happy-Delivery': deliveryId } : {}),
                 Host: target.url.host,
             },
             servername: isIP(target.hostname) === 0 ? target.hostname : undefined,
-            lookup: (_hostname, _options, callback) => callback(null, target.address, target.family),
+            lookup: pinnedLookup(target),
         }, response => {
             let responseBytes = 0;
             response.on('data', (chunk: Buffer | string) => {
@@ -523,6 +548,7 @@ export async function sendWebhookWithDependencies(
     url: string,
     payload: WebhookPayload,
     dependencies: { resolve: WebhookResolver; transport: WebhookTransport },
+    deliveryId?: string,
 ): Promise<WebhookSendResult> {
     const invalid = validateWebhookUrl(url);
     if (invalid) return { ok: false, error: `invalid url: ${invalid}` };
@@ -534,7 +560,7 @@ export async function sendWebhookWithDependencies(
                 resolutionTimer = setTimeout(() => reject(new Error('webhook DNS resolution timed out')), WEBHOOK_TIMEOUT_MS);
             }),
         ]);
-        return await dependencies.transport(target, JSON.stringify(payload));
+        return await dependencies.transport(target, JSON.stringify(payload), deliveryId);
     } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
     } finally {
@@ -543,23 +569,14 @@ export async function sendWebhookWithDependencies(
 }
 
 /**
- * POST the payload to the webhook URL. Best-effort: 5s timeout, no retry,
- * refuses redirects, never throws. URL is re-validated at send time so a
- * token smuggled in via the raw push-token API still can't reach a
- * forbidden host.
+ * One POST of the payload to the webhook URL: 5s timeout, refuses redirects,
+ * never throws. URL is re-validated at send time so a token smuggled in via
+ * the raw push-token API still can't reach a forbidden host. Retries live in
+ * webhookDelivery.ts.
  */
-export async function sendWebhook(url: string, payload: WebhookPayload): Promise<WebhookSendResult> {
+export async function sendWebhook(url: string, payload: WebhookPayload, deliveryId?: string): Promise<WebhookSendResult> {
     return sendWebhookWithDependencies(url, payload, {
         resolve: resolveWithSystemDns,
         transport: sendPinnedHttps,
-    });
-}
-
-/** Log helper kept here so pushDispatch stays terse. */
-export function logWebhookResult(userId: string, sessionId: string, res: WebhookSendResult): void {
-    if (res.ok) {
-        log({ module: 'push', userId, sessionId, status: res.status }, 'Webhook sent');
-    } else {
-        log({ module: 'push', level: 'warn', userId, sessionId, status: res.status, failed: true }, 'Webhook failed');
-    }
+    }, deliveryId);
 }

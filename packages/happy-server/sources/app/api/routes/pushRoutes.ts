@@ -10,11 +10,10 @@ import {
     buildManualWebhookPayload,
     buildWebhookToken,
     createAccountRateLimiter,
-    logWebhookResult,
     parseWebhookToken,
-    sendWebhook,
     validateWebhookUrl,
 } from "@/app/push/webhookNotify";
+import { sendAccountWebhookNow, webhookDeliveryStats } from "@/app/push/webhookDelivery";
 import { buildSessionEventEphemeral, eventRouter } from "@/app/events/eventRouter";
 import {
     assertAccountResourceQuota,
@@ -221,7 +220,18 @@ export function pushRoutes(app: Fastify) {
         schema: {
             response: {
                 200: z.object({
-                    webhook: webhookConfigSchema.nullable()
+                    webhook: webhookConfigSchema.nullable(),
+                    // B-026: this server process's delivery counters (diagnostics page).
+                    // Additive — older web clients ignore it.
+                    delivery: z.object({
+                        since: z.number(),
+                        delivered: z.number(),
+                        failed: z.number(),
+                        retries: z.number(),
+                        lastSuccessAt: z.number().nullable(),
+                        lastFailureAt: z.number().nullable(),
+                        lastError: z.string().nullable(),
+                    }),
                 })
             }
         },
@@ -234,7 +244,7 @@ export function pushRoutes(app: Fastify) {
             }
         });
         const webhook = rows.map(r => parseWebhookToken(r.token)).find(c => c !== null) ?? null;
-        return reply.send({ webhook });
+        return reply.send({ webhook, delivery: webhookDeliveryStats.get(request.userId) });
     });
 
     app.post('/v1/webhook', {
@@ -367,8 +377,7 @@ export function pushRoutes(app: Fastify) {
             return reply.send({ ok: true, delivered: false });
         }
         const payload = buildManualWebhookPayload(request.body);
-        const res = await sendWebhook(config.url, payload);
-        logWebhookResult(userId, request.body.sessionId ?? '-', res);
+        const res = await sendAccountWebhookNow(userId, request.body.sessionId ?? '-', config.url, payload);
         return reply.send({ ok: true, delivered: res.ok });
     });
 
