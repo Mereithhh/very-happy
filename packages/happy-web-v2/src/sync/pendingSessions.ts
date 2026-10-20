@@ -61,6 +61,8 @@ export interface PendingSessionRecord {
     effortLevel?: string | null;
     /** Task Board dispatch: attach the new session to this task on success. */
     onSpawnedTask?: { taskId: string };
+    /** B-648: created from a project (page / group ＋) — join it before the first message is delivered. */
+    onSpawnedProject?: { projectId: string };
     source: string;
     createdAt: number;
     /** Client time the latest spawn RPC was sent (lost-ack adoption window). */
@@ -114,8 +116,10 @@ export interface PendingSessionDeps {
     clearKeys(pendingId: string): void;
     /** A cancelled spawn still created this session — stop it (user intent). */
     killSession(sessionId: string): void;
-    /** Success side effects: recent path, task-board attach, timing. */
-    onSpawned(record: PendingSessionRecord, realId: string): void;
+    /** Success side effects: recent path, task-board attach, project join, timing.
+     *  A returned promise holds back the outbox delivery (bounded by ON_SPAWNED_HOLD_MS)
+     *  so a project session's first turn already sees its membership (B-648). */
+    onSpawned(record: PendingSessionRecord, realId: string): void | Promise<void>;
     /** A spawn failed while the user was NOT on its page. */
     notifyFailure(record: PendingSessionRecord): void;
     load(): unknown;
@@ -206,6 +210,9 @@ export function findAdoptableSession(
     return best?.id ?? null;
 }
 
+/** B-648: how long a project join may hold back the first message. */
+export const ON_SPAWNED_HOLD_MS = 3000;
+
 function parseRecord(item: unknown): PendingSessionRecord | null {
     if (!item || typeof item !== 'object') return null;
     const r = item as PendingSessionRecord;
@@ -262,6 +269,7 @@ export interface PendingCreateInput {
     source: string;
     firstMessage?: string;
     onSpawnedTask?: { taskId: string };
+    onSpawnedProject?: { projectId: string };
 }
 
 export type PendingModeField = 'permissionMode' | 'modelMode' | 'effortLevel';
@@ -382,8 +390,17 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
         // The pending page's choice, written before anything can be sent. An
         // adopted session may be one the user started elsewhere: keep its mode.
         if (!adopted) deps.writePermissionMode(realId, next.permissionMode);
-        try { deps.onSpawned(next, realId); } catch (error) { console.warn('[pending-session] onSpawned failed', error); }
-        void deliver(pendingId);
+        let hold: void | Promise<void> = undefined;
+        try { hold = deps.onSpawned(next, realId); } catch (error) { console.warn('[pending-session] onSpawned failed', error); }
+        if (hold && typeof (hold as Promise<void>).then === 'function') {
+            // Never let a slow side effect block the user's first message for long.
+            void Promise.race([
+                (hold as Promise<void>).catch((error) => console.warn('[pending-session] onSpawned failed', error)),
+                new Promise<void>((resolve) => setTimeout(resolve, ON_SPAWNED_HOLD_MS)),
+            ]).then(() => deliver(pendingId));
+        } else {
+            void deliver(pendingId);
+        }
     }
 
     function waitForSession(realId: string): Promise<boolean> {
@@ -545,6 +562,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
                 state: 'spawning',
                 outbox: first ? [{ id: deps.newId(), text: first }] : [],
                 ...(input.onSpawnedTask ? { onSpawnedTask: input.onSpawnedTask } : {}),
+                ...(input.onSpawnedProject ? { onSpawnedProject: input.onSpawnedProject } : {}),
             };
             records = new Map(records).set(pendingId, record);
             persist([pendingId]);

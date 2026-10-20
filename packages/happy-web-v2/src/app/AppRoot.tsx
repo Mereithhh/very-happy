@@ -58,6 +58,7 @@ const WebTerminalRoute = lazy(() => import('@/screens/terminal/WebTerminalRoute'
 const TerminalPickerScreen = lazy(() => import('@/screens/terminal/TerminalPickerScreen').then((m) => ({ default: m.TerminalPickerScreen })));
 const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then((m) => ({ default: m.MachineScreen })));
 const ConnectMachineScreen = lazy(() => import('@/screens/onboarding/ConnectMachineScreen').then((m) => ({ default: m.ConnectMachineScreen })));
+const ProjectScreen = lazy(() => import('@/screens/projects/ProjectScreen').then(m => ({ default: m.ProjectScreen })));
 const TeamsScreen = lazy(() => import('@/screens/teams/TeamsScreen').then(m => ({ default: m.TeamsScreen })));
 const TaskBoardScreen = lazy(() => import('@/screens/board/TaskBoardScreen').then((m) => ({ default: m.TaskBoardScreen })));
 const AutomationsScreen = lazy(() => import('@/screens/automations/AutomationsScreen').then((m) => ({ default: m.AutomationsScreen })));
@@ -345,6 +346,8 @@ const router = createBrowserRouter(
             { path: 'help', element: <HelpScreen /> },
             { path: 'teams', element: <Lazy><TeamsScreen /></Lazy> },
             { path: 'teams/:teamId', element: <Lazy><TeamsScreen /></Lazy> },
+            // B-648: project page
+            { path: 'projects/:projectId', element: <Lazy><ProjectScreen /></Lazy> },
             { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
             // B-498: automations — sidebar entry + board band; the first cut lived
             // under /board/automations, keep those URLs working.
