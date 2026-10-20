@@ -35,11 +35,13 @@ import { presentTeamMessage } from './teamMessage';
 import { TeamMessageCard } from './TeamMessageCard';
 import { presentSessionPeerMessage } from './sessionPeerMessage';
 import { presentSharedMessage } from './sharedMessage';
-import { Users } from 'lucide-react';
+import { PenLine, Users } from 'lucide-react';
 import './shared.css';
 import { SessionPeerMessageCard } from './SessionPeerMessageCard';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { composerGate } from '@/app/sessionRestoreRules';
+import { DraftScopeProvider } from './DraftBlock';
+import { splitEditedDrafts, stripEditedDrafts } from '@/sync/editableDrafts';
 
 function UserText({ message, sessionId, attachments }: { message: UserTextMessage; sessionId: string; attachments?: ToolCallMessage[] }) {
     const { t } = useTranslation();
@@ -59,7 +61,10 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
     // B-619: a message another person wrote into this (shared) session — an
     // ordinary user bubble with the sender's name above it.
     const shared = presentSharedMessage(message);
-    const raw = shared ? shared.body : (message.displayText ?? message.text);
+    // B-642: the `<edited_drafts>` block went to the model; the bubble shows the
+    // user's own text (displayText already excludes it, a server-queued prompt does not).
+    const attachedDraftCount = splitEditedDrafts(message.text).count;
+    const raw = stripEditedDrafts(shared ? shared.body : (message.displayText ?? message.text));
     // B-260: a background-task notification is a machine-facing user message.
     // Stripping used to leave an invisible empty bubble; render the one useful
     // line instead (summary + status), mono, event-styled — not a user bubble.
@@ -144,6 +149,12 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
                 </div>}
                 </MessageActions>
             </div>
+            {attachedDraftCount > 0 && (
+                <span className="msg-drafts-attached">
+                    <PenLine size={12} aria-hidden />
+                    {t('session.chat.draft.attached', { count: attachedDraftCount })}
+                </span>
+            )}
             {discarded && (
                 <span className="msg-discarded" role="status">
                     <Ban size={12} aria-hidden />
@@ -238,7 +249,9 @@ function AgentText({
         <div className="msg msg--agent">
             {prose && (
                 <div className="msg-agent-text vh-copyhost">
-                    <Markdown text={prose} onOption={offerOptions ? onOption : undefined} hideOptions={!offerOptions} />
+                    <DraftScopeProvider sessionId={sessionId} seq={message.seq}>
+                        <Markdown text={prose} onOption={offerOptions ? onOption : undefined} hideOptions={!offerOptions} />
+                    </DraftScopeProvider>
                     {showActions && <MessageActions text={text} sessionId={sessionId} createdAt={message.createdAt} />}
                 </div>
             )}

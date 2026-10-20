@@ -1050,7 +1050,7 @@ export function Sidebar() {
           {/* B-641: the phone list keeps its height — new session and the
               secondary entries live in the header instead of six nav rows. */}
           {!isDesktop && (
-            <ActionDropdownMenu align="end" sideOffset={4} contentClassName="sb-touch-menu" items={createItems}>
+            <ActionDropdownMenu align="end" sideOffset={4} items={createItems}>
               <button className="sb-icon-btn sb-new-icon" disabled={creatingChat} aria-busy={creatingChat} aria-label={t('sidebar.newSession')} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail}>
                 {creatingChat ? <Spinner size={17} /> : <Plus size={19} />}
               </button>
@@ -1060,7 +1060,6 @@ export function Sidebar() {
             <ActionDropdownMenu
               align="end"
               sideOffset={4}
-              contentClassName="sb-touch-menu"
               items={navEntries.map((e) => ({ key: e.key, label: navMenuLabel(navName[e.key], e.attention), icon: navIcon[e.key], onSelect: () => navigate(e.path) }))}
             >
               <button className="sb-icon-btn sb-more-btn" aria-label={t('sidebar.moreEntries')} title={t('sidebar.moreEntries')}>
