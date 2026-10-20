@@ -351,7 +351,14 @@ describe('ApiSocket machineRPC relay preflight', () => {
     });
 
     it('does not retire a relay or double-load central when the refusal is for RATE (T-014)', async () => {
+        // B-589: the window is round(hint × (1 + random × 0.5)) and used to be
+        // read back as `closedUntil - Date.now()` some wall-clock time after the
+        // refusal — a jitter-free draw plus one elapsed millisecond read 99 (CI,
+        // PR #510). Pin the jitter and read the window the gate computed AT the
+        // refusal; afterwards only bound it from above.
+        vi.spyOn(Math, 'random').mockReturnValue(0);
         const { apiSocket, relay } = await load();
+        const noteLimited = vi.spyOn(apiSocket.rpcGate, 'noteLimited');
         // Every RPC the relay accepts is refused for the account bucket. This is
         // not relay ill-health: the relay socket must NOT be retired onto the
         // (also metered) central path, and the gate must hold the route.
@@ -364,7 +371,9 @@ describe('ApiSocket machineRPC relay preflight', () => {
         expect(relay.close).not.toHaveBeenCalled();
         expect(apiSocket.rpcGate.isRecovering('relay:m1')).toBe(true);
         // The route is closed for the server's hint: waiting callers are held.
-        expect(apiSocket.rpcGate.waitFor('relay:m1')).toBeGreaterThanOrEqual(100);
+        expect(noteLimited).toHaveBeenCalled();
+        for (const r of noteLimited.mock.results) expect(r.value).toBe(100);
+        expect(apiSocket.rpcGate.waitFor('relay:m1')).toBeLessThanOrEqual(100);
         apiSocket.disconnect();
     });
 });
