@@ -72,6 +72,27 @@
   opacity: 0.4;
   cursor: default;
 }
+/* B-590: a loading Spinner never changes the button's width. With a left
+   icon it shares the icon's grid cell (the icon goes invisible); without one
+   the label goes transparent (still the accessible name) and the Spinner is
+   centred over it. */
+.vh-btn-slot {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.vh-btn-slot > * { grid-area: 1 / 1; }
+.vh-btn-slot[data-busy] > :not(.vh-btn-spinner) { visibility: hidden; }
+/* .vh-spinner is content-box (14px + 2×2px border = 18px), wider than a 16px
+   icon; border-box keeps the slot at the icon's width (measured 88 → 90px). */
+.vh-btn-slot > .vh-btn-spinner { box-sizing: border-box; }
+.vh-btn--busy { position: relative; }
+.vh-btn--busy > :not(.vh-btn-spinner) { opacity: 0; }
+.vh-btn--busy > .vh-btn-spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
 .vh-btn--primary {
   background: var(--text);
   color: var(--bg-0);
