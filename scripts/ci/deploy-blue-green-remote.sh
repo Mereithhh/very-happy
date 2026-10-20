@@ -616,6 +616,9 @@ finish_switch() {
         PHASE=after-old-stop
     else
         echo "old slot $OLD_SLOT left running (drained state not reached); stop it by hand once its sockets are gone: docker compose -f $RELEASE_COMPOSE --env-file $SLOT_ENV stop happy-server-$OLD_SLOT" >&2
+        # B-546: the run still exits 0 (the switch is a fact); make the retained
+        # slot visible on the workflow summary instead of only deep in the log.
+        echo "::warning title=old slot retained::old slot $OLD_SLOT did not drain and is still running; see the last drain_status (oldestInFlightHttp names what it waited on) and stop it by hand"
         PHASE=old-slot-retained
     fi
     verify_public_release "$VERSION" || { echo 'public release check failed AFTER the verified switch; traffic was not moved' >&2; rc=5; }
