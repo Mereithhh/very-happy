@@ -587,6 +587,7 @@ export type Metadata = {
    */
   terminalId?: string,
   codexThreadId?: string, // Codex app-server thread ID
+  piSessionId?: string, // B-633: pi session id (pi-acp `session/load` reopens it)
   tools?: string[],
   slashCommands?: string[],
   mcpServers?: Array<{ name: string; status: string }>,

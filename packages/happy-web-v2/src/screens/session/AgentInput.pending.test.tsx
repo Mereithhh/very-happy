@@ -16,6 +16,7 @@ vi.mock('./useReconnectingHint', () => ({ useReconnectingHint: () => false }));
 vi.mock('@/sync/storage', () => ({
     useSession: () => null,
     useSessionUsage: () => null,
+    useSessionProjectFiles: () => null, // B-035 @ mentions (unused until `@` is typed)
     useSetting: (key: keyof typeof mocks.settings) => mocks.settings[key],
     storage: { getState: () => ({ settings: mocks.settings, updateSessionDraft: mocks.draft, updateSessionPermissionMode: mocks.perm }) },
 }));

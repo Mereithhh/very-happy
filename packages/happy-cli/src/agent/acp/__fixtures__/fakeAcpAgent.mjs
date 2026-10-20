@@ -6,6 +6,8 @@
 //                    that never completes — the turn still ends on the response)
 //   exit-zero-idle   exits 0 right after session.new (an agent that quit between turns)
 //   oversized        answers the prompt with a response line longer than the backend's cap
+//   loadable         advertises loadSession; `session/load` of 'known-session' replays the earlier
+//                    conversation (user + agent chunks, a tool call) then answers; any other id errors (B-633)
 import { createInterface } from 'node:readline';
 
 const scenario = process.argv[2] ?? 'end-turn';
@@ -17,12 +19,25 @@ rl.on('line', (line) => {
     let msg;
     try { msg = JSON.parse(line); } catch { return; }
     if (msg.method === 'initialize') {
-        out({ id: msg.id, result: { protocolVersion: 1, agentCapabilities: { promptCapabilities: { image: false } } } });
+        out({ id: msg.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: scenario === 'loadable', promptCapabilities: { image: false } } } });
         return;
     }
     if (msg.method === 'session/new') {
         out({ id: msg.id, result: { sessionId: 'fake-session' } });
         if (scenario === 'exit-zero-idle') setTimeout(() => process.exit(0), 20);
+        return;
+    }
+    if (msg.method === 'session/load') {
+        const sessionId = msg.params.sessionId;
+        if (sessionId !== 'known-session') {
+            out({ id: msg.id, error: { code: -32602, message: `Unknown sessionId: ${sessionId}` } });
+            return;
+        }
+        notify(sessionId, { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'earlier question' } });
+        notify(sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'earlier answer' } });
+        notify(sessionId, { sessionUpdate: 'tool_call', toolCallId: 'old-call', title: 'old tool', kind: 'execute', status: 'completed' });
+        notify(sessionId, { sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'compact', description: 'c' }] });
+        setTimeout(() => out({ id: msg.id, result: { models: { availableModels: [], currentModelId: 'm1' } } }), 10);
         return;
     }
     if (msg.method === 'session/prompt') {

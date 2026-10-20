@@ -40,11 +40,10 @@ import {
     WEBHOOK_TOKEN_PREFIX,
     buildWebhookPayload,
     isWebhookTokenCorrupt,
-    logWebhookResult,
     mapKindToWebhookEvent,
     parseWebhookToken,
-    sendWebhook,
 } from "@/app/push/webhookNotify";
+import { deliverAccountWebhook } from "@/app/push/webhookDelivery";
 import { log } from "@/utils/log";
 
 /**
@@ -196,8 +195,8 @@ async function sendWeb(
  * endpoint (e.g. a notify-gateway ingest URL that forwards to a group chat).
  * Same trigger as the other push channels but PRESENCE-INDEPENDENT: an open
  * happy tab suppresses device pushes, never webhooks — the external channel
- * must hear about completions either way. Best-effort — failures are logged,
- * never retried, never thrown.
+ * must hear about completions either way. Transient failures are retried with
+ * backoff and every outcome is counted (webhookDelivery.ts, B-026); never thrown.
  */
 async function sendWebhooks(
     params: { userId: string; sessionId: string; body: string; data: Record<string, unknown> },
@@ -229,8 +228,7 @@ async function sendWebhooks(
         if (!config.events.includes(event)) {
             return; // User opted out of this event category.
         }
-        const res = await sendWebhook(config.url, payload);
-        logWebhookResult(params.userId, params.sessionId, res);
+        await deliverAccountWebhook(params.userId, params.sessionId, config.url, payload);
     }));
 }
 

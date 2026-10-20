@@ -19,10 +19,20 @@ export interface ResumePrecheckFs {
 }
 
 export function resumePrecheck(
-    metadata: Pick<Metadata, 'flavor' | 'path' | 'claudeSessionId' | 'codexThreadId'>,
+    metadata: Pick<Metadata, 'flavor' | 'path' | 'claudeSessionId' | 'codexThreadId' | 'piSessionId'>,
     fs: ResumePrecheckFs,
 ): { ok: true } | { ok: false; reason: ResumePrecheckReason; detail: string } {
     const flavor = metadata.flavor ?? 'claude';
+    // B-633: a pi session (ACP flavor) that recorded its pi session id can be
+    // reopened (`pi --resume` → pi-acp `session/load`). The pi session file is
+    // pi-acp's to find; a vanished one degrades to a fresh conversation inside
+    // the wrapper (with a one-line notice), not a precheck failure.
+    if (flavor === 'acp' && metadata.piSessionId) {
+        if (!metadata.path || !fs.cwdExists(metadata.path)) {
+            return { ok: false, reason: 'missing-cwd', detail: `working directory ${metadata.path ?? '(none)'} does not exist` };
+        }
+        return { ok: true };
+    }
     if (flavor !== 'claude' && flavor !== 'codex') {
         return { ok: false, reason: 'unsupported-flavor', detail: `flavor "${flavor}" cannot be resumed` };
     }

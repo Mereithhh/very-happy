@@ -10,6 +10,8 @@ import {
     parseWebhookToken,
     resolveWebhookTarget,
     sendWebhookWithDependencies,
+    pinnedLookup,
+    sendPinnedHttps,
     validateWebhookUrl,
 } from './webhookNotify';
 
@@ -148,7 +150,17 @@ describe('DNS-pinned webhook delivery', () => {
                 hostname: 'hooks.example.test',
             }),
             JSON.stringify(payload),
+            undefined,
         );
+    });
+
+    it('B-026: hands the delivery id to the transport (sent as X-Very-Happy-Delivery)', async () => {
+        const transport = vi.fn(async () => ({ ok: true, status: 200 }));
+        await sendWebhookWithDependencies('https://hooks.example.test/incoming', payload, {
+            resolve: async () => [{ address: '8.8.8.8', family: 4 }],
+            transport,
+        }, 'delivery-9');
+        expect(transport).toHaveBeenCalledWith(expect.objectContaining({ address: '8.8.8.8' }), JSON.stringify(payload), 'delivery-9');
     });
 
     it('preserves the public TLS hostname/path and treats redirect as failure', async () => {
@@ -456,5 +468,33 @@ describe('createAccountRateLimiter', () => {
         expect(limiter.allow('a', t0)).toBe(true);
         expect(limiter.allow('b', t0)).toBe(true);
         expect(limiter.allow('a', t0 + 1)).toBe(false);
+    });
+});
+
+describe('B-026 pinned lookup under Node autoSelectFamily', () => {
+    it('answers both the single-address and the { all: true } array form with only the validated IP', () => {
+        const lookup = pinnedLookup({ address: '203.0.114.7', family: 4 });
+        const single = vi.fn();
+        lookup('hooks.example.test', {}, single);
+        expect(single).toHaveBeenCalledWith(null, '203.0.114.7', 4);
+        const all = vi.fn();
+        lookup('hooks.example.test', { all: true }, all);
+        expect(all).toHaveBeenCalledWith(null, [{ address: '203.0.114.7', family: 4 }]);
+    });
+
+    it('sendPinnedHttps actually dials the pinned address (regression: ERR_INVALID_IP_ADDRESS before any socket)', async () => {
+        const { createServer } = await import('node:net');
+        let connected = false;
+        const server = createServer((socket) => { connected = true; socket.destroy(); });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as { port: number }).port;
+        try {
+            const target = { url: new URL(`https://hooks.example.test:${port}/x`), hostname: 'hooks.example.test', address: '127.0.0.1', family: 4 as const };
+            const outcome = await sendPinnedHttps(target, '{}').then(() => 'resolved', (e: NodeJS.ErrnoException) => e.code ?? String(e));
+            expect(outcome).not.toBe('ERR_INVALID_IP_ADDRESS');
+            expect(connected).toBe(true);
+        } finally {
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+        }
     });
 });

@@ -22,11 +22,24 @@ const WebhookConfigSchema = z.object({
     events: z.array(z.enum(WEBHOOK_EVENTS)),
 });
 
+/** B-026: the server process's delivery counters for this account (absent on older servers). */
+const WebhookDeliverySchema = z.object({
+    since: z.number(),
+    delivered: z.number(),
+    failed: z.number(),
+    retries: z.number(),
+    lastSuccessAt: z.number().nullable(),
+    lastFailureAt: z.number().nullable(),
+    lastError: z.string().nullable(),
+});
+
 const WebhookGetResponseSchema = z.object({
     webhook: WebhookConfigSchema.nullable(),
+    delivery: WebhookDeliverySchema.optional(),
 });
 
 export type WebhookConfig = z.infer<typeof WebhookConfigSchema>;
+export type WebhookDelivery = z.infer<typeof WebhookDeliverySchema>;
 
 function headers(credentials: AuthCredentials): Record<string, string> {
     return {
@@ -36,7 +49,7 @@ function headers(credentials: AuthCredentials): Record<string, string> {
     };
 }
 
-export async function fetchWebhookConfig(credentials: AuthCredentials): Promise<WebhookConfig | null> {
+export async function fetchWebhookStatus(credentials: AuthCredentials): Promise<{ webhook: WebhookConfig | null; delivery: WebhookDelivery | null }> {
     const response = await fetch(`${getServerUrl()}/v1/webhook`, {
         method: 'GET',
         headers: headers(credentials),
@@ -44,8 +57,12 @@ export async function fetchWebhookConfig(credentials: AuthCredentials): Promise<
     if (!response.ok) {
         throw new Error(`Failed to fetch webhook config: ${response.status}`);
     }
-    const data = await response.json();
-    return WebhookGetResponseSchema.parse(data).webhook;
+    const data = WebhookGetResponseSchema.parse(await response.json());
+    return { webhook: data.webhook, delivery: data.delivery ?? null };
+}
+
+export async function fetchWebhookConfig(credentials: AuthCredentials): Promise<WebhookConfig | null> {
+    return (await fetchWebhookStatus(credentials)).webhook;
 }
 
 /**

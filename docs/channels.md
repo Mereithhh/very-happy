@@ -109,7 +109,7 @@ All three endpoints require the account bearer token
 
 | Method   | Path          | Body                                            | Semantics |
 |----------|---------------|-------------------------------------------------|-----------|
-| `GET`    | `/v1/webhook` | —                                               | `{"webhook": {"url", "events"} \| null}` |
+| `GET`    | `/v1/webhook` | —                                               | `{"webhook": {"url", "events"} \| null, "delivery": {"since", "delivered", "failed", "retries", "lastSuccessAt", "lastFailureAt", "lastError"}}` — `delivery` is this server process's counters for the account (B-026; reset on deploy; absent on older servers). |
 | `POST`   | `/v1/webhook` | `{"url": "...", "events": ["completed","permission"]}` | Create **or replace** (an account has at most one webhook). `events` optional; defaults to both. 400 with `{"error": "..."}` on invalid URL. |
 | `DELETE` | `/v1/webhook` | —                                               | Remove the webhook. |
 | `POST`   | `/v1/webhook/notify` | `{"title": "...", "message"?: "...", "sessionId"?: "...", "taskId"?: "...", "event"?: "completed"\|"permission", "link"?: "/<web path>"}` | Notification forwarder: the server pushes `{title, message}` through the account's webhook. Without `event` it is a MANUAL notification (the web's "mark done" ✓ uses this — `✅ 已完成 · <名>`), not gated by `events` (an explicit user action is always wanted). With `event` it is an AUTOMATIC one (the daemon's web-terminal agent-state notifications use this) and IS filtered by the webhook config's `events` — unsubscribed events return `delivered:false` without sending. Returns `{"ok": true, "delivered": bool}`; `delivered:false` when no webhook is configured, the event is unsubscribed, or delivery failed. Rate-limited per account (30/min → 429). `sessionId` adds the link line + `session: <id>` trailer; `taskId` adds a `task: <id>` line **before** the session trailer; `link` (a web-app path starting with `/`, ≤300 chars, e.g. `/terminal/<machineId>?tid=<terminalId>`) appends a `链接：<HAPPY_WEB_URL><link>` line right after the message (omitted when `HAPPY_WEB_URL` is unset). Old clients send neither new field and keep the legacy behavior. |
@@ -126,8 +126,12 @@ URL validation (SSRF guard, enforced on save *and* re-checked at send time):
 loopback / private / link-local / CGNAT hosts are rejected. Redirects are
 refused at delivery time.
 
-Delivery is **best-effort**: 5s timeout, no retry, failures only logged. Never
-build anything that depends on guaranteed delivery.
+Delivery is **best-effort with retries** (B-026): 5s timeout per attempt;
+timeouts, resets, DNS errors and 408/425/429/5xx are retried up to 3 times
+(~2 s, 8 s, 32 s backoff), other answers are final. All attempts share one
+`X-Very-Happy-Delivery` header value — dedupe on it. Retries live in the server
+process (a restart drops pending ones), so never build anything that depends on
+guaranteed delivery. Counters: **Settings → Diagnostics → Webhook delivery**.
 
 ### Delivery payload
 
@@ -601,6 +605,11 @@ reasons are passed through) → wait up to 30 s until it is live → send. If th
 daemon refuses, an unarchived session is re-archived again; a merely offline
 one is left alone. A daemon older than this route answers "daemon too old to
 resume sessions" — upgrade `very-happy-cli` and `very-happy daemon start`.
+Resumable agents: Claude and Codex, and (B-633) pi sessions whose wrapper recorded
+the pi session id (`metadata.piSessionId`, CLI ≥ the release that ships B-633): the
+new pi wrapper reopens the conversation through pi-acp `session/load` and keeps the
+session's permission mode; if pi cannot reopen it, the session continues with one
+line saying the agent does not remember the earlier conversation.
 
 After a successful POST the state is re-checked; a wrapper that vanished in
 between is reported as not delivered with `stored: true` (the message sits on
@@ -942,7 +951,7 @@ Design notes:
   sessions (that is where the session keys live).
 - Run the adapter with the least-privileged OS user that can reach those
   workspaces. Never expose the daemon's loopback control server to a network.
-- Webhook delivery is best-effort; treat notifications as hints, not a queue.
+- Webhook delivery retries transient failures (timeout, reset, DNS error, 408/425/429/5xx) up to 3 times with exponential backoff (~2 s, 8 s, 32 s, ±20%); other 4xx/3xx answers and URL-guard rejections are not retried. Every attempt of one notification carries the same `X-Very-Happy-Delivery: <uuid>` header — dedupe on it, since a request whose response timed out may be delivered twice. Retries are in-process: a server restart drops pending ones, so treat notifications as hints, not a queue. Delivered / retried / failed counts are on **Settings → Diagnostics → Webhook delivery** (B-026).
 
 
 ## Automations: scheduled and triggered runs (feature gated)

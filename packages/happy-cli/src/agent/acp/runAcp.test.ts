@@ -59,6 +59,9 @@ const mocks = vi.hoisted(() => {
     sendPromptScript: null as null | ((emit: (message: any) => void) => Promise<unknown>),
     /** B-629: makes the mock's startSession throw (a restart that fails). */
     startSessionError: null as null | Error,
+    /** B-633: what startSession was asked (loadSessionId) and what it answers. */
+    startSessionOptions: [] as any[],
+    startSessionResults: [] as any[],
   };
 
   return {
@@ -198,8 +201,9 @@ vi.mock('./AcpBackend', () => ({
       mocks.backendState.listeners = mocks.backendState.listeners.filter((item) => item !== handler);
     }
 
-    async startSession() {
+    async startSession(_prompt?: string, options?: any) {
       mocks.backendState.startSessionCalls += 1;
+      mocks.backendState.startSessionOptions.push(options ?? {});
       if (mocks.backendState.startSessionError) {
         throw mocks.backendState.startSessionError;
       }
@@ -208,7 +212,7 @@ vi.mock('./AcpBackend', () => ({
           listener(message);
         }
       }
-      return { sessionId: 'acp-session-1' };
+      return mocks.backendState.startSessionResults.shift() ?? { sessionId: 'acp-session-1' };
     }
 
     async sendPrompt(sessionId: string, prompt: string, attachments?: any[]) {
@@ -285,6 +289,8 @@ describe('runAcp', () => {
     mocks.backendState.startSessionMessages = [];
     mocks.backendState.modelSwitchMessages = [];
     mocks.backendState.startSessionCalls = 0;
+    mocks.backendState.startSessionOptions = [];
+    mocks.backendState.startSessionResults = [];
     mocks.backendState.cancelCalls = [];
     mocks.titleGeneratorState.sessions = [];
     mocks.titleGeneratorState.seeds = [];
@@ -1376,6 +1382,51 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
       await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'turn-end').map(([m]) => m.ev.status)).toEqual(['failed', 'completed']));
       // A fresh agent gets the Todo discovery again.
       expect(mocks.backendState.prompts[1].prompt).toContain(BUILTIN_TODO_DISCOVERY);
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-633: the agent session id is kept in metadata and a restart after the agent died reopens it', async () => {
+    mocks.backendState.startSessionResults = [
+      { sessionId: 'acp-session-1', agentSessionId: 'pi-sess-1' },
+      { sessionId: 'acp-session-2', agentSessionId: 'pi-sess-1', resumed: 'loaded' },
+    ];
+    const exit = Object.assign(new Error('pi process exited (code=137): killed'), {
+      agentExited: true, agentExitCode: 137, agentExitSignal: null, agentStderrTail: '',
+    });
+    mocks.backendState.sendPromptScript = async (emit) => {
+      emit({ type: 'status', status: 'stopped', detail: exit.message });
+      throw exit;
+    };
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      const stored = mocks.mockSession.updateMetadata.mock.calls.map(([apply]) => apply({ path: '/p' })).find((m: any) => m.piSessionId);
+      expect(stored).toMatchObject({ piSessionId: 'pi-sess-1' });
+      expect(mocks.backendState.startSessionOptions[0]).toEqual({});
+
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'first' } });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionProtocolMessage.mock.calls.some(([m]) => m.ev.t === 'turn-end' && m.ev.status === 'failed')).toBe(true));
+      mocks.backendState.sendPromptScript = null;
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'second' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(2));
+      expect(mocks.backendState.startSessionOptions[1]).toEqual({ loadSessionId: 'pi-sess-1' });
+      expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi was restarted after its process exited and reopened the earlier conversation.' });
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-633: resume (daemon) asks the first agent to reopen and says so only when it could not', async () => {
+    mocks.backendState.startSessionResults = [{ sessionId: 'acp-session-1', agentSessionId: 'fresh-1', resumed: 'fresh', loadFailure: 'Unknown sessionId: pi-old' }];
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [], resumeAgentSessionId: 'pi-old' });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      expect(mocks.backendState.startSessionOptions[0]).toEqual({ loadSessionId: 'pi-old' });
+      await vi.waitFor(() => expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: expect.stringContaining('pi was started again but could not reopen the earlier conversation (Unknown sessionId: pi-old)') }));
     } finally {
       await mocks.getKillHandler()!();
       await runPromise;
