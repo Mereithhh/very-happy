@@ -659,3 +659,11 @@
 .sb-row-status--input { color: var(--warn); }
 .sb-row-status--unknown, .sb-row-status--offline { color: var(--text-faint); }
 .sb-row-unread-dot { width:6px; height:6px; border-radius:50%; background: var(--danger); }
+
+/* B-641: phone header ＋ / ⋯ (the nav column is desktop-only). The ⋯ trigger
+   carries the folded entries' attention total — same danger pill as .sb-nav-attn. */
+.sb-more-btn { position: relative; }
+.sb-more-attn { position: absolute; top: 4px; right: 2px; min-width: 16px; font-size: var(--fs-10); line-height: 14px; padding: 0 4px; border-radius: var(--r-pill); color: var(--danger); border: 1px solid var(--danger); background: var(--danger-dim); pointer-events: none; }
+.sb-new-icon { color: var(--text); }
+/* the folded entries were 44px rows; inside the menu they keep a 44px target */
+@media (pointer: coarse) { .sb-touch-menu .vh-menu-item { min-height: 44px; } }
