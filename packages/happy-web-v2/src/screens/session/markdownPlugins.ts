@@ -10,6 +10,8 @@ import type { Element, Root, Text } from 'hast';
 
 /** 正文里允许的 URL scheme。相对 URL 一律放行（本站内跳转）。 */
 const SAFE_URL_RE = /^(https?:|mailto:)/i;
+/** B-639: kept only so `<Markdown>` can turn them into file-preview buttons; never rendered as an href. */
+const LOCAL_FILE_RE = /^(file:|[a-z]:[\\/])/i;
 
 /**
  * 收窄 react-markdown 的 `defaultUrlTransform`。
@@ -29,7 +31,7 @@ export function safeUrlTransform(url: string): string {
     if (colon === -1) return trimmed;                       // relative
     const firstDelimiter = trimmed.search(/[/?#]/);
     if (firstDelimiter !== -1 && firstDelimiter < colon) return trimmed;  // e.g. ./a:b
-    return SAFE_URL_RE.test(trimmed) ? trimmed : '';
+    return SAFE_URL_RE.test(trimmed) || LOCAL_FILE_RE.test(trimmed) ? trimmed : '';
 }
 
 const BR_RE = /<br\s*\/?>/i;
