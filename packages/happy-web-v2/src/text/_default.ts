@@ -1726,6 +1726,7 @@ export const en = {
         searchPlaceholder: 'Search sessions',
         // coarse-pointer header icon that opens the ⌘K palette
         openSearch: 'Search',
+        moreEntries: 'More',
         openHelp: 'Help & getting started',
         filterAll: 'All',
         filterActive: 'Active',

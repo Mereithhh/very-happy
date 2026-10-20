@@ -24,6 +24,7 @@ import { useEffect, useState } from 'react';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { useAutomations } from '@/sync/automationsStore';
 import { recordBackgroundTasks, recordHeartbeat } from '@/sync/heartbeatLease';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { Sidebar } from '@/screens/sessions/Sidebar';
@@ -34,6 +35,8 @@ import type { Session, Machine } from '@/sync/storageTypes';
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).vhStorage = storage;
   (window as unknown as Record<string, unknown>).vhSync = sync;
+  // B-641: drive the folded-entry attention badge (automation decisions)
+  (window as unknown as Record<string, unknown>).vhAutomations = useAutomations;
 }
 
 interface FakeOpts {
@@ -119,6 +122,10 @@ function seed() {
     fakeSession('s7', 'Golf done 5h ago', 7, { completedAgoMs: 5 * 3600_000 }),
     // archived view only (never in 已完成 — no completedAt)
     fakeSession('s8', 'Hotel archived', 8, { archived: true }),
+    // B-641: a realistic backlog of idle chats, so the phone list overflows
+    // and "rows visible on the first screen" is measurable.
+    ...['Juliet', 'Kilo', 'Lima', 'Mike', 'November', 'Oscar', 'Papa', 'Quebec', 'Romeo', 'Sierra', 'Tango', 'Uniform']
+      .map((name, k) => fakeSession(`s${10 + k}`, `${name} idle chat`, 10 + k)),
   ]);
   storage.getState().applyReady();
   // B-312 红色未读点：s5 跑完一轮而用户当时在看别处（真实产生路径在
@@ -169,8 +176,10 @@ export function SidebarHarness() {
   if (!ready) return null;
   return (
     <div style={{ display: 'flex', height: '100dvh', background: 'var(--bg-0)' }}>
-      <style>{'@media(max-width:600px){.sidebar-harness-note{display:none}}'}</style>
+      {/* phone: the real app renders the sidebar full-width (AppShell 'list' mode) */}
+      <style>{'@media(max-width:600px){.sidebar-harness-note{display:none}.sidebar-harness-pane{width:100%!important;border-right:0!important}}'}</style>
       <div
+        className="sidebar-harness-pane"
         style={{
           width: 320,
           maxWidth: '100vw',

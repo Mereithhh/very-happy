@@ -1897,6 +1897,7 @@ export const zhHans: TranslationStructure = {
         newSession: '新建会话',
         searchPlaceholder: '搜索会话',
         openSearch: '搜索',
+        moreEntries: '更多',
         openHelp: '帮助与新手入门',
         filterAll: '全部',
         filterActive: '活跃',
