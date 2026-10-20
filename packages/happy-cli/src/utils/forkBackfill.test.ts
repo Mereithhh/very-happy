@@ -92,7 +92,7 @@ describe('B-531 wiring (source assertions, verified with mutation-check)', () =>
 
     it('Claude fork replay publishes the marker after the replay loop and on a failed read', () => {
         const source = code('claude/runClaude.ts')
-        const loop = source.indexOf('session.sendClaudeSessionMessage(result.data as RawJSONLines);')
+        const loop = source.indexOf('closeTurn: () => session.closeReplayedClaudeTurn(),')
         const ok = source.indexOf('void publishForkBackfillWhenCommitted(session, { count: backfilled })')
         const failed = source.indexOf('void publishForkBackfillWhenCommitted(session, { count: 0, failed: true });')
         expect(loop).toBeGreaterThan(-1)
