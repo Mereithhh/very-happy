@@ -593,6 +593,11 @@ reasons are passed through) → wait up to 30 s until it is live → send. If th
 daemon refuses, an unarchived session is re-archived again; a merely offline
 one is left alone. A daemon older than this route answers "daemon too old to
 resume sessions" — upgrade `very-happy-cli` and `very-happy daemon start`.
+Resumable agents: Claude and Codex, and (B-633) pi sessions whose wrapper recorded
+the pi session id (`metadata.piSessionId`, CLI ≥ the release that ships B-633): the
+new pi wrapper reopens the conversation through pi-acp `session/load` and keeps the
+session's permission mode; if pi cannot reopen it, the session continues with one
+line saying the agent does not remember the earlier conversation.
 
 After a successful POST the state is re-checked; a wrapper that vanished in
 between is reported as not delivered with `stored: true` (the message sits on

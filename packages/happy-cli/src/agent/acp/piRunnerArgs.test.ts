@@ -11,6 +11,10 @@ import {
 } from './piRunnerArgs';
 
 describe('parsePiRunnerArgs', () => {
+  it('B-633: --resume carries a pi session id (daemon resume); a flag-shaped value is refused', () => {
+    expect(parsePiRunnerArgs(['--started-by', 'daemon', '--resume', 'pi-sess-1']).resume).toBe('pi-sess-1');
+    expect(() => parsePiRunnerArgs(['--resume', '--model'])).toThrow('Invalid --resume session id');
+  });
   it('accepts the exact argv the daemon uses for every backend', () => {
     expect(parsePiRunnerArgs(['--happy-starting-mode', 'remote', '--started-by', 'daemon'])).toEqual({
       startedBy: 'daemon',

@@ -22,7 +22,11 @@ import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
-import { encodeBase64 } from '@/api/encryption';
+import { encodeBase64, decodeBase64 } from '@/api/encryption';
+import type { Session as ApiSession } from '@/api/types';
+import { claimSessionOrExit } from '@/utils/sessionLock';
+import { applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
+import { piRestartNotice, readAcpReconnectEnv } from './acpSessionResume';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { StreamRelay } from '@/claude/streamRelay';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
@@ -488,6 +492,12 @@ export async function runAcp(opts: {
    * caller that wants to print guidance cannot rely on its outer catch.
    */
   onBackendError?: (detail: string | undefined) => void;
+  /**
+   * B-633: the agent session to reopen (`session/load`) — the daemon's resume
+   * of a pi session passes its `piSessionId` with HAPPY_RECONNECT_* so the
+   * same Happy session row continues.
+   */
+  resumeAgentSessionId?: string;
 }): Promise<void> {
   const verbose = opts.verbose === true;
   const sessionTag = randomUUID();
@@ -513,9 +523,48 @@ export async function runAcp(opts: {
     capabilities: [PROMPT_QUEUE_CAPABILITY],
   });
   metadata.attachmentKinds = [];
-  const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+  // B-633: the daemon's resume reattaches to the SAME session row (same as
+  // runCodex / runClaude): no new session, the server snapshot seeds the cursor.
+  const reconnect = readAcpReconnectEnv(process.env);
+  let response: ApiSession | null;
+  if (reconnect) {
+    logger.debug(`[acp] Reconnecting to existing session ${reconnect.sessionId}`);
+    response = {
+      id: reconnect.sessionId,
+      seq: reconnect.seq,
+      encryptionKey: decodeBase64(reconnect.encryptionKey),
+      encryptionVariant: reconnect.encryptionVariant,
+      metadata,
+      metadataVersion: reconnect.metadataVersion,
+      agentState: state,
+      agentStateVersion: reconnect.agentStateVersion,
+    };
+  } else {
+    response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+  }
   if (response) {
     logAcp('muted', `Happy Session ID: ${response.id}`);
+    // AGENTS rule 20: one live wrapper per session; a resume takes over.
+    await claimSessionOrExit(response.id, { takeover: !!reconnect, flavor: resolveSessionFlavor(opts.agentName) });
+  }
+  if (reconnect && response && !await api.reactivateSession(response.id)) {
+    throw new Error(`Failed to reactivate archived session ${response.id}`);
+  }
+  let reconnectSeeded = false;
+  // B-633: a resumed session keeps the permission mode it published (a resume
+  // without --permission-mode used to fall back to `default`, stopping the first
+  // turn at an approval the session had never asked for).
+  let resumedPermissionMode: AcpPermissionMode | null = null;
+  if (reconnect && response) {
+    const snapshot = await api.getSession(response.id, response.encryptionKey, response.encryptionVariant);
+    if (snapshot.ok) {
+      response = applyServerSnapshot(response, snapshot.session);
+      reconnectSeeded = true;
+      resumedPermissionMode = normalizeAcpPermissionMode(snapshot.session.metadata?.permissionMode) ?? null;
+    } else {
+      response = withoutServerSnapshot(response);
+      logger.debug(`[acp] Reconnect without server snapshot (${snapshot.reason}); skipping existing messages`);
+    }
   }
 
   let session: ApiSessionClient;
@@ -526,6 +575,7 @@ export async function runAcp(opts: {
     metadata,
     state,
     response,
+    sessionClientOptions: reconnectSeeded && response ? { initialSeq: response.seq } : undefined,
     onSessionSwap: (newSession) => {
       session = newSession;
       if (permissionHandler) {
@@ -535,6 +585,12 @@ export async function runAcp(opts: {
     },
   });
   session = initialSession;
+  if (reconnect) {
+    session.suppressNextArchiveSignal();
+    if (!reconnectSeeded) session.skipExistingMessages();
+    void session.cancelUndeliveredQueuedInputs();
+    session.updateMetadata((meta) => mergeReconnectMetadata(meta, metadata, Date.now()));
+  }
 
   if (response) {
     try {
@@ -591,7 +647,7 @@ export async function runAcp(opts: {
   // Mode for agents without an ACP mode selector (pi). The gate on the agent
   // side reads it from the session mode file; the web reads it from metadata
   // (rule 14: publish what is in effect, not the intent).
-  const initialPermissionMode: AcpPermissionMode = opts.permissionMode ?? 'default';
+  const initialPermissionMode: AcpPermissionMode = opts.permissionMode ?? resumedPermissionMode ?? 'default';
   // Set once startSession has shown there is no ACP mode selector.
   let fileBackedModeActive = false;
   // pi never has an ACP permission-mode selector: pi-acp advertises the *thinking
@@ -1149,6 +1205,15 @@ export async function runAcp(opts: {
     }
   };
 
+  // B-633: the agent's own session id, kept in metadata (`piSessionId`) so the
+  // next wrapper (daemon resume) or the next agent process can reopen it.
+  let agentSessionId: string | null = opts.resumeAgentSessionId ?? null;
+  const rememberAgentSession = (id: string | undefined) => {
+    if (!id || opts.agentName !== 'pi') return;
+    agentSessionId = id;
+    session.updateMetadata((current) => current.piSessionId === id ? current : { ...current, piSessionId: id });
+  };
+
   const restartBackend = async () => {
     const gone = backendGone;
     backend.offMessage?.(onBackendMessage);
@@ -1158,22 +1223,30 @@ export async function runAcp(opts: {
     try { await backend.dispose(); } catch (error) { logger.debug(`[${opts.agentName}] dispose of the dead backend failed:`, error); }
     backend = createBackend();
     backend.onMessage(onBackendMessage);
-    const started = await backend.startSession();
+    // B-633: reopen the conversation the dead agent had (pi-acp `session/load`).
+    const started = await backend.startSession(undefined, agentSessionId ? { loadSessionId: agentSessionId } : {});
     acpSessionId = started.sessionId;
+    rememberAgentSession(started.agentSessionId);
     // Only now is the death dealt with; a restart that threw above keeps `backendGone`,
     // so the next message tries again instead of prompting nothing.
     backendGone = null;
     todoDiscoverySent = false;
     await afterSessionStarted(currentModel ?? opts.model);
-    logger.debug(`[${opts.agentName}] Restarted the agent after it exited: ${gone?.message ?? 'unknown'}`);
-    session.sendSessionEvent({ type: 'message', message: `${opts.agentName} was restarted after its process exited; it does not remember the earlier conversation (the transcript here is kept).` });
+    logger.debug(`[${opts.agentName}] Restarted the agent after it exited: ${gone?.message ?? 'unknown'} (conversation: ${started.resumed ?? 'new'}${started.loadFailure ? `, ${started.loadFailure}` : ''})`);
+    session.sendSessionEvent({ type: 'message', message: piRestartNotice(opts.agentName, 'agent-exit', started) });
   };
 
   try {
-    const started = await backend.startSession();
+    const resumeId = opts.resumeAgentSessionId;
+    const started = await backend.startSession(undefined, resumeId ? { loadSessionId: resumeId } : {});
     acpSessionId = started.sessionId;
+    rememberAgentSession(started.agentSessionId);
     backendStarted = true;
     await afterSessionStarted(opts.model);
+    if (resumeId) {
+      logger.debug(`[${opts.agentName}] Resume of agent session ${resumeId}: ${started.resumed ?? 'new'}${started.loadFailure ? ` (${started.loadFailure})` : ''}`);
+      if (started.resumed !== 'loaded') session.sendSessionEvent({ type: 'message', message: piRestartNotice(opts.agentName, 'resume', started) });
+    }
     if (verbose) {
       if (!sawSlashCommands) {
         logAcp('muted', `Outgoing slash commands from ${opts.agentName}: not reported yet`);
