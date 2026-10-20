@@ -756,3 +756,17 @@
   .sb-tag-notice__convert,
   .sb-tag-notice__dismiss { height: 44px; }
 }
+/* B-648: project head = chevron (fold) + name (opens /projects/:id) */
+.sb-section-head--project .sb-section-toggle { flex: 0 0 auto; padding-right: 0; }
+.sb-section-name {
+  display: flex; align-items: center; gap: var(--sp-2);
+  flex: 1; min-width: 0; min-height: 24px;
+  padding: 0 6px; margin-left: -4px;
+  border: 0; border-radius: var(--r-sm); background: transparent;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.sb-section-name .sb-section-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-section-name:hover, .sb-section-name.is-selected { background: var(--fill-hover); color: var(--text); }
+.sb-section-name:focus-visible { outline: none; background: var(--fill-hover); color: var(--text); }
+.sb-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (pointer: coarse) { .sb-section-name { min-height: 44px; } }
