@@ -194,6 +194,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
   `.pub-page.pub-landing` 使用 `overflow: clip visible`；`clip auto` 会计算成
   `hidden auto`，使聚焦能够横向滚动装饰内容。此修复仅限首页，不套用到其他滚动容器。
 - 新组件优先复用 `vh-*` 与 token；新语义 token 先更新本契约和 `tokens.css`。
+- 同优先级（同 specificity）的 CSS 覆盖规则必须写在被覆盖规则之后：层叠按源码顺序取后者，写在前面的覆盖静默不生效（B-653、B-359 都踩过）。新增覆盖时用 computed style 核对它确实赢了，不能只看规则存在。
 
 ### 会话实时状态
 

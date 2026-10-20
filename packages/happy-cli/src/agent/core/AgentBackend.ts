@@ -88,6 +88,20 @@ export interface AcpAgentConfig extends AgentBackendConfig {
  */
 export interface StartSessionResult {
   sessionId: SessionId;
+  /** B-633: the agent's own session id (ACP `sessionId`), what `loadSessionId` takes back. */
+  agentSessionId?: string;
+  /**
+   * B-633: only when `loadSessionId` was asked for — `loaded`: the agent took
+   * the earlier conversation back; `fresh`: it could not (see `loadFailure`) or
+   * cannot load at all, and this is a new conversation.
+   */
+  resumed?: 'loaded' | 'fresh';
+  loadFailure?: string;
+}
+
+/** B-633: how to start — reopen this agent session when the agent supports it. */
+export interface StartSessionOptions {
+  loadSessionId?: string;
 }
 
 /** B-629: how a prompt's turn ended, as far as the backend's protocol says. */
@@ -113,7 +127,7 @@ export interface AgentBackend {
    * @param initialPrompt - Optional initial prompt to send to the agent
    * @returns Promise resolving to session information
    */
-  startSession(initialPrompt?: string): Promise<StartSessionResult>;
+  startSession(initialPrompt?: string, options?: StartSessionOptions): Promise<StartSessionResult>;
   
   /**
    * Send a prompt to an existing session and resolve when the agent ended the turn.

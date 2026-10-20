@@ -141,7 +141,7 @@ pi（经 ACP）与 Gemini（`gemini --experimental-acp`）共用 `AcpBackend`。
 
 ## 风险
 
-- pi 重启后失忆：提示已说明；`session/load` 恢复留后续。
+- pi 重启后失忆：提示已说明；`session/load` 恢复留后续。**已做（B-633，`2026-10-pi-session-load.md`）**。
 - pi-acp 哨兵文案随版本变化会退化为普通输出（不会误伤：整句匹配）。
 - 去掉工具超时后，一个永不结束的工具调用由 agent 自己负责；Stop 仍经 `session/cancel`。
 - `finishTurn` 在应答后清空 active 工具集合：应答之后再来的 `tool_call_update`（协议上不应有）会被当成新 call。

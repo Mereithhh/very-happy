@@ -17,6 +17,7 @@ import { sanitizeSpawnModel } from '@/daemon/spawnModel';
  * Everything after `--` is passed through to the adapter untouched.
  */
 import { normalizeAcpPermissionMode, type AcpPermissionMode } from './sessionModeFile';
+import { sanitizeAgentSessionId } from './acpSessionResume';
 
 export type PiRunnerArgs = {
   model?: string;
@@ -24,6 +25,8 @@ export type PiRunnerArgs = {
   verbose: boolean;
   /** Sanitized `--permission-mode`; absent when not given or not in the allowlist. */
   permissionMode?: AcpPermissionMode;
+  /** B-633: pi session to reopen (`--resume <piSessionId>`, daemon resume). */
+  resume?: string;
   /** Extra args for the pi-acp process (after `--`). */
   passthrough: string[];
 };
@@ -118,6 +121,12 @@ export function parsePiRunnerArgs(args: readonly string[]): PiRunnerArgs {
       const model = sanitizeSpawnModel(args[++i]);
       if (!model) throw new Error('Invalid --model identifier');
       parsed.model = model;
+      continue;
+    }
+    if (arg === '--resume') {
+      const id = sanitizeAgentSessionId(args[++i]);
+      if (!id) throw new Error('Invalid --resume session id');
+      parsed.resume = id;
       continue;
     }
     if (arg === '--permission-mode') {
