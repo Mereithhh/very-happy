@@ -109,3 +109,20 @@ describe('insertComposerNewline', () => {
         ta.remove();
     });
 });
+
+// B-640: every composer variant (main, queued-message edit, btw, mirror, shared)
+// only acts on Enter through this function; caret keys stay native everywhere.
+describe('caret keys are never claimed (B-640)', () => {
+    it('Home / End / ⌘-arrows resolve to native in every mode, composing or not', () => {
+        const keys: ComposerKeyLike[] = [
+            { key: 'Home' }, { key: 'End' }, { key: 'Home', shiftKey: true }, { key: 'End', shiftKey: true },
+            { key: 'Home', ctrlKey: true }, { key: 'End', ctrlKey: true },
+            { key: 'ArrowLeft', metaKey: true }, { key: 'ArrowRight', metaKey: true },
+            { key: 'ArrowUp', metaKey: true }, { key: 'ArrowDown', metaKey: true },
+        ];
+        for (const e of keys) for (const enterToSend of [true, false]) for (const softKeyboard of [true, false]) {
+            expect(press(e, { enterToSend, softKeyboard })).toBe('native');
+            expect(press({ ...e, isComposing: true }, { enterToSend, softKeyboard })).toBe('native');
+        }
+    });
+});
