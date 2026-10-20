@@ -174,6 +174,10 @@ Installed Web Apps and prompts dismissed within the last seven days are not
 shown again. Installation is optional; the same responsive UI works in a normal
 browser tab.
 
+iOS reads the status-bar style only when the app is added to the Home Screen.
+If the top of an iPhone/iPad Home Screen install looks blurred (iOS 26 and later,
+installs made before 2026-10-21), remove the icon and add it again.
+
 The hosted relay is [server-trusted](security.md). Do not continue with a machine
 whose contents or remote-control capability you are unwilling to expose to the
 server operator.

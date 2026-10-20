@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import { readThemePreference, type ThemePreference } from './themePreference';
+import { syncThemeColorMeta } from './themeColor';
 export type { ThemePreference } from './themePreference';
 const STORAGE_KEY = 'vh-theme-preference';
 
@@ -32,6 +33,7 @@ function apply(pref: ThemePreference) {
   const el = document.documentElement;
   if (pref === 'system') el.removeAttribute('data-theme');
   else el.setAttribute('data-theme', pref);
+  syncThemeColorMeta(pref);
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
