@@ -38,3 +38,12 @@ describe('project rules', () => {
         expect(snapshotTeamDefaults(undefined, { agent: 'pi-acp' })).toEqual({ assistant: 'pi-acp' });
     });
 });
+
+describe('project error statuses', () => {
+    it('never answers 401/403 for a project-domain refusal (Web treats those as signed out)', async () => {
+        const { readFileSync } = await import('node:fs');
+        const source = readFileSync(new URL('./store.ts', import.meta.url), 'utf8');
+        expect(source).not.toMatch(/requireProject\([^;]*, 40[13]\)/);
+        expect(source).not.toMatch(/new ProjectError\([^)]*, 40[13]/);
+    });
+});
