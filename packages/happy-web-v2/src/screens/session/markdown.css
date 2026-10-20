@@ -365,3 +365,17 @@
 
 /* Paragraphs within a loose list also need a readable rhythm. */
 .md li > p + p { margin-top: calc(var(--chat-space) * 2); }
+/* B-639: a link to a file on the agent's machine opens the preview, so it is a button. */
+.md-link--file {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: inherit;
+}
+.md-link--file:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--text-faint);
+  border-radius: 2px;
+}

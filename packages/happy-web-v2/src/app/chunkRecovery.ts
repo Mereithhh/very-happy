@@ -4,6 +4,19 @@ export function isChunkLoadError(error: unknown): boolean {
   return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS/i.test(message);
 }
 
+/**
+ * B-639: what the route/bootstrap error page should say. Only a chunk failure
+ * is a network/deploy problem; an unknown path is a 404 (the server's SPA
+ * fallback serves index.html for every path, so the router is the one that
+ * says so); anything else is a bug and "check your connection" would mislead.
+ */
+export type RouteFailureKind = 'chunk' | 'not-found' | 'error';
+export function routeFailureKind(error: unknown): RouteFailureKind {
+  if (isChunkLoadError(error)) return 'chunk';
+  const status = typeof error === 'object' && error !== null ? (error as { status?: unknown }).status : undefined;
+  return status === 404 ? 'not-found' : 'error';
+}
+
 export type RecoveryResult = 'reloading' | 'unavailable' | 'blocked';
 export function createChunkRecovery(deps: {
   entry(): Promise<string | null>;
