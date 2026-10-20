@@ -115,6 +115,10 @@ import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 import { yieldForSendFeedback } from './sendFeedback';
 import { focusAfterSend, isSoftKeyboardOpen, type SendOutcome } from './composerSendFocus';
 import { useReconnectingHint } from './useReconnectingHint';
+import { applyFileMention, fileMentionDismissKey, fileMentionQuery } from './fileMention';
+import { useFileMentionSuggestions } from './useFileMentionSuggestions';
+import { highlightRuns } from '../quickopen/quickOpenScore';
+import { recordQuickOpen } from '../quickopen/quickOpenHistory';
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
 // historical unconditional refocus (mouse-clicking Send should return the
@@ -186,6 +190,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const [editingText, setEditingText] = useState('');
     const [slashIndex, setSlashIndex] = useState(0);
     const [dismissedSlashText, setDismissedSlashText] = useState<string | null>(null);
+    // B-035: caret position (the `@` token is the one under it), list cursor, Escape-dismissed token.
+    const [caret, setCaret] = useState<number | null>(null);
+    const [mentionIndex, setMentionIndex] = useState(0);
+    const [dismissedMention, setDismissedMention] = useState<string | null>(null);
+    const mentionListRef = useRef<HTMLDivElement | null>(null);
     const [dragOver, setDragOver] = useState(false);
     const [permissionModeBusy, setPermissionModeBusy] = useState(false);
     // B-098 手动展开态：上限 200px ↔ ~60% 视口高。会话内状态，刻意不持久化。
@@ -257,6 +266,31 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     useEffect(() => {
         setSlashIndex(0);
     }, [text, sessionId]);
+
+    // B-035: `@` file mentions — only when the / list is not showing.
+    const mentionToken = slashSuggestions.length === 0 && caret !== null ? fileMentionQuery(text, caret) : null;
+    const mention = mentionToken && dismissedMention !== fileMentionDismissKey(text, mentionToken) ? mentionToken : null;
+    const fileMentions = useFileMentionSuggestions(sessionId, mention?.query ?? null);
+    const mentionResults = mention ? fileMentions.results : [];
+    const mentionQuery = mention?.query ?? null;
+    useEffect(() => { setMentionIndex(0); }, [mentionQuery, sessionId]);
+    useEffect(() => {
+        mentionListRef.current?.querySelector<HTMLElement>(`[data-mention-index="${mentionIndex}"]`)?.scrollIntoView({ block: 'nearest' });
+    }, [mentionIndex]);
+    const acceptMention = (path: string) => {
+        if (!mention) return;
+        const next = applyFileMention(text, mention, path);
+        if (fileMentions.project) recordQuickOpen(fileMentions.project, path);
+        draftRef.current = next.text;
+        setText(next.text);
+        setCaret(next.caret);
+        requestAnimationFrame(() => {
+            const ta = taRef.current;
+            if (!ta) return;
+            ta.focus();
+            ta.setSelectionRange(next.caret, next.caret);
+        });
+    };
 
     useEffect(() => {
         persistSessionQueue(sessionId, queued);
@@ -1007,6 +1041,24 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                 return;
             }
         }
+        if (mention && !ime.isGuarded(e)) {
+            const delta = listArrowDelta(e);
+            if (delta !== null && mentionResults.length > 0) {
+                e.preventDefault();
+                setMentionIndex((current) => (current + delta + mentionResults.length) % mentionResults.length);
+                return;
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                setDismissedMention(fileMentionDismissKey(text, mention));
+                return;
+            }
+            if (mentionResults.length > 0 && (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey))) {
+                e.preventDefault();
+                acceptMention((mentionResults[mentionIndex] ?? mentionResults[0]).path);
+                return;
+            }
+        }
         // Enter policy (desktop Enter sends / Cmd·Ctrl·Shift+Enter newline;
         // soft keyboards always newline) lives in resolveComposerEnter.
         // Steering stays on the queued message's own action.
@@ -1209,6 +1261,43 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                 </div>
             )}
 
+            {mention && (mentionResults.length > 0 || fileMentions.loading || fileMentions.unavailable) && (
+                <div className="ci-slash" role="listbox" aria-label={t('session.chat.fileMentions')} ref={mentionListRef}>
+                    <div className="ci-slash-head">{t('session.chat.fileMentions')}</div>
+                    {mentionResults.length === 0 && (
+                        <div className="ci-slash-empty">{fileMentions.loading ? t('session.chat.fileMentionsLoading') : t('session.chat.fileMentionsUnavailable')}</div>
+                    )}
+                    {mentionResults.map((match, index) => {
+                        const slash = match.path.lastIndexOf('/');
+                        const name = match.path.slice(slash + 1);
+                        const dir = slash >= 0 ? match.path.slice(0, slash) : '';
+                        return (
+                            <button
+                                key={match.path}
+                                type="button"
+                                role="option"
+                                data-mention-index={index}
+                                aria-selected={index === mentionIndex}
+                                className={`ci-slash-item${index === mentionIndex ? ' ci-slash-item--active' : ''}`}
+                                onMouseEnter={() => setMentionIndex(index)}
+                                // Keep the textarea focused (and its caret) on desktop; the click still fires.
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => acceptMention(match.path)}
+                            >
+                                <span className="ci-slash-command ci-slash-command--file">
+                                    {highlightRuns(name, match.positions, slash + 1).map((r, i) => r.hit ? <mark key={i} className="ci-mention-hit">{r.text}</mark> : <span key={i}>{r.text}</span>)}
+                                </span>
+                                {dir && (
+                                    <span className="ci-slash-desc">
+                                        {highlightRuns(dir, match.positions, 0).map((r, i) => r.hit ? <mark key={i} className="ci-mention-hit">{r.text}</mark> : <span key={i}>{r.text}</span>)}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
             {/* composer */}
             <div
                 className={`ci-composer${dragOver ? ' ci-composer--drag' : ''}`}
@@ -1238,7 +1327,12 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                     value={text}
                     rows={1}
                     placeholder={reconnecting ? t('session.reconnectingPlaceholder') : t('session.inputPlaceholder')}
-                    onChange={(e) => { draftRef.current = e.target.value; setText(e.target.value); }}
+                    onChange={(e) => { draftRef.current = e.target.value; setText(e.target.value); setCaret(e.target.selectionStart); }}
+                    // B-035: caret for the `@` token. Not onSelect: React derives it from
+                    // selectionchange, which can fire inside insertComposerText before its
+                    // input event and re-render away the inserted text.
+                    onKeyUp={(e) => setCaret(e.currentTarget.selectionStart)}
+                    onClick={(e) => setCaret(e.currentTarget.selectionStart)}
                     onKeyDown={onKeyDown}
                     onPaste={onPaste}
                     onCompositionStart={ime.onCompositionStart}
