@@ -227,8 +227,10 @@ inherit those migration-only timeouts.
 
 ### Post-deploy browser smoke (B-024)
 
-`.github/workflows/e2e-smoke.yml` runs after every successful **Deploy
-production** (and on demand, against any URL): a real Chromium logs in with a
+`.github/workflows/e2e-smoke.yml` runs as the `smoke` job of **Deploy
+production** after a successful `rollout=switch` (and on demand, against any
+URL; a reusable workflow because `workflow_run` is forbidden by
+`check-public-pr-isolation.mjs`): a real Chromium logs in with a
 dedicated smoke account, waits for the sidebar, opens a web terminal on that
 account's machine, types `echo VH_SMOKE_$((40+2))_<random>` and requires
 `VH_SMOKE_42_<random>` on screen — text only the shell's output can contain —

@@ -11,13 +11,17 @@ name: Browser smoke
 # Without the secrets the job prints a notice and passes (skip), so forks and
 # the time before the account exists stay green.
 #
-# It runs as its own workflow, never inside the deploy job: a red smoke is a
-# signal to look (and maybe roll back by hand), not an automatic rollback.
+# deploy-hwsg.yml calls it as a SEPARATE job after a switch deploy (not a
+# step of the deploy job): a red smoke is a signal to look (and maybe roll back
+# by hand), not an automatic rollback. `workflow_run` would be simpler but is
+# forbidden by scripts/ci/check-public-pr-isolation.mjs (privileged trigger).
 
 on:
-  workflow_run:
-    workflows: ['Deploy production']
-    types: [completed]
+  workflow_call:
+    inputs:
+      url:
+        type: string
+        default: https://veryhappy.dev
   workflow_dispatch:
     inputs:
       url:
@@ -34,14 +38,13 @@ permissions:
 
 jobs:
   smoke:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # The commit that was just deployed (main for a manual run).
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Called from deploy-hwsg: the deployed commit; manual: the chosen ref.
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
