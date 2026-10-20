@@ -103,6 +103,7 @@ Web `MetadataSchema` 新增宽松的 `forkBackfill`（`passthrough().optional().
 4. **轮询负载**：每个带 prompt 的 fork 在回放期间 ~2 次/秒 GET，通常 1–3 次即见标记。接受。
 5. **Codex reconnect 路径**：reconnect 不回放、不写标记；CLI 从不对 reconnect 等待（spawn --fork 永远是新会话）。
 6. **B-495 的另一半不在本 spec**：隔离端到端里排序已正确，但 fork 上 `sessions read --wait` 仍等不到回合结束。代码推断：Claude 回放不关闭 mapper 的 `currentTurnId`（`claude/utils/sessionProtocolMapper.ts` 只在 `currentTurnId` 为空时发 `turn-start`），首个新回合没有 `turn-start`，`sessions/turnState.ts` 于是把它的 `turn-end` 当成「上一轮收尾」跳过。另立修复。
+   **已修（B-495，2026-10-21）**：`claude/utils/claudeForkBackfill.ts` 回放后关闭该回合（`ApiSessionClient.closeReplayedClaudeTurn`，不触发 `turn-ended` 监听），历史的 `turn-end` 与回放一起被 drain 后才放行 prompt。隔离端到端：修前标记序列 `turn-start, text, [prompt], text, turn-end` → `read --wait` exit 2；修后 `turn-start, text, turn-end, [prompt], turn-start, text, turn-end` → exit 0。Codex 回放（`mapCodexThreadToSessionEnvelopes`）逐回合自带 `turn-end`，无此问题。
 
 ## 验收标准
 

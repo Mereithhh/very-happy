@@ -1061,6 +1061,18 @@ export class ApiSessionClient extends EventEmitter {
      * own line, so a launcher sends the matching session event only when this
      * says the turn-end did not carry it).
      */
+    /**
+     * B-495: close the turn a fork backfill left open. History, not a live
+     * turn end — so no `turn-ended` tap (board analyzer, completion hooks).
+     */
+    closeReplayedClaudeTurn(): void {
+        const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, 'completed');
+        this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
+        for (const envelope of mapped.envelopes) {
+            this.sendSessionProtocolMessage(envelope);
+        }
+    }
+
     closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed', meta?: { error?: string }): boolean {
         // Turn-end tap (boardAnalyzer): single choke point both launchers
         // (local + remote) route through, for every end status.

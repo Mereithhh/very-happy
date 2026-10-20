@@ -31,7 +31,6 @@ import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { RawJSONLines } from './types';
 import type { BoardTaskRef } from './utils/boardAnalyzer';
 import { DEFAULT_CLAUDE_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 import { CLAUDE_ATTACHMENT_KINDS, stripAttachmentManifest } from './utils/attachmentContent';
@@ -418,7 +417,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         reportSessionEditToDaemon, generateHookSettingsFile, cleanupHookSettingsFile,
         registerKillSessionHandler, SessionExitGate, exitIntentFromArchiveFlag, settleSessionOnExit,
         registerSideQuestionHandler, writeSideQuestionSettingsFile, claudeCheckSession,
-        createSessionScanner, getProjectPath, RawJSONLinesSchema, TitleGenerator, BoardAnalyzer,
+        createSessionScanner, getProjectPath, replayClaudeForkJsonl, TitleGenerator, BoardAnalyzer,
         FileRateLimiter, createSelfReportState, withAssistantDenylist, contentLogMetadata,
         resolveMessageMode, claudePrewarmEligibility, claudePrewarmSessionEligibility, prewarmCacheFile,
         readPrewarmCache, writePrewarmCache, prewarmPredictionMeta, evaluatePrewarmPrediction,
@@ -476,17 +475,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         const jsonlPath = join(getProjectPath(workingDirectory), `${forkClaudeSessionId}.jsonl`);
         try {
             const file = await readFile(jsonlPath, 'utf-8');
-            const lines = file.split('\n');
-            let backfilled = 0;
-            for (const line of lines) {
-                if (line.trim().length === 0) continue;
-                let parsed: unknown;
-                try { parsed = JSON.parse(line); } catch { continue; }
-                const result = RawJSONLinesSchema.safeParse(parsed);
-                if (!result.success) continue;
-                session.sendClaudeSessionMessage(result.data as RawJSONLines);
-                backfilled += 1;
-            }
+            const backfilled = replayClaudeForkJsonl(file, {
+                send: (line) => session.sendClaudeSessionMessage(line),
+                closeTurn: () => session.closeReplayedClaudeTurn(),
+            });
             logger.debug(`[FORK BACKFILL] Replayed ${backfilled} historical messages from ${jsonlPath}`);
             // Bind the new Happy session to the forked Claude UUID up
             // front so the metadata is consistent the moment the app
