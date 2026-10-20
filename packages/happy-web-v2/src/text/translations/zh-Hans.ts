@@ -914,6 +914,18 @@ export const zhHans: TranslationStructure = {
             sendFailed: '发送失败',
             sendRetry: '重试',
             sendRestore: '放回输入框',
+            // B-642: 可编辑草稿（```draft 围栏）与输入框上方的附带提示。
+            draft: {
+                label: '草稿',
+                edited: '已编辑',
+                restore: '恢复原文',
+                edit: '编辑草稿',
+                editNamed: ({ title }: { title: string }) => `编辑草稿：${title}`,
+                chipsLabel: '下一条消息将附带的已编辑草稿',
+                chipTitle: '编辑后的版本会随下一条消息发给模型',
+                chipRemove: ({ title }: { title: string }) => `不附带此草稿：${title}`,
+                attached: ({ count }: { count: number }) => `附带了 ${count} 份编辑后的草稿`,
+            },
             discarded: {
                 cleared: '未执行 · 被 /clear 或 /compact 清掉了',
                 aborted: '未执行 · 停止时被丢弃',

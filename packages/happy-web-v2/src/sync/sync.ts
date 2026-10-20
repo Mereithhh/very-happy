@@ -67,6 +67,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
+import { hasEditedDraftsBlock, stripEditedDrafts } from './editableDrafts';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
 import { ArtifactEncryption } from './encryption/artifactEncryption';
@@ -968,7 +969,10 @@ class Sync {
         }
 
         const modeMeta = options?.modeMeta ?? resolveMessageModeMeta(session, storage.getState().settings);
-        const { displayText, source = 'chat', delivery = 'queue', attachments } = options ?? {};
+        const { source = 'chat', delivery = 'queue', attachments } = options ?? {};
+        // B-642: an attached `<edited_drafts>` block is for the model only —
+        // every client (old ones included) shows the user's own text.
+        const displayText = options?.displayText ?? (hasEditedDraftsBlock(text) ? (stripEditedDrafts(text) || undefined) : undefined);
         // Question/permission answers have their own request/response path and
         // must not wait behind the ordinary chat queue. For normal input, keep
         // sending durably right away but tell the Web that the current turn has

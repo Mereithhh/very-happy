@@ -126,6 +126,9 @@
 /* B-332: a queued message the CLI destroyed before it ran. Sits under the
  * bubble, right-aligned like the bubble, mono = machine-layer fact. No colour
  * beyond --text-faint: this is information, not an alarm (design-language.md). */
+/* B-642: this message carried edited drafts to the model — same quiet note as
+ * .msg-discarded (information under the bubble, no colour). */
+.msg-drafts-attached,
 .msg-discarded {
   display: inline-flex;
   align-items: center;

@@ -42,7 +42,7 @@ const RAW_COLOR_EXEMPT_FILES = new Set(['screens/terminal/WebTerminalScreen.tsx'
  * 弹窗、菜单、顶栏、文件面板不在此列。
  */
 export const CONVERSATION_CSS = new Set([
-    'askStepper', 'attachments', 'btw', 'builtinTool', 'chatlist', 'chatReadingAids', 'code', 'command', 'compaction',
+    'askStepper', 'attachments', 'btw', 'builtinTool', 'chatlist', 'chatReadingAids', 'code', 'command', 'compaction', 'draftBlock',
     'filepathlink', 'input', 'livestream', 'markdown', 'mermaid', 'message', 'messageActions',
     'meta', 'permission', 'sessionPeerMessage', 'sessionpreviews', 'statusbar', 'subagent',
     'teamMessage', 'toolgroup', 'toolHistory', 'toolview', 'turnactivity',
