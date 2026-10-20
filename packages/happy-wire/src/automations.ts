@@ -113,6 +113,8 @@ export const AutomationCreateSchema = z.object({
     status: z.enum(AUTOMATION_STATUSES).optional(),
     /** B-548. Older servers strip it silently — clients must check the response echoes `precheck`. */
     precheck: AutomationPrecheckSchema.nullable().optional(),
+    /** B-644: sessions this automation spawns join this project (quiet variant). Older servers strip it — check the echo. */
+    projectId: id.nullable().optional(),
 });
 export type AutomationCreate = z.infer<typeof AutomationCreateSchema>;
 export const AutomationUpdateSchema = z.object({
@@ -126,6 +128,8 @@ export const AutomationUpdateSchema = z.object({
     maxRuntimeMs: maxRuntimeMs.optional(),
     /** B-548: omitted keeps the current precheck, `null` removes it. Changing `action` alone keeps it too. */
     precheck: AutomationPrecheckSchema.nullable().optional(),
+    /** B-644: omitted keeps the current project, `null` detaches. */
+    projectId: id.nullable().optional(),
 });
 export type AutomationUpdate = z.infer<typeof AutomationUpdateSchema>;
 
@@ -203,6 +207,8 @@ export type Automation = {
     updatedAt: number;
     /** B-548: the gate before the action; `null` = none. Absent on older servers (which also drop it on create/update). */
     precheck?: AutomationPrecheck | null;
+    /** B-644: owning project; absent on older servers. */
+    projectId?: string | null;
 };
 export type AutomationRun = {
     id: string;
