@@ -3,6 +3,7 @@
  * plus the React bindings. The state machine itself lives in
  * ./pendingSessions.ts (dependency-injected, unit-tested without React).
  */
+import { applyLocalMembership, projectsApi, refreshProjects } from './projects';
 import { useEffect, useSyncExternalStore } from 'react';
 import { randomUUID } from 'expo-crypto';
 import { storage } from './storage';
@@ -102,6 +103,12 @@ export const pendingSessions = createPendingSessionStore({
     onSpawned(record, realId) {
         recordRecentMachinePath(record.machineId, record.path);
         if (record.onSpawnedTask) useBoardTasks.getState().attachSession(record.onSpawnedTask.taskId, realId);
+        // B-648: join the project before the first message goes out (held back by the store).
+        if (record.onSpawnedProject) {
+            const { projectId } = record.onSpawnedProject;
+            applyLocalMembership(projectId, [realId]);
+            return projectsApi.addMembers(projectId, [realId]).then(() => { void refreshProjects(); });
+        }
     },
     notifyFailure(record) {
         // Not sticky: on a phone a lingering toast covers the header. The

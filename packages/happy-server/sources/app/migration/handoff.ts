@@ -56,6 +56,9 @@ export function verifyMigrationHandoff(secret: string, token: string, nowMs = Da
     const [, body, signature] = match;
     const expected = mac(secret, body);
     const given = Buffer.from(signature, 'base64url');
+    // B-656: base64url's last char carries padding bits the decoder ignores, so
+    // several spellings decode to the same MAC. Only the canonical one is valid.
+    if (given.toString('base64url') !== signature) return null;
     if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
     let parsed: unknown;
     try { parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { return null; }

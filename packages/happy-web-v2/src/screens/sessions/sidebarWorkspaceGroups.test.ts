@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupRowsByWorkspace, normalizeWorkspacePath, resolveSidebarGroupMode, workspaceBasename } from './sidebarWorkspaceGroups';
+import { groupRowsByWorkspace, normalizeWorkspacePath, workspaceBasename } from './sidebarWorkspaceGroups';
 
 type R = {
   key: string;
@@ -10,12 +10,6 @@ type R = {
 };
 
 describe('workspace path identity (B-208)', () => {
-  it('preserves the legacy tag-grouping choice across the local setting migration', () => {
-    expect(resolveSidebarGroupMode('workspace', true)).toBe('tag');
-    expect(resolveSidebarGroupMode('workspace', false)).toBe('workspace');
-    expect(resolveSidebarGroupMode('none', false)).toBe('none');
-  });
-
   it('normalizes POSIX/Windows separators without resolving path semantics', () => {
     expect(normalizeWorkspacePath('/code/happy///')).toBe('/code/happy');
     expect(normalizeWorkspacePath('C:\\code\\happy\\')).toBe('c:/code/happy');

@@ -13,6 +13,8 @@ export default defineConfig({
                     name: 'unit',
                     include: ['src/**/*.test.ts'],
                     exclude: ['src/**/*.integration.test.ts'],
+                    // B-657: drop the managed-session env an agent's shell inherits.
+                    setupFiles: ['./src/testing/unit.setup.ts'],
                     sequence: {
                         groupOrder: 0,
                     },

@@ -13,7 +13,9 @@ import { acpNoticeMessage, type AcpNotice } from './acpNotices';
 import { describeAcpTurnFailure } from './acpTurnFailure';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
-import { PROMPT_QUEUE_CAPABILITY, type SessionEnvelope } from '@slopus/happy-wire';
+import { PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, type SessionEnvelope } from '@slopus/happy-wire';
+import { createProjectInjector } from '@/projects/injector';
+import { sharedProjectsClient } from '@/projects/client';
 import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
@@ -520,7 +522,7 @@ export async function runAcp(opts: {
     machineId: settings.machineId,
     startedBy: opts.startedBy,
     sandbox: settings.sandboxConfig,
-    capabilities: [PROMPT_QUEUE_CAPABILITY],
+    capabilities: [PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY],
   });
   metadata.attachmentKinds = [];
   // B-633: the daemon's resume reattaches to the SAME session row (same as
@@ -754,6 +756,8 @@ export async function runAcp(opts: {
   let backendStarted = false;
   let backendGone: Error | null = null;
   let todoDiscoverySent = false;
+  // B-645: project prefix / digest on the prompt; reset with todoDiscoverySent when a fresh agent forgets the conversation.
+  const projectInjector = createProjectInjector({ client: sharedProjectsClient(), sessionId: () => session?.sessionId, metadata: () => (session?.getMetadata?.() ?? null) as Record<string, any> | null, agent: opts.agentName });
 
   const stopRunnerFromBackendStatus = (status: 'error' | 'stopped', detail?: string) => {
     const reason = detail
@@ -1231,6 +1235,7 @@ export async function runAcp(opts: {
     // so the next message tries again instead of prompting nothing.
     backendGone = null;
     todoDiscoverySent = false;
+    projectInjector.reset();
     await afterSessionStarted(currentModel ?? opts.model);
     logger.debug(`[${opts.agentName}] Restarted the agent after it exited: ${gone?.message ?? 'unknown'} (conversation: ${started.resumed ?? 'new'}${started.loadFailure ? `, ${started.loadFailure}` : ''})`);
     session.sendSessionEvent({ type: 'message', message: piRestartNotice(opts.agentName, 'agent-exit', started) });
@@ -1291,7 +1296,8 @@ export async function runAcp(opts: {
         if (typeof batch.mode.effort === 'string') {
           await switchEffortIfRequested(batch.mode.effort, modelChanged);
         }
-        const prompt = todoDiscoverySent ? batch.message : `${batch.message}\n\n${BUILTIN_TODO_DISCOVERY}`;
+        const projected = await projectInjector.decorate(batch.message);
+        const prompt = todoDiscoverySent ? projected : `${projected}\n\n${BUILTIN_TODO_DISCOVERY}`;
         const attachments = batch.attachments ?? [];
         const staged = attachments.length ? await stageClaudeAttachments(attachments, {
           happyHomeDir: configuration.happyHomeDir, sessionId: session.sessionId,

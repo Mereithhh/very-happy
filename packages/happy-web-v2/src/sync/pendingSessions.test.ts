@@ -7,6 +7,7 @@ import {
     ADOPT_SKEW_MS,
     ADOPT_WINDOW_MS,
     landingRedirect,
+    ON_SPAWNED_HOLD_MS,
     type PendingSessionDeps,
     type PendingSessionRecord,
 } from './pendingSessions';
@@ -72,6 +73,44 @@ const input = { machineId: 'm1', path: '/repo', agent: 'claude' as const, permis
 describe('pending session store (B-516)', () => {
     beforeEach(() => { vi.useFakeTimers(); });
     afterEach(() => { vi.useRealTimers(); });
+
+    it('B-648: a project join returned by onSpawned holds the first message until it lands', async () => {
+        const h = harness();
+        const join = deferred<void>();
+        (h.deps.onSpawned as ReturnType<typeof vi.fn>).mockImplementation(() => { h.events.push('join'); return join.promise; });
+        const record = h.store.create({ ...input, firstMessage: 'hello', onSpawnedProject: { projectId: 'p1' } });
+        expect(h.store.get(record.pendingId)).toMatchObject({ onSpawnedProject: { projectId: 'p1' } });
+        h.spawns[0].result.resolve({ type: 'success', sessionId: 'real1' });
+        h.addSession('real1');
+        await flush();
+        expect(h.events).not.toContain('send:real1:hello');
+        join.resolve();
+        await flush();
+        expect(h.events.indexOf('join')).toBeLessThan(h.events.indexOf('send:real1:hello'));
+    });
+
+    it('B-648: a join that never answers delays the first message by at most ON_SPAWNED_HOLD_MS', async () => {
+        const h = harness();
+        (h.deps.onSpawned as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise<void>(() => {}));
+        h.store.create({ ...input, firstMessage: 'hello', onSpawnedProject: { projectId: 'p1' } });
+        h.spawns[0].result.resolve({ type: 'success', sessionId: 'real1' });
+        h.addSession('real1');
+        await flush();
+        expect(h.events).not.toContain('send:real1:hello');
+        await vi.advanceTimersByTimeAsync(ON_SPAWNED_HOLD_MS);
+        await flush();
+        expect(h.events).toContain('send:real1:hello');
+    });
+
+    it('B-648: a failing join still delivers the message', async () => {
+        const h = harness();
+        (h.deps.onSpawned as ReturnType<typeof vi.fn>).mockImplementation(() => Promise.reject(new Error('offline')));
+        h.store.create({ ...input, firstMessage: 'hello', onSpawnedProject: { projectId: 'p1' } });
+        h.spawns[0].result.resolve({ type: 'success', sessionId: 'real1' });
+        h.addSession('real1');
+        await flush();
+        expect(h.events).toContain('send:real1:hello');
+    });
 
     it('spawns once, applies the pending-page permission before any send, and flushes the outbox in order', async () => {
         const h = harness();
