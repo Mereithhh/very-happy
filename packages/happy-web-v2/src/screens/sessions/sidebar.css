@@ -670,3 +670,89 @@
 .sb-more-btn { position: relative; }
 .sb-more-attn { position: absolute; top: 4px; right: 2px; min-width: 16px; font-size: var(--fs-10); line-height: 14px; padding: 0 4px; border-radius: var(--r-pill); color: var(--danger); border: 1px solid var(--danger); background: var(--danger-dim); pointer-events: none; }
 .sb-new-icon { color: var(--text); }
+
+/* ----- B-647 project lens ----- */
+/* A project is the user's own name for the work, so its head reads as a title
+   (sans, normal case), not as a machine label like the folder groups below. */
+.sb-section-head--project {
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-dim);
+}
+.sb-section-head--project .sb-section-label { max-width: none; flex: 1 1 auto; }
+.sb-section-head--project .sb-section-detail { display: none; }
+/* 等你处理 count: same warn tone as the folded-group summary's input item. */
+.sb-section-attention {
+  flex-shrink: 0;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--fill-soft);
+  color: var(--warn);
+  font-family: var(--font-sans);
+  font-size: var(--fs-11);
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  text-align: center;
+}
+.sb-section-kicker {
+  margin-top: var(--sp-3);
+  padding: 4px var(--sp-4) 0;
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+  letter-spacing: 0.02em;
+}
+.sb-workspace-make-project { margin-left: 0; }
+.sb-section-head--workspace .sb-workspace-new + .sb-workspace-make-project { margin-left: 2px; }
+
+.sb-tag-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-2) var(--sp-3);
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--fill-soft);
+  font-size: var(--fs-12);
+  line-height: 1.45;
+}
+.sb-tag-notice__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sb-tag-notice__text strong { color: var(--text); font-weight: 500; }
+.sb-tag-notice__text span { color: var(--text-faint); }
+.sb-tag-notice__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.sb-tag-notice__select {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 120px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--bg-1);
+  color: var(--text);
+  font: inherit;
+}
+.sb-tag-notice__convert,
+.sb-tag-notice__dismiss {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  font: inherit;
+  cursor: pointer;
+}
+.sb-tag-notice__convert { background: var(--text); color: var(--bg-0); }
+.sb-tag-notice__dismiss { background: transparent; color: var(--text-faint); }
+.sb-tag-notice__dismiss:hover { background: var(--fill-hover); color: var(--text); }
+.sb-tag-notice__convert:focus-visible,
+.sb-tag-notice__dismiss:focus-visible,
+.sb-tag-notice__select:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@media (pointer: coarse) {
+  .sb-tag-notice__select { height: 44px; font-size: 16px; }
+  .sb-tag-notice__convert,
+  .sb-tag-notice__dismiss { height: 44px; }
+}

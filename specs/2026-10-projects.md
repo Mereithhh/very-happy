@@ -326,3 +326,26 @@ Phase 3（随 Spaces）：项目协调者（= Spaces 命名 Agent 绑定到项�
 | `POST /v1/projects/:id/messages`、`GET …/session/:sid/messages`、`POST /v1/projects/messages/delivered` | 离线留言；送达 7 天后清正文 | wrapper |
 
 `Automation.projectId` 走现有 `POST/PATCH /v1/automations`（可空；旧 server 会剥掉，客户端看回显）。
+
+### B-645 CLI（注入与工具）
+
+代码在 `packages/happy-cli/src/projects/`（`prompt.ts` 原文与拼接、`injector.ts` 每个 wrapper 一份的状态机、`client.ts` REST + 旧 server 退避、`tools.ts` 工具）与 `daemon/projectPresence.ts`。
+
+- **注入是拉取式的**：wrapper 在「一轮本来就要跑」时（队列里取出人 / 点对点 / 自动化消息）调用 `decorate(message)`：成员且本进程还没发过前缀 → 拉 `context` 拼 P；之后每轮拉 `digest?since=游标`，有变化才拼 D。服务端从不推送，所以旧 wrapper 不可能收到前缀，项目更新也不可能唤醒空闲会话。任何失败（旧 server、超时 1.5s、断网）都原样发送用户消息。
+- **不进 system 层**：Claude 只多一句常量 `PROJECT_HINT`（拼在 `BASE_SYSTEM_PROMPT` 末尾，不占 `AGENT_GUIDANCE` 预算）；P/D 加在 launcher 的 `nextMessage` 返回值上，`onPromptFinalized` 记录的就是加工后的字符串（JSONL 去重对得上）。`claudeModeHash` / prewarm 键只看 `EnhancedMode`，injector 碰不到它（`projectSurface.test.ts` 钉住）。
+- **能力位**：`project-v1` 只由真正注入的 runner 写进 `metadata.capabilities`；Web 以此判断「已注入 / 未注入」。
+- **presence 两路合并**：daemon 每 60 秒一个批量 PUT（agent、分支、running/idle、`gone`），覆盖所有会话（含旧 wrapper）；wrapper 在注入时补标题、「在做」、已注入版本和能力。服务端按字段合并。
+
+| harness | H | P / D 落点（实测） | 工具 | 状态 |
+|---|---|---|---|---|
+| Claude（托管 SDK） | `BASE_SYSTEM_PROMPT` + `PROJECT_HINT` | `claudeRemoteLauncher` `nextMessage` → `finalize` | in-process happy MCP | ✅ e2e：首轮前缀答出口令、改说明后下一轮带 `[Project … instructions now v2 …]`、`project_note` 作者 = 会话 id |
+| Codex | 无 | `runCodex` 发 turn 前 `decorate(message.message)` | stdio bridge 按名转发 | ✅ e2e：rollout 里 user turn 带前缀（本机 Codex 账号 refresh token 失效，模型未作答，与本改动无关） |
+| Gemini | 无 | `runGemini` 发 prompt 前；换模型（新 ACP 会话）时 `reset()` | in-process | ✅ 单测 + 源码断言（本机未装 gemini） |
+| pi / 其他 ACP | 无 | `runAcp` `sendPrompt` 前；后端重启时 `reset()` | `HAPPY_MCP_URL` tools/list | ✅ e2e：答出口令、能调 `project_context` |
+| OpenClaw | — | 无 happy MCP、无注入 | — | ❌ 不声明 `project-v1` → UI「未注入」 |
+| 终端镜像 | — | spike 结论见下 | — | ❌「未注入」，只做归属与展示 |
+| Web 终端 | — | 不注入 | — | 只做归属与展示 |
+
+**终端镜像 SessionStart spike 结论**：hook 脚本（`scripts/terminal_mirror_forwarder.cjs`）今天只把事件转给 daemon、不读响应、不写 stdout；改成等 daemon 回包并输出 `hookSpecificOutput.additionalContext` 技术上可行（hook 超时 10s）。但 SessionStart 在镜像会话**创建时**触发，那时会话还不可能属于任何项目（要用户事后「移到项目…」），只有 `resume` / `/clear` 才会命中——收益小、还要改动用户全局 `~/.claude/settings.json` 里已安装的 hook。本期按 spec 允许标「未注入」，Phase 2 与「压缩后重附精简前缀」一起做。
+
+已知限制：Claude `/clear` 后同一进程不会重发前缀（agent 仍可调 `project_context`，`PROJECT_HINT` 提示了这一点）；与 Phase 2「压缩后重附」一并处理。
