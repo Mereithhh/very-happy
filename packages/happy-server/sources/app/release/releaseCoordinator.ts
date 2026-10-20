@@ -63,7 +63,8 @@ export class ReleaseCoordinator {
     private readonly redis: Redis;
     private readonly adapterReadyAt: number;
     private readonly staticDir?: string;
-    private readonly trackedRequests = new WeakSet<object>();
+    /** In-flight HTTP requests (B-546: method/url/start kept so a stuck drain names its culprit). */
+    private readonly trackedRequests = new Map<object, { method: string; url: string; at: number }>();
     private inFlightHttp = 0;
     private inFlightRpc = 0;
     private drain: DrainState = { epoch: null, state: 'accepting', notice: null };
@@ -78,16 +79,24 @@ export class ReleaseCoordinator {
     }
 
     register(): void {
-        this.app.addHook('onRequest', async (request) => {
-            if (request.url.startsWith('/_vh/release/')) return;
-            this.trackedRequests.add(request);
-            this.inFlightHttp += 1;
-        });
         const finishRequest = async (request: object) => {
             if (!this.trackedRequests.delete(request)) return;
             this.inFlightHttp = Math.max(0, this.inFlightHttp - 1);
             this.refreshDrainedState();
         };
+        this.app.addHook('onRequest', async (request, reply) => {
+            if (request.url.startsWith('/_vh/release/')) return;
+            this.trackedRequests.set(request, { method: request.method, url: request.url.split('?')[0], at: Date.now() });
+            this.inFlightHttp += 1;
+            // B-546: the response's 'close' fires exactly once whether it
+            // finished or the client went away. Fastify 5 runs none of the hooks
+            // below for a request with a body (POST/PUT…) whose client
+            // disconnects mid-handler: onResponse waits for 'finish' (never
+            // comes on a destroyed socket), onRequestAbort only fires while the
+            // body is unread. Each such request leaked +1 for the slot's whole
+            // life, so the old slot never reached `drained` after a switch.
+            reply.raw.once('close', () => { void finishRequest(request); });
+        });
         this.app.addHook('onResponse', async (request) => finishRequest(request));
         this.app.addHook('onError', async (request) => finishRequest(request));
         this.app.addHook('onRequestAbort', async (request) => finishRequest(request));
@@ -238,6 +247,11 @@ export class ReleaseCoordinator {
             slot: this.config.slot,
             localSockets,
             inFlightHttp: this.inFlightHttp,
+            // B-546: what a drain is waiting on (oldest first, a handful).
+            oldestInFlightHttp: [...this.trackedRequests.values()]
+                .sort((a, b) => a.at - b.at)
+                .slice(0, 5)
+                .map((entry) => ({ method: entry.method, url: entry.url, ageMs: Date.now() - entry.at })),
             inFlightRpc: this.inFlightRpc,
             deadline: this.drain.notice?.deadline ?? null,
         };

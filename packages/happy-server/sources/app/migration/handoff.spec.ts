@@ -20,7 +20,9 @@ describe('B-627 migration handoff signing', () => {
         const token = issueMigrationHandoff(secret, { kind: 'web', accountId: 'acc-1' }, now);
         const [, body, sig] = token.split('.');
         expect(verifyMigrationHandoff('another-secret-that-is-long-enough-0123456789', token, now)).toBeNull();
-        expect(verifyMigrationHandoff(secret, `vh1.${body}.${sig.slice(0, -1)}${sig.endsWith('A') ? 'B' : 'A'}`, now)).toBeNull();
+        const flipped = Buffer.from(sig, 'base64url');
+        flipped[0] ^= 0x01;
+        expect(verifyMigrationHandoff(secret, `vh1.${body}.${flipped.toString('base64url')}`, now)).toBeNull();
         const forgedBody = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, 'base64url').toString()), accountId: 'acc-2' })).toString('base64url');
         expect(verifyMigrationHandoff(secret, `vh1.${forgedBody}.${sig}`, now)).toBeNull();
         expect(verifyMigrationHandoff(secret, token, now + MIGRATION_HANDOFF_TTL_MS + 1000)).toBeNull();
@@ -30,5 +32,24 @@ describe('B-627 migration handoff signing', () => {
         expect(verifyMigrationHandoff(secret, long, now)).toBeNull();
         expect(verifyMigrationHandoff(secret, 'vh1.nope', now)).toBeNull();
         expect(verifyMigrationHandoff(secret, '', now)).toBeNull();
+    });
+
+    it('B-656: only the canonical signature spelling verifies (padding bits in the last char are not slack)', () => {
+        const now = 1_800_000_000_000;
+        // A 32-byte MAC is 43 base64url chars; the last one holds 4 data bits + 2 padding bits,
+        // so it is always one of these 16 letters and has 3 non-canonical siblings.
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+        for (let i = 0; i < 64; i++) {
+            const token = issueMigrationHandoff(secret, { kind: 'web', accountId: `acc-${i}` }, now);
+            const [, body, sig] = token.split('.');
+            const last = alphabet.indexOf(sig.at(-1)!);
+            expect(last & 0b11).toBe(0);
+            for (let pad = 1; pad < 4; pad++) {
+                const sibling = `${sig.slice(0, -1)}${alphabet[last | pad]}`;
+                expect(Buffer.from(sibling, 'base64url').equals(Buffer.from(sig, 'base64url'))).toBe(true);
+                expect(verifyMigrationHandoff(secret, `vh1.${body}.${sibling}`, now)).toBeNull();
+            }
+            expect(verifyMigrationHandoff(secret, token, now)).not.toBeNull();
+        }
     });
 });
