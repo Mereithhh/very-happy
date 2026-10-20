@@ -74,7 +74,7 @@ import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager'
 import { createDaemonControlToken } from './controlAuth';
 import { withDaemonHeartbeat } from './daemonState';
 import { DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, fetchCliUpdateState, resolveCliUpdateCheckInterval } from '@/update/cliUpdate';
-import { terminateProcess } from './processTermination';
+import { terminateProcess, terminateProcessTree } from './processTermination';
 import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
 import { readSessionLock } from '@/utils/sessionLock';
@@ -1372,7 +1372,8 @@ export async function startDaemon(): Promise<void> {
       await Promise.all([...targets].map((pid) => new Promise<void>((resolve) => {
         let settled = false;
         const done = () => { if (!settled) { settled = true; resolve(); } };
-        const requested = terminateProcess(pid, () => {
+        // B-634 ①: the wrapper's tree too (Claude Code, MCP servers, tool commands).
+        const requested = terminateProcessTree(pid, () => {
           const tracked = pidToTrackedSession.get(pid);
           if (tracked) {
             if (tracked.happySessionId && tracked.encryption) {
@@ -1517,7 +1518,8 @@ export async function startDaemon(): Promise<void> {
         if (session.happySessionId === sessionId ||
           (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
-          const requested = terminateProcess(pid, (stopped) => {
+          // B-634 ①: the wrapper's tree too (Claude Code, MCP servers, tool commands).
+          const requested = terminateProcessTree(pid, (stopped) => {
             if (!stopped) {
               logger.debug(`[DAEMON RUN] Session ${sessionId} survived SIGTERM and SIGKILL attempts`);
               return;
