@@ -2,6 +2,7 @@ import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
 import { trimIdent } from "@/utils/trimIdent";
 import { shouldIncludeCoAuthoredBy } from "./claudeSettings";
 import { AGENT_GUIDANCE } from "./agentGuidance";
+import { PROJECT_HINT } from "@/projects/prompt";
 
 /**
  * Base system prompt shared across all configurations
@@ -14,7 +15,11 @@ const BASE_SYSTEM_PROMPT = (() => trimIdent(`
     // change_title 两轮；一句话问答成本 +50%（2026-09-25 A/B）。
     // B-130: 工具面行为边界。这一处同时覆盖 SDK 与 local CLI 两种模式
     // （`loop.ts` 允许用户在 web 端切换），文案与上限见 agentGuidance.ts。
-    + '\n\n' + AGENT_GUIDANCE + '\n\n' + BUILTIN_TODO_DISCOVERY;
+    + '\n\n' + AGENT_GUIDANCE + '\n\n' + BUILTIN_TODO_DISCOVERY
+    // B-645: one project-independent line (constant → mode hash and prewarm key
+    // stay the same for every session); the project text itself rides in front
+    // of the first user message. Kept outside AGENT_GUIDANCE's 1200-char budget.
+    + '\n\n' + PROJECT_HINT;
 
 /**
  * Co-authored-by credits to append when enabled

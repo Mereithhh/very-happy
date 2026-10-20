@@ -679,8 +679,10 @@ end remains for reading old incidents.** Since B-483:
   is **committed**: `state.env` is written with the candidate as active and the
   ERR trap is disarmed. Drain is best-effort housekeeping: if the old slot does
   not report `drained` by the deadline (+30 s after a forced disconnect) it is
-  left running, off the upstream, and the log tells you how to stop it. Nothing
-  after the commit can move traffic back.
+  left running, off the upstream, and the log tells you how to stop it (plus a
+  `::warning` annotation on the run). The last `drain_status` printed includes
+  `oldestInFlightHttp` — the requests the drain was still waiting on (B-546).
+  Nothing after the commit can move traffic back.
 - `rollback_switch` (only reachable before the commit) refuses to point Caddy at
   an old slot that does not answer `/health`; it leaves the current upstream
   alone and says so.

@@ -1,4 +1,6 @@
-import { CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY } from '@slopus/happy-wire';
+import { CODEX_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY } from '@slopus/happy-wire';
+import { createProjectInjector } from '@/projects/injector';
+import { sharedProjectsClient } from '@/projects/client';
 import { unlink } from 'node:fs/promises';
 import { FORK_BACKFILL_CAPABILITY, publishForkBackfillWhenCommitted } from '@/utils/forkBackfill';
 import { readChildThread } from './readChildThread';
@@ -149,7 +151,7 @@ export async function runCodex(opts: {
         dangerouslySkipPermissions: initialPermissionMode === 'yolo' || initialPermissionMode === 'bypassPermissions',
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
-        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY],
+        capabilities: [PROMPT_QUEUE_CAPABILITY, FORK_BACKFILL_CAPABILITY, HIBERNATION_CAPABILITY, CODEX_STEER_CAPABILITY, PROJECT_SESSION_CAPABILITY],
     });
 
     metadata.attachmentKinds = [...CLAUDE_ATTACHMENT_KINDS];
@@ -863,6 +865,8 @@ export async function runCodex(opts: {
     } as const;
     let first = true;
     let appendSystemPromptInjected = false;
+    // B-645: project prefix (first turn) / digest (later turns) on the user turn; Codex has no system layer for it.
+    const projectInjector = createProjectInjector({ client: sharedProjectsClient(), sessionId: () => session?.sessionId, metadata: () => (session?.getMetadata?.() ?? null) as Record<string, any> | null, agent: 'codex' });
 
     // B-497: the app-server child (and the MCP bridge it starts) inherit
     // process.env — a `very-happy sessions message` from a Codex shell names
@@ -1113,7 +1117,7 @@ export async function runCodex(opts: {
                     message.mode.appendSystemPrompt && !appendSystemPromptInjected,
                 );
                 const turnPrompt = buildCodexTurnPrompt({
-                    message: message.message,
+                    message: await projectInjector.decorate(message.message),
                     mode: message.mode,
                     includeAppendSystemPrompt,
                     includeTitleInstruction: first,

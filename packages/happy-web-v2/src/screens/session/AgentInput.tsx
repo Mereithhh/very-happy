@@ -35,6 +35,7 @@ import {
 } from '@/components/modelModeOptions';
 import { isImeGuardedEvent, useImeGuard } from '@/utils/ime';
 import { insertComposerNewline, insertComposerText, isSoftKeyboardDevice, resolveComposerEnter } from '@/utils/composerEnter';
+import { listArrowDelta } from '@/utils/listArrowKey';
 import { pastedPlainText } from '@/utils/pasteCapture';
 import { onInsertToInput } from '@/app/insertToInput';
 import {
@@ -986,9 +987,9 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             // B-640: only a bare ↑/↓ moves the list. With a modifier it is a
             // caret/selection key (⌘↑/⌘↓ = start/end of text on macOS) and
             // belongs to the textarea.
-            if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+            const delta = listArrowDelta(e);
+            if (delta !== null) {
                 e.preventDefault();
-                const delta = e.key === 'ArrowDown' ? 1 : -1;
                 setSlashIndex((current) => (current + delta + slashSuggestions.length) % slashSuggestions.length);
                 return;
             }
