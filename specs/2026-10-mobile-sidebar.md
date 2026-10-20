@@ -22,12 +22,14 @@
 
 ## 参考（2026-10-21 采集）
 
-| Codex（ChatGPT iOS 内 Codex 首页） | Orca iOS worktree 列表 | Orca iOS 新建 sheet |
-|---|---|---|
-| ![Codex iOS](../docs/screenshots/b641-mobile-sidebar/ref-codex-ios-home.png) | ![Orca worktrees](../docs/screenshots/b641-mobile-sidebar/ref-orca-ios-worktrees.png) | ![Orca create](../docs/screenshots/b641-mobile-sidebar/ref-orca-ios-create-sheet.png) |
+竞品原图有版权风险，不进公开仓库；原图存于 Owner 私有目录 ~/code/github/skills/tmp/vh-team-B-641/refs/。来源：
 
-来源：Codex 图裁自 testingcatalog.com「OpenAI brings Codex to ChatGPT mobile app for iOS and Android」配图（2026-05）；
-Orca 两张为 App Store「Orca」（id6766130217）商店截图。缩小后仅作竞品对照。
+- Codex（ChatGPT iOS 内 Codex 首页）：testingcatalog.com 文章配图（2026-05），
+  https://www.testingcatalog.com/openai-brings-codex-to-chatgpt-mobile-app-for-ios-and-android/ ；
+  同页上半屏另见 The Verge 2026-05 报道配图（theverge.com，文章 930763）。
+- ChatGPT Android 抽屉（Library / Projects / Apps / More + Pinned / Recents）：Reddit r/ChatGPT「New ChatGPT sidebar interface」用户截图。
+- Orca iOS worktree 列表与新建 sheet：App Store「Orca」商店截图，https://apps.apple.com/app/id6766130217 ；
+  文字佐证 https://onorca.dev/docs/mobile 。
 
 观察：
 
