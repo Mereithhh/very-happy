@@ -57,6 +57,18 @@ export const RESTORE_RPC_TIMEOUT_MS = 35_000;
 export type EligibilitySession = Pick<Session, 'active' | 'archivedAt' | 'metadata'> & { activeAt?: number };
 export type EligibilityMachine = Pick<Machine, 'id' | 'active'>;
 
+/**
+ * The backend id a resume reopens: Claude session / Codex thread, or (B-633)
+ * the pi session a pi wrapper recorded — pi runs on the generic `acp` flavor,
+ * so only that id marks an ACP session as resumable.
+ */
+function resumableBackend(session: EligibilitySession): string | null | 'unsupported-flavor' {
+  const flavor = session.metadata?.flavor ?? 'claude';
+  if (flavor === 'acp') return session.metadata?.piSessionId ?? 'unsupported-flavor';
+  if (flavor !== 'claude' && flavor !== 'codex') return 'unsupported-flavor';
+  return (flavor === 'codex' ? session.metadata?.codexThreadId : session.metadata?.claudeSessionId) ?? null;
+}
+
 /** Whether the web can even ask the machine to restore this session. Only
  *  checks what the web can know; everything else is the daemon's verdict
  *  (see mapResumeError). */
@@ -67,10 +79,9 @@ export function restoreEligibility(
   // B-264/session-recoverability: an inactive session is recoverable whether it
   // was user-archived OR just went offline (its wrapper may have died with the
   // machine and will NOT auto-return). archivedAt is a label, not a gate here.
-  const flavor = session.metadata?.flavor ?? 'claude';
-  if (flavor !== 'claude' && flavor !== 'codex') return { ok: false, reason: 'unsupported-flavor' };
-  const backendId = flavor === 'codex' ? session.metadata?.codexThreadId : session.metadata?.claudeSessionId;
-  if (!backendId) return { ok: false, reason: 'no-backend-id' };
+  const backend = resumableBackend(session);
+  if (backend === 'unsupported-flavor') return { ok: false, reason: 'unsupported-flavor' };
+  if (!backend) return { ok: false, reason: 'no-backend-id' };
   const machineId = session.metadata?.machineId;
   if (!machineId || !machines[machineId]) return { ok: false, reason: 'no-machine' };
   // isMachineOnline = the active flag (utils/machineUtils); inlined to keep
@@ -97,10 +108,8 @@ export function canOfferRestore(
   machine: EligibilityMachine | null | undefined,
 ): boolean {
   if (!session || session.active) return false;
-  const flavor = session.metadata?.flavor ?? 'claude';
-  if (flavor !== 'claude' && flavor !== 'codex') return false;
-  const backendId = flavor === 'codex' ? session.metadata?.codexThreadId : session.metadata?.claudeSessionId;
-  if (!backendId) return false;
+  const backend = resumableBackend(session);
+  if (!backend || backend === 'unsupported-flavor') return false;
   return !!machine; // machine-known; machine-offline → shown but disabled
 }
 

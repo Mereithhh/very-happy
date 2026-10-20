@@ -17,6 +17,11 @@ describe('B-265 resumePrecheck', () => {
         expect(resumePrecheck({ path: '/p', flavor: 'codex' }, fsOk)).toMatchObject({ ok: false, reason: 'no-backend-id' });
         expect(resumePrecheck({ path: '/p', flavor: 'gemini', claudeSessionId: uuid }, fsOk)).toMatchObject({ ok: false, reason: 'unsupported-flavor' });
     });
+    it('B-633: pi (acp flavor) needs its recorded pi session id and the cwd; other acp sessions stay refused', () => {
+        expect(resumePrecheck({ path: '/p', flavor: 'acp', piSessionId: 'pi-1' }, { ...fsOk, conversationExists: () => false })).toEqual({ ok: true });
+        expect(resumePrecheck({ path: '/p', flavor: 'acp', piSessionId: 'pi-1' }, { ...fsOk, cwdExists: () => false })).toMatchObject({ ok: false, reason: 'missing-cwd' });
+        expect(resumePrecheck({ path: '/p', flavor: 'acp' }, fsOk)).toMatchObject({ ok: false, reason: 'unsupported-flavor' });
+    });
     it('model values are charset-limited so they cannot become another flag', () => {
         expect(sanitizeResumeModel('claude-sonnet-4-5')).toBe('claude-sonnet-4-5');
         expect(sanitizeResumeModel('opus[1m]')).toBe('opus[1m]');
