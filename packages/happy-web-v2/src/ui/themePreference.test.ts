@@ -6,7 +6,7 @@ afterEach(()=>vi.unstubAllGlobals());
 it.each(['dark','light','system','bad',null])('pre-paint and React share stored preference %s',value=>{
  const localStorage={getItem:()=>value}; vi.stubGlobal('localStorage',localStorage);
  let attribute:string|null=null;
- const document={documentElement:{setAttribute:(_key:string,v:string)=>{attribute=v;},removeAttribute:()=>{attribute=null;}}};
+ const document={documentElement:{setAttribute:(_key:string,v:string)=>{attribute=v;},removeAttribute:()=>{attribute=null;}},querySelectorAll:()=>[]};
  const html=renderStartupSplash('<!-- vh-startup-style -->');
  const script=html.match(/<script>([\s\S]*?)<\/script>/)![1];
  runInNewContext(script,{localStorage,document});
