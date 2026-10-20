@@ -25,7 +25,7 @@ import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, MessageSquare, Mo
 import { BackButton } from '@/app/BackButton';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useLocalSettingMutable, storage } from '@/sync/storage';
-import { getCurrentAuth } from '@/auth/AuthContext';
+import { getCurrentAuth, useAuth } from '@/auth/AuthContext';
 import { notifyWebhook } from '@/sync/apiWebhook';
 import { useBoardTasks, type BoardTask } from '@/sync/boardTasks';
 import { planOrderWrites, visibleTasks } from '@/sync/boardTaskOps';
@@ -334,6 +334,7 @@ export function TaskBoardScreen() {
   const [layout, setLayout] = useLocalSettingMutable('boardLayout');
   const tasks = useBoardTasks((s) => s.tasks);
   const initializeTasks = useBoardTasks((s) => s.initialize);
+  const { credentials } = useAuth();
   const [showNewTask, setShowNewTask] = useState(false);
   const [dispatchTask, setDispatchTask] = useState<BoardTask | null>(null);
   const [editTask, setEditTask] = useState<BoardTask | null>(null);
@@ -345,10 +346,12 @@ export function TaskBoardScreen() {
   const automationAttention = useAutomations((s) => s.attention.length);
 
   // Pull the server-backed task list once per board mount (merges into the
-  // local cache; cheap — a single KV GET).
+  // local cache; cheap — a single KV GET). Credentials come from CONTEXT, not
+  // the getCurrentAuth global: on a cold load straight into /board that global
+  // is still null when this child effect runs (B-068, same as useSeenTracker).
   useEffect(() => {
-    void initializeTasks();
-  }, [initializeTasks]);
+    if (credentials) void initializeTasks(credentials);
+  }, [initializeTasks, credentials]);
 
   // "waiting Xm" labels tick between store updates
   const [now, setNow] = useState(() => Date.now());
