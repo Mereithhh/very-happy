@@ -16,12 +16,6 @@ export interface SidebarWorkspaceGroup<T extends WorkspaceRowLike> {
   rows: T[];
 }
 
-export type SidebarGroupMode = 'none' | 'workspace' | 'tag';
-
-export function resolveSidebarGroupMode(saved: SidebarGroupMode, legacyGroupByTag: boolean): SidebarGroupMode {
-  return legacyGroupByTag ? 'tag' : saved;
-}
-
 /** Normalize only separators and redundant trailing slashes. We deliberately
  * do not resolve `..`: cwd comes from the daemon/session metadata and changing
  * its meaning in the browser could merge two distinct server-side scopes. */
