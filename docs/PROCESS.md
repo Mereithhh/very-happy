@@ -15,7 +15,7 @@
 ## 1. 输入 → Backlog
 
 - 全部输入（实报 bug / 想法 / 评审发现 / 技术债）进 **`docs/backlog.md`**（一项一行，
-  类型 `bug`/`ux`/`feat`/`debt`）；留真机验证项另进 **`docs/verify-queue.md`**。
+  类型 `bug`/`ux`/`feat`/`debt`）。真机验证队列 `docs/verify-queue.md` 已于 2026-10-21 停用。
   > 2026-08 修订：原定 GitHub Issues，实证零使用（零 issue 零 label）后改文件化——
   > 状态与代码同 commit、agent 零网络凭据可读写、可 grep；理由详见 backlog.md 头注。
 - **单写者纪律**：backlog.md 只由主 agent（或 Owner）写；Owner 在对话里说的需求，
@@ -84,7 +84,7 @@ triage（分独立/冲突域）
   → 主 agent 逐个 review + merge（含冲突解决）
   → 集成门禁（见 §3）
   → 发布（见 §4）
-  → 验收（自动化 E2E + 真机清单登记 docs/verify-queue.md）
+  → 验收（自动化 E2E；验不了的写进 PR「未验证」一节）
   → 沉淀（见 §6）
 ```
 
@@ -222,9 +222,9 @@ curl -s -o /dev/null -w '%{content_type}\n' "https://veryhappy.dev$M"   # 必须
 ## 5. 验收
 
 - **自动化能验的当批验掉**（E2E 冒烟：spawn/send/webhook/剪贴板链路都有先例脚本手法）。
-- **自动化验不了的**（真机 IME/触屏/视觉观感）：当批产出「留真机验证」清单 →
-  登记 `docs/verify-queue.md`，**下一批开始前先清账**——不许无限堆积；
-  验证不通过当场转 backlog.md 建 bug 项。
+- **自动化验不了的**（真机 IME/触屏/视觉观感）：写进该批 PR 描述的「未验证」一节，
+  不再登记队列（`docs/verify-queue.md` 2026-10-21 停用：152 条无人清账）；
+  用户实报问题照常进 backlog.md 建 bug 项。
 - **发布后必须证明本次改动真在线上**（workflow 绿 ≠ 上线）：
   `node scripts/dev/check-shipped.mjs --needle '<只有新代码才有的串>'`，非 0 即没上。
   别手搓 curl——三次手搓三次读出相反结论，坑写在脚本头部。
@@ -236,7 +236,7 @@ curl -s -o /dev/null -w '%{content_type}\n' "https://veryhappy.dev$M"   # 必须
 ## 6. 沉淀（每批必做）
 
 - repo 内落账：`docs/backlog.md` 本批做完的项标 done 移入「近期完成」；
-  留真机验证项登记 `docs/verify-queue.md`；本批的 spec 回标 Shipped + commit。
+  本批的 spec 回标 Shipped + commit。
 - 稳定开发/发布事实同步仓库内 `docs/development.md`、`docs/operations.md` 与
   `.agents/skills/{dev,release}/SKILL.md`；外部个人 agent-system 只能镜像，不再做唯一事实源。
 - 设计 token 事实以 `packages/happy-web-v2/src/styles/tokens.css` 为准；事故机制进入

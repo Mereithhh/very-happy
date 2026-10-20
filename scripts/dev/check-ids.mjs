@@ -121,7 +121,6 @@ const keyPrefix = todayKeyPrefix();
 if (claims.length === 0) {
     console.log(`${REF} — next free:`);
     console.log(`  backlog        B-${nextId(backlogIds)}`);
-    console.log(`  verify-queue   V-${nextId(verifyIds)}`);
     console.log(`  changelog key  ${nextKey(keys, keyPrefix)}`);
     console.log('\nRe-run with --claim before every PR: main moves while you work.');
     process.exit(0);
