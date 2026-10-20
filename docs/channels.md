@@ -283,6 +283,14 @@ with the account content key, which `dataKey` CLI credentials do not hold.
 - `--model, -m <id>` — model for the session, carried by the first message
   (so it needs `--prompt` / `--prompt-file`; for an idle spawn pass it on the
   first `send --model`). `default` = the machine's own default.
+- `--project <id>` / `--no-project` (B-649) — put the new session in a Very
+  Happy project before its first message (so its first turn already carries the
+  project instructions). Without either flag, a spawn run from inside a project
+  session (`VH_PEER_SESSION_ID` set by the managed runner) joins the same
+  project (lineage); a spawn from a plain shell, the Tanka bridge or the
+  automation daemon joins nothing. A fork inherits its source's project. A
+  folder that belongs to a project is never enough on its own — the Web only
+  suggests joining. `--json` adds `project: {id, via}` when it joined.
 - `--fork <sessionId>` — the Web's "fork session" from the CLI: copies the
   source conversation (Claude JSONL copy / Codex app-server `thread/fork`) and
   continues it in a new session with `parentSessionId` lineage, in the source's
