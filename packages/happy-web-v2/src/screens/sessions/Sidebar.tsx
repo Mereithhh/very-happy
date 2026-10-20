@@ -1,4 +1,5 @@
 import { agentStatusSignal, codingAgentLabel, type AgentExecution } from '@/sync/agentStatus';
+import { showsUnreadDot } from '@/sync/unreadTransition';
 import type { RecentMachinePath } from '@/utils/quickChat';
 import { BrandIcon, BrandEnvBadge } from '@/ui/BrandMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
@@ -884,7 +885,7 @@ export function Sidebar() {
   // so a folded group still shows 等待操作 / 运行中 / 未读 counts.
   const rowStatusOf = useCallback((r: Row) => {
     const execution = executionByKey.get(r.key) ?? (r.session?.presence === 'online' ? 'idle' : 'offline');
-    const unread = (r.kind === 'session' && !!r.session?.active && unreadIds.has(r.key))
+    const unread = (r.kind === 'session' && showsUnreadDot(r.session, unreadIds))
       || (r.kind === 'terminal' && !!r.terminalId && unreadTerminalIds.has(r.terminalId));
     return agentStatusSignal(execution, rowSignalOf({ attention: attentionKeys.has(r.key), unread }) === 'unread');
   }, [executionByKey, unreadIds, unreadTerminalIds, attentionKeys]);
@@ -1050,7 +1051,7 @@ export function Sidebar() {
           {/* B-641: the phone list keeps its height — new session and the
               secondary entries live in the header instead of six nav rows. */}
           {!isDesktop && (
-            <ActionDropdownMenu align="end" sideOffset={4} contentClassName="sb-touch-menu" items={createItems}>
+            <ActionDropdownMenu align="end" sideOffset={4} items={createItems}>
               <button className="sb-icon-btn sb-new-icon" disabled={creatingChat} aria-busy={creatingChat} aria-label={t('sidebar.newSession')} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail}>
                 {creatingChat ? <Spinner size={17} /> : <Plus size={19} />}
               </button>
@@ -1060,7 +1061,6 @@ export function Sidebar() {
             <ActionDropdownMenu
               align="end"
               sideOffset={4}
-              contentClassName="sb-touch-menu"
               items={navEntries.map((e) => ({ key: e.key, label: navMenuLabel(navName[e.key], e.attention), icon: navIcon[e.key], onSelect: () => navigate(e.path) }))}
             >
               <button className="sb-icon-btn sb-more-btn" aria-label={t('sidebar.moreEntries')} title={t('sidebar.moreEntries')}>
@@ -1251,14 +1251,14 @@ export function Sidebar() {
                           automationAttention={r.kind === 'session' && automationAttentionKeys.has(r.key)}
                           signal={rowSignalOf({
                             attention: attentionKeys.has(r.key),
-                            // Sessions: the flag stays out of the archived view
-                            // (an inactive session's stale mark shouldn't paint
-                            // history). Terminals carry no such gate on purpose
-                            // — see terminalAgentState.ts.
+                            // Sessions: a user-archived session's stale mark
+                            // doesn't paint history, but one that merely went
+                            // offline after finishing keeps its dot (B-331,
+                            // unreadTransition.ts). Terminals carry no such
+                            // gate on purpose — see terminalAgentState.ts.
                             unread:
                               (r.kind === 'session' &&
-                                !!r.session?.active &&
-                                unreadIds.has(r.key)) ||
+                                showsUnreadDot(r.session, unreadIds)) ||
                               (r.kind === 'terminal' &&
                                 !!r.terminalId &&
                                 unreadTerminalIds.has(r.terminalId)),

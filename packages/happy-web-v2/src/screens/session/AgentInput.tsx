@@ -621,14 +621,16 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
 
             if (serverQueueOwnsItem) {
                 const item = makeItem();
-                let outcome: 'queued' | 'unsupported';
+                // B-654: its own name — shadowing `outcome` left the caret
+                // decision below reading 'failed' after a successful enqueue.
+                let enqueued: 'queued' | 'unsupported';
                 try {
-                    outcome = await enqueuePrompt(sessionId, item.text, item.modeMeta);
+                    enqueued = await enqueuePrompt(sessionId, item.text, item.modeMeta);
                 } catch (error) {
                     toast.error(t('session.chat.queueDeliveryFailed'));
                     throw error;
                 }
-                if (outcome === 'unsupported') {
+                if (enqueued === 'unsupported') {
                     // Old server: this session falls back to the tab-local queue.
                     const next = [...queuedRef.current, item];
                     persistSessionQueue(sessionId, next);
