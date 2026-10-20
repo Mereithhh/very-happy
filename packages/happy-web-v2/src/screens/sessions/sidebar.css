@@ -60,15 +60,12 @@
   color: var(--accent-2);
 }
 
-/* touch: header icons, filter segments and dropdown rows get finger-sized
- * hit areas; the palette search icon appears (no ⌘K on a touch keyboard). */
+/* touch: header icons and filter segments get finger-sized hit areas (menu
+ * rows: see .vh-menu-item below); the palette search icon appears (no ⌘K on a touch keyboard). */
 @media (pointer: coarse) {
   .sb-icon-btn {
     width: 44px;
     height: 44px;
-  }
-  .vh-menu-item {
-    padding: 11px 10px;
   }
 }
 
@@ -468,6 +465,14 @@
   cursor: pointer;
   outline: none;
 }
+/* B-653: every menu row is a 44px touch target (design-language §4). Must stay
+ * AFTER the base rule: the old coarse `padding: 11px` sat above it at equal
+ * specificity, so the base padding won and touch rows rendered 34.8px. */
+@media (pointer: coarse) {
+  .vh-menu-item {
+    min-height: 44px;
+  }
+}
 .vh-menu-item[data-highlighted],
 .vh-menu-item:focus-visible {
   background: var(--fill-selected);
@@ -665,5 +670,3 @@
 .sb-more-btn { position: relative; }
 .sb-more-attn { position: absolute; top: 4px; right: 2px; min-width: 16px; font-size: var(--fs-10); line-height: 14px; padding: 0 4px; border-radius: var(--r-pill); color: var(--danger); border: 1px solid var(--danger); background: var(--danger-dim); pointer-events: none; }
 .sb-new-icon { color: var(--text); }
-/* the folded entries were 44px rows; inside the menu they keep a 44px target */
-@media (pointer: coarse) { .sb-touch-menu .vh-menu-item { min-height: 44px; } }
