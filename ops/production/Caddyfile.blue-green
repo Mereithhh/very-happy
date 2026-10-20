@@ -41,6 +41,17 @@ veryhappy.dev, happy.mereith.com {
 	route {
 		import vh_client_ip
 
+		# B-365: happy.mereith.com is the legacy hostname (vh-us used to answer it).
+		# API / socket / file paths keep working on it — a daemon or an old tab
+		# still configured with this host must not break (websockets cannot follow
+		# redirects, and a cross-origin redirect drops Authorization). Every other
+		# request (a browser page load) moves to the main domain.
+		@vh_legacy_page {
+			host happy.mereith.com
+			not path /v1/* /v2/* /v3/* /files/* /health /logs-*
+		}
+		redir @vh_legacy_page https://veryhappy.dev{uri} 301
+
 		# Slot-pinned clients (a handover in flight, or a client that kept ?vh_slot=
 		# from a past handover — see B-364) must never be sent to a slot with nothing
 		# listening: list both ports, prefer the pinned one, fall back to the other.
