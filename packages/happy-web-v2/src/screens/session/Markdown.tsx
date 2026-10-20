@@ -24,12 +24,14 @@ import React from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { ChevronDown, FileText } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { ChevronDown, FileText, Maximize2, X } from 'lucide-react';
 import { CodeView } from './CodeView';
 import { MermaidView } from './MermaidView';
 import { DraftBlock } from './DraftBlock';
 import { DRAFT_FENCE_LANG, draftTitleFromMeta } from '@/sync/editableDrafts';
 import { shouldCollapseTable } from './codeCollapse';
+import { countTableColumns, shouldOfferTableFullscreen } from './tableFullscreen';
 import { useTranslation } from '@/i18n/useTranslation';
 import './markdown.css';
 import { FilePathLink } from './FilePathLink';
@@ -209,6 +211,8 @@ function MarkdownTable({ children, node }: { children?: React.ReactNode; node?: 
     const rowCount = React.useMemo(() => countBodyRows(node), [node]);
     const canCollapse = shouldCollapseTable(rowCount);
     const collapsed = canCollapse && !expanded;
+    const canFullscreen = shouldOfferTableFullscreen(overflowing, rowCount);
+    const [fullscreen, setFullscreen] = React.useState(false);
 
     return (
         <div className="md-tbl">
@@ -222,21 +226,63 @@ function MarkdownTable({ children, node }: { children?: React.ReactNode; node?: 
                 </div>
                 {collapsed && <div className="md-tbl-fade" aria-hidden />}
             </div>
-            {canCollapse && (
-                <button
-                    type="button"
-                    className="md-tbl-expand vh-disclosure-trigger"
-                    onClick={() => setExpanded((v) => !v)}
-                    aria-expanded={!collapsed}
-                    aria-controls={bodyId}
-                >
-                    <span>{collapsed
-                        ? t('session.chat.expandTableRows', { rows: rowCount })
-                        : t('session.chat.collapseTableRows')}</span>
-                    <ChevronDown size={13} className={`vh-disclosure-icon${!collapsed ? ' is-open' : ''}`} aria-hidden />
-                </button>
+            {(canCollapse || canFullscreen) && (
+                <div className="md-tbl-actions">
+                    {canCollapse && (
+                        <button
+                            type="button"
+                            className="md-tbl-expand vh-disclosure-trigger"
+                            onClick={() => setExpanded((v) => !v)}
+                            aria-expanded={!collapsed}
+                            aria-controls={bodyId}
+                        >
+                            <span>{collapsed
+                                ? t('session.chat.expandTableRows', { rows: rowCount })
+                                : t('session.chat.collapseTableRows')}</span>
+                            <ChevronDown size={13} className={`vh-disclosure-icon${!collapsed ? ' is-open' : ''}`} aria-hidden />
+                        </button>
+                    )}
+                    {canFullscreen && (
+                        <button type="button" className="md-tbl-expand md-tbl-full-open" onClick={() => setFullscreen(true)} aria-haspopup="dialog">
+                            <Maximize2 size={13} aria-hidden />
+                            <span>{t('session.chat.tableFullscreen')}</span>
+                        </button>
+                    )}
+                </div>
+            )}
+            {fullscreen && (
+                <TableFullscreen node={node} rows={rowCount} onClose={() => setFullscreen(false)}>{children}</TableFullscreen>
             )}
         </div>
+    );
+}
+
+/**
+ * B-359: the same table in a viewport-sized box that scrolls on both axes. The box
+ * is the scroll container, so the sticky header resolves against it, and the first
+ * column sticks too — on a phone that row label is what a sideways scroll loses.
+ */
+function TableFullscreen({ children, node, rows, onClose }: { children?: React.ReactNode; node?: unknown; rows: number; onClose: () => void }) {
+    const { t } = useTranslation();
+    const cols = React.useMemo(() => countTableColumns(node), [node]);
+    const close = t('session.chat.tableFullscreenClose');
+    return (
+        <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+            <Dialog.Portal>
+                <Dialog.Overlay className="md-tbl-full-overlay" />
+                <Dialog.Content className="md-tbl-full" aria-describedby={undefined}>
+                    <header className="md-tbl-full-header">
+                        <Dialog.Title className="md-tbl-full-title">{t('session.chat.tableFullscreenTitle', { rows, cols })}</Dialog.Title>
+                        <Dialog.Close asChild>
+                            <button type="button" className="md-tbl-full-close" title={close} aria-label={close}><X size={19} aria-hidden /></button>
+                        </Dialog.Close>
+                    </header>
+                    <div className="md-tbl-full-scroll" tabIndex={0} role="region" aria-label={t('session.chat.tableRegion')}>
+                        <table className="md-table md-table--full">{children}</table>
+                    </div>
+                </Dialog.Content>
+            </Dialog.Portal>
+        </Dialog.Root>
     );
 }
 
