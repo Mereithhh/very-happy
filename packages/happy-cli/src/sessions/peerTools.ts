@@ -32,7 +32,7 @@ export const SESSION_PEER_TOOL_SCHEMAS: Record<SessionPeerToolName, { descriptio
     session_message: {
         title: 'Message Another Session',
         readOnly: false,
-        description: 'Send a message to another agent session (find ids with session_peers). It lands in that session\'s chat with your title, session id and cwd, and tells the peer how to reply to you. Use it to coordinate when you both edit the same files: say what you are changing and ask what they are changing. Returns as soon as the message is queued; the reply arrives later as a message from that session. Sessions on this machine are reached directly; a session spawned by another machine of this account is routed to that machine\'s daemon (it must be online). Terminal-mirror sessions cannot receive messages.',
+        description: 'Send a message to another agent session (find ids with session_peers). It lands in that session\'s chat with your title, session id and cwd, and tells the peer how to reply to you. Use it to coordinate when you both edit the same files: say what you are changing and ask what they are changing. Returns as soon as the message is queued; the reply arrives later as a message from that session. Sessions on this machine are reached directly; a session spawned by another machine of this account is routed to that machine\'s daemon (it must be online). If the target is not running but is in your Very Happy project, the message is stored and read at its next turn (stored: true). Terminal-mirror sessions cannot receive messages.',
         inputSchema: {
             to: z.string().min(1).max(128).describe('Target session id (from session_peers, or a peer\'s message header)'),
             body: z.string().min(1).max(16_000).describe('The message text'),
@@ -109,7 +109,7 @@ export const OFFLINE_STORED_NOTE = 'stored, will be read at recipient\'s next tu
 async function storeOfflineOrThrow(context: PeerToolContext, self: PeerSelf, to: string, body: string, original: Error): Promise<SendPeerMessageResult> {
     const stored = await (context.storeOffline ?? defaultStoreOffline)({ from: self.sessionId, to, body })
     if (!stored) throw original
-    return { delivered: false, stored: true, status: 'offline-stored' as DeliveryResult['status'], messageId: stored.messageId.slice(0, 8), to, url: sessionWebUrl(to), note: OFFLINE_STORED_NOTE }
+    return { delivered: false, stored: true, status: 'offline-stored', messageId: stored.messageId.slice(0, 8), to, url: sessionWebUrl(to), note: OFFLINE_STORED_NOTE }
 }
 
 export interface ProjectPeerListing {
@@ -158,7 +158,8 @@ export interface SendPeerMessageResult {
     delivered: boolean
     /** The message exists server-side even when `delivered` is false. */
     stored: boolean
-    status: DeliveryResult['status']
+    /** B-646: 'offline-stored' = kept server-side for the recipient's next turn (same project). */
+    status: DeliveryResult['status'] | 'offline-stored'
     messageId: string
     to: string
     url: string
