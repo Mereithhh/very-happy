@@ -24,6 +24,15 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-652 | **项目 Phase 2 总项**：项目消息并入 Spaces 信封 v1（服务端受理 + daemon 拉取、两态回执、唤醒预算/链深/乒乓/去重）、沟通档位 quiet/normal/active、跨 worktree/机器改动重叠检测、压缩后重附前缀、项目级合并通知、团队组队/结束沉淀交接、`BoardTask.projectId`、`vh_proj_` token、搜索扩展 pi/Gemini 索引 | feat | Owner 2026-10-21 | todo | spec `specs/2026-10-projects.md` §分期；P1 上线 + 两周数据后启动 |
+| B-651 | **项目 P1：度量与上线前 A/B**（沿用 B-493 方法）：S1 一句话问答零次 project 工具调用、S2 不相干会话 peer≈0、S4 说明更新不唤醒、S6 团队 worker 不越过 lead；四个指标先采两周基线 | debt | Owner 2026-10-21 | todo | spec `specs/2026-10-projects.md` |
+| B-650 | **会话搜索**：侧栏 🔍 / ⌘K「搜索会话…」/ ⌘⇧F 打开面板；元数据（Web 本地）+ 对话内容（所有在线机器并发 `history-search`）+ 本地缓存消息三路合并；按会话聚合、命中高亮、点击跳到命中；离线机器/旧 daemon 明示结果不全；筛选项目/agent/机器/状态/时间 | feat | Owner 2026-10-21「趁这个机会做一个支持 session 搜索的功能」 | todo | spec `specs/2026-10-projects.md` §7；复用 B-549 的 daemon 索引 |
+| B-649 | **项目 P1：归属与派发**：项目内新建、「移到项目…」多选、`spawn --project`、血缘继承（fork/Team/Automation/父会话 `HAPPY_SESSION_ID`）、目录只建议不自动加入、`Automation.projectId`、「再派 N 个」（各自 worktree） | feat | Owner 2026-10-21 | todo | spec `specs/2026-10-projects.md` §1；验收：Tanka/Automation 派到 skills 的会话不被误归 |
+| B-648 | **项目 P1：项目页 + 手机端**：`/projects/:id` 顶部输入框 + 概览（复用 `/board` 组件按项目过滤）/ 上下文（说明版本与送达、记录时间线可撤销）；手机抽屉同样按项目分组 | feat | Owner 2026-10-21 | todo | spec `specs/2026-10-projects.md` §6.2/6.5；PR 附竞品对照截图 |
+| B-647 | **侧栏默认按项目分组、取消标签分组**：`sidebarGroupMode` 默认 `project`，旧 `tag`/`workspace` 映射为 `project`；分组菜单只剩「项目 / 不分组」；「未归属」下按目录子分组 + 「设为项目」；标签一键转项目；团队嵌入项目组（修 `Sidebar.tsx:539`）；文案「项目=文件夹」改「目录」 | ux | Owner 2026-10-21「侧边栏默认按项目分组，不要标签分组，鼓励大家用项目」 | todo | spec `specs/2026-10-projects.md` §6.1；B-641 合入后开工 |
+| B-646 | **项目 P1：下一轮顺带 + 离线留言**：wrapper 在人/点对点触发的轮次前拉 digest、前缀 ≤2 行，绝不为它唤醒空闲会话；`session_message` 发给同项目不在跑的会话存为留言，下一轮送达，正文送达 7 天后清除 | feat | Owner 2026-10-21 | todo | spec `specs/2026-10-projects.md` §3/§5 |
+| B-645 | **项目 P1：CLI 工具与全 harness 注入**：会话能力 `project-v1`；`project_context` / `project_note`；`session_peers scope=project`；Claude `PROJECT_HINT` + 首轮前缀三变体（member/team-member/quiet），Codex/Gemini/pi(ACP)/OpenClaw 首条消息拼接，终端镜像 SessionStart spike；注入不了的标「未注入」 | feat | Owner 2026-10-21「兼容性，不同的 harness 都能用」 | todo | spec `specs/2026-10-projects.md` §3/§4 |
+| B-644 | **项目 P1：server 对象**：`Project`（说明 CAS + 版本）/ `ProjectMember`（sessionId 唯一）/ `ProjectLogEntry`（决定/发现/交接，配额）/ `ProjectPresence`（daemon 写、独立限流桶）/ `ProjectMessage`；`Team.projectId`、`Automation.projectId`；CRUD 与 `attach-project` | feat | Owner 2026-10-21（项目概念，团队挂项目 1:N） | todo | spec `specs/2026-10-projects.md` §2；兼容矩阵见 spec |
 | B-639 | **助手回复里的文件名链接点开整页挂掉**（如「web_v23_2_encoding_spans_20261020.jsonnet」被渲染成链接，点击进 `ChunkFailure`「页面暂时无法加载」）：查清 href 实际值再修；文件/本地路径链接能开走文件预览，打不开给明确提示并停在当前会话 | bug | Owner 10-21 | doing | VeryHappy 研发团队 |
 | B-640 | **消息输入框 Home / End（含 Shift 选中）无反应**：查 keydown 拦截；表现以同平台原生 textarea 为准（macOS 与 Windows 不同） | bug | Owner 10-21 | doing | VeryHappy 研发团队 |
 | B-641 | **移动端侧边栏让会话列表占主要空间**：参考 Codex / Orca 移动端出方案（附参考截图）；次要入口收起，新建会话一步可达，桌面不受影响；iPhone 尺寸改前/改后截图，首屏会话行数明显变多 | ux | Owner 10-21 | doing | VeryHappy 研发团队 |
