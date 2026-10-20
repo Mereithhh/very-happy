@@ -25,6 +25,7 @@ import { visibleSidebarSessions } from './sidebarRows';
 import { groupRowsByProject, foldersOfRows, legacyGroupModeFor, tagCandidates, usedTagGrouping } from './sidebarProjectGroups';
 import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
 import { toast } from '@/ui/Toast';
+import { MoveToProjectModal } from '@/screens/projects/MoveToProjectModal';
 import type { ProjectView } from '@slopus/happy-wire';
 import type { Session } from '@/sync/storageTypes';
 // aliased: `Settings` is already taken by the lucide gear icon above
@@ -1036,6 +1037,7 @@ export function Sidebar() {
   }, [orderedRows, makeProjectFromRows]);
   const tagNoticeVisible = orderable && !tagNoticeDismissed && projectsSnap.status === 'ready' && usedTagGrouping(savedGroupMode, groupByTag);
 
+  const [moveProjectTarget, setMoveProjectTarget] = useState<{ sessionId: string; candidates: { sessionId: string; title: string }[] } | null>(null);
   const createItems: MenuItemDef[] = [
     ...(projectsSnap.status === 'ready' ? [{
       // B-647: 新建 ▾ → 新项目 (name only; folders and defaults live on the project page).
@@ -1314,7 +1316,7 @@ export function Sidebar() {
                         title={lang.startsWith('zh') ? `在此目录新建会话：${sec.createLocation.path}` : `New chat here: ${sec.createLocation.path}`}
                         aria-label={lang.startsWith('zh') ? `在此目录新建会话：${sec.label}` : `New chat here: ${sec.label}`}
                         onPointerDown={prefetchSessionDetail}
-                        onClick={() => void createChatOrConfigure(navigate, configureNew, { target: sec.createLocation })}
+                        onClick={() => void createChatOrConfigure(navigate, configureNew, { target: sec.createLocation, ...(sec.project ? { projectId: sec.project.id } : {}) })}
                       ><Plus size={14} /></button>}
                       {sec.makeProject && <button
                         type="button" className="sb-workspace-new sb-workspace-make-project"
@@ -1380,6 +1382,9 @@ export function Sidebar() {
                           canMoveDown={i >= 0 && i < displayRows.length - 1}
                           onMove={orderable && !grouped && !teamHistory && !r.share ? (dir) => moveRow(r.key, i, dir) : undefined}
                           onRenameRequest={() => setRenameTarget(r)}
+                          onMoveToProject={projectsSnap.status === 'ready' && r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink
+                            ? () => setMoveProjectTarget({ sessionId: r.sessionId!, candidates: sec.allRows.flatMap((x) => (x.kind === 'session' && x.sessionId && !x.share && !x.teamHistoryLink && !x.team ? [{ sessionId: x.sessionId, title: x.title || x.sessionId.slice(0, 8) }] : [])) })
+                            : undefined}
                           peekTipAnchor={peekTipAnchor}
                         />
                       </div>
@@ -1511,6 +1516,7 @@ export function Sidebar() {
       {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
       {showImport && <ImportHistoryModal initialAgent={showImport} onClose={() => setShowImport(null)} />}
+      {moveProjectTarget && <MoveToProjectModal initialSessionId={moveProjectTarget.sessionId} candidates={moveProjectTarget.candidates} onClose={() => setMoveProjectTarget(null)} />}
       {renameTarget && (
         <RenameModal
           defaultTitle={renameTarget.title}
@@ -1582,6 +1588,7 @@ function rowMenuItems(opts: {
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   onRename: () => void;
+  onMoveToProject?: () => void;
   onMove?: (dir: -1 | 1) => void;
   onArchiveOrClose: () => void;
   /** B-091/B-522 priority level (null = none); `onSetPriority` undefined hides it on old terminal daemons. */
@@ -1606,6 +1613,7 @@ function rowMenuItems(opts: {
       onSelect: opts.onRename,
     },
   ];
+  if (opts.onMoveToProject) items.push({ key: 'move-project', label: t('sidebar.moveToProject'), icon: FolderKanban, onSelect: opts.onMoveToProject });
   if (opts.onRestore) {
     items.push({ key: 'restore', label: t('restore.restore'), icon: RotateCcw, disabled: opts.restoreDisabled, onSelect: opts.onRestore });
   }
@@ -1677,6 +1685,7 @@ function SidebarRow({
   canMoveDown,
   onMove,
   onRenameRequest,
+  onMoveToProject,
   peekTipAnchor,
 }: {
   row: Row;
@@ -1702,6 +1711,8 @@ function SidebarRow({
    *  search narrowing). */
   onMove?: (dir: -1 | 1) => void;
   onRenameRequest: () => void;
+  /** B-649: 「移到项目…」 (undefined hides it: projects unavailable, shared or history rows). */
+  onMoveToProject?: () => void;
   /** B-588: this row hosts the one-time 「会话预览」 tip */
   peekTipAnchor?: boolean;
 }) {
@@ -1825,6 +1836,7 @@ function SidebarRow({
     canMoveUp,
     canMoveDown,
     onRename: onRenameRequest,
+    onMoveToProject,
     onMove,
     onArchiveOrClose: () => void onArchiveOrClose(),
     onRestore: restorable ? onRestore : undefined,

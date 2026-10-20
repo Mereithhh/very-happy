@@ -1944,6 +1944,7 @@ export const zhHans: TranslationStructure = {
         workspaceUnassigned: '未指定工作目录',
         // B-647 按项目分组（默认）
         groupProjects: '按项目分组',
+        moveToProject: '移到项目…',
         projectsUnassigned: '未归属',
         projectAttention: ({ count }: { count: number }) => `${count} 个等你处理`,
         makeProject: '把这个目录设为项目',
