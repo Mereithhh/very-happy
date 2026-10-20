@@ -29,23 +29,32 @@ const MAX_PROMPT_SAMPLE_CHARS = 500;
 const MAX_TITLE_CHARS = 60;
 const GENERATION_TIMEOUT_MS = 30_000;
 
+type ClaudeVersionUtils = { findGlobalClaudeCliPath: () => { path: string; source: string } | null };
+
+function loadClaudeVersionUtils(): ClaudeVersionUtils {
+    const require = createRequire(import.meta.url);
+    return require(resolve(join(projectPath(), 'scripts', 'claude_version_utils.cjs'))) as ClaudeVersionUtils;
+}
+
 /**
  * Resolve the local Claude CLI binary path via the shared cjs util
- * (HAPPY_CLAUDE_PATH → PATH → npm/bun global → homebrew → native installer).
- * Returns null if it cannot be located, so callers can simply skip.
+ * (HAPPY_CLAUDE_PATH → PATH → npm/bun global → homebrew → native installer),
+ * falling back to `claude` on PATH when nothing is found.
+ *
+ * B-278: uses `findGlobalClaudeCliPath()`, which returns null on a miss. The
+ * launcher-facing `getClaudeCliPath()` prints install help and calls
+ * `process.exit(1)` instead — inside the wrapper that killed the whole session
+ * for a missing title, and no try/catch can stop an exit.
  *
  * Exported for other LLM-bypass utilities (boardAnalyzer) that share the
  * same one-shot `claude -p --model haiku` contract.
  */
-export function resolveClaudeBinary(): string {
+export function resolveClaudeBinary(loadUtils: () => ClaudeVersionUtils = loadClaudeVersionUtils): string {
     try {
-        const require = createRequire(import.meta.url);
-        const utilsPath = resolve(join(projectPath(), 'scripts', 'claude_version_utils.cjs'));
-        const { getClaudeCliPath } = require(utilsPath) as { getClaudeCliPath: () => string };
-        const path = getClaudeCliPath();
-        if (typeof path === 'string' && path.length > 0) return path;
+        const found = loadUtils().findGlobalClaudeCliPath();
+        if (found && typeof found.path === 'string' && found.path.length > 0) return found.path;
     } catch (error) {
-        logger.debug('[titleGenerator] getClaudeCliPath failed; falling back to PATH', { error: String(error) });
+        logger.debug('[titleGenerator] findGlobalClaudeCliPath failed; falling back to PATH', { error: String(error) });
     }
     // Fallback: spawn `claude` from PATH (or HAPPY_CLAUDE_PATH). The daemon has
     // ~/.local/bin on PATH, so this resolves even if the cjs util can't be required.
