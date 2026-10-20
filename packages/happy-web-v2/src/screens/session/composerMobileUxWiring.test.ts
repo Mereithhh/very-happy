@@ -37,6 +37,13 @@ describe('B-568 composer wiring', () => {
         expect(input).toMatch(/queueOwnsItem = true;\s+outcome = 'queued';\s+if \(gate === 'restore-first'\)/);
         expect(input).toMatch(/if \(queueOwnsItem\) \{\s+outcome = 'queued';/);
     });
+    it('B-654: doSend declares outcome once, so the server-queue branch writes the outer one', () => {
+        const outer = "let outcome: SendOutcome = 'failed';";
+        const doSend = input.slice(input.indexOf(outer) + outer.length, input.indexOf('const interveneQueued = async'));
+        expect(input.indexOf(outer)).toBeGreaterThan(0);
+        expect(doSend).not.toMatch(/\b(?:let|const|var)\s+outcome\b/);
+        expect(doSend).toContain('enqueued = await enqueuePrompt(sessionId, item.text, item.modeMeta);');
+    });
     it('the caret decision comes from focusAfterSend', () => {
         expect(input).toContain('const caret = focusAfterSend({ coarse: IS_COARSE_POINTER, hadFocus, softKeyboard, outcome });');
         expect(input).toContain("keyboardOpenAttr: taRef.current?.closest('[data-keyboard-open=\"true\"]') != null,");
