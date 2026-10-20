@@ -32,12 +32,17 @@ import { useTranslation } from '@/i18n/useTranslation';
 import './markdown.css';
 import { FilePathLink } from './FilePathLink';
 import { collectSessionFilePaths, findPathHits } from './toolFilePath';
-import { useSessionMessages } from '@/sync/storage';
 import { splitOptionSegments } from './optionsBlock';
 import { rehypeTableCellBreaks, rehypeTableScope, rehypeTextLeaves, safeUrlTransform } from './markdownPlugins';
 import { streamThrottleMs } from './streamThrottle';
 import { splitMarkdownBlocks } from './markdownBlocks';
-import { SkillDocumentLink } from '@/ui/SkillDocumentLink';
+import { SkillDocumentBase, SkillDocumentLink } from '@/ui/SkillDocumentLink';
+import { skillDocumentUrl } from '@/ui/skillDocumentUrl';
+import { useSession, useSessionMessages } from '@/sync/storage';
+import { openFsPreview } from '@/sync/filePreviewOpen';
+import { toast } from '@/ui/Toast';
+import { localPathFromHref } from './markdownHref';
+import { resolveAgainstCwd } from './toolFilePath';
 import { RecoverableBoundary } from '@/ui/RecoverableBoundary';
 
 // Stable identities: react-markdown re-runs the whole unified pipeline on every
@@ -49,6 +54,9 @@ const REHYPE_PLUGINS = [rehypeTableCellBreaks, rehypeTableScope, rehypeTextLeave
 
 interface PathLinkCtx { sessionId: string; allowlist: ReadonlySet<string> }
 const PathLinkContext = React.createContext<PathLinkCtx | null>(null);
+/** B-639: the session explicit file links open against. `NoPathLinks` leaves it
+ *  set — a link the agent wrote is clickable in the draft too. */
+const LinkSessionContext = React.createContext<string | null>(null);
 
 /**
  * 显式给定白名单的 scope。`MarkdownPathProvider` 是它的会话版包装（从消息里推白名单），
@@ -60,7 +68,7 @@ export function PathLinksScope({ sessionId, allowlist, children }: {
     children: React.ReactNode;
 }) {
     const value = React.useMemo(() => ({ sessionId, allowlist }), [sessionId, allowlist]);
-    return <PathLinkContext.Provider value={value}>{children}</PathLinkContext.Provider>;
+    return <LinkSessionContext.Provider value={sessionId}><PathLinkContext.Provider value={value}>{children}</PathLinkContext.Provider></LinkSessionContext.Provider>;
 }
 
 /** 在这棵子树里关掉路径链接（流式草稿用：1.5 秒后落地的持久化消息照样会把路径链上）。 */
@@ -93,6 +101,52 @@ function TextLeaf({ text }: { text: string }) {
     });
     if (cursor < text.length) out.push(text.slice(cursor));
     return <>{out}</>;
+}
+
+/* ── links ──────────────────────────────────────────────────────────────── */
+
+function MarkdownLink({ href, children }: { href?: string; children: React.ReactNode }) {
+    const document = React.useContext(SkillDocumentBase);
+    // Inside a skill document, relative links belong to the bundled skill tree.
+    const local = document ? null : localPathFromHref(href);
+    if (local && !skillDocumentUrl(href, window.location.href, undefined, import.meta.env.BASE_URL)) {
+        return <LocalPathLink path={local}>{children}</LocalPathLink>;
+    }
+    return (
+        <SkillDocumentLink href={href} target="_blank" rel="noopener noreferrer" className="md-link">
+            {children}
+        </SkillDocumentLink>
+    );
+}
+
+/**
+ * B-639: a link to a file on the agent's machine. As an `<a>` it opened a new
+ * tab on an app route that does not exist; here it opens the file preview, or
+ * says why it cannot and leaves the page alone.
+ */
+function LocalPathLink({ path, children }: { path: string; children: React.ReactNode }) {
+    const { t } = useTranslation();
+    const sessionId = React.useContext(LinkSessionContext);
+    const session = useSession(sessionId ?? '');
+    const machineId = session?.metadata?.machineId ?? null;
+    const absolute = resolveAgainstCwd(path, session?.metadata?.path);
+    return (
+        <button
+            type="button"
+            className="md-link md-link--file"
+            title={machineId ? t('filePreview.openPath', { path: absolute }) : absolute}
+            onClick={(e) => {
+                e.stopPropagation();
+                if (!sessionId || !machineId) {
+                    toast.error(t('filePreview.linkUnavailable', { path: absolute }));
+                    return;
+                }
+                openFsPreview({ sessionId, machineId, path: absolute, mode: 'file' });
+            }}
+        >
+            {children}
+        </button>
+    );
 }
 
 /* ── table ──────────────────────────────────────────────────────────────── */
@@ -221,11 +275,7 @@ function buildComponents(plainCode: boolean, trustContent: boolean): Components 
             return <code className={`md-code-inline${className ? ` ${className}` : ''}`}>{children}</code>;
         },
         a({ href, children }) {
-            return (
-                <SkillDocumentLink href={href} target="_blank" rel="noopener noreferrer" className="md-link">
-                    {children}
-                </SkillDocumentLink>
-            );
+            return <MarkdownLink href={href}>{children}</MarkdownLink>;
         },
         img({ src, alt, title }) {
             // agent 正文是不可信内容：一个远程图片就是一个追踪像素 + IP/UA 泄漏，而且
@@ -413,5 +463,5 @@ export function MarkdownPathProvider({ sessionId, children }: { sessionId: strin
         cache.current = { signature, value: next };
         return next;
     }, [sessionId, messages]);
-    return <PathLinkContext.Provider value={value}>{children}</PathLinkContext.Provider>;
+    return <LinkSessionContext.Provider value={sessionId}><PathLinkContext.Provider value={value}>{children}</PathLinkContext.Provider></LinkSessionContext.Provider>;
 }

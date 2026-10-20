@@ -1075,6 +1075,8 @@ export const en = {
         history: 'Preview history',
         /** B-144: tooltip on a clickable file path in chat / tool cards. */
         openPath: ({ path }: { path: string }) => `Open ${path} in the preview panel`,
+        /** B-639: a Markdown link to a local file, with no session machine to read it from. */
+        linkUnavailable: ({ path }: { path: string }) => `Can't open ${path} here — this link points to a file on the agent's machine`,
         title: 'File preview',
         receiveTitle: 'Open pushed previews',
         receiveSubtitle: 'When an agent calls open_preview, pop the file preview on this device. Off = this device ignores the push (your other devices still show it).',
