@@ -885,6 +885,10 @@ export const en = {
             expandTableRows: ({ rows }: { rows: number }) => `Show all (${rows} rows)`,
             collapseTableRows: 'Collapse table',
             tableRegion: 'table',
+            // B-359: wide/long tables open in a full-screen viewer
+            tableFullscreen: 'Full screen',
+            tableFullscreenTitle: ({ rows, cols }: { rows: number; cols: number }) => `Table · ${rows} rows × ${cols} columns`,
+            tableFullscreenClose: 'Close table',
             mermaidRender: 'Render diagram',
             mermaidLoading: 'Loading diagram…',
             mermaidSource: 'Source',
