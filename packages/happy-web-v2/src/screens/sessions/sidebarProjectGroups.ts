@@ -106,8 +106,11 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
     return { ...g, rows: groupRows, teams: teams.filter(t => ids.has(t.id)) };
   });
   const placed = new Set<string>([...projectGroups.flatMap(g => g.teams.map(t => t.id)), ...unassigned.flatMap(g => g.teams.map(t => t.id))]);
-  const orphanTeams = teams.filter(t => !t.archivedAt && !placed.has(t.id) && !teamProject.has(t.id));
-  const teamsGroup = orphanTeams.length > 0 || unanchored.length > 0 ? { rows: unanchored, teams: orphanTeams } : null;
+  // B-729: an unanchored row's own team is always nested with it — even when
+  // that team also heads another group — or the row shows outside its team.
+  const unanchoredTeams = new Set(unanchored.flatMap(r => { const t = r.sessionId ? teamOfSession.get(r.sessionId)?.team : undefined; return t ? [t.id] : []; }));
+  const groupTeams = teams.filter(t => !t.archivedAt && (unanchoredTeams.has(t.id) || (!placed.has(t.id) && !teamProject.has(t.id))));
+  const teamsGroup = groupTeams.length > 0 || unanchored.length > 0 ? { rows: unanchored, teams: groupTeams } : null;
   return { projects: projectGroups, unassigned, teamsGroup };
 }
 
