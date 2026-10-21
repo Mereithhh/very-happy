@@ -84,7 +84,7 @@ describe('B-720 AsciiField wrapper', () => {
   it('whenIdle keeps decoration out of the load window: waits START_DELAY_MS after load, or starts on the first interaction', () => {
     vi.useFakeTimers();
     try {
-      const w = window as Window & { requestIdleCallback?: unknown };
+      const w = window as unknown as { requestIdleCallback?: unknown };
       const savedIdle = w.requestIdleCallback;
       w.requestIdleCallback = undefined;
       const fn = vi.fn();
