@@ -2764,7 +2764,7 @@ export const zhHans: TranslationStructure = {
                 sidebarAlt: '侧栏顶部：新建会话、新建项目、新建团队，下面是团队、待办、联系人',
                 chatTitle: '对话更跟手',
                 chatBody: '消息一发出就上屏，带一个轻量的状态，失败了可以重试。团队消息和委派卡片点开是完整渲染 Markdown 的浮层；pi 会话的上下文占用显示准确。',
-                chatAlt: '在浮层里打开的团队消息卡片，Markdown 完整渲染，可以复制',
+                chatAlt: '发给离线会话的消息立刻上屏，显示「已保存 · 会话恢复后送达」',
                 polishTitle: '界面打磨',
                 polishBody: '下拉菜单换成统一的组件，不再用浏览器原生的选择框；弹窗风格统一；触屏上不再残留悬停高亮；焦点框只在用键盘操作时出现。',
                 polishAlt: '展开的新下拉菜单',

@@ -2623,7 +2623,7 @@ export const en = {
                 sidebarAlt: 'The sidebar top: New session, New project and New team, then Teams, Todos and People',
                 chatTitle: 'Conversations that feel instant',
                 chatBody: 'Messages appear the moment you send them, with a quiet status and Retry if one fails. Team and delegation cards open in a reader with full Markdown, and pi sessions show how much context they really use.',
-                chatAlt: 'A team message card opened in the reader, with formatted Markdown and Copy',
+                chatAlt: 'A message sent to an offline session, shown at once as “Saved · delivered when the session is back online”',
                 polishTitle: 'Polish everywhere',
                 polishBody: 'Our own dropdowns replace the browser’s selects, dialogs share one look, touch screens no longer keep hover highlights, and focus rings show only when you move with the keyboard.',
                 polishAlt: 'One of the new dropdowns, open',
