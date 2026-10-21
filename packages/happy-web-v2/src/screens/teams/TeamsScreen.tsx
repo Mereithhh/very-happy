@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { TeamAction, TeamState } from "@slopus/happy-wire";
 import {
@@ -15,7 +15,7 @@ import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { TeamSchedules } from "./TeamSchedules";
 import { t as tr } from "@/text";
-import { Bot, UsersRound, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus, RefreshCw, Archive } from "lucide-react";
+import { Bot, UsersRound, ArrowLeft, Settings2, Clock3, LayoutDashboard, Plus, RefreshCw, Archive } from "lucide-react";
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
@@ -24,6 +24,7 @@ import { AdoptTeamForm } from "./AdoptTeamForm";
 import { TeamStartForm } from "./TeamStartForm";
 import { useFirstUseCopy } from "./firstUseCopy";
 import { TeamOptions } from "./TeamOptions";
+import { TeamDialog } from "./TeamDialog";
 import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
 import { useWorkspaceCopy } from "./workspaceCopy";
 import { sync } from "@/sync/sync";
@@ -596,16 +597,3 @@ function OperationResolution({
   );
 }
 
-function TeamDialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const c = useWorkspaceCopy();
-  useEffect(() => {
-    const node = ref.current;
-    node?.showModal();
-    return () => node?.close();
-  }, []);
-  return <dialog ref={ref} className="teams-dialog" aria-label={title} onCancel={onClose}>
-    <div className="teams-dialog-heading"><h2>{title}</h2><button autoFocus aria-label={c.close} onClick={onClose}><X size={20} /></button></div>
-    {children}
-  </dialog>;
-}
