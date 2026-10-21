@@ -17,8 +17,15 @@ describe('wrapperSupportsSteer (B-628)', () => {
         expect(wrapperSupportsSteer('claude', ['codex-steer-v1'])).toBe(false);
     });
 
+    it('B-632 pi (acp flavor): only once its wrapper advertises pi-steer-v1 (the extension connected)', () => {
+        expect(wrapperSupportsSteer('acp', ['prompt-queue-v1', 'pi-steer-v1'])).toBe(true);
+        expect(wrapperSupportsSteer('acp', ['prompt-queue-v1'])).toBe(false);
+        expect(wrapperSupportsSteer('acp', ['codex-steer-v1'])).toBe(false);
+    });
+
     it('other agents never steer', () => {
         expect(wrapperSupportsSteer('gemini', ['codex-steer-v1', 'claude-steer-v1'])).toBe(false);
         expect(wrapperSupportsSteer('acp', ['claude-steer-v1'])).toBe(false);
+        expect(wrapperSupportsSteer('gemini', ['pi-steer-v1'])).toBe(false);
     });
 });

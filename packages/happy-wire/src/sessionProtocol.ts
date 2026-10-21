@@ -17,6 +17,13 @@ import * as z from 'zod';
  */
 export const CODEX_STEER_CAPABILITY = 'codex-steer-v1';
 
+/**
+ * B-632: the pi wrapper hands a `meta.delivery === 'steer'` message to the running
+ * pi turn (pi `sendUserMessage(…, { deliverAs: 'steer' })` through the Very Happy pi
+ * extension). Advertised only once that extension has connected.
+ */
+export const PI_STEER_CAPABILITY = 'pi-steer-v1';
+
 export const sessionRoleSchema = z.enum(['user', 'agent']);
 export type SessionRole = z.infer<typeof sessionRoleSchema>;
 

@@ -45,6 +45,8 @@ interface HappyMcpHandlers {
 
 export interface StartHappyServerOptions {
     onContextUsage?: (usage: ContextUsage) => void;
+    /** B-632: pi steer channel served at the returned `steerUrl`. */
+    piSteer?: import('@/agent/acp/piSteerChannel').PiSteerChannel;
     /**
      * B-132: 自报水位，由调用方（runClaude）创建并同时交给 BoardAnalyzer——
      * 两者在同一个 session 进程里，所以是共享的内存对象，不需要落文件。
@@ -286,7 +288,42 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
     };
 
     const contextPath = '/runtime-context/' + randomUUID();
+    // B-632: pi steer channel (agent/acp/piSteerChannel.ts) — long poll + hello + ack.
+    const steerPath = '/runtime-steer/' + randomUUID();
     const server = createServer(async (req, res) => {
+        if (req.url?.startsWith('/runtime-steer/')) {
+            const steer = options?.piSteer;
+            if (!steer || req.headers.origin) { res.writeHead(403).end(); return; }
+            if (req.method === 'GET' && req.url === steerPath) {
+                const gone = new AbortController();
+                res.on('close', () => gone.abort());
+                const item = await steer.take(25_000, gone.signal);
+                if (res.writableEnded || gone.signal.aborted) {
+                    // The poller left: its message goes back to the wrapper's own deadline.
+                    return;
+                }
+                if (!item) { res.writeHead(204).end(); return; }
+                res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(item));
+                return;
+            }
+            if (req.method === 'POST' && (req.url === steerPath + '/hello' || req.url === steerPath + '/ack')) {
+                let body = '';
+                for await (const chunk of req) {
+                    body += chunk.toString();
+                    if (Buffer.byteLength(body) > 1024) { res.writeHead(413).end(); return; }
+                }
+                if (req.url.endsWith('/hello')) { steer.hello(); res.writeHead(204).end(); return; }
+                try {
+                    const ack = JSON.parse(body) as { id?: unknown; delivered?: unknown };
+                    if (typeof ack.id !== 'number') throw new Error('id');
+                    steer.ack(ack.id, ack.delivered === true);
+                    res.writeHead(204).end();
+                } catch { res.writeHead(400).end(); }
+                return;
+            }
+            res.writeHead(403).end();
+            return;
+        }
         if (req.url?.startsWith('/runtime-context/')) {
             if (!options?.onContextUsage || req.url !== contextPath || req.method !== 'POST' || req.headers.origin) {
                 res.writeHead(403).end(); return;
@@ -341,6 +378,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
     return {
         url: baseUrl.toString(),
         contextUsageUrl: options?.onContextUsage ? new URL(contextPath, baseUrl).toString() : undefined,
+        steerUrl: options?.piSteer ? new URL(steerPath, baseUrl).toString() : undefined,
         toolNames: [
             'change_title',
             CLIPBOARD_TOOL_NAME,

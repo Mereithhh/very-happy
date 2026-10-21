@@ -94,3 +94,32 @@ describe('analyzeLatestTurn with an anchor (B-496)', () => {
         expect(analyzeLatestTurn(later, { anchor })).toMatchObject({ ended: true, answer: 'ours' })
     })
 })
+
+describe('steered prompts (B-632)', () => {
+    const steer = (text: string) => ({ role: 'user', content: { type: 'text', text }, meta: { delivery: 'steer' } })
+    it('a steer joins the running turn: its turn-end (no new turn-start) ends the latest turn', () => {
+        const turn = analyzeLatestTurn(log(
+            user('run sleep, then tell me the word'), ev({ t: 'turn-start' }), ev({ t: 'tool-call-start', name: 'bash' }),
+            steer('the word is MANGO'),
+            ev({ t: 'text', text: 'MANGO' }), ev({ t: 'turn-end', status: 'completed' }),
+        ))
+        expect(turn).toMatchObject({ userSeq: 4, ended: true, status: 'completed', answer: 'MANGO' })
+    })
+
+    it('a steer that fell back to the queue still waits for its own turn', () => {
+        const turn = analyzeLatestTurn(log(
+            user('first'), ev({ t: 'turn-start' }),
+            steer('late steer'),
+            ev({ t: 'turn-end', status: 'completed' }),
+            ev({ t: 'turn-start' }), ev({ t: 'text', text: 'working on the steer' }),
+        ))
+        expect(turn.ended).toBe(false)
+    })
+
+    it('a queued (non-steer) prompt keeps the old rule', () => {
+        const turn = analyzeLatestTurn(log(
+            user('first'), ev({ t: 'turn-start' }), user('second'), ev({ t: 'turn-end', status: 'completed' }),
+        ))
+        expect(turn.ended).toBe(false)
+    })
+})
