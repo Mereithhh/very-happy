@@ -24,6 +24,7 @@ import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
+import { createSessionForStartup } from '@/utils/startupSessionCreate';
 import { claimSessionOrExit } from '@/utils/sessionLock';
 import type { Session } from './session';
 import { applySandboxPermissionPolicy, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode, reconcilePublishedPermissionMode } from './utils/permissionMode';
@@ -269,7 +270,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             agentStateVersion: parseInt(reconnectAgentStateVersion || '0', 10),
         };
     } else {
-        response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+        // B-689: a daemon spawn retries briefly and fails with a reason; only a
+        // terminal start may continue offline.
+        response = await createSessionForStartup(() => api.getOrCreateSession({ tag: sessionTag, metadata, state }), { startedBy: options.startedBy, log: (m) => logger.debug(m) });
     }
 
     // Handle server unreachable case - run Claude locally with hot reconnection

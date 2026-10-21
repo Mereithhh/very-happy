@@ -14,6 +14,7 @@ import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
 import { detectCLIAvailability, type CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
+import { TEAM_RETRY_CAPABILITY_VERSION } from './teams/spawnRetry';
 
 export function buildInitialMachineMetadata(cliAvailability: CLIAvailability): MachineMetadata {
   // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
@@ -21,7 +22,7 @@ export function buildInitialMachineMetadata(cliAvailability: CLIAvailability): M
   // share the same hostname and look identical).
   const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
   return {
-    teamsVersion: 1, teamLaunchVersion: 1, worktreeVersion: 1,
+    teamsVersion: 1, teamLaunchVersion: 1, teamRetryVersion: TEAM_RETRY_CAPABILITY_VERSION, worktreeVersion: 1,
     host: os.hostname() + hostSuffix,
     platform: os.platform(),
     happyCliVersion: packageJson.version,

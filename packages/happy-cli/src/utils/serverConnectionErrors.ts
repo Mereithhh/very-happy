@@ -316,6 +316,13 @@ class OfflineState {
     /** Check current state */
     isOffline(): boolean { return this.state === 'offline'; }
 
+    /** B-689: one-line cause of the last failure of `operation` (for exit reasons). */
+    describe(operation: string): string | undefined {
+        const f = this.failures.get(operation);
+        if (!f) return undefined;
+        return f.errorCode ? `${f.errorCode} - ${ERROR_DESCRIPTIONS[f.errorCode] || 'unknown error'}` : 'unknown error';
+    }
+
     /** Reset for testing - clears all state */
     reset(): void {
         this.state = 'online';

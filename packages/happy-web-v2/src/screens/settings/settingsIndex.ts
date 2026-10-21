@@ -38,6 +38,7 @@ export const SETTINGS_SECTION_TITLES: Record<string, SettingsText> = {
   appearance: 'settings.appearance',
   account: 'settings.account',
   agents: 'settingsAgents.title',
+  models: 'modelConfig.title',
   snippets: 'settingsSnippets.navTitle',
   notifications: 'notifications.title',
   channels: 'settingsChannels.title',
@@ -118,6 +119,8 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: 'voice.skipPermissions', section: 'voice', title: 'settingsVoice.skipPermissions', description: 'settingsVoice.skipPermissionsHint', keywords: ['permission', 'yolo', 'skip', '权限', '跳过'] },
   { id: 'voice.assistantMachine', section: 'voice', title: 'settingsVoice.assistantMachine', keywords: ['machine', 'assistant', 'computer', '电脑', '机器', '助手'] },
   // ── machines ──
+  // ── models (B-688) ──
+  { id: 'models.machine', section: 'models', title: 'modelConfig.machine', description: 'modelConfig.subtitle', keywords: ['model', 'provider', 'base url', 'baseurl', 'api key', 'gateway', 'custom model', 'claude', 'codex', 'gemini', 'pi', 'anthropic_base_url', 'config.toml', 'settings.json', '模型', '自定义模型', '网关', '密钥', '供应商'] },
   { id: 'machines.connect', section: 'machines', title: 'connectMachine.groupTitle', keywords: ['connect', 'add machine', 'install', 'pair', '连接', '添加电脑', '配对', '安装'] },
   { id: 'machines.list', section: 'machines', title: 'settingsMachines.listTitle', description: 'settingsMachines.footer', keywords: ['machines', 'computers', 'daemon', '电脑', '机器'] },
   // ── diagnostics ──
