@@ -2592,6 +2592,19 @@ export const zhHans: TranslationStructure = {
         learnMore: '看文档',
         otherImprovements: ({ count }: { count: number }) => `其他改进（${count}）`,
         noEntriesAvailable: '没有可用的更新日志条目。',
+        // B-715: major updates + the page-by-page pager
+        majorBadge: '大更新',
+        next: '下一条',
+        previous: '上一条',
+        doneAll: '我都看完了',
+        pageProgress: ({ current, total }: { current: number; total: number }) => `${current} / ${total}`,
+        pageProgressLabel: ({ current, total }: { current: number; total: number }) => `第 ${current} 条，共 ${total} 条更新`,
+        lockedHint: ({ total }: { total: number }) => `共 ${total} 条，看完全部后可关闭`,
+        minorPageTitle: '其他更新',
+        minorPageSummary: '同期发布的小修复和改进，最新在前。',
+        entryLabel: ({ count }: { count: number }) => `大更新 · ${count} 条未看`,
+        entryShort: '大更新',
+        entryCount: ({ count }: { count: number }) => `${count} 条未看`,
         releases: {
             oct21b: {
                 tagline: '10 月 21 日第二次大更新',

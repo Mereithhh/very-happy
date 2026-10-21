@@ -94,6 +94,9 @@
   --warn-dim: rgba(230, 180, 80, 0.14);
   /* B-650: search-hit marks (session search results + the landed hit in the chat). Not a status colour. */
   --search-hit: rgba(250, 204, 21, 0.32);
+  /* B-715: 「大更新」 marks (release-notes badge, sidebar entry). Own hue: accent is live, warn/danger are states. */
+  --major: #b9a2ff;
+  --major-dim: rgba(167, 139, 250, 0.16);
   --danger-dim: rgba(255, 107, 107, 0.14);
   --danger-ink: #1c0606; /* text/icon on --danger fill (dark danger is light-ish red) */
 
@@ -166,6 +169,8 @@
   --danger: #b52f35;
   --warn-dim: rgba(132, 92, 9, 0.12);
   --search-hit: rgba(250, 204, 21, 0.42);
+  --major: #6346c9;
+  --major-dim: rgba(109, 79, 214, 0.1);
   --danger-dim: rgba(181, 47, 53, 0.1);
   --danger-ink: #ffffff; /* light danger fill is dark red — white reads ≥7:1 */
 
@@ -233,6 +238,8 @@
     --danger: #b52f35;
     --warn-dim: rgba(132, 92, 9, 0.12);
     --search-hit: rgba(250, 204, 21, 0.42);
+    --major: #6346c9;
+    --major-dim: rgba(109, 79, 214, 0.1);
     --danger-dim: rgba(181, 47, 53, 0.1);
     --danger-ink: #ffffff; /* light danger fill is dark red — white reads ≥7:1 */
 

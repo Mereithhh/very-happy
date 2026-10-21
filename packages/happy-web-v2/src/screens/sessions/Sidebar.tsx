@@ -73,6 +73,7 @@ import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
+import { MajorUpdateEntry } from '@/app/MajorUpdateEntry';
 import { sidebarNavEntries, navAttentionTotal, navMenuLabel, orderCreateMenu, sidebarTopModel, type SidebarNavKey } from './sidebarNavEntries';
 import {
   findRevealTarget,
@@ -1595,6 +1596,8 @@ export function Sidebar() {
 
       {/* B-555: tightest subscription window (renders nothing until reported) */}
       <SidebarRateLimit />
+      {/* B-715: unread big updates — persistent entry above the footer (B-713 owns the footer row). */}
+      <MajorUpdateEntry />
       <footer className="sb-footer">
         <button className="sb-footer-btn" onClick={() => navigate('/settings')}>
           <Settings size={16} /> <span>{t('tabs.settings')}</span>

@@ -78,6 +78,30 @@
 .wn-more.is-full { color: var(--text); font-weight: 500; }
 .wn-more.is-full + .wn-more { margin-top: 0; }
 
+/* B-715: page-by-page pager. Progress sits on the eyebrow row; while locked the ✕ is gone, so the row keeps its right gutter for nothing. */
+.wn-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-right: 44px; }
+.wn-card[data-locked] .wn-top { margin-right: 0; }
+.wn-eyebrow .vh-major-badge { margin-left: var(--sp-1); }
+.wn-progress { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); font-size: var(--fs-11); }
+.wn-dots { display: flex; gap: 4px; }
+.wn-dots > span { width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
+.wn-dots > span[data-state='done'] { background: var(--text-faint); }
+.wn-dots > span[data-state='current'] { width: 16px; border-radius: var(--r-pill); background: var(--text); }
+.wn-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.wn-card[data-major] h2 { margin-top: var(--sp-1); font-size: var(--fs-24); line-height: 1.3; }
+.wn-card[data-major] .wn-release-meta { margin-top: var(--sp-3); }
+.wn-hero { margin: var(--sp-4) 0 var(--sp-2); padding: var(--sp-2); border-radius: var(--r-md); background: var(--bg-2); }
+.wn-hero img { display: block; width: 100%; height: auto; border-radius: var(--r-sm); }
+.wn-locked-hint { margin: var(--sp-4) 0 0; color: var(--text-faint); font-size: var(--fs-12); text-align: center; }
+.wn-nav { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); }
+.wn-locked-hint + .wn-nav { margin-top: var(--sp-2); }
+.wn-nav .wn-done { flex: 1; margin-top: 0; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); }
+/* Paged: Next / Previous stay on screen however long the page is (the card scrolls; sticky to its padding edge). */
+.wn-nav[data-paged] { position: sticky; z-index: 1; bottom: calc(-1 * var(--sp-5)); margin-inline: calc(-1 * var(--sp-5)); margin-bottom: calc(-1 * var(--sp-5)); padding: var(--sp-3) var(--sp-5) var(--sp-5); border-top: 1px solid var(--line); background: var(--bg-0); }
+.wn-prev { display: inline-flex; align-items: center; gap: var(--sp-1); min-height: 36px; padding: 0 var(--sp-3); border-radius: var(--r-sm); background: var(--fill-soft); color: var(--text); font-weight: 500; }
+.wn-prev:hover { background: var(--fill-soft-hover); }
+.wn-prev:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
 @keyframes wn-fade { from { opacity: 0; } }
 @keyframes wn-enter { from { opacity: 0; transform: translate(-50%, calc(-50% + var(--sp-2))); } }
 
@@ -94,7 +118,8 @@
     padding-bottom: max(var(--sp-4), env(safe-area-inset-bottom));
     animation-name: wn-enter-mobile;
   }
-  .wn-done { min-height: 46px; }
+  .wn-done, .wn-prev { min-height: 46px; }
+  .wn-nav[data-paged] { bottom: calc(-1 * max(var(--sp-4), env(safe-area-inset-bottom))); margin-inline: calc(-1 * var(--sp-4)); margin-bottom: calc(-1 * max(var(--sp-4), env(safe-area-inset-bottom))); padding: var(--sp-3) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom)); }
 }
 
 @keyframes wn-enter-mobile { from { opacity: 0; transform: translateY(var(--sp-4)); } }
@@ -103,4 +128,4 @@
   .wn-backdrop, .wn-card { animation: none; }
 }
 
-@media (pointer: coarse) { .wn-close { width:44px; height:44px; } .wn-done, .wn-more, .wn-cli button { min-height:44px; } }
+@media (pointer: coarse) { .wn-close { width:44px; height:44px; } .wn-done, .wn-prev, .wn-more, .wn-cli button { min-height:44px; } }

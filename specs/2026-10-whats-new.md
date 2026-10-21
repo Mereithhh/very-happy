@@ -1,6 +1,6 @@
 # 更新通知改版：亮点 + 截图（What's new）
 
-> 状态：Final ｜ 日期：2026-10-21 ｜ 关联 backlog：B-677
+> 状态：Final ｜ 日期：2026-10-21 ｜ 关联 backlog：B-677、B-715
 > 出处：Owner 10-21「更新文档写的可读性不够好，也没有一个截图啥的，用户看了就忽略了，其实我们最近做的都是很大的更新。」
 
 ## 背景
@@ -149,6 +149,54 @@ ChangelogRelease.highlights?: readonly ChangelogHighlight[];  // 有亮点时 it
 3. **`featured` + `featuredTaglineKey`**：大版本在弹窗顶部显示品牌行，副标题可按版本配置（原来写死 9 月改版那句）；同时显示「打开完整更新页」。
 4. **`hero` + `/whats-new` 长页**：公开路由（不需要登录，可直接转发），数据来自 `whatsNewReleases()`——最新的 featured 且有亮点的 Web 条目，加上同一天的 CLI 条目。结构：hero（标题、摘要、打开应用 / 升级 CLI、海浪动图）→ 4 个亮点（编号、左右交替、动图）→ 主题组 → 其余改进（Web / CLI 两列）→ 升级命令（`cliUpdateInstallCommand`，可复制）。官网「最新更新」区块和更新弹窗都链过去。
 5. 截图脚本与演示环境：本地 standalone server + 隔离 daemon（`HOME=/home/alex`，主机名 `build-box`），真实 Claude 会话产出对话、团队与离线送达；脚本在 PR 描述里列出。
+
+## 增补（B-715：大更新标识 + 叠加必须看完）
+
+出处：Owner 10-21「我们最近的大更新，你可以明显标识一下，确保大家都能看到，然后我最近可能会发好几个大更新的通知，如果是叠在一起的，你要让用户看完再关，我不想让用户忽略任何有价值的功能。」本节覆盖上文「非目标：不做轮播 / 分页」——那条针对的是单个版本内部的亮点；这里分页的单位是**版本**。
+
+### 数据
+
+- `ChangelogRelease.major?: boolean`：大更新。`oct21`（`2026-10-21-projects-drafts-search`）与 `oct21b`（`2026-10-21-big-update`）标为大更新。
+- 大更新必须有 `highlights`：`changelogPager.test.ts` 对 `CHANGELOG_RELEASES` 强制；发布门禁 `scripts/changelog/check-release.mjs` 的 `extractReleases` 解析 `major:` / `highlights:`，`evaluateWebRelease` 对「major 但无亮点」直接 FAIL，并在输出里列出本次新增的大更新（`major:` 行）。
+
+### 醒目标识
+
+- 「大更新」徽标（`MajorBadge`，`.vh-major-badge`）：弹窗 eyebrow、`/changelog` 条目 meta 行、`/whats-new` hero eyebrow。
+- 颜色用新 token `--major` / `--major-dim`（紫，亮暗各一套，登记于 design-language §2）：accent 只表 live，warn/danger 是状态色，`--search-hit` 只表搜索命中，所以给它自己的色相。
+- 大更新页更强：弹窗标题 24px、有 `hero` 时显示 hero 截图；`/changelog` 条目标题 24px（手机 20px）+ hero。小更新保持原轻量样式。
+
+### 分页规则（`app/changelogPager.ts`，纯函数）
+
+1. 页 = 每个未读大更新一页（**从旧到新**），所有未读小更新合并为最后一页「其他更新」（组内最新在前）；只有一页时就是原来的单版本 / 多版本弹窗。
+2. 进度：eyebrow 行右侧「1 / 3」+ 圆点；读屏用 `aria-live=polite` 播报「第 1 条，共 3 条更新」。
+3. 没到最后一页：没有 ✕，主按钮是「下一条 →」，Esc / 点遮罩 / 外部交互都 `preventDefault`；第 2 页起有「← 上一条」。底部提示「共 N 条，看完全部后可关闭」。
+4. 最后一页：出现 ✕，主按钮「我都看完了」（单页时仍是「知道了」），点了写回执；Esc / 遮罩照 B-315 只关不记（之前页已记，下次只剩这一页）。
+5. 亮点的「去试试 / 看文档」：最后一页 = 全部已读；中间页 = 只记当前页已读并关闭，后面的页保持未读（侧栏入口 + 下次正常打开再弹），不算跳过。
+6. 「打开完整更新页 / 查看全部更新记录」只在最后一页出现，CLI 升级卡片也在最后一页。
+
+### 已读状态
+
+- 沿用 `vh.changelog.seen`（B-315 回执，含义 = 该版本及更早都已读，水位线），新增 `vh.changelog.read`：水位线之上逐条读过的 id（JSON 数组）。看完一页就把该页的 id 记进去；水位线紧上方连续已读的版本会被吸收，集合随之清空，所以通常为空或只有几个 id。
+- 刷新后未读 = 回执 diff（B-320）减去集合 → 从第一条没看过的继续。旧版本客户端只认回执，不受影响。
+- 仍是浏览器本地（与改版前一致）；不改账号级同步，所以不涉及 synced settings（关键约束 1）。多标签页通过 `storage` 事件同步。
+
+### 不锁死（保留 B-697）
+
+- 深链加载不自动弹：`app/entryKind.ts` 在 `main.tsx` 里先于 `presenceBoot` 求值，记下首个 URL。带 query（`?task=`、推送点击的 `vh_presence`、`?panel=`、`?new=` 等）或动作路径（`/terminal/connect`、`/machine/connect`）= 深链。这次加载只显示侧栏入口，下次正常打开（无 query 的任意路径，包括 `/session/:id`）再弹。分享链接是公开路由，不挂 `ChangelogNotice`。
+- 弹窗本身仍走 `overlayQueue`：用户打开的对话框（如任务详情）优先，笔记让位、不记已读，对话框关了再回来。
+- Radix modal 让页面其他部分不可交互、焦点困在弹窗内；浏览器返回和刷新不被拦截（不加 `beforeunload`、不改 history）。
+
+### 侧栏入口（与 B-713 协调）
+
+- `MajorUpdateEntry`：有未读大更新时，在侧栏 `SidebarRateLimit` 之后、footer（设置 · 帮助 · …）正上方显示一行「✨ 大更新　N 条未看」（`--major-dim` 底、`--major` 字，触屏 44px），点击打开分页弹窗；全部大更新读完即消失。B-713 把 footer 拆进 `SidebarTop.tsx`，本入口是独立组件，不改 footer 行本身，两个 PR 在 `Sidebar.tsx` 只有一行 JSX + 一条 import 的交集。
+- 手机：根路径的会话列表就是侧栏，入口在列表底部 footer 之上；桌面侧栏折叠时 rail 上有 ✨ 图标 + 未读红点（复用 `--danger` 未读点语义）。
+
+### 验收
+
+- [x] `changelogPager.test.ts`：2 大 2 小 → 大更新从旧到新 + 小更新合并末页；逐条记录与水位线推进；刷新续看；无回执；oct21/oct21b 为大更新且有亮点；深链判定表。
+- [x] `ChangelogNotice.test.tsx`（真组件）：3 页翻页顺序与进度、最后一页前 ✕ 不存在、Esc/遮罩关不掉（去掉守卫的变异会让测试失败）；中途刷新续看；最后一页 Esc 只关不记；深链不弹、入口可见可打开；读完大更新入口消失。
+- [x] `check-release.test.mjs`：解析 `major` / `highlights`，major 无亮点 FAIL。
+- [x] 截图：桌面亮 / 暗、手机 390（第 1 页、最后一页、侧栏入口）。
 
 ## 留真机验证项
 
