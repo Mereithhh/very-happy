@@ -369,7 +369,7 @@ export function MachineScreen() {
             </ItemGroup>
           )}
 
-          <AgentVersionsGroup daemon={machine.daemonState} online={online} now={updateStatusNow}/>
+          <AgentVersionsGroup daemon={machine.daemonState} online={online} now={updateStatusNow} machineId={machine.id} metadata={machine.metadata}/>
 
           <ItemGroup title={t('machine.daemon')}>
             <Item

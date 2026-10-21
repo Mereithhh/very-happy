@@ -1,4 +1,8 @@
 import { ProjectPicker } from '@/screens/projects/ProjectPicker';
+import { isHarnessInstallId, type HarnessInstallId } from '@slopus/happy-wire';
+import { harnessInstallSupported } from '@/app/harnessInstall';
+import { readAgentVersions } from '@/app/agentVersions';
+import { useHarnessInstall } from '@/app/useHarnessInstall';
 import { useProjects } from '@/sync/projects';
 import { suggestProjectFor } from '@/screens/projects/projectSuggestion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -141,6 +145,9 @@ export function NewSessionModal({
   // Derived, not stored: switching machines or the agent becoming available hides the row.
   const shownSetupAgent = setupAgent && agentsToSetUp.includes(setupAgent) ? setupAgent : null;
   const shownSetupInstruction = shownSetupAgent ? agentSetupInstruction(shownSetupAgent) : null;
+  const outdatedAgents = useMemo(() => new Set(
+    (readAgentVersions(selectedMachine?.daemonState)?.agents ?? []).filter((v) => v.status === 'update-available').map((v) => v.id),
+  ), [selectedMachine?.daemonState]);
   const homeDir = (selectedMachine as any)?.metadata?.homeDir as string | undefined;
   const selectedAgentAvailability = resolveAgentAvailability(selectedMachine?.metadata, agent);
   // B-301: the daemon publishes its Claude login state, but until now only the
@@ -359,7 +366,8 @@ export function NewSessionModal({
                   ? t('newSessionModal.bundledStructured')
                   : unavailable
                     ? t('newSessionModal.notInstalled')
-                    : null;
+                    // B-719: an installed but outdated harness says so (Update is on the machine page).
+                    : outdatedAgents.has(a) ? t('harnessInstall.outdated') : null;
                 const showingSetup = unavailable && shownSetupAgent === a;
                 return (
                 <button
@@ -396,6 +404,10 @@ export function NewSessionModal({
               <div className="ns-agent-setup" id="ns-agent-setup">
                 {shownSetupInstruction?.kind === 'command' ? (
                   <>
+                    {selectedMachine && isHarnessInstallId(shownSetupAgent) && harnessInstallSupported(selectedMachine.metadata) && (
+                      // B-719: install it from here; the daemon only accepts the harness id.
+                      <AgentSetupInstall key={`${selectedMachine.id}:${shownSetupAgent}`} machineId={selectedMachine.id} harness={shownSetupAgent} daemonState={selectedMachine.daemonState} online={isMachineOnline(selectedMachine)} />
+                    )}
                     <div className="ns-agent-help">
                       {shownSetupAgent === 'pi'
                         ? t('newSessionModal.piInstallHelp')
@@ -442,5 +454,21 @@ export function NewSessionModal({
         </div>
       </div>
     </div>
+  );
+}
+
+/** B-719: 「这台机器还没装 X，点击安装」 inside the agent picker. */
+function AgentSetupInstall({ machineId, harness, daemonState, online }: { machineId: string; harness: HarnessInstallId; daemonState: unknown; online: boolean }) {
+  const { t } = useTranslation();
+  const action = useHarnessInstall(machineId, harness, daemonState, online);
+  return (
+    <>
+      <div>
+        <Button variant="primary" loading={action.installing} disabled={action.disabled} onClick={() => void action.start()}>
+          {t('harnessInstall.installOnMachine', { agent: harness })}
+        </Button>
+      </div>
+      {action.status && <div className="ns-agent-help" role="status">{action.status}</div>}
+    </>
   );
 }

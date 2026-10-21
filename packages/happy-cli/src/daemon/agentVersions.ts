@@ -63,5 +63,6 @@ export function startAgentVersionChecks(publish:(snapshot:AgentVersions)=>Promis
     void refresh();
     const timer=setInterval(()=>void refresh(),AGENT_CHECK_INTERVAL);
     timer.unref();
-    return () => {stopped=true;clearInterval(timer);};
+    // B-719: callable stop, plus refresh() for right after an owner-requested install.
+    return Object.assign(() => {stopped=true;clearInterval(timer);}, {refresh});
 }

@@ -49,7 +49,7 @@ ordinary terminal access does not imply identical structured support for every
 agent. Connect each machine once, keep its daemon online, and use the same
 workspace for a single conversation or a coordinated team.
 
-pi conversations (`very-happy pi`, or pi in the Web's new-session dialog) run pi through the [pi-acp](https://www.npmjs.com/package/pi-acp) adapter, so the machine needs both: `npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`. The daemon picks them up within five minutes; `very-happy pi` and the dialog both show the exact command when either is missing.
+pi conversations (`very-happy pi`, or pi in the Web's new-session dialog) run pi through the [pi-acp](https://www.npmjs.com/package/pi-acp) adapter, so the machine needs both: `npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`. The daemon picks them up within five minutes; `very-happy pi` and the dialog both show the exact command when either is missing. With CLI 0.2.181+ you can instead click **Install pi on this machine** in the dialog (or Install / Update on the machine page for Claude Code, Codex, Gemini CLI and pi): the daemon installs that fixed package list into the same user-level npm directory as Very Happy, never with sudo, and only when you click.
 
 In a pi conversation, **Steer** sends a queued message into the turn that is running, questions a pi extension asks (`select`) appear as answerable question cards, and pi sub-agent runs (the `subagent` tool) get the same sub-agent cards as Claude. When the agent crashes or the wrapper restarts, a pi session reopens its conversation, and an archived or offline pi session can be restored from the Web like a Claude or Codex one (sessions started with a CLI that records the pi session id).
 
