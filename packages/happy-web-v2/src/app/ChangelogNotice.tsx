@@ -16,6 +16,7 @@ import {
 import './changelogNotice.css';
 import { BRAND } from './brand';
 import { ChangelogHighlights } from './ChangelogHighlights';
+import { OVERLAY_PRIORITY, useOverlayTurn } from './overlayQueue';
 
 function readSeen(): string | null {
   try { return localStorage.getItem(CHANGELOG_STORAGE_KEY); } catch { return null; }
@@ -35,6 +36,9 @@ export function ChangelogNotice() {
   // once on mount so acknowledging does not collapse the list mid-animation.
   const [releases, setReleases] = useState<readonly ChangelogRelease[]>(NO_RELEASES);
   const [open, setOpen] = useState(false);
+  // B-697: a dialog the person opened (e.g. a `?task=` deep link) goes first;
+  // the notes wait, unread, and show once it closes.
+  const turn = useOverlayTurn(open, OVERLAY_PRIORITY.notice);
 
   useEffect(() => {
     const unseen = unseenChangelogReleases(readSeen());
@@ -78,7 +82,7 @@ export function ChangelogNotice() {
   const hasHighlights = releases.some((release) => (release.highlights?.length ?? 0) > 0);
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => next ? setOpen(true) : closeWithoutReading()}>
+    <Dialog.Root open={open && turn} onOpenChange={(next) => next ? setOpen(true) : closeWithoutReading()}>
       <Dialog.Portal>
         <Dialog.Overlay className="wn-backdrop" />
         <Dialog.Content className="wn-card" aria-describedby="wn-description" data-multiple={multiple || undefined} data-featured={head?.featured || undefined} data-highlights={hasHighlights || undefined}>
