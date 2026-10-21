@@ -195,3 +195,6 @@
 .pj-member-row:hover .pj-member-leave, .pj-member-leave:focus-visible { opacity: 1; }
 @media (hover: none), (pointer: coarse) { .pj-member-leave { opacity: 1; } }
 @media (max-width: 520px) { .pj-h-actions { margin-left: 0; width: 100%; flex-wrap: wrap; } }
+
+/* B-726 project picker: a full-width form field wherever it sits (team pages right-align bare buttons) */
+.vh-select-trigger.vh-project-picker, .teams-screen button.vh-project-picker { width: 100%; align-self: stretch; }

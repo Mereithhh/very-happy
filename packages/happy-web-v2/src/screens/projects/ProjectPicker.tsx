@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react';
+import './projects.css';
 import type { ProjectView } from '@slopus/happy-wire';
 import { Combobox } from '@/ui/Combobox';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -43,6 +44,7 @@ export function ProjectPicker({ id, value, onChange, projects, newName, noneLabe
       options={options}
       disabled={disabled}
       size="md"
+      className="vh-project-picker"
       renderValue={(option) => option?.label ?? (selected === NEW ? newLabel : pickerLabel(value, live, { zh, newName, none }))}
       onChange={(v) => onChange(v === NONE ? { kind: 'none' } : { kind: 'existing', projectId: v })}
       actions={newName !== undefined ? [{ key: 'new-project', label: newLabel, icon: Plus, onSelect: () => onChange({ kind: 'new' }) }] : undefined}
