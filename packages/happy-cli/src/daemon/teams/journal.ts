@@ -15,7 +15,8 @@ export interface TeamEffectReceipt {
     scopeFile?: string;
     /** B-689: definitive startup failures of this launch so far. */
     spawnFailures?: number;
-    /** B-689: earliest automatic relaunch; absent after the budget is spent. */
+    /** B-689: earliest automatic relaunch; absent after the budget is spent.
+     *  B-691: for a stop, the earliest automatic cleanup re-check. */
     retryAt?: number;
     /** B-689: the op.retryRequestedAt this daemon already acted on. */
     retryConsumed?: number;
