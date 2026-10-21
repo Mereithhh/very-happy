@@ -507,6 +507,14 @@ export const zhHans: TranslationStructure = {
         soundEventDoneDesc: '智能体完成了本轮回复',
     },
 
+    picker: {
+        // B-714 SelectMenu / Combobox
+        search: '搜索…',
+        empty: '没有匹配的选项',
+        loading: '加载中…',
+        retry: '重试',
+        required: '需要选择一项',
+    },
     common: {
         name: '用户名',
         moreActions: '更多操作',

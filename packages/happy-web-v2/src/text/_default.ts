@@ -253,6 +253,14 @@ export const en = {
         soundEventDoneDesc: 'The agent finished its turn',
     },
 
+    picker: {
+        // B-714 SelectMenu / Combobox
+        search: 'Search…',
+        empty: 'No matches',
+        loading: 'Loading…',
+        retry: 'Retry',
+        required: 'Choose an option',
+    },
     common: {
         name: 'Username',
         // Simple string constants
