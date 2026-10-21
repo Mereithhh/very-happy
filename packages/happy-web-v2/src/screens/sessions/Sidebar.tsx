@@ -21,7 +21,7 @@ import { canOfferRestore, useRestoreState } from '@/app/sessionRestore';
 import { isHibernated } from '@/app/sessionHibernation';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { priorityLevel, setPriorityLevel, sortByPriority, PRIORITY_LEVELS, priorityTag, type PriorityLevel } from '@/utils/tags';
-import { visibleSidebarSessions } from './sidebarRows';
+import { flatListRows, sidebarListEmpty, visibleSidebarSessions } from './sidebarRows';
 import { groupRowsByProject, foldersOfRows, legacyGroupModeFor, resolveSidebarGrouping, showTagGroupingBackNotice, type SidebarGrouping } from './sidebarProjectGroups';
 import { groupRowsByTag } from './sidebarTagGroups';
 import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
@@ -620,10 +620,9 @@ export function Sidebar() {
     }
     const unassignedLabel = t('sidebar.projectsUnassigned') as string;
     projectGrouping.unassigned.forEach((g, i) => {
-      const extra = i === 0 ? projectGrouping.orphanTeams : [];
       const sessionIds = g.rows.flatMap((r) => (r.kind === 'session' && r.sessionId && !r.share && !r.teamHistoryLink ? [r.sessionId] : []));
       out.push({
-        ...collapsibleSection(workspaceGroupId(g), g.name ?? (t('sidebar.workspaceUnassigned') as string), nestTeams(g.rows, [...g.teams, ...extra]), collapsedGroups),
+        ...collapsibleSection(workspaceGroupId(g), g.name ?? (t('sidebar.workspaceUnassigned') as string), nestTeams(g.rows, g.teams), collapsedGroups),
         count: sessionCount(g.rows),
         detail: [g.machineName, g.path].filter(Boolean).join(' · '),
         createLocation: g.machineId && g.path ? { machineId: g.machineId, path: g.rows.find(r => r.workspacePath)?.workspacePath ?? g.path } : undefined,
@@ -631,11 +630,18 @@ export function Sidebar() {
         makeProject: projectsSnap.status === 'ready' && g.machineId && g.path && sessionIds.length > 0 ? { name: g.name ?? g.path, machineId: g.machineId, path: g.path, sessionIds } : undefined,
       });
     });
-    if (projectGrouping.unassigned.length === 0 && projectGrouping.orphanTeams.length > 0) {
-      out.push({ ...collapsibleSection('unassigned:teams', unassignedLabel, nestTeams([], projectGrouping.orphanTeams), collapsedGroups), count: 0 });
+    // B-708: teams with no located row (new, or every member archived) show
+    // once here — never as one 「无工作目录」 group per history link.
+    const tg = projectGrouping.teamsGroup;
+    if (tg) {
+      const first = projectGrouping.unassigned.length === 0;
+      out.push({
+        ...collapsibleSection('unassigned:teams', first ? unassignedLabel : teamCopy.title, nestTeams(tg.rows, tg.teams), collapsedGroups),
+        count: sessionCount(tg.rows),
+      });
     }
     return out;
-  }, [projectGrouping, nestTeams, collapsedGroups, attentionKeys, projectsSnap.status, t]);
+  }, [projectGrouping, nestTeams, collapsedGroups, attentionKeys, projectsSnap.status, teamCopy.title, t]);
   // B-675: 按标签 — one group per first tag (priority P0-P2 first, 未分组 last).
   // Teams have no tags, so their members and history links leave the tag
   // groups and nest under one trailing 「团队」 group instead of being dropped.
@@ -667,10 +673,13 @@ export function Sidebar() {
     () => (sessions ? sortRowsByRecent(visibleSidebarSessions(sessions, view).filter((s) => !!s.share).map(sessionRow)) : []),
     [sessions, view],
   );
-  const displayRows = useMemo<Row[] | null>(() => {
-    if (!plainDisplayRows || !teamHistory) return plainDisplayRows;
-    return nestTeams([...plainDisplayRows, ...teamHistoryRows], liveTeams).filter((r) => !r.teamInactiveFold);
+  // B-710: the flat list renders the inactive-member folds (`flatRows`) but
+  // numbers / reorders only the sequence without them (`displayRows`).
+  const flatRows = useMemo(() => {
+    if (!plainDisplayRows || !teamHistory) return plainDisplayRows ? { rendered: plainDisplayRows, sequence: plainDisplayRows } : null;
+    return flatListRows(nestTeams([...plainDisplayRows, ...teamHistoryRows], liveTeams));
   }, [plainDisplayRows, teamHistory, teamHistoryRows, liveTeams, nestTeams]);
+  const displayRows = flatRows?.sequence ?? null;
   // Feeds the hold's arming snapshot (assigned during render, read by the
   // pointer listeners) — always the sequence actually on screen.
   displayedKeysRef.current = displayRows?.map((r) => r.key) ?? [];
@@ -973,14 +982,14 @@ export function Sidebar() {
         id: 'all',
         label: undefined as string | undefined,
         count: displayRows?.length ?? 0,
-        rows: displayRows ?? [],
-        allRows: displayRows ?? [],
+        rows: flatRows?.rendered ?? [],
+        allRows: flatRows?.rendered ?? [],
         collapsible: false,
         open: true,
       },
       ...shared,
     ];
-  }, [view, statusGroups, completedRows, collapsedGroups, groupedSections, displayRows, sharedRows, t]);
+  }, [view, statusGroups, completedRows, collapsedGroups, groupedSections, displayRows, flatRows, sharedRows, t]);
 
   // ----- collapsed-header status summary (B-580) -----
   // Same inputs as the row's own status slot (SidebarRow → agentStatusSignal),
@@ -1342,7 +1351,7 @@ export function Sidebar() {
           <div className="sb-loading">
             <StatusDot status="thinking" pulse /> {t('common.loading')}
           </div>
-        ) : sections.every((sec) => sec.count === 0 && !sec.project) && closedRows.length === 0 ? (
+        ) : sidebarListEmpty(sections, closedRows.length) ? (
           <div className="sb-empty">{t('sidebar.empty')}</div>
         ) : (
           <>
