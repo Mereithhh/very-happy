@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { TeamTask, TeamState } from "@slopus/happy-wire";
 import {
   canReconcileOperation,
+  canRetryLaunch,
+  machineSupportsTeamRetry,
   newestTeam,
   taskRows,
 } from "./teamView";
@@ -87,5 +89,27 @@ describe("team lifecycle action availability", () => {
     team.operations[0].error = "task_closed_before_spawn";
     team.operations[0].claimId = null;
     expect(canReconcileOperation(team, team.operations[0])).toBe(false);
+  });
+});
+
+describe("B-689 launch retry entry", () => {
+  const op = (patch: Partial<TeamState["operations"][number]> = {}) =>
+    ({ id: "op", type: "spawn", taskId: "t", attemptId: "a1", status: "failed", claimId: "c" , ...patch }) as TeamState["operations"][number];
+  const team = (status: TeamTask["status"], currentAttemptId = "a1") =>
+    ({ tasks: [{ id: "t", status, currentAttemptId }] }) as unknown as TeamState;
+  it("offers retry for a failed or uncertain launch of the waiting attempt only", () => {
+    expect(canRetryLaunch(team("queued"), op())).toBe(true);
+    expect(canRetryLaunch(team("queued"), op({ status: "unknown" }))).toBe(true);
+    expect(canRetryLaunch(team("queued"), op({ status: "claimed" }))).toBe(false);
+    expect(canRetryLaunch(team("queued"), op({ claimId: null }))).toBe(false);
+    expect(canRetryLaunch(team("queued"), op({ type: "stop" }))).toBe(false);
+    expect(canRetryLaunch(team("cancelled"), op())).toBe(false);
+    expect(canRetryLaunch(team("queued", "a2"), op())).toBe(false);
+  });
+  it("gates the button on a daemon that acts on retry-operation", () => {
+    expect(machineSupportsTeamRetry({ teamRetryVersion: 1 })).toBe(true);
+    expect(machineSupportsTeamRetry({ teamLaunchVersion: 1 })).toBe(false);
+    expect(machineSupportsTeamRetry(null)).toBe(false);
+    expect(machineSupportsTeamRetry({ teamRetryVersion: 1 }, 2)).toBe(false);
   });
 });

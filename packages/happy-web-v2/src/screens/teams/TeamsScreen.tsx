@@ -27,6 +27,8 @@ import { useWorkspaceCopy } from "./workspaceCopy";
 import { sync } from "@/sync/sync";
 import {
   canReconcileOperation,
+  canRetryLaunch,
+  machineSupportsTeamRetry,
   newestTeam,
 } from "./teamView";
 import { useTranslation } from "@/i18n/useTranslation";
@@ -303,7 +305,7 @@ function TeamsContent() {
                 className="teams-task"
                 key={t.id}
               >
-                <TeamTaskSummary team={team} task={t} />
+<TeamTaskSummary team={team} task={t} launchIssue={(issue) => <LaunchIssue team={team} operation={issue} retrySupported={machineSupportsTeamRetry(executionMachine?.metadata)} disabled={disabled} act={act} />} />
                 {t.attempts.find((a) => a.id === t.currentAttemptId)
                   ?.result && (
                   <div className="teams-full-result">
@@ -411,6 +413,7 @@ function TeamsContent() {
                   key={`${operation.id}:${operation.claimId ?? "unclaimed"}`}
                   team={team}
                   operation={operation}
+                  retrySupported={machineSupportsTeamRetry(executionMachine?.metadata)}
                   disabled={busy || pending !== null || unavailable}
                   act={act}
                 />
@@ -434,14 +437,68 @@ function TeamsContent() {
   );
 }
 
-function OperationResolution({
+/** B-689: why a launch is stuck, what the computer does next, and the owner's retry. */
+function LaunchIssue({
   team,
   operation,
+  retrySupported,
   disabled,
   act,
 }: {
   team: TeamState;
   operation: TeamState["operations"][number];
+  retrySupported: boolean;
+  disabled: boolean;
+  act: (action: TeamAction) => Promise<void>;
+}) {
+  const first = useFirstUseCopy();
+  const [confirmed, setConfirmed] = useState(false);
+  const uncertain = operation.status === "unknown";
+  const retryable = canRetryLaunch(team, operation) && !!operation.claimId;
+  return (
+    <div className="teams-error" role="alert">
+      <strong>{first.launchFailed}</strong>
+      <p>{operation.error}</p>
+      <p>{uncertain ? first.unknownHint : first.retryHint}</p>
+      {retryable && !retrySupported && <p>{first.retryUpgrade}</p>}
+      {retryable && retrySupported && (
+        <form
+          className="teams-launch-retry"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if ((!uncertain || confirmed) && operation.claimId)
+              void act({ type: "retry-operation", operationId: operation.id, claimId: operation.claimId });
+          }}
+        >
+          {uncertain && (
+            <label className="teams-confirm">
+              <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} required />
+              {first.retryConfirm}
+            </label>
+          )}
+          <button disabled={disabled || (uncertain && !confirmed)}>
+            <RefreshCw size={16} aria-hidden />
+            {first.retryLaunch}
+          </button>
+          {operation.retryRequestedAt !== undefined && (
+            <small role="status">{first.retryRequested} · {new Date(operation.retryRequestedAt).toLocaleString()}</small>
+          )}
+        </form>
+      )}
+    </div>
+  );
+}
+
+function OperationResolution({
+  team,
+  operation,
+  retrySupported,
+  disabled,
+  act,
+}: {
+  team: TeamState;
+  operation: TeamState["operations"][number];
+  retrySupported: boolean;
   disabled: boolean;
   act: (action: TeamAction) => Promise<void>;
 }) {
@@ -513,6 +570,8 @@ function OperationResolution({
                 {tr("teams.reconcile")}
               </button>
             </form>
+          ) : canRetryLaunch(team, operation) ? (
+            <LaunchIssue team={team} operation={operation} retrySupported={retrySupported} disabled={disabled} act={act} />
           ) : (
             <p>
               {operation.error === "task_closed_before_spawn"

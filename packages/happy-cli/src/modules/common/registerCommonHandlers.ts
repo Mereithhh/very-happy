@@ -1,4 +1,5 @@
 import { logger } from '@/ui/logger';
+import type { StartupExit } from '@/daemon/startupExit';
 import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
 import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
@@ -202,7 +203,9 @@ export interface SpawnSessionOptions {
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
-    | { type: 'error'; errorMessage: string };
+    // B-689: `startupExit` is set when the wrapper is known to be gone before it
+    // reported a session — the spawn failed definitively and may be retried.
+    | { type: 'error'; errorMessage: string; startupExit?: StartupExit };
 
 /**
  * Register all RPC handlers with the session

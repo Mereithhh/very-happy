@@ -136,6 +136,14 @@ source adapter; a schedule by itself does not import or complete Todo items.
   Inspect the session and result instead of assuming a notification was handled.
 - Cleanup stops only team-created managed workers. User-linked sessions are not
   automatically destroyed; dirty or unmerged team worktrees retain their results.
+- A member that fails to start shows the real cause (for example the agent
+  process exited during startup with its last error). When the computer has
+  confirmed the failed process is gone, it relaunches the same task
+  automatically with backoff (up to five attempts). If it still fails, fix the
+  cause and choose **Retry launch** in the task details. When the launch outcome
+  is unconfirmed, nothing relaunches automatically: confirm the old process has
+  stopped, then retry the launch or cancel the task. Retry requires a CLI that
+  supports it; sending a message never restarts the agent.
 - When execution is unknown, first cancel or hand off the task as appropriate,
   verify the old process stopped, and preserve/integrate the results. The owner
   can then record **manual reconciliation** with the displayed claim and a note.
