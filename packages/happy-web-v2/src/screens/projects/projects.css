@@ -203,3 +203,6 @@
 .pj-member-row:hover .pj-member-leave, .pj-member-leave:focus-visible { opacity: 1; }
 @media (hover: none), (pointer: coarse) { .pj-member-leave { opacity: 1; } }
 @media (max-width: 520px) { .pj-h-actions { margin-left: 0; width: 100%; flex-wrap: wrap; } }
+/* the picker's current choice: a trailing check (the shared action menu draws none for checkbox items) */
+.vh-project-picker-menu .vh-menu-item[data-state="checked"] { font-weight: 600; }
+.vh-project-picker-menu .vh-menu-item[data-state="checked"]::after { content: '✓'; margin-left: auto; padding-left: 12px; color: var(--text-dim); }

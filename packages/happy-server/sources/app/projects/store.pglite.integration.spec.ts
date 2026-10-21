@@ -332,6 +332,10 @@ describe('projects store (pglite)', () => {
             expect(await store.bindTeamProject(accountId, team.id, { projectId: null })).toEqual({ teamId: team.id, projectId: null, project: null });
             expect(await store.sessionMembership(accountId, member)).toEqual({ projectId: null, via: null });
             await expect(store.bindTeamProject(otherAccountId, team.id, { projectId: null })).rejects.toMatchObject({ code: 'team_not_found', status: 404 });
+            // A team that never started (no directory anywhere) still gets its one-click same-name project.
+            const bare = await teams.createTeam(accountId, { name: 'Never started', machineId, requestId: 'tp-9' });
+            const linked = await store.bindTeamProject(accountId, bare.id, { create: true, requestId: 'bare' });
+            expect(linked.project).toMatchObject({ name: 'Never started', folders: [], teamIds: [bare.id] });
         });
     });
 

@@ -345,7 +345,7 @@ async function loadTeamRow(tx: Tx, accountId: string, teamId: string): Promise<T
  * machines. B-726: when it is not, the team's own directory (launch directory,
  * else the lead's) is added as a folder — the team brings its workplace with
  * it — and only a team with no known directory (or a full folder list) is
- * refused. Project defaults are snapshotted only into team default fields the
+ * refused. A project without folders accepts any team. Project defaults are snapshotted only into team default fields the
  * team has not set itself; the team keeps its own afterwards.
  */
 export async function attachTeam(accountId: string, projectId: string, teamId: string): Promise<{ teamId: string; projectId: string }> {
@@ -359,7 +359,8 @@ async function attachTeamTx(tx: Tx, accountId: string, projectId: string, teamId
     const project = await loadProject(tx, accountId, projectId);
     const team = await loadTeamRow(tx, accountId, teamId);
     const folders = readFolders(project.folders);
-    if (!teamMachineAllowed(folders, team.machineId)) {
+    // A project with no folders yet has no workplace to check against (e.g. a same-name project for a team that never started).
+    if (folders.length > 0 && !teamMachineAllowed(folders, team.machineId)) {
         const folder = teamFolder(team);
         requireProject(folder && folders.length < PROJECT_LIMITS.folders, 'team_machine_not_in_project', 400, { machineId: team.machineId });
         await tx.project.update({ where: { id: projectId }, data: { folders: normalizeFolders([...folders, { ...folder, primary: folders.length === 0 }]), updatedAt: new Date() } });

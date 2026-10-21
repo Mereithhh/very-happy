@@ -330,6 +330,7 @@
 .team-project-nudge-actions .teams-primary { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .team-project-nudge-pick { min-width: 180px; }
 .team-project-settings { display: flex; flex-direction: column; gap: var(--sp-2); }
+.team-project-settings > h2, .team-project-settings > p { margin: 0; }
 .team-project-confirm { display: flex; justify-content: flex-end; gap: var(--sp-2); }
 .teams-screen .teams-danger { color: var(--danger); }
 @media (max-width: 640px) {
