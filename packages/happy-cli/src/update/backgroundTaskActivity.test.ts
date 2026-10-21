@@ -80,8 +80,9 @@ describe('daemon / wrapper wiring (B-507)', () => {
     const runner = readFileSync(join(__dirname, '..', 'daemon', 'automations', 'runner.ts'), 'utf8');
 
     it('install AND handover also wait for "no background task in flight"', () => {
-        expect(run).toContain('idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny(),');
-        expect(run).toContain('if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {');
+        // B-719: …and while an owner-requested harness install writes the same npm tree.
+        expect(run).toContain('idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny() && !harnessInstaller?.isRunning(),');
+        expect(run).toContain('if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {');
         expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;');
         // an exited wrapper releases its set; the control server feeds the tracker and /list reads it
         expect(run).toContain('if (session?.happySessionId) backgroundTasks.forget(session.happySessionId);');
