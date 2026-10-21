@@ -29,7 +29,9 @@ import { recordBackgroundTasks, recordHeartbeat } from '@/sync/heartbeatLease';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { CommandPalette } from '@/screens/command/CommandPalette';
+import { setTeamNavigationDevOverride } from '@/screens/sessions/useTeamNavigation';
 import type { Session, Machine } from '@/sync/storageTypes';
+import type { TeamOperation, TeamState } from '@slopus/happy-wire';
 
 // console access for the driving harness (same names the old spine used)
 if (typeof window !== 'undefined') {
@@ -86,6 +88,20 @@ function fakeSession(id: string, title: string, i: number, opts: FakeOpts = {}):
   };
 }
 
+const RETIRED_MEMBERS = ['Dev-A1', 'Dev-A2', 'Dev-B1', 'Dev-B2', 'Dev-C1', 'Dev-C2'];
+
+/** B-674: a team with two live members (s3 lead, s4) and six retired ones. */
+function harnessTeam(now: number): TeamState {
+  const bot = (id: string, name: string, sessionId: string | null, root = false) => ({ id, name, sessionId, root, generation: 1, managed: true, assistant: 'claude', directory: null }) as TeamState['bots'][number];
+  const spawn = (botId: string, sessionId: string, k: number): TeamOperation => ({ id: `op-${botId}`, teamId: 'team1', machineId: 'm1', taskId: `task-${botId}`, botId, attemptId: `att-${botId}`, generation: 1, type: 'spawn', status: 'completed', claimId: 'c', claimedAt: now, error: null, sessionId, directory: '/home/dev/project', assistant: 'claude', prompt: 'goal', createdAt: now - k * 60_000 }) as TeamOperation;
+  return {
+    id: 'team1', name: 'VeryHappy 研发', machineId: 'm1', version: 1, createdAt: now - 3600_000,
+    bots: [bot('lead', 'Lead', 's3', true), bot('e1', 'Dev-E1', 's4'), ...RETIRED_MEMBERS.map((name, k) => bot(`r${k}`, name, null))],
+    operations: RETIRED_MEMBERS.map((_, k) => spawn(`r${k}`, `s${30 + k}`, k)),
+    tasks: [], messages: [],
+  };
+}
+
 function seed() {
   const now = Date.now();
   storage.getState().applyLocalSettings({
@@ -126,7 +142,10 @@ function seed() {
     // and "rows visible on the first screen" is measurable.
     ...['Juliet', 'Kilo', 'Lima', 'Mike', 'November', 'Oscar', 'Papa', 'Quebec', 'Romeo', 'Sierra', 'Tango', 'Uniform']
       .map((name, k) => fakeSession(`s${10 + k}`, `${name} idle chat`, 10 + k)),
+    // B-674: retired team members — their sessions are archived.
+    ...RETIRED_MEMBERS.map((name, k) => fakeSession(`s${30 + k}`, `${name} worker`, 30 + k, { archived: true })),
   ]);
+  setTeamNavigationDevOverride([harnessTeam(now)]);
   storage.getState().applyReady();
   // B-312 红色未读点：s5 跑完一轮而用户当时在看别处（真实产生路径在
   // applySessions 的 running→idle 检测里，harness 直接调同一个 action）

@@ -654,6 +654,11 @@
 .sb-nav-btn[aria-busy="true"] { cursor: progress; }
 
 .sb-team-member-status { color: var(--text-dim); font-weight: 400; }
+/* B-674: one quiet disclosure row stands in for a team's archived members. */
+.sb-team-archived { display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: 32px; padding: 4px var(--sp-2); border-radius: var(--r-sm); color: var(--text-dim); font-size: var(--fs-12); text-align: left; }
+.sb-team-archived:hover, .sb-team-archived:focus-visible { outline: none; background: var(--fill-hover); color: var(--text); }
+.sb-team-archived > svg { flex-shrink: 0; }
+@media (pointer: coarse) { .sb-team-archived { min-height: 44px; } }
 
 .sb-workspace-new { margin: 0; }
 
