@@ -13,15 +13,20 @@ import { teamSessionMembership } from './teamNavigation';
  * ordered list decides group order and row order; projects with no visible
  * row follow, oldest first, so a freshly created project is still reachable.
  * A team stays in one group: an unattached team's rows all follow its first
- * row's folder (team worktrees are separate directories).
+ * located row's folder (team worktrees are separate directories). B-708: a
+ * team with no located row (every member archived → only history links,
+ * which carry no machine/folder) has no folder to follow; it and its rows go
+ * to the single trailing 团队 group (`teamsGroup`) instead of one invented
+ * 「无工作目录」 group per row, each repeating the team header.
  */
 
 export interface ProjectGroup<T> { project: ProjectView; rows: T[]; teams: TeamState[] }
 export interface ProjectGrouping<T extends WorkspaceRowLike> {
   projects: ProjectGroup<T>[];
   unassigned: Array<SidebarWorkspaceGroup<T> & { teams: TeamState[] }>;
-  /** Unattached teams with no visible row anywhere (shown under 未归属). */
-  orphanTeams: TeamState[];
+  /** Unattached teams with no located row (shown once, in a trailing group
+   *  under 未归属), with their unlocated rows (history links). */
+  teamsGroup: { rows: T[]; teams: TeamState[] } | null;
 }
 
 export function projectOfSession(
@@ -71,16 +76,19 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
     return { project, rows: groupRows, teams: teamsOf(project.id, groupRows) };
   });
 
-  // 未归属: anchor every unattached team's rows to its first row's folder.
+  // 未归属: anchor every unattached team's rows to its first located row's
+  // folder. A team with no located row has no folder to follow (B-708).
   const anchor = new Map<string, T>();
   for (const row of loose) {
     const team = row.sessionId ? teamOfSession.get(row.sessionId)?.team : undefined;
-    if (team && !anchor.has(team.id)) anchor.set(team.id, row);
+    if (team && !anchor.has(team.id) && row.machineId) anchor.set(team.id, row);
   }
-  const proxies = loose.map(row => {
+  const unanchored: T[] = [];
+  const proxies = loose.flatMap(row => {
     const team = row.sessionId ? teamOfSession.get(row.sessionId)?.team : undefined;
+    if (team && !anchor.has(team.id)) { unanchored.push(row); return []; }
     const a = team ? anchor.get(team.id)! : row;
-    return { key: row.key, sessionId: row.sessionId, machineId: a.machineId, workspacePath: a.workspacePath, machineName: a.machineName ?? row.machineName, row };
+    return [{ key: a.key, sessionId: row.sessionId, machineId: a.machineId, workspacePath: a.workspacePath, machineName: a.machineName ?? row.machineName, row }];
   });
   const unassigned = groupRowsByWorkspace(proxies).map(g => {
     const groupRows = g.rows.map(p => p.row);
@@ -90,7 +98,8 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
   });
   const placed = new Set<string>([...projectGroups.flatMap(g => g.teams.map(t => t.id)), ...unassigned.flatMap(g => g.teams.map(t => t.id))]);
   const orphanTeams = teams.filter(t => !t.archivedAt && !placed.has(t.id) && !teamProject.has(t.id));
-  return { projects: projectGroups, unassigned, orphanTeams };
+  const teamsGroup = orphanTeams.length > 0 || unanchored.length > 0 ? { rows: unanchored, teams: orphanTeams } : null;
+  return { projects: projectGroups, unassigned, teamsGroup };
 }
 
 /** Folders a converted group brings along (one per machine + path, ≤20). */

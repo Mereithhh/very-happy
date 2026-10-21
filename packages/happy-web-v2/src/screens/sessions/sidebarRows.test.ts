@@ -7,7 +7,7 @@
  * isAssistantSession predicate, archived view included.
  */
 import { describe, it, expect } from 'vitest';
-import { visibleSidebarSessions } from './sidebarRows';
+import { sidebarListEmpty, visibleSidebarSessions } from './sidebarRows';
 import { isAssistantSession, isHiddenSession, isMirrorSession } from '@/assistant/assistantSession';
 import type { Session } from '@/sync/storageTypes';
 
@@ -106,5 +106,16 @@ describe('B-587 hibernated sessions stay in the working list', () => {
     const off = { id: 'o', active: false, archivedAt: null, activeAt: 1, metadata: { path: '/', host: 'h' } } as never;
     expect(visibleSidebarSessions([hib, off], 'list').map((s) => s.id)).toEqual(['h']);
     expect(visibleSidebarSessions([hib, off], 'archived').map((s) => s.id)).toEqual(['o']);
+  });
+});
+
+describe('sidebarListEmpty (B-708)', () => {
+  it('a team whose members are all archived (count 0, header row present) is not an empty list', () => {
+    expect(sidebarListEmpty([{ count: 0, allRows: [] }, { count: 0, allRows: [{ key: 'team:t' }] }], 0)).toBe(false);
+  });
+  it('no rows anywhere and nothing closed → empty; a project group or closed rows keep it non-empty', () => {
+    expect(sidebarListEmpty([{ count: 0, allRows: [] }], 0)).toBe(true);
+    expect(sidebarListEmpty([{ count: 0, allRows: [], project: {} }], 0)).toBe(false);
+    expect(sidebarListEmpty([{ count: 0, allRows: [] }], 2)).toBe(false);
   });
 });

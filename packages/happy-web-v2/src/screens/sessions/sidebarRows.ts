@@ -28,3 +28,13 @@ export function visibleSidebarSessions(
       return view === 'archived' ? !live : live;
     });
 }
+
+/**
+ * B-708: the 「暂无会话」 empty state. A section's `count` excludes team
+ * history links (archived members) by design, so a team whose members are all
+ * archived counts 0 — but its header row is still there and must stay
+ * reachable; only a list with no row at all is empty.
+ */
+export function sidebarListEmpty(sections: ReadonlyArray<{ count: number; allRows: readonly unknown[]; project?: unknown }>, closedRows: number): boolean {
+  return closedRows === 0 && sections.every((sec) => sec.count === 0 && sec.allRows.length === 0 && !sec.project);
+}
