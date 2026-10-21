@@ -150,9 +150,10 @@
     background-color var(--motion-fast),
     box-shadow var(--motion-fast);
 }
+/* B-699: a text field shows focus with a quieter border, never the keyboard ring. */
 .vh-input-wrap:focus-within {
-  border-color: transparent;
-  box-shadow: var(--focus-ring);
+  border-color: var(--line-heavy);
+  box-shadow: none;
 }
 .vh-input-wrap.is-error {
   border-color: var(--danger);

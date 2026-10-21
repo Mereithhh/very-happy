@@ -91,6 +91,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 **控件**：
 - 按钮：XS 24/6/12，SM 28/8/12，MD 32/8/13.5，LG 40/12/15。变体有 primary（ink/canvas）、secondary（soft fill，无环；我们统一不画环，因为次级按钮几乎都在闭合物里）、ghost、danger（只有填充）。
 - 键盘焦点（仅 focus-visible）用 `--focus-ring`：1px 画布间隔 + 1.5px accent。**不加 CDS 的 glow**，零偏移彩色光晕仍在禁用之列。对话里的 disclosure 仍用安静的底边焦点轨（B-209）。
+- **文本输入框不画焦点环（B-699）**：浏览器把鼠标点击、触屏点按的输入框也算作 `:focus-visible`，所以 `input`（文本类）、`textarea`、`contenteditable` 一律不显示 outline / `--focus-ring` / 外发光，聚焦只靠光标加一处安静的 token 变化（边框 `--line-heavy`/`--text-faint`，或背景 `--fill-hover`/`--bg-3`）。按钮、链接、summary、select 这类控件仍只在键盘 `:focus-visible` 时显示 `--focus-ring`，鼠标点击不显示。全局规则在 `styles/base.css`，组件不要再给输入框加环。
 - 分段控件统一用 `.vh-segmented`：999 圆角轨道、2px 内边距、轨道是 alpha 填充、thumb 是表面色加微投影、120ms snap；宽度 ≤254px 时，带图标的非激活项隐藏文字。用于侧栏「列表 / 状态 / 归档」和 Codex 线程切换。
 - live 指示：呼吸 2.4s、脉冲 1.2s、流式光标 2px × 1.15em。三点波浪和 shimmer 暂不采用，因为现有 Spinner 和 18px 轨迹已经承担这个角色。
 
@@ -181,6 +182,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 1. 裸色值：`#hex`、`rgb()`/`hsl()` 字面量。参数里带 `var()` 的写法放行，比如 `color-mix(… var(--x) …)`；阴影和遮罩用 `--shadow-*` / `--scrim`。豁免 `tokens.css`、测试文件，以及只能写字面量的 xterm 主题（`WebTerminalScreen.tsx`）。
 2. 对话区 css（脚本里的 `CONVERSATION_CSS`：对话流、工具和子代理行、实时状态、输入框、侧问、提问步进、阅读辅助）的 `font-size` 与 `font` 简写只能用对话档位 `var(--chat-fs-*)` / `var(--conversation-size)`；写死 px、`var(--fs-*)`、未乘 `--chat-scale` 的 `--workspace-primary-size` 都报。触屏输入的 `max(16px, var(--chat-fs-body))` 和 em 放行。
 3. `outline: none|0`：同一文件里没有对应的 `:focus-visible` / `:focus-within` 替代样式就报。`X:focus { outline: none }` 这种程序化聚焦容器的写法放行。
+4. 文本输入框焦点环（`field-focus-ring`，B-699）：选择器在 `:focus*` 状态下指向 `input` / `textarea` 或以 `input`、`textarea` 结尾的类名，且声明了 `var(--focus-ring)`、`var(--accent-glow)` 阴影或非 none 的 outline 就报。`:not(...)` 里的排除、checkbox/radio 等非文本 input 放行。
 
 确实要保留时，在同一行或上一行写 `design-lint-allow: <理由>`，理由必填。规则本身宁可漏报、不要误报，误报应该修脚本，不要靠堆豁免。
 

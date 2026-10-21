@@ -330,7 +330,7 @@
   line-height: 1.5;
 }
 .tv-ask-other textarea:focus {
-  outline: none; box-shadow: var(--focus-ring);
+  outline: none; background: var(--fill-hover); /* B-699: no ring on text fields */
 }
 .tv-attachment {
   display: flex;

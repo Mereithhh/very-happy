@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findRawColors, lintFile, parseAddedLines } from './check-design-lint.mjs';
+import { findRawColors, isFieldFocusSelector, lintFile, parseAddedLines } from './check-design-lint.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'check-design-lint.mjs');
 
@@ -112,6 +112,18 @@ test('outline:none needs a focus replacement in the same file', () => {
     assert.deepEqual(lintAll('ui/a.css', '@media (pointer: coarse) {\n  .x {\n    outline: none;\n  }\n}'), [['outline-none', 3]]);
     // outline-offset 等不是 outline:none
     assert.deepEqual(lintAll('ui/a.css', '.x { outline-offset: 0; }'), []);
+});
+
+test('text fields never get a focus ring or glow (B-699); buttons still may', () => {
+    assert.deepEqual(lintAll('ui/a.css', '.x-input:focus { box-shadow: var(--focus-ring); }'), [['field-focus-ring', 1]]);
+    assert.deepEqual(lintAll('ui/a.css', '.m textarea:focus-visible {\n  box-shadow: 0 0 0 3px var(--accent-glow);\n}'), [['field-focus-ring', 2]]);
+    assert.deepEqual(lintAll('ui/a.css', 'input:focus { outline: 2px solid var(--accent); }'), [['field-focus-ring', 1]]);
+    assert.deepEqual(lintAll('ui/a.css', '.x-input:focus { outline: none; border-color: var(--line-heavy); }'), []);
+    assert.deepEqual(lintAll('ui/a.css', '.btn:focus-visible { box-shadow: var(--focus-ring); }'), []);
+    assert.deepEqual(lintAll('ui/a.css', '.s :focus-visible:not(textarea, input) { box-shadow: var(--focus-ring); }'), []);
+    assert.deepEqual(lintAll('ui/a.css', 'input[type="checkbox"]:focus-visible { box-shadow: var(--focus-ring); }'), []);
+    assert.equal(isFieldFocusSelector('.a-input-wrap:focus-within'), false);
+    assert.equal(isFieldFocusSelector('.pp-search input:focus'), true);
 });
 
 test('design-lint-allow with a reason suppresses; without a reason it still reports', () => {
