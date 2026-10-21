@@ -1,9 +1,9 @@
 /** Files panel tabs, the `/btw` side-question panel (B-283), the sub-agent
  *  drawer (B-317) and the preview / clipboard history (B-602). One aside,
  *  several tenants — the tab lives in `?panel=`. */
-export type SessionPanelTab = 'changed' | 'all' | 'browse' | 'btw' | 'subagent' | 'notes' | 'web' | 'previews' | 'clipboard';
+export type SessionPanelTab = 'changed' | 'all' | 'browse' | 'btw' | 'subagent' | 'notes' | 'web' | 'machine-panel' | 'previews' | 'clipboard';
 export type SessionHistoryTab = 'previews' | 'clipboard';
-export type SessionFilesTab = Exclude<SessionPanelTab, 'btw' | 'subagent' | 'notes' | 'web' | SessionHistoryTab>;
+export type SessionFilesTab = Exclude<SessionPanelTab, 'btw' | 'subagent' | 'notes' | 'web' | 'machine-panel' | SessionHistoryTab>;
 
 /** B-602: the preview / clipboard records the composer dock used to expand inline. */
 export function isHistoryPanel(tab: string | null): tab is SessionHistoryTab {
@@ -23,6 +23,7 @@ const QUERY_TO_TAB: Record<string, SessionPanelTab> = {
   agent: 'subagent',
   notes: 'notes',
   web: 'web',
+  machine: 'machine-panel',
   previews: 'previews',
   clipboard: 'clipboard',
 };
@@ -35,12 +36,15 @@ const TAB_TO_QUERY: Record<SessionPanelTab, string> = {
   subagent: 'agent',
   notes: 'notes',
   web: 'web',
+  'machine-panel': 'machine',
   previews: 'previews',
   clipboard: 'clipboard',
 };
 
 /** Which tool-call message the sub-agent drawer is pointed at. */
 const TARGET_PARAM = 'sub';
+/** B-510: which machine web panel the `machine` panel shows. */
+const MACHINE_PANEL_PARAM = 'wp';
 
 export function readSessionPanel(value: string | null): SessionPanelTab | null {
   return value ? QUERY_TO_TAB[value] ?? null : null;
@@ -57,7 +61,19 @@ export function withSessionPanel(params: URLSearchParams, tab: SessionPanelTab |
   // The target is meaningless outside the sub-agent drawer, and leaving it in
   // the URL would resurrect a stale card the next time the drawer opens.
   if (tab !== 'subagent') next.delete(TARGET_PARAM);
+  if (tab !== 'machine-panel') next.delete(MACHINE_PANEL_PARAM);
   return next;
+}
+
+/** B-510: open one of the session machine's web panels in the workspace. */
+export function withMachinePanel(params: URLSearchParams, panelId: string): URLSearchParams {
+  const next = withSessionPanel(params, 'machine-panel');
+  next.set(MACHINE_PANEL_PARAM, panelId);
+  return next;
+}
+
+export function readMachinePanelTarget(params: URLSearchParams): string | null {
+  return params.get(MACHINE_PANEL_PARAM);
 }
 
 /** Open the sub-agent drawer on one specific Agent/Task card. */

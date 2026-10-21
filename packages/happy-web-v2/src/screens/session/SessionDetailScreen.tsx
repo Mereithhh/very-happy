@@ -22,6 +22,7 @@ import { clearPendingSessionKeys, pendingDraft, pendingSessions, usePendingRecor
 import { notesPanelTransition, type NotesPanelSnapshot } from './notesPanelTransition';
 import { setNotesPanelOpen } from '../notes/notesPanelState';
 import { SessionWorkspacePanel } from './SessionWorkspacePanel';
+import { HumanAttentionBanner } from './HumanAttentionBanner';
 import { QuickOpen } from '../quickopen/QuickOpen';
 import { useRetainedWorkspace } from '../workspace/useRetainedWorkspace';
 import { onBtwOpen } from './btwPanelState';
@@ -299,6 +300,8 @@ export function SessionDetailScreen() {
                 {session && !mirror && !sharedWithMe && <AutomationAttentionBanner key={`automation-attention:${id}`} sessionId={id} />}
                 {/* B-649: folder belongs to a project this session is not in → suggest (never auto-join). */}
                 {session && !mirror && !sharedWithMe && <ProjectSuggestionBanner key={`project-suggestion:${id}`} sessionId={id} />}
+                {/* B-510: an agent asked for a person (request_human). */}
+                {session && !mirror && <HumanAttentionBanner key={`human-attention:${id}`} sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}
                 {session && !mirror && !sharedWithMe && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
                 {/* B-462: live session still on an older wrapper than the machine runs → offer a restart */}

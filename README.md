@@ -380,6 +380,10 @@ structured parity with Claude.
   auto-execution.
 - Task board, todo-provider commands, notes, notifications, Web Push, and HTTPS
   webhooks.
+- Machine web panels: declare noVNC, a browser dashboard or any local page in the
+  machine's own settings.json and open it from the session workspace or machine
+  page; agents call `request_human` to get a person, and the push opens the panel
+  ([setup](docs/configuration.md#machine-web-panels-and-needs-you-b-510)).
 - A Claude-powered coordinator with text entry, session awareness, and dispatch
   on its selected machine; voice entry is available when a compatible voice
   service is configured.
@@ -409,7 +413,7 @@ progress. The exact tools deliberately follow the runner:
 
 | Runtime path | MCP tools shipped today |
 |---|---|
-| Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
+| Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress`, `request_human` |
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
 | Assistant/meta-agent variant additions | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | User-scoped plain `claude`, after opt-in | `copy_to_clipboard` only |

@@ -265,3 +265,37 @@ describe("B-026 — GET /v1/webhook reports this account's delivery counters", (
         expect(res.json().delivery).toMatchObject({ delivered: 0, failed: 0 });
     });
 });
+
+describe("B-510 — POST /v1/sessions/:id/push-event kind 'attention'", () => {
+    let app: Fastify;
+    beforeEach(async () => { resetState(); app = await createApp(); });
+    afterEach(async () => { if (app) await app.close(); });
+
+    it("accepts attention, forwards only an in-app url to web clients, and dispatches the push", async () => {
+        const { buildSessionEventEphemeral } = await import("@/app/events/eventRouter");
+        const { dispatchSessionEventPush } = await import("@/app/push/pushDispatch");
+        dbMock.session.findFirst.mockResolvedValueOnce({ id: "s1" } as never);
+        const res = await app.inject({
+            method: "POST", url: "/v1/sessions/s1/push-event", headers: { "x-user-id": nextUser() },
+            payload: { kind: "attention", title: "Needs you", body: "scan the QR code", data: { url: "/machine/m1/panel/desktop" } },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(vi.mocked(buildSessionEventEphemeral).mock.calls.at(-1)).toEqual(["s1", "attention", "Needs you", "scan the QR code", "/machine/m1/panel/desktop"]);
+        expect(vi.mocked(dispatchSessionEventPush).mock.calls.at(-1)?.[0]).toMatchObject({ sessionId: "s1", data: { kind: "attention" } });
+
+        dbMock.session.findFirst.mockResolvedValueOnce({ id: "s1" } as never);
+        await app.inject({
+            method: "POST", url: "/v1/sessions/s1/push-event", headers: { "x-user-id": nextUser() },
+            payload: { kind: "attention", title: "Needs you", body: "x", data: { url: "//evil.example.com/" } },
+        });
+        expect(vi.mocked(buildSessionEventEphemeral).mock.calls.at(-1)?.[4]).toBeUndefined();
+    });
+
+    it("still rejects an unknown kind (old clients' contract unchanged)", async () => {
+        const res = await app.inject({
+            method: "POST", url: "/v1/sessions/s1/push-event", headers: { "x-user-id": nextUser() },
+            payload: { kind: "bogus", title: "t", body: "b" },
+        });
+        expect(res.statusCode).toBe(400);
+    });
+});

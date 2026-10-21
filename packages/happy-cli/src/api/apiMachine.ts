@@ -4,6 +4,7 @@
  */
 
 import { io, Socket } from 'socket.io-client';
+import { type WebPanel, webPanelsSignature } from '@/webPanels/webPanels';
 import { logger } from '@/ui/logger'
 import { connectGuarded, socketConnectGuard } from './socketConnectGuard';
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
@@ -210,6 +211,9 @@ export class ApiMachineClient {
     private claudeAuthState: ClaudeAuthState | null = null;
     /** B-587: the machine's hibernation threshold, published as a capability. */
     private agentHibernationIdleMs: number | null = null;
+    /** B-510: last normalized `webPanels` (null = never set → field not written). */
+    private webPanels: WebPanel[] | null = null;
+    private webPanelsSignatureSent: string | null = null;
     private rateLimitPushChain: Promise<void> = Promise.resolve();
     private readonly rateLimitPublisher = new RateLimitPublisher({
         getCurrent: () => this.machine.daemonState?.rateLimits,
@@ -453,6 +457,27 @@ export class ApiMachineClient {
             await this.publishAgentHibernation();
             return { agentHibernation: { idleMs } };
         });
+    }
+
+    /**
+     * B-510: mirror the local `webPanels` declaration into daemonState. Every
+     * daemonState write is a CAS + DB write + broadcast, so an unchanged list
+     * (same signature as the last one sent) writes nothing.
+     */
+    setWebPanels(panels: WebPanel[]): Promise<void> {
+        this.webPanels = panels;
+        const signature = webPanelsSignature(panels);
+        if (signature === this.webPanelsSignatureSent || !this.socket?.connected) return Promise.resolve();
+        const attempt = this.cliUpdatePushChain
+            .then(() => this.updateDaemonState((current) => ({
+                ...(current ?? {}),
+                status: current?.status ?? 'running',
+                webPanels: { panels, updatedAt: Date.now() },
+            })))
+            .then(() => { this.webPanelsSignatureSent = signature; })
+            .catch((error) => { logger.debug('[API MACHINE] Failed to publish web panels:', error); });
+        this.cliUpdatePushChain = attempt.then(() => undefined);
+        return attempt;
     }
 
     private publishAgentHibernation(): Promise<void> {
@@ -1415,8 +1440,11 @@ export class ApiMachineClient {
                     ...(this.claudeAuthState ? { claudeAuth: this.claudeAuthState } : {}),
                     // B-587 capability + setting (same restamp discipline).
                     ...(this.agentHibernationIdleMs !== null ? { agentHibernation: { idleMs: this.agentHibernationIdleMs, rpcAvailable: true, detectedAt: now } } : {}),
+                    // B-510: re-ship the declared panels (also clears a stale list).
+                    ...(Array.isArray(this.webPanels) ? { webPanels: { panels: this.webPanels, updatedAt: now } } : {}),
                 };
             });
+            if (Array.isArray(this.webPanels)) this.webPanelsSignatureSent = webPanelsSignature(this.webPanels);
             // From here on, only CHANGES push (signature diff inside the manager).
             this.webTerminal.startListTracking((terminals) => this.pushTerminalList(terminals));
 

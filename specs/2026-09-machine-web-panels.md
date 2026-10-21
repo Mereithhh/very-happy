@@ -1,6 +1,6 @@
 # 机器网页面板 + 请人介入（machine web panels）
 
-> 状态：Draft
+> 状态：Final（2026-10-21 按 v1 实现，合并后回标 Shipped；下方「实现记录」列出与设计的差异和待办）
 > 日期：2026-09-28 ｜ 关联 backlog：B-510 ｜ 出处：Owner 2026-09-27/28 dev-sg agent 浏览器实践（「能看到浏览器被操作、也可以干预」「不是通用方案……是不是可以 veryhappy 支持一个通用的插件能力」）
 
 ## 背景
@@ -117,10 +117,12 @@ Owner 的主力机 dev-sg 上，agent 通过 `agent-browser connect 9222` 驱动
 | 组合 | 行为 |
 |---|---|
 | 新 CLI + 旧 server：push-event `kind:'attention'` | 旧 server zod 拒（400）→ CLI 退回 `kind:'question'`（同 title/body/data），功能降级为普通提问推送 |
-| 新 CLI + 旧 server：webhook `event:'attention'` | 旧 server 400 → CLI 去掉 `event` 重发（仅 webhook、无设备推送），并在输出提示 |
+| 新 CLI + 旧 server：`very-happy attention`（无 `--session`） | v1 不用新 event，走现有 `event:'permission'`，旧 server 原样接受 |
 | 新 CLI + 旧 web：`DaemonState.webPanels` | 旧 web 忽略未知字段；深链 `/machine/.../panel/...` 旧 web 无路由 → 落到默认页（推送仍能把人带回应用） |
 | 旧 CLI + 新 web | 无 `webPanels` → 不显示面板标签；无 `attention` 事件 → 无横幅 |
-| 新 web + 旧 server | web 不依赖 server 新能力（面板直连、事件由 server 透传） |
+| 新 web + 旧 server | web 不依赖 server 新能力（面板直连）；旧 server 不发 `attention` 事件 → 无横幅 |
+| 旧 web + 新 server：`session-event` kind `attention` / `url` | 旧 web 的 zod enum 不认 → 丢弃这条 ephemeral（只少一次标签页未读计数），无崩溃 |
+| 旧 CLI（daemon）回写 daemonState | 旧 `DaemonStateSchema` 非 passthrough，但旧 daemon 从不写 `webPanels`；新 daemon 的 connect 快照会重发 |
 
 发布顺序：**server（接受新 kind/event）→ web（面板标签、深链、横幅）→ CLI（声明、同步、工具、命令）**。回滚点：CLI 回退即停发新事件与字段；server/web 回退后新 CLI 走上表降级路径。
 
@@ -151,8 +153,19 @@ Owner 的主力机 dev-sg 上，agent 通过 `agent-browser connect 9222` 驱动
 - agent 在真实验证码页调用 `request_human` → 手机收到推送 → 点击直达面板 → 人处理后 agent 自行继续。
 - 手机（不在 tailnet）打开面板时的降级文案。
 
-## 待 Owner 拍板
+## 待 Owner 拍板（v1 按以下默认实现，可改）
 
-1. 介入推送是否在「有活跃客户端」时也发设备推送（当前设计：不发，改 web 内横幅）。
-2. 面板标签放在会话/终端工作区（本设计）还是机器详情页，或两处都放。
-3. `request_human` 是否并入 `report_progress`（加 `notify: true` + `panel`）以减少工具数，而不是新工具。
+1. 介入推送是否在「有活跃客户端」时也发设备推送 → **v1：沿用现有抑制规则**（有活跃客户端不发设备推送，web 内横幅兜底；webhook 不抑制）。理由：不为一个新 kind 引入第二套抑制语义。
+2. 面板标签放在哪 → **v1：会话工作区（+ 菜单）+ 机器详情页列表 + 深链全屏页**；终端工作区暂不加（`WebTerminalScreen.tsx` 是冲突热区，单独做）。
+3. `request_human` 是否并入 `report_progress` → **v1：独立工具**。理由：「叫人」与「汇报进度」的触发时机与副作用（推送）不同，独立名字让 agent 更不容易误用。
+
+## 实现记录（v1，2026-10-21）
+
+与设计的差异：
+- **同步方式**：daemon 每 2 s 轮询 settings.json 的 mtime（`webPanels/webPanelsSync.ts`），不用 fs watch——settings.json 由 `updateSettings` 和多数编辑器以 rename 方式替换，fs.watch 会静默失联。列表签名不变不写 daemonState（`apiMachine.setWebPanels`），connect 快照会重发。
+- **无会话的 `very-happy attention`**：不新增 webhook event，走现有 `POST /v1/webhook/notify` + `event: 'permission'`（「需要你决策」类）+ `link` = 面板深链。这样已存的 webhook 配置（显式 events 列表）和旧 web 的设置开关都不受影响，也不需要旧 server 降级路径。
+- **push-event `attention`**：server 映射到 webhook 的 `permission` 类别；标题「🙋 需要你介入 · <会话>」，正文是原因，链接行指向面板深链。`session-event` ephemeral 新增可选 `url`（只转发站内路径），web 横幅据此提供「打开面板」。
+- **web URL**：会话工作区用 `?panel=machine&wp=<id>`（与 `sub` 同法），不改 `SessionDetailScreen`。
+- 覆盖的 runner：`request_human` 注册在每会话 HTTP MCP（Claude 走 allowedTools，pi 走 `HAPPY_MCP_URL`）；Codex/Gemini/ACP 的 stdio bridge 尚未转发这个工具名（待办）。
+
+待办（不在 v1）：终端工作区面板标签；stdio bridge 转发 `request_human`；push-sw 给 `/machine/.../panel/...` 打通知 tag（现在同面板多条会叠放）；真机验收项见上。

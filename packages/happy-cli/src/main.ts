@@ -643,6 +643,17 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'panels' || subcommand === 'attention') {
+    // B-510: machine web panels + ask a person to step in.
+    try {
+      const { handlePanelsCommand, handleAttentionCommand } = await import('./commands/panels');
+      if (subcommand === 'panels') await handlePanelsCommand(args.slice(1));
+      else await handleAttentionCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    return;
   } else if (subcommand === 'notify') {
     // Handle notification command
     try {
@@ -932,6 +943,8 @@ ${chalk.bold('Usage:')}
                             sessions or scripts with tracked runs (auto --help)
   very-happy sandbox           Configure and manage OS-level sandboxing
   very-happy notify            Send push notification
+  very-happy panels            Web panels declared in settings.json (panels list|check)
+  very-happy attention         Ask a person to step in (attention "<reason>" [--panel id])
   very-happy mcp               Stdio MCP server exposing copy_to_clipboard for a
                             plain claude CLI (register once with:
                             claude mcp add --scope user very-happy-clipboard -- very-happy mcp)

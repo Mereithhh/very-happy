@@ -2,7 +2,8 @@ import { AgentVersionsGroup } from './AgentVersionsGroup';
 import { useEffect, useMemo, useState } from 'react';
 import { readUpdateRecovery, retryMachineUpdate } from '@/app/cliUpdateRecovery';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Pencil, Play, Terminal, ChevronRight, History } from 'lucide-react';
+import { Pencil, Play, Terminal, ChevronRight, History, MonitorPlay } from 'lucide-react';
+import { machinePanelPath, parseWebPanels } from '@/sync/webPanels';
 import { SettingsPage, SettingsHeader } from '@/screens/settings/SettingsLayout';
 import {
   EmptyState,
@@ -52,6 +53,7 @@ export function MachineScreen() {
     return () => clearInterval(timer);
   }, []);
   const machine = useMachine(id ?? '');
+  const webPanels = parseWebPanels(machine?.daemonState); // B-510
   const allSessions = useAllSessions();
   const defaultAgent = normalizeAgentKey(useSetting('newSessionAgent'));
   const agentDefaultOverrides = useSetting('agentDefaultOverrides');
@@ -339,6 +341,15 @@ export function MachineScreen() {
               <div className="set-note" style={{ padding: '0 var(--sp-3) var(--sp-3)', whiteSpace: 'pre-line' }}>
                 {t('cliUpdate.offlineHelp')}
               </div>
+            </ItemGroup>
+          )}
+
+          {webPanels.length > 0 && (
+            <ItemGroup settingId="machine.webPanels" title={t('webPanels.machineSection')} footer={t('webPanels.machineFooter')}>
+              {webPanels.map((p) => (
+                <Item key={p.id} title={p.title} subtitle={new URL(p.url).origin} left={<MonitorPlay size={16} />} right={<ChevronRight size={16} />}
+                  onClick={() => navigate(machinePanelPath(machine.id, p.id))} />
+              ))}
             </ItemGroup>
           )}
 

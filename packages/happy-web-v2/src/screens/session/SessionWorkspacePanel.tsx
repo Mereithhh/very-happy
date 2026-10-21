@@ -1,8 +1,11 @@
-import { Copy, FileSearch, Globe, Plus, FolderOpen, Files, GitCompareArrows, MessageCircleQuestion, StickyNote } from 'lucide-react';
+import { Copy, FileSearch, Globe, Plus, FolderOpen, Files, GitCompareArrows, MessageCircleQuestion, MonitorPlay, StickyNote } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { MachinePanelFrame } from '../workspace/MachinePanelFrame';
+import { parseWebPanels } from '@/sync/webPanels';
 import { ActionDropdownMenu } from '@/ui/Menu';
 import { BrowserPreview } from '../workspace/BrowserPreview';
 import { useEffect, useRef } from 'react';
-import { useMessage, useSession } from '@/sync/storage';
+import { useMachine, useMessage, useSession } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { FilesPanel } from './FilesPanel';
 import { BtwPanel } from './BtwPanel';
@@ -16,7 +19,7 @@ import { WorkspacePane } from '../workspace/WorkspacePane';
 import { useWorkspaceView } from '../workspace/workspaceViewStore';
 import { closeWorkspaceTab, openWorkspaceTab, moveWorkspaceTab, type WorkspaceTab } from '../workspace/workspaceTabModel';
 import './session.css';
-import { isHistoryPanel, type SessionFilesTab, type SessionPanelTab } from './sessionPanelState';
+import { isHistoryPanel, readMachinePanelTarget, withMachinePanel, type SessionFilesTab, type SessionPanelTab } from './sessionPanelState';
 
 /** One tab strip, preserving existing URL deep links and each content owner. */
 export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAllowed, visible = true, refreshOnMount = true, onPanel, onSubagent, onClose }: {
@@ -32,16 +35,22 @@ export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAll
   const [tools, updateTools] = useWorkspaceView(identity);
   const filesTab = useRef<SessionFilesTab>('browse');
   const notes = useNotesWorkspace(visible && panel === 'notes');
-  const filesActive = visible && panel !== 'btw' && panel !== 'subagent' && panel !== 'notes' && panel !== 'web' && !isHistoryPanel(panel);
+  // B-510: the session machine's declared web panels (`?panel=machine&wp=<id>`).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const machine = useMachine(session?.metadata?.machineId ?? '');
+  const webPanels = parseWebPanels(machine?.daemonState);
+  const machinePanelId = panel === 'machine-panel' ? readMachinePanelTarget(searchParams) : null;
+  const openMachinePanel = (id: string) => setSearchParams(withMachinePanel(searchParams, id), { replace: true });
+  const filesActive = visible && panel !== 'btw' && panel !== 'subagent' && panel !== 'notes' && panel !== 'web' && panel !== 'machine-panel' && !isHistoryPanel(panel);
   if (filesActive) filesTab.current = panel;
-  const activeTool = isHistoryPanel(panel) ? panel : panel === 'web' ? 'web' : panel === 'notes' ? 'notes' : panel === 'btw' && btwAllowed ? 'btw' : panel === 'subagent' && subagentTarget ? `agent:${subagentTarget}` : null;
-  const current: WorkspaceTab | null = activeTool ? { id:activeTool, title: panel === 'previews' ? t('toolHistory.previewsTitle') : panel === 'clipboard' ? t('toolHistory.clipboardTitle') : panel === 'web' ? (lang.startsWith('zh')?'网页预览':'Web preview') : panel === 'notes' ? t('notes.title') : panel === 'btw' ? t('session.btw.title') : agentTitle || t('session.chat.subagentPanelTitle') } : null;
+  const activeTool = isHistoryPanel(panel) ? panel : panel === 'machine-panel' ? (machinePanelId ? `panel:${machinePanelId}` : null) : panel === 'web' ? 'web' : panel === 'notes' ? 'notes' : panel === 'btw' && btwAllowed ? 'btw' : panel === 'subagent' && subagentTarget ? `agent:${subagentTarget}` : null;
+  const current: WorkspaceTab | null = activeTool ? { id:activeTool, title: activeTool.startsWith('panel:') ? (webPanels.find(p => `panel:${p.id}` === activeTool)?.title ?? activeTool.slice(6)) : panel === 'previews' ? t('toolHistory.previewsTitle') : panel === 'clipboard' ? t('toolHistory.clipboardTitle') : panel === 'web' ? (lang.startsWith('zh')?'网页预览':'Web preview') : panel === 'notes' ? t('notes.title') : panel === 'btw' ? t('session.btw.title') : agentTitle || t('session.chat.subagentPanelTitle') } : null;
   // Include a just-opened URL target immediately; persist after render.
   const tabs = (current && !tools.tabs.some(tab => tab.id === current.id) ? [...tools.tabs,current] : tools.tabs).filter(tab => tab.id !== 'btw' || btwAllowed);
   useEffect(() => {
     if (current) updateTools(state => openWorkspaceTab(state,current));
   }, [identity, activeTool, current?.title]);
-  const selectTool = (id:string) => isHistoryPanel(id) ? onPanel(id) : id === 'web' ? onPanel('web') : id === 'notes' ? onPanel('notes') : id === 'btw' ? onPanel('btw') : onSubagent(id.slice(6));
+  const selectTool = (id:string) => id.startsWith('panel:') ? openMachinePanel(id.slice(6)) : isHistoryPanel(id) ? onPanel(id) : id === 'web' ? onPanel('web') : id === 'notes' ? onPanel('notes') : id === 'btw' ? onPanel('btw') : onSubagent(id.slice(6));
   const closeTool = (id:string) => {
     if(id==='notes') setNotesPanelOpen(false);
     updateTools(state => closeWorkspaceTab(state,id));
@@ -59,6 +68,7 @@ export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAll
       actions={<><ActionDropdownMenu items={[
         ...fileProps.tabs.filter(tab=>tab.id.startsWith('tool:')).map(tab=>({key:tab.id,label:tab.title,icon:tab.id==='tool:browse'?FolderOpen:tab.id==='tool:changed'?GitCompareArrows:Files,onSelect:()=>fileProps.onSelect(tab.id)})),
         {key:'web',label:lang.startsWith('zh')?'网页预览':'Web preview',icon:Globe,onSelect:()=>onPanel('web')},
+        ...webPanels.map(p=>({key:`panel:${p.id}`,label:p.title,icon:MonitorPlay,onSelect:()=>openMachinePanel(p.id)})),
         ...(btwAllowed?[{key:'btw',label:t('session.btw.title'),icon:MessageCircleQuestion,onSelect:()=>onPanel('btw')}]:[]),
         {key:'notes',label:t('notes.title'),icon:StickyNote,onSelect:()=>onPanel('notes')},
         {key:'previews',label:t('toolHistory.previewsTitle'),icon:FileSearch,onSelect:()=>onPanel('previews')},
@@ -85,7 +95,7 @@ export function SessionWorkspacePanel({ sessionId, panel, subagentTarget, btwAll
       }}
     />}>
     {tabs.map(tab=><WorkspacePane key={`${identity}:${tab.id}`} className="session-workspace-pane" active={visible && activeTool===tab.id} order={tabs.map(tab=>tab.id).join('\n')}>
-      {isHistoryPanel(tab.id)?<SessionHistoryPanel sessionId={sessionId} kind={tab.id}/>:tab.id==='web'?<BrowserPreview identity={identity}/>:tab.id==='notes'?notes.content:tab.id==='btw'
+      {tab.id.startsWith('panel:')?<MachinePanelFrame panel={webPanels.find(p=>`panel:${p.id}`===tab.id) ?? null}/>:isHistoryPanel(tab.id)?<SessionHistoryPanel sessionId={sessionId} kind={tab.id}/>:tab.id==='web'?<BrowserPreview identity={identity}/>:tab.id==='notes'?notes.content:tab.id==='btw'
         ? <BtwPanel sessionId={sessionId} embedded active={visible && activeTool===tab.id} onClose={()=>closeTool(tab.id)}/>
         : <SubagentPanel sessionId={sessionId} messageId={tab.id.slice(6)} embedded onClose={()=>closeTool(tab.id)}/>}
     </WorkspacePane>)}

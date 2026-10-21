@@ -212,9 +212,11 @@ export type EphemeralEvent = {
 } | {
     type: 'session-event';
     sessionId: string;
-    kind: 'done' | 'permission' | 'question';
+    kind: 'done' | 'permission' | 'question' | 'attention';
     title: string;
     body: string;
+    /** B-510: in-app target for an `attention` event (panel deep link); additive. */
+    url?: string;
     timestamp: number;
 };
 
@@ -619,13 +621,14 @@ export function buildMachineStatusEphemeral(machineId: string, online: boolean):
  * Emitted alongside the mobile push so other clients (e.g. web) can surface a
  * tab-title counter or inline indicator without parsing every encrypted message.
  */
-export function buildSessionEventEphemeral(sessionId: string, kind: 'done' | 'permission' | 'question', title: string, body: string): EphemeralPayload {
+export function buildSessionEventEphemeral(sessionId: string, kind: 'done' | 'permission' | 'question' | 'attention', title: string, body: string, url?: string): EphemeralPayload {
     return {
         type: 'session-event',
         sessionId,
         kind,
         title,
         body,
+        ...(url ? { url } : {}),
         timestamp: Date.now()
     };
 }

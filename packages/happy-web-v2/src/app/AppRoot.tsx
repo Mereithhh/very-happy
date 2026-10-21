@@ -57,6 +57,7 @@ const SettingsRoutes = lazy(() => import('@/screens/settings/SettingsRoutes').th
 const WebTerminalRoute = lazy(() => import('@/screens/terminal/WebTerminalRoute').then((m) => ({ default: m.WebTerminalRoute })));
 const TerminalPickerScreen = lazy(() => import('@/screens/terminal/TerminalPickerScreen').then((m) => ({ default: m.TerminalPickerScreen })));
 const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then((m) => ({ default: m.MachineScreen })));
+const MachinePanelScreen = lazy(() => import('@/screens/machine/MachinePanelScreen').then((m) => ({ default: m.MachinePanelScreen })));
 const ConnectMachineScreen = lazy(() => import('@/screens/onboarding/ConnectMachineScreen').then((m) => ({ default: m.ConnectMachineScreen })));
 const ProjectScreen = lazy(() => import('@/screens/projects/ProjectScreen').then(m => ({ default: m.ProjectScreen })));
 const TeamsScreen = lazy(() => import('@/screens/teams/TeamsScreen').then(m => ({ default: m.TeamsScreen })));
@@ -366,6 +367,8 @@ const router = createBrowserRouter(
             // B-296: static segment, so it outranks `machine/:id` in the router.
             { path: 'machine/connect', element: <Lazy><ConnectMachineScreen /></Lazy> },
             { path: 'machine/:id', element: <Lazy><MachineScreen /></Lazy> },
+            // B-510: a machine web panel full screen (push click target).
+            { path: 'machine/:machineId/panel/:panelId', element: <Lazy fullViewport={false}><MachinePanelScreen /></Lazy> },
             { path: 'settings/*', element: <Lazy><SettingsRoutes /></Lazy> },
           ],
         },

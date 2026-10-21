@@ -1,0 +1,4 @@
+/* B-510: the full-screen panel fills the content area under its header. */
+.machine-panel-screen { display:flex; flex-direction:column; height:100%; min-height:0; background:var(--bg-0); }
+.machine-panel-screen > .set-header { flex:none; padding:var(--sp-2) var(--sp-3); }
+.machine-panel-screen > .browser-preview { flex:1; min-height:0; }

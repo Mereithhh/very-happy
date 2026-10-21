@@ -53,6 +53,7 @@ import { getInitialMachineMetadata, getStartupCliAvailability } from './machineM
 import { currentWorktreeService } from '@/worktree/service';
 import { WORKTREE_CAPABILITY_VERSION } from '@/worktree/worktreeRpc';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
+import { startWebPanelsSync } from '@/webPanels/webPanelsSync';
 import { readSettings, updateSettings, writeSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
 import { applyServerMigration } from './serverMigration';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
@@ -1846,6 +1847,15 @@ export async function startDaemon(): Promise<void> {
       return resolveIdleMs(agentHibernationSetting);
     });
 
+    // B-510: mirror the local `webPanels` declaration (settings.json) into
+    // daemonState. Started before connect so the connect snapshot carries it.
+    const webPanelsSync = startWebPanelsSync({
+      statMtime: async () => (await fs.stat(configuration.settingsFile).catch(() => null))?.mtimeMs ?? null,
+      readRaw: async () => (await readSettings()).webPanels,
+      publish: (panels) => apiMachine.setWebPanels(panels),
+      logProblems: (problems) => logger.warn(`[DAEMON RUN] settings.json webPanels: skipped ${problems.length} entr${problems.length === 1 ? 'y' : 'ies'}: ${problems.map((p) => `#${p.index}${p.id ? ` (${p.id})` : ''} ${p.reason}`).join('; ')}`),
+    });
+
     // Connect to server
     apiMachine.connect();
 
@@ -2136,6 +2146,7 @@ export async function startDaemon(): Promise<void> {
 
     // Setup signal handlers
     const cleanupAndShutdown = async (source: ShutdownSource, errorMessage?: string) => {
+      webPanelsSync.stop();
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
       // B-550: last scrollback checkpoint — async + bounded (~300ms), overlapping
       // the daemon-state update below; awaited before teardown, cannot block it.

@@ -158,7 +158,8 @@ export function pushRoutes(app: Fastify) {
                 sessionId: z.string()
             }),
             body: z.object({
-                kind: z.enum(['done', 'permission', 'question']),
+                // B-510: 'attention' = an agent asks a person to step in (request_human).
+                kind: z.enum(['done', 'permission', 'question', 'attention']),
                 title: z.string().min(1).max(200),
                 body: z.string().min(1).max(500),
                 data: z.record(z.string(), z.unknown()).optional()
@@ -191,7 +192,9 @@ export function pushRoutes(app: Fastify) {
         // instead of pinging on every encrypted message).
         eventRouter.emitEphemeral({
             userId,
-            payload: buildSessionEventEphemeral(sessionId, kind, title, body),
+            // B-510: only an in-app path is forwarded (never an external URL).
+            payload: buildSessionEventEphemeral(sessionId, kind, title, body,
+                typeof data?.url === 'string' && /^\/(?!\/)/.test(data.url) && data.url.length <= 300 ? data.url : undefined),
             recipientFilter: { type: 'all-interested-in-session', sessionId }
         });
 
