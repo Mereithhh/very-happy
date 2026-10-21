@@ -52,6 +52,15 @@ export function occupiedTeamWorkSlots(state: TeamState, includePending = false):
     return occupied;
 }
 
+/**
+ * B-706: the checkout a bot's launches create worktrees from. A completed spawn
+ * overwrites `bot.directory` with that launch's worktree, which is removed by its
+ * cleanup; the bot's first launch still records the source (operations are kept).
+ */
+export function teamBotRepository(state: Pick<TeamState, 'operations'>, bot: TeamBot): string | null {
+    return state.operations.find(o => o.botId === bot.id && o.type === 'spawn' && o.directory)?.directory ?? bot.directory;
+}
+
 export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamAction, ctx: { now: number; id: () => string }): { team: TeamState; credentialBotId?: string; operationId?: string; taskId?: string; scheduleId?: string } {
     requireTeam(input.archivedAt === undefined || ['archive', 'claim-operation', 'complete-operation', 'fail-operation', 'reconcile-operation', 'session-event'].includes(action.type), 'team_archived');
     const s = structuredClone(input);
@@ -68,7 +77,10 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
     };
     const operation = (t: TeamTask, bot: TeamBot, type: 'spawn' | 'stop', attemptId = t.currentAttemptId) => {
         requireTeam(s.operations.length < 1000, 'team_operation_limit', 429);
-        const op: TeamOperation = { ...(type === 'spawn' ? { teamLaunchVersion: 1 as const } : {}), ...(bot.model ? { model: bot.model } : {}), permissionMode: s.permissionMode === 'bypassPermissions' ? 'bypassPermissions' : 'default', id: id(), teamId: s.id, machineId: s.machineId, taskId: t.id, botId: bot.id, attemptId, generation: bot.generation, type, status: 'pending', claimId: null, claimedAt: null, error: null, sessionId: bot.sessionId, directory: bot.directory, assistant: bot.assistant, prompt: type === 'spawn' ? `Task ${t.id}\n${t.goal}\nAcceptance:\n${t.acceptance.join('\n')}` : '', createdAt: now };
+        // B-706: a launch creates its worktree from the bot's source repository, never
+        // from the previous launch's worktree (bot.directory after a completed spawn).
+        const directory = type === 'spawn' ? teamBotRepository(s, bot) : bot.directory;
+        const op: TeamOperation = { ...(type === 'spawn' ? { teamLaunchVersion: 1 as const } : {}), ...(bot.model ? { model: bot.model } : {}), permissionMode: s.permissionMode === 'bypassPermissions' ? 'bypassPermissions' : 'default', id: id(), teamId: s.id, machineId: s.machineId, taskId: t.id, botId: bot.id, attemptId, generation: bot.generation, type, status: 'pending', claimId: null, claimedAt: null, error: null, sessionId: bot.sessionId, directory, assistant: bot.assistant, prompt: type === 'spawn' ? `Task ${t.id}\n${t.goal}\nAcceptance:\n${t.acceptance.join('\n')}` : '', createdAt: now };
         s.operations.push(op);
         return op;
     };
@@ -176,11 +188,12 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             let reused = false;
             if (!bot) {
                 const fresh: TeamBot = { id: id(), name: action.botName ?? 'Worker', sessionId: null, generation: 1, root: false, managed: true, assistant: action.assistant ?? s.defaults?.assistant ?? 'claude', ...(action.model ? { model: action.model } : (!action.assistant || action.assistant === s.defaults?.assistant) && s.defaults?.model ? { model: s.defaults.model } : {}), directory: action.directory ?? currentBot?.directory ?? s.bots.find(b => b.root)?.directory ?? null };
-                // B-692: reuse a stopped member of the same shape (agent, model, folder)
+                // B-692: reuse a stopped member of the same shape (agent, model, folder —
+                // its source repository, B-706: bot.directory is its last worktree)
                 // instead of growing the roster with one-shot bots. Oldest first.
                 // Only an unbound one: a bot that still holds a session (exited / stale) is
                 // inactive for counting but would be messaged rather than relaunched.
-                const candidate = s.bots.find(b => b.managed && !b.root && !b.sessionId && b.assistant === fresh.assistant && (b.model ?? null) === (fresh.model ?? null) && b.directory === fresh.directory && teamBotActivity(s, b, { now }) === 'inactive' && (actor.kind === 'owner' || currentBot?.root));
+                const candidate = s.bots.find(b => b.managed && !b.root && !b.sessionId && b.assistant === fresh.assistant && (b.model ?? null) === (fresh.model ?? null) && teamBotRepository(s, b) === fresh.directory && teamBotActivity(s, b, { now }) === 'inactive' && (actor.kind === 'owner' || currentBot?.root));
                 if (candidate) {
                     bot = candidate; reused = true;
                     // The old name stays in the record so its history still reads right.
@@ -300,6 +313,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                 requireTeam(task?.currentAttemptId === op.attemptId && task.status === 'queued', 'operation_task_not_waiting');
             }
             op.retryRequestedAt = Math.max(now, (op.retryRequestedAt ?? 0) + 1);
+            // B-706: launches queued before the fix carry the old worktree path; a retry
+            // re-reads the source repository so the relaunch can succeed.
+            if (op.type === 'spawn') { const bot = s.bots.find(b => b.id === op.botId); if (bot) op.directory = teamBotRepository(s, bot); }
             operationId = op.id;
             break;
         }
@@ -335,6 +351,7 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     requireTeam(!s.bots.some(other => other.id !== bot.id && other.sessionId === action.sessionId), 'session_already_bound');
                     requireTeam(!bot.sessionId || bot.sessionId === action.sessionId, 'bot_already_bound');
                     bot.sessionId = action.sessionId; op.sessionId = action.sessionId;
+                    op.error = null; // B-706: an earlier failed attempt of this launch no longer applies
                     if (action.workingDirectory) bot.directory = action.workingDirectory;
                     if (t.currentAttemptId === op.attemptId && t.status === 'queued') { t.status = 'running'; t.attempts.find(a => a.id === op.attemptId)!.status = 'running'; }
                     else operation(t, bot, 'stop', op.attemptId);

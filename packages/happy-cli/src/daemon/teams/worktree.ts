@@ -2,12 +2,42 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync, readdirSync, rmdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, isAbsolute, resolve } from 'node:path';
+import { join, isAbsolute, resolve, dirname, basename } from 'node:path';
 import { ensurePrivateDirectorySync } from '@/utils/secureFiles';
 import { initializeOwnedWorktree } from '@/worktree/service';
 const exec = promisify(execFile);
 const git = async (directory: string, args: string[]) => (await exec('git', ['-C', directory, ...args], { timeout: 30_000, maxBuffer: 2 * 1024 * 1024 })).stdout.trim();
 const gitRaw = async (directory: string, args: string[]) => (await exec('git', ['-C', directory, ...args], { timeout: 30_000, maxBuffer: 64 * 1024 * 1024 })).stdout;
+
+function expandHome(path: string): string {
+    if (path === '~') return homedir();
+    if (path.startsWith('~/') || (process.platform === 'win32' && path.startsWith('~\\'))) return join(homedir(), path.slice(2));
+    return path;
+}
+
+/**
+ * B-706: the checkout a team launch creates its worktree from. Launches queued by
+ * older servers name the bot's previous worktree, which its cleanup (or a merged
+ * branch) removed: a team worktree that is gone or no longer a Git checkout is
+ * followed back to the repository its own launch receipt recorded. Anything else
+ * unusable is a clear preflight failure instead of a raw git error.
+ */
+export async function resolveTeamRepository(home: string, repository: string, sourceOf: (operationId: string) => string | undefined): Promise<string> {
+    const worktrees = resolve(home, 'teams', 'worktrees');
+    let candidate = expandHome(repository);
+    for (let hop = 0; hop < 8; hop++) {
+        if (!isAbsolute(candidate)) break;
+        const teamWorktree = resolve(dirname(candidate)) === worktrees;
+        const top = await git(candidate, ['rev-parse', '--show-toplevel']).catch(() => null);
+        // A leftover team worktree folder git no longer tracks is not a checkout, even
+        // when an enclosing directory happens to be one.
+        if (top !== null && (!teamWorktree || resolve(top) === resolve(candidate))) return candidate;
+        const source = teamWorktree ? sourceOf(basename(candidate)) : undefined;
+        if (!source) break;
+        candidate = expandHome(source);
+    }
+    throw new Error(`Team repository is unavailable: ${repository} is missing or not a Git checkout. Restore the folder or delegate with an existing repository, then choose Retry launch.`);
+}
 
 /**
  * Worktrees isolate repository edits; no branch force/reset. Uncommitted input
@@ -17,8 +47,7 @@ const gitRaw = async (directory: string, args: string[]) => (await exec('git', [
  */
 export async function prepareTeamWorktree(home: string, repository: string, id: string, origin: 'teams' | 'automation' = 'teams'): Promise<{ directory: string; repository: string; branch: string }> {
     // Resolve on the execution machine, never relative to the daemon's private home.
-    if (repository === '~') repository = homedir();
-    else if (repository.startsWith('~/') || (process.platform === 'win32' && repository.startsWith('~\\'))) repository = join(homedir(), repository.slice(2));
+    repository = expandHome(repository);
     if (!isAbsolute(repository) || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)) throw new Error('A team task requires an absolute repository path and valid operation id');
     await git(repository, ['rev-parse', '--show-toplevel']);
     const root = join(home, 'teams', 'worktrees');

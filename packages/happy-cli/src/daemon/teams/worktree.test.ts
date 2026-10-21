@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
-import { prepareTeamWorktree, removeTeamWorktree } from './worktree';
+import { prepareTeamWorktree, removeTeamWorktree, resolveTeamRepository } from './worktree';
 
 describe('team owned worktrees', () => {
     it('isolates attempts and retains dirty and unmerged work', async () => {
@@ -141,6 +141,31 @@ describe('team owned worktrees', () => {
             git(repo, ['worktree', 'remove', empty.directory]); mkdirSync(empty.directory);
             await removeTeamWorktree(empty);
             expect(existsSync(empty.directory)).toBe(false);
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+    it('B-706: a removed team worktree resolves back to its source repository', async () => {
+        const root = join(homedir(), 'code/github/skills/tmp/agent-teams-implementation/tests');
+        mkdirSync(root, { recursive: true });
+        const home = mkdtempSync(join(root, 'reactivate-'));
+        const repo = join(home, 'repo'); mkdirSync(repo);
+        const git = (cwd: string, args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Teams test', '-c', 'user.email=teams@example.invalid', ...args], { stdio: 'pipe' });
+        try {
+            git(repo, ['init']); git(repo, ['commit', '--allow-empty', '-m', 'initial']);
+            const first = await prepareTeamWorktree(home, repo, 'op1');
+            // A child launched from the member's worktree, then both removed (cleanup / merged branch).
+            const child = await prepareTeamWorktree(home, first.directory, 'op2');
+            const receipts: Record<string, string> = { op1: first.repository, op2: child.repository };
+            const sourceOf = (id: string) => receipts[id];
+            expect(await resolveTeamRepository(home, first.directory, sourceOf)).toBe(first.directory); // still a checkout: unchanged
+            git(repo, ['worktree', 'remove', child.directory]); git(repo, ['worktree', 'remove', first.directory]);
+            expect(await resolveTeamRepository(home, child.directory, sourceOf)).toBe(repo);
+            // Leftovers git no longer tracks are not a checkout, even inside an enclosing repository.
+            mkdirSync(first.directory); writeFileSync(join(first.directory, 'leftover.txt'), 'x');
+            expect(await resolveTeamRepository(home, first.directory, sourceOf)).toBe(repo);
+            const relaunch = await prepareTeamWorktree(home, await resolveTeamRepository(home, first.directory, sourceOf), 'op3');
+            expect(existsSync(relaunch.directory)).toBe(true);
+            await expect(resolveTeamRepository(home, join(home, 'teams', 'worktrees', 'unknown'), sourceOf)).rejects.toThrow('Team repository is unavailable');
+            await expect(resolveTeamRepository(home, join(home, 'gone'), sourceOf)).rejects.toThrow('Retry launch');
         } finally { rmSync(home, { recursive: true, force: true }); }
     });
 });
