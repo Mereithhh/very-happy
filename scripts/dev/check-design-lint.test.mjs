@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findRawColors, isFieldFocusSelector, lintFile, parseAddedLines } from './check-design-lint.mjs';
+import { findNativeControls, findRawColors, isFieldFocusSelector, lintFile, parseAddedLines } from './check-design-lint.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'check-design-lint.mjs');
 
@@ -168,4 +168,30 @@ test('CLI diffs base...head in a real repo and exits 1 on findings, 0 when clean
     } finally {
         rmSync(dir, { recursive: true, force: true });
     }
+});
+
+test('B-714 native-control: new <select>/<option>/checkbox/<summary> in tsx are flagged; owners, strings and components pass', () => {
+    const src = [
+        '<select value={v} onChange={f}>',
+        '  <option value="a">A</option>',
+        '</select>',
+        '<input type="checkbox" checked={x} />',
+        '<details><summary>More</summary></details>',
+        '<SelectMenu label="x" options={o} value={v} onChange={f} />',
+        '<Summary>More</Summary>',
+        'const raw = "<summary>Background agent</summary>";',
+        '{/* design-lint-allow: 外部 HTML 预览需要原生控件 */}',
+        '<select />',
+    ].join('\n');
+    assert.deepEqual(lintAll('screens/x/Form.tsx', src), [
+        ['native-control', 1], ['native-control', 2], ['native-control', 4], ['native-control', 5],
+    ]);
+    assert.deepEqual(lintAll('ui/Checkbox.tsx', '<input type="checkbox" className="vh-checkbox-input" />'), []);
+    assert.deepEqual(lintAll('ui/Summary.tsx', '<summary className="vh-summary">'), []);
+    assert.deepEqual(findNativeControls('<input type={"checkbox"} />', 'screens/a.tsx').map(h => h.kind), ['checkbox']);
+    // the owner whitelist is per control: Checkbox.tsx may not grow a <select>
+    assert.deepEqual(findNativeControls('<select>', 'ui/Checkbox.tsx').map(h => h.kind), ['select']);
+    // css and tests are out of scope for this rule
+    assert.deepEqual(lintAll('screens/x/form.css', 'select { color: var(--text); }'), []);
+    assert.deepEqual(lintAll('screens/x/Form.test.tsx', '<select />'), []);
 });

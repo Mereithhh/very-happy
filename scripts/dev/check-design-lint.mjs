@@ -15,6 +15,10 @@
  *                    触屏输入的 `max(16px, var(--chat-fs-body))` 下限、em/%/inherit 放行。
  *                    对话区集合见 CONVERSATION_CSS。
  *   ③ outline-none   `outline: none|0` 所在规则及同文件内，找不到同类名的 :focus* 替代样式。
+ *   ④ field-focus-ring 文本输入框在 :focus* 下画焦点环（B-699）。
+ *   ⑤ native-control tsx 新增原生 `<select>` / `<option>` / `<input type="checkbox">` / `<summary>`
+ *                    （B-714）：分别改用 ui/SelectMenu、ui/Combobox、`.vh-segmented`、ui/Checkbox、
+ *                    ui/Summary。白名单只有组件自身（NATIVE_CONTROL_OWNERS）；字符串字面量里的同名文本不算。
  * 宁可漏报不误报：tsx 只认明显的色值字符串；③ 只查 css。
  *
  * 豁免：同一行或上一行写 `design-lint-allow: <理由>`（css 用块注释，tsx 用 // 或 JSX 注释），
@@ -47,6 +51,41 @@ export const CONVERSATION_CSS = new Set([
     'meta', 'permission', 'sessionPeerMessage', 'sessionpreviews', 'statusbar', 'subagent',
     'teamMessage', 'toolgroup', 'toolHistory', 'toolview', 'turnactivity',
 ].map(name => `screens/session/${name}.css`));
+
+/** ⑤ 允许出现对应原生控件的唯一文件（相对 WEB_SRC）。 */
+export const NATIVE_CONTROL_OWNERS = { checkbox: 'ui/Checkbox.tsx', summary: 'ui/Summary.tsx' };
+
+const NATIVE_CONTROL_RES = [
+    { kind: 'select', re: /<select(?=[\s>/]|$)/g, fix: '用 ui/SelectMenu（≤12 项已知列表）或 ui/Combobox（长列表/搜索/分组）；2–4 项用 .vh-segmented' },
+    { kind: 'option', re: /<option(?=[\s>/]|$)/g, fix: '选项写成 SelectMenu / Combobox 的 options 数组' },
+    { kind: 'checkbox', re: /\btype\s*=\s*(?:\{\s*)?['"`]checkbox['"`]/g, fix: '用 ui/Checkbox' },
+    { kind: 'summary', re: /<summary(?=[\s>/]|$)/g, fix: '用 ui/Summary（隐藏浏览器三角，换 chevron）' },
+];
+
+/** idx 是否落在本行的字符串字面量里（只数同一行未转义的引号，宁可漏报）。 */
+function insideString(line, idx) {
+    let quote = null;
+    for (let i = 0; i < idx; i++) {
+        const ch = line[i];
+        if (ch === '\\') { i++; continue; }
+        if (quote) { if (ch === quote) quote = null; }
+        else if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+    }
+    return quote !== null;
+}
+
+/** ⑤：一行 tsx 里的原生控件（已去注释的代码）。checkbox 的 type="checkbox" 本身在引号里，单独处理。 */
+export function findNativeControls(code, rel) {
+    const hits = [];
+    for (const { kind, re, fix } of NATIVE_CONTROL_RES) {
+        if (NATIVE_CONTROL_OWNERS[kind] === rel) continue;
+        for (const m of code.matchAll(re)) {
+            if (insideString(code, m.index)) continue;
+            hits.push({ kind, fix });
+        }
+    }
+    return hits;
+}
 
 const ALLOW_RE = /design-lint-allow:\s*(\S.*?)?\s*(?:\*\/|\}|$)/;
 
@@ -244,6 +283,11 @@ export function lintFile(rel, source, added) {
         if (!RAW_COLOR_EXEMPT_FILES.has(rel)) {
             for (const hit of findRawColors(text, kind)) {
                 problems.push({ rule: 'raw-color', message: `裸色值 ${hit}：改用 tokens.css 的 var(--*)（派生色用 color-mix(… var(--x) …)，阴影/遮罩用 --shadow-pop/--shadow-modal/--scrim）` });
+            }
+        }
+        if (kind === 'tsx') {
+            for (const hit of findNativeControls(text, rel)) {
+                problems.push({ rule: 'native-control', message: `原生 ${hit.kind}：${hit.fix}（design-language §6「组件选择」，B-714）` });
             }
         }
         if (kind === 'css' && CONVERSATION_CSS.has(rel)) {

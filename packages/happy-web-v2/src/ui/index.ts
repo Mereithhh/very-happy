@@ -16,3 +16,7 @@ export { QuickThemeToggle } from './QuickThemeToggle';
 export { TagChip, TagOverflowChip } from './TagChip';
 export { ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from './Menu';
 export { ThemeProvider, useTheme, type ThemePreference } from './theme';
+export { SelectMenu, type SelectOption, type SelectAction } from './SelectMenu';
+export { Combobox } from './Combobox';
+export { Checkbox } from './Checkbox';
+export { Summary } from './Summary';
