@@ -46,9 +46,13 @@ describe('B-690 inactive members on the Teams page', () => {
       { ...team.bots[0], id: 'busy', name: 'Busy', sessionId: 's-busy', lastEvent: 'idle', lastEventAt: now },
       { ...team.bots[0], id: 'done', name: 'Finished', root: false, sessionId: null, lastEvent: undefined, lastEventAt: undefined },
       { ...team.bots[0], id: 'gone', name: 'Archived', root: false, sessionId: 's-gone', lastEvent: 'idle', lastEventAt: now },
+      { ...team.bots[0], id: 'stuck', name: 'Stuck', root: false, sessionId: null },
     ],
     tasks: [{ ...team.tasks[1], assigneeBotId: 'busy' }, { ...team.tasks[3], id: 'finished', assigneeBotId: 'done' }],
-    operations: [{ id: 'op', teamId: 'fold-team', machineId: 'm', taskId: 'finished', botId: 'done', attemptId: 'done', generation: 1, type: 'spawn', status: 'completed', claimId: 'c', claimedAt: 1, sessionId: 's-done', createdAt: 1 }],
+    operations: [
+      { id: 'op', teamId: 'fold-team', machineId: 'm', taskId: 'finished', botId: 'done', attemptId: 'done', generation: 1, type: 'spawn', status: 'completed', claimId: 'c', claimedAt: 1, sessionId: 's-done', createdAt: 1 },
+      { id: 'op2', teamId: 'fold-team', machineId: 'm', taskId: 'finished', botId: 'stuck', attemptId: 'done', generation: 1, type: 'stop', status: 'failed', claimId: 'c', claimedAt: 1, sessionId: null, createdAt: 1 },
+    ],
   } as unknown as TeamState;
   const render = () => renderToStaticMarkup(createElement(MemoryRouter, {}, createElement(TeamMembers, { team: members, archivedSessionIds: new Set(['s-gone']), now })));
   it('folds stopped and archived members behind 「N inactive」, collapsed by default, history links kept', () => {
@@ -57,6 +61,9 @@ describe('B-690 inactive members on the Teams page', () => {
     const [before, fold] = html.split('<details');
     expect(before).toContain('href="/session/s-busy"');
     expect(before).not.toContain('s-done');
+    expect(before).toContain('<small>2</small>');
+    expect(before).toContain('Stuck');
+    expect(before).toContain('Cleanup needs attention');
     expect(fold).toMatch(/^ class="teams-members-inactive">/);
     expect(fold).toContain('2 inactive');
     expect(fold).toContain('href="/session/s-done"');

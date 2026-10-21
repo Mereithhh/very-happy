@@ -43,8 +43,9 @@ team in the sidebar and in the team page's member list; open it to reach their
 history (this device remembers the choice, shared by both places). A member is
 inactive when nothing is assigned to it (no queued, running or submitted task) and
 its conversation is archived, it has stopped or exited, or it has had no activity
-for 7 days. Inactive members can still receive work through **Transfer to** in
-task details.
+for 7 days. Member counts leave inactive members out; the lead never folds, and a
+member whose cleanup has not finished shows **Cleanup needs attention** instead.
+Inactive members can still receive work through **Transfer to** in task details.
 Ordinary conversations are never automatically turned into teams. Appearance
 settings can hide the Teams entry without stopping or deleting existing work.
 

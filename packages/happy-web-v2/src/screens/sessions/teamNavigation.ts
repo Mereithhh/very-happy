@@ -1,4 +1,4 @@
-import type { TeamBot, TeamState } from '@slopus/happy-wire';
+import { teamBotActivity, teamMemberCounts, type TeamActivityContext, type TeamBot, type TeamState } from '@slopus/happy-wire';
 
 /** A retired managed member keeps its immutable spawn receipt as a history link. */
 export function botHistorySessionId(team: TeamState, bot: TeamBot): string | null {
@@ -85,24 +85,21 @@ export function teamInactiveGroupId(teamId: string): string {
   return `team-archived:${teamId}`;
 }
 
-/** B-690: a member idle this long, with nothing assigned, counts as no longer used. */
-export const TEAM_MEMBER_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
-
 /**
- * B-690 — the ONE rule for 「已停用」 team members (sidebar fold and Teams page).
- * A member with an open task (queued / running / submitted) is always active:
- * something is waiting on it. Otherwise it is inactive when
- *  - its conversation is archived (`sessionArchived`, the B-674 case), or
- *  - it holds no session: stopped after its work (the team's cleanup unbinds
- *    it), or never started and nothing will start it, or
- *  - its last lifecycle event is `exited`, or
- *  - its last event is older than `TEAM_MEMBER_IDLE_MS`.
- * A member with a session and no recorded event stays active (no evidence).
+ * B-690 — 「已停用」 members fold (sidebar and Teams page) by the ONE rule in
+ * happy-wire (`teamBotActivity`, B-692): no unfinished task and any of no
+ * session / archived session / last event `exited` / no event for 7 days; the
+ * lead and an in-flight launch stay active, an unfinished cleanup is
+ * `stopping` (「回收需要处理」, never folded). Only the Web knows which
+ * sessions are archived, so callers pass that in.
  */
-export function teamMemberInactive(team: TeamState, bot: TeamBot, sessionArchived: boolean, now: number): boolean {
-  if (team.tasks.some((task) => task.assigneeBotId === bot.id && !['done', 'cancelled'].includes(task.status))) return false;
-  if (sessionArchived || !bot.sessionId || bot.lastEvent === 'exited') return true;
-  return bot.lastEventAt !== undefined && now - bot.lastEventAt > TEAM_MEMBER_IDLE_MS;
+export function teamMemberInactive(team: TeamState, bot: TeamBot, context: TeamActivityContext): boolean {
+  return teamBotActivity(team, bot, context) === 'inactive';
+}
+/** 成员数 = everyone but `inactive` (the 「已停用 M」 count). */
+export function teamMemberCount(team: TeamState, context: TeamActivityContext): number {
+  const counts = teamMemberCounts(team, context);
+  return team.bots.length - counts.inactive;
 }
 
 /** A registered member is visible even before its first session exists. */
