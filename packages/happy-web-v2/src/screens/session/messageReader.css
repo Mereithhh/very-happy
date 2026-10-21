@@ -50,4 +50,4 @@
  * markdown is stripped before it gets here; 3 lines, then a fade. */
 .msg-preview-lines { display: flex; flex-direction: column; min-width: 0; color: var(--text-dim); font-size: var(--chat-fs-secondary); line-height: 1.5; }
 .msg-preview-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.msg-preview-lines--more { -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent); mask-image: linear-gradient(to bottom, #000 60%, transparent); }
+.msg-preview-lines--more { -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent); mask-image: linear-gradient(to bottom, black 60%, transparent); }
