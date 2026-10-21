@@ -34,15 +34,17 @@ export function missingTeamSessionIds(existingSessionIds: ReadonlySet<string>, t
 export type TeamNavigationEntry<T> =
   | { kind: 'row'; row: T; team?: TeamState; bot?: TeamBot }
   | { kind: 'team'; team: TeamState }
-  /** B-674: one fold row standing in for the team's archived members. */
-  | { kind: 'archived'; team: TeamState; count: number; open: boolean };
-/** B-674: which member rows are archived, and which teams show them (device-local choice). */
-export interface ArchivedMemberFold<T> { isArchived: (row: T) => boolean; open: ReadonlySet<string> }
+  /** B-674 / B-690: one fold row standing in for the team's inactive members. */
+  | { kind: 'inactive'; team: TeamState; count: number; open: boolean };
+/** B-690: which member rows are inactive (`teamMemberInactive`), which teams show
+ *  them (device-local choice), and how many sessionless inactive members the
+ *  caller folds in itself (`extra`, rendered right after the fold row). */
+export interface InactiveMemberFold<T> { isInactive: (row: T, team: TeamState, bot: TeamBot | undefined) => boolean; open: ReadonlySet<string>; extra?: (team: TeamState) => number }
 /** Preserve ordinary rows' relative order. Put each team at its first member,
  * keep children in that same order, and include newly created empty teams.
- * With `archived`, an expanded team lists its live members first and folds the
- * archived ones behind a single 「已归档 N 个」 entry (B-674). */
-export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[], teams: TeamState[], expanded: ReadonlySet<string>, archived?: ArchivedMemberFold<T>): TeamNavigationEntry<T>[] {
+ * With `inactive`, an expanded team lists its active members first and folds the
+ * inactive ones behind a single 「已停用 N 个」 entry (B-674, B-690). */
+export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[], teams: TeamState[], expanded: ReadonlySet<string>, inactive?: InactiveMemberFold<T>): TeamNavigationEntry<T>[] {
   const membership = teamSessionMembership(teams);
   const children = new Map<string, T[]>();
   for (const row of rows) {
@@ -51,18 +53,20 @@ export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[],
   }
   const emitted = new Set<string>();
   const output: TeamNavigationEntry<T>[] = [];
-  const child = (row: T, team: TeamState): TeamNavigationEntry<T> => ({ kind: 'row', row, team, bot: membership.get(row.sessionId!)?.bot });
+  const botOf = (row: T) => membership.get(row.sessionId!)?.bot;
+  const child = (row: T, team: TeamState): TeamNavigationEntry<T> => ({ kind: 'row', row, team, bot: botOf(row) });
   const emit = (team: TeamState) => {
     if (emitted.has(team.id)) return;
     emitted.add(team.id);
     output.push({ kind: 'team', team });
     if (!expanded.has(team.id)) return;
     const kids = children.get(team.id) ?? [];
-    const old = archived ? kids.filter(archived.isArchived) : [];
+    const old = inactive ? kids.filter((row) => inactive.isInactive(row, team, botOf(row))) : [];
     for (const row of kids) if (!old.includes(row)) output.push(child(row, team));
-    if (old.length === 0) return;
-    const open = archived!.open.has(team.id);
-    output.push({ kind: 'archived', team, count: old.length, open });
+    const count = old.length + (inactive?.extra?.(team) ?? 0);
+    if (count === 0) return;
+    const open = inactive!.open.has(team.id);
+    output.push({ kind: 'inactive', team, count, open });
     if (open) for (const row of old) output.push(child(row, team));
   };
   for (const row of rows) {
@@ -74,9 +78,31 @@ export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[],
   return output;
 }
 
-/** B-674: the device-local fold key for a team's archived members (sidebarCollapsedGroups). */
-export function teamArchivedGroupId(teamId: string): string {
+/** B-674/B-690: the device-local fold key for a team's inactive members
+ *  (sidebarCollapsedGroups), shared by the sidebar and the Teams page. The
+ *  `team-archived:` prefix predates B-690 and is kept so saved choices survive. */
+export function teamInactiveGroupId(teamId: string): string {
   return `team-archived:${teamId}`;
+}
+
+/** B-690: a member idle this long, with nothing assigned, counts as no longer used. */
+export const TEAM_MEMBER_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * B-690 — the ONE rule for 「已停用」 team members (sidebar fold and Teams page).
+ * A member with an open task (queued / running / submitted) is always active:
+ * something is waiting on it. Otherwise it is inactive when
+ *  - its conversation is archived (`sessionArchived`, the B-674 case), or
+ *  - it holds no session: stopped after its work (the team's cleanup unbinds
+ *    it), or never started and nothing will start it, or
+ *  - its last lifecycle event is `exited`, or
+ *  - its last event is older than `TEAM_MEMBER_IDLE_MS`.
+ * A member with a session and no recorded event stays active (no evidence).
+ */
+export function teamMemberInactive(team: TeamState, bot: TeamBot, sessionArchived: boolean, now: number): boolean {
+  if (team.tasks.some((task) => task.assigneeBotId === bot.id && !['done', 'cancelled'].includes(task.status))) return false;
+  if (sessionArchived || !bot.sessionId || bot.lastEvent === 'exited') return true;
+  return bot.lastEventAt !== undefined && now - bot.lastEventAt > TEAM_MEMBER_IDLE_MS;
 }
 
 /** A registered member is visible even before its first session exists. */

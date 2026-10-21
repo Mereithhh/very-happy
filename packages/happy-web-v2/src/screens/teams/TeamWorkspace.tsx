@@ -1,13 +1,15 @@
-import type { TeamState } from '@slopus/happy-wire';
+import type { TeamBot, TeamState } from '@slopus/happy-wire';
 import { Link } from 'react-router-dom';
-import { Circle, UsersRound, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor } from 'lucide-react';
+import { Circle, UsersRound, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor, Archive, ChevronRight } from 'lucide-react';
 import { useWorkspaceCopy } from './workspaceCopy';
 import { t as tr } from '@/text';
 import { useFirstUseCopy } from './firstUseCopy';
 import { memberTitle, teamRootTask, taskLaunchIssue } from './teamPresentation';
 import { Markdown } from '@/screens/session/Markdown';
 import { taskRows } from './teamView';
-import { botHistorySessionId } from '@/screens/sessions/teamNavigation';
+import { botHistorySessionId, teamInactiveGroupId, teamMemberInactive } from '@/screens/sessions/teamNavigation';
+import { isGroupCollapsed, setGroupCollapsed, useCollapsedGroups } from '@/screens/sessions/sidebarCollapsedGroups';
+import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
 import { AgentGlyph } from '@/screens/session/AgentChip';
 import { agentKindLabel, agentKindOf } from '@/screens/session/agentIdentity';
 
@@ -17,7 +19,8 @@ export function TeamProgress({ team }: { team: TeamState }) {
   return <div className="teams-progress"><progress aria-label={c.progress} max={Math.max(1, team.tasks.length)} value={done} /><span>{done}/{team.tasks.length} {c.progress}</span></div>;
 }
 
-export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: string) => void }) {
+/** `archivedSessionIds`: member conversations that are archived (B-690 inactive rule input). */
+export function TeamWorkspace({ team, onTask, archivedSessionIds, now = Date.now() }: { team: TeamState; onTask: (id: string) => void; archivedSessionIds?: ReadonlySet<string>; now?: number }) {
   const c = useWorkspaceCopy();
   const f = useFirstUseCopy();
   const rootTask = teamRootTask(team);
@@ -32,15 +35,7 @@ export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: 
   return <>
     {rootTask && <section className="team-goal"><div className="teams-section-heading"><h2>{f.goalTitle}</h2><span>{taskLaunchIssue(team, rootTask) ? f.launchFailed : tr(`teams.${rootTask.status}`)}</span></div><p>{rootTask.goal}</p><button onClick={() => onTask(rootTask.id)}>{f.inspect} →</button></section>}
     {rootResult && <section className="team-delivery"><h2><CircleCheck size={20} />{f.result}</h2><Markdown text={rootResult} /><button onClick={() => onTask(rootTask!.id)}>{f.inspect} →</button></section>}
-    <section className="teams-members"><h2>{f.membersTitle} <small>{team.bots.length}</small></h2>
-      {team.bots.length === 0 && <p>{c.noMembers}</p>}
-      <div className="teams-members-grid">{team.bots.map(bot => {
-        const historySessionId = botHistorySessionId(team, bot);
-        const active = team.tasks.filter(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status));
-        const content = <><span className="teams-avatar" data-live={!!bot.sessionId && active.some(t => t.status === "running")}><AgentGlyph kind={agentKindOf(bot.assistant)} size={18} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{agentKindLabel(agentKindOf(bot.assistant)) ?? bot.assistant}</small><span>{active[0]?.goal ?? c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? f.starting : f.stopped}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
-        return historySessionId ? <Link key={bot.id} className="teams-member" to={`/session/${encodeURIComponent(historySessionId)}`}>{content}</Link> : <div key={bot.id} className="teams-member">{content}</div>;
-      })}</div>
-    </section>
+    <TeamMembers team={team} archivedSessionIds={archivedSessionIds} now={now} />
     <section className="teams-work"><div className="teams-section-heading"><h2>{c.overview}</h2><TeamProgress team={team} /></div>
       {!team.tasks.length ? <div className="teams-empty"><GitBranch size={28} /><h3>{c.noTasks}</h3><p>{c.noTasksHint}</p></div> : <div className="teams-board">{lanes.map(({ key, label, Icon }) => {
         const tasks = rows.filter(({ task }) => key === 'finished' ? ['done', 'cancelled'].includes(task.status) : task.status === key);
@@ -58,6 +53,37 @@ export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: 
       })}</div>}
     </section>
   </>;
+}
+
+/**
+ * B-690: members nothing is waiting on (`teamMemberInactive`) fold behind one
+ * 「已停用 N 个」 disclosure — the sidebar's rule and its device-local choice
+ * (`team-archived:<id>`). Folded members keep their history links, and the
+ * handoff / new-task forms still offer them, so they can be reassigned.
+ */
+export function TeamMembers({ team, archivedSessionIds, now }: { team: TeamState; archivedSessionIds?: ReadonlySet<string>; now: number }) {
+  const c = useWorkspaceCopy();
+  const f = useFirstUseCopy();
+  const navCopy = useTeamNavigationCopy();
+  const foldKey = teamInactiveGroupId(team.id);
+  const inactiveOpen = !isGroupCollapsed(useCollapsedGroups(), foldKey);
+  const inactive = team.bots.filter(bot => { const sid = botHistorySessionId(team, bot); return teamMemberInactive(team, bot, !!sid && !!archivedSessionIds?.has(sid), now); });
+  const current = team.bots.filter(bot => !inactive.includes(bot));
+  const card = (bot: TeamBot) => {
+    const historySessionId = botHistorySessionId(team, bot);
+    const active = team.tasks.filter(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status));
+    const content = <><span className="teams-avatar" data-live={!!bot.sessionId && active.some(t => t.status === "running")}><AgentGlyph kind={agentKindOf(bot.assistant)} size={18} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{agentKindLabel(agentKindOf(bot.assistant)) ?? bot.assistant}</small><span>{active[0]?.goal ?? c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? f.starting : f.stopped}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
+    return historySessionId ? <Link key={bot.id} className="teams-member" to={`/session/${encodeURIComponent(historySessionId)}`}>{content}</Link> : <div key={bot.id} className="teams-member">{content}</div>;
+  };
+  return <section className="teams-members"><h2>{f.membersTitle} <small>{team.bots.length}</small></h2>
+    {team.bots.length === 0 && <p>{c.noMembers}</p>}
+    {current.length > 0 && <div className="teams-members-grid">{current.map(card)}</div>}
+    {inactive.length > 0 && <details className="teams-members-inactive" open={inactiveOpen} onToggle={(e) => { if (e.currentTarget.open !== inactiveOpen) setGroupCollapsed(foldKey, !e.currentTarget.open); }}>
+      <summary title={inactiveOpen ? navCopy.hideInactive : navCopy.showInactive}><ChevronRight size={14} className="teams-members-inactive-chevron" aria-hidden /><Archive size={14} aria-hidden />{navCopy.inactiveCount(inactive.length)}</summary>
+      <p className="teams-members-inactive-hint">{navCopy.inactiveHint}</p>
+      <div className="teams-members-grid">{inactive.map(card)}</div>
+    </details>}
+  </section>;
 }
 
 export function TeamListCard({ team, machine }: { team: TeamState; machine: string }) {

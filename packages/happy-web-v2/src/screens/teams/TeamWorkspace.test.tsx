@@ -6,7 +6,9 @@ import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
 import type { TeamState } from '@slopus/happy-wire';
 let TeamWorkspace: typeof import('./TeamWorkspace').TeamWorkspace;
 let TeamProgress: typeof import('./TeamWorkspace').TeamProgress;
-beforeAll(async () => { installBrowserTestGlobals(); ({ TeamWorkspace, TeamProgress } = await import('./TeamWorkspace')); });
+let TeamMembers: typeof import('./TeamWorkspace').TeamMembers;
+let collapsed: typeof import('@/screens/sessions/sidebarCollapsedGroups');
+beforeAll(async () => { installBrowserTestGlobals(); ({ TeamWorkspace, TeamProgress, TeamMembers } = await import('./TeamWorkspace')); collapsed = await import('@/screens/sessions/sidebarCollapsedGroups'); });
 const team = {
   id: 'team', name: 'Team', machineId: 'machine', version: 1, createdAt: 1,
   bots: [{ id: 'lead', name: 'Lead', lastEvent: 'blocked', lastEventAt: 1, root: true, managed: false, directory: null, sessionId: 'session', assistant: 'pi-acp', generation: 1 }],
@@ -32,5 +34,38 @@ describe('team workspace presentation', () => {
   it('counts only accepted tasks as progress, excluding submitted and cancelled work', () => {
     const html = renderToStaticMarkup(createElement(TeamProgress, { team }));
     expect(html).toContain('max="5" value="1"');
+  });
+});
+
+describe('B-690 inactive members on the Teams page', () => {
+  const now = 1_000_000_000;
+  const members = {
+    ...team,
+    id: 'fold-team',
+    bots: [
+      { ...team.bots[0], id: 'busy', name: 'Busy', sessionId: 's-busy', lastEvent: 'idle', lastEventAt: now },
+      { ...team.bots[0], id: 'done', name: 'Finished', root: false, sessionId: null, lastEvent: undefined, lastEventAt: undefined },
+      { ...team.bots[0], id: 'gone', name: 'Archived', root: false, sessionId: 's-gone', lastEvent: 'idle', lastEventAt: now },
+    ],
+    tasks: [{ ...team.tasks[1], assigneeBotId: 'busy' }, { ...team.tasks[3], id: 'finished', assigneeBotId: 'done' }],
+    operations: [{ id: 'op', teamId: 'fold-team', machineId: 'm', taskId: 'finished', botId: 'done', attemptId: 'done', generation: 1, type: 'spawn', status: 'completed', claimId: 'c', claimedAt: 1, sessionId: 's-done', createdAt: 1 }],
+  } as unknown as TeamState;
+  const render = () => renderToStaticMarkup(createElement(MemoryRouter, {}, createElement(TeamMembers, { team: members, archivedSessionIds: new Set(['s-gone']), now })));
+  it('folds stopped and archived members behind 「N inactive」, collapsed by default, history links kept', () => {
+    collapsed.resetCollapsedGroupsForTest();
+    const html = render();
+    const [before, fold] = html.split('<details');
+    expect(before).toContain('href="/session/s-busy"');
+    expect(before).not.toContain('s-done');
+    expect(fold).toMatch(/^ class="teams-members-inactive">/);
+    expect(fold).toContain('2 inactive');
+    expect(fold).toContain('href="/session/s-done"');
+    expect(fold).toContain('href="/session/s-gone"');
+  });
+  it('opens with the same device-local choice the sidebar fold uses', () => {
+    collapsed.resetCollapsedGroupsForTest();
+    collapsed.setGroupCollapsed('team-archived:fold-team', false);
+    expect(render()).toContain('<details class="teams-members-inactive" open=""');
+    collapsed.setGroupCollapsed('team-archived:fold-team', true);
   });
 });
