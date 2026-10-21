@@ -68,6 +68,7 @@ state. Never commit production values.
 | `RPC_RELAY_EVENTS_PER_SECOND` / `RPC_RELAY_BURST_EVENTS` | Shared per-account RPC event token bucket, per process (central server and each relay hold their own instance) | `5` / `300` |
 | `VOICE_EXTRA_LIMIT_ACCOUNT_IDS` | Optional comma-separated account IDs that receive the legacy extra voice allowance | Unset/empty; configure only for an operator-managed migration |
 | `VH_AGENT_TEAMS_ENABLED` / `VH_AUTOMATIONS_ENABLED` | Server-wide switches for Agent Teams / Automations. `true` opens the feature to every account; there is no per-account allowlist (B-502 removed `*_ACCOUNT_IDS`; a leftover value is ignored) | `false` until the daemons are current |
+| `VH_PROJECTS_ENABLED` | Server-wide switch for [Projects](projects.md). `false` answers the project API with 404 `projects_disabled` (the same shape as an older server), and the Web falls back to folder grouping | On (unset); set `false` only as a kill switch |
 | `MAX_AUTOMATIONS_PER_ACCOUNT` | Automations one account may hold, active and paused together; a create beyond it fails with 429 `automation_count_quota_exceeded` | `100`; `0` disables the cap |
 
 `SIGNUP_CLOSED` remains a legacy fallback only. Prefer explicit `SIGNUP_MODE`.

@@ -44,7 +44,7 @@ workspace for a single conversation or a coordinated team.
 
 pi conversations (`very-happy pi`, or pi in the Web's new-session dialog) run pi through the [pi-acp](https://www.npmjs.com/package/pi-acp) adapter, so the machine needs both: `npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`. The daemon picks them up within five minutes; `very-happy pi` and the dialog both show the exact command when either is missing.
 
-In a pi conversation, **Steer** sends a queued message into the turn that is running, questions a pi extension asks (`select`) appear as answerable question cards, and pi sub-agent runs (the `subagent` tool) get the same sub-agent cards as Claude.
+In a pi conversation, **Steer** sends a queued message into the turn that is running, questions a pi extension asks (`select`) appear as answerable question cards, and pi sub-agent runs (the `subagent` tool) get the same sub-agent cards as Claude. When the agent crashes or the wrapper restarts, a pi session reopens its conversation, and an archived or offline pi session can be restored from the Web like a Claude or Codex one (sessions started with a CLI that records the pi session id).
 
 Run `very-happy install-pi-tools` once, then launch `pi` directly inside a Very Happy terminal to load terminal naming, clipboard and file preview tools. `very-happy pi --terminal` remains available for temporary loading. Each conversation and terminal has a **Copy and preview history** disclosure for reopening files and copying earlier content. [Tool setup and retention limits](docs/channels.md#native-pi-terminal-tools).
 
@@ -359,7 +359,8 @@ platform delivers them to an installed PWA; normal tabs use the explicit
 | OpenCode | Beta · implemented | ACP-compatible preset over local stdio |
 | Custom ACP command | Beta · implemented | Generic runner for a compatible Agent Client Protocol stdio endpoint |
 | OpenClaw | Shipped | Its own local gateway adapter—not ACP |
-| Pi / provider-aware routing | Roadmap | Candidate adapters and cross-provider subtask coordination, not shipped claims |
+| pi | Shipped · via pi-acp | ACP runner over the external pi-acp adapter: structured chat, Steer into the running turn, question cards, sub-agent cards, permission modes enforced by the Very Happy pi extension, resume after a crash or restart; also Teams and native terminal tools |
+| Provider-aware routing | Roadmap | Cross-provider subtask coordination, not a shipped claim |
 
 Agent Client Protocol is distinct from the older Agent Communication Protocol
 that shares the ACP acronym. Support for a terminal-backed agent does not imply
@@ -371,6 +372,14 @@ structured parity with Claude.
   attachments, and resume.
 - Real tmux browser terminals with reconnect, scrollback, search, mobile input,
   archived sessions, file access, and automatic recovery.
+- [Projects](docs/projects.md): the sidebar groups sessions by project, project
+  sessions start with shared instructions and decisions, and a project page
+  shows each session's status; `very-happy spawn --project`.
+- Session search (`Command/Ctrl+Shift+F`) across titles, projects, tags and
+  every online machine's conversation history, opening the session on the hit.
+- `@` file mentions in the message box, and editable drafts: text the agent
+  writes for you to send can be edited and copied in place, and your next
+  message hands the final version back to the agent.
 - A machine file browser with previews for text, Markdown, images, PDFs, and Excel/CSV
   worksheets. Download original files (up to 50 MiB), copy text or paths, and pin
   clickable previews from agent output to the workspace. Workbook previews run
@@ -379,7 +388,8 @@ structured parity with Claude.
   limit, bounded chunking, upload feedback, and quoted-path insertion without
   auto-execution.
 - Task board, todo-provider commands, notes, notifications, Web Push, and HTTPS
-  webhooks.
+  account webhooks that retry transient failures, with delivery counts in
+  **Settings → Diagnostics**.
 - Machine web panels: declare noVNC, a browser dashboard or any local page in the
   machine's own settings.json and open it from the session workspace or machine
   page; agents call `request_human` to get a person, and the push opens the panel
@@ -436,7 +446,7 @@ See the exact [integration contracts](docs/channels.md).
 | Capability | Setup |
 |---|---|
 | External Todo list | Add `todoProvider` to the machine's `~/.happy/settings.json`; copy the [provider contract and example](docs/channels.md#inbound-todo-provider-external-task-lists-in-the-web-ui). |
-| Account webhook | Open **Settings → Channels**, save one HTTPS endpoint, and select completion / permission events. |
+| Account webhook | Open **Settings → Channels**, save one HTTPS endpoint, and select completion / permission events. Transient failures are retried up to 3 times; **Settings → Diagnostics** shows delivered, retried and failed counts. |
 | Dispatch other sessions | Select an Assistant machine in **Settings → Voice & Assistant**, open **Assistant** (`/assistant`), and review its high-privilege permission setting. See the [Assistant setup](docs/channels.md#inbound-web-assistant--meta-agent). |
 | Script / IM adapter | Run [`very-happy spawn`, `send` and `sessions`](docs/channels.md#inbound-daemon-control-via-the-cli) on the daemon machine — start work, message it, then list / read / stop / archive what you started. |
 
@@ -493,7 +503,7 @@ zero knowledge. Read [Architecture](docs/architecture.md) and
 ## Direction, not marketing fiction
 
 The roadmap moves toward more agent adapters, provider-aware subtask routing,
-durable project/task memory, and a meta-agent that brings users decisions rather
+task memory beyond today's project instructions and log, and a meta-agent that brings users decisions rather
 than activity. The long-term visual concept is a multi-agent virtual office—
 possibly pixel-art—where work, handoffs, and requests for attention become
 spatially legible.

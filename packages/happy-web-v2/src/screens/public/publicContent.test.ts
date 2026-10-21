@@ -217,7 +217,10 @@ describe('public documentation registry', () => {
     expect(productPreview).toContain('Example multi-machine session command panel');
     expect(productPreview).toContain('office · codex');
     expect(landingCopy).not.toContain('private Tanka deployment');
-    expect(landingCopy).toContain('ROADMAP');
+    // pi is a supported agent now (B-632/B-633): no agent is labelled roadmap.
+    expect(landingCopy).toContain('AGENT FABRIC · SHIPPED + BETA');
+    expect(landingCopy).not.toContain('SHIPPED + BETA + ROADMAP');
+    expect(landingCopy).toContain('pi is supported through its managed runner');
     expect(landingCopy).not.toContain('not end-to-end encrypted');
     expect(landingCopy).toContain('Cloud convenience or your own infrastructure.');
     expect(html).not.toContain('Claude Code, from any browser.');
@@ -734,4 +737,23 @@ it('documents automation prechecks, skip reasons, ×N folding and old-CLI compat
  expect(zhText).toContain('拒绝创建或编辑前置检查');
  // the code block stays untranslated and identical
  expect(zh.sections[enIndex].blocks[1]).toEqual(en.sections[enIndex].blocks[1]);
+});
+
+it('documents the 2026-10-21 batch (projects, drafts, @ mentions, session search, pi) in both languages', () => {
+ const en = getPublicDocs('en').find(doc => doc.slug === 'projects')!;
+ const zh = getPublicDocs('zh-Hans').find(doc => doc.slug === 'projects')!;
+ expect(en.sections.length).toBe(zh.sections.length);
+ const text = JSON.stringify(en);
+ // the CLI flags the docs teach must exist in the CLI parser
+ const spawn = readFileSync(new URL('../../../../happy-cli/src/commands/spawn.ts', import.meta.url), 'utf8');
+ for (const flag of ['--project', '--no-project']) {
+  expect(text).toContain(flag);
+  expect(spawn).toContain(`'${flag}'`);
+ }
+ const sessions = JSON.stringify(getPublicDoc('sessions'));
+ for (const heading of ['Editable drafts', 'Mention files with @', 'Search every session']) expect(sessions).toContain(heading);
+ expect(sessions).not.toContain('grouped by workspace');
+ // B-650: the sidebar search button opens session search, not the command palette
+ expect(JSON.stringify(getPublicDoc('keyboard'))).not.toContain('tap the sidebar search button to open the same command palette');
+ expect(JSON.stringify(getPublicDoc('architecture'))).toContain('pi runs through the managed pi-acp runner');
 });

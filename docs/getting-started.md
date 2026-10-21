@@ -301,6 +301,21 @@ The guide also points to the everyday tools that are easy to miss:
 - Press `Command/Ctrl+K` to search actions, chats, and terminals;
   `Command/Ctrl+.` opens saved prompts, and `Command/Ctrl+J` toggles scratch
   notes. Visible sidebar and header buttons provide the same paths on touch.
+- Press `Command/Ctrl+Shift+F` (or the sidebar search button on a phone) to
+  search every session's title, project and tags plus the conversations on each
+  online machine; a result opens the session on the hit.
+- The sidebar groups sessions by [project](projects.md). Sessions outside a
+  project are grouped by folder, and **Make this folder a project** turns one
+  into a project whose sessions share instructions and a decision log.
+- Type `@` in the message box to mention a project file (the same list as
+  `Command/Ctrl+P`); Claude Code reads the mentioned file itself.
+- Text the agent writes for you to send (a reply, an email, release notes)
+  appears as an editable **Draft** box. Edit it in place and copy it; the edit
+  is saved and syncs across your devices, **Restore original** undoes it, and
+  your next message carries the final text and a diff to the agent (a chip above
+  the composer shows it; remove the chip to leave it out). Agents get the
+  formatting hint from the Web on Claude, Codex and Gemini; pi does not get it
+  yet.
 - Open **Files** from a conversation or terminal header. Paths emitted by
   structured agent tools are clickable and open the same preview surface.
 - Keep temporary prompts and context in the notes dock. Open **Todo** from the
@@ -434,8 +449,9 @@ routing, and it needs the local daemon. See
 ## 6. Learn the fast paths
 
 Press `Command+K` on macOS or `Ctrl+K` on Windows/Linux to search actions,
-chats, and terminals. The sidebar search button opens the same palette on a
-phone. Very Happy keeps macOS `Ctrl` chords available to readline and the real
+chats, and terminals. `Command+Shift+F` / `Ctrl+Shift+F` opens session search;
+on a phone the sidebar search button opens it, and its empty state links to the
+palette. Very Happy keeps macOS `Ctrl` chords available to readline and the real
 TUI, and documents where installed-PWA shortcuts differ from browser tabs.
 
 See [Keyboard and touch navigation](keyboard-shortcuts.md) for session switching,

@@ -539,7 +539,10 @@ coordinate directly — no lock, no permission change.
   session to reply to). `--reply-to` quotes the peer's message id. Refused,
   exit 1, with the reason on stderr (and `{delivered:false,error}` on stdout
   under `--json`) when the target is not running, or is a terminal mirror
-  (nothing reads a mirror's queue; the person at that terminal does). A
+  (nothing reads a mirror's queue; the person at that terminal does).
+  Exception (B-646): when the sender and a target that is not running belong
+  to the same [project](projects.md), the message is stored server-side
+  (`status: "offline-stored"`) and read at the target's next turn. A
   target another machine spawned is delivered through that machine's daemon
   (B-506): the header gains `; machine <host>` naming the sender's host, the
   footer says the message came from a session *on machine <host>* and that

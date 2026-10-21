@@ -16,6 +16,39 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-21-projects-drafts-search',
+    date: '2026-10-21',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct21.title',
+    summaryKey: 'changelog.releases.oct21.summary',
+    itemKeys: [
+      'changelog.releases.oct21.projects',
+      'changelog.releases.oct21.projectPage',
+      'changelog.releases.oct21.drafts',
+      'changelog.releases.oct21.mentions',
+      'changelog.releases.oct21.search',
+      'changelog.releases.oct21.panels',
+      'changelog.releases.oct21.mobile',
+      'changelog.releases.oct21.keys',
+      'changelog.releases.oct21.fixes',
+    ],
+  },
+  {
+    id: '2026-10-21-cli-projects-pi',
+    cliVersion: '0.2.179',
+    date: '2026-10-21',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct21a.title',
+    summaryKey: 'changelog.releases.oct21a.summary',
+    itemKeys: [
+      'changelog.releases.oct21a.projects',
+      'changelog.releases.oct21a.pi',
+      'changelog.releases.oct21a.panels',
+      'changelog.releases.oct21a.stop',
+      'changelog.releases.oct21a.reliability',
+    ],
+  },
+  {
     id: '2026-10-19-daemon-follows-relay',
     cliVersion: '0.2.178',
     date: '2026-10-19',
