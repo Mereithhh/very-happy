@@ -19,9 +19,20 @@
  * `configuredResourceLimit('NAME', <expr>)` 解析，生产覆盖值从运行中的容器
  * 环境变量读。改了代码或改了 env，这里跟着变。
  *
+ * 数据库怎么连（B-661，2026-10-21 起与生产现状一致）：生产库是 RDS `vh-pg`，
+ * 只能经 vh-sg 上的 PgBouncer（`vh-pgbouncer`，库别名 `happy`）到达。脚本在
+ * `--container`（默认 vh-pgbouncer，它自带 psql）里跑 psql，连接串取自运行中
+ * server 容器的 `DATABASE_URL`，**经 stdin 传入**（不进任何进程参数、不落盘、
+ * 不打印）；所有 SQL 包在 `BEGIN READ ONLY … COMMIT` 里。数据库容量从 RDS 读
+ * （本机 `aws`：AllocatedStorage + CloudWatch FreeStorageSpace），超售比对的是
+ * 数据库剩余空间；`--rds none` 时退回主机磁盘（自建、库在本机的部署）。主机
+ * 磁盘照常报告——镜像吃掉的是它。旧默认 `--host vh-us` + 容器 happy-postgres
+ * 已失效：vh-us 2026-09-07 起停服并已退役（docs/operations.md）。
+ *
  * 用法：
- *   node scripts/ops/resource-budget.mjs                 # 默认连 vh-us
- *   node scripts/ops/resource-budget.mjs --host vh-us --top 8
+ *   node scripts/ops/resource-budget.mjs                 # 默认 vh-sg + RDS vh-pg
+ *   node scripts/ops/resource-budget.mjs --host vh-sg --top 8
+ *   node scripts/ops/resource-budget.mjs --rds none      # 库在主机本地：超售比对主机磁盘
  *   node scripts/ops/resource-budget.mjs --warn 70       # 超过 70% 就非零退出
  *   node scripts/ops/resource-budget.mjs --days 45       # 45 天内会撞墙就非零退出
  *
@@ -32,6 +43,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 
@@ -40,8 +52,8 @@ function fail(message) {
     process.exit(2);
 }
 
-function parseArgs(argv) {
-    const opts = { host: 'vh-us', container: 'happy-postgres', server: null, top: 5, warn: 80, days: 30 };
+export function parseArgs(argv) {
+    const opts = { host: 'vh-sg', container: 'vh-pgbouncer', server: null, rds: 'vh-pg', region: 'ap-southeast-1', top: 5, warn: 80, days: 30 };
     for (let i = 0; i < argv.length; i += 1) {
         const next = () => {
             const value = argv[i + 1];
@@ -53,6 +65,8 @@ function parseArgs(argv) {
             case '--host': opts.host = next(); break;
             case '--container': opts.container = next(); break;
             case '--server': opts.server = next(); break;
+            case '--rds': opts.rds = next(); break;
+            case '--region': opts.region = next(); break;
             case '--top': opts.top = Number.parseInt(next(), 10); break;
             case '--warn': opts.warn = Number.parseFloat(next()); break;
             case '--days': opts.days = Number.parseInt(next(), 10); break;
@@ -78,10 +92,25 @@ function ssh(host, command, input) {
     }
 }
 
-/** SQL goes in on stdin — nested shell quoting is how these scripts rot. */
+/**
+ * SQL goes in on stdin — nested shell quoting is how these scripts rot. The
+ * first stdin line on the host is the server's own `DATABASE_URL` (piped from
+ * `printenv`, so the credential never appears in argv, a log or this process);
+ * the psql container reads it with `read` and psql takes the rest as the
+ * script. Prisma's query parameters (`connection_limit`, `pgbouncer`, …) are
+ * not libpq options, so the query string is cut off. Read-only by construction.
+ */
+export function psqlRemoteCommand(container, server) {
+    return `{ docker exec ${server} printenv DATABASE_URL; cat; } | docker exec -i ${container} sh -c `
+        + `'read -r U; exec psql "\${U%%\\?*}" -X -q -t -A -F"|" -v ON_ERROR_STOP=1 -f -'`;
+}
+
+export function readOnlySql(sql) {
+    return `BEGIN READ ONLY;\n${sql.trim().replace(/;?\s*$/, ';')}\nCOMMIT;\n`;
+}
+
 function psql(opts, sql) {
-    const command = `docker exec -i ${opts.container} sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -A -F"|" -f -'`;
-    return ssh(opts.host, command, sql)
+    return ssh(opts.host, psqlRemoteCommand(opts.container, opts.serverContainer), readOnlySql(sql))
         .split('\n')
         .map((line) => line.trim())
         .filter(Boolean)
@@ -196,8 +225,34 @@ function table(rows) {
     }
 }
 
+/**
+ * Database capacity when it lives on RDS: allocated storage and the latest
+ * CloudWatch FreeStorageSpace, read with the operator's local `aws` (vh-sg
+ * itself has no AWS CLI). Read-only API calls. `null` = not available — the
+ * report then says so instead of comparing against the wrong disk.
+ */
+function rdsCapacity(opts) {
+    if (!opts.rds || opts.rds === 'none') return null;
+    const aws = (args) => execFileSync('aws', [...args, '--region', opts.region, '--output', 'json'], { encoding: 'utf8', timeout: 30_000 });
+    try {
+        const inst = JSON.parse(aws(['rds', 'describe-db-instances', '--db-instance-identifier', opts.rds])).DBInstances?.[0];
+        const allocated = Number(inst?.AllocatedStorage) * 1024 ** 3;
+        const end = new Date();
+        const start = new Date(end.getTime() - 60 * 60 * 1000);
+        const stats = JSON.parse(aws(['cloudwatch', 'get-metric-statistics', '--namespace', 'AWS/RDS', '--metric-name', 'FreeStorageSpace',
+            '--dimensions', `Name=DBInstanceIdentifier,Value=${opts.rds}`, '--start-time', start.toISOString(), '--end-time', end.toISOString(),
+            '--period', '300', '--statistics', 'Minimum']));
+        const latest = (stats.Datapoints ?? []).sort((a, b) => Date.parse(b.Timestamp) - Date.parse(a.Timestamp))[0];
+        return { allocated, free: latest ? Number(latest.Minimum) : undefined, maxAllocated: inst?.MaxAllocatedStorage ? Number(inst.MaxAllocatedStorage) * 1024 ** 3 : undefined };
+    } catch (error) {
+        return { error: error.stderr?.toString().trim().split('\n')[0] || error.message };
+    }
+}
+
+function main() {
 const opts = parseArgs(process.argv.slice(2));
 const serverContainer = resolveServerContainer(opts);
+opts.serverContainer = serverContainer;
 const { fallbacks, unresolved } = readCodeFallbacks();
 
 const envLines = ssh(opts.host, `docker exec ${serverContainer} env`).split('\n');
@@ -249,6 +304,7 @@ GROUP BY s."accountId";
 
 const [[dbSize]] = psql(opts, 'SELECT pg_database_size(current_database());');
 const disk = ssh(opts.host, "df -B1 --output=size,used,avail / | tail -1").trim().split(/\s+/).map(Number);
+const rds = rdsCapacity(opts);
 
 /**
  * Where the disk ACTUALLY goes. Account quotas were the obvious suspect and
@@ -267,7 +323,9 @@ const docker = dockerFootprint(opts.host);
 // ── report ───────────────────────────────────────────────────────────────────
 console.log(`\nhost ${opts.host} · server ${serverContainer}`);
 console.log(`accounts ${accounts} (${withMessages} with messages) · sessions ${sessionCount} · machines ${machineCount}`);
-console.log(`database ${bytes(+dbSize)} · disk ${bytes(disk[1])} used of ${bytes(disk[0])}, ${bytes(disk[2])} free`);
+console.log(`database ${bytes(+dbSize)}${rds && !rds.error ? ` on RDS ${opts.rds} · ${bytes(rds.allocated)} allocated${rds.free !== undefined ? `, ${bytes(rds.free)} free` : ''}${rds.maxAllocated ? ` (autoscale to ${bytes(rds.maxAllocated)})` : ''}` : ''}`);
+if (rds?.error) console.log(`  RDS ${opts.rds}: capacity unavailable (${rds.error}) — oversubscription below falls back to the host disk`);
+console.log(`host disk ${bytes(disk[1])} used of ${bytes(disk[0])}, ${bytes(disk[2])} free`);
 for (const row of docker) {
     if (row.type !== 'Images' && row.type !== 'Local Volumes') continue;
     console.log(`docker ${row.type.toLowerCase().padEnd(13)} ${row.size} in ${row.total} (${row.active} active) · ${row.reclaimable} reclaimable`);
@@ -320,11 +378,15 @@ const byteLimits = [...fallbacks.keys()].filter((name) => name.endsWith('_BYTES_
 const perAccountEntitlement = byteLimits.reduce((total, name) => total + (limitOf(name).value ?? 0), 0);
 const maxAccounts = Number.parseInt(env.get('SIGNUP_MAX_ACCOUNTS') ?? '0', 10) || Number(accounts);
 const entitled = perAccountEntitlement * maxAccounts;
-const ratio = entitled / (disk[2] || 1);
+// The account bytes land in the database, so that is the disk they compete for.
+const dbFree = rds && !rds.error && rds.free !== undefined ? rds.free : undefined;
+const capacityFree = dbFree ?? disk[2];
+const capacityLabel = dbFree !== undefined ? `RDS ${opts.rds} free` : 'host disk free';
+const ratio = entitled / (capacityFree || 1);
 
 console.log(`\nper-account byte entitlement  ${bytes(perAccountEntitlement)}  (${byteLimits.length} limits)`);
 console.log(`signup mode ${env.get('SIGNUP_MODE') ?? 'unset'} · cap ${env.get('SIGNUP_MAX_ACCOUNTS') ?? 'unlimited'}`);
-console.log(`worst case  ${maxAccounts} × ${bytes(perAccountEntitlement)} = ${bytes(entitled)} against ${bytes(disk[2])} free  →  ${ratio.toFixed(1)}× oversubscribed`);
+console.log(`worst case  ${maxAccounts} × ${bytes(perAccountEntitlement)} = ${bytes(entitled)} against ${bytes(capacityFree)} ${capacityLabel}  →  ${ratio.toFixed(1)}× oversubscribed`);
 if (ratio > 1) {
     console.log('  ⚠ per-account limits cannot protect this disk on their own: a few heavy accounts');
     console.log('    fill it before any of them is refused. On veryhappy.dev this is ACCEPTED —');
@@ -338,3 +400,7 @@ if (unresolved.length > 0) {
 }
 
 process.exit(warned ? 1 : 0);
+}
+
+// Importable for tests (`resource-budget.test.mjs`); runs only as a command.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main();
