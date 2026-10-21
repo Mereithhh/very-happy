@@ -289,3 +289,5 @@
    generic .teams-screen form grid, which it overrides). */
 .teams-screen .teams-launch-retry { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-2) 0 0; color: var(--text); }
 .teams-screen .teams-launch-retry button { display: inline-flex; align-items: center; gap: var(--sp-2); }
+/* B-698: inline note under the harness / model selects (saved value not on this machine). */
+.team-field-warn { display: block; margin-top: 4px; color: var(--warn); font-size: var(--fs-11); line-height: 1.45; font-weight: 400; }
