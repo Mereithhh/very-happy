@@ -129,6 +129,70 @@ describe('daemon team effect recovery', () => {
         expect(mocks.send).toHaveBeenCalledTimes(1);
         expect(readReceipt(home, 'op1')?.phase).toBe('completed');
     });
+    // B-689: 10-21 a worker exited 1 at startup (ECONNRESET under load) and the
+    // launch stayed "needs attention" forever — every spawn error was treated as
+    // an uncertain spawn. A wrapper confirmed gone is a definite failure.
+    it('relaunches with backoff after a confirmed startup exit, then waits for the owner', async () => {
+        let now = 1_000_000;
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+        try {
+            const operation = op(); setup(operation);
+            const exited = { type: 'error', errorMessage: 'Agent process exited during startup (code 1): ECONNRESET', startupExit: { exited: true, code: 1, signal: null } };
+            spawn.mockResolvedValue(exited);
+            const worker = start(); await settled(worker);
+            expect(spawn).toHaveBeenCalledTimes(1);
+            expect(readReceipt(home, 'op1')).toMatchObject({ phase: 'prepared', spawnFailures: 1, retryAt: now + 10_000, directory: '/isolated' });
+            const failure = mocks.post.mock.calls.find(c => c[1].action?.type === 'fail-operation');
+            expect(failure?.[1].action.unknown).toBeUndefined();
+            expect(failure?.[1].action.error).toContain('exited during startup (code 1): ECONNRESET');
+            expect(failure?.[1].action.error).toContain('automatic retry 2/5 in 10s');
+            await worker.tick();
+            expect(spawn).toHaveBeenCalledTimes(1); // backoff not elapsed
+            for (const delay of [10_000, 30_000, 60_000, 120_000]) { now += delay; await worker.tick(); }
+            expect(spawn).toHaveBeenCalledTimes(5);
+            expect(readReceipt(home, 'op1')).toMatchObject({ phase: 'prepared', spawnFailures: 5 });
+            expect(readReceipt(home, 'op1')?.retryAt).toBeUndefined();
+            expect(mocks.post.mock.calls.filter(c => c[1].action?.type === 'fail-operation').pop()?.[1].action.error).toContain('automatic retries exhausted after 5 attempts');
+            now += 3_600_000; await worker.tick();
+            expect(spawn).toHaveBeenCalledTimes(5); // budget spent: only the owner restarts it
+            // Owner「重试启动」: retry-operation stamps retryRequestedAt.
+            spawn.mockResolvedValue({ type: 'success', sessionId: 'session1' });
+            const retried = { ...operation, status: 'failed' as const, claimId: 'claim1', retryRequestedAt: 42 };
+            setup(retried);
+            await worker.tick();
+            expect(spawn).toHaveBeenCalledTimes(6);
+            expect(readReceipt(home, 'op1')).toMatchObject({ phase: 'completed', retryConsumed: 42 });
+        } finally { clock.mockRestore(); }
+    });
+    it('still fences a spawn error whose wrapper is not confirmed gone', async () => {
+        setup(op());
+        spawn.mockResolvedValue({ type: 'error', errorMessage: 'Agent process did not report its session within 15s and could not be confirmed stopped', startupExit: { exited: false, code: null, signal: null, timedOut: true } });
+        const worker = start(); await settled(worker);
+        expect(readReceipt(home, 'op1')?.phase).toBe('spawning');
+        expect(mocks.post.mock.calls.some(c => c[1].action?.type === 'fail-operation' && c[1].action.unknown === true)).toBe(true);
+        await worker.tick();
+        expect(spawn).toHaveBeenCalledTimes(1);
+    });
+    it('relaunches an uncertain spawn only on an owner retry and only without a reported wrapper', async () => {
+        const uncertain = { ...op(), status: 'unknown' as const, claimId: 'claim1', retryRequestedAt: 7 };
+        setup(uncertain);
+        writeReceipt(home, { operationId: 'op1', teamId: 'team1', claimId: 'claim1', phase: 'spawning', directory: '/isolated', repository: '/repo', branch: 'codex/team-op1' });
+        mocks.persisted.mockReturnValue({ session1: { metadata: { teamOperationId: 'op1' } } });
+        const worker = start(); await settled(worker);
+        expect(spawn).not.toHaveBeenCalled(); // a wrapper that reported for this op wins
+        expect(readReceipt(home, 'op1')?.phase).toBe('completed');
+
+        rmSync(join(home, 'teams'), { recursive: true, force: true });
+        mocks.persisted.mockReturnValue({});
+        writeReceipt(home, { operationId: 'op1', teamId: 'team1', claimId: 'claim1', phase: 'spawning' });
+        setup({ ...uncertain, retryRequestedAt: undefined });
+        await worker.tick();
+        expect(spawn).not.toHaveBeenCalled(); // no owner retry: stays fenced
+        setup(uncertain);
+        await worker.tick();
+        expect(spawn).toHaveBeenCalledTimes(1);
+        expect(readReceipt(home, 'op1')).toMatchObject({ phase: 'completed', retryConsumed: 7 });
+    });
     it('never claims a previously claimed operation when its local effect receipt is absent', async () => {
         setup({ ...op(), status: 'claimed', claimId: 'claim1' });
         const worker = start(); await settled(worker);

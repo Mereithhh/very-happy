@@ -42,6 +42,7 @@ import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconn
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
+import { createSessionForStartup } from '@/utils/startupSessionCreate';
 import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { resolveCodexExecutionPolicy } from './executionPolicy';
@@ -189,7 +190,8 @@ export async function runCodex(opts: {
             agentStateVersion: parseInt(reconnectAgentStateVersion || '0', 10),
         };
     } else {
-        response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+        // B-689: daemon spawns never run on an offline stub (see startupSessionCreate).
+        response = await createSessionForStartup(() => api.getOrCreateSession({ tag: sessionTag, metadata, state }), { startedBy: opts.startedBy, log: (m) => logger.debug(m) });
     }
 
     // B-272: single-writer lock — see runClaude / utils/sessionLock.ts.

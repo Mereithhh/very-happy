@@ -13,6 +13,12 @@ export interface TeamEffectReceipt {
     repository?: string;
     branch?: string;
     scopeFile?: string;
+    /** B-689: definitive startup failures of this launch so far. */
+    spawnFailures?: number;
+    /** B-689: earliest automatic relaunch; absent after the budget is spent. */
+    retryAt?: number;
+    /** B-689: the op.retryRequestedAt this daemon already acted on. */
+    retryConsumed?: number;
 }
 export function receiptPath(home: string, operationId: string): string {
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(operationId)) throw new Error('Invalid team operation id');

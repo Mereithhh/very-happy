@@ -258,6 +258,20 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             operationId = op.id;
             break;
         }
+        case 'retry-operation': {
+            // B-689: the owner's「重试启动」. Only marks the request; the execution
+            // computer decides what is safe to rerun against its local receipt.
+            owner();
+            const op = s.operations.find(o => o.id === action.operationId); requireTeam(op, 'operation_not_found', 404);
+            requireTeam(op.claimId === action.claimId && ['unknown', 'failed'].includes(op.status), 'stale_claim');
+            if (op.type === 'spawn') {
+                const task = s.tasks.find(t => t.id === op.taskId);
+                requireTeam(task?.currentAttemptId === op.attemptId && task.status === 'queued', 'operation_task_not_waiting');
+            }
+            op.retryRequestedAt = Math.max(now, (op.retryRequestedAt ?? 0) + 1);
+            operationId = op.id;
+            break;
+        }
         case 'claim-operation': {
             owner(); requireTeam(action.machineId === s.machineId, 'machine_mismatch', 403);
             const op = s.operations.find(o => o.id === action.operationId); requireTeam(op, 'operation_not_found', 404);

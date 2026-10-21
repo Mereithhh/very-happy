@@ -33,6 +33,7 @@ import { daemonEndpointsMatch } from './ui/doctorReadiness'
 import { missingPiPrerequisites, parsePiRunnerArgs, piAdapterMissingHint, piSetupMessage } from '@/agent/acp/piRunnerArgs'
 import { commandOnPath } from '@/utils/detectCLI'
 import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
+import { errorReason, installExitReasonFallback, recordExitReason } from './utils/exitReason'
 
 
 export async function main(): Promise<void> {
@@ -49,6 +50,8 @@ export async function main(): Promise<void> {
   if (!args.includes('--version')) {
     logger.debug('Starting happy CLI with args: ', process.argv)
   }
+  // B-689: a non-zero exit always leaves its reason in the session log.
+  installExitReasonFallback()
 
   // Check if first argument is a subcommand
   const subcommand = args[0]
@@ -86,11 +89,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     try {
       await (await import('./commands/auth')).handleAuthCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'connect') {
@@ -98,33 +97,21 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     try {
       await (await import('./commands/connect')).handleConnectCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'sandbox') {
     try {
       await (await import('./commands/sandbox')).handleSandboxCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'server') {
     try {
       await (await import('./commands/server')).handleServerCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'bye') {
@@ -152,11 +139,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       await installTerminalHooks({ remove: command.action === 'remove' });
       process.exit(0);
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
   } else if (subcommand === 'agent-home') {
     // B-478: show / pin where Claude Code and Codex keep their conversations.
@@ -173,11 +156,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       const { handleSpawnCommand } = await import('./commands/spawn');
       await handleSpawnCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'sessions') {
@@ -185,11 +164,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       const { handleSessionsCommand } = await import('./commands/sessions');
       await handleSessionsCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'send') {
@@ -197,22 +172,14 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       const { handleSendCommand } = await import('./commands/send');
       await handleSendCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'resume') {
     try {
       await (await import('./resume/handleResumeCommand')).handleResumeCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'codex') {
@@ -221,11 +188,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       await (await import('./commands/codexCommand')).handleCodexCommand(args.slice(1));
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'gemini') {
@@ -427,11 +390,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
 
       await runGemini({credentials, startedBy});
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'pi') {
@@ -491,8 +450,9 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         onBackendError: printHint,
         resumeAgentSessionId: parsed.resume,
       });
-      if (hintPrinted) process.exit(1)
+      if (hintPrinted) { recordExitReason(1, 'pi adapter prerequisites are missing'); process.exit(1) }
     } catch (error) {
+      recordExitReason(1, errorReason(error))
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       printHint(error instanceof Error ? error.message : undefined)
       if (process.env.DEBUG) {
@@ -537,11 +497,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         args: resolved.args,
       });
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'openclaw') {
@@ -579,11 +535,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         gatewayPassword,
       });
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'logout') {
@@ -592,11 +544,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     try {
       await (await import('./commands/auth')).handleAuthCommand(['logout']);
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'todo') {
@@ -659,11 +607,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     try {
       await handleNotifyCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
     return;
   } else if (subcommand === 'daemon') {
@@ -1017,11 +961,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       const { runClaude } = await import('@/claude/runClaude')
       await runClaude(credentials, options);
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (process.env.DEBUG) {
-        console.error(error)
-      }
-      process.exit(1)
+      failCommand(error)
     }
   }
 }
@@ -1116,4 +1056,15 @@ ${chalk.bold('Examples:')}
     console.error(chalk.red('✗ Failed to send push notification'))
     throw error
   }
+}
+
+/** B-689: print the error for a terminal user AND record it in the log file —
+ *  a daemon-spawned wrapper has no console (stdio: 'ignore'). */
+function failCommand(error: unknown): never {
+  recordExitReason(1, errorReason(error))
+  console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+  if (process.env.DEBUG) {
+    console.error(error)
+  }
+  process.exit(1)
 }

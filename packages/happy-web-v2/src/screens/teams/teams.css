@@ -283,3 +283,8 @@
 .teams-avatar[data-live=true] .ag-glyph { color: var(--accent); }
 .teams-roster .ag-glyph, .teams-task-owner .ag-glyph { color: var(--text-faint); }
 .teams-list-card h2 > svg, .teams-heading h1 > svg { flex: none; color: var(--text-dim); }
+
+/* B-689: retry a stuck launch — compact row under the failure text (after the
+   generic .teams-screen form grid, which it overrides). */
+.teams-screen .teams-launch-retry { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-2) 0 0; color: var(--text); }
+.teams-screen .teams-launch-retry button { display: inline-flex; align-items: center; gap: var(--sp-2); }

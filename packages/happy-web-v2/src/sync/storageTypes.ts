@@ -303,8 +303,12 @@ export interface DecryptedMessage {
 export const MachineMetadataSchema = z.object({
   teamsVersion: z.number().int().positive().optional(),
   teamLaunchVersion: z.number().int().positive().optional(),
+  /** B-689: daemon acts on the owner's team `retry-operation`. Absent on old daemons. */
+  teamRetryVersion: z.number().int().positive().optional(),
   /** B-586: daemon serves the `worktree-*` RPCs (absent on old daemons). */
   worktreeVersion: z.number().int().positive().optional(),
+  /** B-688: daemon serves the `model-config-*` RPCs (absent on old daemons). */
+  modelConfigVersion: z.number().int().positive().optional(),
     host: z.string(),
     platform: z.string(),
     happyCliVersion: z.string(),

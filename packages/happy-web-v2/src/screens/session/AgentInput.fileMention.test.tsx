@@ -30,6 +30,7 @@ vi.mock('@/sync/ops', () => ({ sessionAbort: mocks.abort, sessionSetPermissionMo
 // B-568: the socket hint reads the live store; these composer tests mock storage as a plain object.
 vi.mock('./useReconnectingHint', () => ({ useReconnectingHint: () => false }));
 vi.mock('@/sync/storage', () => ({
+    useMachine: () => null, // B-688 picker 「自定义…」 (no machine → no entry)
     useSession: () => mocks.session,
     useSessionUsage: () => null,
     useSessionProjectFiles: () => mocks.projectFiles,
