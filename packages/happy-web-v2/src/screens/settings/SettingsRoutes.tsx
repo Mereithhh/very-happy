@@ -27,6 +27,7 @@ import {
   ClipboardList,
   FileText,
   Info,
+  Cpu,
 } from 'lucide-react';
 import {
   ItemList,
@@ -132,6 +133,7 @@ import { getServerInfo } from '@/sync/serverConfig';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { VoiceSettings } from './VoiceSettings';
 import { MachinesSettings } from './MachinesSettings';
+import { ModelProviderSettings } from './ModelProviderSettings';
 import { resetFeatureTips } from '@/components/featureTips/FeatureTips';
 import { CodeView } from '@/screens/session/CodeView';
 import { SettingsPage as Page, SettingsHeader as Header, SettingsWorkspace } from './SettingsLayout';
@@ -253,6 +255,13 @@ function Overview() {
             left={<Bot size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/agents')}
+          />
+          <Item
+            title={t('modelConfig.title')}
+            subtitle={t('modelConfig.subtitle')}
+            left={<Cpu size={18} />}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/settings/models')}
           />
           <Item
             title={t('settingsSnippets.navTitle')}
@@ -2677,6 +2686,7 @@ export function SettingsRoutes({ basePath }: { basePath?: string } = {}) {
       <Route path="appearance" element={<Appearance />} />
       <Route path="account" element={<Account />} />
       <Route path="agents" element={<Agents />} />
+      <Route path="models" element={<ModelProviderSettings />} />
       <Route path="snippets" element={<Snippets />} />
       <Route path="notifications" element={<Notifications />} />
       <Route path="channels" element={<Channels />} />

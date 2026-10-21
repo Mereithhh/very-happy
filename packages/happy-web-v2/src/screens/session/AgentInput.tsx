@@ -2,6 +2,8 @@ import { selectDisplayedEffortKey } from './effortSelection';
 import { wrapperSupportsSteer } from './steerSupport';
 import { supportsSessionAttachments } from '@/sync/attachmentCapabilities';
 import { ModelEffortMenu } from './ModelEffortMenu';
+import { harnessForFlavor, machineSupportsModelConfig, withCustomModels } from '@/sync/modelConfigModel';
+import { modelConfigStore, useCustomPickerModels } from '@/sync/modelConfigStore';
 import { onMessageQuote } from './messageQuote';
 import { mergeRestoredDraft, onComposerRestore } from './composerRestore';
 import { appendMessageQuote, insertMessageQuoteAt } from './messageActionsModel';
@@ -12,7 +14,7 @@ import { appendMessageQuote, insertMessageQuoteAt } from './messageActionsModel'
  * Sending: see utils/composerEnter (desktop Enter sends, Cmd/Ctrl/Shift+Enter
  * newline; soft keyboards newline). IME-safe: never sends mid-composition.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, CornerDownRight, Pencil, ArrowUp, Square, Trash2, X, Shield, Gauge, MoreHorizontal, ListEnd } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { randomUUID } from 'expo-crypto';
@@ -22,6 +24,7 @@ import {
     useSession,
     useSessionUsage,
     useSetting,
+    useMachine,
     storage,
 } from '@/sync/storage';
 import { registerDraftFlush } from '@/app/draftFlush';
@@ -119,6 +122,8 @@ import { applyFileMention, fileMentionDismissKey, fileMentionQuery } from './fil
 import { useFileMentionSuggestions } from './useFileMentionSuggestions';
 import { highlightRuns } from '../quickopen/quickOpenScore';
 import { recordQuickOpen } from '../quickopen/quickOpenHistory';
+// B-688: the model/provider editor loads on first use (Vite turns CJS `react` imports into consts, so this sits after every import).
+const ModelConfigEditor = lazy(() => import('@/components/modelConfig/ModelConfigEditor').then((m) => ({ default: m.ModelConfigEditor })));
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
 // historical unconditional refocus (mouse-clicking Send should return the
@@ -304,9 +309,17 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const defaultModelLabel = resolvedDefaultModel
         ? t('session.chat.defaultModelResolved', { model: compactResolvedModelCode(resolvedDefaultModel) })
         : t('session.chat.defaultModelUnknown');
-    const models = relabelDefaultModel(
-        getAvailableModels(flavor, metadata, t as any),
-        defaultModelLabel,
+    // B-688: the session machine's custom models (its harness config files) join the picker.
+    const configMachineId = metadata?.machineId ?? '';
+    const configMachine = useMachine(configMachineId);
+    const configHarness = harnessForFlavor(flavor);
+    const canConfigureModels = !!configMachineId && !!configHarness && !!configMachine;
+    const customModels = useCustomPickerModels(configMachineId, configHarness);
+    const [modelEditorOpen, setModelEditorOpen] = useState(false);
+    const models = withCustomModels(
+        relabelDefaultModel(getAvailableModels(flavor, metadata, t as any), defaultModelLabel),
+        customModels,
+        t('modelConfig.customModelDescription'),
     );
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
     const efforts = getEffortLevelsForModel(flavor, modelKey ?? 'default', metadata);
@@ -1365,7 +1378,14 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
                         onChange={(key) => setMode('updateSessionModelMode', 'modelMode', key)}
                         subtitle={modelSubtitle}
                         effort={{ label: t('session.chat.effortLabel'), options: effortOptions, value: selectedEffortKey, onChange: setEffort }}
+                        customize={canConfigureModels ? { label: t('modelConfig.customize'), onSelect: () => setModelEditorOpen(true) } : undefined}
+                        onOpen={() => {
+                            if (canConfigureModels && machineSupportsModelConfig(configMachine) && configMachine?.active) void modelConfigStore.getState().load(configMachineId);
+                        }}
                     />
+                    {modelEditorOpen && <Suspense fallback={null}>
+                        <ModelConfigEditor open={modelEditorOpen} onOpenChange={setModelEditorOpen} machineId={configMachineId} harness={configHarness} />
+                    </Suspense>}
                     </div>
                     <div className="ci-composer-actions">
                         {isWorking && !sending && !processingAttachments && (!hasDraft || aborting) ? (
