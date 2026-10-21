@@ -22,7 +22,8 @@ describe('compact workspace help screen', () => {
     expect(screen).toContain('createChatOrConfigure(navigate');
     expect(screen).toContain('createTerminalOrPick(navigate)');
     expect(screen).toContain("navigate('/settings')");
-    expect(screen).toContain('<BackButton className="help-screen__back" />');
+    // B-728: the back arrow carries the page name (no lone ‹)
+    expect(screen).toContain('<div className="help-screen__back"><BackButton /><span className="help-screen__back-title">{t(\'sidebar.help\')}</span></div>');
     expect(screen).toContain('openGroup === key');
     expect(screen).toContain('aria-expanded={open}');
     expect(screen).toContain('setOpenGroup(open ? null : key)');
