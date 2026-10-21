@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LinkBudget, MAX_RECORD_CIPHER, OVERSIZE_TEXT, isSecretKey, makePathScrubber, projectLinkPage, projectRecordForLink, scrubLinkText } from './linkProjection';
+import { LinkBudget, MAX_RECORD_CIPHER, MAX_SAME_KEY, OVERSIZE_TEXT, isSecretKey, makePathScrubber, projectLinkPage, projectRecordForLink, scrubLinkText } from './linkProjection';
 
 const fake = (...parts: string[]) => parts.join('');
 
@@ -232,5 +232,35 @@ describe('B-701 link projection (whitelist)', () => {
         // .env text inside a string value is covered by the assignment scanner.
         const text = projectRecordForLink({ role: 'user', content: { type: 'text', text: 'DB_PASSWORD=pw-0001\nAPI_KEY=abc12345\nPORT=3005' } }, scrub) as any;
         expect(text.content.text).toBe('DB_PASSWORD=[redacted]\nAPI_KEY=[redacted]\nPORT=3005');
+    });
+
+    // Re-review 5 #1: thousands of keys that rewrite to the same name must stay linear.
+    it('4000 keys rewriting to one name: < 50 ms, capped at MAX_SAME_KEY + one marker', () => {
+        const args: Record<string, number> = {};
+        for (let i = 0; i < 4000; i++) args[`/home/u${i}/x`] = i;
+        const record = env(args);
+        const { best, out } = timed(() => projectRecordForLink(record, scrub));
+        expect(best).toBeLessThan(50);
+        const keys = Object.keys((out as any).content.data.ev.args);
+        expect(keys).toHaveLength(MAX_SAME_KEY + 1);
+        expect(keys.slice(0, 3)).toEqual(['~/x', '~/x~2', '~/x~3']);
+        expect(keys).toContain(`…[${4000 - MAX_SAME_KEY} more keys]`); // 950 same-name + 3000 past the per-object key cap
+    });
+
+    it('a page of 20 such records projects in < 1 s', () => {
+        const args: Record<string, number> = {};
+        for (let i = 0; i < 4000; i++) args[`/home/u${i}/x`] = i;
+        const records = new Array(20).fill(env(args));
+        const { best, out } = timed(() => projectLinkPage({ records, cipherLength: () => 100 * 1024, decode: (r) => r, scrub }));
+        expect(best).toBeLessThan(1000);
+        expect((out as any).consumed).toBeGreaterThan(0);
+    });
+
+    // Re-review 5 #2: more credential words; obvious counters stay visible.
+    it('secret-key words: new credential names are masked, counters and ids are not', () => {
+        for (const k of ['bearer', 'jwt', 'pass', 'pw', 'passcode', 'PGPASSWORD', 'signing_key', 'encryptionKey', 'MASTER_KEY', 'hmac_key', 'otp', 'session', 'session_token', 'sessionSecret', 'session_key', 'refresh_token', 'GITHUB_TOKEN', 'tokens']) expect(isSecretKey(k), k).toBe(true);
+        for (const k of ['sessionId', 'session_count', 'max_tokens', 'token_count', 'tokens_used', 'input_tokens', 'maxTokens', 'author', 'passage', 'tokenizer']) expect(isSecretKey(k), k).toBe(false);
+        const out = projectRecordForLink(env({ jwt: 'eyJabc', otp: 123456, signing_key: 'k', max_tokens: 4096, token_count: 12, sessionId: 'abc' }), scrub) as any;
+        expect(out.content.data.ev.args).toEqual({ jwt: '[redacted]', otp: '[redacted]', signing_key: '[redacted]', max_tokens: 4096, token_count: 12, sessionId: 'abc' });
     });
 });

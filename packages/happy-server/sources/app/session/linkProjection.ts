@@ -124,10 +124,12 @@ function scrubFreeform(value: unknown, depth = 0): unknown {
         if (typeof value.type === 'string' && DROP_ANY_TYPES.has(value.type)) return undefined;
         if (isObj(value.source) && value.source.type === 'base64') return undefined;
         const out: Obj = {};
+        const keys = new KeyAllocator(out);
         // for…in (not Object.entries): stops at the budget without materialising every key first.
         for (const k in value) {
             if (!Object.prototype.hasOwnProperty.call(value, k)) continue;
-            if (budget?.exhausted) { out[uniqueKey(out, TRUNCATED_MARKER)] = TRUNCATED_MARKER; break; }
+            if (budget?.exhausted) { keys.put(TRUNCATED_MARKER, TRUNCATED_MARKER); break; }
+            if (keys.seen++ >= MAX_KEYS_PER_OBJECT) { keys.skip(); continue; } // counted, not rewritten
             const v = value[k];
             // A key that names a secret (password, DB_PASSWORD, apiKey, Authorization…) hides its
             // whole value, whatever the value looks like — shape-based masking cannot see "hunter2".
@@ -135,27 +137,40 @@ function scrubFreeform(value: unknown, depth = 0): unknown {
             if (next === undefined) continue;
             // Free-form keys are agent-chosen text: scrub + mask them too, and never let
             // two keys collapse into one after rewriting.
-            out[uniqueKey(out, budget ? budget.text(k) : k)] = next;
+            keys.put(budget ? budget.text(k) : k, next);
         }
+        keys.finish();
         return out;
     }
     return value;
 }
 
 const REDACTED_VALUE = '[redacted]';
-const SECRET_KEY_WORDS = new Set(['password', 'passwords', 'passwd', 'passphrase', 'pwd', 'secret', 'secrets', 'token', 'tokens', 'credential', 'credentials', 'auth', 'authorization', 'cookie', 'cookies', 'session', 'dsn']);
-const SECRET_KEY_JOINED = /apikey|accesskey|privatekey|secretkey|clientsecret|databaseurl|connectionstring/;
+const SECRET_KEY_WORDS = new Set([
+    'password', 'passwords', 'passwd', 'passphrase', 'passcode', 'pass', 'pw', 'pwd', 'pgpassword',
+    'secret', 'secrets', 'credential', 'credentials', 'auth', 'authorization', 'bearer', 'jwt', 'otp',
+    'cookie', 'cookies', 'dsn',
+]);
+const SECRET_KEY_JOINED = /apikey|accesskey|privatekey|secretkey|clientsecret|databaseurl|connectionstring|signingkey|encryptionkey|masterkey|hmackey|sessionkey|sessionsecret|sessiontoken|sessioncookie/;
+/** `token(s)` next to one of these is a counter (max_tokens, token_count, tokens_used), not a credential. */
+const TOKEN_COUNT_WORDS = new Set(['max', 'min', 'count', 'counts', 'used', 'usage', 'limit', 'limits', 'total', 'num', 'number', 'input', 'output', 'prompt', 'completion', 'cached', 'budget', 'remaining', 'per', 'estimated']);
 
 /**
  * Does this free-form key name a secret? Case, `_` and `-` insensitive and
  * word based: `DB_PASSWORD`, `apiKey`, `x-api-key`, `Authorization`,
- * `sessionToken` → yes; `author`, `passage`, `tokenizer` → no.
+ * `sessionToken`, `signing_key`, `PGPASSWORD` → yes; `author`, `passage`,
+ * `tokenizer`, `sessionId`, `max_tokens`, `token_count` → no. Errs on
+ * masking; only obvious counters are let through.
  */
 export function isSecretKey(key: string): boolean {
-    if (key.length > 128) return false;
-    const words = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const words = key.slice(0, 128).replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
     if (words.some((w) => SECRET_KEY_WORDS.has(w))) return true;
-    return SECRET_KEY_JOINED.test(words.join(''));
+    if (SECRET_KEY_JOINED.test(words.join(''))) return true;
+    // A bare "session" is a secret (a session cookie value); sessionId / session_count are not.
+    if (words.length === 1 && words[0] === 'session') return true;
+    // token / tokens: a credential unless it is clearly a counter.
+    if (words.some((w) => w === 'token' || w === 'tokens')) return !words.some((w) => TOKEN_COUNT_WORDS.has(w));
+    return false;
 }
 
 /** A structural list cut to what the node budget still allows. */
@@ -166,12 +181,41 @@ function boundedList(list: unknown[]): unknown[] {
     return room < list.length ? list.slice(0, room) : list;
 }
 
-/** `key`, or `key~2`, `key~3`… — rewriting must not merge two keys. */
-function uniqueKey(target: Obj, key: string): string {
-    if (!Object.prototype.hasOwnProperty.call(target, key)) return key;
-    for (let i = 2; ; i++) {
-        const candidate = `${key}~${i}`;
-        if (!Object.prototype.hasOwnProperty.call(target, candidate)) return candidate;
+/** At most this many keys of one object may rewrite to the same name; the rest are dropped and counted. */
+export const MAX_SAME_KEY = 50;
+/** A free-form object shows at most this many keys; the rest are only counted. */
+export const MAX_KEYS_PER_OBJECT = 1000;
+
+/**
+ * Writes rewritten free-form keys into `target` without ever merging two of
+ * them: `key`, then `key~2`, `key~3`… The next suffix per base name is kept in
+ * a Map (O(1) per key — probing `~2, ~3…` from scratch each time was quadratic
+ * and could be driven by thousands of keys that all rewrite to `~/x`). Past
+ * MAX_SAME_KEY copies of one base, keys are dropped and one `…[N more keys]`
+ * marker is added at the end.
+ */
+class KeyAllocator {
+    private readonly next = new Map<string, number>();
+    private dropped = 0;
+    seen = 0;
+    constructor(private readonly target: Obj) {}
+    skip(): void { this.dropped++; }
+    put(base: string, value: unknown): void {
+        const has = (k: string) => Object.prototype.hasOwnProperty.call(this.target, k);
+        let n = this.next.get(base);
+        if (n === undefined) {
+            if (!has(base)) { this.target[base] = value; this.next.set(base, 2); return; }
+            n = 2;
+        }
+        if (n > MAX_SAME_KEY) { this.dropped++; return; }
+        let candidate = `${base}~${n}`;
+        while (has(candidate) && n <= MAX_SAME_KEY) candidate = `${base}~${++n}`; // a literal "x~2" key already took it
+        this.next.set(base, n + 1);
+        if (n > MAX_SAME_KEY) { this.dropped++; return; }
+        this.target[candidate] = value;
+    }
+    finish(): void {
+        if (this.dropped > 0) this.target[`…[${this.dropped} more keys]`] = TRUNCATED_MARKER;
     }
 }
 
