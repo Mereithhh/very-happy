@@ -92,7 +92,8 @@
 .pub-whatsnew-copy > p { margin: 0; color: var(--text-dim); font-size: var(--fs-14); line-height: 1.72; }
 .pub-whatsnew-release { display: grid; gap: var(--sp-1); margin-top: var(--sp-5); color: var(--text-faint); font-size: var(--fs-11); letter-spacing: .04em; }
 .pub-whatsnew-release span { color: var(--text-dim); }
-.pub-whatsnew-copy > a { min-height: 44px; display: inline-flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-4); color: var(--text); font-size: var(--fs-13); }
+.pub-whatsnew-copy > a { min-height: 44px; display: inline-flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-4); margin-right: var(--sp-5); color: var(--text); font-size: var(--fs-13); }
+.pub-whatsnew-copy > a + a { color: var(--text-dim); }
 .pub-whatsnew-cards .wnh-grid { margin: 0; }
 @media (max-width: 900px) {
   .pub-whatsnew { grid-template-columns: minmax(0, 1fr); width: calc(100% - 2 * var(--sp-4)); }

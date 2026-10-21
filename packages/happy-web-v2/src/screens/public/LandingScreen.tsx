@@ -52,9 +52,10 @@ function WhatsNewShowcase() {
       <h2 id="whatsnew-title">{c.whatsNewTitleA}<br /><span>{c.whatsNewTitleB}</span></h2>
       <p>{c.whatsNewBody}</p>
       <div className="pub-whatsnew-release mono"><time dateTime={release.date}>{release.date}</time><span>{t(release.titleKey)}</span></div>
+      <Link to="/whats-new">{c.whatsNewFull} <ArrowRight size={14} /></Link>
       <Link to="/changelog">{c.whatsNewLink} <ArrowRight size={14} /></Link>
     </div>
-    <div className="pub-whatsnew-cards"><ChangelogHighlights release={{ ...release, itemKeys: [] }} inApp={false} /></div>
+    <div className="pub-whatsnew-cards"><ChangelogHighlights release={{ ...release, itemKeys: [], topics: [] }} inApp={false} /></div>
   </section>;
 }
 

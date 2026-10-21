@@ -49,6 +49,20 @@ In a pi conversation, **Steer** sends a queued message into the turn that is run
 Run `very-happy install-pi-tools` once, then launch `pi` directly inside a Very Happy terminal to load terminal naming, clipboard and file preview tools. `very-happy pi --terminal` remains available for temporary loading. Each conversation and terminal has a **Copy and preview history** disclosure for reopening files and copying earlier content. [Tool setup and retention limits](docs/channels.md#native-pi-terminal-tools).
 
 
+## What's new — October 21, 2026
+
+<a href="https://veryhappy.dev/whats-new">
+  <img src="docs/screenshots/whats-new-2026-10-21-en.webp" width="100%" alt="The October 21 update: projects, custom models and providers, session search and editable drafts, shown in the real app with example data">
+</a>
+
+- **Projects** keep a whole effort together: instructions written once, a decision log every agent adds to, and one page that shows who is doing what.
+- **Custom models and providers**: point Claude Code, Codex, Gemini or pi at any gateway from Settings → Models & providers, with a diff preview and one-click rollback (CLI 0.2.180).
+- **Session search**: ⌘⇧F searches every session's title, project and conversation and jumps to the matching message.
+- **Editable drafts**: fix the email or release note the agent wrote, right in the conversation; it sees your final version next turn.
+- Also: teams that retire finished members, restart failed launches and clean up worktrees; a calmer sidebar; messages sent while a session was offline are delivered when you restore it.
+
+[See the full update →](https://veryhappy.dev/whats-new) · [All releases](https://veryhappy.dev/changelog)
+
 ## Projects: shared context for parallel sessions
 
 A **project** groups the sessions working on one thing — across machines,

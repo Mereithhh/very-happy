@@ -71,6 +71,7 @@ const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) =>
 // B-621: people directory (friends) — the share picker and later Spaces build on it.
 const PeopleScreen = lazy(() => import('@/screens/people/PeopleScreen').then((m) => ({ default: m.PeopleScreen })));
 const ChangelogScreen = lazy(() => import('@/screens/changelog/ChangelogScreen').then((m) => ({ default: m.ChangelogScreen })));
+const WhatsNewScreen = lazy(() => import('@/screens/whatsnew/WhatsNewScreen').then((m) => ({ default: m.WhatsNewScreen })));
 // B-599: iOS standalone viewport diagnostics — no auth, reached from 设置 → 诊断.
 const ViewportDiagScreen = lazy(() => import('@/diag/ViewportDiagScreen').then((m) => ({ default: m.ViewportDiagScreen })));
 const VhDiagOverlay = lazy(() => import('@/diag/VhDiagOverlay').then((m) => ({ default: m.VhDiagOverlay })));
@@ -323,6 +324,7 @@ const router = createBrowserRouter(
     { path: '/privacy', element: <PrivacyScreen /> },
     { path: '/terms', element: <TermsScreen /> },
     { path: '/changelog', element: <Lazy><ChangelogScreen /></Lazy> },
+    { path: '/whats-new', element: <Lazy><WhatsNewScreen /></Lazy> },
     { path: '/diag/viewport', element: <Lazy><ViewportDiagScreen /></Lazy> },
     { path: '/welcome', element: BRAND.landingEnabled ? <LandingScreen /> : <Navigate to="/login" replace /> },
     { path: '/docs', element: <DocsScreen /> },

@@ -22,6 +22,12 @@ export interface ChangelogImage {
   en: ChangelogShot;
   /** Chinese-UI capture; falls back to `en` when absent. */
   zh?: ChangelogShot;
+  /**
+   * Short looping capture (animated webp, same size) of the same scene. Only
+   * surfaces that opt in (the What's new page) play it, and only when the
+   * viewer has not asked for reduced motion; the still stays the fallback.
+   */
+  motion?: { en: ChangelogShot; zh?: ChangelogShot };
 }
 
 /** "Try it": an in-app path, or an action that has no URL of its own. */
@@ -46,48 +52,157 @@ export interface ChangelogHighlight {
 
 export const CHANGELOG_MAX_HIGHLIGHTS = 4;
 
+/**
+ * A themed group of smaller changes (2026-10-21 big update): one title, one
+ * sentence and a small capture. Shown below the highlights; `itemKeys` stays
+ * the collapsed long tail.
+ */
+export interface ChangelogTopic {
+  key: string;
+  titleKey: SimpleTranslationKey;
+  bodyKey: SimpleTranslationKey;
+  image?: ChangelogImage;
+}
+
+export const CHANGELOG_MAX_TOPICS = 4;
+
 export interface ChangelogRelease {
   id: string;
   date: string;
   buildVersion?: string;
   cliVersion?: string;
   featured?: boolean;
+  /** Line under the brand on a featured notice; defaults to the 2026-09 redesign wording. */
+  featuredTaglineKey?: SimpleTranslationKey;
   titleKey: SimpleTranslationKey;
   summaryKey: SimpleTranslationKey;
   /** Shown as cards above the list; with highlights, `itemKeys` becomes the collapsed "Other improvements". */
   highlights?: readonly ChangelogHighlight[];
+  /** Wide capture at the top of the /whats-new page (usually with a looping `motion`). */
+  hero?: ChangelogImage;
+  /** Themed groups with a small capture each, between the highlights and the long tail. */
+  topics?: readonly ChangelogTopic[];
   itemKeys: readonly SimpleTranslationKey[];
 }
 
 const SHOT_URLS = import.meta.glob('./whats-new/*/*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
 /**
- * Screenshots by convention: `whats-new/<dir>/<name>-<en|zh>-<light|dark>.webp`.
- * Only URL strings land in the bundle. A missing file yields an empty `light`,
- * which changelogRelease.test.ts reports by name.
+ * Screenshots by convention: `whats-new/<dir>/<name>-<en|zh>-<light|dark>.webp`,
+ * plus an optional looping `…-<light|dark>-motion.webp`. Only URL strings land
+ * in the bundle. A missing still yields an empty `light`, which
+ * changelogRelease.test.ts reports by name.
  */
 export function changelogShots(dir: string, name: string, size: { width: number; height: number }, altKey: SimpleTranslationKey): ChangelogImage {
-  const url = (lang: 'en' | 'zh', theme: 'light' | 'dark') => SHOT_URLS[`./whats-new/${dir}/${name}-${lang}-${theme}.webp`];
-  const shot = (lang: 'en' | 'zh') => ({ light: url(lang, 'light') ?? '', dark: url(lang, 'dark') });
-  return { ...size, altKey, en: shot('en'), zh: url('zh', 'light') ? shot('zh') : undefined };
+  const url = (lang: 'en' | 'zh', theme: 'light' | 'dark', suffix = '') => SHOT_URLS[`./whats-new/${dir}/${name}-${lang}-${theme}${suffix}.webp`];
+  const shot = (lang: 'en' | 'zh', suffix = '') => ({ light: url(lang, 'light', suffix) ?? '', dark: url(lang, 'dark', suffix) });
+  const motion = url('en', 'light', '-motion')
+    ? { en: shot('en', '-motion'), zh: url('zh', 'light', '-motion') ? shot('zh', '-motion') : undefined }
+    : undefined;
+  return { ...size, altKey, en: shot('en'), zh: url('zh', 'light') ? shot('zh') : undefined, motion };
 }
 
 const SHOT_SIZE = { width: 960, height: 600 }; // 480×300 CSS px crops at 2×
+const TOPIC_SIZE = { width: 640, height: 400 }; // 320×200 CSS px crops at 2×
+
+function pickShot(set: { en: ChangelogShot; zh?: ChangelogShot }, lang: string, theme: 'light' | 'dark'): string {
+  const shot = lang.toLowerCase().startsWith('zh') && set.zh ? set.zh : set.en;
+  return theme === 'dark' && shot.dark ? shot.dark : shot.light;
+}
+
+/**
+ * The release the /whats-new page tells: the newest featured release with
+ * highlights, plus the CLI release that shipped beside it (same date).
+ */
+export function whatsNewReleases(releases: readonly ChangelogRelease[] = CHANGELOG_RELEASES): { web: ChangelogRelease; cli: ChangelogRelease | null } | null {
+  const web = releases.find((r) => r.featured && (r.highlights?.length ?? 0) > 0) ?? releases.find((r) => (r.highlights?.length ?? 0) > 0);
+  if (!web) return null;
+  const cli = web.cliVersion ? null : releases.find((r) => r.cliVersion && r.date === web.date && r.id !== web.id) ?? null;
+  return { web, cli };
+}
 
 /** Which capture to load for the viewer's language and resolved theme. */
 export function changelogImageSrc(image: ChangelogImage, lang: string, theme: 'light' | 'dark'): string {
-  const shot = lang.toLowerCase().startsWith('zh') && image.zh ? image.zh : image.en;
-  return theme === 'dark' && shot.dark ? shot.dark : shot.light;
+  return pickShot(image, lang, theme);
+}
+
+/** The looping capture for the same language/theme, or null when the image has none. */
+export function changelogMotionSrc(image: ChangelogImage, lang: string, theme: 'light' | 'dark'): string | null {
+  return image.motion ? pickShot(image.motion, lang, theme) || null : null;
 }
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
-    id: '2026-10-21-email-code-limits',
+    id: '2026-10-21-big-update',
     date: '2026-10-21',
     buildVersion: __APP_VERSION__,
-    titleKey: 'changelog.releases.oct21m.title',
-    summaryKey: 'changelog.releases.oct21m.summary',
-    itemKeys: ['changelog.releases.oct21m.limit', 'changelog.releases.oct21m.wait', 'changelog.releases.oct21m.nudge'],
+    featured: true,
+    featuredTaglineKey: 'changelog.releases.oct21b.tagline',
+    titleKey: 'changelog.releases.oct21b.title',
+    summaryKey: 'changelog.releases.oct21b.summary',
+    hero: changelogShots('2026-10-21b', 'hero', { width: 1280, height: 640 }, 'changelog.releases.oct21b.heroAlt'),
+    highlights: [
+      {
+        key: 'projects',
+        titleKey: 'changelog.releases.oct21b.projectsTitle',
+        bodyKey: 'changelog.releases.oct21b.projectsBody',
+        image: changelogShots('2026-10-21b', 'projects', SHOT_SIZE, 'changelog.releases.oct21b.projectsAlt'),
+        docsHref: '/docs/projects',
+      },
+      {
+        key: 'models',
+        titleKey: 'changelog.releases.oct21b.modelsTitle',
+        bodyKey: 'changelog.releases.oct21b.modelsBody',
+        image: changelogShots('2026-10-21b', 'models', SHOT_SIZE, 'changelog.releases.oct21b.modelsAlt'),
+        action: { kind: 'link', href: '/settings/models' },
+      },
+      {
+        key: 'search',
+        titleKey: 'changelog.releases.oct21b.searchTitle',
+        bodyKey: 'changelog.releases.oct21b.searchBody',
+        image: changelogShots('2026-10-21b', 'search', SHOT_SIZE, 'changelog.releases.oct21b.searchAlt'),
+        action: { kind: 'sessionSearch' },
+        docsHref: '/docs/sessions',
+      },
+      {
+        key: 'drafts',
+        titleKey: 'changelog.releases.oct21b.draftsTitle',
+        bodyKey: 'changelog.releases.oct21b.draftsBody',
+        image: changelogShots('2026-10-21b', 'drafts', SHOT_SIZE, 'changelog.releases.oct21b.draftsAlt'),
+        docsHref: '/docs/sessions',
+      },
+    ],
+    topics: [
+      { key: 'teams', titleKey: 'changelog.releases.oct21b.teamsTitle', bodyKey: 'changelog.releases.oct21b.teamsBody', image: changelogShots('2026-10-21b', 'teams', TOPIC_SIZE, 'changelog.releases.oct21b.teamsAlt') },
+      { key: 'sidebar', titleKey: 'changelog.releases.oct21b.sidebarTitle', bodyKey: 'changelog.releases.oct21b.sidebarBody', image: changelogShots('2026-10-21b', 'sidebar', TOPIC_SIZE, 'changelog.releases.oct21b.sidebarAlt') },
+      { key: 'mobile', titleKey: 'changelog.releases.oct21b.mobileTitle', bodyKey: 'changelog.releases.oct21b.mobileBody', image: changelogShots('2026-10-21b', 'mobile', TOPIC_SIZE, 'changelog.releases.oct21b.mobileAlt') },
+      { key: 'reliability', titleKey: 'changelog.releases.oct21b.reliabilityTitle', bodyKey: 'changelog.releases.oct21b.reliabilityBody', image: changelogShots('2026-10-21b', 'reliability', TOPIC_SIZE, 'changelog.releases.oct21b.reliabilityAlt') },
+    ],
+    itemKeys: [
+      'changelog.releases.oct21b.mentions',
+      'changelog.releases.oct21b.panels',
+      'changelog.releases.oct21b.tide',
+      'changelog.releases.oct21b.focus',
+      'changelog.releases.oct21b.keys',
+      'changelog.releases.oct21b.i18n',
+      'changelog.releases.oct21b.fixes',
+    ],
+  },
+  {
+    id: '2026-10-21-cli-models-offline-teams',
+    cliVersion: '0.2.180',
+    date: '2026-10-21',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct21c.title',
+    summaryKey: 'changelog.releases.oct21c.summary',
+    itemKeys: [
+      'changelog.releases.oct21c.models',
+      'changelog.releases.oct21c.offline',
+      'changelog.releases.oct21c.empty',
+      'changelog.releases.oct21c.launch',
+      'changelog.releases.oct21c.cleanup',
+      'changelog.releases.oct21c.wake',
+    ],
   },
   {
     id: '2026-10-21-projects-drafts-search',

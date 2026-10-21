@@ -51,7 +51,7 @@ const en = {
     relayFactFallback: 'LEGACY FALLBACK · WEBRTC NEXT', relayLink: 'Inspect the data flow',
     whatsNewEyebrow: 'WHAT’S NEW', whatsNewTitleA: 'Recently shipped.', whatsNewTitleB: 'Try it today.',
     whatsNewBody: 'The latest release, in the same format as the in-app notice: what each feature lets you do, and a screenshot of the real UI with example data.',
-    whatsNewLink: 'All releases',
+    whatsNewLink: 'All releases', whatsNewFull: 'See the full update',
     startEyebrow: 'FIRST CONNECTION // THREE MOVES', startTitle: 'From account to live work.',
     startBody: 'Verify your email once, connect a machine, then work from the Web or installed PWA.',
     stepOne: 'Verify your email', stepOneBody: 'Enter an email code to sign in. If the email is new and registration is open, the account is created automatically. Google and optional password login remain available when enabled by the relay.',
@@ -77,6 +77,15 @@ const en = {
     interfaceBody: "The interface below uses the authenticated app's production component styles and Console tokens with sanitized fixture data.",
     openGuide: 'Open guide', fieldGuide: 'FIELD GUIDE', adjacent: 'Adjacent chapters', end: 'Keep the thread.', copyCode: 'Copy', copied: 'Copied',
     groups: { start: 'Start', work: 'Work', understand: 'Understand', operate: 'Operate', extend: 'Extend' },
+  },
+  whatsNew: {
+    pageTitle: 'What’s new — Very Happy', eyebrow: 'WHAT’S NEW', openApp: 'Open Very Happy', updateCli: 'Update your machines',
+    heroMeta: 'WEB + CLI', highlightsEyebrow: 'HIGHLIGHTS', highlightsTitle: 'Four things to try today.',
+    topicsEyebrow: 'AND ACROSS THE APP', topicsTitle: 'Smaller changes you will notice.',
+    restEyebrow: 'EVERYTHING ELSE', webList: 'Web', cliList: 'CLI',
+    upgradeEyebrow: 'UPGRADE', upgradeTitle: 'Update the CLI on each machine.',
+    upgradeBody: 'The web app updates by itself. Run this once on every machine that runs the daemon; it installs the exact release and hands running sessions over safely.',
+    copy: 'Copy', copied: 'Copied', allReleases: 'All releases', docs: 'Read the docs', example: 'Screens show the real app with example data.',
   },
 } as const;
 
@@ -125,7 +134,7 @@ const zhHans: PublicCopy = {
     relayFactFallback: '旧链路回退 · WEBRTC 下一步', relayLink: '查看数据流',
     whatsNewEyebrow: '最新更新', whatsNewTitleA: '刚刚上线。', whatsNewTitleB: '今天就能用。',
     whatsNewBody: '最近一个版本的亮点，和应用内更新通知同一个格式：每个功能能帮你做什么，配一张真实界面的截图（示例数据）。',
-    whatsNewLink: '全部更新记录',
+    whatsNewLink: '全部更新记录', whatsNewFull: '查看完整更新页',
     startEyebrow: '首次连接 // 三步完成', startTitle: '从身份验证到开始工作',
     startBody: '验证一次邮箱，连接一台机器，然后从 Web 或已安装的 PWA 开始工作。',
     stepOne: '验证邮箱', stepOneBody: '输入邮箱验证码即可登录；如果是新邮箱且允许注册，系统会自动创建账户。中继启用时，也可使用 Google 或密码登录。',
@@ -151,6 +160,15 @@ const zhHans: PublicCopy = {
     interfaceBody: '下方界面使用已认证 App 的生产组件样式与 Console token，并配合脱敏示例数据。',
     openGuide: '打开指南', fieldGuide: '操作指南', adjacent: '相邻章节', end: '保持上下文。', copyCode: '复制', copied: '已复制',
     groups: { start: '开始', work: '日常使用', understand: '理解', operate: '运维', extend: '扩展' },
+  },
+  whatsNew: {
+    pageTitle: '更新了什么 — Very Happy', eyebrow: '最新更新', openApp: '打开 Very Happy', updateCli: '升级机器上的 CLI',
+    heroMeta: '网页 + CLI', highlightsEyebrow: '亮点', highlightsTitle: '今天就能试的四件事。',
+    topicsEyebrow: '还有这些', topicsTitle: '用起来就能感觉到的改进。',
+    restEyebrow: '其他改进', webList: '网页', cliList: 'CLI',
+    upgradeEyebrow: '升级', upgradeTitle: '在每台机器上升级 CLI。',
+    upgradeBody: '网页会自动更新。在每台运行 daemon 的机器上执行一次下面的命令：安装确切版本，并安全接管正在运行的会话。',
+    copy: '复制', copied: '已复制', allReleases: '全部更新记录', docs: '看文档', example: '截图来自真实界面，数据为示例。',
   },
 };
 
