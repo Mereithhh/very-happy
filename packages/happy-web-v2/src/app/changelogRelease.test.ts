@@ -1,6 +1,14 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+// @ts-expect-error — plain .mjs release gate, no type declarations
+import { extractReleases } from '../../../../scripts/changelog/check-release.mjs';
 import {
+  CHANGELOG_MAX_HIGHLIGHTS,
   CHANGELOG_RELEASES,
+  changelogImageSrc,
+  type ChangelogImage,
   changelogCliNotices,
   changelogCliTarget,
   changelogSeenValue,
@@ -42,7 +50,8 @@ describe('changelog releases', () => {
     // misspelt leaf (`…sep03aa.dxt`) is not a valid SimpleTranslationKey, so
     // tsc owns that half (seen this session as TS2820).
     for (const [i, release] of CHANGELOG_RELEASES.entries()) {
-      for (const key of [release.summaryKey, ...release.itemKeys]) {
+      const highlightKeys = (release.highlights ?? []).flatMap((h) => [h.titleKey, h.bodyKey, ...(h.image ? [h.image.altKey] : [])]);
+      for (const key of [release.summaryKey, ...release.itemKeys, ...highlightKeys]) {
         expect(key, `${release.id} points outside its own block`).toContain(`changelog.releases.${prefixes[i]}.`);
       }
     }
@@ -135,5 +144,63 @@ describe('changelog releases', () => {
         targetVersion: target,
       },
     ]);
+  });
+
+  describe('highlights (B-677, specs/2026-10-whats-new.md)', () => {
+    const HERE = dirname(fileURLToPath(import.meta.url));
+    const withHighlights = CHANGELOG_RELEASES.filter((release) => release.highlights?.length);
+
+    it('caps each release at the format limit with unique keys and a screenshot each', () => {
+      expect(withHighlights.length).toBeGreaterThan(0);
+      for (const release of withHighlights) {
+        const highlights = release.highlights!;
+        expect(highlights.length, release.id).toBeLessThanOrEqual(CHANGELOG_MAX_HIGHLIGHTS);
+        expect(new Set(highlights.map((h) => h.key)).size, release.id).toBe(highlights.length);
+        for (const h of highlights) {
+          // changelogShots() leaves light empty when the file is missing.
+          expect(h.image?.en.light, `${release.id}/${h.key} has no screenshot`).toBeTruthy();
+          expect(h.image?.en.dark, `${release.id}/${h.key} has no dark screenshot`).toBeTruthy();
+          if (h.action?.kind === 'link') expect(h.action.href).toMatch(/^\//);
+          if (h.docsHref) expect(h.docsHref).toMatch(/^\/docs\//);
+        }
+      }
+    });
+
+    it('keeps every screenshot in the repo small enough to lazy-load (≤150 KB, webp)', () => {
+      const root = join(HERE, 'whats-new');
+      const files = readdirSync(root).flatMap((dir) => readdirSync(join(root, dir)).map((f) => join(root, dir, f)));
+      expect(files.length).toBeGreaterThan(0);
+      for (const file of files) {
+        expect(file).toMatch(/\/[a-z0-9-]+-(en|zh)-(light|dark)\.webp$/);
+        expect(statSync(file).size, file).toBeLessThanOrEqual(150 * 1024);
+      }
+    });
+
+    it('picks the capture for the viewer language and resolved theme', () => {
+      const image: ChangelogImage = {
+        width: 960, height: 600, altKey: 'changelog.releases.oct21.projectsAlt',
+        en: { light: 'en-l', dark: 'en-d' },
+        zh: { light: 'zh-l' },
+      };
+      expect(changelogImageSrc(image, 'en', 'light')).toBe('en-l');
+      expect(changelogImageSrc(image, 'en', 'dark')).toBe('en-d');
+      expect(changelogImageSrc(image, 'zh-Hans', 'light')).toBe('zh-l');
+      // A zh capture without a dark variant falls back to its light one, not to English.
+      expect(changelogImageSrc(image, 'zh-Hans', 'dark')).toBe('zh-l');
+      expect(changelogImageSrc({ ...image, zh: undefined }, 'zh-Hans', 'dark')).toBe('en-d');
+      expect(changelogImageSrc(image, 'ru', 'dark')).toBe('en-d');
+    });
+
+    /**
+     * The deploy/publish gate reads release ids with a line regex (`^\s*id:`).
+     * A nested object with its own `id:` would surface as a phantom release and
+     * corrupt the "did this release add an entry" diff — highlights use `key`.
+     */
+    it('parses to exactly the release list for the changelog release gate', () => {
+      const source = readFileSync(join(HERE, 'changelogRelease.ts'), 'utf8');
+      const parsed = extractReleases(source) as { id: string; cliVersion: string | null }[];
+      expect(parsed.map((r) => r.id)).toEqual(CHANGELOG_RELEASES.map((r) => r.id));
+      expect(parsed.map((r) => r.cliVersion ?? undefined)).toEqual(CHANGELOG_RELEASES.map((r) => r.cliVersion));
+    });
   });
 });

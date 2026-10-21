@@ -13,6 +13,9 @@ import { SchedulerTopologyProof } from './SchedulerTopologyProof';
 import { WhyVeryHappy } from './WhyVeryHappy';
 import { DAEMON_START_COMMAND, GITHUB_URL, INSTALL_COMMAND, LOGIN_COMMAND } from './publicContent';
 import { usePublicI18n } from '@/i18n/publicI18n';
+import { CHANGELOG_RELEASES } from '@/app/changelogRelease';
+import { ChangelogHighlights } from '@/app/ChangelogHighlights';
+import { useTranslation } from '@/i18n/useTranslation';
 import './public.css';
 
 function ProductShowcase() {
@@ -29,6 +32,29 @@ function ProductShowcase() {
       <article><TerminalSquare size={18} /><div><span className="mono">{c.agents}</span><strong>{c.agentsBody}</strong></div></article>
     </div>
     <div className="pub-product-links"><Link to="/docs/architecture">{c.architecture} <ArrowRight size={14} /></Link><Link to="/docs/integrations">{c.matrix} <ArrowRight size={14} /></Link></div>
+  </section>;
+}
+
+/**
+ * B-677: the newest release that has highlight cards, rendered with the same
+ * component as the in-app notice and /changelog so the site never drifts from
+ * what shipped. "Try it" actions that need the workspace are hidden (inApp=false).
+ */
+function WhatsNewShowcase() {
+  const { copy } = usePublicI18n();
+  const { t } = useTranslation();
+  const c = copy.landing;
+  const release = CHANGELOG_RELEASES.find((r) => (r.highlights?.length ?? 0) > 0);
+  if (!release) return null;
+  return <section className="pub-whatsnew" aria-labelledby="whatsnew-title">
+    <div className="pub-whatsnew-copy">
+      <div className="eyebrow">{c.whatsNewEyebrow}</div>
+      <h2 id="whatsnew-title">{c.whatsNewTitleA}<br /><span>{c.whatsNewTitleB}</span></h2>
+      <p>{c.whatsNewBody}</p>
+      <div className="pub-whatsnew-release mono"><time dateTime={release.date}>{release.date}</time><span>{t(release.titleKey)}</span></div>
+      <Link to="/changelog">{c.whatsNewLink} <ArrowRight size={14} /></Link>
+    </div>
+    <div className="pub-whatsnew-cards"><ChangelogHighlights release={{ ...release, itemKeys: [] }} inApp={false} /></div>
   </section>;
 }
 
@@ -124,6 +150,7 @@ export function LandingScreen() {
     <section className="pub-hero hub-hero" aria-labelledby="hero-title"><div className="pub-hero-copy"><div className="eyebrow">{c.heroEyebrow}</div><h1 id="hero-title" className={`pub-fleet-title${language === 'zh-Hans' ? ' is-zh' : ''}`}>{c.heroTitleA}<br /><span>{c.heroTitleB}<br />{c.heroTitleC}</span></h1><p>{c.heroBody}</p><div className="pub-hero-thesis mono"><span>{c.thesisA}</span><strong>{c.thesisB}</strong></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}login`}>{c.primaryCta} <ArrowRight size={16} /></a><a className="pub-button" href="#teams">{c.secondaryCta}</a></div><div className="pub-meta mono"><span>{c.metaWeb}</span><span>{c.metaChoice}</span><span>{c.metaHost}</span></div></div><HeroProductStage /></section>
     <TeamsStory />
     <ProductShowcase />
+    <WhatsNewShowcase />
     <RuntimeArchitectureProof />
     <RegionalRelayProof />
     <WhyVeryHappy />

@@ -136,7 +136,7 @@ export function KeyboardWorkflowProof({ compact = false }: { compact?: boolean }
     <div className="kwp-layout"><div className="kwp-copy">
       <div className="eyebrow">{zh ? '键盘优先 · 触屏可达' : 'KEYBOARD-FIRST · TOUCH-REACHABLE'}</div>
       <h2 id={compact ? 'kwp-docs-title' : 'kwp-title'}>{zh ? '跟上思考的速度' : 'Move at thought speed.'}<br /><span>{zh ? '保留终端的肌肉记忆' : 'Keep terminal muscle memory.'}</span></h2>
-      <p><strong>{chordLabel}</strong>{zh ? '可以在工作区任意位置搜索操作、对话和终端。macOS 上，Very Happy 会把 ' : ' searches actions, chats, and terminals from anywhere in the workspace. On macOS, Very Happy leaves '}<code>Ctrl+K/J/N/R</code>{zh ? ' 留给真实 TUI；触屏上，侧栏搜索按钮会打开同一个命令界面。' : ' to the real TUI; on touch screens, the sidebar search button opens the same command surface.'}</p>
+      <p><strong>{chordLabel}</strong>{zh ? '可以在工作区任意位置搜索操作、对话和终端。macOS 上，Very Happy 会把 ' : ' searches actions, chats, and terminals from anywhere in the workspace. On macOS, Very Happy leaves '}<code>Ctrl+K/J/N/R</code>{zh ? ' 留给真实 TUI。触屏上，侧栏的搜索按钮打开会话搜索（⌘⇧F 同一个面板）；搜索框为空时，面板里有「命令与快速跳转」入口打开这个命令面板。' : ' to the real TUI. On touch screens, the sidebar search button opens session search (the same panel as ⌘⇧F); with an empty query it offers “Commands and quick jump” to open this command palette.'}</p>
       <button className="kwp-trigger" type="button" onClick={summon}>
         <span><Command size={18} aria-hidden="true" /> {zh ? '试用命令面板' : 'Try the command palette'}</span>
         <kbd>{chordLabel}</kbd>
