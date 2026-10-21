@@ -102,6 +102,32 @@ export function teamMemberCount(team: TeamState, context: TeamActivityContext): 
   return team.bots.length - counts.inactive;
 }
 
+/** B-723 (D1): the members a summary shows — never `inactive` ones (the
+ *  happy-wire rule), lead first — plus how many were left out as 「已停用」. */
+export function teamRoster(team: TeamState, context: TeamActivityContext): { members: TeamBot[]; inactive: number } {
+  const members = team.bots.filter(bot => !teamMemberInactive(team, bot, context));
+  return { members: [...members.filter(bot => bot.root), ...members.filter(bot => !bot.root)], inactive: team.bots.length - members.length };
+}
+
+/** Team daemons put every managed member in its own worktree under
+ *  `<happy home>/teams/worktrees/<operation id>` (happy-cli daemon/teams/worktree.ts). */
+export function isTeamWorktreePath(path: string): boolean {
+  return /\/teams\/worktrees\/[^/]+\/?$/.test(path.replace(/\\/g, '/'));
+}
+
+/** B-723 (O1): the folder a team belongs to — the repository it was created
+ *  in, never a member's worktree (whose UUID path changes with whoever ran
+ *  last). Creation launch first, then the lead's requested spawn directory,
+ *  then the lead's own directory when it is not a team worktree. */
+export function teamHomeDirectory(team: TeamState): string | null {
+  if (team.creationLaunch?.directory) return team.creationLaunch.directory;
+  const root = team.bots.find(bot => bot.root);
+  if (!root) return null;
+  const spawn = team.operations.filter(op => op.type === 'spawn' && op.botId === root.id && op.directory).sort((a, b) => a.createdAt - b.createdAt)[0];
+  if (spawn?.directory && !isTeamWorktreePath(spawn.directory)) return spawn.directory;
+  return root.directory && !isTeamWorktreePath(root.directory) ? root.directory : null;
+}
+
 /** A registered member is visible even before its first session exists. */
 export function unstartedTeamMembers(team: TeamState) {
   return team.bots.filter(bot => !botHistorySessionId(team, bot)).map(bot => {

@@ -234,6 +234,9 @@ const BuiltinToolsHarness = import.meta.env.DEV
 const RobustnessHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/RobustnessHarness').then((m) => ({ default: m.RobustnessHarness })))
   : null;
+const TeamsQaHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/TeamsQaHarness').then((m) => ({ default: m.TeamsQaHarness })))
+  : null;
 const TerminalKeyboardHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/TerminalKeyboardHarness').then((m) => ({ default: m.TerminalKeyboardHarness })))
   : null;
@@ -294,6 +297,7 @@ const router = createBrowserRouter(
     ...(BuiltinToolsHarness
       ? [{ path: '/dev/builtin-tools/:id', element: <Lazy><BuiltinToolsHarness /></Lazy> }]
       : []),
+    ...(TeamsQaHarness ? [{ path: '/dev/teams-qa', element: <Lazy><TeamsQaHarness /></Lazy> }] : []),
     ...(RobustnessHarness ? [{ path: '/dev/robustness', element: <Lazy><RobustnessHarness /></Lazy> }] : []),
     ...(TerminalKeyboardHarness
       ? [{ path: '/dev/terminal-keyboard', element: <Lazy><TerminalKeyboardHarness /></Lazy> }]

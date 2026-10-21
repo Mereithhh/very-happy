@@ -13,6 +13,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { IS_MAC } from '@/app/appChord';
 import {
   FEATURE_TIPS,
+  FEATURE_TIP_AVOID_SELECTOR,
   FEATURE_TIP_STARTUP_MS,
   pickTip,
   placeTip,
@@ -102,8 +103,10 @@ export function useFeatureTipAnchor(
 
 // ---- host ----
 const BLOCKING_OVERLAYS = '.vh-menu, [role="dialog"][aria-modal="true"], [role="alertdialog"], .sb-peek';
-// The composer, plus the floating onboarding cards — a tip never sits on or under them.
-const AVOID_SELECTOR = '.sd-foot, .pwa-install, .notif-optin, .cli-update';
+// The composer, the floating onboarding cards and (B-723) the session's
+// offline / archived banner (`.mrb`, whose 「恢复」 sits right under the header
+// anchors) — a tip never sits on or under them; with no room left it waits.
+const AVOID_SELECTOR = FEATURE_TIP_AVOID_SELECTOR;
 
 function toBox(r: DOMRect): Box {
   return { left: r.left, top: r.top, width: r.width, height: r.height };

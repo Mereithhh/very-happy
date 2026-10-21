@@ -296,3 +296,13 @@
 .teams-screen .teams-op-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-2) 0; }
 .teams-screen .teams-op-actions button { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .teams-screen .teams-resolved > summary { color: var(--text-dim); }
+/* B-723 (D1): inactive members on the list card — one quiet chip, not names. */
+.teams-roster .teams-roster-inactive { color: var(--text-faint); }
+/* B-723 (O2): translated operation error, raw daemon text folded. */
+.teams-op-error p { margin: 0; }
+.teams-op-error-details { margin-top: 4px; font-size: 12px; color: var(--text-faint); }
+.teams-op-error-details summary { cursor: pointer; width: fit-content; }
+.teams-op-error-details code { display: block; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); }
+@media (pointer: coarse) {
+  .teams-op-error-details summary { display: flex; align-items: center; min-height: 44px; }
+}
