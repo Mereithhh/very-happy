@@ -122,7 +122,10 @@ function subscribe(listener: () => void) {
     if (!listeners.size && timer) { clearInterval(timer); timer = undefined; unsubscribeResume?.(); unsubscribeResume = undefined; }
   };
 }
-const getSnapshot = () => (owner === ownerKey() ? snapshot : EMPTY);
+/** DEV harness only (`/dev/sidebar`): serve a fixed snapshot without a server. */
+let devOverride: ProjectsSnapshot | null = null;
+export function setProjectsDevOverride(next: ProjectsSnapshot | null): void { devOverride = next; notify(); }
+const getSnapshot = () => devOverride ?? (owner === ownerKey() ? snapshot : EMPTY);
 export function useProjects(): ProjectsSnapshot {
   return useSyncExternalStore(subscribe, getSnapshot, () => EMPTY);
 }

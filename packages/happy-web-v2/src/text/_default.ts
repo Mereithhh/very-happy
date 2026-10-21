@@ -1797,6 +1797,7 @@ export const en = {
         // coarse-pointer header icon that opens the ⌘K palette
         openSearch: 'Search',
         moreEntries: 'More',
+        newMenu: 'More ways to create',
         openHelp: 'Help & getting started',
         filterAll: 'All',
         filterActive: 'Active',
