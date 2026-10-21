@@ -28,7 +28,7 @@ export type HookOrderFinding = {
 const HOOK_NAME = /^use[A-Z0-9]/;
 const FN_NAME = /^(?:[A-Z]|use[A-Z0-9])/;
 
-type FnNode = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunctionExpression | ts.MethodDeclaration;
+type FnNode = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration;
 
 function isFn(node: ts.Node): node is FnNode {
   return ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node);
