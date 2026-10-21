@@ -58,7 +58,7 @@ import {
 } from '@/sessions/sessionOps'
 import { resolvePermissionRequest, type PermissionVerdict } from '@/sessions/permissionOps'
 import { isValidSessionId } from '@/assistant/ids'
-import { cliPeerSelf, executeSessionPeerTool, listPeerSessions, sendPeerMessage, type PeerToolContext, type ProjectPeerListing } from '@/sessions/peerTools'
+import { cliPeerSelf, executeSessionPeerTool, listPeerSessions, sendPeerMessage, type PeerToolContext, type ProjectPeerListing, type SendPeerMessageResult } from '@/sessions/peerTools'
 import { PEER_SCOPES, type PeerScope } from '@/sessions/repoIdentity'
 import { readPersistedSessions } from '@/persistence'
 import { resolve as resolvePath } from 'node:path'
@@ -305,7 +305,10 @@ ${chalk.bold('Actions:')}
              managed session's shell, else this CLI) and tells the peer how to
              reply. A session another machine spawned is delivered through
              that machine's daemon, with this host named in the header.
-             Refused for sessions that are not running, or terminal mirrors.
+             Refused for sessions that are not running, or terminal mirrors —
+             except a session in the same project as the sender: there the
+             message is kept server-side and read on its next turn
+             (\`status: offline-stored\`, exit 0).
              \`delivered\` follows \`very-happy send\`: true only when a
              wrapper was attached before and after the POST (\`stored\` = it
              is on the server anyway).
@@ -356,7 +359,8 @@ ${chalk.bold('Exit codes:')}
   2  read --wait: the turn had not ended when --timeout ran out (the
      partial state is still printed)
   0  success (approve/deny: the wrapper acknowledged the verdict; check
-     \`settled\` in --json to see whether the request has left the pending set)
+     \`settled\` in --json to see whether the request has left the pending set;
+     message: delivered, or kept for a same-project session's next turn)
   1  bad arguments, unknown session, no machine of the account holds it (or
      its machine is offline / too old), request not pending, session not
      online, or the operation failed (including \`stop\` on a session the
@@ -399,6 +403,14 @@ function formatAccountSummaryLine(summary: AccountSessionSummary): string {
  * (no local key, request not pending, session not found). Carries the same
  * identifying fields as the success record so a script can key on them.
  */
+/**
+ * B-646 follow-up: an offline-stored project message succeeded — it is kept
+ * for the recipient's next turn — so it must not exit 1 like a refusal.
+ */
+export function peerMessageExitCode(result: Pick<SendPeerMessageResult, 'delivered' | 'status'>): 0 | 1 {
+    return result.delivered || result.status === 'offline-stored' ? 0 : 1
+}
+
 export function permissionFailureRecord(sessionId: string, requestId: string, error: unknown): { sessionId: string; requestId: string; error: string } {
     return { sessionId, requestId, error: error instanceof Error ? error.message : String(error) }
 }
@@ -543,7 +555,7 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                 else if (result.delivered) console.log(`Message ${result.messageId} delivered to ${target}${result.machine ? ` on ${result.machine.host}` : ''}\n${result.url}`)
                 else if (result.status === 'offline-stored') console.log(`Message ${result.messageId} ${result.note ?? 'stored'} (${target} is not running; same project)\n${result.url}`)
                 else console.error(chalk.yellow('Not delivered:'), result.error ?? `session is ${result.status}`, result.stored ? '(stored server-side, unread)' : '')
-                process.exit(result.delivered ? 0 : 1)
+                process.exit(peerMessageExitCode(result))
             } catch (error) {
                 if (options.json) console.log(JSON.stringify({ delivered: false, to: target, error: error instanceof Error ? error.message : String(error) }))
                 throw error

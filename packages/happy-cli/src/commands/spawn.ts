@@ -192,9 +192,11 @@ ${chalk.bold('very-happy spawn')} - Spawn a remote session via the local daemon 
 ${chalk.bold('Usage:')}
   very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>]
                    [--spawned-by <name>] [--permission-mode <mode>]
-                   [--agent <name>] [--model <id>] [--env KEY=VALUE]... [--json]
+                   [--agent <name>] [--model <id>] [--env KEY=VALUE]...
+                   [--project <id> | --no-project] [--json]
   very-happy spawn --fork <sessionId> [--prompt …] [--permission-mode <mode>]
-                   [--model <id>] [--spawned-by <name>] [--json]
+                   [--model <id>] [--spawned-by <name>] [--project <id>]
+                   [--json]
 
 ${chalk.bold('Options:')}
   --dir, -d <path>       Working directory for the new session (required)
