@@ -349,3 +349,9 @@ Phase 3（随 Spaces）：项目协调者（= Spaces 命名 Agent 绑定到项�
 **终端镜像 SessionStart spike 结论**：hook 脚本（`scripts/terminal_mirror_forwarder.cjs`）今天只把事件转给 daemon、不读响应、不写 stdout；改成等 daemon 回包并输出 `hookSpecificOutput.additionalContext` 技术上可行（hook 超时 10s）。但 SessionStart 在镜像会话**创建时**触发，那时会话还不可能属于任何项目（要用户事后「移到项目…」），只有 `resume` / `/clear` 才会命中——收益小、还要改动用户全局 `~/.claude/settings.json` 里已安装的 hook。本期按 spec 允许标「未注入」，Phase 2 与「压缩后重附精简前缀」一起做。
 
 已知限制：Claude `/clear` 后同一进程不会重发前缀（agent 仍可调 `project_context`，`PROJECT_HINT` 提示了这一点）；与 Phase 2「压缩后重附」一并处理。
+
+### B-646（下一轮顺带 + 离线留言）
+
+- **下一轮顺带（D）** 随 B-645 的 injector 已上线：只在本来就要跑的轮次前拉 `digest`；服务端对说明更新 / 新决定 / 撤销 / 留言都**不写会话消息**（pglite 测试断言 `SessionMessage` 数与 `seq` 不变），所以不可能唤醒空闲会话。
+- **离线留言**：`session_message` 的目标在本机不在跑、或在另一台机器上够不着时，若发送方与目标同属一个项目 → `POST /v1/projects/:id/messages` 存下，返回 `{stored: true, status: "offline-stored"}`（原先直接报错）；不在同一项目或旧 server → 维持原报错。回复环预算同样计入。接收方下一次跑的轮次（新进程的首轮前缀或 digest）带上并标记送达，送达 7 天后清正文（B-644）。
+- 目标机 CLI 旧：留言一直存着，直到该会话换上新 wrapper；项目页成员行会显示「未注入 · 重启会话以启用」。

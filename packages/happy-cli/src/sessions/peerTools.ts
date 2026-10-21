@@ -32,7 +32,7 @@ export const SESSION_PEER_TOOL_SCHEMAS: Record<SessionPeerToolName, { descriptio
     session_message: {
         title: 'Message Another Session',
         readOnly: false,
-        description: 'Send a message to another agent session (find ids with session_peers). It lands in that session\'s chat with your title, session id and cwd, and tells the peer how to reply to you. Use it to coordinate when you both edit the same files: say what you are changing and ask what they are changing. Returns as soon as the message is queued; the reply arrives later as a message from that session. Sessions on this machine are reached directly; a session spawned by another machine of this account is routed to that machine\'s daemon (it must be online). Terminal-mirror sessions cannot receive messages.',
+        description: 'Send a message to another agent session (find ids with session_peers). It lands in that session\'s chat with your title, session id and cwd, and tells the peer how to reply to you. Use it to coordinate when you both edit the same files: say what you are changing and ask what they are changing. Returns as soon as the message is queued; the reply arrives later as a message from that session. Sessions on this machine are reached directly; a session spawned by another machine of this account is routed to that machine\'s daemon (it must be online). If the target is not running but is in your Very Happy project, the message is stored and read at its next turn (stored: true). Terminal-mirror sessions cannot receive messages.',
         inputSchema: {
             to: z.string().min(1).max(128).describe('Target session id (from session_peers, or a peer\'s message header)'),
             body: z.string().min(1).max(16_000).describe('The message text'),
@@ -83,6 +83,33 @@ export interface PeerToolContext {
     remotePeers?: (machineId: string, options: { scope?: PeerScope; cwd?: string }) => Promise<RemotePeerListing>
     /** B-645: scope "project" — read from server-side project presence (no per-machine fan-out). */
     projectPeers?: (sessionId: string) => Promise<ProjectPeerListing>
+    /**
+     * B-646: the target cannot be reached live — if both sessions are in the
+     * same project, store the message server-side (read at the recipient's
+     * next turn). Returns null when not applicable (no shared project, old server).
+     */
+    storeOffline?: (args: { from: string; to: string; body: string }) => Promise<{ projectId: string; messageId: string } | null>
+}
+
+async function defaultStoreOffline(args: { from: string; to: string; body: string }): Promise<{ projectId: string; messageId: string } | null> {
+    const client = sharedProjectsClient()
+    try {
+        const [mine, theirs] = await Promise.all([client.membership(args.from), client.membership(args.to)])
+        if (!mine.projectId || mine.projectId !== theirs.projectId) return null
+        const { message } = await client.message(mine.projectId, { fromSessionId: args.from, toSessionId: args.to, body: args.body })
+        return { projectId: mine.projectId, messageId: message.id }
+    } catch {
+        return null
+    }
+}
+
+export const OFFLINE_STORED_NOTE = 'stored, will be read at recipient\'s next turn'
+
+/** B-646: same-project fallback when the target is not running anywhere we can reach. */
+async function storeOfflineOrThrow(context: PeerToolContext, self: PeerSelf, to: string, body: string, original: Error): Promise<SendPeerMessageResult> {
+    const stored = await (context.storeOffline ?? defaultStoreOffline)({ from: self.sessionId, to, body })
+    if (!stored) throw original
+    return { delivered: false, stored: true, status: 'offline-stored', messageId: stored.messageId.slice(0, 8), to, url: sessionWebUrl(to), note: OFFLINE_STORED_NOTE }
 }
 
 export interface ProjectPeerListing {
@@ -131,13 +158,16 @@ export interface SendPeerMessageResult {
     delivered: boolean
     /** The message exists server-side even when `delivered` is false. */
     stored: boolean
-    status: DeliveryResult['status']
+    /** B-646: 'offline-stored' = kept server-side for the recipient's next turn (same project). */
+    status: DeliveryResult['status'] | 'offline-stored'
     messageId: string
     to: string
     url: string
     error?: string
     /** B-506: set when the target lives on another machine and its daemon delivered for us. */
     machine?: { id: string; host: string }
+    /** B-646: human-readable outcome for an offline-stored project message. */
+    note?: string
 }
 
 function defaultDeliver(to: string, persisted: PersistedSession, text: string, localId: string): Promise<DeliveryResult> {
@@ -180,12 +210,30 @@ export async function sendPeerMessage(context: PeerToolContext, args: { to: stri
             const budget = checkPeerSendBudget(context.sentTo, args.to, now)
             if (!budget.ok) throw new Error(replyLoopRefusal(budget.count, args.to))
         }
-        const result = await remote({ to: args.to, body, replyTo: args.replyTo, from: self, machineId: args.machineId })
+        let result: RemotePeerMessageResult
+        try {
+            result = await remote({ to: args.to, body, replyTo: args.replyTo, from: self, machineId: args.machineId })
+        } catch (error) {
+            // B-646: owning machine offline / session not live there → same-project offline message.
+            const stored = await storeOfflineOrThrow(context, self, args.to, body, error instanceof Error ? error : new Error(String(error)))
+            context.sentTo?.get(args.to)?.push(now)
+            return stored
+        }
         context.sentTo?.get(args.to)?.push(now)
         return result
     }
     const live = (await (context.listPeers ?? listDaemonPeers)()).find((session) => session.sessionId === args.to)
-    if (!live) throw new Error(`Session ${args.to} is not running on this machine; nothing would read the message`)
+    if (!live) {
+        // B-646: not running → stored for its next turn when both are in one project (was: refused).
+        const notRunning = new Error(`Session ${args.to} is not running on this machine; nothing would read the message`)
+        if (context.sentTo) {
+            const budget = checkPeerSendBudget(context.sentTo, args.to, now)
+            if (!budget.ok) throw new Error(replyLoopRefusal(budget.count, args.to))
+        }
+        const stored = await storeOfflineOrThrow(context, self, args.to, body, notRunning)
+        context.sentTo?.get(args.to)?.push(now)
+        return stored
+    }
     if (live.kind === 'mirror') throw new Error(`Session ${args.to} is a terminal mirror (a person typing claude in a terminal); it cannot receive messages`)
     if (context.sentTo) {
         const budget = checkPeerSendBudget(context.sentTo, args.to, now)
