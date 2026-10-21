@@ -505,9 +505,20 @@ restart` does not reread `env_file`.
 ### Check the budget before it bites
 
 ```bash
-node scripts/ops/resource-budget.mjs            # 只读；退出码 1 = 有项目 30 天内撞墙
+node scripts/ops/resource-budget.mjs            # 只读；默认 vh-sg + RDS vh-pg；退出码 1 = 有项目 30 天内撞墙
 node scripts/ops/resource-budget.mjs --days 45 --warn 70
+node scripts/ops/resource-budget.mjs --rds none # 自建、库在主机本地：超售比对主机磁盘
 ```
+
+连接方式（B-661，2026-10-21 起；旧默认 `--host vh-us` + 容器 `happy-postgres` 随 vh-us 退役失效）：
+在 vh-sg 的 `vh-pgbouncer` 容器里跑它自带的 psql，连接串取自运行中 server 容器的
+`DATABASE_URL`，经 stdin 传入（不进进程参数、不打印），去掉 Prisma 的查询参数；每条 SQL
+包在 `BEGIN READ ONLY … COMMIT` 里（实测写语句被 Postgres 拒绝）。数据库容量用**本机** `aws`
+读 RDS（`AllocatedStorage` + CloudWatch `FreeStorageSpace`，vh-sg 上没有 AWS CLI），
+超售比对的是**数据库剩余空间**；读不到时明说并退回主机磁盘。主机磁盘与 `docker system df` 照常报告。
+2026-10-21 实测：89 个账号、4,694 个会话，库 3.4G，RDS 100G 分配 / 91.1G 可用，
+最坏情况 100 × 4.7G = 471.5G 对 91.1G → 超售 5.2 倍（明知接受，理由见下）；主机盘 57.1G、18.2G 可用，
+镜像 11.46G 其中 7.7G 可回收；单项峰值最高是 machines 25%。
 
 上限从两个事实源读，不在文档里抄第二份：代码 fallback 直接解析
 `configuredResourceLimit()` 调用点，生产覆盖值从**运行中的容器**环境变量读。
