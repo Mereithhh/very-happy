@@ -17,25 +17,50 @@ const loadEngineDefault = () => import('./asciiFieldEngine') as Promise<EngineMo
 
 type IdleWindow = Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
 
-/** Run `fn` once the browser is idle (after load), with a timeout so it always runs. */
+/** Settle time after `load` before any decoration work starts (B-720 TBT budget). */
+export const START_DELAY_MS = 3000;
+
+/**
+ * Run `fn` once the page has settled: `load`, then START_DELAY_MS after it (only
+ * right after the document load — SPA routes mounted later start at once), then
+ * an idle callback. The first user interaction (pointer, key, scroll, touch) starts it
+ * early — by then the page is interactive and the user is looking. Keeps the
+ * engine and the logo formation out of the load / TBT window entirely; the
+ * static backgrounds and the static mark are what first paint shows.
+ */
 export function whenIdle(fn: () => void): () => void {
   const w = window as IdleWindow;
-  let cancelled = false;
+  let done = false;
   let idleId: number | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const go = () => {
-    if (cancelled) return;
-    if (w.requestIdleCallback) idleId = w.requestIdleCallback(() => { if (!cancelled) fn(); }, { timeout: 1500 });
-    else timer = setTimeout(() => { if (!cancelled) fn(); }, 200);
+  const events = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'] as const;
+  const run = () => {
+    if (done) return;
+    done = true;
+    cleanup();
+    fn();
   };
-  if (document.readyState === 'complete') go();
-  else window.addEventListener('load', go, { once: true });
-  return () => {
-    cancelled = true;
-    window.removeEventListener('load', go);
+  const idle = () => {
+    if (done) return;
+    if (w.requestIdleCallback) idleId = w.requestIdleCallback(run, { timeout: 2000 });
+    else run();
+  };
+  // Only the first seconds after the document load wait; later mounts (SPA routes) start at once.
+  const afterLoad = () => {
+    const nav = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined;
+    const since = nav && nav.loadEventEnd > 0 ? performance.now() - nav.loadEventEnd : 0;
+    timer = setTimeout(idle, Math.max(0, START_DELAY_MS - since));
+  };
+  function cleanup() {
+    window.removeEventListener('load', afterLoad);
+    for (const e of events) window.removeEventListener(e, run, true);
     if (idleId !== undefined) w.cancelIdleCallback?.(idleId);
     if (timer !== undefined) clearTimeout(timer);
-  };
+  }
+  for (const e of events) window.addEventListener(e, run, { capture: true, passive: true, once: true });
+  if (document.readyState === 'complete') afterLoad();
+  else window.addEventListener('load', afterLoad, { once: true });
+  return () => { done = true; cleanup(); };
 }
 
 export interface AsciiFieldProps {

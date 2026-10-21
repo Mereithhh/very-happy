@@ -7,7 +7,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AsciiField } from './AsciiField';
+import { AsciiField, START_DELAY_MS, whenIdle } from './AsciiField';
 import { ASCII_MOTION_STORAGE, resetAsciiMotionForTests, setAsciiMotion } from './asciiMotionPreference';
 
 let host: HTMLDivElement;
@@ -79,5 +79,34 @@ describe('B-720 AsciiField wrapper', () => {
     act(() => root.render(<></>));
     await e.flushIdle();
     expect(e.startAsciiField).not.toHaveBeenCalled();
+  });
+
+  it('whenIdle keeps decoration out of the load window: waits START_DELAY_MS after load, or starts on the first interaction', () => {
+    vi.useFakeTimers();
+    try {
+      const w = window as Window & { requestIdleCallback?: unknown };
+      const savedIdle = w.requestIdleCallback;
+      w.requestIdleCallback = undefined;
+      const fn = vi.fn();
+      whenIdle(fn);
+      vi.advanceTimersByTime(START_DELAY_MS - 50);
+      expect(fn).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(100);
+      expect(fn).toHaveBeenCalledTimes(1);
+      const early = vi.fn();
+      whenIdle(early);
+      window.dispatchEvent(new Event('pointerdown'));
+      expect(early).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(START_DELAY_MS * 2);
+      expect(early).toHaveBeenCalledTimes(1);
+      const cancelled = vi.fn();
+      whenIdle(cancelled)();
+      vi.advanceTimersByTime(START_DELAY_MS * 2);
+      window.dispatchEvent(new Event('keydown'));
+      expect(cancelled).not.toHaveBeenCalled();
+      w.requestIdleCallback = savedIdle;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -138,6 +138,12 @@ interface Layer {
   halo: number;
   /** One glyph row: CPU buffer (RGB = ink, alpha = glyphs) → small canvas → drawImage onto the plane. */
   strip: { canvas: HTMLCanvasElement; ctx: Ctx; image: ImageData; words: Uint32Array } | null;
+  /**
+   * Off-DOM canvas the job draws into row by row; the hidden back plane gets one
+   * copy at commit. Writing rows into a canvas that is in the document would
+   * repaint its layer every frame on software-raster devices.
+   */
+  buffer: { canvas: HTMLCanvasElement; ctx: Ctx } | null;
   /** Max scroll-parallax shift (CSS px) the vertical padding can absorb. */
   scrollRoom: number;
   job: Job | null;
@@ -148,7 +154,7 @@ interface Layer {
 }
 
 /** Backing resolution cap: a background does not need full retina, and memory scales with its square. */
-const DPR_CAP: Record<AsciiFieldTier, number> = { full: 1.25, lite: 1.25 };
+const DPR_CAP: Record<AsciiFieldTier, number> = { full: 1.25, lite: 1 };
 /** Far layers are drawn at lower resolution: cheaper, and the upscale softens them further. */
 const RES_BY_DEPTH = [0.5, 0.75, 1];
 /** Seconds of animation time for the reduced-motion still (a creature mid-crossing). */
@@ -225,7 +231,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
     if (!a || !b) continue;
     layers.push({
       spec: layerSpec, scale: 1, cellW: 0, cellH: 0, cols: 0, rows: 0, pad: 0, padY: 0, planes: [a, b], front: 0,
-      glyphs: new Map(), halo: 0, strip: null, scrollRoom: 0, job: null, nextAt: 0, every: 1.1 + (spec.layers.length - 1 - layerSpec.depth) * 0.6,
+      glyphs: new Map(), halo: 0, strip: null, buffer: null, scrollRoom: 0, job: null, nextAt: 0, every: 1.1 + (spec.layers.length - 1 - layerSpec.depth) * 0.6,
     });
   }
   (controller as { layers: number }).layers = layers.length;
@@ -328,6 +334,11 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
       strip.height = sh;
       const image = stripCtx?.createImageData(w, sh);
       l.strip = stripCtx && image ? { canvas: strip, ctx: stripCtx, image, words: new Uint32Array(image.data.buffer, image.data.byteOffset, w * sh) } : null;
+      const buffer = env.doc.createElement('canvas') as HTMLCanvasElement;
+      buffer.width = w;
+      buffer.height = h;
+      const bufferCtx = env.getContext(buffer);
+      l.buffer = bufferCtx ? { canvas: buffer, ctx: bufferCtx } : null;
       l.job = null;
       l.nextAt = 0;
     }
@@ -378,10 +389,12 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   function stepJob(l: Layer, deadline: number): boolean {
     const job = l.job!;
     const strip = l.strip;
-    if (!strip) return true;
+    const buffer = l.buffer;
+    if (!strip || !buffer) return true;
     const plane = job.plane;
-    const bw = plane.canvas.width;
-    const bh = plane.canvas.height;
+    const target = buffer.ctx;
+    const bw = buffer.canvas.width;
+    const bh = buffer.canvas.height;
     const { image, words } = strip;
     const sh = image.height;
     const cellWpx = l.cellW * l.scale;
@@ -390,7 +403,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
       const top = Math.round(job.row * cellHpx) - l.halo;
       // Clear the plane rows this glyph row reaches first (the rows above keep the previous row's halo).
       const reach = Math.min(bh, top + sh);
-      if (job.clearedTo < reach) { plane.ctx.clearRect(0, job.clearedTo, bw, reach - job.clearedTo); job.clearedTo = reach; }
+      if (job.clearedTo < reach) { target.clearRect(0, job.clearedTo, bw, reach - job.clearedTo); job.clearedTo = reach; }
       words.fill(inkPacked);
       const row = layerRow(plane.ix, plane.iy + job.row, l.cols, job.t, l.spec.depth, l.spec.density);
       let inked = false;
@@ -402,14 +415,17 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
       }
       if (inked) {
         strip.ctx.putImageData(image, 0, 0);
-        plane.ctx.drawImage(strip.canvas, 0, top);
+        target.drawImage(strip.canvas, 0, top);
       }
       job.row++;
       stats.rows++;
       if (env.now() > deadline) break;
     }
     if (job.row < l.rows) return false;
-    if (job.clearedTo < bh) { plane.ctx.clearRect(0, job.clearedTo, bw, bh - job.clearedTo); job.clearedTo = bh; }
+    if (job.clearedTo < bh) { target.clearRect(0, job.clearedTo, bw, bh - job.clearedTo); job.clearedTo = bh; }
+    // One write to the (hidden) DOM plane per refresh.
+    plane.ctx.clearRect(0, 0, bw, bh);
+    plane.ctx.drawImage(buffer.canvas, 0, 0);
     return true;
   }
 

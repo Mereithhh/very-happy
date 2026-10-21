@@ -44,6 +44,7 @@ export function startLogoFormation(mark: HTMLElement, stage: HTMLElement, opts: 
     canvas.remove();
     mark.style.opacity = '';
     mark.style.transform = '';
+    mark.style.transition = '';
     document.removeEventListener('visibilitychange', onHide);
     opts.onDone?.();
   };
@@ -59,7 +60,9 @@ export function startLogoFormation(mark: HTMLElement, stage: HTMLElement, opts: 
   const markBox = mark.getBoundingClientRect();
   const box = Math.min(markBox.width, markBox.height);
   if (!box || !stageBox.width) { finish(); return controller; }
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // Phones / coarse pointers draw the moment at 1× — it lasts 2.5 s and is mostly motion.
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches === true;
+  const dpr = coarse ? 1 : Math.min(window.devicePixelRatio || 1, 2);
   const cellW = box / COLS;
   const { cols, rows } = formationGrid(box, cellW, cellW * 2);
   const cellH = box / rows;
@@ -151,7 +154,11 @@ export function startLogoFormation(mark: HTMLElement, stage: HTMLElement, opts: 
     mark.style.transform = bump === 1 ? '' : `scale(${bump.toFixed(3)})`;
     frame = raf(tick);
   };
+  // The static mark has been on screen for a few seconds by now: dim it smoothly
+  // into the ghost instead of snapping, then let the characters take over.
+  mark.style.transition = 'opacity 280ms ease';
   mark.style.opacity = String(svgOpacityAt(0));
+  setTimeout(() => { if (!finished) mark.style.transition = 'none'; }, 300);
   frame = raf(tick);
   return controller;
 }
