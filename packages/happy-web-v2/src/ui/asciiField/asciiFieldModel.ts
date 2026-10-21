@@ -60,7 +60,7 @@ export const PRESETS: Record<AsciiFieldPreset, AsciiFieldSpec> = {
     layers: [
       L(0, 11, 0.4, 1.8, -0.9, 0.12, 0.6, 8, 0.05),
       L(1, 14, 0.5, 0.7, -1.6, 0.2, 0.42, 18, 0.14),
-      L(2, 19, 0.7, 0, -2.6, 0.28, 0.22, 34, 0.28),
+      L(2, 19, 0.95, 0, -2.6, 0.28, 0.22, 34, 0.28),
     ],
     creatures: true, creatureEvery: [3, 7], creatureAlpha: 0.9, fps: 30,
   },

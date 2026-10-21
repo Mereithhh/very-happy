@@ -8,7 +8,7 @@
  */
 import { markMask } from '@/ui/veryHappyMarkGeometry';
 import { FIELD_RAMP } from './asciiFieldModel';
-import { FORMATION_TOTAL, buildParticles, formationGrid, particleAt, svgOpacityAt, type FormationMask } from './logoFormationModel';
+import { FORMATION_TOTAL, buildParticles, flashAt, formationGrid, markBumpAt, particleAt, svgOpacityAt, type FormationMask } from './logoFormationModel';
 
 export interface LogoFormationOptions {
   /** Replaceable mask source; defaults to the B-724 geometry. */
@@ -43,6 +43,7 @@ export function startLogoFormation(mark: HTMLElement, stage: HTMLElement, opts: 
     if (frame !== null) caf(frame);
     canvas.remove();
     mark.style.opacity = '';
+    mark.style.transform = '';
     document.removeEventListener('visibilitychange', onHide);
     opts.onDone?.();
   };
@@ -50,7 +51,11 @@ export function startLogoFormation(mark: HTMLElement, stage: HTMLElement, opts: 
   const controller = { stop: finish, done: () => finished };
   if (!ctx) { finish(); return controller; }
 
-  const stageBox = stage.getBoundingClientRect();
+  // The canvas spans the full viewport width over the hero (the hero itself is
+  // width-capped), so characters fly in from the whole first screen.
+  const heroBox = stage.getBoundingClientRect();
+  const viewW = document.documentElement.clientWidth || window.innerWidth;
+  const stageBox = { left: 0, top: heroBox.top, width: viewW, height: heroBox.height };
   const markBox = mark.getBoundingClientRect();
   const box = Math.min(markBox.width, markBox.height);
   if (!box || !stageBox.width) { finish(); return controller; }
@@ -69,6 +74,7 @@ export function startLogoFormation(mark: HTMLElement, stage: HTMLElement, opts: 
   canvas.height = Math.round(stageBox.height * dpr);
   canvas.style.width = `${stageBox.width}px`;
   canvas.style.height = `${stageBox.height}px`;
+  canvas.style.left = `${-heroBox.left}px`;
   stage.appendChild(canvas);
 
   // Glyph atlases: ink colour, three focus levels.
@@ -119,9 +125,26 @@ export function startLogoFormation(mark: HTMLElement, stage: HTMLElement, opts: 
       const g = atlas.get(`${f.blur}${f.glyph}`);
       if (!g) continue;
       ctx.globalAlpha = f.alpha;
-      ctx.drawImage(g, Math.round((ox + f.x) * dpr - gw / 2), Math.round((oy + f.y) * dpr - gh / 2));
+      const w = gw * f.scale;
+      const h = gh * f.scale;
+      ctx.drawImage(g, Math.round((ox + f.x) * dpr - w / 2), Math.round((oy + f.y) * dpr - h / 2), Math.round(w), Math.round(h));
+    }
+    // One brightness peak as the block completes: a soft ink bloom around the mark.
+    const flash = flashAt(t);
+    if (flash > 0) {
+      const cx = (ox + box / 2) * dpr;
+      const cy = (oy + box / 2) * dpr;
+      const r = box * 1.1 * dpr;
+      const glow = ctx.createRadialGradient(cx, cy, box * 0.2 * dpr, cx, cy, r);
+      glow.addColorStop(0, ink);
+      glow.addColorStop(1, 'transparent');
+      ctx.globalAlpha = 0.32 * flash;
+      ctx.fillStyle = glow;
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     }
     ctx.globalAlpha = 1;
+    const bump = markBumpAt(t);
+    mark.style.transform = bump === 1 ? '' : `scale(${bump.toFixed(3)})`;
     frame = raf(tick);
   };
   mark.style.opacity = String(svgOpacityAt(0));

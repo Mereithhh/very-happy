@@ -451,7 +451,7 @@
 .docs-ascii-band { position: absolute; top: 0; right: 0; left: 0; z-index: -1; height: 340px; -webkit-mask-image: linear-gradient(var(--text) 0, var(--text) 45%, transparent 100%), linear-gradient(90deg, transparent 0, transparent calc((100% - 1240px) / 2 + 240px), var(--text) calc((100% - 1240px) / 2 + 330px)); -webkit-mask-composite: source-in; mask-image: linear-gradient(var(--text) 0, var(--text) 45%, transparent 100%), linear-gradient(90deg, transparent 0, transparent calc((100% - 1240px) / 2 + 240px), var(--text) calc((100% - 1240px) / 2 + 330px)); mask-composite: intersect; }
 /* B-720 × B-724: the hero mark. Static SVG from first paint; the formation canvas
    (logoFormation.ts) overlays the hero while it plays, then the mark breathes. */
-.pub-hero-mark { width: clamp(72px, 7vw, 112px); aspect-ratio: 1; margin: 0 0 var(--sp-5); color: var(--text); }
+.pub-hero-mark { width: clamp(128px, 10.5vw, 160px); aspect-ratio: 1; margin: 0 0 var(--sp-6); color: var(--text); transform-origin: 50% 50%; }
 .pub-hero-mark svg { display: block; width: 100%; height: 100%; animation: pub-mark-breathe 5.2s ease-in-out infinite; }
 .pub-hero > .ascii-formation { position: absolute; top: 0; left: 0; z-index: 3; pointer-events: none; }
 @keyframes pub-mark-breathe { 50% { transform: translateY(-2px) scale(1.025); } }
@@ -460,6 +460,6 @@
   .pub-hero > .pub-hero-ascii { -webkit-mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 80%, transparent 100%); mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 80%, transparent 100%); }
   .pub-hero:has(> .pub-hero-ascii) .pub-hero-copy::before { inset: -24px -16px; }
   .pub-ascii-divider { height: 56px; }
-  .pub-hero-mark { width: 64px; margin-bottom: var(--sp-4); }
+  .pub-hero-mark { width: 92px; margin-bottom: var(--sp-5); }
   .docs-ascii-band { height: 220px; }
 }

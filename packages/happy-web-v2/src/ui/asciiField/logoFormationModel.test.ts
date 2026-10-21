@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { markMask } from '@/ui/veryHappyMarkGeometry';
-import { FACE_END, FORMATION_TOTAL, GATHER_END, buildParticles, formationGrid, particleAt, svgOpacityAt } from './logoFormationModel';
+import { FACE_END, FACE_START, FORMATION_TOTAL, GATHER_END, buildParticles, flashAt, formationGrid, markBumpAt, particleAt, svgOpacityAt } from './logoFormationModel';
 
 const grid = formationGrid(120, 4, 8);
 const mask = markMask(grid.cols, grid.rows, 3);
@@ -44,6 +44,18 @@ describe('B-720 × B-724 logo formation', () => {
     expect(svgOpacityAt(1)).toBeLessThan(0.2);
     expect(svgOpacityAt(FORMATION_TOTAL)).toBe(1);
     expect(svgOpacityAt(99)).toBe(1);
+  });
+
+  it('near particles fly in large and land at cell size; one brightness peak at the gather, a bump at the knock-out', () => {
+    const near = particles.find((p) => p.depth > 0.8)!;
+    expect(particleAt(near, near.delay)!.scale).toBeGreaterThan(2);
+    expect(particleAt(near, GATHER_END)!.scale).toBe(1);
+    expect(flashAt(GATHER_END)).toBe(1);
+    expect(flashAt(0.5)).toBe(0);
+    expect(flashAt(FORMATION_TOTAL)).toBe(0);
+    expect(markBumpAt((FACE_START + FACE_END) / 2)).toBeGreaterThan(1.05);
+    expect(markBumpAt(0.2)).toBe(1);
+    expect(markBumpAt(FORMATION_TOTAL)).toBe(1);
   });
 
   it('grid is square in pixels', () => {
