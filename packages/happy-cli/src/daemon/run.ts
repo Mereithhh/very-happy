@@ -52,6 +52,9 @@ import type { CLIAvailability } from '@/utils/detectCLI';
 import { getInitialMachineMetadata, getStartupCliAvailability } from './machineMetadata';
 import { currentWorktreeService } from '@/worktree/service';
 import { WORKTREE_CAPABILITY_VERSION } from '@/worktree/worktreeRpc';
+import { ModelConfigService } from '@/modules/modelConfig/service';
+import { MODEL_CONFIG_CAPABILITY_VERSION } from '@/modules/modelConfig/types';
+import { commandOnPath } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { startWebPanelsSync } from '@/webPanels/webPanelsSync';
 import { readSettings, updateSettings, writeSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
@@ -76,10 +79,12 @@ import { createDaemonControlToken } from './controlAuth';
 import { withDaemonHeartbeat } from './daemonState';
 import { DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, fetchCliUpdateState, resolveCliUpdateCheckInterval } from '@/update/cliUpdate';
 import { terminateProcess, terminateProcessTree } from './processTermination';
+import { describeStartupExit, readStartupExitReason, type StartupExit } from './startupExit';
 import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
 import { readSessionLock } from '@/utils/sessionLock';
 import { createTeamWorker } from './teams/worker';
+import { TEAM_RETRY_CAPABILITY_VERSION } from './teams/spawnRetry';
 import { createAutomationRunner } from './automations/runner';
 import { daemonExitCode, HANDOVER_EXIT_CODE, type ShutdownSource } from './shutdownExit';
 import { detectDaemonSupervisor } from './daemonSupervisor';
@@ -143,6 +148,8 @@ async function preflightNewBundle(bundlePath: string): Promise<HandoverPreflight
 }
 
 const HANDOVER_PREFLIGHT_TIMEOUT_MS = 30_000;
+/** How long a spawned wrapper has to report its session (POST /session-started). */
+const SPAWN_WEBHOOK_TIMEOUT_MS = 15_000;
 export async function startDaemon(): Promise<void> {
   // B-512: computed here (not at module load) so importing this module is free
   // of the CLI availability `execSync` probes.
@@ -1107,24 +1114,44 @@ export async function startDaemon(): Promise<void> {
       logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`);
 
       return new Promise((resolve) => {
+        const pid = happyProcess.pid!;
+        let settled = false;
+        const fail = (startupExit: StartupExit) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          pidToAwaiter.delete(pid);
+          startupExit.reason ??= readStartupExitReason(configuration.logsDir, pid);
+          const errorMessage = describeStartupExit(startupExit, SPAWN_WEBHOOK_TIMEOUT_MS);
+          logger.debug(`[DAEMON RUN] Spawn of PID ${pid} failed: ${errorMessage}`);
+          resolve({ type: 'error', errorMessage, startupExit });
+        };
+        // B-689: a wrapper that dies before its webhook is a definite failure
+        // with a cause in its log — not a 15 s "webhook timeout" (10-21: exit 1
+        // at +11 s was reported as a timeout at +15 s, with no reason).
+        happyProcess.once('exit', (code, signal) => fail({ exited: true, code, signal }));
         const timeout = setTimeout(() => {
-          pidToAwaiter.delete(happyProcess.pid!);
-          logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
+          if (settled) return;
+          pidToAwaiter.delete(pid);
+          logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${pid}`);
           // B-264: kill the leaked child. Without this the timed-out process
           // keeps running and later webhooks in as an externally-started
           // session, so a caller that retries after the error (or a restart
           // sweep) double-spawns onto the same session row + key. Killing it
           // makes the error terminal — the caller retries onto a clean slate.
-          if (happyProcess.pid) {
-            try { terminateProcess(happyProcess.pid, () => {}); } catch { /* best effort */ }
+          // B-689: report only once it is confirmed gone (SIGTERM → 2 s →
+          // SIGKILL), so the caller may retry the launch without a second writer.
+          try {
+            const started = terminateProcess(pid, (stopped) => fail({ exited: stopped, code: null, signal: null, timedOut: true }));
+            if (!started) fail({ exited: false, code: null, signal: null, timedOut: true });
+          } catch {
+            fail({ exited: false, code: null, signal: null, timedOut: true });
           }
-          resolve({
-            type: 'error',
-            errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
-          });
-        }, 15_000);
+        }, SPAWN_WEBHOOK_TIMEOUT_MS);
 
-        pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
+        pidToAwaiter.set(pid, (completedSession) => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timeout);
           logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
           resolve({
@@ -1839,6 +1866,17 @@ export async function startDaemon(): Promise<void> {
     });
     claudeAuthService.start();
 
+    // B-688: read/write the harnesses' own model/provider config files
+    // (specs/2026-10-custom-models.md). A Claude change re-runs the auth
+    // preflight so daemonState.claudeAuth reflects the new credentials.
+    apiMachine.setModelConfigService(new ModelConfigService({
+      home: os.homedir(),
+      env: process.env,
+      happyHomeDir: configuration.happyHomeDir,
+      isInstalled: commandOnPath,
+      onChanged: (harness) => { if (harness === 'claude') void claudeAuthService.probe('model-config', true); },
+    }));
+
     // B-587: the machine page's「空闲休眠」setting.
     apiMachine.setAgentHibernationHandlers(resolveIdleMs(agentHibernationSetting), async (requested) => {
       const value = requested <= 0 ? 0 : settingIdleMs(requested);
@@ -2141,8 +2179,12 @@ export async function startDaemon(): Promise<void> {
     // Publish the executing daemon's capability after the worker is installed.
     void apiMachine.updateMachineMetadata(current => ({
       ...(current ?? initialMachineMetadata), teamsVersion: 1, teamLaunchVersion: 1,
+      // B-689: this daemon acts on the owner's retry-operation (web gates「重试启动」).
+      teamRetryVersion: TEAM_RETRY_CAPABILITY_VERSION,
       // B-586: this daemon serves the worktree-* RPCs (web gates 「在新 worktree 中」 on it).
       worktreeVersion: WORKTREE_CAPABILITY_VERSION,
+      // B-688: this daemon serves the model-config-* RPCs (web gates 「模型与 Provider」 on it).
+      modelConfigVersion: MODEL_CONFIG_CAPABILITY_VERSION,
     })).catch(() => logger.debug('[DAEMON RUN] Teams capability publication will retry on reconnect'));
 
     // Setup signal handlers

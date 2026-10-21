@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { TeamState, TeamTask } from "@slopus/happy-wire";
 import { t as tr } from "@/text";
 import { taskLaunchIssue } from "./teamPresentation";
@@ -13,7 +14,7 @@ export const taskStatus = (): Record<string, string> => ({
 });
 
 /** Task details dialog, read-only head. B-687: goal and acceptance keep their line breaks (`.teams-multiline`). */
-export function TeamTaskSummary({ team, task }: { team: TeamState; task: TeamTask }) {
+export function TeamTaskSummary({ team, task, launchIssue }: { team: TeamState; task: TeamTask; launchIssue?: (issue: TeamState["operations"][number]) => ReactNode }) {
   const c = useWorkspaceCopy();
   const first = useFirstUseCopy();
   const issue = taskLaunchIssue(team, task);
@@ -23,7 +24,8 @@ export function TeamTaskSummary({ team, task }: { team: TeamState; task: TeamTas
       <strong className="teams-multiline">{task.goal}</strong>
       <span data-live={task.status === "running"}>{issue ? first.launchFailed : taskStatus()[task.status]}</span>
     </div>
-    {issue && <div className="teams-error" role="alert"><strong>{first.launchFailed}</strong><p>{issue.error}</p><p>{first.retryHint}</p></div>}
+    {/* B-689: the screen supplies the actionable block (Retry launch); this is the read-only fallback. */}
+    {issue && (launchIssue ? launchIssue(issue) : <div className="teams-error" role="alert"><strong>{first.launchFailed}</strong><p>{issue.error}</p><p>{issue.status === "unknown" ? first.unknownHint : first.retryHint}</p></div>)}
     {/* The parent is a reference: its first line, like the board's parent label. */}
     {task.parentTaskId && <p>{tr("teams.parent")}：{parent?.goal.split("\n")[0] ?? task.parentTaskId}</p>}
     <p>

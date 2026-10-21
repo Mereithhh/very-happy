@@ -26,6 +26,26 @@ describe('team coordination invariants', () => {
         expect(f.state.operations.at(-1)?.permissionMode).toBe('default');
     });
 
+    it('B-689: owner retry marks a stuck launch once per request and only while its attempt waits', () => {
+        const f = fixture();
+        f.act({ type: 'delegate', goal: 'g', acceptance: ['a'] });
+        const op = f.state.operations[0];
+        expect(() => f.act({ type: 'retry-operation', operationId: op.id, claimId: 'x' })).toThrow('stale_claim');
+        f.act({ type: 'claim-operation', operationId: op.id, machineId: 'machine', teamLaunchVersion: 1 });
+        const claimId = f.state.operations[0].claimId!;
+        expect(() => f.act({ type: 'retry-operation', operationId: op.id, claimId })).toThrow('stale_claim'); // still running, not failed
+        f.act({ type: 'fail-operation', operationId: op.id, machineId: 'machine', claimId, error: 'Agent process exited during startup (code 1): ECONNRESET' });
+        const worker = f.state.bots[0];
+        expect(() => f.act({ type: 'retry-operation', operationId: op.id, claimId }, { kind: 'agent', botId: worker.id, generation: worker.generation })).toThrow('owner_required');
+        f.act({ type: 'retry-operation', operationId: op.id, claimId });
+        expect(f.state.operations[0]).toMatchObject({ status: 'failed', claimId, retryRequestedAt: 1000 });
+        f.act({ type: 'retry-operation', operationId: op.id, claimId });
+        expect(f.state.operations[0].retryRequestedAt).toBe(1001); // a second request is distinguishable
+        const task = f.state.tasks[0];
+        f.act({ type: 'cancel', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, reason: 'stop' });
+        expect(() => f.act({ type: 'retry-operation', operationId: op.id, claimId })).toThrow('operation_task_not_waiting');
+    });
+
     it('fences old bot credentials after rebind', () => {
         const f = fixture(); f.act({ type: 'join', name: 'Root', sessionId: 's1' }); const bot = f.state.bots[0];
         f.act({ type: 'join', name: 'Root', sessionId: 's2', botId: bot.id });

@@ -48,3 +48,20 @@ export function canReconcileOperation(
       ))
   );
 }
+
+/** B-689: the owner may ask the execution computer to rerun a failed or
+ *  uncertain launch while its task is still waiting for that attempt. */
+export function canRetryLaunch(
+  team: TeamState,
+  operation: TeamState["operations"][number],
+): boolean {
+  if (operation.type !== "spawn" || !operation.claimId || !["failed", "unknown"].includes(operation.status)) return false;
+  const task = team.tasks.find((task) => task.id === operation.taskId);
+  return !!task && task.status === "queued" && task.currentAttemptId === operation.attemptId;
+}
+
+/** B-689: machine metadata `teamRetryVersion` — daemons that act on retry-operation. */
+export function machineSupportsTeamRetry(metadata: unknown, version = 1): boolean {
+  const value = (metadata as { teamRetryVersion?: unknown } | null)?.teamRetryVersion;
+  return typeof value === "number" && value >= version;
+}

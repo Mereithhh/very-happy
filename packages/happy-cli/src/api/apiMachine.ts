@@ -15,6 +15,8 @@ import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from 
 import { registerFsHandlers } from '../modules/fs/fsRpc';
 import { registerTodoHandlers } from '@/modules/todo/todoRpc';
 import { registerWorktreeHandlers } from '@/worktree/worktreeRpc';
+import { registerModelConfigHandlers } from '@/modules/modelConfig/modelConfigRpc';
+import type { ModelConfigService } from '@/modules/modelConfig/service';
 import { configureWorktreeService } from '@/worktree/service';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { prepareClipboardHistoryText, prepareClipboardText } from '@/clipboard/limits';
@@ -514,6 +516,11 @@ export class ApiMachineClient {
             const claudeAuth = await handlers.setStore(store);
             return { claudeAuth };
         });
+    }
+
+    /** B-688 machine RPCs `model-config-*` (modules/modelConfig/modelConfigRpc.ts). */
+    setModelConfigService(service: ModelConfigService): void {
+        registerModelConfigHandlers(this.rpcHandlerManager, service);
     }
 
     /**
