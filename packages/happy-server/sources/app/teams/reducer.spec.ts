@@ -372,7 +372,7 @@ describe('B-692 member lifecycle', () => {
         completeStop(f, finish(f, first.taskId!).id);
         const reuse = f.act({ type: 'delegate', goal: 'two', acceptance: ['a'], botName: 'Dev-C2', directory: '/repo' });
         expect(f.state.bots).toHaveLength(1);
-        expect(f.state.bots[0]).toMatchObject({ name: 'Dev-C2', generation: 2, sessionId: null });
+        expect(f.state.bots[0]).toMatchObject({ name: 'Dev-C2', previousNames: ['Dev-B2'], generation: 2, sessionId: null });
         expect(f.state.tasks.find(t => t.id === reuse.taskId)?.assigneeBotId).toBe(f.state.bots[0].id);
         // a different agent or folder is a different member
         f.act({ type: 'delegate', goal: 'three', acceptance: ['a'], assistant: 'codex', directory: '/repo' });
@@ -390,6 +390,8 @@ describe('B-692 member lifecycle', () => {
         expect(() => f.act({ type: 'delegate', goal: 'one more', acceptance: ['a'], directory: '/live/x' })).toThrow('team_bot_limit');
         const view = teamView(f.state, owner);
         expect(view.memberCounts).toEqual({ active: 32, stopping: 0, idle: 0, inactive: 31 });
+        // a bot that still holds a session is never picked for reuse (it would be messaged, not relaunched)
+        expect(f.state.bots.filter(b => b.sessionId)).toHaveLength(0);
         expect(view.bots.filter(b => b.activity === 'inactive')).toHaveLength(31);
         // derived fields are response-only
         expect('memberCounts' in f.state).toBe(false);

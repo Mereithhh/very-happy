@@ -25,7 +25,8 @@ export function teamView(state: TeamState, actor: TeamActor): TeamState {
 /** B-692: response-only derived fields (never persisted): each bot's activity
  *  and the team's member counts, from the full state. */
 function withMemberActivity(view: TeamState, full: TeamState): TeamState {
-    return { ...view, memberCounts: teamMemberCounts(full), bots: view.bots.map(bot => ({ ...bot, activity: teamBotActivity(full, bot) })) };
+    const now = Date.now(); // archived sessions are only known to the Web; it re-derives with that
+    return { ...view, memberCounts: teamMemberCounts(full, { now }), bots: view.bots.map(bot => ({ ...bot, activity: teamBotActivity(full, bot, { now }) })) };
 }
 function scopedTeamView(state: TeamState, actor: TeamActor): TeamState {
     if (actor.kind === 'owner') return state;
@@ -177,13 +178,16 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                 const fresh: TeamBot = { id: id(), name: action.botName ?? 'Worker', sessionId: null, generation: 1, root: false, managed: true, assistant: action.assistant ?? s.defaults?.assistant ?? 'claude', ...(action.model ? { model: action.model } : (!action.assistant || action.assistant === s.defaults?.assistant) && s.defaults?.model ? { model: s.defaults.model } : {}), directory: action.directory ?? currentBot?.directory ?? s.bots.find(b => b.root)?.directory ?? null };
                 // B-692: reuse a stopped member of the same shape (agent, model, folder)
                 // instead of growing the roster with one-shot bots. Oldest first.
-                const candidate = s.bots.find(b => b.managed && !b.root && b.assistant === fresh.assistant && (b.model ?? null) === (fresh.model ?? null) && b.directory === fresh.directory && teamBotActivity(s, b) === 'inactive' && (actor.kind === 'owner' || currentBot?.root));
+                // Only an unbound one: a bot that still holds a session (exited / stale) is
+                // inactive for counting but would be messaged rather than relaunched.
+                const candidate = s.bots.find(b => b.managed && !b.root && !b.sessionId && b.assistant === fresh.assistant && (b.model ?? null) === (fresh.model ?? null) && b.directory === fresh.directory && teamBotActivity(s, b, { now }) === 'inactive' && (actor.kind === 'owner' || currentBot?.root));
                 if (candidate) {
                     bot = candidate; reused = true;
-                    if (action.botName) bot.name = action.botName;
+                    // The old name stays in the record so its history still reads right.
+                    if (action.botName && action.botName !== bot.name) { bot.previousNames = [...(bot.previousNames ?? []), bot.name].slice(-16); bot.name = action.botName; }
                 } else {
                     // B-692: the limit counts members, not stopped bots; the total bounds the record.
-                    requireTeam(s.bots.filter(b => teamBotActivity(s, b) !== 'inactive').length < 32, 'team_bot_limit', 429);
+                    requireTeam(s.bots.filter(b => teamBotActivity(s, b, { now }) !== 'inactive').length < 32, 'team_bot_limit', 429);
                     requireTeam(s.bots.length < 128, 'team_bot_record_limit', 429);
                     bot = fresh;
                     s.bots.push(bot);

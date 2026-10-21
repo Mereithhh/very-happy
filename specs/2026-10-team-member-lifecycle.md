@@ -19,24 +19,24 @@ Owner：「已经不用的 team 也会占据一个成员……我现在 21 个�
 
 | 状态 | 条件 |
 |---|---|
-| `active` | root；或有未结束任务（queued/running/submitted）；或当前 generation 的 spawn 未完成（排除 `task_closed_before_spawn`）；或绑定的是用户会话（managed=false 且有 session） |
-| `stopping` | 有未完成的 stop（pending/claimed/failed/unknown，含 B-691 保留待处理的清理） |
-| `idle` | managed，仍绑定 session，但无任务、无 stop |
-| `inactive`（已停用） | managed，无 session，无任务，无未完成操作 |
+| `active` | root；或有未结束任务（queued/running/submitted）；或当前 generation 的 spawn 未完成（排除 `task_closed_before_spawn`） |
+| `stopping` | 有未完成的 stop（pending/claimed/failed/unknown，含 B-691 保留待处理的清理），显示为「回收需要处理」，不折叠 |
+| `inactive`（已停用） | 没有未结束任务，且满足任一条件：没有会话、会话已归档（只有 Web 知道，通过 `context.sessionArchived` 传入）、`lastEvent=exited`、最近一次事件超过 7 天（B-690 的规则并入，Lead 10-21 确认） |
+| `idle` | 仍绑定会话但没有活，且不满足上一行任一条件；仍计入成员数 |
 
 `teamMemberCounts` 把成员数定义为除 inactive 之外的所有成员。
 
 **委派**：
 - 委派给 stopping 的 bot：不再返回 409。建 queued 任务和 spawn op（`sessionId=null`，generation+1），绝不把任务发给正在停止的会话。`claim-operation` 在该 bot 的 stop 完成前返回 `bot_cleanup_pending`，daemon 的现有轮询会让 op 保持 pending。
 - stop 完成或人工对账后，只要 `bot.sessionId === op.sessionId` 就解除绑定（不再要求 generation 一致），排队的启动随后被认领。
-- 不带 `assigneeBotId` 的委派：优先复用最早的 inactive managed bot（assistant、model、directory 都相同）；带 `botName` 时重命名它；没有可复用的才新建。
+- 不带 `assigneeBotId` 的委派：优先复用最早的、**没有会话**的 inactive managed bot（assistant、model、directory 都相同）。仍持有会话的 bot 虽然计为已停用，但委派会发消息给它而不是重新拉起，所以不复用。带 `botName` 时重命名它，旧名记入 `previousNames`（曾用名，最多 16 个）。没有可复用的才新建。
 - 名额：非 inactive 成员 < 32，`bots` 总记录 < 128（`team_bot_record_limit`）。
 
 **视图**：`teamView` 响应附加 `memberCounts` 和 `bots[].activity`，按完整状态计算，只出现在响应里、不持久化。team_inspect 透传 JSON，所以 agent 也能看到。
 
 **历史与重新激活**：bot 名下的任务 attempts 和各 spawn op 的 sessionId 就是它的历史。用 `assigneeBotId` 委派给 inactive 的 bot，即 generation+1 后启动新会话和新 worktree。不新增 action。
 
-**Web**：成员折叠与「已停用 N 个」由 B-690（#642）负责。它的 `teamMemberInactive` 另加了 UI 启发式（会话已归档、`lastEvent=exited`、长时间空闲）。为了只保留一套底层规则，B-690 应以 `bot.activity === 'inactive'`（旧 server 时调用 `teamBotActivity`）为基础，再叠加这些「看起来不活跃」的 UI 启发式；计数用 `memberCounts`。
+**Web**：成员折叠与「已停用 N 个」由 B-690（#642）负责，它会把本地的 `teamMemberInactive` 换成 `teamBotActivity`（带上 `sessionArchived`）。共享函数已先由 #646 单独合入。server 的 `memberCounts` 不知道会话是否已归档，所以 Web 应带上归档信息自己重算。
 
 ## 兼容矩阵
 
@@ -49,4 +49,6 @@ daemon/CLI 不变：被拒绝认领的 spawn 保持 pending（现有逻辑）。
 
 ## 验证
 
-wire `teamActivity.test.ts`（各状态判定、计数）；reducer：排队委派 → 认领被拒 → stop 完成 → 认领并绑定新会话、任务进入 running；failed stop 人工对账后释放；同形复用与重命名、不同 agent/目录则新建；32 名活跃成员上限不计 31 个已停用；派生字段不持久化。
+wire `teamActivity.test.ts`（各状态判定、B-690 启发式、计数）；reducer：排队委派 → 认领被拒 → stop 完成 → 认领并绑定新会话、任务进入 running；failed stop 人工对账后释放；同形复用与重命名、不同 agent/目录则新建；32 名活跃成员上限不计 31 个已停用；派生字段不持久化。
+
+端到端（本地 standalone server，通过 owner API 模拟执行电脑）：旧 server（B-689 版）委派给正在回收的 bot 返回 `409 bot_cleanup_pending`；B-692 server 返回 200，任务排队；回收完成前认领被拒（409 `bot_cleanup_pending`），回收完成后启动、任务 running；默认委派复用同一 bot（名字改为 Dev-C2，`previousNames: ["Dev-B2"]`）；视图 `memberCounts` 与 `activity` 正确。证据见 `~/code/github/skills/tmp/vh-team-B-692/e2e/evidence/`。
