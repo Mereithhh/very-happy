@@ -55,6 +55,14 @@ conversation**. Its wrapper establishes the scoped connection and delivers the
 collaboration instructions in the background. No session ID entry or additional
 join step is required. Old wrappers without the capability need a new session.
 
+A member whose task was accepted or cancelled and whose cleanup finished is
+**inactive**: it no longer counts as a member, its tasks and sessions stay
+readable, and a new delegation with the same agent, model and folder reuses it
+instead of adding another member. Delegating to a member that is still being
+cleaned up queues the task; it starts once the cleanup completes. Delegating to an
+inactive member by name reactivates it in a fresh session and worktree. The
+member limit (32) counts active members only.
+
 Team options choose the default agent/model for new assignments and the maximum
 number of concurrently progressing leaf tasks. A parent waiting for unfinished
 children yields its slot; this is a work limit, not an OS-process limit. Running
