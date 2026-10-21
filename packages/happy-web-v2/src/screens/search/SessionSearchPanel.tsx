@@ -275,6 +275,10 @@ function SessionSearchPanel({ onClose, onImport }: {
 
     const onKeyDown = (e: React.KeyboardEvent) => {
         if (e.nativeEvent.isComposing) return;
+        if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
+        // Arrows / Enter drive the result list only from the search field: a focused filter
+        // <select> or snippet button keeps its own keys.
+        if (e.target !== inputRef.current) return;
         const delta = listArrowDelta(e);
         if (delta !== null) {
             e.preventDefault();
@@ -284,9 +288,6 @@ function SessionSearchPanel({ onClose, onImport }: {
         if (e.key === 'Enter') {
             const row = rows[active];
             if (row) { e.preventDefault(); openRow(row); }
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            onClose();
         }
     };
 
