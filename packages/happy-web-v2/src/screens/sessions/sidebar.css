@@ -618,7 +618,7 @@
 
 .sb-team-row { display: flex; align-items: center; min-width: 0; border-radius: 6px; }
 .sb-team-row.is-selected { background: var(--fill-selected); }
-.sb-team-toggle { display: grid; place-items: center; width: 30px; min-height: 44px; flex-shrink: 0; color: var(--text-dim); }
+.sb-team-toggle { display: grid; place-items: center; width: 32px; min-height: 44px; flex-shrink: 0; color: var(--text-dim); border-radius: var(--r-sm); }
 .sb-team-toggle .is-open { transform: rotate(90deg); }
 .sb-team-main { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; text-align: left; min-height: 52px; padding: 5px 8px 5px 0; }
 .sb-team-main > svg { flex-shrink: 0; }
@@ -626,6 +626,20 @@
 .sb-team-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
 .sb-team-main small { color: var(--text-dim); font-size: 12px; }
 .sb-team-child { margin-left: 20px; border-left: 1px solid var(--line); }
+/* B-721: the lead's status sits in the row's status slot; the board has its own
+   button — revealed on hover / keyboard focus with a fine pointer, always shown
+   on touch (no hover there). */
+.sb-team-main .sb-team-lead-status { margin-left: auto; }
+.sb-team-board { display: grid; place-items: center; flex: none; width: 32px; height: 32px; margin-right: 2px; border-radius: var(--r-sm); color: var(--text-dim); }
+@media (hover: hover) and (pointer: fine) {
+  .sb-team-board { opacity: 0; }
+  .sb-team-row:hover .sb-team-board, .sb-team-row:focus-within .sb-team-board { opacity: 1; }
+  .sb-team-board:hover, .sb-team-toggle:hover { background: var(--fill-hover); color: var(--text); }
+}
+@media (pointer: coarse) {
+  .sb-team-toggle { width: 44px; }
+  .sb-team-board { width: 44px; height: 44px; }
+}
 
 .sb-closed-row .sb-row-sub { display:block; }
 .sb-list-controls { display:flex; align-items:center; padding:0 var(--sp-2); gap:var(--sp-1); }
