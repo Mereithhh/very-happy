@@ -30,6 +30,8 @@ export const SPAWN_PERMISSION_MODES = ['', 'default', 'acceptEdits', 'plan', 'yo
 export const PRECHECK_MODES = ['shell', 'argv'] as const;
 
 export interface AutomationDraft {
+  /** B-649: sessions this automation spawns join this project ('' = none). */
+  projectId: string;
   name: string;
   description: string;
   machineId: string;
@@ -76,6 +78,7 @@ export function localTimeZone(): string {
 
 export function emptyDraft(over: Partial<AutomationDraft> = {}): AutomationDraft {
   return {
+    projectId: '',
     name: '',
     description: '',
     machineId: '',
@@ -255,6 +258,7 @@ export function draftFromAutomation(a: Automation): AutomationDraft {
     machineId: a.machineId,
     concurrency: a.concurrency,
     maxRuntime: formatDuration(a.maxRuntimeMs),
+    projectId: a.projectId ?? '',
   });
   const t = a.trigger;
   d.triggerKind = t.kind;
@@ -403,6 +407,7 @@ export function buildCreate(d: AutomationDraft): BuildResult<AutomationCreate> {
     concurrency: d.concurrency,
     ...(d.description.trim() ? { description: d.description.trim() } : {}),
     ...(maxRuntimeMs ? { maxRuntimeMs } : {}),
+    ...(d.projectId ? { projectId: d.projectId } : {}),
   };
   const precheck = precheckFromDraft(d);
   if (precheck) body.precheck = precheck;
@@ -432,6 +437,8 @@ export function buildUpdate(d: AutomationDraft, current: Automation): BuildResul
   // B-548: only a changed precheck is sent (null removes it); `current.precheck` is absent on older servers = none.
   const precheck = precheckFromDraft(d);
   if (!samePrecheck(precheck, current.precheck ?? null)) body.precheck = precheck;
+  // B-649: `current.projectId` is absent on older servers (= none); only a change is sent, '' detaches.
+  if ((d.projectId || null) !== (current.projectId ?? null)) body.projectId = d.projectId || null;
   const parsed = AutomationUpdateSchema.safeParse(body);
   if (!parsed.success) return { ok: false, errors: { name: 'schema' } };
   return { ok: true, body: parsed.data, changed: Object.keys(body).length > 1 };

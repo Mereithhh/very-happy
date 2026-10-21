@@ -5,6 +5,7 @@
  * refusals (name taken, invalid cron/tz, machine not found, stale version)
  * land on the field they belong to.
  */
+import { useProjects } from '@/sync/projects';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { BackButton } from '@/app/BackButton';
@@ -72,6 +73,8 @@ export function AutomationFormScreen() {
   const { id } = useParams();
   const editing = Boolean(id);
   const { t, lang } = useTranslation();
+  const zhCopy = lang === 'zh-Hans';
+  const projectsSnap = useProjects();
   const l = langOf(lang);
   const navigate = useNavigate();
   const machines = useAllMachines({ includeOffline: true });
@@ -186,6 +189,14 @@ export function AutomationFormScreen() {
               ))}
             </select>
           </Field>
+          {projectsSnap.status === 'ready' && (draft.actionKind === 'spawn' || draft.projectId) && (
+            <Field label={zhCopy ? '项目' : 'Project'} hint={zhCopy ? '这个自动化新开的会话进入该项目（安静模式：只拿说明，不主动发消息、不写记录）' : 'Sessions this automation starts join the project (quiet: they get its instructions but do not message others or write notes)'}>
+              <select className="au-input" value={draft.projectId} onChange={(e) => set('projectId', e.target.value)}>
+                <option value="">{zhCopy ? '无项目' : 'No project'}</option>
+                {projectsSnap.projects.filter((p) => !p.archivedAt || p.id === draft.projectId).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+          )}
           <Field label={t('automations.fieldDescription') as string} wide>
             <input className="au-input" value={draft.description} onChange={(e) => set('description', e.target.value)} maxLength={4000} />
           </Field>

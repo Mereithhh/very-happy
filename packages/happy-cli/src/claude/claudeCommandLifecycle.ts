@@ -53,9 +53,19 @@ export const INTERRUPT_CANCEL_QUEUED_CAPABILITY = 'interrupt_cancel_queued_v1';
 const PENDING_MAX = 256;
 const REPORTED_MAX = 512;
 
-export function createClaudeCommandTracker() {
-    /** Uuid-stamped user messages the CLI has not settled: whether it reported `started`. */
-    const pending = new Map<string, { started: boolean }>();
+/** Capability a CLI advertises on system/init when it emits `command_lifecycle` frames. */
+export const MSG_LIFECYCLE_CAPABILITY = 'msg_lifecycle_v1';
+
+/**
+ * B-634 ②: a uuid-stamped message the Query ended without ever confirming —
+ * no `started` (the model never read it) and no terminal verdict either: the
+ * process died, or the Query was torn down, with it still in the pipe.
+ */
+export type ClaudeUnconfirmedCommand<P> = { uuid: string; payload: P };
+
+export function createClaudeCommandTracker<P = unknown>() {
+    /** Uuid-stamped user messages the CLI has not settled: whether it reported `started`, and what was sent. */
+    const pending = new Map<string, { started: boolean; payload?: P }>();
     /** Reported once, whichever of receipt / frame / cancel response said it first. */
     const reported = new Set<string>();
 
@@ -69,9 +79,9 @@ export function createClaudeCommandTracker() {
 
     return {
         /** A uuid-stamped user message (prompt or steer) was handed to the Query. */
-        track(uuid: string): void {
+        track(uuid: string, payload?: P): void {
             if (!pending.has(uuid) && pending.size >= PENDING_MAX) pending.delete(pending.keys().next().value!);
-            pending.set(uuid, { started: false });
+            pending.set(uuid, { started: false, payload });
         },
         isTracked(uuid: string): boolean { return pending.has(uuid); },
         /** A lifecycle frame; returns the uuids now known to have never run. */
@@ -113,6 +123,44 @@ export function createClaudeCommandTracker() {
             const dropped = drop(uuid);
             return dropped ? [dropped] : [];
         },
+        /**
+         * B-634 ②: the Query is over — every tracked message that never
+         * `started` and was not already reported, in the order it was sent.
+         * Untracked afterwards; a later frame for one of them is ignored.
+         */
+        takeUnconfirmed(): ClaudeUnconfirmedCommand<P>[] {
+            const out: ClaudeUnconfirmedCommand<P>[] = [];
+            for (const [uuid, entry] of pending) {
+                if (entry.started || entry.payload === undefined || reported.has(uuid)) continue;
+                out.push({ uuid, payload: entry.payload });
+            }
+            for (const { uuid } of out) pending.delete(uuid);
+            return out;
+        },
         clear(): void { pending.clear(); },
+    };
+}
+
+/**
+ * B-634 ②: what to do with messages a Query ended without confirming.
+ * - The launcher's abort (Stop, exit, switch to local) ended it: the user
+ *   ended the work, so they are tombstoned (B-332 `aborted`) — the web must
+ *   not show them as answered.
+ * - Otherwise the Query died under them (process exit, transport fault):
+ *   the first one is sent once more into the next Query (parked, like a
+ *   mode-change relaunch), provided nothing else is parked and it was not
+ *   sent again before; the rest — and a second failure — are tombstoned.
+ *   Once, so a message that kills the process every time cannot loop.
+ */
+export function planUnconfirmedCommands<P>(
+    commands: readonly ClaudeUnconfirmedCommand<P>[],
+    context: { aborted: boolean; parkFree: boolean; redelivered: ReadonlySet<string> },
+): { redeliver: ClaudeUnconfirmedCommand<P> | null; tombstone: string[] } {
+    if (context.aborted || !context.parkFree) return { redeliver: null, tombstone: commands.map((c) => c.uuid) };
+    const index = commands.findIndex((c) => !context.redelivered.has(c.uuid));
+    if (index < 0) return { redeliver: null, tombstone: commands.map((c) => c.uuid) };
+    return {
+        redeliver: commands[index],
+        tombstone: commands.filter((_, i) => i !== index).map((c) => c.uuid),
     };
 }

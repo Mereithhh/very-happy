@@ -75,6 +75,8 @@ export interface AutomationRunnerDeps {
      *  unknown / lease expired). A run whose turn ended is not done while > 0. */
     backgroundTasks?: (sessionId: string) => number;
     log: (message: string) => void;
+    /** B-649: put a spawned session in the automation's project (quiet variant) before its first message. */
+    joinProject?: (sessionId: string, projectId: string) => Promise<unknown>;
     home?: string;
     serverUrl?: string;
     client?: AutomationsClient;
@@ -375,6 +377,8 @@ export function createAutomationRunner(deps: AutomationRunnerDeps) {
         }
         persist({ runId: run.id, automationId: automation.id, kind: 'spawn', phase: 'running', claimId: run.claimId, sessionId: spawned.sessionId, stickyKey, ...(action.worktree ? { directory } : {}) });
         const item = track(claimed, 'spawn', spawned.sessionId);
+        // B-649: Automation.projectId → the session joins (via 'automation' = quiet variant) before its first message.
+        if (automation.projectId && deps.joinProject) await deps.joinProject(spawned.sessionId, automation.projectId).catch(() => undefined);
         try {
             const capabilities = readPersistedSessions()[spawned.sessionId]?.metadata?.capabilities ?? null;
             const meta = resolveFirstMessageMeta({ agent, permissionMode, explicitModel: action.model ?? undefined, capabilities });

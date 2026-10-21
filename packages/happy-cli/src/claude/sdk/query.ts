@@ -8,6 +8,7 @@ import type { QueryOptions, QueryPrompt } from './types'
 import { ensureLocalProxyBypass } from '../utils/proxyBypass'
 import { pinSmallFastModel } from '../utils/smallFastModel'
 import { resolveHappyEntrypoint } from './happyEntrypoint'
+import { scheduleClaudeTreeReap } from '../claudeProcessTree'
 
 /**
  * Wraps the official SDK query() with our QueryOptions adapter
@@ -70,13 +71,26 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         supportedDialogKinds: opts?.onUserDialog ? opts.supportedDialogKinds : undefined,
     }
 
+    // B-634 ①: the SDK's own spawn reports the child's pid (sdk.mjs
+    // spawnLocalProcess → options.onProcessSpawned; absent from sdk.d.ts).
+    let claudePid: number | undefined
+    ;(sdkOptions as Options & { onProcessSpawned?: (pid: number) => void }).onProcessSpawned = (pid) => {
+        claudePid = pid
+        opts?.onProcessSpawned?.(pid)
+    }
+
     // Map abort signal -> AbortController
     if (opts?.abort) {
         const controller = new AbortController()
         if (opts.abort.aborted) {
             controller.abort(opts.abort.reason)
         } else {
-            opts.abort.addEventListener('abort', () => controller.abort(opts.abort?.reason), { once: true })
+            opts.abort.addEventListener('abort', () => {
+                // Snapshot the tree BEFORE the SDK starts killing the root: once
+                // it dies, its MCP servers and tool commands cannot be found.
+                if (claudePid !== undefined) scheduleClaudeTreeReap(claudePid)
+                controller.abort(opts.abort?.reason)
+            }, { once: true })
         }
         sdkOptions.abortController = controller
     }

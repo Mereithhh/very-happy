@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { claudeRemote } from './claudeRemote';
 import { query } from '@/claude/sdk';
 import type { EnhancedMode } from './loop';
+import { createRetiredModels } from './claudeRetiredModel';
 
 vi.mock('@/claude/sdk', () => ({
     query: vi.fn(),
@@ -620,6 +621,112 @@ describe('claudeRemote', () => {
      * bookkeeping (spec specs/2026-10-claude-wrapper-orca-align.md). Frame shapes
      * are the ones Claude Code 2.1.296 emitted in the 2026-10-19 probe.
      */
+    describe('Orca follow-ups (B-634)', () => {
+        const base = () => ({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onMessage: vi.fn(),
+            onReady: vi.fn(),
+        });
+
+        it('③ model_not_found on a root reply: back to the default now, and the retired id is not sent again', async () => {
+            const setModel = vi.fn(async () => {});
+            const observed: unknown[] = [];
+            vi.mocked(query).mockImplementation((args: any) => ({
+                setPermissionMode: vi.fn(),
+                setModel,
+                async *[Symbol.asyncIterator]() {
+                    const input = args.prompt[Symbol.asyncIterator]();
+                    observed.push((await input.next()).value.message.content);
+                    yield { type: 'assistant', parent_tool_use_id: null, error: 'model_not_found', message: { role: 'assistant', content: [{ type: 'text', text: 'model gone' }] } };
+                    yield { type: 'result', subtype: 'success' };
+                    observed.push((await input.next()).value.message.content);
+                    yield { type: 'result', subtype: 'success' };
+                },
+            } as any));
+            const retiredModels = createRetiredModels();
+            const onCompletionEvent = vi.fn();
+            let n = 0;
+            await claudeRemote({
+                ...base(),
+                retiredModels,
+                onCompletionEvent,
+                // The web keeps sending its pick with every message.
+                nextMessage: async () => (n++ < 2 ? { message: `turn ${n}`, mode: { ...mode, model: 'claude-gone-1' } } : null),
+            });
+            expect(vi.mocked(query).mock.calls[0][0].options).toEqual(expect.objectContaining({ model: 'claude-gone-1' }));
+            expect(setModel.mock.calls).toEqual([[undefined]]);
+            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('"claude-gone-1" is no longer available'));
+            expect(retiredModels.effective('claude-gone-1')).toBeUndefined();
+            expect(observed).toEqual(['turn 1', 'turn 2']);
+        });
+
+        it('③ a sub-agent\'s model_not_found does not retire the session model', async () => {
+            const setModel = vi.fn(async () => {});
+            vi.mocked(query).mockImplementation(() => ({
+                setPermissionMode: vi.fn(),
+                setModel,
+                async *[Symbol.asyncIterator]() {
+                    yield { type: 'assistant', parent_tool_use_id: 'toolu_1', error: 'model_not_found', message: { role: 'assistant', content: [] } };
+                    yield { type: 'result', subtype: 'success' };
+                },
+            } as any));
+            const retiredModels = createRetiredModels();
+            let n = 0;
+            await claudeRemote({ ...base(), retiredModels, nextMessage: async () => (n++ === 0 ? { message: 'hi', mode: { ...mode, model: 'opus' } } : null) });
+            expect(setModel).not.toHaveBeenCalled();
+            expect(retiredModels.effective('opus')).toBe('opus');
+        });
+
+        const UUID_A = '11111111-1111-4111-8111-111111111111';
+        const UUID_B = '22222222-2222-4222-8222-222222222222';
+
+        it('② the process dies with a pushed message never started: reported as unconfirmed with what was sent (not aborted)', async () => {
+            vi.mocked(query).mockImplementation((args: any) => ({
+                setPermissionMode: vi.fn(),
+                async *[Symbol.asyncIterator]() {
+                    const input = args.prompt[Symbol.asyncIterator]();
+                    await input.next();
+                    yield { type: 'system', subtype: 'init', capabilities: ['msg_lifecycle_v1'] };
+                    yield { type: 'command_lifecycle', command_uuid: UUID_A, state: 'started' };
+                    yield { type: 'command_lifecycle', command_uuid: UUID_A, state: 'completed' };
+                    yield { type: 'result', subtype: 'success' };
+                    await input.next(); // the second prompt is written…
+                    throw new Error('Claude Code process exited with code 1'); // …and the process dies before reading it
+                },
+            } as any));
+            const onCommandsUnconfirmed = vi.fn();
+            let n = 0;
+            await expect(claudeRemote({
+                ...base(),
+                onCommandsUnconfirmed,
+                nextMessage: async () => [{ message: 'first', mode, uuid: UUID_A }, { message: 'second', mode, uuid: UUID_B }][n++] ?? null,
+            })).rejects.toThrow('exited with code 1');
+            expect(onCommandsUnconfirmed).toHaveBeenCalledTimes(1);
+            expect(onCommandsUnconfirmed).toHaveBeenCalledWith([{ uuid: UUID_B, payload: { message: 'second', mode } }], { aborted: false });
+        });
+
+        it('② a CLI without lifecycle frames reports nothing (it could never confirm anything)', async () => {
+            vi.mocked(query).mockImplementation((args: any) => ({
+                setPermissionMode: vi.fn(),
+                async *[Symbol.asyncIterator]() {
+                    await args.prompt[Symbol.asyncIterator]().next();
+                    yield { type: 'system', subtype: 'init', capabilities: [] };
+                    throw new Error('Claude Code process exited with code 1');
+                },
+            } as any));
+            const onCommandsUnconfirmed = vi.fn();
+            let n = 0;
+            await expect(claudeRemote({ ...base(), onCommandsUnconfirmed, nextMessage: async () => (n++ === 0 ? { message: 'hi', mode, uuid: UUID_A } : null) })).rejects.toThrow();
+            expect(onCommandsUnconfirmed).not.toHaveBeenCalled();
+        });
+    });
+
     describe('idle turn end, interrupt receipts and steer lifecycle (B-631)', () => {
         const STEER_A = '11111111-1111-4111-8111-111111111111';
         const STEER_B = '22222222-2222-4222-8222-222222222222';

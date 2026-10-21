@@ -62,6 +62,7 @@ import { installCliSafely } from '@/update/npmInstall';
 import { createUpdateController } from '@/update/updateController';
 import { createProjectPresenceReporter } from './projectPresence';
 import { createProjectsClient } from '@/projects/client';
+import { joinProject } from '@/projects/attribution';
 import { TurnActivityTracker } from '@/update/turnActivity';
 import { createDaemonHibernation, collectAutomationBindings, waitForPidsToExit, waitForSessionLive } from '@/hibernation/daemonHibernation';
 import { resolveCheckMs, resolveIdleMs, settingIdleMs } from '@/hibernation/hibernationPolicy';
@@ -73,7 +74,7 @@ import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager'
 import { createDaemonControlToken } from './controlAuth';
 import { withDaemonHeartbeat } from './daemonState';
 import { DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, fetchCliUpdateState, resolveCliUpdateCheckInterval } from '@/update/cliUpdate';
-import { terminateProcess } from './processTermination';
+import { terminateProcess, terminateProcessTree } from './processTermination';
 import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
 import { readSessionLock } from '@/utils/sessionLock';
@@ -462,6 +463,8 @@ export async function startDaemon(): Promise<void> {
     // in-flight spawn to settle, then replaces it with a fresh run.
     const assistantSpawnGate = createSpawnGate<SpawnSessionResult>();
 
+    // B-644/B-649: one projects client for the daemon (shared 404 backoff for presence + attribution).
+    const projectsClient = createProjectsClient({ token: async () => credentials.token });
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       // B-478: re-read where Claude/Codex keep their state before every spawn
@@ -482,6 +485,12 @@ export async function startDaemon(): Promise<void> {
           : assistantSpawnGate.join(() => spawnSessionImpl(options, timer)));
       }
       logger.debug(timer.format({ agent: options.agent ?? 'claude', outcome: result.type }));
+      // B-649 lineage: a fork joins its source's project before the caller sends
+      // anything (bounded; never fails the spawn). Explicit choices come from the caller.
+      if (result.type === 'success' && options.parentSessionId) {
+        const outcome = await joinProject(projectsClient, result.sessionId, { kind: 'lineage', parentSessionId: options.parentSessionId });
+        if (outcome.joined) logger.debug(`[DAEMON RUN] fork ${result.sessionId} joined project ${outcome.projectId} (lineage)`);
+      }
       return result;
     };
 
@@ -1363,7 +1372,8 @@ export async function startDaemon(): Promise<void> {
       await Promise.all([...targets].map((pid) => new Promise<void>((resolve) => {
         let settled = false;
         const done = () => { if (!settled) { settled = true; resolve(); } };
-        const requested = terminateProcess(pid, () => {
+        // B-634 ①: the wrapper's tree too (Claude Code, MCP servers, tool commands).
+        const requested = terminateProcessTree(pid, () => {
           const tracked = pidToTrackedSession.get(pid);
           if (tracked) {
             if (tracked.happySessionId && tracked.encryption) {
@@ -1508,7 +1518,8 @@ export async function startDaemon(): Promise<void> {
         if (session.happySessionId === sessionId ||
           (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
-          const requested = terminateProcess(pid, (stopped) => {
+          // B-634 ①: the wrapper's tree too (Claude Code, MCP servers, tool commands).
+          const requested = terminateProcessTree(pid, (stopped) => {
             if (!stopped) {
               logger.debug(`[DAEMON RUN] Session ${sessionId} survived SIGTERM and SIGKILL attempts`);
               return;
@@ -2094,6 +2105,7 @@ export async function startDaemon(): Promise<void> {
         if (result.type !== 'success') return false;
         return waitForSessionLive(id, (sid) => [...pidToTrackedSession.values()].some(s => s.happySessionId === sid && isPidAlive(s.pid)));
       },
+      joinProject: (sessionId, projectId) => joinProject(projectsClient, sessionId, { kind: 'explicit', projectId }, { via: 'automation' }),
       log: message => logger.debug(`[DAEMON RUN] ${message}`),
     });
 
@@ -2102,7 +2114,7 @@ export async function startDaemon(): Promise<void> {
     // 404s and the client backs off for 10 minutes.
     projectPresence = createProjectPresenceReporter({
       machineId,
-      client: createProjectsClient({ token: async () => credentials.token }),
+      client: projectsClient,
       live: () => [...pidToTrackedSession.values()]
         .filter(s => s.happySessionId && isPidAlive(s.pid))
         .map(s => ({

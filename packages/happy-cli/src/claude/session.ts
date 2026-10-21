@@ -13,6 +13,7 @@ import { createScheduledWakeupTracker } from "@/hibernation/scheduledWakeups";
 import type { ClaudePrewarmLease } from "./claudePrewarm";
 import { createProjectInjector, type ProjectInjector } from "@/projects/injector";
 import { sharedProjectsClient } from "@/projects/client";
+import { createRetiredModels } from "./claudeRetiredModel";
 
 export type ClaudeSteerInput = {
     message: string;
@@ -50,6 +51,8 @@ export class Session {
     backgroundTasks: BackgroundTaskInfo[] = [];
     /** B-587 review P3-4: CronCreate / ScheduleWakeup pending in this Claude process. */
     readonly scheduledWakeups = createScheduledWakeupTracker();
+    /** B-634 ③: model ids Claude Code reported as model_not_found — session-scoped, survives relaunches. */
+    readonly retiredModels = createRetiredModels();
 
     /**
      * Window after a user-initiated abort during which stray promise rejections
