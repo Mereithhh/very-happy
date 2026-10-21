@@ -6,16 +6,19 @@ computer, phone, or tablet. Teams adds coordinated parallel work to that same hu
 
 ## Use the product
 
-- [Getting started](getting-started.md): install, sign in, connect a machine, and
-  create the first session.
+- [Getting started](getting-started.md): install, sign in, connect a machine,
+  create the first session, and tour the workspace (including editable drafts).
+- [Projects](projects.md): group sessions across machines and agents, give them
+  shared instructions and a decision log, and see who is doing what.
 - [Very Happy Teams](agent-teams.md): give a goal to a lead, delegate parallel
   tasks, inspect member conversations, and review results.
 - [Automations](automations.md): schedule or trigger agent sessions and scripts
   on one machine, and decide on failed, expired or waiting runs from the board.
 - [Session sharing](session-sharing.md): let another account on your server
   watch a conversation live, or send messages into it under their own name.
-- [Keyboard and touch](keyboard-shortcuts.md): command palette, fast navigation,
-  PWA/browser shortcut boundaries, and mobile equivalents.
+- [Keyboard and touch](keyboard-shortcuts.md): command palette, session search,
+  `@` file mentions, fast navigation, PWA/browser shortcut boundaries, and mobile
+  equivalents.
 - [Public Cloud](public-server.md): hosted-instance trust, registration, capacity,
   and service expectations.
 - [CLI architecture and operation](cli-architecture.md)

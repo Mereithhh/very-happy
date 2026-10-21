@@ -40,7 +40,12 @@ automation**.
 3. **Action** — one of:
    - **Spawn a session**: agent, directory on the machine, optional model and
      permission mode, optional git worktree, optional **sticky key** template,
-     and the prompt.
+     optional **project**, and the prompt. With a project, every session the
+     automation starts joins it before its first message in quiet mode: it gets
+     the project instructions but is not prompted to message other sessions or
+     write project notes (see [Projects](projects.md)). The project is set in the
+     app (or through `projectId` on the REST API); `very-happy auto create` and the
+     `automation_*` tools do not take it yet.
    - **Send to a session**: an existing session id on that machine and the
      prompt.
    - **Run a script**: the command as argv (shell-style quoting, no expansion),

@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img alt="开源候选版本" src="https://img.shields.io/badge/open_source-candidate-111820?style=flat-square&labelColor=070a0e&color=2d3b42">
+  <img alt="开源" src="https://img.shields.io/badge/open_source-public-111820?style=flat-square&labelColor=070a0e&color=2d3b42">
   <img alt="Web 与可安装 PWA" src="https://img.shields.io/badge/client-Web_%2F_PWA-34e2c4?style=flat-square&labelColor=070a0e&color=238b7b">
   <img alt="Node 20、22 与 24" src="https://img.shields.io/badge/Node-20_%7C_22_%7C_24-34e2c4?style=flat-square&labelColor=070a0e&color=238b7b">
   <img alt="MIT 许可证" src="https://img.shields.io/badge/license-MIT-34e2c4?style=flat-square&labelColor=070a0e&color=238b7b">
@@ -38,7 +38,9 @@ Very Happy 是一个开源 coding agent 中心，把工作站、笔记本和服�
 终端可运行某个 Agent 不代表它具备同样的结构化支持。每台机器连接一次、保持 daemon 在线，
 就能在同一个工作区处理单个对话，也能组织团队协作。
 
-pi 对话里，「插话（Steer）」可把排队的消息送进正在运行的回合；pi 扩展弹出的选择题（`select`）显示为可直接作答的问题卡片；pi 的子代理运行（`subagent` 工具）与 Claude 一样显示子代理卡片。
+pi 对话（`very-happy pi`，或网页新建会话弹窗里选 pi）通过 [pi-acp](https://www.npmjs.com/package/pi-acp) 适配器运行 pi，所以机器上两者都要装：`npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`。daemon 会在五分钟内识别到；缺任何一个时，`very-happy pi` 和新建会话弹窗都会给出要运行的命令。
+
+pi 对话里，「插话（Steer）」可把排队的消息送进正在运行的回合；pi 扩展弹出的选择题（`select`）显示为可直接作答的问题卡片；pi 的子代理运行（`subagent` 工具）与 Claude 一样显示子代理卡片。agent 崩溃或 wrapper 重启后，pi 会话会接回原来的对话；已归档或离线的 pi 会话也能像 Claude / Codex 一样在网页上恢复（限于 CLI 已记录 pi 会话 id 的会话）。
 
 执行一次 `very-happy install-pi-tools`，之后在 Very Happy 终端中直接运行 `pi`，即可加载终端改名、剪贴板复制和文件预览工具；也可用 `very-happy pi --terminal` 临时加载。对话与终端内的「复制与预览记录」可以重开文件、再次复制之前的内容。[工具用法与历史保留范围](docs/channels.md#native-pi-terminal-tools)。
 
@@ -161,6 +163,7 @@ PowerShell。
 
 | 现实阻力 | Very Happy 如何替你承担 |
 |---|---|
+| “这个目标里有好几块可以并行的工作。” | 负责人可以把任务委派给 Claude Code、Codex 和 pi 成员，进展与提交的结果集中在一个团队视图里。 |
 | “我的 Agent 和终端散落在好几台机器上。” | 一个账号侧栏与任务看板聚合所有会话和注意力状态，默认按项目分组（不属于任何项目的会话按目录归在「未归属」）；新任务由你指定机器与 Agent。 |
 | “结构化对话很好用，但有时我必须操作真实工具。” | 保留 SDK 驱动的 Claude，同时在需要时进入持久、未经改造的 Agent TTY/TUI。 |
 | “离开桌面后，工作状态就看不清了。” | 响应式 Web/PWA 让对话、终端、文件、任务、通知与决策始终可达。 |
@@ -292,7 +295,8 @@ Very Happy 保留终端肌肉记忆：在 macOS 上，`Ctrl+K/J/N/R` 仍交给 r
 | OpenCode | Beta · 已实现 | 基于本地 stdio 的 ACP 兼容预设 |
 | 自定义 ACP 命令 | Beta · 已实现 | 面向兼容 Agent Client Protocol stdio 端点的通用运行器 |
 | OpenClaw | 已交付 | 使用自己的本地网关适配器，而非 ACP |
-| Pi / 提供商感知路由 | 路线图 | 候选适配器与跨提供商子任务协作，并非已交付功能 |
+| pi | 已交付 · 经 pi-acp | 基于外部 pi-acp 适配器的 ACP runner：结构化对话、插话进正在运行的回合、问题卡片、子代理卡片、由 Very Happy pi 扩展执行的权限模式、崩溃或重启后接回对话；也支持 Teams 与原生终端工具 |
+| 提供商感知路由 | 路线图 | 跨提供商子任务协作，并非已交付功能 |
 
 Agent Client Protocol 与同样缩写为 ACP 的旧 Agent Communication Protocol 并不相同。
 某个 Agent 能在终端中运行，不代表它拥有与 Claude 对等的结构化体验。
@@ -301,9 +305,12 @@ Agent Client Protocol 与同样缩写为 ACP 的旧 Agent Communication Protocol
 
 - 结构化 Claude 对话：工具调用、Diff、权限、用量、附件与恢复。
 - 真实 tmux 浏览器终端：重连、回滚记录、搜索、移动端输入、归档会话、文件访问与自动恢复。
-- 机器文件浏览器：丰富预览文本、Markdown、图片与 PDF，并可打开 Agent 输出中的文件链接。
+- [项目](docs/projects.md)：侧栏按项目分组，项目里的会话开局就带共享说明和已做的决定，项目页一览各会话状态；`very-happy spawn --project`。
+- 会话搜索（`Command/Ctrl+Shift+F`）：一处搜标题、项目、标签和每台在线机器上的对话历史，点结果直接打开到命中处。
+- 消息框里的 `@` 文件引用，以及可编辑草稿：Agent 写给你去发的文案可以就地修改、复制，下一条消息会把最终版本交回给 Agent。
+- 机器文件浏览器：预览文本、Markdown、图片、PDF 与 Excel/CSV 工作表；可下载原文件（最大 50 MiB）、复制文本或路径，并把 Agent 输出里可点击的预览固定到工作区。工作表预览在浏览器 worker 中本地运行（10 MiB；每个文件最多 50 个工作表，每个工作表最多 500 行、100 列）。
 - 剪贴板及拖放文件交接：8 MB 上限、有界分块、上传反馈、插入引用后的路径且不自动执行。
-- 任务看板、todo provider 命令、笔记、通知、Web Push 与 HTTPS webhook。
+- 任务看板、todo provider 命令、笔记、通知、Web Push 与 HTTPS 账户 webhook（接收端临时故障会自动重试，送达情况见 **设置 → 诊断**）。
 - 机器网页面板：在机器本地 settings.json 声明 noVNC、浏览器 dashboard 等页面，在会话工作区和机器页直接打开；Agent 可用 `request_human` 叫人介入，推送直达面板（[配置说明](docs/configuration.md#machine-web-panels-and-needs-you-b-510)）。
 - Claude 驱动的协调器：文本输入、会话感知、在所选机器上调度；配置兼容语音服务后可使用语音输入。
 - 免密码邮箱验证码与 Google 登录、可选密码兼容、可配置注册/容量控制、托管公共中继与生产级自托管。
@@ -349,15 +356,17 @@ Prompt/工具权限视为高权限机器控制面。这不代表通用 MCP 或�
 | 能力 | 配置入口 |
 |---|---|
 | 外部 Todo 列表 | 在对应机器的 `~/.happy/settings.json` 添加 `todoProvider`；复制[契约与示例](docs/channels.md#inbound-todo-provider-external-task-lists-in-the-web-ui)。 |
-| 账户 Webhook | 打开 **设置 → 通道**，保存一个 HTTPS endpoint，并选择完成/权限事件。 |
+| 账户 Webhook | 打开 **设置 → 通道**，保存一个 HTTPS endpoint，并选择完成/权限事件。接收端临时故障最多重试 3 次；**设置 → 诊断** 显示送达、重试与失败次数。 |
 | 派发其他会话 | 在 **设置 → 语音与 Assistant** 选择机器，打开 **Assistant**（`/assistant`），并审查其高权限审批设置。见 [Assistant 配置](docs/channels.md#inbound-web-assistant--meta-agent)。 |
-| 脚本 / IM adapter | 在 daemon 所在机器运行 [`very-happy spawn` 与 `very-happy send`](docs/channels.md#inbound-daemon-control-via-the-cli)。 |
+| 脚本 / IM adapter | 在 daemon 所在机器运行 [`very-happy spawn`、`send` 与 `sessions`](docs/channels.md#inbound-daemon-control-via-the-cli)——发起工作、给它发消息，再列出 / 读取 / 停止 / 归档你发起的会话。 |
 
 ## 组合进更大的 Agent 系统
 
-Very Happy 是执行界面，不是封闭的自动化平台。通用 webhook 加上
-[`very-happy spawn` 与 `very-happy send`](docs/channels.md)，可以让边界清晰的适配器连接
-Issue Tracker、调度器、聊天系统或未来的提供商感知协调器。
+Very Happy 是执行界面，不是封闭的自动化平台。协调者、它派发的角色以及围绕它们的策略属于你的适配器；
+本项目负责的是底下的执行面。通用 webhook 加上 [CLI 的自动化命令](docs/channels.md)就是这份契约：
+`spawn` 发起工作（可带来源标签、权限模式和你选的 Agent），`send` 继续它，`sessions` 让适配器看到并引导
+自己发起的工作，而不是盲目派发。这足以连接 Issue Tracker、调度器、聊天系统或你自己的协调者，
+核心无需了解其中任何一个。
 
 适配器必须负责发送者授权、固定工作区策略、去重、限流与最小权限执行。传入消息只是输入，
 永远不能自行构成授权。
@@ -391,7 +400,7 @@ Very Happy 服务器可以恢复账号密钥。传输/存储加密并不代表�
 
 ## 方向，而不是营销幻觉
 
-路线图将继续加入更多 Agent 适配器、提供商感知的子任务路由、持久项目/任务记忆，以及把“决策”
+路线图将继续加入更多 Agent 适配器、提供商感知的子任务路由、超出现有项目说明与记录的任务记忆，以及把“决策”
 而非“活动噪音”带给用户的 meta-agent。长期视觉概念是一个多 Agent 虚拟办公室——可能采用
 像素艺术——让工作、交接与注意力请求在空间上清晰可见。
 

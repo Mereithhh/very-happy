@@ -3,12 +3,14 @@ import {
   UsersRound,
   Check,
   ChevronRight,
+  CircleAlert,
   Clock,
   Copy,
   EyeOff,
   FileText,
   FolderOpen,
   Folder,
+  FolderPlus,
   HelpCircle,
   LayoutGrid,
   ListChecks,
@@ -143,11 +145,17 @@ export function ProductWorkspacePreview({
 function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: { active: ProductPreviewView; onSearch: () => void; onTerminal: () => void; onBoard: () => void; onCloseNav: () => void }) {
   const { language } = usePublicI18n();
   const zh = language === 'zh-Hans';
-  const rows = [
-    { icon: TerminalSquare, title: zh ? '发布候选版' : 'Release candidate', actionable: true, meta: 'build · terminal', selected: active === 'terminal' || active === 'conversation', live: true },
-    { icon: MessageSquare, title: zh ? '打磨新手流程' : 'Onboarding polish', meta: 'office · codex · ~/very-happy', selected: false },
-    { icon: MessageSquare, title: zh ? '安全审查' : 'Security review', meta: 'stage · claude · ~/very-happy', attention: true },
-    { icon: TerminalSquare, title: zh ? '文档结构' : 'Docs structure', meta: 'laptop · terminal', selected: false },
+  // B-647: the real sidebar groups by project by default; sessions outside a
+  // project fall into folder groups that can become a project in one click.
+  const groups: Array<{ key: string; label: string; project: boolean; attention?: number; rows: Array<{ icon: typeof TerminalSquare; title: string; meta: string; selected?: boolean; attention?: boolean; live?: boolean; actionable?: boolean }> }> = [
+    { key: 'project', label: zh ? '发布 0.9' : 'Release 0.9', project: true, attention: 1, rows: [
+      { icon: TerminalSquare, title: zh ? '发布候选版' : 'Release candidate', actionable: true, meta: 'build · terminal', selected: active === 'terminal' || active === 'conversation', live: true },
+      { icon: MessageSquare, title: zh ? '打磨新手流程' : 'Onboarding polish', meta: 'office · codex · ~/very-happy', selected: false },
+      { icon: MessageSquare, title: zh ? '安全审查' : 'Security review', meta: 'stage · claude · ~/very-happy', attention: true },
+    ] },
+    { key: 'folder', label: '~/site', project: false, rows: [
+      { icon: TerminalSquare, title: zh ? '文档结构' : 'Docs structure', meta: 'laptop · terminal', selected: false },
+    ] },
   ];
   return (
     <aside className="product-sidebar" aria-label={zh ? '多机器会话指挥面板示例' : 'Example multi-machine session command panel'}>
@@ -164,20 +172,31 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
           <button type="button" disabled><UsersRound size={18} /><span>{zh ? '团队' : 'Teams'}</span></button>
           <button type="button" disabled><ListChecks size={18} /><span>{zh ? '待办' : 'Todo'}</span></button>
         </nav>
-        <div className="sb-filter" role="presentation"><button className="sb-filter-btn is-on" type="button" disabled>{zh ? '列表' : 'LIST'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '状态' : 'STATUS'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '归档' : 'ARCHIVED'}</button><button className="sb-icon-btn sb-board-btn" type="button" aria-label={zh ? '打开任务看板' : 'Open task board'} aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button></div>
+        <div className="sb-list-controls"><div className="sb-filter vh-segmented" role="presentation"><button className="sb-filter-btn is-on is-active" type="button" disabled>{zh ? '列表' : 'List'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '状态' : 'Status'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '归档' : 'Archived'}</button></div><div className="sb-list-tools"><button className="sb-icon-btn sb-board-btn" type="button" aria-label={zh ? '打开任务看板' : 'Open task board'} aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button></div></div>
         <div className="sb-list">
-          <div className="sb-section">
-            {rows.map(({ icon: Icon, title, meta, selected, attention, live, actionable }) => (
+          {groups.map((group) => <div key={group.key} className="sb-section">
+            <div className={`sb-section-head sb-section-head--toggle sb-section-head--workspace${group.project ? ' sb-section-head--project' : ''}`}>
+              <button type="button" className="sb-section-toggle" aria-expanded="true" disabled>
+                <ChevronRight size={11} className="sb-section-chevron is-open" />
+                {group.project ? <span className="sb-visually-hidden">{group.label}</span> : <><span className="sb-section-label">{group.label}</span><span className="sb-section-count mono">{group.rows.length}</span></>}
+              </button>
+              {group.project && <button type="button" className="sb-section-name" disabled><span className="sb-section-label">{group.label}</span>{group.attention ? <span className="sb-section-attention" aria-label={zh ? `${group.attention} 个会话等你处理` : `${group.attention} session waiting on you`}>{group.attention}</span> : null}</button>}
+              {group.project
+                ? <button type="button" className="sb-workspace-new" disabled aria-label={zh ? `在项目中新建会话：${group.label}` : `New chat in project: ${group.label}`}><Plus size={14} /></button>
+                : <button type="button" className="sb-workspace-new sb-workspace-make-project" disabled aria-label={zh ? `设为项目：${group.label}` : `Make project: ${group.label}`}><FolderPlus size={14} /></button>}
+            </div>
+            {group.rows.map(({ icon: Icon, title, meta, selected, attention, live, actionable }) => (
               <div key={title} className={`sb-row${selected ? ' is-selected' : ''}${attention ? ' sb-row--attention' : ''}`}>
-                <button type="button" className="sb-row-main" data-product-session={actionable ? '' : undefined} disabled={!actionable} onClick={actionable ? onTerminal : undefined}>
-                  <span className={`sb-row-icon${Icon === TerminalSquare ? ' sb-row-icon--term' : ''}`}>{Icon === TerminalSquare && live ? <span className="sb-row-term-icon"><Icon size={16} /><span className="sb-row-agent-dot"><span className="vh-dot vh-dot--thinking vh-dot--pulse product-agent-dot" role="img" aria-label={zh ? '工作中' : 'Working'} /></span></span> : <Icon size={16} />}</span>
+                <button type="button" className="sb-row-main" title={`${title} · ${meta}`} data-product-session={actionable ? '' : undefined} disabled={!actionable} onClick={actionable ? onTerminal : undefined}>
+                  <span className="sb-row-icon sb-row-icon--neutral"><Icon size={Icon === MessageSquare ? 15 : 16} /></span>
                   <span className="sb-row-text"><span className="sb-row-title-line"><span className="sb-row-title">{title}</span></span><span className="sb-row-sub mono">{meta}</span></span>
-                  {attention && <span className="sb-row-signal sb-row-signal--attention" />}
+                  {live && <span className="sb-row-status sb-row-status--running" role="img" aria-label={zh ? '工作中' : 'Working'}><span className="vh-dot vh-dot--thinking vh-dot--pulse product-agent-dot" /></span>}
+                  {attention && <span className="sb-row-status sb-row-status--input" role="img" aria-label={zh ? '等你处理' : 'Waiting for you'}><CircleAlert size={14} /></span>}
                 </button>
                 <button type="button" className="sb-row-menu" aria-label={zh ? `${title}操作` : `${title} actions`} disabled><MoreHorizontal size={16} /></button>
               </div>
             ))}
-          </div>
+          </div>)}
         </div>
         <footer className="sb-footer"><button className="sb-footer-btn" type="button" disabled><Settings size={15} /> {zh ? '设置' : 'Settings'}</button><button className="sb-footer-btn sb-footer-icon" type="button" disabled aria-label={zh?'笔记':'Notes'}><StickyNote size={15}/></button></footer>
       </div>

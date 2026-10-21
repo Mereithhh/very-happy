@@ -41,6 +41,12 @@ open a member conversation, or select its name for goal, progress, and results.
 Ordinary conversations are never automatically turned into teams. Appearance
 settings can hide the Teams entry without stopping or deleting existing work.
 
+A team can belong to a [project](projects.md): on the project page open
+**Project settings → Teams** and attach it (only teams whose computer has one of
+the project's folders are offered). The team's sessions are then listed as
+project members, and the team appears in the project's sidebar group. Team members get the project instructions as background and
+coordinate through their lead rather than messaging other project sessions.
+
 For an existing managed conversation, use **More → Start a team from this
 conversation**. Its wrapper establishes the scoped connection and delivers the
 collaboration instructions in the background. No session ID entry or additional

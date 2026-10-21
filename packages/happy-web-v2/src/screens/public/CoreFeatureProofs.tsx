@@ -38,8 +38,8 @@ const AGENT_FACTS: Record<AgentKey, { status: string; detail: string }> = {
     detail: 'Uses the shipped Agent Client Protocol backend; a compatible Gemini ACP command is required.',
   },
   pi: {
-    status: 'ACP RUNNER',
-    detail: 'Starts pi through the managed pi-acp runner when it is available on the selected machine.',
+    status: 'MANAGED RUNNER',
+    detail: 'Starts pi through the managed pi-acp runner, with Steer, extension question cards, sub-agent cards, and recovery after a crash.',
   },
   openclaw: {
     status: 'GATEWAY ADAPTER',
@@ -82,7 +82,7 @@ function NewSessionProof({ titleId }: { titleId: string }) {
         </div>
         <h3 id={titleId}>{zh ? '选好机器、路径和 Agent，然后开始' : 'Pick the machine, path, and agent. Then start.'}</h3>
         <p>
-          {zh ? '也可以只开一个普通会话。Web 启动器支持 Claude、Codex、pi、Gemini 和 OpenClaw，实际可选项取决于机器配置。pi 通过托管 ACP runner 启动，Gemini 使用 beta ACP，OpenClaw 连接已配置的 gateway。' : 'Start an ordinary conversation whenever you prefer. The Web launcher supports Claude, Codex, pi, Gemini, and OpenClaw, depending on machine configuration. pi uses the managed ACP runner, Gemini uses beta ACP, and OpenClaw connects its configured gateway.'}
+          {zh ? '也可以只开一个普通会话。Web 启动器支持 Claude、Codex、pi、Gemini 和 OpenClaw，实际可选项取决于机器配置。pi 通过托管 ACP runner 启动并支持 Steer，Gemini 使用 beta ACP，OpenClaw 连接已配置的 gateway。' : 'Start an ordinary conversation whenever you prefer. The Web launcher supports Claude, Codex, pi, Gemini, and OpenClaw, depending on machine configuration. pi uses the managed ACP runner and supports Steer, Gemini uses beta ACP, and OpenClaw connects its configured gateway.'}
         </p>
       </div>
 
