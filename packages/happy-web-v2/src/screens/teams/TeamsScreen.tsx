@@ -27,14 +27,15 @@ import { TeamOptions } from "./TeamOptions";
 import { TeamDialog } from "./TeamDialog";
 import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
 import { useWorkspaceCopy } from "./workspaceCopy";
+import { OperationError } from "./OperationError";
 import { sync } from "@/sync/sync";
 import {
   canReconcileOperation,
   attentionOperations,
   canRetryCleanup,
   canRetryLaunch,
-  machineSupportsTeamRetry,
   newestTeam,
+  teamRetrySupport,
 } from "./teamView";
 import { useTranslation } from "@/i18n/useTranslation";
 export function TeamsScreen() {
@@ -153,9 +154,9 @@ function TeamsContent() {
   const launchPhase = team ? teamLaunchPhase(team) : "empty";
   // B-690: member conversations that are archived (or gone from the account's
   // list) — one input of the shared 「已停用」 rule. Nothing counts until the
-  // session list has loaded.
-  const archivedMemberKey = storage(useShallow((state) => !state.isDataReady || !team ? [] : team.bots.flatMap((bot) => {
-    const sessionId = botHistorySessionId(team, bot);
+  // session list has loaded. B-723: the list page needs it for every card.
+  const shownTeams = team ? [team] : teams;
+  const archivedMemberKey = storage(useShallow((state) => !state.isDataReady ? [] : shownTeams.flatMap((shown) => shown.bots.map((bot) => botHistorySessionId(shown, bot))).flatMap((sessionId) => {
     const session = sessionId ? state.sessions[sessionId] : undefined;
     return sessionId && (!session || session.archivedAt != null) ? [sessionId] : [];
   }))).join("\n");
@@ -214,7 +215,7 @@ function TeamsContent() {
           }} />
           </TeamDialog>}
           {!teams.length && !unavailable && <div className="teams-empty"><UsersRound size={36} aria-hidden /><h2>{c.noTeams}</h2><p>{c.noTeamsHint}</p><Link to="/help">{c.guide} →</Link></div>}
-          <div className="teams-list">{teams.map(item => <TeamListCard key={item.id} team={item} machine={machines.find(m => m.id === item.machineId) ? machineLabel(machines.find(m => m.id === item.machineId)!) : c.unnamedMachine} />)}</div>
+          <div className="teams-list">{teams.map(item => <TeamListCard key={item.id} team={item} archivedSessionIds={archivedMemberSessions} machine={machines.find(m => m.id === item.machineId) ? machineLabel(machines.find(m => m.id === item.machineId)!) : c.unnamedMachine} />)}</div>
         </>
       )}
       {team && (
@@ -330,7 +331,7 @@ function TeamsContent() {
                 className="teams-task"
                 key={t.id}
               >
-<TeamTaskSummary team={team} task={t} launchIssue={(issue) => <LaunchIssue team={team} operation={issue} retrySupported={machineSupportsTeamRetry(executionMachine?.metadata)} disabled={disabled} act={act} />} />
+<TeamTaskSummary team={team} task={t} launchIssue={(issue) => <LaunchIssue team={team} operation={issue} retrySupported={teamRetrySupport(executionMachine)} disabled={disabled} act={act} />} />
                 {t.attempts.find((a) => a.id === t.currentAttemptId)
                   ?.result && (
                   <div className="teams-full-result">
@@ -432,8 +433,8 @@ function TeamsContent() {
                   key={`${operation.id}:${operation.claimId ?? "unclaimed"}`}
                   team={team}
                   operation={operation}
-                  retrySupported={machineSupportsTeamRetry(executionMachine?.metadata)}
-                  cleanupRetrySupported={machineSupportsTeamRetry(executionMachine?.metadata, 2)}
+                  retrySupported={teamRetrySupport(executionMachine)}
+                  cleanupRetrySupported={teamRetrySupport(executionMachine, 2)}
                   disabled={busy || pending !== null || unavailable}
                   act={act}
                 />
@@ -482,20 +483,22 @@ function LaunchIssue({
 }: {
   team: TeamState;
   operation: TeamState["operations"][number];
-  retrySupported: boolean;
+  retrySupported: boolean | null;
   disabled: boolean;
   act: (action: TeamAction) => Promise<void>;
 }) {
   const first = useFirstUseCopy();
+  const c = useWorkspaceCopy();
   const [confirmed, setConfirmed] = useState(false);
   const uncertain = operation.status === "unknown";
   const retryable = canRetryLaunch(team, operation) && !!operation.claimId;
   return (
     <div className="teams-error" role="alert">
       <strong>{first.launchFailed}</strong>
-      <p>{operation.error}</p>
+      <OperationError error={operation.error} />
       <p>{uncertain ? first.unknownHint : first.retryHint}</p>
-      {retryable && !retrySupported && <p>{first.retryUpgrade}</p>}
+      {retryable && retrySupported === null && <p role="status">{c.retryChecking}</p>}
+      {retryable && retrySupported === false && <p>{first.retryUpgrade}</p>}
       {retryable && retrySupported && (
         <form
           className="teams-launch-retry"
@@ -524,7 +527,7 @@ function LaunchIssue({
   );
 }
 
-function OperationResolution({
+export function OperationResolution({
   team,
   operation,
   retrySupported,
@@ -534,8 +537,9 @@ function OperationResolution({
 }: {
   team: TeamState;
   operation: TeamState["operations"][number];
-  retrySupported: boolean;
-  cleanupRetrySupported: boolean;
+  /** null: the execution machine's metadata has not loaded yet (B-723 O3). */
+  retrySupported: boolean | null;
+  cleanupRetrySupported: boolean | null;
   disabled: boolean;
   act: (action: TeamAction) => Promise<void>;
 }) {
@@ -549,13 +553,12 @@ function OperationResolution({
   return (
     <article className="teams-task">
       <p>
-        {operation.type} · {operation.status} ·{" "}
-        {operation.sessionId ? (
+        {c.opType[operation.type] ?? operation.type} · {c.opStatus[operation.status] ?? operation.status}
+        {operation.sessionId && " · "}
+        {operation.sessionId && (
           <Link to={`/session/${encodeURIComponent(operation.sessionId)}`}>
             {tr("teams.openSession")}
           </Link>
-        ) : (
-          operation.id
         )}
       </p>
       {operation.manualResolution ? (
@@ -567,19 +570,20 @@ function OperationResolution({
         </p>
       ) : (
         <>
-          <p
+          <div
             className={
               ["failed", "unknown"].includes(operation.status)
                 ? "teams-error"
                 : undefined
             }
           >
-            {operation.error ?? tr("teams.operationPending")}
-          </p>
+            {operation.error ? <OperationError error={operation.error} /> : <p>{tr("teams.operationPending")}</p>}
+          </div>
           {eligible ? (
             <>
             {operation.type === "stop" && operation.status === "failed" && <p>{c.cleanupHint}</p>}
-            {cleanupRetry && !cleanupRetrySupported && <p>{c.cleanupUpgrade}</p>}
+            {cleanupRetry && cleanupRetrySupported === null && <p role="status">{c.retryChecking}</p>}
+            {cleanupRetry && cleanupRetrySupported === false && <p>{c.cleanupUpgrade}</p>}
             {/* B-691: the two ways out of a retained cleanup, side by side. */}
             <div className="teams-op-actions">
               {cleanupRetry && cleanupRetrySupported && (

@@ -232,6 +232,17 @@ describe('builtinToolDigest — result lines, links and errors', () => {
         expect(inspected.lines).toEqual(['core · 2 tasks · 1 members · 0 messages']);
     });
 
+    it('B-723: team summaries count current members only (server memberCounts / bot activity)', () => {
+        const counted = builtinToolDigest(resolveBuiltinTool(call('team_inspect', {}))!, {
+            state: 'completed', result: mcpText({ team: { id: 't1', name: 'core', bots: [{}, {}, {}, {}], tasks: [], messages: [], memberCounts: { active: 1, stopping: 0, idle: 0, inactive: 3 } } }),
+        });
+        expect(counted.lines).toEqual(['core · 0 tasks · 1 members · 0 messages']);
+        const byActivity = builtinToolDigest(resolveBuiltinTool(call('team_create', { name: 'core' }))!, {
+            state: 'completed', result: mcpText({ team: { id: 't1', name: 'core', bots: [{ activity: 'active' }, { activity: 'inactive' }, { activity: 'idle' }] } }),
+        });
+        expect(byActivity.lines).toEqual(['Team core · 2 members']);
+    });
+
     it('digests automation objects, lists, runs and deletions', () => {
         const auto = { id: 'auto-1', name: 'daily', status: 'active', trigger: { kind: 'cron', expr: '0 9 * * *', tz: 'UTC' }, action: { kind: 'spawn', agent: 'codex', directory: '/a/b', prompt: 'p' }, nextRunAt: Date.UTC(2026, 8, 26, 9) };
         const created = builtinToolDigest(resolveBuiltinTool(call('automation_create', { name: 'daily' }))!, { state: 'completed', result: mcpText({ automation: auto }) });

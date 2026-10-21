@@ -1,3 +1,4 @@
+import { currentSpawnOrigin, type SpawnOrigin } from './spawnOrigin';
 import { resolveSpawnModel } from './spawnModel';
 /**
  * Session operations for remote procedure calls
@@ -149,6 +150,8 @@ export type SpawnSessionResult =
 
 // Options for spawning a session
 export interface SpawnSessionOptions {
+    /** B-723: the entry point that asked for this spawn (diagnostic, see spawnOrigin.ts). */
+    source?: string;
     /** Initial agent model; older daemons ignore this optional field. */
     model?: string;
     machineId: string;
@@ -344,10 +347,11 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             forceNew?: boolean,
             permissionMode?: string,
             model?: string,
+            origin?: SpawnOrigin,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode, model }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode, model, origin: currentSpawnOrigin(options.source) }
         );
         return result;
     } catch (error) {
@@ -1994,6 +1998,7 @@ export async function forkAndSpawn(
         }
 
         const spawnResult = await machineSpawnNewSession({
+            source: 'fork',
             machineId: source.machineId,
             directory: source.directory,
             agent: 'codex',
@@ -2038,6 +2043,7 @@ export async function forkAndSpawn(
     const parentSession = storage.getState().sessions[source.sessionId];
     const parentMode = normalizeClaudeOutboundMode(parentSession?.permissionMode ?? parentSession?.metadata?.permissionMode ?? null);
     const spawnResult = await machineSpawnNewSession({
+        source: 'fork',
         machineId: source.machineId,
         directory: source.directory,
         agent: 'claude',

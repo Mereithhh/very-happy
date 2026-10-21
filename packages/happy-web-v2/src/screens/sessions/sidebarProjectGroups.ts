@@ -1,6 +1,6 @@
 import type { ProjectMemberView, ProjectView, TeamState } from '@slopus/happy-wire';
 import { groupRowsByWorkspace, type SidebarWorkspaceGroup, type WorkspaceRowLike } from './sidebarWorkspaceGroups';
-import { teamSessionMembership } from './teamNavigation';
+import { teamHomeDirectory, teamSessionMembership } from './teamNavigation';
 
 /**
  * B-647: the default sidebar lens — sessions grouped by project
@@ -12,8 +12,9 @@ import { teamSessionMembership } from './teamNavigation';
  * Order rule (same as the other lenses): first appearance in the already
  * ordered list decides group order and row order; projects with no visible
  * row follow, oldest first, so a freshly created project is still reachable.
- * A team stays in one group: an unattached team's rows all follow its first
- * located row's folder (team worktrees are separate directories). B-708: a
+ * A team stays in one group: an unattached team's rows all follow the team's
+ * own repository (B-723; else its first located row's folder — team worktrees
+ * are separate directories). B-708: a
  * team with no located row (every member archived → only history links,
  * which carry no machine/folder) has no folder to follow; it and its rows go
  * to the single trailing 团队 group (`teamsGroup`) instead of one invented
@@ -76,12 +77,20 @@ export function groupRowsByProject<T extends WorkspaceRowLike>(
     return { project, rows: groupRows, teams: teamsOf(project.id, groupRows) };
   });
 
-  // 未归属: anchor every unattached team's rows to its first located row's
-  // folder. A team with no located row has no folder to follow (B-708).
-  const anchor = new Map<string, T>();
+  // 未归属: anchor every unattached team's rows to ONE folder. B-723: that is
+  // the team's own repository (`teamHomeDirectory`) on its machine — never a
+  // member's worktree, whose UUID path changes with whoever was active last.
+  // Only a team with no known home falls back to its first located row's
+  // folder; a team with neither has no folder to follow (B-708).
+  const anchor = new Map<string, Pick<T, 'key' | 'machineId' | 'workspacePath' | 'machineName'>>();
+  const machineNames = new Map<string, string>();
+  for (const row of rows) if (row.machineId && row.machineName && !machineNames.has(row.machineId)) machineNames.set(row.machineId, row.machineName);
   for (const row of loose) {
     const team = row.sessionId ? teamOfSession.get(row.sessionId)?.team : undefined;
-    if (team && !anchor.has(team.id) && row.machineId) anchor.set(team.id, row);
+    if (!team || anchor.has(team.id)) continue;
+    const home = teamHomeDirectory(team);
+    if (home) anchor.set(team.id, { key: `team-home:${team.id}`, machineId: team.machineId, workspacePath: home, machineName: machineNames.get(team.machineId) });
+    else if (row.machineId) anchor.set(team.id, row);
   }
   const unanchored: T[] = [];
   const proxies = loose.flatMap(row => {

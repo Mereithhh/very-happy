@@ -25,6 +25,8 @@ const sessionParams = z.object({ sessionId: z.string().min(1).max(128) });
 const granteeParams = sessionParams.extend({ accountId: z.string().min(1).max(128) });
 const grantParams = z.object({ grantId: z.string().min(1).max(128) });
 const roleSchema = z.enum(['viewer', 'driver']);
+// B-701: optional expiry in days; null = never. Omitted keeps the B-619 behaviour (never).
+const expirySchema = z.union([z.literal(1), z.literal(7), z.literal(30), z.null()]);
 
 export function sessionShareRoutes(app: Fastify) {
     const handle = async (reply: any, work: () => Promise<unknown>) => {
@@ -48,16 +50,17 @@ export function sessionShareRoutes(app: Fastify) {
             target: z.string().min(1).max(320).optional(),
             accountId: z.string().min(1).max(256).optional(),
             role: roleSchema,
+            expiresInDays: expirySchema.optional(),
         }).refine((b) => Boolean(b.target) !== Boolean(b.accountId), { message: 'target xor accountId' }) },
     }, async (request, reply) => handle(reply, async () => ({
-        grant: await createSessionGrant({ ownerId: request.userId, sessionId: request.params.sessionId, target: request.body.target, granteeAccountId: request.body.accountId, role: request.body.role }),
+        grant: await createSessionGrant({ ownerId: request.userId, sessionId: request.params.sessionId, target: request.body.target, granteeAccountId: request.body.accountId, role: request.body.role, expiresInDays: request.body.expiresInDays }),
     })));
 
     app.patch('/v1/sessions/:sessionId/shares/:accountId', {
         ...auth,
-        schema: { params: granteeParams, body: z.object({ role: roleSchema }) },
+        schema: { params: granteeParams, body: z.object({ role: roleSchema.optional(), expiresInDays: expirySchema.optional() }).refine((b) => b.role !== undefined || b.expiresInDays !== undefined, { message: 'role or expiresInDays' }) },
     }, async (request, reply) => handle(reply, async () => ({
-        grant: await updateSessionGrantRole(request.userId, request.params.sessionId, request.params.accountId, request.body.role),
+        grant: await updateSessionGrantRole(request.userId, request.params.sessionId, request.params.accountId, request.body.role, request.body.expiresInDays),
     })));
 
     app.delete('/v1/sessions/:sessionId/shares/:accountId', { ...auth, schema: { params: granteeParams } }, async (request, reply) =>

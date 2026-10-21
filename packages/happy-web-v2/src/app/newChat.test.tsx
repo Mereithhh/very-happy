@@ -63,3 +63,25 @@ it('B-516: "+" on a pending page uses the pending record as its scope', async ()
  await createChatOrConfigure(mocks.navigate, mocks.configure, { location: { pathname: '/session/pending-x' } });
  expect(mocks.decide).toHaveBeenLastCalledWith(expect.objectContaining({ target: { machineId: 'pm', path: '/pending/path' } }));
 });
+
+it('B-723 (O5): a quick chat without a live user gesture opens the dialog instead of creating a session', async () => {
+ const nav = navigator as Navigator & { userActivation?: { isActive: boolean } };
+ const original = Object.getOwnPropertyDescriptor(nav, 'userActivation');
+ Object.defineProperty(nav, 'userActivation', { configurable: true, value: { isActive: false } });
+ const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+ try {
+  await createChatOrConfigure(mocks.navigate, mocks.configure, { target: { machineId: 'm', path: '/repo' } });
+  expect(mocks.create).not.toHaveBeenCalled();
+  expect(mocks.navigate).not.toHaveBeenCalled();
+  expect(mocks.configure).toHaveBeenCalledWith({ machineId: 'm', path: '/repo' });
+  expect(warn).toHaveBeenCalled();
+  // the same call from a click (activation live) creates it as before
+  Object.defineProperty(nav, 'userActivation', { configurable: true, value: { isActive: true } });
+  mocks.waitShown.mockResolvedValueOnce(undefined);
+  await createChatOrConfigure(mocks.navigate, mocks.configure);
+  expect(mocks.create).toHaveBeenCalledTimes(1);
+ } finally {
+  warn.mockRestore();
+  if (original) Object.defineProperty(nav, 'userActivation', original); else delete (nav as { userActivation?: unknown }).userActivation;
+ }
+});

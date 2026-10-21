@@ -17,6 +17,7 @@ vi.mock('./app/monitoring/metrics2', () => ({
     startDatabaseMetricsUpdater: vi.fn(), register: { metrics: async () => 'app_test_metric 2' },
 }));
 vi.mock('./app/presence/timeout', () => ({ startTimeout: vi.fn() }));
+vi.mock('./app/session/shareLinks', () => ({ startShareLinkAccessRetention: vi.fn() }));
 vi.mock('./utils/shutdown', () => ({
     onShutdown: (name: string, handler: () => Promise<void>) => state.shutdown.set(name, handler),
 }));

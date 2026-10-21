@@ -19,4 +19,10 @@ describe('service worker document navigation', () => {
     expect(bypassesShell('/happyXv2/skills/provider/SKILL.md', '/happy.v2/')).toBe(false);
     expect(bypassesShell('/skills/provider/SKILL.md', '/happy.v2/')).toBe(false);
   });
+  it('B-701: share-link pages always come from the network, never the cached shell', () => {
+    expect(bypassesShell('/s/cmabc123')).toBe(true);
+    expect(bypassesShell('/happy.v2/s/cmabc123', '/happy.v2/')).toBe(true);
+    expect(bypassesShell('/sessions')).toBe(false);
+    expect(bypassesShell('/settings/shared')).toBe(false);
+  });
 });

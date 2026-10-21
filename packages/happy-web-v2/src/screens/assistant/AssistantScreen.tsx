@@ -123,6 +123,7 @@ export function AssistantScreen() {
             setSpawnError(null);
             try {
                 const res = await machineSpawnNewSession({
+                    source: 'assistant',
                     machineId,
                     directory: ASSISTANT_DIRECTORY, // compat placeholder; new daemons pick their own cwd
                     approvedNewDirectoryCreation: true,

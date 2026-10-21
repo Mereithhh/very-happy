@@ -129,3 +129,25 @@ describe('B-708 a team renders once in every grouping lens', () => {
     });
   }
 });
+
+describe('B-723 (O1): an unattached team groups under its own repository', () => {
+  const W = '/home/u/.happy/teams/worktrees';
+  it('follows the team home, not the most recently active member worktree', () => {
+    const t = team('t', ['lead', 'w1', 'w2'], { creationLaunch: { goal: 'g', assistant: 'claude', directory: '/home/u/repo' } as TeamState['creationLaunch'] });
+    // Ordered by recency: a worker's UUID worktree comes first.
+    const rows = [row('w2', 'm', `${W}/840fb9cc`), row('lead', 'm', `${W}/fc838c27`), row('w1', 'm', `${W}/5435662d`), row('solo', 'm', '/home/u/repo')];
+    const { unassigned } = groupRowsByProject(rows, [], [], [t]);
+    expect(unassigned.map(g => [g.name, g.rows.map(r => r.key)])).toEqual([['repo', ['w2', 'lead', 'w1', 'solo']]]);
+    expect(unassigned[0].teams.map(x => x.id)).toEqual(['t']);
+  });
+  it('without a launch record, uses the lead spawn directory, never a worktree', () => {
+    const t = team('t', ['lead', 'w1'], { operations: [{ id: 'op', type: 'spawn', botId: 't-b0', directory: '/home/u/repo2', createdAt: 1 }] as TeamState['operations'] });
+    const { unassigned } = groupRowsByProject([row('w1', 'm', `${W}/aaaa`), row('lead', 'm', `${W}/bbbb`)], [], [], [t]);
+    expect(unassigned.map(g => g.path)).toEqual(['/home/u/repo2']);
+  });
+  it('a team with no known home keeps the old first-located-row anchor', () => {
+    const t = team('t', ['lead', 'w1']);
+    const { unassigned } = groupRowsByProject([row('w1', 'm', '/a'), row('lead', 'm', '/b')], [], [], [t]);
+    expect(unassigned.map(g => g.path)).toEqual(['/a']);
+  });
+});

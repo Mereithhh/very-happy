@@ -3,6 +3,7 @@ import { log } from "@/utils/log";
 import { awaitShutdown, onShutdown } from "@/utils/shutdown";
 import { closeDatabase, db } from './storage/db';
 import { startTimeout } from "./app/presence/timeout";
+import { startShareLinkAccessRetention } from "@/app/session/shareLinks";
 import { startMetricsServer } from "@/app/monitoring/metrics";
 import { activityCache } from "@/app/presence/sessionCache";
 import { auth } from "./app/auth/auth";
@@ -39,6 +40,7 @@ async function main() {
         await startMetricsServer();
         startDatabaseMetricsUpdater();
         startTimeout();
+        startShareLinkAccessRetention();
     } catch (startupError) {
         try {
             await closeDatabase();

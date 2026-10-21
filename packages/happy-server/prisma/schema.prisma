@@ -69,6 +69,7 @@ model Account {
     Projects   Project[]
     SessionGrantsReceived SessionGrant[] @relation("SessionGrantGrantee")
     SessionGrantsGiven    SessionGrant[] @relation("SessionGrantGrantedBy")
+    SessionShareLinks     SessionShareLink[]
 }
 
 model AccountCredential {
@@ -265,6 +266,7 @@ model Session {
     accessKeys        AccessKey[]
     promptQueue       SessionPromptQueueItem[]
     grants            SessionGrant[]
+    shareLinks        SessionShareLink[]
     projectMember     ProjectMember?
 
     @@unique([accountId, tag])
@@ -318,9 +320,50 @@ model SessionGrant {
     updatedAt                DateTime           @updatedAt
     acceptedAt               DateTime?
     revokedAt                DateTime?
+    /// B-701: null = no expiry. Every read path treats a past value like revoked.
+    expiresAt                DateTime?
 
     @@unique([sessionId, granteeAccountId])
     @@index([granteeAccountId, status])
+}
+
+/// B-701 read-only share link (spec specs/2026-10-session-sharing-tiers.md).
+/// Only sha256(secret) is stored; the secret lives in the URL fragment.
+model SessionShareLink {
+    id                 String                    @id @default(cuid())
+    sessionId          String
+    session            Session                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    createdByAccountId String
+    createdBy          Account                   @relation(fields: [createdByAccountId], references: [id], onDelete: Cascade)
+    tokenHash          Bytes                     @unique
+    /// 'snapshot' (messages up to snapshotSeq) | 'live'
+    scope              String
+    snapshotSeq        Int?
+    snapshotAt         DateTime?
+    expiresAt          DateTime?
+    revokedAt          DateTime?
+    accessCount        Int                       @default(0)
+    lastAccessedAt     DateTime?
+    createdAt          DateTime                  @default(now())
+    updatedAt          DateTime                  @updatedAt
+    accesses           SessionShareLinkAccess[]
+
+    @@index([sessionId])
+    @@index([createdByAccountId])
+}
+
+/// B-701 link opens: one row per viewer per 10 minutes, purged after 90 days.
+model SessionShareLinkAccess {
+    id              String           @id @default(cuid())
+    linkId          String
+    link            SessionShareLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+    at              DateTime         @default(now())
+    /// Anonymous by design: a salted IP hash (dedupe only) and a link-preview-bot flag.
+    ipHash          Bytes
+    bot             Boolean          @default(false)
+
+    @@index([linkId, at])
+    @@index([at])
 }
 
 /// B-509 server-side prompt queue: prompts queued from a client while the

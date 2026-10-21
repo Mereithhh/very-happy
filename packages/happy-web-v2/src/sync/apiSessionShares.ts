@@ -6,7 +6,15 @@
 import { z } from 'zod';
 import { apiSocket } from './apiSocket';
 import {
+    OutgoingSharesSchema,
     SessionGrantViewSchema,
+    ShareLinkAccessSchema,
+    ShareLinkViewSchema,
+    type OutgoingShares,
+    type ShareExpiryDays,
+    type ShareLinkAccess,
+    type ShareLinkScope,
+    type ShareLinkView,
     SharedSessionInviteSchema,
     type SessionGrantView,
     type SessionShareRole,
@@ -45,12 +53,57 @@ export function listSessionGrants(sessionId: string): Promise<SessionGrantView[]
 /** B-621: share to a typed target (email / handle) or to a directory account id (friend picker). */
 export type ShareTarget = { target: string } | { accountId: string };
 
-export function createSessionGrant(sessionId: string, who: ShareTarget, role: SessionShareRole): Promise<SessionGrantView> {
-    return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares`, z.object({ grant: SessionGrantViewSchema }), json({ ...who, role })).then((r) => r.grant);
+export function createSessionGrant(sessionId: string, who: ShareTarget, role: SessionShareRole, expiresInDays?: ShareExpiryDays): Promise<SessionGrantView> {
+    // B-701: omit expiresInDays for "never" so a pre-B-701 server (which strips unknown keys anyway) sees the same body.
+    const body = expiresInDays ? { ...who, role, expiresInDays } : { ...who, role };
+    return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares`, z.object({ grant: SessionGrantViewSchema }), json(body)).then((r) => r.grant);
+}
+
+export function updateSessionGrant(sessionId: string, accountId: string, change: { role?: SessionShareRole; expiresInDays?: ShareExpiryDays }): Promise<SessionGrantView> {
+    return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares/${encodeURIComponent(accountId)}`, z.object({ grant: SessionGrantViewSchema }), json(change, 'PATCH')).then((r) => r.grant);
 }
 
 export function updateSessionGrantRole(sessionId: string, accountId: string, role: SessionShareRole): Promise<SessionGrantView> {
-    return call(`/v1/sessions/${encodeURIComponent(sessionId)}/shares/${encodeURIComponent(accountId)}`, z.object({ grant: SessionGrantViewSchema }), json({ role }, 'PATCH')).then((r) => r.grant);
+    return updateSessionGrant(sessionId, accountId, { role });
+}
+
+// ---------------------------------------------------------------- B-701 share links (owner side)
+
+const LinkWithSecretSchema = z.object({ link: ShareLinkViewSchema, secret: z.string() });
+export type CreatedShareLink = z.infer<typeof LinkWithSecretSchema>;
+const linkPath = (sessionId: string, linkId?: string) => `/v1/sessions/${encodeURIComponent(sessionId)}/share-links${linkId ? `/${encodeURIComponent(linkId)}` : ''}`;
+
+export function listShareLinks(sessionId: string): Promise<ShareLinkView[]> {
+    return call(linkPath(sessionId), z.object({ links: z.array(ShareLinkViewSchema) })).then((r) => r.links);
+}
+
+export function createShareLink(sessionId: string, scope: ShareLinkScope, expiresInDays: ShareExpiryDays): Promise<CreatedShareLink> {
+    return call(linkPath(sessionId), LinkWithSecretSchema, json({ scope, expiresInDays }));
+}
+
+export function updateShareLink(sessionId: string, linkId: string, change: { snapshotToNow?: true; expiresInDays?: ShareExpiryDays }): Promise<ShareLinkView> {
+    return call(linkPath(sessionId, linkId), z.object({ link: ShareLinkViewSchema }), json(change, 'PATCH')).then((r) => r.link);
+}
+
+export function rotateShareLink(sessionId: string, linkId: string): Promise<CreatedShareLink> {
+    return call(`${linkPath(sessionId, linkId)}/rotate`, LinkWithSecretSchema, { method: 'POST' });
+}
+
+export function revokeShareLink(sessionId: string, linkId: string): Promise<void> {
+    return call(linkPath(sessionId, linkId), z.object({ ok: z.boolean() }), { method: 'DELETE' }).then(() => undefined);
+}
+
+export function listShareLinkAccesses(linkId: string): Promise<ShareLinkAccess[]> {
+    return call(`/v1/share-links/${encodeURIComponent(linkId)}/accesses`, z.object({ accesses: z.array(ShareLinkAccessSchema) })).then((r) => r.accesses);
+}
+
+export function listOutgoingShares(): Promise<OutgoingShares> {
+    return call('/v1/shares/outgoing', OutgoingSharesSchema);
+}
+
+/** The URL handed out: the secret rides in the fragment so it never reaches a server log or Referer. */
+export function shareLinkUrl(origin: string, linkId: string, secret: string): string {
+    return `${origin.replace(/\/$/, '')}/s/${encodeURIComponent(linkId)}#${secret}`;
 }
 
 export function revokeSessionGrant(sessionId: string, accountId: string): Promise<void> {

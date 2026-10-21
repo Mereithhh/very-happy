@@ -4,6 +4,7 @@ import { t as tr } from "@/text";
 import { taskLaunchIssue } from "./teamPresentation";
 import { useFirstUseCopy } from "./firstUseCopy";
 import { useWorkspaceCopy } from "./workspaceCopy";
+import { OperationError } from "./OperationError";
 
 export const taskStatus = (): Record<string, string> => ({
   queued: tr("teams.queued"),
@@ -25,7 +26,7 @@ export function TeamTaskSummary({ team, task, launchIssue }: { team: TeamState; 
       <span data-live={task.status === "running"}>{issue ? first.launchFailed : taskStatus()[task.status]}</span>
     </div>
     {/* B-689: the screen supplies the actionable block (Retry launch); this is the read-only fallback. */}
-    {issue && (launchIssue ? launchIssue(issue) : <div className="teams-error" role="alert"><strong>{first.launchFailed}</strong><p>{issue.error}</p><p>{issue.status === "unknown" ? first.unknownHint : first.retryHint}</p></div>)}
+    {issue && (launchIssue ? launchIssue(issue) : <div className="teams-error" role="alert"><strong>{first.launchFailed}</strong><OperationError error={issue.error} /><p>{issue.status === "unknown" ? first.unknownHint : first.retryHint}</p></div>)}
     {/* The parent is a reference: its first line, like the board's parent label. */}
     {task.parentTaskId && <p>{tr("teams.parent")}：{parent?.goal.split("\n")[0] ?? task.parentTaskId}</p>}
     <p>

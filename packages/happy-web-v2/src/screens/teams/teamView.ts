@@ -66,14 +66,61 @@ export function machineSupportsTeamRetry(metadata: unknown, version = 1): boolea
   return typeof value === "number" && value >= version;
 }
 
+/** B-723 (O3): retry support is unknown (`null`) until the execution machine
+ *  and its metadata have loaded — never 「update the CLI」 for a page that
+ *  simply has not received them yet. */
+export function teamRetrySupport(machine: { metadata?: unknown } | undefined, version = 1): boolean | null {
+  if (!machine || machine.metadata == null) return null;
+  return machineSupportsTeamRetry(machine.metadata, version);
+}
+
 /** B-691: a retained cleanup the owner can ask the computer to re-check now. */
 export function canRetryCleanup(operation: TeamState["operations"][number]): boolean {
   return operation.type === "stop" && operation.status === "failed" && !!operation.claimId && !operation.manualResolution;
 }
 
+/** B-723 (O2): a launch whose task closed before it started never ran —
+ *  nothing to clean up or reconcile (the server lets its member be reused,
+ *  reducer `bot_has_unresolved_operations`), so it never needs the owner. */
+export function closedBeforeSpawn(operation: TeamState["operations"][number]): boolean {
+  return operation.type === "spawn" && operation.status === "failed" && operation.error === "task_closed_before_spawn";
+}
+
 /** B-691: what still needs the owner, and what was already handled (shown folded). */
 export function attentionOperations(team: TeamState): { open: TeamState["operations"]; resolved: TeamState["operations"] } {
-  const open = team.operations.filter((operation) => !operation.manualResolution && ["failed", "unknown", "claimed"].includes(operation.status));
+  const open = team.operations.filter((operation) => !operation.manualResolution && ["failed", "unknown", "claimed"].includes(operation.status) && !closedBeforeSpawn(operation));
   const resolved = team.operations.filter((operation) => !!operation.manualResolution);
   return { open, resolved };
+}
+
+/**
+ * B-723 (O2): the daemon reports team operation failures as English prose or
+ * internal codes (happy-cli daemon/teams/worker.ts, worktree.ts,
+ * spawnRetry.ts). The page shows a translated summary for the known ones and
+ * keeps the raw text for the folded 「详情」.
+ */
+export const TEAM_OPERATION_ERROR_KINDS = [
+  "closedBeforeSpawn", "outcomeUnknown", "receiptMissing", "uncommittedWork", "unmergedWork",
+  "repositoryMissing", "noRepository", "worktreeConflict", "brokenWorktree", "bindingChanged",
+  "ownershipUnknown", "directoryApproval", "startupRetrying", "startupExhausted", "other",
+] as const;
+export type TeamOperationErrorKind = (typeof TEAM_OPERATION_ERROR_KINDS)[number];
+
+export function teamOperationErrorKind(error: string | null | undefined): TeamOperationErrorKind | null {
+  if (!error) return null;
+  if (error === "task_closed_before_spawn") return "closedBeforeSpawn";
+  if (error.startsWith("Spawn outcome unknown")) return "outcomeUnknown";
+  if (error.startsWith("Local execution receipt missing")) return "receiptMissing";
+  if (error.startsWith("Uncommitted work retained")) return "uncommittedWork";
+  if (error.startsWith("Unmerged work retained")) return "unmergedWork";
+  if (error.startsWith("Team repository is unavailable") || error.startsWith("Team repository is missing")) return "repositoryMissing";
+  if (error.startsWith("No repository selected")) return "noRepository";
+  if (error.startsWith("Team worktree path is occupied") || error.startsWith("Team worktree belongs to another repository") || error.startsWith("Worktree repository changed")) return "worktreeConflict";
+  if (error.includes("is registered as a worktree but its git link is broken")) return "brokenWorktree";
+  if (error.startsWith("Worker binding changed")) return "bindingChanged";
+  if (error.startsWith("Original worktree ownership is unknown") || error.startsWith("Original worktree receipt is missing")) return "ownershipUnknown";
+  if (error === "Directory approval required") return "directoryApproval";
+  if (/\(automatic retry \d+\/\d+ in \d+s\)$/.test(error)) return "startupRetrying";
+  if (/\(automatic retries exhausted after \d+ attempts?; use Retry launch after fixing the cause\)$/.test(error)) return "startupExhausted";
+  return "other";
 }
