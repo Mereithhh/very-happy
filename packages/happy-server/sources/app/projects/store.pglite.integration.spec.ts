@@ -5,12 +5,13 @@ import { join } from 'node:path';
 import type { PrismaClient } from '@prisma/client';
 import type * as Store from './store';
 import type * as Automations from '@/app/automations/store';
+import type * as Teams from '@/app/teams/store';
 
 describe('projects store (pglite)', () => {
     const parent = join(homedir(), 'code/github/skills/tmp/projects-tests');
     mkdirSync(parent, { recursive: true });
     const root = mkdtempSync(join(parent, 'db-'));
-    let db: PrismaClient; let store: typeof Store; let automations: typeof Automations;
+    let db: PrismaClient; let store: typeof Store; let automations: typeof Automations; let teams: typeof Teams;
     let accountId: string; let otherAccountId: string; let machineId: string; let otherMachineId: string;
     const newSession = async (owner = accountId) => (await db.session.create({ data: { accountId: owner, tag: crypto.randomUUID(), metadata: 'metadata' } })).id;
     const newProject = (name = `p-${crypto.randomUUID().slice(0, 6)}`, extra: Partial<Parameters<typeof Store.createProject>[1]> = {}) =>
@@ -19,13 +20,14 @@ describe('projects store (pglite)', () => {
     beforeAll(async () => {
         process.env.DB_PROVIDER = 'pglite'; process.env.PGLITE_DIR = join(root, 'db');
         process.env.HANDY_MASTER_SECRET = 'projects-integration-test-only';
-        process.env.VH_AUTOMATIONS_ENABLED = 'true';
+        process.env.VH_AUTOMATIONS_ENABLED = 'true'; process.env.VH_AGENT_TEAMS_ENABLED = 'true';
         delete process.env.VH_PROJECTS_ENABLED;
         const { runMigrations } = await import('../../standalone');
         await runMigrations({ pgliteDir: process.env.PGLITE_DIR, migrationsDir: join(process.cwd(), 'prisma/migrations') });
         ({ db } = await import('@/storage/db'));
         store = await import('./store');
         automations = await import('@/app/automations/store');
+        teams = await import('@/app/teams/store');
         accountId = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
         otherAccountId = (await db.account.create({ data: { publicKey: crypto.randomUUID() } })).id;
         machineId = crypto.randomUUID(); otherMachineId = crypto.randomUUID();
@@ -116,7 +118,7 @@ describe('projects store (pglite)', () => {
         expect(await store.sessionMembership(accountId, explicitElsewhere)).toEqual({ projectId: other.id, via: 'explicit' });
         const listed = await store.listProjects(accountId);
         expect(listed.members.filter(m => m.sessionId === explicitElsewhere)).toHaveLength(1);
-        expect((await store.sessionContext(accountId, bot, { peek: true })).team).toEqual({ id: teamId, name: 'B-640 重构' });
+        expect((await store.sessionContext(accountId, bot, { peek: true })).team).toEqual({ id: teamId, name: 'B-640 重构', lead: false });
         expect(await store.detachTeam(accountId, p.id, teamId)).toEqual({ detached: true });
         expect(await store.sessionMembership(accountId, bot)).toEqual({ projectId: null, via: null });
     });
@@ -259,6 +261,78 @@ describe('projects store (pglite)', () => {
         await automations.updateAutomation(accountId, created.id, { version: detached.version, projectId: p.id });
         await store.deleteProject(accountId, p.id);
         expect((await automations.getAutomation(accountId, created.id)).projectId).toBeNull();
+    });
+
+    describe('B-726 team ↔ project', () => {
+        const launch = (directory: string) => ({ goal: 'ship it', directory, assistant: 'claude' as const });
+        const stateOf = async (teamId: string) => (await db.agentTeam.findUniqueOrThrow({ where: { id: teamId } }));
+
+        it('a new team with project.create gets a same-name project at its launch folder; a retried create makes no second project', async () => {
+            const input = { name: 'Team Alpha', machineId, requestId: 'tp-1', launch: launch('/work/alpha'), project: { create: true } };
+            const team = await teams.createTeam(accountId, input);
+            expect(team.projectId).toBeTruthy();
+            const detail = await store.getProject(accountId, team.projectId!);
+            expect(detail.project).toMatchObject({ name: 'Team Alpha', folders: [{ machineId, path: '/work/alpha', primary: true }], teamIds: [team.id] });
+            const again = await teams.createTeam(accountId, input);
+            expect(again.projectId).toBe(team.projectId);
+            expect((await store.listProjects(accountId)).projects.filter(p => p.name === 'Team Alpha')).toHaveLength(1);
+            // projectId is a column, never copied into the persisted JSON state.
+            expect((await stateOf(team.id)).state).not.toHaveProperty('projectId');
+            expect((await teams.readTeam(team.id, { accountId })).projectId).toBe(team.projectId);
+        });
+
+        it('an older client (no project field) gets no project; the kill switch also just skips the project', async () => {
+            const plain = await teams.createTeam(accountId, { name: 'Old CLI team', machineId, requestId: 'tp-2' });
+            expect(plain.projectId).toBeUndefined();
+            process.env.VH_PROJECTS_ENABLED = 'false';
+            try {
+                const off = await teams.createTeam(accountId, { name: 'Off', machineId, requestId: 'tp-3', launch: launch('/w/off'), project: { create: true } });
+                expect(off.projectId).toBeUndefined();
+            } finally { delete process.env.VH_PROJECTS_ENABLED; }
+        });
+
+        it('choosing an existing project attaches the team and adds its folder when the machine is new to the project', async () => {
+            const p = await store.createProject(accountId, { name: 'elsewhere', folders: [{ machineId: otherMachineId, path: '/other' }] });
+            const team = await teams.createTeam(accountId, { name: 'Beta', machineId, requestId: 'tp-4', launch: launch('/work/beta'), project: { projectId: p.id } });
+            expect(team.projectId).toBe(p.id);
+            const detail = await store.getProject(accountId, p.id);
+            expect(detail.project.folders).toEqual([{ machineId: otherMachineId, path: '/other', primary: true }, { machineId, path: '/work/beta', primary: false }]);
+            await expect(teams.createTeam(accountId, { name: 'Gamma', machineId, requestId: 'tp-5', project: { projectId: 'missing' } })).rejects.toMatchObject({ code: 'project_not_found', status: 404 });
+            expect((await teams.listTeams(accountId)).some(t => t.name === 'Gamma')).toBe(false);
+        });
+
+        it('inheritFromSessionId uses the creating session\'s project, else creates a same-name one at `directory`', async () => {
+            const p = await newProject('inherit-me');
+            const inside = await newSession();
+            await store.addMembers(accountId, p.id, { sessionIds: [inside] });
+            const a = await teams.createTeam(accountId, { name: 'Lead in project', machineId, requestId: 'tp-6', project: { inheritFromSessionId: inside, directory: '/repo' } });
+            expect(a.projectId).toBe(p.id);
+            const outside = await newSession();
+            const b = await teams.createTeam(accountId, { name: 'Lead alone', machineId, requestId: 'tp-7', project: { inheritFromSessionId: outside, directory: '/work/lone' } });
+            expect(b.projectId).not.toBe(p.id);
+            expect((await store.getProject(accountId, b.projectId!)).project).toMatchObject({ name: 'Lead alone', folders: [{ machineId, path: '/work/lone', primary: true }] });
+        });
+
+        it('bindTeamProject: old team one-click create (idempotent), move to another project, detach; lead flag reaches the context', async () => {
+            const lead = await newSession(); const member = await newSession();
+            const team = await teams.createTeam(accountId, { name: 'Legacy', machineId, requestId: 'tp-8', launch: launch('/work/legacy') });
+            const row = await stateOf(team.id);
+            await db.agentTeam.update({ where: { id: team.id }, data: { state: { ...(row.state as object), bots: [{ id: 'r', root: true, sessionId: lead }, { id: 'm', root: false, sessionId: member }] } } });
+            const created = await store.bindTeamProject(accountId, team.id, { create: true, requestId: 'one-click' });
+            expect(created.project).toMatchObject({ name: 'Legacy', folders: [{ machineId, path: '/work/legacy', primary: true }], teamIds: [team.id] });
+            expect((await store.bindTeamProject(accountId, team.id, { create: true, requestId: 'one-click' })).projectId).toBe(created.projectId);
+            expect((await store.sessionContext(accountId, lead, { peek: true })).team).toEqual({ id: team.id, name: 'Legacy', lead: true });
+            expect((await store.sessionContext(accountId, member, { peek: true })).team).toEqual({ id: team.id, name: 'Legacy', lead: false });
+            // A lead decision is visible to a member reading the project.
+            await store.createLogEntry(accountId, created.projectId!, { kind: 'decision', title: 'use pnpm', authorSessionId: lead });
+            expect((await store.sessionContext(accountId, member, { peek: true })).decisions.map(d => d.title)).toContain('use pnpm');
+            const other = await newProject('move-target');
+            expect((await store.bindTeamProject(accountId, team.id, { projectId: other.id })).projectId).toBe(other.id);
+            expect((await store.sessionMembership(accountId, member)).projectId).toBe(other.id);
+            expect(await store.bindTeamProject(accountId, team.id, { projectId: null })).toEqual({ teamId: team.id, projectId: null, project: null });
+            expect(await store.sessionMembership(accountId, member)).toEqual({ projectId: null, via: null });
+            await expect(store.bindTeamProject(otherAccountId, team.id, { projectId: null })).rejects.toMatchObject({ code: 'team_not_found', status: 404 });
+        });
     });
 
     it('log seq stays unique under concurrent agent + user writes (serializable retries)', async () => {

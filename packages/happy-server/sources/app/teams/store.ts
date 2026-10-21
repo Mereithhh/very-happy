@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import type { TeamActionRequest, TeamResponse, TeamState, TeamOperation, TeamMessage, TeamLaunch } from '@slopus/happy-wire';
+import type { TeamActionRequest, TeamResponse, TeamState, TeamOperation, TeamMessage, TeamLaunch, TeamProjectChoice } from '@slopus/happy-wire';
+import { bindNewTeamProjectTx } from '@/app/projects/store';
 import { db } from '@/storage/db';
 import { inTx, type Tx } from '@/storage/inTx';
 import { encryptString, decryptString } from '@/modules/encrypt';
@@ -8,7 +9,7 @@ import { advanceSchedules } from './schedules';
 import { reduceTeam, requireTeam, teamView, type TeamActor } from './reducer';
 
 type Principal = { accountId: string; actor: TeamActor; credentialId?: string };
-type Row = { id: string; accountId: string; version: number; state: TeamState };
+type Row = { id: string; accountId: string; version: number; projectId?: string | null; state: TeamState };
 /** B-502: `VH_AGENT_TEAMS_ENABLED` is the only gate; the former `VH_AGENT_TEAMS_ACCOUNT_IDS` allowlist is ignored. */
 export function assertTeamsEnabled(_accountId: string) {
     requireTeam(process.env.VH_AGENT_TEAMS_ENABLED === 'true', 'teams_disabled', 404);
@@ -24,11 +25,12 @@ async function load(tx: Tx, teamId: string, accountId?: string): Promise<Row> {
     const row = rows[0];
     const ops = await tx.$queryRaw<{ state: TeamOperation }[]>`SELECT "state" FROM "TeamOperation" WHERE "teamId"=${teamId} ORDER BY "createdAt", "id"`;
     const msgs = await tx.$queryRaw<{ state: TeamMessage }[]>`SELECT "state" FROM "TeamMessage" WHERE "teamId"=${teamId} ORDER BY "createdAt", "id"`;
-    row.state = { ...row.state, version: row.version, operations: ops.map(o => o.state), messages: msgs.map(m => m.state) };
+    // B-726: `projectId` lives in its own column; it rides on the view only and is never persisted into `state`.
+    row.state = { ...row.state, version: row.version, operations: ops.map(o => o.state), messages: msgs.map(m => m.state), projectId: row.projectId ?? undefined };
     return row;
 }
 async function persistTransition(tx: Tx, row: Row, team: TeamState): Promise<void> {
-    const state = JSON.stringify({ ...team, messages: undefined, operations: undefined });
+    const state = JSON.stringify({ ...team, messages: undefined, operations: undefined, projectId: undefined });
     const updated = await tx.$executeRaw`UPDATE "AgentTeam" SET "version"=${team.version},"state"=${state}::jsonb,"updatedAt"=now() WHERE "id"=${row.id} AND "accountId"=${row.accountId} AND "version"=${row.version}`;
     requireTeam(updated === 1, 'team_version_conflict');
     for (const op of team.operations) {
@@ -73,7 +75,7 @@ async function credential(tx: Tx, team: TeamState, botId: string): Promise<{ bot
     await tx.$executeRaw`INSERT INTO "TeamAgentCredential" ("id","teamId","botId","generation","tokenHash","tokenEnc","expiresAt") VALUES (${credentialId},${team.id},${botId},${bot.generation},${tokenHash},${tokenEnc},${expiresAt})`;
     return { botId, token };
 }
-export async function createTeam(accountId: string, input: { name: string; machineId: string; requestId?: string; launch?: TeamLaunch }): Promise<TeamState> {
+export async function createTeam(accountId: string, input: { name: string; machineId: string; requestId?: string; launch?: TeamLaunch; project?: TeamProjectChoice }): Promise<TeamState> {
     assertTeamsEnabled(accountId);
     return inTx(async tx => {
         requireTeam(await tx.machine.findFirst({ where: { id: input.machineId, accountId }, select: { id: true } }), 'machine_not_found', 404);
@@ -94,9 +96,12 @@ export async function createTeam(accountId: string, input: { name: string; machi
         if (input.launch) {
             const started = reduceTeam(team, { kind: 'owner' }, { type: 'start', launch: input.launch }, { now: Date.now(), id: randomUUID }).team;
             await persistTransition(tx, { id: team.id, accountId, version: 0, state: team }, started);
-            return started;
+            if (!input.project) return started;
         }
-        return team;
+        if (!input.project) return team;
+        // B-726: same transaction, so a retried create (same requestId) returns the team already bound, never a second project.
+        await bindNewTeamProjectTx(tx, accountId, team.id, input.project);
+        return (await load(tx, team.id, accountId)).state;
     });
 }
 export async function listTeams(accountId: string, machineId?: string): Promise<TeamState[]> {

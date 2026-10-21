@@ -253,7 +253,8 @@ export type ProjectDetailResponse = {
 export type ProjectSessionContext = {
     project: Pick<ProjectView, 'id' | 'name' | 'goal' | 'instructions' | 'instructionsVersion'> | null;
     via: string | null;
-    team: { id: string; name: string } | null;
+    /** `lead` (B-726) is absent from older servers; true when this session is the team's root bot. */
+    team: { id: string; name: string; lead?: boolean } | null;
     decisions: Pick<ProjectLogEntryView, 'id' | 'seq' | 'title' | 'createdAt'>[];
     log: ProjectLogEntryView[];
     sessions: ProjectPresenceView[];

@@ -4,7 +4,7 @@ import {
     PROJECT_LIMITS,
     type ProjectCreate, type ProjectUpdate, type ProjectInstructionsPut, type ProjectMembersAdd, type ProjectLogCreate, type ProjectPresencePut,
     type ProjectMessageCreate, type ProjectView, type ProjectMemberView, type ProjectLogEntryView, type ProjectPresenceView, type ProjectMessageView,
-    type ProjectDetailResponse, type ProjectListResponse, type ProjectSessionContext, type ProjectDigest, type ProjectInstructionsRevisionView, type ProjectLogKind,
+    type ProjectDetailResponse, type ProjectListResponse, type TeamProjectChoice, type TeamProjectBind, type ProjectSessionContext, type ProjectDigest, type ProjectInstructionsRevisionView, type ProjectLogKind,
 } from '@slopus/happy-wire';
 import { inTx, isRetryableTransactionConflict, type Tx } from '@/storage/inTx';
 import { configuredResourceLimit, enforceAccountWriteRate, isAccountResourceLimitError } from '@/app/api/resourceLimits';
@@ -27,7 +27,7 @@ type ProjectRow = Prisma.ProjectGetPayload<{}>;
 type LogRow = Prisma.ProjectLogEntryGetPayload<{}>;
 type PresenceRow = Prisma.ProjectPresenceGetPayload<{}>;
 type MessageRow = Prisma.ProjectMessageGetPayload<{}>;
-type Membership = { projectId: string; via: string; teamId?: string; teamName?: string };
+type Membership = { projectId: string; via: string; teamId?: string; teamName?: string; teamLead?: boolean };
 
 const DEFAULT_MAX_PROJECTS_PER_ACCOUNT = 200;
 const MAX_UNDELIVERED_PER_RECIPIENT = 100;
@@ -139,12 +139,14 @@ async function membersOf(tx: Tx, accountId: string, projectIds: string[]): Promi
 async function membershipOf(tx: Tx, accountId: string, sessionId: string): Promise<Membership | null> {
     const explicit = await tx.projectMember.findFirst({ where: { sessionId, accountId }, select: { projectId: true, via: true } });
     if (explicit) return { projectId: explicit.projectId, via: explicit.via };
-    const teams = await tx.$queryRaw<{ id: string; projectId: string; name: string | null }[]>`
-        SELECT t."id", t."projectId", t."state"->>'name' AS "name" FROM "AgentTeam" t
+    const teams = await tx.$queryRaw<{ id: string; projectId: string; name: string | null; lead: boolean | null }[]>`
+        SELECT t."id", t."projectId", t."state"->>'name' AS "name",
+          EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(t."state"->'bots', '[]'::jsonb)) r WHERE r->>'sessionId' = ${sessionId} AND r->>'root' = 'true') AS "lead"
+        FROM "AgentTeam" t
         WHERE t."accountId"=${accountId} AND t."projectId" IS NOT NULL AND (t."state"->'archivedAt') IS NULL
           AND EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(t."state"->'bots', '[]'::jsonb)) b WHERE b->>'sessionId' = ${sessionId})
         ORDER BY t."createdAt" ASC LIMIT 1`;
-    return teams[0] ? { projectId: teams[0].projectId, via: 'team', teamId: teams[0].id, teamName: teams[0].name ?? teams[0].id } : null;
+    return teams[0] ? { projectId: teams[0].projectId, via: 'team', teamId: teams[0].id, teamName: teams[0].name ?? teams[0].id, teamLead: teams[0].lead === true } : null;
 }
 async function requireMember(tx: Tx, accountId: string, projectId: string, sessionId: string): Promise<Membership> {
     const m = await membershipOf(tx, accountId, sessionId);
@@ -200,32 +202,39 @@ export async function listProjects(accountId: string, opts: { includeArchived?: 
 /** Idempotent by `requestId`; counted against the per-account cap inside the same transaction. */
 export async function createProject(accountId: string, input: ProjectCreate): Promise<ProjectView> {
     return run(async tx => {
-        const requestKey = input.requestId ? hash(`project:${accountId}:${input.requestId}`) : null;
-        if (requestKey) {
-            const prior = await tx.project.findFirst({ where: { requestKey, accountId } });
-            if (prior) {
-                const attached = await attachedIds(tx, [prior.id]);
-                return projectView(prior, attached.teams.get(prior.id) ?? [], attached.automations.get(prior.id) ?? []);
-            }
+        const { row, created } = await createProjectTx(tx, accountId, input);
+        if (!created) {
+            const attached = await attachedIds(tx, [row.id]);
+            return projectView(row, attached.teams.get(row.id) ?? [], attached.automations.get(row.id) ?? []);
         }
-        const limit = configuredResourceLimit('MAX_PROJECTS_PER_ACCOUNT', DEFAULT_MAX_PROJECTS_PER_ACCOUNT);
-        if (limit > 0) {
-            const count = await tx.project.count({ where: { accountId, archivedAt: null } });
-            requireProject(count < limit, 'project_count_quota_exceeded', 429, { limit, count });
-        }
-        const folders = normalizeFolders(input.folders ?? []);
-        await requireFolderMachines(tx, accountId, folders);
-        const now = new Date();
-        const instructions = input.instructions ?? '';
-        const row = await tx.project.create({ data: {
-            id: randomUUID(), accountId, name: input.name, goal: input.goal ?? null, instructions,
-            instructionsVersion: instructions ? 1 : 0, instructionsUpdatedBy: instructions ? 'user' : null, instructionsUpdatedAt: instructions ? now : null,
-            folders, defaults: normalizeDefaults(input.defaults), requestKey, createdAt: now, updatedAt: now,
-        } });
-        if (instructions) await tx.projectInstructionsRevision.create({ data: { projectId: row.id, version: 1, instructions, updatedBy: 'user', createdAt: now } });
-        if (input.sessionIds?.length) await placeMembers(tx, accountId, row.id, input.sessionIds, 'explicit');
         return projectView(row);
     });
+}
+
+/** Transaction-level create (B-726 also uses it when a team is created). `created=false` = the requestId's earlier project. */
+async function createProjectTx(tx: Tx, accountId: string, input: ProjectCreate): Promise<{ row: ProjectRow; created: boolean }> {
+    const requestKey = input.requestId ? hash(`project:${accountId}:${input.requestId}`) : null;
+    if (requestKey) {
+        const prior = await tx.project.findFirst({ where: { requestKey, accountId } });
+        if (prior) return { row: prior, created: false };
+    }
+    const limit = configuredResourceLimit('MAX_PROJECTS_PER_ACCOUNT', DEFAULT_MAX_PROJECTS_PER_ACCOUNT);
+    if (limit > 0) {
+        const count = await tx.project.count({ where: { accountId, archivedAt: null } });
+        requireProject(count < limit, 'project_count_quota_exceeded', 429, { limit, count });
+    }
+    const folders = normalizeFolders(input.folders ?? []);
+    await requireFolderMachines(tx, accountId, folders);
+    const now = new Date();
+    const instructions = input.instructions ?? '';
+    const row = await tx.project.create({ data: {
+        id: randomUUID(), accountId, name: input.name, goal: input.goal ?? null, instructions,
+        instructionsVersion: instructions ? 1 : 0, instructionsUpdatedBy: instructions ? 'user' : null, instructionsUpdatedAt: instructions ? now : null,
+        folders, defaults: normalizeDefaults(input.defaults), requestKey, createdAt: now, updatedAt: now,
+    } });
+    if (instructions) await tx.projectInstructionsRevision.create({ data: { projectId: row.id, version: 1, instructions, updatedBy: 'user', createdAt: now } });
+    if (input.sessionIds?.length) await placeMembers(tx, accountId, row.id, input.sessionIds, 'explicit');
+    return { row, created: true };
 }
 
 export async function getProject(accountId: string, id: string): Promise<ProjectDetailResponse> {
@@ -324,28 +333,106 @@ export async function removeMember(accountId: string, id: string, sessionId: str
 
 // ─── Teams ────────────────────────────────────────────────────────────────
 
+type TeamRow = { id: string; machineId: string; version: number; projectId: string | null; state: { name?: string; archivedAt?: number; creationLaunch?: { directory?: string }; defaults?: { assistant?: string; model?: string; maxParallel?: number }; bots?: { root?: boolean; directory?: string | null }[] } };
+async function loadTeamRow(tx: Tx, accountId: string, teamId: string): Promise<TeamRow> {
+    const teams = await tx.$queryRaw<TeamRow[]>`SELECT "id","machineId","version","projectId","state" FROM "AgentTeam" WHERE "id"=${teamId} AND "accountId"=${accountId}`;
+    requireProject(teams[0], 'team_not_found', 404);
+    return teams[0];
+}
+
 /**
  * `attach-project`: the team's machine must be one of the project's folder
- * machines. Project defaults are snapshotted only into team default fields the
+ * machines. B-726: when it is not, the team's own directory (launch directory,
+ * else the lead's) is added as a folder — the team brings its workplace with
+ * it — and only a team with no known directory (or a full folder list) is
+ * refused. Project defaults are snapshotted only into team default fields the
  * team has not set itself; the team keeps its own afterwards.
  */
 export async function attachTeam(accountId: string, projectId: string, teamId: string): Promise<{ teamId: string; projectId: string }> {
     return run(async tx => {
-        const project = await loadProject(tx, accountId, projectId);
-        const teams = await tx.$queryRaw<{ id: string; machineId: string; version: number; state: { defaults?: { assistant?: string; model?: string; maxParallel?: number } } }[]>`
-            SELECT "id","machineId","version","state" FROM "AgentTeam" WHERE "id"=${teamId} AND "accountId"=${accountId}`;
-        const team = teams[0];
-        requireProject(team, 'team_not_found', 404);
-        requireProject(teamMachineAllowed(readFolders(project.folders), team.machineId), 'team_machine_not_in_project', 400, { machineId: team.machineId });
-        const defaults = snapshotTeamDefaults(team.state?.defaults, readDefaults(project.defaults));
-        if (defaults) {
-            const state = JSON.stringify({ ...team.state, defaults });
-            const updated = await tx.$executeRaw`UPDATE "AgentTeam" SET "projectId"=${projectId}, "state"=${state}::jsonb, "version"="version"+1, "updatedAt"=now() WHERE "id"=${teamId} AND "accountId"=${accountId} AND "version"=${team.version}`;
-            requireProject(updated === 1, 'transaction_conflict', 409);
-        } else {
-            await tx.$executeRaw`UPDATE "AgentTeam" SET "projectId"=${projectId} WHERE "id"=${teamId} AND "accountId"=${accountId}`;
-        }
+        await attachTeamTx(tx, accountId, projectId, teamId);
         return { teamId, projectId };
+    });
+}
+
+async function attachTeamTx(tx: Tx, accountId: string, projectId: string, teamId: string): Promise<void> {
+    const project = await loadProject(tx, accountId, projectId);
+    const team = await loadTeamRow(tx, accountId, teamId);
+    const folders = readFolders(project.folders);
+    if (!teamMachineAllowed(folders, team.machineId)) {
+        const folder = teamFolder(team);
+        requireProject(folder && folders.length < PROJECT_LIMITS.folders, 'team_machine_not_in_project', 400, { machineId: team.machineId });
+        await tx.project.update({ where: { id: projectId }, data: { folders: normalizeFolders([...folders, { ...folder, primary: folders.length === 0 }]), updatedAt: new Date() } });
+    }
+    const defaults = snapshotTeamDefaults(team.state?.defaults, readDefaults(project.defaults));
+    if (defaults) {
+        const state = JSON.stringify({ ...team.state, defaults });
+        const updated = await tx.$executeRaw`UPDATE "AgentTeam" SET "projectId"=${projectId}, "state"=${state}::jsonb, "version"="version"+1, "updatedAt"=now() WHERE "id"=${teamId} AND "accountId"=${accountId} AND "version"=${team.version}`;
+        requireProject(updated === 1, 'transaction_conflict', 409);
+    } else {
+        await tx.$executeRaw`UPDATE "AgentTeam" SET "projectId"=${projectId} WHERE "id"=${teamId} AND "accountId"=${accountId}`;
+    }
+}
+
+/** Where a team works: its launch directory, else its lead's directory. */
+function teamFolder(team: TeamRow): { machineId: string; path: string } | null {
+    const path = team.state?.creationLaunch?.directory ?? team.state?.bots?.find(b => b.root)?.directory ?? null;
+    return path ? { machineId: team.machineId, path } : null;
+}
+
+/**
+ * B-726: binds a team created in this transaction (`createTeam`) to a project
+ * per `choice` (precedence projectId > inheritFromSessionId's project > create).
+ * Projects switched off → the team is simply created without one. A
+ * same-name project is idempotent by the team's id, so a retried create never
+ * makes two.
+ */
+export async function bindNewTeamProjectTx(tx: Tx, accountId: string, teamId: string, choice: TeamProjectChoice): Promise<void> {
+    if (process.env.VH_PROJECTS_ENABLED === 'false') return;
+    let projectId = choice.projectId ?? null;
+    if (!projectId && choice.inheritFromSessionId) {
+        const own = await tx.projectMember.findFirst({ where: { sessionId: choice.inheritFromSessionId, accountId }, select: { projectId: true } });
+        if (own && await tx.project.findFirst({ where: { id: own.projectId, accountId, archivedAt: null }, select: { id: true } })) projectId = own.projectId;
+    }
+    if (!projectId && (choice.create || choice.inheritFromSessionId)) {
+        try {
+            projectId = (await createSameNameProjectTx(tx, accountId, teamId, `team-create:${teamId}`, choice.directory)).id;
+        } catch (error) {
+            // At the project cap the team still starts, just without a project (the count check runs before any write).
+            if (error instanceof ProjectError && error.code === 'project_count_quota_exceeded') return;
+            throw error;
+        }
+    }
+    if (projectId) await attachTeamTx(tx, accountId, projectId, teamId);
+}
+
+async function createSameNameProjectTx(tx: Tx, accountId: string, teamId: string, requestId: string, directory?: string): Promise<ProjectRow> {
+    const team = await loadTeamRow(tx, accountId, teamId);
+    const folder = teamFolder(team) ?? (directory ? { machineId: team.machineId, path: directory } : null);
+    const name = (team.state?.name ?? 'Team').trim().slice(0, PROJECT_LIMITS.nameChars) || 'Team';
+    return (await createProjectTx(tx, accountId, { name, requestId, folders: folder ? [{ ...folder, primary: true }] : [] })).row;
+}
+
+/**
+ * B-726 team-side binding (team settings, old-team one-click): attach to
+ * `projectId`, detach (`projectId: null`), or create a same-name project and
+ * attach (`create`, idempotent by `requestId`).
+ */
+export async function bindTeamProject(accountId: string, teamId: string, bind: TeamProjectBind): Promise<{ teamId: string; projectId: string | null; project: ProjectView | null }> {
+    return run(async tx => {
+        await loadTeamRow(tx, accountId, teamId);
+        let projectId: string | null;
+        if (bind.create) {
+            projectId = (await createSameNameProjectTx(tx, accountId, teamId, `team-bind:${teamId}:${bind.requestId ?? 'default'}`)).id;
+        } else {
+            projectId = bind.projectId ?? null;
+        }
+        if (projectId) await attachTeamTx(tx, accountId, projectId, teamId);
+        else await tx.$executeRaw`UPDATE "AgentTeam" SET "projectId"=NULL WHERE "id"=${teamId} AND "accountId"=${accountId}`;
+        if (!projectId) return { teamId, projectId: null, project: null };
+        const row = await loadProject(tx, accountId, projectId);
+        const attached = await attachedIds(tx, [projectId]);
+        return { teamId, projectId, project: projectView(row, attached.teams.get(projectId) ?? [], attached.automations.get(projectId) ?? []) };
     });
 }
 
@@ -528,7 +615,7 @@ export async function sessionContext(accountId: string, sessionId: string, opts:
         }
         return {
             project: { id: project.id, name: project.name, goal: project.goal, instructions: project.instructions, instructionsVersion: project.instructionsVersion },
-            via: m.via, team: m.teamId ? { id: m.teamId, name: m.teamName ?? m.teamId } : null,
+            via: m.via, team: m.teamId ? { id: m.teamId, name: m.teamName ?? m.teamId, lead: m.teamLead === true } : null,
             decisions, log, sessions: presence.map(presenceView),
             unread: unread.map(u => ({ id: u.id, fromSessionId: u.fromSessionId, body: u.body, createdAt: u.createdAt.getTime() })),
             asOf: now.getTime(), previousReadAt,
