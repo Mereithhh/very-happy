@@ -17,11 +17,12 @@ import { Bot, UsersRound, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
-import { teamLaunchPhase, taskLaunchIssue } from "./teamPresentation";
+import { teamLaunchPhase } from "./teamPresentation";
 import { AdoptTeamForm } from "./AdoptTeamForm";
 import { TeamStartForm } from "./TeamStartForm";
 import { useFirstUseCopy } from "./firstUseCopy";
 import { TeamOptions } from "./TeamOptions";
+import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
 import { useWorkspaceCopy } from "./workspaceCopy";
 import { sync } from "@/sync/sync";
 import {
@@ -29,13 +30,6 @@ import {
   newestTeam,
 } from "./teamView";
 import { useTranslation } from "@/i18n/useTranslation";
-const taskStatus = (): Record<string, string> => ({
-  queued: tr("teams.queued"),
-  running: tr("teams.running"),
-  submitted: tr("teams.submitted"),
-  done: tr("teams.done"),
-  cancelled: tr("teams.cancelled"),
-});
 export function TeamsScreen() {
   const { teamId } = useParams();
   return <TeamsContent key={teamId ?? "list"} />;
@@ -309,31 +303,7 @@ function TeamsContent() {
                 className="teams-task"
                 key={t.id}
               >
-                <div className="teams-row">
-                  <strong>{t.goal}</strong>
-                  <span data-live={t.status === "running"}>
-                    {taskLaunchIssue(team, t) ? first.launchFailed : taskStatus()[t.status]}
-                  </span>
-                </div>
-                {taskLaunchIssue(team, t) && <div className="teams-error" role="alert"><strong>{first.launchFailed}</strong><p>{taskLaunchIssue(team, t)?.error}</p><p>{first.retryHint}</p></div>}
-                {t.parentTaskId && (
-                  <p>
-                    {tr("teams.parent")}：
-                    {team.tasks.find((p) => p.id === t.parentTaskId)?.goal ??
-                      t.parentTaskId}
-                  </p>
-                )}
-                <p>
-                  {tr("teams.assignee")}：
-                  {team.bots.find((b) => b.id === t.assigneeBotId)?.name ??
-                    t.assigneeBotId}{" "}
-                  · {tr("teams.cleanup")}：{t.cleanup === "done" ? c.cleanupDone : t.cleanup === "failed" ? c.cleanupFailed : t.cleanup === "pending" ? c.cleanupPending : c.cleanupNone}
-                </p>
-                <ul>
-                  {t.acceptance.map((a, i) => (
-                    <li key={i}>{a}</li>
-                  ))}
-                </ul>
+                <TeamTaskSummary team={team} task={t} />
                 {t.attempts.find((a) => a.id === t.currentAttemptId)
                   ?.result && (
                   <div className="teams-full-result">
@@ -423,19 +393,7 @@ function TeamsContent() {
                       <button disabled={disabled}>{tr("teams.handoff")}</button>
                     </form>
                   )}
-                {team.messages
-                  .filter((m) => m.taskId === t.id)
-                  .slice(-5)
-                  .map((m) => (
-                    <p key={m.id}>
-                      {m.body}{" "}
-                      <small>
-                        {m.deliveredAt
-                          ? tr("teams.delivered")
-                          : tr("teams.waitingDelivery")}
-                      </small>
-                    </p>
-                  ))}
+                <TeamTaskMessages team={team} task={t} />
               </article>
             </TeamDialog>
           ))}
