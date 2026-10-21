@@ -12,6 +12,7 @@ import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/r
 import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
 import { readReceipt, writeReceipt, type TeamEffectReceipt } from './journal';
 import { prepareTeamWorktree, removeTeamWorktree } from './worktree';
+import { afterStartupFailure, consumeOwnerRetry, ownerRetryPending, spawnGate, startupFailureMessage, TEAM_SPAWN_MAX_ATTEMPTS } from './spawnRetry';
 
 export interface TeamWorkerDeps {
     machineId: string;
@@ -22,6 +23,10 @@ export interface TeamWorkerDeps {
     log: (message: string) => void;
     home?: string;
     serverUrl?: string;
+}
+
+function persistedSpawnMatches(operationId: string) {
+    return Object.entries(readPersistedSessions()).filter(([, entry]) => entry.metadata?.teamOperationId === operationId);
 }
 
 /** A daemon-owned effect runner. Server owns state; the local receipt only fences OS side effects. */
@@ -63,6 +68,14 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
         if (receipt.phase === 'completed') return;
         try {
             if (op.type === 'spawn') {
+                // B-689: the owner's「重试启动」. For an uncertain spawn the owner has confirmed
+                // the old process is gone; a wrapper that DID report for this op still wins.
+                if (ownerRetryPending(op, receipt) && (receipt.phase === 'prepared' || (receipt.phase === 'spawning' && persistedSpawnMatches(op.id).length === 0))) {
+                    receipt = consumeOwnerRetry(op, receipt);
+                    writeReceipt(home, receipt);
+                    deps.log(`Teams operation ${op.id} relaunch requested by owner`);
+                }
+                if (receipt.phase === 'prepared' && spawnGate(receipt, Date.now()) !== 'run') return;
                 if (receipt.phase === 'prepared') {
                     // Retrying a prepared receipt is safe: spawning has not begun. Re-read the same
                     // claim response to recover the credential if this daemon restarted.
@@ -85,6 +98,16 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                     receipt = { ...receipt, ...resource, scopeFile, phase: 'spawning' };
                     writeReceipt(home, receipt); // BEFORE spawn; uncertainty never authorizes a second spawn
                     const spawned = await deps.spawn({ directory: resource.directory, agent: op.assistant === 'pi-acp' ? 'pi' : op.assistant, permissionMode: op.permissionMode === 'bypassPermissions' ? 'bypassPermissions' : 'default', spawnedBy: 'teams', environmentVariables: { VH_TEAM_SCOPE_FILE: scopeFile, VH_TEAM_OPERATION_ID: op.id } });
+                    if (spawned.type === 'error' && spawned.startupExit?.exited) {
+                        // B-689: the wrapper is confirmed gone — a definite failure, not an
+                        // uncertain spawn. Back to `prepared` with a backed-off relaunch.
+                        const now = Date.now();
+                        receipt = afterStartupFailure(receipt, now);
+                        writeReceipt(home, receipt);
+                        await action(op.teamId, `startup-failure-${op.id}-${receipt.retryConsumed ?? 0}-${receipt.spawnFailures}`, { type: 'fail-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, error: startupFailureMessage(spawned.errorMessage, receipt, now).slice(0, 1000) }).catch(() => {});
+                        deps.log(`Teams operation ${op.id} startup failed (${receipt.spawnFailures}/${TEAM_SPAWN_MAX_ATTEMPTS}); ${receipt.retryAt !== undefined ? 'will relaunch' : 'waiting for owner retry'}`);
+                        return;
+                    }
                     if (spawned.type !== 'success') throw new Error(spawned.type === 'error' ? spawned.errorMessage : 'Directory approval required');
                     receipt = { ...receipt, sessionId: spawned.sessionId, phase: 'spawned' };
                     writeReceipt(home, receipt);
@@ -92,7 +115,7 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 if (receipt.phase === 'spawning') {
                     // The wrapper registers metadata + key before spawn completes. A persisted exact
                     // correlation is positive evidence, while absence is NOT evidence of failure.
-                    const matches = Object.entries(readPersistedSessions()).filter(([, entry]) => entry.metadata?.teamOperationId === op.id);
+                    const matches = persistedSpawnMatches(op.id);
                     if (matches.length !== 1) throw new Error('Spawn outcome unknown; reconcile the worker before retrying');
                     receipt = { ...receipt, sessionId: matches[0][0], phase: 'spawned' };
                     writeReceipt(home, receipt);

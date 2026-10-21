@@ -23,6 +23,7 @@ import { Credentials, readSettings } from '@/persistence';
 import { getInitialMachineMetadata } from '@/daemon/machineMetadata';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
+import { createSessionForStartup } from '@/utils/startupSessionCreate';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
@@ -547,7 +548,8 @@ export async function runAcp(opts: {
       agentStateVersion: reconnect.agentStateVersion,
     };
   } else {
-    response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+    // B-689: daemon spawns never run on an offline stub (see startupSessionCreate).
+    response = await createSessionForStartup(() => api.getOrCreateSession({ tag: sessionTag, metadata, state }), { startedBy: opts.startedBy, log: (m) => logger.debug(m) });
   }
   if (response) {
     logAcp('muted', `Happy Session ID: ${response.id}`);
