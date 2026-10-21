@@ -24,7 +24,19 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-668 | **邮箱验证码登录限流改进**：每邮箱每日上限 3→10（保留 10 分钟 3 次 / IP / 全局）；认证类 429 带 `retryAfter` + `Retry-After`，Web 按实际剩余时间提示；纯邮箱账号登录后引导设置密码或绑定 Google；登录页说明 Google 只能登录已绑定账号 | bug/ux | Owner 10-21（同事多端登录被锁 24h） | doing | #625 CI 绿；等 10-21 批次发版与验收结束后单独发 server/Web |
+| B-712 | **CLI publish 的 promote 读 smoke run 有竞态**：run 已显示 completed，windows/node24 那格 job 结论仍是 in_progress/null，被判为失败（0.2.180 发版时撞上）→ 等所有 job 级 conclusion 落定再判，缺格不算通过 | debt | 第二版 CLI 0.2.180 发版 | todo | |
+| B-711 | **蓝绿切流停旧槽后线上约 9s 不可用**（deploy run 39607760413，exit=5 phase=after-old-stop）：Caddy 13:31:05.06 reload，blue 05.83 即退出（隔 0.8s），origin probe 06.8–15.5 连续超时；同窗 green 260 connect / 306 disconnect / 412 auth，重连风暴压住新槽 → 旧槽停止前等连接排空，和/或客户端重连加抖动退避 | bug | 第二版发版 | todo | |
+| B-709 | daemon 对 worktree 准备之外的通用 spawn 失败仍每 5s 重试一次 → 统一有界退避；另：worker 委派子成员时继承父成员 worktree 作为源仓库，语义未写进文档 | debt | B-706 顺带 | todo | |
+| B-705 | `scripts/dev/mutation-check.mjs` 的 `--mutate` 字面量以冒号开头（如 `::not(`）时解析错，报出假的 0/1 caught → 修参数解析并加用例 | debt | B-699 顺带 | todo | |
+| B-704 | 看板卡和侧栏会话预览把团队/跨会话消息的原始头 `[Very Happy team message …]` 当正文显示 → 预览时剥掉信封头 | ux | B-687 顺带 | todo | |
+| B-703 | 团队仓库还没有任何 commit 时 `git worktree add` 失败，Web 只显示「重试」不说原因 → daemon 回报具体原因（空仓库需先提交），Web 显示 | bug | B-688/B-698 顺带 | todo | |
+| B-702 | Gemini 作为 team harness：wire/server/CLI 都要放开，并验证 gemini runner 能用团队 MCP（B-698 目前只列 Claude/Codex/pi） | feat | B-698 顺带 | todo | |
+| B-695 | pi/ACP runner 没有 B-679 的 exitCursor 重放（离线期间发的消息恢复后不送达），也不写休眠戳 → 对齐 Claude/Codex | bug | B-679 顺带 | todo | |
+| B-694 | 机器高负载下 CLI 测试 apiMachine*/runClaude/tmuxIsolation 与 web `hookOrder.test` 稳定超时 → 参照 B-658/B-663 放宽 timeout 或预热 | debt | 第二版门禁 | todo | |
+| B-693 | 约 50 个 Web 文件用 `zh ? 中文 : English` 内联双语，中英以外的语言全回退英文 → 统一改走 i18n key（可加 lint 防回潮） | debt | B-682 顺带 | todo | |
+| B-686 | `SIDEBAR_RECENT_SORT_ENABLED=false`，侧栏排序按钮一直隐藏，相关代码是死路径 → 确认不再启用后清理 | debt | B-676 顺带 | todo | |
+| B-685 | 会话内容搜索首次会遍历机器上全部 agent transcript 建索引（本机 1635 个文件，未按账号过滤），首搜一直「索引中」→ 核实索引范围，多账号共用一台机器时只索引本账号会话（隐私） | bug | B-650 顺带 | todo | |
+| B-684 | Web `track/` 目录是 Expo 时代残留死代码 → 删除，并去掉 hookOrder 静态检查里对它的豁免 | debt | B-678 顺带 | todo | |
 | B-673 | project-metrics.mjs 无数据时零输出且退出码 0 | debt | 10-21 发版 | todo | |
 | B-672 | e2e smoke 未配 secret 时 job 显示 success（实际未跑），应在 job 级判断并显示 skipped | debt | 10-21 发版 | todo | |
 | B-671 | standalone 下 ChangelogNotice 每次刷新可能重复弹出 | bug | B-668 顺带 | todo | |
@@ -37,7 +49,7 @@
 | B-660 | sync/storage.ts → sync/sync.ts 耦合，导入一个组件就拉进整套同步引擎（单文件 import 5–8s） | debt | B-658 根因 | todo | |
 | B-659 | i18n 全量语言表静态加载 → 按需加载（测试 import 慢、产物大） | debt | B-658 根因 | todo | |
 | B-652 | **项目 Phase 2 总项**：项目消息并入 Spaces 信封 v1（服务端受理 + daemon 拉取、两态回执、唤醒预算/链深/乒乓/去重）、沟通档位 quiet/normal/active、跨 worktree/机器改动重叠检测、压缩后重附前缀、项目级合并通知、团队组队/结束沉淀交接、`BoardTask.projectId`、`vh_proj_` token、搜索扩展 pi/Gemini 索引 | feat | Owner 2026-10-21 | todo | spec `specs/2026-10-projects.md` §分期；P1 上线 + 两周数据后启动 |
-| B-365 | **老机 vh-us 退役清单**（东京 VPS，2026-09-07 起只剩冻结的 PostgreSQL 副本 + Caddy 转发/301）：① ≥2026-09-21 确认无回滚需求后销毁；② 销毁前把 `happy.mereith.com` 的 A 记录改到 Cloudflare 橙云 + Redirect Rule（现在的 301 和 `/v1` `/v2` `/v3` `/files` 透传都跑在老机 Caddy 上，机器一停就断）；③ `vh-admin` + `vh-admin-tunnel`（cloudflared）还只在老机上跑、且 unhealthy，迁或删要先弄清它是什么 | ops | 迁移 2026-09-07 | doing | **10-21 Owner 校准：做**；备份三件套（pg_dump/.env/happy-data，sha256 一致、已在本机 PG16 restore 验证）在 mereith 本机 skills/tmp/vh-migrate；AWS 资源 ID 在同目录 aws-state.env；**10-21**：离机备份完成（dev-sg tmp + B2 加密）；#607 vh-sg Caddy 接管 happy.mereith.com，DNS 已切到 52.74.232.28（TTL 600）；**观察 24–72h 后由 Owner 在 ByteVirt 面板销毁 vh-us**（老机 vh-admin-tunnel 勿启动） | **10-21 核**：未完成：happy.mereith.com 仍解析到 vh-us 69.8.128.238（10-21 dig），老机未销毁；剩 DNS 改 CF 重定向 + 处理 vh-admin + 销毁； |
+| B-365 | **老机 vh-us 退役清单**（东京 VPS，2026-09-07 起只剩冻结的 PostgreSQL 副本 + Caddy 转发/301）：① ≥2026-09-21 确认无回滚需求后销毁；② 销毁前把 `happy.mereith.com` 的 A 记录改到 Cloudflare 橙云 + Redirect Rule（现在的 301 和 `/v1` `/v2` `/v3` `/files` 透传都跑在老机 Caddy 上，机器一停就断）；③ `vh-admin` + `vh-admin-tunnel`（cloudflared）还只在老机上跑、且 unhealthy，迁或删要先弄清它是什么 | ops | 迁移 2026-09-07 | doing | **10-21 Owner 校准：做**；备份三件套（pg_dump/.env/happy-data，sha256 一致、已在本机 PG16 restore 验证）在 mereith 本机 skills/tmp/vh-migrate；AWS 资源 ID 在同目录 aws-state.env；**10-21**：离机备份完成（dev-sg tmp + B2 加密）；#607 vh-sg Caddy 接管 happy.mereith.com，DNS 已切到 52.74.232.28（TTL 600）；**观察 24–72h 后由 Owner 在 ByteVirt 面板销毁 vh-us**（老机 vh-admin-tunnel 勿启动）；**10-21 晚**：DNS 已切、证书已续签到 2027-01-19、vh-us 待 Owner 销毁 |
 | B-025 | server 数据保留策略（Session/消息/UsageReport 无定时清理；SimpleCache 无过期字段）+ DB 体积接告警 | debt | 工程走查#9 | todo | **10-21 Owner 校准：暂缓**；**10-21 核**：未做：server 无 Session/消息/UsageReport 定时清理，仅 B-636 #565 手动 prune-accounts 与镜像清理；先只报数跑一周再开删 |
 
 ## 近期完成
@@ -47,7 +59,33 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-669 | e2e smoke 在 ubuntu-latest（26.04）上 Playwright 装不了 chromium → 固定 ubuntu-24.04 | debt | 10-21 发版 | done | **10-21 发版：server/Web dc152ac8，CLI 0.2.179**：#626 |
+| B-710 | 「不分组」视图展开团队时不显示「N 个已停用」折叠行（displayRows 过滤掉了 teamInactiveFold） | bug | B-708 顺带 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#659 |
+| B-708 | **团队成员都归档后侧栏把同一团队重复渲染多次**，每行带空的「无工作目录 0」分组头；按标签分组时被「暂无会话」整个隐藏 | bug | Release2 demo 发现（发版阻塞） | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#657 |
+| B-707 | `very-happy send --resume`（/resume-session、session_send resume）未传 mode 时按 default 启动 → 沿用已发布的权限模式 | bug | B-696 顺带 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#656 |
+| B-706 | 复用 bot 委派时 daemon 沿用已被删除的旧 worktree 目录，spawn 失败、任务卡 queued → 从源仓库新建，前置检查失败有退避 | bug | 第二版团队复用 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#654（CLI + server） |
+| B-700 | 空状态主区域加 ASCII 海浪动画 + Very Happy 笑脸（页面隐藏暂停、减少动态效果时静止；ascii-sharks 无 license，只借鉴思路） | ux | Owner 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#652 |
+| B-699 | 去掉输入框聚焦时的彩色外框（联系人搜索等），聚焦改为边框加深；按钮/链接只在键盘 focus-visible 显示；design lint `field-focus-ring` | ux | Owner 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#651 |
+| B-698 | 团队设置/新建团队：成员 harness 只列团队电脑能跑的，默认模型改下拉（跟随默认 + B-688 自定义模型，标出已失效的保存值） | feat | Owner 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#650 |
+| B-697 | `?task=` 深链打开任务对话框时盖住未读更新说明卡，body pointer-events:none 导致整页点不动 → overlayQueue 排队，用户对话框优先 | bug | 第二版更新通知预检 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#649 |
+| B-696 | 自动化唤醒休眠会话（daemon resumeSession）不传 permissionMode，回到「默认」→ 沿用已发布模式 | bug | B-683 顺带 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#653（CLI） |
+| B-692 | **团队成员生命周期**：完成/取消且回收完的成员转「已停用」不计成员数；新任务复用同形 bot（保留曾用名）；委派给回收中的 bot 排队而非 409 | feat | Owner 10-21（21 个成员实际活跃几个） | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#646（wire `teamBotActivity`）+ #647（server，经 #644 合入 main）；spec `specs/2026-10-team-member-lifecycle.md` |
+| B-691 | 团队设置页堆积 failed stop（Worktree branch changed / worktree 已不存在）→ 已推送或合入且无未提交文件的 worktree 自动清理、已删视为已清理、「重试清理 / 标记为已处理」 | bug | Owner 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#644（CLI，teamRetryVersion=2）+ #645（land-pr 不再删本地分支/worktree）；spec `specs/2026-10-team-worktree-cleanup.md` |
+| B-690 | 团队里已停用的成员在侧栏和团队页默认折叠「已停用 N 个」、不计成员数（取代 B-674 只看归档的口径） | ux | Owner 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#642 + #648（改用 wire `teamBotActivity` 并集口径） |
+| B-689 | **团队 worker 启动失败后卡住**：原因只写到被丢弃的 stderr、daemon 误报 webhook timeout、无自动重试/重试入口 → 回报真实原因、有界退避重启、任务详情「重试启动」 | bug | Dev-I1 启动失败 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#640（CLI，wire 可选字段）；spec `specs/2026-10-team-spawn-failure-recovery.md` |
+| B-688 | **按 harness 自定义模型 / provider**（base URL、key 或 env、默认模型）：设置页 + 模型选择器「自定义…」，写回 Claude/Codex/Gemini/pi 自己的配置，diff 预览、一键回滚，key 不经服务器明文 | feat | Owner 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#639（spec + CLI RPC）+ #641（Web）+ #643（测试假密钥运行时生成）；spec `specs/2026-10-custom-models.md` |
+| B-687 | 团队消息卡、看板卡、任务详情、团队计划、自动化「需要我决策」原因里的多行文本不换行（CSS，数据层换行符都在） | bug | Owner 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#637 |
+| B-683 | 恢复/重启离线会话后权限模式从「自动执行」变回「默认」（普通恢复只在休眠唤醒时传 permissionMode） | bug | QA 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#631（Web） |
+| B-682 | 中文界面残留英文（弹窗 Cancel/OK、主题按钮 aria-label 等）；删除项目确认改红色「删除项目」 | ux | QA 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#638 |
+| B-681 | PWA 安装提示点「暂不」后每次刷新/切路由都再弹 → 按设备 7 天不再提示 | bug | QA 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#636 |
+| B-680 | 从没跑过一轮的会话被 stop 后，网页没有恢复入口，发消息也无提示 → 可恢复，发消息先自动恢复再送达 | bug | QA 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#635（CLI） |
+| B-679 | 会话离线时在输入框发的消息，点「恢复」后没送进 wrapper → 离线退出记 exitCursor，恢复后按序重放（claude + codex；pi/ACP 见 B-695） | bug | QA 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#634（CLI，metadata 新增 exitCursor） |
+| B-678 | 直接打开或刷新 `/machine/<id>` 显示「页面出错了」（React #310，MachineScreen 的 useState 在 early return 之后；09-02 B-276 引入）+ 全仓 rules-of-hooks 静态检查 | bug | QA 10-21（线上缺陷） | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#629 |
+| B-677 | 更新通知改「亮点 + 截图」、其余折叠；重写 oct21/oct21a；官网「最新更新」区块；键盘文档补光标键 | ux | Owner 10-21（更新文档难读、无截图） | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#632；spec `specs/2026-10-whats-new.md`；第二版大版本通知 / `/whats-new` 长页见 #658 |
+| B-676 | 侧栏顶部按钮太多、「新建项目」不明显 → 搜索 · ⋯ · 收起 + 「新建会话」（一键，▾ 其他类型）/「新建项目」两行，次要入口收进 ⋯ | ux | Owner 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#633；spec `specs/2026-10-sidebar-header.md` |
+| B-675 | 侧栏恢复按标签分组（项目 / 标签 / 不分组，默认项目），标签组头一键转项目 | ux | Owner 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#630 |
+| B-674 | 侧栏团队里已归档成员默认收进「已归档 N 个」一行（按设备记住展开状态；口径后由 B-690 统一为「已停用」） | ux | Owner 10-21 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#628 |
+| B-668 | **邮箱验证码登录限流改进**：每邮箱每日上限 3→10（保留 10 分钟 3 次 / IP / 全局）；认证类 429 带 `retryAfter` + `Retry-After`，Web 按实际剩余时间提示；纯邮箱账号登录后引导设置密码或绑定 Google；登录页说明 Google 只能登录已绑定账号 | bug/ux | Owner 10-21（同事多端登录被锁 24h） | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#625（10 次/日、429 带 retryAfter、纯邮箱账号引导绑定）|
+| B-669 | e2e smoke 在 ubuntu-latest（26.04）上 Playwright 装不了 chromium → 固定 ubuntu-24.04 | debt | 10-21 发版 | done | #626（CI 改动，合入在 dc152ac8 之后，随 f2eb1836 生效） |
 | B-662 | claudeRemote `pullingNext` 在 `.finally` 复位，与下一条 result 竞态 | bug | B-634 顺带 | done | **10-21 发版：server/Web dc152ac8，CLI 0.2.179**：#620 |
 | B-661 | `scripts/ops/resource-budget.mjs` 默认值过时（vh-us / 本地 PG）→ vh-sg + RDS，只读事务 | debt | B-546 顺带 | done | **10-21 发版：server/Web dc152ac8，CLI 0.2.179**：#621 |
 | B-658 | web vitest 高负载下 beforeAll 动态 import 超 10s hookTimeout | debt | 团队开发 | done | **10-21 发版：server/Web dc152ac8，CLI 0.2.179**：#611 |
