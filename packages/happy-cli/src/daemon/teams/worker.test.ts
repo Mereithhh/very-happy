@@ -247,6 +247,33 @@ describe('daemon team effect recovery', () => {
         expect(mocks.post.mock.calls.some(c => c[1].action?.type === 'complete-operation')).toBe(false);
         expect(mocks.post.mock.calls.some(c => c[1].action?.type === 'fail-operation')).toBe(true);
     });
+    // B-691: retained cleanups were re-run every 5 s (≈2000 stop/archive/git passes each).
+    it('re-checks a retained cleanup after 5 minutes, or at once on the owner retry', async () => {
+        let now = 5_000_000;
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+        try {
+            const spawnOperation = { ...op(), status: 'completed' as const, sessionId: 'session1' };
+            const cleanup = { ...op(), id: 'stop1', type: 'stop' as const, sessionId: 'session1' };
+            const state = team([spawnOperation, cleanup]);
+            const serve = (operation: TeamOperation) => { setup(operation); mocks.get.mockImplementation(async (path: string) => ({ data: path.endsWith('/operations') ? { operations: [operation], teams: [state] } : { team: state } })); };
+            serve(cleanup);
+            writeReceipt(home, { operationId: 'op1', teamId: 'team1', claimId: 'claim0', phase: 'completed', directory: '/isolated', repository: '/repo', branch: 'codex/team-op1' });
+            mocks.remove.mockRejectedValueOnce(new Error('Unmerged work retained on team/B-1 at /isolated: 2 commits are not pushed or merged; push or merge, then retry cleanup'));
+            const worker = start(); await settled(worker);
+            expect(mocks.remove).toHaveBeenCalledTimes(1);
+            expect(readReceipt(home, 'stop1')?.retryAt).toBe(now + 300_000);
+            const failure = mocks.post.mock.calls.find(c => c[1].action?.type === 'fail-operation')!;
+            expect(failure[1].action.error).toContain('push or merge, then retry cleanup');
+            expect(failure[1].requestId).toMatch(/^failure-stop1-prepared-[0-9a-f]{12}$/);
+            now += 60_000; await worker.tick();
+            expect(mocks.remove).toHaveBeenCalledTimes(1);
+            expect(mocks.archive).toHaveBeenCalledTimes(1); // no stop/archive churn while waiting
+            serve({ ...cleanup, status: 'failed', claimId: 'claim1', retryRequestedAt: 9 });
+            await worker.tick();
+            expect(mocks.remove).toHaveBeenCalledTimes(2);
+            expect(readReceipt(home, 'stop1')).toMatchObject({ phase: 'completed', retryConsumed: 9 });
+        } finally { clock.mockRestore(); }
+    });
     it('advances schedules in the existing poll and refuses a subsequently cancelled message', async () => {
         setup(op());
         const state = team([]);

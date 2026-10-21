@@ -281,3 +281,8 @@
    generic .teams-screen form grid, which it overrides). */
 .teams-screen .teams-launch-retry { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-2) 0 0; color: var(--text); }
 .teams-screen .teams-launch-retry button { display: inline-flex; align-items: center; gap: var(--sp-2); }
+
+/* B-691: retry cleanup / mark as handled row, and the folded handled entries. */
+.teams-screen .teams-op-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.teams-screen .teams-op-actions button { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.teams-screen .teams-resolved > summary { color: var(--text-dim); }

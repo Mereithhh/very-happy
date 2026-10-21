@@ -65,3 +65,15 @@ export function machineSupportsTeamRetry(metadata: unknown, version = 1): boolea
   const value = (metadata as { teamRetryVersion?: unknown } | null)?.teamRetryVersion;
   return typeof value === "number" && value >= version;
 }
+
+/** B-691: a retained cleanup the owner can ask the computer to re-check now. */
+export function canRetryCleanup(operation: TeamState["operations"][number]): boolean {
+  return operation.type === "stop" && operation.status === "failed" && !!operation.claimId && !operation.manualResolution;
+}
+
+/** B-691: what still needs the owner, and what was already handled (shown folded). */
+export function attentionOperations(team: TeamState): { open: TeamState["operations"]; resolved: TeamState["operations"] } {
+  const open = team.operations.filter((operation) => !operation.manualResolution && ["failed", "unknown", "claimed"].includes(operation.status));
+  const resolved = team.operations.filter((operation) => !!operation.manualResolution);
+  return { open, resolved };
+}

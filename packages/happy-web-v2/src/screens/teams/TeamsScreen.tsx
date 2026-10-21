@@ -13,7 +13,7 @@ import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { TeamSchedules } from "./TeamSchedules";
 import { t as tr } from "@/text";
-import { Bot, UsersRound, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus, RefreshCw, Archive } from "lucide-react";
+import { Bot, UsersRound, ArrowLeft, Settings2, Clock3, LayoutDashboard, X, Plus, RefreshCw, Archive, Check } from "lucide-react";
 import { Markdown } from "@/screens/session/Markdown";
 import { TeamWorkspace, TeamListCard } from "./TeamWorkspace";
 import { refreshTeamNavigation } from "@/screens/sessions/useTeamNavigation";
@@ -27,6 +27,8 @@ import { useWorkspaceCopy } from "./workspaceCopy";
 import { sync } from "@/sync/sync";
 import {
   canReconcileOperation,
+  attentionOperations,
+  canRetryCleanup,
   canRetryLaunch,
   machineSupportsTeamRetry,
   newestTeam,
@@ -136,6 +138,7 @@ function TeamsContent() {
     (machine.metadata as { teamLaunchVersion?: number } | null)?.teamLaunchVersion ===
       1 && isMachineOnline(machine);
   const launchPhase = team ? teamLaunchPhase(team) : "empty";
+  const attention = team ? attentionOperations(team) : { open: [], resolved: [] };
   const executionMachine = machines.find(machine => machine.id === team?.machineId);
   const machineOnline = !!executionMachine && isMachineOnline(executionMachine);
   const dispatchReady =
@@ -400,24 +403,34 @@ function TeamsContent() {
             </TeamDialog>
           ))}
           {view === "schedules" && <TeamSchedules team={team} disabled={disabled} act={act} />}
-          {team.operations.some(o => ["failed", "unknown", "claimed"].includes(o.status) || o.manualResolution) && <section>
-            <h2>{c.attention}</h2>
-            {team.operations
-              .filter(
-                (operation) =>
-                  ["failed", "unknown", "claimed"].includes(operation.status) ||
-                  operation.manualResolution,
-              )
-              .map((operation) => (
+          {(attention.open.length > 0 || attention.resolved.length > 0) && <section>
+            {attention.open.length > 0 && <h2>{c.attention}</h2>}
+            {attention.open.map((operation) => (
                 <OperationResolution
                   key={`${operation.id}:${operation.claimId ?? "unclaimed"}`}
                   team={team}
                   operation={operation}
                   retrySupported={machineSupportsTeamRetry(executionMachine?.metadata)}
+                  cleanupRetrySupported={machineSupportsTeamRetry(executionMachine?.metadata, 2)}
                   disabled={busy || pending !== null || unavailable}
                   act={act}
                 />
               ))}
+            {/* B-691: handled entries stay readable but stop crowding the page. */}
+            {attention.resolved.length > 0 && <details className="teams-resolved">
+              <summary>{c.resolvedCount(attention.resolved.length)}</summary>
+              {attention.resolved.map((operation) => (
+                <OperationResolution
+                  key={`${operation.id}:${operation.claimId ?? "unclaimed"}`}
+                  team={team}
+                  operation={operation}
+                  retrySupported={false}
+                  cleanupRetrySupported={false}
+                  disabled
+                  act={act}
+                />
+              ))}
+            </details>}
           </section>}
           {view === "settings" && team.archivedAt === undefined && (
             <section>
@@ -493,18 +506,24 @@ function OperationResolution({
   team,
   operation,
   retrySupported,
+  cleanupRetrySupported,
   disabled,
   act,
 }: {
   team: TeamState;
   operation: TeamState["operations"][number];
   retrySupported: boolean;
+  cleanupRetrySupported: boolean;
   disabled: boolean;
   act: (action: TeamAction) => Promise<void>;
 }) {
+  const c = useWorkspaceCopy();
+  const first = useFirstUseCopy();
   const [confirmed, setConfirmed] = useState(false);
   const [note, setNote] = useState("");
+  const [reconciling, setReconciling] = useState(false);
   const eligible = canReconcileOperation(team, operation);
+  const cleanupRetry = canRetryCleanup(operation);
   return (
     <article className="teams-task">
       <p>
@@ -536,7 +555,32 @@ function OperationResolution({
             {operation.error ?? tr("teams.operationPending")}
           </p>
           {eligible ? (
-            <form
+            <>
+            {operation.type === "stop" && operation.status === "failed" && <p>{c.cleanupHint}</p>}
+            {cleanupRetry && !cleanupRetrySupported && <p>{c.cleanupUpgrade}</p>}
+            {/* B-691: the two ways out of a retained cleanup, side by side. */}
+            <div className="teams-op-actions">
+              {cleanupRetry && cleanupRetrySupported && (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => { if (operation.claimId) void act({ type: "retry-operation", operationId: operation.id, claimId: operation.claimId }); }}
+                >
+                  <RefreshCw size={16} aria-hidden />
+                  {c.retryCleanup}
+                </button>
+              )}
+              {!reconciling && (
+                <button type="button" disabled={disabled} onClick={() => setReconciling(true)}>
+                  <Check size={16} aria-hidden />
+                  {c.markHandled}
+                </button>
+              )}
+              {operation.retryRequestedAt !== undefined && (
+                <small role="status">{first.retryRequested} · {new Date(operation.retryRequestedAt).toLocaleString()}</small>
+              )}
+            </div>
+            {reconciling && <form
               onSubmit={(event) => {
                 event.preventDefault();
                 if (confirmed && note.trim() && operation.claimId)
@@ -569,7 +613,8 @@ function OperationResolution({
               <button disabled={disabled || !confirmed || !note.trim()}>
                 {tr("teams.reconcile")}
               </button>
-            </form>
+            </form>}
+            </>
           ) : canRetryLaunch(team, operation) ? (
             <LaunchIssue team={team} operation={operation} retrySupported={retrySupported} disabled={disabled} act={act} />
           ) : (
