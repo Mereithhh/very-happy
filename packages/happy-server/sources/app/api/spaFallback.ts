@@ -17,6 +17,13 @@ export function spaFallback(staticDir: string, injectScript: string | null, bran
         const indexPath = path.join(staticDir, 'index.html');
         if (!fs.existsSync(indexPath)) return reply.code(404).send({ error: 'Not found' });
         const html = fs.readFileSync(indexPath, 'utf8');
+        // B-701: a share-link page is never indexed, cached or leaked via Referer.
+        if (/^\/s(?:\/|$)/.test(pathname)) {
+            reply.header('x-robots-tag', 'noindex, nofollow').header('referrer-policy', 'no-referrer');
+            return reply.header('cache-control', 'no-store').type('text/html').send(
+                transformIndexHtml(html, injectScript, brand, requestOrigin(request)),
+            );
+        }
         return reply.header('cache-control', 'no-cache').type('text/html').send(
             transformIndexHtml(html, injectScript, brand, requestOrigin(request)),
         );

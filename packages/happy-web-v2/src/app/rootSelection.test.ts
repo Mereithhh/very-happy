@@ -40,4 +40,13 @@ describe('shouldUsePublicRoot', () => {
       expect(shouldUsePublicRoot(path, true)).toBe(false);
     },
   );
+
+  it('B-701: share links always open the anonymous viewer, signed in or not, landing or not', () => {
+    for (const creds of [false, true]) for (const landing of [false, true]) {
+      expect(shouldUsePublicRoot('/s/cmabc123', creds, landing)).toBe(true);
+    }
+    expect(shouldUsePublicRoot('/s', true)).toBe(false);
+    expect(shouldUsePublicRoot('/s/a/b', true)).toBe(false);
+    expect(shouldUsePublicRoot('/sessions', true)).toBe(false);
+  });
 });

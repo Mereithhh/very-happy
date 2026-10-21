@@ -25,4 +25,22 @@ describe('SPA fallback', () => {
       expect((await app.inject({ method: 'POST', url: '/session/a' })).statusCode).toBe(404);
     } finally { await app.close(); fs.rmSync(dir, { recursive: true, force: true }); }
   });
+
+  it('B-701: share-link pages are noindex, no-referrer, no-store; other routes are not', async () => {
+    const app = Fastify();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vh-spa-test-'));
+    fs.writeFileSync(path.join(dir, 'index.html'), '<html><head></head><body>shell</body></html>');
+    app.setNotFoundHandler(spaFallback(dir, null));
+    try {
+      const share = await app.inject({ url: '/s/cmlink123' });
+      expect(share.statusCode).toBe(200);
+      expect(share.headers['x-robots-tag']).toBe('noindex, nofollow');
+      expect(share.headers['referrer-policy']).toBe('no-referrer');
+      expect(share.headers['cache-control']).toBe('no-store');
+      expect(share.body).toContain('shell');
+      const other = await app.inject({ url: '/sessions' });
+      expect(other.headers['x-robots-tag']).toBeUndefined();
+      expect(other.headers['cache-control']).toBe('no-cache');
+    } finally { await app.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+  });
 });

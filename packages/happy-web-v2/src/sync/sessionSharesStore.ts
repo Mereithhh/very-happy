@@ -11,6 +11,13 @@ import { useEffect } from 'react';
 import {
     acceptInvite,
     createSessionGrant,
+    createShareLink,
+    listShareLinks,
+    revokeShareLink,
+    rotateShareLink,
+    updateSessionGrant,
+    updateShareLink,
+    type CreatedShareLink,
     declineInvite,
     listPendingInvites,
     listSessionGrants,
@@ -18,7 +25,7 @@ import {
     updateSessionGrantRole,
     type ShareTarget,
 } from './apiSessionShares';
-import type { SessionGrantView, SessionShareRole, SharedSessionInvite } from './sessionShareTypes';
+import type { SessionGrantView, SessionShareRole, SharedSessionInvite, ShareExpiryDays, ShareLinkScope, ShareLinkView } from './sessionShareTypes';
 
 export interface SessionSharesState {
     invites: SharedSessionInvite[];
@@ -26,8 +33,16 @@ export interface SessionSharesState {
     grantsBySession: Record<string, SessionGrantView[]>;
     refreshInvites: () => Promise<void>;
     refreshGrants: (sessionId: string) => Promise<void>;
-    share: (sessionId: string, who: ShareTarget, role: SessionShareRole) => Promise<SessionGrantView>;
+    share: (sessionId: string, who: ShareTarget, role: SessionShareRole, expiresInDays?: ShareExpiryDays) => Promise<SessionGrantView>;
     setRole: (sessionId: string, accountId: string, role: SessionShareRole) => Promise<void>;
+    /** B-701 */
+    setExpiry: (sessionId: string, accountId: string, expiresInDays: ShareExpiryDays) => Promise<void>;
+    linksBySession: Record<string, ShareLinkView[]>;
+    refreshLinks: (sessionId: string) => Promise<void>;
+    createLink: (sessionId: string, scope: ShareLinkScope, expiresInDays: ShareExpiryDays) => Promise<CreatedShareLink>;
+    updateLink: (sessionId: string, linkId: string, change: { snapshotToNow?: true; expiresInDays?: ShareExpiryDays }) => Promise<void>;
+    rotateLink: (sessionId: string, linkId: string) => Promise<CreatedShareLink>;
+    revokeLink: (sessionId: string, linkId: string) => Promise<void>;
     revoke: (sessionId: string, accountId: string) => Promise<void>;
     accept: (grantId: string) => Promise<SharedSessionInvite | null>;
     decline: (grantId: string) => Promise<void>;
@@ -45,7 +60,14 @@ function upsertGrant(list: SessionGrantView[], next: SessionGrantView): SessionG
     const copy = list.slice(); copy[i] = next; return copy;
 }
 
+function upsertLink(list: ShareLinkView[], next: ShareLinkView): ShareLinkView[] {
+    const i = list.findIndex((l) => l.id === next.id);
+    if (i === -1) return [next, ...list];
+    const copy = list.slice(); copy[i] = next; return copy;
+}
+
 export const useSessionShares = create<SessionSharesState>((set, get) => ({
+    linksBySession: {},
     invites: [],
     invitesLoaded: false,
     grantsBySession: {},
@@ -57,14 +79,40 @@ export const useSessionShares = create<SessionSharesState>((set, get) => ({
         const grants = await listSessionGrants(sessionId);
         set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: grants } }));
     },
-    share: async (sessionId, who, role) => {
-        const grant = await createSessionGrant(sessionId, who, role);
+    share: async (sessionId, who, role, expiresInDays) => {
+        const grant = await createSessionGrant(sessionId, who, role, expiresInDays);
         set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: upsertGrant(s.grantsBySession[sessionId] ?? [], grant) } }));
         return grant;
     },
     setRole: async (sessionId, accountId, role) => {
         const grant = await updateSessionGrantRole(sessionId, accountId, role);
         set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: upsertGrant(s.grantsBySession[sessionId] ?? [], grant) } }));
+    },
+    setExpiry: async (sessionId, accountId, expiresInDays) => {
+        const grant = await updateSessionGrant(sessionId, accountId, { expiresInDays });
+        set((s) => ({ grantsBySession: { ...s.grantsBySession, [sessionId]: upsertGrant(s.grantsBySession[sessionId] ?? [], grant) } }));
+    },
+    refreshLinks: async (sessionId) => {
+        const links = await listShareLinks(sessionId);
+        set((s) => ({ linksBySession: { ...s.linksBySession, [sessionId]: links } }));
+    },
+    createLink: async (sessionId, scope, expiresInDays) => {
+        const created = await createShareLink(sessionId, scope, expiresInDays);
+        set((s) => ({ linksBySession: { ...s.linksBySession, [sessionId]: upsertLink(s.linksBySession[sessionId] ?? [], created.link) } }));
+        return created;
+    },
+    updateLink: async (sessionId, linkId, change) => {
+        const link = await updateShareLink(sessionId, linkId, change);
+        set((s) => ({ linksBySession: { ...s.linksBySession, [sessionId]: upsertLink(s.linksBySession[sessionId] ?? [], link) } }));
+    },
+    rotateLink: async (sessionId, linkId) => {
+        const created = await rotateShareLink(sessionId, linkId);
+        await get().refreshLinks(sessionId);
+        return created;
+    },
+    revokeLink: async (sessionId, linkId) => {
+        await revokeShareLink(sessionId, linkId);
+        await get().refreshLinks(sessionId);
     },
     revoke: async (sessionId, accountId) => {
         await revokeSessionGrant(sessionId, accountId);
