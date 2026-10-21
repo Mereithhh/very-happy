@@ -5,13 +5,12 @@
  *         POST …/:linkId/rotate, GET /v1/share-links/:linkId/accesses,
  *         GET /v1/shares/outgoing (settings "Shared" page)
  * Public: GET /v1/public/share-links/:linkId (+ /messages) — no account; the
- *         secret from the URL fragment arrives in `x-share-secret`. A logged-in
- *         browser may add its normal Bearer token so the owner sees who opened it.
+ *         secret from the URL fragment arrives in `x-share-secret`. Opens are
+ *         anonymous (salted ipHash + bot flag); no Authorization is read here.
  */
 import { z } from 'zod';
 import type { FastifyReply } from 'fastify';
 import type { Fastify } from '../types';
-import { auth } from '@/app/auth/auth';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
 import { clientIp, clientRateLimitKey } from '../clientIp';
 import { isAccountResourceLimitError } from '../resourceLimits';
@@ -110,22 +109,25 @@ export function sessionShareLinkRoutes(app: Fastify) {
         }
     }
 
-    async function viewerAccountId(request: any): Promise<string | null> {
-        const header = request.headers.authorization;
-        if (typeof header !== 'string' || !header.startsWith('Bearer ')) return null;
-        try { return (await auth.verifyToken(header.substring(7)))?.userId ?? null; } catch { return null; }
+    /** Every successful public read is an "open" (deduped per viewer per 10 min in recordShareLinkAccess). */
+    async function recordOpen(request: any, link: Awaited<ReturnType<typeof resolvePublicLink>>) {
+        const userAgent = typeof request.headers['user-agent'] === 'string' ? request.headers['user-agent'] : null;
+        await recordShareLinkAccess(link, { ip: clientIp(request), userAgent });
     }
 
     app.get('/v1/public/share-links/:linkId', { schema: { params: publicParams } }, async (request, reply) =>
         withPublicLink(request, reply, async (link) => {
             const info = await publicLinkInfo(link);
-            const userAgent = typeof request.headers['user-agent'] === 'string' ? request.headers['user-agent'] : null;
-            await recordShareLinkAccess(link, { ip: clientIp(request), userAgent, accountId: await viewerAccountId(request) });
+            await recordOpen(request, link);
             return info;
         }));
 
     app.get('/v1/public/share-links/:linkId/messages', {
         schema: { params: publicParams, querystring: z.object({ after_seq: z.coerce.number().int().min(0).default(0), limit: z.coerce.number().int().min(1).max(200).default(100) }) },
     }, async (request, reply) =>
-        withPublicLink(request, reply, async (link) => publicLinkMessages(link, request.query.after_seq, request.query.limit)));
+        withPublicLink(request, reply, async (link) => {
+            const page = await publicLinkMessages(link, request.query.after_seq, request.query.limit);
+            await recordOpen(request, link);
+            return page;
+        }));
 }

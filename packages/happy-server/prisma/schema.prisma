@@ -352,18 +352,18 @@ model SessionShareLink {
     @@index([createdByAccountId])
 }
 
-/// B-701 "who opened this link": one row per viewer (ipHash + UA) per 10 minutes.
+/// B-701 link opens: one row per viewer per 10 minutes, purged after 90 days.
 model SessionShareLinkAccess {
     id              String           @id @default(cuid())
     linkId          String
     link            SessionShareLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
     at              DateTime         @default(now())
-    viewerAccountId String?
+    /// Anonymous by design: a salted IP hash (dedupe only) and a link-preview-bot flag.
     ipHash          Bytes
-    userAgent       String?
     bot             Boolean          @default(false)
 
     @@index([linkId, at])
+    @@index([at])
 }
 
 /// B-509 server-side prompt queue: prompts queued from a client while the

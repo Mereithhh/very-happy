@@ -20,9 +20,10 @@ export function spaFallback(staticDir: string, injectScript: string | null, bran
         // B-701: a share-link page is never indexed, cached or leaked via Referer.
         if (/^\/s(?:\/|$)/.test(pathname)) {
             reply.header('x-robots-tag', 'noindex, nofollow').header('referrer-policy', 'no-referrer');
-            return reply.header('cache-control', 'no-store').type('text/html').send(
-                transformIndexHtml(html, injectScript, brand, requestOrigin(request)),
-            );
+            // The meta survives where headers do not (a cached navigation response).
+            const page = transformIndexHtml(html, injectScript, brand, requestOrigin(request))
+                .replace(/<head([^>]*)>/i, '<head$1><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">');
+            return reply.header('cache-control', 'no-store').type('text/html').send(page);
         }
         return reply.header('cache-control', 'no-cache').type('text/html').send(
             transformIndexHtml(html, injectScript, brand, requestOrigin(request)),

@@ -38,9 +38,12 @@ describe('SPA fallback', () => {
       expect(share.headers['referrer-policy']).toBe('no-referrer');
       expect(share.headers['cache-control']).toBe('no-store');
       expect(share.body).toContain('shell');
+      expect(share.body).toContain('<meta name="robots" content="noindex, nofollow">');
+      expect(share.body).toContain('<meta name="referrer" content="no-referrer">');
       const other = await app.inject({ url: '/sessions' });
       expect(other.headers['x-robots-tag']).toBeUndefined();
       expect(other.headers['cache-control']).toBe('no-cache');
+      expect(other.body).not.toContain('noindex');
     } finally { await app.close(); fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });

@@ -15,6 +15,7 @@ import { ActivityMessages } from '@/screens/session/ActivityMessages';
 import { ReadOnlyTranscriptContext } from '@/screens/session/readOnlyTranscript';
 import { useTranslation } from '@/i18n/useTranslation';
 import { mergeRecords, messagesFromRecords, phaseForStatus, pollFailureClears, pollIntervalMs, secretFromHash, type SharedLinkPhase, type SharedLinkRecord } from './sharedLink';
+import { ensureShareLinkMeta } from './sharedLink';
 import '@/screens/session/chatlist.css';
 import './sharedLink.css';
 
@@ -22,19 +23,9 @@ class LinkHttpError extends Error {
     constructor(readonly status: number) { super(`http_${status}`); }
 }
 
-function viewerBearer(): string | null {
-    // A signed-in browser lets the owner see "alice opened it"; the page never requires it.
-    try {
-        const raw = localStorage.getItem('auth_credentials');
-        const token = raw ? (JSON.parse(raw) as { token?: unknown }).token : null;
-        return typeof token === 'string' && token ? token : null;
-    } catch { return null; }
-}
-
 async function fetchLink<T>(path: string, secret: string, parse: (v: unknown) => T): Promise<T> {
+    // Anonymous by design: never send this browser's Very Happy credentials (Lead security review).
     const headers: Record<string, string> = { 'x-share-secret': secret };
-    const bearer = viewerBearer();
-    if (bearer) headers.authorization = `Bearer ${bearer}`;
     const response = await fetch(`${getServerUrl().replace(/\/$/, '')}${path}`, { headers, cache: 'no-store', referrerPolicy: 'no-referrer', credentials: 'omit' });
     if (!response.ok) throw new LinkHttpError(response.status);
     return parse(await response.json());
@@ -60,6 +51,9 @@ export function SharedLinkScreen() {
     const [records, setRecords] = useState<SharedLinkRecord[]>([]);
     const [attempt, setAttempt] = useState(0);
     const lastSeq = useRef(0);
+
+    // Belt and braces for noindex / no-referrer when the document did not come with our headers.
+    useEffect(() => ensureShareLinkMeta(document), []);
 
     // Any failure after load (410 on a poll) wipes what was shown: a revoked link must not leave content behind.
     const fail = useCallback((error: unknown) => {

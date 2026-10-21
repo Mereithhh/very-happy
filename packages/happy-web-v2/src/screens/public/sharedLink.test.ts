@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { pollFailureClears, mergeRecords, messagesFromRecords, phaseForStatus, pollIntervalMs, secretFromHash } from './sharedLink';
+import { readFileSync } from 'node:fs';
+import { ensureShareLinkMeta, pollFailureClears, mergeRecords, messagesFromRecords, phaseForStatus, pollIntervalMs, secretFromHash } from './sharedLink';
 
 describe('B-701 share-link viewer helpers', () => {
     it('reads the secret from the fragment and rejects junk', () => {
@@ -46,5 +47,27 @@ describe('B-701 share-link viewer helpers', () => {
         const texts = messages.map((m) => ('text' in m ? m.text : null));
         expect(texts).toContain('hello');
         expect(texts).toContain('hi there');
+    });
+
+    it('adds noindex / no-referrer metas once', () => {
+        const metas: Array<{ name: string; content: string }> = [];
+        const doc = {
+            createElement: () => ({ name: '', content: '' }),
+            head: {
+                querySelector: (sel: string) => metas.find((m) => sel.includes(`"${m.name}"`)) ?? null,
+                prepend: (m: { name: string; content: string }) => { metas.unshift(m); },
+            },
+        } as unknown as Document;
+        ensureShareLinkMeta(doc);
+        ensureShareLinkMeta(doc);
+        expect(metas).toEqual([{ name: 'referrer', content: 'no-referrer' }, { name: 'robots', content: 'noindex, nofollow' }]);
+    });
+
+    // Security review: the anonymous viewer never sends this browser's account
+    // credentials — opens are anonymous and a token must not leave the app.
+    it('the viewer page never reads stored credentials or sends Authorization', () => {
+        const src = readFileSync(new URL('./SharedLinkScreen.tsx', import.meta.url), 'utf8') + readFileSync(new URL('./sharedLink.ts', import.meta.url), 'utf8');
+        expect(src).not.toMatch(/auth_credentials|TokenStorage|authorization:|apiSocket/);
+        expect(src).toContain("credentials: 'omit'");
     });
 });

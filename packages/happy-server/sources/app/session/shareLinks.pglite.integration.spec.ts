@@ -59,6 +59,7 @@ describe('B-701 share links and grant expiry (pglite)', () => {
     beforeAll(async () => {
         process.env.DB_PROVIDER = 'pglite'; process.env.PGLITE_DIR = join(root, 'db');
         process.env.HANDY_MASTER_SECRET = 'share-link-integration-test-only';
+        process.env.MAX_SESSION_SHARES_PER_ACCOUNT_PER_MINUTE = '1000';
         const { runMigrations } = await import('../../standalone');
         await runMigrations({ pgliteDir: process.env.PGLITE_DIR, migrationsDir: join(process.cwd(), 'prisma/migrations') });
         await (await import('@/modules/encrypt')).initEncrypt();
@@ -179,23 +180,56 @@ describe('B-701 share links and grant expiry (pglite)', () => {
         await expect(links.createShareLink({ ownerId, sessionId, scope: 'live', expiresInDays: 1 })).rejects.toMatchObject({ code: 'too_many_links' });
     });
 
-    it('open audit: deduped per viewer for 10 minutes, bots flagged and not counted, logged-in viewer named', async () => {
+    it('open audit: anonymous, deduped per viewer for 10 minutes, bots flagged and not counted', async () => {
         await db.sessionShareLink.updateMany({ where: { sessionId }, data: { revokedAt: new Date() } });
         const { link } = await links.createShareLink({ ownerId, sessionId, scope: 'live', expiresInDays: 1 });
         const t0 = new Date();
-        await links.recordShareLinkAccess(link, { ip: '203.0.113.9', userAgent: 'Mozilla/5.0 Chrome', accountId: null }, t0);
-        await links.recordShareLinkAccess(link, { ip: '203.0.113.9', userAgent: 'Mozilla/5.0 Chrome', accountId: null }, new Date(t0.getTime() + 60_000));
-        await links.recordShareLinkAccess(link, { ip: '198.51.100.7', userAgent: 'Slackbot-LinkExpanding 1.0', accountId: null }, t0);
-        await links.recordShareLinkAccess(link, { ip: '198.51.100.8', userAgent: 'Mozilla/5.0 Safari', accountId: granteeId }, t0);
-        await links.recordShareLinkAccess(link, { ip: '203.0.113.9', userAgent: 'Mozilla/5.0 Chrome', accountId: null }, new Date(t0.getTime() + 11 * 60_000));
+        await links.recordShareLinkAccess(link, { ip: '203.0.113.9', userAgent: 'Mozilla/5.0 Chrome' }, t0);
+        await links.recordShareLinkAccess(link, { ip: '203.0.113.9', userAgent: 'Mozilla/5.0 Chrome' }, new Date(t0.getTime() + 60_000));
+        await links.recordShareLinkAccess(link, { ip: '198.51.100.7', userAgent: 'Slackbot-LinkExpanding 1.0' }, t0);
+        await links.recordShareLinkAccess(link, { ip: '198.51.100.8', userAgent: 'Mozilla/5.0 Safari' }, t0);
+        await links.recordShareLinkAccess(link, { ip: '203.0.113.9', userAgent: 'Mozilla/5.0 Chrome' }, new Date(t0.getTime() + 11 * 60_000));
         const row = await db.sessionShareLink.findUniqueOrThrow({ where: { id: link.id } });
         expect(row.accessCount).toBe(3);
         const accesses = await links.listShareLinkAccesses(ownerId, link.id);
         expect(accesses).toHaveLength(4);
         expect(accesses.filter((a) => a.bot)).toHaveLength(1);
-        expect(accesses.find((a) => a.viewer)?.viewer?.displayName).toBeTruthy();
+        for (const a of accesses) expect(Object.keys(a).sort()).toEqual(['at', 'bot']);
         const stored = await db.sessionShareLinkAccess.findMany({ where: { linkId: link.id } });
-        expect(JSON.stringify(stored)).not.toContain('203.0.113.9');
+        expect(JSON.stringify(stored)).not.toMatch(/203\.0\.113\.9|Mozilla|Chrome/);
+    });
+
+    it('retention: opens older than 90 days are purged by the sweep, newer ones stay', async () => {
+        await db.sessionShareLink.updateMany({ where: { sessionId }, data: { revokedAt: new Date() } });
+        const { link } = await links.createShareLink({ ownerId, sessionId, scope: 'live', expiresInDays: null });
+        const day = 24 * 3600_000;
+        await links.recordShareLinkAccess(link, { ip: '192.0.2.1', userAgent: null }, new Date(Date.now() - 91 * day));
+        await links.recordShareLinkAccess(link, { ip: '192.0.2.2', userAgent: null }, new Date(Date.now() - 89 * day));
+        expect(await links.purgeExpiredShareLinkAccesses()).toBeGreaterThanOrEqual(1);
+        const left = await db.sessionShareLinkAccess.findMany({ where: { linkId: link.id } });
+        expect(left).toHaveLength(1);
+        expect(left[0].at.getTime()).toBeGreaterThan(Date.now() - 90 * day);
+    });
+
+    it('rotate never revives a revoked or expired link (409) and respects the per-session cap', async () => {
+        await db.sessionShareLink.updateMany({ where: { sessionId }, data: { revokedAt: new Date() } });
+        const revoked = await links.createShareLink({ ownerId, sessionId, scope: 'live', expiresInDays: 7 });
+        await links.revokeShareLink(ownerId, sessionId, revoked.link.id);
+        await expect(links.rotateShareLink(ownerId, sessionId, revoked.link.id)).rejects.toMatchObject({ code: 'link_not_active', status: 409 });
+        const expired = await links.createShareLink({ ownerId, sessionId, scope: 'live', expiresInDays: 1 });
+        await db.sessionShareLink.update({ where: { id: expired.link.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+        await expect(links.rotateShareLink(ownerId, sessionId, expired.link.id)).rejects.toMatchObject({ code: 'link_not_active', status: 409 });
+        // Rotating an active link keeps the count (revoke one, create one) — never above the cap.
+        await db.sessionShareLink.updateMany({ where: { sessionId }, data: { revokedAt: new Date() } });
+        const five = [];
+        for (let i = 0; i < 5; i++) five.push(await links.createShareLink({ ownerId, sessionId, scope: 'live', expiresInDays: 1 }));
+        await links.rotateShareLink(ownerId, sessionId, five[0].link.id);
+        expect(await db.sessionShareLink.count({ where: { sessionId, revokedAt: null } })).toBe(5);
+        // Concurrent creates cannot both slip past the cap.
+        await links.revokeShareLink(ownerId, sessionId, five[1].link.id);
+        const results = await Promise.allSettled([1, 2, 3].map(() => links.createShareLink({ ownerId, sessionId, scope: 'live', expiresInDays: 1 })));
+        expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+        expect(await db.sessionShareLink.count({ where: { sessionId, revokedAt: null } })).toBe(5);
     });
 
     it('contact grants: an expired grant gives no access, no fan-out, no pending invite, and can be re-shared', async () => {

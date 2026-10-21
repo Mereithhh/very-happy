@@ -2,5 +2,8 @@
 export function navigationFallbackDenylist(base = '/'): RegExp[] {
   const skillsPath = `${base.replace(/\/$/, '')}/skills/`;
   const escaped = skillsPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return [/^\/v1\//, /^\/health/, new RegExp(`^${escaped}`)];
+  // B-701: a share-link page must come from the network (noindex / no-referrer
+  // headers + meta), never from the precached app shell.
+  const sharePath = `${base.replace(/\/$/, '')}/s/`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [/^\/v1\//, /^\/health/, new RegExp(`^${escaped}`), new RegExp(`^${sharePath}`)];
 }

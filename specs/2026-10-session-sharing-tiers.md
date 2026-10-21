@@ -58,7 +58,7 @@ driver 的消息会让 agent 以 owner 的权限模式在 owner 的机器上执�
 ### 2.1 token
 
 - 生成：`crypto.randomBytes(32)` → base64url（43 字符，256 bit 熵）。
-- URL：`/s/<linkId>#<secret>`。secret 放 **fragment**，浏览器不会把它发给服务器或写进 Referer / 反代访问日志；页面 JS 读 fragment 后放 `x-share-secret` 头请求 API（`Authorization` 留给可选的登录 Bearer，用于审计记名）。linkId 是普通 cuid，只用于路由与审计展示。
+- URL：`/s/<linkId>#<secret>`。secret 放 **fragment**，浏览器不会把它发给服务器或写进 Referer / 反代访问日志；页面 JS 读 fragment 后放 `x-share-secret` 头请求 API；页面**不读**本浏览器的登录凭据、不带 `Authorization`（审计不记名，见 §2.3）。linkId 是普通 cuid，只用于路由与审计展示。
 - 存储：服务器只存 `sha256(secret)`（高熵随机值不需要慢哈希）；比较用 `timingSafeEqual`。链接**只在创建响应里返回一次**，之后不能再查看完整链接（面板显示「已复制」与 linkId 前缀；丢了就新建/轮换）。数据库泄露不泄露可用链接。
 - 公开端点按 IP 限频（未命中与命中分开计数），错误一律 `404 link_not_found`，不区分「不存在/错 secret/已撤销」——但对**持有正确 secret** 的请求返回具体状态 `410 link_revoked | link_expired` 让页面给出准确提示（不泄露任何新信息，持有者本来就知道链接存在）。
 
@@ -73,9 +73,9 @@ driver 的消息会让 agent 以 owner 的权限模式在 owner 的机器上执�
 
 ### 2.3 访问审计
 
-- 新表 `SessionShareLinkAccess(linkId, at, viewerAccountId?, ipHash, userAgent)`。只记「打开」：同一 `ipHash+UA` 10 分钟内只记一次，轮询不记。`ipHash = sha256(serverSalt + ip)` 截 16 字节，不存原始 IP；UA 截 200 字符。
-- 访客若带了 Very Happy 登录 token，记 `viewerAccountId`（页面不要求登录，但会顺手带上已有凭据，owner 能看到「alice 打开过」）。
-- Link 行冗余 `accessCount`、`lastAccessedAt`，面板直接显示；明细在设置的「已分享」里展开最近 50 条，保留 90 天。
+- 新表 `SessionShareLinkAccess(linkId, at, ipHash, bot)`。**一律匿名**（Lead 安全审查定的口径）：只存加盐 IP 哈希（仅用于去重）和是否为预览机器人，不存 UA、不存账号；登录访客与匿名访客无区别，不把访客身份告诉 owner。`ipHash = sha256(serverSalt + ip)` 截 16 字节。
+- 页面首次加载与每次轮询（`/messages`）都调用记录函数，同一访客（ipHash + bot）10 分钟内只记一次。
+- Link 行冗余 `accessCount`、`lastAccessedAt`，面板直接显示；明细在设置的「已分享」里展开最近 50 条（时间 + 匿名/机器人）。保留 90 天：服务器每小时清理一次（`startShareLinkAccessRetention`），不依赖链接再被打开。
 - 建/撤销/轮换链接写 business audit（与 B-619 同 `audit()`）。
 
 ### 2.4 链接泄露的应对
@@ -153,7 +153,7 @@ CREATE TABLE "SessionShareLink" (
   "tokenHash" BYTEA UNIQUE, scope TEXT ('snapshot'|'live'), "snapshotSeq" INT NULL,
   "expiresAt" TIMESTAMP NULL, "revokedAt" TIMESTAMP NULL, "accessCount" INT DEFAULT 0, "lastAccessedAt" TIMESTAMP NULL,
   "createdAt", "updatedAt");  INDEX (sessionId), INDEX (createdByAccountId)
-CREATE TABLE "SessionShareLinkAccess" (id, "linkId" FK ON DELETE CASCADE, at, "viewerAccountId" NULL, "ipHash" BYTEA, "userAgent" TEXT NULL); INDEX (linkId, at)
+CREATE TABLE "SessionShareLinkAccess" (id, "linkId" FK ON DELETE CASCADE, at, "ipHash" BYTEA, bot BOOLEAN); INDEX (linkId, at), INDEX (at)
 ```
 
 ### 5.2 接口
@@ -168,8 +168,8 @@ CREATE TABLE "SessionShareLinkAccess" (id, "linkId" FK ON DELETE CASCADE, at, "v
 | `GET /v1/share-links/:linkId/accesses` | owner | 打开记录 |
 | `GET /v1/shares/outgoing` | 登录 | 设置页：我所有 grant + link |
 | `POST /v1/sessions/:id/shares` 增加 `expiresInDays`，`PATCH` 同 | owner | 联系人有效期 |
-| `GET /v1/public/share-links/:linkId` | `x-share-secret: <secret>`（可选 `Authorization: Bearer` 记名） | 页面头部信息 + 记一次打开 |
-| `GET /v1/public/share-links/:linkId/messages?after_seq&limit` | 同上 | 遮罩后的投影消息，快照模式封顶 `snapshotSeq` |
+| `GET /v1/public/share-links/:linkId` | `x-share-secret: <secret>`（不读 `Authorization`） | 页面头部信息 + 记一次打开（去重） |
+| `GET /v1/public/share-links/:linkId/messages?after_seq&limit` | 同上 | 遮罩后的投影消息，快照模式封顶 `snapshotSeq`；同样记一次打开（去重） |
 
 公开路由挂在 server 上与 `/v1` 同前缀（Caddy 已转发 `/v1`）；Web 加 `/s/*` 静态路由（SPA fallback 已覆盖）。
 
@@ -178,7 +178,7 @@ CREATE TABLE "SessionShareLinkAccess" (id, "linkId" FK ON DELETE CASCADE, at, "v
 | 组合 | 结果 |
 |---|---|
 | 新 server + 旧 Web | 旧 Web 不认识 `expiresAt`/新路由，联系人分享照常；没有链接 UI。旧 Web 收到的 grant 视图多一个字段，忽略 |
-| 旧 server + 新 Web | 链接 tab 调用 404 → 显示「服务器版本过旧」（复用 `http_404` 文案）；有效期字段被旧 server zod 剥除 → grant 变永久。**Web 在 server 不支持时隐藏有效期选择**：以 `GET /share-links` 是否 404 判能力 |
+| 旧 server + 新 Web | 链接 tab 调用 404 → 显示「服务器版本过旧」（复用 `http_404` 文案）；有效期字段被旧 server zod 剥除 → grant 变永久。只在回滚窗口出现（server/Web 同镜像），所以 Web 不做能力探测；回滚前的 SQL 见 §5.4 |
 | CLI / daemon | 零改动（链接只读、服务器侧投影；grant 过期只影响读路径） |
 | 生产 server/Web 同镜像 | 正常情况下同时切换，上述两行只在回滚窗口出现 |
 
@@ -186,7 +186,7 @@ CREATE TABLE "SessionShareLinkAccess" (id, "linkId" FK ON DELETE CASCADE, at, "v
 
 1. 一个 PR：migration + server + Web（同镜像，约束 5）。发布前在 `/opt/happy/.env` 写 `VH_RELEASE_MIGRATIONS_REVIEWED=<commit>`（迁移树变了）。
 2. 先发 server/Web；CLI 不发版。
-3. 回滚：切回上一个 slot/镜像即可。新列/新表对旧代码不可见；**不跑 down migration**（expand/contract）。回滚期间已建的链接全部 404（旧 server 没有路由）——等于临时撤销，安全方向失败；已设置的 grant 有效期失效变为永久，回滚窗口内需要人工撤销的情况写进发布说明。再次前滚后链接与有效期恢复。
+3. 回滚：**降级前先执行** `UPDATE "SessionGrant" SET status='revoked' WHERE "expiresAt"<=now();`（旧代码不认识 `expiresAt`，不先收掉的话已过期的 grant 会在旧版本里重新生效）。然后切回上一个 slot/镜像。新列/新表对旧代码不可见；**不跑 down migration**（expand/contract）。回滚期间已建的链接全部 404（旧 server 没有路由）——等于临时撤销，安全方向失败；已设置的 grant 有效期失效变为永久，回滚窗口内需要人工撤销的情况写进发布说明。再次前滚后链接与有效期恢复。
 4. 验收：生产创建一条 1 天链接，匿名浏览器打开 → 撤销 → 已打开页 ≤5 s 失效；check-shipped 核对 `/s/` 页面 chunk 与 server 路由。
 
 ## 6. 实现计划与测试
@@ -221,7 +221,11 @@ Lead 审批补充的 4 点均已实现：
 
 其他实现决定：
 
-- 投影是「保留 RawRecord 形状 + 结构性剔除」：丢 thinking/redacted_thinking/image/document 块，丢 `reasoning`/`thinking`/`permission-request`/`token_count` 记录与 session 协议的 thinking 文本、`file` 事件，删 `signature`/`permissions`/`usage`/`total_cost_usd` 字段，meta 只留 `sentFrom`/`displayText`/`sharedBy.displayName`；然后深度 `redactSecrets`。Web 端走 `normalizeRawMessage → reducer → ActivityMessages`。
+- 投影是**按记录类型的白名单**（`app/session/linkProjection.ts`，安全审查后从「剔除」改为「白名单」）：user 只留文本；Claude output 只留 `type/uuid/parentUuid/isSidechain/parent_tool_use_id/message{role,model,content}`，块只留 text / tool_use / tool_result（仅文本）/ tool-call / tool-call-result（cwd、gitBranch、toolUseResult、requestId、signature、usage、permissions 等一律不出）；result/system 记录不出；legacy event 只留 message / queue-cancel / transcript-drop；codex / acp 只留消息与工具调用；session 信封只留 `id/time/role/turn/subagent/ev`，ev 按 t 白名单（turn-end 只留 status/error，不出 costUsd/usage/duration；thinking 文本和 file 不出）。工具的自由格式 input/output 保留结构，但去掉对象或数组形态的 image/document、`source.type=base64` 和 data URI。
+- 路径改写：所有字符串先把会话 cwd 前缀改成目录名、owner home 改成 `~`，其他 `/home/<x>`、`/Users/<x>`、`C:\Users\<x>` 也改成 `~`，再做密钥遮罩；页头的会话标题与项目名同样处理。
+- ReDoS：`redactSecrets` 所有量词有上限，单个字符串先截到 32 KB；`NAME=value` / `"name": "value"` 改为以 `=`/`:` 为锚点的手写线性扫描。性能测试：200 条 80 KB 对抗串每条 < 50 ms（实测最坏约 8 ms）。
+- rotate 只接受有效链接（已撤销/过期 → 409 `link_not_active`），限频，与「每会话 5 条」在同一事务里判断；创建链接的计数与写入也在同一事务里（对 Session 行 `FOR UPDATE` 串行化）。
+- `/s/` 页面除响应头外还在 HTML 里注入 `<meta name="robots" content="noindex, nofollow">` 和 `<meta name="referrer" content="no-referrer">`，前端加载时也补一次；Service Worker 的导航回退把 `/s/` 排除在外，始终走网络。
 - 匿名页用 `ReadOnlyTranscriptContext`，`MessageActions` 在只读上下文里不渲染任何操作（编辑/删除/改写/引用）。`/s/:linkId` 走 `PublicRoot`（`rootSelection` 视为 always-public，已登录浏览器也一样），懒加载独立 chunk；该路由不显示 PWA 安装提示。
 - 每个公开请求都查库（不缓存）；`listShareLinks` 保留最近 50 条（含已撤销/过期）供记录。
 - 快照的「截至时间」存 `snapshotAt`（迁移里多一列）。

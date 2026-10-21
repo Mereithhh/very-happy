@@ -7,7 +7,7 @@ const { buckets, resolvePublicLink, recordShareLinkAccess, verifyToken } = vi.ho
     buckets: new Map<string, number>(),
     resolvePublicLink: vi.fn(),
     recordShareLinkAccess: vi.fn(async () => undefined),
-    verifyToken: vi.fn(async (token: string) => (token === 'good' ? { userId: 'viewer-1' } : null)),
+    verifyToken: vi.fn(async () => ({ userId: 'viewer-1' })),
 }));
 
 vi.mock('@/app/auth/authRateLimiter', () => ({
@@ -89,18 +89,19 @@ describe('B-701 public share-link routes', () => {
         expect(ok.statusCode).toBe(200);
     });
 
-    it('records an open with the logged-in viewer when a valid Bearer token rides along', async () => {
+    it('records anonymous opens: a Bearer token is never read or verified', async () => {
         const app = await createApp();
         await app.inject({ method: 'GET', url: '/v1/public/share-links/link-1', headers: { 'x-share-secret': SECRET, authorization: 'Bearer good', 'user-agent': 'Mozilla/5.0' } });
-        await app.inject({ method: 'GET', url: '/v1/public/share-links/link-1', headers: { 'x-share-secret': SECRET, authorization: 'Bearer bad' } });
-        expect(recordShareLinkAccess).toHaveBeenNthCalledWith(1, expect.anything(), expect.objectContaining({ accountId: 'viewer-1', userAgent: 'Mozilla/5.0' }));
-        expect(recordShareLinkAccess).toHaveBeenNthCalledWith(2, expect.anything(), expect.objectContaining({ accountId: null }));
+        expect(verifyToken).not.toHaveBeenCalled();
+        expect(recordShareLinkAccess).toHaveBeenCalledTimes(1);
+        const viewer = (recordShareLinkAccess.mock.calls[0] as unknown[])[1] as Record<string, unknown>;
+        expect(Object.keys(viewer).sort()).toEqual(['ip', 'userAgent']);
     });
 
-    it('polling messages does not count as an open', async () => {
+    it('a messages read is an open too (dedupe lives in recordShareLinkAccess)', async () => {
         const app = await createApp();
         const res = await app.inject({ method: 'GET', url: '/v1/public/share-links/link-1/messages?after_seq=3', headers: { 'x-share-secret': SECRET } });
         expect(res.statusCode).toBe(200);
-        expect(recordShareLinkAccess).not.toHaveBeenCalled();
+        expect(recordShareLinkAccess).toHaveBeenCalledTimes(1);
     });
 });

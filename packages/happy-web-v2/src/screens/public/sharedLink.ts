@@ -59,3 +59,12 @@ export function messagesFromRecords(records: SharedLinkRecord[]): Message[] {
     }
     return reducer(createReducer(), normalized).messages;
 }
+
+/** Adds `robots: noindex, nofollow` and `referrer: no-referrer` metas once (idempotent). */
+export function ensureShareLinkMeta(doc: Document): void {
+    for (const [name, content] of [['robots', 'noindex, nofollow'], ['referrer', 'no-referrer']] as const) {
+        let meta = doc.head.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
+        if (!meta) { meta = doc.createElement('meta'); meta.name = name; doc.head.prepend(meta); }
+        meta.content = content;
+    }
+}

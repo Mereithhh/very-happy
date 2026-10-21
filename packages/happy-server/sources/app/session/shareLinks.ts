@@ -19,7 +19,11 @@ import { displayNameOf, identityOf } from '@/app/social/accountDirectory';
 import { enforceAccountWriteRate } from '@/app/api/resourceLimits';
 import { SessionShareError, openSessionDataKey } from './sessionShares';
 import { decryptWithDataKey } from './sessionCrypto';
-import { redactSecretsDeep } from './redactSecrets';
+import { makePathScrubber, projectRecordForLink, scrubLinkText } from './linkProjection';
+import { inTx } from '@/storage/inTx';
+import { forever } from '@/utils/forever';
+import { delay } from '@/utils/delay';
+import { shutdownSignal } from '@/utils/shutdown';
 
 export type ShareLinkScope = 'snapshot' | 'live';
 export type ShareLinkStatus = 'active' | 'revoked' | 'expired';
@@ -85,68 +89,6 @@ export function isBotUserAgent(userAgent: string | null | undefined): boolean {
     return /bot\b|crawler|spider|slurp|facebookexternalhit|embedly|slackbot|discordbot|telegrambot|whatsapp|linkedinbot|twitterbot|skypeuripreview|googleother|bingpreview|preview|headlesschrome|curl\/|wget\/|python-requests|go-http-client/i.test(userAgent);
 }
 
-const DROP_BLOCK_TYPES = new Set(['thinking', 'redacted_thinking', 'image', 'document']);
-const DROP_KEYS = new Set(['signature', 'permissions', 'usage', 'total_cost_usd']);
-const DROP_AGENT_DATA_TYPES = new Set(['reasoning', 'thinking', 'permission-request', 'token_count']);
-
-function stripBlocks(value: unknown): unknown {
-    if (Array.isArray(value)) {
-        return value
-            .filter((item) => !(item && typeof item === 'object' && DROP_BLOCK_TYPES.has((item as { type?: unknown }).type as string)))
-            .map(stripBlocks);
-    }
-    if (value && typeof value === 'object') {
-        const out: Record<string, unknown> = {};
-        for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-            if (DROP_KEYS.has(key)) continue;
-            out[key] = stripBlocks(item);
-        }
-        return out;
-    }
-    return value;
-}
-
-/**
- * Reduce one decrypted session record to what a read-only transcript shows,
- * then mask secrets. Null = the record is not shown to link viewers at all.
- * The shape stays a RawRecord so the web renders it with its normal pipeline.
- */
-export function projectRecordForLink(record: unknown): Record<string, unknown> | null {
-    if (!record || typeof record !== 'object') return null;
-    const rec = record as { role?: unknown; content?: any; meta?: any };
-    let content: any;
-    if (rec.role === 'user') {
-        if (rec.content?.type !== 'text' || typeof rec.content.text !== 'string') return null;
-        content = { type: 'text', text: rec.content.text };
-    } else if (rec.role === 'agent') {
-        const dataType = rec.content?.data?.type;
-        if (typeof dataType === 'string' && DROP_AGENT_DATA_TYPES.has(dataType)) return null;
-        content = stripBlocks(rec.content);
-    } else if (rec.role === 'session') {
-        const ev = rec.content?.data?.ev;
-        if (!ev || (ev.t === 'text' && ev.thinking) || ev.t === 'file') return null;
-        content = stripBlocks(rec.content);
-    } else {
-        return null;
-    }
-    const out: Record<string, unknown> = { role: rec.role, content };
-    const meta = rec.meta && typeof rec.meta === 'object' ? rec.meta : null;
-    if (meta) {
-        const safeMeta: Record<string, unknown> = {};
-        if (typeof meta.sentFrom === 'string') safeMeta.sentFrom = meta.sentFrom;
-        if (typeof meta.displayText === 'string') safeMeta.displayText = meta.displayText;
-        if (typeof meta.sharedBy?.displayName === 'string') safeMeta.sharedBy = { accountId: 'shared', displayName: meta.sharedBy.displayName };
-        if (Object.keys(safeMeta).length > 0) out.meta = safeMeta;
-    }
-    return redactSecretsDeep(out);
-}
-
-function basename(path: unknown): string | null {
-    if (typeof path !== 'string' || !path) return null;
-    const parts = path.split(/[\\/]+/).filter(Boolean);
-    return parts.length ? parts[parts.length - 1] : null;
-}
-
 // ---------------------------------------------------------------- views
 
 function view(link: LinkRow): ShareLinkView {
@@ -184,25 +126,36 @@ async function requireOwnedLink(ownerId: string, sessionId: string, linkId: stri
 
 // ---------------------------------------------------------------- owner actions
 
+type LinkTx = Parameters<Parameters<typeof inTx>[0]>[0];
+
+async function assertLinkBudget(tx: LinkTx, sessionId: string, now: Date): Promise<void> {
+    // Serialize link creation per session (same-row lock), then count.
+    await tx.$queryRawUnsafe('SELECT 1 FROM "Session" WHERE id = $1 FOR UPDATE', sessionId);
+    const active = await tx.sessionShareLink.count({ where: { sessionId, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } });
+    if (active >= MAX_ACTIVE_LINKS_PER_SESSION) throw new SessionShareError('too_many_links', 409);
+}
+
 /** Create a link. The secret is returned exactly once; only its hash is kept. */
 export async function createShareLink(input: { ownerId: string; sessionId: string; scope: ShareLinkScope; expiresInDays: ShareLinkExpiryDays }): Promise<{ link: ShareLinkView; secret: string }> {
     const session = await requireOwnedSession(input.ownerId, input.sessionId);
     if (!session.dataEncryptionKey) throw new SessionShareError('session_not_shareable', 409);
     if (!(await openSessionDataKey(session))) throw new SessionShareError('session_key_unavailable', 409);
-    const now = new Date();
-    const active = await db.sessionShareLink.count({ where: { sessionId: session.id, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } });
-    if (active >= MAX_ACTIVE_LINKS_PER_SESSION) throw new SessionShareError('too_many_links', 409);
     await enforceAccountWriteRate({ accountId: input.ownerId, resource: 'relationship', units: 1, envName: 'MAX_SESSION_SHARES_PER_ACCOUNT_PER_MINUTE', fallback: 30 });
+    const now = new Date();
     const secret = generateShareSecret();
-    const link = await db.sessionShareLink.create({ data: {
-        sessionId: session.id,
-        createdByAccountId: input.ownerId,
-        tokenHash: hashShareSecret(secret),
-        scope: input.scope,
-        snapshotSeq: input.scope === 'snapshot' ? session.seq : null,
-        snapshotAt: input.scope === 'snapshot' ? now : null,
-        expiresAt: expiresAtFor(input.expiresInDays, now.getTime()),
-    } });
+    // Count + create in one transaction so two concurrent creates cannot both pass the cap.
+    const link = await inTx(async (tx) => {
+        await assertLinkBudget(tx, session.id, now);
+        return tx.sessionShareLink.create({ data: {
+            sessionId: session.id,
+            createdByAccountId: input.ownerId,
+            tokenHash: hashShareSecret(secret),
+            scope: input.scope,
+            snapshotSeq: input.scope === 'snapshot' ? session.seq : null,
+            snapshotAt: input.scope === 'snapshot' ? now : null,
+            expiresAt: expiresAtFor(input.expiresInDays, now.getTime()),
+        } });
+    });
     audit('session.share_link.created', input.ownerId, session.id, { linkId: link.id, scope: input.scope, expiresAt: link.expiresAt?.toISOString() ?? null });
     return { link: view(link), secret };
 }
@@ -241,37 +194,37 @@ export async function revokeShareLink(ownerId: string, sessionId: string, linkId
 /** Revoke + recreate with the same scope and remaining expiry window. */
 export async function rotateShareLink(ownerId: string, sessionId: string, linkId: string): Promise<{ link: ShareLinkView; secret: string }> {
     const link = await requireOwnedLink(ownerId, sessionId, linkId);
-    await revokeShareLink(ownerId, sessionId, linkId);
+    // Security review: rotating must never revive a revoked or expired link.
+    if (linkStatus(link) !== 'active') throw new SessionShareError('link_not_active', 409);
+    await enforceAccountWriteRate({ accountId: ownerId, resource: 'relationship', units: 1, envName: 'MAX_SESSION_SHARES_PER_ACCOUNT_PER_MINUTE', fallback: 30 });
+    const now = new Date();
     const secret = generateShareSecret();
-    const created = await db.sessionShareLink.create({ data: {
-        sessionId,
-        createdByAccountId: ownerId,
-        tokenHash: hashShareSecret(secret),
-        scope: link.scope,
-        snapshotSeq: link.snapshotSeq,
-        snapshotAt: link.snapshotAt,
-        expiresAt: link.expiresAt,
-    } });
+    const created = await inTx(async (tx) => {
+        const revoked = await tx.sessionShareLink.updateMany({ where: { id: link.id, revokedAt: null }, data: { revokedAt: now } });
+        if (revoked.count !== 1) throw new SessionShareError('link_not_active', 409);
+        await assertLinkBudget(tx, sessionId, now);
+        return tx.sessionShareLink.create({ data: {
+            sessionId,
+            createdByAccountId: ownerId,
+            tokenHash: hashShareSecret(secret),
+            scope: link.scope,
+            snapshotSeq: link.snapshotSeq,
+            snapshotAt: link.snapshotAt,
+            expiresAt: link.expiresAt,
+        } });
+    });
     audit('session.share_link.rotated', ownerId, sessionId, { linkId, newLinkId: created.id });
     return { link: view(created), secret };
 }
 
-export type ShareLinkAccessView = { at: number; viewer: { id: string; displayName: string } | null; userAgent: string | null; bot: boolean };
+/** Opens are anonymous by design (Lead review): time and whether it was a link-preview bot, nothing else. */
+export type ShareLinkAccessView = { at: number; bot: boolean };
 
 export async function listShareLinkAccesses(ownerId: string, linkId: string): Promise<ShareLinkAccessView[]> {
-    const link = await db.sessionShareLink.findUnique({ where: { id: linkId }, select: { createdByAccountId: true, session: { select: { accountId: true } } } });
+    const link = await db.sessionShareLink.findUnique({ where: { id: linkId }, select: { session: { select: { accountId: true } } } });
     if (!link || link.session.accountId !== ownerId) throw new SessionShareError('link_not_found', 404);
-    const rows = await db.sessionShareLinkAccess.findMany({ where: { linkId }, orderBy: { at: 'desc' }, take: 50 });
-    const viewerIds = [...new Set(rows.map((row) => row.viewerAccountId).filter((id): id is string => !!id))];
-    const viewers = viewerIds.length ? await db.account.findMany({ where: { id: { in: viewerIds } }, select: { id: true, firstName: true, lastName: true, username: true } }) : [];
-    const names = new Map<string, string>();
-    for (const viewer of viewers) names.set(viewer.id, displayNameOf(viewer, await identityOf(viewer.id)));
-    return rows.map((row) => ({
-        at: row.at.getTime(),
-        viewer: row.viewerAccountId ? { id: row.viewerAccountId, displayName: names.get(row.viewerAccountId) ?? row.viewerAccountId } : null,
-        userAgent: row.userAgent,
-        bot: row.bot,
-    }));
+    const rows = await db.sessionShareLinkAccess.findMany({ where: { linkId }, orderBy: { at: 'desc' }, take: 50, select: { at: true, bot: true } });
+    return rows.map((row) => ({ at: row.at.getTime(), bot: row.bot }));
 }
 
 // ---------------------------------------------------------------- public (link holder)
@@ -300,20 +253,37 @@ export function hashViewerIp(ip: string): Uint8Array<ArrayBuffer> {
     return new Uint8Array(createHash('sha256').update(`share-link-ip:${salt}:${ip}`).digest().subarray(0, 16));
 }
 
-/** Record an open (deduped per ipHash+UA per 10 min). Bot opens are stored but not counted. */
-export async function recordShareLinkAccess(link: Pick<LinkRow, 'id'>, viewer: { ip: string; userAgent: string | null; accountId: string | null }, now = new Date()): Promise<void> {
+/**
+ * Record an open: anonymous (salted ipHash + bot flag only), deduped per
+ * viewer per 10 minutes, so the page load and every poll may call it. Bot
+ * opens are stored but never counted.
+ */
+export async function recordShareLinkAccess(link: Pick<LinkRow, 'id'>, viewer: { ip: string; userAgent: string | null }, now = new Date()): Promise<void> {
     const ipHash = hashViewerIp(viewer.ip);
-    const userAgent = viewer.userAgent ? viewer.userAgent.slice(0, 200) : null;
-    const bot = isBotUserAgent(userAgent);
+    const bot = isBotUserAgent(viewer.userAgent);
     const recent = await db.sessionShareLinkAccess.findFirst({
-        where: { linkId: link.id, ipHash, userAgent, at: { gt: new Date(now.getTime() - ACCESS_DEDUPE_MS) } },
+        where: { linkId: link.id, ipHash, bot, at: { gt: new Date(now.getTime() - ACCESS_DEDUPE_MS) } },
         select: { id: true },
     });
     if (recent) return;
-    await db.sessionShareLinkAccess.create({ data: { linkId: link.id, ipHash, userAgent, bot, viewerAccountId: viewer.accountId, at: now } });
+    await db.sessionShareLinkAccess.create({ data: { linkId: link.id, ipHash, bot, at: now } });
     if (!bot) await db.sessionShareLink.update({ where: { id: link.id }, data: { accessCount: { increment: 1 }, lastAccessedAt: now } });
-    // Opportunistic retention; correctness never depends on it.
-    void db.sessionShareLinkAccess.deleteMany({ where: { linkId: link.id, at: { lt: new Date(now.getTime() - ACCESS_RETENTION_MS) } } }).catch(() => undefined);
+}
+
+/** Delete opens older than the 90-day retention. Returns rows removed. */
+export async function purgeExpiredShareLinkAccesses(now = new Date()): Promise<number> {
+    const result = await db.sessionShareLinkAccess.deleteMany({ where: { at: { lt: new Date(now.getTime() - ACCESS_RETENTION_MS) } } });
+    return result.count;
+}
+
+/** Hourly retention sweep (started with the server, like the session timeout loop). */
+export function startShareLinkAccessRetention(): void {
+    forever('share-link-access-retention', async () => {
+        while (true) {
+            await purgeExpiredShareLinkAccesses();
+            await delay(60 * 60_000, shutdownSignal);
+        }
+    });
 }
 
 export type PublicLinkInfo = {
@@ -330,6 +300,8 @@ export async function publicLinkInfo(link: LinkRow): Promise<PublicLinkInfo> {
     const dek = await openSessionDataKey(session);
     if (!dek) throw new SessionShareError('session_key_unavailable', 409);
     const meta = decryptWithDataKey(new Uint8Array(Buffer.from(session.metadata, 'base64')), dek) as Record<string, any> | null;
+    const scrub = makePathScrubber({ cwd: meta?.path, homeDir: meta?.homeDir });
+    const project = typeof meta?.path === 'string' ? meta.path.split(/[\\/]+/).filter(Boolean).pop() ?? null : null;
     const owner = await db.account.findUniqueOrThrow({ where: { id: session.accountId }, select: { id: true, firstName: true, lastName: true, username: true } });
     const title = meta?.summary?.text ?? meta?.name ?? null;
     return {
@@ -339,8 +311,8 @@ export async function publicLinkInfo(link: LinkRow): Promise<PublicLinkInfo> {
         expiresAt: link.expiresAt ? link.expiresAt.getTime() : null,
         owner: { displayName: displayNameOf(owner, await identityOf(owner.id)) },
         session: {
-            title: typeof title === 'string' ? redactSecretsDeep(title) : null,
-            project: basename(meta?.path),
+            title: typeof title === 'string' ? scrubLinkText(title, scrub) : null,
+            project: project ? scrubLinkText(project, scrub) : null,
             flavor: typeof meta?.flavor === 'string' ? meta.flavor : null,
             createdAt: session.createdAt.getTime(),
             archived: !!session.archivedAt,
@@ -352,9 +324,11 @@ export type PublicLinkMessage = { id: string; seq: number; createdAt: number; co
 
 /** Projected, masked messages after `afterSeq` (forward); a snapshot never passes its snapshotSeq. */
 export async function publicLinkMessages(link: LinkRow, afterSeq: number, limit: number): Promise<{ messages: PublicLinkMessage[]; hasMore: boolean; lastSeq: number }> {
-    const session = await db.session.findUniqueOrThrow({ where: { id: link.sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true } });
+    const session = await db.session.findUniqueOrThrow({ where: { id: link.sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true, metadata: true } });
     const dek = await openSessionDataKey(session);
     if (!dek) throw new SessionShareError('session_key_unavailable', 409);
+    const meta = decryptWithDataKey(new Uint8Array(Buffer.from(session.metadata, 'base64')), dek) as Record<string, any> | null;
+    const scrub = makePathScrubber({ cwd: meta?.path, homeDir: meta?.homeDir });
     const ceiling = link.scope === 'snapshot' ? (link.snapshotSeq ?? 0) : undefined;
     const rows = await db.sessionMessage.findMany({
         where: { sessionId: session.id, seq: ceiling === undefined ? { gt: afterSeq } : { gt: afterSeq, lte: ceiling } },
@@ -368,7 +342,7 @@ export async function publicLinkMessages(link: LinkRow, afterSeq: number, limit:
     for (const row of page) {
         const content = row.content as { t?: string; c?: string } | null;
         if (content?.t !== 'encrypted' || typeof content.c !== 'string') continue;
-        const projected = projectRecordForLink(decryptWithDataKey(new Uint8Array(Buffer.from(content.c, 'base64')), dek));
+        const projected = projectRecordForLink(decryptWithDataKey(new Uint8Array(Buffer.from(content.c, 'base64')), dek), scrub);
         if (projected) messages.push({ id: row.id, seq: row.seq, createdAt: row.createdAt.getTime(), content: projected });
     }
     return { messages, hasMore, lastSeq: page.length ? page[page.length - 1].seq : afterSeq };

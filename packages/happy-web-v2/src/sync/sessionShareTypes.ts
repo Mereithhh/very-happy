@@ -78,10 +78,9 @@ export const ShareLinkViewSchema = z.object({
 });
 export type ShareLinkView = z.infer<typeof ShareLinkViewSchema>;
 
+/** Link opens are anonymous: when, and whether it was a link-preview bot. */
 export const ShareLinkAccessSchema = z.object({
     at: z.number(),
-    viewer: z.object({ id: z.string(), displayName: z.string() }).nullable(),
-    userAgent: z.string().nullable(),
     bot: z.boolean(),
 });
 export type ShareLinkAccess = z.infer<typeof ShareLinkAccessSchema>;

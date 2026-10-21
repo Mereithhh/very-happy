@@ -22,9 +22,8 @@ CREATE TABLE "SessionShareLinkAccess" (
   "id" TEXT PRIMARY KEY,
   "linkId" TEXT NOT NULL REFERENCES "SessionShareLink"("id") ON DELETE CASCADE ON UPDATE CASCADE,
   "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "viewerAccountId" TEXT,
   "ipHash" BYTEA NOT NULL,
-  "userAgent" TEXT,
   "bot" BOOLEAN NOT NULL DEFAULT false
 );
 CREATE INDEX "SessionShareLinkAccess_linkId_at_idx" ON "SessionShareLinkAccess"("linkId", "at");
+CREATE INDEX "SessionShareLinkAccess_at_idx" ON "SessionShareLinkAccess"("at");

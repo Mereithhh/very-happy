@@ -44,15 +44,17 @@ What a link viewer sees: the conversation text, tool calls and their output,
 with common secret formats (API keys, tokens, passwords, private keys, URL
 credentials, `NAME=value` secrets) replaced by `[redacted]`. Thinking, images,
 attachments, permission cards, terminals and files are never included, and
-machine details are reduced to the project folder name. Masking is
+machine details are reduced to the project folder name (paths inside the
+project show relative to it; home directories show as `~`). Very long tool
+output is cut. Masking is
 best-effort — check the conversation before sharing it.
 
 Revoking (in the dialog or **Settings → Shared**) or expiry takes effect on
 the viewer's next refresh, within 5 seconds for a page that is already open:
 the transcript is cleared and the page says the share was revoked or expired.
 Each link shows how many times it was opened and when; **Who opened it** lists
-the opens (signed-in viewers by name, others as anonymous; link-preview bots
-are marked and not counted). The secret lives after `#` in the URL, so it never
+the opens. Opens are anonymous — even a signed-in viewer is not named — and
+link-preview bots are marked and not counted. Open records are kept 90 days. The secret lives after `#` in the URL, so it never
 reaches server logs or link-preview bots, and link pages are never indexed.
 
 ## What a shared account can and cannot do

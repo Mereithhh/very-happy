@@ -37,8 +37,8 @@ function Accesses({ linkId }: { linkId: string }) {
     if (rows.length === 0) return <Item title={t('share.settings.accessesEmpty')} />;
     return <>{rows.map((row, i) => (
         <Item key={i}
-            title={row.bot ? t('share.settings.bot') : row.viewer?.displayName ?? t('share.settings.anonymous')}
-            subtitle={[formatShareTime(row.at), row.userAgent].filter(Boolean).join(' · ')} />
+            title={row.bot ? t('share.settings.bot') : t('share.settings.anonymous')}
+            subtitle={formatShareTime(row.at)} />
     ))}</>;
 }
 

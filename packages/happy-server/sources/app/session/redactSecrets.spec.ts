@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REDACTED, redactSecrets, redactSecretsDeep } from './redactSecrets';
+import { MAX_REDACT_INPUT, REDACTED, redactSecrets, redactSecretsDeep } from './redactSecrets';
 
 // Fake token shapes are assembled at runtime so the repository secret scan
 // (gitleaks) never sees a literal that looks like a live credential.
@@ -63,5 +63,44 @@ describe('B-701 redactSecrets', () => {
     it('walks nested records', () => {
         const out = redactSecretsDeep({ a: ['x', { b: 'TOKEN=abcdefgh' }], n: 3, nil: null });
         expect(out).toEqual({ a: ['x', { b: `TOKEN=${REDACTED}` }], n: 3, nil: null });
+    });
+
+    it('matches Bearer case-insensitively', () => {
+        expect(redactSecrets(fake('authorization: bear', 'er abcdefghijklmnopqrstuvwxyz'))).toContain(REDACTED);
+        expect(redactSecrets(fake('AUTHORIZATION: BEAR', 'ER abcdefghijklmnopqrstuvwxyz'))).toContain(REDACTED);
+    });
+
+    it('caps a single string before masking', () => {
+        const out = redactSecrets('x'.repeat(MAX_REDACT_INPUT * 3));
+        expect(out.length).toBeLessThan(MAX_REDACT_INPUT + 32);
+        expect(out.endsWith('[truncated]')).toBe(true);
+    });
+
+    // Security review (ReDoS): these inputs took 2-25 s per string with the
+    // unbounded `\b[A-Za-z0-9_.-]*` prefixes. 200 adversarial 80 KB strings —
+    // one link page — must each finish well under 50 ms.
+    it('stays linear on adversarial input (200 × 80 KB, < 50 ms each)', () => {
+        const rand = (n: number) => { let s = ''; const a = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'; for (let i = 0; i < n; i++) s += a[(i * 7919 + (i >> 3) * 104729) % 64]; return s; };
+        const size = 80 * 1024;
+        const shapes = [
+            'a-'.repeat(size / 2),
+            rand(size),
+            'TOKEN='.repeat(size / 6),
+            'x://' + 'a'.repeat(size - 10) + ':',
+            'https://' + 'a:'.repeat(size / 2),
+            '-----BEGIN RSA PRIVATE KEY-----'.repeat(size / 31),
+            '"secret": "'.repeat(size / 11),
+            'eyJ' + 'a'.repeat(size / 2) + '.' + 'b'.repeat(size / 2 - 10),
+            'Bearer '.repeat(size / 7),
+            '_TOKEN_'.repeat(size / 7) + '=',
+        ];
+        let worst = 0;
+        for (let i = 0; i < 200; i++) {
+            const input = shapes[i % shapes.length];
+            const t0 = performance.now();
+            redactSecrets(input);
+            worst = Math.max(worst, performance.now() - t0);
+        }
+        expect(worst).toBeLessThan(50);
     });
 });
