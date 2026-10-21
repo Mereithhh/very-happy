@@ -124,6 +124,7 @@
 }
 @media (hover: hover) and (pointer: fine) {
   .ci-att-remove:hover {
+    /* design-lint-allow: black scrim over arbitrary image content (see .ci-att-remove) */
     background: rgba(0, 0, 0, 0.8);
   }
 }
