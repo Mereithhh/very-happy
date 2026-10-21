@@ -1,6 +1,7 @@
 .help-screen { flex: 1; min-width: 0; overflow: auto; padding: 24px; background: var(--bg-0); }
 .help-screen__inner { width: min(100%, 820px); margin-inline: auto; }
-.help-screen__back { margin-bottom: var(--sp-3); }
+.help-screen__back { display: flex; align-items: center; gap: var(--sp-1); min-height: 44px; margin-bottom: var(--sp-3); }
+.help-screen__back-title { font-size: var(--fs-14); font-weight: 600; color: var(--text); }
 .help-screen__hero { padding: 12px 0 20px; }
 .help-screen__hero h1 { margin: var(--sp-2) 0 var(--sp-2); font-size: var(--fs-20); line-height: 1.3; }
 .help-screen__hero > p { max-width: 610px; margin: 0; color: var(--text-dim); font-size: var(--fs-14); line-height: 1.6; }

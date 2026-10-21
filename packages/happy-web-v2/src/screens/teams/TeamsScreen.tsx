@@ -207,7 +207,7 @@ function TeamsContent() {
           )}
         </p>
       )}
-      {searchParams.get('fromSession') && <TeamDialog title={first.title} onClose={() => { const next = new URLSearchParams(searchParams); next.delete('fromSession'); setSearchParams(next, {replace:true}); }}><AdoptTeamForm sessionId={searchParams.get('fromSession')!} onDone={() => navigate(`/session/${encodeURIComponent(searchParams.get('fromSession')!)}`)} /></TeamDialog>}
+      {searchParams.get('fromSession') && <TeamDialog title={first.adoptTitle} onClose={() => { const next = new URLSearchParams(searchParams); next.delete('fromSession'); setSearchParams(next, {replace:true}); }}><AdoptTeamForm sessionId={searchParams.get('fromSession')!} onDone={() => navigate(`/session/${encodeURIComponent(searchParams.get('fromSession')!)}`)} /></TeamDialog>}
       {loading && <p role="status">{tr("common.loading")}</p>}
       {!teamId && !loading && (
         <>

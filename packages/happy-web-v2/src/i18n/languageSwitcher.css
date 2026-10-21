@@ -26,9 +26,9 @@
   }
 }
 
-.language-switcher:focus-visible {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-dim);
+.language-switcher:focus-visible { /* B-728 (P2-11): the shared keyboard ring */
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .language-switcher-globe {

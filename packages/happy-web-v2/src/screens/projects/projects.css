@@ -167,7 +167,10 @@
   .pj-tabs { width: 100%; }
   .pj-composer-summary > .pj-muted { display: none; }
   /* §6.5: on a phone the composer sits at the bottom, inheriting project + primary folder */
-  .pj-composer { order: 99; position: sticky; bottom: 8px; z-index: 1; }
+  /* B-728 (P2-12): the pinned composer masks what scrolls beneath it (a canvas
+     collar) instead of letting the list peek out around it */
+  .pj-composer { order: 99; position: sticky; bottom: 8px; z-index: 1; box-shadow: var(--shadow-composer), 0 8px 0 8px var(--bg-0); }
+  .pj-composer:focus-within { box-shadow: var(--shadow-composer-focus), 0 8px 0 8px var(--bg-0); }
   .pj-note-form { grid-template-columns: minmax(0, 1fr) auto; }
   .pj-note-kind { grid-column: 1 / -1; width: 100%; }
 }

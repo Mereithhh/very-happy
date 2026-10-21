@@ -52,7 +52,8 @@ export function HelpScreen() {
   return (
     <main className="help-screen">
       <div className="help-screen__inner">
-        <BackButton className="help-screen__back" />
+        {/* B-728 (P2-17 / UI-P1-11): the back arrow carries its page name, like the other workspace pages */}
+        <div className="help-screen__back"><BackButton /><span className="help-screen__back-title">{t('sidebar.help')}</span></div>
         <section className="help-screen__hero" aria-labelledby="help-screen-title">
           <div className="eyebrow">{t('workspaceGuide.eyebrow')}</div>
           <h1 id="help-screen-title">{t('workspaceGuide.title')}</h1>

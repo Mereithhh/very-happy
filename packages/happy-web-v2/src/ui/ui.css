@@ -595,9 +595,9 @@
     background: var(--bg-3);
   }
 }
-.vh-toast-btn:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 1px;
+.vh-toast-btn:focus-visible { /* B-728 (P2-11): the shared keyboard ring */
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 @media (max-width: 600px), (pointer: coarse) {
