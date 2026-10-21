@@ -332,29 +332,22 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
       l.nextAt = 0;
     }
     rebuilt = true;
-    scrollDirty = true;
   }
 
   /**
-   * Scroll offset of the host in px (0 at rest). The host's document offset is
-   * measured once per resize; `scrollY` is cached from passive scroll events
-   * (layout is clean there). Reading either inside the frame, after last
-   * frame's transform writes, would force a style/layout pass every frame.
+   * Scroll offset of the host in px (0 at rest), eased toward the position the
+   * IntersectionObserver reports (fine thresholds). Nothing here reads layout
+   * synchronously: scrollY / getBoundingClientRect in a frame or a scroll handler
+   * would force a style pass on pages with running CSS animations.
    */
-  let docTop = 0;
-  let scrollY = 0;
-  let scrollDirty = true;
+  let scrollTarget = 0;
+  let scrollPx = 0;
   function scrollShift(): number {
     if (!usesScroll || reduced) return 0;
-    if (scrollDirty) {
-      scrollDirty = false;
-      scrollY = env.win.scrollY ?? 0;
-      docTop = host.getBoundingClientRect().top + scrollY;
-    }
-    const top = docTop - scrollY;
-    return Math.max(-env.win.innerHeight, Math.min(env.win.innerHeight, -top));
+    scrollPx += (scrollTarget - scrollPx) * 0.25;
+    if (Math.abs(scrollTarget - scrollPx) < 0.5) scrollPx = scrollTarget;
+    return scrollPx;
   }
-  const onScroll = () => { scrollY = env.win.scrollY ?? 0; };
 
   /**
    * Camera position of a layer in world cells. Scrolling moves nearer layers
@@ -604,13 +597,16 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
     if (!active()) { needsResize = true; forceRebuild = true; }
   }
 
+  // Fine thresholds only when scroll parallax needs the position (async, no layout reads).
+  const ioOptions = usesScroll ? { threshold: Array.from({ length: 51 }, (_, i) => i / 50) } : undefined;
   const io = env.IntersectionObserver
     ? new env.IntersectionObserver((entries) => {
       const entry = entries[entries.length - 1];
       intersecting = entry ? entry.isIntersecting : true;
+      if (entry?.boundingClientRect) scrollTarget = Math.max(-env.win.innerHeight, Math.min(env.win.innerHeight, -entry.boundingClientRect.top));
       if (!intersecting) lastFrameAt = 0;
       schedule();
-    })
+    }, ioOptions)
     : null;
   let sized = false;
   const ro = env.ResizeObserver
@@ -631,7 +627,6 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   reducedQuery?.addEventListener?.('change', onReducedChange);
   env.doc.addEventListener('visibilitychange', onVisibility);
   if (wantsMouse) env.win.addEventListener('pointermove', onPointer, { passive: true });
-  if (usesScroll) env.win.addEventListener('scroll', onScroll, { passive: true });
 
   readTheme();
   if (reduced) paintStatic();
@@ -649,7 +644,6 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
     reducedQuery?.removeEventListener?.('change', onReducedChange);
     env.doc.removeEventListener('visibilitychange', onVisibility);
     if (wantsMouse) env.win.removeEventListener('pointermove', onPointer);
-    if (usesScroll) env.win.removeEventListener('scroll', onScroll);
     for (const l of layers) for (const p of l.planes) p.canvas.remove();
     for (const k of creatures) k.el.remove();
     creatures = [];
