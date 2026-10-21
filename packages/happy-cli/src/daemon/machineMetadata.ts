@@ -53,3 +53,17 @@ export function getInitialMachineMetadata(): MachineMetadata {
 export function getStartupCliAvailability(): CLIAvailability {
   return compute().cliAvailability;
 }
+
+/**
+ * B-718 (QA2 O6): `getOrCreateMachine` keeps an existing row's metadata, so
+ * `happyCliVersion` stayed at whatever version first registered the machine
+ * (dev-sg showed 0.2.134 while running 0.2.180). Every daemon start — which
+ * includes the handover after an update — republishes what is actually running.
+ */
+export function withRunningCliFacts(current: MachineMetadata | null, initial: MachineMetadata): MachineMetadata {
+  return {
+    ...(current ?? initial),
+    happyCliVersion: initial.happyCliVersion,
+    happyLibDir: initial.happyLibDir,
+  };
+}

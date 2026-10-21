@@ -1,6 +1,7 @@
 import { AgentVersionsGroup } from './AgentVersionsGroup';
 import { useEffect, useMemo, useState } from 'react';
-import { readUpdateRecovery, retryMachineUpdate } from '@/app/cliUpdateRecovery';
+import { readUpdateRecovery, requestMachineUpdate, retryMachineUpdate } from '@/app/cliUpdateRecovery';
+import { machineAutoUpdateSummary } from '@/app/machineAutoUpdate';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Pencil, Play, Terminal, ChevronRight, History, MonitorPlay } from 'lucide-react';
 import { machinePanelPath, parseWebPanels } from '@/sync/webPanels';
@@ -47,6 +48,7 @@ export function MachineScreen() {
   const { t } = useTranslation();
   const toast = useToast();
   const [updateRetryBusy, setUpdateRetryBusy] = useState(false);
+  const [updateNowBusy, setUpdateNowBusy] = useState(false);
   const [updateStatusNow, setUpdateStatusNow] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setUpdateStatusNow(Date.now()), 60_000);
@@ -241,6 +243,17 @@ export function MachineScreen() {
   // B-327: what the machine's auto-update last did. daemonState is untyped on
   // the web, so read defensively rather than trusting the shape.
   const updateRecovery = readUpdateRecovery(cliUpdateState, online, updateStatusNow);
+  // B-718: on/off, running → target, last check, last completed update, Update now.
+  const autoUpdate = machineAutoUpdateSummary(cliUpdateState, machine.metadata?.happyCliVersion, online);
+  async function updateNow() {
+    if (!machine || !autoUpdate.updateNowVersion || updateNowBusy) return;
+    setUpdateNowBusy(true);
+    try {
+      await requestMachineUpdate(machine.id, autoUpdate.updateNowVersion);
+      toast.success(t('cliUpdate.requestAccepted'));
+    } catch { toast.error(t('cliUpdate.requestFailed')); }
+    finally { setUpdateNowBusy(false); }
+  }
   async function retryUpdate() {
     if (!machine || !updateRecovery.canRetry || !updateRecovery.version || updateRetryBusy) return;
     setUpdateRetryBusy(true);
@@ -400,8 +413,41 @@ export function MachineScreen() {
             <Item
               title={t('cliUpdate.autoUpdate')}
               detail={`${t(`cliUpdate.recovery.${updateRecovery.state}` as 'cliUpdate.recovery.manual')}${updateRecovery.version ? ` · ${updateRecovery.version}` : ''}`}
-              right={['installing', 'installed'].includes(updateRecovery.state) ? <Spinner size={16} /> : undefined}
+              right={['installing', 'installed'].includes(updateRecovery.state)
+                ? <Spinner size={16} />
+                : autoUpdate.enabled !== null
+                  ? <Badge tone="muted">{autoUpdate.enabled ? t('cliUpdate.autoUpdateOn') : t('cliUpdate.autoUpdateOff')}</Badge>
+                  : undefined}
             />
+            {autoUpdate.current && (
+              <Item
+                title={t('cliUpdate.versions')}
+                detail={autoUpdate.target
+                  ? t('cliUpdate.versionsTo', { current: autoUpdate.current, target: autoUpdate.target })
+                  : t('cliUpdate.versionsCurrent', { current: autoUpdate.current })}
+              />
+            )}
+            {autoUpdate.checkedAt !== null && (
+              <Item title={t('cliUpdate.lastCheck')} detail={new Date(autoUpdate.checkedAt).toLocaleString()} />
+            )}
+            {autoUpdate.lastInstall && (
+              <Item
+                title={t('cliUpdate.lastInstall')}
+                detail={t('cliUpdate.lastInstallDetail', {
+                  from: autoUpdate.lastInstall.from, to: autoUpdate.lastInstall.to,
+                  auto: autoUpdate.lastInstall.auto, at: new Date(autoUpdate.lastInstall.at).toLocaleString(),
+                })}
+              />
+            )}
+            {autoUpdate.updateNowVersion && (
+              <Item
+                title={t('cliUpdate.updateNowTo', { target: autoUpdate.updateNowVersion })}
+                subtitle={t('cliUpdate.updateNowHelp')}
+                onClick={() => void updateNow()}
+                loading={updateNowBusy}
+                right={<ChevronRight size={16} />}
+              />
+            )}
             {updateRecovery.canRetry && (
               <Item title={t('cliUpdate.retry')} subtitle={t('cliUpdate.retryHelp')}
                 onClick={() => void retryUpdate()} loading={updateRetryBusy} right={<ChevronRight size={16} />} />
