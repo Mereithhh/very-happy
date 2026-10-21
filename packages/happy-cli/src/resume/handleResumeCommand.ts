@@ -52,7 +52,9 @@ function resolveFlavor(metadata: Metadata): 'codex' | 'claude' | 'pi' | null {
     if (metadata.flavor === 'codex' || metadata.codexThreadId) {
         return 'codex';
     }
-    if (metadata.flavor === 'claude' || metadata.claudeSessionId) {
+    // B-680: no flavor = claude, the same default as resumePrecheck (a
+    // never-run session has no claudeSessionId to infer it from).
+    if (metadata.flavor === 'claude' || metadata.claudeSessionId || metadata.flavor === undefined) {
         return 'claude';
     }
     return null;

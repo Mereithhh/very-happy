@@ -4,6 +4,7 @@ import {
   advanceRestoreState,
   canOfferRestore,
   composerGate,
+  isNeverRunOffline,
   isRestorable,
   mapResumeError,
   restoreEligibility,
@@ -32,8 +33,9 @@ describe('B-265 restoreEligibility', () => {
   });
   it('rejects unsupported flavors, missing backend ids, unknown / offline machines', () => {
     expect(restoreEligibility({ ...base, metadata: { ...base.metadata, flavor: 'gemini' } }, machines)).toEqual({ ok: false, reason: 'unsupported-flavor' });
-    expect(restoreEligibility({ ...base, metadata: { ...base.metadata, claudeSessionId: undefined } }, machines)).toEqual({ ok: false, reason: 'no-backend-id' });
-    expect(restoreEligibility({ ...base, metadata: { machineId: 'm1', flavor: 'codex' } as any }, machines)).toEqual({ ok: false, reason: 'no-backend-id' });
+    // B-680: no backend id = never ran → restorable (the daemon starts its first conversation).
+    expect(restoreEligibility({ ...base, metadata: { ...base.metadata, claudeSessionId: undefined } }, machines)).toEqual({ ok: true, machineId: 'm1' });
+    expect(restoreEligibility({ ...base, metadata: { machineId: 'm1', flavor: 'codex' } as any }, machines)).toEqual({ ok: true, machineId: 'm1' });
     expect(restoreEligibility({ ...base, metadata: { machineId: 'm1', flavor: 'codex', codexThreadId: 't' } as any }, machines)).toEqual({ ok: true, machineId: 'm1' });
     expect(restoreEligibility({ ...base, metadata: { ...base.metadata, machineId: undefined } }, machines)).toEqual({ ok: false, reason: 'no-machine' });
     expect(restoreEligibility({ ...base, metadata: { ...base.metadata, machineId: 'zz' } }, machines)).toEqual({ ok: false, reason: 'no-machine' });
@@ -58,9 +60,8 @@ describe('recoverability canOfferRestore (button visibility, archivedAt-independ
     expect(canOfferRestore({ ...base, archivedAt: null }, on)).toBe(true);
     expect(canOfferRestore({ ...base, archivedAt: null }, off)).toBe(true);
   });
-  it('does not offer for live / no-backend-id / unsupported-flavor / unknown machine', () => {
+  it('does not offer for live / unsupported-flavor / unknown machine', () => {
     expect(canOfferRestore({ ...base, active: true }, on)).toBe(false);
-    expect(canOfferRestore({ ...base, metadata: { ...base.metadata, claudeSessionId: undefined } }, on)).toBe(false);
     expect(canOfferRestore({ ...base, metadata: { ...base.metadata, flavor: 'gemini' } }, on)).toBe(false);
     expect(canOfferRestore(base, undefined)).toBe(false);
     expect(canOfferRestore(null, on)).toBe(false);
@@ -159,5 +160,26 @@ describe('B-683 relaunch keeps the user permission mode', () => {
     expect(restore).toMatch(/machineResumeSession\(\s*\{ machineId: eligibility\.machineId, sessionId, \.\.\.\(permissionMode \? \{ permissionMode \} : \{\}\) \}/);
     expect(restart).toContain('const permissionMode = relaunchPermissionMode(session);');
     expect(restart).toMatch(/machineRestartSession\(\s*\{ machineId: eligibility\.machineId, sessionId, \.\.\.\(permissionMode \? \{ permissionMode \} : \{\}\) \}/);
+  });
+});
+
+describe('B-680 a stopped session that never ran a turn', () => {
+  const on = { id: 'm1', active: true };
+  // QA repro: spawned, `sessions stop` before any turn → offline, not archived, no claudeSessionId.
+  const neverRan = { active: false, archivedAt: null, metadata: { machineId: 'm1', flavor: 'claude' } as any };
+  it('offers restore (banner / row / palette) — it used to have no way back', () => {
+    expect(canOfferRestore(neverRan, on)).toBe(true);
+    expect(restoreEligibility(neverRan, machines)).toEqual({ ok: true, machineId: 'm1' });
+    expect(isNeverRunOffline(neverRan)).toBe(true);
+    expect(isNeverRunOffline({ ...neverRan, metadata: { machineId: 'm1', flavor: 'codex' } as any })).toBe(true);
+  });
+  it('its composer restores first and queues (a plain send used to vanish without feedback)', () => {
+    expect(composerGate(neverRan)).toBe('restore-first');
+    expect(composerGate({ ...neverRan, active: true })).toBe('send');
+  });
+  it('a merely-offline session that did run keeps sending as before', () => {
+    expect(isNeverRunOffline({ ...neverRan, metadata: { machineId: 'm1', flavor: 'claude', claudeSessionId: 'c1' } as any })).toBe(false);
+    expect(composerGate({ ...neverRan, metadata: { machineId: 'm1', flavor: 'claude', claudeSessionId: 'c1' } as any })).toBe('send');
+    expect(isNeverRunOffline({ ...neverRan, metadata: { machineId: 'm1', flavor: 'gemini' } as any })).toBe(false);
   });
 });

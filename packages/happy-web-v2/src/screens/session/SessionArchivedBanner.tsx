@@ -11,7 +11,7 @@ import { Archive, Moon, RotateCcw, Unplug } from 'lucide-react';
 import { useSession } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
-import { restoreSession, useRestoreState, RESTORE_SLOW_SPAWN_MS, type RestoreReason } from '@/app/sessionRestore';
+import { isNeverRunOffline, restoreSession, useRestoreState, RESTORE_SLOW_SPAWN_MS, type RestoreReason } from '@/app/sessionRestore';
 import { isHibernated } from '@/app/sessionHibernation';
 import './mirror.css';
 
@@ -55,7 +55,7 @@ export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
         text = t('hibernation.notice');
     } else {
         // recoverability: archived vs merely-offline get different notices.
-        text = session.archivedAt != null ? t('restore.archivedNotice') : t('restore.offlineNotice');
+        text = session.archivedAt != null ? t('restore.archivedNotice') : isNeverRunOffline(session) ? t('restore.neverRanNotice') : t('restore.offlineNotice');
     }
     const offline = session.archivedAt == null;
 

@@ -30,7 +30,7 @@ import { assistantSpawnMode, createSpawnGate, findLiveAssistant, isAssistantTrac
 import { decideAssistantReport, formatAssistantReportMessage, resolveReportSessionTitle, type AssistantReportEvent } from './assistantReport';
 import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
-import { resumePrecheck, sanitizeResumeModel } from './resumePrecheck';
+import { resumePrecheck, resumeStartsFreshConversation, sanitizeResumeModel } from './resumePrecheck';
 import { decideRestart, recordRestartAttempt, DEFAULT_MAX_RESTARTS } from './restartBreaker';
 import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
@@ -1278,12 +1278,13 @@ export async function startDaemon(): Promise<void> {
         // on the server and stays visible. Rather than strand the user on
         // "conversation-missing" (unrestorable forever), fall back to a fresh
         // agent conversation in the same directory — the session becomes usable
-        // again. Every other precheck failure (bad cwd, unsupported flavor, no
-        // backend id at all) is still fatal.
+        // again. B-680: same for a session that never ran a turn (no backend id
+        // yet) — there is nothing to reopen, so start its first conversation.
+        // A bad cwd or an unsupported flavor is still fatal.
         let freshConversation = false;
         if (!precheck.ok) {
-          if (precheck.reason === 'conversation-missing') {
-            logger.debug(`[DAEMON RUN] resume: transcript for ${happySessionId} is gone (${precheck.detail}); starting a fresh conversation in ${metadata.path}`);
+          if (resumeStartsFreshConversation(precheck.reason)) {
+            logger.debug(`[DAEMON RUN] resume: ${precheck.reason} for ${happySessionId} (${precheck.detail}); starting a fresh conversation in ${metadata.path}`);
             freshConversation = true;
           } else {
             return { type: 'error', errorMessage: `resume-precheck:${precheck.reason}: ${precheck.detail}` };
