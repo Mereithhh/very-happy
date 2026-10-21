@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CyberMark, EmptyState, Button, StatusDot, QuickThemeToggle } from '@/ui';
+import { VeryHappyMark, EmptyState, Button, StatusDot, QuickThemeToggle } from '@/ui';
 import { BRAND } from '@/app/brand';
 import { getServerUrl } from '@/sync/serverConfig';
 import { PublicLinkInfoSchema, PublicLinkMessagesSchema, type PublicLinkInfo } from '@/sync/sessionShareTypes';
@@ -115,7 +115,7 @@ export function SharedLinkScreen() {
     return (
         <div className="slk">
             <header className="slk-head">
-                <Link className="slk-brand" to="/welcome" aria-label={t('share.page.home')}><CyberMark size={22} /></Link>
+                <Link className="slk-brand" to="/welcome" aria-label={t('share.page.home')}><VeryHappyMark size={22} /></Link>
                 {phase === 'ready' && info ? (
                     <div className="slk-meta">
                         <h1 className="slk-title">{title}</h1>
