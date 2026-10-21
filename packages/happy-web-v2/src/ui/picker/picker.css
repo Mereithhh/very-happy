@@ -77,7 +77,10 @@
   font-size: 13.5px;
 }
 .vh-picker-search:focus { outline: none; border-color: var(--line-heavy); }
-.vh-picker-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; outline: none; }
+.vh-picker-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* the sheet's listbox takes focus (aria-activedescendant): the highlighted row carries the ring */
+.vh-picker-list:focus-visible { outline: none; box-shadow: none; }
+.vh-picker-list:focus-visible .vh-picker-option[data-active] { box-shadow: inset 0 0 0 1px var(--line-heavy); }
 .vh-picker-group + .vh-picker-group { margin-top: 4px; padding-top: 4px; border-top: var(--hairline) solid var(--line); }
 .vh-picker-group-label { padding: 6px 10px 2px 30px; color: var(--text-faint); font-family: var(--font-sans); font-size: 11px; font-weight: 500; }
 .vh-picker-option {
@@ -140,7 +143,6 @@
 .vh-picker-sheet .vh-picker-search-row { padding: 0 0 var(--sp-2); }
 .vh-picker-sheet .vh-picker-search { height: 44px; font-size: 16px; }
 .vh-picker-sheet .vh-picker-option { min-height: 48px; font-size: var(--fs-15); }
-.vh-picker-sheet .vh-picker-list:focus-visible { outline: none; }
 @keyframes vh-picker-fade { from { opacity: 0; } }
 @keyframes vh-picker-sheet { from { transform: translateY(24px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
