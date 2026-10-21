@@ -67,6 +67,9 @@ import { installCliSafely } from '@/update/npmInstall';
 import { createUpdateController } from '@/update/updateController';
 import { lastInstallStore } from '@/update/lastInstall';
 import { createPolicyAnnouncementHandler } from '@/update/policyAnnouncement';
+import { createHarnessInstaller } from '@/harness/harnessInstaller';
+import { runNpm } from '@/update/npmInstall';
+import { HARNESS_INSTALL_CAPABILITY_VERSION } from '@slopus/happy-wire';
 import { createProjectPresenceReporter } from './projectPresence';
 import { createProjectsClient } from '@/projects/client';
 import { joinProject } from '@/projects/attribution';
@@ -1932,6 +1935,8 @@ export async function startDaemon(): Promise<void> {
     }
 
     let lastUpdateLog = '';
+    // B-719: created below (needs apiMachine); the CLI update waits while it writes the npm tree.
+    let harnessInstaller: ReturnType<typeof createHarnessInstaller> | null = null;
     const updateController = createUpdateController({
       policy: () => fetchCliUpdateState(configuration.serverUrl, packageJson.version),
       enabled: async () => ((await readSettings()).cliAutoUpdate ?? 'idle') !== 'off',
@@ -1939,7 +1944,7 @@ export async function startDaemon(): Promise<void> {
       // handover (they talk to the server themselves) and web terminals live
       // in tmux, so neither is a reason to hold an update. B-507: a session
       // whose turn ended but still has background tasks is busy too.
-      idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny(),
+      idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny() && !harnessInstaller?.isRunning(),
       install: installCliSafely,
       lastInstall: lastInstallStore(configuration.happyHomeDir),
       publish: (state) => {
@@ -2002,6 +2007,23 @@ export async function startDaemon(): Promise<void> {
       snapshot => apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot })),
       error => logger.debug('[DAEMON RUN] Agent version check failed', error),
     );
+    // B-719: install / update a coding-agent CLI only when the owner clicks it in the Web.
+    harnessInstaller = createHarnessInstaller({
+      npm: runNpm,
+      runningPackageDir: projectPath(),
+      commandOnPath,
+      cliUpdateBusy: () => updateController.isRunning(),
+      publish: (state) => {
+        void apiMachine.updateDaemonState(current => ({ ...current, status: current?.status ?? 'running', harnessInstall: state }))
+          .catch(error => logger.debug('[DAEMON RUN] harness install state publish failed', error));
+      },
+      afterInstall: async () => {
+        apiMachine.recheckCliAvailability();
+        await stopAgentVersionChecks.refresh();
+      },
+      log: message => logger.warn(`[DAEMON RUN] ${message}`),
+    });
+    apiMachine.setHarnessInstallHandler(params => harnessInstaller!.request(params));
 
     // Every 60 seconds:
     // 1. Prune stale sessions
@@ -2047,7 +2069,7 @@ export async function startDaemon(): Promise<void> {
         }
       }
       const relayMove = pendingRelayMove;
-      if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {
+      if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
@@ -2206,6 +2228,8 @@ export async function startDaemon(): Promise<void> {
       worktreeVersion: WORKTREE_CAPABILITY_VERSION,
       // B-688: this daemon serves the model-config-* RPCs (web gates 「模型与 Provider」 on it).
       modelConfigVersion: MODEL_CONFIG_CAPABILITY_VERSION,
+      // B-719: this daemon serves `harness-install` (web gates the Install / Update buttons on it).
+      harnessInstallVersion: HARNESS_INSTALL_CAPABILITY_VERSION,
     })).catch(() => logger.debug('[DAEMON RUN] Teams capability publication will retry on reconnect'));
 
     // Setup signal handlers

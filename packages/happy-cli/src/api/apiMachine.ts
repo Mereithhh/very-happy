@@ -384,6 +384,11 @@ export class ApiMachineClient {
             handler(params && typeof params === 'object' ? (params as { version?: unknown }).version : undefined));
     }
 
+    /** B-719: `harness-install` — the owner asked this machine to install one harness id. */
+    setHarnessInstallHandler(handler: (params: unknown) => Promise<unknown>): void {
+        this.rpcHandlerManager.registerHandler('harness-install', (params: unknown) => handler(params));
+    }
+
     setCliUpdateRetryHandler(handler: (version: unknown) => Promise<{ accepted: true } | { error: string }>): void {
         this.rpcHandlerManager.registerHandler('cli-update-retry', (params: unknown) =>
             handler(params && typeof params === 'object' ? (params as { version?: unknown }).version : undefined));
@@ -1618,29 +1623,38 @@ export class ApiMachineClient {
             if (Date.now() - this.lastCliProbeAt < CLI_AVAILABILITY_RECHECK_MS) {
                 return;
             }
-            this.lastCliProbeAt = Date.now();
-            const newAvailability = detectCLIAvailability();
-            const prev = this.lastKnownCLIAvailability;
-            const newResumeSupport = detectResumeSupport();
-            const prevResume = this.lastKnownResumeSupport;
-            const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw || prev.pi !== newAvailability.pi;
-            const resumeSupportChanged = !prevResume
-                || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
-                || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;
-
-            if (cliAvailabilityChanged || resumeSupportChanged) {
-                this.lastKnownCLIAvailability = newAvailability;
-                this.lastKnownResumeSupport = newResumeSupport;
-                this.updateMachineMetadata((metadata) => ({
-                    ...(metadata || {} as any),
-                    cliAvailability: newAvailability,
-                    resumeSupport: { ...newResumeSupport, rpcAvailable: !!this.resumeSessionHandler },
-                })).catch((err) => {
-                    logger.debug('[API MACHINE] Failed to update machine capabilities:', err);
-                });
-            }
+            this.recheckCliAvailability();
         }, 20000);
         logger.debug('[API MACHINE] Keep-alive started (20s interval)');
+    }
+
+    /**
+     * Re-detect CLI availability and publish it when it changed. Called on the
+     * throttled keep-alive and, B-719, right after the owner installed a
+     * harness so the launcher enables it without waiting up to five minutes.
+     */
+    recheckCliAvailability(): void {
+        this.lastCliProbeAt = Date.now();
+        const newAvailability = detectCLIAvailability();
+        const prev = this.lastKnownCLIAvailability;
+        const newResumeSupport = detectResumeSupport();
+        const prevResume = this.lastKnownResumeSupport;
+        const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw || prev.pi !== newAvailability.pi;
+        const resumeSupportChanged = !prevResume
+            || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
+            || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;
+
+        if (cliAvailabilityChanged || resumeSupportChanged) {
+            this.lastKnownCLIAvailability = newAvailability;
+            this.lastKnownResumeSupport = newResumeSupport;
+            this.updateMachineMetadata((metadata) => ({
+                ...(metadata || {} as any),
+                cliAvailability: newAvailability,
+                resumeSupport: { ...newResumeSupport, rpcAvailable: !!this.resumeSessionHandler },
+            })).catch((err) => {
+                logger.debug('[API MACHINE] Failed to update machine capabilities:', err);
+            });
+        }
     }
 
     private bindRpcRequestHandler(socket: Socket, transport: 'control' | 'regional-relay') {
