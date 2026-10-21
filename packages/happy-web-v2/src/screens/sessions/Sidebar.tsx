@@ -5,7 +5,7 @@ import { BrandIcon, BrandEnvBadge } from '@/ui/BrandMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Flag, StickyNote, ListChecks, FolderOpen, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, Contact, FolderKanban, FolderPlus, Tags } from 'lucide-react';
+import { Search, Plus, CircleHelp, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Flag, FolderOpen, Rows3, RotateCcw, Cable, Trash2, History, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, FolderKanban, FolderPlus, Tags } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -29,9 +29,9 @@ import { toast } from '@/ui/Toast';
 import { MoveToProjectModal } from '@/screens/projects/MoveToProjectModal';
 import type { ProjectView } from '@slopus/happy-wire';
 import type { Session } from '@/sync/storageTypes';
-// aliased: `Settings` is already taken by the lucide gear icon above
+// aliased: keeps the name apart from lucide's `Settings` gear icon
 import type { Settings as SyncedSettings } from '@/sync/settings';
-import { StatusDot, QuickThemeToggle, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
+import { StatusDot, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useIsDesktop } from '@/app/useMediaQuery';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -45,7 +45,6 @@ import { fmtDuration } from '@/screens/board/boardItems';
 import { boardProgressView } from '@/sync/boardProgress';
 import { AUTOMATIONS_SIDEBAR_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import { automationsEntryVisible } from '@/sync/automationsPoll';
-import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { openSessionSearch, SESSION_SEARCH_HINT } from '@/screens/search/sessionSearchEvents';
 import { NewSessionModal } from './NewSessionModal';
 import { NewTerminalModal } from './NewTerminalModal';
@@ -75,7 +74,8 @@ import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
 import { MajorUpdateEntry } from '@/app/MajorUpdateEntry';
-import { sidebarNavEntries, navAttentionTotal, navMenuLabel, orderCreateMenu, sidebarTopModel, type SidebarNavKey } from './sidebarNavEntries';
+import { sidebarNavEntries, orderCreateMenu, sidebarTopModel, NEW_TEAM_PATH, type SidebarNavKey } from './sidebarNavEntries';
+import { SidebarActionRows, SidebarChipRow, SidebarFooter } from './SidebarTop';
 import {
   findRevealTarget,
   isGroupCollapsed,
@@ -1195,20 +1195,18 @@ export function Sidebar() {
     },
   ]);
 
-  // B-641/B-676: secondary entries live in the header ⋯ menu on every device.
-  const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready' });
-  const newRowRef = useRef<HTMLDivElement | null>(null);
-  const [newRowWidth, setNewRowWidth] = useState<number>();
+  // B-713 (spec 2026-10-sidebar-header): no header ⋯. Desktop shows the
+  // capability entries as rows while they fit (the rest under 「更多能力 ▾」);
+  // the phone gets one chip row 项目 · 团队 · 更多 ▾ under the header.
+  const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready', teamsVisible: happyBotEntryVisible });
   const navEntries = sidebarNavEntries({ teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople });
-  const navAttention = navAttentionTotal(navEntries);
   const navName: Record<SidebarNavKey, string> = {
     teams: teamCopy.title,
     automations: t('automations.sidebarEntry'),
     todos: t('todos.title'),
     people: t('people.title'),
-    help: t('sidebar.openHelp'),
   };
-  const navIcon = { teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact, help: CircleHelp } as const;
+  const newTeam = () => navigate(NEW_TEAM_PATH);
 
   return (
     <div className="sb">
@@ -1228,19 +1226,6 @@ export function Sidebar() {
               </button>
             </ActionDropdownMenu>
           )}
-          {/* B-676: 团队 / 自动化 / 待办 / 联系人 / 帮助 — one ⋯ on every device; the badge sums what needs the user. */}
-          {top.header.includes('more') && (
-            <ActionDropdownMenu
-              align="end"
-              sideOffset={4}
-              items={navEntries.map((e) => ({ key: e.key, label: navMenuLabel(navName[e.key], e.attention), icon: navIcon[e.key], onSelect: () => navigate(e.path) }))}
-            >
-              <button className="sb-icon-btn sb-more-btn" aria-label={navAttention > 0 ? `${t('sidebar.moreEntries')} · ${navAttention}` : t('sidebar.moreEntries')} title={t('sidebar.moreEntries')}>
-                <MoreHorizontal size={18} />
-                {navAttention > 0 && <span className="sb-more-attn mono" aria-hidden>{navAttention}</span>}
-              </button>
-            </ActionDropdownMenu>
-          )}
           {/* Collapse only exists in the two-pane desktop layout. On mobile
               (single pane) AppLayout ignores `collapsed` entirely, so this
               button did nothing visible — worse, it silently wrote
@@ -1256,25 +1241,28 @@ export function Sidebar() {
         </div>
       </header>
 
-      {/* B-676: two labelled actions instead of a six-row nav column (spec 2026-10-sidebar-header).
+      {/* B-676/B-713: labelled 新建会话 ▾ / 新建项目 / 新建团队 rows, then the capability rows (spec 2026-10-sidebar-header).
           新建会话: the main part starts a chat in one click, ▾ lists every create type. */}
-      {top.actions.length > 0 && <div className="sb-actions">
-        {top.actions.includes('new-session') && <div className="sb-new-split" ref={newRowRef}>
-          <button className="sb-nav-btn sb-new-main" disabled={creatingChat} aria-busy={creatingChat} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail} onClick={() => void createChatOrConfigure(navigate, configureNew, { location })}>
-            {creatingChat ? <Spinner size={17} /> : <Plus size={17} />}<span>{creatingChat ? (lang.startsWith('zh') ? '正在创建…' : 'Creating…') : t('sidebar.newSession')}</span>
-          </button>
-          <ActionDropdownMenu align="end" sideOffset={4} contentMinWidth={newRowWidth} items={createItems}>
-            <button className="sb-nav-btn sb-new-more" aria-label={t('sidebar.newMenu')} title={t('sidebar.newMenu')} onPointerDown={() => setNewRowWidth(newRowRef.current?.offsetWidth)}>
-              <ChevronDown size={14} />
-            </button>
-          </ActionDropdownMenu>
-        </div>}
-        {top.actions.includes('new-project') && (
-          <button className="sb-nav-btn" title={t('sidebar.newProject')} onClick={() => void createNamedProject()}>
-            <FolderPlus size={17} /><span>{t('sidebar.newProject')}</span>
-          </button>
-        )}
-      </div>}
+      <SidebarActionRows
+        actions={top.actions}
+        creatingChat={creatingChat}
+        createItems={createItems}
+        capabilities={navEntries}
+        capabilityNames={navName}
+        listRef={listRef}
+        onNewChat={() => void createChatOrConfigure(navigate, configureNew, { location })}
+        onNewProject={() => void createNamedProject()}
+        onNewTeam={newTeam}
+        onNavigate={navigate}
+      />
+      <SidebarChipRow
+        chips={top.chips}
+        capabilities={navEntries}
+        capabilityNames={navName}
+        onNewProject={() => void createNamedProject()}
+        onNewTeam={newTeam}
+        onNavigate={navigate}
+      />
 
       <div className="sb-list-controls">
       <div className="sb-filter vh-segmented" role="tablist">
@@ -1613,27 +1601,7 @@ export function Sidebar() {
       <SidebarRateLimit />
       {/* B-715: unread big updates — persistent entry above the footer (B-713 owns the footer row). */}
       <MajorUpdateEntry />
-      <footer className="sb-footer">
-        <button className="sb-footer-btn" onClick={() => navigate('/settings')}>
-          <Settings size={16} /> <span>{t('tabs.settings')}</span>
-        </button>
-        {/* notes dock toggle (B-094) — app chrome, so it shares the footer row */}
-        <button
-          className="sb-footer-btn sb-footer-notes"
-          onClick={toggleNotesPanel}
-          aria-label={t('notes.title')}
-          title={`${t('notes.title')} (⌘J)`}
-        >
-          <StickyNote size={16} />
-        </button>
-        <QuickThemeToggle className="sb-footer-btn sb-footer-icon sb-theme-toggle" />
-        {/* Notification center: bell + unread badge + panel (self-contained;
-            the collapsed desktop rail carries its own instance). It used to
-            sit in the header, which was overflowing as header-right icons
-            accumulated — down here it shares the settings row, the other
-            "app chrome" affordance. */}
-        <NotificationBell className="sb-footer-bell" />
-      </footer>
+      <SidebarFooter onSettings={() => navigate('/settings')} onHelp={() => navigate('/help')} onToggleNotes={toggleNotesPanel} />
 
       {showNew && <NewSessionModal initialLocation={newLocation} onClose={() => setShowNew(false)} />}
       {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}

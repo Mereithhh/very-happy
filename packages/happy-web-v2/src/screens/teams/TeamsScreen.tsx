@@ -59,6 +59,16 @@ function TeamsContent() {
     const task = searchParams.get("task");
     if (task) setSelectedTask(task);
   }, [searchParams]);
+  // B-713: the sidebar's 新建团队 opens this dialog via ?new=1; closing drops
+  // the param so the next click (same URL) opens it again.
+  function closeCreate() {
+    setCreating(false);
+    if (searchParams.has("new")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("new");
+      setSearchParams(next, { replace: true });
+    }
+  }
   const machines = useAllMachines({ includeOffline: true });
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<TeamState[]>([]);
@@ -194,7 +204,7 @@ function TeamsContent() {
           {!machines.some(supportsTeams) && (
             <p role="status">{tr("teams.machineRequired")}</p>
           )}
-          {creating && <TeamDialog title={c.create} onClose={() => setCreating(false)}>
+          {creating && <TeamDialog title={c.create} onClose={closeCreate}>
             {error && <p role="alert" className="teams-error">{error}</p>}
           <TeamStartForm onStart={async (name, machineId, launch, requestId) => {
             return (await createTeam(name, machineId, requestId, launch)).team;

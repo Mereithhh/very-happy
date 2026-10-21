@@ -32,7 +32,7 @@
   color: var(--text);
   transition: background var(--motion-fast);
 }
-.sb-brand--button:hover { background: var(--fill-hover); }
+@media (hover: hover) and (pointer: fine) { .sb-brand--button:hover { background: var(--fill-hover); } }
 .sb-header-right {
   display: flex;
   align-items: center;
@@ -48,10 +48,10 @@
   color: var(--text-dim);
   transition: background var(--motion-fast);
 }
-.sb-icon-btn:hover {
+@media (hover: hover) and (pointer: fine) { .sb-icon-btn:hover {
   background: var(--fill-hover);
   color: var(--text);
-}
+} }
 /* toggled-on icon button (B-091 tag grouping) — same "selected control"
  * treatment as a selected row (alpha-2 fill) with accent-2 ink marking the
  * toggled state (established exemption; the live-only rule is for --accent). */
@@ -143,11 +143,14 @@
   color: var(--text-faint);
   transition: background var(--motion-fast), color var(--motion-fast);
 }
-.sb-workspace-new:hover,
 .sb-workspace-new:focus-visible {
   background: var(--fill-selected);
   color: var(--text);
 }
+@media (hover: hover) and (pointer: fine) { .sb-workspace-new:hover {
+  background: var(--fill-selected);
+  color: var(--text);
+} }
 @media (pointer: coarse) {
   .sb-section-head--workspace {
     min-height: 44px;
@@ -181,9 +184,9 @@
   text-align: left;
   cursor: pointer;
 }
-.sb-section-toggle:hover {
+@media (hover: hover) and (pointer: fine) { .sb-section-toggle:hover {
   color: var(--text-dim);
-}
+} }
 .sb-section-toggle:focus-visible {
   outline: none;
   box-shadow: none;
@@ -425,16 +428,25 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sb-footer-btn:hover {
+@media (hover: hover) and (pointer: fine) { .sb-footer-btn:hover {
   background: var(--fill-hover);
   color: var(--text);
-}
+} }
 /* icon-only footer buttons (notes toggle, todos) must not stretch like the
    settings row */
 .sb-footer-notes,
 .sb-footer-icon {
   flex: none;
   padding: 10px;
+}
+/* B-713: 帮助 sits next to 设置. Help keeps its label; on a narrow sidebar
+   (default 260px) 设置 folds to its gear (aria-label keeps the name) so the
+   row still fits notes · theme · notifications. */
+.sb-footer { container: sb-footer / inline-size; }
+.sb-footer-help { flex: none; }
+@container sb-footer (max-width: 299px) {
+  .sb-footer-settings { flex: none; padding: 10px; }
+  .sb-footer-settings > span { display: none; }
 }
 .sb-theme-toggle {
   width: 36px;
@@ -575,10 +587,10 @@
   color: var(--text-dim);
   transition: color var(--motion-fast), background var(--motion-fast);
 }
-.sb-closed-reopen:hover:not(:disabled) {
+@media (hover: hover) and (pointer: fine) { .sb-closed-reopen:hover:not(:disabled) {
   color: var(--text);
   background: var(--fill-hover);
-}
+} }
 .sb-closed-reopen:disabled {
   color: var(--text-faint);
   opacity: 0.4;
@@ -605,7 +617,7 @@
   font: inherit;
   cursor: pointer;
 }
-.sb-order-hint button:hover { background: var(--fill-soft-hover); }
+@media (hover: hover) and (pointer: fine) { .sb-order-hint button:hover { background: var(--fill-soft-hover); } }
 .sb-order-hint button:focus-visible { outline: none; background: var(--fill-soft-hover); }
 .sb-order-hint-coarse { display: none; }
 @media (pointer: coarse) {
@@ -648,7 +660,8 @@
 .sb-list-tools .sb-icon-btn { width:26px; height:28px; }
 .sb-products { display:flex; flex-direction:column; gap:2px; padding:var(--sp-2); }
 .sb-products > button, .sb-products .sb-nav-btn { display:flex; align-items:center; gap:var(--sp-2); width:100%; min-height:32px; padding:5px var(--sp-2); font-size:var(--workspace-primary-size); text-align:left; border-radius:var(--r-sm); }
-.sb-products button:hover, .sb-products button:focus-visible { outline:none; box-shadow:none; background: var(--fill-hover); }
+.sb-products button:focus-visible { outline:none; box-shadow:none; background: var(--fill-hover); }
+@media (hover: hover) and (pointer: fine) { .sb-products button:hover { outline:none; box-shadow:none; background: var(--fill-hover); } }
 .sb-products > button > svg, .sb-products .sb-nav-btn > svg:first-child { width:18px; flex-shrink:0; }
 .sb-row-tags .vh-tag { border-color:transparent; }
 .sb-products kbd { margin-left:auto; color: var(--text-faint); font-size:var(--fs-10); }
@@ -671,12 +684,27 @@
 .sb-actions { display:flex; flex-direction:column; gap:2px; padding:0 var(--sp-2) var(--sp-2); }
 .sb-actions .sb-nav-btn { display:flex; align-items:center; gap:var(--sp-2); width:100%; min-height:32px; padding:5px var(--sp-2); font-size:var(--workspace-primary-size); text-align:left; border-radius:var(--r-sm); color: var(--text); }
 .sb-actions .sb-nav-btn > svg:first-child { width:18px; flex-shrink:0; }
-.sb-actions .sb-nav-btn:hover, .sb-actions .sb-nav-btn:focus-visible { outline:none; box-shadow:none; background: var(--fill-hover); }
+@media (hover: hover) and (pointer: fine) { .sb-actions .sb-nav-btn:hover { background: var(--fill-hover); } }
+/* B-713: keyboard focus keeps the shared ring (B-614/B-699), not just a fill. */
+.sb-actions .sb-nav-btn:focus-visible { outline:none; box-shadow: var(--focus-ring); background: var(--fill-hover); }
 .sb-new-split { display:flex; align-items:stretch; gap:2px; }
 .sb-new-split .sb-new-main { flex:1; min-width:0; font-weight:500; }
 .sb-new-split .sb-new-main > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sb-new-split .sb-new-more { flex:none; width:32px; justify-content:center; padding:0; color: var(--text-dim); }
 .sb-new-split .sb-new-more > svg:first-child { width:14px; }
+/* B-713: capability rows (团队/自动化/待办/联系人) sit under the create rows,
+   one ink step quieter; 「更多能力 ▾」 holds whatever does not fit. */
+.sb-caps { display:flex; flex-direction:column; gap:2px; margin-top: var(--sp-1); }
+.sb-actions .sb-cap { color: var(--text-dim); }
+.sb-actions .sb-cap:focus-visible { color: var(--text); }
+.sb-caps-more .sb-caps-chevron { margin-left:auto; flex:none; color: var(--text-faint); }
+.sb-caps-more .sb-nav-attn + .sb-caps-chevron { margin-left: var(--sp-1); }
+/* B-713: phone chip row 项目 · 团队 · 更多 ▾ — one 44px row under the header. */
+.sb-chips { display:flex; align-items:center; gap: var(--sp-1); padding: 0 var(--sp-3) var(--sp-1); }
+.sb-chip { display:inline-flex; align-items:center; gap:6px; min-width:0; min-height:44px; padding:0 var(--sp-3); border-radius: var(--r-md); background: var(--fill-soft); color: var(--text-dim); font-size: var(--fs-13); white-space:nowrap; }
+.sb-chip > svg { flex:none; }
+.sb-chip .sb-nav-attn { margin-left:2px; }
+.sb-chip[data-state="open"] { background: var(--fill-selected); color: var(--text); }
 @media (pointer:coarse) {
  .sb-actions .sb-nav-btn { min-height:44px; }
  .sb-new-split .sb-new-more { width:44px; }
@@ -687,7 +715,8 @@
 .sb-team-member-status { color: var(--text-dim); font-weight: 400; }
 /* B-674: one quiet disclosure row stands in for a team's archived members. */
 .sb-team-archived { display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: 32px; padding: 4px var(--sp-2); border-radius: var(--r-sm); color: var(--text-dim); font-size: var(--fs-12); text-align: left; }
-.sb-team-archived:hover, .sb-team-archived:focus-visible { outline: none; background: var(--fill-hover); color: var(--text); }
+.sb-team-archived:focus-visible { outline: none; background: var(--fill-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .sb-team-archived:hover { outline: none; background: var(--fill-hover); color: var(--text); } }
 .sb-team-archived > svg { flex-shrink: 0; }
 @media (pointer: coarse) { .sb-team-archived { min-height: 44px; } }
 
@@ -703,8 +732,6 @@
 
 /* B-641: header ＋ (phone) / ⋯ (every device since B-676). The ⋯ trigger
    carries the folded entries' attention total — same danger pill as .sb-nav-attn. */
-.sb-more-btn { position: relative; }
-.sb-more-attn { position: absolute; top: 4px; right: 2px; min-width: 16px; font-size: var(--fs-10); line-height: 14px; padding: 0 4px; border-radius: var(--r-pill); color: var(--danger); border: 1px solid var(--danger); background: var(--danger-dim); pointer-events: none; }
 .sb-new-icon { color: var(--text); }
 
 /* ----- B-647 project lens ----- */
@@ -783,7 +810,7 @@
 }
 .sb-tag-notice__convert { background: var(--text); color: var(--bg-0); }
 .sb-tag-notice__dismiss { background: transparent; color: var(--text-faint); }
-.sb-tag-notice__dismiss:hover { background: var(--fill-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .sb-tag-notice__dismiss:hover { background: var(--fill-hover); color: var(--text); } }
 .sb-tag-notice__convert:focus-visible,
 .sb-tag-notice__dismiss:focus-visible,
 .sb-tag-notice__select:focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -802,7 +829,8 @@
   font: inherit; color: inherit; text-align: left; cursor: pointer;
 }
 .sb-section-name .sb-section-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sb-section-name:hover, .sb-section-name.is-selected { background: var(--fill-hover); color: var(--text); }
+.sb-section-name.is-selected { background: var(--fill-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .sb-section-name:hover { background: var(--fill-hover); color: var(--text); } }
 .sb-section-name:focus-visible { outline: none; background: var(--fill-hover); color: var(--text); }
 .sb-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (pointer: coarse) { .sb-section-name { min-height: 44px; } }
