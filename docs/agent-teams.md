@@ -51,6 +51,13 @@ its conversation is archived, it has stopped or exited, or it has had no activit
 for 7 days. Member counts leave inactive members out; the lead never folds, and a
 member whose cleanup has not finished shows **Cleanup needs attention** instead.
 Inactive members can still receive work through **Transfer to** in task details.
+Every conversation a team has had stays under that team in all three sidebar
+groupings: the lead, sub-members, adopted leads and each earlier session of a
+reused member. Earlier sessions fold into the **N inactive** row. Membership comes
+only from the team's own records (live bindings, launch receipts and rebind
+history), never from titles or folders. A conversation that leads two teams, such
+as a lead that created a second team, sits under the newer one; the other team's
+row still opens it.
 Ordinary conversations are never automatically turned into teams. Appearance
 settings can hide the Teams entry without stopping or deleting existing work.
 
