@@ -144,7 +144,8 @@ self.addEventListener('push', (event) => {
   const options = {
     body,
     icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    // Android tints the badge from its alpha only: a silhouette, not the colour tile.
+    badge: '/badge-96.png',
     data: { url, key, kind: typeof data.kind === 'string' ? data.kind : undefined, createdAt },
   };
   if (tag) {

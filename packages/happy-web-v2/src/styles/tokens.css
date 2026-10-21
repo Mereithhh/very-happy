@@ -276,6 +276,12 @@
   --brand-qwen: #6950ef;
   --brand-mistral: #fa520f;
 
+  /* Very Happy logo (B-724): identity colours of the static icons, NOT live state.
+     scripts/brand/build-logo-assets.ts paints favicon / app icons / OG images from
+     these plus each theme's --text and --bg-0; in-app marks stay monochrome --text. */
+  --logo-tile: #56b8a7;
+  --logo-tile-ink: #0b0b0a;
+
   /* terminal pane — stays dark in BOTH themes (the terminal is the floor).
      --term-bg = dark bg-0: the pane keeps the dark theme's vocabulary even on
      light chrome, so it reads as an intentional dark stage, not a hole. The

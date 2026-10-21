@@ -1,5 +1,5 @@
 import { BRAND, type BrandConfig } from '@/app/brand';
-import { CyberMark } from './CyberMark';
+import { VeryHappyMark } from './VeryHappyMark';
 import './brand.css';
 
 function themedPair(light: string, dark: string | null, className: string, style: React.CSSProperties, alt = '') {
@@ -12,9 +12,9 @@ function themedPair(light: string, dark: string | null, className: string, style
   );
 }
 
-/** Square brand mark: the operator logo (light/dark pair, B-638) or the default CyberMark. */
+/** Square brand mark: the operator logo (light/dark pair, B-638) or the default VeryHappyMark (B-724). */
 export function BrandIcon({ size, className = '', brand = BRAND }: { size: number; className?: string; brand?: BrandConfig }) {
-  if (!brand.logoUrl) return <CyberMark size={size} />;
+  if (!brand.logoUrl) return <VeryHappyMark size={size} />;
   return themedPair(brand.logoUrl, brand.logoDarkUrl, `brand-icon${className ? ` ${className}` : ''}`, { width: size, height: size });
 }
 
@@ -26,7 +26,7 @@ export function BrandEnvBadge({ className = '', brand = BRAND }: { className?: s
 
 /**
  * Brand lockup for auth cards, the public header and connect screens: the
- * CyberMark + wordmark by default, or the operator's logo + name (B-624).
+ * VeryHappyMark + wordmark by default, or the operator's logo + name (B-624).
  */
 export function BrandMark({ size, className, wordmarkClassName, wordmark, envBadge = true, brand = BRAND }: {
   size: number;

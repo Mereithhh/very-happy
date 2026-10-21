@@ -2,6 +2,13 @@
   <a href="README.md">English</a> · <strong>简体中文</strong>
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-lockup-dark.svg">
+    <img src=".github/logo-lockup-light.svg" height="48" alt="Very Happy">
+  </picture>
+</p>
+
 <div align="center">
   <a href="https://veryhappy.dev/welcome">
     <img src=".github/readme-hero.svg" width="100%" alt="Very Happy——连接你的机器与 coding agent 的统一工作区">
@@ -77,7 +84,7 @@ agent 可以直接追加的决定 / 发现 / 交接记录，以及谁在做什�
 > “看看这个项目，找出值得改进的地方，组建团队并行推进，最后给我可验收的成果。”
 
 1. **说清目标。** 打开「团队 → 新建团队」，输入你想完成的目标。消息下方显示最近使用的电脑和 Git 项目，可展开修改电脑、项目或 Agent。
-2. **让负责人组织工作。** 系统启动负责人并提供官方协作指引；负责人可把独立任务委派给成员，成员也可继续拆分自己的任务。
+2. **让负责人组织工作。** 系统启动负责人并提供官方协作指引；负责人默认只拆解、分派和验收，不亲自写代码；独立任务并行派出，改同一块的工作避开冲突，决定记进团队所属项目，上下文被压缩后也能找回。成员也可继续拆分自己的任务。
 3. **并行推进，随时查看。** 从团队概览进入成员对话，查看任务进展、提交的结果与代码变化。
 4. **验收成果。** 检查结果，接受或退回修改；回收会保留未合并代码，不把进程退出当成任务完成。
 

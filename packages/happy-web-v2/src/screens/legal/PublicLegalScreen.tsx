@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { CyberMark } from '@/ui/CyberMark';
+import { VeryHappyMark } from '@/ui/VeryHappyMark';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import { useEffect } from 'react';
 import './publicLegal.css';
@@ -90,7 +90,7 @@ function LegalPage({ title, children }: { title: string; children: React.ReactNo
   return (
     <main className="legal-page">
       <article className="legal-card">
-        <Link className="legal-brand" to="/welcome"><CyberMark size={32} /><span>very happy</span></Link>
+        <Link className="legal-brand" to="/welcome"><VeryHappyMark size={32} /><span>very happy</span></Link>
         <h1>{title}</h1>
         {children}
         <footer><Link to="/privacy">{copy.shell.privacy}</Link><span>·</span><Link to="/terms">{copy.shell.terms}</Link><span>·</span><a href="https://github.com/Mereithhh/very-happy">{copy.shell.source}</a></footer>

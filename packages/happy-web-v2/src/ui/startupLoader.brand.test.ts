@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readBrandConfig } from '@/app/brand';
 import { brandedArtwork } from './StartupLoader';
 
-const ART = '<div class="vh-startup-network"><div class="vh-startup-hub"><svg viewBox="0 0 32 32"><rect/></svg></div></div>';
+const ART = '<div class="vh-startup-network"><div class="vh-startup-hub"><svg viewBox="0 0 96 96"><path/></svg></div></div>';
 
 describe('brandedArtwork', () => {
   it('keeps the default mark without a logo and swaps in the light/dark pair with one', () => {
