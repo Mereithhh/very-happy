@@ -195,6 +195,8 @@ test('B-714 native-control: new <select>/<option>/checkbox/<summary> in tsx are 
     // css and tests are out of scope for this rule
     assert.deepEqual(lintAll('screens/x/form.css', 'select { color: var(--text); }'), []);
     assert.deepEqual(lintAll('screens/x/Form.test.tsx', '<select />'), []);
+});
+
 test('hover-unguarded: bare :hover is reported, guarded hover passes (B-728)', () => {
     assert.deepEqual(lintAll('a.css', '.a:hover { color: var(--text); }'), [['hover-unguarded', 1]]);
     assert.deepEqual(lintAll('a.css', '@media (hover: hover) and (pointer: fine) { .a:hover { color: var(--text); } }'), []);
