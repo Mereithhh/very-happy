@@ -102,8 +102,14 @@ done
 [ "$FAILED" = 1 ] && exit 1
 [ "$NO_MERGE" = "--no-merge" ] && { echo "✓ CI green (merge skipped)"; exit 0; }
 
+# Never `--delete-branch`: since gh 2.99.0 (cli/cli#14007) it also deletes the
+# LOCAL branch, and when that branch is checked out in another linked worktree it
+# first runs `git worktree remove` on it (clean worktrees only). Every team
+# worker's worktree shares this repository — B-691: active workers lost their
+# worktree mid-task right after their own PR landed. Only the remote branch
+# is deleted, below; local branches and worktrees are their owners' business.
 for _ in 1 2 3 4 5 6; do
-  OUT=$(gh pr merge "$PR" --squash --delete-branch 2>&1 | tail -1)
+  OUT=$(gh pr merge "$PR" --squash 2>&1 | tail -1)
   echo "merge: $OUT"
   echo "$OUT" | grep -qiE "admin|blocked|unable|not mergeable" || break
   sleep 30
@@ -113,3 +119,13 @@ M=$(gh api "repos/$REPO/pulls/$PR" --jq .merge_commit_sha)
 S=$(gh api "repos/$REPO/pulls/$PR" --jq .state)
 echo "merge=${M:0:8} state=$S"
 [ "$S" = "closed" ] || exit 1
+# Delete the head branch on the remote only (same-repository PRs).
+HEAD_REF=$(gh api "repos/$REPO/pulls/$PR" --jq .head.ref)
+HEAD_REPO=$(gh api "repos/$REPO/pulls/$PR" --jq .head.repo.full_name)
+if [ -n "$HEAD_REF" ] && [ "$HEAD_REPO" = "$REPO" ]; then
+  if gh api -X DELETE "repos/$REPO/git/refs/heads/$HEAD_REF" >/dev/null 2>&1; then
+    echo "deleted remote branch $HEAD_REF (local branch and worktrees untouched)"
+  else
+    echo "· remote branch $HEAD_REF not deleted (already gone or protected)"
+  fi
+fi

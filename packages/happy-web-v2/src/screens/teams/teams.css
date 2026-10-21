@@ -172,6 +172,13 @@
 .teams-avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--fill-soft); flex: none; }
 .teams-member-info { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
 .teams-member-info strong { font-size: var(--fs-13); }
+/* B-690: inactive members fold behind one quiet disclosure (sidebar's 「已停用 N 个」 row). */
+.teams-members-inactive > summary { display: flex; align-items: center; gap: var(--sp-2); min-height: 32px; padding: 4px 0; border-top: 1px solid var(--line); color: var(--text-dim); font-size: var(--fs-13); cursor: pointer; list-style: none; }
+.teams-members-inactive > summary::-webkit-details-marker { display: none; }
+.teams-members-inactive > summary:hover, .teams-members-inactive > summary:focus-visible { outline: none; color: var(--text); }
+.teams-members-inactive-chevron { transition: transform var(--dur-base) var(--ease-out); }
+.teams-members-inactive[open] .teams-members-inactive-chevron { transform: rotate(90deg); }
+.teams-members-inactive-hint { margin: 0 0 4px; color: var(--text-faint); font-size: var(--fs-12); }
 .teams-member-info > span { color: var(--text-dim); }
 .teams-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .teams-progress { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }

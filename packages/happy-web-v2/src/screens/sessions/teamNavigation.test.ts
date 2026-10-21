@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { TeamState } from '@slopus/happy-wire';
-import { groupTeamNavigation, teamSessionMembership, botHistorySessionId, missingTeamSessionIds, unstartedTeamMembers, teamArchivedGroupId, type TeamNavigationEntry } from './teamNavigation';
+import { groupTeamNavigation, teamSessionMembership, botHistorySessionId, missingTeamSessionIds, unstartedTeamMembers, teamInactiveGroupId, teamMemberInactive, TEAM_MEMBER_IDLE_MS, type TeamNavigationEntry } from './teamNavigation';
 import { defaultCollapsed } from './sidebarCollapsedGroups';
-const label = (e: TeamNavigationEntry<{ sessionId: string }>) => e.kind === 'row' ? e.row.sessionId : e.kind === 'team' ? e.team.id : `archived:${e.count}:${e.open ? 'open' : 'closed'}`;
+const label = (e: TeamNavigationEntry<{ sessionId: string }>) => e.kind === 'row' ? e.row.sessionId : e.kind === 'team' ? e.team.id : `inactive:${e.count}:${e.open ? 'open' : 'closed'}`;
 const team = (id: string, sessionIds: string[]): TeamState => ({ id, name: id, machineId: 'm', version: 1, createdAt: 1, bots: sessionIds.map((sessionId, i) => ({ id: `${id}-${i}`, sessionId, name: `Member ${i}`, generation: 1, root: i === 0, managed: true, assistant: 'claude', directory: null })), tasks: [], operations: [], messages: [] });
 describe('team history', () => {
   const rows = ['ordinary-a', 'lead', 'ordinary-b', 'member', 'ordinary-c'].map((sessionId) => ({ sessionId }));
@@ -66,26 +66,72 @@ it('shows a failed sessionless member with its task link and stops duplicating i
  t.bots[0].sessionId='started'; expect(unstartedTeamMembers(t)).toEqual([]);
 });
 
-describe('B-674 archived team members', () => {
+describe('B-674/B-690 inactive team members fold', () => {
   const rows = ['ordinary', 'lead', 'old-1', 'member', 'old-2'].map((sessionId) => ({ sessionId }));
   const t = team('team', ['lead', 'old-1', 'member', 'old-2']);
-  const isArchived = (r: { sessionId: string }) => r.sessionId.startsWith('old-');
+  const isInactive = (r: { sessionId: string }) => r.sessionId.startsWith('old-');
   it('lists live members, then folds archived ones behind a single count row (closed by default)', () => {
-    expect(groupTeamNavigation(rows, [t], new Set(['team']), { isArchived, open: new Set() }).map(label))
-      .toEqual(['ordinary', 'team', 'lead', 'member', 'archived:2:closed']);
+    expect(groupTeamNavigation(rows, [t], new Set(['team']), { isInactive, open: new Set() }).map(label))
+      .toEqual(['ordinary', 'team', 'lead', 'member', 'inactive:2:closed']);
   });
   it('shows archived members after the fold row when that team is opened', () => {
-    expect(groupTeamNavigation(rows, [t], new Set(['team']), { isArchived, open: new Set(['team']) }).map(label))
-      .toEqual(['ordinary', 'team', 'lead', 'member', 'archived:2:open', 'old-1', 'old-2']);
+    expect(groupTeamNavigation(rows, [t], new Set(['team']), { isInactive, open: new Set(['team']) }).map(label))
+      .toEqual(['ordinary', 'team', 'lead', 'member', 'inactive:2:open', 'old-1', 'old-2']);
   });
   it('adds no fold row when nothing is archived, and nothing at all while the team is collapsed', () => {
-    expect(groupTeamNavigation(rows, [t], new Set(['team']), { isArchived: () => false, open: new Set() }).map(label))
+    expect(groupTeamNavigation(rows, [t], new Set(['team']), { isInactive: () => false, open: new Set() }).map(label))
       .toEqual(['ordinary', 'team', 'lead', 'old-1', 'member', 'old-2']);
-    expect(groupTeamNavigation(rows, [t], new Set(), { isArchived, open: new Set(['team']) }).map(label)).toEqual(['ordinary', 'team']);
+    expect(groupTeamNavigation(rows, [t], new Set(), { isInactive, open: new Set(['team']) }).map(label)).toEqual(['ordinary', 'team']);
   });
   it('remembers the fold per device under a key that defaults to collapsed', () => {
-    expect(teamArchivedGroupId('team')).toBe('team-archived:team');
-    expect(defaultCollapsed(teamArchivedGroupId('team'))).toBe(true);
+    expect(teamInactiveGroupId('team')).toBe('team-archived:team');
+    expect(defaultCollapsed(teamInactiveGroupId('team'))).toBe(true);
     expect(defaultCollapsed('project:p1')).toBe(false);
+  });
+});
+
+describe('B-690 one rule for 「已停用」 members', () => {
+  const now = 10 * TEAM_MEMBER_IDLE_MS;
+  const base = () => {
+    const t = team('t', ['s-lead', 's-worker']);
+    t.bots[1].lastEvent = 'idle'; t.bots[1].lastEventAt = now - 1000;
+    return t;
+  };
+  const task = (assigneeBotId: string, status: TeamState['tasks'][number]['status']) => ({ id: `${assigneeBotId}-${status}`, parentTaskId: null, goal: 'g', acceptance: [], goalVersion: 1, ownerBotId: null, assigneeBotId, status, attempts: [], currentAttemptId: 'a', cleanup: 'none' as const });
+  it('keeps a recently active member with a session active', () => {
+    const t = base();
+    expect(teamMemberInactive(t, t.bots[1], false, now)).toBe(false);
+  });
+  it('B-674 case: an archived conversation is inactive', () => {
+    const t = base();
+    expect(teamMemberInactive(t, t.bots[1], true, now)).toBe(true);
+  });
+  it('stopped (no session), exited, or idle past the threshold is inactive', () => {
+    const stopped = base(); stopped.bots[1].sessionId = null;
+    expect(teamMemberInactive(stopped, stopped.bots[1], false, now)).toBe(true);
+    const exited = base(); exited.bots[1].lastEvent = 'exited';
+    expect(teamMemberInactive(exited, exited.bots[1], false, now)).toBe(true);
+    const idle = base(); idle.bots[1].lastEventAt = now - TEAM_MEMBER_IDLE_MS - 1;
+    expect(teamMemberInactive(idle, idle.bots[1], false, now)).toBe(true);
+    const fresh = base(); fresh.bots[1].lastEventAt = now - TEAM_MEMBER_IDLE_MS + 1;
+    expect(teamMemberInactive(fresh, fresh.bots[1], false, now)).toBe(false);
+  });
+  it('an open task (queued / running / submitted) always keeps the member active, even archived or stopped', () => {
+    for (const status of ['queued', 'running', 'submitted'] as const) {
+      const t = base(); t.bots[1].sessionId = null; t.bots[1].lastEvent = 'exited'; t.tasks = [task(t.bots[1].id, status)];
+      expect(teamMemberInactive(t, t.bots[1], true, now)).toBe(false);
+    }
+    const done = base(); done.bots[1].sessionId = null; done.tasks = [task(done.bots[1].id, 'done'), task(done.bots[1].id, 'cancelled')];
+    expect(teamMemberInactive(done, done.bots[1], false, now)).toBe(true);
+  });
+  it('a session with no recorded event stays active (no evidence it stopped)', () => {
+    const t = base(); delete t.bots[1].lastEvent; delete t.bots[1].lastEventAt;
+    expect(teamMemberInactive(t, t.bots[1], false, now)).toBe(false);
+  });
+  it('folds sessionless inactive members into the same count via `extra`', () => {
+    const t = team('team', ['lead']);
+    const rows = [{ sessionId: 'lead' }];
+    expect(groupTeamNavigation(rows, [t], new Set(['team']), { isInactive: () => false, open: new Set(), extra: () => 2 }).map(label))
+      .toEqual(['team', 'lead', 'inactive:2:closed']);
   });
 });
