@@ -10,7 +10,7 @@ import { startApi, StartApiOptions } from "./app/api/api";
 import { startMetricsServer } from "./app/monitoring/metrics";
 import { startDatabaseMetricsUpdater } from "./app/monitoring/metrics2";
 import { startTimeout } from "./app/presence/timeout";
-import { startShareLinkAccessRetention } from "@/app/session/shareLinks";
+import { startShareLinkAccessRetention } from "./app/session/shareLinks";
 import { onShutdown } from "./utils/shutdown";
 
 export { runMigrations } from "./standalone";
