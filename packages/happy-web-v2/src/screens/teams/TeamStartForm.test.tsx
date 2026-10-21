@@ -41,10 +41,10 @@ it('B-698: harness lists only what the computer runs; the default model is a com
  expect([...assistant.querySelectorAll('button')].map(b=>b.textContent)).toEqual(['Claude Code','Codex']);
  const model=()=>host.querySelector('input[name=model]')!.parentElement!.querySelector<HTMLButtonElement>('.vh-select-trigger')!;
  expect(model().getAttribute('role')).toBe('combobox');
- expect(model().textContent).toBe('Follow the harness default');
+ expect(model().textContent).toBe('Follow the agent default');
  await act(async()=>{model().dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));});
  const options=[...document.querySelectorAll<HTMLElement>('[role=option]')];
- expect(options[0].textContent).toContain('Follow the harness default');
+ expect(options[0].textContent).toContain('Follow the agent default');
  const gpt=options.find(o=>o.title.includes('gpt-5.5'))!;
  expect(gpt).toBeTruthy();
  await act(async()=>{gpt.click();});

@@ -68,6 +68,10 @@
 .vh-btn--full {
   width: 100%;
 }
+/* B-728 (UI-P1-07): every Button is a 44px target on touch, whatever its size */
+@media (pointer: coarse) {
+  .vh-btn { min-height: 44px; }
+}
 .vh-btn:disabled {
   opacity: 0.4;
   cursor: default;
@@ -97,8 +101,10 @@
   background: var(--text);
   color: var(--bg-0);
 }
-.vh-btn--primary:not(:disabled):hover {
-  background: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .vh-btn--primary:not(:disabled):hover {
+    background: var(--text-dim);
+  }
 }
 .vh-btn--secondary {
   /* soft fill, no ring: secondary buttons live inside closed objects
@@ -106,22 +112,28 @@
   background: var(--fill-soft);
   color: var(--text);
 }
-.vh-btn--secondary:not(:disabled):hover {
-  background: var(--fill-soft-hover);
+@media (hover: hover) and (pointer: fine) {
+  .vh-btn--secondary:not(:disabled):hover {
+    background: var(--fill-soft-hover);
+  }
 }
 .vh-btn--ghost {
   color: var(--text-dim);
 }
-.vh-btn--ghost:not(:disabled):hover {
-  background: var(--fill-hover);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .vh-btn--ghost:not(:disabled):hover {
+    background: var(--fill-hover);
+    color: var(--text);
+  }
 }
 .vh-btn--danger {
   background: var(--danger-dim);
   color: var(--danger);
 }
-.vh-btn--danger:not(:disabled):hover {
-  background: color-mix(in srgb, var(--danger) 20%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .vh-btn--danger:not(:disabled):hover {
+    background: color-mix(in srgb, var(--danger) 20%, transparent);
+  }
 }
 
 /* field / input */
@@ -158,8 +170,10 @@
 .vh-input-wrap.is-error {
   border-color: var(--danger);
 }
+/* B-728 (UI-P1-18): an errored field keeps its danger border while focused — no glow (B-699) */
 .vh-input-wrap.is-error:focus-within {
-  box-shadow: 0 0 0 3px var(--danger-dim);
+  border-color: var(--danger);
+  box-shadow: none;
 }
 .vh-input-wrap.is-valid {
   border-color: var(--accent-2);
@@ -377,15 +391,19 @@
   cursor: pointer;
   transition: background var(--motion-fast);
 }
-.vh-item.is-interactive:hover {
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .vh-item.is-interactive:hover {
+    background: var(--bg-2);
+  }
 }
 .vh-item.is-interactive:disabled {
   cursor: wait;
   opacity: 0.72;
 }
-.vh-item.is-interactive:disabled:hover {
-  background: none;
+@media (hover: hover) and (pointer: fine) {
+  .vh-item.is-interactive:disabled:hover {
+    background: none;
+  }
 }
 .vh-item.is-selected {
   background: var(--bg-2);
@@ -525,8 +543,10 @@
   gap: var(--sp-2);
   color: var(--text);
 }
-.vh-toast--action:hover {
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .vh-toast--action:hover {
+    background: var(--bg-3);
+  }
 }
 .vh-toast-x {
   flex-shrink: 0;
@@ -540,9 +560,11 @@
   font-size: var(--fs-13);
   line-height: 1;
 }
-.vh-toast-x:hover {
-  color: var(--text);
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .vh-toast-x:hover {
+    color: var(--text);
+    background: var(--bg-2);
+  }
 }
 /* B-566: text + button toast ("已归档 · 撤销"); only the button acts */
 .vh-toast--button {
@@ -568,12 +590,14 @@
   font-weight: 600;
   cursor: pointer;
 }
-.vh-toast-btn:hover {
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .vh-toast-btn:hover {
+    background: var(--bg-3);
+  }
 }
-.vh-toast-btn:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 1px;
+.vh-toast-btn:focus-visible { /* B-728 (P2-11): the shared keyboard ring */
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 @media (max-width: 600px), (pointer: coarse) {
@@ -615,9 +639,11 @@
     color var(--motion-fast),
     opacity var(--motion-fast);
 }
-.vh-copy:hover {
-  background: var(--bg-3);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .vh-copy:hover {
+    background: var(--bg-3);
+    color: var(--text);
+  }
 }
 /* touch: the chip is ~20px tall — give it a real tap target */
 @media (pointer: coarse) {
@@ -643,8 +669,10 @@
   background: var(--bg-2);
   border: 1px solid var(--line);
 }
-.vh-copy--overlay:hover {
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .vh-copy--overlay:hover {
+    background: var(--bg-3);
+  }
 }
 @media (hover: hover) and (pointer: fine) {
   .vh-copy--overlay {

@@ -78,10 +78,10 @@ export function ClaudeRuntimeDialog({sessionId,open,onOpenChange}:{sessionId:str
     const outcome=operation?.status==='completed' ? runtimeOutcome(operation) : null;
     const taskStatus=(value:string)=>t(`runtimeControls.task.${['running','completed','failed','stopped'].includes(value)?value:'unknown'}` as 'runtimeControls.task.running');
     return <Dialog.Root open={open} onOpenChange={onOpenChange}>
-        <Dialog.Portal><Dialog.Overlay className="so-overlay"/><Dialog.Content className="so-dialog runtime-controls" onOpenAutoFocus={event=>{event.preventDefault();titleRef.current?.focus();}}>
-            <div className="so-head"><div><Dialog.Title ref={titleRef} tabIndex={-1} className="so-title">{t('runtimeControls.title')}</Dialog.Title>
+        <Dialog.Portal><Dialog.Overlay className="vh-dialog-overlay so-overlay"/><Dialog.Content className="vh-dialog vh-dialog--flush so-dialog runtime-controls" onOpenAutoFocus={event=>{event.preventDefault();titleRef.current?.focus();}}>
+            <div className="vh-dialog-head so-head"><div><Dialog.Title ref={titleRef} tabIndex={-1} className="vh-dialog-title so-title">{t('runtimeControls.title')}</Dialog.Title>
                 <Dialog.Description className="so-description">{t('runtimeControls.description')}</Dialog.Description></div>
-                <Dialog.Close asChild><button className="so-close" aria-label={t('common.close')}><X size={18}/></button></Dialog.Close>
+                <Dialog.Close asChild><button className="vh-dialog-close so-close" aria-label={t('common.close')}><X size={18}/></button></Dialog.Close>
             </div>
             <div className="runtime-body">
             {!status && !error && !pollError && <Spinner/>}

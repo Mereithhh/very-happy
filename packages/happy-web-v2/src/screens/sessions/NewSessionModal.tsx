@@ -36,6 +36,7 @@ import { worktreeCreate } from '@/sync/worktreeOps';
 import { machineSupportsWorktrees } from '@/utils/worktree';
 import { worktreeCopy, worktreeErrorText } from './worktreeCopy';
 import './newsession.css';
+import { DialogHead } from '@/ui/DialogHead';
 
 interface PathPreset {
   id: string;
@@ -259,10 +260,9 @@ export function NewSessionModal({
   }
 
   return (
-    <div className="ns-backdrop" onClick={onClose}>
-      <div className="ns-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="eyebrow">{t('newSessionModal.eyebrow')}</div>
-        <div className="ns-title">{t('newSessionModal.chatTitle')}</div>
+    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+      <div className="ns-card vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="ns-dialog-title" onClick={(e) => e.stopPropagation()}>
+        <DialogHead title={t('newSessionModal.chatTitle')} titleId="ns-dialog-title" onClose={onClose} />
 
         {online.length === 0 ? (
           <NoMachinesNotice onClose={onClose} />
@@ -444,7 +444,7 @@ export function NewSessionModal({
           </>
         )}
 
-        <div className="ns-actions">
+        <div className="ns-actions vh-dialog-foot">
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>

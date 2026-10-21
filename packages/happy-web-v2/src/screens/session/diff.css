@@ -141,8 +141,10 @@
   cursor: pointer;
   transition: background-color var(--dur-snap) var(--ease-snap), color var(--dur-snap) var(--ease-snap);
 }
-.dv-layout-btn:hover {
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .dv-layout-btn:hover {
+    color: var(--text);
+  }
 }
 .dv-layout-btn[aria-pressed='true'] {
   background: var(--segmented-thumb);

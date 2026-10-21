@@ -7,7 +7,7 @@
 .skill-preview-heading p { margin:var(--sp-1) 0 0; color:var(--text-faint); font:var(--fs-12)/1.5 var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:ltr; }
 .skill-preview-toolbar { display:flex; align-items:center; gap:var(--sp-1); flex:none; }
 .skill-preview-action, .skill-preview-toolbar .vh-copy { display:inline-flex; align-items:center; justify-content:center; gap:var(--sp-2); min-width:32px; min-height:32px; padding:var(--sp-1) var(--sp-2); border-radius:var(--r-sm); color:var(--text-dim); background:transparent; font:inherit; text-decoration:none; cursor:pointer; }
-.skill-preview-action:hover:not(:disabled), .skill-preview-toolbar .vh-copy:hover { background:var(--bg-2); color:var(--text); }
+@media (hover: hover) and (pointer: fine) { .skill-preview-action:hover:not(:disabled), .skill-preview-toolbar .vh-copy:hover { background:var(--bg-2); color:var(--text); } }
 .skill-preview-action:disabled { opacity:.45; cursor:default; }
 .skill-preview-action:focus-visible, .skill-preview-toolbar .vh-copy:focus-visible { outline:none; box-shadow:inset 0 0 0 1px var(--text-faint); }
 .skill-preview-action > svg, .skill-preview-toolbar .vh-copy > svg { flex:none; }

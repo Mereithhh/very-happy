@@ -17,7 +17,8 @@
 .product-xterm-dim { color: var(--term-chrome-dim); }
 .product-xterm-cursor { animation: pub-blink 1.1s steps(2, jump-none) infinite; }
 .product-transfer-trigger { position: absolute; z-index: 3; right: var(--sp-4); bottom: var(--sp-4); min-height: 44px; padding: 0 var(--sp-3); border: 1px solid var(--term-chrome-line); border-radius: var(--r-md); background: color-mix(in srgb, var(--term-accent) 10%, var(--term-chrome-panel)); color: var(--term-accent); font-size: var(--fs-11); cursor: pointer; box-shadow: var(--shadow-pop); }
-.product-transfer-trigger:hover, .product-transfer-trigger:focus-visible { border-color: var(--term-accent); outline: none; }
+.product-transfer-trigger:focus-visible { border-color: var(--term-accent); outline: none; }
+@media (hover: hover) and (pointer: fine) { .product-transfer-trigger:hover { border-color: var(--term-accent); outline: none; } }
 .product-preview .term-host[tabindex]:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
 .product-file-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .product-file-preview .fsb-viewer-body { color: var(--text-dim); font: var(--fs-11)/1.65 var(--font-mono); }

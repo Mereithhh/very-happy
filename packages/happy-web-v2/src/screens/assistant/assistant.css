@@ -68,9 +68,11 @@
   color: var(--text-dim);
   cursor: pointer;
 }
-.as-icon-btn:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .as-icon-btn:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 
 /* ── center stage ── */
@@ -308,8 +310,10 @@
   cursor: pointer;
   max-width: 100%;
 }
-.as-perm-banner:hover {
-  filter: brightness(1.1);
+@media (hover: hover) and (pointer: fine) {
+  .as-perm-banner:hover {
+    filter: brightness(1.1);
+  }
 }
 .as-perm-banner-text {
   color: var(--text);
@@ -382,8 +386,10 @@
   font-size: 13px;
   cursor: pointer;
 }
-.as-unlock-btn:hover {
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .as-unlock-btn:hover {
+    background: var(--bg-3);
+  }
 }
 
 .as-ptt {
@@ -519,10 +525,12 @@
   font-size: 13px;
   flex: none;
 }
-.as-send-btn:hover,
-.as-reset-btn:hover {
-  background: var(--bg-3);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .as-send-btn:hover,
+  .as-reset-btn:hover {
+    background: var(--bg-3);
+    color: var(--text);
+  }
 }
 .as-send-btn:disabled,
 .as-reset-btn:disabled {
@@ -575,9 +583,11 @@
   font-size: 13px;
   cursor: pointer;
 }
-.as-machine-btn:hover {
-  background: var(--bg-2);
-  border-color: var(--line-2);
+@media (hover: hover) and (pointer: fine) {
+  .as-machine-btn:hover {
+    background: var(--bg-2);
+    border-color: var(--line-2);
+  }
 }
 
 /* ── B-059: TTS caption (the sentence being spoken, prominent) ── */
@@ -698,9 +708,11 @@
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease;
 }
-.as-option-btn:hover {
-  background: var(--bg-3);
-  border-color: var(--line-2);
+@media (hover: hover) and (pointer: fine) {
+  .as-option-btn:hover {
+    background: var(--bg-3);
+    border-color: var(--line-2);
+  }
 }
 .as-option-btn:active {
   border-color: var(--accent-dim);

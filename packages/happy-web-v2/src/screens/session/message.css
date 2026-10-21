@@ -71,8 +71,10 @@
   font-size: var(--chat-fs-secondary);
   color: inherit;
 }
-.msg-bubble-expand:hover {
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .msg-bubble-expand:hover {
+    color: var(--text);
+  }
 }
 .msg-bubble--cmd {
   display: inline-flex;
@@ -213,9 +215,11 @@
   padding: 2px calc(var(--chat-space) * 2);
   cursor: pointer;
 }
-.msg-event-restart-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
+@media (hover: hover) and (pointer: fine) {
+  .msg-event-restart-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
 }
 .msg-event-restart-btn:disabled {
   opacity: 0.5;

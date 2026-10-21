@@ -31,7 +31,7 @@ import type { ProjectView } from '@slopus/happy-wire';
 import type { Session } from '@/sync/storageTypes';
 // aliased: keeps the name apart from lucide's `Settings` gear icon
 import type { Settings as SyncedSettings } from '@/sync/settings';
-import { StatusDot, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
+import { TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useIsDesktop } from '@/app/useMediaQuery';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -1347,7 +1347,7 @@ export function Sidebar() {
         <SharedInvites />
         {displayRows === null ? (
           <div className="sb-loading">
-            <StatusDot status="thinking" pulse /> {t('common.loading')}
+            <Spinner size={12} /> {t('common.loading')}
           </div>
         ) : sidebarListEmpty(sections, closedRows.length) ? (
           <div className="sb-empty">{t('sidebar.empty')}</div>

@@ -31,9 +31,9 @@
   border-radius: var(--r-sm);
   cursor: pointer;
 }
-.fdl-btn:not(:disabled):hover { background: var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .fdl-btn:not(:disabled):hover { background: var(--bg-3); } }
 .fdl-btn:disabled { opacity: 0.5; cursor: default; }
-.fdl-btn:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.fdl-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); } /* B-728 (P2-11): the shared keyboard ring */
 
 .fdl-btn--primary {
   min-height: 40px;
@@ -43,7 +43,7 @@
   background: var(--text);
   border-color: var(--text);
 }
-.fdl-btn--primary:not(:disabled):hover { background: var(--text-dim); border-color: var(--text-dim); }
+@media (hover: hover) and (pointer: fine) { .fdl-btn--primary:not(:disabled):hover { background: var(--text-dim); border-color: var(--text-dim); } }
 .fdl-btn--primary:disabled { opacity: 0.7; }
 
 .fdl-label {
@@ -65,7 +65,7 @@
   color: var(--text-faint);
   border-radius: var(--r-sm);
 }
-.fdl-dismiss:hover { background: var(--bg-2); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .fdl-dismiss:hover { background: var(--bg-2); color: var(--text); } }
 
 .fdl-note, .fdl-error, .fdl-limit {
   margin: 0;

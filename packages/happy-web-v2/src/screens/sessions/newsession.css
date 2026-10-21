@@ -6,8 +6,6 @@
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: var(--scrim);
-  backdrop-filter: blur(2px);
 }
 /* The backdrop is `position: fixed` with no scroll of its own, so a card
    taller than the viewport used to push its own actions row off-screen with
@@ -15,18 +13,12 @@
    list + directory chips + command chips). Scrolling the CARD keeps the
    coarse-pointer top anchoring above intact — scrolling the BACKDROP would
    need `margin: auto`, which overrides that anchoring. */
+/* B-728: scrim, card, head (title + ghost ×), footer and the phone sheet come
+   from styles/dialog.css (.vh-dialog*); this family keeps width and rhythm. */
 .ns-card {
   width: 100%;
   max-width: 420px;
   max-height: 100%;
-  overflow-y: auto;
-  background: var(--bg-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-modal);
-  padding: var(--sp-5);
-  display: flex;
-  flex-direction: column;
   gap: var(--sp-2);
 }
 .ns-title {
@@ -70,15 +62,17 @@
   gap: var(--sp-2);
   flex-wrap: wrap;
 }
+/* B-728 (UI-P1-06/20): soft-fill Sans chips — the dialog card is the only frame */
 .ns-agent {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-mono);
-  font-size: var(--fs-12);
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
   padding: 6px 12px;
   border-radius: var(--r-pill);
-  border: 1px solid var(--line-2);
+  border: 0;
+  background: var(--fill-soft);
   color: var(--text-dim);
 }
 .ns-agent.is-disabled {
@@ -89,7 +83,6 @@
 /* B-596: a not-installed agent opens its install row instead of being chosen. */
 .ns-agent.is-disabled.is-setup {
   opacity: 1;
-  border-color: var(--text-faint);
   color: var(--text);
 }
 .ns-agent-setup {
@@ -106,10 +99,10 @@
   font-size: var(--fs-11);
   line-height: 1.45;
 }
+/* selected is ink, not accent (accent only means live) */
 .ns-agent.is-on {
-  border-color: var(--accent);
-  color: var(--accent-2);
-  background: var(--accent-dim);
+  color: var(--bg-0);
+  background: var(--text);
 }
 .ns-empty {
   color: var(--text-faint);
@@ -130,13 +123,8 @@
   text-underline-offset: 3px;
   min-height: 32px;
 }
-.ns-connect-link:hover { color: var(--text); }
-.ns-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--sp-2);
-  margin-top: var(--sp-4);
-}
+@media (hover: hover) and (pointer: fine) { .ns-connect-link:hover { color: var(--text); } }
+
 
 .ns-presets {
   display: flex;
@@ -157,11 +145,13 @@
   padding: 3px 4px 3px 10px;
   cursor: pointer;
 }
+/* B-728: selected is ink — accent only means live */
 .ns-preset.is-on {
-  color: var(--accent-2);
-  border-color: var(--accent);
-  background: var(--accent-dim);
+  color: var(--bg-0);
+  border-color: var(--text);
+  background: var(--text);
 }
+.ns-preset.is-on .ns-preset-x { color: inherit; opacity: 0.7; }
 /* B-334: chips with no delete affordance — the automatically remembered
    directories (they age out of the MRU by themselves) and the two reserved
    command choices (the Settings default and "no command"). Dashed for the
@@ -192,9 +182,11 @@
   position: absolute;
   inset: -8px;
 }
-.ns-preset-x:hover {
-  color: var(--danger);
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .ns-preset-x:hover {
+    color: var(--danger);
+    background: var(--bg-3);
+  }
 }
 .ns-path-row {
   display: flex;
@@ -215,9 +207,11 @@
   background: var(--bg-2);
   color: var(--text-dim);
 }
-.ns-save:hover:not(:disabled) {
-  color: var(--accent-2);
-  border-color: var(--accent);
+@media (hover: hover) and (pointer: fine) {
+  .ns-save:hover:not(:disabled) {
+    color: var(--accent-2);
+    border-color: var(--accent);
+  }
 }
 .ns-save.is-saved {
   color: var(--accent-2);
@@ -446,7 +440,7 @@
   text-underline-offset: 2px;
   cursor: pointer;
 }
-.ns-imported-link:hover:not(:disabled) { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ns-imported-link:hover:not(:disabled) { color: var(--text); } }
 .ns-imported-link:disabled { cursor: default; text-decoration: none; }
 .hs-row-head {
   display: flex;

@@ -7,7 +7,7 @@
 .why-vh-routes { border-block: 1px solid var(--line-2); }
 .why-vh-route { position: relative; display: grid; grid-template-columns: minmax(230px, .88fr) minmax(126px, .34fr) minmax(320px, 1.2fr); align-items: stretch; min-height: 162px; border-bottom: 1px solid var(--line); transition: background var(--motion-med); }
 .why-vh-route:last-child { border-bottom: 0; }
-.why-vh-route:hover { background: color-mix(in srgb, var(--bg-1) 62%, transparent); }
+@media (hover: hover) and (pointer: fine) { .why-vh-route:hover { background: color-mix(in srgb, var(--bg-1) 62%, transparent); } }
 .why-vh-friction, .why-vh-outcome { min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: clamp(var(--sp-4), 3vw, var(--sp-7)); }
 .why-vh-friction > span, .why-vh-outcome > span { color: var(--text-faint); font-size: var(--fs-10); letter-spacing: .09em; }
 .why-vh-friction p { max-width: 420px; margin: var(--sp-3) 0 0; color: var(--text-dim); font-size: clamp(var(--fs-14), 1.6vw, var(--fs-16)); line-height: 1.55; }

@@ -96,15 +96,19 @@
   transition: border-color var(--motion-fast), background var(--motion-fast);
   cursor: pointer;
 }
-.bd-card:hover {
-  background: var(--bg-2);
-  border-color: var(--line-2);
+@media (hover: hover) and (pointer: fine) {
+  .bd-card:hover {
+    background: var(--bg-2);
+    border-color: var(--line-2);
+  }
 }
 .bd-card--attention {
   border-color: var(--danger);
 }
-.bd-card--attention:hover {
-  border-color: var(--danger);
+@media (hover: hover) and (pointer: fine) {
+  .bd-card--attention:hover {
+    border-color: var(--danger);
+  }
 }
 .bd-card--ended {
   opacity: 0.6;
@@ -196,14 +200,20 @@
   opacity: 0; /* hover-revealed on fine pointers */
   transition: opacity var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
 }
-.bd-card:hover .bd-card-done,
 .bd-card:focus-within .bd-card-done {
   opacity: 1;
 }
-.bd-card-done:hover {
-  color: var(--text);
-  border-color: var(--line-2);
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .bd-card:hover .bd-card-done {
+    opacity: 1;
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .bd-card-done:hover {
+    color: var(--text);
+    border-color: var(--line-2);
+    background: var(--bg-2);
+  }
 }
 @media (pointer: coarse) {
   /* no hover on touch — the ✓ is always visible */
@@ -240,9 +250,11 @@
   cursor: pointer;
   background: transparent;
 }
-.bd-done-entry--link:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .bd-done-entry--link:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .bd-done-kind {
   color: var(--text-faint);
@@ -267,8 +279,10 @@
   color: var(--text-faint);
   padding: 4px 0;
 }
-.bd-archived-link:hover {
-  color: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .bd-archived-link:hover {
+    color: var(--text-dim);
+  }
 }
 
 /* ---- V2: header tools (layout toggle + new task) ---- */
@@ -308,18 +322,22 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.bd-btn:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .bd-btn:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .bd-btn--primary {
   color: var(--bg-0);
   border-color: var(--text);
   background: var(--text);
 }
-.bd-btn--primary:hover {
-  color: var(--bg-0);
-  background: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .bd-btn--primary:hover {
+    color: var(--bg-0);
+    background: var(--text-dim);
+  }
 }
 .bd-btn:disabled {
   opacity: 0.5;
@@ -428,8 +446,8 @@
   display: inline-block;
   margin-right: 6px;
   padding: 0 5px;
-  border: 1px solid var(--line-2);
   border-radius: var(--r-pill);
+  background: var(--fill-soft); /* B-728 (UI-P1-19): soft fill inside the card, no second frame */
   font-size: var(--fs-10, 10px);
   color: var(--text-dim);
   vertical-align: 1px;
@@ -496,22 +514,24 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: var(--fs-10, 10px);
-  border: 1px solid currentColor;
   border-radius: var(--r-pill);
+  background: var(--fill-soft); /* B-728 (UI-P1-19): soft fill, no currentColor frame */
   padding: 0 6px;
 }
 .bd-card-llm--blocked {
   color: var(--danger);
+  background: var(--danger-dim);
 }
 .bd-card-llm--review {
   color: var(--warn);
+  background: var(--warn-dim);
 }
 
 /* ---- V2: new-task modal ---- */
+/* B-728: scrim, card, head, footer and the phone sheet come from styles/dialog.css */
 .bd-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -519,12 +539,6 @@
 }
 .bd-modal {
   width: min(440px, calc(100vw - 32px));
-  background: var(--bg-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: var(--sp-5);
-  display: flex;
-  flex-direction: column;
   gap: var(--sp-3);
 }
 .bd-modal-input {
@@ -539,11 +553,7 @@
 .bd-modal-desc {
   resize: vertical;
 }
-.bd-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--sp-3);
-}
+
 
 /* ---- B-498: automations band above the columns; empty → collapses to 0 ---- */
 .bd-attn-wrap {

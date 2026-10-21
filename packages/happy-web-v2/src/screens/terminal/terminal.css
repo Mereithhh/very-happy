@@ -65,7 +65,9 @@
   flex-shrink: 0;
   transition: opacity var(--motion-fast);
 }
-.term-title:hover .term-title-edit { opacity: 1; }
+@media (hover: hover) and (pointer: fine) { .term-title:hover .term-title-edit { opacity: 1; } }
+/* B-728 (UI-M-04): touch has no hover — the rename pencil stays visible there. */
+@media (hover: none), (pointer: coarse) { .term-title-edit { opacity: 1; } }
 .term-relay {
   /* rigid at its natural width (capped): the title yields instead. The
      containment group's overflow:hidden is the backstop if even that is not
@@ -876,7 +878,7 @@
   font-weight: 600;
   -webkit-tap-highlight-color: transparent;
 }
-.term-search-btn:hover:not(:disabled) { background: var(--term-chrome-bg); }
+@media (hover: hover) and (pointer: fine) { .term-search-btn:hover:not(:disabled) { background: var(--term-chrome-bg); } }
 .term-search-btn:focus-visible { outline: 1px solid var(--term-chrome-fg); outline-offset: -1px; }
 .term-search-btn:disabled { color: var(--term-chrome-dim); opacity: 0.6; }
 .term-search-case { color: var(--term-chrome-dim); }

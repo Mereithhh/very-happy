@@ -43,6 +43,7 @@ import { useAutomations } from '@/sync/automationsStore';
 import { automationsEntryVisible } from '@/sync/automationsPoll';
 import { useBoardFlip, type ColumnMap } from './boardFlip';
 import './board.css';
+import { DialogHead } from '@/ui/DialogHead';
 
 function Column({
   label,
@@ -169,9 +170,9 @@ function TaskModal({ task, onClose }: { task?: BoardTask; onClose: () => void })
   }
 
   return (
-    <div className="bd-modal-backdrop" onClick={onClose}>
-      <div className="bd-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="eyebrow">{t(task ? 'board.editTask' : 'board.newTask')}</div>
+    <div className="bd-modal-backdrop vh-dialog-overlay" onClick={onClose}>
+      <div className="bd-modal vh-dialog" role="dialog" aria-modal="true" aria-labelledby="bd-modal-title" onClick={(e) => e.stopPropagation()}>
+        <DialogHead title={t(task ? 'board.editTask' : 'board.newTask')} titleId="bd-modal-title" onClose={onClose} />
         <input
           className="bd-modal-input"
           value={title}
@@ -189,7 +190,7 @@ function TaskModal({ task, onClose }: { task?: BoardTask; onClose: () => void })
           placeholder={t('board.taskDescriptionPlaceholder') as string}
           rows={3}
         />
-        <div className="bd-modal-actions">
+        <div className="bd-modal-actions vh-dialog-foot">
           <button type="button" className="bd-btn" onClick={onClose}>
             {t('common.cancel')}
           </button>

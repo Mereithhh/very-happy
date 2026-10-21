@@ -150,14 +150,15 @@ function ModalCard({
   };
 
   return (
-    <div className="vh-modal-backdrop" onClick={onDismiss}>
+    <div className={`vh-modal-backdrop vh-dialog-overlay${config.type === 'prompt' ? ' is-prompt' : ''}`} onClick={onDismiss}>
       <div
-        className="vh-modal-card"
+        className="vh-modal-card vh-dialog"
         role="dialog"
         aria-modal="true"
+        aria-label={'title' in config && typeof config.title === 'string' ? config.title : undefined}
         onClick={(e) => e.stopPropagation()}
       >
-        {'title' in config && <div className="vh-modal-title">{config.title}</div>}
+        {'title' in config && <div className="vh-modal-title vh-dialog-title">{config.title}</div>}
         {'message' in config && config.message && (
           <div className="vh-modal-message">{config.message}</div>
         )}
@@ -193,7 +194,7 @@ function ModalCard({
           />
         ))}
 
-        <div className="vh-modal-actions">
+        <div className="vh-modal-actions vh-dialog-foot">
           {config.type === 'alert' &&
             (config.buttons ?? [{ text: t('common.ok') }]).map((b, i) => (
               <button

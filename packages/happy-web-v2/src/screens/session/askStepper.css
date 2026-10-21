@@ -22,7 +22,7 @@
   color: var(--text-dim);
   font-size: var(--chat-fs-secondary);
 }
-.tv-ask-step:not(:disabled):hover { background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .tv-ask-step:not(:disabled):hover { background: var(--bg-2); } }
 .tv-ask-step--current {
   border-color: var(--line-2);
   background: var(--bg-2);

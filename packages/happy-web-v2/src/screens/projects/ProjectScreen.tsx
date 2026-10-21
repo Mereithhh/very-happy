@@ -77,7 +77,11 @@ export function ProjectScreen() {
         <button type="button" className="pj-icon-btn" aria-expanded={showSettings} aria-label={c.settings} title={c.settings} onClick={() => setShowSettings((v) => !v)}><MoreHorizontal size={18} /></button>
       </header>
       {showSettings && <ProjectSettings detail={detail} c={c} onChanged={reload} />}
-      <ProjectComposer detail={detail} c={c} />
+      <ProjectComposer detail={detail} c={c} onAddFolder={() => {
+        // B-728 (UI-P1-12): the empty state's action opens settings on the path field
+        setShowSettings(true);
+        requestAnimationFrame(() => document.getElementById(FOLDER_PATH_ID)?.focus());
+      }} />
       <div className="vh-segmented pj-tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === 'overview'} className={tab === 'overview' ? 'is-active' : ''} onClick={() => setTab('overview')}>{c.overview}</button>
         <button type="button" role="tab" aria-selected={tab === 'context'} className={tab === 'context' ? 'is-active' : ''} onClick={() => setTab('context')}>{c.context}</button>
@@ -89,7 +93,9 @@ export function ProjectScreen() {
 
 // ─── composer ────────────────────────────────────────────────────────────
 
-function ProjectComposer({ detail, c }: { detail: ProjectDetailResponse; c: ProjectCopy }) {
+const FOLDER_PATH_ID = 'pj-folder-path';
+
+function ProjectComposer({ detail, c, onAddFolder }: { detail: ProjectDetailResponse; c: ProjectCopy; onAddFolder: () => void }) {
   const navigate = useNavigate();
   const machines = useAllMachines({ includeOffline: true });
   const folders = detail.project.folders;
@@ -139,7 +145,7 @@ function ProjectComposer({ detail, c }: { detail: ProjectDetailResponse; c: Proj
             />
             {machine && <span className="pj-muted mono">{machineLabel(machine)}</span>}
           </div>
-        ) : <span className="pj-muted">{c.noFolder}</span>}
+        ) : <span className="pj-composer-empty"><span className="pj-muted">{c.noFolder}</span><button type="button" className="pj-ghost" onClick={onAddFolder}><Plus size={14} />{c.addFolder}</button></span>}
         <button type="button" className="pj-send" disabled={!folder || !text.trim() || busy} onClick={send} aria-label={c.send} title={`${c.send} (⌘↵)`}><Send size={16} /></button>
       </div>
     </div>
@@ -398,7 +404,7 @@ function ProjectSettings({ detail, c, onChanged }: { detail: ProjectDetailRespon
             options={machines.map((m) => ({ value: m.id, label: machineLabel(m) }))}
           />
         </div>
-        <label className="pj-grow">{c.path}<input value={path} placeholder="/home/me/code/repo" onChange={(e) => setPath(e.target.value)} /></label>
+        <label className="pj-grow">{c.path}<input id={FOLDER_PATH_ID} value={path} placeholder="/home/me/code/repo" onChange={(e) => setPath(e.target.value)} /></label>
         <button type="button" className="pj-ghost" disabled={!machineId || !path.trim()} onClick={() => void run(async () => { await projectsApi.update(project.id, { folders: [...project.folders, { machineId, path: path.trim(), primary: project.folders.length === 0 }] }); setPath(''); })}><Plus size={14} />{c.addFolder}</button>
       </div>
       <h3>{c.teams}</h3>

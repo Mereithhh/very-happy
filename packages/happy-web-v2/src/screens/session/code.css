@@ -153,7 +153,9 @@
   background: transparent;
   border-top: var(--hairline) solid var(--line);
 }
-.cv-expand:hover {
-  color: var(--text);
-  background: var(--fill-hover);
+@media (hover: hover) and (pointer: fine) {
+  .cv-expand:hover {
+    color: var(--text);
+    background: var(--fill-hover);
+  }
 }

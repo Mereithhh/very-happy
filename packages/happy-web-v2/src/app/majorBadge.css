@@ -4,7 +4,7 @@
 /* Sidebar entry (above the footer): a filled row in the badge hue, so it reads as news, not chrome. */
 .vh-major-entry-row { padding: var(--sp-1) var(--sp-2) 0; }
 .vh-major-entry { display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: 32px; padding: 5px var(--sp-2); border-radius: var(--r-sm); background: var(--major-dim); color: var(--major); font-size: var(--workspace-primary-size); font-weight: 600; text-align: left; }
-.vh-major-entry:hover { background: color-mix(in srgb, var(--major-dim) 100%, var(--major) 8%); }
+@media (hover: hover) and (pointer: fine) { .vh-major-entry:hover { background: color-mix(in srgb, var(--major-dim) 100%, var(--major) 8%); } }
 .vh-major-entry:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .vh-major-entry > svg { flex: none; }
 .vh-major-entry-label { flex: none; }

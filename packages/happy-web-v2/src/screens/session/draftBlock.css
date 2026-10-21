@@ -60,8 +60,8 @@
   font-size: var(--chat-fs-caption);
   cursor: pointer;
 }
-.dft-restore:hover { background: var(--bg-3); color: var(--text); }
-.dft-restore:focus-visible { outline: 1px solid var(--line-2); outline-offset: 1px; }
+@media (hover: hover) and (pointer: fine) { .dft-restore:hover { background: var(--bg-3); color: var(--text); } }
+.dft-restore:focus-visible { outline: none; box-shadow: var(--focus-ring); } /* B-728 (P2-11): the shared keyboard ring */
 .dft-text {
   display: block;
   width: 100%;
@@ -121,6 +121,6 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.dft-save-retry:hover { background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .dft-save-retry:hover { background: var(--bg-2); } }
 @media (prefers-reduced-motion: reduce) { .dft-save[data-save-state="saved"] { animation: none; } }
 @media (pointer: coarse) { .dft-save-retry { min-height: 44px; padding-inline: var(--sp-2); } }

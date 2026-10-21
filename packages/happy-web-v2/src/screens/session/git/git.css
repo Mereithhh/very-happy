@@ -46,6 +46,7 @@
 
 /* ── dialog (builds on sessionOptionsDialog.css .so-*) ──────────────────── */
 .so-dialog.gd { width: min(520px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: var(--sp-4); }
+.so-dialog.gd > .vh-dialog-foot { margin-top: 0; } /* the card's gap already spaces it */
 .gd-branch {
   margin: var(--sp-1) 0 0;
   overflow: hidden;
@@ -69,7 +70,7 @@
   color: var(--text-dim);
   cursor: pointer;
 }
-.gd-file:hover { background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .gd-file:hover { background: var(--bg-2); } }
 .gd-file--all { border-bottom: 1px solid var(--line); color: var(--text); }
 .gd-file > .vh-checkbox, .gd-check > .vh-checkbox { flex: none; }
 .gd-path {
@@ -107,7 +108,7 @@
   color: var(--text-dim);
   font-size: var(--fs-13);
 }
-.gd-link:hover:not(:disabled) { color: var(--text); background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .gd-link:hover:not(:disabled) { color: var(--text); background: var(--bg-2); } }
 .gd-link:focus-visible { outline: none; background: var(--bg-2); color: var(--text); }
 .gd-link:disabled { opacity: 0.5; cursor: default; }
 .gd-summary { display: grid; gap: var(--sp-3); font-size: var(--fs-13); color: var(--text-dim); }
@@ -206,8 +207,10 @@
   border-radius: var(--r-pill);
   background: var(--bg-1);
 }
-.prc:hover, .prc[data-state='open'] { color: var(--text); }
-.prc:hover::before, .prc[data-state='open']::before { background: var(--bg-2); }
+.prc[data-state='open'] { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .prc:hover { color: var(--text); } }
+.prc[data-state='open']::before { background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .prc:hover::before { background: var(--bg-2); } }
 .prc:focus-visible { outline: none; }
 .prc:focus-visible::before { border-color: var(--text-dim); }
 .prc-ci { display: inline-flex; align-items: center; gap: 3px; }
@@ -235,7 +238,7 @@
 .prc-pop-head { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); }
 .prc-pop-state { font-weight: 600; color: var(--text); }
 .prc-pop-link { display: inline-flex; align-items: center; gap: 3px; font-family: var(--font-mono); font-size: var(--fs-12); color: var(--text-dim); }
-a.prc-pop-link:hover { color: var(--text); text-decoration: underline; }
+@media (hover: hover) and (pointer: fine) { a.prc-pop-link:hover { color: var(--text); text-decoration: underline; } }
 .prc-refresh { margin-left: auto; }
 .prc-pop-title { margin: 0; overflow-wrap: anywhere; }
 .prc-pop-ci { margin: 0; color: var(--text-dim); font-size: var(--fs-12); }
@@ -243,7 +246,7 @@ a.prc-pop-link:hover { color: var(--text); text-decoration: underline; }
 .prc-pop-failed li { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .prc-pop-failed li > svg { flex: none; color: var(--danger); }
 .prc-pop-failed a, .prc-pop-failed span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.prc-pop-failed a:hover { text-decoration: underline; }
+@media (hover: hover) and (pointer: fine) { .prc-pop-failed a:hover { text-decoration: underline; } }
 .prc-more { color: var(--text-faint); }
 .prc-pop-actions { display: flex; justify-content: flex-end; padding-top: var(--sp-1); }
 @media (pointer: coarse) {

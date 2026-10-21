@@ -396,15 +396,15 @@ export function GitActionDialog({
     return (
         <Dialog.Root open={open} onOpenChange={(next) => { if (!next) abort.current?.abort(); onOpenChange(next); }}>
             <Dialog.Portal>
-                <Dialog.Overlay className="so-overlay"/>
-                <Dialog.Content className="so-dialog gd" aria-describedby={undefined}
+                <Dialog.Overlay className="vh-dialog-overlay so-overlay"/>
+                <Dialog.Content className="vh-dialog so-dialog gd" aria-describedby={undefined}
                     onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}>
-                    <div className="so-head">
+                    <div className="vh-dialog-head so-head">
                         <div>
-                            <Dialog.Title ref={titleRef} tabIndex={-1} className="so-title">{title}</Dialog.Title>
+                            <Dialog.Title ref={titleRef} tabIndex={-1} className="vh-dialog-title so-title">{title}</Dialog.Title>
                             <p className="gd-branch" title={branchLine}>{branchLine}</p>
                         </div>
-                        <Dialog.Close asChild><button type="button" className="so-close" aria-label={zh ? '关闭' : 'Close'}><X size={18}/></button></Dialog.Close>
+                        <Dialog.Close asChild><button type="button" className="vh-dialog-close so-close" aria-label={zh ? '关闭' : 'Close'}><X size={18}/></button></Dialog.Close>
                     </div>
                     <div className="gd-body">
                         {phase.kind === 'confirm-push' ? <p className="gd-warn">{protectedNote}</p>
@@ -412,8 +412,8 @@ export function GitActionDialog({
                             : mode === 'commit' ? commitBody : mode === 'push' ? pushBody : prBody_}
                         {phase.kind !== 'done' && buildError && <p className="gd-error" role="alert">{buildError}</p>}
                     </div>
-                    <div className="gd-actions">
-                        <span className="gd-stage" role="status">{running && showSpinner ? stageText(phase.stage) : ''}</span>
+                    <div className="vh-dialog-foot gd-actions">
+                        <span className="vh-dialog-foot-note gd-stage" role="status">{running && showSpinner ? stageText(phase.stage) : ''}</span>
                         {actions}
                     </div>
                 </Dialog.Content>

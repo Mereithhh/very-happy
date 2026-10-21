@@ -54,7 +54,7 @@
 
 /* Shared WorkspaceTabs owns tab chrome; only dock action icons remain here. */
 .notes-tab--icon { display:grid; place-items:center; flex:none; width:28px; height:32px; color:var(--text-dim); border-radius:var(--r-sm); }
-.notes-tab--icon:hover { background:var(--bg-2); color:var(--text); }
+@media (hover: hover) and (pointer: fine) { .notes-tab--icon:hover { background:var(--bg-2); color:var(--text); } }
 @media (pointer:coarse) { .notes-tab--icon { width:44px; height:44px; } }
 
 .notes-dock-body {
@@ -101,9 +101,11 @@
     font-size: var(--fs-11);
     cursor: pointer;
 }
-.notes-bind-chip:hover {
-    color: var(--text);
-    background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+    .notes-bind-chip:hover {
+        color: var(--text);
+        background: var(--bg-3);
+    }
 }
 .notes-bind-chip--offer {
     border-style: dashed;
@@ -133,13 +135,15 @@
     border-radius: var(--r-sm);
     cursor: pointer;
 }
-.notes-meta-btn:hover {
-    color: var(--text);
-    background: var(--bg-2);
-}
-.notes-meta-btn--danger:hover {
-    color: var(--danger);
-    background: var(--danger-dim);
+@media (hover: hover) and (pointer: fine) {
+    .notes-meta-btn:hover {
+        color: var(--text);
+        background: var(--bg-2);
+    }
+    .notes-meta-btn--danger:hover {
+        color: var(--danger);
+        background: var(--danger-dim);
+    }
 }
 
 .notes-editor-ta {
@@ -190,8 +194,10 @@
     cursor: pointer;
     transition: background var(--motion-fast);
 }
-.notes-insert-btn:hover:not(:disabled) {
-    background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+    .notes-insert-btn:hover:not(:disabled) {
+        background: var(--bg-3);
+    }
 }
 .notes-insert-btn:disabled {
     color: var(--text-faint);
@@ -229,8 +235,10 @@
     color: var(--text);
     cursor: pointer;
 }
-.notes-list-row:hover {
-    background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+    .notes-list-row:hover {
+        background: var(--bg-2);
+    }
 }
 .notes-list-row.is-active {
     background: var(--bg-2);
@@ -347,8 +355,10 @@
     color: var(--text);
     cursor: pointer;
 }
-.notes-screen-new:hover {
-    background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+    .notes-screen-new:hover {
+        background: var(--bg-3);
+    }
 }
 
 .notes-screen-listbody {
@@ -388,9 +398,11 @@
     font-size: var(--fs-12);
     cursor: pointer;
 }
-.notes-screen-back:hover {
-    background: var(--bg-2);
-    color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+    .notes-screen-back:hover {
+        background: var(--bg-2);
+        color: var(--text);
+    }
 }
 
 /* ── B-117 split view: list on top, in-place editor below ── */
@@ -433,13 +445,19 @@
     color: var(--text-dim);
     cursor: pointer;
 }
-.notes-list-item:hover .notes-list-pin,
 .notes-list-pin:focus-visible {
     display: inline-flex;
 }
-.notes-list-pin:hover {
-    background: var(--bg-3);
-    color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+    .notes-list-item:hover .notes-list-pin {
+        display: inline-flex;
+    }
+}
+@media (hover: hover) and (pointer: fine) {
+    .notes-list-pin:hover {
+        background: var(--bg-3);
+        color: var(--text);
+    }
 }
 /* coarse pointers have no hover — keep the pin always visible there */
 @media (pointer: coarse) {

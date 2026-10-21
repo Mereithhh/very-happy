@@ -47,9 +47,11 @@
   border-radius: var(--r-sm);
   color: var(--text-dim);
 }
-.btw-icon:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .btw-icon:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 
 .btw-body {

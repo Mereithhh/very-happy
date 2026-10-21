@@ -16,9 +16,11 @@
   border-radius: var(--r-sm);
   color: var(--text-dim);
 }
-.fp-icon:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .fp-icon:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 /* touch: 28px icon buttons and 26px list rows are under-sized for fingers */
 @media (pointer: coarse) {
@@ -69,8 +71,10 @@
   font-size: var(--fs-13);
   color: var(--text-dim);
 }
-.fp-row:hover {
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .fp-row:hover {
+    background: var(--bg-2);
+  }
 }
 .fp-row--active {
   background: var(--bg-2);
@@ -199,8 +203,8 @@
   color: var(--text);
   font-size: var(--fs-12);
 }
-.fp-review-all:hover,
 .fp-review-all:focus-visible { outline: none; background: var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .fp-review-all:hover { outline: none; background: var(--bg-3); } }
 @media (pointer: coarse) {
   .fp-list-head { min-height: 44px; }
   .fp-review-all { height: 44px; }

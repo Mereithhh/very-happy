@@ -40,9 +40,11 @@
   padding: 2px 3px;
   border-radius: var(--r-sm);
 }
-.fsb-crumb:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .fsb-crumb:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .fsb-crumb.is-current {
   color: var(--text);
@@ -60,9 +62,11 @@
   border-radius: var(--r-sm);
   color: var(--text-dim);
 }
-.fsb-iconbtn:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .fsb-iconbtn:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .fsb-iconbtn.is-active {
   color: var(--text);
@@ -100,8 +104,10 @@
   font-size: var(--fs-13);
   color: var(--text-dim);
 }
-.fsb-row:hover {
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .fsb-row:hover {
+    background: var(--bg-2);
+  }
 }
 .fsb-icon {
   flex: none;
@@ -147,9 +153,11 @@
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
-.fsb-retry:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .fsb-retry:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .fsb-notice {
   margin: var(--sp-1) var(--sp-3);
@@ -279,8 +287,10 @@
   opacity: 0.45;
   cursor: default;
 }
-.fsb-row.is-muted:hover {
-  background: transparent;
+@media (hover: hover) and (pointer: fine) {
+  .fsb-row.is-muted:hover {
+    background: transparent;
+  }
 }
 .fsb-pickbar {
   flex: none;
@@ -311,8 +321,10 @@
   background: var(--bg-2);
   color: var(--text);
 }
-.fsb-pickbtn:not(:disabled):hover {
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .fsb-pickbtn:not(:disabled):hover {
+    background: var(--bg-3);
+  }
 }
 .fsb-pickbtn:disabled {
   opacity: 0.4;
@@ -408,8 +420,8 @@
   border-radius: var(--r-sm);
   color: var(--text);
 }
-.fsb-agent-changed-refresh:hover,
 .fsb-agent-changed-refresh:focus-visible { outline: none; background: var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .fsb-agent-changed-refresh:hover { outline: none; background: var(--bg-3); } }
 @media (pointer: coarse) {
   .fsb-agent-changed-refresh { height: 44px; }
 }

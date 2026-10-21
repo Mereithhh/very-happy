@@ -23,7 +23,7 @@
 .mcp-phone--conversation { animation-delay: -3.4s; }
 .mcp-phone-shell { position: relative; padding: 28px 10px 12px; overflow: hidden; border: 1px solid var(--line-2); border-radius: 36px; background: var(--bg-0); box-shadow: var(--shadow-modal), inset 0 1px color-mix(in srgb, var(--text) 9%, transparent), 0 32px 90px -54px var(--accent-glow); transform: perspective(1300px) rotateY(4deg) rotateX(1deg); transform-origin: right center; transition: transform var(--motion-med), box-shadow var(--motion-med); }
 .mcp-phone--conversation .mcp-phone-shell { transform: perspective(1300px) rotateY(-4deg) rotateX(1deg); transform-origin: left center; }
-.mcp-phone:hover .mcp-phone-shell { box-shadow: var(--shadow-modal), inset 0 1px color-mix(in srgb, var(--text) 12%, transparent), 0 42px 110px -48px var(--accent-glow); transform: perspective(1300px) rotateY(0) translateY(-5px); }
+@media (hover: hover) and (pointer: fine) { .mcp-phone:hover .mcp-phone-shell { box-shadow: var(--shadow-modal), inset 0 1px color-mix(in srgb, var(--text) 12%, transparent), 0 42px 110px -48px var(--accent-glow); transform: perspective(1300px) rotateY(0) translateY(-5px); } }
 .mcp-phone-island { position: absolute; top: 8px; left: 50%; z-index: 4; width: 31%; height: 13px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--bg-3); transform: translateX(-50%); }
 .mcp-phone-status { position: absolute; inset: 9px var(--sp-4) auto; z-index: 3; display: flex; justify-content: space-between; color: var(--text-faint); font-size: var(--fs-10); letter-spacing: .05em; }
 .mcp-phone .product-app { height: 540px; border-radius: 24px; box-shadow: none; }
@@ -79,7 +79,7 @@
   .mcp-phone { width: min(100%, 360px); justify-self: center; }
   .mcp-phone--conversation { display: none; }
   .mcp-phone-shell, .mcp-phone--conversation .mcp-phone-shell { transform: none; }
-  .mcp-phone:hover .mcp-phone-shell { transform: translateY(-3px); }
+  @media (hover: hover) and (pointer: fine) { .mcp-phone:hover .mcp-phone-shell { transform: translateY(-3px); } }
   .mcp-handoff { width: min(100%, 260px); justify-self: center; padding: var(--sp-4); }
   .mcp-handoff > svg { --mcp-arrow-rotation: 90deg; }
   .mcp-handoff-line { width: 1px; height: 58px; display: block; }
@@ -92,5 +92,5 @@
 @media (prefers-reduced-motion: reduce) {
   .mcp-phone, .mcp-handoff-ring, .mcp-handoff-ring::before, .mcp-handoff-ring::after, .mcp-handoff-line i, .mcp-handoff > svg { animation: none; }
   .mcp-phone-shell { transition: none; }
-  .mcp-phone:hover .mcp-phone-shell { transform: none; }
+  @media (hover: hover) and (pointer: fine) { .mcp-phone:hover .mcp-phone-shell { transform: none; } }
 }

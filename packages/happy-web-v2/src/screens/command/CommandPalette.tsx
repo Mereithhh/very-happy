@@ -403,7 +403,7 @@ function CommandPalettePanel({ onClose: close, dialogs }: { onClose: () => void;
     if (happyBotEntryVisible) out.push({
       key: 'action:teams',
       group: 'actions',
-      title: lang === 'zh-Hans' ? '团队' : 'Teams',
+      title: lang.startsWith('zh') ? '团队' : 'Teams',
       icon: <UsersRound size={16} />,
       haystack: 'happy bot teams 团队 机器人',
       run: () => navigate('/teams'),

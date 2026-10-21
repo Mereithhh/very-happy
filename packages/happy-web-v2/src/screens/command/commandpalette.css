@@ -9,8 +9,7 @@
   align-items: flex-start;
   justify-content: center;
   padding: 12vh var(--sp-4) var(--sp-4);
-  background: var(--scrim);
-  backdrop-filter: blur(2px);
+  background: var(--scrim); /* B-728: no blur (design-language §5.7) */
 }
 
 .cp-panel {

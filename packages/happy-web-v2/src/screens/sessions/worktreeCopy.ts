@@ -64,6 +64,7 @@ const zh = {
     approveFailed: '没能开始运行 setup',
     outputTitle: 'setup 输出',
     outputEmpty: '还没有输出。',
+    exitCode: (code: number) => `退出码 ${code}`,
     copiedFiles: (n: number) => `已复制 ${n} 个文件`,
     stateLabel: {
         running: '运行中', succeeded: '已完成', failed: '失败', 'timed-out': '超时', interrupted: '已中断', unsupported: '此平台无法运行', declined: '已跳过', 'needs-approval': '等待确认', none: '无',
@@ -151,6 +152,7 @@ const en: WorktreeCopy = {
     approveFailed: 'Could not start setup',
     outputTitle: 'Setup output',
     outputEmpty: 'No output yet.',
+    exitCode: (code: number) => `exit ${code}`,
     copiedFiles: (n) => `Copied ${n} file${n === 1 ? '' : 's'}`,
     stateLabel: {
         running: 'Running', succeeded: 'Finished', failed: 'Failed', 'timed-out': 'Timed out', interrupted: 'Interrupted', unsupported: 'Cannot run on this platform', declined: 'Skipped', 'needs-approval': 'Awaiting approval', none: 'None',

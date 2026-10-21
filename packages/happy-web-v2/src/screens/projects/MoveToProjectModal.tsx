@@ -6,6 +6,7 @@ import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from 
 import { toast } from '@/ui/Toast';
 import { planMove } from './moveToProject';
 import { ProjectPicker } from './ProjectPicker';
+import { DialogHead } from '@/ui/DialogHead';
 import '@/screens/sessions/newsession.css';
 import './projects.css';
 
@@ -20,7 +21,8 @@ export function MoveToProjectModal({ initialSessionId, candidates, onClose }: {
   candidates: { sessionId: string; title: string }[];
   onClose: () => void;
 }) {
-  const zh = useTranslation().lang === 'zh-Hans';
+  const zh = useTranslation().lang.startsWith('zh');
+  const initialTitle = candidates.find((c) => c.sessionId === initialSessionId)?.title;
   const snap = useProjects();
   const projects = snap.projects.filter((p) => !p.archivedAt);
   const currentMember = snap.members.find((m) => m.sessionId === initialSessionId);
@@ -50,9 +52,10 @@ export function MoveToProjectModal({ initialSessionId, candidates, onClose }: {
     }
   };
   return (
-    <div className="ns-backdrop" onClick={onClose}>
-      <div className="ns-card" role="dialog" aria-modal="true" aria-label={zh ? '移到项目' : 'Move to project'} onClick={(e) => e.stopPropagation()}>
-        <div className="eyebrow">{zh ? '移到项目' : 'Move to project'}</div>
+    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+      <div className="ns-card vh-dialog" role="dialog" aria-modal="true" aria-labelledby="mtp-dialog-title" onClick={(e) => e.stopPropagation()}>
+        {/* B-728 (P2-03): a real title, and which session is moving */}
+        <DialogHead title={zh ? '移到项目' : 'Move to project'} titleId="mtp-dialog-title" description={initialTitle} onClose={onClose} />
         <label className="ns-label" htmlFor="mtp-project">{zh ? '项目' : 'Project'}</label>
         <ProjectPicker id="mtp-project" value={target ? { kind: 'existing', projectId: target } : { kind: 'none' }} onChange={(next) => setTarget(next.kind === 'existing' ? next.projectId : '')} projects={projects} noneLabel={zh ? '无项目（移出项目）' : 'No project (remove)'} />
         {/* B-726: a team member follows its team — choosing 无项目 cannot take it out (team settings can). */}
@@ -69,7 +72,7 @@ export function MoveToProjectModal({ initialSessionId, candidates, onClose }: {
             </div>
           </>
         )}
-        <div className="ns-actions">
+        <div className="ns-actions vh-dialog-foot">
           <Button variant="ghost" onClick={onClose}>{zh ? '取消' : 'Cancel'}</Button>
           <Button variant="primary" disabled={busy || selected.size === 0} aria-busy={busy || undefined} onClick={() => void apply()}>{zh ? '移动' : 'Move'}</Button>
         </div>

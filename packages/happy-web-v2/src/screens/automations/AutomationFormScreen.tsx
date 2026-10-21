@@ -9,7 +9,8 @@ import { useProjects } from '@/sync/projects';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { BackButton } from '@/app/BackButton';
-import { Spinner, toast } from '@/ui';
+import { EmptyState, Spinner, toast } from '@/ui';
+import { Zap } from 'lucide-react';
 import { Checkbox } from '@/ui/Checkbox';
 import { Combobox } from '@/ui/Combobox';
 import { Segmented } from '@/ui/Segmented';
@@ -24,6 +25,7 @@ import {
   ACTION_KINDS,
   PRECHECK_MODES,
   SPAWN_AGENTS,
+  SPAWN_AGENT_LABELS,
   SPAWN_PERMISSION_MODES,
   TRIGGER_KINDS,
   buildCreate,
@@ -80,7 +82,7 @@ export function AutomationFormScreen() {
   const { id } = useParams();
   const editing = Boolean(id);
   const { t, lang } = useTranslation();
-  const zhCopy = lang === 'zh-Hans';
+  const zhCopy = lang.startsWith('zh');
   const projectsSnap = useProjects();
   const l = langOf(lang);
   const navigate = useNavigate();
@@ -170,7 +172,8 @@ export function AutomationFormScreen() {
   const title = editing ? (current ? t('automations.formTitleEdit', { name: current.name }) : t('automations.editAutomation')) : t('automations.formTitleNew');
   let body: ReactNode;
   if (enabled === false) {
-    body = <div className="au-error">{t('automations.disabledTitle')}</div>;
+    // B-728 (UI-P1-12): same not-enabled state as the list page, not a red line
+    body = <EmptyState compact title={t('automations.disabledTitle') as string} description={t('automations.disabledBody') as string} icon={<Zap size={28} />} />;
   } else if (editing && !seeded) {
     body = (
       <div className="au-loading">
@@ -279,7 +282,7 @@ export function AutomationFormScreen() {
                   label={t('automations.fieldAgent') as string}
                   value={draft.agent}
                   onChange={(v) => set('agent', v)}
-                  options={SPAWN_AGENTS.map((a): { value: string; label: string } => ({ value: a, label: a }))}
+                  options={SPAWN_AGENTS.map((a): { value: string; label: string } => ({ value: a, label: SPAWN_AGENT_LABELS[a] }))}
                 />
               </Field>
               <Field label={t('automations.fieldDirectory') as string} hint={t('automations.fieldDirectoryHint') as string} error={err('directory')}>

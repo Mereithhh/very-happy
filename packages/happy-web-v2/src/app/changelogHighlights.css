@@ -45,9 +45,9 @@
   font-weight: 500;
   transition: background var(--dur-snap) var(--ease-out);
 }
-.wnh-try:hover { background: var(--fill-soft-hover); }
+@media (hover: hover) and (pointer: fine) { .wnh-try:hover { background: var(--fill-soft-hover); } }
 .wnh-docs { display: inline-flex; align-items: center; min-height: 28px; color: var(--text-dim); font-size: var(--fs-12); text-decoration: underline; text-underline-offset: 3px; }
-.wnh-docs:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .wnh-docs:hover { color: var(--text); } }
 .wnh-try:focus-visible, .wnh-docs:focus-visible, .wnh-more > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* Themed groups (2026-10-21 big update): a small capture beside a title and
@@ -76,7 +76,7 @@
   font-size: var(--fs-13);
   font-weight: 500;
 }
-.wnh-more > summary:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .wnh-more > summary:hover { color: var(--text); } }
 .wnh-more .wn-list { margin: var(--sp-3) 0 0; }
 
 @media (pointer: coarse) {

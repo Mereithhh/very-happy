@@ -117,9 +117,13 @@
   color: var(--text);
   font-size: var(--chat-fs-control);
 }
-.cl-queue-item:hover,
 .cl-queue-item:focus-within {
   background: var(--bg-2);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cl-queue-item:hover {
+    background: var(--bg-2);
+  }
 }
 .cl-queue-item + .cl-queue-item {
   border-top: 1px solid var(--line);
@@ -163,9 +167,11 @@
   border-radius: var(--r-sm);
   color: var(--text-dim);
 }
-.cl-queue-cancel:hover:not(:disabled) {
-  background: var(--bg-3);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .cl-queue-cancel:hover:not(:disabled) {
+    background: var(--bg-3);
+    color: var(--text);
+  }
 }
 .cl-queue-cancel:disabled {
   color: var(--text-faint);
@@ -195,9 +201,11 @@
   box-shadow: var(--shadow-lift);
   transition: background var(--motion-fast), transform var(--motion-fast);
 }
-.cl-jump:hover {
-  background: var(--bg-3);
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .cl-jump:hover {
+    background: var(--bg-3);
+    transform: translateY(-1px);
+  }
 }
 /* B-099：不在底部期间新到消息数的 badge（≥1 才渲染，回底清零） */
 .cl-jump-badge {

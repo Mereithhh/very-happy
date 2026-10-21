@@ -34,9 +34,11 @@
   flex-shrink: 0;
   transition: background var(--motion-fast);
 }
-.set-header__back:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .set-header__back:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .set-header__titles {
   display: flex;
@@ -298,8 +300,10 @@ input.set-value:focus {
 .set-chart__bar--filled {
   background: var(--text-dim);
 }
-.set-chart__bar:hover {
-  background: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .set-chart__bar:hover {
+    background: var(--text);
+  }
 }
 .set-chart__axis {
   display: flex;
@@ -391,8 +395,10 @@ input.set-value:focus {
   background: var(--text-dim);
   transition: width var(--motion-fast), background var(--motion-fast);
 }
-.set-usage-agent:hover .set-usage-agent__track > span {
-  background: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .set-usage-agent:hover .set-usage-agent__track > span {
+    background: var(--text);
+  }
 }
 
 @media (max-width: 680px) {
@@ -422,7 +428,7 @@ input.set-value:focus {
     color var(--dur-snap) var(--ease-snap),
     box-shadow var(--dur-snap) var(--ease-snap);
 }
-.set-seg__btn:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .set-seg__btn:hover { color: var(--text); } }
 .set-seg__btn.is-active {
   background: var(--segmented-thumb);
   color: var(--text);
@@ -492,9 +498,11 @@ input.set-value:focus {
   color: var(--text-dim);
   transition: background var(--motion-fast);
 }
-.set-voice-preview:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .set-voice-preview:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 /* voice library "add to account" button (B-081) */
 .set-voice-add {
@@ -512,9 +520,11 @@ input.set-value:focus {
     background var(--motion-fast),
     color var(--motion-fast);
 }
-.set-voice-add:hover:not(:disabled) {
-  background: var(--bg-0);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .set-voice-add:hover:not(:disabled) {
+    background: var(--bg-0);
+    color: var(--text);
+  }
 }
 .set-voice-add:disabled {
   opacity: 0.5;
@@ -550,7 +560,8 @@ input.set-value:focus {
 .settings-search input:focus { outline:none; box-shadow:none; }
 .settings-navigation nav { display:grid; gap:2px; }
 .settings-navigation nav a { display:flex; align-items:center; gap:var(--sp-2); padding:6px var(--sp-2); border-radius:var(--r-sm); color:var(--text-dim); font-size:var(--fs-13); }
-.settings-navigation nav a:hover, .settings-navigation nav a[aria-current='page'] { background:var(--bg-2); color:var(--text); }
+.settings-navigation nav a[aria-current='page'] { background:var(--bg-2); color:var(--text); }
+@media (hover: hover) and (pointer: fine) { .settings-navigation nav a:hover { background:var(--bg-2); color:var(--text); } }
 .settings-navigation nav a[aria-current='page'] { font-weight:500; }
 .settings-content { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; background:var(--bg-0); }
 .settings-content .vh-item { padding:10px var(--sp-4); font-size:var(--fs-13); }
@@ -575,7 +586,9 @@ input.set-value:focus {
 .settings-search-results { display:grid; gap:2px; }
 .settings-search-results__label { padding:var(--sp-2) var(--sp-2) 2px; font-size:var(--fs-11); color:var(--text-faint); }
 .settings-search-hit { display:flex; align-items:center; gap:4px; min-width:0; padding:6px var(--sp-2); border-radius:var(--r-sm); color:var(--text-dim); font-size:var(--fs-13); }
-.settings-search-hit:hover, .settings-search-hit:focus-visible { outline:none; box-shadow:none; background:var(--bg-3); color:var(--text); }
+/* B-728 (UI-P1-04): keyboard focus keeps the shared ring; hover only fills. */
+.settings-search-hit:focus-visible { outline:none; background:var(--bg-3); color:var(--text); }
+@media (hover: hover) and (pointer: fine) { .settings-search-hit:hover { outline:none; background:var(--bg-3); color:var(--text); } }
 .settings-search-hit > svg { flex:none; color:var(--text-faint); }
 .settings-search-hit__section { flex:none; max-width:45%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-faint); }
 .settings-search-hit__title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }

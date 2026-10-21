@@ -40,8 +40,8 @@
   font-size: var(--fs-12);
   color: var(--text-dim);
 }
-.rva-tool:hover,
 .rva-tool:focus-visible { outline: none; background: var(--bg-3); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .rva-tool:hover { outline: none; background: var(--bg-3); color: var(--text); } }
 .rva-tool.is-active { background: var(--bg-3); color: var(--text); }
 .rva-main {
   flex: 1;
@@ -77,8 +77,8 @@
   font-size: var(--fs-12);
   color: var(--text);
 }
-.rva-nav-item:hover,
 .rva-nav-item:focus-visible { outline: none; background: var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .rva-nav-item:hover { outline: none; background: var(--bg-3); } }
 .rva-nav-item.is-viewed { color: var(--text-dim); }
 .rva-nav-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rva-nav-check { flex: none; color: var(--text-dim); font-size: var(--fs-11); }
@@ -158,7 +158,7 @@
   cursor: pointer;
   user-select: none;
 }
-.rva-viewed.vh-checkbox:hover { background: var(--bg-3); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .rva-viewed.vh-checkbox:hover { background: var(--bg-3); color: var(--text); } }
 .rva-section.is-viewed .rva-name { color: var(--text-dim); }
 .rva-section-body {
   container-type: inline-size;

@@ -4,7 +4,7 @@
 .image-preview-header { display:flex; align-items:center; gap:var(--sp-1); min-width:0; flex:none; min-height:48px; padding:4px 8px 4px 16px; border-bottom:1px solid var(--line); }
 .image-preview-title { flex:1; min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--conversation-size-base); font-weight:500; line-height:1.5; }
 .image-preview-button { display:inline-flex; flex:none; align-items:center; justify-content:center; gap:6px; min-width:32px; height:32px; padding:0 6px; border-radius:var(--r-sm); color:var(--text-dim); font-size:var(--fs-13); line-height:1; white-space:nowrap; }
-.image-preview-button:hover:not(:disabled), .image-preview-retry:hover { background:var(--bg-3); color:var(--text); }
+@media (hover: hover) and (pointer: fine) { .image-preview-button:hover:not(:disabled), .image-preview-retry:hover { background:var(--bg-3); color:var(--text); } }
 .image-preview-button:focus-visible, .image-preview-retry:focus-visible { outline:none; box-shadow:inset 0 0 0 1px var(--text-faint); }
 .image-preview-button:disabled { opacity:.4; cursor:default; }
 .image-preview-button[aria-pressed='true'] { background:var(--bg-3); color:var(--text); }

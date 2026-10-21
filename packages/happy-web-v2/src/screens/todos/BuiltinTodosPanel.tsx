@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ListTodo, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { EmptyState } from '@/ui';
 import { TodoAgentSetup } from './TodoAgentSetup';
 import type { AuthCredentials } from '@/auth/tokenStorage';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -107,8 +108,10 @@ export function BuiltinTodosPanel({ credentials }: { credentials: AuthCredential
             <button type="submit" className="td-primary" disabled={!loaded || busy || limited || invalid > 0 || !draft.trim()} aria-label={words('新增待办', 'Add todo')}><Plus size={18} /></button>
         </form>
         <div className="td-filters">
-            <button type="button" aria-pressed={!showDone} onClick={() => setShowDone(false)}>{words('待处理', 'Open')} · {records.length - completed}</button>
-            <button type="button" aria-pressed={showDone} onClick={() => setShowDone(true)}>{words('已完成', 'Completed')} · {completed}</button>
+            <div className="vh-segmented" role="group" aria-label={words('筛选', 'Filter')}>
+                <button type="button" aria-pressed={!showDone} onClick={() => setShowDone(false)}>{words('待处理', 'Open')} · {records.length - completed}</button>
+                <button type="button" aria-pressed={showDone} onClick={() => setShowDone(true)}>{words('已完成', 'Completed')} · {completed}</button>
+            </div>
             {loading && <span role="status">{words('同步中…', 'Syncing…')}</span>}
         </div>
         {editing && <form className="td-editor" onSubmit={e => {
@@ -130,7 +133,7 @@ export function BuiltinTodosPanel({ credentials }: { credentials: AuthCredential
                 <button className="td-action" type="button" disabled={busy} onClick={() => setEditing(null)}>{words('取消', 'Cancel')}</button>
             </div>
         </form>}
-        {loaded && visible.length === 0 && <div className="td-empty">{showDone ? words('还没有已完成的任务。', 'No completed tasks yet.') : words('这里很清爽。先记下你的第一件事。', 'A clear list. Add your first task above.')}</div>}
+        {loaded && visible.length === 0 && <EmptyState compact icon={<ListTodo size={28} aria-hidden />} title={showDone ? words('还没有已完成的任务', 'No completed tasks yet') : words('这里很清爽', 'A clear list')} description={showDone ? undefined : words('在上面记下你的第一件事。', 'Add your first task above.')} />}
         {visible.length > 0 && <ul className="td-list">
             {visible.map((record, index) => <li key={record.id} className={`td-item td-builtin-row${record.status === 'done' ? ' is-done' : ''}`}>
                 <button className="td-action td-toggle" type="button" disabled={busy} aria-label={`${record.status === 'done' ? words('恢复', 'Reopen') : words('完成', 'Complete')}: ${record.title}`} onClick={() => void run(() => client.update(record, { status: record.status === 'done' ? 'open' : 'done' }))}><span>{record.status === 'done' && <Check size={14} />}</span></button>

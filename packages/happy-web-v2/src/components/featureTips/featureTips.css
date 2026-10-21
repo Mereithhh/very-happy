@@ -34,7 +34,7 @@
   font-size: var(--fs-12);
   font-weight: 600;
 }
-.vh-tip-ok:hover { opacity: .88; }
+@media (hover: hover) and (pointer: fine) { .vh-tip-ok:hover { opacity: .88; } }
 .vh-tip-ok:focus-visible { box-shadow: 0 0 0 2px var(--bg-1), 0 0 0 3px var(--text); }
 .vh-tip-close {
   position: absolute;
@@ -47,7 +47,7 @@
   border-radius: var(--r-sm);
   color: var(--text-faint);
 }
-.vh-tip-close:hover { color: var(--text); background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .vh-tip-close:hover { color: var(--text); background: var(--bg-2); } }
 
 @media (pointer: coarse) {
   .vh-tip { padding-right: 48px; }

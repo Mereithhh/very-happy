@@ -17,9 +17,13 @@ try { (document as unknown as { fonts?: { load?: (q: string) => unknown } }).fon
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/surfaces.css';
+import './styles/dialog.css';
 // B-582: the device's 对话字号 lands on <html> before the first render.
 import { installChatTextSize } from './ui/chatTextSize';
 installChatTextSize();
+// B-728: focus rings follow the last input modality (keyboard vs pointer).
+import { installInputModality } from './app/inputModality';
+installInputModality();
 import { installPasteCapture } from './utils/pasteCapture';
 // First paste listener of the app: snapshot pasted text before anything can
 // see the pasteboard change (Wispr Flow; see utils/pasteCapture).

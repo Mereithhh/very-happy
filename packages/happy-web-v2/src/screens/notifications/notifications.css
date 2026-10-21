@@ -108,9 +108,11 @@
   font-size: var(--fs-12);
   transition: background var(--motion-fast);
 }
-.nc-head-btn:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .nc-head-btn:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .nc-head-btn--icon {
   width: 26px;
@@ -147,8 +149,10 @@
   text-align: left;
   transition: background var(--motion-fast);
 }
-.nc-row:hover {
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .nc-row:hover {
+    background: var(--bg-2);
+  }
 }
 .nc-row-icon {
   flex-shrink: 0;
@@ -249,15 +253,19 @@
   align-items: flex-start;
   border-radius: var(--r-sm);
 }
-.nc-row-wrap:hover {
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .nc-row-wrap:hover {
+    background: var(--bg-2);
+  }
 }
 .nc-row-wrap .nc-row {
   flex: 1;
   min-width: 0;
 }
-.nc-row-wrap .nc-row:hover {
-  background: transparent;
+@media (hover: hover) and (pointer: fine) {
+  .nc-row-wrap .nc-row:hover {
+    background: transparent;
+  }
 }
 .nc-row-more {
   flex-shrink: 0;
@@ -272,14 +280,20 @@
   opacity: 0;
   transition: opacity var(--motion-fast);
 }
-.nc-row-wrap:hover .nc-row-more,
 .nc-row-more:focus-visible,
 .nc-row-more[data-state='open'] {
   opacity: 1;
 }
-.nc-row-more:hover {
-  color: var(--text);
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .nc-row-wrap:hover .nc-row-more {
+    opacity: 1;
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .nc-row-more:hover {
+    color: var(--text);
+    background: var(--bg-3);
+  }
 }
 /* Touch: no hover — keep ⋯ visible and finger-sized. */
 @media (pointer: coarse) {

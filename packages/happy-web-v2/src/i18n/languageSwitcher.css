@@ -15,15 +15,20 @@
   transition: border-color 140ms ease-out, background-color 140ms ease-out, color 140ms ease-out;
 }
 
-.language-switcher:hover,
 .language-switcher[data-state='open'] {
   background: var(--bg-2);
   color: var(--text);
 }
+@media (hover: hover) and (pointer: fine) {
+  .language-switcher:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
+}
 
-.language-switcher:focus-visible {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-dim);
+.language-switcher:focus-visible { /* B-728 (P2-11): the shared keyboard ring */
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .language-switcher-globe {

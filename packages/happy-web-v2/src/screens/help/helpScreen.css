@@ -1,13 +1,14 @@
 .help-screen { flex: 1; min-width: 0; overflow: auto; padding: 24px; background: var(--bg-0); }
 .help-screen__inner { width: min(100%, 820px); margin-inline: auto; }
-.help-screen__back { margin-bottom: var(--sp-3); }
+.help-screen__back { display: flex; align-items: center; gap: var(--sp-1); min-height: 44px; margin-bottom: var(--sp-3); }
+.help-screen__back-title { font-size: var(--fs-14); font-weight: 600; color: var(--text); }
 .help-screen__hero { padding: 12px 0 20px; }
 .help-screen__hero h1 { margin: var(--sp-2) 0 var(--sp-2); font-size: var(--fs-20); line-height: 1.3; }
 .help-screen__hero > p { max-width: 610px; margin: 0; color: var(--text-dim); font-size: var(--fs-14); line-height: 1.6; }
 .help-screen__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-5); }
 .help-screen__actions > button { min-height: 44px; }
 .help-screen__settings { display: inline-flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3); color: var(--text-dim); font-size: var(--fs-13); }
-.help-screen__settings:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .help-screen__settings:hover { color: var(--text); } }
 .help-screen__topics { margin-top: var(--sp-5); }
 .help-screen__section-head { display: flex; align-items: end; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-3); }
 .help-screen__section-head h2 { margin: var(--sp-2) 0 0; font-size: var(--fs-18); }
@@ -15,7 +16,7 @@
 .help-screen__accordion { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-1); }
 .help-topic + .help-topic { border-top: 1px solid var(--line); }
 .help-topic__trigger { width: 100%; min-height: 56px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); text-align: left; }
-.help-topic__trigger:hover { background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .help-topic__trigger:hover { background: var(--bg-2); } }
 .help-topic__icon { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: var(--r-sm); color: var(--text-dim); background: var(--bg-2); }
 .help-topic__copy { min-width: 0; display: grid; gap: var(--sp-1); }
 .help-topic__copy strong { font-size: var(--fs-13); }
@@ -31,7 +32,7 @@
 .help-screen__docs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-top: var(--sp-5); padding-bottom: var(--sp-5); }
 .help-screen__docs > span { margin-right: auto; color: var(--text-faint); font: var(--fs-10) var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
 .help-screen__docs button { min-height: 44px; display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); font-size: var(--fs-12); }
-.help-screen__docs button:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .help-screen__docs button:hover { color: var(--text); } }
 @media (max-width: 599px) {
   .help-screen { padding: var(--sp-4); }
   .help-screen__hero { padding: 8px 0 16px; }

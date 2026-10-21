@@ -176,6 +176,14 @@ pre,
   outline: none;
   box-shadow: var(--focus-ring);
 }
+/* B-728 (UI-P1-03, UI-M-02): after a mouse click or a tap, programmatic focus
+   (a dialog's first control, a menu returning focus to its ⋯ trigger) still
+   matches :focus-visible. app/inputModality.ts marks <html data-input>; in
+   pointer modality the ring token is empty, the next key press restores it. */
+:root[data-input="pointer"] { --focus-ring: 0 0 0 0 transparent; }
+/* Headings and dialog cards focused only as a screen-reader anchor
+   (tabIndex=-1, focused on open) never draw a ring, even after a key press. */
+:where(h1, h2, h3, h4, h5, h6, [role="dialog"], dialog)[tabindex="-1"]:focus-visible { outline: none; box-shadow: none; }
 :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"], [type="file"], [type="image"]), textarea, [contenteditable]:not([contenteditable="false"])):focus {
   outline: none;
   border-color: var(--line-heavy);

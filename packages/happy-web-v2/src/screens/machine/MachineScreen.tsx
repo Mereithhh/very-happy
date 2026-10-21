@@ -281,7 +281,8 @@ export function MachineScreen() {
 
   return (
     <SettingsPage>
-        <SettingsHeader title={name} subtitle={machine.metadata?.host} right={<>
+        {/* B-728 (P2-04): the host line only when it says something the name doesn't */}
+        <SettingsHeader title={name} subtitle={machine.metadata?.host && machine.metadata.host !== name ? machine.metadata.host : undefined} right={<>
             {claudeAuth && (
               <Badge tone={claudeAuthTone(claudeAuth)}>
                 {claudeAuth.status === 'ok'
@@ -301,11 +302,6 @@ export function MachineScreen() {
           {online ? (
             <ItemGroup
               title={t('machine.launchNewSessionInDirectory')}
-              footer={
-                machine.metadata?.homeDir
-                  ? formatPathRelativeToHome(machine.metadata.homeDir, machine.metadata.homeDir)
-                  : undefined
-              }
             >
               <div style={{ display: 'flex', gap: 'var(--sp-2)', padding: 'var(--sp-3) var(--sp-3)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>

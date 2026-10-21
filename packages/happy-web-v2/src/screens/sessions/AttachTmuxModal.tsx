@@ -22,6 +22,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { NoMachinesNotice } from './NoMachinesNotice';
 import { formatSessionAge, type UserTmuxSession } from './newTerminalAttach';
 import './newsession.css';
+import { DialogHead } from '@/ui/DialogHead';
 
 export function AttachTmuxModal({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
@@ -69,10 +70,9 @@ export function AttachTmuxModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="ns-backdrop" onClick={onClose}>
-      <div className="ns-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="eyebrow">{t('attachTmuxModal.eyebrow')}</div>
-        <div className="ns-title">{t('attachTmuxModal.title')}</div>
+    <div className="ns-backdrop vh-dialog-overlay" onClick={onClose}>
+      <div className="ns-card vh-dialog vh-dialog--tall" role="dialog" aria-modal="true" aria-labelledby="at-dialog-title" onClick={(e) => e.stopPropagation()}>
+        <DialogHead title={t('attachTmuxModal.title')} titleId="at-dialog-title" onClose={onClose} />
 
         {online.length === 0 ? (
           <NoMachinesNotice onClose={onClose} />
@@ -129,7 +129,7 @@ export function AttachTmuxModal({ onClose }: { onClose: () => void }) {
           </>
         )}
 
-        <div className="ns-actions">
+        <div className="ns-actions vh-dialog-foot">
           <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
         </div>
       </div>

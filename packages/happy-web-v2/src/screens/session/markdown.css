@@ -88,8 +88,10 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.md-link:hover {
-  text-decoration: none;
+@media (hover: hover) and (pointer: fine) {
+  .md-link:hover {
+    text-decoration: none;
+  }
 }
 
 /* GFM task lists */
@@ -181,9 +183,11 @@
   cursor: pointer;
   transition: border-color var(--motion-fast), background var(--motion-fast);
 }
-.md-option--clickable:hover {
-  border-color: var(--text-faint);
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .md-option--clickable:hover {
+    border-color: var(--text-faint);
+    background: var(--bg-2);
+  }
 }
 
 /* ── tables ────────────────────────────────────────────────────────────────
@@ -259,9 +263,11 @@
   cursor: pointer;
   border-radius: var(--r-sm);
 }
-.md-tbl-expand:hover {
-  color: var(--text);
-  background: var(--fill-hover);
+@media (hover: hover) and (pointer: fine) {
+  .md-tbl-expand:hover {
+    color: var(--text);
+    background: var(--fill-hover);
+  }
 }
 /* B-359: "Show all" and "Full screen" share one row under the table. */
 .md-tbl-actions {
@@ -421,7 +427,7 @@
   border-radius: var(--r-sm);
   color: var(--text-dim);
 }
-.md-tbl-full-close:hover { background: var(--bg-3); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .md-tbl-full-close:hover { background: var(--bg-3); color: var(--text); } }
 .md-tbl-full-close:focus-visible, .md-tbl-full-scroll:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint); }
 .md-tbl-full-scroll {
   flex: 1;

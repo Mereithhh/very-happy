@@ -26,9 +26,11 @@
   text-align: left;
 }
 
-.fpl:hover {
-  color: var(--text);
-  text-decoration-color: var(--text-faint);
+@media (hover: hover) and (pointer: fine) {
+  .fpl:hover {
+    color: var(--text);
+    text-decoration-color: var(--text-faint);
+  }
 }
 
 .fpl:focus-visible {

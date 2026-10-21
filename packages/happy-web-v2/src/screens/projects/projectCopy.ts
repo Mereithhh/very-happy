@@ -2,10 +2,10 @@ import { useTranslation } from '@/i18n/useTranslation';
 
 /** B-648 project page copy (zh-Hans / English, same pattern as teamNavigationCopy). */
 export function useProjectCopy() {
-  const zh = useTranslation().lang === 'zh-Hans';
+  const zh = useTranslation().lang.startsWith('zh');
   return zh ? {
     back: '会话', overview: '概览', context: '上下文', settings: '项目设置', composerPlaceholder: (name: string) => `在 ${name} 开新会话…`, send: '发送', sending: '正在创建…',
-    noFolder: '还没有目录——先在设置里加一个目录才能在这里开会话', folder: '目录', agent: 'Agent',
+    noFolder: '还没有目录，加一个才能在这里开会话', folder: '目录', agent: 'Agent',
     attention: '等你处理', running: '进行中', doneToday: '今日完成', idle: '空闲', empty: '还没有会话', teams: '团队', automations: '定时自动化',
     members: '成员', injected: (v: number) => `已注入 v${v}`, stale: (v: number, l: number) => `旧版 v${v}（下一轮更新到 v${l}）`, pending: '下一轮注入', none: '未注入', noneRestart: '未注入 · 重启会话以启用', unknown: '状态未知',
     injectionSummary: (c: number, s: number, n: number) => `已注入最新 ${c} · 待更新 ${s} · 未注入 ${n}`,
@@ -19,7 +19,7 @@ export function useProjectCopy() {
     notFound: '项目不存在或已被删除', unavailable: '这个服务器还不支持项目', loading: '正在加载…', failed: '操作失败', saved: '已保存',
   } : {
     back: 'Sessions', overview: 'Overview', context: 'Context', settings: 'Project settings', composerPlaceholder: (name: string) => `Start a session in ${name}…`, send: 'Send', sending: 'Creating…',
-    noFolder: 'No folder yet — add one in settings to start sessions here', folder: 'Folder', agent: 'Agent',
+    noFolder: 'No folder yet — add one to start sessions here', folder: 'Folder', agent: 'Agent',
     attention: 'Waiting for you', running: 'Running', doneToday: 'Done today', idle: 'Idle', empty: 'No sessions yet', teams: 'Teams', automations: 'Scheduled automations',
     members: 'Members', injected: (v: number) => `Injected v${v}`, stale: (v: number, l: number) => `Older v${v} (v${l} on next turn)`, pending: 'On next turn', none: 'Not injected', noneRestart: 'Not injected · restart the session to enable', unknown: 'Unknown',
     injectionSummary: (c: number, s: number, n: number) => `Latest ${c} · updating ${s} · not injected ${n}`,

@@ -7,8 +7,16 @@ import { usePublicI18n } from '@/i18n/publicI18n';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 import './public.css';
 
+/** Same check main.tsx uses to pick the root: this browser holds an account. */
+export function hasStoredAccount(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): boolean {
+  try { return Boolean(storage?.getItem('auth_credentials')); } catch { return false; }
+}
+
 export function PublicHeader() {
   const { copy } = usePublicI18n();
+  // B-728 (UI-P1-13): signed in (/whats-new, /docs, /welcome with an account) → one
+  // way back into the workspace instead of 登录 / 开始使用.
+  const signedIn = hasStoredAccount();
   return (
     <><a className="pub-skip" href="#main-content">{copy.shell.skip}</a><header className="pub-header">
       <Link className="pub-brand" to="/welcome" aria-label={copy.shell.homeLabel}>
@@ -21,9 +29,11 @@ export function PublicHeader() {
         <LanguageSwitcher />
         <NavLink className="pub-nav-secondary" to="/docs">{copy.shell.docs}</NavLink>
         <a className="pub-nav-secondary" href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
-        <a className="pub-nav-login" href={`${import.meta.env.BASE_URL}login`}>{copy.shell.signIn}</a>
+        {!signedIn && <a className="pub-nav-login" href={`${import.meta.env.BASE_URL}login`}>{copy.shell.signIn}</a>}
         <QuickThemeToggle className="pub-theme-toggle" labels={{ light: copy.shell.switchToLight, dark: copy.shell.switchToDark }} />
-        <a className="pub-nav-cta" href={`${import.meta.env.BASE_URL}login`}>{copy.shell.getStarted}</a>
+        {signedIn
+          ? <a className="pub-nav-cta" href={import.meta.env.BASE_URL}>{copy.shell.openApp}</a>
+          : <a className="pub-nav-cta" href={`${import.meta.env.BASE_URL}login`}>{copy.shell.getStarted}</a>}
       </nav>
     </header></>
   );

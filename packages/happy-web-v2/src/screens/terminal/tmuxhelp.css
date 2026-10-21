@@ -6,37 +6,17 @@
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: var(--scrim);
-  backdrop-filter: blur(2px);
 }
+/* B-728: scrim, card, head and × come from styles/dialog.css (.vh-dialog*) */
 .tmux-card {
   width: 100%;
   max-width: 460px;
   max-height: 84dvh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-modal);
-  overflow: hidden;
 }
-.tmux-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.tmux-card > .vh-dialog-head {
+  margin: 0;
   padding: var(--sp-4) var(--sp-5);
   border-bottom: 1px solid var(--line);
-}
-.tmux-title {
-  font-size: var(--fs-16);
-  font-weight: 600;
-}
-.tmux-close {
-  color: var(--text-faint);
-}
-.tmux-close:hover {
-  color: var(--text);
 }
 .tmux-body {
   overflow-y: auto;

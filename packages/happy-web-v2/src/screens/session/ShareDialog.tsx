@@ -111,14 +111,14 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
     return (
         <Dialog.Root open={open} onOpenChange={onOpenChange}>
             <Dialog.Portal>
-                <Dialog.Overlay className="so-overlay" />
-                <Dialog.Content className="so-dialog" aria-describedby={undefined}>
-                    <div className="so-head">
+                <Dialog.Overlay className="vh-dialog-overlay so-overlay" />
+                <Dialog.Content className="vh-dialog so-dialog" aria-describedby={undefined}>
+                    <div className="vh-dialog-head so-head">
                         <div>
-                            <Dialog.Title className="so-title">{t('share.dialog.title')}</Dialog.Title>
+                            <Dialog.Title className="vh-dialog-title so-title">{t('share.dialog.title')}</Dialog.Title>
                             <Dialog.Description className="so-description">{t('share.dialog.description')}</Dialog.Description>
                         </div>
-                        <Dialog.Close className="so-close" aria-label={t('common.close')}><X size={18} /></Dialog.Close>
+                        <Dialog.Close className="vh-dialog-close so-close" aria-label={t('common.close')}><X size={18} /></Dialog.Close>
                     </div>
 
                     <div className="vh-segmented shd-tabs" role="tablist" aria-label={t('share.dialog.title')}>

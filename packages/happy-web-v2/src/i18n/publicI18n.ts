@@ -24,7 +24,7 @@ const en = {
   },
   shell: {
     skip: 'Skip to content', homeLabel: 'Very Happy home', navLabel: 'Primary navigation',
-    docs: 'Docs', signIn: 'Sign in', getStarted: 'Get started', language: 'Language', automatic: 'Automatic',
+    docs: 'Docs', signIn: 'Sign in', getStarted: 'Get started', openApp: 'Open Very Happy', language: 'Language', automatic: 'Automatic',
     footerTagline: 'Very Happy · work anywhere, keep the thread', footerLabel: 'Footer navigation',
     switchToLight: 'Switch to light theme', switchToDark: 'Switch to dark theme',
     security: 'Security', privacy: 'Privacy', terms: 'Terms', source: 'Source',
@@ -107,7 +107,7 @@ const zhHans: PublicCopy = {
   },
   shell: {
     skip: '跳到正文', homeLabel: 'Very Happy 首页', navLabel: '主导航',
-    docs: '文档', signIn: '登录', getStarted: '开始使用', language: '语言', automatic: '自动',
+    docs: '文档', signIn: '登录', getStarted: '开始使用', openApp: '打开 Very Happy', language: '语言', automatic: '自动',
     footerTagline: 'Very Happy · 随处工作，保持上下文', footerLabel: '页脚导航',
     switchToLight: '切换到浅色主题', switchToDark: '切换到深色主题',
     security: '安全', privacy: '隐私', terms: '条款', source: '源码',

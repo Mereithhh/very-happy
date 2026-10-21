@@ -66,7 +66,7 @@
   color: var(--text-faint);
   flex-shrink: 0;
 }
-.ss-close:hover { background: var(--fill-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ss-close:hover { background: var(--fill-hover); color: var(--text); } }
 .ss-close:focus-visible { box-shadow: var(--focus-ring); outline: none; }
 
 .ss-filters {
@@ -78,8 +78,11 @@
   border-bottom: var(--hairline) solid var(--line);
   flex-shrink: 0;
 }
-.ss-status { flex: 0 1 360px; width: 360px; } /* vh-segmented is an inline-size container: it needs a definite width */
-.ss-filters .ss-filter { max-width: 160px; }
+/* B-728 (UI-P1-16): status gets its own row and the four filters share the next
+   one evenly — no filter is left alone on a second line. */
+.ss-status { flex: 0 0 100%; width: 100%; max-width: 480px; } /* vh-segmented is an inline-size container: it needs a definite width */
+.ss-filters .ss-filter { max-width: 200px; }
+.ss-status ~ .ss-filter { flex: 1 1 0; min-width: 0; }
 
 .ss-notice {
   padding: var(--sp-2) var(--sp-4) 0;
@@ -166,7 +169,7 @@
   font-size: var(--fs-13);
   line-height: 1.45;
 }
-.ss-snippet:hover { background: var(--fill-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ss-snippet:hover { background: var(--fill-hover); color: var(--text); } }
 .ss-snippet:focus-visible { box-shadow: var(--focus-ring); outline: none; }
 .ss-snippet-role {
   flex-shrink: 0;
@@ -205,7 +208,7 @@
   color: var(--text-dim);
   font-size: var(--fs-12);
 }
-.ss-palette-link:hover { background: var(--fill-soft-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ss-palette-link:hover { background: var(--fill-soft-hover); color: var(--text); } }
 .ss-palette-link:focus-visible { box-shadow: var(--focus-ring); outline: none; }
 
 .ss-foot {
@@ -237,7 +240,7 @@
   color: var(--text-dim);
   font-size: var(--fs-12);
 }
-.ss-palette-link:hover { background: var(--fill-soft-hover); color: var(--text); }
+.ss-palette-link:active { background: var(--fill-soft-hover); color: var(--text); } /* B-728: this block is touch-only — press feedback, not hover */
 .ss-palette-link:focus-visible { box-shadow: var(--focus-ring); outline: none; }
 
 .ss-foot { display: none; }
@@ -258,6 +261,6 @@
   .ss-search { padding-left: var(--sp-3); }
   .ss-filters { padding: var(--sp-2) var(--sp-3); }
   .ss-row { padding: var(--sp-2) var(--sp-3); }
-  .ss-filters .ss-filter { flex: 1 1 40%; max-width: none; }
+  .ss-filters .ss-filter, .ss-status ~ .ss-filter { flex: 1 1 40%; max-width: none; }
   .ss-status { flex: 1 1 100%; width: 100%; }
 }

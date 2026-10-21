@@ -93,6 +93,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 - 按钮：XS 24/6/12，SM 28/8/12，MD 32/8/13.5，LG 40/12/15。变体有 primary（ink/canvas）、secondary（soft fill，无环；我们统一不画环，因为次级按钮几乎都在闭合物里）、ghost、danger（只有填充）。
 - 键盘焦点（仅 focus-visible）用 `--focus-ring`：1px 画布间隔 + 1.5px accent。**不加 CDS 的 glow**，零偏移彩色光晕仍在禁用之列。对话里的 disclosure 仍用安静的底边焦点轨（B-209）。
 - **文本输入框不画焦点环（B-699）**：浏览器把鼠标点击、触屏点按的输入框也算作 `:focus-visible`，所以 `input`（文本类）、`textarea`、`contenteditable` 一律不显示 outline / `--focus-ring` / 外发光，聚焦只靠光标加一处安静的 token 变化（边框 `--line-heavy`/`--text-faint`，或背景 `--fill-hover`/`--bg-3`）。按钮、链接、summary、select 这类控件仍只在键盘 `:focus-visible` 时显示 `--focus-ring`，鼠标点击不显示。全局规则在 `styles/base.css`，组件不要再给输入框加环。
+- **hover 一律加守卫（B-728，UI-M-01）**：触屏浏览器会把最后一次点按留作 hover 点，没守卫的 `:hover` 会粘在刚点过的控件上。所有 `:hover` 规则写在 `@media (hover: hover) and (pointer: fine) { … }` 里，原地包裹，不挪到文件末尾（同优先级按源码顺序生效）。`:hover, :focus-visible`、`:hover, .is-selected`、`:hover, [data-state=open]` 这类合并写法要拆开，非 hover 的一半留在原处；`:focus-visible` 那一半不能写 `box-shadow: none`，否则键盘焦点环一起没了。触屏的按下反馈用 `:active`；只在 hover 时显示的控件，触屏下默认可见（如终端标题的改名铅笔）。lint 规则 `hover-unguarded` 拦新增，存量迁移脚本 `scripts/dev/codemod-hover-guard.mjs`（幂等，冲突后可重跑）。
 - 分段控件统一用 `.vh-segmented`：999 圆角轨道、2px 内边距、轨道是 alpha 填充、thumb 是表面色加微投影、120ms snap；宽度 ≤254px 时，带图标的非激活项隐藏文字。用于侧栏「列表 / 状态 / 归档」和 Codex 线程切换。
 - live 指示：呼吸 2.4s、脉冲 1.2s、流式光标 2px × 1.15em。三点波浪和 shimmer 暂不采用，因为现有 Spinner 和 18px 轨迹已经承担这个角色。
 
@@ -203,6 +204,8 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 3. `outline: none|0`：同一文件里没有对应的 `:focus-visible` / `:focus-within` 替代样式就报。`X:focus { outline: none }` 这种程序化聚焦容器的写法放行。
 4. 文本输入框焦点环（`field-focus-ring`，B-699）：选择器在 `:focus*` 状态下指向 `input` / `textarea` 或以 `input`、`textarea` 结尾的类名，且声明了 `var(--focus-ring)`、`var(--accent-glow)` 阴影或非 none 的 outline 就报。`:not(...)` 里的排除、checkbox/radio 等非文本 input 放行。
 5. 原生控件（`native-control`，B-714）：tsx 新增 `<select`、`<option`、`<datalist`、`type="checkbox"`、`<summary` 就报，改用 `SelectMenu` / `Combobox` / `Segmented` / `SuggestInput` / `Checkbox` / `Summary`（见 §6「选择控件」）。只有 `ui/Checkbox.tsx`、`ui/Summary.tsx` 可以写对应的原生元素；字符串字面量里的同名文本放行。
+
+5. 未守卫的 hover（`hover-unguarded`，B-728）：`:hover` 规则不在 `@media (hover: hover)` 里，或写在 `(pointer: coarse)` / `(hover: none)` 里就报；`:not(:hover)` 放行。这条另有全仓模式 `node scripts/dev/check-design-lint.mjs --all-hover`，CI 的脚本测试要求存量为 0。
 
 确实要保留时，在同一行或上一行写 `design-lint-allow: <理由>`，理由必填。规则本身宁可漏报、不要误报，误报应该修脚本，不要靠堆豁免。
 
