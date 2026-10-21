@@ -28,7 +28,7 @@ import { discardedReasonKey } from './discardedInput';
 import { MessageActions } from './MessageActions';
 import { MessageTime } from './MessageTime';
 import { requestChatFollow } from './chatFollowRequest';
-import { SendFailedActions, SendingIndicator, useSendSpinnerReset } from './SendStatusView';
+import { SendFailedActions, SendingIndicator, SentFlash, useSendSpinnerReset } from './SendStatusView';
 import { turnSendStatus } from './sendStatusModel';
 import './message.css';
 import { presentTeamMessage } from './teamMessage';
@@ -104,6 +104,7 @@ function UserText({ message, sessionId, attachments }: { message: UserTextMessag
                         ? <SendFailedActions sessionId={sessionId} status={send} />
                         : <>
                             {send?.state === 'sending' && <SendingIndicator localId={message.localId ?? send.localId} />}
+                            {!send && <SentFlash localId={message.localId} />}
                             <MessageTime createdAt={message.createdAt} />
                         </>}
                 </div>

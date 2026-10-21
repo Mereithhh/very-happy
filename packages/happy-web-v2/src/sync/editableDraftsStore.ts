@@ -82,9 +82,37 @@ interface DraftsState {
     drafts: Record<string, DraftRecord>;
     /** sessions whose prefix has been loaded at least once */
     loaded: Record<string, true>;
+    /**
+     * B-722: save state of a draft the user edited on this device — saving
+     * (debounce + in flight) → saved (shown briefly, then dropped) or failed.
+     */
+    saves: Record<string, DraftSaveState>;
 }
 
-export const useEditableDrafts = create<DraftsState>(() => ({ drafts: {}, loaded: {} }));
+export type DraftSaveState = 'saving' | 'saved' | 'failed';
+/** How long 「已保存」 stays after a successful save. */
+export const DRAFT_SAVED_VISIBLE_MS = 1600;
+
+export const useEditableDrafts = create<DraftsState>(() => ({ drafts: {}, loaded: {}, saves: {} }));
+
+const savedTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+function setSave(kvKey: string, state: DraftSaveState | null) {
+    // Every keystroke reports 'saving' — don't publish a state that did not change.
+    if (state === 'saving' && useEditableDrafts.getState().saves[kvKey] === 'saving') return;
+    if (savedTimers[kvKey]) {
+        clearTimeout(savedTimers[kvKey]);
+        delete savedTimers[kvKey];
+    }
+    const saves = { ...useEditableDrafts.getState().saves };
+    if (state) saves[kvKey] = state;
+    else delete saves[kvKey];
+    useEditableDrafts.setState({ saves });
+    if (state === 'saved') savedTimers[kvKey] = setTimeout(() => setSave(kvKey, null), DRAFT_SAVED_VISIBLE_MS);
+}
+/** Only a save the user is watching (an edit on this device) reports its outcome. */
+function settleSave(kvKey: string, state: 'saved' | 'failed') {
+    if (useEditableDrafts.getState().saves[kvKey]) setSave(kvKey, state);
+}
 
 function putLocal(kvKey: string, rec: DraftRecord) {
     const state = useEditableDrafts.getState();
@@ -105,6 +133,7 @@ function absorbRemote(kvKey: string, remote: DraftRecord, version: number) {
             delete pushTimers[kvKey];
         }
         putLocal(kvKey, remote);
+        settleSave(kvKey, 'saved');
     } else if (local.updatedAt > remote.updatedAt) {
         schedulePush(kvKey); // our newer edit has not landed yet
     }
@@ -115,7 +144,10 @@ function schedulePush(kvKey: string) {
         void loadIo().then(() => schedulePush(kvKey));
         return;
     }
-    if (!currentCreds() || isAuthLatched()) return;
+    if (!currentCreds() || isAuthLatched()) {
+        settleSave(kvKey, 'failed');
+        return;
+    }
     if (pushTimers[kvKey]) clearTimeout(pushTimers[kvKey]);
     pushTimers[kvKey] = setTimeout(() => {
         delete pushTimers[kvKey];
@@ -126,15 +158,22 @@ function schedulePush(kvKey: string) {
 async function pushNow(kvKey: string) {
     for (let attempt = 0; attempt < PUSH_MAX_ATTEMPTS; attempt++) {
         const creds = currentCreds();
-        if (!io || !creds || isAuthLatched()) return;
+        if (!io || !creds || isAuthLatched()) {
+            settleSave(kvKey, 'failed');
+            return;
+        }
         const rec = useEditableDrafts.getState().drafts[kvKey];
-        if (!rec) return;
+        if (!rec) {
+            setSave(kvKey, null);
+            return;
+        }
         try {
             const result = await io.kvMutate(creds, [
                 { key: kvKey, value: toB64(JSON.stringify(rec)), version: versions[kvKey] ?? -1 },
             ]);
             if (result.success) {
                 versions[kvKey] = result.results[0].version;
+                settleSave(kvKey, 'saved');
                 return;
             }
             const conflict = result.errors[0];
@@ -142,13 +181,23 @@ async function pushNow(kvKey: string) {
             const remote = conflict.value ? decodeDraft(conflict.value) : null;
             if (remote && pickDraftWinner(rec, remote) === remote) {
                 putLocal(kvKey, remote);
+                settleSave(kvKey, 'saved');
                 return;
             }
         } catch (e) {
             console.warn('[drafts] KV push failed', (e as Error)?.message);
+            settleSave(kvKey, 'failed');
             return;
         }
     }
+    settleSave(kvKey, 'failed');
+}
+
+/** B-722: retry a draft save that failed. */
+export function retryDraftSave(kvKey: string): void {
+    if (!useEditableDrafts.getState().drafts[kvKey]) return;
+    setSave(kvKey, 'saving');
+    schedulePush(kvKey);
 }
 
 function flushAllPending() {
@@ -228,6 +277,7 @@ export function editDraft(input: { sessionId: string; key: string; original: str
         if (current.text === text) return;
         putLocal(kvKey, { ...current, text, updatedAt: Math.max(now, current.updatedAt + 1) });
     }
+    setSave(kvKey, 'saving');
     schedulePush(kvKey);
 }
 
@@ -272,5 +322,9 @@ export function __resetEditableDraftsForTests(): void {
         delete pushTimers[k];
     }
     for (const k of Object.keys(lastRefreshAt)) delete lastRefreshAt[k];
-    useEditableDrafts.setState({ drafts: {}, loaded: {} });
+    for (const k of Object.keys(savedTimers)) {
+        clearTimeout(savedTimers[k]);
+        delete savedTimers[k];
+    }
+    useEditableDrafts.setState({ drafts: {}, loaded: {}, saves: {} });
 }

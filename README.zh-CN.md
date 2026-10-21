@@ -332,7 +332,7 @@ Agent Client Protocol 与同样缩写为 ACP 的旧 Agent Communication Protocol
 - 机器文件浏览器：预览文本、Markdown、图片、PDF 与 Excel/CSV 工作表；可下载原文件（最大 50 MiB）、复制文本或路径，并把 Agent 输出里可点击的预览固定到工作区。工作表预览在浏览器 worker 中本地运行（10 MiB；每个文件最多 50 个工作表，每个工作表最多 500 行、100 列）。
 - 剪贴板及拖放文件交接：8 MB 上限、有界分块、上传反馈、插入引用后的路径且不自动执行。
 - 任务看板、todo provider 命令、笔记、通知、Web Push 与 HTTPS 账户 webhook（接收端临时故障会自动重试，送达情况见 **设置 → 诊断**）。
-- 按机器和 agent 自定义模型与 provider：在 **设置 → 模型与 Provider** 或模型选择器底部的 **自定义…** 里，把 base URL、API key（或环境变量引用）和模型写进那台机器上 Claude Code / Codex / Gemini / pi 自己的配置文件；写入前预览脱敏 diff，自动备份、可回滚（[说明](docs/configuration.md#custom-models-and-providers-b-688)）。
+- 按机器和 agent 自定义模型与 provider：在 **设置 → 模型与 Provider** 或模型选择器底部的 **自定义…** 里，把 base URL、API key（或环境变量引用）和模型写进那台机器上 Claude Code / Codex / Gemini / pi 自己的配置文件；pi 模型可顺手写上下文窗口（如 `glm-5.3 200k`），上下文指示据此计算，不再按 pi 默认的 128k 误报；写入前预览脱敏 diff，自动备份、可回滚（[说明](docs/configuration.md#custom-models-and-providers-b-688)）。
 - 机器网页面板：在机器本地 settings.json 声明 noVNC、浏览器 dashboard 等页面，在会话工作区和机器页直接打开；Agent 可用 `request_human` 叫人介入，推送直达面板（[配置说明](docs/configuration.md#machine-web-panels-and-needs-you-b-510)）。
 - Claude 驱动的协调器：文本输入、会话感知、在所选机器上调度；配置兼容语音服务后可使用语音输入。
 - 免密码邮箱验证码与 Google 登录、可选密码兼容、可配置注册/容量控制、托管公共中继与生产级自托管。

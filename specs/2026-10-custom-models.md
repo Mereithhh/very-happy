@@ -70,6 +70,7 @@
 - 文件：`${PI_CODING_AGENT_DIR:-~/.pi/agent}/models.json` 与 `settings.json`，仅用户级；models.json 允许注释。
 - `providers.<id>`：`baseUrl`、`api`（`openai-completions` | `openai-responses` | `anthropic-messages` | …）、`apiKey`、`headers`、`models[]`（`id` 必填，另有 `name`/`contextWindow`/`maxTokens`/…）；`settings.json` 的 `defaultProvider`/`defaultModel`/`enabledModels`。
 - `apiKey`：`$NAME`/`${NAME}` 读环境变量，`!cmd` 执行命令，其余按字面量（0.77 起裸名不再当变量名）。key 解析不出来的 provider 的模型不会出现在 `/model` 里；`/model` 每次打开都会重读 models.json。
+- `models[].contextWindow` 不写时 pi 按 **128000**（`provider-composer.js`），并据此算上下文占用与自动压缩阈值。B-727 起表单每行可写 `id 窗口`（`glm-5.3 200k`），patch 字段 `contextWindows`，view 字段 `current.contextWindows`；见 `specs/2026-10-pi-context-usage.md`。
 
 ### 竞品对照
 

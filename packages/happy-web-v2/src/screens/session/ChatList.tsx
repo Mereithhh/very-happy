@@ -53,7 +53,7 @@ import { currentTurnMessages, isAgentWorkLive } from '@/sync/agentLiveness';
 import { MessageTimeTooltip } from './MessageTimeTooltip';
 import './chatlist.css';
 import { useHeartbeatFresh } from '@/sync/heartbeatLease';
-import { SendFailedActions, SendingIndicator, useSendSpinnerResetAll } from './SendStatusView';
+import { SendFailedActions, SendingIndicator, SentFlash, useSendSpinnerResetAll } from './SendStatusView';
 import { turnSendStatus } from './sendStatusModel';
 import { latestOwnSendKey, onChatFollowRequest } from './chatFollowRequest';
 import { SelectionQuote } from './SelectionQuote';
@@ -819,6 +819,7 @@ export function ChatList({
                                 </span>
                                 {send?.state === 'sending' && <SendingIndicator localId={send.localId} />}
                                 {send?.state === 'failed' && <SendFailedActions sessionId={sessionId} status={send} />}
+                                {!send && <SentFlash localId={'localId' in message ? message.localId : null} />}
                                 {!send && session?.metadata?.queueCancellation === true && message.kind === 'user-text' && message.localId && (
                                     <button
                                         type="button"

@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({ send: vi.fn(), rewind: vi.fn(), flavor: 'claud
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: mocks.send } }));
 vi.mock('@/sync/apiSocket', () => ({ apiSocket: {} }));
 vi.mock('@/sync/storage', () => ({
-    storage: { getState: () => ({ sessionMessages: {} }) },
+    // B-722: DeliverOnResumeHint selects from the store (no session → nothing to say).
+    storage: Object.assign((select: (state: unknown) => unknown) => select({ sessionMessages: {}, sessions: {} }), { getState: () => ({ sessionMessages: {} }) }),
     useSession: () => ({ metadata: { flavor: mocks.flavor } }),
     useSetting: () => mocks.enterToSend,
 }));
@@ -120,6 +121,20 @@ describe('in-place edit (B-528: replaces history)', () => {
         expect(mocks.rewind).toHaveBeenCalledExactlyOnceWith('parent', message, { action: 'edit', text: 'revised' });
         // Never the old "send a new message" path directly.
         expect(mocks.send).not.toHaveBeenCalled();
+        expect(host.querySelector('textarea')).toBeNull();
+    });
+
+    it('B-722: while the edit is being applied the footer reads 保存中… (aria-live) in place of the hint', async () => {
+        let finish!: () => void;
+        mocks.rewind.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+        render(); await click('Edit'); type('revised');
+        const hint = () => host.querySelector('.msg-edit-hint');
+        expect(hint()?.getAttribute('aria-live')).toBe('polite');
+        expect(hint()?.getAttribute('data-save-state')).toBeNull();
+        await click('Send');
+        expect(hint()?.getAttribute('data-save-state')).toBe('saving');
+        expect(hint()?.textContent).toBe('session.chat.saveState.saving');
+        await act(async () => { finish(); });
         expect(host.querySelector('textarea')).toBeNull();
     });
 

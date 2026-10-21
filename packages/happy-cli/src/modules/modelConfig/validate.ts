@@ -96,3 +96,25 @@ export function baseUrlWarnings(url: string | null | undefined, kind: 'anthropic
     }
     return out;
 }
+
+/** B-727: a model's context window in tokens — an integer pi can use, not a typo of 1M. */
+export const MIN_CONTEXT_WINDOW = 1024;
+export const MAX_CONTEXT_WINDOW = 100_000_000;
+
+export function normalizeContextWindows(value: unknown): Record<string, number | null> | undefined {
+    if (value === undefined) return undefined;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) fail('invalid-input', 'contextWindows must be an object');
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > 64) fail('invalid-input', 'contextWindows has too many entries');
+    const out: Record<string, number | null> = {};
+    for (const [rawId, window] of entries) {
+        const id = normalizeModelId(rawId, 'contextWindows');
+        if (!id) fail('invalid-input', 'contextWindows keys must be model ids');
+        if (window === null) { out[id] = null; continue; }
+        if (typeof window !== 'number' || !Number.isInteger(window) || window < MIN_CONTEXT_WINDOW || window > MAX_CONTEXT_WINDOW) {
+            fail('invalid-input', `contextWindows.${id} must be a whole number of tokens between ${MIN_CONTEXT_WINDOW} and ${MAX_CONTEXT_WINDOW}`);
+        }
+        out[id] = window;
+    }
+    return out;
+}

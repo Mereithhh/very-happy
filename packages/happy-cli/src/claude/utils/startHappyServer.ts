@@ -1,5 +1,5 @@
 import { registerProjectTools, createProjectToolExecutor, PROJECT_TOOL_NAMES } from '@/projects/tools';
-import { ContextUsageSchema, type ContextUsage } from '@slopus/happy-wire';
+import { PiContextReportSchema, type PiContextReport } from '@/agent/acp/piContextUsage';
 /**
  * Happy MCP server
  * Provides Happy CLI specific tools including chat session title management
@@ -49,7 +49,8 @@ interface HappyMcpHandlers {
 }
 
 export interface StartHappyServerOptions {
-    onContextUsage?: (usage: ContextUsage) => void;
+    /** B-727: the pi extension's raw report; the wrapper resolves it into `agentState.contextUsage`. */
+    onContextUsage?: (report: PiContextReport) => void;
     /** B-632: pi steer channel served at the returned `steerUrl`. */
     piSteer?: import('@/agent/acp/piSteerChannel').PiSteerChannel;
     /**
@@ -363,10 +364,9 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
                 let body = '';
                 for await (const chunk of req) {
                     body += chunk.toString();
-                    if (Buffer.byteLength(body) > 2048) { res.writeHead(413).end(); return; }
+                    if (Buffer.byteLength(body) > 4096) { res.writeHead(413).end(); return; }
                 }
-                const usage = ContextUsageSchema.parse({ ...JSON.parse(body), updatedAt: Date.now() });
-                options.onContextUsage(usage);
+                options.onContextUsage(PiContextReportSchema.parse(JSON.parse(body)));
                 res.writeHead(204).end();
             } catch { if (!res.headersSent) res.writeHead(400).end(); }
             return;
