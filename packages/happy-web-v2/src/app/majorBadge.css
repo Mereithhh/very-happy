@@ -1,0 +1,16 @@
+/* B-715: 「大更新」 — its own hue (--major), never accent (live) or warn/danger (states). */
+.vh-major-badge { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 2px 8px; border-radius: var(--r-pill); background: var(--major-dim); color: var(--major); font: 600 var(--fs-11)/1.4 var(--font-sans); letter-spacing: 0; text-transform: none; white-space: nowrap; }
+
+/* Sidebar entry (above the footer): a filled row in the badge hue, so it reads as news, not chrome. */
+.vh-major-entry-row { padding: var(--sp-1) var(--sp-2) 0; }
+.vh-major-entry { display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: 32px; padding: 5px var(--sp-2); border-radius: var(--r-sm); background: var(--major-dim); color: var(--major); font-size: var(--workspace-primary-size); font-weight: 600; text-align: left; }
+.vh-major-entry:hover { background: color-mix(in srgb, var(--major-dim) 100%, var(--major) 8%); }
+.vh-major-entry:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.vh-major-entry > svg { flex: none; }
+.vh-major-entry-label { flex: none; }
+.vh-major-entry-count { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; font-size: var(--fs-12); }
+.vh-major-rail { position: relative; color: var(--major); }
+/* Same 「未读」 dot as the session rows (design-language: --danger unread extension). */
+.vh-major-rail-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+/* Phone list: the whole entry is at most one session row (44px), so it never hides more than one row (Lead, B-715). */
+@media (pointer: coarse) { .vh-major-entry-row { padding-top: 0; } .vh-major-entry { min-height: 44px; } }

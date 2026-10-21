@@ -42,16 +42,36 @@ export function parseLiveReleaseSha(html) {
   return match ? match[1] : null;
 }
 
-/** Ordered `{ id, cliVersion }` list parsed from changelogRelease.ts (newest first). */
+/**
+ * Ordered `{ id, cliVersion, major, highlights }` list parsed from
+ * changelogRelease.ts (newest first). `major` (B-715) is the 「大更新」 flag;
+ * `highlights` says whether the entry has highlight cards.
+ */
 export function extractReleases(source) {
   const releases = [];
-  const pattern = /^\s*id:\s*'([^']+)'|^\s*cliVersion:\s*'([^']+)'/gm;
+  const pattern = /^\s*id:\s*'([^']+)'|^\s*cliVersion:\s*'([^']+)'|^\s*major:\s*(true|false)\b|^\s*(highlights):\s*\[/gm;
   let match;
   while ((match = pattern.exec(source ?? ''))) {
-    if (match[1]) releases.push({ id: match[1], cliVersion: null });
-    else if (releases.length > 0) releases[releases.length - 1].cliVersion = match[2];
+    if (match[1]) { releases.push({ id: match[1], cliVersion: null, major: false, highlights: false }); continue; }
+    const last = releases[releases.length - 1];
+    if (!last) continue;
+    if (match[2]) last.cliVersion = match[2];
+    else if (match[3]) last.major = match[3] === 'true';
+    else if (match[4]) last.highlights = true;
   }
   return releases;
+}
+
+/**
+ * B-715: a major release gets its own page in the notice pager — one people
+ * cannot close before the last page — and the sidebar entry. A major entry
+ * without highlight cards would force a bare text list on everyone; the
+ * format rule (specs/2026-10-whats-new.md) asks for highlights.
+ */
+export function majorReleaseProblems(releases) {
+  return releases
+    .filter((release) => release.major && !release.highlights)
+    .map((release) => `"${release.id}" is major: true but has no highlights`);
 }
 
 export function userFacingCommits(lines) {
@@ -60,20 +80,25 @@ export function userFacingCommits(lines) {
 
 export function evaluateWebRelease({ commits, liveReleases, targetReleases }) {
   const facing = userFacingCommits(commits);
-  const added = targetReleases
-    .filter((release) => !liveReleases.some((live) => live.id === release.id))
-    .map((release) => release.id);
+  const addedReleases = targetReleases.filter((release) => !liveReleases.some((live) => live.id === release.id));
+  const added = addedReleases.map((release) => release.id);
+  const addedMajor = addedReleases.filter((release) => release.major).map((release) => release.id);
   const head = targetReleases[0]?.id ?? '(none)';
+  const problems = majorReleaseProblems(targetReleases);
+  if (problems.length > 0) {
+    return { ok: false, facing, added, addedMajor, reason: `major release without highlights: ${problems.join('; ')}` };
+  }
   if (facing.length === 0) {
-    return { ok: true, facing, added, reason: 'no user-facing feat/fix/perf commits since the live release' };
+    return { ok: true, facing, added, addedMajor, reason: 'no user-facing feat/fix/perf commits since the live release' };
   }
   if (added.length > 0) {
-    return { ok: true, facing, added, reason: `changelog adds ${added.join(', ')}` };
+    return { ok: true, facing, added, addedMajor, reason: `changelog adds ${added.join(', ')}` };
   }
   return {
     ok: false,
     facing,
     added,
+    addedMajor,
     reason: `${facing.length} user-facing commit(s) since the live release, but CHANGELOG_RELEASES head is still "${head}"`,
   };
 }
@@ -187,6 +212,7 @@ async function main() {
   for (const line of result.lines) out(`  ${line}`);
   if (result.range) out(`  range:        ${result.range}`);
   out(`  user-facing:  ${result.facing.length}`);
+  if (result.addedMajor?.length) out(`  major:        ${result.addedMajor.join(', ')} — paged notice that must be read through + sidebar entry (B-715)`);
   out(`  verdict:      ${result.ok ? 'OK' : 'FAIL'} — ${result.reason}`);
 
   if (result.ok) {

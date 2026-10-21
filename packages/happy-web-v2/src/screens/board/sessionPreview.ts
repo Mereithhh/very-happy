@@ -18,6 +18,10 @@ import { presentServiceEvent } from '@/screens/session/serviceEvent';
 import { stripAttachedFiles } from '@/screens/session/attachedFiles';
 import { stripEditedDrafts } from '@/sync/editableDrafts';
 import { extractOptions } from '@/screens/session/optionsBlock';
+import { capChars, plainPreviewText as sharedPlainPreviewText } from '@/utils/markdownPreview';
+import { protocolMessageBody } from '@/screens/session/protocolMessage';
+
+export { capChars };
 
 /** hard cap before CSS line-clamp does the visual truncation */
 export const PREVIEW_MAX_CHARS = 300;
@@ -33,48 +37,16 @@ export interface SessionPreview {
   outcome?: RoundOutcome;
 }
 
-/** Cap at `max` code points (never splits a surrogate pair), with an ellipsis. */
-export function capChars(text: string, max: number): string {
-  const chars = Array.from(text);
-  return chars.length > max ? `${chars.slice(0, max - 1).join('').trimEnd()}…` : text;
-}
-
-/** HTML-ish tags an agent actually emits in prose; anything else (`Array<string>`) is text. */
-const HTML_TAG_RE = /<\/?(?:br|p|div|span|details|summary|kbd|sup|sub|b|i|u|em|strong|code|pre|img|a|ul|ol|li|table|tr|td|th|hr)\b[^<>]*>/gi;
-
 /** Markdown → one plain line (cheap, display-only; never round-tripped). */
 export function plainPreviewText(raw: string, max = PREVIEW_MAX_CHARS): string {
-  // Inline code is literal: park it behind placeholders so no markdown rule
-  // below can touch `*.ts`, `__init__` or `Array<string>`, restore at the end.
-  const code: string[] = [];
-  const parked = raw
-    .replace(/```[\s\S]*?(```|$)/g, ' [code] ')
-    .replace(/`([^`\n]+)`/g, (_m, inner: string) => `\u0000${code.push(inner) - 1}\u0000`);
-  const text = parked
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(HTML_TAG_RE, ' ')
-    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
-    .replace(/^\s{0,3}>\s?/gm, '')
-    .replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/gm, '')
-    .replace(/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$/gm, '')
-    .replace(/^\s*[-*_]{3,}\s*$/gm, '')
-    .replace(/\|/g, ' ')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    // `__bold__` only around phrases with a space: identifiers (mcp__happy__x,
-    // __init__) stay intact even outside backticks.
-    .replace(/(^|[^\w])__(?!\s)([^_\n]*\s[^_\n]*?)__(?!\w)/g, '$1$2')
-    .replace(/(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1$2')
-    .replace(/(^|[^\w_])_(?!\s)([^_\n]+?)_(?!\w)/g, '$1$2')
-    .replace(/~~(.+?)~~/g, '$1')
-    .replace(/\u0000(\d+)\u0000/g, (_m, i: string) => code[Number(i)] ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return capChars(text, max);
+  return sharedPlainPreviewText(raw, max);
 }
 
 function userPreviewText(message: Extract<Message, { kind: 'user-text' }>): string {
-  return plainPreviewText(stripAttachedFiles(stripHarnessBlocks(stripEditedDrafts(message.displayText ?? message.text))));
+  // B-704: a team / cross-session / shared message is previewed by its body —
+  // the `[Very Happy … message …]` envelope and its footer are transport, not text.
+  const body = protocolMessageBody(message) ?? message.displayText ?? message.text;
+  return plainPreviewText(stripAttachedFiles(stripHarnessBlocks(stripEditedDrafts(body))));
 }
 
 /** A user message that opens a round the user actually wrote. */

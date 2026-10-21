@@ -12,6 +12,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import { ChangelogShotImage, ChangelogTopics } from '@/app/ChangelogHighlights';
 import { whatsNewReleases } from '@/app/changelogRelease';
+import { MajorBadge } from '@/app/MajorBadge';
 import { cliUpdateInstallCommand } from '@/app/cliUpdatePolicy';
 import { PublicFooter, PublicHeader } from '@/screens/public/PublicShell';
 import './whatsNew.css';
@@ -40,7 +41,7 @@ export function WhatsNewScreen() {
       <PublicHeader />
       <main id="main-content">
         <section className="wnp-hero" aria-labelledby="wnp-title">
-          <div className="eyebrow">{c.eyebrow} · <time dateTime={web.date}>{date}</time></div>
+          <div className="eyebrow wnp-eyebrow">{c.eyebrow} · <time dateTime={web.date}>{date}</time>{web.major && <MajorBadge />}</div>
           <h1 id="wnp-title">{t(web.titleKey)}</h1>
           <p>{t(web.summaryKey)}</p>
           <div className="pub-actions">

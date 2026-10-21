@@ -31,7 +31,8 @@ describe('session-scoped transcript scrolling', () => {
 // overlays may contain.
 describe('nested scrollers inside the transcript chain to the transcript', () => {
     const dir = dirname(fileURLToPath(import.meta.url));
-    const allowed = new Set(['.cl-scroll', '.runtime-body']);
+    // B-716: .msg-reader-body is a modal reader (Radix Dialog), not a transcript scroller.
+    const allowed = new Set(['.cl-scroll', '.runtime-body', '.msg-reader-body']);
     it('no transcript css rule sets overscroll-behavior: contain outside the allowlist', () => {
         const offenders: string[] = [];
         for (const file of readdirSync(dir).filter((f) => f.endsWith('.css'))) {

@@ -1,7 +1,8 @@
 import { Check, PackageOpen } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { CHANGELOG_RELEASES } from '@/app/changelogRelease';
-import { ChangelogHighlights } from '@/app/ChangelogHighlights';
+import { ChangelogHighlights, ChangelogShotImage } from '@/app/ChangelogHighlights';
+import { MajorBadge } from '@/app/MajorBadge';
 import { useTranslation } from '@/i18n/useTranslation';
 import './changelog.css';
 
@@ -24,13 +25,15 @@ export function ChangelogScreen() {
       </header>
       <div className="chg-timeline">
         {CHANGELOG_RELEASES.map((release, index) => (
-          <article className="chg-release" key={release.id} data-latest={index === 0 || undefined}>
+          <article className="chg-release" key={release.id} data-latest={index === 0 || undefined} data-major={release.major || undefined}>
             <div className="chg-meta">
               <time dateTime={release.date}>{formatDate(release.date)}</time>
               {release.buildVersion && <span>{t('changelog.webBuild', { version: release.buildVersion })}</span>}
+              {release.major && <MajorBadge />}
             </div>
             <h2>{t(release.titleKey)}</h2>
             <p>{t(release.summaryKey)}</p>
+            {release.major && release.hero && <div className="chg-hero"><ChangelogShotImage image={release.hero} motion={false} /></div>}
             {release.highlights?.length ? (
               <ChangelogHighlights release={release} headingLevel={3} inApp={false} />
             ) : (

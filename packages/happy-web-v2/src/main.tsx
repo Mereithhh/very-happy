@@ -25,6 +25,8 @@ import { installPasteCapture } from './utils/pasteCapture';
 // see the pasteboard change (Wispr Flow; see utils/pasteCapture).
 installPasteCapture();
 
+// B-715: note whether this load is a deep link before presenceBoot strips its marker.
+import './app/entryKind';
 // B-567: presence input listeners from the first tap (cold start), and the
 // push-click marker consumed before the router reads the URL.
 import './app/presenceBoot';
