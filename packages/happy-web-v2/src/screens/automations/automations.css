@@ -61,8 +61,10 @@
   cursor: pointer;
   font-size: inherit;
 }
-.au-link:hover {
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .au-link:hover {
+    color: var(--text);
+  }
 }
 .au-error {
   font-size: var(--fs-12);
@@ -105,25 +107,31 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.au-btn:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .au-btn:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .au-btn--primary {
   color: var(--bg-0);
   border-color: var(--text);
   background: var(--text);
 }
-.au-btn--primary:hover {
-  color: var(--bg-0);
-  background: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .au-btn--primary:hover {
+    color: var(--bg-0);
+    background: var(--text-dim);
+  }
 }
 .au-btn--danger {
   color: var(--danger);
 }
-.au-btn--danger:hover {
-  color: var(--danger);
-  border-color: var(--danger);
+@media (hover: hover) and (pointer: fine) {
+  .au-btn--danger:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+  }
 }
 .au-btn--icon {
   padding: 4px 6px;
@@ -170,8 +178,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-a.au-machine:hover {
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  a.au-machine:hover {
+    color: var(--text);
+  }
 }
 .au-session-link {
   color: var(--text-dim);
@@ -184,8 +194,10 @@ a.au-machine:hover {
   white-space: nowrap;
   max-width: 320px;
 }
-.au-session-link:hover {
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .au-session-link:hover {
+    color: var(--text);
+  }
 }
 
 /* ---- "needs my decision" band ---- */
@@ -260,10 +272,12 @@ a.au-machine:hover {
   cursor: pointer;
   flex: none;
 }
-.au-attn-check:hover {
-  border-color: var(--text);
-  color: var(--text);
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .au-attn-check:hover {
+    border-color: var(--text);
+    color: var(--text);
+    background: var(--bg-2);
+  }
 }
 .au-attn-check:disabled {
   opacity: 0.5;
@@ -369,9 +383,11 @@ a.au-machine:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.au-row-name:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
+@media (hover: hover) and (pointer: fine) {
+  .au-row-name:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
 }
 .au-row-desc {
   font-size: var(--fs-12);
@@ -784,9 +800,11 @@ a.au-machine:hover {
   background: var(--bg-1);
   cursor: pointer;
 }
-.au-choice-btn:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .au-choice-btn:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .au-choice-btn.is-on {
   background: var(--text);

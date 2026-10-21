@@ -26,7 +26,7 @@
   border-radius: var(--r-sm);
   color: var(--text-faint);
 }
-.signin-nudge__close:hover { color: var(--text); background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .signin-nudge__close:hover { color: var(--text); background: var(--bg-2); } }
 .signin-nudge__head { display: flex; align-items: center; gap: var(--sp-2); padding-right: var(--sp-8); color: var(--text-dim); }
 .signin-nudge h2 { margin: 0; color: var(--text); font-size: var(--fs-14); font-weight: 600; letter-spacing: -.01em; }
 .signin-nudge p { margin: var(--sp-2) 0 0; color: var(--text-dim); font-size: var(--fs-13); line-height: 1.5; }
@@ -39,9 +39,9 @@
   font-size: var(--fs-13);
 }
 .signin-nudge__primary { background: var(--text); color: var(--bg-0); border-color: var(--text); font-weight: 600; }
-.signin-nudge__primary:hover { opacity: .88; }
+@media (hover: hover) and (pointer: fine) { .signin-nudge__primary:hover { opacity: .88; } }
 .signin-nudge__later { color: var(--text-dim); }
-.signin-nudge__later:hover { color: var(--text); background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .signin-nudge__later:hover { color: var(--text); background: var(--bg-2); } }
 
 @keyframes signin-nudge-enter {
   from { opacity: 0; transform: translate3d(0, 16px, 0); }

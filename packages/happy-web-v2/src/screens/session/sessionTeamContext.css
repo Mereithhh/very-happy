@@ -5,5 +5,5 @@
 .session-team-context a > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-team-context > .ag-chip { flex: 0 1 auto; }
 .session-team-context a.session-team-context-progress { margin-left: auto; flex-shrink: 0; color: var(--text-dim); }
-.session-team-context a.session-team-context-progress:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .session-team-context a.session-team-context-progress:hover { color: var(--text); } }
 @media (pointer: coarse) { .session-team-context a { min-height: 44px; } }

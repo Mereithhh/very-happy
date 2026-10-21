@@ -225,8 +225,10 @@
   font-size: var(--fs-12);
   cursor: pointer;
 }
-.auth-email-actions button:hover,
-.auth-method-toggle:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) {
+  .auth-email-actions button:hover,
+  .auth-method-toggle:hover { color: var(--text); }
+}
 .auth-email-actions button:disabled { cursor: default; opacity: .5; }
 .auth-method-toggle { width: 100%; text-align: center; }
 .auth-card--login .auth-method-toggle {
@@ -236,9 +238,11 @@
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
-.auth-card--login .auth-method-toggle:hover {
-  background: var(--bg-3);
-  border-color: var(--line-2);
+@media (hover: hover) and (pointer: fine) {
+  .auth-card--login .auth-method-toggle:hover {
+    background: var(--bg-3);
+    border-color: var(--line-2);
+  }
 }
 .auth-eyebrow { margin-bottom: var(--sp-1); }
 .auth-google-block {
@@ -347,7 +351,7 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.auth-alt:hover { text-decoration: underline; }
+@media (hover: hover) and (pointer: fine) { .auth-alt:hover { text-decoration: underline; } }
 .auth-email > .vh-btn,
 .auth-password-form > .vh-btn,
 .auth-alt { min-height: 44px; }
@@ -371,7 +375,7 @@
   color: var(--text-faint);
   font-size: var(--fs-11);
 }
-.auth-legal a:hover { color: var(--text-dim); text-decoration: underline; }
+@media (hover: hover) and (pointer: fine) { .auth-legal a:hover { color: var(--text-dim); text-decoration: underline; } }
 .auth-alt:focus-visible,
 .auth-method-toggle:focus-visible,
 .auth-email-actions button:focus-visible,

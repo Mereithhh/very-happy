@@ -300,9 +300,11 @@
   font-weight: 600;
 }
 
-.cfp-launch-button:hover:not(:disabled) {
-  border-color: var(--text-dim);
-  background: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .cfp-launch-button:hover:not(:disabled) {
+    border-color: var(--text-dim);
+    background: var(--text-dim);
+  }
 }
 
 .cfp-launch-button:disabled {

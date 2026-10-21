@@ -63,17 +63,21 @@
   font-size: var(--fs-12);
   transition: background var(--motion-fast);
 }
-.ch-head-btn:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .ch-head-btn:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 /* clear-all stays visibly destructive — content may be sensitive */
 .ch-head-btn--danger {
   color: var(--danger);
 }
-.ch-head-btn--danger:hover {
-  background: var(--danger-dim);
-  color: var(--danger);
+@media (hover: hover) and (pointer: fine) {
+  .ch-head-btn--danger:hover {
+    background: var(--danger-dim);
+    color: var(--danger);
+  }
 }
 .ch-head-btn--icon {
   width: 26px;
@@ -108,8 +112,10 @@
   cursor: pointer;
   transition: background var(--motion-fast);
 }
-.ch-row-main:hover {
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .ch-row-main:hover {
+    background: var(--bg-2);
+  }
 }
 .ch-row-icon {
   flex-shrink: 0;
@@ -162,9 +168,11 @@
   color: var(--text-faint);
   transition: background var(--motion-fast);
 }
-.ch-row-btn:hover {
-  background: var(--bg-3);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .ch-row-btn:hover {
+    background: var(--bg-3);
+    color: var(--text);
+  }
 }
 
 .ch-row-editor {
@@ -205,8 +213,10 @@
   font-size: var(--fs-12);
   transition: background var(--motion-fast);
 }
-.ch-row-delete:hover {
-  background: var(--danger-dim);
+@media (hover: hover) and (pointer: fine) {
+  .ch-row-delete:hover {
+    background: var(--danger-dim);
+  }
 }
 
 @media (pointer: coarse) {

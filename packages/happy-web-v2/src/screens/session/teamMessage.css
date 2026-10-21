@@ -4,7 +4,7 @@
 .msg--team { min-width: 0; }
 .team-message-work { display: flex; flex-direction: column; gap: calc(var(--chat-space) * 2); padding: 0 0 calc(var(--chat-space) * 2); background: var(--bg-1); border: 0; border-radius: var(--r-md); box-shadow: var(--panel-shadow); overflow: hidden; overflow-wrap: anywhere; min-width: 0; }
 .team-message-card { cursor: pointer; transition: box-shadow var(--motion-fast); }
-.team-message-card:hover { box-shadow: var(--panel-shadow-hover); }
+@media (hover: hover) and (pointer: fine) { .team-message-card:hover { box-shadow: var(--panel-shadow-hover); } }
 .team-message-work > :not(.team-message-work-heading) { margin-inline: calc(var(--chat-space) * 3); }
 .team-message-work-heading { display: flex; align-items: center; flex-wrap: wrap; row-gap: var(--chat-space); gap: calc(var(--chat-space) * 2); min-width: 0; padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3); border-bottom: var(--hairline) solid var(--line); color: var(--text-dim); font-size: var(--chat-fs-secondary); }
 .team-message-work-heading > svg { flex-shrink: 0; color: var(--text-faint); }

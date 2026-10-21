@@ -81,9 +81,11 @@
   border-radius: var(--r-sm);
   color: var(--text-dim);
 }
-.ch-icon:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .ch-icon:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .ch-status {
   flex: none;
@@ -119,7 +121,9 @@
 
 .ch-identity { position:relative; flex:none; font-size:var(--fs-11); min-width:0; z-index:4; }
 .ch-identity-trigger { display:flex; align-items:center; gap:var(--sp-2); list-style:none; cursor:pointer; border-radius:var(--r-sm); padding:4px 6px; }
-.ch-identity-trigger:hover, .ch-identity-trigger:focus-visible { outline:none; box-shadow:none; background:var(--bg-2); }
+/* B-728 (UI-P1-04): keyboard focus keeps the shared ring; hover only fills. */
+.ch-identity-trigger:focus-visible { outline:none; background:var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .ch-identity-trigger:hover { outline:none; background:var(--bg-2); } }
 .ch-agent, .ch-host { max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ch-agent { color:var(--text-dim); }
 .ch-host { font:var(--fs-10) var(--font-mono); color:var(--text-faint); }

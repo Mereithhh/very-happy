@@ -33,9 +33,11 @@
   cursor: pointer;
   border-radius: var(--r-sm);
 }
-.mmd-action:hover {
-  color: var(--text);
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .mmd-action:hover {
+    color: var(--text);
+    background: var(--bg-2);
+  }
 }
 .mmd-note {
   font-size: var(--chat-fs-control);

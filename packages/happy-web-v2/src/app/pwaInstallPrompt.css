@@ -38,7 +38,7 @@
   color: var(--text-faint);
 }
 
-.pwa-install-close:hover { color: var(--text); background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .pwa-install-close:hover { color: var(--text); background: var(--bg-2); } }
 
 .pwa-install-mark {
   position: relative;
@@ -72,12 +72,12 @@
 .pwa-install-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-4); }
 .pwa-install-primary, .pwa-install-later { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: 0 var(--sp-4); border: 1px solid var(--line-2); border-radius: var(--r-sm); font-size: var(--fs-13); }
 .pwa-install-primary { background: var(--text); color: var(--bg-0); font-weight: 600; }
-.pwa-install-primary:hover { opacity: .88; }
+@media (hover: hover) and (pointer: fine) { .pwa-install-primary:hover { opacity: .88; } }
 .pwa-install-primary:disabled { cursor: wait; opacity: .58; }
 .pwa-install-later { color: var(--text-dim); }
-.pwa-install-later:hover { color: var(--text); background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .pwa-install-later:hover { color: var(--text); background: var(--bg-2); } }
 .pwa-install-never { min-height: 44px; padding: 0 var(--sp-2); color: var(--text-faint); font-size: var(--fs-11); }
-.pwa-install-never:hover { color: var(--text-dim); }
+@media (hover: hover) and (pointer: fine) { .pwa-install-never:hover { color: var(--text-dim); } }
 
 @keyframes pwa-install-enter {
   from { opacity: 0; transform: translate3d(0, 24px, 0) scale(.97); }

@@ -37,7 +37,7 @@
 }
 .vh-card-interactive:active { transform: translateY(0); }
 @media (prefers-reduced-motion: reduce) {
-  .vh-card-interactive:hover { transform: none; }
+  @media (hover: hover) and (pointer: fine) { .vh-card-interactive:hover { transform: none; } }
 }
 
 /* ── fill-only pills ─────────────────────────────────────────────────────── */
@@ -99,7 +99,7 @@
     color var(--dur-snap) var(--ease-snap),
     box-shadow var(--dur-snap) var(--ease-snap);
 }
-.vh-segmented > :is(button, a):hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .vh-segmented > :is(button, a):hover { color: var(--text); } }
 .vh-segmented > :is([aria-pressed='true'], [aria-selected='true'], [aria-current='page'], [aria-current='true'], .is-active) {
   background: var(--segmented-thumb);
   color: var(--text);

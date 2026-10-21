@@ -54,6 +54,6 @@
   text-align: left;
   cursor: pointer;
 }
-.me-customize:hover { background: var(--fill-hover); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .me-customize:hover { background: var(--fill-hover); color: var(--text); } }
 .me-customize:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
 @media (pointer: coarse) { .me-customize { min-height: 44px; } }

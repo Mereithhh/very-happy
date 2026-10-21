@@ -103,10 +103,15 @@
   pointer-events: none;
   transition: opacity var(--motion-fast);
 }
-.rdv-row:hover .rdv-plus,
 .rdv-plus:focus-visible {
   opacity: 1;
   pointer-events: auto;
+}
+@media (hover: hover) and (pointer: fine) {
+  .rdv-row:hover .rdv-plus {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .rdv-plus:focus-visible {
   outline: none;
@@ -168,11 +173,17 @@
   border-radius: var(--r-sm);
   color: var(--text-dim);
 }
-.rdv-icon:hover,
 .rdv-icon:focus-visible {
   outline: none;
   background: var(--bg-2);
   color: var(--text);
+}
+@media (hover: hover) and (pointer: fine) {
+  .rdv-icon:hover {
+    outline: none;
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .rdv-card-body {
   white-space: pre-wrap;

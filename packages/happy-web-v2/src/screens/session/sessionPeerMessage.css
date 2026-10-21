@@ -19,8 +19,10 @@
 .peer-message-path { display: block; font-family: var(--font-mono); font-size: var(--chat-fs-secondary); color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
 .peer-message-note { color: var(--text-faint); font-size: var(--chat-fs-secondary); }
 .peer-message--card { cursor: pointer; transition: box-shadow var(--motion-fast); }
-.peer-message--card:hover { box-shadow: var(--panel-shadow-hover); }
-.msg--peer-conflict .peer-message--card:hover { box-shadow: 0 0 0 1px var(--warn), var(--shadow-md); }
+@media (hover: hover) and (pointer: fine) {
+  .peer-message--card:hover { box-shadow: var(--panel-shadow-hover); }
+  .msg--peer-conflict .peer-message--card:hover { box-shadow: 0 0 0 1px var(--warn), var(--shadow-md); }
+}
 .peer-message-heading > .msg-time { flex-shrink: 0; align-self: center; min-height: 0; padding-inline: 0; }
 /* B-716: the folded body — plain preview lines; the reader has the full text. */
 .peer-message-open { display: flex; min-width: 0; padding: 0; text-align: left; background: none; border: 0; border-radius: var(--r-sm); color: var(--text); cursor: pointer; font: inherit; }

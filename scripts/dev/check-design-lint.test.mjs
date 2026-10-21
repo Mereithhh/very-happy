@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findNativeControls, findRawColors, isFieldFocusSelector, lintFile, parseAddedLines } from './check-design-lint.mjs';
+import { findNativeControls, findRawColors, findUnguardedHovers, isFieldFocusSelector, lintFile, parseAddedLines, scanAllHover } from './check-design-lint.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'check-design-lint.mjs');
 
@@ -195,4 +195,31 @@ test('B-714 native-control: new <select>/<option>/checkbox/<summary> in tsx are 
     // css and tests are out of scope for this rule
     assert.deepEqual(lintAll('screens/x/form.css', 'select { color: var(--text); }'), []);
     assert.deepEqual(lintAll('screens/x/Form.test.tsx', '<select />'), []);
+test('hover-unguarded: bare :hover is reported, guarded hover passes (B-728)', () => {
+    assert.deepEqual(lintAll('a.css', '.a:hover { color: var(--text); }'), [['hover-unguarded', 1]]);
+    assert.deepEqual(lintAll('a.css', '@media (hover: hover) and (pointer: fine) { .a:hover { color: var(--text); } }'), []);
+    assert.deepEqual(lintAll('a.css', '@media (hover: hover) {\n  .a:hover, .b:hover { color: var(--text); }\n}'), []);
+    // the hover half of a combined selector is what gets flagged
+    assert.deepEqual(lintAll('a.css', '.a:focus-visible,\n.a:hover { color: var(--text); }'), [['hover-unguarded', 2]]);
+    // :not(:hover) is not a hover rule
+    assert.deepEqual(lintAll('a.css', '.a:not(:hover) { color: var(--text); }'), []);
+});
+
+test('hover-unguarded: hover inside a coarse/touch block is reported (it only fires on touch)', () => {
+    const hits = lintAll('a.css', '@media (pointer: coarse) {\n  .a:hover { color: var(--text); }\n}');
+    assert.deepEqual(hits, [['hover-unguarded', 2]]);
+    assert.deepEqual(lintAll('a.css', '@media (hover: hover) and (pointer: coarse) { .a:hover { color: var(--text); } }'), [['hover-unguarded', 1]]);
+    assert.deepEqual(lintAll('a.css', '@media not (hover: hover) { .a:hover { color: var(--text); } }'), [['hover-unguarded', 1]]);
+});
+
+test('hover-unguarded: only new lines are checked, and design-lint-allow exempts', () => {
+    const src = '.old:hover { color: var(--text); }\n.new:hover { color: var(--text); }';
+    assert.deepEqual(lintFile('a.css', src, new Set([2])).map(f => f.line), [2]);
+    assert.deepEqual(lintAll('a.css', '/* design-lint-allow: desktop-only dev page */\n.a:hover { color: var(--text); }'), []);
+    assert.deepEqual(findUnguardedHovers('/* design-lint-allow: x */\n.a:hover { color: var(--text); }\n.b:hover { color: var(--text); }').map(h => h.line), [3]);
+});
+
+test('the whole web src has zero unguarded :hover rules (B-728 — new code must stay guarded)', () => {
+    const hits = scanAllHover();
+    assert.deepEqual(hits.map(h => `${h.file}:${h.line}`), []);
 });

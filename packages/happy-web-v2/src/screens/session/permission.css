@@ -195,8 +195,8 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.perm-pointer-action:hover,
 .perm-pointer-action:focus-visible { background: var(--bg-3); outline: none; }
+@media (hover: hover) and (pointer: fine) { .perm-pointer-action:hover { background: var(--bg-3); outline: none; } }
 
 @media (max-width: 600px), (pointer: coarse) {
   .perm-dock { padding: calc(var(--chat-space) * 2) var(--sp-3) 0; }

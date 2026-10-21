@@ -48,7 +48,7 @@
   color: var(--text-faint);
   cursor: pointer;
 }
-.ci-draft-chip-remove:hover { background: var(--bg-3); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ci-draft-chip-remove:hover { background: var(--bg-3); color: var(--text); } }
 .ci-draft-chip-remove:focus-visible { outline: 1px solid var(--line-2); outline-offset: 0; }
 @media (pointer: coarse) { .ci-draft-chip-remove { width: 36px; height: 36px; } }
 .ci-attachments {
@@ -122,8 +122,10 @@
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
 }
-.ci-att-remove:hover {
-  background: rgba(0, 0, 0, 0.8);
+@media (hover: hover) and (pointer: fine) {
+  .ci-att-remove:hover {
+    background: rgba(0, 0, 0, 0.8);
+  }
 }
 
 /* Local queued-message buffer. It reads as a compact command lane, not a
@@ -179,9 +181,13 @@
 .ci-queue-item:last-child {
   border-bottom: none;
 }
-.ci-queue-item:focus-within,
-.ci-queue-item:hover {
+.ci-queue-item:focus-within {
   background: var(--bg-2);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ci-queue-item:hover {
+    background: var(--bg-2);
+  }
 }
 .ci-queue-index {
   align-self: start;
@@ -230,9 +236,11 @@
   border-radius: var(--r-sm);
   color: var(--text-dim);
 }
-.ci-queue-action:hover:not(:disabled) {
-  background: var(--bg-3);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .ci-queue-action:hover:not(:disabled) {
+    background: var(--bg-3);
+    color: var(--text);
+  }
 }
 .ci-queue-action:disabled {
   color: var(--text-faint);
@@ -241,16 +249,19 @@
 .ci-queue-action--intervene {
   color: var(--accent-2);
 }
-.ci-queue-action--intervene:hover:not(:disabled) {
-  background: var(--accent-dim);
-  color: var(--accent-2);
+@media (hover: hover) and (pointer: fine) {
+  .ci-queue-action--intervene:hover:not(:disabled) {
+    background: var(--accent-dim);
+    color: var(--accent-2);
+  }
 }
 
 /* composer */
 .ci-slash { display: flex; flex-direction: column; max-height: min(280px, 35vh); overflow-y: auto; background: var(--surface-popover); border: 0; box-shadow: var(--shadow-popover); border-radius: var(--r-md); padding: var(--sp-1); }
 .ci-slash-head { padding: var(--sp-1) var(--sp-2); color: var(--text-faint); font: 500 var(--chat-fs-caption)/1.4 var(--font-sans); }
 .ci-slash-item { display: flex; align-items: center; gap: var(--sp-3); min-height: 36px; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); color: var(--text); text-align: left; }
-.ci-slash-item--active, .ci-slash-item:hover { background: var(--fill-selected); }
+.ci-slash-item--active { background: var(--fill-selected); }
+@media (hover: hover) and (pointer: fine) { .ci-slash-item:hover { background: var(--fill-selected); } }
 .ci-slash-command { flex: none; font-family: var(--font-mono); color: var(--text); }
 .ci-slash-desc { min-width: 0; overflow: hidden; color: var(--text-dim); font-size: var(--chat-fs-secondary); text-overflow: ellipsis; white-space: nowrap; }
 /* B-035 @ file mentions reuse the / list; a long file name may shrink, the directory ellipsizes first. */
@@ -322,10 +333,15 @@
   color: var(--text-dim);
   transition: background var(--motion-fast), color var(--motion-fast);
 }
-.ci-icon-btn:hover,
 .ci-icon-btn[data-state='open'] {
   background: var(--fill-selected);
   color: var(--text);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ci-icon-btn:hover {
+    background: var(--fill-selected);
+    color: var(--text);
+  }
 }
 .ci-textarea {
   flex: 1;
@@ -369,8 +385,10 @@
   color: var(--bg-0);
   transition: background var(--motion-fast), transform var(--motion-fast), opacity var(--motion-fast);
 }
-.ci-send:not(:disabled):hover {
-  background: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .ci-send:not(:disabled):hover {
+    background: var(--text-dim);
+  }
 }
 .ci-send:disabled {
   opacity: 0.4;
@@ -380,9 +398,11 @@
   background: var(--danger);
   color: var(--danger-ink);
 }
-.ci-send--abort:not(:disabled):hover {
-  background: var(--danger);
-  transform: scale(1.04);
+@media (hover: hover) and (pointer: fine) {
+  .ci-send--abort:not(:disabled):hover {
+    background: var(--danger);
+    transform: scale(1.04);
+  }
 }
 
 /* compact controls + context row */
@@ -506,7 +526,7 @@
     background: transparent;
     color: var(--text-faint);
   }
-  .ci-att-remove:hover, .ci-att-remove:focus-visible { background: var(--bg-3); }
+  .ci-att-remove:active, .ci-att-remove:focus-visible { background: var(--bg-3); } /* B-728: touch block — press feedback, not hover */
   .ci-queue-actions {
     opacity: 1;
   }
@@ -554,7 +574,7 @@
 .ci-queue-head { position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ci-queue-index { align-self: center; padding: 0; }
 .ci-queue-action--intervene { order: -1; width: auto; padding-inline: var(--sp-2); gap: 5px; color: var(--text-dim); white-space: nowrap; font: var(--chat-fs-secondary)/1.4 var(--font-sans); }
-.ci-queue-action--intervene:hover:not(:disabled) { background: var(--fill-selected); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ci-queue-action--intervene:hover:not(:disabled) { background: var(--fill-selected); color: var(--text); } }
 @media (pointer: coarse) { .ci-queue-action { min-width: 44px; min-height: 44px; } }
 
 .ci-queue-failure { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); color: var(--danger); font-size: var(--chat-fs-secondary); }

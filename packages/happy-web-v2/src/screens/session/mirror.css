@@ -67,8 +67,10 @@
   font-size: 12px;
   cursor: pointer;
 }
-.mrb-term-btn:hover {
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .mrb-term-btn:hover {
+    background: var(--bg-3);
+  }
 }
 
 /* ── B-107 mirror input bar ── the ONLY interactive surface of a mirror.
@@ -116,8 +118,10 @@
   color: var(--text);
   cursor: pointer;
 }
-.mri-send:hover:not(:disabled) {
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .mri-send:hover:not(:disabled) {
+    background: var(--bg-3);
+  }
 }
 .mri-send:disabled {
   opacity: 0.45;
@@ -150,9 +154,11 @@
   color: var(--text-faint);
   cursor: pointer;
 }
-.mrb-dismiss:hover {
-  background: var(--bg-3);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .mrb-dismiss:hover {
+    background: var(--bg-3);
+    color: var(--text);
+  }
 }
 
 /* B-487 ModelSupportBanner: the model the user wants cannot run on this
@@ -210,7 +216,7 @@
   text-underline-offset: 2px;
   cursor: pointer;
 }
-.mrb-inline-link:hover { color: var(--danger); }
+@media (hover: hover) and (pointer: fine) { .mrb-inline-link:hover { color: var(--danger); } }
 .mrb-note-sep { color: var(--text-faint); }
 .mrb-note-more { margin-left: 6px; color: var(--danger); }
 .mrb-note-hint { margin-left: 8px; color: var(--text-faint); font-size: 11px; }

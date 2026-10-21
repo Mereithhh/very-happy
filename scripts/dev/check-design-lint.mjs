@@ -19,7 +19,9 @@
  *   ⑤ native-control tsx 新增原生 `<select>` / `<option>` / `<datalist>` / `<input type="checkbox">` / `<summary>`
  *                    （B-714）：分别改用 ui/SelectMenu、ui/Combobox、ui/Segmented、ui/SuggestInput、ui/Checkbox、
  *                    ui/Summary。白名单只有组件自身（NATIVE_CONTROL_OWNERS）；字符串字面量里的同名文本不算。
- * 宁可漏报不误报：tsx 只认明显的色值字符串；③ 只查 css。
+ *   ⑥ hover-unguarded  :hover 规则不在 @media (hover: hover) 里（或写在 pointer: coarse 里）（B-728）。
+ *                    这条另有全仓模式 `--all-hover`（CI 的 node 测试跑它，存量必须为 0）。
+ * 宁可漏报不误报：tsx 只认明显的色值字符串；③④⑥ 只查 css。
  *
  * 豁免：同一行或上一行写 `design-lint-allow: <理由>`（css 用块注释，tsx 用 // 或 JSX 注释），
  * 理由必填。
@@ -27,10 +29,13 @@
  * 用法：
  *   node scripts/dev/check-design-lint.mjs                    # base=origin/main, head=HEAD
  *   node scripts/dev/check-design-lint.mjs --base <ref> [--head <ref>]
+ *   node scripts/dev/check-design-lint.mjs --all-hover         # 全仓扫描未守卫的 :hover
  * 退出码：0 无发现；1 有发现；2 参数或 git 错误。
  */
 import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const WEB_SRC = 'packages/happy-web-v2/src/';
 
@@ -252,6 +257,109 @@ export function isFieldFocusSelector(selector) {
         && !/\[type=["']?(?:checkbox|radio|range|button|submit|reset|color|file|image)/.test(part));
 }
 
+/**
+ * ⑤ hover-unguarded（B-728，UI-M-01）：触屏浏览器把最后一次点按留作 hover 点，
+ * 没有守卫的 :hover 会「粘」在刚点过的控件上（logo、顶栏图标、消息操作栏）。
+ * 每条 :hover 规则必须写在 `@media (hover: hover)`（约定写法
+ * `@media (hover: hover) and (pointer: fine)`）里；写在 `(pointer: coarse)` 里等于只对触屏生效，也报。
+ * `:not(:hover)` 里的 hover 不算。
+ */
+const HOVER_GUARD_RE = /\(\s*(?:any-)?hover\s*:\s*hover\s*\)/;
+export const HOVER_GUARD = '@media (hover: hover) and (pointer: fine)';
+export function isHoverGuard(prelude) {
+    return /^@media\b/.test(prelude) && HOVER_GUARD_RE.test(prelude)
+        && !/pointer\s*:\s*coarse/.test(prelude) && !/\bnot\b/.test(prelude);
+}
+
+/** 按顶层逗号切选择器列表（括号内的逗号不切）。 */
+export function splitSelectorList(selector) {
+    const parts = [];
+    let depth = 0;
+    let cur = '';
+    for (const ch of selector) {
+        if (ch === '(' || ch === '[') depth++;
+        else if (ch === ')' || ch === ']') depth--;
+        if (ch === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; continue; }
+        cur += ch;
+    }
+    if (cur.trim()) parts.push(cur.trim());
+    return parts;
+}
+
+export function selectorHasHover(part) {
+    return /:hover(?![\w-])/.test(stripNot(part));
+}
+
+/**
+ * 文件内所有含 :hover 的样式规则（code 已去注释）。
+ * 返回 { selector, parts, hoverParts, selStart, open, end, guarded, coarse, depth }，偏移为 code 文本偏移：
+ * selStart = 选择器首字符，open = `{`，end = 对应的 `}`。
+ */
+export function findHoverRules(code) {
+    const out = [];
+    const stack = [];
+    let segStart = 0;
+    for (let i = 0; i < code.length; i++) {
+        const ch = code[i];
+        if (ch === '{') {
+            const rawSeg = code.slice(segStart, i);
+            const lead = rawSeg.length - rawSeg.trimStart().length;
+            const selector = rawSeg.trim();
+            stack.push({ selector, selStart: segStart + lead, open: i });
+            segStart = i + 1;
+        } else if (ch === '}') {
+            const open = stack.pop();
+            if (open && !open.selector.startsWith('@')) {
+                const parts = splitSelectorList(open.selector);
+                const hoverParts = parts.filter(selectorHasHover);
+                if (hoverParts.length) {
+                    const media = stack.filter(s => s.selector.startsWith('@media'));
+                    out.push({
+                        selector: open.selector, parts, hoverParts,
+                        selStart: open.selStart, open: open.open, end: i,
+                        guarded: media.some(s => isHoverGuard(s.selector)),
+                        coarse: media.some(s => /pointer\s*:\s*coarse|hover\s*:\s*none/.test(s.selector)),
+                        depth: stack.length,
+                    });
+                }
+            }
+            segStart = i + 1;
+        } else if (ch === ';') {
+            segStart = i + 1;
+        }
+    }
+    return out;
+}
+
+/** code 偏移 → 1-based 行号 */
+function lineAt(code, offset) {
+    let n = 1;
+    for (let i = 0; i < offset; i++) if (code.charCodeAt(i) === 10) n++;
+    return n;
+}
+
+function hoverMessage(rule) {
+    const sel = rule.hoverParts.join(', ').replace(/\s+/g, ' ');
+    return rule.coarse
+        ? `「${sel}」写在 (pointer: coarse) / (hover: none) 里：触屏没有真正的 hover，按下反馈用 :active，hover 写进 ${HOVER_GUARD}`
+        : `「${sel}」没有 hover 守卫：触屏点按后会一直停在 hover 态。包进 ${HOVER_GUARD} { … }（合并写法如 :hover, :focus-visible 要拆开），或跑 node scripts/dev/codemod-hover-guard.mjs`;
+}
+
+function findUnguardedHoversRaw(code) {
+    return findHoverRules(code).filter(r => !r.guarded || r.coarse).map((rule) => {
+        const firstHover = code.indexOf(':hover', rule.selStart);
+        return { line: lineAt(code, firstHover >= 0 && firstHover < rule.open ? firstHover : rule.selStart), message: hoverMessage(rule) };
+    });
+}
+
+/** 全文件的未守卫 hover（不看 diff）。返回 [{ line, message, source }]，已按 design-lint-allow 过滤。 */
+export function findUnguardedHovers(source) {
+    const raw = source.split('\n');
+    return findUnguardedHoversRaw(codeLines(source, 'css').join('\n'))
+        .filter(h => !allowReason(raw[h.line - 1], raw[h.line - 2])?.reason)
+        .map(h => ({ ...h, source: raw[h.line - 1].trim() }));
+}
+
 function allowReason(raw, prev) {
     for (const line of [raw, prev]) {
         if (line === undefined) continue;
@@ -274,6 +382,7 @@ export function lintFile(rel, source, added) {
     const code = codeLines(source, kind);
     const findings = [];
     let rules = null;
+    let hoverHits = null;
     const lineOffsets = [];
     { let off = 0; for (const l of code) { lineOffsets.push(off); off += l.length + 1; } }
 
@@ -312,6 +421,8 @@ export function lintFile(rel, source, added) {
                 problems.push({ rule: 'field-focus-ring', message: `「${owner.selector.replace(/\s+/g, ' ')}」给文本输入框画了焦点环/外发光：输入框用光标 + 边框或背景 token 表达聚焦（design-language「焦点」，B-699）` });
             }
         }
+        if (kind === 'css' && hoverHits === null) hoverHits = new Map(findUnguardedHoversRaw(code.join('\n')).map(h => [h.line, h]));
+        if (kind === 'css' && hoverHits.has(n)) problems.push({ rule: 'hover-unguarded', message: hoverHits.get(n).message });
         if (problems.length === 0) continue;
         const allow = allowReason(raw[n - 1], raw[n - 2]);
         if (allow?.reason) continue;
@@ -324,6 +435,24 @@ export function lintFile(rel, source, added) {
         }
     }
     return findings;
+}
+
+/** 全仓（工作区文件）扫描 WEB_SRC 下 css 的未守卫 hover。 */
+export function scanAllHover(repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')) {
+    const root = join(repoRoot, WEB_SRC);
+    const hits = [];
+    const walk = (dir) => {
+        for (const ent of readdirSync(dir, { withFileTypes: true })) {
+            const p = join(dir, ent.name);
+            if (ent.isDirectory()) { if (ent.name !== 'node_modules') walk(p); continue; }
+            if (!ent.name.endsWith('.css')) continue;
+            const rel = relative(root, p).split(sep).join('/');
+            if (EXEMPT_FILES.has(rel)) continue;
+            for (const h of findUnguardedHovers(readFileSync(p, 'utf8'))) hits.push({ file: WEB_SRC + rel, ...h });
+        }
+    };
+    walk(root);
+    return hits.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
 }
 
 function git(args) {
@@ -349,6 +478,8 @@ function parseArgs(argv) {
             const v = argv[++i];
             if (!v) throw new Error(`${a} 需要一个 git ref`);
             opts[a.slice(2)] = v;
+        } else if (a === '--all-hover') {
+            opts.allHover = true;
         } else if (a === '-h' || a === '--help') {
             opts.help = true;
         } else {
@@ -364,8 +495,14 @@ async function main() {
         console.error(`check-design-lint: ${e.message}`); process.exit(2);
     }
     if (opts.help) {
-        console.log('usage: node scripts/dev/check-design-lint.mjs [--base <ref>] [--head <ref>]');
+        console.log('usage: node scripts/dev/check-design-lint.mjs [--base <ref>] [--head <ref>] | --all-hover');
         return;
+    }
+    if (opts.allHover) {
+        const hits = scanAllHover();
+        for (const h of hits) console.log(`${h.file}:${h.line}: [hover-unguarded] ${h.message}\n    > ${h.source}`);
+        console.log(`check-design-lint --all-hover: ${hits.length} 处未守卫的 :hover`);
+        process.exit(hits.length ? 1 : 0);
     }
     let findings;
     try { findings = run(opts); } catch (e) {

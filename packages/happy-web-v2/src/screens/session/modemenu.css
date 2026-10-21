@@ -11,8 +11,10 @@
   padding: 3px 8px;
   transition: border-color var(--motion-fast), background var(--motion-fast);
 }
-.mm-trigger:hover {
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .mm-trigger:hover {
+    background: var(--bg-3);
+  }
 }
 .mm-trigger:disabled {
   cursor: wait;

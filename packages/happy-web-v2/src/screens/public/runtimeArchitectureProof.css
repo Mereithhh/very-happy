@@ -8,7 +8,7 @@
 .pub-runtime-copy > p { margin: 0; color: var(--text-dim); font-size: var(--fs-14); line-height: 1.72; }
 .runtime-selector { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); margin-top: var(--sp-5); }
 .runtime-selector button { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--text-faint); background: var(--bg-1); font-size: var(--fs-12); transition: border-color var(--motion-fast), color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast); }
-.runtime-selector button:hover { color: var(--text-dim); border-color: var(--line-2); transform: translateY(-1px); }
+@media (hover: hover) and (pointer: fine) { .runtime-selector button:hover { color: var(--text-dim); border-color: var(--line-2); transform: translateY(-1px); } }
 .runtime-selector button:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-faint);  }
 .runtime-selector button.is-active { color: var(--text); border-color: var(--accent-2); background: color-mix(in srgb, var(--accent-dim) 46%, var(--bg-1)); box-shadow: inset 0 0 0 1px var(--accent-dim); }
 .runtime-selector button.is-active svg { color: var(--accent-2); }
@@ -112,7 +112,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .runtime-selector button, .runtime-lane, .runtime-node { transition: none; }
-  .runtime-selector button:hover, .runtime-lane.is-active { transform: none; }
+  .runtime-lane.is-active { transform: none; }
+  @media (hover: hover) and (pointer: fine) { .runtime-selector button:hover { transform: none; } }
   .runtime-console::before, .runtime-console-head i, .runtime-node::before, .runtime-link i::before, .runtime-link b, .runtime-mirror i::after, .runtime-handoff i::after { animation: none; }
   .runtime-console::before, .runtime-link i::before, .runtime-link b { display: none; }
 }

@@ -96,15 +96,19 @@
   transition: border-color var(--motion-fast), background var(--motion-fast);
   cursor: pointer;
 }
-.bd-card:hover {
-  background: var(--bg-2);
-  border-color: var(--line-2);
+@media (hover: hover) and (pointer: fine) {
+  .bd-card:hover {
+    background: var(--bg-2);
+    border-color: var(--line-2);
+  }
 }
 .bd-card--attention {
   border-color: var(--danger);
 }
-.bd-card--attention:hover {
-  border-color: var(--danger);
+@media (hover: hover) and (pointer: fine) {
+  .bd-card--attention:hover {
+    border-color: var(--danger);
+  }
 }
 .bd-card--ended {
   opacity: 0.6;
@@ -196,14 +200,20 @@
   opacity: 0; /* hover-revealed on fine pointers */
   transition: opacity var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
 }
-.bd-card:hover .bd-card-done,
 .bd-card:focus-within .bd-card-done {
   opacity: 1;
 }
-.bd-card-done:hover {
-  color: var(--text);
-  border-color: var(--line-2);
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .bd-card:hover .bd-card-done {
+    opacity: 1;
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .bd-card-done:hover {
+    color: var(--text);
+    border-color: var(--line-2);
+    background: var(--bg-2);
+  }
 }
 @media (pointer: coarse) {
   /* no hover on touch — the ✓ is always visible */
@@ -240,9 +250,11 @@
   cursor: pointer;
   background: transparent;
 }
-.bd-done-entry--link:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .bd-done-entry--link:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .bd-done-kind {
   color: var(--text-faint);
@@ -267,8 +279,10 @@
   color: var(--text-faint);
   padding: 4px 0;
 }
-.bd-archived-link:hover {
-  color: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .bd-archived-link:hover {
+    color: var(--text-dim);
+  }
 }
 
 /* ---- V2: header tools (layout toggle + new task) ---- */
@@ -308,18 +322,22 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.bd-btn:hover {
-  background: var(--bg-2);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .bd-btn:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 .bd-btn--primary {
   color: var(--bg-0);
   border-color: var(--text);
   background: var(--text);
 }
-.bd-btn--primary:hover {
-  color: var(--bg-0);
-  background: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .bd-btn--primary:hover {
+    color: var(--bg-0);
+    background: var(--text-dim);
+  }
 }
 .bd-btn:disabled {
   opacity: 0.5;

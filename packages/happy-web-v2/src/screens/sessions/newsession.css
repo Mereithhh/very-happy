@@ -130,7 +130,7 @@
   text-underline-offset: 3px;
   min-height: 32px;
 }
-.ns-connect-link:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ns-connect-link:hover { color: var(--text); } }
 .ns-actions {
   display: flex;
   justify-content: flex-end;
@@ -192,9 +192,11 @@
   position: absolute;
   inset: -8px;
 }
-.ns-preset-x:hover {
-  color: var(--danger);
-  background: var(--bg-3);
+@media (hover: hover) and (pointer: fine) {
+  .ns-preset-x:hover {
+    color: var(--danger);
+    background: var(--bg-3);
+  }
 }
 .ns-path-row {
   display: flex;
@@ -215,9 +217,11 @@
   background: var(--bg-2);
   color: var(--text-dim);
 }
-.ns-save:hover:not(:disabled) {
-  color: var(--accent-2);
-  border-color: var(--accent);
+@media (hover: hover) and (pointer: fine) {
+  .ns-save:hover:not(:disabled) {
+    color: var(--accent-2);
+    border-color: var(--accent);
+  }
 }
 .ns-save.is-saved {
   color: var(--accent-2);
@@ -446,7 +450,7 @@
   text-underline-offset: 2px;
   cursor: pointer;
 }
-.ns-imported-link:hover:not(:disabled) { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .ns-imported-link:hover:not(:disabled) { color: var(--text); } }
 .ns-imported-link:disabled { cursor: default; text-decoration: none; }
 .hs-row-head {
   display: flex;

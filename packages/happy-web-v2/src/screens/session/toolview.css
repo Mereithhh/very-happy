@@ -35,8 +35,10 @@
   min-height: calc(var(--chat-space) * 7.5);
   padding: 2px var(--chat-space);
 }
-.tv-section-head:hover {
-  color: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .tv-section-head:hover {
+    color: var(--text-dim);
+  }
 }
 .tv-section-body {
   min-width: 0;
@@ -285,8 +287,10 @@
   padding: calc(var(--chat-space) * 2) calc(var(--chat-space) * 3);
   transition: background-color var(--dur-hover) var(--ease-out);
 }
-.tv-ask-opt:not(:disabled):hover {
-  background: var(--fill-soft-hover);
+@media (hover: hover) and (pointer: fine) {
+  .tv-ask-opt:not(:disabled):hover {
+    background: var(--fill-soft-hover);
+  }
 }
 /* picked / detected answer — a stronger fill (no --accent: that token strictly
  * means live; an answered choice is history) */

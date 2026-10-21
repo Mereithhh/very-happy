@@ -23,9 +23,11 @@
   text-align: left;
 }
 .tdr-toggle { flex: 0 1 auto; }
-.tdr-toggle:hover,
-.tdr-file-row:hover,
-.tdr-review:hover { background: var(--bg-2); color: var(--text); }
+@media (hover: hover) and (pointer: fine) {
+  .tdr-toggle:hover,
+  .tdr-file-row:hover,
+  .tdr-review:hover { background: var(--bg-2); color: var(--text); }
+}
 .tdr-toggle:focus-visible,
 .tdr-file-row:focus-visible,
 .tdr-review:focus-visible { outline: none; background: var(--bg-3); color: var(--text); }

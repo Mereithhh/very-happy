@@ -7,13 +7,13 @@
 .wd .wd-send:focus-visible { background:var(--text-dim); color:var(--bg-0); }
 .wd button:disabled { cursor:default; opacity:.45; }
 .wd-icon { width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; flex:none; border-radius:var(--r-sm); color:var(--text-dim); }
-.wd-icon:hover { background:var(--bg-3); color:var(--text); }
+@media (hover: hover) and (pointer: fine) { .wd-icon:hover { background:var(--bg-3); color:var(--text); } }
 .wd-sidebar { display:flex; flex-direction:column; min-height:0; background:var(--bg-1); padding:0 8px; }
 .wd-brand { height:52px; flex:none; display:flex; align-items:center; justify-content:space-between; padding:0 8px; }
 .wd-brand strong { font-size:14px; font-weight:600; letter-spacing:-.02em; }
 .wd-nav { display:grid; gap:2px; padding:0 0 16px; }
 .wd-nav > button { display:flex; align-items:center; gap:10px; min-height:32px; padding:0 10px; text-align:left; border-radius:var(--r-sm); }
-.wd-nav > button:hover { background:var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .wd-nav > button:hover { background:var(--bg-3); } }
 .wd-nav svg { width:15px; height:15px; color:var(--text-dim); }
 .wd-key, .wd-count { margin-left:auto; font-size:11px; color:var(--text-faint); }
 .wd-count { font-family:var(--font-mono); }
@@ -22,9 +22,9 @@
 .wd-projects section { margin-bottom:16px; }
 .wd-project { display:flex; gap:8px; align-items:center; min-height:32px; width:100%; padding:0 10px; text-align:left; border-radius:var(--r-sm); color:var(--text-dim); }
 .wd-project span { flex:1; }
-.wd-project:hover { color:var(--text); background:var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .wd-project:hover { color:var(--text); background:var(--bg-3); } }
 .wd-task { display:flex; height:32px; border-radius:var(--r-sm); position:relative; align-items:center; }
-.wd-task:hover { background:var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .wd-task:hover { background:var(--bg-3); } }
 .wd-task.is-selected { background:var(--bg-3); }
 .wd-task-main { display:flex; align-items:center; width:100%; min-width:0; gap:8px; height:100%; padding:0 10px 0 33px; text-align:left; }
 .wd-task-main > span:first-child { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -34,11 +34,12 @@
 .wd-wait-dot { background:var(--warn); }
 .wd-unread-dot { background:var(--danger); }
 .wd-task-more { width:26px; height:28px; display:none; align-items:center; justify-content:center; flex:none; color:var(--text-dim); border-radius:var(--r-sm); }
-.wd-task:hover .wd-task-more, .wd-task:focus-within .wd-task-more { display:flex; }
-.wd-task-more:hover { color:var(--text); }
+.wd-task:focus-within .wd-task-more { display:flex; }
+@media (hover: hover) and (pointer: fine) { .wd-task:hover .wd-task-more { display:flex; } }
+@media (hover: hover) and (pointer: fine) { .wd-task-more:hover { color:var(--text); } }
 .wd-sidebar-foot { display:flex; align-items:center; min-height:48px; gap:6px; padding:6px 4px max(6px,env(safe-area-inset-bottom)); }
 .wd-sidebar-foot > button:first-child { display:flex; align-items:center; gap:9px; flex:1; padding:8px; border-radius:var(--r-sm); text-align:left; color:var(--text-dim); }
-.wd-sidebar-foot > button:hover { background:var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .wd-sidebar-foot > button:hover { background:var(--bg-3); } }
 .wd-main { min-width:0; min-height:0; display:flex; flex-direction:column; }
 .wd-header { min-height:44px; flex:none; display:flex; align-items:center; gap:9px; padding:6px 16px; }
 .wd-header strong { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
@@ -68,7 +69,7 @@
 .wd-spec-grid strong { font:12px var(--font-mono); }
 .wd-answer-actions { display:flex; align-items:center; gap:6px; color:var(--text-faint); margin-top:-9px; }
 .wd-answer-actions button { display:grid; place-items:center; width:26px; height:26px; border-radius:var(--r-sm); }
-.wd-answer-actions button:hover { color:var(--text); background:var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .wd-answer-actions button:hover { color:var(--text); background:var(--bg-3); } }
 .wd-answer-actions span { font-size:10px; }
 .wd-compose-wrap { flex:none; padding:0 32px max(10px,env(safe-area-inset-bottom)); }
 .wd-compose-inner { max-width:784px; margin:0 auto; }
@@ -83,7 +84,7 @@
 .wd-model { min-width:0; padding:0 3px; }
 .wd-model > span:first-of-type { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .wd-model svg, .wd-effort { flex:none; }
-.wd-permission:hover, .wd-model:hover { color:var(--text); }
+@media (hover: hover) and (pointer: fine) { .wd-permission:hover, .wd-model:hover { color:var(--text); } }
 .wd-effort { color:var(--text-faint); }
 .wd-effort--max { position:relative; padding-bottom:4px; }
 .wd-effort--max::after { content:''; height:3px; position:absolute; bottom:0; left:0; right:0; border-radius:var(--r-pill); background:var(--effort-max-gradient); }
@@ -109,7 +110,7 @@
 .wd-dialog .md { font-size:13px; }
 .wd-option { display:flex; gap:8px; align-items:center; width:100%; min-height:38px; padding:8px; text-align:left; border-radius:var(--r-sm); }
 .wd-option svg:not(:first-child) { margin-left:auto; }
-.wd-option:hover { background:var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .wd-option:hover { background:var(--bg-3); } }
 .wd-effort-options { display:flex; margin-top:10px; gap:4px; }
 .wd-effort-options button { flex:1; padding:7px; border-radius:var(--r-sm); }
 .wd-effort-options button[aria-pressed='true'] { background:var(--bg-3); }
@@ -246,7 +247,7 @@
 .wd-tag-editor { display:grid; gap:8px; font-size:12px; }
 .wd-tag-editor input { width:100%; padding:8px; border:1px solid var(--line); border-radius:var(--r-sm); background:var(--bg-0); color:var(--text); }
 .wd-update-entry { display:flex; align-items:center; justify-content:space-between; margin:4px; padding:8px; color:var(--text-dim); border-radius:var(--r-sm); font-size:11px; text-align:left; }
-.wd-update-entry:hover { background:var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .wd-update-entry:hover { background:var(--bg-3); } }
 .wd-section-label { align-items:center; }
 @media (pointer:coarse) { .wd-update-entry { min-height:44px; } }
 .wd--with-dock { grid-template-columns:240px minmax(0,1fr) minmax(320px,36vw); }

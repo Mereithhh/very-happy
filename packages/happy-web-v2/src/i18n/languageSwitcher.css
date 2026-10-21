@@ -15,10 +15,15 @@
   transition: border-color 140ms ease-out, background-color 140ms ease-out, color 140ms ease-out;
 }
 
-.language-switcher:hover,
 .language-switcher[data-state='open'] {
   background: var(--bg-2);
   color: var(--text);
+}
+@media (hover: hover) and (pointer: fine) {
+  .language-switcher:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 
 .language-switcher:focus-visible {

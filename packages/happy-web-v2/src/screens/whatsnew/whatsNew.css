@@ -47,7 +47,7 @@
 .wnp-command { width: 100%; max-width: 920px; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--surface-code); color: var(--text); text-align: left; box-shadow: var(--panel-shadow); }
 .wnp-command code { min-width: 0; font: var(--fs-13)/1.5 var(--font-mono); overflow-wrap: anywhere; }
 .wnp-command > span { display: inline-flex; flex: none; align-items: center; gap: var(--sp-1); color: var(--text-dim); font-size: var(--fs-12); }
-.wnp-command:hover > span { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .wnp-command:hover > span { color: var(--text); } }
 .wnp-command:focus-visible, .wnp-link:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 @media (max-width: 860px) {

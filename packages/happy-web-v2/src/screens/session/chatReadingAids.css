@@ -20,7 +20,7 @@
   box-shadow: var(--shadow-pop);
   cursor: pointer;
 }
-.cl-selquote:hover { background: var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .cl-selquote:hover { background: var(--bg-3); } }
 .cl-selquote:focus-visible { outline: none; box-shadow: var(--shadow-pop), inset 0 0 0 1px var(--text-faint); }
 
 /* B-577 touch: 「引用选中」 in the message's own action bar. */
@@ -48,7 +48,7 @@
   font: var(--chat-fs-secondary)/1.4 var(--font-sans);
   cursor: pointer;
 }
-.msg-event-continue:hover:not(:disabled) { background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .msg-event-continue:hover:not(:disabled) { background: var(--bg-2); } }
 .msg-event-continue:focus-visible { outline: none; background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--text-faint); }
 .msg-event-continue:disabled { opacity: 0.55; cursor: default; }
 @media (pointer: coarse) {
@@ -85,8 +85,8 @@
   opacity: 0.7;
   transition: width var(--motion-fast), background-color var(--motion-fast), opacity var(--motion-fast);
 }
-.cl-rail-tick:hover .cl-rail-mark,
 .cl-rail-tick.is-preview .cl-rail-mark { width: 18px; background: var(--text-dim); opacity: 1; }
+@media (hover: hover) and (pointer: fine) { .cl-rail-tick:hover .cl-rail-mark { width: 18px; background: var(--text-dim); opacity: 1; } }
 .cl-rail-tick.is-active .cl-rail-mark { width: 20px; height: 3px; background: var(--text); opacity: 1; }
 .cl-rail-tick:focus-visible { outline: none; background: var(--bg-2); }
 .cl-rail-older {
@@ -102,7 +102,7 @@
   color: var(--text-faint);
   background: transparent;
 }
-.cl-rail-older:hover:not(:disabled) { background: var(--bg-2); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .cl-rail-older:hover:not(:disabled) { background: var(--bg-2); color: var(--text); } }
 .cl-rail-older:disabled { opacity: 0.5; }
 .cl-rail-preview {
   position: absolute;
@@ -151,7 +151,7 @@
   background: transparent;
 }
 .cl-promptnav-btn + .cl-promptnav-btn { border-top: 1px solid var(--line); }
-.cl-promptnav-btn:hover:not(:disabled) { background: var(--bg-3); }
+@media (hover: hover) and (pointer: fine) { .cl-promptnav-btn:hover:not(:disabled) { background: var(--bg-3); } }
 .cl-promptnav-btn:focus-visible { outline: none; background: var(--bg-3); }
 .cl-promptnav-btn:disabled { color: var(--text-faint); cursor: default; }
 @media (pointer: coarse) {

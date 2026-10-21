@@ -24,7 +24,7 @@
 /* B-602: composer dock = one row of count chips (same shape as .sa-dock-item); the list lives in the session aside. */
 .tool-history-dock { display: flex; gap: var(--sp-2); overflow-x: auto; width: 100%; max-width: 820px; margin: 0 auto; padding: var(--sp-2) var(--sp-4) 0; box-sizing: border-box; min-width: 0; }
 .tool-history-chip { display: inline-flex; align-items: center; gap: calc(var(--chat-space) * 2); flex: 0 0 auto; min-height: 32px; padding: var(--chat-space) calc(var(--chat-space) * 2); border: 1px solid var(--line); border-radius: var(--r-sm); background: transparent; color: var(--text-dim); font: inherit; font-size: var(--chat-fs-control); cursor: pointer; }
-.tool-history-chip:hover { background: var(--bg-2); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .tool-history-chip:hover { background: var(--bg-2); color: var(--text); } }
 .tool-history-chip[aria-pressed="true"] { background: var(--bg-2); color: var(--text); }
 .tool-history-chip:focus-visible { outline: none; background: var(--bg-3); color: var(--text); }
 .tool-history-chip-count { font-family: var(--font-mono); font-size: var(--chat-fs-caption); color: var(--text-faint); font-variant-numeric: tabular-nums; }
@@ -33,7 +33,7 @@
 .tool-history--panel .tool-history-content pre { max-height: none; }
 .tool-history-empty { color: var(--text-faint); }
 .tool-history .tool-history-device { display: inline-flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); background: transparent; color: var(--text-dim); padding-left: 0; }
-.tool-history .tool-history-device:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .tool-history .tool-history-device:hover { color: var(--text); } }
 @media (pointer: coarse), (max-width: 600px) {
     .tool-history-chip { min-height: 44px; }
 }

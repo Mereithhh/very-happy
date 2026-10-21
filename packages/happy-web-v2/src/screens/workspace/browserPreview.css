@@ -3,7 +3,7 @@
 .browser-preview-toolbar > svg { flex:none; color:var(--text-faint); }
 .browser-preview-toolbar input { flex:1; min-width:0; height:32px; padding:4px 8px; border:1px solid transparent; border-radius:var(--r-md); background:var(--bg-1); color:var(--text); font-size:var(--fs-13); }
 .browser-preview-toolbar button, .browser-preview-toolbar a { display:grid; place-items:center; flex:none; width:32px; height:32px; color:var(--text-dim); border-radius:var(--r-sm); }
-.browser-preview-toolbar button:hover, .browser-preview-toolbar a:hover { background:var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .browser-preview-toolbar button:hover, .browser-preview-toolbar a:hover { background:var(--bg-2); } }
 .browser-preview iframe { flex:1; width:100%; min-height:0; border:0; background:var(--bg-0); }
 .browser-preview-status, .browser-preview-error { margin:0; padding:6px 10px; font-size:var(--fs-11); line-height:1.5; color:var(--text-dim); overflow-wrap:anywhere; }
 .browser-preview-error { color:var(--danger); }

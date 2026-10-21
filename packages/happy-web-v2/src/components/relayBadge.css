@@ -25,8 +25,10 @@
   border-radius: var(--r-pill);
   background: var(--bg-1);
 }
-.relay-badge:hover, .relay-badge[data-state='open'] { color: var(--text); }
-.relay-badge:hover::before, .relay-badge[data-state='open']::before { background: var(--bg-2); }
+.relay-badge[data-state='open'] { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .relay-badge:hover { color: var(--text); } }
+.relay-badge[data-state='open']::before { background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .relay-badge:hover::before { background: var(--bg-2); } }
 .relay-badge.is-connected > svg { color: var(--accent); }
 .relay-badge:focus-visible { outline:none; box-shadow:none; }
 .relay-badge:focus-visible::before { border-color:var(--text-dim); }

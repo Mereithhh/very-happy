@@ -27,7 +27,7 @@
   border-radius: var(--r-sm);
   color: var(--text-faint);
 }
-.notif-optin-close:hover { color: var(--text); background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .notif-optin-close:hover { color: var(--text); background: var(--bg-2); } }
 
 .notif-optin-head { display: flex; align-items: center; gap: var(--sp-2); padding-right: var(--sp-8); color: var(--text-dim); }
 .notif-optin h2 { margin: 0; color: var(--text); font-size: var(--fs-14); font-weight: 600; letter-spacing: -.01em; }
@@ -56,10 +56,10 @@
   font-size: var(--fs-13);
 }
 .notif-optin-primary { background: var(--text); color: var(--bg-0); border-color: var(--text); font-weight: 600; }
-.notif-optin-primary:hover { opacity: .88; }
+@media (hover: hover) and (pointer: fine) { .notif-optin-primary:hover { opacity: .88; } }
 .notif-optin-primary:disabled { cursor: wait; opacity: .58; }
 .notif-optin-later { color: var(--text-dim); }
-.notif-optin-later:hover { color: var(--text); background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .notif-optin-later:hover { color: var(--text); background: var(--bg-2); } }
 
 @keyframes notif-optin-enter {
   from { opacity: 0; transform: translate3d(0, 16px, 0); }

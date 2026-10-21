@@ -67,8 +67,10 @@
   color: var(--text);
   font-size: inherit;
 }
-.bt-md:hover > .msg-preview-lines {
-  color: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .bt-md:hover > .msg-preview-lines {
+    color: var(--text-dim);
+  }
 }
 .bt-md:focus-visible {
   outline: none;
@@ -122,9 +124,11 @@
   text-decoration: none;
   font-size: var(--chat-fs-control);
 }
-.bt-link:hover {
-  background: var(--bg-3);
-  border-color: var(--line-2);
+@media (hover: hover) and (pointer: fine) {
+  .bt-link:hover {
+    background: var(--bg-3);
+    border-color: var(--line-2);
+  }
 }
 .bt-raw {
   display: flex;
@@ -145,8 +149,10 @@
   text-transform: uppercase;
   color: var(--text-faint);
 }
-.bt-raw-head:hover {
-  color: var(--text-dim);
+@media (hover: hover) and (pointer: fine) {
+  .bt-raw-head:hover {
+    color: var(--text-dim);
+  }
 }
 @media (max-width: 480px) {
   .bt-fields {

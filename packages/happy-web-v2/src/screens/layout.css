@@ -23,9 +23,13 @@
   background: var(--line);
   transition: background var(--motion-fast);
 }
-.app-resize-handle:hover::after,
 body.vh-col-resizing .app-resize-handle::after {
   background: var(--line-2);
+}
+@media (hover: hover) and (pointer: fine) {
+  .app-resize-handle:hover::after {
+    background: var(--line-2);
+  }
 }
 body.vh-col-resizing {
   cursor: col-resize;
@@ -57,9 +61,11 @@ body.vh-col-resizing iframe {
   color: var(--text-dim);
   transition: background var(--motion-fast);
 }
-.app-rail-btn:hover {
-  color: var(--text);
-  background: var(--bg-2);
+@media (hover: hover) and (pointer: fine) {
+  .app-rail-btn:hover {
+    color: var(--text);
+    background: var(--bg-2);
+  }
 }
 .app-sidebar {
   background: var(--surface-sidebar); /* B-614: its own surface, distinct from the canvas */

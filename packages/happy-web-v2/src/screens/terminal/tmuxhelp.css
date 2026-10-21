@@ -35,8 +35,10 @@
 .tmux-close {
   color: var(--text-faint);
 }
-.tmux-close:hover {
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .tmux-close:hover {
+    color: var(--text);
+  }
 }
 .tmux-body {
   overflow-y: auto;

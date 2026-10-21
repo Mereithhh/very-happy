@@ -116,8 +116,10 @@
 .vh-tag--btn {
   cursor: pointer;
 }
-.vh-tag--btn:hover {
-  filter: brightness(1.15);
+@media (hover: hover) and (pointer: fine) {
+  .vh-tag--btn:hover {
+    filter: brightness(1.15);
+  }
 }
 .vh-tag-text {
   overflow: hidden;
@@ -130,6 +132,8 @@
   opacity: 0.65;
   margin-right: -2px;
 }
-.vh-tag-x:hover {
-  opacity: 1;
+@media (hover: hover) and (pointer: fine) {
+  .vh-tag-x:hover {
+    opacity: 1;
+  }
 }

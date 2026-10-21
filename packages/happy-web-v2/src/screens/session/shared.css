@@ -141,7 +141,7 @@
 .shd-friends-row { display: flex; gap: var(--sp-1); overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
 .shd-friends-row::-webkit-scrollbar { display: none; }
 .shd-friend { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--bg-1); color: var(--text); font: inherit; font-size: var(--fs-12); cursor: pointer; }
-.shd-friend:hover:not(:disabled) { border-color: var(--line-heavy); background: var(--bg-2); }
+@media (hover: hover) and (pointer: fine) { .shd-friend:hover:not(:disabled) { border-color: var(--line-heavy); background: var(--bg-2); } }
 .shd-friend:disabled { opacity: .6; cursor: default; }
 .shd-friend .shd-grant-avatar { width: 22px; height: 22px; font-size: var(--fs-10); }
 .shd-friend-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
