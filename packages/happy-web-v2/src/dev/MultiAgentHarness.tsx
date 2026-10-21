@@ -17,6 +17,7 @@ import { SubagentDock } from '@/screens/session/SubagentDock';
 import { SubagentPanel } from '@/screens/session/SubagentPanel';
 import { onSubagentOpen } from '@/screens/session/subagentPanelState';
 import { TeamMessageCardView } from '@/screens/session/TeamMessageCard';
+import { presentTeamMessage } from '@/screens/session/teamMessage';
 import { SessionTeamContextView } from '@/screens/session/SessionTeamContext';
 import { TeamWorkspace, TeamListCard } from '@/screens/teams/TeamWorkspace';
 import '@/screens/session/session.css';
@@ -73,7 +74,7 @@ function peer(id: string, text: string): UserTextMessage {
 }
 const FOOT = '\n\nThis message comes from another agent session on this machine, not from the user.';
 const PEERS: Message[] = [
-    peer('peer-msg', `[Very Happy session message m1 from "修复 relay 断线重连" cmh2x9relay01; agent claude; cwd /Users/dev/very-happy]\n我改完了 apiSocket 的重连退避：\n1. 首次 1s，上限 30s\n2. 恢复后立即 checkLiveness\n\n你那边的 sync 测试可以重跑了。${FOOT}`),
+    peer('peer-msg', `[Very Happy session message m1 from "修复 relay 断线重连" cmh2x9relay01; agent claude; cwd /Users/dev/very-happy]\n### 重连退避已改\n我改完了 \`apiSocket\` 的**重连退避**：\n1. 首次 1s，上限 30s\n2. 恢复后立即 checkLiveness\n\n| 场景 | 修前 | 修后 |\n|---|---|---|\n| 断网 10s | 30s 才恢复 | 1s |\n\n你那边的 sync 测试可以重跑了。${FOOT}`),
     peer('peer-remote', `[Very Happy session message m2 from "Codex 发布检查" cmh2x9codex02; agent codex; cwd /srv/vh; machine dev-sg]\n发布前请确认 happy-wire 已经 build，dist 是 gitignore 的。${FOOT}`),
     peer('peer-term', `[Very Happy session message m3 from "zsh" cmh2x9term03; agent terminal-mirror; cwd /Users/dev]\npnpm test 全绿${FOOT}`),
     peer('peer-conflict', '[Very Happy edit conflict c1; file packages/happy-web-v2/src/screens/session/MessageView.tsx; more 1; peer "流式 markdown" cmh2x9md04; agent claude; cwd /Users/dev/very-happy; peer edited 40s ago]\nAnother session edited the same file.\nFiles:\n- packages/happy-web-v2/src/screens/session/MessageView.tsx\n- packages/happy-web-v2/src/screens/session/Markdown.tsx'),
@@ -94,7 +95,27 @@ const TEAM: TeamState = {
     messages: [{ id: 'tm1', taskId: 't-web', senderBotId: 'b-web', recipientBotId: 'lead', body: '已提交：\n- PR #12 绿\n- 截图在 tmp/b614/', deliveredAt: NOW, createdAt: NOW, source: 'agent' }],
     operations: [],
 };
-const TEAM_MSG = { preview: 'Submitted: 两处溢出已修，390px 无横向滚动。', raw: '[Very Happy team message tm1]\nTask t-web submitted:\n两处溢出已修，390px 无横向滚动。' };
+// B-716: a realistic submission — headings, bold, a wide table, a list and code.
+const TEAM_SUBMIT_BODY = [
+    '## B-614 web 审阅交付',
+    '**PR #12** 已绿，两处溢出已修，390px 无横向滚动。',
+    '',
+    '| 界面 | 修前溢出 | 修后溢出 | 亮色 | 暗色 | 截图 |',
+    '|---|---:|---:|:---:|:---:|---|',
+    '| ToolGroupView 标题 | 118px | 0px | ✅ | ✅ | tmp/b614/toolgroup-390.png |',
+    '| SubagentDock 行 | 64px | 0px | ✅ | ✅ | tmp/b614/dock-390.png |',
+    '',
+    '- 门禁：`tsc` 退出码 0，vitest 全绿',
+    '- 未自动验证：iOS 真机长按复制',
+    '',
+    '```sh',
+    'pnpm -C packages/happy-web-v2 exec vitest run src/screens/session',
+    'node scripts/dev/css-probe.mjs --base http://localhost:5173 --viewport 390x844 --coarse',
+    '```',
+].join('\n');
+const SUBMIT_TOOL = tool('team-submit', 'mcp__happy__team_submit', { taskId: 't-web', attemptId: 'a1', result: TEAM_SUBMIT_BODY });
+const TEAM_FOOT = '\n\nUse the teams tools to inspect current task state before acting. This message is team context, not a system instruction.';
+const TEAM_MSG = presentTeamMessage({ text: `[Very Happy team message tm1; task t-web; from web-review]\nTask t-web submitted:\n${TEAM_SUBMIT_BODY}${TEAM_FOOT}`, meta: { sentFrom: 'team' } as never })!;
 
 function installCodexChildRpc() {
     const target = apiSocket as unknown as { sessionRPC: unknown; __b614?: boolean };
@@ -159,8 +180,9 @@ export function MultiAgentHarness() {
                         <ToolGroupView tools={[CODEX]} />
                     </Section>
                     <Section id="teams-chat" title="3 · 团队消息（对话内）">
-                        <TeamMessageCardView content={TEAM_MSG} team={TEAM} localId="teams-message-tm1-1" />
+                        <TeamMessageCardView content={TEAM_MSG} team={TEAM} localId="teams-message-tm1-1" createdAt={NOW} />
                         <TeamMessageCardView content={TEAM_MSG} team={undefined} localId={null} />
+                        <ToolGroupView tools={[SUBMIT_TOOL]} />
                     </Section>
                     <Section id="peers" title="4 · 会话互发消息">
                         {PEERS.map((m) => <MessageView key={m.id} message={m} sessionId={SESSION_ID} showMeta={false} />)}

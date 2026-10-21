@@ -43,6 +43,37 @@
   max-height: 200px;
   overflow: auto;
 }
+/* B-716: markdown field — plain preview lines, opens the reader on click. */
+.bt-v--multiline:has(> .bt-md) {
+  white-space: normal;
+  max-height: none;
+  overflow: visible;
+}
+.bt-md {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font: inherit;
+}
+.bt-md > .msg-preview-lines {
+  flex: 1;
+  color: var(--text);
+  font-size: inherit;
+}
+.bt-md:hover > .msg-preview-lines {
+  color: var(--text-dim);
+}
+.bt-md:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--text-faint);
+}
 .bt-list {
   margin: 0;
   padding-left: 18px;

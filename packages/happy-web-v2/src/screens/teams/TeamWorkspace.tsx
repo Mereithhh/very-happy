@@ -11,6 +11,7 @@ import { botHistorySessionId, teamInactiveGroupId, teamMemberCount, teamMemberIn
 import { isGroupCollapsed, setGroupCollapsed, useCollapsedGroups } from '@/screens/sessions/sidebarCollapsedGroups';
 import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
 import { AgentGlyph } from '@/screens/session/AgentChip';
+import { plainMarkdownLines } from '@/utils/markdownPreview';
 import { agentKindLabel, agentKindOf } from '@/screens/session/agentIdentity';
 
 export function TeamProgress({ team }: { team: TeamState }) {
@@ -43,10 +44,10 @@ export function TeamWorkspace({ team, onTask, archivedSessionIds, now = Date.now
           const result = task.attempts.find(a => a.id === task.currentAttemptId)?.result;
           const assignee = team.bots.find(b => b.id === task.assigneeBotId);
           return <button className="teams-task-preview" id={`team-task-${task.id}`} key={task.id} onClick={() => onTask(task.id)}>
-            {depth > 0 && <small className="teams-parent-label"><GitBranch size={12} />{team.tasks.find(t => t.id === task.parentTaskId)?.goal.split('\n')[0]}</small>}
-            <strong className="teams-task-goal">{task.goal}</strong><span className="teams-task-owner">{assignee && <AgentGlyph kind={agentKindOf(assignee.assistant)} />}{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
+            {depth > 0 && <small className="teams-parent-label"><GitBranch size={12} />{plainMarkdownLines(team.tasks.find(t => t.id === task.parentTaskId)?.goal ?? '')[0]}</small>}
+            <strong className="teams-task-goal">{plainMarkdownLines(task.goal).join('\n')}</strong><span className="teams-task-owner">{assignee && <AgentGlyph kind={agentKindOf(assignee.assistant)} />}{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
             {taskLaunchIssue(team, task) && <span className="teams-error">{f.launchFailed} · {taskLaunchIssue(team, task)?.error}</span>}
-            {result && <span className="teams-result-preview">{result}</span>}
+            {result && <span className="teams-result-preview">{plainMarkdownLines(result).join('\n')}</span>}
             {['pending', 'failed'].includes(task.cleanup) && <small className={task.cleanup === 'failed' ? 'teams-error' : ''}>{task.cleanup === 'failed' ? c.cleanupFailed : c.cleanupPending}</small>}
           </button>;
         })}</div>;

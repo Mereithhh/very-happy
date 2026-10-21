@@ -5,6 +5,8 @@
 // here, and the stylesheet must give that class a newline-preserving
 // white-space. Intentional one-line previews (sidebar/board rows, the team
 // message summary, the team list card) are left alone on purpose.
+// B-716: the chat team / peer cards no longer show the text itself — a plain
+// preview (markdownPreview) plus the rendered markdown in MessageReader.
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createElement } from 'react';
@@ -14,9 +16,6 @@ import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
 import type { TeamState } from '@slopus/happy-wire';
 
 const MULTILINE: Array<[css: string, selector: string]> = [
-  ['screens/session/teamMessage.css', '.team-message-goal'],
-  ['screens/session/teamMessage.css', '.team-message-result-text'],
-  ['screens/session/sessionPeerMessage.css', '.peer-message-body'],
   ['screens/teams/teams.css', '.teams-task-goal'],
   ['screens/teams/teams.css', '.teams-result-preview'],
   ['screens/teams/teams.css', '.teams-multiline'],
@@ -70,7 +69,6 @@ const team = {
 
 describe('surfaces put multi-line text into the pinned classes', () => {
   let mods: {
-    TeamMessageCardView: typeof import('@/screens/session/TeamMessageCard').TeamMessageCardView;
     TeamWorkspace: typeof import('./TeamWorkspace').TeamWorkspace;
     TeamSchedules: typeof import('./TeamSchedules').TeamSchedules;
     TeamTaskSummary: typeof import('./TeamTaskDetail').TeamTaskSummary;
@@ -79,8 +77,7 @@ describe('surfaces put multi-line text into the pinned classes', () => {
   beforeAll(async () => {
     installBrowserTestGlobals();
     mods = {
-      TeamMessageCardView: (await import('@/screens/session/TeamMessageCard')).TeamMessageCardView,
-      TeamWorkspace: (await import('./TeamWorkspace')).TeamWorkspace,
+        TeamWorkspace: (await import('./TeamWorkspace')).TeamWorkspace,
       TeamSchedules: (await import('./TeamSchedules')).TeamSchedules,
       TeamTaskSummary: (await import('./TeamTaskDetail')).TeamTaskSummary,
       TeamTaskMessages: (await import('./TeamTaskDetail')).TeamTaskMessages,
@@ -88,16 +85,17 @@ describe('surfaces put multi-line text into the pinned classes', () => {
   });
   const html = (el: ReturnType<typeof createElement>) => renderToStaticMarkup(createElement(MemoryRouter, {}, el));
 
-  it('chat team card: task goal and result', () => {
-    const out = html(createElement(mods.TeamMessageCardView, { content: { preview: 'p', raw: 'r' }, team, localId: 'teams-message-m1-1' }));
-    expect(out).toContain(`<strong class="team-message-goal">${GOAL}</strong>`);
-    expect(out).toContain(`<span class="team-message-result-text">${RESULT}</span>`);
-  });
-
   it('team board card: task goal (result preview already pre-line)', () => {
     const out = html(createElement(mods.TeamWorkspace, { team, onTask: () => {} }));
     expect(out).toContain(`<strong class="teams-task-goal">${GOAL}</strong>`);
     expect(out).toContain(`<span class="teams-result-preview">${RESULT}</span>`);
+  });
+
+  it('B-716: team board card previews markdown goal/result as plain lines', () => {
+    const md = { ...team, tasks: [{ ...team.tasks[0], goal: '## 修复\n- **溢出**', attempts: [{ ...team.tasks[0].attempts[0], result: '| a | b |\n|---|---|\n`x.ts` 已改' }] }] } as unknown as TeamState;
+    const out = html(createElement(mods.TeamWorkspace, { team: md, onTask: () => {} }));
+    expect(out).toContain('<strong class="teams-task-goal">修复\n溢出</strong>');
+    expect(out).toContain('<span class="teams-result-preview">a b\nx.ts 已改</span>');
   });
 
   it('task detail: goal, acceptance and messages', () => {
