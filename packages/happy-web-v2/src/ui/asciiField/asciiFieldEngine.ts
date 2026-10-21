@@ -337,21 +337,24 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
 
   /**
    * Scroll offset of the host in px (0 at rest). The host's document offset is
-   * measured once per resize; per frame only `scrollY` is read, which never
-   * forces style or layout (the landing scrolls the window).
+   * measured once per resize; `scrollY` is cached from passive scroll events
+   * (layout is clean there). Reading either inside the frame, after last
+   * frame's transform writes, would force a style/layout pass every frame.
    */
   let docTop = 0;
+  let scrollY = 0;
   let scrollDirty = true;
   function scrollShift(): number {
     if (!usesScroll || reduced) return 0;
-    const y = env.win.scrollY ?? 0;
     if (scrollDirty) {
       scrollDirty = false;
-      docTop = host.getBoundingClientRect().top + y;
+      scrollY = env.win.scrollY ?? 0;
+      docTop = host.getBoundingClientRect().top + scrollY;
     }
-    const top = docTop - y;
+    const top = docTop - scrollY;
     return Math.max(-env.win.innerHeight, Math.min(env.win.innerHeight, -top));
   }
+  const onScroll = () => { scrollY = env.win.scrollY ?? 0; };
 
   /**
    * Camera position of a layer in world cells. Scrolling moves nearer layers
@@ -628,6 +631,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   reducedQuery?.addEventListener?.('change', onReducedChange);
   env.doc.addEventListener('visibilitychange', onVisibility);
   if (wantsMouse) env.win.addEventListener('pointermove', onPointer, { passive: true });
+  if (usesScroll) env.win.addEventListener('scroll', onScroll, { passive: true });
 
   readTheme();
   if (reduced) paintStatic();
@@ -645,6 +649,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
     reducedQuery?.removeEventListener?.('change', onReducedChange);
     env.doc.removeEventListener('visibilitychange', onVisibility);
     if (wantsMouse) env.win.removeEventListener('pointermove', onPointer);
+    if (usesScroll) env.win.removeEventListener('scroll', onScroll);
     for (const l of layers) for (const p of l.planes) p.canvas.remove();
     for (const k of creatures) k.el.remove();
     creatures = [];
