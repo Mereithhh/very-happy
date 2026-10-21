@@ -24,6 +24,16 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-721 | 侧栏团队行点击直接进看板，Owner 实际想跟负责人聊 → 点名字打开负责人（root bot）会话（无负责人会话时退回看板），chevron 只展开 / 收起，行右侧加看板按钮和右键「打开看板」，并显示负责人状态点 | ux | Owner 2026-10-21 | doing | 第三版；Dev-E1，B-713 之后单独出 PR |
+| B-720 | 动态 ASCII 景深 / 模糊背景：共用 AsciiField 引擎（canvas，≥3 层，视差），用于 landing（最强）、App 默认页、文档和设置的页头、侧栏空白区（极淡）。约束：AA 对比度、reduced-motion 静态、离屏暂停、≤30fps、每帧 <2ms、LCP 不变差；外观设置加开关 | feat | Owner 2026-10-21 | doing | 第三版；B-700 的加强版 |
+| B-719 | CLI 自动安装 / 更新缺失的 harness（Claude Code / Codex / pi / Gemini）：daemon 上报安装状态，机器页和 agent 选择器提示缺失并可点击安装；安装命令白名单写死在 CLI 里，server 只传枚举值，不静默安装、不用 sudo | feat | Owner 2026-10-21 | doing | 第三版 |
+| B-718 | daemon 自动升级「发版就跟上」：核实 B-327/B-503 的实际效果（默认值、各机器版本、0.2.180 后卡点），做到默认开、promote 后尽快生效（推送或缩短轮询）、机器页显示状态并提供「立即升级」；保持 idle-only、不装 next、每版本只尝试一次 | feat | Owner 2026-10-21 | doing | 第三版 |
+| B-717 | 升级内置 `@anthropic-ai/claude-agent-sdk`（0.3.296 → 最新），逐条核对 CHANGELOG 里的行为变化，真实会话实测 | debt | Owner 2026-10-21 | doing | 第三版 |
+| B-716 | 会话里的团队卡片和跨会话卡片：收起态是 markdown 感知的预览（无裸符号、剥协议头，含 B-704），点击弹出浮层完整渲染 markdown（桌面 popover / dialog，手机 sheet），可复制、可跳转 | ux | Owner 2026-10-21 | doing | 第三版 |
+| B-715 | 大更新醒目标识 + 叠加的更新通知必须逐条看完才能关（从旧到新翻页，显示进度）；侧栏有未看大更新时显示入口；深链进入不强制弹出（保留 B-697） | feat | Owner 2026-10-21 | doing | 第三版 |
+| B-714 | UI 去掉原生 `<select>`（约 26 个文件），统一换成设计系统组件并加 lint 禁止；连同 UI 走查（含移动端、触屏 sticky hover）的 P0 / P1 一起修 | ux | Owner 2026-10-21 | doing | 第三版；等 UI 走查报告 |
+| B-713 | 侧栏主入口改版：新建会话 ▾ / 新建项目 / 新建团队，团队、自动化、待办、联系人按可用高度自适应展示，其余收进「更多能力 ▾」；去掉右上角 ⋯，帮助移到 footer；手机 header 只留 🔍 和 ＋，下面一行 chip；修 logo 在触屏上的 sticky hover | ux | Owner 2026-10-21 | doing | 第三版；Dev-E1 |
+| B-701 | 会话分享分层：联系人分享（SessionGrant 加 expiresAt）+ 带 token 的只读 weblink（SessionShareLink，只存 sha256，可撤销、有有效期，服务端投影 + redactSecrets，记录打开审计） | feat | Owner 2026-10-21 | doing | 第三版；PR #655，安全复审第四轮修复中；spec `specs/2026-10-session-sharing-tiers.md` |
 | B-712 | **CLI publish 的 promote 读 smoke run 有竞态**：run 已显示 completed，windows/node24 那格 job 结论仍是 in_progress/null，被判为失败（0.2.180 publish 39609083643 第 1 次 promote 被拒，等那格 success 后重跑通过）→ 等所有 job 级 conclusion 落定再判，缺格不算通过 | debt | 第二版 CLI 0.2.180 发版 | todo | |
 | B-711 | **蓝绿切流停旧槽后线上约 9s 不可用**（deploy run 39607760413，exit=5 phase=after-old-stop）：Caddy 13:31:05.06 reload，blue 05.83 即退出（隔 0.8s），origin probe 06.8–15.5 连续超时；同窗 green 260 connect / 306 disconnect / 412 auth，重连风暴压住新槽 → 旧槽停止前等连接排空，和/或客户端重连加抖动退避 | bug | 第二版发版 | todo | |
 | B-709 | daemon 对 worktree 准备之外的通用 spawn 失败仍每 5s 重试一次 → 统一有界退避；另：worker 委派子成员时继承父成员 worktree 作为源仓库，语义未写进文档 | debt | B-706 顺带 | todo | |
