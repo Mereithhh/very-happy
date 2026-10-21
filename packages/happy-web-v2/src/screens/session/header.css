@@ -140,3 +140,15 @@
  .ch-title-pencil { display:none; }
  .ch-title-btn { min-height:44px; }
 }
+
+/* B-728 (UI-M-03): a narrow panel (iPad portrait beside the sidebar) squeezed
+   the title to one glyph while agent, machine, relay and four icons kept their
+   width. Below 640px of header the identity text and the relay label give way
+   first, and the title keeps a readable minimum. */
+.ch { container: ch / inline-size; }
+@container ch (min-width: 420px) and (max-width: 640px) {
+  .ch-main { min-width: 140px; }
+  .ch-host { display: none; } /* the machine stays one tap away in the identity popover */
+  .ch-agent { max-width: 72px; }
+  .ch .relay-badge-label { display: none; }
+}
