@@ -425,6 +425,7 @@ export function Picker<V extends string = string>(props: PickerProps<V>) {
                                 key={option.value}
                                 id={optionId(index)}
                                 role="option"
+                                data-value={option.value}
                                 aria-selected={isSelected}
                                 aria-disabled={option.disabled || undefined}
                                 data-active={index === active || undefined}
