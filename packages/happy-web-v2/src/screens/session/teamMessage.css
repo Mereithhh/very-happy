@@ -20,6 +20,11 @@
 .team-message-work-heading > .ag-route { flex: 1 1 0; min-width: 0; }
 .team-message-status { margin-left: auto; flex-shrink: 0; font-size: var(--chat-fs-secondary); }
 .team-message-work > strong { font-size: var(--chat-fs-body); font-weight: 600; }
+/* B-687: goals and results are multi-line text from agents — keep their line
+ * breaks; the result stays a preview (220 chars, 6 lines), full text one click
+ * away behind 「查看任务和结果」. */
+.team-message-goal { white-space: pre-wrap; }
+.team-message-result-text { min-width: 0; white-space: pre-line; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; }
 .team-message-assignee { font-size: var(--chat-fs-secondary); min-width: 0; }
 .team-message-result { display: flex; gap: calc(var(--chat-space) * 2); margin: 0; font-size: var(--chat-fs-secondary); color: var(--text-dim); }
 .team-message-result svg { flex-shrink: 0; color: var(--text-faint); }

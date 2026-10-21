@@ -49,7 +49,7 @@ export function TeamWorkspace({ team, onTask }: { team: TeamState; onTask: (id: 
           const assignee = team.bots.find(b => b.id === task.assigneeBotId);
           return <button className="teams-task-preview" id={`team-task-${task.id}`} key={task.id} onClick={() => onTask(task.id)}>
             {depth > 0 && <small className="teams-parent-label"><GitBranch size={12} />{team.tasks.find(t => t.id === task.parentTaskId)?.goal.split('\n')[0]}</small>}
-            <strong>{task.goal}</strong><span className="teams-task-owner">{assignee && <AgentGlyph kind={agentKindOf(assignee.assistant)} />}{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
+            <strong className="teams-task-goal">{task.goal}</strong><span className="teams-task-owner">{assignee && <AgentGlyph kind={agentKindOf(assignee.assistant)} />}{assignee ? memberTitle(assignee, f) : '—'}{task.status === 'cancelled' && <small>{c.cancelled}</small>}</span>
             {taskLaunchIssue(team, task) && <span className="teams-error">{f.launchFailed} · {taskLaunchIssue(team, task)?.error}</span>}
             {result && <span className="teams-result-preview">{result}</span>}
             {['pending', 'failed'].includes(task.cleanup) && <small className={task.cleanup === 'failed' ? 'teams-error' : ''}>{task.cleanup === 'failed' ? c.cleanupFailed : c.cleanupPending}</small>}

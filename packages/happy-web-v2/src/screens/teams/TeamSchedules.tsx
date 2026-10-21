@@ -46,7 +46,7 @@ export function TeamSchedules({
                 ? "—"
                 : new Date(schedule.nextRunAt).toLocaleString()}
             </p>
-            <p>{schedule.body}</p>
+            <p className="teams-multiline">{schedule.body}</p>
             {schedule.pendingMessageId && <p>{t("teams.schedulePending")}</p>}
             <div className="teams-row">
               {schedule.status === "active" && (

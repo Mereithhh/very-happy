@@ -295,6 +295,8 @@ a.au-machine:hover {
   font-size: var(--fs-13);
   color: var(--text);
   overflow-wrap: anywhere;
+  /* B-687: a reported attention reason is free text and may span lines. */
+  white-space: pre-line;
 }
 .au-attn-meta {
   display: flex;

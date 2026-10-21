@@ -46,9 +46,9 @@ export function TeamMessageCardView({ content, team, localId }: { content: TeamM
                     : <span>{copy.message}</span>}
                 <span className={`team-message-status vh-pill${task.status === 'running' ? ' vh-pill--live' : task.status === 'submitted' ? ' vh-pill--warn' : ''}`}>{t(`teams.${task.status}`)}</span>
             </div>
-            <strong>{task.goal}</strong>
+            <strong className="team-message-goal">{task.goal}</strong>
             {assignee && route?.to?.id !== assignee.id && route?.from?.id !== assignee.id && <span className="team-message-assignee"><AgentChip kind={agentKindOf(assignee.assistant)} name={memberTitle(assignee, copy)} secondary={agentKindLabel(agentKindOf(assignee.assistant))} /></span>}
-            {result && <p className="team-message-result"><ClipboardCheck size={16} />{result.slice(0, 220)}{result.length > 220 ? '…' : ''}</p>}
+            {result && <p className="team-message-result"><ClipboardCheck size={16} /><span className="team-message-result-text">{result.slice(0, 220)}{result.length > 220 ? '…' : ''}</span></p>}
             <div className="team-message-actions">
                 <Link to={`/teams/${encodeURIComponent(team.id)}?task=${encodeURIComponent(task.id)}`}>{copy.inspect}<ArrowUpRight size={15} /></Link>
                 {source}

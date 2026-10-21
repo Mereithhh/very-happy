@@ -89,6 +89,11 @@
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
 }
+/* B-687: task goal / acceptance / message / schedule body text from agents keeps its line breaks. */
+.teams-multiline {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .teams-screen pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -188,6 +193,8 @@
   .teams-screen .teams-task-preview:not(:disabled):hover, .teams-list-card:hover, .teams-screen button:not(:disabled):active { transform: none; }
 }
 .teams-task-preview strong { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+/* B-687: the card is a 4-line preview of the goal's own lines; the dialog shows all of it. */
+.teams-task-goal { white-space: pre-line; }
 .teams-task-owner { display: flex; align-items: center; gap: 6px; color: var(--text-dim); flex-wrap: wrap; }
 .teams-task-owner small { margin-left: auto; }
 .teams-result-preview { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-dim); white-space: pre-line; overflow-wrap: anywhere; border-top: var(--hairline) solid var(--line); padding-top: 10px; }
