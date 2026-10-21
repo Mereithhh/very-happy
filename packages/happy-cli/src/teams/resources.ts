@@ -63,7 +63,15 @@ export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport
         const usage = ctx.getContextUsage?.();
         const contextWindow = usage?.contextWindow ?? ctx.model?.contextWindow;
         if (!(contextWindow > 0)) return;
-        const snapshot = {source:'pi', tokens:usage?.tokens ?? null, contextWindow};
+        // B-727: model + same-id registry entries let the wrapper tell pi's 128k default from a configured window.
+        const model = typeof ctx.model?.id === 'string' ? ctx.model.id.slice(0, 200) : null;
+        const provider = typeof ctx.model?.provider === 'string' ? ctx.model.provider.slice(0, 200) : null;
+        let peers = [];
+        try {
+          const bare = model ? model.split('/').pop() : null;
+          peers = (ctx.modelRegistry?.getAll?.() || []).filter(m => m && m.provider !== provider && (m.id === model || m.id === bare) && m.contextWindow > 0).slice(0, 8).map(m => ({provider:String(m.provider).slice(0, 200), contextWindow:m.contextWindow}));
+        } catch {}
+        const snapshot = {source:'pi', tokens:usage?.tokens ?? null, contextWindow, model, provider, event:name, peers};
         reporting = reporting.catch(() => {}).then(async () => {
           try { await fetch(contextEndpoint, {method:'POST', redirect:'error', headers:{'content-type':'application/json'}, body:JSON.stringify(snapshot), signal:AbortSignal.timeout(2000)}); } catch {}
         });

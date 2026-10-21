@@ -57,7 +57,16 @@ it('reports current context on runtime events, including unknown after compactio
         await handlers.turn_end({}, {getContextUsage:()=>({tokens:32768,contextWindow:131072})});
         await handlers.session_compact({}, {getContextUsage:()=>({tokens:null,contextWindow:131072})});
         await handlers.model_select({}, {getContextUsage:()=>undefined,model:{contextWindow:1000000}});
-        expect(reports).toEqual([{source:'pi',tokens:32768,contextWindow:131072},{source:'pi',tokens:null,contextWindow:131072},{source:'pi',tokens:null,contextWindow:1000000}]);
+        // B-727: model id, provider and same-id registry entries (other providers only) ride along.
+        const registry = {getAll:()=>[{provider:'gw',id:'claude-opus-5-5',contextWindow:128000},{provider:'anthropic',id:'claude-opus-5-5',contextWindow:1000000},{provider:'openai',id:'gpt-5.5',contextWindow:400000}]};
+        await handlers.turn_end({}, {getContextUsage:()=>({tokens:90000,contextWindow:128000}),model:{id:'claude-opus-5-5',provider:'gw',contextWindow:128000},modelRegistry:registry});
+        const bare = {model:null,provider:null,peers:[]};
+        expect(reports).toEqual([
+            {source:'pi',tokens:32768,contextWindow:131072,...bare,event:'turn_end'},
+            {source:'pi',tokens:null,contextWindow:131072,...bare,event:'session_compact'},
+            {source:'pi',tokens:null,contextWindow:1000000,...bare,event:'model_select'},
+            {source:'pi',tokens:90000,contextWindow:128000,model:'claude-opus-5-5',provider:'gw',event:'turn_end',peers:[{provider:'anthropic',contextWindow:1000000}]},
+        ]);
     } finally {
         vi.unstubAllGlobals();
         if(before.mcp===undefined)delete process.env.HAPPY_MCP_URL;else process.env.HAPPY_MCP_URL=before.mcp;

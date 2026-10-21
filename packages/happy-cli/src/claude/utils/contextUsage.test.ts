@@ -15,8 +15,12 @@ describe('session-bound pi context telemetry', () => {
             expect((await post({source:'pi',tokens:-1,contextWindow:0})).status).toBe(400);
             expect((await post({source:'pi',tokens:1,contextWindow:200000},server.url+'runtime-context/wrong')).status).toBe(403);
             expect((await post({source:'pi',tokens:1,contextWindow:200000},undefined,{origin:'https://other.test'})).status).toBe(403);
-            expect((await post({junk:'x'.repeat(3000)})).status).toBe(413);
-            expect(received).toHaveLength(2);
+            expect((await post({junk:'x'.repeat(5000)})).status).toBe(413);
+            // B-727: the extension's provenance fields pass through to the wrapper.
+            const peers = Array.from({length:8},(_,i)=>({provider:`provider-${i}`.padEnd(200,'x'),contextWindow:1000000}));
+            expect((await post({source:'pi',tokens:5,contextWindow:128000,model:'m'.repeat(200),provider:'p'.repeat(200),event:'turn_end',peers})).status).toBe(204);
+            expect(received[2]).toMatchObject({event:'turn_end',peers:expect.arrayContaining([expect.objectContaining({contextWindow:1000000})])});
+            expect(received).toHaveLength(3);
         } finally { server.stop(); }
     });
 });

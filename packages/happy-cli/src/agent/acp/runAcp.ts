@@ -1,4 +1,6 @@
 import { BUILTIN_TODO_DISCOVERY } from '@/modules/todo/skill';
+import { readPiModelsJson, resolvePiContextUsage, type PiContextReport } from './piContextUsage';
+import { buildAcpPrompt } from './acpSlashCommand';
 import { registerAgentAttachmentDownloads } from '@/utils/agentAttachments';
 import { configuration } from '@/configuration';
 import { appendStagedAttachmentsToPrompt, stageClaudeAttachments, CLAUDE_ATTACHMENT_KINDS } from '@/claude/utils/attachmentContent';
@@ -700,8 +702,10 @@ export async function runAcp(opts: {
     assistant: isAssistantVariant,
     ...(piSteer ? { piSteer } : {}),
     push: { sendAttention: (input) => api.push().sendAttention(input) },
-    ...(opts.agentName === 'pi' ? { onContextUsage: (contextUsage: import('@slopus/happy-wire').ContextUsage) => {
-      session.updateAgentState(state => ({ ...state, contextUsage }));
+    // B-727: pi's report is resolved against models.json (pi's 128k default ≠ a configured window).
+    ...(opts.agentName === 'pi' ? { onContextUsage: (report: PiContextReport) => {
+      const modelsJson = readPiModelsJson();
+      session.updateAgentState(state => ({ ...state, contextUsage: resolvePiContextUsage(report, modelsJson, state.contextUsage, Date.now()) }));
     } } : {}),
   });
   if (opts.agentName === 'pi') session.updateAgentState(state => ({ ...state, contextUsage: null }));
@@ -1349,8 +1353,12 @@ export async function runAcp(opts: {
         if (typeof batch.mode.effort === 'string') {
           await switchEffortIfRequested(batch.mode.effort, modelChanged);
         }
-        const projected = await projectInjector.decorate(batch.message);
-        const prompt = todoDiscoverySent ? projected : `${projected}\n\n${BUILTIN_TODO_DISCOVERY}`;
+        // B-727: a slash command (`/compact`, `/name x`…) is executed by the ACP agent only when the
+        // prompt still starts with it — a project prefix or the todo note turned pi's /compact into
+        // a chat message the model answered with a summary, and nothing was compacted.
+        const { prompt, slashCommand } = await buildAcpPrompt(batch.message, {
+          todoNoteSent: todoDiscoverySent, todoNote: BUILTIN_TODO_DISCOVERY, decorate: (m) => projectInjector.decorate(m),
+        });
         const attachments = batch.attachments ?? [];
         const staged = attachments.length ? await stageClaudeAttachments(attachments, {
           happyHomeDir: configuration.happyHomeDir, sessionId: session.sessionId,
@@ -1364,7 +1372,7 @@ export async function runAcp(opts: {
         } finally {
           promptInFlight = false;
         }
-        todoDiscoverySent = true;
+        if (!slashCommand) todoDiscoverySent = true;
         const stopReason = outcome && typeof outcome === 'object' ? outcome.stopReason : undefined;
         if (stopReason === 'error') {
           // pi-acp 0.0.33 answers a turn pi's provider failed with `stopReason: "error"` and

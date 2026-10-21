@@ -412,7 +412,7 @@ same configuration applies when you run the agent in a terminal there:
 | Claude Code | `${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json` | `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN` or `env.ANTHROPIC_API_KEY`, `env.ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`, `model`, `modelPicker.options`, an `apiKeyHelper` for env-variable keys |
 | Codex | `${CODEX_HOME:-~/.codex}/config.toml` | `model`, `model_provider`, and `name` / `base_url` / `wire_api` / `env_key` / `experimental_bearer_token` in `[model_providers.<id>]` |
 | Gemini CLI | `~/.gemini/settings.json`, `~/.gemini/.env` | `model.name`; `GOOGLE_GEMINI_BASE_URL`, `GEMINI_API_KEY` |
-| pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/models.json`, `settings.json` | `providers.<id>.{baseUrl, api, apiKey, models}`; `defaultProvider`, `defaultModel` |
+| pi | `${PI_CODING_AGENT_DIR:-~/.pi/agent}/models.json`, `settings.json` | `providers.<id>.{baseUrl, api, apiKey, models}` and `models[].contextWindow`; `defaultProvider`, `defaultModel` |
 
 - Every change is previewed as a diff (keys masked) and written only after you
   confirm. The daemon re-reads the files first and refuses if they changed since
@@ -430,6 +430,16 @@ same configuration applies when you run the agent in a terminal there:
   until restarted. A Claude change re-runs the auth preflight
   (`daemonState.claudeAuth`). The model ids you configure are added to that
   machine's model picker.
+- pi context windows (B-727): write a model's window after its id, one per line
+  (`glm-5.3 200k`, `kimi-k3 262144`, `deepseek-v4 1M`). Without one, pi assumes
+  128k — it compacts by that number — and the composer's context meter uses a
+  known model with the same id from pi's registry, or shows the token count with
+  no percentage instead of a guessed one. Needs CLI with B-727; on an older CLI
+  the form refuses sizes rather than dropping them.
+- `/compact` in a pi session runs pi's compaction (before B-727 the first message
+  of a session and messages in a project were sent with extra text, and pi
+  answered `/compact` as a chat message). The meter then shows
+  "Compacted · updates next turn" until pi's next answer measures the new context.
 - `~/.gemini/.env` is Gemini's fallback: a `.gemini/.env` or `.env` in the
   session folder (or a parent) takes precedence.
 - Needs a CLI that publishes `modelConfigVersion`; older machines show
