@@ -8,12 +8,15 @@
 //   oversized        answers the prompt with a response line longer than the backend's cap
 //   loadable         advertises loadSession; `session/load` of 'known-session' replays the earlier
 //                    conversation (user + agent chunks, a tool call) then answers; any other id errors (B-633)
+//   dialog-select    asks a pi extension select (pi-ui-*, choice-N) and echoes the outcome (B-632)
+//   dialog-confirm   asks a pi extension confirm (yes/no) and echoes the outcome (B-632)
 import { createInterface } from 'node:readline';
 
 const scenario = process.argv[2] ?? 'end-turn';
 const out = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const notify = (sessionId, update) => out({ method: 'session/update', params: { sessionId, update } });
 
+let pendingDialog = null;
 const rl = createInterface({ input: process.stdin });
 rl.on('line', (line) => {
     let msg;
@@ -38,6 +41,28 @@ rl.on('line', (line) => {
         notify(sessionId, { sessionUpdate: 'tool_call', toolCallId: 'old-call', title: 'old tool', kind: 'execute', status: 'completed' });
         notify(sessionId, { sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'compact', description: 'c' }] });
         setTimeout(() => out({ id: msg.id, result: { models: { availableModels: [], currentModelId: 'm1' } } }), 10);
+        return;
+    }
+    if (msg.id !== undefined && msg.method === undefined && pendingDialog) {
+        const { sessionId, promptId } = pendingDialog;
+        pendingDialog = null;
+        const outcome = msg.result?.outcome;
+        notify(sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `dialog:${outcome?.outcome === 'selected' ? outcome.optionId : 'cancelled'}` } });
+        out({ id: promptId, result: { stopReason: 'end_turn' } });
+        return;
+    }
+    if (msg.method === 'session/prompt' && (scenario === 'dialog-select' || scenario === 'dialog-confirm')) {
+        const sessionId = msg.params.sessionId;
+        pendingDialog = { sessionId, promptId: msg.id };
+        const select = scenario === 'dialog-select';
+        out({ id: 9001, method: 'session/request_permission', params: {
+            sessionId,
+            toolCall: { toolCallId: 'pi-ui-7', title: select ? 'Pick a color' : 'Proceed?', kind: 'other', status: 'pending',
+                rawInput: select ? { method: 'select', title: 'Pick a color', options: ['Red', 'Blue'] } : { method: 'confirm', title: 'Proceed?' } },
+            options: select
+                ? [{ optionId: 'choice-0', name: 'Red', kind: 'allow_once' }, { optionId: 'choice-1', name: 'Blue', kind: 'allow_once' }]
+                : [{ optionId: 'yes', name: 'Yes', kind: 'allow_once' }, { optionId: 'no', name: 'No', kind: 'reject_once' }],
+        } });
         return;
     }
     if (msg.method === 'session/prompt') {

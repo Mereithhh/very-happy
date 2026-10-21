@@ -13,7 +13,7 @@ import { acpNoticeMessage, type AcpNotice } from './acpNotices';
 import { describeAcpTurnFailure } from './acpTurnFailure';
 import { DefaultTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
-import { PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, type SessionEnvelope } from '@slopus/happy-wire';
+import { PI_STEER_CAPABILITY, PROMPT_QUEUE_CAPABILITY, PROJECT_SESSION_CAPABILITY, type SessionEnvelope } from '@slopus/happy-wire';
 import { createProjectInjector } from '@/projects/injector';
 import { sharedProjectsClient } from '@/projects/client';
 import { logger } from '@/ui/logger';
@@ -29,6 +29,8 @@ import type { Session as ApiSession } from '@/api/types';
 import { claimSessionOrExit } from '@/utils/sessionLock';
 import { applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
 import { piRestartNotice, readAcpReconnectEnv } from './acpSessionResume';
+import { OUT_OF_TURN_QUIET_MS, outOfTurnAction } from './acpOutOfTurn';
+import { createPiSteerChannel } from './piSteerChannel';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { StreamRelay } from '@/claude/streamRelay';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
@@ -464,6 +466,9 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
   }
 }
 
+/** B-632: how long a steer waits for the pi extension's long poll to take it. */
+const PI_STEER_OFFER_TIMEOUT_MS = 5_000;
+
 function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' {
   if (agentName === 'gemini') {
     return 'gemini';
@@ -683,8 +688,15 @@ export async function runAcp(opts: {
   // meta-agent spawn (env-only, no .mcp.json); only the in-process MCP server
   // reached via HAPPY_MCP_URL can expose the sessions_* tools to a pi session.
   const isAssistantVariant = process.env.HAPPY_SESSION_VARIANT === 'assistant';
+  // B-632 ①: steer into a running pi turn through the Very Happy pi extension.
+  const piSteer = opts.agentName === 'pi' ? createPiSteerChannel() : null;
+  piSteer?.onReady(() => {
+    logger.debug(`[${opts.agentName}] pi extension connected to the steer channel`);
+    session.updateMetadata((current) => ({ ...current, capabilities: [...new Set([...(current.capabilities ?? []), PI_STEER_CAPABILITY])] }));
+  });
   const happyServer = await startHappyServer(session, {
     assistant: isAssistantVariant,
+    ...(piSteer ? { piSteer } : {}),
     ...(opts.agentName === 'pi' ? { onContextUsage: (contextUsage: import('@slopus/happy-wire').ContextUsage) => {
       session.updateAgentState(state => ({ ...state, contextUsage }));
     } } : {}),
@@ -711,6 +723,7 @@ export async function runAcp(opts: {
       ...teamsPiEnv,
       HAPPY_MCP_URL: happyServer.url,
       ...(happyServer.contextUsageUrl ? { HAPPY_CONTEXT_USAGE_URL: happyServer.contextUsageUrl } : {}),
+      ...(happyServer.steerUrl ? { HAPPY_PI_STEER_URL: happyServer.steerUrl } : {}),
       HAPPY_SESSION_ID: session.sessionId,
       // B-497: sender identity for `very-happy sessions message|peers` in this shell.
       VH_PEER_SESSION_ID: session.sessionId,
@@ -738,6 +751,16 @@ export async function runAcp(opts: {
   // so the lease is held from `startTurn` to that point — same shape as
   // claudeRemote's `updateThinking` and runGemini's "set false ONCE in finally".
   let thinking = false;
+  /** B-632 ③: armed while a synthetic (out-of-turn) turn is open; its expiry ends it. */
+  let outOfTurnTimer: NodeJS.Timeout | null = null;
+  const endOutOfTurn = (reason: string) => {
+    if (!outOfTurnTimer) return;
+    clearTimeout(outOfTurnTimer);
+    outOfTurnTimer = null;
+    logger.debug(`[${opts.agentName}] Out-of-turn output ended (${reason})`);
+    sendEnvelopes(sessionManager.endTurn('completed'));
+    setThinking(false);
+  };
   const setThinking = (next: boolean) => {
     if (thinking === next) {
       return;
@@ -1088,7 +1111,21 @@ export async function runAcp(opts: {
       }
     }
 
+    // B-632 ③: agent output with no prompt of ours running gets a turn of its own.
+    const action = outOfTurnAction(msg, { open: outOfTurnTimer !== null, inPromptTurn: thinking && outOfTurnTimer === null, backendStarted });
+    if (action === 'start') {
+      sendEnvelopes(sessionManager.startTurn());
+      setThinking(true);
+    }
+    if (action === 'start' || action === 'touch') {
+      if (outOfTurnTimer) clearTimeout(outOfTurnTimer);
+      outOfTurnTimer = setTimeout(() => endOutOfTurn('quiet'), OUT_OF_TURN_QUIET_MS);
+      outOfTurnTimer.unref?.();
+    }
+
     sendEnvelopes(sessionManager.mapMessage(msg));
+
+    if (action === 'end') endOutOfTurn('idle');
   };
 
   backend.onMessage(onBackendMessage);
@@ -1123,6 +1160,17 @@ export async function runAcp(opts: {
 
       if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'effort')) {
         currentEffort = message.meta.effort ?? null;
+      }
+
+      // B-632 ①: 「Steer」 on a queued message — into the running pi turn when the
+      // extension takes it; otherwise (nothing running, no extension, attachments,
+      // not taken in time) it is queued as the next turn exactly as before.
+      if (message.meta?.delivery === 'steer' && piSteer?.ready && thinking && !attachments?.length) {
+        if (await piSteer.offer(message.content.text, PI_STEER_OFFER_TIMEOUT_MS)) {
+          logger.debug(`[${opts.agentName}] User message steered into the running turn`);
+          return;
+        }
+        logger.debug(`[${opts.agentName}] Steer not taken; queued for the next turn`);
       }
 
       messageQueue.push(message.content.text, {
@@ -1278,6 +1326,8 @@ export async function runAcp(opts: {
       }
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
+      // A synthetic turn still open (agent output that came by itself) ends before ours.
+      endOutOfTurn('prompt');
       sendEnvelopes(sessionManager.startTurn());
       turnCancelled = false;
       setThinking(true);

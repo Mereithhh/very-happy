@@ -1,9 +1,9 @@
-import { CODEX_STEER_CAPABILITY } from '@slopus/happy-wire';
+import { CODEX_STEER_CAPABILITY, PI_STEER_CAPABILITY } from '@slopus/happy-wire';
 import { normalizeAgentKey } from '@/sync/agentDefaults';
 
 /** Claude's wrapper injects a `delivery: 'steer'` message into its live query. */
 export const CLAUDE_STEER_CAPABILITY = 'claude-steer-v1';
-export { CODEX_STEER_CAPABILITY };
+export { CODEX_STEER_CAPABILITY, PI_STEER_CAPABILITY };
 
 /**
  * Whether the wrapper behind a session takes a message into the turn that is running,
@@ -18,6 +18,8 @@ export function wrapperSupportsSteer(flavor: string | null | undefined, capabili
             return caps.includes(CLAUDE_STEER_CAPABILITY);
         case 'codex':
             return caps.includes(CODEX_STEER_CAPABILITY);
+        case 'pi':
+            return caps.includes(PI_STEER_CAPABILITY);
         default:
             return false;
     }

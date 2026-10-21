@@ -149,3 +149,14 @@ The complete field/compatibility contract and PromQL are in
 `specs/2026-09-connection-metrics.md`. Validate a release using a synthetic event
 from an owned account, its default log record, the matching exported metric,
 and finally a successful collector query; these are separate checks.
+
+## Projects (B-651)
+
+`projects.dashboard.json` (UID `very-happy-projects`) reads the project metrics added in B-651
+(`packages/happy-server/sources/app/monitoring/projectMetrics.ts`): `project_dispatch_total`
+(① dispatch entry points), `attention_open_seconds` (② 等你处理 → opened), `session_peer_messages_total`
+(③ peer messages), `project_ops_total` (④ context reads / digests, notes, offline messages). Labels are
+low-cardinality only (no account / project / session ids). Install it the same way as the
+connection-quality dashboard (managed ConfigMap, `DS_PROMETHEUS` → `prometheus`). The transcript-side
+read-outs (peer token share, `project_context` per-session median, A/B S1/S2/S6) come from
+`node scripts/dev/project-metrics.mjs --since <date> [--json]`, run on each daemon host.
