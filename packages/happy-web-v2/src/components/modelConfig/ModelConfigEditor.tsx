@@ -124,6 +124,7 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
         setForm((f) => ({ ...f, [key]: value }));
         setPending(null);
         setSaved(false);
+        setError(null);
     };
 
     const fileError = view?.files.find((f) => f.error)?.error ?? null;
