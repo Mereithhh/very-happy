@@ -57,6 +57,12 @@ findings and handoffs the same way.
   team's working folder). Pick an existing project instead, or *No project*.
   `team_create` from a session joins that session's project, or creates the
   same-name project.
+- **One live team per conversation** (B-730). A conversation that already leads
+  or works in a team that is not archived cannot create or join another team;
+  the agent is told to keep using `team_delegate` in its own team. *Lead with
+  this conversation* on the Web asks first and, once you confirm, moves the
+  conversation: the old team keeps it in its history, marked as transferred.
+  A restarted, resumed or woken team conversation stays in its team.
 - **Project page → Teams** lists the project's teams, with **New team in this
   project** and **Link a team**. A linked team brings its working folder into
   the project when its computer is not already there.

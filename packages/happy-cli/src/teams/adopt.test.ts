@@ -127,6 +127,21 @@ describe('session adoption', () => {
         expect(await settle(createTeamAdoption('session'))).toHaveProperty('error');
         expect(fetchMock).not.toHaveBeenCalled();
     });
+    it('B-730: a session already in another team gets the verbatim refusal, can change its request, and transfers once confirmed', async () => {
+        const refusal = new Response(JSON.stringify({ error: 'session_in_other_team', teamId: 'roll-pool-cot', teamName: 'roll-pool-cot', message: 'server text is not echoed', token: 'never-leaks' }), { status: 409 });
+        fetchMock.mockImplementationOnce(async () => refusal);
+        const refused = await settle(createTeamAdoption('session'));
+        expect(refused).toMatchObject({ code: 'session_in_other_team', teamId: 'roll-pool-cot', teamName: 'roll-pool-cot', safeToChange: true });
+        expect((refused as { error: string }).error).toContain('team_delegate');
+        expect(JSON.stringify(refused)).not.toContain('never-leaks');
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ sessionId: 'session' });
+        fetchMock.mockClear();
+        const confirmed = await settle(createTeamAdoption('session'), { ...input, requestId: 'adopt-transfer', transfer: true } as any);
+        expect(confirmed).toMatchObject({ status: 'connected' });
+        const bodies = fetchMock.mock.calls.filter(([, options]) => options.method === 'POST').map(([, options]) => JSON.parse(options.body));
+        expect(bodies[0]).toMatchObject({ sessionId: 'session', transfer: true });
+        expect(bodies[1].action).toMatchObject({ type: 'join', sessionId: 'session', transfer: true });
+    });
     it('refuses assigned workers including those with missing scope files', async () => {
         process.env.VH_TEAM_SCOPE_FILE = join(base, 'missing.json');
         expect(createTeamAdoption('session')(input)).toHaveProperty('error');

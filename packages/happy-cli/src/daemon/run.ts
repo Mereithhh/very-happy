@@ -5,6 +5,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import * as tmp from 'tmp';
 import axios from 'axios';
+import { teamRelaunchEnv } from './teams/relaunchScope';
 
 import { ApiClient } from '@/api/api';
 import type { ApiMachineClient } from '@/api/apiMachine';
@@ -1231,6 +1232,13 @@ export async function startDaemon(): Promise<void> {
     // live process wins outright. Precheck failures carry a fixed
     // `resume-precheck:<reason>` prefix the web maps to user-facing text.
     const resumeGates = new Map<string, SpawnGate<SpawnSessionResult>>();
+    const teamRelaunchEnvFor = (happySessionId: string, metadata: Metadata) => teamRelaunchEnv({
+      home: configuration.happyHomeDir,
+      sessionId: happySessionId,
+      metadata,
+      recover: teamWorker ? (operationId, scopeFile) => teamWorker!.recoverScope(operationId, happySessionId, scopeFile) : undefined,
+      log: (message) => logger.debug(`[DAEMON RUN] ${message}`),
+    });
     const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }): Promise<SpawnSessionResult> => {
       let gate = resumeGates.get(happySessionId);
       if (!gate) {
@@ -1337,9 +1345,12 @@ export async function startDaemon(): Promise<void> {
         if (permissionMode) launch.args.push('--permission-mode', permissionMode);
         else if (requestedMode !== undefined) logger.debug(`[DAEMON RUN] resume: ignoring invalid permission mode ${JSON.stringify(requestedMode)}`);
 
+        // B-730: a team member/lead relaunches inside its team (scope env + file).
+        const teamEnv = await teamRelaunchEnvFor(happySessionId, metadata);
         const result = await spawnTrackedHappyProcess({
           args: launch.args,
           cwd: launch.cwd,
+          ...(teamEnv.VH_TEAM_SCOPE_FILE ? { spawnedBy: 'teams' } : {}),
           env: {
             ...process.env,
             // B-297: the credentialStore=file shim must ride every spawn path,
@@ -1356,6 +1367,7 @@ export async function startDaemon(): Promise<void> {
             HAPPY_RECONNECT_SEQ: String(tracked.encryption.seq),
             HAPPY_RECONNECT_METADATA_VERSION: String(tracked.encryption.metadataVersion),
             HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
+            ...teamEnv,
           },
         });
         if (result.type === 'success') {
@@ -1514,9 +1526,12 @@ export async function startDaemon(): Promise<void> {
         // rejection above never burns a slot).
         restartCounts.set(happySessionId, recordRestartAttempt(prior));
 
+        // B-730: see resumeSessionImpl.
+        const teamEnv = await teamRelaunchEnvFor(happySessionId, metadata);
         const result = await spawnTrackedHappyProcess({
           args,
           cwd,
+          ...(teamEnv.VH_TEAM_SCOPE_FILE ? { spawnedBy: 'teams' } : {}),
           env: {
             ...process.env,
             // B-297: the credentialStore=file shim must ride every spawn path,
@@ -1532,6 +1547,7 @@ export async function startDaemon(): Promise<void> {
             HAPPY_RECONNECT_SEQ: String(tracked.encryption.seq),
             HAPPY_RECONNECT_METADATA_VERSION: String(tracked.encryption.metadataVersion),
             HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
+            ...teamEnv,
           },
         });
         if (result.type === 'success') {
