@@ -28,7 +28,7 @@ it('B-698: team settings show the saved harness/model, flag a model outside the 
         expect(model().value).toBe('');
         await act(async () => { modelTrigger().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); });
         const options = [...document.querySelectorAll<HTMLElement>('[role=option]')];
-        expect(options.map((o) => o.title)).toEqual(['Follow the harness default', 'm1 · gw/m1']);
+        expect(options.map((o) => o.title)).toEqual(['Follow the agent default', 'm1 · gw/m1']);
         await act(async () => { options[1].click(); });
         expect(model().value).toBe('gw/m1');
         await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
