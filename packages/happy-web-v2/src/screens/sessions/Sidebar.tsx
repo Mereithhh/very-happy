@@ -68,7 +68,7 @@ import { rowRenameMenuTranslationKeys } from './sidebarRowMenu';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import { useTeamNavigation } from './useTeamNavigation';
-import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberInactive, teamSessionMembership, unstartedTeamMembers } from './teamNavigation';
+import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamSessionMembership, unstartedTeamMembers } from './teamNavigation';
 import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
@@ -549,26 +549,28 @@ export function Sidebar() {
       return { key: sessionId, sessionId, kind: 'session', href: `/session/${encodeURIComponent(sessionId)}`, title: bot.name, subtitle: teamCopy.history, ts: 0, createdAt: 0, teamHistoryLink: true };
     });
   }, [orderedRows, liveTeams, teamCopy.history]);
-  // B-674/B-690: inactive members (teamMemberInactive — archived conversation,
-  // stopped / exited with nothing assigned, or idle past TEAM_MEMBER_IDLE_MS)
-  // fold behind one 「已停用 N 个」 row per team, collapsed by default; the
+  // B-674/B-690: inactive members (happy-wire teamBotActivity — no open task
+  // and no session / archived conversation / exited / idle for 7 days) fold behind one 「已停用 N 个」 row per team, collapsed by default; the
   // choice is device-local (sidebarCollapsedGroups, `team-archived:<id>`) and
   // shared with the Teams page. Opening an inactive member's session reveals
   // the fold for that route only.
+  // A member conversation missing from the active list is archived (B-674's signal).
+  const memberContext = useMemo(() => {
+    const existingIds = new Set((orderedRows ?? []).flatMap(row => row.sessionId ? [row.sessionId] : []));
+    return { sessionArchived: (sessionId: string) => !existingIds.has(sessionId) };
+  }, [orderedRows]);
   const inactiveMembers = useMemo(() => {
     const sessions = new Set<string>();
     const unstarted = new Map<string, Set<string>>();
     if (!orderedRows || liveTeams.length === 0) return { sessions, unstarted };
-    const existingIds = new Set(orderedRows.flatMap(row => row.sessionId ? [row.sessionId] : []));
-    const now = Date.now();
     for (const team of liveTeams) for (const bot of team.bots) {
+      if (!teamMemberInactive(team, bot, memberContext)) continue;
       const sessionId = botHistorySessionId(team, bot);
-      if (!teamMemberInactive(team, bot, !!sessionId && !existingIds.has(sessionId), now)) continue;
       if (sessionId) sessions.add(sessionId);
       else unstarted.set(team.id, new Set([...(unstarted.get(team.id) ?? []), bot.id]));
     }
     return { sessions, unstarted };
-  }, [orderedRows, liveTeams]);
+  }, [orderedRows, liveTeams, memberContext]);
   const inactiveOpenTeams = useMemo(
     () => new Set(liveTeams.filter((team) => !isGroupCollapsed(collapsedGroups, teamInactiveGroupId(team.id))).map((team) => team.id)),
     [liveTeams, collapsedGroups],
@@ -1430,7 +1432,7 @@ export function Sidebar() {
                       return <div key={r.key} className={`sb-team-row${selected ? ' is-selected' : ''}`}>
                         <button type="button" className="sb-team-toggle" aria-expanded={open} aria-label={`${open ? teamCopy.collapse : teamCopy.expand}: ${team.name}`} onClick={() => setExpandedTeams((current) => { const next = new Set(current); if (open) next.delete(team.id); else next.add(team.id); return next; })}><ChevronRight size={15} className={open ? 'is-open' : ''} /></button>
                         <button type="button" className="sb-team-main" data-href={r.href} aria-current={selected ? 'page' : undefined} onClick={() => navigate(r.href)}>
-                          <UsersRound size={17} /><span><strong>{team.name}</strong><small>{team.bots.length ? `${team.bots.length} ${teamCopy.members}` : teamCopy.preparing}</small></span>
+                          <UsersRound size={17} /><span><strong>{team.name}</strong><small>{team.bots.length ? `${teamMemberCount(team, memberContext)} ${teamCopy.members}` : teamCopy.preparing}</small></span>
                           {cmdHeld && i < 9 && <kbd className="sb-row-badge mono">⌘{i + 1}</kbd>}
                         </button>
                       </div>;

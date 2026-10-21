@@ -1,4 +1,4 @@
-import type { TeamBot, TeamState } from '@slopus/happy-wire';
+import { teamBotActivity, type TeamBot, type TeamState } from '@slopus/happy-wire';
 import { Link } from 'react-router-dom';
 import { Circle, UsersRound, CircleCheck, CircleDashed, Clock3, ArrowUpRight, GitBranch, Monitor, Archive, ChevronRight } from 'lucide-react';
 import { useWorkspaceCopy } from './workspaceCopy';
@@ -7,7 +7,7 @@ import { useFirstUseCopy } from './firstUseCopy';
 import { memberTitle, teamRootTask, taskLaunchIssue } from './teamPresentation';
 import { Markdown } from '@/screens/session/Markdown';
 import { taskRows } from './teamView';
-import { botHistorySessionId, teamInactiveGroupId, teamMemberInactive } from '@/screens/sessions/teamNavigation';
+import { botHistorySessionId, teamInactiveGroupId, teamMemberCount, teamMemberInactive } from '@/screens/sessions/teamNavigation';
 import { isGroupCollapsed, setGroupCollapsed, useCollapsedGroups } from '@/screens/sessions/sidebarCollapsedGroups';
 import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
 import { AgentGlyph } from '@/screens/session/AgentChip';
@@ -67,15 +67,16 @@ export function TeamMembers({ team, archivedSessionIds, now }: { team: TeamState
   const navCopy = useTeamNavigationCopy();
   const foldKey = teamInactiveGroupId(team.id);
   const inactiveOpen = !isGroupCollapsed(useCollapsedGroups(), foldKey);
-  const inactive = team.bots.filter(bot => { const sid = botHistorySessionId(team, bot); return teamMemberInactive(team, bot, !!sid && !!archivedSessionIds?.has(sid), now); });
+  const context = { now, sessionArchived: (sessionId: string) => !!archivedSessionIds?.has(sessionId) };
+  const inactive = team.bots.filter(bot => teamMemberInactive(team, bot, context));
   const current = team.bots.filter(bot => !inactive.includes(bot));
   const card = (bot: TeamBot) => {
     const historySessionId = botHistorySessionId(team, bot);
     const active = team.tasks.filter(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status));
-    const content = <><span className="teams-avatar" data-live={!!bot.sessionId && active.some(t => t.status === "running")}><AgentGlyph kind={agentKindOf(bot.assistant)} size={18} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{agentKindLabel(agentKindOf(bot.assistant)) ?? bot.assistant}</small><span>{active[0]?.goal ?? c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? f.starting : f.stopped}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
+    const content = <><span className="teams-avatar" data-live={!!bot.sessionId && active.some(t => t.status === "running")}><AgentGlyph kind={agentKindOf(bot.assistant)} size={18} /></span><span className="teams-member-info"><strong>{memberTitle(bot, f)}</strong><small>{agentKindLabel(agentKindOf(bot.assistant)) ?? bot.assistant}</small><span>{active[0]?.goal ?? c.idle}</span>{!bot.sessionId && <small>{team.operations.some(o => o.botId === bot.id && ["unknown", "failed"].includes(o.status)) ? f.unknown : active.length ? f.starting : f.stopped}</small>}{teamBotActivity(team, bot, context) === 'stopping' && <small className="teams-error">{navCopy.stopping}</small>}{bot.lastEvent && <small>{c.lastEvent} · {tr(`teams.${bot.lastEvent}`)}{bot.lastEventAt ? ` · ${new Date(bot.lastEventAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}` : ''}</small>}</span>{historySessionId && <ArrowUpRight size={16} aria-hidden />}</>;
     return historySessionId ? <Link key={bot.id} className="teams-member" to={`/session/${encodeURIComponent(historySessionId)}`}>{content}</Link> : <div key={bot.id} className="teams-member">{content}</div>;
   };
-  return <section className="teams-members"><h2>{f.membersTitle} <small>{team.bots.length}</small></h2>
+  return <section className="teams-members"><h2>{f.membersTitle} <small>{teamMemberCount(team, context)}</small></h2>
     {team.bots.length === 0 && <p>{c.noMembers}</p>}
     {current.length > 0 && <div className="teams-members-grid">{current.map(card)}</div>}
     {inactive.length > 0 && <details className="teams-members-inactive" open={inactiveOpen} onToggle={(e) => { if (e.currentTarget.open !== inactiveOpen) setGroupCollapsed(foldKey, !e.currentTarget.open); }}>
