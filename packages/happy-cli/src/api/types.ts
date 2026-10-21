@@ -432,6 +432,20 @@ export const DaemonStateSchema = z.object({
     rpcAvailable: z.boolean(),
     detectedAt: z.number(),
   }).passthrough().optional(),
+  /**
+   * B-510: web panels declared in this machine's local settings.json
+   * (`webPanels`), normalized by webPanels/webPanels.ts. Read-only mirror —
+   * nothing on the web/server side can write the local declaration.
+   */
+  webPanels: z.object({
+    panels: z.array(z.object({
+      id: z.string(),
+      title: z.string(),
+      url: z.string(),
+      embed: z.boolean(),
+    })),
+    updatedAt: z.number(),
+  }).optional(),
 })
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>

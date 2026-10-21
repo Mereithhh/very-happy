@@ -13,3 +13,6 @@
 @media (pointer:coarse) { .browser-preview-toolbar input { height:44px; font-size:var(--fs-16); } .browser-preview-toolbar button,.browser-preview-toolbar a { width:44px; height:44px; } }
 
 .browser-preview-toolbar input:focus { border-color:var(--line-2); outline:0; }
+
+/* B-510 machine panels: fixed URL — the origin replaces the address input. */
+.browser-preview-origin { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-12); color:var(--text-dim); }

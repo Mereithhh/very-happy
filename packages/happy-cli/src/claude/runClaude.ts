@@ -643,7 +643,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Start Happy MCP server (assistant variant additionally registers the
     // machine management tool surface — see assistant/assistantTools.ts)
-    const happyServer = await startHappyServer(session, { assistant: isAssistantVariant, selfReportState: boardSelfReport });
+    const happyServer = await startHappyServer(session, { assistant: isAssistantVariant, selfReportState: boardSelfReport, push: { sendAttention: (input) => api.push().sendAttention(input) } });
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
 
     // Variable to track current session instance (updated via onSessionReady callback)

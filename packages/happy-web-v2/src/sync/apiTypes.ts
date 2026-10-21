@@ -259,9 +259,11 @@ export const ApiEphemeralMachineActivityUpdateSchema = z.object({
 export const ApiEphemeralSessionEventUpdateSchema = z.object({
     type: z.literal('session-event'),
     sessionId: z.string(),
-    kind: z.enum(['done', 'permission', 'question']),
+    // B-510: 'attention' = request_human; `url` its in-app target (both additive).
+    kind: z.enum(['done', 'permission', 'question', 'attention']),
     title: z.string(),
     body: z.string(),
+    url: z.string().optional(),
     timestamp: z.number(),
 });
 

@@ -551,7 +551,7 @@ describe('runAcp', () => {
       vi.stubEnv('HAPPY_SESSION_VARIANT', 'assistant');
       await runUntilKilled();
       expect(mocks.mockStartHappyServer).toHaveBeenCalledTimes(1);
-      expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: true, piSteer: expect.any(Object), onContextUsage: expect.any(Function) });
+      expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: true, piSteer: expect.any(Object), push: expect.any(Object), onContextUsage: expect.any(Function) });
     });
 
     it('passes assistant=false when HAPPY_SESSION_VARIANT is unset', async () => {
@@ -559,7 +559,7 @@ describe('runAcp', () => {
       delete process.env.HAPPY_SESSION_VARIANT;
       await runUntilKilled();
       expect(mocks.mockStartHappyServer).toHaveBeenCalledTimes(1);
-      expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: false, piSteer: expect.any(Object), onContextUsage: expect.any(Function) });
+      expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: false, piSteer: expect.any(Object), push: expect.any(Object), onContextUsage: expect.any(Function) });
     });
   });
 

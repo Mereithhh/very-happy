@@ -697,6 +697,7 @@ export async function runAcp(opts: {
   const happyServer = await startHappyServer(session, {
     assistant: isAssistantVariant,
     ...(piSteer ? { piSteer } : {}),
+    push: { sendAttention: (input) => api.push().sendAttention(input) },
     ...(opts.agentName === 'pi' ? { onContextUsage: (contextUsage: import('@slopus/happy-wire').ContextUsage) => {
       session.updateAgentState(state => ({ ...state, contextUsage }));
     } } : {}),

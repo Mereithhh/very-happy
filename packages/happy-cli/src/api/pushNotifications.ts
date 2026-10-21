@@ -14,7 +14,7 @@ export interface PushToken {
     updatedAt: number
 }
 
-export type SessionNotificationKind = 'done' | 'permission' | 'question'
+export type SessionNotificationKind = 'done' | 'permission' | 'question' | 'attention'
 
 function getSessionTitle(metadata: Metadata | null | undefined): string {
     const summaryText = metadata?.summary?.text?.trim()
@@ -55,6 +55,8 @@ export function getSessionNotificationTitle(
             return 'Permission request'
         case 'question':
             return 'Clarification needed'
+        case 'attention':
+            return 'Needs you'
     }
 }
 
@@ -314,5 +316,44 @@ export class PushNotificationClient {
                 logger.debug('[PUSH] sendSessionNotification failed:', error)
             }
         })()
+    }
+
+    /**
+     * B-510 `request_human` / `very-happy attention --session`: an awaited
+     * push-event `attention` (title "Needs you", body = the reason, data.url =
+     * panel deep link or the session). A server that predates the kind answers
+     * 400; then the same push goes out as `question`, so the person is still
+     * reached (compat matrix in specs/2026-09-machine-web-panels.md).
+     */
+    async sendAttention(params: { sessionId: string; reason: string; url: string; sessionTitle?: string }): Promise<{ sent: boolean; kind?: SessionNotificationKind; error?: string }> {
+        const post = (kind: SessionNotificationKind) => axios.post(
+            `${this.baseUrl}/v1/sessions/${encodeURIComponent(params.sessionId)}/push-event`,
+            {
+                kind,
+                title: getSessionNotificationTitle(kind),
+                body: params.reason,
+                data: { sessionId: params.sessionId, kind, url: params.url, reason: params.reason, ...(params.sessionTitle ? { sessionTitle: params.sessionTitle } : {}) },
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json',
+                    'X-Happy-Client': `cli-daemon/${configuration.currentCliVersion}`,
+                },
+                timeout: 15000,
+            },
+        )
+        try {
+            await post('attention')
+            return { sent: true, kind: 'attention' }
+        } catch (error: any) {
+            if (error?.response?.status !== 400) return { sent: false, error: error?.response ? `HTTP ${error.response.status}` : String(error?.message ?? error) }
+        }
+        try {
+            await post('question')
+            return { sent: true, kind: 'question' }
+        } catch (error: any) {
+            return { sent: false, error: error?.response ? `HTTP ${error.response.status}` : String(error?.message ?? error) }
+        }
     }
 }

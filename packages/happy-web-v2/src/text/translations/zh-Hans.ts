@@ -4023,6 +4023,22 @@ export const zhHans: TranslationStructure = {
         offlineHelp: '• 确保您的计算机在线\n• 运行 `very-happy daemon status` 进行诊断\n• 在诊断页查看 relay 确认的精确版本升级命令',
     },
 
+    webPanels: {
+        menuSection: '机器面板',
+        missingTitle: '面板不可用',
+        missingBody: '这台机器已不再声明这个面板，或 daemon 还没上报。面板在机器上的 ~/.happy/settings.json（webPanels）里配置。',
+        openNewWindow: '在新窗口打开',
+        reload: '刷新面板',
+        loading: '正在加载面板…',
+        slow: '加载时间较长。此设备可能访问不到该地址，可在新窗口打开确认。',
+        linkOnly: '这个页面不能嵌入 Very Happy 显示，请在新窗口打开。',
+        mixedContent: '这个面板是 http:// 地址，安全（https）页面无法嵌入。请在新窗口打开，或给面板配置 https:// 地址。',
+        machineSection: '网页面板',
+        machineFooter: '在这台机器的 ~/.happy/settings.json 中声明。浏览器直接连接各地址，不经过中继。',
+        attentionTitle: '需要你介入',
+        attentionOpenPanel: '打开面板',
+        attentionDismiss: '知道了',
+    },
     machine: {
         noMachines: '没有已连接的机器',
         noMachinesDescription: '在电脑上启动 Happy 守护进程后会显示在这里。',

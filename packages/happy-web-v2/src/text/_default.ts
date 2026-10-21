@@ -4180,6 +4180,22 @@ export const en = {
         offlineHelp: '• Make sure your computer is online\n• Run `very-happy daemon status` to diagnose\n• Open Diagnostics for the relay-approved exact update command',
     },
 
+    webPanels: {
+        menuSection: 'Machine panels',
+        missingTitle: 'Panel not available',
+        missingBody: 'This machine no longer declares this panel, or its daemon has not reported it yet. Panels are set in ~/.happy/settings.json (webPanels) on the machine.',
+        openNewWindow: 'Open in a new window',
+        reload: 'Reload panel',
+        loading: 'Loading panel…',
+        slow: 'Taking longer than expected. This device may not reach the address — open it in a new window to check.',
+        linkOnly: 'This page cannot be shown inside Very Happy. Open it in a new window.',
+        mixedContent: 'This panel uses a plain http:// address, which a secure (https) page cannot embed. Open it in a new window, or give the panel an https:// address.',
+        machineSection: 'Web panels',
+        machineFooter: 'Declared in ~/.happy/settings.json on this machine. Your browser connects to each address directly; nothing goes through the relay.',
+        attentionTitle: 'Needs you',
+        attentionOpenPanel: 'Open panel',
+        attentionDismiss: 'Dismiss',
+    },
     machine: {
         noMachines: 'No machines connected',
         noMachinesDescription: 'Start the Happy daemon on a computer to see it here.',

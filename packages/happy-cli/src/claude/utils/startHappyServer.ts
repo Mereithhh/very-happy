@@ -31,6 +31,9 @@ import {
     createSelfReportState, normalizeAttention, normalizePhase, normalizeProgress, shouldAcceptSelfReport,
 } from "./boardReport";
 import { registerReportProgressTool } from "./reportProgressTool";
+import { createRequestHuman, REQUEST_HUMAN_TOOL_DESCRIPTION, REQUEST_HUMAN_TOOL_NAME, requestHumanResultText, type RequestHumanResult } from "./requestHuman";
+import { readSettings } from "@/persistence";
+import { getSessionNotificationBody } from "@/api/pushNotifications";
 import { checkPreviewPath } from "./previewPath";
 import { checkDownloadTarget } from "./downloadTarget";
 
@@ -41,6 +44,8 @@ interface HappyMcpHandlers {
     openPreview: (path: string, mode: 'file' | 'diff', download?: boolean) => Promise<{ delivered: boolean; resolved?: string; error?: string; note?: string }>;
     /** B-132: claude self-reports progress onto the task board. */
     reportProgress: (progress: string, attention: BoardAttention, phase?: BoardPhase) => Promise<{ accepted: boolean; error?: string }>;
+    /** B-510: ask a person to step in (push + board blocked). */
+    requestHuman: (reason: string, panel?: string) => Promise<RequestHumanResult>;
 }
 
 export interface StartHappyServerOptions {
@@ -59,6 +64,8 @@ export interface StartHappyServerOptions {
      * Normal sessions keep exactly the stock two tools.
      */
     assistant?: boolean;
+    /** B-510: push client for `request_human` (absent → the tool only marks the board). */
+    push?: { sendAttention: (input: { sessionId: string; reason: string; url: string; sessionTitle?: string }) => Promise<{ sent: boolean; kind?: string; error?: string }> };
 }
 
 function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions, sessionId?: string, client?: ApiSessionClient): McpServer {
@@ -173,6 +180,20 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
         };
     });
 
+    // B-510 request_human —— board blocked + push-event `attention` (panel deep link).
+    mcp.registerTool(REQUEST_HUMAN_TOOL_NAME, {
+        description: REQUEST_HUMAN_TOOL_DESCRIPTION,
+        title: 'Ask the user to step in',
+        inputSchema: {
+            reason: z.string().describe('What you need from the user, one short line (no secrets)'),
+            panel: z.string().optional().describe("Id of this machine's web panel that shows what you are working in (from ~/.happy/settings.json webPanels)"),
+        },
+    }, async (args) => {
+        const response = await handlers.requestHuman(String(args.reason ?? ''), args.panel);
+        logger.debug('[happyMCP] request_human response:', response);
+        return { content: [{ type: 'text', text: requestHumanResultText(response) }], isError: response.error === 'reason must be a non-empty string' };
+    });
+
     // B-132 report_progress —— 写 session metadata 的 board 字段，复用既有 sessions push。
     // B-556: the schema (incl. optional phase) lives in reportProgressTool.ts, shared with the stdio bridge.
     registerReportProgressTool(mcp, async (args) => {
@@ -285,6 +306,16 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
                 return { delivered: false, truncated: false, totalBytes: 0, error: String(error) };
             }
         },
+        requestHuman: createRequestHuman({
+            sessionId: client.sessionId,
+            machineId: () => client.getMetadata()?.machineId,
+            readPanels: async () => (await readSettings()).webPanels,
+            // Same board write (and attention-change throttle bypass) as report_progress.
+            reportBlocked: (reason) => handlers.reportProgress(reason, 'blocked'),
+            sendAttention: (input) => options?.push
+                ? options.push.sendAttention({ ...input, sessionTitle: getSessionNotificationBody(client.getMetadata()) })
+                : Promise.resolve({ sent: false, error: 'push is not available in this runner' }),
+        }),
     };
 
     const contextPath = '/runtime-context/' + randomUUID();
@@ -384,6 +415,7 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
             CLIPBOARD_TOOL_NAME,
             PREVIEW_TOOL_NAME,
             REPORT_PROGRESS_TOOL_NAME,
+            REQUEST_HUMAN_TOOL_NAME,
             ...TEAM_TOOL_NAMES,
             ...AUTOMATION_TOOL_NAMES,
             ...SESSION_PEER_TOOL_NAMES,
