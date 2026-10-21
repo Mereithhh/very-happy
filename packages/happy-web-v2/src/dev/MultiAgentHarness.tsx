@@ -73,7 +73,7 @@ function peer(id: string, text: string): UserTextMessage {
 }
 const FOOT = '\n\nThis message comes from another agent session on this machine, not from the user.';
 const PEERS: Message[] = [
-    peer('peer-msg', `[Very Happy session message m1 from "修复 relay 断线重连" cmh2x9relay01; agent claude; cwd /Users/dev/very-happy]\n我改完了 apiSocket 的重连退避，你那边的 sync 测试可以重跑了。${FOOT}`),
+    peer('peer-msg', `[Very Happy session message m1 from "修复 relay 断线重连" cmh2x9relay01; agent claude; cwd /Users/dev/very-happy]\n我改完了 apiSocket 的重连退避：\n1. 首次 1s，上限 30s\n2. 恢复后立即 checkLiveness\n\n你那边的 sync 测试可以重跑了。${FOOT}`),
     peer('peer-remote', `[Very Happy session message m2 from "Codex 发布检查" cmh2x9codex02; agent codex; cwd /srv/vh; machine dev-sg]\n发布前请确认 happy-wire 已经 build，dist 是 gitignore 的。${FOOT}`),
     peer('peer-term', `[Very Happy session message m3 from "zsh" cmh2x9term03; agent terminal-mirror; cwd /Users/dev]\npnpm test 全绿${FOOT}`),
     peer('peer-conflict', '[Very Happy edit conflict c1; file packages/happy-web-v2/src/screens/session/MessageView.tsx; more 1; peer "流式 markdown" cmh2x9md04; agent claude; cwd /Users/dev/very-happy; peer edited 40s ago]\nAnother session edited the same file.\nFiles:\n- packages/happy-web-v2/src/screens/session/MessageView.tsx\n- packages/happy-web-v2/src/screens/session/Markdown.tsx'),
@@ -88,10 +88,10 @@ const TEAM: TeamState = {
     ],
     tasks: [
         { id: 't-root', parentTaskId: null, goal: '完成 1.9 发布前验收', acceptance: ['门禁全绿'], goalVersion: 1, ownerBotId: null, assigneeBotId: 'lead', status: 'running', attempts: [{ id: 'a0', botId: 'lead', status: 'running', goalVersion: 1, generation: 1, result: null }] as never, currentAttemptId: 'a0', cleanup: 'none' },
-        { id: 't-web', parentTaskId: 't-root', goal: '审阅 web 侧子代理 UI 改动', acceptance: ['截图齐全'], goalVersion: 1, ownerBotId: 'lead', assigneeBotId: 'b-web', status: 'submitted', attempts: [{ id: 'a1', botId: 'b-web', status: 'submitted', goalVersion: 1, generation: 1, result: '两处溢出已修，390px 无横向滚动。' }] as never, currentAttemptId: 'a1', cleanup: 'none' },
+        { id: 't-web', parentTaskId: 't-root', goal: '审阅 web 侧子代理 UI 改动\n- 390px 无横向滚动\n- 深浅主题各截一张', acceptance: ['截图齐全'], goalVersion: 1, ownerBotId: 'lead', assigneeBotId: 'b-web', status: 'submitted', attempts: [{ id: 'a1', botId: 'b-web', status: 'submitted', goalVersion: 1, generation: 1, result: '两处溢出已修：\n1. ToolGroupView 标题\n2. SubagentDock 行\n\n390px 无横向滚动。' }] as never, currentAttemptId: 'a1', cleanup: 'none' },
         { id: 't-cli', parentTaskId: 't-root', goal: '跑 CLI 六格矩阵', acceptance: ['6/6'], goalVersion: 1, ownerBotId: 'lead', assigneeBotId: 'b-cli', status: 'queued', attempts: [{ id: 'a2', botId: 'b-cli', status: 'pending', goalVersion: 1, generation: 1, result: null }] as never, currentAttemptId: 'a2', cleanup: 'none' },
     ],
-    messages: [{ id: 'tm1', taskId: 't-web', senderBotId: 'b-web', recipientBotId: 'lead', body: 'Submitted', deliveredAt: NOW, createdAt: NOW, source: 'agent' }],
+    messages: [{ id: 'tm1', taskId: 't-web', senderBotId: 'b-web', recipientBotId: 'lead', body: '已提交：\n- PR #12 绿\n- 截图在 tmp/b614/', deliveredAt: NOW, createdAt: NOW, source: 'agent' }],
     operations: [],
 };
 const TEAM_MSG = { preview: 'Submitted: 两处溢出已修，390px 无横向滚动。', raw: '[Very Happy team message tm1]\nTask t-web submitted:\n两处溢出已修，390px 无横向滚动。' };
