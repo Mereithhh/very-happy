@@ -7,7 +7,7 @@ import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { createChatOrConfigure } from '@/app/newChat';
 import { createTerminalOrPick } from '@/app/newTerminal';
 import { NewSessionModal } from './NewSessionModal';
-import { AsciiTide } from './AsciiTide';
+import { AsciiField } from '@/ui/asciiField/AsciiField';
 import './emptyDetail.css';
 
 export function EmptyDetail() {
@@ -16,8 +16,9 @@ export function EmptyDetail() {
   const [showNewChat, setShowNewChat] = useState(false);
   return (
     <main className="empty-detail">
+      {/* B-720: full-area depth field (was B-700's single tide strip). */}
+      <AsciiField preset="empty" mark />
       <div className="empty-detail__content">
-        <AsciiTide />
         <h1>{t('emptyState.pickUpTitle')}</h1>
         <p>{t('emptyState.pickUpDescription')}</p>
         <div className="empty-detail__actions">

@@ -834,3 +834,12 @@
 .sb-section-name:focus-visible { outline: none; background: var(--fill-hover); color: var(--text); }
 .sb-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (pointer: coarse) { .sb-section-name { min-height: 44px; } }
+
+/* B-720 — sidebar ASCII field: only the bottom strip (footer + the list's tail,
+   usually empty space), faded upward, far below text contrast. It is the first
+   child and positioned; the rows that can sit over it are positioned too, so
+   they paint above it without isolating .sb (inline modals keep their z-index). */
+.sb { position: relative; }
+.sb-ascii { position: absolute; right: 0; bottom: 0; left: 0; height: 168px; pointer-events: none; -webkit-mask-image: linear-gradient(transparent 0, var(--text) 70%); mask-image: linear-gradient(transparent 0, var(--text) 70%); }
+.sb-ascii > .ascii-field { z-index: auto; }
+.sb-footer, .sb-ratelimit { position: relative; }

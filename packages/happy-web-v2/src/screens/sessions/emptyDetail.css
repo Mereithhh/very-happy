@@ -1,9 +1,10 @@
-.empty-detail { flex: 1; min-width: 0; display: grid; place-items: center; padding: var(--sp-6); background: var(--bg-0); }
-.empty-detail__content { width: min(100%, 560px); text-align: center; }
+.empty-detail { position: relative; isolation: isolate; overflow: hidden; flex: 1; min-width: 0; display: grid; place-items: center; padding: var(--sp-6); background: var(--bg-0); }
+.empty-detail__content { position: relative; z-index: 1; width: min(100%, 560px); text-align: center; }
 .empty-detail h1 { margin: 0 0 var(--sp-2); font-size: var(--fs-24); }
 .empty-detail p { margin: 0; color: var(--text-dim); font-size: var(--fs-14); line-height: 1.6; }
 .empty-detail__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin-top: var(--sp-5); }
 .empty-detail__actions button { min-height: 44px; }
-/* B-700: decorative tide above the title — quiet ink, never wider than the column. */
-.ascii-tide { position: relative; width: 100%; margin: 0 0 var(--sp-5); overflow: hidden; font-family: var(--font-mono); font-size: var(--fs-12); line-height: 1.15; color: var(--text-faint); white-space: pre; text-align: left; user-select: none; pointer-events: none; }
-@media (max-width: 600px) { .ascii-tide { font-size: var(--fs-11); } }
+/* B-720: the depth field fills the area; a soft canvas-coloured pool under the
+   copy keeps title/description/buttons AA however dense the field gets. */
+.empty-detail > .ascii-field { z-index: 0; }
+.empty-detail__content::before { position: absolute; inset: calc(-1 * var(--sp-8)) calc(-1 * var(--sp-10)); z-index: -1; border-radius: var(--r-pill); background: radial-gradient(closest-side, var(--bg-0) 55%, color-mix(in srgb, var(--bg-0) 70%, transparent) 78%, transparent); pointer-events: none; content: ''; }

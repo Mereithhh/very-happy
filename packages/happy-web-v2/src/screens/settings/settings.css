@@ -598,3 +598,8 @@ input.set-value:focus {
 .settings-content .vh-item.is-setting-target,
 .settings-content .vh-itemgroup.is-setting-target > .vh-itemgroup__body { background:var(--bg-3); }
 .settings-content [data-setting-id][tabindex="-1"]:focus { outline:none; }
+
+/* B-720 — a very faint ASCII band behind every settings page header: it bleeds
+   past the header box and fades out at the edges so it reads as a band, not a card. */
+.set-header { position: relative; isolation: isolate; }
+.set-header > .set-header__ascii { inset: calc(-1 * var(--sp-6)) calc(-1 * var(--sp-5)) calc(-1 * var(--sp-3)); z-index: -1; -webkit-mask-image: linear-gradient(90deg, var(--text) 0, var(--text) 55%, transparent 100%), linear-gradient(var(--text) 0, var(--text) 55%, transparent 100%); -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, var(--text) 0, var(--text) 55%, transparent 100%), linear-gradient(var(--text) 0, var(--text) 55%, transparent 100%); mask-composite: intersect; }

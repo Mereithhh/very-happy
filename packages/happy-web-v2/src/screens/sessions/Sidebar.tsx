@@ -98,6 +98,7 @@ import { Modal } from '@/modal';
 import '../session/shared.css';
 import { dismissFeatureTip, useFeatureTipAnchor } from '@/components/featureTips/FeatureTips';
 import { BRAND } from '@/app/brand';
+import { AsciiField } from '@/ui/asciiField/AsciiField';
 
 function rowHref(r: Row): string {
   return r.href;
@@ -1210,6 +1211,10 @@ export function Sidebar() {
 
   return (
     <div className="sb">
+      {/* B-720: a barely-there ASCII field behind the footer / list tail. First
+          child + positioned rows after it = painted under every row, no new
+          stacking context (inline modals here keep their z-index). */}
+      <div className="sb-ascii"><AsciiField preset="sidebar" /></div>
       <header className="sb-header">
 
         <button className="sb-brand sb-brand--button" type="button" onClick={() => navigate('/help')} title={t('sidebar.openHelp')} aria-label={t('sidebar.openHelp')}>

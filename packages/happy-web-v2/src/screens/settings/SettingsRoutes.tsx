@@ -1,5 +1,6 @@
 import { useTeamNavigationCopy } from '@/screens/sessions/teamNavigationCopy';
 import { CHAT_TEXT_SCALE, CHAT_TEXT_SIZES, useChatTextSize } from '@/ui/chatTextSize';
+import { useAsciiMotion } from '@/ui/asciiField/asciiMotionPreference';
 import { EffortSlider } from '@/components/EffortSlider';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
@@ -353,6 +354,8 @@ function Appearance() {
   const [wrapDiffLines, setWrapDiffLines] = useSettingMutable('wrapLinesInDiffs');
   // B-582: device-local chat type scale (ui/chatTextSize.ts), not synced.
   const [chatTextSize, setChatTextSize] = useChatTextSize();
+  // B-720: device-local switch for every AsciiField backdrop (ui/asciiField).
+  const [backgroundMotion, setBackgroundMotion] = useAsciiMotion();
   const [preferredLanguage, setPreferredLanguage] = useSettingMutable('preferredLanguage');
   // device-local: what `/` shows when nothing is open (empty detail vs board)
   const [homeView, setHomeView] = useLocalSettingMutable('homeView');
@@ -432,6 +435,15 @@ function Appearance() {
               onClick={() => setChatTextSize(size)}
             />
           ))}
+        </ItemGroup>
+
+        <ItemGroup title={t('settingsAppearance.backgroundMotion')}>
+          <Item
+            settingId="appearance.backgroundMotion"
+            title={t('settingsAppearance.backgroundMotion')}
+            subtitle={t('settingsAppearance.backgroundMotionDescription')}
+            right={<Toggle checked={backgroundMotion} onChange={setBackgroundMotion} label={t('settingsAppearance.backgroundMotion')} />}
+          />
         </ItemGroup>
 
         <ItemGroup title={teamCopy.title}><Item settingId="appearance.teamsEntry" title={teamCopy.show} subtitle={teamCopy.hint} right={<Toggle checked={happyBotEntryVisible} onChange={setHappyBotEntryVisible} />} /></ItemGroup>
