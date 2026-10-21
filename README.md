@@ -390,6 +390,11 @@ structured parity with Claude.
 - Task board, todo-provider commands, notes, notifications, Web Push, and HTTPS
   account webhooks that retry transient failures, with delivery counts in
   **Settings → Diagnostics**.
+- Custom models and providers per machine and agent: **Settings → Models &
+  providers** or **Custom…** in the model picker writes base URL, API key (or an
+  env-variable reference) and models into Claude Code / Codex / Gemini / pi's own
+  config files on that machine, with a masked diff preview, backups and restore
+  ([details](docs/configuration.md#custom-models-and-providers-b-688)).
 - Machine web panels: declare noVNC, a browser dashboard or any local page in the
   machine's own settings.json and open it from the session workspace or machine
   page; agents call `request_human` to get a person, and the push opens the panel
