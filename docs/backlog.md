@@ -24,7 +24,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-712 | **CLI publish 的 promote 读 smoke run 有竞态**：run 已显示 completed，windows/node24 那格 job 结论仍是 in_progress/null，被判为失败（0.2.180 发版时撞上）→ 等所有 job 级 conclusion 落定再判，缺格不算通过 | debt | 第二版 CLI 0.2.180 发版 | todo | |
+| B-712 | **CLI publish 的 promote 读 smoke run 有竞态**：run 已显示 completed，windows/node24 那格 job 结论仍是 in_progress/null，被判为失败（0.2.180 publish 39609083643 第 1 次 promote 被拒，等那格 success 后重跑通过）→ 等所有 job 级 conclusion 落定再判，缺格不算通过 | debt | 第二版 CLI 0.2.180 发版 | todo | |
 | B-711 | **蓝绿切流停旧槽后线上约 9s 不可用**（deploy run 39607760413，exit=5 phase=after-old-stop）：Caddy 13:31:05.06 reload，blue 05.83 即退出（隔 0.8s），origin probe 06.8–15.5 连续超时；同窗 green 260 connect / 306 disconnect / 412 auth，重连风暴压住新槽 → 旧槽停止前等连接排空，和/或客户端重连加抖动退避 | bug | 第二版发版 | todo | |
 | B-709 | daemon 对 worktree 准备之外的通用 spawn 失败仍每 5s 重试一次 → 统一有界退避；另：worker 委派子成员时继承父成员 worktree 作为源仓库，语义未写进文档 | debt | B-706 顺带 | todo | |
 | B-705 | `scripts/dev/mutation-check.mjs` 的 `--mutate` 字面量以冒号开头（如 `::not(`）时解析错，报出假的 0/1 caught → 修参数解析并加用例 | debt | B-699 顺带 | todo | |
