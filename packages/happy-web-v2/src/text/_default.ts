@@ -2644,7 +2644,7 @@ export const en = {
                 harness: 'A missing Claude Code or pi can be installed from the web; the daemon installs it for the current user and reports progress.',
                 playbook: 'Team leads follow a default playbook: delegate first, run independent work in parallel, keep members off the same files, record decisions in the team’s project, and check evidence before accepting. Members read the project context before they start.',
                 project: 'Team leads and members start with their team project’s instructions and decisions, and can add to its log.',
-                pi: 'pi sessions report context use from the latest turn against the model’s real window, and the meter drops after compaction.',
+                pi: 'pi’s context meter reads against the model’s real window: set it per model in Settings → Models & providers (glm-5.3 200k), or it is inferred from a known model, or shown as unknown. /compact really compacts, and the meter updates on the next answer.',
             },
             oct21b: {
                 tagline: 'Today’s second big update · Oct 21',
