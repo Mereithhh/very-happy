@@ -1845,9 +1845,10 @@ export const en = {
         newProject: 'New project',
         newProjectPrompt: 'Project name',
         projectsUnavailable: 'This server does not support projects yet — sessions are grouped by folder.',
-        tagNoticeTitle: 'Tag grouping is now part of projects',
-        tagNoticeBody: 'Turn a tag into a project: a project named after it, with every session whose first tag it is.',
-        tagNoticeConvert: 'Turn into project',
+        tagNoticeTitle: 'Group by tag is back',
+        tagNoticeBody: 'The group menu now offers project, tag, or no grouping. A tag group can also become a project in one step.',
+        tagNoticeUse: 'Group by tag',
+        tagToProject: ({ tag }: { tag: string }) => `Turn #${tag} into a project`,
         tagNoticeDismiss: 'Dismiss',
         openWorkspaceChanges: 'Open workspace changes',
         // B-091 priority marker (the `priority` convention tag)
