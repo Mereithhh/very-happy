@@ -1441,10 +1441,10 @@ export class ApiMachineClient {
                     // B-587 capability + setting (same restamp discipline).
                     ...(this.agentHibernationIdleMs !== null ? { agentHibernation: { idleMs: this.agentHibernationIdleMs, rpcAvailable: true, detectedAt: now } } : {}),
                     // B-510: re-ship the declared panels (also clears a stale list).
-                    ...(this.webPanels !== null ? { webPanels: { panels: this.webPanels, updatedAt: now } } : {}),
+                    ...(Array.isArray(this.webPanels) ? { webPanels: { panels: this.webPanels, updatedAt: now } } : {}),
                 };
             });
-            if (this.webPanels !== null) this.webPanelsSignatureSent = webPanelsSignature(this.webPanels);
+            if (Array.isArray(this.webPanels)) this.webPanelsSignatureSent = webPanelsSignature(this.webPanels);
             // From here on, only CHANGES push (signature diff inside the manager).
             this.webTerminal.startListTracking((terminals) => this.pushTerminalList(terminals));
 
