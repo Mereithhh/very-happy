@@ -19,7 +19,7 @@ import { displayNameOf, identityOf } from '@/app/social/accountDirectory';
 import { enforceAccountWriteRate } from '@/app/api/resourceLimits';
 import { SessionShareError, openSessionDataKey } from './sessionShares';
 import { decryptWithDataKey } from './sessionCrypto';
-import { makePathScrubber, projectRecordForLink, scrubLinkText } from './linkProjection';
+import { makePathScrubber, projectLinkPage, scrubLinkText } from './linkProjection';
 import { inTx } from '@/storage/inTx';
 import { forever } from '@/utils/forever';
 import { delay } from '@/utils/delay';
@@ -336,16 +336,16 @@ export async function publicLinkMessages(link: LinkRow, afterSeq: number, limit:
         take: limit + 1,
         select: { id: true, seq: true, content: true, createdAt: true },
     });
-    const hasMore = rows.length > limit;
-    const page = hasMore ? rows.slice(0, limit) : rows;
-    const messages: PublicLinkMessage[] = [];
-    for (const row of page) {
+    const page = rows.length > limit ? rows.slice(0, limit) : rows;
+    // The page is budgeted as a whole: it may stop early, and the client pages on from lastSeq.
+    const { projected, consumed } = projectLinkPage(page, (row) => {
         const content = row.content as { t?: string; c?: string } | null;
-        if (content?.t !== 'encrypted' || typeof content.c !== 'string') continue;
-        const projected = projectRecordForLink(decryptWithDataKey(new Uint8Array(Buffer.from(content.c, 'base64')), dek), scrub);
-        if (projected) messages.push({ id: row.id, seq: row.seq, createdAt: row.createdAt.getTime(), content: projected });
-    }
-    return { messages, hasMore, lastSeq: page.length ? page[page.length - 1].seq : afterSeq };
+        if (content?.t !== 'encrypted' || typeof content.c !== 'string') return null;
+        return decryptWithDataKey(new Uint8Array(Buffer.from(content.c, 'base64')), dek);
+    }, scrub);
+    const messages: PublicLinkMessage[] = projected.map(({ record, content }) => ({ id: record.id, seq: record.seq, createdAt: record.createdAt.getTime(), content }));
+    const hasMore = rows.length > consumed;
+    return { messages, hasMore, lastSeq: consumed ? page[consumed - 1].seq : afterSeq };
 }
 
 // ---------------------------------------------------------------- settings: everything I shared

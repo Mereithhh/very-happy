@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { makePathScrubber, projectRecordForLink, scrubLinkText } from './linkProjection';
+import { LinkBudget, makePathScrubber, projectLinkPage, projectRecordForLink, scrubLinkText } from './linkProjection';
+
+const fake = (...parts: string[]) => parts.join('');
 
 /**
  * B-701 security review: the link projection is a whitelist. Each case below
@@ -116,5 +118,63 @@ describe('B-701 link projection (whitelist)', () => {
         }
         expect(best).toBeLessThan(200);
         expect(JSON.stringify(out).length).toBeLessThan(400 * 1024);
+    });
+
+    const env = (args: Record<string, unknown>) => ({ role: 'session', content: { type: 'session', data: { id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'tool-call-start', call: 'c', name: 'n', title: 't', description: 'd', args } } } });
+
+    // Re-review #3: the 256 KB record budget cut must not leak a straddling secret either.
+    it('never exposes the head of a secret that straddles the record budget cut', () => {
+        const secrets = [fake('"pass', 'word": "Hunter2Hunter2Zebra"'), fake('https://deploy:', 'SuperSecretPw123@db/x'), fake('Bear', 'er QwErTyUiOpAsDfGhJkLzXcVbNm123456'), fake('sk-', 'ant-api03-QwErTyUiOpAsDfGhJkLz0123'), fake('gh', 'p_QwErTyUiOpAsDfGhJkLzXcVbNm0123456789')];
+        for (const secret of secrets) {
+            const args: Record<string, string> = {};
+            for (let i = 0; i < 8; i++) args[`f${i}`] = 'y '.repeat(15 * 1024); // 8 × 30 KB = 240 KB spent
+            args.last = 'z '.repeat(Math.floor((16 * 1024 - 6) / 2)) + secret + ' tail'; // straddles the remaining 16 KB
+            const s = json(projectRecordForLink(env(args), scrub));
+            const value = secret.replace(/^.*?(Hunter2|SuperSecret|QwErTy|sk-ant|ghp_)/, '$1');
+            for (let n = 4; n <= value.length; n++) expect(s, `leaks ${value.slice(0, n)}`).not.toContain(value.slice(0, n));
+        }
+    });
+
+    const timed = (fn: () => unknown) => { fn(); let best = Infinity; let out: unknown; for (let r = 0; r < 5; r++) { const t0 = performance.now(); out = fn(); best = Math.min(best, performance.now() - t0); } return { best, out }; };
+
+    // Re-review #4: empty strings and short keys are not free.
+    it('a 1 MB record of empty strings projects in < 200 ms', () => {
+        const record = env({ list: new Array(350_000).fill('') });
+        expect(JSON.stringify(record).length).toBeGreaterThan(1_000_000);
+        const { best, out } = timed(() => projectRecordForLink(record, scrub));
+        expect(best).toBeLessThan(200);
+        expect(json(out)).toContain('[truncated]');
+    });
+
+    it('a 1 MB record of short keys projects in < 200 ms', () => {
+        const args: Record<string, number> = {};
+        for (let i = 0; i < 110_000; i++) args[`k${i}`] = 1;
+        const record = env(args);
+        expect(JSON.stringify(record).length).toBeGreaterThan(1_000_000);
+        const { best } = timed(() => projectRecordForLink(record, scrub));
+        expect(best).toBeLessThan(200);
+    });
+
+    it('a page of 200 such records is bounded as a whole and pages on', () => {
+        const heavy = env({ list: new Array(250_000).fill(''), text: 'eyJ-'.repeat(64 * 1024) });
+        const records = new Array(200).fill(heavy);
+        const { best, out } = timed(() => projectLinkPage(records, (r) => r, scrub));
+        expect(best).toBeLessThan(1000);
+        const page = out as ReturnType<typeof projectLinkPage>;
+        expect(page.consumed).toBeGreaterThan(0);
+        expect(page.consumed).toBeLessThan(200);
+    });
+
+    // Re-review #5: an exhausted budget must not rename structural keys.
+    it('structural keys survive an exhausted budget; rewritten free-form keys never collide', () => {
+        const out = projectRecordForLink(env({ big: 'q '.repeat(200 * 1024), more: new Array(50).fill('w'.repeat(64)) }), scrub, new LinkBudget(scrub, 4096)) as any;
+        expect(out.role).toBe('session');
+        expect(out.content.type).toBe('session');
+        expect(out.content.data.ev.t).toBe('tool-call-start');
+        expect(Object.keys(out.content.data.ev).sort()).toEqual(['args', 'call', 'description', 'name', 't', 'title']);
+        expect(Object.keys(out.content.data).sort()).toEqual(['ev', 'id', 'role', 'time', 'turn']);
+        expect(out.content.data.ev.args.more[49]).toContain('[truncated]'); // values are cut once the budget is gone, keys are not
+        const keys = projectRecordForLink(env({ '/home/alice/x': 1, '~/x': 2, '/Users/bob/x': 3 }), scrub) as any;
+        expect(keys.content.data.ev.args).toEqual({ '~/x': 1, '~/x~2': 2, '~/x~3': 3 });
     });
 });

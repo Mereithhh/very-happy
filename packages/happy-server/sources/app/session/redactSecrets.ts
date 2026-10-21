@@ -107,13 +107,58 @@ export function maskSecretAssignments(text: string): string {
     return copied === 0 ? text : out + text.slice(copied);
 }
 
-/** Mask secrets inside one string (capped at MAX_REDACT_INPUT first). */
-export function redactSecrets(text: string): string {
-    let out = text.length > MAX_REDACT_INPUT ? text.slice(0, MAX_REDACT_INPUT) + TRUNCATED_SUFFIX : text;
+/**
+ * Extra text masked past a cut point, so a secret that STRADDLES the cut is
+ * still matched whole before the cut is applied. Longer than any bounded
+ * pattern (JWT ≤ ~16.4 KB, PEM ≤ 8 KB, assignments ≤ 576 chars).
+ */
+export const MASK_LOOKAHEAD = 20 * 1024;
+
+/** Mask secrets in `text` as-is (no length cap — callers bound the input). */
+export function maskSecrets(text: string): string {
+    let out = text;
     for (const [pattern, replacement] of PATTERNS) {
         out = out.replace(pattern, replacement as any);
     }
     return maskSecretAssignments(out);
+}
+
+/**
+ * Cut `masked` at `limit` without exposing the head of a secret: the input
+ * was masked BEFORE cutting (window = limit + MASK_LOOKAHEAD), so everything
+ * left of the cut is already masked; the last partial word is dropped too.
+ */
+export function cutMasked(masked: string, limit: number): string {
+    if (masked.length <= limit) return masked;
+    let cut = limit;
+    const floor = Math.max(0, limit - 256);
+    while (cut > floor && !/\s/.test(masked[cut - 1])) cut--;
+    if (cut === floor) cut = limit; // one 256+ char word: keep the hard cut
+    return masked.slice(0, cut) + TRUNCATED_SUFFIX;
+}
+
+/**
+ * Mask `text` and return at most `limit` characters of it, without ever
+ * exposing the front half of a secret that straddles the cut:
+ *  1. take `limit + MASK_LOOKAHEAD` chars (bounded work),
+ *  2. transform (`pre`, e.g. path scrub) and mask that window,
+ *  3. cut. If the window itself clipped the input, a secret cut by the WINDOW
+ *     end is unmasked — so the cut also stays ≥ MASK_LOOKAHEAD chars before
+ *     the end of the masked window (replacements only shrink text, so the
+ *     image of that partial token lies inside that tail).
+ */
+export function maskWithin(text: string, limit: number, pre?: (s: string) => string): string {
+    const clipped = text.length > limit + MASK_LOOKAHEAD;
+    const window = clipped ? text.slice(0, limit + MASK_LOOKAHEAD) : text;
+    const masked = maskSecrets(pre ? pre(window) : window);
+    const cut = clipped ? Math.min(limit, masked.length - MASK_LOOKAHEAD) : limit;
+    if (cut <= 0) return TRUNCATED_SUFFIX.trim();
+    return cutMasked(masked, cut);
+}
+
+/** Mask secrets inside one string, capped at MAX_REDACT_INPUT (mask first, then cut). */
+export function redactSecrets(text: string): string {
+    return maskWithin(text, MAX_REDACT_INPUT);
 }
 
 /** Deep copy of `value` with every string masked. */

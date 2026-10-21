@@ -100,6 +100,7 @@ describe('B-701 redactSecrets', () => {
         ];
         // Each input's cost is the best of 3 runs, so a GC pause or a busy CI
         // neighbour does not read as a regex blow-up (a real ReDoS is 100x over).
+        for (const shape of shapes) redactSecrets(shape); // warm the JIT: measure the algorithm, not compilation
         let worst = 0;
         for (let i = 0; i < 200; i++) {
             const input = shapes[i % shapes.length];
@@ -112,5 +113,25 @@ describe('B-701 redactSecrets', () => {
             worst = Math.max(worst, best);
         }
         expect(worst).toBeLessThan(50);
+    });
+
+    // Re-review #3: a secret that straddles the 32 KB cut must not leak its front half.
+    it('never exposes the head of a secret that straddles the length cap', () => {
+        const cases: Array<[string, string]> = [
+            ['quoted password', fake('"pass', 'word": "Hunter2Hunter2Zebra"')],
+            ['url credential', fake('https://deploy:', 'SuperSecretPw123@db.internal/x')],
+            ['bearer', fake('Authorization: Bear', 'er QwErTyUiOpAsDfGhJkLzXcVbNm123456')],
+            ['anthropic', fake('sk-', 'ant-api03-QwErTyUiOpAsDfGhJkLz0123')],
+            ['github', fake('gh', 'p_QwErTyUiOpAsDfGhJkLzXcVbNm0123456789')],
+        ];
+        const secretPart = (c: string) => c.replace(/^.*?(Hunter2|SuperSecret|QwErTy|sk-ant|ghp_)/, '$1');
+        for (const [name, secret] of cases) {
+            for (const offset of [2, 6, 12]) {
+                const filler = 'x '.repeat(Math.floor((MAX_REDACT_INPUT - offset) / 2));
+                const out = redactSecrets(filler + secret + ' tail');
+                const value = secretPart(secret);
+                for (let n = 4; n <= value.length; n++) expect(out, `${name} @${offset} leaks ${value.slice(0, n)}`).not.toContain(value.slice(0, n));
+            }
+        }
     });
 });
