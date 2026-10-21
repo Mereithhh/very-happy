@@ -48,10 +48,11 @@
   padding: 9px 12px;
   font-size: var(--fs-14);
 }
+/* B-699: a field shows focus with the caret and a quieter border, no ring or glow. */
 .vh-modal-input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  border-color: var(--line-heavy);
+  box-shadow: none;
 }
 .vh-modal-actions {
   display: flex;

@@ -167,10 +167,18 @@ pre,
 /* Shared keyboard focus (B-614, CDS §1.4.5): a canvas gap + 1.5px live-accent
    ring, focus-visible only, no glow. Terminal-owned input machinery paints its
    own cursor and remains excluded. Component-owned focus surfaces (transcript
-   disclosures below, the composer) keep their quieter treatment. */
-:focus-visible:not(:where(.xterm, .xterm *)) {
+   disclosures below, the composer) keep their quieter treatment.
+   B-699: text entry is excluded — browsers treat a clicked or tapped field as
+   :focus-visible, so the ring showed on every search box. A field says "focused"
+   with the caret plus a quiet border/background token change (below, or the
+   component's own :focus rule); buttons and links keep the ring for keyboard. */
+:focus-visible:not(:where(.xterm, .xterm *, input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"], [type="file"], [type="image"]), textarea, [contenteditable]:not([contenteditable="false"]))) {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"], [type="file"], [type="image"]), textarea, [contenteditable]:not([contenteditable="false"])):focus {
+  outline: none;
+  border-color: var(--line-heavy);
 }
 
 /* Conversation disclosures are dense transcript controls, not form fields.

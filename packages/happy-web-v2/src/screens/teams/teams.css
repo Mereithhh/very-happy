@@ -64,7 +64,8 @@
   opacity: 0.5;
   cursor: default;
 }
-.teams-screen :focus-visible {
+/* B-699: keyboard ring for controls only — text fields show focus with a border token. */
+.teams-screen :focus-visible:not(textarea, input:not([type="checkbox"], [type="radio"])) {
   outline: none;
   box-shadow: var(--focus-ring);
 }

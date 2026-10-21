@@ -194,6 +194,24 @@ export function outlineHasReplacement(rule, rules) {
         && (/:focus-within/.test(other.selector) || [...classesOf(other.selector)].some(c => mine.has(c))));
 }
 
+/** ④ B-699：文本输入框（input / textarea / 类名以 input、textarea 结尾）在 :focus* 状态下不画焦点环。 */
+const FIELD_RING_RE = /(?:^|[\s;{])(?:box-shadow\s*:[^;}]*var\(--(?:focus-ring|accent-glow)\)|outline\s*:(?!\s*(?:none|0)\b)[^;}]+)/;
+function stripNot(selector) {
+    let out = '';
+    let depth = 0;
+    for (let i = 0; i < selector.length; i++) {
+        if (depth === 0 && selector.startsWith(':not(', i)) { depth = 1; i += 4; continue; }
+        if (depth > 0) { if (selector[i] === '(') depth++; else if (selector[i] === ')') depth--; continue; }
+        out += selector[i];
+    }
+    return out;
+}
+export function isFieldFocusSelector(selector) {
+    return stripNot(selector).split(',').some((part) => /:focus/.test(part)
+        && /(?:^|[\s>+~(])(?:input|textarea)(?![\w-])|\.[\w-]*(?:input|textarea)(?![\w-])/.test(part.replace(/\[[^\]]*\]/g, '').split(':focus')[0])
+        && !/\[type=["']?(?:checkbox|radio|range|button|submit|reset|color|file|image)/.test(part));
+}
+
 function allowReason(raw, prev) {
     for (const line of [raw, prev]) {
         if (line === undefined) continue;
@@ -239,6 +257,14 @@ export function lintFile(rel, source, added) {
             const owner = rules.filter(r => r.start < at && at < r.end).sort((a, b) => b.start - a.start)[0];
             if (owner && !outlineHasReplacement(owner, rules)) {
                 problems.push({ rule: 'outline-none', message: `「${owner.selector.replace(/\s+/g, ' ')}」去掉 outline 但同文件没有对应的 :focus-visible / :focus-within 替代样式` });
+            }
+        }
+        if (kind === 'css' && FIELD_RING_RE.test(text)) {
+            rules ??= parseRules(code.join('\n'));
+            const at = lineOffsets[n - 1] + Math.max(0, text.search(/box-shadow|outline/));
+            const owner = rules.filter(r => r.start < at && at < r.end).sort((a, b) => b.start - a.start)[0];
+            if (owner && isFieldFocusSelector(owner.selector)) {
+                problems.push({ rule: 'field-focus-ring', message: `「${owner.selector.replace(/\s+/g, ' ')}」给文本输入框画了焦点环/外发光：输入框用光标 + 边框或背景 token 表达聚焦（design-language「焦点」，B-699）` });
             }
         }
         if (problems.length === 0) continue;
