@@ -11,6 +11,7 @@ import { BRAND, brandText } from '@/app/brand';
 import { OidcLoginButton } from './OidcLoginButton';
 import { migrateLoginMode, parseMigrationHandoff } from './migrateLoginPresentation';
 import './auth.css';
+import { rateLimitedMessage } from '@/auth/rateLimitMessage';
 
 /**
  * B-627: landing page on the NEW relay for people arriving from the old one's
@@ -50,7 +51,7 @@ export function MigrateLoginScreen() {
       } catch (err) {
         if (cancelled) return;
         if (err instanceof CloudAuthError && err.code === 'invalid-migration-handoff') setError(t('oidc.errors.invalid_migration_handoff'));
-        else if (err instanceof CloudAuthError && err.code === 'rate-limited') setError(t('signup.errorRateLimited'));
+        else if (err instanceof CloudAuthError && err.code === 'rate-limited') setError(rateLimitedMessage(t, err.retryAfterSeconds));
         else setError(t('oidc.errors.network'));
       }
     })();

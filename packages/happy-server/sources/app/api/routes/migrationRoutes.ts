@@ -21,7 +21,7 @@ import { auth } from '@/app/auth/auth';
 import { log } from '@/utils/log';
 import { auditLogin } from '@/app/audit/requestAudit';
 import { clientRateLimitKey } from '@/app/api/clientIp';
-import { allowAuthRequest } from '@/app/auth/authRateLimiter';
+import { rateLimitRetryAfter, tooManyRequests, tooManyRequestsSchema } from '@/app/auth/authRateLimitResponse';
 import { hashPairingValue } from '@/app/auth/pairingSecurity';
 import { loadAccountSecret } from '@/app/auth/accountSecrets';
 import { issueMigrationHandoff, verifyMigrationHandoff } from '@/app/migration/handoff';
@@ -84,13 +84,14 @@ export function migrationRoutes(app: Fastify) {
                         z.object({ kind: z.literal('daemon'), token: z.string() }),
                     ]),
                     401: z.object({ error: z.enum(['invalid_handoff', 'account_missing']) }),
-                    429: z.object({ error: z.literal('too_many_requests') }),
+                    429: tooManyRequestsSchema,
                 },
             },
         }, async (request, reply) => {
             reply.header('cache-control', 'no-store');
             const bucket = migrateCompleteRateBucket(clientRateLimitKey(request));
-            if (!(await allowAuthRequest(bucket.key, bucket))) return reply.code(429).send({ error: 'too_many_requests' as const });
+            const retryAfter = await rateLimitRetryAfter([bucket]);
+            if (retryAfter !== null) return reply.code(429).send(tooManyRequests(reply, retryAfter));
             const payload = verifyMigrationHandoff(secret, request.body.handoff);
             if (!payload) return reply.code(401).send({ error: 'invalid_handoff' as const });
 

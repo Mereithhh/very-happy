@@ -75,6 +75,56 @@ export async function allowAuthRequest(
     return rows.length > 0;
 }
 
+export interface AuthRateBucket {
+    key: string;
+    max: number;
+    windowMs?: number;
+    cost?: number;
+}
+
+/**
+ * B-668: seconds until a refused request could succeed. Every bucket that
+ * cannot take another `cost` blocks the retry, so the answer is the LATEST
+ * reset among them — not the first bucket the sequential consumer happened to
+ * stop on. A refused call never opens or charges a row, so a bucket with no
+ * live row is not blocking. Rounds up and never answers below one second: a
+ * refusal raced by a window reset still tells the client to back off briefly.
+ */
+export function retryAfterSecondsForBuckets(
+    buckets: ReadonlyArray<AuthRateBucket>,
+    rows: ReadonlyArray<{ key: string; count: number | bigint; resetAt: Date | string }>,
+    nowMs: number,
+): number {
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    let longestMs = 0;
+    for (const bucket of buckets) {
+        const row = byKey.get(bucket.key);
+        if (!row) continue;
+        const remainingMs = new Date(row.resetAt).getTime() - nowMs;
+        if (!(remainingMs > 0)) continue;
+        const cost = Number.isSafeInteger(bucket.cost) && (bucket.cost ?? 0) > 0 ? bucket.cost! : 1;
+        if (Number(row.count) + cost <= bucket.max) continue;
+        longestMs = Math.max(longestMs, remainingMs);
+    }
+    return Math.max(1, Math.ceil(longestMs / 1000));
+}
+
+export async function authRateLimitRetryAfterSeconds(
+    buckets: ReadonlyArray<AuthRateBucket>,
+    client: Pick<SqlClient, '$queryRawUnsafe'> = db,
+    nowMs = Date.now(),
+): Promise<number> {
+    if (buckets.length === 0) return 1;
+    const placeholders = buckets.map((_, index) => `$${index + 2}`).join(', ');
+    const rows = await client.$queryRawUnsafe<Array<{ key: string; count: number; resetAt: Date }>>(
+        `SELECT "key", "count", "resetAt" FROM "AuthRateLimitBucket"
+         WHERE "resetAt" > $1 AND "key" IN (${placeholders})`,
+        new Date(nowMs),
+        ...buckets.map((bucket) => bucket.key),
+    );
+    return retryAfterSecondsForBuckets(buckets, rows, nowMs);
+}
+
 export function resetAuthRateLimiterCleanupForTests(): void {
     nextCleanupAt = 0;
 }

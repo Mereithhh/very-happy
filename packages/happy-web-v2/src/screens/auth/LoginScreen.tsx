@@ -11,6 +11,7 @@ import { OidcLoginButton } from './OidcLoginButton';
 import './auth.css';
 import { authReturnTarget, peekPersistedAuthReturnTarget } from '@/app/authReturnTarget';
 import { classifyPasswordLoginFailure } from './loginErrorPresentation';
+import { rateLimitedMessage } from '@/auth/rateLimitMessage';
 import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
@@ -65,7 +66,7 @@ export function LoginScreen() {
       if (failure === 'invalid-credentials') {
         setError(t('errors.authenticationFailed'));
       } else if (failure === 'rate-limited') {
-        setError(t('signup.errorRateLimited'));
+        setError(rateLimitedMessage(t, (err as { retryAfterSeconds?: number }).retryAfterSeconds));
       } else {
         setError('Could not reach the server. Check your connection and server address.');
       }
@@ -83,6 +84,7 @@ export function LoginScreen() {
       navigate(authReturnTarget(location.state), { replace: true });
     } catch (err) {
       if (err instanceof CloudAuthError && err.code === 'capacity-reached') setGoogleError(t('signup.errorCapacityReached'));
+      else if (err instanceof CloudAuthError && err.code === 'rate-limited') setGoogleError(rateLimitedMessage(t, err.retryAfterSeconds));
       else if (err instanceof CloudAuthError && err.code === 'signup-closed') setGoogleError(t('signup.errorSignupClosed'));
       else if (err instanceof CloudAuthError && err.code === 'invite-required') {
         toast.error(t('signup.errorInviteRequiredGoogle'));
@@ -159,6 +161,11 @@ export function LoginScreen() {
             onCredential={onGoogleCredential}
           />
           {googleError && <div className="auth-error" role="alert">{googleError}</div>}
+          {/* B-668: Google matches the connected Google identity, never the email —
+              an unconnected Google account creates a separate, empty account. */}
+          {googleEnabled && <p className="auth-method-note">
+            {authConfig?.signup.mode === 'closed' ? t('emailAuth.googleLinkedOnlyClosed') : t('emailAuth.googleLinkedOnly')}
+          </p>}
 
           {passwordEnabled && <>
             {(emailEnabled || googleEnabled) && <div className="auth-divider"><span>{t('signup.orPassword')}</span></div>}

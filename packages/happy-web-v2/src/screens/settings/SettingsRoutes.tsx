@@ -75,6 +75,7 @@ import {
   type ModeOption,
 } from '@/components/modelModeOptions';
 import { setAccountCredentials, AccountAuthError } from '@/auth/passwordUnlock';
+import { rateLimitedMessage } from '@/auth/rateLimitMessage';
 import {
   CloudAuthError,
   linkEmailIdentity,
@@ -829,7 +830,7 @@ function EmailIdentity() {
     if (errorValue.code === 'invalid-account-secret') return t('emailLink.invalidAccount');
     if (errorValue.code === 'email-delivery-unavailable') return t('emailAuth.deliveryUnavailable');
     if (errorValue.code === 'email-not-configured') return t('emailAuth.notConfigured');
-    if (errorValue.code === 'rate-limited') return t('signup.errorRateLimited');
+    if (errorValue.code === 'rate-limited') return rateLimitedMessage(t, errorValue.retryAfterSeconds);
     return t('emailAuth.network');
   }
 
@@ -950,7 +951,7 @@ function GoogleIdentity() {
     if (errorValue.code === 'invalid-account-secret') return t('googleLink.invalidAccount');
     if (errorValue.code === 'origin-not-allowed') return t('googleLink.originNotAllowed');
     if (errorValue.code === 'google-not-configured') return t('googleLink.notConfigured');
-    if (errorValue.code === 'rate-limited') return t('signup.errorRateLimited');
+    if (errorValue.code === 'rate-limited') return rateLimitedMessage(t, errorValue.retryAfterSeconds);
     if (errorValue.code === 'invalid-credential') return t('googleLink.invalidCredential');
     return t('googleLink.network');
   }
@@ -2610,6 +2611,8 @@ function Password() {
         setServerError(t('signup.errorUsernameTaken'));
       } else if (err instanceof AccountAuthError && err.code === 'reauth-required') {
         setServerError(t('setPassword.errorReauthRequired'));
+      } else if (err instanceof AccountAuthError && err.code === 'rate-limited') {
+        setServerError(rateLimitedMessage(t, err.retryAfterSeconds));
       } else {
         setServerError(t('setPassword.errorSaveFailed'));
       }

@@ -2,6 +2,7 @@ import axios from 'axios';
 import { getServerUrl } from '@/sync/serverConfig';
 import { getHappyClientId } from '@/sync/apiSocket';
 import type { AuthCredentials } from './tokenStorage';
+import { retryAfterSecondsFromError } from './rateLimitRetry';
 
 export type SignupMode = 'open' | 'invite' | 'closed';
 
@@ -52,7 +53,8 @@ export type CloudAuthErrorCode =
     | 'network';
 
 export class CloudAuthError extends Error {
-    constructor(readonly code: CloudAuthErrorCode) {
+    /** B-668: present on `rate-limited` when the server reported when to retry. */
+    constructor(readonly code: CloudAuthErrorCode, readonly retryAfterSeconds?: number) {
         super(code);
         this.name = 'CloudAuthError';
     }
@@ -85,6 +87,8 @@ export interface AccountLoginMethods {
     email: string | null;
     google: { connected: boolean; email: string | null };
     passwordConfigured: boolean;
+    /** B-668: an SSO identity; absent on older servers. */
+    ssoConnected?: boolean;
 }
 
 function authenticatedHeaders(credentials: AuthCredentials) {
@@ -113,7 +117,7 @@ export async function refreshCloudLogin(credentials: AuthCredentials): Promise<A
         const status = error?.response?.status;
         const reason = error?.response?.data?.error;
         if (reason === 'invalid_secret' || status === 400) throw new CloudAuthError('invalid-account-secret');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         throw new CloudAuthError('network');
     }
 }
@@ -144,7 +148,7 @@ export async function linkEmailIdentity(
         if (reason === 'email_not_configured' || status === 501) throw new CloudAuthError('email-not-configured');
         if (reason === 'invalid_email_code' || status === 401) throw new CloudAuthError('invalid-email-code');
         if (reason === 'invalid_secret' || status === 400) throw new CloudAuthError('invalid-account-secret');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         throw new CloudAuthError('network');
     }
 }
@@ -170,7 +174,7 @@ export async function linkGoogleIdentity(
         if (reason === 'google_not_configured' || status === 501) throw new CloudAuthError('google-not-configured');
         if (reason === 'invalid_google_credential' || status === 401) throw new CloudAuthError('invalid-credential');
         if (reason === 'invalid_secret' || status === 400) throw new CloudAuthError('invalid-account-secret');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         throw new CloudAuthError('network');
     }
 }
@@ -188,7 +192,7 @@ export async function requestEmailLoginCode(email: string): Promise<EmailLoginCh
         const reason = error?.response?.data?.error;
         if (reason === 'email_delivery_unavailable' || status === 503) throw new CloudAuthError('email-delivery-unavailable');
         if (reason === 'email_not_configured' || status === 501) throw new CloudAuthError('email-not-configured');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         throw new CloudAuthError('network');
     }
 }
@@ -218,7 +222,7 @@ export async function loginWithEmail(
         if (reason === 'invite-required') throw new CloudAuthError('invite-required');
         if (reason === 'signup-closed') throw new CloudAuthError('signup-closed');
         if (reason === 'email_not_configured' || status === 501) throw new CloudAuthError('email-not-configured');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         if (reason === 'invalid_email_code' || status === 401) throw new CloudAuthError('invalid-email-code');
         throw new CloudAuthError('network');
     }
@@ -236,7 +240,7 @@ export async function createGoogleLoginChallenge(): Promise<GoogleLoginChallenge
         const status = error?.response?.status;
         const reason = error?.response?.data?.error;
         if (reason === 'origin_not_allowed') throw new CloudAuthError('origin-not-allowed');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         throw new CloudAuthError('network');
     }
 }
@@ -260,7 +264,7 @@ export async function loginWithGoogle(
         if (reason === 'invite-required') throw new CloudAuthError('invite-required');
         if (reason === 'signup-closed') throw new CloudAuthError('signup-closed');
         if (reason === 'origin_not_allowed') throw new CloudAuthError('origin-not-allowed');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         if (status === 401) throw new CloudAuthError('invalid-credential');
         throw new CloudAuthError('network');
     }
@@ -288,7 +292,7 @@ export async function startOidcLogin(inviteCode?: string, migrationHandoff?: str
         if (status === 401) throw new CloudAuthError('invalid-migration-handoff');
         if (status === 501) throw new CloudAuthError('oidc-not-configured');
         if (status === 503) throw new CloudAuthError('oidc-provider-unavailable');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         throw new CloudAuthError('network');
     }
 }
@@ -306,7 +310,7 @@ export async function completeOidcLogin(handoff: string): Promise<AuthCredential
         const status = error?.response?.status;
         if (status === 401) throw new CloudAuthError('invalid-handoff');
         if (status === 501) throw new CloudAuthError('oidc-not-configured');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         throw new CloudAuthError('network');
     }
 }
@@ -338,7 +342,7 @@ export async function requestMigrationHandoff(credentials: AuthCredentials): Pro
     } catch (error: any) {
         const status = error?.response?.status;
         if (status === 403) throw new CloudAuthError('not-targeted');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         throw new CloudAuthError('network');
     }
 }
@@ -355,7 +359,7 @@ export async function completeMigrationLogin(handoff: string): Promise<AuthCrede
     } catch (error: any) {
         const status = error?.response?.status;
         if (status === 401) throw new CloudAuthError('invalid-migration-handoff');
-        if (status === 429) throw new CloudAuthError('rate-limited');
+        if (status === 429) throw new CloudAuthError('rate-limited', retryAfterSecondsFromError(error));
         throw new CloudAuthError('network');
     }
 }

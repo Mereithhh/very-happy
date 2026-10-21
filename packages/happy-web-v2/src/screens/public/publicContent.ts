@@ -577,7 +577,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
     slug: 'troubleshooting', label: 'Troubleshooting', summary: 'Recover from login, pairing, offline-machine, and service failures.',
     sections: [
       { heading: 'Cannot sign in or register', blocks: [
-        { type: 'list', items: ['Check the relay health and your network before retrying.', 'For an invalid email code, request one new code and use only the latest message.', 'For capacity, closed, or invite messages, follow that policy instead of repeatedly submitting.', 'If Google fails, allow the popup once or use email/password sign-in when enabled.'] },
+        { type: 'list', items: ['Check the relay health and your network before retrying.', 'For an invalid email code, request one new code and use only the latest message. One address gets 3 codes per 10 minutes and 10 per day; the form shows the real wait when a limit is hit.', 'Google opens only an account already connected to that Google identity; otherwise it creates a new, empty account. Sign in another way first and connect Google in Settings → Account.', 'For capacity, closed, or invite messages, follow that policy instead of repeatedly submitting.', 'If Google fails, allow the popup once or use email/password sign-in when enabled.'] },
       ] },
       { heading: 'Machine does not appear', blocks: [
         { type: 'code', code: 'very-happy daemon status' },
