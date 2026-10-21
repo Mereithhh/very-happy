@@ -1,7 +1,7 @@
 /**
  * B-714 — the one picker behind `ui/SelectMenu` and `ui/Combobox`.
  *
- * Replaces every native <select> (Owner 10-21:「ui 上不要用原生的 select」).
+ * Replaces every native select element (Owner 10-21:「ui 上不要用原生的 select」).
  * Built on the Radix Popover / Dialog already in the bundle instead of adding
  * @radix-ui/react-select: Radix Select has no search box, no bottom sheet and
  * no async states, so Combobox would need this code anyway.

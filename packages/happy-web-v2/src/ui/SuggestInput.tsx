@@ -1,5 +1,5 @@
 /**
- * B-714 — free text with suggestions: replaces `<input list>` + `<datalist>`
+ * B-714 — free text with suggestions: replaces the native input list + datalist pair
  * (a native, unthemed dropdown). The value is whatever is typed; the list
  * only offers completions (directory presets, time zones).
  *
