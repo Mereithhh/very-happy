@@ -19,9 +19,10 @@ export const COLLAPSED_GROUPS_LIMIT = 200;
 /** Explicit user choices only: id → collapsed. Absent = the group's default. */
 export type CollapsedGroups = Record<string, boolean>;
 
-/** 已完成（今日） starts collapsed (pre-B-580 behaviour); everything else open. */
+/** 已完成（今日） starts collapsed (pre-B-580 behaviour), and so does a team's
+ *  「已归档 N 个」 fold (B-674, `team-archived:<id>`); everything else open. */
 export function defaultCollapsed(groupId: string): boolean {
-  return groupId === 'completed';
+  return groupId === 'completed' || groupId.startsWith('team-archived:');
 }
 
 export function isGroupCollapsed(state: CollapsedGroups, groupId: string): boolean {

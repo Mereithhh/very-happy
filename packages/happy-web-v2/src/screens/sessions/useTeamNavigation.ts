@@ -41,7 +41,14 @@ function subscribe(listener: () => void) {
     if (!listeners.size && timer) { clearInterval(timer); timer = undefined; unsubscribeResume?.(); unsubscribeResume = undefined; }
   };
 }
+/** DEV harness only (`/dev/sidebar`): serve a fixed team list without a server. */
+let devOverride: TeamState[] | null = null;
+export function setTeamNavigationDevOverride(teams: TeamState[] | null): void {
+  devOverride = teams;
+  notify();
+}
 function getSnapshot() {
+  if (devOverride) return devOverride;
   const token = getCurrentAuth()?.credentials?.token;
   return token && owner === `${getServerUrl()}\0${token}` ? snapshot : empty;
 }

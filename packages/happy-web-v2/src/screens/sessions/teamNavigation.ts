@@ -31,10 +31,18 @@ export function missingTeamSessionIds(existingSessionIds: ReadonlySet<string>, t
   return [...teamSessionMembership(teams).keys()].filter(id => !existingSessionIds.has(id));
 }
 
-export type TeamNavigationEntry<T> = { kind: 'row'; row: T; team?: TeamState; bot?: TeamBot } | { kind: 'team'; team: TeamState };
+export type TeamNavigationEntry<T> =
+  | { kind: 'row'; row: T; team?: TeamState; bot?: TeamBot }
+  | { kind: 'team'; team: TeamState }
+  /** B-674: one fold row standing in for the team's archived members. */
+  | { kind: 'archived'; team: TeamState; count: number; open: boolean };
+/** B-674: which member rows are archived, and which teams show them (device-local choice). */
+export interface ArchivedMemberFold<T> { isArchived: (row: T) => boolean; open: ReadonlySet<string> }
 /** Preserve ordinary rows' relative order. Put each team at its first member,
- * keep children in that same order, and include newly created empty teams. */
-export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[], teams: TeamState[], expanded: ReadonlySet<string>): TeamNavigationEntry<T>[] {
+ * keep children in that same order, and include newly created empty teams.
+ * With `archived`, an expanded team lists its live members first and folds the
+ * archived ones behind a single 「已归档 N 个」 entry (B-674). */
+export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[], teams: TeamState[], expanded: ReadonlySet<string>, archived?: ArchivedMemberFold<T>): TeamNavigationEntry<T>[] {
   const membership = teamSessionMembership(teams);
   const children = new Map<string, T[]>();
   for (const row of rows) {
@@ -43,13 +51,19 @@ export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[],
   }
   const emitted = new Set<string>();
   const output: TeamNavigationEntry<T>[] = [];
+  const child = (row: T, team: TeamState): TeamNavigationEntry<T> => ({ kind: 'row', row, team, bot: membership.get(row.sessionId!)?.bot });
   const emit = (team: TeamState) => {
     if (emitted.has(team.id)) return;
     emitted.add(team.id);
     output.push({ kind: 'team', team });
-    if (expanded.has(team.id)) for (const row of children.get(team.id) ?? []) {
-      output.push({ kind: 'row', row, team, bot: membership.get(row.sessionId!)?.bot });
-    }
+    if (!expanded.has(team.id)) return;
+    const kids = children.get(team.id) ?? [];
+    const old = archived ? kids.filter(archived.isArchived) : [];
+    for (const row of kids) if (!old.includes(row)) output.push(child(row, team));
+    if (old.length === 0) return;
+    const open = archived!.open.has(team.id);
+    output.push({ kind: 'archived', team, count: old.length, open });
+    if (open) for (const row of old) output.push(child(row, team));
   };
   for (const row of rows) {
     const member = row.sessionId ? membership.get(row.sessionId) : undefined;
@@ -58,6 +72,11 @@ export function groupTeamNavigation<T extends { sessionId?: string }>(rows: T[],
   }
   for (const team of teams) emit(team);
   return output;
+}
+
+/** B-674: the device-local fold key for a team's archived members (sidebarCollapsedGroups). */
+export function teamArchivedGroupId(teamId: string): string {
+  return `team-archived:${teamId}`;
 }
 
 /** A registered member is visible even before its first session exists. */

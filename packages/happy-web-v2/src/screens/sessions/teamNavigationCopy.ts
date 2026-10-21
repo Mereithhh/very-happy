@@ -2,9 +2,11 @@ import { useTranslation } from '@/i18n/useTranslation';
 export function useTeamNavigationCopy() {
   return useTranslation().lang === 'zh-Hans' ? {
     failed: '启动需处理 · 查看原因', noSession: '尚无会话 · 查看团队', title: '团队', history: '会话记录', members: '位成员', lead: '负责人', member: '成员', progress: '团队进展', expand: '展开团队', collapse: '收起团队',
+    archivedCount: (n: number) => `已归档 ${n} 个`, showArchived: '显示已归档成员', hideArchived: '收起已归档成员',
     preparing: '正在准备团队', show: '显示团队入口', hint: '隐藏入口不会停止或删除团队，已有团队仍在历史列表中。',
   } : {
     failed: 'Startup needs attention · view details', noSession: 'No session · view team', title: 'Teams', history: 'Conversation history', members: 'members', lead: 'Lead', member: 'Member', progress: 'Team progress', expand: 'Expand team', collapse: 'Collapse team',
+    archivedCount: (n: number) => `${n} archived`, showArchived: 'Show archived members', hideArchived: 'Hide archived members',
     preparing: 'Team is being prepared', show: 'Show Teams entry', hint: 'Hiding the entry does not stop or delete teams. Existing teams stay in history.',
   };
 }
