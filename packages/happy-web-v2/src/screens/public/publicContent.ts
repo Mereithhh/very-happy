@@ -232,6 +232,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'p', text: 'Every keyboard-only workflow has a visible touch path: the sidebar search button for session search and, from there, the command palette; header controls for files, notes and structured/terminal handoff, the New button for sessions, and Back controls plus edge swipe for navigation. The mobile terminal also exposes touch-first input controls rather than requiring a hardware keyboard.' },
         { type: 'p', text: 'On phones the sidebar header collapses into search, new, and more icons, so the session list keeps most of the screen. Wide or long tables in a reply open full screen with the header row and first column pinned, and every dropdown row is a 44px touch target.' },
         { type: 'p', text: 'Installing as a PWA removes browser chrome and makes browser-reserved application chords available where the operating system delivers them. Installation is optional; the responsive Web UI remains fully usable in a normal tab.' },
+        { type: 'p', text: 'The empty workspace, sidebar footer and page headers sit on a slow, layered ASCII field. On phones and low-power devices it draws fewer layers without live blur; it pauses in background tabs and off-screen, and shows a still frame when the system asks for reduced motion. Turn it off for this device in Settings → Appearance → Background motion.' },
       ] },
     ],
   },

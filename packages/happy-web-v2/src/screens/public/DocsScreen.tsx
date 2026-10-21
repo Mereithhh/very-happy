@@ -7,6 +7,7 @@ import { MobileContinuityProof } from './MobileContinuityProof';
 import { ProductWorkspacePreview } from './ProductWorkspacePreview';
 import { getPublicDocs, type PublicDoc } from './publicContent';
 import { usePublicI18n } from '@/i18n/publicI18n';
+import { AsciiField } from '@/ui/asciiField/AsciiField';
 import './public.css';
 import { docFragmentId, docSectionIds } from './docSectionIds';
 import { SkillDocumentLink } from '@/ui/SkillDocumentLink';
@@ -51,6 +52,7 @@ export function DocsScreen() {
 
   return (
     <div className="pub-page docs-page">
+      <div className="docs-ascii-band"><AsciiField preset="band" /></div>
       <PublicHeader />
       <div className="docs-mobile-bar"><strong>{copy.docs.mobileTitle}</strong><button ref={menuButtonRef} type="button" aria-expanded={menuOpen} aria-controls="docs-navigation" onClick={() => setMenuOpen((v) => !v)}>{menuOpen ? <X /> : <Menu />}<span className="sr-only">{copy.docs.toggle}</span></button></div>
       <main id="main-content" className="docs-layout">

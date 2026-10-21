@@ -1,0 +1,12 @@
+/* B-720 — AsciiField host. The parent owns placement (position: relative /
+   isolation); the field is a non-interactive layer behind its content. Masks
+   fade it under copy and at the band edges so text stays AA. The engine adds
+   per-layer canvases and creature <pre>s and moves them by transform only. */
+.ascii-field { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; user-select: none; opacity: 0; transition: opacity 900ms ease; contain: strict; }
+.ascii-field.is-ready { opacity: 1; }
+.ascii-field__plane, .ascii-field__creature { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform, opacity; }
+.ascii-field__creature { margin: 0; color: var(--text); font-family: var(--font-mono); white-space: pre; }
+/* Dark ink on a light canvas reads weaker than light ink on dark at the same alpha. */
+:root[data-theme='light'] .ascii-field { --ascii-gain: 1.35; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .ascii-field { --ascii-gain: 1.35; } }
+@media (prefers-reduced-motion: reduce) { .ascii-field, .ascii-field__plane { transition: none; } }

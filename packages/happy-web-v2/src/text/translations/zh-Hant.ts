@@ -190,6 +190,8 @@ export const zhHant: PartialTranslationStructure = {
 
     settingsAppearance: {
         homeView: '主畫面',
+        backgroundMotion: '背景動效',
+        backgroundMotionDescription: '在本裝置的預設頁、側欄、頁首和官網背後顯示動態 ASCII 景深背景；關閉後為純色背景。系統開啟「減少動態效果」時一律只顯示靜止畫面。',
         homeViewDescription: '沒有開啟任何會話時首頁顯示的內容。',
         homeViewOptions: {
             normal: '最近',

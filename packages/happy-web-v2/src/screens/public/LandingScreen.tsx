@@ -16,6 +16,9 @@ import { usePublicI18n } from '@/i18n/publicI18n';
 import { CHANGELOG_RELEASES } from '@/app/changelogRelease';
 import { ChangelogHighlights } from '@/app/ChangelogHighlights';
 import { useTranslation } from '@/i18n/useTranslation';
+import { AsciiField } from '@/ui/asciiField/AsciiField';
+import { HeroMark } from './HeroMark';
+import { BRAND } from '@/app/brand';
 import './public.css';
 
 function ProductShowcase() {
@@ -148,8 +151,9 @@ export function LandingScreen() {
   const c = copy.landing;
   useEffect(() => { document.title = c.pageTitle; }, [c.pageTitle, language]);
   return <div className="pub-page pub-landing"><PublicHeader /><main id="main-content">
-    <section className="pub-hero hub-hero" aria-labelledby="hero-title"><div className="pub-hero-copy"><div className="eyebrow">{c.heroEyebrow}</div><h1 id="hero-title" className={`pub-fleet-title${language === 'zh-Hans' ? ' is-zh' : ''}`}>{c.heroTitleA}<br /><span>{c.heroTitleB}<br />{c.heroTitleC}</span></h1><p>{c.heroBody}</p><div className="pub-hero-thesis mono"><span>{c.thesisA}</span><strong>{c.thesisB}</strong></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}login`}>{c.primaryCta} <ArrowRight size={16} /></a><a className="pub-button" href="#teams">{c.secondaryCta}</a></div><div className="pub-meta mono"><span>{c.metaWeb}</span><span>{c.metaChoice}</span><span>{c.metaHost}</span></div></div><HeroProductStage /></section>
+    <section className="pub-hero hub-hero" aria-labelledby="hero-title"><AsciiField preset="hero" mark className="pub-hero-ascii" /><div className="pub-hero-copy"><HeroMark label={BRAND.name} /><div className="eyebrow">{c.heroEyebrow}</div><h1 id="hero-title" className={`pub-fleet-title${language === 'zh-Hans' ? ' is-zh' : ''}`}>{c.heroTitleA}<br /><span>{c.heroTitleB}<br />{c.heroTitleC}</span></h1><p>{c.heroBody}</p><div className="pub-hero-thesis mono"><span>{c.thesisA}</span><strong>{c.thesisB}</strong></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}login`}>{c.primaryCta} <ArrowRight size={16} /></a><a className="pub-button" href="#teams">{c.secondaryCta}</a></div><div className="pub-meta mono"><span>{c.metaWeb}</span><span>{c.metaChoice}</span><span>{c.metaHost}</span></div></div><HeroProductStage /></section>
     <TeamsStory />
+    <div className="pub-ascii-divider"><AsciiField preset="divider" /></div>
     <ProductShowcase />
     <WhatsNewShowcase />
     <RuntimeArchitectureProof />
@@ -159,6 +163,6 @@ export function LandingScreen() {
     <MobileContinuityProof />
     <CoreFeatureProofs />
     <KeyboardWorkflowProof compact />
-    <section className="pub-final"><div><div className="eyebrow">{c.finalEyebrow}</div><h2>{c.finalTitleA}<br /><span>{c.finalTitleB}</span></h2><p>{c.finalBody}</p></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}login`}>{c.primaryCta} <ArrowRight size={16} /></a><a className="pub-button" href={GITHUB_URL}><Github size={16} /> {c.viewSource}</a></div></section>
+    <section className="pub-final"><AsciiField preset="band" className="pub-final-ascii" /><div><div className="eyebrow">{c.finalEyebrow}</div><h2>{c.finalTitleA}<br /><span>{c.finalTitleB}</span></h2><p>{c.finalBody}</p></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}login`}>{c.primaryCta} <ArrowRight size={16} /></a><a className="pub-button" href={GITHUB_URL}><Github size={16} /> {c.viewSource}</a></div></section>
   </main><PublicFooter /></div>;
 }

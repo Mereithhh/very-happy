@@ -8,6 +8,7 @@ import { isWebPushSupported } from '@/sync/webPush';
 import { getNotificationPermission } from '@/sync/webNotifications';
 import { displayText, searchSettings, sectionTitle, settingHref, SETTING_QUERY_PARAM } from './settingsIndex';
 import { revealSettingWhenReady } from './settingsReveal';
+import { AsciiField } from '@/ui/asciiField/AsciiField';
 import './settings.css';
 
 export const settingsSections: {path:string; key:SimpleTranslationKey; icon:typeof Settings}[] = [
@@ -42,7 +43,7 @@ export function SettingsPage({children}:{children:ReactNode}) {
   return <div className="set-scroll"><div className="set-page">{children}</div></div>;
 }
 export function SettingsHeader({title,subtitle,right}:{title:string;subtitle?:string;right?:ReactNode}) {
-  return <div className="set-header"><BackButton/><div className="set-header__titles"><h1 className="set-header__title">{title}</h1>{subtitle&&<span className="set-header__subtitle">{subtitle}</span>}</div>{right&&<div className="set-header__right">{right}</div>}</div>;
+  return <div className="set-header"><AsciiField preset="faint" className="set-header__ascii"/><BackButton/><div className="set-header__titles"><h1 className="set-header__title">{title}</h1>{subtitle&&<span className="set-header__subtitle">{subtitle}</span>}</div>{right&&<div className="set-header__right">{right}</div>}</div>;
 }
 
 /** Navigation only: actual settings screens keep their own persistence and capability gates. */
