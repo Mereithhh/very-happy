@@ -127,7 +127,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         },
         {
           "type": "p",
-          "text": "A member that fails to start shows the real cause. When the computer has confirmed the failed process is gone, it relaunches the same task with backoff, up to five attempts; if it still fails, fix the cause and choose Retry launch in the task details. An unconfirmed launch never relaunches by itself: confirm the old process stopped, then retry or cancel. Sending a message never restarts the agent."
+          "text": "A member that fails to start shows the real cause. When the computer has confirmed the failed process is gone, it relaunches the same task with backoff, up to five attempts; if it still fails, fix the cause and choose Retry launch in the task details. An unconfirmed launch never relaunches by itself: confirm the old process stopped, then retry or cancel. Sending a message never restarts the agent. Reactivating a member always creates a fresh worktree from its original repository, even after its previous worktree was removed."
         }
       ]
     },

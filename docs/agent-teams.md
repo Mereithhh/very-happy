@@ -174,6 +174,10 @@ source adapter; a schedule by itself does not import or complete Todo items.
   is unconfirmed, nothing relaunches automatically: confirm the old process has
   stopped, then retry the launch or cancel the task. Retry requires a CLI that
   supports it; sending a message never restarts the agent.
+- Reactivating a member (delegating to it again) always creates a fresh worktree
+  from the member's original repository, even when its previous worktree was
+  removed. If that repository itself is missing or not a Git checkout, the task
+  shows that cause, retries with the same backoff, and waits for **Retry launch**.
 - When execution is unknown, first cancel or hand off the task as appropriate,
   verify the old process stopped, and preserve/integrate the results. The owner
   can then record **manual reconciliation** with the displayed claim and a note.

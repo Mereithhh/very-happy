@@ -30,7 +30,13 @@ describe('control server /resume-session', () => {
         const response = await post(server, { sessionId: 'sess-1', model: 'claude-opus-5-5', permissionMode: 'bypassPermissions' });
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ success: true, sessionId: 'sess-1' });
-        expect(resumeSession).toHaveBeenLastCalledWith('sess-1', { model: 'claude-opus-5-5', permissionMode: 'bypassPermissions' });
+        expect(resumeSession).toHaveBeenLastCalledWith('sess-1', { model: 'claude-opus-5-5', permissionMode: 'bypassPermissions', keepPublishedPermissionMode: true });
+    });
+
+    it('B-707: without a mode the resume keeps the mode the last wrapper published', async () => {
+        const response = await post(server, { sessionId: 'sess-3' });
+        expect(response.status).toBe(200);
+        expect(resumeSession).toHaveBeenLastCalledWith('sess-3', { model: undefined, permissionMode: undefined, keepPublishedPermissionMode: true });
     });
 
     it('returns the daemon precheck error verbatim with a 500', async () => {

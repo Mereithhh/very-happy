@@ -11,7 +11,7 @@ import { archiveSession } from '@/sessions/sessionOps';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
 import { readReceipt, writeReceipt, type TeamEffectReceipt } from './journal';
-import { prepareTeamWorktree, removeTeamWorktree } from './worktree';
+import { prepareTeamWorktree, removeTeamWorktree, resolveTeamRepository } from './worktree';
 import { afterStartupFailure, consumeOwnerRetry, ownerRetryPending, spawnGate, startupFailureMessage, TEAM_CLEANUP_RETRY_MS, TEAM_SPAWN_MAX_ATTEMPTS } from './spawnRetry';
 
 export interface TeamWorkerDeps {
@@ -90,7 +90,22 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                         return;
                     }
                     if (!op.directory) throw new Error('No repository selected for worker');
-                    const resource = await prepareTeamWorktree(home, op.directory, op.id);
+                    let resource: Awaited<ReturnType<typeof prepareTeamWorktree>>;
+                    try {
+                        // B-706: reactivating a bot must never reuse its removed worktree path.
+                        const repository = await resolveTeamRepository(home, op.directory, id => { try { return readReceipt(home, id)?.repository; } catch { return undefined; } });
+                        resource = await prepareTeamWorktree(home, repository, op.id);
+                    } catch (error) {
+                        // A preflight failure is definite (nothing was spawned): report the cause and
+                        // back off like a startup failure instead of failing again on every poll.
+                        const now = Date.now();
+                        receipt = afterStartupFailure(receipt, now);
+                        writeReceipt(home, receipt);
+                        const detail = error instanceof Error ? error.message : 'Team worktree could not be prepared';
+                        await action(op.teamId, `preflight-failure-${op.id}-${receipt.retryConsumed ?? 0}-${receipt.spawnFailures}`, { type: 'fail-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, error: startupFailureMessage(detail, receipt, now).slice(0, 1000) }).catch(() => {});
+                        deps.log(`Teams operation ${op.id} preflight failed (${receipt.spawnFailures}/${TEAM_SPAWN_MAX_ATTEMPTS})`);
+                        return;
+                    }
                     const scopes = join(home, 'teams', 'scopes');
                     ensurePrivateDirectorySync(scopes);
                     const scopeFile = join(scopes, `${op.id}.json`);
