@@ -18,6 +18,8 @@ import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { BrandLockup } from '@/ui/BrandMark';
 import { brandText } from '@/app/brand';
+import { rateLimitedMessage } from '@/auth/rateLimitMessage';
+import { retryAfterSecondsFromError } from '@/auth/rateLimitRetry';
 
 const MIN_USERNAME = 3;
 const MIN_PASSWORD = 8;
@@ -107,7 +109,7 @@ export function SignupScreen() {
     } catch (err: any) {
       if (err instanceof AccountAuthError) {
         if (err.code === 'username-taken') setServerError(t('signup.errorUsernameTaken'));
-        else if (err.code === 'rate-limited') setServerError(t('signup.errorRateLimited'));
+        else if (err.code === 'rate-limited') setServerError(rateLimitedMessage(t, err.retryAfterSeconds));
         else setServerError(t('signup.errorGeneric'));
       } else {
         const status = err?.response?.status;
@@ -119,7 +121,7 @@ export function SignupScreen() {
         else if (status === 403 && (code === 'signup-closed' || /closed/i.test(String(code))))
           setServerError(t('signup.errorSignupClosed'));
         else if (status === 429 || status === 403)
-          setServerError(t('signup.errorRateLimited'));
+          setServerError(rateLimitedMessage(t, retryAfterSecondsFromError(err)));
         else setServerError(t('signup.errorGeneric'));
       }
     } finally {
@@ -139,7 +141,7 @@ export function SignupScreen() {
         if (err.code === 'capacity-reached') setGoogleError(t('signup.errorCapacityReached'));
         else if (err.code === 'invite-required') setGoogleError(t('signup.errorInviteRequiredGoogle'));
         else if (err.code === 'signup-closed') setGoogleError(t('signup.errorSignupClosed'));
-        else if (err.code === 'rate-limited') setGoogleError(t('signup.errorRateLimited'));
+        else if (err.code === 'rate-limited') setGoogleError(rateLimitedMessage(t, err.retryAfterSeconds));
         else setGoogleError(t('signup.errorGoogle'));
       } else {
         setGoogleError(t('signup.errorGoogle'));

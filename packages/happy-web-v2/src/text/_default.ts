@@ -2353,6 +2353,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            oct21m: {
+                title: 'Email sign-in: more codes, honest waits',
+                summary: 'Signing in on several devices no longer locks you out on the first day, and a limit now tells you how long it lasts.',
+                limit: 'One address can request 10 sign-in codes a day (was 3); the 3-per-10-minutes burst limit stays.',
+                wait: 'When a sign-in limit is hit, the form shows the real remaining wait, such as "Try again in 8 minutes" or "in 23 hours", instead of "Wait a minute".',
+                nudge: 'Accounts that sign in with email codes only get a dismissible card suggesting a password or Google, and the login page explains that Google only opens an account it is already connected to.',
+            },
             oct21: {
                 title: 'Projects, editable drafts, @ file mentions and session search',
                 summary: 'Sessions working on one thing now share a project: instructions written once, a decision log, and one place to see who is doing what. Drafts the agent writes become editable, and one search finds any session across your machines. Project context, pi features and machine web panels need CLI 0.2.179.',
@@ -4624,7 +4631,13 @@ export const en = {
         errorInviteRequiredGoogle: 'Create an account and enter a valid invite code before continuing with Google.',
         errorSignupClosed: 'Signups are currently closed. Existing users can still sign in; you can also use a self-hosted relay.',
         errorCapacityReached: 'This server has reached its account limit. Existing users can still sign in; try later or use a self-hosted relay.',
-        errorRateLimited: 'Too many attempts. Wait a minute and try again.',
+        // B-668: generic fallback for servers that do not report retryAfter.
+        errorRateLimited: 'Too many attempts. Try again later.',
+        errorRateLimitedFor: ({ wait }: { wait: string }) => `Too many attempts. Try again in ${wait}.`,
+        retryWaitSeconds: ({ count }: { count: number }) => `${count} ${count === 1 ? 'second' : 'seconds'}`,
+        retryWaitMinutes: ({ count }: { count: number }) => `${count} ${count === 1 ? 'minute' : 'minutes'}`,
+        retryWaitHours: ({ count }: { count: number }) => `${count} ${count === 1 ? 'hour' : 'hours'}`,
+        retryWaitDays: ({ count }: { count: number }) => `${count} ${count === 1 ? 'day' : 'days'}`,
         errorGoogle: 'Google sign-in failed or was cancelled. Try again, or use username and password.',
         errorGeneric: 'Could not reach the server or create your account. Check the server URL and connection, then try again.',
         success: 'Account created. Welcome!',
@@ -4649,6 +4662,9 @@ export const en = {
         hidePassword: 'Hide password sign-in',
         passwordDisabled: 'Password sign-in is disabled by this relay. Use an email code or Google instead.',
         orGoogle: 'or continue with Google',
+        // B-668: Google matches the connected Google identity, never the email address.
+        googleLinkedOnly: 'Google opens only an account it is already connected to. Otherwise it creates a new, empty account — to use your existing account, sign in another way first and connect Google in Settings → Account.',
+        googleLinkedOnlyClosed: 'Google opens only an account it is already connected to. To use your existing account, sign in another way first and connect Google in Settings → Account.',
         invalidEmail: 'Enter a valid email address.',
         invalidCode: 'That code is invalid or expired. Request a new one and try again.',
         deliveryUnavailable: 'Email delivery is temporarily unavailable. Try again shortly.',
@@ -4698,6 +4714,14 @@ export const en = {
     },
 
     // B-627: relay-to-relay account migration (old-relay banner + new-relay landing).
+    signInNudge: {
+        eyebrow: 'SIGN-IN',
+        title: 'Add a sign-in that needs no code',
+        body: 'This account signs in with email codes only. Every new device or expired login needs a fresh code, at most 10 per address a day. Set a password or connect Google to sign in without waiting for email.',
+        setUp: 'Set up',
+        later: 'Not now',
+    },
+
     migration: {
         eyebrow: 'MOVED',
         title: ({ brand, target }: { brand: string; target: string }) => `${brand} has moved to ${target}`,

@@ -18,6 +18,10 @@ Auth flows:
   - Verifies signature using the provided public key.
   - Finds or creates an account by public key and returns `{ success, token }`; new Accounts obey signup mode/capacity.
 
+- Authentication rate limits (`/v1/auth/*`, `/v1/account/login*`, signup, identity links, OIDC, migration handoff)
+  - A `429` body is `{ error: 'too_many_requests', retryAfter? }`, with `retryAfter` in seconds until the longest blocking limit resets, mirrored in the `Retry-After` header. A capacity refusal with no time-bound limit omits both.
+  - Email codes: per address 3 per 10 minutes and 10 per day; per IP and global caps also apply.
+
 - `GET /v1/auth/config`
   - Public Web auth configuration: Google client ID (when enabled), signup mode, and current Account capacity.
 

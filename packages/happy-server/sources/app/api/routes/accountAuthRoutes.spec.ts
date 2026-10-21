@@ -8,6 +8,7 @@ const {
     authMock,
     accountSecretsMock,
     allowAuthRequestMock,
+    retryAfterMock,
     createEmailChallengeMock,
     consumeEmailChallengeMock,
     sendLoginCodeMock,
@@ -33,6 +34,7 @@ const {
             upsertAccountSecret: vi.fn(async () => 'encrypted-secret'),
         },
         allowAuthRequestMock: vi.fn(async (_key: string, _options: unknown) => true),
+        retryAfterMock: vi.fn(async (_buckets: unknown) => 60),
         createEmailChallengeMock: vi.fn(),
         consumeEmailChallengeMock: vi.fn(),
         sendLoginCodeMock: vi.fn(),
@@ -46,7 +48,10 @@ const {
 vi.mock('@/storage/db', () => ({ db: dbMock }));
 vi.mock('@/app/auth/auth', () => ({ auth: authMock }));
 vi.mock('@/app/auth/accountSecrets', () => accountSecretsMock);
-vi.mock('@/app/auth/authRateLimiter', () => ({ allowAuthRequest: allowAuthRequestMock }));
+vi.mock('@/app/auth/authRateLimiter', () => ({
+    allowAuthRequest: allowAuthRequestMock,
+    authRateLimitRetryAfterSeconds: retryAfterMock,
+}));
 vi.mock('@/app/auth/emailLoginSecurity', () => ({
     normalizeEmail: (email: string) => email.trim().toLowerCase(),
     createEmailLoginChallenge: createEmailChallengeMock,
@@ -72,7 +77,6 @@ vi.mock('@/app/auth/googleIdentityLink', () => ({
 import {
     accountAuthRoutes,
     accountPublicKeyFromSecret,
-    consumeRateBucketsSequentially,
     emailCodeRateBuckets,
     emailVerifyRateBuckets,
     enabledReplacementIdentityProviders,
@@ -83,6 +87,7 @@ import {
     passwordLoginRateBuckets,
     verifyPassword,
 } from './accountAuthRoutes';
+import { rateLimitRetryAfter } from '@/app/auth/authRateLimitResponse';
 
 async function buildApp() {
     const app = fastify();
@@ -119,6 +124,7 @@ beforeEach(() => {
     authMock.createLoginToken.mockResolvedValue({ token: 'login-token', expiresAt: new Date('2030-01-01T00:00:00.000Z') });
     accountSecretsMock.upsertAccountSecret.mockResolvedValue('encrypted-secret');
     allowAuthRequestMock.mockResolvedValue(true);
+    retryAfterMock.mockResolvedValue(60);
     createEmailChallengeMock.mockResolvedValue({
         id: '37ac495d-799b-4290-9048-fcf4ee37c0f0',
         email: 'person@example.com',
@@ -131,6 +137,7 @@ beforeEach(() => {
         email: null,
         google: { connected: false, email: null },
         passwordConfigured: true,
+        ssoConnected: false,
     });
     linkVerifiedEmailIdentityMock.mockResolvedValue('linked');
     verifyGoogleIdTokenMock.mockResolvedValue({
@@ -202,7 +209,9 @@ describe('public Email OTP and password policy', () => {
             globalMonthlySendLimit: 3_000,
         });
         expect(send).toEqual(expect.arrayContaining([
-            expect.objectContaining({ key: expect.stringContaining('email:'), max: 3, windowMs: 24 * 60 * 60_000 }),
+            // B-668: 10 codes per address per day; the 10-minute burst stays at 3.
+            expect.objectContaining({ key: expect.stringMatching(/^email-code:email:[a-f0-9]{32}:day$/), max: 10, windowMs: 24 * 60 * 60_000 }),
+            expect.objectContaining({ key: expect.stringMatching(/^email-code:email:[a-f0-9]{32}:ten-minute$/), max: 3, windowMs: 10 * 60_000 }),
             expect.objectContaining({ key: 'email-code:global:day', max: 200 }),
             expect.objectContaining({ key: 'email-code:global:month', max: 3_000 }),
         ]));
@@ -496,7 +505,8 @@ describe('authenticated account credential secret validation', () => {
         });
 
         expect(response.statusCode).toBe(429);
-        expect(response.json()).toEqual({ error: 'too_many_requests' });
+        expect(response.json()).toEqual({ error: 'too_many_requests', retryAfter: 60 });
+        expect(response.headers['retry-after']).toBe('60');
         expect(allowAuthRequestMock).toHaveBeenCalledWith(
             'credential-change:account-1',
             { max: 5, windowMs: 60_000 },
@@ -633,6 +643,7 @@ describe('authenticated Email identity linking', () => {
             email: 'owner@example.com',
             google: { connected: true, email: 'owner@example.com' },
             passwordConfigured: true,
+            ssoConnected: true,
         });
         const app = await buildApp();
         const response = await app.inject({ method: 'GET', url: '/v1/account/identities' });
@@ -642,6 +653,7 @@ describe('authenticated Email identity linking', () => {
             email: 'owner@example.com',
             google: { connected: true, email: 'owner@example.com' },
             passwordConfigured: true,
+            ssoConnected: true,
         });
         expect(getAccountLoginMethodsMock).toHaveBeenCalledWith(dbMock, 'account-1');
         await app.close();
@@ -849,8 +861,57 @@ describe('password login abuse buckets', () => {
             return !key.includes(':ip:');
         };
         const buckets = passwordLoginRateBuckets('203.0.113.7', 'rotating-user');
-        await expect(consumeRateBucketsSequentially(buckets, consume)).resolves.toBe(false);
+        const retryAfter = vi.fn(async () => 42);
+        await expect(rateLimitRetryAfter(buckets, { consume, retryAfter })).resolves.toBe(42);
         expect(calls).toEqual([buckets[0].key]);
         expect(calls).not.toContain('password-login:global');
+        // The reset time is computed over ALL buckets, including the unconsumed
+        // global one, so a later full bucket cannot hide behind the first refusal.
+        expect(retryAfter).toHaveBeenCalledWith(buckets);
+    });
+});
+
+describe('B-668 429 retry-after on authentication routes', () => {
+    function enableEmail() {
+        process.env.AUTH_EMAIL_PROVIDER = 'resend';
+        process.env.AUTH_EMAIL_FROM = 'login@veryhappy.dev';
+        process.env.RESEND_API_KEY = 'test-key';
+    }
+
+    it('email code: body retryAfter + Retry-After header from the longest blocking bucket', async () => {
+        enableEmail();
+        allowAuthRequestMock.mockImplementation(async (key: string) => !key.endsWith(':day'));
+        retryAfterMock.mockResolvedValue(23 * 60 * 60 + 5);
+        const app = await buildApp();
+        const response = await app.inject({
+            method: 'POST', url: '/v1/auth/email/code', payload: { email: 'Person@Example.com' },
+        });
+        expect(response.statusCode).toBe(429);
+        expect(response.json()).toEqual({ error: 'too_many_requests', retryAfter: 82_805 });
+        expect(response.headers['retry-after']).toBe('82805');
+        // Every send bucket is offered to the reset lookup, not just the refusing one.
+        const offered = (retryAfterMock.mock.calls[0][0] as Array<{ key: string }>).map((bucket) => bucket.key);
+        expect(offered).toHaveLength(8);
+        expect(offered).toEqual(expect.arrayContaining([
+            expect.stringMatching(/^email-code:email:[a-f0-9]{32}:day$/),
+            'email-code:global:month',
+        ]));
+        expect(createEmailChallengeMock).not.toHaveBeenCalled();
+        await app.close();
+    });
+
+    it.each([
+        ['/v1/account/login', { username: 'alice', password: 'password' }],
+        ['/v1/account/login/email', { email: 'person@example.com', challengeId: '37ac495d-799b-4290-9048-fcf4ee37c0f0', code: '123456' }],
+    ])('%s carries retryAfter on 429', async (url, payload) => {
+        enableEmail();
+        allowAuthRequestMock.mockResolvedValue(false);
+        retryAfterMock.mockResolvedValue(480);
+        const app = await buildApp();
+        const response = await app.inject({ method: 'POST', url, payload });
+        expect(response.statusCode).toBe(429);
+        expect(response.json()).toEqual({ error: 'too_many_requests', retryAfter: 480 });
+        expect(response.headers['retry-after']).toBe('480');
+        await app.close();
     });
 });

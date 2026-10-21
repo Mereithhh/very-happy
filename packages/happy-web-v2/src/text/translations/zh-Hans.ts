@@ -2499,6 +2499,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            oct21m: {
+                title: '邮箱验证码登录：额度更多，等待时间说实话',
+                summary: '多台设备登录不会再第一天就被锁，触发限制时会告诉你还要等多久。',
+                limit: '每个邮箱每天可以收 10 个登录验证码（原来 3 个）；每 10 分钟最多 3 个的限制不变。',
+                wait: '触发登录限制时，表单显示实际剩余时间，比如「8 分钟后再试」「23 小时后再试」，不再笼统地让你等一分钟。',
+                nudge: '只能用邮箱验证码登录的账号，登录后会看到一张可关闭的卡片，建议设置密码或绑定 Google；登录页也说明 Google 只能登录已绑定它的账号。',
+            },
             oct21: {
                 title: '项目、可编辑草稿、@ 引用文件、会话搜索',
                 summary: '做同一件事的会话现在可以归到一个项目里：说明写一次、决定有记录，谁在做什么一处看清。agent 写的草稿可以直接改，一次搜索能找遍所有机器上的会话。项目上下文、pi 新功能和机器网页面板需要 CLI 0.2.179。',
@@ -4475,7 +4482,12 @@ export const zhHans: TranslationStructure = {
         errorInviteRequiredGoogle: '请进入创建账户页面并输入有效邀请码，再使用 Google 继续。',
         errorSignupClosed: '当前未开放注册。现有用户仍可登录，也可以使用自托管中继。',
         errorCapacityReached: '此服务器的账户数量已达上限。现有用户仍可登录；请稍后重试或使用自托管中继。',
-        errorRateLimited: '尝试次数过多，请稍后再试。',
+        errorRateLimited: '尝试次数过多，稍后再试。',
+        errorRateLimitedFor: ({ wait }: { wait: string }) => `尝试次数过多，${wait}后再试。`,
+        retryWaitSeconds: ({ count }: { count: number }) => `${count} 秒`,
+        retryWaitMinutes: ({ count }: { count: number }) => `${count} 分钟`,
+        retryWaitHours: ({ count }: { count: number }) => `${count} 小时`,
+        retryWaitDays: ({ count }: { count: number }) => `${count} 天`,
         errorGoogle: 'Google 登录失败，请重试。',
         errorGeneric: '创建账户失败，请重试。',
         success: '账户已创建，欢迎！',
@@ -4500,6 +4512,8 @@ export const zhHans: TranslationStructure = {
         hidePassword: '收起密码登录',
         passwordDisabled: '此中继已关闭密码登录，请使用邮箱验证码或 Google。',
         orGoogle: '或使用 Google 继续',
+        googleLinkedOnly: 'Google 只能登录已绑定该 Google 的账号；未绑定时会新建一个空账号。要进入现有账号，先用其他方式登录，再到「设置 → 账号」绑定 Google。',
+        googleLinkedOnlyClosed: 'Google 只能登录已绑定该 Google 的账号。要进入现有账号，先用其他方式登录，再到「设置 → 账号」绑定 Google。',
         invalidEmail: '请输入有效的邮箱地址。',
         invalidCode: '验证码无效或已过期，请重新获取。',
         deliveryUnavailable: '邮件暂时无法发送，请稍后重试。',
@@ -4549,6 +4563,14 @@ export const zhHans: TranslationStructure = {
     },
 
     // B-620: generic OIDC (single sign-on) login.
+    signInNudge: {
+        eyebrow: '登录方式',
+        title: '添加免验证码的登录方式',
+        body: '这个账号目前只能用邮箱验证码登录。每台新设备或登录过期都要重新收码，每个邮箱每天最多 10 个。设置密码或绑定 Google 后，换设备登录不必等邮件。',
+        setUp: '去设置',
+        later: '以后再说',
+    },
+
     migration: {
         eyebrow: '已搬家',
         title: ({ brand, target }: { brand: string; target: string }) => `${brand} 已搬到 ${target}`,

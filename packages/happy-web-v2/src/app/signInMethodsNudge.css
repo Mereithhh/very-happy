@@ -1,0 +1,62 @@
+/* B-668: same family as the notification opt-in card (B-570): neutral
+   outline, ink/canvas primary, quiet "later". Placement lives in floatingCards.css. */
+.signin-nudge {
+  position: fixed;
+  right: max(var(--sp-4), env(safe-area-inset-right));
+  bottom: max(var(--sp-4), env(safe-area-inset-bottom));
+  z-index: 1000;
+  width: min(360px, calc(100vw - 2 * var(--sp-4)));
+  box-sizing: border-box;
+  padding: var(--sp-4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  color: var(--text);
+  box-shadow: var(--shadow-modal);
+  animation: signin-nudge-enter 200ms cubic-bezier(.2, .8, .2, 1) both;
+}
+.signin-nudge__close {
+  position: absolute;
+  top: var(--sp-1);
+  right: var(--sp-1);
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+}
+.signin-nudge__close:hover { color: var(--text); background: var(--bg-2); }
+.signin-nudge__head { display: flex; align-items: center; gap: var(--sp-2); padding-right: var(--sp-8); color: var(--text-dim); }
+.signin-nudge h2 { margin: 0; color: var(--text); font-size: var(--fs-14); font-weight: 600; letter-spacing: -.01em; }
+.signin-nudge p { margin: var(--sp-2) 0 0; color: var(--text-dim); font-size: var(--fs-13); line-height: 1.5; }
+.signin-nudge__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.signin-nudge__primary, .signin-nudge__later {
+  min-height: 36px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-13);
+}
+.signin-nudge__primary { background: var(--text); color: var(--bg-0); border-color: var(--text); font-weight: 600; }
+.signin-nudge__primary:hover { opacity: .88; }
+.signin-nudge__later { color: var(--text-dim); }
+.signin-nudge__later:hover { color: var(--text); background: var(--bg-2); }
+
+@keyframes signin-nudge-enter {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@media (max-width: 520px), (pointer: coarse) {
+  .signin-nudge__close { width: 44px; height: 44px; top: 0; right: 0; }
+  .signin-nudge__primary, .signin-nudge__later { min-height: 44px; }
+}
+@media (max-width: 520px) {
+  .signin-nudge { right: max(var(--sp-4), env(safe-area-inset-right)); left: max(var(--sp-4), env(safe-area-inset-left)); width: auto; }
+  .signin-nudge__actions { flex-direction: column; }
+  .signin-nudge__primary, .signin-nudge__later { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .signin-nudge { animation: none; }
+}

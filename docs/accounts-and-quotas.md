@@ -11,6 +11,15 @@ older Web sessions. Expired/revoked Web session rows are physically pruned; a
 bounded active-session set evicts the oldest session before issuing a new one, so
 the token returned by a successful login remains valid.
 
+## Email-code limits and a code-free fallback
+
+One address can request 3 codes per 10 minutes and 10 per day. When a limit is
+hit, the sign-in form shows the real remaining wait (for example "Try again in 8
+minutes"). An account that signs in with email codes only spends one code on
+every new device or expired login, so after sign-in the Web shows a dismissible
+card suggesting a password or a Google link in **Settings → Account**; it goes
+away once either exists.
+
 ## Link email to an existing account
 
 If you already use password or Google login, sign in with that existing method

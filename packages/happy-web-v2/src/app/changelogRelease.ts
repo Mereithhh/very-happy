@@ -16,6 +16,14 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-10-21-email-code-limits',
+    date: '2026-10-21',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.oct21m.title',
+    summaryKey: 'changelog.releases.oct21m.summary',
+    itemKeys: ['changelog.releases.oct21m.limit', 'changelog.releases.oct21m.wait', 'changelog.releases.oct21m.nudge'],
+  },
+  {
     id: '2026-10-21-projects-drafts-search',
     date: '2026-10-21',
     buildVersion: __APP_VERSION__,

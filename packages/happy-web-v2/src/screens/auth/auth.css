@@ -169,6 +169,13 @@
   letter-spacing: .08em;
 }
 .auth-form-header h2 { font-size: var(--fs-28); line-height: 1.2; }
+/* B-668: one quiet line under the Google button about what it signs in to. */
+.auth-method-note {
+  margin: calc(-1 * var(--sp-1)) 0 0;
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+  line-height: 1.5;
+}
 .auth-reauth-note {
   padding: var(--sp-3);
   color: var(--text-dim);

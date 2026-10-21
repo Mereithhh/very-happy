@@ -15,6 +15,8 @@ export interface AccountLoginMethods {
     email: string | null;
     google: { connected: boolean; email: string | null };
     passwordConfigured: boolean;
+    /** B-668: an SSO (`oidc:<issuer>`) identity also signs in without an email code. */
+    ssoConnected: boolean;
 }
 
 export async function getAccountLoginMethods(db: Database, accountId: string): Promise<AccountLoginMethods> {
@@ -36,6 +38,7 @@ export async function getAccountLoginMethods(db: Database, accountId: string): P
         email: emailIdentity?.email ?? emailIdentity?.providerSubject ?? null,
         google: { connected: !!googleIdentity, email: googleIdentity?.email ?? null },
         passwordConfigured: credential[0]?.present === true,
+        ssoConnected: identities.some((identity) => identity.provider.startsWith('oidc:')),
     };
 }
 
