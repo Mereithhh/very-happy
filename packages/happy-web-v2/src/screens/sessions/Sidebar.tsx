@@ -5,7 +5,7 @@ import { BrandIcon, BrandEnvBadge } from '@/ui/BrandMark';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Flag, StickyNote, ListChecks, FolderOpen, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, Contact, FolderKanban, FolderPlus } from 'lucide-react';
+import { Search, Plus, CircleHelp, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, UsersRound, ArrowDownWideNarrow, ListOrdered, Flag, StickyNote, ListChecks, FolderOpen, Rows3, RotateCcw, Cable, Trash2, History, ChevronDown, CircleAlert, CircleHelp as UnknownStatus, Unplug, CodeXml, Asterisk, Pi, Zap, LocateFixed, FolderX, Eye, Moon, Contact, FolderKanban, FolderPlus, Tags } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -22,7 +22,8 @@ import { isHibernated } from '@/app/sessionHibernation';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { priorityLevel, setPriorityLevel, sortByPriority, PRIORITY_LEVELS, priorityTag, type PriorityLevel } from '@/utils/tags';
 import { visibleSidebarSessions } from './sidebarRows';
-import { groupRowsByProject, foldersOfRows, legacyGroupModeFor, tagCandidates, usedTagGrouping } from './sidebarProjectGroups';
+import { groupRowsByProject, foldersOfRows, legacyGroupModeFor, resolveSidebarGrouping, showTagGroupingBackNotice, type SidebarGrouping } from './sidebarProjectGroups';
+import { groupRowsByTag } from './sidebarTagGroups';
 import { applyLocalMembership, projectsApi, refreshProjects, useProjects } from '@/sync/projects';
 import { toast } from '@/ui/Toast';
 import { MoveToProjectModal } from '@/screens/projects/MoveToProjectModal';
@@ -72,7 +73,7 @@ import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
-import { sidebarNavEntries, navAttentionTotal, navMenuLabel, type SidebarNavKey } from './sidebarNavEntries';
+import { sidebarNavEntries, navAttentionTotal, navMenuLabel, orderCreateMenu, sidebarTopModel, type SidebarNavKey } from './sidebarNavEntries';
 import {
   findRevealTarget,
   isGroupCollapsed,
@@ -161,6 +162,8 @@ interface SidebarSection {
   kicker?: string;
   /** B-647: 「设为项目」 for an unassigned folder group. */
   makeProject?: { name: string; machineId: string; path: string; sessionIds: string[] };
+  /** B-675: 「转成项目」 for a tag group (the tag→project action kept from B-647). */
+  tagToProject?: string;
 }
 
 function sessionRow(s: Session): Row {
@@ -258,20 +261,23 @@ export function Sidebar() {
   // when true so devices that opted into tag grouping keep that choice.
   // While grouped, drag/move reordering is disabled: the sequence is derived
   // from a grouping key, so a positional drop has nothing meaningful to write.
-  // B-647: the lens is `sidebarGrouping` (project by default | none). Tag and
-  // workspace lenses are gone; the old fields are only read for the one-time
-  // tag notice and mirrored so a Web rollback still shows a sensible lens.
+  // B-647: the lens is `sidebarGrouping`, project by default. B-675 (Owner
+  // 2026-10-21) brought tag grouping back beside it: 项目 / 标签 / 不分组.
+  // The pre-B-647 fields are only read for the one-time notice and mirrored
+  // so a Web rollback still shows a sensible lens.
   const [groupByTag, setGroupByTag] = useLocalSettingMutable('sidebarGroupByTag');
   const [savedGroupMode, setSavedGroupMode] = useLocalSettingMutable('sidebarGroupMode');
   const [grouping, setGrouping] = useLocalSettingMutable('sidebarGrouping');
-  const [tagNoticeDismissed, setTagNoticeDismissed] = useLocalSettingMutable('projectsTagNoticeDismissed');
-  const groupMode: 'project' | 'none' = grouping === 'none' ? 'none' : 'project';
+  const [tagNoticeDismissed, setTagNoticeDismissed] = useLocalSettingMutable('tagGroupingBackNoticeDismissed');
+  const groupMode = resolveSidebarGrouping(grouping);
   const grouped = orderable && groupMode !== 'none';
-  const selectGroupMode = useCallback((mode: 'project' | 'none') => {
+  const selectGroupMode = useCallback((mode: SidebarGrouping) => {
     setGrouping(mode);
-    setSavedGroupMode(legacyGroupModeFor(mode));
-    if (groupByTag) setGroupByTag(false);
-  }, [setGrouping, setSavedGroupMode, groupByTag, setGroupByTag]);
+    const legacy = legacyGroupModeFor(mode);
+    setSavedGroupMode(legacy.sidebarGroupMode);
+    if (groupByTag !== legacy.sidebarGroupByTag) setGroupByTag(legacy.sidebarGroupByTag);
+    if (mode === 'tag') setTagNoticeDismissed(true);
+  }, [setGrouping, setSavedGroupMode, groupByTag, setGroupByTag, setTagNoticeDismissed]);
   const projectsSnap = useProjects();
   /** Surfaces whose order can shift WITHOUT the user acting — the ones the
    *  hover hold below has to protect. (Manual mode reorders only on a drag,
@@ -603,13 +609,31 @@ export function Sidebar() {
     }
     return out;
   }, [projectGrouping, nestTeams, collapsedGroups, attentionKeys, projectsSnap.status, t]);
+  // B-675: 按标签 — one group per first tag (priority P0-P2 first, 未分组 last).
+  // Teams have no tags, so their members and history links leave the tag
+  // groups and nest under one trailing 「团队」 group instead of being dropped.
+  const tagSections = useMemo<SidebarSection[] | null>(() => {
+    if (!orderable || groupMode !== 'tag' || !orderedRows) return null;
+    const membership = liveTeams.length > 0 ? teamSessionMembership(liveTeams) : null;
+    const isTeamRow = (r: Row) => !!membership && !!r.sessionId && membership.has(r.sessionId);
+    const out: SidebarSection[] = groupRowsByTag(orderedRows.filter((r) => !isTeamRow(r))).map((g) => ({
+      ...collapsibleSection(tagGroupId(g), g.tag ?? (t('sidebar.groupUntagged') as string), g.rows, collapsedGroups),
+      ...(g.tag && projectsSnap.status === 'ready' ? { tagToProject: g.tag } : {}),
+    }));
+    if (liveTeams.length > 0) {
+      const teamRows = [...orderedRows.filter(isTeamRow), ...teamHistoryRows];
+      out.push({ ...collapsibleSection('teams:tag-lens', teamCopy.title, nestTeams(teamRows, liveTeams), collapsedGroups), count: teamRows.filter((r) => !r.teamHistoryLink).length });
+    }
+    return out;
+  }, [orderable, groupMode, orderedRows, liveTeams, teamHistoryRows, nestTeams, collapsedGroups, projectsSnap.status, teamCopy.title, t]);
+  const groupedSections = projectSections ?? tagSections;
   // Collapsed groups' rows are not rendered, so they take no ⌘1-9 number
   // and no move-up/down position either (B-580).
   const plainDisplayRows = useMemo<Row[] | null>(
-    () => (projectSections ? projectSections.flatMap((sec) => sec.rows).filter((r) => !r.teamArchivedFold) : orderedRows),
-    [projectSections, orderedRows],
+    () => (groupedSections ? groupedSections.flatMap((sec) => sec.rows).filter((r) => !r.teamArchivedFold) : orderedRows),
+    [groupedSections, orderedRows],
   );
-  // The flat list (不分组) nests teams over the whole list; the project lens did it per group.
+  // The flat list (不分组) nests teams over the whole list; the project and tag lenses do it per group.
   const teamHistory = view === 'list' && !grouped && liveTeams.length > 0;
   // B-619: 「分享给我的」 — a trailing group in every view mode; not draggable, no ⌘N badge.
   const sharedRows = useMemo<Row[]>(
@@ -915,7 +939,8 @@ export function Sidebar() {
       ];
     }
     // 列表 + 按项目 (B-647, default): project groups, then 未归属 folder groups.
-    if (projectSections) return [...projectSections, ...shared];
+    // 列表 + 按标签 (B-675): first-tag groups, 未分组, then 团队.
+    if (groupedSections) return [...groupedSections, ...shared];
     return [
       {
         id: 'all',
@@ -928,7 +953,7 @@ export function Sidebar() {
       },
       ...shared,
     ];
-  }, [view, statusGroups, completedRows, collapsedGroups, projectSections, displayRows, sharedRows, t]);
+  }, [view, statusGroups, completedRows, collapsedGroups, groupedSections, displayRows, sharedRows, t]);
 
   // ----- collapsed-header status summary (B-580) -----
   // Same inputs as the row's own status slot (SidebarRow → agentStatusSignal),
@@ -1057,10 +1082,11 @@ export function Sidebar() {
     const key = tag.toLowerCase();
     await makeProjectFromRows(tag, (orderedRows ?? []).filter((r) => r.tags?.[0]?.trim().toLowerCase() === key));
   }, [orderedRows, makeProjectFromRows]);
-  const tagNoticeVisible = orderable && !tagNoticeDismissed && projectsSnap.status === 'ready' && usedTagGrouping(savedGroupMode, groupByTag);
+  const tagNoticeVisible = orderable && showTagGroupingBackNotice({ sidebarGrouping: grouping, sidebarGroupMode: savedGroupMode, sidebarGroupByTag: groupByTag, tagGroupingBackNoticeDismissed: tagNoticeDismissed });
 
   const [moveProjectTarget, setMoveProjectTarget] = useState<{ sessionId: string; candidates: { sessionId: string; title: string }[] } | null>(null);
-  const createItems: MenuItemDef[] = [
+  // B-676: 新会话 first, 新项目 second (orderCreateMenu) — on the phone ＋ they are the top two rows.
+  const createItems: MenuItemDef[] = orderCreateMenu([
     ...(projectsSnap.status === 'ready' ? [{
       // B-647: 新建 ▾ → 新项目 (name only; folders and defaults live on the project page).
       key: 'project',
@@ -1129,9 +1155,12 @@ export function Sidebar() {
       separatorBefore: true,
       onSelect: () => navigate('/machine/connect'),
     },
-  ];
+  ]);
 
-  // B-641: secondary entries — a nav column on desktop, the ⋯ menu on phones.
+  // B-641/B-676: secondary entries live in the header ⋯ menu on every device.
+  const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready' });
+  const newRowRef = useRef<HTMLDivElement | null>(null);
+  const [newRowWidth, setNewRowWidth] = useState<number>();
   const navEntries = sidebarNavEntries({ teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople });
   const navAttention = navAttentionTotal(navEntries);
   const navName: Record<SidebarNavKey, string> = {
@@ -1142,7 +1171,6 @@ export function Sidebar() {
     help: t('sidebar.openHelp'),
   };
   const navIcon = { teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact, help: CircleHelp } as const;
-  const navBadgeTitle: Partial<Record<SidebarNavKey, string>> = { automations: t('automations.decisions'), people: t('people.incoming') };
 
   return (
     <div className="sb">
@@ -1153,23 +1181,23 @@ export function Sidebar() {
         </button>
         <div className="sb-header-right">
           {/* B-650: 🔍 opens the session search (spec 2026-10-projects §7); ⌘K stays the quick jump. */}
-          <button className="sb-icon-btn" aria-label={t("sessionSearch.title")} title={`${t("sessionSearch.title")} · ${SESSION_SEARCH_HINT}`} onClick={openSessionSearch}><Search size={17}/></button>
-          {/* B-641: the phone list keeps its height — new session and the
-              secondary entries live in the header instead of six nav rows. */}
-          {!isDesktop && (
+          {top.header.includes('search') && <button className="sb-icon-btn" aria-label={t("sessionSearch.title")} title={`${t("sessionSearch.title")} · ${SESSION_SEARCH_HINT}`} onClick={openSessionSearch}><Search size={17}/></button>}
+          {/* B-641: the phone list keeps its height — new session lives in the header ＋. */}
+          {top.header.includes('create-menu') && (
             <ActionDropdownMenu align="end" sideOffset={4} items={createItems}>
               <button className="sb-icon-btn sb-new-icon" disabled={creatingChat} aria-busy={creatingChat} aria-label={t('sidebar.newSession')} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail}>
                 {creatingChat ? <Spinner size={17} /> : <Plus size={19} />}
               </button>
             </ActionDropdownMenu>
           )}
-          {!isDesktop && (
+          {/* B-676: 团队 / 自动化 / 待办 / 联系人 / 帮助 — one ⋯ on every device; the badge sums what needs the user. */}
+          {top.header.includes('more') && (
             <ActionDropdownMenu
               align="end"
               sideOffset={4}
               items={navEntries.map((e) => ({ key: e.key, label: navMenuLabel(navName[e.key], e.attention), icon: navIcon[e.key], onSelect: () => navigate(e.path) }))}
             >
-              <button className="sb-icon-btn sb-more-btn" aria-label={t('sidebar.moreEntries')} title={t('sidebar.moreEntries')}>
+              <button className="sb-icon-btn sb-more-btn" aria-label={navAttention > 0 ? `${t('sidebar.moreEntries')} · ${navAttention}` : t('sidebar.moreEntries')} title={t('sidebar.moreEntries')}>
                 <MoreHorizontal size={18} />
                 {navAttention > 0 && <span className="sb-more-attn mono" aria-hidden>{navAttention}</span>}
               </button>
@@ -1181,8 +1209,8 @@ export function Sidebar() {
               collapsed=1 to localStorage and the NEXT desktop visit opened
               with the sidebar unexpectedly collapsed. Same 980px breakpoint
               as the layout itself, so button and behavior can't disagree. */}
-          {isDesktop && (
-            <button className="sb-icon-btn" title={t('sidebar.collapse')} onClick={toggleCollapsed}>
+          {top.header.includes('collapse') && (
+            <button className="sb-icon-btn" title={t('sidebar.collapse')} aria-label={t('sidebar.collapse')} onClick={toggleCollapsed}>
               <PanelLeftClose size={17} />
             </button>
           )}
@@ -1190,27 +1218,25 @@ export function Sidebar() {
         </div>
       </header>
 
-      {isDesktop && <nav className="sb-products" aria-label="Workspace">
-          <ActionDropdownMenu
-            align="start"
-            sideOffset={4}
-            matchTriggerWidth
-            items={createItems}
-          >
-            <button className="sb-nav-btn" disabled={creatingChat} aria-busy={creatingChat} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail}>
-              {creatingChat ? <Spinner size={17} /> : <Plus size={17} />}<span>{creatingChat ? (lang.startsWith('zh') ? '正在创建…' : 'Creating…') : t('sidebar.newSession')}</span><ChevronDown size={14} className="sb-new-chevron"/>
+      {/* B-676: two labelled actions instead of a six-row nav column (spec 2026-10-sidebar-header).
+          新建会话: the main part starts a chat in one click, ▾ lists every create type. */}
+      {top.actions.length > 0 && <div className="sb-actions">
+        {top.actions.includes('new-session') && <div className="sb-new-split" ref={newRowRef}>
+          <button className="sb-nav-btn sb-new-main" disabled={creatingChat} aria-busy={creatingChat} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail} onClick={() => void createChatOrConfigure(navigate, configureNew, { location })}>
+            {creatingChat ? <Spinner size={17} /> : <Plus size={17} />}<span>{creatingChat ? (lang.startsWith('zh') ? '正在创建…' : 'Creating…') : t('sidebar.newSession')}</span>
+          </button>
+          <ActionDropdownMenu align="end" sideOffset={4} contentMinWidth={newRowWidth} items={createItems}>
+            <button className="sb-nav-btn sb-new-more" aria-label={t('sidebar.newMenu')} title={t('sidebar.newMenu')} onPointerDown={() => setNewRowWidth(newRowRef.current?.offsetWidth)}>
+              <ChevronDown size={14} />
             </button>
           </ActionDropdownMenu>
-        {navEntries.map((e) => {
-          const Icon = navIcon[e.key];
-          return (
-            <button key={e.key} onClick={() => navigate(e.path)}>
-              <Icon size={e.key === 'help' ? 17 : 18} /><span>{navName[e.key]}</span>
-              {e.attention > 0 && <span className="sb-nav-attn mono" title={navBadgeTitle[e.key]}>{e.attention}</span>}
-            </button>
-          );
-        })}
-      </nav>}
+        </div>}
+        {top.actions.includes('new-project') && (
+          <button className="sb-nav-btn" title={t('sidebar.newProject')} onClick={() => void createNamedProject()}>
+            <FolderPlus size={17} /><span>{t('sidebar.newProject')}</span>
+          </button>
+        )}
+      </div>}
 
       <div className="sb-list-controls">
       <div className="sb-filter vh-segmented" role="tablist">
@@ -1253,8 +1279,9 @@ export function Sidebar() {
               align="end"
               sideOffset={6}
               items={[
-                // B-647: only 项目 (default) / 不分组 — tag grouping moved into projects.
+                // B-675: 项目 (default) / 标签 / 不分组 — tag grouping is back beside projects.
                 { key: 'project', disabled: !orderable, label: `${groupMode === 'project' ? '✓ ' : ''}${t('sidebar.groupProjects')}`, icon: FolderKanban, onSelect: () => selectGroupMode('project') },
+                { key: 'tag', disabled: !orderable, label: `${groupMode === 'tag' ? '✓ ' : ''}${t('sidebar.groupTags')}`, icon: Tags, onSelect: () => selectGroupMode('tag') },
                 { key: 'none', disabled: !orderable, label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Rows3, onSelect: () => selectGroupMode('none') },
                 { key: 'ordering-help', disabled: !orderable || Boolean(teamHistory), label: lang.startsWith('zh') ? '排序说明' : 'Reordering help', icon: CircleHelp, checked: showOrderHint, onSelect: () => setShowOrderHint((shown) => !shown) },
                 { key: 'locate-current', disabled: !onRowRoute, label: lang.startsWith('zh') ? '定位当前会话' : 'Locate current session', icon: LocateFixed, separatorBefore: true, onSelect: locateCurrent },
@@ -1262,7 +1289,7 @@ export function Sidebar() {
               ]}
             >
               <button className={`sb-icon-btn${groupMode !== 'none' ? ' is-on' : ''}`} title={t('sidebar.groupMenu')} aria-label={t('sidebar.groupMenu')}>
-                {groupMode === 'project' ? <FolderKanban size={17} /> : <Rows3 size={17} />}
+                {groupMode === 'project' ? <FolderKanban size={17} /> : groupMode === 'tag' ? <Tags size={17} /> : <Rows3 size={17} />}
               </button>
             </ActionDropdownMenu>
           )}
@@ -1271,13 +1298,12 @@ export function Sidebar() {
       {showOrderHint && orderable && !teamHistory && <SidebarOrderHint grouped={grouped} onUngroup={() => selectGroupMode('none')} />}
 
       {tagNoticeVisible && (
-        <ProjectsTagNotice
-          candidates={tagCandidates(orderedRows ?? [])}
-          onConvert={(tag) => void convertTagToProject(tag)}
+        <TagGroupingBackNotice
+          onUseTags={() => selectGroupMode('tag')}
           onDismiss={() => setTagNoticeDismissed(true)}
           title={t('sidebar.tagNoticeTitle') as string}
           body={t('sidebar.tagNoticeBody') as string}
-          convertLabel={t('sidebar.tagNoticeConvert') as string}
+          useLabel={t('sidebar.tagNoticeUse') as string}
           dismissLabel={t('sidebar.tagNoticeDismiss') as string}
         />
       )}
@@ -1302,7 +1328,7 @@ export function Sidebar() {
                 <div key={sec.id} className="sb-section">
                   {sec.kicker && <div className="sb-section-kicker">{sec.kicker}</div>}
                   {sec.label !== undefined && (
-                    <div className={`sb-section-head sb-section-head--toggle${sec.createLocation || sec.makeProject ? ' sb-section-head--workspace' : ''}${sec.project ? ' sb-section-head--project' : ''}`} title={sec.detail || undefined}>
+                    <div className={`sb-section-head sb-section-head--toggle${sec.createLocation || sec.makeProject || sec.tagToProject ? ' sb-section-head--workspace' : ''}${sec.project ? ' sb-section-head--project' : ''}`} title={sec.detail || undefined}>
                       {/* B-580: every labelled group folds; Enter/Space via the native button. */}
                       <button
                         type="button"
@@ -1346,6 +1372,12 @@ export function Sidebar() {
                         title={`${t('sidebar.makeProject')}：${sec.makeProject.path}`}
                         aria-label={`${t('sidebar.makeProject')}：${sec.label}`}
                         onClick={() => void makeProjectFrom(sec.makeProject!)}
+                      ><FolderPlus size={14} /></button>}
+                      {sec.tagToProject && <button
+                        type="button" className="sb-workspace-new sb-workspace-make-project"
+                        title={t('sidebar.tagToProject', { tag: sec.tagToProject }) as string}
+                        aria-label={t('sidebar.tagToProject', { tag: sec.tagToProject }) as string}
+                        onClick={() => void convertTagToProject(sec.tagToProject!)}
                       ><FolderPlus size={14} /></button>}
                     </div>
                   )}
@@ -1593,6 +1625,10 @@ export function Sidebar() {
  */
 function workspaceGroupId(g: { key: string }): string {
   return `workspace:${g.key}`;
+}
+/** B-675: same ids the pre-B-647 tag lens used, so remembered folds come back too. */
+function tagGroupId(g: { tag: string | null }): string {
+  return g.tag === null ? 'untagged' : `tag:${g.tag.toLowerCase()}`;
 }
 /** A labelled group: `rows` empty while folded, `allRows` always complete. */
 function collapsibleSection(id: string, label: string, rows: Row[], collapsed: Record<string, boolean>): SidebarSection {
@@ -2040,29 +2076,19 @@ function SidebarRow({
 }
 
 /**
- * B-647: one-time notice on devices that used tag grouping — the lens is gone,
- * the data is not: turn a first tag into a project in one step.
+ * B-675: one-time notice on devices whose last explicit lens was tag grouping
+ * (B-647 had moved them to projects): tag grouping is back, one tap away.
  */
-function ProjectsTagNotice({ candidates, onConvert, onDismiss, title, body, convertLabel, dismissLabel }: {
-  candidates: { tag: string; count: number }[];
-  onConvert: (tag: string) => void;
+function TagGroupingBackNotice({ onUseTags, onDismiss, title, body, useLabel, dismissLabel }: {
+  onUseTags: () => void;
   onDismiss: () => void;
-  title: string; body: string; convertLabel: string; dismissLabel: string;
+  title: string; body: string; useLabel: string; dismissLabel: string;
 }) {
-  const [tag, setTag] = useState(candidates[0]?.tag ?? '');
-  const selected = candidates.some((c) => c.tag === tag) ? tag : candidates[0]?.tag ?? '';
   return (
     <div className="sb-tag-notice" role="status">
       <div className="sb-tag-notice__text"><strong>{title}</strong><span>{body}</span></div>
       <div className="sb-tag-notice__actions">
-        {candidates.length > 0 && (
-          <>
-            <select className="sb-tag-notice__select" value={selected} onChange={(e) => setTag(e.target.value)} aria-label={convertLabel}>
-              {candidates.map((c) => <option key={c.tag} value={c.tag}>#{c.tag} · {c.count}</option>)}
-            </select>
-            <button type="button" className="sb-tag-notice__convert" onClick={() => selected && onConvert(selected)}>{convertLabel}</button>
-          </>
-        )}
+        <button type="button" className="sb-tag-notice__convert" onClick={onUseTags}>{useLabel}</button>
         <button type="button" className="sb-tag-notice__dismiss" onClick={onDismiss}>{dismissLabel}</button>
       </div>
     </div>

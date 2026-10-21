@@ -13,17 +13,18 @@ one project; sessions outside any project keep working exactly as before.
 
 ## Create a project
 
-- Sidebar **New ▾ → New project**: give it a name, then add folders on the
+- Sidebar **New project** (right under **New session**; also in the **New session ▾** menu): give it a name, then add folders on the
   project page.
 - In the sidebar, sessions outside any project are grouped by folder under
   **No project**; **Make this folder a project** turns that folder into a
   project and moves its sessions in.
-- Tag grouping is gone. If a device used it, a one-time notice offers
-  **Turn into project** for a tag: a project named after it, with every session
-  whose first tag it is. Tags themselves stay, and `#tag` still filters search.
+- With **Group by tag** on, each tag group's header has **Turn #tag into a
+  project**: a project named after the tag, with every session whose first tag
+  it is. Tags themselves stay, and `#tag` still filters search.
 
-The sidebar groups by project by default (the group menu offers **Project** or
-no grouping). Teams appear inside their project's group. Selecting a group's
+The sidebar groups by project by default; the group menu offers **Project**,
+**Tag** (one group per first tag, untagged last, teams in their own group) or no
+grouping. Teams appear inside their project's group. Selecting a group's
 name opens the project page; its ＋ starts a session in that project.
 
 ## Put sessions in a project

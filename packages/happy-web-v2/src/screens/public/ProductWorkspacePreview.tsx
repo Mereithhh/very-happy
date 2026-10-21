@@ -1,7 +1,7 @@
 import {
   ArrowLeft,
-  UsersRound,
   Check,
+  ChevronDown,
   ChevronRight,
   CircleAlert,
   Clock,
@@ -13,7 +13,6 @@ import {
   FolderPlus,
   HelpCircle,
   LayoutGrid,
-  ListChecks,
   Maximize2,
   MessageSquare,
   MessagesSquare,
@@ -162,16 +161,20 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
       <div className="sb">
         <header className="sb-header">
           <div className="sb-brand"><img src="/icon-192.png" alt="" width={24} height={24}/><span>Very Happy</span></div>
+          {/* B-676: same top as the app — 🔍 · ⋯ (团队/自动化/待办/联系人/帮助) in the header, then 新建会话 ▾ and 新建项目. */}
           <div className="sb-header-right">
+            <button className="sb-icon-btn" type="button" aria-label={zh?'搜索操作、对话和终端':'Search actions, chats, and terminals'} onClick={onSearch}><Search size={16}/></button>
+            <button className="sb-icon-btn" type="button" disabled aria-label={zh ? '更多（团队、自动化、待办…）' : 'More (Teams, Automations, Todos…)'}><MoreHorizontal size={16}/></button>
             <button className="sb-icon-btn product-nav-close" type="button" aria-label={zh ? '关闭会话列表' : 'Close session list'} onClick={onCloseNav}><PanelLeftClose size={16} /></button>
           </div>
         </header>
-        <nav className="sb-products" aria-label={zh ? '工作区' : 'Workspace'}>
-          <button className="sb-nav-btn" type="button" disabled><Plus size={17}/><span>{zh?'新对话':'New conversation'}</span></button>
-          <button className="sb-nav-btn" type="button" aria-label={zh?'搜索操作、对话和终端':'Search actions, chats, and terminals'} onClick={onSearch}><Search size={17}/><span>{zh?'搜索':'Search'}</span><kbd>⌘K</kbd></button>
-          <button type="button" disabled><UsersRound size={18} /><span>{zh ? '团队' : 'Teams'}</span></button>
-          <button type="button" disabled><ListChecks size={18} /><span>{zh ? '待办' : 'Todo'}</span></button>
-        </nav>
+        <div className="sb-actions">
+          <div className="sb-new-split">
+            <button className="sb-nav-btn sb-new-main" type="button" disabled><Plus size={17}/><span>{zh?'新建会话':'New session'}</span></button>
+            <button className="sb-nav-btn sb-new-more" type="button" disabled aria-label={zh ? '更多新建方式' : 'More ways to create'}><ChevronDown size={14}/></button>
+          </div>
+          <button className="sb-nav-btn" type="button" disabled><FolderPlus size={17}/><span>{zh ? '新建项目' : 'New project'}</span></button>
+        </div>
         <div className="sb-list-controls"><div className="sb-filter vh-segmented" role="presentation"><button className="sb-filter-btn is-on is-active" type="button" disabled>{zh ? '列表' : 'List'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '状态' : 'Status'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '归档' : 'Archived'}</button></div><div className="sb-list-tools"><button className="sb-icon-btn sb-board-btn" type="button" aria-label={zh ? '打开任务看板' : 'Open task board'} aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button></div></div>
         <div className="sb-list">
           {groups.map((group) => <div key={group.key} className="sb-section">

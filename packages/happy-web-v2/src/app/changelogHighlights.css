@@ -1,0 +1,77 @@
+/* B-677 highlight cards — shared by the release notice and /changelog.
+   Cards sit inside the notice (one closed container), so per the 1-Border Rule
+   they carry no outline: the screenshot frame is a fill step, text is plain. */
+.wnh-grid {
+  container-type: inline-size;
+  display: grid;
+  gap: var(--sp-6);
+  margin: var(--sp-5) 0 var(--sp-4);
+}
+
+/* Narrow (phone sheet): screenshot on top, text below. */
+.wnh-card { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+/* The captures share the canvas colour, so a fill-step mat (not an outline)
+   separates them from the notice surface. */
+.wnh-shot {
+  padding: var(--sp-2);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  margin-bottom: var(--sp-1);
+}
+.wnh-shot img { display: block; width: 100%; height: auto; border-radius: calc(var(--r-md) - var(--sp-2)); }
+.wnh-body { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.wnh-card h3, .wnh-card h4 { margin: 0; font-size: var(--fs-15); font-weight: 600; line-height: 1.35; text-wrap: balance; }
+.wnh-card p { margin: 0; color: var(--text-dim); font-size: var(--fs-13); line-height: 1.55; text-wrap: pretty; }
+
+/* Wide (desktop notice, /changelog): text left, screenshot right. Screenshots
+   are tight 480×300 crops, so ~60% of the row keeps their text near 1:1. */
+@container (min-width: 560px) {
+  .wnh-card { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--sp-5); align-items: center; }
+  .wnh-shot { order: 2; margin-bottom: 0; }
+}
+
+.wnh-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-3); margin-top: var(--sp-1); }
+.wnh-try {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 28px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-btn);
+  background: var(--fill-soft);
+  color: var(--text);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  transition: background var(--dur-snap) var(--ease-out);
+}
+.wnh-try:hover { background: var(--fill-soft-hover); }
+.wnh-docs { display: inline-flex; align-items: center; min-height: 28px; color: var(--text-dim); font-size: var(--fs-12); text-decoration: underline; text-underline-offset: 3px; }
+.wnh-docs:hover { color: var(--text); }
+.wnh-try:focus-visible, .wnh-docs:focus-visible, .wnh-more > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* "Other improvements": the long tail stays one click away, collapsed by default. */
+.wnh-more { margin: var(--sp-2) 0 0; border-top: 1px solid var(--line); padding-top: var(--sp-3); }
+.wnh-more > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+.wnh-more > summary::-webkit-details-marker { display: none; }
+.wnh-more > summary:hover { color: var(--text); }
+.wnh-more > summary svg { transition: transform var(--dur-snap) var(--ease-out); }
+.wnh-more[open] > summary svg { transform: rotate(90deg); }
+.wnh-more .wn-list { margin: var(--sp-3) 0 0; }
+
+@media (pointer: coarse) {
+  .wnh-try, .wnh-docs, .wnh-more > summary { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wnh-try, .wnh-more > summary svg { transition: none; }
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectView, TeamState } from '@slopus/happy-wire';
-import { foldersOfRows, groupRowsByProject, legacyGroupModeFor, tagCandidates, usedTagGrouping } from './sidebarProjectGroups';
+import { foldersOfRows, groupRowsByProject, legacyGroupModeFor, usedTagGrouping } from './sidebarProjectGroups';
 
 const project = (id: string, extra: Partial<ProjectView> = {}): ProjectView => ({ id, name: id, goal: null, instructions: '', instructionsVersion: 0, instructionsUpdatedBy: null, instructionsUpdatedAt: null, folders: [], defaults: {}, archivedAt: null, createdAt: 1, updatedAt: 1, teamIds: [], automationIds: [], ...extra });
 const row = (key: string, machineId = 'm', path = '/repo', tags?: string[]) => ({ key, sessionId: key, machineId, workspacePath: path, machineName: 'mac', tags });
@@ -61,12 +61,10 @@ describe('settings migration and helpers', () => {
     expect(usedTagGrouping('workspace', false)).toBe(false);
     expect(usedTagGrouping(undefined, undefined)).toBe(false);
   });
-  it('a rollback to the old Web sees workspace for project and none for none', () => {
-    expect(legacyGroupModeFor('project')).toBe('workspace');
-    expect(legacyGroupModeFor('none')).toBe('none');
-  });
-  it('tag candidates count first tags case-insensitively, most used first', () => {
-    expect(tagCandidates([{ tags: ['Infra'] }, { tags: ['infra', 'x'] }, { tags: ['ui'] }, {}])).toEqual([{ tag: 'Infra', count: 2 }, { tag: 'ui', count: 1 }]);
+  it('a rollback to the old Web sees workspace for project, tag for tag (B-675) and none for none', () => {
+    expect(legacyGroupModeFor('project')).toEqual({ sidebarGroupMode: 'workspace', sidebarGroupByTag: false });
+    expect(legacyGroupModeFor('tag')).toEqual({ sidebarGroupMode: 'tag', sidebarGroupByTag: true });
+    expect(legacyGroupModeFor('none')).toEqual({ sidebarGroupMode: 'none', sidebarGroupByTag: false });
   });
   it('folders of a converted group are unique machine+path pairs', () => {
     expect(foldersOfRows([row('a'), row('b'), row('c', 'n', '/y'), { key: 'd' }])).toEqual([{ machineId: 'm', path: '/repo' }, { machineId: 'n', path: '/y' }]);

@@ -1,10 +1,9 @@
 /**
  * B-641: the sidebar's secondary "Workspace" entries (团队 / 自动化 / 待办 /
- * 联系人 / 帮助). ONE list feeds both presentations so they cannot drift:
- *  - desktop (two-pane shell): the always-visible nav column under 新建会话;
- *  - phone (single-pane list): the header's ⋯ menu, so the session list gets
- *    the screen height instead of six 44px nav rows (spec 2026-10-mobile-sidebar).
- * Visibility gates and attention counts are computed here once.
+ * 联系人 / 帮助). Since B-676 they live in the header's ⋯ menu on every
+ * device (desktop used to keep a five-row nav column; spec
+ * 2026-10-sidebar-header), so the list gets the height. Visibility gates and
+ * attention counts are computed here once.
  */
 export type SidebarNavKey = 'teams' | 'automations' | 'todos' | 'people' | 'help';
 
@@ -38,4 +37,25 @@ export function navAttentionTotal(entries: readonly SidebarNavEntry[]): number {
 /** Menu label: the entry name plus its count, e.g. 「自动化 · 2」. */
 export function navMenuLabel(name: string, attention: number): string {
   return attention > 0 ? `${name} · ${attention}` : name;
+}
+
+/**
+ * B-676: what the sidebar top renders, as data (spec 2026-10-sidebar-header).
+ * Header row: search and ⋯ everywhere; collapse only in the two-pane shell;
+ * the phone keeps B-641's ＋ create menu instead of action rows. Desktop gets
+ * two labelled action rows: 新建会话 (main click = new chat, ▾ = every create
+ * type) and 新建项目 (only once the projects API answered).
+ */
+export type SidebarHeaderControl = 'search' | 'create-menu' | 'more' | 'collapse';
+export type SidebarActionRow = 'new-session' | 'new-project';
+
+export function sidebarTopModel(input: { isDesktop: boolean; projectsReady: boolean }): { header: SidebarHeaderControl[]; actions: SidebarActionRow[] } {
+  if (!input.isDesktop) return { header: ['search', 'create-menu', 'more'], actions: [] };
+  return { header: ['search', 'more', 'collapse'], actions: input.projectsReady ? ['new-session', 'new-project'] : ['new-session'] };
+}
+
+/** Create menu order: 新会话 first, 新项目 second, then the rest as given. */
+export function orderCreateMenu<T extends { key: string }>(items: readonly T[]): T[] {
+  const rank = (k: string) => (k === 'chat' ? 0 : k === 'project' ? 1 : 2);
+  return items.map((item, i) => ({ item, i })).sort((a, b) => rank(a.item.key) - rank(b.item.key) || a.i - b.i).map((x) => x.item);
 }

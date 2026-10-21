@@ -22,7 +22,7 @@
 
 ## 非目标
 
-- 不加新 metadata 字段（`permissionModeReason` 需 Web schema 先登记，另议）；不做 `dontAsk/auto` 支持（B-263）；不改 RPC 通道的降级保护（Web 侧已保证 A6 只升不降，用户显式选 default 必须生效）；不改 `resume` 路径（daemon 已透传 `--permission-mode`，Web 无调用者）。
+- 不加新 metadata 字段（`permissionModeReason` 需 Web schema 先登记，另议）；不做 `dontAsk/auto` 支持（B-263）；不改 RPC 通道的降级保护（Web 侧已保证 A6 只升不降，用户显式选 default 必须生效）；不改 `resume` 路径（daemon 已透传 `--permission-mode`；B-683 起 Web 的恢复/重启都会传，缺省时 wrapper 以 `default` 起步并发布，Web 会把它当成新事实）。
 
 ## 现状事实（代码已确认，基线 `main@78c37a84`）
 

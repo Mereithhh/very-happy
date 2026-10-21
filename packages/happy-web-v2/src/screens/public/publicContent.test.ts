@@ -148,7 +148,14 @@ describe('public documentation registry', () => {
     expect(proof).toContain('aria-selected={index === active}');
     expect(proof).toContain("reducedMotion ? 'auto' : 'smooth'");
     expect(proof).toContain('window.clearTimeout(summonTimerRef.current)');
-    expect(proof).toContain('sidebar search button opens the same command surface');
+    // B-677: the touch path the copy describes must match the app — the sidebar
+    // 🔍 opens session search (B-650), whose empty state links to the palette.
+    expect(proof).toContain('the sidebar search button opens session search');
+    expect(proof).not.toContain('opens the same command surface');
+    const sidebar = readFileSync(new URL('../sessions/Sidebar.tsx', import.meta.url), 'utf8');
+    expect(sidebar).toMatch(/aria-label=\{t\("sessionSearch\.title"\)\}[^>]*onClick=\{openSessionSearch\}/);
+    const searchPanel = readFileSync(new URL('../search/SessionSearchPanel.tsx', import.meta.url), 'utf8');
+    expect(searchPanel).toMatch(/className="ss-palette-link" onClick=\{\(\) => \{ onClose\(\); openCommandPalette\(\); \}\}/);
     expect(proof).not.toMatch(/@\/sync\//);
     expect(proof).not.toMatch(/@\/auth\//);
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)');

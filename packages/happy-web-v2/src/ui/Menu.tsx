@@ -94,6 +94,7 @@ export function ActionDropdownMenu({
   align = 'end',
   sideOffset = 4,
   matchTriggerWidth = false,
+  contentMinWidth,
   contentClassName,
 }: {
   items: MenuItemDef[];
@@ -101,6 +102,8 @@ export function ActionDropdownMenu({
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
   matchTriggerWidth?: boolean;
+  /** px floor for the panel when the trigger is only part of a wider control (B-676 split button) */
+  contentMinWidth?: number;
   /** extra class on the menu panel — e.g. to stack above a higher layer (B-559) */
   contentClassName?: string;
 }) {
@@ -110,7 +113,7 @@ export function ActionDropdownMenu({
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           className={contentClassName ? `vh-menu ${contentClassName}` : 'vh-menu'}
-          style={matchTriggerWidth ? { minWidth: 'var(--radix-dropdown-menu-trigger-width, 0px)' } : undefined}
+          style={matchTriggerWidth ? { minWidth: 'var(--radix-dropdown-menu-trigger-width, 0px)' } : contentMinWidth ? { minWidth: contentMinWidth } : undefined}
           align={align}
           sideOffset={sideOffset}
           onCloseAutoFocus={giveFocusBackToTerminal}

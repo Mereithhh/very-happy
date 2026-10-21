@@ -25,6 +25,7 @@ import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useAutomations } from '@/sync/automationsStore';
+import { setProjectsDevOverride } from '@/sync/projects';
 import { recordBackgroundTasks, recordHeartbeat } from '@/sync/heartbeatLease';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { Sidebar } from '@/screens/sessions/Sidebar';
@@ -141,11 +142,14 @@ function seed() {
     // B-641: a realistic backlog of idle chats, so the phone list overflows
     // and "rows visible on the first screen" is measurable.
     ...['Juliet', 'Kilo', 'Lima', 'Mike', 'November', 'Oscar', 'Papa', 'Quebec', 'Romeo', 'Sierra', 'Tango', 'Uniform']
-      .map((name, k) => fakeSession(`s${10 + k}`, `${name} idle chat`, 10 + k)),
+      // B-675: a few first tags so 按标签 has real groups (and an untagged tail).
+      .map((name, k) => fakeSession(`s${10 + k}`, `${name} idle chat`, 10 + k, k < 4 ? { tags: [['web', 'api', 'web', 'docs'][k]] } : {})),
     // B-674: retired team members — their sessions are archived.
     ...RETIRED_MEMBERS.map((name, k) => fakeSession(`s${30 + k}`, `${name} worker`, 30 + k, { archived: true })),
   ]);
   setTeamNavigationDevOverride([harnessTeam(now)]);
+  // projects API answered with no projects yet: every project-gated control shows
+  setProjectsDevOverride({ status: 'ready', projects: [], members: [] });
   storage.getState().applyReady();
   // B-312 红色未读点：s5 跑完一轮而用户当时在看别处（真实产生路径在
   // applySessions 的 running→idle 检测里，harness 直接调同一个 action）
