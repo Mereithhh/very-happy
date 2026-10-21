@@ -67,7 +67,17 @@ function resumableBackend(session: EligibilitySession): string | null | 'unsuppo
   const flavor = session.metadata?.flavor ?? 'claude';
   if (flavor === 'acp') return session.metadata?.piSessionId ?? 'unsupported-flavor';
   if (flavor !== 'claude' && flavor !== 'codex') return 'unsupported-flavor';
-  return (flavor === 'codex' ? session.metadata?.codexThreadId : session.metadata?.claudeSessionId) ?? null;
+  // B-680: a session that never ran a turn has no backend id yet; restoring it
+  // starts its first conversation (daemon `resumeStartsFreshConversation`), so
+  // it is just as recoverable. An old daemon answers `no-backend-id`.
+  return (flavor === 'codex' ? session.metadata?.codexThreadId : session.metadata?.claudeSessionId) ?? NEVER_RAN;
+}
+
+const NEVER_RAN = 'never-ran';
+
+/** B-680: an offline claude/codex session that never ran a turn. */
+export function isNeverRunOffline(session: EligibilitySession | null | undefined): boolean {
+  return !!session && !session.active && resumableBackend(session) === NEVER_RAN;
 }
 
 /** Whether the web can even ask the machine to restore this session. Only
@@ -183,10 +193,13 @@ export function advanceRestoreState(
 }
 
 /** Composer gate (A3): an archived session's composer restores first and
- *  queues; so does a HIBERNATED one (B-587: it will not come back on its own);
- *  everything else (live OR merely offline) sends as today. */
+ *  queues; so does a HIBERNATED one (B-587: it will not come back on its own)
+ *  and a never-run offline one (B-680); everything else (live OR merely
+ *  offline) sends as today. */
 export type ComposerGate = 'send' | 'restore-first';
 export function composerGate(session: EligibilitySession | null | undefined): ComposerGate {
-  return isRestorable(session) || isHibernated(session) ? 'restore-first' : 'send';
+  // B-680: so does an offline session that never ran a turn — no wrapper
+  // brings it back on its own, and a plain send used to vanish without a word.
+  return isRestorable(session) || isHibernated(session) || isNeverRunOffline(session) ? 'restore-first' : 'send';
 }
 

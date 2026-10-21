@@ -52,6 +52,20 @@ export function resumePrecheck(
     return { ok: true };
 }
 
+/**
+ * Which precheck failures a resume turns into a FRESH agent conversation in the
+ * same directory (same happy session row, no `--resume`) instead of an error.
+ *   - `conversation-missing`: the transcript is gone, the history stays on the
+ *     server.
+ *   - `no-backend-id` (B-680): the session never ran a turn, so there is no
+ *     agent conversation to reopen — and nothing to lose by starting one. Used
+ *     to be fatal, which left a stopped empty session with no way back.
+ * A bad cwd or an unsupported flavor stays fatal.
+ */
+export function resumeStartsFreshConversation(reason: ResumePrecheckReason): boolean {
+    return reason === 'conversation-missing' || reason === 'no-backend-id';
+}
+
 /** `--model` rides argv verbatim (no shell), so the only risk is a value that
  *  parses as another flag; keep it to a model-name charset. The only bracket
  *  form allowed is Claude Code's own 1M-context marker (`opus[1m]`,
