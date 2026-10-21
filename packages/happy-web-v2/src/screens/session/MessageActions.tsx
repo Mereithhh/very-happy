@@ -1,3 +1,4 @@
+import { useReadOnlyTranscript } from './readOnlyTranscript';
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Pencil, Quote, TextQuote, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -33,6 +34,13 @@ export function MessageActions({ text, sessionId, userMessage, createdAt = userM
     /** B-513: not yet confirmed by the server — copy only; a failed turn shows its recovery actions instead of the time. */
     send?: TurnSendStatus | null;
     children?: ReactNode;
+}) {
+    if (useReadOnlyTranscript()) return <>{children}</>;
+    return <EditableMessageActions text={text} sessionId={sessionId} userMessage={userMessage} createdAt={createdAt} send={send}>{children}</EditableMessageActions>;
+}
+
+function EditableMessageActions({ text, sessionId, userMessage, createdAt, send, children }: {
+    text: string; sessionId: string; userMessage?: UserTextMessage; createdAt?: number; send: TurnSendStatus | null; children?: ReactNode;
 }) {
     const { t, lang } = useTranslation();
     const copy = messageActionsCopy(lang);

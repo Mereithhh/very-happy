@@ -1,0 +1,62 @@
+/* B-701 read-only share-link page. Workspace density, public shell. */
+.slk {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-0);
+  color: var(--text);
+}
+.slk-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-0);
+  border-bottom: var(--hairline) solid var(--line);
+}
+.slk-brand { display: inline-flex; flex: 0 0 auto; color: var(--text); }
+.slk-meta { flex: 1; min-width: 0; }
+.slk-title {
+  margin: 0;
+  font-size: var(--fs-15);
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slk-sub {
+  margin: 2px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--sp-2);
+  font-size: var(--fs-12);
+  color: var(--text-faint);
+}
+.slk-chip {
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--fill-soft);
+  color: var(--text);
+}
+.slk-live { display: inline-flex; align-items: center; gap: 4px; }
+.slk-mono { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.slk-chat { flex: 1; min-height: 0; }
+.slk-empty, .slk-foot {
+  margin: 0;
+  text-align: center;
+  font-size: var(--chat-fs-secondary);
+  color: var(--text-faint);
+}
+.slk-foot { padding: var(--sp-4) 0 var(--sp-6); }
+.slk-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-6) var(--sp-4);
+}

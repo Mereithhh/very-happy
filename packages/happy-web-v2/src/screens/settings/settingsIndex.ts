@@ -44,6 +44,7 @@ export const SETTINGS_SECTION_TITLES: Record<string, SettingsText> = {
   channels: 'settingsChannels.title',
   voice: 'settingsVoice.title',
   machines: 'settingsMachines.title',
+  shared: 'share.settings.title',
   usage: 'settings.usage',
   diagnostics: 'diagnostics.title',
   password: 'settingsAccount.password',
@@ -118,6 +119,8 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: 'voice.pttSound', section: 'voice', title: 'settingsVoice.pttSound', description: 'settingsVoice.pttSoundHint', keywords: ['push to talk', 'ptt', 'sound', '按住说话', '提示音'] },
   { id: 'voice.skipPermissions', section: 'voice', title: 'settingsVoice.skipPermissions', description: 'settingsVoice.skipPermissionsHint', keywords: ['permission', 'yolo', 'skip', '权限', '跳过'] },
   { id: 'voice.assistantMachine', section: 'voice', title: 'settingsVoice.assistantMachine', keywords: ['machine', 'assistant', 'computer', '电脑', '机器', '助手'] },
+  // ── shared (B-701) ──
+  { id: 'shared.list', section: 'shared', title: 'share.settings.title', description: 'share.settings.subtitle', keywords: ['share', 'shared', 'link', 'revoke', 'expire', 'access', '分享', '链接', '撤销', '过期', '已分享', '联系人'] },
   // ── machines ──
   // ── models (B-688) ──
   { id: 'models.machine', section: 'models', title: 'modelConfig.machine', description: 'modelConfig.subtitle', keywords: ['model', 'provider', 'base url', 'baseurl', 'api key', 'gateway', 'custom model', 'claude', 'codex', 'gemini', 'pi', 'anthropic_base_url', 'config.toml', 'settings.json', '模型', '自定义模型', '网关', '密钥', '供应商'] },

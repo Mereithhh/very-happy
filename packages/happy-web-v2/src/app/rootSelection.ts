@@ -1,4 +1,5 @@
-const ALWAYS_PUBLIC_PATH = /^\/welcome\/?$/;
+// B-701: `/s/<linkId>` share links open the anonymous viewer even in a signed-in browser.
+const ALWAYS_PUBLIC_PATH = /^\/(?:welcome\/?$|s\/[^/]+\/?$)/;
 const ANONYMOUS_PUBLIC_PATH = /^\/(?:$|docs(?:\/|$)|privacy\/?$|terms\/?$)/;
 
 /**
@@ -10,7 +11,7 @@ const ANONYMOUS_PUBLIC_PATH = /^\/(?:$|docs(?:\/|$)|privacy\/?$|terms\/?$)/;
  * the workspace.
  */
 export function shouldUsePublicRoot(routePath: string, hasStoredCredentials: boolean, landingEnabled = true): boolean {
-  if (!landingEnabled && (ALWAYS_PUBLIC_PATH.test(routePath) || /^\/?$/.test(routePath))) {
+  if (!landingEnabled && (/^\/welcome\/?$/.test(routePath) || /^\/?$/.test(routePath))) {
     // B-624: no marketing page — `/` and `/welcome` belong to the app root, which sends anonymous visitors to login.
     return false;
   }

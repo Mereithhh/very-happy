@@ -12,9 +12,11 @@ import { useSessionShares } from '@/sync/sessionSharesStore';
 import { useAcceptedFriends } from '@/sync/storage';
 import { getDisplayName } from '@/sync/friendTypes';
 import { SessionShareApiError } from '@/sync/apiSessionShares';
-import type { SessionGrantView, SessionShareRole } from '@/sync/sessionShareTypes';
+import type { SessionGrantView, SessionShareRole, ShareExpiryDays } from '@/sync/sessionShareTypes';
 import { Button, Input } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
+import { ExpirySelect, ShareLinkPanel } from './ShareLinkPanel';
+import { remainingDaysLabel } from './shareFormat';
 import './sessionOptionsDialog.css';
 import './shared.css';
 
@@ -52,6 +54,9 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
     const pickable = friends.filter((f) => !grantedIds.has(f.id));
     const [picking, setPicking] = useState<string | null>(null);
     const [role, setRoleChoice] = useState<SessionShareRole>('viewer');
+    // B-701: two tiers in one dialog; contact grants default to "never" (the B-619 behaviour).
+    const [tab, setTab] = useState<'contacts' | 'link'>('contacts');
+    const [expiry, setExpiry] = useState<ShareExpiryDays>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [listError, setListError] = useState<string | null>(null);
@@ -69,7 +74,7 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
         if (!value || busy) return;
         setBusy(true); setError(null);
         try {
-            await share(sessionId, { target: value }, role);
+            await share(sessionId, { target: value }, role, expiry);
             setTarget('');
         } catch (e) {
             setError(shareErrorCopy(t, e instanceof SessionShareApiError ? e.code : 'unknown'));
@@ -82,7 +87,7 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
         if (busy || picking) return;
         setPicking(accountId); setError(null);
         try {
-            await share(sessionId, { accountId }, role);
+            await share(sessionId, { accountId }, role, expiry);
         } catch (e) {
             setError(shareErrorCopy(t, e instanceof SessionShareApiError ? e.code : 'unknown'));
         } finally {
@@ -115,6 +120,12 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
                         <Dialog.Close className="so-close" aria-label={t('common.close')}><X size={18} /></Dialog.Close>
                     </div>
 
+                    <div className="vh-segmented shd-tabs" role="tablist" aria-label={t('share.dialog.title')}>
+                        <button type="button" role="tab" aria-selected={tab === 'contacts'} onClick={() => setTab('contacts')}>{t('share.tabs.contacts')}</button>
+                        <button type="button" role="tab" aria-selected={tab === 'link'} onClick={() => setTab('link')}>{t('share.tabs.link')}</button>
+                    </div>
+
+                    {tab === 'link' ? <ShareLinkPanel sessionId={sessionId} open={open} /> : <>
                     <form className="shd-form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
                         {pickable.length > 0 && (
                             <div className="shd-friends" role="group" aria-label={t('share.dialog.friendsLabel')}>
@@ -156,6 +167,10 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
                                 <span className="shd-role-hint">{t('share.dialog.roleDriverHint')}</span>
                             </button>
                         </div>
+                        <div className="shd-link-row">
+                            <label className="shd-inline-label" htmlFor={`shd-grant-exp-${sessionId}`}>{t('share.expiry.label')}</label>
+                            <ExpirySelect id={`shd-grant-exp-${sessionId}`} value={expiry} onChange={setExpiry} />
+                        </div>
                         {role === 'driver' && (
                             <p className="shd-warn"><ShieldAlert size={15} aria-hidden />{t('share.dialog.driverWarning')}</p>
                         )}
@@ -182,7 +197,7 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
                                 </span>
                                 <span className="shd-grant-text">
                                     <span className="shd-grant-name">{grant.grantee.displayName}</span>
-                                    <span className="shd-grant-sub">{[grant.grantee.email ?? grant.grantee.username, grant.status === 'pending' ? t('share.dialog.statusPending') : null].filter(Boolean).join(' · ')}</span>
+                                    <span className="shd-grant-sub">{[grant.grantee.email ?? grant.grantee.username, grant.status === 'pending' ? t('share.dialog.statusPending') : null, grant.expiresAt ? remainingDaysLabel(t, grant.expiresAt) : null].filter(Boolean).join(' · ')}</span>
                                 </span>
                                 <select
                                     className="shd-grant-role"
@@ -197,6 +212,7 @@ export function ShareDialog({ sessionId, open, onOpenChange }: { sessionId: stri
                             </div>
                         ))}
                     </div>
+                    </>}
                 </Dialog.Content>
             </Dialog.Portal>
         </Dialog.Root>

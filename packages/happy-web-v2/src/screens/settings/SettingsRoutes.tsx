@@ -28,6 +28,7 @@ import {
   FileText,
   Info,
   Cpu,
+  Share2,
 } from 'lucide-react';
 import {
   ItemList,
@@ -133,6 +134,7 @@ import { getServerInfo } from '@/sync/serverConfig';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { VoiceSettings } from './VoiceSettings';
 import { MachinesSettings } from './MachinesSettings';
+import { SharedSettings } from './SharedSettings';
 import { ModelProviderSettings } from './ModelProviderSettings';
 import { resetFeatureTips } from '@/components/featureTips/FeatureTips';
 import { CodeView } from '@/screens/session/CodeView';
@@ -297,6 +299,13 @@ function Overview() {
             left={<HardDrive size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/machines')}
+          />
+          <Item
+            title={t('share.settings.title')}
+            subtitle={t('share.settings.subtitle')}
+            left={<Share2 size={18} />}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/settings/shared')}
           />
           <Item
             title={t('settings.usage')}
@@ -2692,6 +2701,7 @@ export function SettingsRoutes({ basePath }: { basePath?: string } = {}) {
       <Route path="channels" element={<Channels />} />
       <Route path="voice" element={<VoiceSettings />} />
       <Route path="machines" element={<MachinesSettings />} />
+      <Route path="shared" element={<SharedSettings />} />
       <Route path="usage" element={<Usage />} />
       <Route path="diagnostics" element={<Diagnostics />} />
       <Route path="password" element={<Password />} />

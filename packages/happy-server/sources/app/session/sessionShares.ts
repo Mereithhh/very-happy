@@ -61,12 +61,23 @@ type SessionKeyRow = { id: string; accountId: string; dataEncryptionKey: Uint8Ar
 
 // ---------------------------------------------------------------- access
 
+/** B-701: a grant whose expiresAt has passed is treated exactly like a revoked one. */
+export function unexpiredGrant(now = new Date()): Prisma.SessionGrantWhereInput {
+    return { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
+}
+
+const DAY_MS = 24 * 60 * 60_000;
+export type GrantExpiryDays = 1 | 7 | 30 | null;
+export function grantExpiresAt(days: GrantExpiryDays | undefined, now = Date.now()): Date | null {
+    return days ? new Date(now + days * DAY_MS) : null;
+}
+
 export async function resolveSessionAccess(userId: string, sessionId: string, client: Pick<typeof db, 'session' | 'sessionGrant'> = db): Promise<SessionAccess | null> {
     // Owner fast path: the exact query every route made before B-619.
     const owned = await client.session.findFirst({ where: { id: sessionId, accountId: userId }, select: { id: true } });
     if (owned) return { kind: 'owner', ownerId: userId };
     const grant = await client.sessionGrant.findFirst({
-        where: { sessionId, granteeAccountId: userId, status: 'active' },
+        where: { sessionId, granteeAccountId: userId, status: 'active', ...unexpiredGrant() },
         select: { id: true, role: true, session: { select: { accountId: true } } },
     });
     if (!grant) return null;
@@ -163,6 +174,7 @@ export type SessionGrantView = {
     status: SessionGrantStatus;
     createdAt: number;
     acceptedAt: number | null;
+    expiresAt: number | null;
     grantee: UserProfile & { email: string | null; displayName: string };
 };
 
@@ -172,11 +184,12 @@ export type SharedSessionInvite = {
     role: SessionGrantRole;
     status: SessionGrantStatus;
     createdAt: number;
+    expiresAt: number | null;
     owner: { id: string; displayName: string; username: string | null; avatarUrl: string | null };
     session: { name: string | null; path: string | null; host: string | null };
 };
 
-async function grantView(grant: { id: string; sessionId: string; role: SessionGrantRole; status: SessionGrantStatus; createdAt: Date; acceptedAt: Date | null; grantee: ProfileAccount }): Promise<SessionGrantView> {
+async function grantView(grant: { id: string; sessionId: string; role: SessionGrantRole; status: SessionGrantStatus; createdAt: Date; acceptedAt: Date | null; expiresAt: Date | null; grantee: ProfileAccount }): Promise<SessionGrantView> {
     const identity = await identityOf(grant.grantee.id);
     return {
         id: grant.id,
@@ -185,11 +198,12 @@ async function grantView(grant: { id: string; sessionId: string; role: SessionGr
         status: grant.status,
         createdAt: grant.createdAt.getTime(),
         acceptedAt: grant.acceptedAt ? grant.acceptedAt.getTime() : null,
+        expiresAt: grant.expiresAt ? grant.expiresAt.getTime() : null,
         grantee: { ...profileOf(grant.grantee), username: grant.grantee.username ?? identity.handle ?? '', email: identity.email, displayName: displayNameOf(grant.grantee, identity) },
     };
 }
 
-async function inviteView(grant: { id: string; sessionId: string; role: SessionGrantRole; status: SessionGrantStatus; createdAt: Date; grantedBy: ProfileAccount; session: SessionKeyRow & { metadata: string } }): Promise<SharedSessionInvite> {
+async function inviteView(grant: { id: string; sessionId: string; role: SessionGrantRole; status: SessionGrantStatus; createdAt: Date; expiresAt: Date | null; grantedBy: ProfileAccount; session: SessionKeyRow & { metadata: string } }): Promise<SharedSessionInvite> {
     const owner = profileOf(grant.grantedBy);
     return {
         id: grant.id,
@@ -197,6 +211,7 @@ async function inviteView(grant: { id: string; sessionId: string; role: SessionG
         role: grant.role,
         status: grant.status,
         createdAt: grant.createdAt.getTime(),
+        expiresAt: grant.expiresAt ? grant.expiresAt.getTime() : null,
         owner: { id: owner.id, displayName: displayNameOf(grant.grantedBy, await identityOf(owner.id)), username: grant.grantedBy.username, avatarUrl: owner.avatar?.url ?? null },
         session: await sessionPreview(grant.session),
     };
@@ -218,7 +233,7 @@ function audit(kind: string, accountId: string, sessionId: string, payload: Reco
     if (businessAuditEnabled()) publishAudit({ kind, accountId, sessionId, payload });
 }
 
-export async function createSessionGrant(input: { ownerId: string; sessionId: string; target?: string; granteeAccountId?: string; role: SessionGrantRole }): Promise<SessionGrantView> {
+export async function createSessionGrant(input: { ownerId: string; sessionId: string; target?: string; granteeAccountId?: string; role: SessionGrantRole; expiresInDays?: GrantExpiryDays }): Promise<SessionGrantView> {
     const session = await db.session.findUnique({ where: { id: input.sessionId }, select: { id: true, accountId: true, dataEncryptionKey: true, metadata: true } });
     if (!session || session.accountId !== input.ownerId) throw new SessionShareError('session_not_found', 404);
     if (!session.dataEncryptionKey) throw new SessionShareError('session_not_shareable', 409);
@@ -238,8 +253,9 @@ export async function createSessionGrant(input: { ownerId: string; sessionId: st
 
     const grant = await inTx(async (tx) => {
         const existing = await tx.sessionGrant.findUnique({ where: { sessionId_granteeAccountId: { sessionId: session.id, granteeAccountId: grantee.id } } });
-        if (existing && existing.status !== 'revoked') throw new SessionShareError('already_shared', 409, { grantId: existing.id, status: existing.status });
-        const count = await tx.sessionGrant.count({ where: { sessionId: session.id, status: { not: 'revoked' } } });
+        const existingLive = existing && existing.status !== 'revoked' && (!existing.expiresAt || existing.expiresAt.getTime() > Date.now());
+        if (existing && existingLive) throw new SessionShareError('already_shared', 409, { grantId: existing.id, status: existing.status });
+        const count = await tx.sessionGrant.count({ where: { sessionId: session.id, status: { not: 'revoked' }, ...unexpiredGrant() } });
         if (count >= MAX_GRANTS_PER_SESSION) throw new SessionShareError('too_many_grants', 409);
         const data = {
             role: input.role,
@@ -248,13 +264,14 @@ export async function createSessionGrant(input: { ownerId: string; sessionId: st
             grantedByAccountId: input.ownerId,
             acceptedAt: null,
             revokedAt: null,
+            expiresAt: grantExpiresAt(input.expiresInDays),
         };
         return existing
             ? tx.sessionGrant.update({ where: { id: existing.id }, data, include: { grantee: { include: profileInclude } } })
             : tx.sessionGrant.create({ data: { ...data, sessionId: session.id, granteeAccountId: grantee.id }, include: { grantee: { include: profileInclude } } });
     });
     invalidateGrantees(session.id);
-    audit('session.share.created', input.ownerId, session.id, { grantId: grant.id, granteeAccountId: grantee.id, role: input.role });
+    audit('session.share.created', input.ownerId, session.id, { grantId: grant.id, granteeAccountId: grantee.id, role: input.role, expiresAt: grant.expiresAt?.toISOString() ?? null });
 
     const invite = await inviteView({ ...grant, grantedBy: (await db.account.findUniqueOrThrow({ where: { id: input.ownerId }, include: profileInclude })), session });
     await emitToAccount(grantee.id, { t: 'session-share', invite });
@@ -271,14 +288,17 @@ export async function listSessionGrants(ownerId: string, sessionId: string): Pro
     return Promise.all(grants.map(grantView));
 }
 
-export async function updateSessionGrantRole(ownerId: string, sessionId: string, granteeAccountId: string, role: SessionGrantRole): Promise<SessionGrantView> {
+export async function updateSessionGrantRole(ownerId: string, sessionId: string, granteeAccountId: string, role: SessionGrantRole | undefined, expiresInDays?: GrantExpiryDays): Promise<SessionGrantView> {
     await requireSessionAccess(ownerId, sessionId, 'owner');
     const grant = await db.sessionGrant.findUnique({ where: { sessionId_granteeAccountId: { sessionId, granteeAccountId } }, include: { grantee: { include: profileInclude } } });
     if (!grant || grant.status === 'revoked') throw new SessionShareError('grant_not_found', 404);
-    const updated = await db.sessionGrant.update({ where: { id: grant.id }, data: { role }, include: { grantee: { include: profileInclude } } });
+    const data: Prisma.SessionGrantUpdateInput = {};
+    if (role) data.role = role;
+    if (expiresInDays !== undefined) data.expiresAt = grantExpiresAt(expiresInDays);
+    const updated = await db.sessionGrant.update({ where: { id: grant.id }, data, include: { grantee: { include: profileInclude } } });
     invalidateGrantees(sessionId);
-    audit('session.share.role', ownerId, sessionId, { grantId: grant.id, granteeAccountId, role });
-    await emitToAccount(granteeAccountId, { t: 'session-share-updated', sessionId, grantId: grant.id, role, status: updated.status });
+    audit('session.share.role', ownerId, sessionId, { grantId: grant.id, granteeAccountId, role: updated.role, expiresAt: updated.expiresAt?.toISOString() ?? null });
+    await emitToAccount(granteeAccountId, { t: 'session-share-updated', sessionId, grantId: grant.id, role: updated.role, status: updated.status });
     return grantView(updated);
 }
 
@@ -295,6 +315,7 @@ export async function revokeSessionGrant(ownerId: string, sessionId: string, gra
 export async function respondToSessionGrant(granteeAccountId: string, grantId: string, accept: boolean): Promise<SharedSessionInvite | null> {
     const grant = await db.sessionGrant.findUnique({ where: { id: grantId }, include: { grantedBy: { include: profileInclude }, session: { select: { id: true, accountId: true, dataEncryptionKey: true, metadata: true } } } });
     if (!grant || grant.granteeAccountId !== granteeAccountId || grant.status === 'revoked') throw new SessionShareError('grant_not_found', 404);
+    if (accept && grant.expiresAt && grant.expiresAt.getTime() <= Date.now()) throw new SessionShareError('grant_not_found', 404);
     if (grant.status === 'active' && accept) return inviteView(grant);
     const updated = await db.sessionGrant.update({
         where: { id: grant.id },
@@ -308,7 +329,7 @@ export async function respondToSessionGrant(granteeAccountId: string, grantId: s
 
 export async function listPendingSessionInvites(granteeAccountId: string): Promise<SharedSessionInvite[]> {
     const grants = await db.sessionGrant.findMany({
-        where: { granteeAccountId, status: 'pending' },
+        where: { granteeAccountId, status: 'pending', ...unexpiredGrant() },
         orderBy: { createdAt: 'desc' },
         include: { grantedBy: { include: profileInclude }, session: { select: { id: true, accountId: true, dataEncryptionKey: true, metadata: true } } },
     });
@@ -321,7 +342,7 @@ export async function listSharedSessionRows<T extends SessionKeyRow & { metadata
     select: Prisma.SessionSelect,
 ): Promise<Array<{ row: T; share: { grantId: string; role: SessionGrantRole; owner: { id: string; displayName: string } }; dataEncryptionKey: Buffer; metadata: string }>> {
     const grants = await db.sessionGrant.findMany({
-        where: { granteeAccountId, status: 'active' },
+        where: { granteeAccountId, status: 'active', ...unexpiredGrant() },
         include: { grantedBy: { select: { id: true, firstName: true, lastName: true, username: true } }, session: { select: { ...select, id: true, accountId: true, dataEncryptionKey: true, metadata: true } } },
         orderBy: { createdAt: 'desc' },
     });
@@ -406,7 +427,7 @@ export function invalidateGrantees(sessionId: string): void {
 export async function activeGranteeIds(sessionId: string): Promise<string[]> {
     const cached = granteeCache.get(sessionId);
     if (cached && Date.now() - cached.at < GRANTEE_CACHE_TTL_MS) return cached.ids;
-    const grants = await db.sessionGrant.findMany({ where: { sessionId, status: 'active' }, select: { granteeAccountId: true } });
+    const grants = await db.sessionGrant.findMany({ where: { sessionId, status: 'active', ...unexpiredGrant() }, select: { granteeAccountId: true } });
     const ids = grants.map((grant) => grant.granteeAccountId);
     granteeCache.set(sessionId, { ids, at: Date.now() });
     return ids;
