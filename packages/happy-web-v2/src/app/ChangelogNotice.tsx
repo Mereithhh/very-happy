@@ -15,6 +15,7 @@ import {
 } from './changelogRelease';
 import './changelogNotice.css';
 import { BRAND } from './brand';
+import { ChangelogHighlights } from './ChangelogHighlights';
 
 function readSeen(): string | null {
   try { return localStorage.getItem(CHANGELOG_STORAGE_KEY); } catch { return null; }
@@ -74,12 +75,13 @@ export function ChangelogNotice() {
   const changelogHref = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/changelog`;
   const multiple = releases.length > 1;
   const head = releases[0];
+  const hasHighlights = releases.some((release) => (release.highlights?.length ?? 0) > 0);
 
   return (
     <Dialog.Root open={open} onOpenChange={(next) => next ? setOpen(true) : closeWithoutReading()}>
       <Dialog.Portal>
         <Dialog.Overlay className="wn-backdrop" />
-        <Dialog.Content className="wn-card" aria-describedby="wn-description" data-multiple={multiple || undefined} data-featured={head?.featured || undefined}>
+        <Dialog.Content className="wn-card" aria-describedby="wn-description" data-multiple={multiple || undefined} data-featured={head?.featured || undefined} data-highlights={hasHighlights || undefined}>
           <button type="button" className="wn-close" aria-label={t('common.close')} onClick={acknowledge}>
             <X size={18} />
           </button>
@@ -102,11 +104,15 @@ export function ChangelogNotice() {
                     </div>
                     <h3 id={`wn-release-${release.id}`}>{t(release.titleKey)}</h3>
                     <p>{t(release.summaryKey)}</p>
-                    <ul className="wn-list">
-                      {release.itemKeys.map((key) => (
-                        <li key={key}><Check size={15} aria-hidden="true" />{t(key)}</li>
-                      ))}
-                    </ul>
+                    {release.highlights?.length ? (
+                      <ChangelogHighlights release={release} onNavigate={acknowledge} headingLevel={4} />
+                    ) : (
+                      <ul className="wn-list">
+                        {release.itemKeys.map((key) => (
+                          <li key={key}><Check size={15} aria-hidden="true" />{t(key)}</li>
+                        ))}
+                      </ul>
+                    )}
                   </section>
                 ))}
               </div>
@@ -117,11 +123,15 @@ export function ChangelogNotice() {
               <Dialog.Description id="wn-description" className="wn-intro">
                 {t(head.summaryKey)}
               </Dialog.Description>
-              <ul className="wn-list">
-                {head.itemKeys.map((key) => (
-                  <li key={key}><Check size={15} aria-hidden="true" />{t(key)}</li>
-                ))}
-              </ul>
+              {head.highlights?.length ? (
+                <ChangelogHighlights release={head} onNavigate={acknowledge} />
+              ) : (
+                <ul className="wn-list">
+                  {head.itemKeys.map((key) => (
+                    <li key={key}><Check size={15} aria-hidden="true" />{t(key)}</li>
+                  ))}
+                </ul>
+              )}
             </>
           ))}
           {cliNotices.length > 0 && cliCommand && cliTarget?.cliVersion && (

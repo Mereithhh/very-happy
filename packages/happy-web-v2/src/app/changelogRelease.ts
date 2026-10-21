@@ -3,6 +3,49 @@ import { isCliVersionBelow } from './cliUpdatePolicy';
 
 export const CHANGELOG_STORAGE_KEY = 'vh.changelog.seen';
 
+/** One screenshot; `dark` is shown when the app resolves to the dark theme. */
+export interface ChangelogShot {
+  light: string;
+  dark?: string;
+}
+
+/**
+ * A highlight's screenshot (B-677, specs/2026-10-whats-new.md). Files live in
+ * `src/app/whats-new/<date>/` and are imported so Vite fingerprints them
+ * (immutable cache) — never under public/. Every variant shares `width`/`height`
+ * so the frame reserves its space before the lazy image arrives.
+ */
+export interface ChangelogImage {
+  width: number;
+  height: number;
+  altKey: SimpleTranslationKey;
+  en: ChangelogShot;
+  /** Chinese-UI capture; falls back to `en` when absent. */
+  zh?: ChangelogShot;
+}
+
+/** "Try it": an in-app path, or an action that has no URL of its own. */
+export type ChangelogHighlightAction =
+  | { kind: 'link'; href: string }
+  | { kind: 'sessionSearch' };
+
+/**
+ * Format rule (spec): at most 4 per release; title + one sentence of what you
+ * can now do + one screenshot + optional try/docs links. Named `key`, not `id`:
+ * scripts/changelog/check-release.mjs reads release ids with a line regex.
+ */
+export interface ChangelogHighlight {
+  key: string;
+  titleKey: SimpleTranslationKey;
+  bodyKey: SimpleTranslationKey;
+  image?: ChangelogImage;
+  action?: ChangelogHighlightAction;
+  /** Public docs path, e.g. `/docs/projects`. */
+  docsHref?: string;
+}
+
+export const CHANGELOG_MAX_HIGHLIGHTS = 4;
+
 export interface ChangelogRelease {
   id: string;
   date: string;
@@ -11,7 +54,30 @@ export interface ChangelogRelease {
   featured?: boolean;
   titleKey: SimpleTranslationKey;
   summaryKey: SimpleTranslationKey;
+  /** Shown as cards above the list; with highlights, `itemKeys` becomes the collapsed "Other improvements". */
+  highlights?: readonly ChangelogHighlight[];
   itemKeys: readonly SimpleTranslationKey[];
+}
+
+const SHOT_URLS = import.meta.glob('./whats-new/*/*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+
+/**
+ * Screenshots by convention: `whats-new/<dir>/<name>-<en|zh>-<light|dark>.webp`.
+ * Only URL strings land in the bundle. A missing file yields an empty `light`,
+ * which changelogRelease.test.ts reports by name.
+ */
+export function changelogShots(dir: string, name: string, size: { width: number; height: number }, altKey: SimpleTranslationKey): ChangelogImage {
+  const url = (lang: 'en' | 'zh', theme: 'light' | 'dark') => SHOT_URLS[`./whats-new/${dir}/${name}-${lang}-${theme}.webp`];
+  const shot = (lang: 'en' | 'zh') => ({ light: url(lang, 'light') ?? '', dark: url(lang, 'dark') });
+  return { ...size, altKey, en: shot('en'), zh: url('zh', 'light') ? shot('zh') : undefined };
+}
+
+const SHOT_SIZE = { width: 960, height: 600 }; // 480×300 CSS px crops at 2×
+
+/** Which capture to load for the viewer's language and resolved theme. */
+export function changelogImageSrc(image: ChangelogImage, lang: string, theme: 'light' | 'dark'): string {
+  const shot = lang.toLowerCase().startsWith('zh') && image.zh ? image.zh : image.en;
+  return theme === 'dark' && shot.dark ? shot.dark : shot.light;
 }
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
@@ -29,12 +95,39 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.oct21.title',
     summaryKey: 'changelog.releases.oct21.summary',
+    highlights: [
+      {
+        key: 'projects',
+        titleKey: 'changelog.releases.oct21.projectsTitle',
+        bodyKey: 'changelog.releases.oct21.projectsBody',
+        image: changelogShots('2026-10-21', 'projects', SHOT_SIZE, 'changelog.releases.oct21.projectsAlt'),
+        docsHref: '/docs/projects',
+      },
+      {
+        key: 'drafts',
+        titleKey: 'changelog.releases.oct21.draftsTitle',
+        bodyKey: 'changelog.releases.oct21.draftsBody',
+        image: changelogShots('2026-10-21', 'drafts', SHOT_SIZE, 'changelog.releases.oct21.draftsAlt'),
+        docsHref: '/docs/sessions',
+      },
+      {
+        key: 'search',
+        titleKey: 'changelog.releases.oct21.searchTitle',
+        bodyKey: 'changelog.releases.oct21.searchBody',
+        image: changelogShots('2026-10-21', 'search', SHOT_SIZE, 'changelog.releases.oct21.searchAlt'),
+        action: { kind: 'sessionSearch' },
+        docsHref: '/docs/sessions',
+      },
+      {
+        key: 'mentions',
+        titleKey: 'changelog.releases.oct21.mentionsTitle',
+        bodyKey: 'changelog.releases.oct21.mentionsBody',
+        image: changelogShots('2026-10-21', 'mentions', SHOT_SIZE, 'changelog.releases.oct21.mentionsAlt'),
+        docsHref: '/docs/sessions',
+      },
+    ],
     itemKeys: [
       'changelog.releases.oct21.projects',
-      'changelog.releases.oct21.projectPage',
-      'changelog.releases.oct21.drafts',
-      'changelog.releases.oct21.mentions',
-      'changelog.releases.oct21.search',
       'changelog.releases.oct21.panels',
       'changelog.releases.oct21.mobile',
       'changelog.releases.oct21.keys',
@@ -48,10 +141,25 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     buildVersion: __APP_VERSION__,
     titleKey: 'changelog.releases.oct21a.title',
     summaryKey: 'changelog.releases.oct21a.summary',
+    highlights: [
+      {
+        key: 'context',
+        titleKey: 'changelog.releases.oct21a.contextTitle',
+        bodyKey: 'changelog.releases.oct21a.contextBody',
+        image: changelogShots('2026-10-21', 'context', SHOT_SIZE, 'changelog.releases.oct21a.contextAlt'),
+        docsHref: '/docs/projects',
+      },
+      {
+        key: 'panels',
+        titleKey: 'changelog.releases.oct21a.panelsTitle',
+        bodyKey: 'changelog.releases.oct21a.panelsBody',
+        image: changelogShots('2026-10-21', 'panels', SHOT_SIZE, 'changelog.releases.oct21a.panelsAlt'),
+        docsHref: '/docs/configuration',
+      },
+    ],
     itemKeys: [
-      'changelog.releases.oct21a.projects',
+      'changelog.releases.oct21a.spawn',
       'changelog.releases.oct21a.pi',
-      'changelog.releases.oct21a.panels',
       'changelog.releases.oct21a.stop',
       'changelog.releases.oct21a.reliability',
     ],
