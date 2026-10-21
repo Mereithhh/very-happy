@@ -38,6 +38,8 @@ session can be cleaned up, while unmerged changes remain preserved.
 
 Team names appear alongside ordinary conversations in history. Expand a team to
 open a member conversation, or select its name for goal, progress, and results.
+Members whose conversations are archived fold into one **N archived** row under the
+expanded team; open it to reach their history (this device remembers the choice).
 Ordinary conversations are never automatically turned into teams. Appearance
 settings can hide the Teams entry without stopping or deleting existing work.
 

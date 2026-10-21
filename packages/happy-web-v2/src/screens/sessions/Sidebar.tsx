@@ -67,7 +67,7 @@ import { rowRenameMenuTranslationKeys } from './sidebarRowMenu';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import { useTeamNavigation } from './useTeamNavigation';
-import { groupTeamNavigation, missingTeamSessionIds, teamSessionMembership, unstartedTeamMembers } from './teamNavigation';
+import { groupTeamNavigation, missingTeamSessionIds, teamArchivedGroupId, teamSessionMembership, unstartedTeamMembers } from './teamNavigation';
 import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
@@ -108,6 +108,8 @@ interface Row {
   teamChild?: boolean;
   teamHistoryLink?: boolean;
   teamLabel?: string;
+  /** B-674: the 「已归档 N 个」 fold row under an expanded team (not a nav target, no ⌘N slot). */
+  teamArchivedFold?: { teamId: string; count: number; open: boolean };
   key: string;
   kind: 'terminal' | 'session';
   /** Resolved before click so a mirrored terminal never paints xterm first. */
@@ -541,16 +543,26 @@ export function Sidebar() {
       return { key: sessionId, sessionId, kind: 'session', href: `/session/${encodeURIComponent(sessionId)}`, title: bot.name, subtitle: teamCopy.history, ts: 0, createdAt: 0, teamHistoryLink: true };
     });
   }, [orderedRows, liveTeams, teamCopy.history]);
+  // B-674: archived members (their sessions left the active list — history
+  // links) fold behind one 「已归档 N 个」 row per team, collapsed by default;
+  // the choice is device-local (sidebarCollapsedGroups, `team-archived:<id>`).
+  // Opening an archived member's session reveals the fold for that route only.
+  const archivedOpenTeams = useMemo(
+    () => new Set(liveTeams.filter((team) => !isGroupCollapsed(collapsedGroups, teamArchivedGroupId(team.id))).map((team) => team.id)),
+    [liveTeams, collapsedGroups],
+  );
   /** Team header + (expanded) member rows in place of the members, ordinary rows untouched. */
   const nestTeams = useCallback((groupRows: Row[], groupTeams: TeamState[]): Row[] => {
     if (groupTeams.length === 0) return groupRows;
-    return groupTeamNavigation(groupRows, groupTeams, expandedTeams).flatMap((entry): Row[] => {
+    const archived = { isArchived: (r: Row) => !!r.teamHistoryLink && !!r.sessionId, open: archivedOpenTeams };
+    return groupTeamNavigation(groupRows, groupTeams, expandedTeams, archived).flatMap((entry): Row[] => {
+      if (entry.kind === 'archived') return [{ key: teamArchivedGroupId(entry.team.id), kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: teamCopy.archivedCount(entry.count), subtitle: '', ts: 0, createdAt: 0, teamArchivedFold: { teamId: entry.team.id, count: entry.count, open: entry.open } }];
       if (entry.kind === 'row') return [entry.team ? { ...entry.row, teamChild: true, href: `/session/${encodeURIComponent(entry.row.sessionId!)}`, teamLabel: entry.bot?.root ? teamCopy.lead : entry.bot?.name || teamCopy.member } : entry.row];
       const header: Row = { key: `team:${entry.team.id}`, kind: 'session', href: `/teams/${encodeURIComponent(entry.team.id)}`, title: entry.team.name, subtitle: '', ts: entry.team.createdAt, createdAt: entry.team.createdAt, team: entry.team };
       const pending: Row[] = expandedTeams.has(entry.team.id) ? unstartedTeamMembers(entry.team).map(({bot, task, failed, href}) => ({ key: `member:${entry.team.id}:${bot.id}`, kind: 'session', href, title: bot.root ? teamCopy.lead : bot.name, subtitle: failed ? teamCopy.failed : task ? teamCopy.preparing : teamCopy.noSession, ts: entry.team.createdAt, createdAt: entry.team.createdAt, teamHistoryLink: true })) : [];
       return [header, ...pending];
     });
-  }, [expandedTeams, teamCopy.lead, teamCopy.member, teamCopy.failed, teamCopy.preparing, teamCopy.noSession]);
+  }, [expandedTeams, archivedOpenTeams, teamCopy]);
   // Default lens: project groups, then 未归属 sub-grouped by folder. Teams nest
   // inside their group, so they stay visible while grouped (spec §6.1).
   const projectGrouping = useMemo(
@@ -594,7 +606,7 @@ export function Sidebar() {
   // Collapsed groups' rows are not rendered, so they take no ⌘1-9 number
   // and no move-up/down position either (B-580).
   const plainDisplayRows = useMemo<Row[] | null>(
-    () => (projectSections ? projectSections.flatMap((sec) => sec.rows) : orderedRows),
+    () => (projectSections ? projectSections.flatMap((sec) => sec.rows).filter((r) => !r.teamArchivedFold) : orderedRows),
     [projectSections, orderedRows],
   );
   // The flat list (不分组) nests teams over the whole list; the project lens did it per group.
@@ -606,7 +618,7 @@ export function Sidebar() {
   );
   const displayRows = useMemo<Row[] | null>(() => {
     if (!plainDisplayRows || !teamHistory) return plainDisplayRows;
-    return nestTeams([...plainDisplayRows, ...teamHistoryRows], liveTeams);
+    return nestTeams([...plainDisplayRows, ...teamHistoryRows], liveTeams).filter((r) => !r.teamArchivedFold);
   }, [plainDisplayRows, teamHistory, teamHistoryRows, liveTeams, nestTeams]);
   // Feeds the hold's arming snapshot (assigned during render, read by the
   // pointer listeners) — always the sequence actually on screen.
@@ -950,6 +962,16 @@ export function Sidebar() {
     setRevealExpanded((cur) => (cur.size ? new Set() : cur)); // temporary opens end with the route
     setRevealSeq((n) => n + 1);
   }, [location.pathname, location.search]);
+  // B-674: declared after the route-change reset above, so its reveal survives the same commit.
+  const archivedRevealRoute = useRef('');
+  useEffect(() => {
+    const route = location.pathname;
+    if (!currentTeamId || archivedRevealRoute.current === route) return;
+    if (!teamHistoryRows.some((r) => r.sessionId === decodeURIComponent(currentSessionId ?? ''))) return;
+    archivedRevealRoute.current = route;
+    const id = teamArchivedGroupId(currentTeamId);
+    setRevealExpanded((cur) => (cur.has(id) ? cur : new Set([...cur, id])));
+  }, [location.pathname, currentTeamId, currentSessionId, teamHistoryRows]);
   const locateCurrent = useCallback(() => { revealManual.current = true; setRevealSeq((n) => n + 1); }, []);
   useEffect(() => {
     if (displayRows === null) return;
@@ -1329,7 +1351,21 @@ export function Sidebar() {
                   )}
                   {sec.rows.map((r) => {
                     // B-619: shared rows are outside displayRows — no ⌘N slot, no reorder.
-                    const i = r.share ? -1 : flat++;
+                    // B-674: the archived-members fold is a disclosure, not a row — outside displayRows too.
+                    const i = r.share || r.teamArchivedFold ? -1 : flat++;
+                    if (r.teamArchivedFold) {
+                      const fold = r.teamArchivedFold;
+                      return <div key={r.key} className="sb-team-child"><button
+                        type="button"
+                        className="sb-team-archived"
+                        aria-expanded={fold.open}
+                        title={fold.open ? teamCopy.hideArchived : teamCopy.showArchived}
+                        onClick={() => {
+                          setRevealExpanded((cur) => { if (!cur.has(r.key)) return cur; const next = new Set(cur); next.delete(r.key); return next; });
+                          setGroupCollapsed(r.key, fold.open);
+                        }}
+                      ><ChevronRight size={13} className={`sb-section-chevron${fold.open ? ' is-open' : ''}`} /><Archive size={14} /><span>{r.title}</span></button></div>;
+                    }
                     if (r.team) {
                       const team = r.team;
                       const open = expandedTeams.has(team.id);
