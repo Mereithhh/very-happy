@@ -272,6 +272,9 @@
 
 .team-chat-intro { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); }
 .team-start-context { display: block; font-size: var(--fs-12); color: var(--text-dim); overflow-wrap: anywhere; font-weight: 400; }
+.team-start-form .team-adopt-conflict { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-1); overflow-wrap: anywhere; }
+.team-start-form .team-adopt-conflict p { margin: 0; }
+.team-start-form .team-adopt-conflict-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
 .team-start-form .team-start-send { align-self: flex-end; display: inline-flex; align-items: center; gap: var(--sp-2); }
 .team-start-options { margin-top: var(--sp-3); }
 .teams-task .teams-error { overflow-wrap: anywhere; }

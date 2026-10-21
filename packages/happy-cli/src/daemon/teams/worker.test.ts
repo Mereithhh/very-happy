@@ -359,3 +359,34 @@ describe('frozen team execution policy', () => {
         expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: 'default' }));
     });
 });
+
+describe('B-730: rebuilding a relaunched member scope', () => {
+    const claimed = () => ({ ...op(), status: 'completed' as const, claimId: 'claim1', sessionId: 'session1', teamLaunchVersion: 1 as const });
+    const setupListed = (operation: TeamOperation) => {
+        setup(operation);
+        const original = mocks.get.getMockImplementation()!;
+        mocks.get.mockImplementation(async (path: string) => path === '/v1/teams' ? { data: { teams: [team([operation])] } } : original(path));
+    };
+    it('replays this daemon\'s claim for an unchanged binding and writes the private scope file', async () => {
+        setupListed(claimed());
+        const file = join(home, 'teams', 'scopes', 'op1.json');
+        await start().recoverScope('op1', 'session1', file);
+        const claim = mocks.post.mock.calls.find(([, request]) => request.action?.type === 'claim-operation')!;
+        expect(claim[1]).toEqual({ requestId: 'claim-op1', action: { type: 'claim-operation', operationId: 'op1', machineId: 'machine1', teamLaunchVersion: 1 } });
+        const { readFileSync, statSync } = await import('node:fs');
+        expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ serverUrl: 'http://127.0.0.1:1', scopeToken: 'scoped-test', teamId: 'team1', botId: 'bot1', taskId: 'task1', attemptId: 'attempt1' });
+        if (process.platform !== 'win32') expect(statSync(file).mode & 0o077).toBe(0);
+    });
+    it.each([
+        ['another session now holds the bot', (t: TeamState) => { t.bots[0].sessionId = 'session2'; }],
+        ['the bot moved to a new generation', (t: TeamState) => { t.bots[0].generation = 2; }],
+        ['the team is archived', (t: TeamState) => { t.archivedAt = 5; }],
+    ])('refuses when %s', async (_label, mutate) => {
+        setupListed(claimed());
+        const original = mocks.get.getMockImplementation()!;
+        mocks.get.mockImplementation(async (...args) => { const result = await original(...args); for (const t of result.data.teams ?? []) mutate(t); return result; });
+        await expect(start().recoverScope('op1', 'session1', join(home, 'teams', 'scopes', 'op1.json'))).rejects.toThrow();
+        expect(mocks.post.mock.calls.some(([, request]) => request.action?.type === 'claim-operation')).toBe(false);
+    });
+});
+

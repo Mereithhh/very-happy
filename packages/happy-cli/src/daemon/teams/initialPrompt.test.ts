@@ -28,7 +28,7 @@ describe('managed team entry instructions', () => {
     });
 
     // B-725: the lead gets the working method by default; members get only their rules.
-    it('gives the lead the seven-rule playbook, and members the member rules only', () => {
+    it('gives the lead the eight-rule playbook, and members the member rules only', () => {
         const lead = teamInitialPrompt('g', true);
         const member = teamInitialPrompt('g', false);
         expect(lead).toContain(TEAM_LEAD_PLAYBOOK);
@@ -36,7 +36,7 @@ describe('managed team entry instructions', () => {
         expect(member).toContain(TEAM_MEMBER_RULES);
         expect(member).not.toContain(TEAM_LEAD_PLAYBOOK);
         const rules = TEAM_LEAD_PLAYBOOK.split('\n').filter(line => /^\d+\. /.test(line)).map(line => line.split('.')[1].trim());
-        expect(rules).toEqual(['Delegate first', 'Run work in parallel', 'Prevent conflicts', 'Keep the team context', 'Write complete task briefs', 'Review before accepting', 'Communicate briefly']);
+        expect(rules).toEqual(['Delegate first', 'Run work in parallel', 'Prevent conflicts', 'Keep the team context', 'Write complete task briefs', 'Review before accepting', 'Communicate briefly', 'Never create a team to recover']);
         expect(TEAM_LEAD_PLAYBOOK).toContain('Do not write code yourself');
         expect(TEAM_LEAD_PLAYBOOK).toContain('link this team to a project');
         expect(TEAM_LEAD_PLAYBOOK).toContain('recipientBotId');

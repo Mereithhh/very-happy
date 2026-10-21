@@ -6,7 +6,7 @@ import { db } from '@/storage/db';
 import { inTx, type Tx } from '@/storage/inTx';
 import { encryptString, decryptString } from '@/modules/encrypt';
 import { advanceSchedules } from './schedules';
-import { reduceTeam, requireTeam, teamView, type TeamActor } from './reducer';
+import { otherTeamBinding, reduceTeam, requireTeam, sessionInOtherTeamMessage, teamView, transferSessionOut, TeamError, type TeamActor } from './reducer';
 
 type Principal = { accountId: string; actor: TeamActor; credentialId?: string };
 type Row = { id: string; accountId: string; version: number; projectId?: string | null; state: TeamState };
@@ -62,6 +62,25 @@ async function principal(tx: Tx, teamId: string, auth: { accountId: string } | {
     assertTeamsEnabled(rows[0].accountId);
     return { accountId: rows[0].accountId, actor: { kind: 'agent', botId: rows[0].botId, generation: rows[0].generation }, credentialId: rows[0].id };
 }
+/**
+ * B-730: a session leads or works in at most one live team. Without `transfer`
+ * a bound session is refused with `session_in_other_team`; with it (the owner
+ * confirmed on the Web) the old binding is released and marked transferred in
+ * the same transaction. Archived teams never block.
+ */
+async function guardSessionTeam(tx: Tx, accountId: string, sessionId: string, targetTeamId: string, transfer: boolean): Promise<void> {
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "AgentTeam" WHERE "accountId"=${accountId} AND "id"<>${targetTeamId} AND "state"->>'archivedAt' IS NULL
+        AND EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE("state"->'bots', '[]'::jsonb)) b WHERE b->>'sessionId'=${sessionId})
+        ORDER BY "createdAt"`;
+    for (const { id } of rows) {
+        const row = await load(tx, id, accountId);
+        const binding = otherTeamBinding([row.state], sessionId, targetTeamId);
+        if (!binding) continue;
+        if (!transfer) throw new TeamError('session_in_other_team', 409, { teamId: binding.teamId, teamName: binding.teamName, message: sessionInOtherTeamMessage(binding) });
+        await persistTransition(tx, row, transferSessionOut(row.state, sessionId, targetTeamId, Date.now()));
+    }
+}
 async function credential(tx: Tx, team: TeamState, botId: string): Promise<{ botId: string; token: string }> {
     const bot = team.bots.find(b => b.id === botId)!;
     const prior = await tx.$queryRaw<{ tokenEnc: string }[]>`SELECT "tokenEnc" FROM "TeamAgentCredential" WHERE "teamId"=${team.id} AND "botId"=${botId} AND "generation"=${bot.generation} AND "revokedAt" IS NULL AND "expiresAt">now() LIMIT 1`;
@@ -75,7 +94,7 @@ async function credential(tx: Tx, team: TeamState, botId: string): Promise<{ bot
     await tx.$executeRaw`INSERT INTO "TeamAgentCredential" ("id","teamId","botId","generation","tokenHash","tokenEnc","expiresAt") VALUES (${credentialId},${team.id},${botId},${bot.generation},${tokenHash},${tokenEnc},${expiresAt})`;
     return { botId, token };
 }
-export async function createTeam(accountId: string, input: { name: string; machineId: string; requestId?: string; launch?: TeamLaunch; project?: TeamProjectChoice }): Promise<TeamState> {
+export async function createTeam(accountId: string, input: { name: string; machineId: string; requestId?: string; launch?: TeamLaunch; project?: TeamProjectChoice; sessionId?: string; transfer?: true }): Promise<TeamState> {
     assertTeamsEnabled(accountId);
     return inTx(async tx => {
         requireTeam(await tx.machine.findFirst({ where: { id: input.machineId, accountId }, select: { id: true } }), 'machine_not_found', 404);
@@ -88,6 +107,10 @@ export async function createTeam(accountId: string, input: { name: string; machi
                 return existingTeam;
             }
         }
+        // B-730: the leading session (or, from a pre-B-730 CLI, the session it inherits its project from).
+        // A transfer is applied by the join that follows, so create only refuses here.
+        const leadSessionId = input.sessionId ?? input.project?.inheritFromSessionId;
+        if (leadSessionId && !input.transfer) await guardSessionTeam(tx, accountId, leadSessionId, teamId, false);
         const count = await tx.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM "AgentTeam" WHERE "accountId"=${accountId} AND "state"->>'archivedAt' IS NULL`;
         requireTeam(Number(count[0].count) < 32, 'team_limit', 429);
         const team: TeamState = { permissionMode: 'bypassPermissions', id: teamId, name: input.name, machineId: input.machineId, version: 0, bots: [], tasks: [], messages: [], operations: [], createdAt: Date.now(), ...(input.launch ? { creationLaunch: input.launch } : {}) };
@@ -156,6 +179,7 @@ export async function actOnTeam(teamId: string, auth: { accountId: string } | { 
                 requireTeam(!oldSession?.active, 'old_session_still_active');
             }
         }
+        if (action.type === 'join' && p.actor.kind === 'owner' && row.state.archivedAt === undefined) await guardSessionTeam(tx, p.accountId, action.sessionId, teamId, action.transfer === true);
         const reduced = reduceTeam(row.state, p.actor, action, { now: Date.now(), id: randomUUID });
         await persistTransition(tx, row, reduced.team);
         const memo = JSON.stringify({ credentialBotId: reduced.credentialBotId, credentialGeneration: reduced.team.bots.find(b => b.id === reduced.credentialBotId)?.generation, operationId: reduced.operationId, taskId: reduced.taskId, scheduleId: reduced.scheduleId });

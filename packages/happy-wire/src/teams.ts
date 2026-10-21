@@ -23,7 +23,8 @@ export const TeamActionSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('reconcile-operation'), operationId: id, claimId: id, note: z.string().trim().min(1).max(4000) }),
     // B-689: owner asks the execution computer to run a failed/uncertain operation again.
     z.object({ type: z.literal('retry-operation'), operationId: id, claimId: id }),
-    z.object({ type: z.literal('join'), name: id, sessionId: id, botId: id.optional() }),
+    /** B-730: `transfer` = the owner confirmed moving a session that is bound in another live team (Web adopt); without it the server answers `session_in_other_team`. An old server strips it. */
+    z.object({ type: z.literal('join'), name: id, sessionId: id, botId: id.optional(), transfer: z.literal(true).optional() }),
     z.object({ type: z.literal('delegate'), goal: text, acceptance: z.array(text).min(1).max(32), parentTaskId: id.optional(), assigneeBotId: id.optional(), botName: id.optional(), directory: z.string().min(1).max(4096).optional(), assistant: TeamAssistantSchema.optional(), model: TeamModelSchema.optional() }),
     z.object({ type: z.literal('message'), taskId: id, body: text, recipientBotId: id.optional() }),
     z.object({ type: z.literal('submit'), taskId: id, attemptId: id, goalVersion: z.number().int().positive(), result: text }),
@@ -52,7 +53,8 @@ export const TeamProjectChoiceSchema = z.object({
     directory: z.string().min(1).max(4096).optional(),
 });
 export type TeamProjectChoice = z.infer<typeof TeamProjectChoiceSchema>;
-export const TeamCreateSchema = z.object({ name: id, machineId: id, requestId: id.optional(), launch: TeamLaunchSchema.optional(), project: TeamProjectChoiceSchema.optional() });
+/** B-730: `sessionId` = the session that will lead the new team (team_create / Web adopt); the server refuses with `session_in_other_team` when it is bound in another live team, unless `transfer`. An old server strips both. */
+export const TeamCreateSchema = z.object({ name: id, machineId: id, requestId: id.optional(), launch: TeamLaunchSchema.optional(), project: TeamProjectChoiceSchema.optional(), sessionId: id.optional(), transfer: z.literal(true).optional() });
 /** B-726: owner changes a team's project — attach (`projectId`), detach (`projectId: null`) or create a same-name project and attach (`create`). */
 export const TeamProjectBindSchema = z.object({
     projectId: id.nullable().optional(),
@@ -62,7 +64,7 @@ export const TeamProjectBindSchema = z.object({
 export type TeamProjectBind = z.infer<typeof TeamProjectBindSchema>;
 export type TeamAction = z.infer<typeof TeamActionSchema>;
 export type TeamActionRequest = z.infer<typeof TeamActionRequestSchema>;
-export type TeamBot = { /** B-692: server-derived (teamBotActivity); absent from old servers. */ activity?: 'active' | 'stopping' | 'idle' | 'inactive'; /** B-692: names before a reuse renamed this member, oldest first. */ previousNames?: string[]; /** B-729: conversations this member had before a join (adopt / rebind) or cleanup unbound them, oldest first (max 32); absent from old servers. */ previousSessionIds?: string[]; model?: string; id: string; name: string; sessionId: string | null; generation: number; root: boolean; managed: boolean; assistant: 'claude' | 'codex' | 'pi-acp'; directory: string | null; lastEvent?: 'idle' | 'blocked' | 'exited'; lastEventAt?: number };
+export type TeamBot = { /** B-692: server-derived (teamBotActivity); absent from old servers. */ activity?: 'active' | 'stopping' | 'idle' | 'inactive'; /** B-692: names before a reuse renamed this member, oldest first. */ previousNames?: string[]; /** B-729: conversations this member had before a join (adopt / rebind) or cleanup unbound them, oldest first (max 32); absent from old servers. */ previousSessionIds?: string[]; /** B-730: the owner moved this member's session to another team (Web adopt with confirmation); absent from old servers. */ transferredTo?: { teamId: string; sessionId: string; at: number }; model?: string; id: string; name: string; sessionId: string | null; generation: number; root: boolean; managed: boolean; assistant: 'claude' | 'codex' | 'pi-acp'; directory: string | null; lastEvent?: 'idle' | 'blocked' | 'exited'; lastEventAt?: number };
 export type TeamAttempt = { id: string; botId: string; generation: number; goalVersion: number; status: 'pending' | 'running' | 'submitted' | 'accepted' | 'cancelled' | 'superseded'; result: string | null };
 export type TeamTask = { id: string; parentTaskId: string | null; goal: string; acceptance: string[]; goalVersion: number; ownerBotId: string | null; assigneeBotId: string; status: 'queued' | 'running' | 'submitted' | 'done' | 'cancelled'; attempts: TeamAttempt[]; currentAttemptId: string; cleanup: 'none' | 'pending' | 'done' | 'failed' };
 export type TeamMessage = { id: string; taskId: string | null; scheduleId?: string; cancelledAt?: number; senderBotId: string | null; source?: 'agent' | 'user' | 'system'; recipientBotId: string; body: string; deliveredAt: number | null; createdAt: number };
