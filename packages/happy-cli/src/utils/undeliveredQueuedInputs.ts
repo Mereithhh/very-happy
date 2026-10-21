@@ -62,8 +62,11 @@ function isQueuedUserText(body: unknown): boolean {
  */
 export function scanUndeliveredQueuedInputs(
     records: readonly StoredRecord[],
-    prior?: { canceled?: Set<string> },
+    prior?: { canceled?: Set<string>; replayAboveSeq?: number },
 ): UndeliveredScan & { canceled: Set<string> } {
+    // B-679: input above the previous wrapper's exit cursor never reached it —
+    // the new wrapper replays it, so it is neither lost nor ours to cancel.
+    const replayAboveSeq = prior?.replayAboveSeq;
     const canceled = prior?.canceled ?? new Set<string>();
     const undelivered: string[] = [];
     let reachedBoundary = false;
@@ -85,6 +88,7 @@ export function scanUndeliveredQueuedInputs(
             }
             continue;
         }
+        if (replayAboveSeq !== undefined && record.seq > replayAboveSeq) continue;
         if (isQueuedUserText(record.body) && record.localId && !canceled.has(record.localId)) {
             undelivered.push(record.localId);
         }

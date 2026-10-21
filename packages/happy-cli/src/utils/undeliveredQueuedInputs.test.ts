@@ -63,3 +63,15 @@ describe('scanUndeliveredQueuedInputs (B-332 site ③)', () => {
         // gates its tombstone on reachedBoundary and drops anything it could not classify.
     });
 });
+
+describe('B-679 offline-exit replay bound', () => {
+    it('queued input above the exit cursor is being replayed — never tombstoned; below it B-332 still applies', () => {
+        const result = scanUndeliveredQueuedInputs([
+            userText(6, 'typed-while-offline', 6000),
+            userText(4, 'lost-in-old-queue', 4000),
+            turnEnd(3),
+        ], { replayAboveSeq: 5 });
+        expect(result.undeliveredLocalKeys).toEqual(['lost-in-old-queue']);
+        expect(result.reachedBoundary).toBe(true);
+    });
+});

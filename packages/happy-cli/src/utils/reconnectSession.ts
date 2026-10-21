@@ -59,6 +59,8 @@ export function mergeReconnectMetadata(server: Metadata, local: Metadata, now: n
         archiveReason: undefined,
         // B-587: awake again — the hibernation stamp no longer describes us.
         hibernation: undefined,
+        // B-679: likewise the previous wrapper's offline-exit cursor.
+        exitCursor: undefined,
     };
 }
 
@@ -104,4 +106,42 @@ export function applyHibernationReplay(response: Session): { response: Session; 
     const replaySeq = hibernationReplaySeq(response.metadata, response.seq);
     if (replaySeq === null) return { response, replaying: false };
     return { response: { ...response, seq: replaySeq }, replaying: true };
+}
+
+export type ExitCursor = NonNullable<Metadata['exitCursor']>;
+
+export function readExitCursor(metadata: unknown): ExitCursor | null {
+    const raw = (metadata as { exitCursor?: unknown } | null | undefined)?.exitCursor;
+    if (!raw || typeof raw !== 'object') return null;
+    const { at, seq } = raw as { at?: unknown; seq?: unknown };
+    if (typeof at !== 'number' || typeof seq !== 'number' || !Number.isInteger(seq) || seq < 0) return null;
+    return { at, seq, v: 1 };
+}
+
+/** The stamp an offline exit writes: the cursor of a wrapper whose inbound is
+ *  frozen from here on, so nothing above `seq` was routed into it. */
+export function exitCursorStamp(seq: number, now: number): ExitCursor {
+    return { at: now, seq, v: 1 };
+}
+
+export type ReconnectReplay = { source: 'hibernation' | 'offline-exit'; seq: number };
+
+/**
+ * B-679: resuming a session whose previous wrapper went OFFLINE. Same rule as
+ * the B-587 hibernation wake (which wins when both are present): a message
+ * typed into the offline session (web composer, `sessions send`, a peer) got a
+ * seq above the server cursor's previous position but was never routed — the
+ * seeded cursor (= the server's latest seq) skipped it, the new wrapper sat at
+ * 「Waiting for messages」 and the message was shelved for good. Start the
+ * cursor at the exit stamp so those records are routed now, in seq order;
+ * `routedInboundLocalIds` + the frozen-inbound exit keep it single-delivery.
+ * A stamp at/after the server cursor means nothing arrived (or it is corrupt):
+ * keep the server cursor.
+ */
+export function applyReconnectReplay(response: Session): { response: Session; replay: ReconnectReplay | null } {
+    const wake = applyHibernationReplay(response);
+    if (wake.replaying) return { response: wake.response, replay: { source: 'hibernation', seq: wake.response.seq } };
+    const cursor = readExitCursor(response.metadata);
+    if (!cursor || cursor.seq >= response.seq) return { response, replay: null };
+    return { response: { ...response, seq: cursor.seq }, replay: { source: 'offline-exit', seq: cursor.seq } };
 }

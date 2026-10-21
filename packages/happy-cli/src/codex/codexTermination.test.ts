@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { settleCodexSession } from './codexTermination';
 import type { Metadata } from '@/api/types';
 
@@ -37,5 +39,24 @@ describe('B-587 / AGENTS 7: Codex exit by intent', () => {
         const s = session();
         await settleCodexSession(s, 'offline', async () => { throw new Error('down'); });
         expect(s.close).toHaveBeenCalled();
+    });
+    it('B-679: offline with an exit cursor stamps it (awaited) before session-end; archive never does', async () => {
+        const s = session();
+        const order = s.order;
+        const updateMetadataAndWait = vi.fn(async (h: (m: Metadata) => Metadata) => { order.push('cursor'); (s as any)._m = h(s.metadata); return true; });
+        const cursor = { at: 1, seq: 21, v: 1 as const };
+        await settleCodexSession({ ...s, updateMetadataAndWait, sessionId: 's1' }, 'offline', async () => true, () => {}, cursor);
+        expect(order).toEqual(['cursor', 'session-end', 'flush', 'close']);
+        expect((s as any)._m.exitCursor).toEqual(cursor);
+        const a = session();
+        const wait = vi.fn(async () => true);
+        await settleCodexSession({ ...a, updateMetadataAndWait: wait, sessionId: 's1' }, 'archive', async () => true, () => {}, cursor);
+        expect(wait).not.toHaveBeenCalled();
+    });
+    it('B-679: runCodex freezes inbound with the cursor before aborting and hands it to settle', () => {
+        const src = readFileSync(join(__dirname, 'runCodex.ts'), 'utf8').replace(/\/\/.*$/gm, '');
+        expect(src).toContain("const exitCursor = intent === 'offline' && session ? exitCursorStamp(session.messageCursor, Date.now()) : undefined;\n        if (exitCursor) session.freezeInbound();\n        await handleAbort('kill');");
+        expect(src).toContain('(m, e) => logger.debug(m, safeCodexErrorMetadata(e)), exitCursor);');
+        expect(src).toContain('void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);');
     });
 });

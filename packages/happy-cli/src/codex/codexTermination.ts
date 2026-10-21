@@ -6,10 +6,13 @@
  *     session-end + POST /deactivate, never an archived stamp.
  */
 import type { Metadata } from '@/api/types';
+import { OFFLINE_EXIT_STAMP_TIMEOUT_MS } from '@/claude/sessionExitLifecycle';
 
 export interface CodexTerminationSession {
     readonly sessionId: string;
     updateMetadata(handler: (metadata: Metadata) => Metadata): void;
+    /** B-679: awaited write for the offline exit cursor (false on timeout). */
+    updateMetadataAndWait?(handler: (metadata: Metadata) => Metadata, timeoutMs?: number): Promise<boolean>;
     sendSessionDeath(): void;
     flush(): Promise<void>;
     close(): Promise<void>;
@@ -20,7 +23,13 @@ export async function settleCodexSession(
     intent: 'archive' | 'offline',
     deactivate: (sessionId: string) => Promise<unknown>,
     log: (message: string, error?: unknown) => void = () => {},
+    /** B-679: offline exit cursor (inbound already frozen) — see claude/sessionExitLifecycle. */
+    exitCursor?: NonNullable<Metadata['exitCursor']>,
 ): Promise<void> {
+    if (intent === 'offline' && exitCursor && session.updateMetadataAndWait) {
+        const landed = await session.updateMetadataAndWait((currentMetadata) => ({ ...currentMetadata, exitCursor }), OFFLINE_EXIT_STAMP_TIMEOUT_MS);
+        if (!landed) log('[Codex] offline exit cursor not confirmed before going offline');
+    }
     if (intent === 'archive') {
         session.updateMetadata((currentMetadata) => ({
             ...currentMetadata,
