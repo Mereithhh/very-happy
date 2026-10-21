@@ -32,7 +32,7 @@ import {
 
 const RESULT_LIMIT = 30;
 
-export function HistorySearchPanel({ machineId, agent, homeDir, sessions, rowStates, busy, importBlocked = false, onImport, onOpen }: {
+export function HistorySearchPanel({ machineId, agent, homeDir, sessions, rowStates, busy, importBlocked = false, initialQuery = '', onImport, onOpen }: {
   machineId: string;
   agent: HistoryAgent;
   homeDir?: string;
@@ -43,13 +43,15 @@ export function HistorySearchPanel({ machineId, agent, homeDir, sessions, rowSta
   /** The agent cannot run on this machine (Codex not installed): hits can
    *  still be read and opened, not imported. */
   importBlocked?: boolean;
+  /** B-650: prefilled from the session search. */
+  initialQuery?: string;
   onImport: (entry: HistoryEntry) => void;
   onOpen: (sessionId: string) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [hits, setHits] = useState<HistorySearchHit[]>([]);
   const [status, setStatus] = useState<HistorySearchStatus | null>(null);
   const [truncated, setTruncated] = useState(false);

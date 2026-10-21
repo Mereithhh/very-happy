@@ -375,3 +375,13 @@ Phase 3（随 Spaces）：项目协调者（= Spaces 命名 Agent 绑定到项�
 - S2 五个不相干会话 peer 消息 ≈0：`s2SessionsThatSentPeerMessages` / `session_peer_messages_total{in_project="no"}`。
 - S4 不唤醒：已由 B-646 机制测试 + e2e 证明（0/5 唤醒）；上线后看 `session_peer_messages_total` 与说明更新时间点无相关。
 - S6 团队 worker 越过 lead 发消息 0 次：`s6TeamWorkerPeerMessages`（当前基线 9 个团队 worker 会话、0 次）。
+
+### B-650 Web（会话搜索）
+
+代码在 `packages/happy-web-v2/src/screens/search/`：`sessionSearch.ts`（纯函数：查询语法、元数据+缓存匹配、内容结果合并、筛选、覆盖面汇总、⌘⇧F 判定）、`useContentSearch.ts`（第 2 路扇出）、`chatJump.ts` + `useChatJump.ts`（跳到命中）、`SessionSearchPanel.tsx`（AppLayout 单例）。**无协议改动**：第 2 路直接用 B-549 已有的 `history-search` RPC（CLI ≥ 0.2.166，Web 以 `daemonState.historySearch` 判断），不带 `agent` 即同时搜 Claude 与 Codex。
+
+- **入口**：侧栏 🔍 改为打开会话搜索（空状态里有「命令与快速跳转（⌘K）」，手机上 ⌘K 仍一步可达）；⌘K 动作「搜索会话…」；⌘⇧F（非 macOS 为 Ctrl+Shift+F，焦点在 web 终端里时让给终端自己的查找 `termSearch.ts`）。
+- **范围**：除助手会话外的全部会话（含归档、终端镜像）；第 2 路覆盖「有会话归属的机器 ∪ 在线机器」，早已下线且名下无会话的机器不计入「结果不全」。每台机器独立 5 s 预算，超时记「未响应」，正在建索引的机器每 2 s 重问（与 HistorySearchPanel 相同节奏）。
+- **合并**：同一会话一行，≤3 条片段，缓存片段在前（带消息 id，可精确跳转），daemon 片段去重后补齐；daemon 命中经 `findTrackedSessionId` 映射，未托管的显示「可导入」，点击进入导入对话框（带入机器、agent 与查询词）。排序：标题命中 → 有内容片段 → 其余，组内按更新时间；可导入行垫底。项目/状态筛选非默认时不出可导入行（它们没有项目和状态）；agent 选 pi/Gemini 时跳过第 2 路并明示「该 agent 的对话内容尚未进入机器索引」。
+- **跳到命中**：缓存命中按消息 id；daemon 命中在已加载消息里按片段原文定位（最长片段 → 全部词 → 时间最近），找不到就向前翻页（≤6 页）。DOM 定位：用户消息用 `data-chat-prompt-id`，其余在该轮内按文本找；正文折叠在活动行里时落到该轮的提问。高亮用 CSS Custom Highlight API（`::highlight(vh-search-hit)`，8 s 后清除），不改 DOM；新 token `--search-hit` 只表示搜索命中。
+- **兼容**：旧 daemon / 离线 / 超时 / 建索引中都只影响第 2 路，并在结果顶部写明台数与机器名；第 1、3 路照常。发布只需 server/Web（无 CLI 改动、无迁移）。

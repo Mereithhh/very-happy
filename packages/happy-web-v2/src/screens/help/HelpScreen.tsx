@@ -19,7 +19,8 @@ import { AutomationsGettingStarted } from '@/screens/onboarding/AutomationsGetti
 
 const GROUPS = [
   { key: 'navigate', icon: Keyboard, capabilities: [
-    { key: 'shortcuts', icon: Keyboard, badge: '⌘ / Ctrl K' }, { key: 'quickOpen', icon: FileSearch, badge: '⌘ / Ctrl P' },
+    { key: 'shortcuts', icon: Keyboard, badge: '⌘ / Ctrl K' }, { key: 'sessionSearch', icon: Search, badge: '⌘ / Ctrl ⇧ F' },
+    { key: 'quickOpen', icon: FileSearch, badge: '⌘ / Ctrl P' },
     { key: 'settingsSearch', icon: Search }, { key: 'peek', icon: Eye }, { key: 'files', icon: FolderOpen },
   ] },
   // B-593: the Orca-round features (B-563~B-588), described where people look for "how do I…"

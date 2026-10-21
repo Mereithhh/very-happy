@@ -45,7 +45,7 @@ import { boardProgressView } from '@/sync/boardProgress';
 import { AUTOMATIONS_SIDEBAR_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import { automationsEntryVisible } from '@/sync/automationsPoll';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
-import { openCommandPalette } from '@/screens/command/CommandPalette';
+import { openSessionSearch, SESSION_SEARCH_HINT } from '@/screens/search/sessionSearchEvents';
 import { NewSessionModal } from './NewSessionModal';
 import { NewTerminalModal } from './NewTerminalModal';
 import { AttachTmuxModal } from './AttachTmuxModal';
@@ -1130,7 +1130,8 @@ export function Sidebar() {
           <BrandIcon size={18} /><span>{BRAND.name}</span><BrandEnvBadge />
         </button>
         <div className="sb-header-right">
-          <button className="sb-icon-btn" aria-label={t("sidebar.openSearch")} title={`${t("sidebar.openSearch")} · ⌘K`} onClick={openCommandPalette}><Search size={17}/></button>
+          {/* B-650: 🔍 opens the session search (spec 2026-10-projects §7); ⌘K stays the quick jump. */}
+          <button className="sb-icon-btn" aria-label={t("sessionSearch.title")} title={`${t("sessionSearch.title")} · ${SESSION_SEARCH_HINT}`} onClick={openSessionSearch}><Search size={17}/></button>
           {/* B-641: the phone list keeps its height — new session and the
               secondary entries live in the header instead of six nav rows. */}
           {!isDesktop && (

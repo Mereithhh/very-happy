@@ -60,6 +60,7 @@ import { SelectionQuote } from './SelectionQuote';
 import { ChatPromptRail } from './ChatPromptRail';
 import { ReaderFollowContext, createReaderFollow, type ReaderFollowSource } from './readerFollow';
 import './chatReadingAids.css';
+import { useChatJump } from '@/screens/search/useChatJump';
 
 export function ChatList({
     sessionId,
@@ -362,6 +363,9 @@ export function ChatList({
     // Document-level listeners below are installed once; they call the latest.
     const detachRef = useRef(detach);
     detachRef.current = detach;
+    // B-650: a session-search click lands on its hit (screens/search/chatJump.ts).
+    useChatJump({ sessionId, scrollRef, chronological, isLoaded, hasMoreOlder: !!hasMoreOlder,
+        isLoadingOlder: !!isLoadingOlder, onDetach: () => detachRef.current() });
 
     const onWheel = (e: ReactWheelEvent<HTMLDivElement>) => {
         if (isUpwardWheel(e.deltaY) && !nestedScrollerTakesUp(e.target, e.currentTarget)) detach();

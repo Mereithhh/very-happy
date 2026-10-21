@@ -941,11 +941,13 @@ export async function machineImportCodexSession(options: {
 export async function machineHistorySearch(
     machineId: string,
     params: { op?: 'search' | 'status' | 'clear'; query?: string; limit?: number; agent?: 'claude' | 'codex' },
+    /** B-650: the cross-machine fan-out gives each machine a shorter budget. */
+    opts: { timeoutMs?: number } = {},
 ): Promise<({ ok: true } & HistorySearchPayload) | { ok: false; message?: string }> {
     try {
         await ensureMachineEncryption(machineId);
         const result = await apiSocket.machineRPC<unknown, typeof params>(
-            machineId, 'history-search', params, { timeoutMs: 20_000 },
+            machineId, 'history-search', params, { timeoutMs: opts.timeoutMs ?? 20_000 },
         );
         // Iron rule 17: a throwing handler resolves as `{ error }`.
         const error = (result as { error?: unknown } | null)?.error;
