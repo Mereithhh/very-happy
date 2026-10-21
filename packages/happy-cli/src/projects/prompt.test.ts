@@ -22,11 +22,15 @@ describe('project injection texts (spec §4)', () => {
     it('variant texts are the spec wording with the placeholders filled', () => {
         expect(spec).toContain(variantText('member', '{projectName}'));
         expect(spec).toContain(variantText('team-member', '{projectName}', '{teamName}'));
+        expect(spec).toContain(variantText('team-lead', '{projectName}', '{teamName}'));
         expect(spec).toContain(variantText('quiet', '{projectName}'));
-        for (const v of ['member', 'team-member', 'quiet'] as const) expect(variantText(v, 'x', 'y')).not.toMatch(/ALWAYS|MUST/);
+        for (const v of ['member', 'team-lead', 'team-member', 'quiet'] as const) expect(variantText(v, 'x', 'y')).not.toMatch(/ALWAYS|MUST/);
     });
     it('chooses team-member for team sessions, quiet for automation, member otherwise', () => {
         expect(chooseVariant({ via: 'team', team: { id: 't', name: 'n' } })).toBe('team-member');
+        expect(chooseVariant({ via: 'team', team: { id: 't', name: 'n', lead: false } })).toBe('team-member');
+        // B-726: the lead records the team's decisions; an older server (no `lead`) keeps the member wording.
+        expect(chooseVariant({ via: 'team', team: { id: 't', name: 'n', lead: true } })).toBe('team-lead');
         expect(chooseVariant({ via: 'automation', team: null })).toBe('quiet');
         expect(chooseVariant({ via: 'explicit', team: null })).toBe('member');
     });

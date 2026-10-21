@@ -1948,6 +1948,7 @@ export const en = {
         groupProjects: 'Group by project',
         moveToProject: 'Move to project…',
         projectsUnassigned: 'No project',
+        projectsUnassignedByFolder: 'Not in a project · by folder',
         projectAttention: ({ count }: { count: number }) => `${count} waiting for you`,
         makeProject: 'Make this folder a project',
         makeProjectDone: ({ name }: { name: string }) => `Project "${name}" created`,

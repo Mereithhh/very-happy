@@ -1,3 +1,4 @@
+import { ProjectPicker } from '@/screens/projects/ProjectPicker';
 import { useProjects } from '@/sync/projects';
 import { suggestProjectFor } from '@/screens/projects/projectSuggestion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -277,10 +278,7 @@ export function NewSessionModal({
             {projectsSnap.status === 'ready' && liveProjects.length > 0 && (
               <>
                 <label className="ns-label" htmlFor="ns-project">{lang.startsWith('zh') ? '项目' : 'Project'}</label>
-                <select id="ns-project" className="ns-select" value={projectId ?? ''} onChange={(e) => setPickedProject(e.target.value || null)}>
-                  <option value="">{lang.startsWith('zh') ? '无项目' : 'No project'}</option>
-                  {liveProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                <ProjectPicker id="ns-project" value={projectId ? { kind: 'existing', projectId } : { kind: 'none' }} onChange={(next) => setPickedProject(next.kind === 'existing' ? next.projectId : null)} projects={liveProjects} />
               </>
             )}
 

@@ -1,4 +1,4 @@
-import type { TeamAction, TeamResponse, TeamState } from "@slopus/happy-wire";
+import type { ProjectView, TeamAction, TeamProjectBind, TeamProjectChoice, TeamResponse, TeamState } from "@slopus/happy-wire";
 import { getCurrentAuth } from "@/auth/AuthContext";
 import { getServerUrl } from "./serverConfig";
 
@@ -39,7 +39,12 @@ export const createTeam = (
   machineId: string,
   requestId: string,
   launch?: { goal: string; directory: string; assistant: "claude" | "codex" | "pi-acp"; model?: string },
-) => request<{ team: TeamState }>("", { name, machineId, requestId, ...(launch ? { launch } : {}) });
+  /** B-726: absent = no project (an older server strips it either way). */
+  project?: TeamProjectChoice,
+) => request<{ team: TeamState }>("", { name, machineId, requestId, ...(launch ? { launch } : {}), ...(project ? { project } : {}) });
+/** B-726: attach (`projectId`), detach (`projectId: null`) or create a same-name project and attach (`create`). Older servers answer 404. */
+export const bindTeamProject = (id: string, bind: TeamProjectBind) =>
+  request<{ teamId: string; projectId: string | null; project: ProjectView | null }>(`/${encodeURIComponent(id)}/project`, bind);
 /** Caller retains requestId on ambiguous failures; retrying cannot duplicate delegation. */
 export const actOnTeam = (id: string, action: TeamAction, requestId: string) =>
   request<TeamResponse>(`/${encodeURIComponent(id)}/actions`, {

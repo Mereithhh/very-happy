@@ -2105,6 +2105,7 @@ export const zhHans: TranslationStructure = {
         groupProjects: '按项目分组',
         moveToProject: '移到项目…',
         projectsUnassigned: '未归属',
+        projectsUnassignedByFolder: '未归属项目 · 按目录',
         projectAttention: ({ count }: { count: number }) => `${count} 个等你处理`,
         makeProject: '把这个目录设为项目',
         makeProjectDone: ({ name }: { name: string }) => `已创建项目「${name}」`,

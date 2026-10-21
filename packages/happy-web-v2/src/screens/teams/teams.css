@@ -306,3 +306,34 @@
 @media (pointer: coarse) {
   .teams-op-error-details summary { display: flex; align-items: center; min-height: 44px; }
 }
+
+/* B-726 / UI-P0-01: a plain disclosure button + CollapsePanel (no controlled <details>), the「所属项目」picker and the disabled reason */
+.team-start-toggle { display: flex; align-items: flex-start; gap: var(--sp-2); width: 100%; min-height: 32px; padding: var(--sp-3) 0; border: 0; background: none; color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.team-start-toggle > span { flex: 1; min-width: 0; }
+.team-start-chev { flex-shrink: 0; margin-top: 2px; color: var(--text-dim); transform: rotate(-90deg); transition: transform var(--motion-med, 160ms) ease; }
+.team-start-toggle[aria-expanded="true"] .team-start-chev { transform: none; }
+.team-start-config-body label + label { margin-top: var(--sp-3); }
+.team-start-project { display: flex; flex-direction: column; gap: var(--sp-2); }
+.team-start-blocker { margin: 0; align-self: flex-end; font-size: var(--fs-13); color: var(--text-dim); }
+.team-start-missing { border: 0; background: none; padding: 0; color: var(--text-dim); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.team-start-missing:hover, .team-start-missing:focus-visible { color: var(--text); }
+@media (prefers-reduced-motion: reduce) { .team-start-chev { transition: none; } }
+
+/* B-726 team ↔ project: header line, old-team nudge (one row, no card-in-card), settings */
+.team-project-line { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; color: var(--text-dim); font-size: var(--fs-13); min-width: 0; }
+.team-project-line a { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-project-nudge { display: flex; align-items: flex-start; gap: var(--sp-3); margin: var(--sp-3) 0; padding: var(--sp-3) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.team-project-nudge-icon { flex-shrink: 0; margin-top: 2px; color: var(--text-dim); }
+.team-project-nudge-text { flex: 1; min-width: 0; }
+.team-project-nudge-text p { margin: 2px 0 0; color: var(--text-dim); font-size: var(--fs-13); }
+.team-project-nudge-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
+.team-project-nudge-actions .teams-primary { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.team-project-nudge-pick { min-width: 180px; }
+.team-project-settings { display: flex; flex-direction: column; gap: var(--sp-2); }
+.team-project-confirm { display: flex; justify-content: flex-end; gap: var(--sp-2); }
+.teams-screen .teams-danger { color: var(--danger); }
+@media (max-width: 640px) {
+  .team-project-nudge { flex-wrap: wrap; }
+  .team-project-nudge-actions { width: 100%; }
+  .team-project-nudge-actions > * { flex: 1 1 100%; justify-content: center; }
+}

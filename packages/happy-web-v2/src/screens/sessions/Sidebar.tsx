@@ -628,7 +628,9 @@ export function Sidebar() {
         count: sessionCount(g.rows),
         detail: [g.machineName, g.path].filter(Boolean).join(' · '),
         createLocation: g.machineId && g.path ? { machineId: g.machineId, path: g.rows.find(r => r.workspacePath)?.workspacePath ?? g.path } : undefined,
-        kicker: i === 0 && projectGrouping.projects.length > 0 ? unassignedLabel : undefined,
+        // B-726: always say these are FOLDER groups outside any project — with no project yet, bare folder headers
+        // (NO WORKING DIRECTORY / DATA / PROJECT …) under「按项目分组」read as if projects were folders.
+        kicker: i === 0 ? (t('sidebar.projectsUnassignedByFolder') as string) : undefined,
         makeProject: projectsSnap.status === 'ready' && g.machineId && g.path && sessionIds.length > 0 ? { name: g.name ?? g.path, machineId: g.machineId, path: g.path, sessionIds } : undefined,
       });
     });

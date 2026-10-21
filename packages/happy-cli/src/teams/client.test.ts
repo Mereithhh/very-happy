@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { configuration } from '@/configuration';
 import { writeTeamScope, readTeamScope } from './context';
-import { createTeamsClient } from './client';
+import { createTeamsClient, teamCreateBody } from './client';
 import { readCredentialsForConfiguredRelay, readSettings, readPersistedSessions } from '@/persistence';
 vi.mock('@/persistence', () => ({ readCredentialsForConfiguredRelay: vi.fn(), readSettings: vi.fn(), readPersistedSessions: vi.fn() }));
 
@@ -45,5 +45,16 @@ describe('team scope transport boundary', () => {
         process.env.VH_TEAM_SCOPE_FILE = join(homedir(), 'code/github/skills/tmp/agent-teams-implementation/no-such-scope.json');
         await expect(createTeamsClient('worker').initialize({ name: 'root', requestId: 'r' })).rejects.toThrow('missing');
         expect(readCredentialsForConfiguredRelay).not.toHaveBeenCalled();
+    });
+});
+
+describe('B-726 team_create project choice', () => {
+    it('defaults to the creating session\'s project, else a same-name project at its folder', () => {
+        expect(teamCreateBody({ name: 'T', requestId: 'r' }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r', project: { inheritFromSessionId: 's1', directory: '/repo' } });
+        expect(teamCreateBody({ name: 'T', requestId: 'r' }, 'm', 's1', undefined)).toEqual({ name: 'T', machineId: 'm', requestId: 'r', project: { inheritFromSessionId: 's1' } });
+    });
+    it('honours an explicit project or no project (the old request shape)', () => {
+        expect(teamCreateBody({ name: 'T', requestId: 'r', projectId: 'p' }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r', project: { projectId: 'p' } });
+        expect(teamCreateBody({ name: 'T', requestId: 'r', noProject: true }, 'm', 's1', '/repo')).toEqual({ name: 'T', machineId: 'm', requestId: 'r' });
     });
 });

@@ -24,6 +24,8 @@ import { AdoptTeamForm } from "./AdoptTeamForm";
 import { TeamStartForm } from "./TeamStartForm";
 import { useFirstUseCopy } from "./firstUseCopy";
 import { TeamOptions } from "./TeamOptions";
+import { TeamProjectLine, TeamProjectNudge, TeamProjectSettings } from "./TeamProject";
+import { refreshProjects } from "@/sync/projects";
 import { TeamDialog } from "./TeamDialog";
 import { TeamTaskMessages, TeamTaskSummary } from "./TeamTaskDetail";
 import { useWorkspaceCopy } from "./workspaceCopy";
@@ -64,9 +66,9 @@ function TeamsContent() {
   // the param so the next click (same URL) opens it again.
   function closeCreate() {
     setCreating(false);
-    if (searchParams.has("new")) {
+    if (searchParams.has("new") || searchParams.has("project")) {
       const next = new URLSearchParams(searchParams);
-      next.delete("new");
+      next.delete("new"); next.delete("project");
       setSearchParams(next, { replace: true });
     }
   }
@@ -174,6 +176,7 @@ function TeamsContent() {
       <header className="teams-heading">
         <div><Link className="teams-back" to={teamId ? "/teams" : "/"}><ArrowLeft size={16} />{teamId ? c.title : tr("teams.sessions")}</Link>
           <h1><UsersRound size={26} aria-hidden />{team?.name ?? c.title}</h1>
+          {team && <TeamProjectLine team={team} />}
           <p>{team ? <><span data-live={machineOnline}>{machineOnline ? c.online : c.offline}</span> · {executionMachine ? machineLabel(executionMachine) : c.unnamedMachine}</> : c.intro}</p>
           {team?.archivedAt !== undefined && <p role="status">{tr("teams.archived")} · {new Date(team.archivedAt).toLocaleString()}</p>}
         </div>
@@ -207,10 +210,10 @@ function TeamsContent() {
           )}
           {creating && <TeamDialog title={c.create} onClose={closeCreate}>
             {error && <p role="alert" className="teams-error">{error}</p>}
-          <TeamStartForm onStart={async (name, machineId, launch, requestId) => {
-            return (await createTeam(name, machineId, requestId, launch)).team;
+          <TeamStartForm chooseProject initialProjectId={searchParams.get("project") ?? undefined} onStart={async (name, machineId, launch, requestId, project) => {
+            return (await createTeam(name, machineId, requestId, launch, project)).team;
           }} onStarted={created => {
-            void refreshTeamNavigation();
+            void refreshTeamNavigation(); void refreshProjects();
             navigate(`/teams/${created.id}?starting=1`);
           }} />
           </TeamDialog>}
@@ -231,6 +234,7 @@ function TeamsContent() {
               {team.bots.find(b => b.root && b.sessionId)?.sessionId && <Link className="teams-primary teams-talk" to={`/session/${encodeURIComponent(team.bots.find(b => b.root && b.sessionId)!.sessionId!)}`}><Bot size={18} />{c.talk}</Link>}
               <button disabled={disabled || !dispatchReady} onClick={() => setDelegating(true)}><Plus size={16} />{c.newTask}</button>
             </div>
+            <TeamProjectNudge team={team} />
             <TeamWorkspace team={team} onTask={setSelectedTask} archivedSessionIds={archivedMemberSessions} />
           </>}
           {view === "settings" && <>          <section>
@@ -243,6 +247,7 @@ function TeamsContent() {
             </label>
             <p>{tr("teams.executionModeHint")}</p>
           </section>
+            <TeamProjectSettings team={team} disabled={disabled} />
             <TeamOptions team={team} disabled={disabled} onSave={async defaults => { await act({type: 'set-defaults', defaults}); }} />
           </>}
           {startingExisting && <TeamDialog title={first.setup} onClose={() => setStartingExisting(false)}><TeamStartForm machineId={team.machineId} intentScope={`team:${team.id}`} onStart={async (_name, _machineId, launch, requestId) => {
