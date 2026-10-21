@@ -41,6 +41,15 @@ Very Happy 是一个开源 coding agent 中心，把工作站、笔记本和服�
 执行一次 `very-happy install-pi-tools`，之后在 Very Happy 终端中直接运行 `pi`，即可加载终端改名、剪贴板复制和文件预览工具；也可用 `very-happy pi --terminal` 临时加载。对话与终端内的「复制与预览记录」可以重开文件、再次复制之前的内容。[工具用法与历史保留范围](docs/channels.md#native-pi-terminal-tools)。
 
 
+## 项目：让并行的会话共享背景
+
+**项目**把同一件事的会话放在一起——跨机器、跨仓库、跨 Agent——并给它们同样的起点：你写一次的说明，
+agent 可以直接追加的决定 / 发现 / 交接记录，以及谁在做什么的一览。侧栏默认按项目分组（不属于任何项目的
+会话按目录归在「未归属」，一键把目录设为项目）。Claude Code、Codex、Gemini、pi 会话的首条消息前会带上
+项目说明，有变化时下一轮附一行提示——绝不唤醒空闲会话；无法注入的 harness 会标「未注入」。从项目页、
+项目组的 ＋、`very-happy spawn --project <id>` 新建会话，或让派生、fork 出的会话继承父会话的项目。
+项目的说明、记录和留言存放在服务器上。
+
 ## Teams：从一个目标，到并行推进
 
 **Very Happy Teams** 让 Claude Code、Codex 和 pi 围绕一个目标协作：负责人拆分任务，

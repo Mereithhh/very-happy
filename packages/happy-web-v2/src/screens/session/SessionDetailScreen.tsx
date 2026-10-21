@@ -1,3 +1,4 @@
+import { ProjectSuggestionBanner } from '@/screens/projects/ProjectSuggestionBanner';
 import { SessionPreviews } from './SessionPreviews';
 import { SubagentDock } from './SubagentDock';
 import { PermissionCard } from './PermissionCard';
@@ -296,6 +297,8 @@ export function SessionDetailScreen() {
                     so React reconciles it by key map, and two same-key siblings orphan one fiber —
                     its DOM stays and a fresh copy is inserted on every re-render (duplicated strip). */}
                 {session && !mirror && !sharedWithMe && <AutomationAttentionBanner key={`automation-attention:${id}`} sessionId={id} />}
+                {/* B-649: folder belongs to a project this session is not in → suggest (never auto-join). */}
+                {session && !mirror && !sharedWithMe && <ProjectSuggestionBanner key={`project-suggestion:${id}`} sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}
                 {session && !mirror && !sharedWithMe && canOfferRestore(session, bannerMachine) && <SessionArchivedBanner sessionId={id} />}
                 {/* B-462: live session still on an older wrapper than the machine runs → offer a restart */}

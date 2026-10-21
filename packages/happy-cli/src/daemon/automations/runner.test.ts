@@ -78,6 +78,21 @@ beforeEach(() => {
 afterEach(() => { runners.forEach((r) => r.stop()); runners = []; rmSync(home, { recursive: true, force: true }); });
 
 describe('automation runner: spawn runs', () => {
+    it('B-649: an automation with projectId puts its spawned session in the project before the first message; none otherwise', async () => {
+        const order: string[] = [];
+        const joinProject = vi.fn(async (sessionId: string, projectId: string) => { order.push(`join:${sessionId}:${projectId}`); });
+        send.mockImplementation(async (id: string) => { order.push(`send:${id}`); });
+        const runner = start(fakeClient([claimed(run(), automation({ projectId: 'p1' }))]), { joinProject }); await settled(runner);
+        expect(order).toEqual(['join:s1:p1', 'send:s1']);
+        const plain = vi.fn();
+        const other = start(fakeClient([claimed(run({ id: 'r2' }), automation())]), { joinProject: plain }); await settled(other);
+        expect(plain).not.toHaveBeenCalled();
+    });
+    it('B-649: a failing project join never fails the run', async () => {
+        const runner = start(fakeClient([claimed(run(), automation({ projectId: 'p1' }))]), { joinProject: vi.fn(async () => { throw new Error('offline'); }) });
+        await settled(runner);
+        expect(send).toHaveBeenCalledTimes(1);
+    });
     it('spawns with run env, sends the rendered prompt, reports running, then done after the anchored turn ends', async () => {
         const client = fakeClient([claimed()]);
         const runner = start(client); await settled(runner);

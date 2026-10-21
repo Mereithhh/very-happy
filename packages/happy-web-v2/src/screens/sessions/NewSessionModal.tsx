@@ -1,3 +1,5 @@
+import { useProjects } from '@/sync/projects';
+import { suggestProjectFor } from '@/screens/projects/projectSuggestion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bookmark, Check, X } from 'lucide-react';
@@ -77,6 +79,12 @@ export function NewSessionModal({
   // B-596: the not-installed agent whose install command is shown (its greyed button was selected).
   const [setupAgent, setSetupAgent] = useState<Exclude<SessionAgent, 'claude'> | null>(null);
   const [initialCommand, setInitialCommand] = useState(initialCommandDefault ?? '');
+  // B-649: project picker. Until the user picks, it follows the folder: a path
+  // inside a project folder pre-selects that project (visible, one click to
+  // change to 无项目) — the dialog is an explicit choice, not a silent join.
+  const projectsSnap = useProjects();
+  const [pickedProject, setPickedProject] = useState<string | null | undefined>(undefined);
+  const liveProjects = projectsSnap.projects.filter((p) => !p.archivedAt);
   const ime = useImeGuard();
 
   // ── B-147: nothing derived from the stores may live in a useState initializer.
@@ -191,6 +199,8 @@ export function NewSessionModal({
   // B-516: optimistic open. The pending page owns the spawn, a directory
   // creation approval, the first message (queued in its outbox) and failure;
   // recent-path memory and the Task Board mapping happen on success there.
+  const suggested = suggestProjectFor({ machineId, path: directory.trim() }, liveProjects)?.id ?? null;
+  const projectId = pickedProject === undefined ? suggested : pickedProject;
   async function onCreate() {
     if (!canCreate) return;
     let path = resolveDir(trimmed);
@@ -221,6 +231,7 @@ export function NewSessionModal({
       source: 'dialog',
       firstMessage: initialCommand,
       ...(spawnedTaskId ? { onSpawnedTask: { taskId: spawnedTaskId } } : {}),
+      ...(projectId ? { onSpawnedProject: { projectId } } : {}),
     });
     onClose();
     navigate(`/session/${record.pendingId}`);
@@ -261,6 +272,16 @@ export function NewSessionModal({
                   {t('session.chat.claudeAuthOpenMachine')}
                 </Link>
               </div>
+            )}
+
+            {projectsSnap.status === 'ready' && liveProjects.length > 0 && (
+              <>
+                <label className="ns-label" htmlFor="ns-project">{lang.startsWith('zh') ? '项目' : 'Project'}</label>
+                <select id="ns-project" className="ns-select" value={projectId ?? ''} onChange={(e) => setPickedProject(e.target.value || null)}>
+                  <option value="">{lang.startsWith('zh') ? '无项目' : 'No project'}</option>
+                  {liveProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </>
             )}
 
             <label className="ns-label">{t('newSession.directory')}</label>

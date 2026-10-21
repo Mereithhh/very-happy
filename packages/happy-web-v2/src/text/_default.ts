@@ -1785,6 +1785,7 @@ export const en = {
         workspaceUnassigned: 'No working directory',
         // B-647 project lens (default)
         groupProjects: 'Group by project',
+        moveToProject: 'Move to project…',
         projectsUnassigned: 'No project',
         projectAttention: ({ count }: { count: number }) => `${count} waiting for you`,
         makeProject: 'Make this folder a project',
