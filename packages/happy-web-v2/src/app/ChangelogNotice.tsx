@@ -89,7 +89,7 @@ export function ChangelogNotice() {
           <button type="button" className="wn-close" aria-label={t('common.close')} onClick={acknowledge}>
             <X size={18} />
           </button>
-          {head?.featured && <div className="wn-brand"><img src="/icon-192.png" width={44} height={44} alt=""/><span>{BRAND.name}<span>{lang.startsWith('zh') ? '全新工作台 · 重大界面更新' : 'A new workspace · Major UI update'}</span></span></div>}
+          {head?.featured && <div className="wn-brand"><img src="/icon-192.png" width={44} height={44} alt=""/><span>{BRAND.name}<span>{head.featuredTaglineKey ? t(head.featuredTaglineKey) : lang.startsWith('zh') ? '全新工作台 · 重大界面更新' : 'A new workspace · Major UI update'}</span></span></div>}
           <div className="wn-eyebrow"><Sparkles size={14} />{t('changelog.eyebrow')}</div>
           {head && (multiple ? (
             <>
@@ -100,14 +100,17 @@ export function ChangelogNotice() {
                   : t('changelog.pendingSummary', { from: formatDate(releases[releases.length - 1].date), to: formatDate(head.date) })}
               </Dialog.Description>
               <div className="wn-releases">
-                {releases.map((release) => (
-                  <section className="wn-release" key={release.id} aria-labelledby={`wn-release-${release.id}`}>
+                {releases.map((release, index) => {
+                  // A featured head already owns the dialog title and intro; repeating them here reads as a glitch.
+                  const titled = !(index === 0 && release.featured);
+                  return (
+                  <section className="wn-release" key={release.id} aria-labelledby={titled ? `wn-release-${release.id}` : undefined} aria-label={titled ? undefined : t(release.titleKey)}>
                     <div className="wn-release-meta">
                       <time dateTime={release.date}>{formatDate(release.date)}</time>
                       {release.cliVersion && <span>CLI v{release.cliVersion}</span>}
                     </div>
-                    <h3 id={`wn-release-${release.id}`}>{t(release.titleKey)}</h3>
-                    <p>{t(release.summaryKey)}</p>
+                    {titled && <h3 id={`wn-release-${release.id}`}>{t(release.titleKey)}</h3>}
+                    {titled && <p>{t(release.summaryKey)}</p>}
                     {release.highlights?.length ? (
                       <ChangelogHighlights release={release} onNavigate={acknowledge} headingLevel={4} />
                     ) : (
@@ -118,7 +121,8 @@ export function ChangelogNotice() {
                       </ul>
                     )}
                   </section>
-                ))}
+                  );
+                })}
               </div>
             </>
           ) : (
@@ -155,6 +159,7 @@ export function ChangelogNotice() {
               </div>
             </div>
           )}
+          {head?.featured && hasHighlights && <a className="wn-more is-full" href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/whats-new`} onClick={writeSeen}>{t('changelog.fullPage')}</a>}
           <a className="wn-more" href={changelogHref} onClick={writeSeen}>{t('changelog.viewAll')}</a>
           <button type="button" className="wn-done" onClick={acknowledge}>{t('changelog.done')}</button>
         </Dialog.Content>

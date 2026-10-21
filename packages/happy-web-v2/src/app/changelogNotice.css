@@ -75,6 +75,8 @@
 .wn-cli button svg { flex: none; margin-top: 1px; }
 .wn-done { width: 100%; min-height: 36px; margin-top: var(--sp-4); border-radius: var(--r-sm); background: var(--text); color: var(--bg-0); font-weight: 600; }
 .wn-more { display: flex; justify-content: center; align-items: center; min-height: 32px; margin-top: var(--sp-3); color: var(--text-dim); font-size: var(--fs-12); text-align: center; text-decoration: underline; text-underline-offset: 3px; }
+.wn-more.is-full { color: var(--text); font-weight: 500; }
+.wn-more.is-full + .wn-more { margin-top: 0; }
 
 @keyframes wn-fade { from { opacity: 0; } }
 @keyframes wn-enter { from { opacity: 0; transform: translate(-50%, calc(-50% + var(--sp-2))); } }
