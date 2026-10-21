@@ -458,7 +458,7 @@
 @media (prefers-reduced-motion: reduce) { .pub-hero-mark svg { animation: none; } }
 @media (max-width: 760px) {
   .pub-hero > .pub-hero-ascii { -webkit-mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 80%, transparent 100%); mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 80%, transparent 100%); }
-  .pub-hero:has(> .pub-hero-ascii) .pub-hero-copy::before { inset: -24px -16px; }
+  .pub-hero:has(> .pub-hero-ascii) .pub-hero-copy::before { inset: -28px -48px; }
   .pub-ascii-divider { height: 56px; }
   .pub-hero-mark { width: 92px; margin-bottom: var(--sp-5); }
   .docs-ascii-band { height: 220px; }

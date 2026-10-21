@@ -318,7 +318,9 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
         p.canvas.style.height = `${l.rows * l.cellH}px`;
         p.ready = false;
       }
-      buildGlyphs(l);
+      // The atlas is built on this layer's first job, so start-up work spreads over frames.
+      l.glyphs.clear();
+      l.halo = l.spec.blurPx > 0 ? Math.ceil(l.spec.blurPx * l.scale * 2) + 1 : 1;
       const strip = env.doc.createElement('canvas') as HTMLCanvasElement;
       const stripCtx = env.getContext(strip);
       const sh = Math.ceil(l.cellH * l.scale) + 2 * l.halo + 1;
@@ -364,6 +366,7 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   }
 
   function beginJob(l: Layer, t: number, cx: number, cy: number) {
+    if (!l.glyphs.size) buildGlyphs(l);
     const plane = l.planes[l.front === 0 ? 1 : 0];
     plane.ix = Math.floor(cx) - l.pad;
     plane.iy = Math.floor(cy) - l.padY;
