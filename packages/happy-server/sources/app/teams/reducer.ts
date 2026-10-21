@@ -1,4 +1,4 @@
-import type { TeamAction, TeamState, TeamBot, TeamTask, TeamOperation } from '@slopus/happy-wire';
+import { teamBotActivity, teamMemberCounts, type TeamAction, type TeamState, type TeamBot, type TeamTask, type TeamOperation } from '@slopus/happy-wire';
 
 export type TeamActor = { kind: 'owner' } | { kind: 'agent'; botId: string; generation: number };
 export { TeamError, requireTeam } from './errors';
@@ -20,6 +20,15 @@ export function actorCanReadTask(state: TeamState, actor: TeamActor, task: TeamT
     return state.tasks.some(t => (t.assigneeBotId === actor.botId || t.ownerBotId === actor.botId) && inTaskTree(state, task, t.id));
 }
 export function teamView(state: TeamState, actor: TeamActor): TeamState {
+    return withMemberActivity(scopedTeamView(state, actor), state);
+}
+/** B-692: response-only derived fields (never persisted): each bot's activity
+ *  and the team's member counts, from the full state. */
+function withMemberActivity(view: TeamState, full: TeamState): TeamState {
+    const now = Date.now(); // archived sessions are only known to the Web; it re-derives with that
+    return { ...view, memberCounts: teamMemberCounts(full, { now }), bots: view.bots.map(bot => ({ ...bot, activity: teamBotActivity(full, bot, { now }) })) };
+}
+function scopedTeamView(state: TeamState, actor: TeamActor): TeamState {
     if (actor.kind === 'owner') return state;
     const tasks = state.tasks.filter(t => actorCanReadTask(state, actor, t));
     const taskIds = new Set(tasks.map(t => t.id));
@@ -164,21 +173,41 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             let bot = action.assigneeBotId ? s.bots.find(b => b.id === action.assigneeBotId) : undefined;
             if (action.assigneeBotId) requireTeam(bot, 'bot_not_found', 404);
             if (bot && actor.kind === 'agent') requireTeam(currentBot?.root || bot.id === actor.botId || s.tasks.some(t => actorCanReadTask(s, actor, t) && t.assigneeBotId === bot!.id), 'bot_outside_scope', 403);
+            let reused = false;
             if (!bot) {
-                requireTeam(s.bots.length < 32, 'team_bot_limit', 429);
-                bot = { id: id(), name: action.botName ?? 'Worker', sessionId: null, generation: 1, root: false, managed: true, assistant: action.assistant ?? s.defaults?.assistant ?? 'claude', ...(action.model ? { model: action.model } : (!action.assistant || action.assistant === s.defaults?.assistant) && s.defaults?.model ? { model: s.defaults.model } : {}), directory: action.directory ?? currentBot?.directory ?? s.bots.find(b => b.root)?.directory ?? null };
-                s.bots.push(bot);
+                const fresh: TeamBot = { id: id(), name: action.botName ?? 'Worker', sessionId: null, generation: 1, root: false, managed: true, assistant: action.assistant ?? s.defaults?.assistant ?? 'claude', ...(action.model ? { model: action.model } : (!action.assistant || action.assistant === s.defaults?.assistant) && s.defaults?.model ? { model: s.defaults.model } : {}), directory: action.directory ?? currentBot?.directory ?? s.bots.find(b => b.root)?.directory ?? null };
+                // B-692: reuse a stopped member of the same shape (agent, model, folder)
+                // instead of growing the roster with one-shot bots. Oldest first.
+                // Only an unbound one: a bot that still holds a session (exited / stale) is
+                // inactive for counting but would be messaged rather than relaunched.
+                const candidate = s.bots.find(b => b.managed && !b.root && !b.sessionId && b.assistant === fresh.assistant && (b.model ?? null) === (fresh.model ?? null) && b.directory === fresh.directory && teamBotActivity(s, b, { now }) === 'inactive' && (actor.kind === 'owner' || currentBot?.root));
+                if (candidate) {
+                    bot = candidate; reused = true;
+                    // The old name stays in the record so its history still reads right.
+                    if (action.botName && action.botName !== bot.name) { bot.previousNames = [...(bot.previousNames ?? []), bot.name].slice(-16); bot.name = action.botName; }
+                } else {
+                    // B-692: the limit counts members, not stopped bots; the total bounds the record.
+                    requireTeam(s.bots.filter(b => teamBotActivity(s, b, { now }) !== 'inactive').length < 32, 'team_bot_limit', 429);
+                    requireTeam(s.bots.length < 128, 'team_bot_record_limit', 429);
+                    bot = fresh;
+                    s.bots.push(bot);
+                }
             }
             requireTeam(bot.sessionId || bot.managed, 'bot_not_bound');
-            requireTeam(!s.operations.some(o => o.botId === bot!.id && o.type === 'stop' && o.status !== 'completed'), 'bot_cleanup_pending');
+            // B-692: a bot whose cleanup has not finished is no longer refused (409
+            // made leads create a new bot every time): the task queues and its launch
+            // is claimable only after the cleanup completes (see claim-operation).
+            const stopping = s.operations.some(o => o.botId === bot!.id && o.type === 'stop' && o.status !== 'completed');
             requireTeam(!s.tasks.some(t => t.assigneeBotId === bot!.id && !['done', 'cancelled'].includes(t.status)), 'bot_busy');
-            if (action.assigneeBotId && !bot.sessionId) bot.generation++;
+            const bound = !!bot.sessionId && !stopping;
+            if ((action.assigneeBotId || reused) && !bound) bot.generation++;
             const attemptId = id();
-            const t: TeamTask = { id: id(), parentTaskId: parent?.id ?? null, goal: action.goal, acceptance: action.acceptance, goalVersion: 1, ownerBotId: actor.kind === 'agent' ? actor.botId : null, assigneeBotId: bot.id, status: bot.sessionId ? 'running' : 'queued', attempts: [{ id: attemptId, botId: bot.id, generation: bot.generation, goalVersion: 1, status: bot.sessionId ? 'running' : 'pending', result: null }], currentAttemptId: attemptId, cleanup: 'none' };
+            const t: TeamTask = { id: id(), parentTaskId: parent?.id ?? null, goal: action.goal, acceptance: action.acceptance, goalVersion: 1, ownerBotId: actor.kind === 'agent' ? actor.botId : null, assigneeBotId: bot.id, status: bound ? 'running' : 'queued', attempts: [{ id: attemptId, botId: bot.id, generation: bot.generation, goalVersion: 1, status: bound ? 'running' : 'pending', result: null }], currentAttemptId: attemptId, cleanup: 'none' };
             s.tasks.push(t); taskId = t.id;
-            if (bot.sessionId) msg(t, bot.id, `New task ${t.id}: ${t.goal}\nAcceptance:\n${t.acceptance.join('\n')}`);
+            if (bound) msg(t, bot.id, `New task ${t.id}: ${t.goal}\nAcceptance:\n${t.acceptance.join('\n')}`);
             else {
-                operation(t, bot, 'spawn');
+                // A launch never inherits the session being cleaned up.
+                operation(t, bot, 'spawn').sessionId = null;
                 if (s.defaults?.maxParallel) {
                     const reserved = occupiedTeamWorkSlots(s, true);
                     if (reserved.size > s.defaults.maxParallel) {
@@ -255,6 +284,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             if (task.currentAttemptId === op.attemptId) task.cleanup = 'done';
             const bot = s.bots.find(b => b.id === op.botId);
             if (bot && bot.generation === op.generation && bot.sessionId === op.sessionId && !s.tasks.some(t => t.assigneeBotId === bot.id && !['done', 'cancelled'].includes(t.status))) bot.sessionId = null;
+            // B-692: a reconciled cleanup releases its session even if a launch is queued behind it.
+            else if (bot && op.type === 'stop' && op.sessionId && bot.sessionId === op.sessionId) bot.sessionId = null;
             operationId = op.id;
             break;
         }
@@ -277,6 +308,8 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
             const op = s.operations.find(o => o.id === action.operationId); requireTeam(op, 'operation_not_found', 404);
             requireTeam(op.status === 'pending', 'operation_not_pending');
             requireTeam(!op.teamLaunchVersion || action.teamLaunchVersion === 1, 'team_launch_upgrade_required');
+            // B-692: a launch queued behind its bot's cleanup waits for it (the daemon retries the claim).
+            if (op.type === 'spawn') requireTeam(!s.operations.some(o => o.botId === op.botId && o.type === 'stop' && o.status !== 'completed'), 'bot_cleanup_pending');
             if (op.type === 'spawn' && !s.bots.find(b => b.id === op.botId)?.root && s.defaults?.maxParallel) {
                 const occupied = occupiedTeamWorkSlots(s);
                 requireTeam(occupied.size < s.defaults.maxParallel, 'team_parallel_limit');
@@ -307,7 +340,9 @@ export function reduceTeam(input: TeamState, actor: TeamActor, action: TeamActio
                     else operation(t, bot, 'stop', op.attemptId);
                 } else {
                     if (t.currentAttemptId === op.attemptId) t.cleanup = 'done';
-                    if (bot.generation === op.generation && bot.sessionId === op.sessionId) bot.sessionId = null;
+                    // B-692: the stopped session is unbound even when a newer launch is
+                    // already queued for this bot (its generation moved on).
+                    if (op.sessionId && bot.sessionId === op.sessionId) bot.sessionId = null;
                 }
                 op.status = 'completed';
             }
