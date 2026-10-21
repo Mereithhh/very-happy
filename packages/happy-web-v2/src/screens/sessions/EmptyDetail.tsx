@@ -7,6 +7,7 @@ import { prefetchSessionDetail } from '@/app/prefetchSessionDetail';
 import { createChatOrConfigure } from '@/app/newChat';
 import { createTerminalOrPick } from '@/app/newTerminal';
 import { NewSessionModal } from './NewSessionModal';
+import { AsciiTide } from './AsciiTide';
 import './emptyDetail.css';
 
 export function EmptyDetail() {
@@ -16,6 +17,7 @@ export function EmptyDetail() {
   return (
     <main className="empty-detail">
       <div className="empty-detail__content">
+        <AsciiTide />
         <h1>{t('emptyState.pickUpTitle')}</h1>
         <p>{t('emptyState.pickUpDescription')}</p>
         <div className="empty-detail__actions">
