@@ -24,6 +24,9 @@ export function modalityFor(event: { type: string; key?: string }): InputModalit
 
 export function installInputModality(doc: Document = document): () => void {
   const root = doc.documentElement;
+  // A touch-first device starts in pointer modality: a deep link that opens a
+  // dialog must not greet a phone with a ring before any key was pressed.
+  if (!root.dataset.input && doc.defaultView?.matchMedia?.('(pointer: coarse)').matches) root.dataset.input = 'pointer';
   const onEvent = (event: Event) => {
     const next = modalityFor(event as KeyboardEvent);
     if (next && root.dataset.input !== next) root.dataset.input = next;

@@ -14,6 +14,14 @@ describe('input modality (B-728)', () => {
     expect(modalityFor({ type: 'focus' })).toBeNull();
   });
 
+  it('a touch-first device starts in pointer modality', () => {
+    const doc = document.implementation.createHTMLDocument('x');
+    Object.defineProperty(doc, 'defaultView', { value: { matchMedia: (q: string) => ({ matches: q === '(pointer: coarse)' }) } });
+    const off = installInputModality(doc);
+    expect(doc.documentElement.dataset.input).toBe('pointer');
+    off();
+  });
+
   it('tracks the last modality on <html data-input>', () => {
     uninstall = installInputModality(document);
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));

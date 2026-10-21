@@ -221,6 +221,9 @@
 .teams-dialog { width: min(680px, calc(100vw - 32px)); margin: auto; }
 .teams-dialog::backdrop { background: var(--scrim); }
 .teams-dialog:focus { outline: none; }
+/* the dialog itself is only the open-on-touch focus anchor; out-rank `.teams-screen :focus-visible` */
+.teams-screen dialog.teams-dialog:focus-visible { box-shadow: var(--shadow-modal); }
+.teams-screen .teams-dialog .vh-dialog-title { margin: 0; font-size: var(--fs-16); }
 /* `.teams-screen button` fills every control; the × stays a ghost */
 .teams-screen .teams-dialog .vh-dialog-close { padding: 0; min-height: 0; background: transparent; }
 @media (hover: hover) and (pointer: fine) { .teams-screen .teams-dialog .vh-dialog-close:not(:disabled):hover { background: var(--fill-hover); } }

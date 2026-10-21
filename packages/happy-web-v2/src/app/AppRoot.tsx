@@ -77,9 +77,10 @@ const ViewportDiagScreen = lazy(() => import('@/diag/ViewportDiagScreen').then((
 const VhDiagOverlay = lazy(() => import('@/diag/VhDiagOverlay').then((m) => ({ default: m.VhDiagOverlay })));
 
 function Lazy({ children, fullViewport = true, centered = false }: { children: ReactNode; fullViewport?: boolean; centered?: boolean }) {
+  const { t } = useTranslation();
   return (
     <Suspense
-      fallback={<RouteLoading fullViewport={fullViewport} centered={centered} />}
+      fallback={<RouteLoading fullViewport={fullViewport} centered={centered} label={t('common.loadingWorkspace')} />}
     >
       {children}
     </Suspense>
@@ -398,7 +399,8 @@ function VhDiagGate() {
 }
 
 function Splash() {
-  return <RouteLoading fullViewport />;
+  const { t } = useTranslation();
+  return <RouteLoading fullViewport label={t('common.loadingWorkspace')} />;
 }
 
 export function AppRoot() {

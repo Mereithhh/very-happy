@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { expect, it, vi } from 'vitest';
 vi.mock('@/i18n/useTranslation', () => ({ useTranslation: () => ({ t: (k: string) => k, lang: 'en' }) }));
 const { labelColon } = await import('./TeamTaskDetail');
