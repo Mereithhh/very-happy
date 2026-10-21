@@ -159,6 +159,8 @@ export const MachineMetadataSchema = z.object({
   worktreeVersion: z.number().int().positive().optional(),
   /** B-688: daemon serves the `model-config-*` RPCs (harness model/provider config). */
   modelConfigVersion: z.number().int().positive().optional(),
+  /** B-719: daemon serves `harness-install` (Install / Update buttons for coding-agent CLIs). */
+  harnessInstallVersion: z.number().int().positive().optional(),
   host: z.string(),
   platform: z.string(),
   happyCliVersion: z.string(),

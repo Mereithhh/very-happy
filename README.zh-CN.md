@@ -45,7 +45,7 @@ Very Happy 是一个开源 coding agent 中心，把工作站、笔记本和服�
 终端可运行某个 Agent 不代表它具备同样的结构化支持。每台机器连接一次、保持 daemon 在线，
 就能在同一个工作区处理单个对话，也能组织团队协作。
 
-pi 对话（`very-happy pi`，或网页新建会话弹窗里选 pi）通过 [pi-acp](https://www.npmjs.com/package/pi-acp) 适配器运行 pi，所以机器上两者都要装：`npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`。daemon 会在五分钟内识别到；缺任何一个时，`very-happy pi` 和新建会话弹窗都会给出要运行的命令。
+pi 对话（`very-happy pi`，或网页新建会话弹窗里选 pi）通过 [pi-acp](https://www.npmjs.com/package/pi-acp) 适配器运行 pi，所以机器上两者都要装：`npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`。daemon 会在五分钟内识别到；缺任何一个时，`very-happy pi` 和新建会话弹窗都会给出要运行的命令。CLI 0.2.181 起也可以直接在弹窗里点 **在这台机器上安装 pi**（机器页也可以对 Claude Code、Codex、Gemini CLI、pi 点「安装 / 更新」）：daemon 只在你点击后，把固定的包装到与 Very Happy 相同的用户级 npm 目录，不会用 sudo。
 
 pi 对话里，「插话（Steer）」可把排队的消息送进正在运行的回合；pi 扩展弹出的选择题（`select`）显示为可直接作答的问题卡片；pi 的子代理运行（`subagent` 工具）与 Claude 一样显示子代理卡片。agent 崩溃或 wrapper 重启后，pi 会话会接回原来的对话；已归档或离线的 pi 会话也能像 Claude / Codex 一样在网页上恢复（限于 CLI 已记录 pi 会话 id 的会话）。
 
