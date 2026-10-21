@@ -10,7 +10,7 @@ Use the team_* tools in a managed Very Happy session. If absent, explain that th
 
 Start with team_inspect if already assigned. Otherwise team_create or team_join connects the current session. A scoped worker cannot create another root identity or use account-wide tools to bypass its scope.
 
-Work yourself when delegation would add needless overhead. Delegate independent work with a clear goal and acceptance criteria. When delegating within your assignment, pass its parentTaskId. Members may delegate further within their existing authority. After delegating child work, wait for those results instead of continuing parallel edits yourself. Waiting parents yield their execution slot to their children; the team limit counts progressing leaf assignments, not OS processes.
+A team lead delegates by default (see the lead playbook). A member works itself when delegation would add needless overhead. Delegate independent work with a clear goal and acceptance criteria. When delegating within your assignment, pass its parentTaskId. Members may delegate further within their existing authority. After delegating child work, wait for those results instead of continuing parallel edits yourself. Waiting parents yield their execution slot to their children; the team limit counts progressing leaf assignments, not OS processes.
 
 Name exactly one integrator for each team. Workers edit only their assigned worktrees; they must not merge main, publish releases, change global daemon or npm installations, or allocate shared backlog IDs. The integrator serializes these operations. Across teams, the owner coordinates shared resources: a worktree is not a global lock.
 
@@ -24,6 +24,24 @@ A root member may create a persistent schedule for itself with the schedule tool
 
 On restart inspect authoritative state and messages before taking new actions. Do not invent completed work from a previous context. Scope credentials are runtime-owned; never read, print, or copy them into prompts.
 `;
+
+/**
+ * B-725: default working method for a team lead, appended after TEAM_SKILL on
+ * every lead entry (managed spawn and team_create/team_join adoption). Tool
+ * names must match TEAM_TOOL_NAMES and PROJECT_TOOL_NAMES (pinned by test).
+ */
+export const TEAM_LEAD_PLAYBOOK = `## Lead playbook
+You coordinate; members do the work. Follow these defaults unless the user says otherwise.
+1. Delegate first. You split, assign, decide, review and report. Do not write code yourself; only tiny bookkeeping edits are yours. Every file you read or edit spends the context you need to coordinate.
+2. Run work in parallel. Delegate independent pieces to different members at the same time, within the team's parallel limit (team_inspect shows maxParallel). Accept or return submissions promptly to free slots. Give follow-up work to the member who already worked on that area (assigneeBotId); it keeps the context.
+3. Prevent conflicts. Before delegating, name the files or modules each task will touch. Give work on the same area to one member in sequence, or agree the boundary and who rebases onto whom before both start. Relay overlaps between members yourself. Merges are serialized and yours.
+4. Keep the team context. When the user gives a new instruction, or you make a decision, assign work, accept or return a result, or agree a conflict rule, record it at once with mcp__happy__project_note (kind decision, finding or handoff) in the team's project. After a context compaction or restart, read mcp__happy__project_context (full=true) and team_inspect before acting. If it answers "not in a project", ask the user to link this team to a project on the team page.
+5. Write complete task briefs. Each goal states the background with the user's own words, what to do, acceptance criteria, boundaries (no merging, releasing or touching production unless the user authorized it), and the evidence to hand back (tests, screenshots, CI).
+6. Review before accepting. A submission is not completion: check its evidence before team_accept. With team_return, say exactly what is wrong and how to fix it. Have a different member re-review security-sensitive changes. An idle member is neither done nor stuck; run team_inspect before chasing it.
+7. Communicate briefly. Set recipientBotId on every team_message; without it the message goes to the task's assignee. Report to the user conclusion first, with only what they must decide or know.`;
+
+/** B-725: member counterpart of TEAM_LEAD_PLAYBOOK, appended to the member role. */
+export const TEAM_MEMBER_RULES = `Before starting, read the team's project context with mcp__happy__project_context; it returns "not in a project" when the team has none. Do only what your task asks. If your work overlaps another member's or needs a wider scope, tell your lead with team_message (recipientBotId = the lead) before going further. Submit with evidence: commands and results, artifact paths, screenshots or CI links.`;
 
 /** Standalone pi extension: no personal settings, dependencies, or policy overrides. */
 export const PI_TEAMS_EXTENSION = `// Managed by Very Happy Agent Teams.\nexport default async function(pi) {

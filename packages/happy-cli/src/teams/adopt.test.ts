@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { sendUserMessage, waitForSessionKey } from '@/commands/sessionMessage';
+import { TEAM_LEAD_PLAYBOOK } from './resources';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { configuration } from '@/configuration';
 import { readCredentialsForConfiguredRelay, readPersistedSessions, readSettings } from '@/persistence';
@@ -65,6 +66,8 @@ describe('session adoption', () => {
         expect(JSON.stringify(result)).not.toContain('scope-secret');
         expect(JSON.stringify(result)).toContain('team_inspect');
         expect(sendUserMessage).toHaveBeenCalledWith('session', { encryptionKey: 'key' }, expect.stringContaining('team_inspect'), 'teams', { localId: 'teams-adopt-adopt-one', sentFrom: 'team' });
+        // B-725: an adopted lead gets the same lead playbook as a spawned one.
+        expect(vi.mocked(sendUserMessage).mock.calls[0][2]).toContain(TEAM_LEAD_PLAYBOOK);
         expect(fetchMock.mock.calls.filter(([url, options]) => options.method === 'POST')).toHaveLength(2);
         expect((await readTeamScope(teamScopePath('session')))?.scopeToken).toBe('scope-secret');
         expect(await readFile(`${teamScopePath('session')}.adopt.json`, 'utf8')).not.toContain('secret');

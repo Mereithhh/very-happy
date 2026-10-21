@@ -88,7 +88,7 @@ use, with a shared view of assignments and results.
 > “Review this project, find worthwhile improvements, form a team to work on them in parallel, and bring back results I can review.”
 
 1. **Set the goal.** Open **Teams → New team** and describe what you want done. Recent computer and Git project choices are shown below the message; expand them to change the computer, project, or agent.
-2. **Let the lead organize.** Very Happy starts the lead with official collaboration instructions. It can delegate independent tasks; teammates can further divide their own assignments.
+2. **Let the lead organize.** Very Happy starts the lead with official collaboration instructions. By default the lead delegates instead of coding itself, runs independent tasks in parallel, keeps overlapping work apart, and records decisions in the team's project so they survive context compaction. Teammates can further divide their own assignments.
 3. **Follow parallel work.** Open member conversations from the team overview and inspect progress, submitted results, and code changes.
 4. **Review the result.** Accept or return work for changes. Cleanup preserves unmerged code; a stopped process does not count as completed work.
 
