@@ -954,7 +954,7 @@ export class ApiSessionClient extends EventEmitter {
      * session down. Needs no socket; POSTs through the same session-message
      * channel so the web receives it identically to a cancel-button tombstone.
      */
-    async cancelUndeliveredQueuedInputs(): Promise<void> {
+    async cancelUndeliveredQueuedInputs(opts?: { maxSeq?: number }): Promise<void> {
         const MAX_SCAN_PAGES = 10; // bounded; a healthy tail is ≪ 1000 records.
         // Dedup: tombstones we emit this run and ones the web already made.
         const canceled = new Set<string>();
@@ -986,7 +986,7 @@ export class ApiSessionClient extends EventEmitter {
                     }
                     return { seq: message.seq, localId: message.localId, body };
                 });
-                const scan: UndeliveredScan & { canceled: Set<string> } = scanUndeliveredQueuedInputs(records, { canceled });
+                const scan: UndeliveredScan & { canceled: Set<string> } = scanUndeliveredQueuedInputs(records, { canceled, replayAboveSeq: opts?.maxSeq });
                 for (const key of scan.canceled) canceled.add(key);
                 undelivered.push(...scan.undeliveredLocalKeys);
                 reachedBoundary = scan.reachedBoundary;

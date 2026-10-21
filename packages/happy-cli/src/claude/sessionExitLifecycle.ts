@@ -17,7 +17,7 @@
  *     `KillMode=control-group` signals every wrapper when the daemon exits),
  *     a machine shutdown, a user's Ctrl-C. The row must end up exactly where
  *     a dropped network link leaves it: `active=false`, `archivedAt` untouched
- *     (POST `/deactivate`), metadata untouched, so the web shows it offline
+ *     (POST `/deactivate`), metadata untouched (except the B-679 `exitCursor`), so the web shows it offline
  *     and the next daemon (or the user) can resume it in place.
  *
  * Until 2026-09-25 the `offline` path posted to `/archive` as a "belt and
@@ -44,11 +44,15 @@ export interface SessionExitDeps {
     /** POST /deactivate — active=false only. */
     deactivateSession: (sessionId: string) => Promise<boolean>;
     /** B-587: awaited metadata write (resolves false on timeout); required for `hibernate`. */
-    updateMetadataAndWait?: (handler: (metadata: Metadata) => Metadata) => Promise<boolean>;
+    updateMetadataAndWait?: (handler: (metadata: Metadata) => Metadata, timeoutMs?: number) => Promise<boolean>;
+    /** B-679: the cursor stamp for an `offline` exit (inbound already frozen). */
+    exitCursor?: NonNullable<Metadata['exitCursor']>;
     /** B-587: the stamp to write for a `hibernate` exit. */
     hibernation?: NonNullable<Metadata['hibernation']>;
     log?: (message: string, ...args: unknown[]) => void;
 }
+
+export const OFFLINE_EXIT_STAMP_TIMEOUT_MS = 3_000;
 
 /** The lifecycle side of cleanup: metadata stamp, socket death, HTTP fallback. */
 export async function settleSessionOnExit(sessionId: string, intent: SessionExitIntent, deps: SessionExitDeps): Promise<void> {
@@ -69,6 +73,16 @@ export async function settleSessionOnExit(sessionId: string, intent: SessionExit
         // (a plain offline session is just as recoverable).
         const landed = deps.updateMetadataAndWait ? await deps.updateMetadataAndWait(handler) : (deps.updateMetadata(handler), false);
         if (!landed) deps.log?.('[START] hibernation stamp not confirmed before going offline');
+    }
+
+    // B-679: an offline exit leaves its message cursor so the next wrapper
+    // replays what is typed into the offline session (see applyReconnectReplay).
+    // Short bound: a daemon stop is waiting for us; a lost stamp only means the
+    // old skip-to-latest resume.
+    if (intent === 'offline' && deps.exitCursor && deps.updateMetadataAndWait) {
+        const stamp = deps.exitCursor;
+        const landed = await deps.updateMetadataAndWait((currentMetadata) => ({ ...currentMetadata, exitCursor: stamp }), OFFLINE_EXIT_STAMP_TIMEOUT_MS);
+        if (!landed) deps.log?.('[START] offline exit cursor not confirmed before going offline');
     }
 
     // Socket path first: the server flips active=false on `session-end`

@@ -38,7 +38,7 @@ import { HibernationExitLatch, HibernationProbe, commitHibernation } from '@/hib
 import { settleCodexSession } from './codexTermination';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
-import { applyHibernationReplay, applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
+import { applyReconnectReplay, applyServerSnapshot, exitCursorStamp, mergeReconnectMetadata, withoutServerSnapshot, type ReconnectReplay } from '@/utils/reconnectSession';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -204,16 +204,20 @@ export async function runCodex(opts: {
     // B-265: seed the reconnect from the server snapshot (see runClaude).
     let reconnectSeeded = false;
     let wakingFromHibernation = false;
+    let reconnectReplay: ReconnectReplay | null = null;
     if (reconnectSessionId && response) {
         const snapshot = await api.getSession(response.id, response.encryptionKey, response.encryptionVariant);
         if (snapshot.ok) {
             response = applyServerSnapshot(response, snapshot.session);
             reconnectSeeded = true;
             logger.debug(`[START] Reconnect seeded from server: seq=${snapshot.session.seq} metadataVersion=${snapshot.session.metadataVersion}`);
-            // B-587: waking from hibernation → replay what arrived after the stamp.
-            const wake = applyHibernationReplay(response);
+            // B-587 / B-679: hibernation wake or offline-exit resume → replay
+            // what arrived after the previous cursor (see runClaude).
+            const wake = applyReconnectReplay(response);
             response = wake.response;
-            wakingFromHibernation = wake.replaying;
+            reconnectReplay = wake.replay;
+            wakingFromHibernation = wake.replay?.source === 'hibernation';
+            if (wake.replay) logger.debug(`[START] Resuming (${wake.replay.source}): replaying records after seq=${response.seq}`);
         } else {
             response = withoutServerSnapshot(response);
             logger.debug(`[START] Reconnect without server snapshot (${snapshot.reason}); skipping existing messages`);
@@ -256,7 +260,7 @@ export async function runCodex(opts: {
         // B-332: see runClaude — the previous wrapper's undelivered queue is
         // lost either way; tell the web.
         // B-587: not when waking from hibernation (see runClaude).
-        if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs();
+        if (!wakingFromHibernation) void session.cancelUndeliveredQueuedInputs(reconnectReplay ? { maxSeq: reconnectReplay.seq } : undefined);
         session.updateMetadata((meta) => mergeReconnectMetadata(meta, metadata, Date.now()));
     }
 
@@ -578,13 +582,16 @@ export async function runCodex(opts: {
             return;
         }
         logger.debug('[Codex] Kill session requested - terminating process');
+        // B-679: pin the offline cursor and route nothing more (see runClaude).
+        const exitCursor = intent === 'offline' && session ? exitCursorStamp(session.messageCursor, Date.now()) : undefined;
+        if (exitCursor) session.freezeInbound();
         await handleAbort('kill');
         logger.debug('[Codex] Abort completed, proceeding with termination');
 
         try {
             // AGENTS 7 / B-587: archived stamp only for a user's archive/kill;
             // SIGTERM/SIGINT go offline (codexTermination.ts).
-            if (session) await settleCodexSession(session, intent, (id) => api.deactivateSession(id), (m, e) => logger.debug(m, safeCodexErrorMetadata(e)));
+            if (session) await settleCodexSession(session, intent, (id) => api.deactivateSession(id), (m, e) => logger.debug(m, safeCodexErrorMetadata(e)), exitCursor);
 
             // Force close Codex transport (best-effort) so we don't leave stray processes
             try {

@@ -632,6 +632,14 @@ export type Metadata = {
    * cursor — records above it are replayed on wake. Old clients ignore it.
    */
   hibernation?: { at: number; seq: number; idleMs: number; v: 1 },
+  /**
+   * B-679: written by a wrapper that went OFFLINE (SIGTERM / SIGINT: `sessions
+   * stop`, daemon stop / upgrade, shutdown); cleared by the next wrapper on
+   * reconnect. `seq` = its message cursor — user input stored above it (sent
+   * to the offline session) was never routed and is replayed on resume. Old
+   * clients ignore it.
+   */
+  exitCursor?: { at: number; seq: number; v: 1 },
   /** B-587: user opted this session out of idle hibernation (web ⋯ menu). */
   keepAwake?: boolean,
   flavor?: string
