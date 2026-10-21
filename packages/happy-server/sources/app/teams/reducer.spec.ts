@@ -46,6 +46,36 @@ describe('team coordination invariants', () => {
         expect(() => f.act({ type: 'retry-operation', operationId: op.id, claimId })).toThrow('operation_task_not_waiting');
     });
 
+    it('B-706: reactivating a bot launches from its source repository, never the removed worktree', () => {
+        const f = fixture();
+        f.act({ type: 'delegate', goal: 'first', acceptance: ['a'], directory: '/repo' });
+        const first = f.state.operations[0];
+        expect(first.directory).toBe('/repo');
+        f.act({ type: 'claim-operation', operationId: first.id, machineId: 'machine', teamLaunchVersion: 1 });
+        f.act({ type: 'complete-operation', operationId: first.id, machineId: 'machine', claimId: f.state.operations[0].claimId!, sessionId: 's1', workingDirectory: '/home/.happy/teams/worktrees/op1' });
+        const bot = f.state.bots[0];
+        expect(bot.directory).toBe('/home/.happy/teams/worktrees/op1'); // the member's live worktree
+        const task = f.state.tasks[0];
+        f.act({ type: 'submit', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1, result: 'ok' });
+        f.act({ type: 'accept', taskId: task.id, attemptId: task.currentAttemptId, goalVersion: 1 });
+        const stop = f.state.operations.at(-1)!;
+        f.act({ type: 'claim-operation', operationId: stop.id, machineId: 'machine' });
+        f.act({ type: 'complete-operation', operationId: stop.id, machineId: 'machine', claimId: f.state.operations.at(-1)!.claimId! });
+        f.act({ type: 'delegate', goal: 'second', acceptance: ['a'], assigneeBotId: bot.id });
+        const relaunch = f.state.operations.at(-1)!;
+        expect(relaunch).toMatchObject({ type: 'spawn', generation: 2, directory: '/repo' });
+
+        // A launch queued before the fix carries the old worktree; the owner's retry repairs it.
+        f.act({ type: 'claim-operation', operationId: relaunch.id, machineId: 'machine', teamLaunchVersion: 1 });
+        f.state.operations.at(-1)!.directory = '/home/.happy/teams/worktrees/op1';
+        const claimId = f.state.operations.at(-1)!.claimId!;
+        f.act({ type: 'fail-operation', operationId: relaunch.id, machineId: 'machine', claimId, error: 'Team repository is missing' });
+        f.act({ type: 'retry-operation', operationId: relaunch.id, claimId });
+        expect(f.state.operations.at(-1)).toMatchObject({ directory: '/repo', retryRequestedAt: 1000 });
+        f.act({ type: 'complete-operation', operationId: relaunch.id, machineId: 'machine', claimId, sessionId: 's2', workingDirectory: '/home/.happy/teams/worktrees/op3' });
+        expect(f.state.operations.at(-1)).toMatchObject({ status: 'completed', error: null });
+    });
+
     it('fences old bot credentials after rebind', () => {
         const f = fixture(); f.act({ type: 'join', name: 'Root', sessionId: 's1' }); const bot = f.state.bots[0];
         f.act({ type: 'join', name: 'Root', sessionId: 's2', botId: bot.id });
@@ -319,7 +349,7 @@ describe('B-692 member lifecycle', () => {
     const launch = (f: ReturnType<typeof fixture>, taskId: string, sessionId: string) => {
         const op = f.state.operations.filter(o => o.taskId === taskId && o.type === 'spawn').pop()!;
         f.act({ type: 'claim-operation', teamLaunchVersion: 1, operationId: op.id, machineId: 'machine' });
-        f.act({ type: 'complete-operation', operationId: op.id, machineId: 'machine', claimId: f.state.operations.find(o => o.id === op.id)!.claimId!, sessionId });
+        f.act({ type: 'complete-operation', operationId: op.id, machineId: 'machine', claimId: f.state.operations.find(o => o.id === op.id)!.claimId!, sessionId, workingDirectory: `/home/.happy/teams/worktrees/${op.id}` }); // as the daemon reports it
     };
     const finish = (f: ReturnType<typeof fixture>, taskId: string) => {
         const t = f.state.tasks.find(t => t.id === taskId)!;
