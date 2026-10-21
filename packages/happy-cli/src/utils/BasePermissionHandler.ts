@@ -18,6 +18,8 @@ export interface PermissionResponse {
     id: string;
     approved: boolean;
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+    /** B-632: the web's answer to a question card (`{ answers }`), passed through. */
+    updatedInput?: Record<string, unknown>;
 }
 
 /**
@@ -35,6 +37,8 @@ export interface PendingRequest {
  */
 export interface PermissionResult {
     decision: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+    /** B-632: present when the web answered a question card. */
+    updatedInput?: Record<string, unknown>;
 }
 
 /**
@@ -87,7 +91,10 @@ export abstract class BasePermissionHandler {
 
                 // Resolve the permission request
                 const result: PermissionResult = response.approved
-                    ? { decision: response.decision === 'approved_for_session' ? 'approved_for_session' : 'approved' }
+                    ? {
+                        decision: response.decision === 'approved_for_session' ? 'approved_for_session' : 'approved',
+                        ...(response.updatedInput && typeof response.updatedInput === 'object' ? { updatedInput: response.updatedInput } : {}),
+                    }
                     : { decision: response.decision === 'denied' ? 'denied' : 'abort' };
 
                 pending.resolve(result);

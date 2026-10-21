@@ -99,6 +99,18 @@ export interface AnalyzeTurnOptions {
     anchor?: (body: unknown) => boolean
 }
 
+/**
+ * B-632: a prompt sent with `meta.delivery === 'steer'` joins the turn that is
+ * running (Claude / Codex / pi steer) — no `turn-start` follows it, so the
+ * running turn's `turn-end` is its end too. (A steer the wrapper could not
+ * deliver is queued and opens a turn of its own, whose `turn-start` resets
+ * the verdict below.)
+ */
+function isSteerPrompt(body: unknown): boolean {
+    const b = asRecord(body)
+    return !!b && asRecord(b.meta)?.delivery === 'steer'
+}
+
 /** Text of a user prompt body (null when it is not one). */
 export function userPromptText(body: unknown): string | null {
     return isUserPrompt(body) ? (body as { content: { text: string } }).content.text : null
@@ -119,6 +131,7 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
     let lastMarker: 'start' | 'end' | null = null
     let startedAfterPrompt = false
     const emitsStarts = entries.some((entry) => sessionEnvelope(entry.body)?.ev?.t === 'turn-start')
+    const steerAnchor = userIndex >= 0 && isSteerPrompt(entries[userIndex].body)
 
     for (let i = userIndex + 1; i < entries.length; i++) {
         const body = entries[i].body
@@ -140,7 +153,7 @@ export function analyzeLatestTurn(entries: LogEntry[], options: AnalyzeTurnOptio
         if (env?.ev?.t === 'turn-end') {
             lastMarker = 'end'
             // The previous turn closing after a queued prompt — not ours.
-            if (userIndex >= 0 && emitsStarts && !startedAfterPrompt) continue
+            if (userIndex >= 0 && emitsStarts && !startedAfterPrompt && !steerAnchor) continue
             ended = true
             status = typeof env.ev.status === 'string' ? env.ev.status : null
             error = typeof env.ev.error === 'string' ? env.ev.error : null

@@ -38,6 +38,8 @@ Very Happy 是一个开源 coding agent 中心，把工作站、笔记本和服�
 终端可运行某个 Agent 不代表它具备同样的结构化支持。每台机器连接一次、保持 daemon 在线，
 就能在同一个工作区处理单个对话，也能组织团队协作。
 
+pi 对话里，「插话（Steer）」可把排队的消息送进正在运行的回合；pi 扩展弹出的选择题（`select`）显示为可直接作答的问题卡片；pi 的子代理运行（`subagent` 工具）与 Claude 一样显示子代理卡片。
+
 执行一次 `very-happy install-pi-tools`，之后在 Very Happy 终端中直接运行 `pi`，即可加载终端改名、剪贴板复制和文件预览工具；也可用 `very-happy pi --terminal` 临时加载。对话与终端内的「复制与预览记录」可以重开文件、再次复制之前的内容。[工具用法与历史保留范围](docs/channels.md#native-pi-terminal-tools)。
 
 
