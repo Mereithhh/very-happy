@@ -1,6 +1,7 @@
 /**
  * B-688 pi adapter — `${PI_CODING_AGENT_DIR:-~/.pi/agent}/`:
- *   models.json   → providers.<id>.{baseUrl, api, apiKey, models[]} (owned
+ *   models.json   → providers.<id>.{baseUrl, api, apiKey, models[]} — and
+ *                   models[].contextWindow (B-727) — (owned
  *                   inside the chosen provider; headers/compat/modelOverrides
  *                   and other providers are kept)
  *   settings.json → defaultProvider / defaultModel (owned)
@@ -15,7 +16,7 @@ import { join } from 'node:path';
 import { childObject, parseJsonObject, setOrDelete, stringifyLike, type JsonObject } from '../jsonEdit';
 import { collectSecretValues, maskSecret } from '../secrets';
 import type { ConfigWarning, FileSet, HarnessAdapter, HarnessContext, HarnessCurrent, HarnessPlan, ModelConfigPatch, PiPatch, SecretView } from '../types';
-import { baseUrlWarnings, fail, normalizeBaseUrl, normalizeModelId, normalizeModelList, normalizeProviderId, normalizeSecret } from '../validate';
+import { baseUrlWarnings, fail, normalizeBaseUrl, normalizeContextWindows, normalizeModelId, normalizeModelList, normalizeProviderId, normalizeSecret } from '../validate';
 import { changedPaths, uniq } from './common';
 
 const MODELS = 'models';
@@ -40,6 +41,18 @@ function modelIds(provider: JsonObject | undefined): string[] {
     return Array.isArray(list) ? list.flatMap(m => (m && typeof m === 'object' && typeof (m as JsonObject).id === 'string' ? [(m as JsonObject).id as string] : [])) : [];
 }
 
+/** B-727: explicit `contextWindow` per model; pi assumes 128000 for the rest. */
+function contextWindowsOf(provider: JsonObject | undefined): Record<string, number> {
+    const list = provider?.models;
+    if (!Array.isArray(list)) return {};
+    const out: Record<string, number> = {};
+    for (const m of list) {
+        const entry = m && typeof m === 'object' ? m as JsonObject : null;
+        if (typeof entry?.id === 'string' && typeof entry.contextWindow === 'number' && entry.contextWindow > 0) out[entry.id] = entry.contextWindow;
+    }
+    return out;
+}
+
 function secretView(provider: JsonObject | undefined, ctx: HarnessContext): SecretView {
     const key = str(provider?.apiKey);
     if (!key) return { mode: 'none' };
@@ -58,6 +71,7 @@ function currentOf(models: JsonObject, settings: JsonObject, providerId: string 
         api: str(provider?.api),
         apiKey: secretView(provider, ctx),
         models: modelIds(provider),
+        contextWindows: contextWindowsOf(provider),
         activeProvider,
         defaultModel: str(settings.defaultModel),
         active: !!providerId && activeProvider === providerId,
@@ -108,6 +122,7 @@ export const piAdapter: HarnessAdapter = {
         const apiKey = normalizeSecret(p.apiKey);
         if (apiKey.mode === 'literal' && /^[$!]/.test(apiKey.value)) fail('invalid-input', 'pi treats a key starting with $ or ! as an env reference / command; use the environment-variable mode');
         const ids = normalizeModelList(p.models);
+        const windows = normalizeContextWindows(p.contextWindows);
         const defaultModel = normalizeModelId(p.defaultModel, 'defaultModel');
         if (p.activate !== undefined && typeof p.activate !== 'boolean') fail('invalid-input', 'activate must be a boolean');
 
@@ -138,6 +153,15 @@ export const piAdapter: HarnessAdapter = {
             else delete provider.models;
         }
         const finalIds = modelIds(provider);
+        if (windows) {
+            const entries = Array.isArray(provider.models) ? provider.models as JsonObject[] : [];
+            for (const [id, window] of Object.entries(windows)) {
+                const entry = entries.find(m => m && typeof m === 'object' && m.id === id);
+                if (!entry) fail('invalid-input', `contextWindows names ${id}, which is not one of the provider models`);
+                if (window === null) delete entry.contextWindow;
+                else entry.contextWindow = window;
+            }
+        }
         if (p.activate === true) {
             settings.defaultProvider = providerId;
             const chosen = defaultModel ?? (finalIds.includes(str(settings.defaultModel) ?? '') ? str(settings.defaultModel) : finalIds[0]);

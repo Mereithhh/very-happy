@@ -18,7 +18,7 @@ import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { modelConfigApply, modelConfigRead, modelConfigRestore } from '@/sync/modelConfigOps';
 import { modelConfigStore, useMachineModelConfig } from '@/sync/modelConfigStore';
 import {
-    HARNESS_LABELS, describeModelConfigError, formFromView, machineSupportsModelConfig, newProviderForm, patchFromForm,
+    HARNESS_LABELS, describeModelConfigError, formFromView, machineSupportsModelConfig, newProviderForm, parsePiModelLines, patchFromForm, piModelLinesError,
     type KeyMode, type ModelConfigForm,
 } from '@/sync/modelConfigModel';
 import { HARNESS_IDS, PI_APIS, type HarnessConfigView, type HarnessId, type ModelConfigApplyResult } from '@/sync/modelConfigTypes';
@@ -124,6 +124,7 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
         setForm((f) => ({ ...f, [key]: value }));
         setPending(null);
         setSaved(false);
+        setError(null);
     };
 
     const fileError = view?.files.find((f) => f.error)?.error ?? null;
@@ -132,6 +133,12 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
     async function preview() {
         if (!machineId) return;
         setBusy(true); setError(null); setSaved(false);
+        const linesError = piModelLinesError(form, view);
+        if (linesError) {
+            setBusy(false);
+            setError({ kind: 'invalid', message: linesError.code === 'needs-upgrade' ? t('modelConfig.piContextWindowNeedsUpgrade') : t('modelConfig.piModelLineInvalid', { line: linesError.line ?? '' }) });
+            return;
+        }
         const result = await modelConfigApply(machineId, patchFromForm(form, view), { dryRun: true });
         setBusy(false);
         if (!result.ok) { setError(describeModelConfigError(result)); return; }
@@ -287,14 +294,14 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
                     </details>}
                     {view && (harness === 'claude' || harness === 'pi') && <label className="so-field">
                         <span className="so-field-label">{t(harness === 'pi' ? 'modelConfig.piModels' : 'modelConfig.pickerModels')}</span>
-                        <textarea className="mce-input mce-textarea" rows={3} value={form.extraModels} spellCheck={false} disabled={!canEdit || busy} placeholder={'glm-5.3\nkimi-k3'} onChange={(e) => set('extraModels', e.target.value)} />
-                        <span className="mce-hint">{t('modelConfig.modelListHint')}</span>
+                        <textarea className="mce-input mce-textarea" rows={3} value={form.extraModels} spellCheck={false} disabled={!canEdit || busy} placeholder={harness === 'pi' ? 'glm-5.3 200k\nkimi-k3 256k' : 'glm-5.3\nkimi-k3'} onChange={(e) => set('extraModels', e.target.value)} />
+                        <span className="mce-hint">{t(harness === 'pi' ? 'modelConfig.piModelListHint' : 'modelConfig.modelListHint')}</span>
                     </label>}
                     {view && hasProviders && <label className="mce-check">
                         <input type="checkbox" checked={form.activate} disabled={!canEdit || busy} onChange={(e) => set('activate', e.target.checked)} />
                         <span>{t(harness === 'codex' ? 'modelConfig.activateCodex' : 'modelConfig.activatePi')}</span>
                     </label>}
-                    {view && harness === 'pi' && form.activate && field(t('modelConfig.defaultModel'), 'model', { placeholder: form.extraModels.split('\n')[0] || 'model-id' })}
+                    {view && harness === 'pi' && form.activate && field(t('modelConfig.defaultModel'), 'model', { placeholder: parsePiModelLines(form.extraModels).ids[0] || 'model-id' })}
 
                     {view && view.warnings.length > 0 && !pending && <ul className="mce-warnings">
                         {view.warnings.map((w) => <li key={w.code}>{w.message}</li>)}
