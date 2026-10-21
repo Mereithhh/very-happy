@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useRef, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { TeamAction, TeamState } from "@slopus/happy-wire";
 import {
@@ -8,7 +8,9 @@ import {
   listTeams,
   TeamsApiError,
 } from "@/sync/teams";
-import { useAllMachines } from "@/sync/storage";
+import { storage, useAllMachines } from "@/sync/storage";
+import { useShallow } from "zustand/react/shallow";
+import { botHistorySessionId } from "@/screens/sessions/teamNavigation";
 import { isMachineOnline, machineLabel } from "@/utils/machineUtils";
 import "./teams.css";
 import { TeamSchedules } from "./TeamSchedules";
@@ -134,6 +136,15 @@ function TeamsContent() {
     (machine.metadata as { teamLaunchVersion?: number } | null)?.teamLaunchVersion ===
       1 && isMachineOnline(machine);
   const launchPhase = team ? teamLaunchPhase(team) : "empty";
+  // B-690: member conversations that are archived (or gone from the account's
+  // list) — one input of the shared 「已停用」 rule. Nothing counts until the
+  // session list has loaded.
+  const archivedMemberKey = storage(useShallow((state) => !state.isDataReady || !team ? [] : team.bots.flatMap((bot) => {
+    const sessionId = botHistorySessionId(team, bot);
+    const session = sessionId ? state.sessions[sessionId] : undefined;
+    return sessionId && (!session || session.archivedAt != null) ? [sessionId] : [];
+  }))).join("\n");
+  const archivedMemberSessions = useMemo(() => new Set(archivedMemberKey ? archivedMemberKey.split("\n") : []), [archivedMemberKey]);
   const executionMachine = machines.find(machine => machine.id === team?.machineId);
   const machineOnline = !!executionMachine && isMachineOnline(executionMachine);
   const dispatchReady =
@@ -203,7 +214,7 @@ function TeamsContent() {
               {team.bots.find(b => b.root && b.sessionId)?.sessionId && <Link className="teams-primary teams-talk" to={`/session/${encodeURIComponent(team.bots.find(b => b.root && b.sessionId)!.sessionId!)}`}><Bot size={18} />{c.talk}</Link>}
               <button disabled={disabled || !dispatchReady} onClick={() => setDelegating(true)}><Plus size={16} />{c.newTask}</button>
             </div>
-            <TeamWorkspace team={team} onTask={setSelectedTask} />
+            <TeamWorkspace team={team} onTask={setSelectedTask} archivedSessionIds={archivedMemberSessions} />
           </>}
           {view === "settings" && <>          <section>
             <label>{tr("teams.executionMode")}

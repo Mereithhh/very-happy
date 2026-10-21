@@ -38,8 +38,13 @@ session can be cleaned up, while unmerged changes remain preserved.
 
 Team names appear alongside ordinary conversations in history. Expand a team to
 open a member conversation, or select its name for goal, progress, and results.
-Members whose conversations are archived fold into one **N archived** row under the
-expanded team; open it to reach their history (this device remembers the choice).
+Members no longer in use fold into one **N inactive** row, both under the expanded
+team in the sidebar and in the team page's member list; open it to reach their
+history (this device remembers the choice, shared by both places). A member is
+inactive when nothing is assigned to it (no queued, running or submitted task) and
+its conversation is archived, it has stopped or exited, or it has had no activity
+for 7 days. Inactive members can still receive work through **Transfer to** in
+task details.
 Ordinary conversations are never automatically turned into teams. Appearance
 settings can hide the Teams entry without stopping or deleting existing work.
 
