@@ -6,8 +6,10 @@ import { describe, expect, it } from 'vitest';
 import { extractReleases } from '../../../../scripts/changelog/check-release.mjs';
 import {
   CHANGELOG_MAX_HIGHLIGHTS,
+  CHANGELOG_MAX_TOPICS,
   CHANGELOG_RELEASES,
   changelogImageSrc,
+  changelogMotionSrc,
   type ChangelogImage,
   changelogCliNotices,
   changelogCliTarget,
@@ -16,6 +18,7 @@ import {
   normalizeChangelogSeen,
   shouldShowChangelog,
   unseenChangelogReleases,
+  whatsNewReleases,
 } from './changelogRelease';
 
 describe('changelog releases', () => {
@@ -50,8 +53,9 @@ describe('changelog releases', () => {
     // misspelt leaf (`…sep03aa.dxt`) is not a valid SimpleTranslationKey, so
     // tsc owns that half (seen this session as TS2820).
     for (const [i, release] of CHANGELOG_RELEASES.entries()) {
-      const highlightKeys = (release.highlights ?? []).flatMap((h) => [h.titleKey, h.bodyKey, ...(h.image ? [h.image.altKey] : [])]);
-      for (const key of [release.summaryKey, ...release.itemKeys, ...highlightKeys]) {
+      const highlightKeys = [...(release.highlights ?? []), ...(release.topics ?? [])].flatMap((h) => [h.titleKey, h.bodyKey, ...(h.image ? [h.image.altKey] : [])]);
+      const extraKeys = [...(release.featuredTaglineKey ? [release.featuredTaglineKey] : []), ...(release.hero ? [release.hero.altKey] : [])];
+      for (const key of [release.summaryKey, ...release.itemKeys, ...highlightKeys, ...extraKeys]) {
         expect(key, `${release.id} points outside its own block`).toContain(`changelog.releases.${prefixes[i]}.`);
       }
     }
@@ -166,14 +170,52 @@ describe('changelog releases', () => {
       }
     });
 
-    it('keeps every screenshot in the repo small enough to lazy-load (≤150 KB, webp)', () => {
+    it('keeps every screenshot in the repo small enough to lazy-load (stills ≤150 KB, loops ≤600 KB, webp)', () => {
       const root = join(HERE, 'whats-new');
       const files = readdirSync(root).flatMap((dir) => readdirSync(join(root, dir)).map((f) => join(root, dir, f)));
       expect(files.length).toBeGreaterThan(0);
       for (const file of files) {
-        expect(file).toMatch(/\/[a-z0-9-]+-(en|zh)-(light|dark)\.webp$/);
-        expect(statSync(file).size, file).toBeLessThanOrEqual(150 * 1024);
+        expect(file).toMatch(/\/[a-z0-9-]+-(en|zh)-(light|dark)(-motion)?\.webp$/);
+        const limit = file.endsWith('-motion.webp') ? 600 * 1024 : 150 * 1024;
+        expect(statSync(file).size, file).toBeLessThanOrEqual(limit);
       }
+    });
+
+    it('caps topics and gives each a capture; a loop always has its still', () => {
+      for (const release of CHANGELOG_RELEASES) {
+        const topics = release.topics ?? [];
+        expect(topics.length, release.id).toBeLessThanOrEqual(CHANGELOG_MAX_TOPICS);
+        expect(new Set(topics.map((t) => t.key)).size, release.id).toBe(topics.length);
+        for (const t of topics) expect(t.image?.en.light, `${release.id}/${t.key} has no capture`).toBeTruthy();
+        const images = [...(release.highlights ?? []), ...topics].flatMap((h) => (h.image ? [h.image] : [])).concat(release.hero ? [release.hero] : []);
+        for (const image of images) {
+          if (image.motion) expect(image.en.light, 'a looping capture needs a still fallback').toBeTruthy();
+        }
+      }
+    });
+
+    it('plays a loop only where one exists, in the viewer language and theme', () => {
+      const still: ChangelogImage = { width: 960, height: 600, altKey: 'changelog.releases.oct21.projectsAlt', en: { light: 'en-l', dark: 'en-d' } };
+      expect(changelogMotionSrc(still, 'en', 'dark')).toBeNull();
+      const moving: ChangelogImage = { ...still, motion: { en: { light: 'm-en-l', dark: 'm-en-d' }, zh: { light: 'm-zh-l' } } };
+      expect(changelogMotionSrc(moving, 'en', 'dark')).toBe('m-en-d');
+      expect(changelogMotionSrc(moving, 'zh-Hans', 'dark')).toBe('m-zh-l');
+    });
+
+    it('tells the newest featured release on /whats-new, with the CLI that shipped beside it', () => {
+      const pair = whatsNewReleases();
+      expect(pair?.web.featured).toBe(true);
+      expect(pair?.web.highlights?.length).toBeGreaterThan(0);
+      if (pair?.cli) {
+        expect(pair.cli.cliVersion).toBeTruthy();
+        expect(pair.cli.date).toBe(pair.web.date);
+      }
+      const base = { date: '2026-01-02', titleKey: 'changelog.releases.oct21.title', summaryKey: 'changelog.releases.oct21.summary', itemKeys: [] } as const;
+      const hl = [{ key: 'a', titleKey: 'changelog.releases.oct21.projectsTitle', bodyKey: 'changelog.releases.oct21.projectsBody' }] as const;
+      expect(whatsNewReleases([{ ...base, id: 'cli', cliVersion: '9.9.9' }, { ...base, id: 'web', featured: true, highlights: hl }])).toEqual({
+        web: expect.objectContaining({ id: 'web' }), cli: expect.objectContaining({ id: 'cli' }),
+      });
+      expect(whatsNewReleases([{ ...base, id: 'plain' }])).toBeNull();
     });
 
     it('picks the capture for the viewer language and resolved theme', () => {

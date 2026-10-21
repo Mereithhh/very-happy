@@ -140,6 +140,16 @@ ChangelogRelease.highlights?: readonly ChangelogHighlight[];  // 有亮点时 it
 - [x] 桌面 + 手机、亮 + 暗真浏览器截图（PR 附图）。
 - [x] GitHub Release v0.2.179 正文按新格式更新。
 
+## 增补（2026-10-21 第二版：大版本通知）
+
+出处：Owner 10-21「要有一个比较好的发版通知，能跟大家直观的反映我们更新了什么，让大家意识到这是一个很牛的更新」。当天两次发布合成一个大版本讲（`oct21b` Web + `oct21c` CLI 0.2.180），已发布的 `oct21` / `oct21a` 不改写。
+
+1. **主题组 `topics`（≤ 4，`CHANGELOG_MAX_TOPICS`）**：亮点之外的成组改动（团队、侧栏、手机、登录与稳定性），每组「标题 + 一句话 + 小图」。小图 640×400（320×200 CSS px 裁切 ×2）。弹窗里是左图右文的紧凑行，容器 ≥ 640px 时两列；`itemKeys` 仍是折叠的长尾。
+2. **短动图 `motion`**：与静图同名加 `-motion` 后缀的动画 webp（`<name>-<lang>-<theme>-motion.webp`），`changelogShots()` 自动识别。只在 `/whats-new` 页播放（`motion` prop），弹窗仍用静图，首屏和通知不多下载；用 `<picture><source media="(prefers-reduced-motion: no-preference)">` 让「减少动态效果」的人只看到静图，不依赖 JS。体积上限：静图 150KB、动图 600KB（测试强制）。这条覆盖上文「非目标：不做 GIF」——选 webp 动图而不是 mp4，是因为它走现有 `<img>` 管线（懒加载、占位、亮暗/语言选图），不需要播放器控件。
+3. **`featured` + `featuredTaglineKey`**：大版本在弹窗顶部显示品牌行，副标题可按版本配置（原来写死 9 月改版那句）；同时显示「打开完整更新页」。
+4. **`hero` + `/whats-new` 长页**：公开路由（不需要登录，可直接转发），数据来自 `whatsNewReleases()`——最新的 featured 且有亮点的 Web 条目，加上同一天的 CLI 条目。结构：hero（标题、摘要、打开应用 / 升级 CLI、海浪动图）→ 4 个亮点（编号、左右交替、动图）→ 主题组 → 其余改进（Web / CLI 两列）→ 升级命令（`cliUpdateInstallCommand`，可复制）。官网「最新更新」区块和更新弹窗都链过去。
+5. 截图脚本与演示环境：本地 standalone server + 隔离 daemon（`HOME=/home/alex`，主机名 `build-box`），真实 Claude 会话产出对话、团队与离线送达；脚本在 PR 描述里列出。
+
 ## 留真机验证项
 
 无。弹窗在 Chromium 桌面 / 移动模拟（`pointer: coarse`）下已验证；iOS Safari 的 `<details>` 和 lazy 图片是标准行为，没有自定义手势。

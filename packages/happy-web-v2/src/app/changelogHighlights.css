@@ -18,6 +18,7 @@
   background: var(--bg-2);
   margin-bottom: var(--sp-1);
 }
+.wnh-shot picture { display: block; }
 .wnh-shot img { display: block; width: 100%; height: auto; border-radius: calc(var(--r-md) - var(--sp-2)); }
 .wnh-body { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .wnh-card h3, .wnh-card h4 { margin: 0; font-size: var(--fs-15); font-weight: 600; line-height: 1.35; text-wrap: balance; }
@@ -48,6 +49,20 @@
 .wnh-docs { display: inline-flex; align-items: center; min-height: 28px; color: var(--text-dim); font-size: var(--fs-12); text-decoration: underline; text-underline-offset: 3px; }
 .wnh-docs:hover { color: var(--text); }
 .wnh-try:focus-visible, .wnh-docs:focus-visible, .wnh-more > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* Themed groups (2026-10-21 big update): a small capture beside a title and
+   one sentence, two per row when there is room. Same fill-mat rule as above. */
+.wnh-topics { container-type: inline-size; margin: var(--sp-2) 0 var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--line); }
+.wnh-topics-grid { display: grid; gap: var(--sp-4) var(--sp-5); }
+.wnh-topic { display: grid; grid-template-columns: minmax(0, 128px) minmax(0, 1fr); gap: var(--sp-3); align-items: start; min-width: 0; }
+.wnh-topic-shot { padding: var(--sp-1); border-radius: var(--r-sm); background: var(--bg-2); }
+.wnh-topic-shot img { display: block; width: 100%; height: auto; border-radius: calc(var(--r-sm) - var(--sp-1)); }
+.wnh-topic-body { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.wnh-topic h3, .wnh-topic h4 { margin: 0; font-size: var(--fs-13); font-weight: 600; line-height: 1.35; text-wrap: balance; }
+.wnh-topic p { margin: 0; color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; text-wrap: pretty; }
+@container (min-width: 640px) {
+  .wnh-topics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* "Other improvements": the long tail stays one click away, collapsed by default. */
 .wnh-more { margin: var(--sp-2) 0 0; border-top: 1px solid var(--line); padding-top: var(--sp-3); }

@@ -45,6 +45,20 @@ pi 对话里，「插话（Steer）」可把排队的消息送进正在运行的
 执行一次 `very-happy install-pi-tools`，之后在 Very Happy 终端中直接运行 `pi`，即可加载终端改名、剪贴板复制和文件预览工具；也可用 `very-happy pi --terminal` 临时加载。对话与终端内的「复制与预览记录」可以重开文件、再次复制之前的内容。[工具用法与历史保留范围](docs/channels.md#native-pi-terminal-tools)。
 
 
+## 最新更新 · 2026 年 10 月 21 日
+
+<a href="https://veryhappy.dev/whats-new">
+  <img src="docs/screenshots/whats-new-2026-10-21-zh.webp" width="100%" alt="10 月 21 日大更新：项目、自定义模型与 Provider、全局搜索、可编辑草稿，真实界面加示例数据">
+</a>
+
+- **项目**：一件事的所有会话放在一起。说明只写一次，每个 agent 开工就带着它、把决定记下来；谁在做什么，一页看清。
+- **自定义模型与 Provider**：在「设置 → 模型与 Provider」给 Claude Code、Codex、Gemini、pi 换成任意网关和模型，先看 diff 再写入，一键回滚（需要 CLI 0.2.180）。
+- **全局搜索**：⌘⇧F 搜索所有会话的标题、项目和对话内容，点结果直接跳到那条消息。
+- **可编辑草稿**：agent 写的邮件、发布说明直接在对话里改，下一轮它能看到你的最终版。
+- 另外：团队成员完成后自动停用、启动失败自动重试、worktree 自动清理；侧栏更清爽；离线时发的消息恢复后会送达。
+
+[查看完整更新（含动图）→](https://veryhappy.dev/whats-new) · [全部更新记录](https://veryhappy.dev/changelog)
+
 ## 项目：让并行的会话共享背景
 
 **项目**把同一件事的会话放在一起——跨机器、跨仓库、跨 Agent——并给它们同样的起点：你写一次的说明，
