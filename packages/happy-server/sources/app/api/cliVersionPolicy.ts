@@ -41,6 +41,12 @@ export interface CliVersionPolicyConfig {
     autoUpdateFollowsLatest: boolean;
     minimumVersion: string | null;
     registryLookup: boolean;
+    /**
+     * B-718: where `latest` is read. Defaults to the public npm registry; a
+     * self-hosted relay behind a private mirror (or a local promote rehearsal)
+     * points it at `<registry>/very-happy-cli/latest`.
+     */
+    registryUrl?: string;
 }
 
 const REGISTRY_URL = 'https://registry.npmjs.org/very-happy-cli/latest';
@@ -54,6 +60,15 @@ function optionalExactVersion(raw: string | undefined, name: string): string | n
     const valid = semver.valid(value);
     if (!valid) throw new Error(`${name} must be an exact semantic version`);
     return valid;
+}
+
+function optionalHttpUrl(raw: string | undefined, name: string): string | null {
+    const value = raw?.trim();
+    if (!value) return null;
+    let url: URL;
+    try { url = new URL(value); } catch { throw new Error(`${name} must be an http(s) URL`); }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(`${name} must be an http(s) URL`);
+    return url.toString();
 }
 
 function optionalBoolean(raw: string | undefined, name: string): boolean {
@@ -75,6 +90,7 @@ export function resolveCliVersionPolicyConfig(env: NodeJS.ProcessEnv = process.e
         throw new Error('CLI_MINIMUM_VERSION must not be newer than CLI_RECOMMENDED_VERSION');
     }
     const registryLookup = optionalBoolean(env.CLI_VERSION_REGISTRY_LOOKUP, 'CLI_VERSION_REGISTRY_LOOKUP');
+    const registryUrl = optionalHttpUrl(env.CLI_VERSION_REGISTRY_URL, 'CLI_VERSION_REGISTRY_URL') ?? REGISTRY_URL;
     if (autoUpdateFollowsLatest && !registryLookup && !recommendedVersion) {
         // "latest" has nothing to follow without the lookup; failing at startup
         // beats a fleet that silently never updates.
@@ -86,6 +102,7 @@ export function resolveCliVersionPolicyConfig(env: NodeJS.ProcessEnv = process.e
         autoUpdateVersion,
         autoUpdateFollowsLatest,
         registryLookup,
+        registryUrl,
     };
 }
 
@@ -159,7 +176,7 @@ export class CliVersionPolicyProvider {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
         try {
-            const response = await this.fetcher(REGISTRY_URL, {
+            const response = await this.fetcher(this.config.registryUrl ?? REGISTRY_URL, {
                 signal: controller.signal,
                 headers: { accept: 'application/json' },
             });
@@ -201,4 +218,32 @@ export class CliVersionPolicyProvider {
             clearTimeout(timeout);
         }
     }
+}
+
+/**
+ * B-718: one policy provider per process, shared by `/v1/version/cli` and the
+ * promote announcer, so the announcement and the REST answer daemons re-read
+ * come from the same cache.
+ */
+let shared: { provider: CliVersionPolicyProvider; config: CliVersionPolicyConfig } | null = null;
+export function sharedCliVersionPolicy(env: NodeJS.ProcessEnv = process.env): { provider: CliVersionPolicyProvider; config: CliVersionPolicyConfig } {
+    if (!shared) {
+        const config = resolveCliVersionPolicyConfig(env);
+        shared = { provider: new CliVersionPolicyProvider(config), config };
+    }
+    return shared;
+}
+
+/** Test seam. */
+export function resetSharedCliVersionPolicy(): void {
+    shared = null;
+}
+
+/**
+ * B-718: only a relay that follows the promoted `latest` can see the install
+ * target change while it runs; a pin or `off` changes only with a redeploy,
+ * after which every daemon reconnects and re-reads anyway.
+ */
+export function followsPromotedLatest(config: CliVersionPolicyConfig): boolean {
+    return config.autoUpdateFollowsLatest && config.registryLookup && !config.recommendedVersion;
 }

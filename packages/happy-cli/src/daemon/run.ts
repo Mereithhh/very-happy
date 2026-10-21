@@ -50,7 +50,7 @@ import { daemonEndpointsMatch, resolveClaudeCredentialReadiness } from '@/ui/doc
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
 import { spawnAgentUnavailableError } from '@/daemon/spawnAgentAvailability';
 import type { CLIAvailability } from '@/utils/detectCLI';
-import { getInitialMachineMetadata, getStartupCliAvailability } from './machineMetadata';
+import { getInitialMachineMetadata, getStartupCliAvailability, withRunningCliFacts } from './machineMetadata';
 import { currentWorktreeService } from '@/worktree/service';
 import { WORKTREE_CAPABILITY_VERSION } from '@/worktree/worktreeRpc';
 import { ModelConfigService } from '@/modules/modelConfig/service';
@@ -65,6 +65,8 @@ import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { serialTask } from '@/update/serialTask';
 import { installCliSafely } from '@/update/npmInstall';
 import { createUpdateController } from '@/update/updateController';
+import { lastInstallStore } from '@/update/lastInstall';
+import { createPolicyAnnouncementHandler } from '@/update/policyAnnouncement';
 import { createProjectPresenceReporter } from './projectPresence';
 import { createProjectsClient } from '@/projects/client';
 import { joinProject } from '@/projects/attribution';
@@ -1939,6 +1941,7 @@ export async function startDaemon(): Promise<void> {
       // whose turn ended but still has background tasks is busy too.
       idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny(),
       install: installCliSafely,
+      lastInstall: lastInstallStore(configuration.happyHomeDir),
       publish: (state) => {
         cliUpdateStateRef = state;
         fileState = { ...fileState, cliUpdate: state };
@@ -1985,6 +1988,16 @@ export async function startDaemon(): Promise<void> {
       logger.warn(`[DAEMON RUN] Ignoring invalid HAPPY_CLI_UPDATE_CHECK_INTERVAL; using ${DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS}ms`);
     }
     const cliUpdateInterval = setInterval(() => void refreshCliUpdate(), cliUpdateIntervalMs);
+    // B-718: the relay announces a newly promoted CLI; re-read the policy within
+    // minutes instead of waiting for the hourly check (which stays the fallback).
+    const policyAnnouncements = createPolicyAnnouncementHandler({
+      refresh: refreshCliUpdate,
+      currentTarget: updateController.currentTarget,
+    });
+    apiMachine.setCliUpdatePolicyHandler((payload) => {
+      const delay = policyAnnouncements.onAnnouncement(payload);
+      if (delay !== null) logger.warn(`[DAEMON RUN] CLI update policy announced; re-checking in ${Math.round(delay / 1000)}s`);
+    });
     const stopAgentVersionChecks = startAgentVersionChecks(
       snapshot => apiMachine.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', agentVersions: snapshot })),
       error => logger.debug('[DAEMON RUN] Agent version check failed', error),
@@ -2067,6 +2080,7 @@ export async function startDaemon(): Promise<void> {
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
         clearInterval(cliUpdateInterval);
+        policyAnnouncements.stop();
         stopAgentVersionChecks();
         claudeAuthService.stop();
 
@@ -2184,7 +2198,8 @@ export async function startDaemon(): Promise<void> {
     // Existing machine rows retain their original metadata at registration.
     // Publish the executing daemon's capability after the worker is installed.
     void apiMachine.updateMachineMetadata(current => ({
-      ...(current ?? initialMachineMetadata), teamsVersion: 1, teamLaunchVersion: 1,
+      // B-718: the running CLI version, not the one that first registered the row.
+      ...withRunningCliFacts(current, initialMachineMetadata), teamsVersion: 1, teamLaunchVersion: 1,
       // B-689: this daemon acts on the owner's retry-operation (web gates「重试启动」).
       teamRetryVersion: TEAM_RETRY_CAPABILITY_VERSION,
       // B-586: this daemon serves the worktree-* RPCs (web gates 「在新 worktree 中」 on it).
@@ -2213,6 +2228,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Health check interval cleared');
       }
       clearInterval(cliUpdateInterval);
+      policyAnnouncements.stop();
       stopAgentVersionChecks();
 
       // Update daemon state before shutting down

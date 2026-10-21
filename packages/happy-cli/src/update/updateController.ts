@@ -2,6 +2,9 @@ import type { CliUpdateState } from '@/api/types';
 import { compareExactVersions } from './cliUpdate';
 import type { InstallOutcome } from './npmInstall';
 
+/** B-718: the last install this machine completed, kept across the handover it causes. */
+export interface LastCliInstall { from: string; to: string; at: number; source: 'auto' | 'manual' }
+
 export interface UpdateControllerDependencies {
     policy: () => Promise<CliUpdateState | null>;
     enabled: () => Promise<boolean>;
@@ -9,6 +12,13 @@ export interface UpdateControllerDependencies {
     install: (version: string) => Promise<InstallOutcome>;
     publish: (state: CliUpdateState) => void;
     now?: () => number;
+    /**
+     * B-718: persistence for the last completed install. The daemon that
+     * installs is replaced moments later, and the new one would otherwise only
+     * ever say "current" — a machine page could not tell an automatic upgrade
+     * from a manual one.
+     */
+    lastInstall?: { read: () => LastCliInstall | null; write: (record: LastCliInstall) => void };
 }
 /** Serializes install attempts, retains terminal outcomes, and never retries a failure without a user action. */
 export function createUpdateController(deps: UpdateControllerDependencies) {
@@ -20,7 +30,17 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
     let blocked = false;
     let handoverHold: CliUpdateState['handoverHold'];
     let lastPublished = '';
+    // B-718: reported so the Web can show on/off; unknown until first read.
+    let autoUpdateEnabled: boolean | undefined;
+    let lastInstall: LastCliInstall | null = (() => { try { return deps.lastInstall?.read() ?? null; } catch { return null; } })();
     const now = deps.now ?? Date.now;
+    function snapshot(): CliUpdateState {
+        return {
+            ...policy!, retrySupported: !blocked, manualUpdateSupported: !blocked, handoverHold, autoUpdate: outcome,
+            ...(autoUpdateEnabled === undefined ? {} : { autoUpdateEnabled }),
+            ...(lastInstall ? { lastInstall } : {}),
+        };
+    }
     function validManualTarget(next: CliUpdateState, version: string) {
         return version === next.recommendedVersion
             && Number.isFinite(next.checkedAt) && now() - next.checkedAt <= 65 * 60_000 && next.checkedAt <= now() + 60_000
@@ -29,11 +49,11 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
     }
     function publish(state: string, version: string | null, detail?: string) {
         if (!policy) return;
-        const fingerprint = JSON.stringify([policy.checkedAt, state, version, detail, manualVersion]);
+        const fingerprint = JSON.stringify([policy.checkedAt, state, version, detail, manualVersion, autoUpdateEnabled]);
         if (fingerprint === lastPublished) return;
         lastPublished = fingerprint;
         outcome = { state, version, detail, at: now(), ...(manualVersion ? { source: 'manual' } : {}) };
-        deps.publish({ ...policy, retrySupported: !blocked, manualUpdateSupported: !blocked, handoverHold, autoUpdate: outcome });
+        deps.publish(snapshot());
     }
     async function evaluate() {
         if (!policy || running) return;
@@ -41,16 +61,19 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         // B-489: manual_required from an install-location check is terminal for
         // this target too — re-checking every heartbeat would only re-log it.
         if (outcome?.version === target && ['failed', 'installed', 'manual_required'].includes(outcome.state)) {
-            const fingerprint = JSON.stringify([policy.checkedAt, outcome.state, outcome.version, outcome.detail, manualVersion]);
+            const fingerprint = JSON.stringify([policy.checkedAt, outcome.state, outcome.version, outcome.detail, manualVersion, autoUpdateEnabled]);
             if (fingerprint !== lastPublished) {
                 lastPublished = fingerprint;
-                deps.publish({ ...policy, retrySupported: !blocked, manualUpdateSupported: !blocked, handoverHold, autoUpdate: outcome });
+                deps.publish(snapshot());
             }
             return;
         }
         // Busy waits may be reconsidered without re-fetching, but never after policy expiry.
         if (now() - policy.checkedAt > 65 * 60_000) { publish('policy_stale', target); return; }
-        if (!manualVersion && !await deps.enabled()) { publish('disabled', target); return; }
+        if (!manualVersion) {
+            autoUpdateEnabled = await deps.enabled();
+            if (!autoUpdateEnabled) { publish('disabled', target); return; }
+        }
         if (running) return;
         if (now() - policy.checkedAt > 65 * 60_000) { publish('policy_stale', target); return; }
         if (!target) { publish('unapproved', null); return; }
@@ -70,6 +93,10 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
                 return;
             }
             blocked = code === 'blocked';
+            if (code === 0) {
+                lastInstall = { from: policy.currentVersion, to: target, at: now(), source: manualVersion ? 'manual' : 'auto' };
+                try { deps.lastInstall?.write(lastInstall); } catch { /* display only; never blocks the install */ }
+            }
             publish(blocked ? 'manual_required' : code === 0 ? 'installed' : 'failed', target,
                 blocked ? 'installer_termination_unconfirmed' : code === 0 ? undefined : 'npm_install_failed');
         } catch {
@@ -151,5 +178,5 @@ export function createUpdateController(deps: UpdateControllerDependencies) {
         handoverHold = { reason, at: now() };
         publish('failed', manualVersion ?? policy?.autoUpdateVersion ?? null, 'handover_preflight_failed');
     }
-    return { refresh, retry, request, tick, withHandover, holdHandover, isRunning: () => running };
+    return { refresh, retry, request, tick, withHandover, holdHandover, isRunning: () => running, currentTarget: () => policy?.autoUpdateVersion ?? null };
 }

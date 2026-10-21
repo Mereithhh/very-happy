@@ -23,6 +23,7 @@ state. Never commit production values.
 | `CLI_AUTO_UPDATE_VERSION` | What a machine may install **by itself** while no agent turn is in flight (B-466: idle wrappers and web terminals no longer hold it back). `latest` follows the promoted npm `latest` dist-tag through the same registry lookup as the recommendation (B-503); an exact version is a pin/brake; unset means no machine auto-installs anything | `latest` (requires `CLI_VERSION_REGISTRY_LOOKUP=true`); pin an exact version only to hold or roll back |
 | `CLI_MINIMUM_VERSION` | Optional exact version below which Web/CLI show a required-update warning | Unset until an actual compatibility/security floor exists |
 | `CLI_VERSION_REGISTRY_LOOKUP` | Allow the relay to discover `very-happy-cli/latest` when no recommended version is pinned | `true` since B-348 — `latest` is now promoted only after the 3-OS smoke matrix passes, so following it is the reviewed default. Set `CLI_RECOMMENDED_VERSION` to override it (that pin always wins) |
+| `CLI_VERSION_REGISTRY_URL` | B-718: where the relay reads `latest` (a private npm mirror, or a local promote rehearsal) | unset — `https://registry.npmjs.org/very-happy-cli/latest`; http(s) only, validated at startup |
 | `MAX_PENDING_AUTH_PAIRINGS` | Global unclaimed Terminal + Account pairing rows retained inside the TTL window | `1000` |
 | `MAX_PENDING_GOOGLE_LOGIN_CHALLENGES` | Global outstanding Google nonce rows retained inside their five-minute TTL | `10000` |
 | `ALLOW_LEGACY_KEY_SIGNUP` | Accept the legacy unauthenticated account-key signup route | Unset/`false` on public relays |
@@ -77,8 +78,16 @@ The public `GET /v1/version/cli` response contains only validated semantic
 versions and never contains an install command. Registry discovery is off by
 default; when explicitly enabled it is cached by the relay, and failures are
 fail-open without affecting normal API traffic. Daemons check this policy on
-startup and every six hours, then publish it inside their encrypted machine
-state.
+startup and every hour, then publish it inside their encrypted machine state.
+**Since B-718** a relay that follows the promoted `latest` also pushes
+`cli-update-policy` to connected daemons when that target changes; each daemon
+re-reads `/v1/version/cli` 90–150 s later (once more after 5 minutes if a cache
+still served the old answer), so an idle machine installs a promoted release
+within minutes instead of up to an hour. The push is only a hint — the install
+target still comes from the REST policy and all gates below apply. The hourly
+check remains the fallback for older relays and daemons that were offline.
+`CLI_VERSION_REGISTRY_URL` (default `https://registry.npmjs.org/very-happy-cli/latest`)
+points the lookup at a private mirror.
 
 **Which of the two to use (B-348).** `recommendedVersion` is the banner;
 `autoUpdateVersion` is what B-327's auto-update installs on a machine with no

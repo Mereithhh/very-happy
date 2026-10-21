@@ -182,3 +182,43 @@ describe('B-489 install location outcomes', () => {
     await controller.refresh(); expect(deps.install).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('B-718 machine page facts', () => {
+  it('reports the on/off setting with every published state', async () => {
+    const {deps, controller} = setup(); deps.idle.mockReturnValue(false);
+    await controller.refresh();
+    expect(deps.publish.mock.lastCall?.[0]).toMatchObject({ autoUpdateEnabled: true, autoUpdate: { state: 'waiting_idle' } });
+    deps.enabled.mockResolvedValue(false);
+    await controller.tick();
+    expect(deps.publish.mock.lastCall?.[0]).toMatchObject({ autoUpdateEnabled: false, autoUpdate: { state: 'disabled' } });
+    expect(deps.install).not.toHaveBeenCalled();
+  });
+  it('records a completed automatic install and reports the previous daemon\'s record', async () => {
+    const written: unknown[] = [];
+    const {deps} = setup(); deps.install.mockResolvedValue(0);
+    const controller = createUpdateController({ ...deps, lastInstall: { read: () => null, write: (r) => { written.push(r); } } });
+    await controller.refresh();
+    expect(written).toEqual([{ from: '0.2.122', to: '0.2.123', at: 1000, source: 'auto' }]);
+    expect(deps.publish.mock.lastCall?.[0].lastInstall).toEqual(written[0]);
+    // The replacement daemon reads it back and shows it next to "current".
+    const next = setup();
+    next.deps.policy.mockResolvedValue({ ...policy, currentVersion: '0.2.123' });
+    const replaced = createUpdateController({ ...next.deps, lastInstall: { read: () => written[0] as never, write: () => undefined } });
+    await replaced.refresh();
+    expect(next.deps.publish.mock.lastCall?.[0]).toMatchObject({ autoUpdate: { state: 'current' }, lastInstall: { to: '0.2.123', source: 'auto' } });
+  });
+  it('does not record failed installs', async () => {
+    const write = vi.fn();
+    const {deps} = setup();
+    const controller = createUpdateController({ ...deps, lastInstall: { read: () => null, write } });
+    await controller.refresh();
+    expect(write).not.toHaveBeenCalled();
+    expect(deps.publish.mock.lastCall?.[0].lastInstall).toBeUndefined();
+  });
+  it('exposes the held target for the announcement handler', async () => {
+    const {controller} = setup();
+    expect(controller.currentTarget()).toBeNull();
+    await controller.refresh();
+    expect(controller.currentTarget()).toBe('0.2.123');
+  });
+});
