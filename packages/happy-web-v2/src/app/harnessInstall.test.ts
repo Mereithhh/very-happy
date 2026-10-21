@@ -36,3 +36,19 @@ describe('harness install on the Web (B-719)', () => {
         expect(readHarnessInstall(null)).toBeNull();
     });
 });
+
+describe('B-719 review follow-ups', () => {
+    it('support is independent of being online (offline rows are shown greyed, not hidden)', async () => {
+        const { harnessInstallSupported } = await import('./harnessInstall');
+        expect(harnessInstallSupported({ harnessInstallVersion: 1 })).toBe(true);
+        expect(harnessInstallSupported({})).toBe(false);
+    });
+    it('passes the Node versions of a node_too_old refusal through, validated', async () => {
+        machineRPC.mockResolvedValueOnce({ error: 'node_too_old', required: '22.19.0', current: '20.11.1' });
+        expect(await requestHarnessInstall('m1', 'pi')).toEqual({ ok: false, error: 'node_too_old', required: '22.19.0', current: '20.11.1' });
+        machineRPC.mockResolvedValueOnce({ error: 'node_too_old', required: '<script>', current: 5 });
+        expect(await requestHarnessInstall('m1', 'pi')).toEqual({ ok: false, error: 'node_too_old', required: '?', current: '?' });
+        machineRPC.mockResolvedValueOnce({ error: 'installer_blocked' });
+        expect(await requestHarnessInstall('m1', 'pi')).toEqual({ ok: false, error: 'installer_blocked' });
+    });
+});

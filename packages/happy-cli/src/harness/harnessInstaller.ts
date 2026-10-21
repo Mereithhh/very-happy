@@ -16,10 +16,13 @@ import { access, constants, lstat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { isHarnessInstallId, type HarnessInstallId, type HarnessInstallState } from '@slopus/happy-wire';
 import { globalPrefixForPackage } from '@/update/installLocation';
-import { HARNESS_INSTALL_CATALOG, harnessInstallArgs } from './installCatalog';
+import { HARNESS_INSTALL_CATALOG, harnessInstallArgs, nodeSatisfies } from './installCatalog';
 import type { NpmResult } from '@/update/npmInstall';
 
-export type HarnessInstallRequestResult = { accepted: true; harness: HarnessInstallId } | { error: string };
+export type HarnessInstallRequestResult =
+    | { accepted: true; harness: HarnessInstallId }
+    | { error: 'node_too_old'; required: string; current: string }
+    | { error: string };
 
 export interface HarnessInstallerDependencies {
     npm: (args: string[]) => Promise<NpmResult>;
@@ -27,8 +30,10 @@ export interface HarnessInstallerDependencies {
     runningPackageDir: string;
     /** Whether `command` resolves on the daemon's PATH now. */
     commandOnPath: (command: string) => boolean;
-    /** The CLI's own npm install/handover is in flight. */
+    /** The CLI's own npm install, or its handover preflight, is in flight. */
     cliUpdateBusy: () => boolean;
+    /** The Node running the daemon (and the harness it installs). Default process.versions.node. */
+    nodeVersion?: string;
     publish: (state: HarnessInstallState) => void;
     /** Re-probe CLI availability and agent versions so the Web enables the harness. */
     afterInstall: () => Promise<void>;
@@ -45,11 +50,21 @@ async function defaultIsPlainDirectory(path: string): Promise<boolean> {
     try { const s = await lstat(path); return s.isDirectory() && !s.isSymbolicLink(); } catch { return false; }
 }
 
+/** Strips credentials (npmrc auth keys, bearer tokens, URL userinfo) and home paths. */
+export function redactNpmText(text: string): string {
+    return text
+        .replace(/(_authToken|_auth|_password|token|password)\s*=\s*\S+/gi, '$1=***')
+        .replace(/Bearer\s+\S+/gi, 'Bearer ***')
+        .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+(:[^\s/@]*)?@/gi, '$1***@')
+        .replace(/\/(home|Users)\/[^/\s]+/g, '~')
+        .replace(/\/root(?=\/|\s|$)/g, '~');
+}
+
 /** npm's last lines without anything that looks like a token or a home path. */
 export function summarizeNpmFailure(result: NpmResult): string {
     const tail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim().split('\n').filter((line) => /npm (error|ERR!)|EACCES|ENOTFOUND|ETARGET|E404|engine/i.test(line)).slice(-3).join(' | ');
     const code = result.code === null ? 'npm_timeout' : `npm_exit_${result.code}`;
-    const safe = tail.replace(/(_authToken|token|password)=\S+/gi, '$1=***').replace(/\/(home|Users)\/[^/\s]+/g, '~').slice(0, 300);
+    const safe = redactNpmText(tail).slice(0, 300);
     return safe ? `${code}: ${safe}` : code;
 }
 
@@ -58,6 +73,11 @@ export function createHarnessInstaller(deps: HarnessInstallerDependencies) {
     const canWrite = deps.canWrite ?? defaultCanWrite;
     const isPlainDirectory = deps.isPlainDirectory ?? defaultIsPlainDirectory;
     let running: HarnessInstallId | null = null;
+    // Like updateController's `blocked`: npm outlived its kill and may still be
+    // writing the prefix, so neither another install nor the CLI's own update
+    // may start until the daemon restarts.
+    let blocked = false;
+    const nodeVersion = deps.nodeVersion ?? process.versions.node;
 
     /** Same rule as the CLI's own update (B-489): the prefix of the running package, writable by us. */
     async function installPrefix(): Promise<{ prefix: string } | { error: string }> {
@@ -75,6 +95,12 @@ export function createHarnessInstaller(deps: HarnessInstallerDependencies) {
             const args = harnessInstallArgs(harness, prefix);
             deps.log(`[HARNESS] installing ${harness}: npm ${args.join(' ')}`);
             const result = await deps.npm(args);
+            if (result.terminationConfirmed === false) {
+                blocked = true;
+                deps.log(`[HARNESS] ${harness} install timed out and npm could not be confirmed stopped; holding the npm tree until the daemon restarts`);
+                publish('failed', 'installer_termination_unconfirmed');
+                return;
+            }
             if (result.code !== 0) {
                 const detail = summarizeNpmFailure(result);
                 deps.log(`[HARNESS] ${harness} install failed: ${detail}`);
@@ -96,27 +122,36 @@ export function createHarnessInstaller(deps: HarnessInstallerDependencies) {
             deps.log(`[HARNESS] ${harness} install error: ${String(error)}`);
             publish('failed', 'install_error');
         } finally {
-            running = null;
+            if (!blocked) running = null;
         }
     }
 
     return {
-        isRunning: () => running !== null,
+        /** True while npm may be writing the prefix — including after an unconfirmed kill. */
+        isRunning: () => running !== null || blocked,
         async request(params: unknown): Promise<HarnessInstallRequestResult> {
             const harness = params && typeof params === 'object' ? (params as { harness?: unknown }).harness : undefined;
             if (!isHarnessInstallId(harness)) {
                 deps.log(`[HARNESS] refused install request for an unknown harness`);
                 return { error: 'unknown_harness' };
             }
+            if (blocked) return { error: 'installer_blocked' };
             if (running) return { error: 'install_in_progress' };
             if (deps.cliUpdateBusy()) return { error: 'cli_update_in_progress' };
+            const minNode = HARNESS_INSTALL_CATALOG[harness].minNode;
+            if (!nodeSatisfies(nodeVersion, minNode)) {
+                deps.log(`[HARNESS] ${harness} install refused: needs Node ${minNode}+, daemon runs ${nodeVersion}`);
+                return { error: 'node_too_old', required: minNode, current: nodeVersion };
+            }
+            // Claim the fence BEFORE the first await: from here the CLI's own
+            // update sees us as busy, so it cannot start between this check and npm.
+            running = harness;
             const location = await installPrefix();
             if ('error' in location) {
+                running = null;
                 deps.log(`[HARNESS] ${harness} install refused: ${location.error}`);
                 return location;
             }
-            if (running) return { error: 'install_in_progress' };
-            running = harness;
             const startedAt = now();
             deps.log(`[HARNESS] owner requested ${harness} install`);
             deps.publish({ harness, state: 'installing', startedAt, at: startedAt });

@@ -1937,6 +1937,9 @@ export async function startDaemon(): Promise<void> {
     let lastUpdateLog = '';
     // B-719: created below (needs apiMachine); the CLI update waits while it writes the npm tree.
     let harnessInstaller: ReturnType<typeof createHarnessInstaller> | null = null;
+    // B-719: the handover preflight runs the new bundle and then releases ownership;
+    // a harness install must not start inside that window.
+    let handoverInFlight = false;
     const updateController = createUpdateController({
       policy: () => fetchCliUpdateState(configuration.serverUrl, packageJson.version),
       enabled: async () => ((await readSettings()).cliAutoUpdate ?? 'idle') !== 'off',
@@ -2012,7 +2015,7 @@ export async function startDaemon(): Promise<void> {
       npm: runNpm,
       runningPackageDir: projectPath(),
       commandOnPath,
-      cliUpdateBusy: () => updateController.isRunning(),
+      cliUpdateBusy: () => updateController.isRunning() || handoverInFlight,
       publish: (state) => {
         void apiMachine.updateDaemonState(current => ({ ...current, status: current?.status ?? 'running', harnessInstall: state }))
           .catch(error => logger.debug('[DAEMON RUN] harness install state publish failed', error));
@@ -2055,6 +2058,9 @@ export async function startDaemon(): Promise<void> {
       // Reconsider busy waits on the existing heartbeat; never hand over during npm writes.
       await updateController.tick();
       await updateController.withHandover(async () => {
+      // B-719: preflight + ownership release write nothing, but they must not overlap a harness install.
+      handoverInFlight = true;
+      try {
 
       // Check if daemon needs update by detecting whether `dist/index.mjs` was
       // replaced on disk since the daemon started (npm install rewrites the file).
@@ -2091,7 +2097,7 @@ export async function startDaemon(): Promise<void> {
           // still-finishing install is picked up moments later.
           return;
         }
-        if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;
+        if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || harnessInstaller?.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;
         lastHandoverHold = null;
         logger.debug(relayMove
           ? `[DAEMON RUN] Relay moved to ${relayMove.serverUrl}; handing off to a new daemon on the new settings`
@@ -2137,6 +2143,7 @@ export async function startDaemon(): Promise<void> {
         process.exit(0);
       }
 
+      } finally { handoverInFlight = false; }
       });
 
       // Before wrecklessly overriting the daemon state file, we should check if we are the ones who own it

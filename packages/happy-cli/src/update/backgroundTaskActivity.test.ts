@@ -83,7 +83,7 @@ describe('daemon / wrapper wiring (B-507)', () => {
         // B-719: …and while an owner-requested harness install writes the same npm tree.
         expect(run).toContain('idle: () => !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny() && !harnessInstaller?.isRunning(),');
         expect(run).toContain('if ((bundleReplaced || relayMove) && !teamWorker?.busy && !automationRunner?.busy && !updateController.isRunning() && !harnessInstaller?.isRunning() && !turnActivity.hasActiveTurn() && !backgroundTasks.hasAny()) {');
-        expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;');
+        expect(run).toContain('if (teamWorker?.busy || automationRunner?.busy || updateController.isRunning() || harnessInstaller?.isRunning() || turnActivity.hasActiveTurn() || backgroundTasks.hasAny()) return;');
         // an exited wrapper releases its set; the control server feeds the tracker and /list reads it
         expect(run).toContain('if (session?.happySessionId) backgroundTasks.forget(session.happySessionId);');
         expect(run).toContain('onSessionBackgroundTasks: (sessionId, tasks) => backgroundTasks.apply(sessionId, tasks),');

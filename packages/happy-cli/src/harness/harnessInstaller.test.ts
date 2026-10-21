@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HarnessInstallState } from '@slopus/happy-wire';
-import { createHarnessInstaller, summarizeNpmFailure } from './harnessInstaller';
-import { HARNESS_INSTALL_CATALOG, harnessInstallArgs, harnessInstallCommand } from './installCatalog';
+import { createHarnessInstaller, redactNpmText, summarizeNpmFailure } from './harnessInstaller';
+import { HARNESS_INSTALL_CATALOG, harnessInstallArgs, harnessInstallCommand, nodeSatisfies } from './installCatalog';
 
 const PKG = '/home/u/.npm-global/lib/node_modules/very-happy-cli';
 function setup(over: Partial<Parameters<typeof createHarnessInstaller>[0]> = {}) {
@@ -16,6 +16,7 @@ function setup(over: Partial<Parameters<typeof createHarnessInstaller>[0]> = {})
         publish: (s: HarnessInstallState) => { published.push(s); },
         afterInstall: vi.fn(async () => undefined),
         log: (m: string) => { logs.push(m); },
+        nodeVersion: '22.23.2',
         canWrite: async () => true,
         isPlainDirectory: async () => true,
         now: () => 1000,
@@ -27,7 +28,10 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 
 describe('harness install whitelist (B-719)', () => {
     it('maps each id to fixed packages and a no-shell npm argv in the CLI prefix', () => {
-        expect(harnessInstallArgs('pi', '/home/u/.npm-global')).toEqual(['i', '-g', '--prefix=/home/u/.npm-global', '--no-fund', '--no-audit', '@earendil-works/pi-coding-agent@latest', 'pi-acp@0.0.33']);
+        expect(harnessInstallArgs('pi', '/home/u/.npm-global')).toEqual(['i', '-g', '--prefix=/home/u/.npm-global', '--no-fund', '--no-audit', '--ignore-scripts', '@earendil-works/pi-coding-agent@latest', 'pi-acp@0.0.33']);
+        // claude-code needs its postinstall (it places the native binary); nothing else runs registry scripts.
+        expect(harnessInstallArgs('claude', '/p')).not.toContain('--ignore-scripts');
+        for (const id of ['codex', 'gemini', 'pi'] as const) expect(harnessInstallArgs(id, '/p')).toContain('--ignore-scripts');
         expect(harnessInstallArgs('codex', '/p')).toContain('@openai/codex@latest');
         expect(harnessInstallCommand('gemini')).toBe('npm install -g @google/gemini-cli@latest');
         expect(Object.keys(HARNESS_INSTALL_CATALOG).sort()).toEqual(['claude', 'codex', 'gemini', 'pi']);
@@ -43,7 +47,7 @@ describe('createHarnessInstaller (B-719)', () => {
         const { installer, deps, published, logs } = setup();
         expect(await installer.request({ harness: 'pi' })).toEqual({ accepted: true, harness: 'pi' });
         await settle(); await settle();
-        expect(deps.npm).toHaveBeenCalledWith(['i', '-g', '--prefix=/home/u/.npm-global', '--no-fund', '--no-audit', '@earendil-works/pi-coding-agent@latest', 'pi-acp@0.0.33']);
+        expect(deps.npm).toHaveBeenCalledWith(['i', '-g', '--prefix=/home/u/.npm-global', '--no-fund', '--no-audit', '--ignore-scripts', '@earendil-works/pi-coding-agent@latest', 'pi-acp@0.0.33']);
         expect(deps.afterInstall).toHaveBeenCalledTimes(1);
         expect(published.map((p) => p.state)).toEqual(['installing', 'installed']);
         expect(logs.some((l) => l.includes('owner requested pi install'))).toBe(true);
@@ -101,5 +105,70 @@ describe('createHarnessInstaller (B-719)', () => {
 
     it('a timed-out npm is a failure, not a success', () => {
         expect(summarizeNpmFailure({ code: null, stdout: '' })).toBe('npm_timeout');
+    });
+});
+
+describe('CLI self-update fence (B-719 review)', () => {
+    it('claims the fence before the first await, so a CLI update checking mid-request sees it busy', async () => {
+        let release!: () => void;
+        const { installer, deps } = setup({ isPlainDirectory: () => new Promise<boolean>((r) => { release = () => r(true); }) });
+        const pending = installer.request({ harness: 'pi' });
+        // updateController.idle() runs here (between the check and npm): it must already see the install.
+        expect(installer.isRunning()).toBe(true);
+        release(); await pending; await settle(); await settle();
+        expect(deps.npm).toHaveBeenCalledTimes(1);
+        expect(installer.isRunning()).toBe(false);
+    });
+
+    it('releases the fence when the location check refuses', async () => {
+        const { installer } = setup({ canWrite: async () => false });
+        await installer.request({ harness: 'pi' });
+        expect(installer.isRunning()).toBe(false);
+    });
+
+    it('refuses while the CLI update (or its handover preflight) is in flight', async () => {
+        let busy = true;
+        const { installer, deps } = setup({ cliUpdateBusy: () => busy });
+        expect(await installer.request({ harness: 'codex' })).toEqual({ error: 'cli_update_in_progress' });
+        busy = false;
+        expect(await installer.request({ harness: 'codex' })).toEqual({ accepted: true, harness: 'codex' });
+        await settle(); await settle();
+        expect(deps.npm).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the npm tree locked when a timed-out npm could not be confirmed stopped', async () => {
+        const { installer, published, deps } = setup({ npm: vi.fn(async () => ({ code: null, stdout: '', terminationConfirmed: false })) });
+        await installer.request({ harness: 'gemini' }); await settle(); await settle();
+        expect(published.at(-1)).toMatchObject({ state: 'failed', detail: 'installer_termination_unconfirmed' });
+        expect(installer.isRunning()).toBe(true); // the CLI update keeps waiting
+        expect(await installer.request({ harness: 'pi' })).toEqual({ error: 'installer_blocked' });
+        expect(deps.npm).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('Node version gate (B-719 review)', () => {
+    it('refuses before npm when the daemon Node is below the harness minimum', async () => {
+        const { installer, deps, published } = setup({ nodeVersion: '20.11.1' });
+        expect(await installer.request({ harness: 'pi' })).toEqual({ error: 'node_too_old', required: '22.19.0', current: '20.11.1' });
+        expect(await installer.request({ harness: 'claude' })).toEqual({ error: 'node_too_old', required: '22.0.0', current: '20.11.1' });
+        expect(deps.npm).not.toHaveBeenCalled();
+        expect(published).toEqual([]);
+        expect(installer.isRunning()).toBe(false);
+        expect(await installer.request({ harness: 'gemini' })).toEqual({ accepted: true, harness: 'gemini' });
+    });
+    it('compares versions numerically', () => {
+        expect(nodeSatisfies('22.19.0', '22.19.0')).toBe(true);
+        expect(nodeSatisfies('v22.23.2', '22.19.0')).toBe(true);
+        expect(nodeSatisfies('22.18.9', '22.19.0')).toBe(false);
+        expect(nodeSatisfies('9.0.0', '16.0.0')).toBe(false);
+        expect(nodeSatisfies('garbage', '16.0.0')).toBe(false);
+    });
+});
+
+describe('npm output redaction (B-719 review)', () => {
+    it('removes auth material and home paths', () => {
+        const out = redactNpmText('npm error //r/:_auth=dXNlcjpwYXNz _authToken=abc Authorization: Bearer eyJhbGciOi https://bob:hunter2@registry.example.com/x /root/.npm /home/alice/.npmrc /Users/bob/x');
+        for (const leak of ['dXNlcjpwYXNz', 'abc', 'eyJhbGciOi', 'bob:hunter2', 'hunter2', '/root/', 'alice', '/Users/bob']) expect(out).not.toContain(leak);
+        expect(out).toContain('https://***@registry.example.com/x');
     });
 });

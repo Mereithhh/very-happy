@@ -1,6 +1,6 @@
 import { ProjectPicker } from '@/screens/projects/ProjectPicker';
 import { isHarnessInstallId, type HarnessInstallId } from '@slopus/happy-wire';
-import { machineCanInstallHarness } from '@/app/harnessInstall';
+import { harnessInstallSupported } from '@/app/harnessInstall';
 import { readAgentVersions } from '@/app/agentVersions';
 import { useHarnessInstall } from '@/app/useHarnessInstall';
 import { useProjects } from '@/sync/projects';
@@ -404,9 +404,9 @@ export function NewSessionModal({
               <div className="ns-agent-setup" id="ns-agent-setup">
                 {shownSetupInstruction?.kind === 'command' ? (
                   <>
-                    {selectedMachine && isHarnessInstallId(shownSetupAgent) && machineCanInstallHarness(selectedMachine.metadata, true) && (
+                    {selectedMachine && isHarnessInstallId(shownSetupAgent) && harnessInstallSupported(selectedMachine.metadata) && (
                       // B-719: install it from here; the daemon only accepts the harness id.
-                      <AgentSetupInstall key={`${selectedMachine.id}:${shownSetupAgent}`} machineId={selectedMachine.id} harness={shownSetupAgent} daemonState={selectedMachine.daemonState} />
+                      <AgentSetupInstall key={`${selectedMachine.id}:${shownSetupAgent}`} machineId={selectedMachine.id} harness={shownSetupAgent} daemonState={selectedMachine.daemonState} online={isMachineOnline(selectedMachine)} />
                     )}
                     <div className="ns-agent-help">
                       {shownSetupAgent === 'pi'
@@ -458,13 +458,13 @@ export function NewSessionModal({
 }
 
 /** B-719: 「这台机器还没装 X，点击安装」 inside the agent picker. */
-function AgentSetupInstall({ machineId, harness, daemonState }: { machineId: string; harness: HarnessInstallId; daemonState: unknown }) {
+function AgentSetupInstall({ machineId, harness, daemonState, online }: { machineId: string; harness: HarnessInstallId; daemonState: unknown; online: boolean }) {
   const { t } = useTranslation();
-  const action = useHarnessInstall(machineId, harness, daemonState);
+  const action = useHarnessInstall(machineId, harness, daemonState, online);
   return (
     <>
       <div>
-        <Button variant="primary" loading={action.installing} onClick={() => void action.start()}>
+        <Button variant="primary" loading={action.installing} disabled={action.disabled} onClick={() => void action.start()}>
           {t('harnessInstall.installOnMachine', { agent: harness })}
         </Button>
       </div>

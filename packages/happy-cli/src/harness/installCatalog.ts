@@ -25,15 +25,26 @@ export interface HarnessInstallEntry {
     readonly packages: readonly HarnessPackage[];
     /** Executables that must resolve on PATH afterwards for the harness to be usable. */
     readonly commands: readonly string[];
+    /** Lowest Node the packages declare in `engines` — refused up front instead of installed-but-broken. */
+    readonly minNode: string;
+    /**
+     * Whether the packages need their npm lifecycle scripts. Only claude-code
+     * does (postinstall places the native binary); the others ship no install
+     * scripts, so npm runs with --ignore-scripts and nothing from the registry
+     * executes during the install.
+     */
+    readonly scripts: boolean;
 }
 
 export const HARNESS_INSTALL_CATALOG: Readonly<Record<HarnessInstallId, HarnessInstallEntry>> = Object.freeze({
-    claude: Object.freeze({ packages: [{ name: '@anthropic-ai/claude-code', spec: 'latest' }], commands: ['claude'] }),
-    codex: Object.freeze({ packages: [{ name: '@openai/codex', spec: 'latest' }], commands: ['codex'] }),
-    gemini: Object.freeze({ packages: [{ name: '@google/gemini-cli', spec: 'latest' }], commands: ['gemini'] }),
+    claude: Object.freeze({ packages: [{ name: '@anthropic-ai/claude-code', spec: 'latest' }], commands: ['claude'], minNode: '22.0.0', scripts: true }),
+    codex: Object.freeze({ packages: [{ name: '@openai/codex', spec: 'latest' }], commands: ['codex'], minNode: '16.0.0', scripts: false }),
+    gemini: Object.freeze({ packages: [{ name: '@google/gemini-cli', spec: 'latest' }], commands: ['gemini'], minNode: '20.0.0', scripts: false }),
     pi: Object.freeze({
         packages: [{ name: '@earendil-works/pi-coding-agent', spec: 'latest' }, { name: 'pi-acp', spec: '0.0.33' }],
         commands: ['pi', 'pi-acp'],
+        minNode: '22.19.0',
+        scripts: false,
     }),
 });
 
@@ -45,7 +56,7 @@ export const HARNESS_INSTALL_CATALOG: Readonly<Record<HarnessInstallId, HarnessI
 export function harnessInstallArgs(id: HarnessInstallId, prefix: string): string[] {
     const entry = HARNESS_INSTALL_CATALOG[id];
     if (!entry) throw new Error('Unknown harness');
-    const args = ['i', '-g', `--prefix=${prefix}`, '--no-fund', '--no-audit', ...entry.packages.map((p) => `${p.name}@${p.spec}`)];
+    const args = ['i', '-g', `--prefix=${prefix}`, '--no-fund', '--no-audit', ...(entry.scripts ? [] : ['--ignore-scripts']), ...entry.packages.map((p) => `${p.name}@${p.spec}`)];
     if (args.some((arg) => !NPM_SAFE_ARG.test(arg))) throw new Error('Unsafe npm argument');
     return args;
 }
@@ -53,4 +64,18 @@ export function harnessInstallArgs(id: HarnessInstallId, prefix: string): string
 /** The equivalent command for a person to run (shown when the daemon cannot install). */
 export function harnessInstallCommand(id: HarnessInstallId): string {
     return `npm install -g ${HARNESS_INSTALL_CATALOG[id].packages.map((p) => `${p.name}@${p.spec}`).join(' ')}`;
+}
+
+/** `20.11.1` / `v22.19.0` → [major, minor, patch]; anything else → null. */
+function parseNode(version: string): [number, number, number] | null {
+    const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/** Whether `current` satisfies the harness's minimum Node; an unparsable version is refused. */
+export function nodeSatisfies(current: string, minimum: string): boolean {
+    const a = parseNode(current); const b = parseNode(minimum);
+    if (!a || !b) return false;
+    for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
+    return true;
 }
