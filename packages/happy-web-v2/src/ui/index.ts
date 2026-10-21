@@ -20,3 +20,4 @@ export { SelectMenu, type SelectOption, type SelectAction } from './SelectMenu';
 export { Combobox } from './Combobox';
 export { Checkbox } from './Checkbox';
 export { Summary } from './Summary';
+export { Segmented, type SegmentedOption } from './Segmented';

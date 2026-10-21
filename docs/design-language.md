@@ -159,7 +159,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 | 右键或长按的动作 | `ActionContextMenu`，和下拉菜单共用同一份 `MenuItemDef[]` | 另写一份菜单项 |
 | 表单或设置里从已知短列表单选（≤12 项） | `ui/SelectMenu`（B-714）：桌面 Popover，手机（coarse 且 ≤600px）底部 sheet；勾选列、分组、禁用项带原因、`name`/`required` 表单值 | 原生 `<select>`；套用动作菜单；`PresetsMenu`（它没有勾选列，不是单选范本） |
 | 长列表、要搜索或分组的单选（机器、项目、分支、模型、checkpoint） | `ui/Combobox`（B-714）：超过 8 项自动出搜索框，命中高亮；支持加载中、失败重试、末尾动作行（「＋ 新建…」） | 原生 `<select>`；在 Popover 里手写列表 |
-| 2–4 个一行放得下的选项 | `.vh-segmented`（`aria-pressed`），表单要取值时配隐藏 input | 下拉 |
+| 2–4 个一行放得下的选项 | `ui/Segmented`（`.vh-segmented` + `aria-pressed`，`name` 时带隐藏 input） | 下拉 |
 | 输入框旁的模式切换菜单（权限模式、预设） | 沿用 `ModeMenu`（菜单项 + 勾选列） | — |
 | 勾选 | `ui/Checkbox`（原生 input 换成 16px token 方框，带文字时整行 label，触屏 44px） | 原生 `input[type=checkbox]` |
 | `<details>` 折叠头 | `ui/Summary`（隐藏浏览器三角，前置 chevron，展开时旋转）；动画折叠用 `CollapsePanel` | 原生 `<summary>` 三角 |
@@ -201,7 +201,7 @@ Owner（2026-10-16）：「各种细节你抄一下这个项目里面的设计�
 2. 对话区 css（脚本里的 `CONVERSATION_CSS`：对话流、工具和子代理行、实时状态、输入框、侧问、提问步进、阅读辅助）的 `font-size` 与 `font` 简写只能用对话档位 `var(--chat-fs-*)` / `var(--conversation-size)`；写死 px、`var(--fs-*)`、未乘 `--chat-scale` 的 `--workspace-primary-size` 都报。触屏输入的 `max(16px, var(--chat-fs-body))` 和 em 放行。
 3. `outline: none|0`：同一文件里没有对应的 `:focus-visible` / `:focus-within` 替代样式就报。`X:focus { outline: none }` 这种程序化聚焦容器的写法放行。
 4. 文本输入框焦点环（`field-focus-ring`，B-699）：选择器在 `:focus*` 状态下指向 `input` / `textarea` 或以 `input`、`textarea` 结尾的类名，且声明了 `var(--focus-ring)`、`var(--accent-glow)` 阴影或非 none 的 outline 就报。`:not(...)` 里的排除、checkbox/radio 等非文本 input 放行。
-5. 原生控件（`native-control`，B-714）：tsx 新增 `<select`、`<option`、`type="checkbox"`、`<summary` 就报，改用 `SelectMenu` / `Combobox` / `.vh-segmented` / `Checkbox` / `Summary`（见 §6「选择控件」）。只有 `ui/Checkbox.tsx`、`ui/Summary.tsx` 可以写对应的原生元素；字符串字面量里的同名文本放行。
+5. 原生控件（`native-control`，B-714）：tsx 新增 `<select`、`<option`、`type="checkbox"`、`<summary` 就报，改用 `SelectMenu` / `Combobox` / `Segmented` / `Checkbox` / `Summary`（见 §6「选择控件」）。只有 `ui/Checkbox.tsx`、`ui/Summary.tsx` 可以写对应的原生元素；字符串字面量里的同名文本放行。
 
 确实要保留时，在同一行或上一行写 `design-lint-allow: <理由>`，理由必填。规则本身宁可漏报、不要误报，误报应该修脚本，不要靠堆豁免。
 

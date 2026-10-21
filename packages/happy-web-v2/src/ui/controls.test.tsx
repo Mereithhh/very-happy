@@ -5,6 +5,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Checkbox } from './Checkbox';
+import { Segmented } from './Segmented';
 import { Summary } from './Summary';
 
 /**
@@ -69,5 +70,22 @@ describe('Summary', () => {
         expect(css).toMatch(/\.vh-summary \{[^}]*list-style: none;/);
         expect(css).toMatch(/\.vh-summary::-webkit-details-marker \{ display: none; \}/);
         expect(css).toMatch(/details\[open\] > \.vh-summary > \.vh-summary-chevron \{ transform: rotate\(90deg\); \}/);
+    });
+});
+
+describe('Segmented', () => {
+    it('aria-pressed buttons in a named group; the hidden input carries the value for FormData', () => {
+        const onChange = vi.fn();
+        act(() => root.render(<form><Segmented label="Kind" name="kind" value="note" onChange={onChange}
+            options={[{ value: 'decision', label: 'Decision' }, { value: 'note', label: 'Note' }]} /></form>));
+        const group = host.querySelector('[role="group"].vh-segmented')!;
+        expect(group.getAttribute('aria-label')).toBe('Kind');
+        const buttons = [...group.querySelectorAll('button')];
+        expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+        expect(new FormData(host.querySelector('form')!).get('kind')).toBe('note');
+        act(() => buttons[0].click());
+        expect(onChange).toHaveBeenCalledWith('decision');
+        act(() => buttons[1].click());
+        expect(onChange).toHaveBeenCalledTimes(1);
     });
 });
