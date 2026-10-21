@@ -133,6 +133,7 @@ import {
   handleThinkingUpdate,
 } from './sessionUpdateHandlers';
 import { resolveAcpPermissionRequest } from './acpToolArgs';
+import { piDialogOutcome, piSelectQuestionInput, readPiExtensionDialog } from './piExtensionDialogs';
 
 /**
  * Extended RequestPermissionRequest with additional fields that may be present
@@ -682,7 +683,9 @@ export class AcpBackend implements AgentBackend {
           // resolveAcpPermissionRequest for why it is never the ACP toolCallId.
           const toolCallId = resolved.toolCallId;
           const permissionId = toolCallId;
-          const input = resolved.input;
+          let input = resolved.input;
+          // B-632 ②: a pi extension select is a question, not an approval.
+          const piDialog = readPiExtensionDialog(extendedParams as Parameters<typeof readPiExtensionDialog>[0]);
           
           // If toolName is "other" or "Unknown tool", try to determine real tool name
           const context: ToolNameContext = {
@@ -690,6 +693,10 @@ export class AcpBackend implements AgentBackend {
             toolCallCountSincePrompt: this.toolCallCountSincePrompt,
           };
           toolName = this.transport.determineToolName?.(toolName, toolCallId, input, context) ?? toolName;
+          if (piDialog?.kind === 'select') {
+            toolName = 'AskUserQuestion';
+            input = piSelectQuestionInput(piDialog, resolved.input.message);
+          }
           
           if (toolName !== (toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool')) {
             logger.debug(`[AcpBackend] Inferred tool name for toolCallId: ${toolCallId}`);
@@ -734,6 +741,18 @@ export class AcpBackend implements AgentBackend {
                 toolName,
                 input
               );
+
+              if (piDialog) {
+                const answer = piDialogOutcome(piDialog, result);
+                const answered = answer.outcome === 'selected' && answer.optionId !== 'no';
+                this.emit({
+                  type: 'tool-result',
+                  toolName,
+                  result: { status: answered ? 'approved' : 'denied', decision: result.decision },
+                  callId: permissionId,
+                });
+                return { outcome: answer };
+              }
               
               // Map permission decision to ACP response
               // ACP uses optionId from the request options

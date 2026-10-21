@@ -551,7 +551,7 @@ describe('runAcp', () => {
       vi.stubEnv('HAPPY_SESSION_VARIANT', 'assistant');
       await runUntilKilled();
       expect(mocks.mockStartHappyServer).toHaveBeenCalledTimes(1);
-      expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: true, onContextUsage: expect.any(Function) });
+      expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: true, piSteer: expect.any(Object), onContextUsage: expect.any(Function) });
     });
 
     it('passes assistant=false when HAPPY_SESSION_VARIANT is unset', async () => {
@@ -559,7 +559,7 @@ describe('runAcp', () => {
       delete process.env.HAPPY_SESSION_VARIANT;
       await runUntilKilled();
       expect(mocks.mockStartHappyServer).toHaveBeenCalledTimes(1);
-      expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: false, onContextUsage: expect.any(Function) });
+      expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: false, piSteer: expect.any(Object), onContextUsage: expect.any(Function) });
     });
   });
 
@@ -1475,6 +1475,25 @@ it('keeps the session usable after cancelling an in-flight turn', async () => {
       expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: 'pi is compacting its context (nearing the limit)' });
       const texts = mocks.mockSession.sendSessionProtocolMessage.mock.calls.filter(([m]) => m.ev.t === 'text').map(([m]) => m.ev.text);
       expect(texts).toEqual(['done']);
+    } finally {
+      await mocks.getKillHandler()!();
+      await runPromise;
+    }
+  });
+
+  it('B-632: agent output with no prompt running gets its own turn and lease, closed by idle', async () => {
+    const runPromise = runAcp({ credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } }, agentName: 'pi', command: 'pi-acp', args: [] });
+    try {
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      const emit = (m: any) => { for (const l of mocks.backendState.listeners) l(m); };
+      const events = () => mocks.mockSession.sendSessionProtocolMessage.mock.calls.map(([m]: any[]) => m.ev.t);
+      const before = events().length;
+      emit({ type: 'model-output', textDelta: 'background result arrived' });
+      expect(events().slice(before)).toContain('turn-start');
+      expect(mocks.mockSession.keepAlive).toHaveBeenLastCalledWith(true, 'remote');
+      emit({ type: 'status', status: 'idle' });
+      expect(events().slice(before)).toEqual(expect.arrayContaining(['turn-start', 'text', 'turn-end']));
+      expect(mocks.mockSession.keepAlive).toHaveBeenLastCalledWith(false, 'remote');
     } finally {
       await mocks.getKillHandler()!();
       await runPromise;
