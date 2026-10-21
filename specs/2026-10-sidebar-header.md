@@ -1,7 +1,7 @@
 # 侧栏顶部：按钮更少，新建会话与新建项目一眼可见
 
 > 状态：Final（随实现同 PR）
-> 日期：2026-10-21 ｜ 关联 backlog：B-676 ｜ 出处：Owner 10-21「侧栏顶部按钮太多，新建项目入口也不明显」；Lead 授权按证据定方案
+> 日期：2026-10-21 ｜ 关联 backlog：B-676、B-713（§B-713 修订，覆盖下文冲突部分） ｜ 出处：Owner 10-21「侧栏顶部按钮太多，新建项目入口也不明显」；Lead 授权按证据定方案
 > 前置：B-641（手机侧栏，[spec](2026-10-mobile-sidebar.md)）、B-647/B-648（项目分组与项目页，[spec](2026-10-projects.md) §6）、B-650（会话搜索）、B-653（菜单项 44px）。本改动在它们的基础上做，不回退其效果。
 
 ## 目标
@@ -143,3 +143,72 @@ Orca 允许逐行隐藏，但这需要新的设置字段、迁移和设置页 UI
 1. 习惯点导航列「团队」「待办」的人需要重新找入口。缓解：⋯ 与手机同位置同内容；团队行仍在列表里；⌘K 可达；本条写进更新说明。
 2. 新建会话主区「直接开」与改前「先开菜单」行为不同，可能误开对话。缓解：主区与改前菜单里的「新会话」完全同一路径（判断不了时回落到对话框）；按钮带 ▾ 区分，其他类型仍在 ▾。
 3. 触屏笔记本（桌面布局 + coarse）：动作行和 ▾ 的命中区按 coarse 规则放大到 44px。
+
+## B-713 修订：三个主入口、能力入口按高度自适应、帮助进底栏
+
+> Owner 10-21：「侧边栏应该是新建对话、新建项目、新建团队」「帮助在侧边栏最下面加个入口」；第二次反馈：「入口被隐藏了，大屏幕就都默认展示几个入口，小尺寸再隐藏；不要用右上角的 ⋯，改成新建项目下有一个更多能力 dropdown」「logo 在移动端默认就是 hover 态」。本节覆盖上文方案 D 中关于 ⋯ 菜单与手机 ＋/⋯ 的部分。
+
+### 结构
+
+| | 桌面（两栏） | 手机（单栏，coarse） |
+|---|---|---|
+| 品牌行 | 品牌 · 🔍 · 收起（**去掉 ⋯**） | 品牌 · 🔍 · ＋（＋ 仍一步打开 B-641 创建菜单） |
+| 主操作 | 「＋ 新建会话 \| ▾」「新建项目」「新建团队」三行，图标 + 文字 | 一行 44px chip：「项目 · 团队 · 更多 ▾」（新建项目 / 新建团队 / 能力入口菜单） |
+| 能力入口 | 团队 > 自动化 > 待办 > 联系人，放得下就逐行展示；放不下的进「更多能力 ▾」（`ActionDropdownMenu`），全部放得下时这一行不出现 | 全部在「更多 ▾」 |
+| 计数 | 行内 / 菜单项「· N」；「更多能力」「更多」显示被折叠项的合计 | 同左 |
+| 底栏 | 设置 · **帮助** · 笔记 · 主题 · 通知；侧栏 <300px（默认宽 260）时设置只留齿轮（aria-label 保留），帮助保留文字 | 同左（抽屉全宽，两者都有文字） |
+
+- 文案沿用「会话」，不改「对话」。新增 key：`sidebar.newTeam`、`sidebar.help`、`sidebar.capabilities`、`sidebar.moreCapabilities`、`sidebar.chipProject`、`sidebar.chipTeam`（中英）。
+- 「新建团队」只在 Teams 入口可见（`happyBotEntryVisible`）时出现；「新建项目」只在 projects API ready 后出现（与 B-676 相同）。
+
+### 新建团队直达创建流程
+
+点击导航到 `/teams?new=1`。`TeamsScreen` 已有 `new=1 → setCreating(true)`，直接弹出 `TeamStartForm` 创建弹窗。修了一个缺陷：关弹窗只改了本地 state、URL 仍是 `?new=1`，再点侧栏按钮 URL 不变、effect 不触发、弹窗打不开；现在关闭时删掉 `new` 参数。没有在线且支持团队的机器时，弹窗内 `TeamStartForm` 原有提示「需要在线且支持团队能力的机器…」+「机器设置 →」链接，不新增前置判断。
+
+### 自适应规则（`fitCapabilityRows`，纯函数）
+
+- 会话列表首屏至少完整显示 `MIN_LIST_ROWS = 8` 行。「8 行需要的高度」按实测：第 8 个 `.sb-row` 的底边（内容坐标，含分组头和内边距）；不足 8 行时按已有平均行距外推。
+- 列表高度 + 能力区高度在行于两者间移动时不变，记 S；spare = S − 8 行所需高度。全部 n 行放得下（n × 行距 ≤ spare）就全展示；否则展示 k = ⌊spare / 行距⌋ − 1 行（多出的一行给「更多能力」），最少 0。
+- `ResizeObserver`（侧栏根与列表）+ `MutationObserver`（列表晚挂载、分组折叠）触发，按帧合并；窗口缩放实时生效，不只首屏判断一次。
+- Lead 给的参考值（≥900 全展示、中屏前两个）与「保 8 行」冲突时以 8 行为准；示例数据下实测见下表。
+
+### 触屏 sticky hover
+
+`sidebar.css` 里所有 `:hover` 规则都包进 `@media (hover: hover) and (pointer: fine)`（原来带 `:focus-visible` 的组合选择器拆开，焦点样式不受影响）。回归测试 `sidebarHover.test.ts` 解析 CSS，任何未受 hover 媒体查询保护的 `:hover` 都会失败。实测 390 coarse 下 hover 品牌后背景为 `rgba(0,0,0,0)`，桌面仍是 `--fill-hover`。全站其他组件的同类问题由 UI 走查统一列出，不在本条范围。
+
+### 键盘
+
+所有新入口都是原生 `<button>`；桌面 Tab 顺序：品牌（帮助）→ 搜索 → 收起 → 新建会话 → ▾ → 新建项目 → 新建团队 → 团队 → 自动化 → 待办 → 联系人，每一项 `box-shadow` 为 `--focus-ring`（`.sb-actions .sb-nav-btn:focus-visible` 原来把环去掉了，现在保留）。
+
+### 实测（`/dev/sidebar` 示例数据，Chromium，B-676 版本 → B-713）
+
+| 视口 | 能力行 | 列表起点 / 高 | 首屏完整行数 |
+|---|---|---|---|
+| 1440×1000 | 4 行全展示 | 178/767 → 352/593 | 19 → 14 |
+| 1440×900 | 4 行全展示 | 178/667 → 352/493 | 16 → 11 |
+| 1280×720 | 团队 + 更多能力 | 178/487 → 284/381 | 11 → **8** |
+| 1280×600 | 仅更多能力 | 178/367 → 250/295 | 8 → 6（全部已折叠，3 个新建行是硬下限） |
+| 390×844 coarse | chip 行 | 124/660 → 172/612 | 11 → **10**（−1，在允许范围） |
+| 320×640 coarse | chip 行 | 124/456 → 172/408 | 6 → 6 |
+
+横向滚动均为 0；手机「更多」菜单项高 44px（桌面 35px，B-653 只要求触屏）；缩放往返 1000→720→600→820→1000 每步重算正确。截图与原始数据在 Owner 本机 `~/code/github/skills/tmp/vh-team-B-713/`（`shots/`、`after.jsonl`），关键几张入库在 `docs/screenshots/b713-sidebar-entries/`。
+
+### 实现
+
+- `sidebarNavEntries.ts`：`sidebarNavEntries` 去掉 help；`sidebarTopModel({ isDesktop, projectsReady, teamsVisible })` 返回 `header / actions / chips`；新增 `NEW_TEAM_PATH`、`MIN_LIST_ROWS`、`fitCapabilityRows`、`splitCapabilities`。
+- `SidebarTop.tsx`（新）：`SidebarActionRows`（含 `useCapabilityFit`）、`SidebarChipRow`、`SidebarFooter`、`capabilityMenuItems`；`Sidebar.tsx` 只负责传数据。
+- `TeamsScreen.tsx`：`closeCreate` 删除 `new` 参数。
+- 文档同步：design-language、站内文档（`publicContent*`）、`docs/automations.md`、落地页工作台示意。
+
+### 兼容与发布
+
+纯 Web；无协议、存储、设置字段变化，随 server/Web 镜像发布，回滚即回滚镜像。
+
+### 用户可见变更
+
+- 中：侧栏顶部改为「新建会话 / 新建项目 / 新建团队」三个入口，团队、自动化、待办、联系人在大屏直接显示、小窗口收进「更多能力」；帮助移到侧栏底部。
+- EN: The sidebar now leads with New session, New project and New team; Teams, Automations, Todos and People show directly on tall screens and fold into More features on smaller ones; Help moved to the sidebar footer.
+
+| 桌面 1440×900 亮 | 桌面 1440×900 暗 | 1280×720（折叠） | 手机 390×844 |
+|---|---|---|---|
+| ![](../docs/screenshots/b713-sidebar-entries/desktop-1440x900-light.png) | ![](../docs/screenshots/b713-sidebar-entries/desktop-1440x900-dark.png) | ![](../docs/screenshots/b713-sidebar-entries/desktop-1280x720-more-menu.png) | ![](../docs/screenshots/b713-sidebar-entries/phone-390x844-light.png) |
