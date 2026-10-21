@@ -29,6 +29,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react';
+import { VeryHappyMark } from '@/ui/VeryHappyMark';
 
 // These are the production stylesheets, not a parallel marketing skin. The
 // preview deliberately uses the same DOM/class contracts as Sidebar,
@@ -161,7 +162,7 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
     <aside className="product-sidebar" aria-label={zh ? '多机器会话指挥面板示例' : 'Example multi-machine session command panel'}>
       <div className="sb">
         <header className="sb-header">
-          <div className="sb-brand"><img src="/icon-192.png" alt="" width={24} height={24}/><span>Very Happy</span></div>
+          <div className="sb-brand"><VeryHappyMark size={24}/><span>Very Happy</span></div>
           {/* B-676: same top as the app — 🔍 · ⋯ (团队/自动化/待办/联系人/帮助) in the header, then 新建会话 ▾ and 新建项目. */}
           <div className="sb-header-right">
             <button className="sb-icon-btn" type="button" aria-label={zh?'搜索操作、对话和终端':'Search actions, chats, and terminals'} onClick={onSearch}><Search size={16}/></button>

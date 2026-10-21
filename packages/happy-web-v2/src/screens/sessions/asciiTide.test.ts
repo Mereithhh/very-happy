@@ -15,11 +15,11 @@ describe('B-700 ASCII tide frames', () => {
   });
   it('carries the Very Happy mark centred when there is room, and winks briefly', () => {
     const open = tideFrame(48, 10, 0).join('\n');
-    expect(open).toContain('| >     o |');
-    expect(open).toContain('|  \\___/  |');
+    expect(open).toContain('|  ^   ^  |');
+    expect(open).toContain('|   ___   |');
     expect(isWinking(4.3)).toBe(true);
     expect(isWinking(2)).toBe(false);
-    expect(tideFrame(48, 10, 4.3).join('\n')).toContain('| >     - |');
+    expect(tideFrame(48, 10, 4.3).join('\n')).toContain('|  ^   -  |');
     const row = tideFrame(48, 10, 0).find((l) => l.includes('.---------.'))!;
     expect(row.indexOf('.---------.')).toBe(Math.floor((48 - MARK_WIDTH) / 2));
   });
@@ -28,7 +28,7 @@ describe('B-700 ASCII tide frames', () => {
     expect(tideFrame(48, MARK_HEIGHT + 1, 0).join('')).not.toContain('.---------.');
   });
   it('uses only the ramp, the surface foam and the mark', () => {
-    const allowed = new Set([...TIDE_RAMP, '~', ...".-|>o\\_/' "]);
+    const allowed = new Set([...TIDE_RAMP, '~', ...".-|^_' "]);
     for (const ch of tideFrame(72, 10, 2.7).join('')) expect(allowed.has(ch)).toBe(true);
   });
 });

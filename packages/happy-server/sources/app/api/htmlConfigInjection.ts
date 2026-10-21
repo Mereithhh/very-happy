@@ -91,6 +91,9 @@ export function applyBrandToHtml(html: string, brand: HtmlBrand | null, origin: 
         out = out.replace(/<link rel="apple-touch-icon" href="[^"]*" \/>/i, `<link rel="apple-touch-icon" href="${escapeHtml(brand.iconUrl)}" />`);
         out = out.replace(/<link rel="icon"[^>]*\/>/i, `<link rel="icon"${type ? ` type="${type}"` : ''} href="${escapeHtml(brand.iconUrl)}" />`);
         out = out.replace(/(<meta property="og:image" content=")[^"]*(")/i, `$1${escapeHtml(absoluteUrl(brand.iconUrl, origin))}$2`);
+        // B-724: the default card is a 1200×630 image; a square operator icon is a small card.
+        out = out.replace(/\s*<meta property="og:image:(?:width|height)" content="[^"]*" \/>/gi, '');
+        out = out.replace(/(<meta name="twitter:card" content=")summary_large_image(")/i, '$1summary$2');
     }
     if (brand.logoUrl) {
         // The splash network's hub is the default mark; show the operator's.

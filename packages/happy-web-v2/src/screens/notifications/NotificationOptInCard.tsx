@@ -52,7 +52,7 @@ async function showEnabledPreview(title: string, body: string): Promise<void> {
     await reg?.showNotification(title, {
       body,
       icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      badge: '/badge-96.png',
       tag: 'vh-test',
       data: { url: '/settings/notifications', kind: 'test', createdAt: Date.now() },
     });

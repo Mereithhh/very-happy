@@ -2,6 +2,13 @@
   <a href="README.md">English</a> · <strong>简体中文</strong>
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-lockup-dark.svg">
+    <img src=".github/logo-lockup-light.svg" height="48" alt="Very Happy">
+  </picture>
+</p>
+
 <div align="center">
   <a href="https://veryhappy.dev/welcome">
     <img src=".github/readme-hero.svg" width="100%" alt="Very Happy——连接你的机器与 coding agent 的统一工作区">

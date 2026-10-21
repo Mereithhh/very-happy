@@ -10,7 +10,7 @@ export { EmptyState } from './EmptyState';
 export { Item, ItemGroup, ItemList } from './Item';
 export { ToastProvider, useToast, toast } from './Toast';
 export { CopyButton } from './CopyButton';
-export { CyberMark } from './CyberMark';
+export { VeryHappyMark } from './VeryHappyMark';
 export { OrbitLoader, type OrbitLoaderProps } from './OrbitLoader';
 export { QuickThemeToggle } from './QuickThemeToggle';
 export { TagChip, TagOverflowChip } from './TagChip';
