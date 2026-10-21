@@ -26,6 +26,7 @@ import {
   Settings,
   StickyNote,
   TerminalSquare,
+  UsersRound,
 } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react';
 
@@ -164,7 +165,6 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
           {/* B-676: same top as the app — 🔍 · ⋯ (团队/自动化/待办/联系人/帮助) in the header, then 新建会话 ▾ and 新建项目. */}
           <div className="sb-header-right">
             <button className="sb-icon-btn" type="button" aria-label={zh?'搜索操作、对话和终端':'Search actions, chats, and terminals'} onClick={onSearch}><Search size={16}/></button>
-            <button className="sb-icon-btn" type="button" disabled aria-label={zh ? '更多（团队、自动化、待办…）' : 'More (Teams, Automations, Todos…)'}><MoreHorizontal size={16}/></button>
             <button className="sb-icon-btn product-nav-close" type="button" aria-label={zh ? '关闭会话列表' : 'Close session list'} onClick={onCloseNav}><PanelLeftClose size={16} /></button>
           </div>
         </header>
@@ -174,6 +174,12 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
             <button className="sb-nav-btn sb-new-more" type="button" disabled aria-label={zh ? '更多新建方式' : 'More ways to create'}><ChevronDown size={14}/></button>
           </div>
           <button className="sb-nav-btn" type="button" disabled><FolderPlus size={17}/><span>{zh ? '新建项目' : 'New project'}</span></button>
+          <button className="sb-nav-btn" type="button" disabled><UsersRound size={17}/><span>{zh ? '新建团队' : 'New team'}</span></button>
+          {/* B-713: capability rows fold by height — the preview shows the folded state of a short window */}
+          <div className="sb-caps">
+            <button className="sb-nav-btn sb-cap" type="button" disabled><UsersRound size={17}/><span>{zh ? '团队' : 'Teams'}</span></button>
+            <button className="sb-nav-btn sb-cap sb-caps-more" type="button" disabled><LayoutGrid size={17}/><span>{zh ? '更多能力' : 'More features'}</span><ChevronDown size={14} className="sb-caps-chevron"/></button>
+          </div>
         </div>
         <div className="sb-list-controls"><div className="sb-filter vh-segmented" role="presentation"><button className="sb-filter-btn is-on is-active" type="button" disabled>{zh ? '列表' : 'List'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '状态' : 'Status'}</button><button className="sb-filter-btn" type="button" disabled>{zh ? '归档' : 'Archived'}</button></div><div className="sb-list-tools"><button className="sb-icon-btn sb-board-btn" type="button" aria-label={zh ? '打开任务看板' : 'Open task board'} aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button></div></div>
         <div className="sb-list">
@@ -201,7 +207,7 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
             ))}
           </div>)}
         </div>
-        <footer className="sb-footer"><button className="sb-footer-btn" type="button" disabled><Settings size={15} /> {zh ? '设置' : 'Settings'}</button><button className="sb-footer-btn sb-footer-icon" type="button" disabled aria-label={zh?'笔记':'Notes'}><StickyNote size={15}/></button></footer>
+        <footer className="sb-footer"><button className="sb-footer-btn" type="button" disabled><Settings size={15} /> {zh ? '设置' : 'Settings'}</button><button className="sb-footer-btn sb-footer-help" type="button" disabled><HelpCircle size={15} /> {zh ? '帮助' : 'Help'}</button><button className="sb-footer-btn sb-footer-icon" type="button" disabled aria-label={zh?'笔记':'Notes'}><StickyNote size={15}/></button></footer>
       </div>
     </aside>
   );
