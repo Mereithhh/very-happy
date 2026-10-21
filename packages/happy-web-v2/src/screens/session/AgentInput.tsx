@@ -429,7 +429,11 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
     const contextTokens = contextKnown ? `${isPiAgent(flavor) ? '≈' : ''}${formatTokens(contextSize)}` : '—';
     const contextTotal = contextWindow === null ? null : formatTokens(contextWindow);
     const meterTone = percentUsed === null ? 'ok' : percentUsed >= 95 ? 'crit' : percentUsed >= 90 ? 'warn' : 'ok';
-    const meterTitle = `${contextWindow === null ? contextSize.toLocaleString() : `${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`} tokens`;
+    // B-727: say where the denominator came from when it is not the agent's own number.
+    const windowNote = !context.estimated ? null
+        : context.windowSource === 'unknown' ? t('session.chat.contextWindowUnknown')
+        : context.windowSource === 'inferred' ? t('session.chat.contextWindowInferred') : null;
+    const meterTitle = `${contextWindow === null ? contextSize.toLocaleString() : `${contextSize.toLocaleString()} / ${contextWindow.toLocaleString()}`} tokens${windowNote ? ` · ${windowNote}` : ''}`;
 
     // grow textarea — 收起时按内容自适应，展开时直接占满 ~60% 视口；不能只
     // 提高 max-height，否则空/短输入点击展开后没有任何视觉反馈（B-217）。
@@ -1510,10 +1514,10 @@ export function AgentInput({ sessionId, agentFlavor, pending }: {
             </div>
 
             <div className="ci-status">
-                <div className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={contextKnown ? meterTitle : undefined}>
+                <div className={`ci-meter ci-meter--${meterTone}`} aria-label={t('session.chat.contextUsage')} title={contextKnown ? meterTitle : context.compacted ? t('session.chat.contextCompactedHint') : undefined}>
                     <Gauge size={14} aria-hidden />
                     <span>{percentUsed === null ? t('session.chat.contextUsage') : t('session.chat.contextMeter', { percent: Math.round(percentUsed) })}</span>
-                    <span className="ci-meter-tokens">{contextTotal === null ? contextTokens : `${contextTokens} / ${contextTotal}`} tokens</span>
+                    <span className="ci-meter-tokens">{!contextKnown && context.compacted ? t('session.chat.contextCompacted') : `${contextTotal === null ? contextTokens : `${contextTokens} / ${contextTotal}`} tokens`}</span>
                 </div>
                 <span className="ci-hint">
                     {isWorking

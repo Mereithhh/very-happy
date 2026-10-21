@@ -72,6 +72,12 @@ export interface PiPatch {
     apiKey?: SecretInput;
     /** Model ids of this provider. Replaces the list; existing model objects keep their extra fields. */
     models?: string[];
+    /**
+     * B-727: per-model `contextWindow` (tokens). A number sets it, null removes it
+     * (pi then assumes 128000); models not named keep theirs. Older daemons ignore
+     * the field — the web only sends it when the view carries `contextWindows`.
+     */
+    contextWindows?: Record<string, number | null>;
     /** true → settings.json defaultProvider/defaultModel point here. */
     activate?: boolean;
     defaultModel?: string | null;
@@ -112,6 +118,8 @@ export interface HarnessCurrent {
     providerName?: string | null;
     api?: string | null;
     models?: string[];
+    /** pi: explicit `contextWindow` per model of the selected provider (B-727; absent on older daemons). */
+    contextWindows?: Record<string, number>;
     defaultModel?: string | null;
     /** codex/pi: provider currently selected by the harness. */
     activeProvider?: string | null;

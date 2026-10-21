@@ -417,7 +417,9 @@ structured parity with Claude.
 - Custom models and providers per machine and agent: **Settings → Models &
   providers** or **Custom…** in the model picker writes base URL, API key (or an
   env-variable reference) and models into Claude Code / Codex / Gemini / pi's own
-  config files on that machine, with a masked diff preview, backups and restore
+  config files on that machine, with a masked diff preview, backups and restore;
+  pi models can carry their context window (`glm-5.3 200k`) so the context meter
+  no longer reads against pi's 128k default
   ([details](docs/configuration.md#custom-models-and-providers-b-688)).
 - Machine web panels: declare noVNC, a browser dashboard or any local page in the
   machine's own settings.json and open it from the session workspace or machine
