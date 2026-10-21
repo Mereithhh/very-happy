@@ -496,6 +496,8 @@ describe('B-026 pinned lookup under Node autoSelectFamily', () => {
         } finally {
             await new Promise<void>((resolve) => server.close(() => resolve()));
         }
+    });
+});
 
 describe('B-510 attention push', () => {
     const originalWebUrl = process.env.HAPPY_WEB_URL;

@@ -263,6 +263,8 @@ describe("B-026 — GET /v1/webhook reports this account's delivery counters", (
         expect(Date.now() - started).toBeLessThan(1_500); // not held for the backoff
         const res = await app.inject({ method: "GET", url: "/v1/webhook", headers: { "x-user-id": userId } });
         expect(res.json().delivery).toMatchObject({ delivered: 0, failed: 0 });
+    });
+});
 
 describe("B-510 — POST /v1/sessions/:id/push-event kind 'attention'", () => {
     let app: Fastify;
