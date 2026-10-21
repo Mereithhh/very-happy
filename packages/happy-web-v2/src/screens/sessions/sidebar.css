@@ -651,6 +651,23 @@
 .sb-new-chevron { margin-left:auto; flex:none; }
 .sb-nav-btn[data-state="open"] { background: var(--fill-selected); }
 
+/* B-676: the sidebar top's two labelled actions (spec 2026-10-sidebar-header).
+   Same row metrics as the old nav column; 新建会话 is a split control — the
+   main part creates a chat, the ▾ part (its own hit target) opens every type. */
+.sb-actions { display:flex; flex-direction:column; gap:2px; padding:0 var(--sp-2) var(--sp-2); }
+.sb-actions .sb-nav-btn { display:flex; align-items:center; gap:var(--sp-2); width:100%; min-height:32px; padding:5px var(--sp-2); font-size:var(--workspace-primary-size); text-align:left; border-radius:var(--r-sm); color: var(--text); }
+.sb-actions .sb-nav-btn > svg:first-child { width:18px; flex-shrink:0; }
+.sb-actions .sb-nav-btn:hover, .sb-actions .sb-nav-btn:focus-visible { outline:none; box-shadow:none; background: var(--fill-hover); }
+.sb-new-split { display:flex; align-items:stretch; gap:2px; }
+.sb-new-split .sb-new-main { flex:1; min-width:0; font-weight:500; }
+.sb-new-split .sb-new-main > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sb-new-split .sb-new-more { flex:none; width:32px; justify-content:center; padding:0; color: var(--text-dim); }
+.sb-new-split .sb-new-more > svg:first-child { width:14px; }
+@media (pointer:coarse) {
+ .sb-actions .sb-nav-btn { min-height:44px; }
+ .sb-new-split .sb-new-more { width:44px; }
+}
+
 .sb-nav-btn[aria-busy="true"] { cursor: progress; }
 
 .sb-team-member-status { color: var(--text-dim); font-weight: 400; }
@@ -670,7 +687,7 @@
 .sb-row-status--unknown, .sb-row-status--offline { color: var(--text-faint); }
 .sb-row-unread-dot { width:6px; height:6px; border-radius:50%; background: var(--danger); }
 
-/* B-641: phone header ＋ / ⋯ (the nav column is desktop-only). The ⋯ trigger
+/* B-641: header ＋ (phone) / ⋯ (every device since B-676). The ⋯ trigger
    carries the folded entries' attention total — same danger pill as .sb-nav-attn. */
 .sb-more-btn { position: relative; }
 .sb-more-attn { position: absolute; top: 4px; right: 2px; min-width: 16px; font-size: var(--fs-10); line-height: 14px; padding: 0 4px; border-radius: var(--r-pill); color: var(--danger); border: 1px solid var(--danger); background: var(--danger-dim); pointer-events: none; }

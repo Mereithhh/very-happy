@@ -13,7 +13,7 @@ one project; sessions outside any project keep working exactly as before.
 
 ## Create a project
 
-- Sidebar **New ▾ → New project**: give it a name, then add folders on the
+- Sidebar **New project** (right under **New session**; also in the **New session ▾** menu): give it a name, then add folders on the
   project page.
 - In the sidebar, sessions outside any project are grouped by folder under
   **No project**; **Make this folder a project** turns that folder into a

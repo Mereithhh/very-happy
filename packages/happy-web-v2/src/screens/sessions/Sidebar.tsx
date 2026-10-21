@@ -73,7 +73,7 @@ import { useTeamNavigationCopy } from './teamNavigationCopy';
 import type { TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
-import { sidebarNavEntries, navAttentionTotal, navMenuLabel, type SidebarNavKey } from './sidebarNavEntries';
+import { sidebarNavEntries, navAttentionTotal, navMenuLabel, orderCreateMenu, sidebarTopModel, type SidebarNavKey } from './sidebarNavEntries';
 import {
   findRevealTarget,
   isGroupCollapsed,
@@ -1085,7 +1085,8 @@ export function Sidebar() {
   const tagNoticeVisible = orderable && showTagGroupingBackNotice({ sidebarGrouping: grouping, sidebarGroupMode: savedGroupMode, sidebarGroupByTag: groupByTag, tagGroupingBackNoticeDismissed: tagNoticeDismissed });
 
   const [moveProjectTarget, setMoveProjectTarget] = useState<{ sessionId: string; candidates: { sessionId: string; title: string }[] } | null>(null);
-  const createItems: MenuItemDef[] = [
+  // B-676: 新会话 first, 新项目 second (orderCreateMenu) — on the phone ＋ they are the top two rows.
+  const createItems: MenuItemDef[] = orderCreateMenu([
     ...(projectsSnap.status === 'ready' ? [{
       // B-647: 新建 ▾ → 新项目 (name only; folders and defaults live on the project page).
       key: 'project',
@@ -1154,9 +1155,12 @@ export function Sidebar() {
       separatorBefore: true,
       onSelect: () => navigate('/machine/connect'),
     },
-  ];
+  ]);
 
-  // B-641: secondary entries — a nav column on desktop, the ⋯ menu on phones.
+  // B-641/B-676: secondary entries live in the header ⋯ menu on every device.
+  const top = sidebarTopModel({ isDesktop, projectsReady: projectsSnap.status === 'ready' });
+  const newRowRef = useRef<HTMLDivElement | null>(null);
+  const [newRowWidth, setNewRowWidth] = useState<number>();
   const navEntries = sidebarNavEntries({ teamsVisible: happyBotEntryVisible, automationsVisible: automationsEnabled, automationAttention, incomingPeople });
   const navAttention = navAttentionTotal(navEntries);
   const navName: Record<SidebarNavKey, string> = {
@@ -1167,7 +1171,6 @@ export function Sidebar() {
     help: t('sidebar.openHelp'),
   };
   const navIcon = { teams: UsersRound, automations: Zap, todos: ListChecks, people: Contact, help: CircleHelp } as const;
-  const navBadgeTitle: Partial<Record<SidebarNavKey, string>> = { automations: t('automations.decisions'), people: t('people.incoming') };
 
   return (
     <div className="sb">
@@ -1178,23 +1181,23 @@ export function Sidebar() {
         </button>
         <div className="sb-header-right">
           {/* B-650: 🔍 opens the session search (spec 2026-10-projects §7); ⌘K stays the quick jump. */}
-          <button className="sb-icon-btn" aria-label={t("sessionSearch.title")} title={`${t("sessionSearch.title")} · ${SESSION_SEARCH_HINT}`} onClick={openSessionSearch}><Search size={17}/></button>
-          {/* B-641: the phone list keeps its height — new session and the
-              secondary entries live in the header instead of six nav rows. */}
-          {!isDesktop && (
+          {top.header.includes('search') && <button className="sb-icon-btn" aria-label={t("sessionSearch.title")} title={`${t("sessionSearch.title")} · ${SESSION_SEARCH_HINT}`} onClick={openSessionSearch}><Search size={17}/></button>}
+          {/* B-641: the phone list keeps its height — new session lives in the header ＋. */}
+          {top.header.includes('create-menu') && (
             <ActionDropdownMenu align="end" sideOffset={4} items={createItems}>
               <button className="sb-icon-btn sb-new-icon" disabled={creatingChat} aria-busy={creatingChat} aria-label={t('sidebar.newSession')} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail}>
                 {creatingChat ? <Spinner size={17} /> : <Plus size={19} />}
               </button>
             </ActionDropdownMenu>
           )}
-          {!isDesktop && (
+          {/* B-676: 团队 / 自动化 / 待办 / 联系人 / 帮助 — one ⋯ on every device; the badge sums what needs the user. */}
+          {top.header.includes('more') && (
             <ActionDropdownMenu
               align="end"
               sideOffset={4}
               items={navEntries.map((e) => ({ key: e.key, label: navMenuLabel(navName[e.key], e.attention), icon: navIcon[e.key], onSelect: () => navigate(e.path) }))}
             >
-              <button className="sb-icon-btn sb-more-btn" aria-label={t('sidebar.moreEntries')} title={t('sidebar.moreEntries')}>
+              <button className="sb-icon-btn sb-more-btn" aria-label={navAttention > 0 ? `${t('sidebar.moreEntries')} · ${navAttention}` : t('sidebar.moreEntries')} title={t('sidebar.moreEntries')}>
                 <MoreHorizontal size={18} />
                 {navAttention > 0 && <span className="sb-more-attn mono" aria-hidden>{navAttention}</span>}
               </button>
@@ -1206,8 +1209,8 @@ export function Sidebar() {
               collapsed=1 to localStorage and the NEXT desktop visit opened
               with the sidebar unexpectedly collapsed. Same 980px breakpoint
               as the layout itself, so button and behavior can't disagree. */}
-          {isDesktop && (
-            <button className="sb-icon-btn" title={t('sidebar.collapse')} onClick={toggleCollapsed}>
+          {top.header.includes('collapse') && (
+            <button className="sb-icon-btn" title={t('sidebar.collapse')} aria-label={t('sidebar.collapse')} onClick={toggleCollapsed}>
               <PanelLeftClose size={17} />
             </button>
           )}
@@ -1215,27 +1218,25 @@ export function Sidebar() {
         </div>
       </header>
 
-      {isDesktop && <nav className="sb-products" aria-label="Workspace">
-          <ActionDropdownMenu
-            align="start"
-            sideOffset={4}
-            matchTriggerWidth
-            items={createItems}
-          >
-            <button className="sb-nav-btn" disabled={creatingChat} aria-busy={creatingChat} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail}>
-              {creatingChat ? <Spinner size={17} /> : <Plus size={17} />}<span>{creatingChat ? (lang.startsWith('zh') ? '正在创建…' : 'Creating…') : t('sidebar.newSession')}</span><ChevronDown size={14} className="sb-new-chevron"/>
+      {/* B-676: two labelled actions instead of a six-row nav column (spec 2026-10-sidebar-header).
+          新建会话: the main part starts a chat in one click, ▾ lists every create type. */}
+      {top.actions.length > 0 && <div className="sb-actions">
+        {top.actions.includes('new-session') && <div className="sb-new-split" ref={newRowRef}>
+          <button className="sb-nav-btn sb-new-main" disabled={creatingChat} aria-busy={creatingChat} title={t('sidebar.newSession')} onPointerDown={prefetchSessionDetail} onClick={() => void createChatOrConfigure(navigate, configureNew, { location })}>
+            {creatingChat ? <Spinner size={17} /> : <Plus size={17} />}<span>{creatingChat ? (lang.startsWith('zh') ? '正在创建…' : 'Creating…') : t('sidebar.newSession')}</span>
+          </button>
+          <ActionDropdownMenu align="end" sideOffset={4} contentMinWidth={newRowWidth} items={createItems}>
+            <button className="sb-nav-btn sb-new-more" aria-label={t('sidebar.newMenu')} title={t('sidebar.newMenu')} onPointerDown={() => setNewRowWidth(newRowRef.current?.offsetWidth)}>
+              <ChevronDown size={14} />
             </button>
           </ActionDropdownMenu>
-        {navEntries.map((e) => {
-          const Icon = navIcon[e.key];
-          return (
-            <button key={e.key} onClick={() => navigate(e.path)}>
-              <Icon size={e.key === 'help' ? 17 : 18} /><span>{navName[e.key]}</span>
-              {e.attention > 0 && <span className="sb-nav-attn mono" title={navBadgeTitle[e.key]}>{e.attention}</span>}
-            </button>
-          );
-        })}
-      </nav>}
+        </div>}
+        {top.actions.includes('new-project') && (
+          <button className="sb-nav-btn" title={t('sidebar.newProject')} onClick={() => void createNamedProject()}>
+            <FolderPlus size={17} /><span>{t('sidebar.newProject')}</span>
+          </button>
+        )}
+      </div>}
 
       <div className="sb-list-controls">
       <div className="sb-filter vh-segmented" role="tablist">
