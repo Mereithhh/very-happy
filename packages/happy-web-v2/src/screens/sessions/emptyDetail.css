@@ -7,4 +7,4 @@
 /* B-720: the depth field fills the area; a soft canvas-coloured pool under the
    copy keeps title/description/buttons AA however dense the field gets. */
 .empty-detail > .ascii-field { z-index: 0; }
-.empty-detail__content::before { position: absolute; inset: calc(-1 * var(--sp-8)) calc(-1 * var(--sp-10)); z-index: -1; border-radius: var(--r-pill); background: radial-gradient(closest-side, var(--bg-0) 55%, color-mix(in srgb, var(--bg-0) 70%, transparent) 78%, transparent); pointer-events: none; content: ''; }
+.empty-detail__content::before { position: absolute; inset: calc(-1 * var(--sp-8)) calc(-1 * var(--sp-10)); z-index: -1; border-radius: var(--r-pill); background: radial-gradient(closest-side, var(--bg-0) 72%, color-mix(in srgb, var(--bg-0) 70%, transparent) 88%, transparent); pointer-events: none; content: ''; }
