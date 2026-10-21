@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSessionsArgs, permissionFailureRecord } from './sessions'
+import { parseSessionsArgs, peerMessageExitCode, permissionFailureRecord, SESSIONS_HELP } from './sessions'
 
 const ID = 'cmtl3c0x7001vqr29o8nmclno'
 
@@ -164,5 +164,22 @@ describe('parseSessionsArgs --machine (B-506)', () => {
         expect(() => parseSessionsArgs(['read', ID, '--machine'])).toThrow(/--machine requires a machine id/)
         expect(() => parseSessionsArgs(['read', ID, '--machine', 'bad id'])).toThrow(/--machine requires a machine id/)
         expect(() => parseSessionsArgs(['list', '--all', '--machine', 'm-1'])).toThrow(/cannot be combined with --all/)
+    })
+})
+
+describe('peerMessageExitCode (B-646 follow-up)', () => {
+    it('exits 0 for a delivered message and for one kept for a same-project session', () => {
+        expect(peerMessageExitCode({ delivered: true, status: 'live' })).toBe(0)
+        expect(peerMessageExitCode({ delivered: false, status: 'offline-stored' })).toBe(0)
+    })
+
+    it('exits 1 for any other undelivered outcome', () => {
+        for (const status of ['live', 'archived', 'offline', 'not_found'] as const) {
+            expect(peerMessageExitCode({ delivered: false, status })).toBe(1)
+        }
+    })
+
+    it('help describes the same-project exception', () => {
+        expect(SESSIONS_HELP).toContain('offline-stored')
     })
 })
