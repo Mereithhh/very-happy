@@ -98,7 +98,7 @@ export function startDaemonControlServer({
   /** B-501: the same in-place resume the `resume-happy-session` machine RPC
    *  runs (`very-happy send --resume`). Optional so older wirings/tests keep
    *  working (→ 503). */
-  resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
+  resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; keepPublishedPermissionMode?: boolean }) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
   /** B-069: a session reported a stable state transition (turn done /
@@ -461,7 +461,9 @@ export function startDaemonControlServer({
         return { success: false, error: 'daemon is still starting up' };
       }
       logger.debug(`[CONTROL SERVER] Resume session request: ${sessionId} (model=${model ?? 'unset'}, permissionMode=${permissionMode ?? 'unset'})`);
-      const result = await resumeSession(sessionId, { model, permissionMode });
+      // B-707: a caller without a mode (`send --resume`, session_send) keeps
+      // the one the last wrapper published; an explicit one still wins.
+      const result = await resumeSession(sessionId, { model, permissionMode, keepPublishedPermissionMode: true });
       switch (result.type) {
         case 'success':
           return { success: true, sessionId: result.sessionId };
