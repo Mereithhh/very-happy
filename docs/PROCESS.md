@@ -173,6 +173,7 @@ triage（分独立/冲突域）
 | `cli-smoke-test.yml` `smoke-linux` | push main / PR（限 `packages/happy-cli/**`）+ 每个 tag | 托管 Linux，node 20 + 24 |
 | `cli-smoke-test.yml` `smoke-hosted` | **只有 tag**（或手动勾 `cross_platform`） | 托管 macOS + Windows × node 20/24 |
 | `deploy-hwsg.yml` / `deploy-relays.yml` / `publish.yml` | 手动 / tag | 托管 Linux |
+| `e2e-smoke.yml`（B-024 浏览器冒烟） | `deploy-hwsg.yml` switch 成功后的 `smoke` job / 手动 | 托管 Linux（无 `VH_SMOKE_*` secrets 时跳过） |
 
 - `gh variable set SKIP_HOSTED_SMOKE --body 1` 仍能临时关掉 tag 的跨平台冒烟（事后
   `gh variable delete`），代价是那几个 tag 的发版信心退回 Linux 级别；公开仓下已无省钱理由，

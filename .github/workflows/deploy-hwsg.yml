@@ -162,3 +162,13 @@ jobs:
       - name: Cleanup SSH key
         if: always() && inputs.target != 'publish'
         run: rm -f "${{ runner.temp }}/hwsg_key"
+
+  # B-024: real-browser smoke against production after a switch, as its own
+  # job — a failure here does not undo the deploy; it asks a human to look.
+  smoke:
+    needs: deploy
+    if: inputs.target != 'publish' && inputs.rollout == 'switch'
+    uses: ./.github/workflows/e2e-smoke.yml
+    with:
+      url: https://veryhappy.dev
+    secrets: inherit
