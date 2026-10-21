@@ -38,7 +38,11 @@ permissions:
 
 jobs:
   smoke:
-    runs-on: ubuntu-latest
+    # B-669: pinned. ubuntu-latest moved to 26.04, which the locked Playwright
+    # (1.55) cannot install Chromium deps for ("does not support chromium on
+    # ubuntu26.04-x64"), so the 2026-10-21 post-deploy smoke failed before it
+    # ran. Move this only together with a Playwright that supports the image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
