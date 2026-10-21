@@ -1,6 +1,7 @@
 import { Check, PackageOpen } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { CHANGELOG_RELEASES } from '@/app/changelogRelease';
+import { ChangelogHighlights } from '@/app/ChangelogHighlights';
 import { useTranslation } from '@/i18n/useTranslation';
 import './changelog.css';
 
@@ -30,11 +31,15 @@ export function ChangelogScreen() {
             </div>
             <h2>{t(release.titleKey)}</h2>
             <p>{t(release.summaryKey)}</p>
-            <ul>
-              {release.itemKeys.map((key) => (
-                <li key={key}><Check size={15} aria-hidden="true" />{t(key)}</li>
-              ))}
-            </ul>
+            {release.highlights?.length ? (
+              <ChangelogHighlights release={release} headingLevel={3} inApp={false} />
+            ) : (
+              <ul>
+                {release.itemKeys.map((key) => (
+                  <li key={key}><Check size={15} aria-hidden="true" />{t(key)}</li>
+                ))}
+              </ul>
+            )}
             {release.cliVersion && (
               <div className="chg-cli">
                 <PackageOpen size={17} aria-hidden="true" />
