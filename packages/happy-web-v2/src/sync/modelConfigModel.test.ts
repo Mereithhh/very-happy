@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { formFromView, harnessForFlavor, machineSupportsModelConfig, patchFromForm, splitModelList, withCustomModels, describeModelConfigError } from './modelConfigModel';
+import { formFromView, newProviderForm, harnessForFlavor, machineSupportsModelConfig, patchFromForm, splitModelList, withCustomModels, describeModelConfigError } from './modelConfigModel';
 import { createModelConfigStore } from './modelConfigStore';
 import type { HarnessConfigView } from './modelConfigTypes';
 
@@ -47,6 +47,12 @@ describe('patchFromForm', () => {
         const form = { ...formFromView('codex', null), providerId: 'mock', baseUrl: 'http://127.0.0.1:5341/v1', model: 'm', keyMode: 'literal' as const, keyValue: 'sk-x' };
         expect(form.isNewProvider).toBe(true);
         expect(patchFromForm(form, null)).toEqual({ harness: 'codex', providerId: 'mock', baseUrl: 'http://127.0.0.1:5341/v1', apiKey: { mode: 'literal', value: 'sk-x' }, model: 'm', activate: true });
+    });
+    it('a new codex provider keeps the top-level model (it is not per provider)', () => {
+        const v = view({ harness: 'codex', current: { providerId: 'old', baseUrl: 'https://o/v1', model: 'gpt-5.5', active: true } });
+        const form = { ...newProviderForm('codex', true, v), providerId: 'new', baseUrl: 'https://n/v1' };
+        expect(form.model).toBe('gpt-5.5');
+        expect(patchFromForm(form, v)).toEqual({ harness: 'codex', providerId: 'new', baseUrl: 'https://n/v1', activate: true });
     });
     it('pi: models list and default model when activating', () => {
         const v = view({ harness: 'pi', current: { providerId: 'gw', baseUrl: 'https://x/v1', api: 'openai-completions', models: ['a'], active: false } });

@@ -18,7 +18,7 @@ import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { modelConfigApply, modelConfigRead, modelConfigRestore } from '@/sync/modelConfigOps';
 import { modelConfigStore, useMachineModelConfig } from '@/sync/modelConfigStore';
 import {
-    HARNESS_LABELS, describeModelConfigError, formFromView, machineSupportsModelConfig, patchFromForm,
+    HARNESS_LABELS, describeModelConfigError, formFromView, machineSupportsModelConfig, newProviderForm, patchFromForm,
     type KeyMode, type ModelConfigForm,
 } from '@/sync/modelConfigModel';
 import { HARNESS_IDS, PI_APIS, type HarnessConfigView, type HarnessId, type ModelConfigApplyResult } from '@/sync/modelConfigTypes';
@@ -73,6 +73,13 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, initialMachineId, initialHarness]);
 
+    // Machines can arrive after the dialog opened: pick the default once they do.
+    useEffect(() => {
+        if (open && !machineId && machines.length) {
+            setMachineId((machines.find((m) => isMachineOnline(m) && machineSupportsModelConfig(m)) ?? machines[0]).id);
+        }
+    }, [open, machineId, machines]);
+
     const machine = machines.find((m) => m.id === machineId) ?? null;
     const supported = machineSupportsModelConfig(machine);
     const online = machine ? isMachineOnline(machine) : false;
@@ -102,8 +109,7 @@ export function ModelConfigEditor({ open, onOpenChange, machineId: initialMachin
     // Reset the form whenever what it edits changes.
     const formKey = `${machineId}|${harness}|${selectedProvider}|${view?.baseHash ?? ''}`;
     useEffect(() => {
-        const base = formFromView(harness, selectedProvider === NEW_PROVIDER ? null : view);
-        setForm(selectedProvider === NEW_PROVIDER ? { ...base, isNewProvider: true, providerId: '', activate: true } : base);
+        setForm(newProviderForm(harness, selectedProvider === NEW_PROVIDER, view));
         setPending(null);
         setError(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps

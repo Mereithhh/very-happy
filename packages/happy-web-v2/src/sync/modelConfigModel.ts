@@ -82,6 +82,17 @@ export function formFromView(harness: HarnessId, view: HarnessConfigView | null 
     };
 }
 
+/**
+ * The form for the current selection. A NEW codex/pi provider starts empty,
+ * except Codex's top-level `model`, which is not per provider: starting it
+ * empty would make the patch delete the user's model.
+ */
+export function newProviderForm(harness: HarnessId, isNew: boolean, view: HarnessConfigView | null | undefined): ModelConfigForm {
+    if (!isNew) return formFromView(harness, view);
+    const base = formFromView(harness, null);
+    return { ...base, isNewProvider: true, providerId: '', activate: true, model: harness === 'codex' ? view?.current.model ?? '' : '' };
+}
+
 function secretFromForm(form: ModelConfigForm): SecretInput | undefined {
     if (form.keyMode === 'literal') return form.keyValue.trim() ? { mode: 'literal', value: form.keyValue.trim() } : undefined;
     if (form.keyMode === 'env') return form.keyEnv.trim() ? { mode: 'env', name: form.keyEnv.trim() } : undefined;
