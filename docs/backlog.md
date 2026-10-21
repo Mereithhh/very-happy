@@ -24,21 +24,24 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-721 | 侧栏团队行点击直接进看板，Owner 实际想跟负责人聊 → 点名字打开负责人（root bot）会话（无负责人会话时退回看板），chevron 只展开 / 收起，行右侧加看板按钮和右键「打开看板」，并显示负责人状态点 | ux | Owner 2026-10-21 | doing | 第三版；Dev-E1，B-713 之后单独出 PR |
-| B-720 | 动态 ASCII 景深 / 模糊背景：共用 AsciiField 引擎（canvas，≥3 层，视差），用于 landing（最强）、App 默认页、文档和设置的页头、侧栏空白区（极淡）。约束：AA 对比度、reduced-motion 静态、离屏暂停、≤30fps、每帧 <2ms、LCP 不变差；外观设置加开关 | feat | Owner 2026-10-21 | doing | 第三版；B-700 的加强版 |
-| B-719 | CLI 自动安装 / 更新缺失的 harness（Claude Code / Codex / pi / Gemini）：daemon 上报安装状态，机器页和 agent 选择器提示缺失并可点击安装；安装命令白名单写死在 CLI 里，server 只传枚举值，不静默安装、不用 sudo | feat | Owner 2026-10-21 | doing | 第三版 |
-| B-718 | daemon 自动升级「发版就跟上」：核实 B-327/B-503 的实际效果（默认值、各机器版本、0.2.180 后卡点），做到默认开、promote 后尽快生效（推送或缩短轮询）、机器页显示状态并提供「立即升级」；保持 idle-only、不装 next、每版本只尝试一次 | feat | Owner 2026-10-21 | doing | 第三版 |
-| B-717 | 升级内置 `@anthropic-ai/claude-agent-sdk`（0.3.296 → 最新），逐条核对 CHANGELOG 里的行为变化，真实会话实测 | debt | Owner 2026-10-21 | doing | 第三版 |
-| B-716 | 会话里的团队卡片和跨会话卡片：收起态是 markdown 感知的预览（无裸符号、剥协议头，含 B-704），点击弹出浮层完整渲染 markdown（桌面 popover / dialog，手机 sheet），可复制、可跳转 | ux | Owner 2026-10-21 | doing | 第三版 |
-| B-715 | 大更新醒目标识 + 叠加的更新通知必须逐条看完才能关（从旧到新翻页，显示进度）；侧栏有未看大更新时显示入口；深链进入不强制弹出（保留 B-697） | feat | Owner 2026-10-21 | doing | 第三版 |
-| B-714 | UI 去掉原生 `<select>`（约 26 个文件），统一换成设计系统组件并加 lint 禁止；连同 UI 走查（含移动端、触屏 sticky hover）的 P0 / P1 一起修 | ux | Owner 2026-10-21 | doing | 第三版；等 UI 走查报告 |
-| B-713 | 侧栏主入口改版：新建会话 ▾ / 新建项目 / 新建团队，团队、自动化、待办、联系人按可用高度自适应展示，其余收进「更多能力 ▾」；去掉右上角 ⋯，帮助移到 footer；手机 header 只留 🔍 和 ＋，下面一行 chip；修 logo 在触屏上的 sticky hover | ux | Owner 2026-10-21 | doing | 第三版；Dev-E1 |
-| B-701 | 会话分享分层：联系人分享（SessionGrant 加 expiresAt）+ 带 token 的只读 weblink（SessionShareLink，只存 sha256，可撤销、有有效期，服务端投影 + redactSecrets，记录打开审计） | feat | Owner 2026-10-21 | doing | 第三版；PR #655，安全复审第四轮修复中；spec `specs/2026-10-session-sharing-tiers.md` |
-| B-712 | **CLI publish 的 promote 读 smoke run 有竞态**：run 已显示 completed，windows/node24 那格 job 结论仍是 in_progress/null，被判为失败（0.2.180 publish 39609083643 第 1 次 promote 被拒，等那格 success 后重跑通过）→ 等所有 job 级 conclusion 落定再判，缺格不算通过 | debt | 第二版 CLI 0.2.180 发版 | todo | |
-| B-711 | **蓝绿切流停旧槽后线上约 9s 不可用**（deploy run 39607760413，exit=5 phase=after-old-stop）：Caddy 13:31:05.06 reload，blue 05.83 即退出（隔 0.8s），origin probe 06.8–15.5 连续超时；同窗 green 260 connect / 306 disconnect / 412 auth，重连风暴压住新槽 → 旧槽停止前等连接排空，和/或客户端重连加抖动退避 | bug | 第二版发版 | todo | |
+| B-744 | dev-sg 交互 shell 的 `npm -g` 仍写到 root 的 `/usr`（B-718 发版只把 daemon/systemd 改成用户级 prefix）→ 是否 `npm config set prefix ~/.npm-global` 统一，待 Owner 决定 | debt | 第三版收尾（10-22） | todo | |
+| B-743 | 团队负责人的会话标题会跟账号级语言指令变成中文（低优先级）→ 标题生成固定用团队/任务原文语言或不受全局指令影响 | ux | 第三版收尾（10-22） | todo | |
+| B-742 | 发版流程：B-718 已生效，daemon 升级改为「等自动升级，只做核对」（PROCESS/release skill）；demo 环境复用本机 Claude 凭据会注入 Owner 邮箱和全局指令 → demo 用专用隔离凭据 | debt | 第三版收尾（10-22） | todo | |
+| B-741 | daemon spawn：上次失败残留同名分支时 `worktree add -b` 永久失败（10-22 B-730 首次派发卡住）→ 复用无独有提交的旧分支或清理；团队 worktree 基于本地仓库 HEAD 创建（dev-sg 停在 9-25 的 20bffc17）→ 改为基于 origin/main | bug | 第三版收尾（10-22） | todo | |
+| B-740 | 团队：ChatHeader 对已在团队里的会话不显示「用这个对话带队」；在团队 worktree 目录里新开的普通会话自成一个 UUID 命名的分组 → 新建会话默认用团队 home 目录 | ux | 第三版收尾（10-22） | todo | |
+| B-739 | 移动端：Android 返回键关不掉 sheet，MessageReader 也一样 → 打开 sheet/reader 时压 history 记录，返回键先关浮层 | bug | 第三版收尾（10-22） | todo | |
+| B-738 | UI 走查剩余项（B-728 Follow-ups）：P1-11 三处页头统一；P2-16 设置首页导航重复；P1-10 251 处 `zh ? :` 迁到 t()（与 B-693 合并做）；P2-06 roving tabindex；P2-07 / P2-08 待 Owner 决定；P2-09 裸色值；P2-10 阴影 token 文案；P2-14 自动化的模型选择器；P2-18 手机顶栏截断；P2-19 纯文字 loading | ux | 第三版收尾（10-22） | todo | |
+| B-737 | 品牌收尾：清理上游残留 `.github/header.png`、`mascot.png`；侧栏 mark 实际 18px 而规范写 24px → 两边统一；正式商标检索由 Owner 决定 | debt | 第三版收尾（10-22） | todo | |
+| B-736 | harness：在应用外卸载 harness 后机器页状态不刷新；pi provider 认证失败时会话只显示 end_turn 不说原因；`sessions read` 对中断后没有回答的回合一直显示 running → 状态重新探测 + 错误透传 + 中断回合收尾 | bug | 第三版收尾（10-22） | todo | |
+| B-735 | CLI 稳定性：高负载下 `daemon start` / spawn 误报失败；`send --resume` 紧接 stop 时消息落到正在退出的旧 wrapper，丢失且不报错；`/compact` 与其他消息合成一批时不触发压缩 → 放宽探活判定、resume 等旧 wrapper 退出再投递、/compact 单独成批 | bug | 第三版收尾（10-22） | todo | |
+| B-734 | 发送：带附件时要等上传完才能上屏；加密 key 未就绪时发送卡在等待 sessionsSync → 附件先乐观上屏带上传进度，key 未就绪时排队并显示状态（B-722 后续） | ux | 第三版收尾（10-22） | todo | |
+| B-733 | 发送性能：发一条消息触发整页重渲染，Sidebar、ChatHeader 和 ChatList 每行的 MessageActions 都在重渲染范围内 → 收窄 store 订阅 / memo，profile 取证后修 | debt | 第三版收尾（10-22） | todo | |
+| B-732 | 项目上下文支持「提议修改说明」（`project_note` kind=proposal）→ 先放宽旧 Web 读取端的 kind enum（未知值不丢），再开写入端（约束 4/14 双向兼容） | feat | 第三版收尾（10-22） | todo | |
+| B-731 | B-701 nits：`password_policy` 被误遮；计数词豁免能被 `access_token_limit` 这类写法绕过；`PUBLIC_FETCH_BATCH=4` 改为按大小自适应；超大行先查长度，不整行读入 | debt | 第三版收尾（10-22） | todo | |
+| B-712 | **CLI publish 的 promote 读 smoke run 有竞态**：run 已显示 completed，windows/node24 那格 job 结论仍是 in_progress/null，被判为失败（0.2.180 publish 39609083643 第 1 次 promote 被拒，等那格 success 后重跑通过）→ 等所有 job 级 conclusion 落定再判，缺格不算通过 | debt | 第二版 CLI 0.2.180 发版 | todo | **10-22 第三版 CLI 0.2.181 未复现**：smoke 六格全绿，promote 一次通过（latest=next=0.2.181）；竞态仍在，保持 todo |
+| B-711 | **蓝绿切流停旧槽后线上约 9s 不可用**（deploy run 39607760413，exit=5 phase=after-old-stop）：Caddy 13:31:05.06 reload，blue 05.83 即退出（隔 0.8s），origin probe 06.8–15.5 连续超时；同窗 green 260 connect / 306 disconnect / 412 auth，重连风暴压住新槽 → 旧槽停止前等连接排空，和/或客户端重连加抖动退避 | bug | 第二版发版 | todo | **10-22 第三版切流**（deploy 39688524732，blue 上线、回滚点 green f2eb1836）：只出现 2 次不连续的 2s probe 超时（第二版是连续 4 次 / 约 9s），有缓解但仍非零中断，保持 todo |
 | B-709 | daemon 对 worktree 准备之外的通用 spawn 失败仍每 5s 重试一次 → 统一有界退避；另：worker 委派子成员时继承父成员 worktree 作为源仓库，语义未写进文档 | debt | B-706 顺带 | todo | |
 | B-705 | `scripts/dev/mutation-check.mjs` 的 `--mutate` 字面量以冒号开头（如 `::not(`）时解析错，报出假的 0/1 caught → 修参数解析并加用例 | debt | B-699 顺带 | todo | |
-| B-704 | 看板卡和侧栏会话预览把团队/跨会话消息的原始头 `[Very Happy team message …]` 当正文显示 → 预览时剥掉信封头 | ux | B-687 顺带 | todo | |
 | B-703 | 团队仓库还没有任何 commit 时 `git worktree add` 失败，Web 只显示「重试」不说原因 → daemon 回报具体原因（空仓库需先提交），Web 显示 | bug | B-688/B-698 顺带 | todo | |
 | B-702 | Gemini 作为 team harness：wire/server/CLI 都要放开，并验证 gemini runner 能用团队 MCP（B-698 目前只列 Claude/Codex/pi） | feat | B-698 顺带 | todo | |
 | B-695 | pi/ACP runner 没有 B-679 的 exitCursor 重放（离线期间发的消息恢复后不送达），也不写休眠戳 → 对齐 Claude/Codex | bug | B-679 顺带 | todo | |
@@ -69,6 +72,26 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-730 | restart / resume / 唤醒拉起的团队 wrapper 重新带上团队作用域（缺 scope 文件时重建）；会话至多属于一个活团队（`session_in_other_team`，Web 确认后转移）；负责人工作法第 8 条 | bug | roll-pool 事故（10-21） | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#680 |
+| B-729 | 团队会话都嵌在所属团队下：被两个团队认领的会话不再落在两边之外；早期 generation / adopt 历史折叠；可选 `TeamBot.previousSessionIds` | bug | 第三版 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#675 |
+| B-728 | UI 走查 P1/P2：受控 hover（codemod + lint）、按输入方式的焦点环、统一弹窗外壳及 P1/P2 修复（剩余项见 B-738） | ux | UI 走查 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#672 |
+| B-727 | pi 上下文用量指示：真实窗口（配置 > 推断 > 未知），/compact 真正压缩，自定义模型表单可填上下文窗口 | feat | 第三版 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#674 |
+| B-726 | 新建团队自带同名项目（团队上下文 = 项目上下文）；团队/项目/会话绑定入口；侧栏「按文件夹」标签；UI-P0-01 新建团队表单 | feat | Owner 10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#676 |
+| B-725 | 团队提示词默认注入负责人工作法（委派优先、并行、防冲突、项目上下文、任务书、验收、沟通）与成员规则 | feat | Owner 10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#668 |
+| B-724 | 新 logo：反色 `^_^` 方块，全站替换（favicon、PWA、侧栏、landing、文档、README、OG） | ux | Owner 10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#671 |
+| B-723 | QA2 后续：/teams 卡片只数当前成员、团队按自己的仓库分组、团队操作错误翻译、closed-before-spawn 不提示处理、机器元数据加载中不误报「升级 CLI」、功能提示不盖恢复横幅、quick chat 需用户手势 + spawn 来源诊断 | bug | 第二版 QA2 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#667 |
+| B-722 | 发送和修改即时上屏并显示状态：文本发送点击即绘制（后加密）、服务端队列行乐观（重试 / 退回输入框 / 删除，离线等待重试）、时钟 → 转圈 → 渐隐对勾、离线去向提示、队列编辑 / 草稿 / 消息修改显示保存中 → 已保存 | ux | Owner 10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#673 |
+| B-721 | 侧栏团队行点击直接进看板，Owner 实际想跟负责人聊 → 点名字打开负责人（root bot）会话（无负责人会话时退回看板），chevron 只展开 / 收起，行右侧加看板按钮和右键「打开看板」，并显示负责人状态点 | ux | Owner 2026-10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#666 |
+| B-720 | 动态 ASCII 景深 / 模糊背景：共用 AsciiField 引擎（canvas，≥3 层，视差），用于 landing（最强）、App 默认页、文档和设置的页头、侧栏空白区（极淡）。约束：AA 对比度、reduced-motion 静态、离屏暂停、≤30fps、每帧 <2ms、LCP 不变差；外观设置加开关 | feat | Owner 2026-10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#678 |
+| B-719 | CLI 自动安装 / 更新缺失的 harness（Claude Code / Codex / pi / Gemini）：daemon 上报安装状态，机器页和 agent 选择器提示缺失并可点击安装；安装命令白名单写死在 CLI 里，server 只传枚举值，不静默安装、不用 sudo | feat | Owner 2026-10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#679 |
+| B-718 | daemon 自动升级「发版就跟上」：核实 B-327/B-503 的实际效果（默认值、各机器版本、0.2.180 后卡点），做到默认开、promote 后尽快生效（推送或缩短轮询）、机器页显示状态并提供「立即升级」；保持 idle-only、不装 next、每版本只尝试一次 | feat | Owner 2026-10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#669 |
+| B-717 | 升级内置 `@anthropic-ai/claude-agent-sdk`（0.3.296 → 最新），逐条核对 CHANGELOG 里的行为变化，真实会话实测 | debt | Owner 2026-10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#663 |
+| B-716 | 会话里的团队卡片和跨会话卡片：收起态是 markdown 感知的预览（无裸符号、剥协议头，含 B-704），点击弹出浮层完整渲染 markdown（桌面 popover / dialog，手机 sheet），可复制、可跳转 | ux | Owner 2026-10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#664（含 B-704） |
+| B-715 | 大更新醒目标识 + 叠加的更新通知必须逐条看完才能关（从旧到新翻页，显示进度）；侧栏有未看大更新时显示入口；深链进入不强制弹出（保留 B-697） | feat | Owner 2026-10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#662 |
+| B-714 | UI 去掉原生 `<select>`（约 26 个文件），统一换成设计系统组件并加 lint 禁止；连同 UI 走查（含移动端、触屏 sticky hover）的 P0 / P1 一起修 | ux | Owner 2026-10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#670 + #677 |
+| B-713 | 侧栏主入口改版：新建会话 ▾ / 新建项目 / 新建团队，团队、自动化、待办、联系人按可用高度自适应展示，其余收进「更多能力 ▾」；去掉右上角 ⋯，帮助移到 footer；手机 header 只留 🔍 和 ＋，下面一行 chip；修 logo 在触屏上的 sticky hover | ux | Owner 2026-10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#665 |
+| B-704 | 看板卡和侧栏会话预览把团队/跨会话消息的原始头 `[Very Happy team message …]` 当正文显示 → 预览时剥掉信封头 | ux | B-687 顺带 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：并入 B-716 #664 |
+| B-701 | 会话分享分层：联系人分享（SessionGrant 加 expiresAt）+ 带 token 的只读 weblink（SessionShareLink，只存 sha256，可撤销、有有效期，服务端投影 + redactSecrets，记录打开审计） | feat | Owner 2026-10-21 | done | **10-22 第三版发版：server/Web 62e25c7b，CLI 0.2.181**：#655；spec `specs/2026-10-session-sharing-tiers.md`，迁移 20261021180000_session_share_links |
 | B-710 | 「不分组」视图展开团队时不显示「N 个已停用」折叠行（displayRows 过滤掉了 teamInactiveFold） | bug | B-708 顺带 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#659 |
 | B-708 | **团队成员都归档后侧栏把同一团队重复渲染多次**，每行带空的「无工作目录 0」分组头；按标签分组时被「暂无会话」整个隐藏 | bug | Release2 demo 发现（发版阻塞） | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#657 |
 | B-707 | `very-happy send --resume`（/resume-session、session_send resume）未传 mode 时按 default 启动 → 沿用已发布的权限模式 | bug | B-696 顺带 | done | **10-21 第二版发版：server/Web f2eb1836，CLI 0.2.180**：#656 |
