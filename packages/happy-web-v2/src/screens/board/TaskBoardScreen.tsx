@@ -307,7 +307,7 @@ function TaskLane({
               <Rocket size={13} /> {t('board.dispatch')}
             </button>
             <ActionDropdownMenu items={menuItems} align="end" sideOffset={4}>
-              <button type="button" className="bd-btn" aria-label="actions">
+              <button type="button" className="bd-btn" aria-label={t('common.moreActions')}>
                 <MoreHorizontal size={14} />
               </button>
             </ActionDropdownMenu>

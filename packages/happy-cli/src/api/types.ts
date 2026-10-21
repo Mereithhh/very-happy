@@ -157,6 +157,8 @@ export const MachineMetadataSchema = z.object({
   teamRetryVersion: z.number().int().positive().optional(),
   /** B-586: daemon serves the `worktree-*` RPCs. Absent on old daemons. */
   worktreeVersion: z.number().int().positive().optional(),
+  /** B-688: daemon serves the `model-config-*` RPCs (harness model/provider config). */
+  modelConfigVersion: z.number().int().positive().optional(),
   host: z.string(),
   platform: z.string(),
   happyCliVersion: z.string(),

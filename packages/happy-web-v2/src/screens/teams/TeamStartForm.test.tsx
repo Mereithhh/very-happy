@@ -7,7 +7,7 @@ const mocks=vi.hoisted(()=>({recent:vi.fn()}));
 vi.mock('@/sync/storage',()=>({useProfile:()=>({id:'owner'}),useAllMachines:()=>[{id:'m',active:true,activeAt:Date.now(),metadata:{host:'computer',homeDir:'/home/executor',teamLaunchVersion:1}}],useSetting:(key:string)=>key==='recentMachinePaths'?[{machineId:'m',path:'~/project'}]:key==='newSessionAgent'?'codex':[]}));
 vi.mock('@/app/newChat',()=>({recordRecentMachinePath:mocks.recent}));
 vi.mock('@/sync/serverConfig',()=>({getServerUrl:()=> 'http://local.invalid'}));
-vi.mock('@/i18n/useTranslation',()=>({useTranslation:()=>({lang:'en'})}));
+vi.mock('@/i18n/useTranslation',()=>({useTranslation:()=>({lang:'en',t:(key:string)=>key})}));
 vi.mock('@/screens/files/FsBrowser',()=>({FsBrowser:()=>null}));
 vi.mock('@/sync/teams',()=>({TeamsApiError:class extends Error {status=500;}}));
 import {TeamStartForm} from './TeamStartForm';

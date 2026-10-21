@@ -52,6 +52,9 @@ import type { CLIAvailability } from '@/utils/detectCLI';
 import { getInitialMachineMetadata, getStartupCliAvailability } from './machineMetadata';
 import { currentWorktreeService } from '@/worktree/service';
 import { WORKTREE_CAPABILITY_VERSION } from '@/worktree/worktreeRpc';
+import { ModelConfigService } from '@/modules/modelConfig/service';
+import { MODEL_CONFIG_CAPABILITY_VERSION } from '@/modules/modelConfig/types';
+import { commandOnPath } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { startWebPanelsSync } from '@/webPanels/webPanelsSync';
 import { readSettings, updateSettings, writeSettings, readCredentials, rewriteCredentialsForRelay } from '@/persistence';
@@ -1863,6 +1866,17 @@ export async function startDaemon(): Promise<void> {
     });
     claudeAuthService.start();
 
+    // B-688: read/write the harnesses' own model/provider config files
+    // (specs/2026-10-custom-models.md). A Claude change re-runs the auth
+    // preflight so daemonState.claudeAuth reflects the new credentials.
+    apiMachine.setModelConfigService(new ModelConfigService({
+      home: os.homedir(),
+      env: process.env,
+      happyHomeDir: configuration.happyHomeDir,
+      isInstalled: commandOnPath,
+      onChanged: (harness) => { if (harness === 'claude') void claudeAuthService.probe('model-config', true); },
+    }));
+
     // B-587: the machine page's「空闲休眠」setting.
     apiMachine.setAgentHibernationHandlers(resolveIdleMs(agentHibernationSetting), async (requested) => {
       const value = requested <= 0 ? 0 : settingIdleMs(requested);
@@ -2169,6 +2183,8 @@ export async function startDaemon(): Promise<void> {
       teamRetryVersion: TEAM_RETRY_CAPABILITY_VERSION,
       // B-586: this daemon serves the worktree-* RPCs (web gates 「在新 worktree 中」 on it).
       worktreeVersion: WORKTREE_CAPABILITY_VERSION,
+      // B-688: this daemon serves the model-config-* RPCs (web gates 「模型与 Provider」 on it).
+      modelConfigVersion: MODEL_CONFIG_CAPABILITY_VERSION,
     })).catch(() => logger.debug('[DAEMON RUN] Teams capability publication will retry on reconnect'));
 
     // Setup signal handlers

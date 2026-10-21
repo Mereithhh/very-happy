@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { toastDurationMs } from './Toast';
+import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
+
+// B-682: the dismiss label goes through i18n (MMKV at import).
+installBrowserTestGlobals();
+const { toastDurationMs } = await import('./Toast');
 
 describe('toastDurationMs', () => {
   it('keeps copy-style success feedback brief while preserving errors', () => {

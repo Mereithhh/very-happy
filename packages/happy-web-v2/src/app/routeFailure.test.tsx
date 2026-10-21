@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./staleBundleReload', () => ({ recoverChunkLoad: vi.fn(async () => 'unavailable') }));
 vi.mock('./prepaintSplash', () => ({ dismissPrepaintSplash: () => {} }));
-vi.mock('@/i18n/localeCore', () => ({ readStoredPreferredLanguage: () => 'en' }));
+vi.mock('@/i18n/localeCore', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/i18n/localeCore')>()), readStoredPreferredLanguage: () => 'en' }));
 
 import { RouteError } from './RouteError';
 import { routeFailureKind } from './chunkRecovery';
