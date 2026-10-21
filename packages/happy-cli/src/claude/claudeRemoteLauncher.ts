@@ -3,6 +3,7 @@ import { createBackgroundTaskTracker } from './backgroundTasks';
 import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
 import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
+import { planUnconfirmedCommands } from './claudeCommandLifecycle';
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { rewriteQueuedPermissionMode } from "./utils/queuedPermissionMode";
@@ -526,6 +527,8 @@ export async function claudeRemoteLauncher(
         // accept its first message. Parking and adopting live together here on
         // purpose — see launchModeGate.ts.
         const modeGate = new LaunchModeGate<EnhancedMode, ParkedMessage>(session.queue.modeHasher);
+        // B-634 ②: uuids already sent a second time after a Query died under them (once only).
+        const redeliveredCommands = new Set<string>();
 
         // Track session ID to detect when it actually changes
         // This prevents context loss when mode changes (permission mode, model, etc.)
@@ -776,6 +779,25 @@ export async function claudeRemoteLauncher(
                     // queued behind a pre-empting steer's turn) before the model
                     // read them — the same tombstone a destroyed queue item gets
                     // (B-332), so the web shows them as not delivered, not answered.
+                    retiredModels: session.retiredModels,
+                    // B-634 ②: messages the Query ended without Claude Code ever
+                    // starting them — sent once more, or tombstoned (B-332).
+                    onCommandsUnconfirmed: (commands, { aborted }) => {
+                        const plan = planUnconfirmedCommands(commands, {
+                            aborted: aborted || exitReason !== null,
+                            parkFree: !modeGate.hasParked,
+                            redelivered: redeliveredCommands,
+                        });
+                        if (plan.redeliver) {
+                            redeliveredCommands.add(plan.redeliver.uuid);
+                            logger.debug(`[remote]: re-sending unconfirmed user message ${plan.redeliver.uuid} into the next launch`);
+                            modeGate.park({ message: plan.redeliver.payload.message, mode: plan.redeliver.payload.mode, uuid: plan.redeliver.uuid });
+                        }
+                        if (plan.tombstone.length > 0) {
+                            logger.debug(`[remote]: ${plan.tombstone.length} user message(s) never started before the query ended`);
+                            session.client.sendQueueCancelReason(plan.tombstone, 'aborted');
+                        }
+                    },
                     onCommandsDropped: (uuids) => {
                         logger.debug(`[remote]: ${uuids.length} user message(s) never read before the turn ended`);
                         session.client.sendQueueCancelReason(uuids, 'aborted');

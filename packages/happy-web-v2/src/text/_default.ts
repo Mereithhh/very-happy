@@ -1785,6 +1785,7 @@ export const en = {
         workspaceUnassigned: 'No working directory',
         // B-647 project lens (default)
         groupProjects: 'Group by project',
+        moveToProject: 'Move to project…',
         projectsUnassigned: 'No project',
         projectAttention: ({ count }: { count: number }) => `${count} waiting for you`,
         makeProject: 'Make this folder a project',
@@ -4740,6 +4741,18 @@ export const en = {
     },
 
     diagnostics: {
+        webhookDelivery: 'Webhook delivery',
+        webhookStatus: 'Status',
+        webhookHealthFailing: 'Failing',
+        webhookHealthRecovered: 'Recovered',
+        webhookHealthOk: 'Healthy',
+        webhookHealthIdle: 'Nothing sent yet',
+        webhookLastFailure: 'Last failure',
+        webhookDelivered: 'Delivered',
+        webhookRetries: 'Retries',
+        webhookFailed: 'Failed (gave up)',
+        webhookSettings: 'Webhook settings',
+        webhookFooter: ({ since }: { since: string }) => `Counted by the server since ${since}. A failed request is retried up to 3 times (about 45 s); Failed counts notifications that never arrived.`,
         webBuild: 'Web build',
         webBuildVersion: 'Build',
         webBuildCheck: 'Check for update',

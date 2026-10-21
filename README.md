@@ -47,6 +47,21 @@ pi conversations (`very-happy pi`, or pi in the Web's new-session dialog) run pi
 Run `very-happy install-pi-tools` once, then launch `pi` directly inside a Very Happy terminal to load terminal naming, clipboard and file preview tools. `very-happy pi --terminal` remains available for temporary loading. Each conversation and terminal has a **Copy and preview history** disclosure for reopening files and copying earlier content. [Tool setup and retention limits](docs/channels.md#native-pi-terminal-tools).
 
 
+## Projects: shared context for parallel sessions
+
+A **project** groups the sessions working on one thing — across machines,
+repos and agents — and gives them the same footing: instructions you write
+once, a log of decisions, findings and handoffs that agents append to, and a
+view of who is doing what. The sidebar groups sessions by project by default
+(sessions outside any project are grouped by folder, one click to turn a
+folder into a project). Claude Code, Codex, Gemini and pi sessions start with
+the project's instructions in front of their first message and get a one-line
+note on their next turn when something changes — idle sessions are never woken
+up; harnesses that cannot be injected are marked “not injected”. Start a
+session from the project page, its group's ＋, `very-happy spawn --project <id>`,
+or let spawned and forked sessions inherit their parent's project. Project
+instructions, log and messages are stored on the server.
+
 ## Teams: from one goal to parallel work
 
 **Very Happy Teams** brings Claude Code, Codex, and pi together around a goal.

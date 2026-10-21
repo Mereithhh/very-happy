@@ -38,7 +38,7 @@ has the same tool set:
 |---|---|
 | Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
 | Managed Codex / Gemini / ACP bridge (pi: same server via `HAPPY_MCP_URL` `tools/list`) | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` (B-556; optional `phase`; Codex and pi run it without an approval prompt) |
-| Managed Claude (in-process), Codex / Gemini / ACP (the stdio bridge forwards them) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session; and the B-497 session peer tools `session_message`, `session_peers` (message / list the other sessions on this machine — and, since B-506, on the account's other machines: `session_message` to a foreign session is routed to its machine, `session_peers` takes `machineId`; see [`very-happy sessions peers` / `message`](#sessions-peers--message--talk-to-the-other-sessions-on-this-machine)); and the B-645 project tools `project_context` (read the session's project: instructions, decisions in effect, other sessions, unread messages — ≤2KB delta by default, `full=true` for everything) and `project_note` (append a decision / finding / handoff, ≤5 per hour of which ≤2 decisions; `supersedes` / `revoke`); `session_peers` also takes `scope: "project"` (the other sessions of the project on any machine, from server-side presence). Sessions that report the `project-v1` capability get the project's instructions in front of their first message and a one-line digest on later turns ([spec](../specs/2026-10-projects.md)); OpenClaw and terminal-mirror sessions do not (shown as 「未注入」) |
+| Managed Claude (in-process), Codex / Gemini / ACP (the stdio bridge forwards them) and pi (`HAPPY_MCP_URL`, discovered via `tools/list`) additionally | `team_*` (Agent Teams) and the B-496 Automations tools: `automation_list`, `automation_get`, `automation_create`, `automation_update`, `automation_pause`, `automation_resume`, `automation_delete`, `automation_run`, `automation_fire`, `automation_runs`, `automation_report`, `automation_ack` — account authority, same trust level as the session; and the B-497 session peer tools `session_message`, `session_peers` (message / list the other sessions on this machine — and, since B-506, on the account's other machines: `session_message` to a foreign session is routed to its machine, `session_peers` takes `machineId`; see [`very-happy sessions peers` / `message`](#sessions-peers--message--talk-to-the-other-sessions-on-this-machine)); and the B-645 project tools `project_context` (read the session's project: instructions, decisions in effect, other sessions, unread messages — ≤2KB delta by default, `full=true` for everything) and `project_note` (append a decision / finding / handoff, ≤5 per hour of which ≤2 decisions; `supersedes` / `revoke`); `session_peers` also takes `scope: "project"` (the other sessions of the project on any machine, from server-side presence); since B-646 a `session_message` to a project session that is not running is stored server-side (`status: "offline-stored"`) and read at that session's next turn instead of being refused. Sessions that report the `project-v1` capability get the project's instructions in front of their first message and a one-line digest on later turns ([spec](../specs/2026-10-projects.md)); OpenClaw and terminal-mirror sessions do not (shown as 「未注入」) |
 | Voice Assistant / legacy assistant variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send` (both follow the B-506 route for sessions another machine spawned; optional `machineId`), `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
 | User-scoped `very-happy mcp` **inside a vh web terminal** (`VH_TERMINAL_ID` set by the daemon's tmux terminal) | + `change_title`, `open_preview` (titles/previews for that terminal via authenticated daemon IPC) |
@@ -109,7 +109,7 @@ All three endpoints require the account bearer token
 
 | Method   | Path          | Body                                            | Semantics |
 |----------|---------------|-------------------------------------------------|-----------|
-| `GET`    | `/v1/webhook` | —                                               | `{"webhook": {"url", "events"} \| null}` |
+| `GET`    | `/v1/webhook` | —                                               | `{"webhook": {"url", "events"} \| null, "delivery": {"since", "delivered", "failed", "retries", "lastSuccessAt", "lastFailureAt", "lastError"}}` — `delivery` is this server process's counters for the account (B-026; reset on deploy; absent on older servers). |
 | `POST`   | `/v1/webhook` | `{"url": "...", "events": ["completed","permission"]}` | Create **or replace** (an account has at most one webhook). `events` optional; defaults to both. 400 with `{"error": "..."}` on invalid URL. |
 | `DELETE` | `/v1/webhook` | —                                               | Remove the webhook. |
 | `POST`   | `/v1/webhook/notify` | `{"title": "...", "message"?: "...", "sessionId"?: "...", "taskId"?: "...", "event"?: "completed"\|"permission", "link"?: "/<web path>"}` | Notification forwarder: the server pushes `{title, message}` through the account's webhook. Without `event` it is a MANUAL notification (the web's "mark done" ✓ uses this — `✅ 已完成 · <名>`), not gated by `events` (an explicit user action is always wanted). With `event` it is an AUTOMATIC one (the daemon's web-terminal agent-state notifications use this) and IS filtered by the webhook config's `events` — unsubscribed events return `delivered:false` without sending. Returns `{"ok": true, "delivered": bool}`; `delivered:false` when no webhook is configured, the event is unsubscribed, or delivery failed. Rate-limited per account (30/min → 429). `sessionId` adds the link line + `session: <id>` trailer; `taskId` adds a `task: <id>` line **before** the session trailer; `link` (a web-app path starting with `/`, ≤300 chars, e.g. `/terminal/<machineId>?tid=<terminalId>`) appends a `链接：<HAPPY_WEB_URL><link>` line right after the message (omitted when `HAPPY_WEB_URL` is unset). Old clients send neither new field and keep the legacy behavior. |
@@ -126,8 +126,12 @@ URL validation (SSRF guard, enforced on save *and* re-checked at send time):
 loopback / private / link-local / CGNAT hosts are rejected. Redirects are
 refused at delivery time.
 
-Delivery is **best-effort**: 5s timeout, no retry, failures only logged. Never
-build anything that depends on guaranteed delivery.
+Delivery is **best-effort with retries** (B-026): 5s timeout per attempt;
+timeouts, resets, DNS errors and 408/425/429/5xx are retried up to 3 times
+(~2 s, 8 s, 32 s backoff), other answers are final. All attempts share one
+`X-Very-Happy-Delivery` header value — dedupe on it. Retries live in the server
+process (a restart drops pending ones), so never build anything that depends on
+guaranteed delivery. Counters: **Settings → Diagnostics → Webhook delivery**.
 
 ### Delivery payload
 
@@ -283,6 +287,14 @@ with the account content key, which `dataKey` CLI credentials do not hold.
 - `--model, -m <id>` — model for the session, carried by the first message
   (so it needs `--prompt` / `--prompt-file`; for an idle spawn pass it on the
   first `send --model`). `default` = the machine's own default.
+- `--project <id>` / `--no-project` (B-649) — put the new session in a Very
+  Happy project before its first message (so its first turn already carries the
+  project instructions). Without either flag, a spawn run from inside a project
+  session (`VH_PEER_SESSION_ID` set by the managed runner) joins the same
+  project (lineage); a spawn from a plain shell, the Tanka bridge or the
+  automation daemon joins nothing. A fork inherits its source's project. A
+  folder that belongs to a project is never enough on its own — the Web only
+  suggests joining. `--json` adds `project: {id, via}` when it joined.
 - `--fork <sessionId>` — the Web's "fork session" from the CLI: copies the
   source conversation (Claude JSONL copy / Codex app-server `thread/fork`) and
   continues it in a new session with `parentSessionId` lineage, in the source's
@@ -939,7 +951,7 @@ Design notes:
   sessions (that is where the session keys live).
 - Run the adapter with the least-privileged OS user that can reach those
   workspaces. Never expose the daemon's loopback control server to a network.
-- Webhook delivery is best-effort; treat notifications as hints, not a queue.
+- Webhook delivery retries transient failures (timeout, reset, DNS error, 408/425/429/5xx) up to 3 times with exponential backoff (~2 s, 8 s, 32 s, ±20%); other 4xx/3xx answers and URL-guard rejections are not retried. Every attempt of one notification carries the same `X-Very-Happy-Delivery: <uuid>` header — dedupe on it, since a request whose response timed out may be delivered twice. Retries are in-process: a server restart drops pending ones, so treat notifications as hints, not a queue. Delivered / retried / failed counts are on **Settings → Diagnostics → Webhook delivery** (B-026).
 
 
 ## Automations: scheduled and triggered runs (feature gated)

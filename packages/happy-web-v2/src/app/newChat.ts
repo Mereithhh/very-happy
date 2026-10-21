@@ -62,6 +62,8 @@ export async function createChatOrConfigure(
          *  Only the quick path consumes it; a caller that opens the configure
          *  dialog prefills that dialog itself. */
         draft?: string;
+        /** B-649: created from a project group / page — joins it before its first message. */
+        projectId?: string;
     },
 ): Promise<void> {
     if (inFlight) return;
@@ -95,6 +97,7 @@ export async function createChatOrConfigure(
             agent,
             permissionMode,
             source: 'quick',
+            ...(context?.projectId ? { onSpawnedProject: { projectId: context.projectId } } : {}),
         });
         // The pending page reads its initial composer text from the draft
         // store (pendingDraft), and migrateDraft carries it to the real id.

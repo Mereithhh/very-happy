@@ -541,6 +541,7 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
                 const result = await sendPeerMessage(context, { to: target, body: options.text as string, replyTo: options.replyTo, ...(options.machine ? { machineId: options.machine } : {}) })
                 if (options.json) console.log(JSON.stringify(result))
                 else if (result.delivered) console.log(`Message ${result.messageId} delivered to ${target}${result.machine ? ` on ${result.machine.host}` : ''}\n${result.url}`)
+                else if (result.status === 'offline-stored') console.log(`Message ${result.messageId} ${result.note ?? 'stored'} (${target} is not running; same project)\n${result.url}`)
                 else console.error(chalk.yellow('Not delivered:'), result.error ?? `session is ${result.status}`, result.stored ? '(stored server-side, unread)' : '')
                 process.exit(result.delivered ? 0 : 1)
             } catch (error) {

@@ -82,3 +82,44 @@ describe('Claude wrapper ↔ Orca alignment wiring (B-631)', () => {
         expect(deferred).toContain("await withTimeout(this.setPermissionModeCallback(mode), LIVE_PERMISSION_MODE_TIMEOUT_MS, 'set_permission_mode');");
     });
 });
+
+describe('Claude wrapper ↔ Orca follow-ups wiring (B-634)', () => {
+    it('① query(): the SDK-reported pid is snapshotted for reaping BEFORE the abort reaches the SDK', () => {
+        const query = read('./sdk/query.ts');
+        expect(query).toContain('.onProcessSpawned = (pid) => {\n        claudePid = pid');
+        expect(between(query, "opts.abort.addEventListener('abort', () => {", '}, { once: true })'))
+            .toMatch(/if \(claudePid !== undefined\) scheduleClaudeTreeReap\(claudePid\)\s+controller\.abort\(/);
+    });
+
+    it('① the wrapper reaps its own tree on the way out, on both exits', () => {
+        const run = read('./runClaude.ts');
+        const cleanup = between(run, 'const cleanup = async', "process.on('SIGTERM'");
+        expect(cleanup).toContain('const wrapperTree = snapshotTree(process.pid);');
+        expect(cleanup).toMatch(/await terminateSurvivors\(wrapperTree\);\s+process\.exit\(0\);/);
+        expect(cleanup).toMatch(/await terminateSurvivors\(wrapperTree\)\.catch\(\(\) => undefined\);\s+process\.exit\(1\);/);
+    });
+
+    it('① the daemon stops a session wrapper together with its tree (restart and stop)', () => {
+        const daemon = read('../daemon/run.ts');
+        expect(between(daemon, 'const stopSessionAndWait = async', 'const restartSession = async')).toContain('const requested = terminateProcessTree(pid, () => {');
+        expect(between(daemon, 'const stopSession = (sessionId: string): boolean => {', "logger.debug(`[DAEMON RUN] Session ${sessionId} not found`)")).toContain('const requested = terminateProcessTree(pid, (stopped) => {');
+    });
+
+    it('② the launcher re-sends once or tombstones what a Query ended without starting', () => {
+        const launcher = read('./claudeRemoteLauncher.ts');
+        const handler = between(launcher, 'onCommandsUnconfirmed: (commands, { aborted }) => {', 'onCommandsDropped:');
+        expect(handler).toContain('aborted: aborted || exitReason !== null,');
+        expect(handler).toContain('parkFree: !modeGate.hasParked,');
+        expect(handler).toContain('modeGate.park({ message: plan.redeliver.payload.message, mode: plan.redeliver.payload.mode, uuid: plan.redeliver.uuid });');
+        expect(handler).toContain("session.client.sendQueueCancelReason(plan.tombstone, 'aborted');");
+        const remote = read('./claudeRemote.ts');
+        expect(between(remote, '    } finally {\n        updateThinking(false);', '\n}\n')).toMatch(/if \(cliCapabilities\.has\(MSG_LIFECYCLE_CAPABILITY\)\) \{\s+const unconfirmed = commandTracker\.takeUnconfirmed\(\);/);
+    });
+
+    it('③ the session-scoped retired models reach every Query', () => {
+        expect(read('./claudeRemoteLauncher.ts')).toContain('retiredModels: session.retiredModels,');
+        const remote = read('./claudeRemote.ts');
+        expect(remote).toContain('initial = withoutRetiredModel(await opts.nextMessage());');
+        expect(remote).toContain('let next = withoutRetiredModel(pulled);');
+    });
+});

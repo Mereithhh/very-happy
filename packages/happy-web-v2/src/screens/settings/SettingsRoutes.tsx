@@ -44,6 +44,7 @@ import { useTheme } from '@/ui';
 import { Modal } from '@/modal';
 import { useAuth } from '@/auth/AuthContext';
 import { checkForUpdateNow } from '@/app/staleBundleReload';
+import { WebhookDeliveryGroup } from './WebhookDeliveryGroup';
 import { machineCliUpdateNotice } from '@/app/cliUpdatePolicy';
 import { useTranslation, type SupportedLanguage } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
@@ -2505,6 +2506,8 @@ function Diagnostics() {
           )}
         </ItemGroup>
         <div className="set-note">{t('diagnostics.cliHint')}</div>
+
+        <WebhookDeliveryGroup />
 
         <ItemGroup
           title={t('diagnostics.developer')}

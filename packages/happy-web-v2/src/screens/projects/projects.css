@@ -179,3 +179,10 @@
   .pj-composer-summary select { height: 36px; }
   .pj-tabs > button { min-height: 40px; }
 }
+
+/* B-649 移到项目 — multi-select list inside the dialog (rows, no inner frame) */
+.mtp-list { display: flex; flex-direction: column; max-height: 240px; overflow: auto; margin: 0 -6px; }
+.mtp-item { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px; border-radius: var(--r-sm); cursor: pointer; overflow: hidden; }
+.mtp-item:hover { background: var(--fill-hover); }
+.mtp-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (pointer: coarse) { .mtp-item { min-height: 44px; } }

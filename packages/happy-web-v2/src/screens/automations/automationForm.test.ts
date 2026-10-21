@@ -209,3 +209,25 @@ describe('B-548 precheck in the form', () => {
   });
 });
 
+
+describe('B-649 project field', () => {
+  it('create sends projectId only when chosen; an older server without projectId reads as none', () => {
+    const d = draftFromAutomation(base());
+    expect(d.projectId).toBe('');
+    const plain = buildCreate({ ...d, name: 'x1' });
+    expect(plain.ok && 'projectId' in plain.body).toBe(false);
+    const withProject = buildCreate({ ...d, name: 'x2', projectId: 'p1' });
+    expect(withProject.ok && withProject.body.projectId).toBe('p1');
+  });
+  it('update sends a changed project, null to detach, nothing when unchanged', () => {
+    const a = { ...base(), projectId: 'p1' };
+    const d = draftFromAutomation(a);
+    expect(d.projectId).toBe('p1');
+    const same = buildUpdate(d, a);
+    expect(same.ok && same.changed).toBe(false);
+    const moved = buildUpdate({ ...d, projectId: 'p2' }, a);
+    expect(moved.ok && moved.body.projectId).toBe('p2');
+    const detached = buildUpdate({ ...d, projectId: '' }, a);
+    expect(detached.ok && detached.body.projectId).toBeNull();
+  });
+});

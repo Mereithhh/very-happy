@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { terminateProcess, type ProcessSignal, type ProcessTerminationRuntime } from './processTermination';
+import { terminateProcess, terminateProcessTree, type ProcessSignal, type ProcessTerminationRuntime } from './processTermination';
 
 function fakeRuntime(alive = true) {
     let current = alive;
@@ -33,5 +33,23 @@ describe('terminateProcess', () => {
         expect(f.signal).toHaveBeenCalledWith(42, 'SIGKILL');
         f.scheduled.shift()!();
         expect(settled).toHaveBeenCalledWith(true);
+    });
+});
+
+describe('terminateProcessTree (B-634 ①)', () => {
+    it('snapshots the tree before signalling and reaps it once the wrapper settled', () => {
+        const order: string[] = [];
+        let settle!: (stopped: boolean) => void;
+        const onSettled = vi.fn(() => order.push('settled'));
+        const requested = terminateProcessTree(42, onSettled, {
+            snapshot: (pid) => { order.push(`snapshot:${pid}`); return [{ pid: 43, ppid: 42, start: 's' }]; },
+            terminate: (pid, cb) => { order.push(`terminate:${pid}`); settle = cb; return true; },
+            reap: (entries) => { order.push(`reap:${entries.map((e) => e.pid).join(',')}`); return []; },
+        });
+        expect(requested).toBe(true);
+        expect(order).toEqual(['snapshot:42', 'terminate:42']);
+        settle(true);
+        expect(order).toEqual(['snapshot:42', 'terminate:42', 'reap:43', 'settled']);
+        expect(onSettled).toHaveBeenCalledWith(true);
     });
 });

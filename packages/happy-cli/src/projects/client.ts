@@ -77,6 +77,8 @@ export function createProjectsClient(deps: ProjectsClientDeps = {}) {
             request<{ entry: ProjectLogEntryView }>(`/v1/projects/${sid(projectId)}/log/${sid(ref)}/revoke`, 'POST', { bySessionId }),
         presence: (machineId: string, sessions: ProjectPresenceEntry[], gone?: string[]) =>
             request<{ memberships: Record<string, string> }>('/v1/projects/presence', 'PUT', { machineId, sessions, ...(gone?.length ? { gone } : {}) }),
+        addMembers: (projectId: string, sessionIds: string[], via?: 'explicit' | 'lineage' | 'automation') =>
+            request<{ members: unknown[] }>(`/v1/projects/${sid(projectId)}/members`, 'POST', { sessionIds, ...(via ? { via } : {}) }),
         message: (projectId: string, input: { fromSessionId: string; toSessionId: string; body: string }) =>
             request<{ stored: boolean; message: { id: string } }>(`/v1/projects/${sid(projectId)}/messages`, 'POST', input),
         delivered: (sessionId: string, messageIds: string[]) =>

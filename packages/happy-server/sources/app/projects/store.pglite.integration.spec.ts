@@ -230,6 +230,21 @@ describe('projects store (pglite)', () => {
         expect((await store.sessionDigest(accountId, me, 0)).projectId).toBeNull();
     });
 
+    it('B-646: an instructions update, a decision or an offline message never writes into a session (never wakes one)', async () => {
+        const p = await newProject();
+        const idle = [await newSession(), await newSession(), await newSession()];
+        await store.addMembers(accountId, p.id, { sessionIds: idle });
+        const before = await db.sessionMessage.count({ where: { sessionId: { in: idle } } });
+        const seqBefore = (await db.session.findMany({ where: { id: { in: idle } }, select: { seq: true } })).map(r => r.seq);
+        await store.putInstructions(accountId, p.id, { instructions: 'new rule', ifVersion: 0 });
+        await store.createLogEntry(accountId, p.id, { kind: 'decision', title: 'd' });
+        await store.createMessage(accountId, p.id, { fromSessionId: idle[0], toSessionId: idle[1], body: 'later' });
+        expect(await db.sessionMessage.count({ where: { sessionId: { in: idle } } })).toBe(before);
+        expect((await db.session.findMany({ where: { id: { in: idle } }, select: { seq: true } })).map(r => r.seq)).toEqual(seqBefore);
+        // …and each of them sees the change in its next-turn digest instead.
+        for (const s of idle) expect((await store.sessionDigest(accountId, s, 0)).instructions?.version).toBe(1);
+    });
+
     it('automations carry an optional projectId of the same account only', async () => {
         const p = await newProject();
         const action = { kind: 'spawn' as const, agent: 'claude', directory: '/repo', prompt: 'x' };

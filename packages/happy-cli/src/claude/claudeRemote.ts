@@ -22,14 +22,20 @@ import { formatClaudeTimingLine, type ClaudeTurnMarks } from './claudeTiming';
 import { decideWarmAdoption, formatPrewarmLine, type ClaudePrewarmLease, type WarmAdoptionDecision } from './claudePrewarm';
 import { TimeoutError, withTimeout } from './utils/withTimeout';
 import { createClaudeTurnTracker, readClaudeSessionState } from './claudeTurnEnd';
+import { retiredModelFrom, retiredModelNotice, type RetiredModels } from './claudeRetiredModel';
 import {
     createClaudeCommandTracker,
     INTERRUPT_CANCEL_QUEUED_CAPABILITY,
+    MSG_LIFECYCLE_CAPABILITY,
     readClaudeCommandLifecycle,
     type ClaudeInterruptReceipt,
+    type ClaudeUnconfirmedCommand,
 } from './claudeCommandLifecycle';
 
 type Query = ReturnType<typeof query>;
+
+/** B-634 ②: what a tracked user message carried, so an unconfirmed one can be sent again. */
+export type ClaudeSentCommand = { message: MessageParam['content']; mode: EnhancedMode };
 
 /** B-631: budget for the in-place model switch before the next prompt (Orca's default control deadline). */
 const SET_MODEL_TIMEOUT_MS = 30_000;
@@ -95,6 +101,15 @@ export async function claudeRemote(opts: {
     /** B-631: uuid-stamped user messages (prompts, steers) Claude Code confirmed it never read — a Stop swept them; the launcher tombstones them (B-332). */
     onCommandsDropped?: (uuids: string[]) => void,
     /**
+     * B-634 ②: uuid-stamped messages this Query handed to Claude Code that it
+     * never confirmed (`command_lifecycle started`) before the Query ended —
+     * only reported when the CLI emits lifecycle frames at all. `aborted`: the
+     * launcher's abort (Stop / exit / switch) ended it, not a fault.
+     */
+    onCommandsUnconfirmed?: (commands: ClaudeUnconfirmedCommand<ClaudeSentCommand>[], context: { aborted: boolean }) => void,
+    /** B-634 ③: session-scoped retired model ids; a message asking for one runs on the default. */
+    retiredModels?: RetiredModels,
+    /**
      * B-515: start a warm Query with this lease's predicted mode BEFORE the
      * first message; adopted when the first message matches, closed otherwise.
      * Only passed for a fresh session's first launch (claudePrewarm.ts).
@@ -157,7 +172,7 @@ export async function claudeRemote(opts: {
     // Stop swept before the model read them (claudeCommandLifecycle.ts).
     // Declared before the Query controls below close over them.
     const turn = createClaudeTurnTracker();
-    const commandTracker = createClaudeCommandTracker();
+    const commandTracker = createClaudeCommandTracker<ClaudeSentCommand>();
     /** Protocol capabilities from the latest system/init — an open set; feature-detect, never version-sniff. */
     let cliCapabilities = new Set<string>();
     const reportDroppedCommands = (uuids: string[]) => {
@@ -305,10 +320,20 @@ export async function claudeRemote(opts: {
     }
     const discardWarm = (reason: string) => { warm?.lease.discard(reason); };
 
+    // B-634 ③: a retired model id still on a message (the web resends its
+    // pick every time) runs on the default instead of failing the turn again.
+    // Applied inside the callers, not as a wrapping promise: one more tick
+    // before the hand-off would reorder it against the next result.
+    const withoutRetiredModel = <T extends { mode: EnhancedMode } | null>(next: T): T => {
+        if (!next || !opts.retiredModels) return next;
+        const model = opts.retiredModels.effective(next.mode.model);
+        return model === next.mode.model ? next : { ...next, mode: { ...next.mode, model } };
+    };
+
     // Get initial message
     let initial: Awaited<ReturnType<typeof opts.nextMessage>>;
     try {
-        initial = await opts.nextMessage();
+        initial = withoutRetiredModel(await opts.nextMessage());
     } catch (error) {
         discardWarm('error');
         throw error;
@@ -512,7 +537,7 @@ export async function claudeRemote(opts: {
                 // the interrupt receipt can name it; a non-UUID key keeps the
                 // steer untracked, as before.
                 const uuid = promptUuid(localKey);
-                if (uuid.uuid) commandTracker.track(uuid.uuid);
+                if (uuid.uuid) commandTracker.track(uuid.uuid, { message, mode: nextMode });
                 messages.push({
                     type: 'user',
                     parent_tool_use_id: null,
@@ -535,7 +560,7 @@ export async function claudeRemote(opts: {
     // tracked like every other command, so a Stop that sweeps it before it
     // starts is reported (B-631).
     turn.pushed();
-    if (initialUserMessage.uuid) commandTracker.track(initialUserMessage.uuid);
+    if (initialUserMessage.uuid) commandTracker.track(initialUserMessage.uuid, { message: initial.message, mode: initial.mode });
 
     // B-631: a `set_model` the CLI never answered may still land late. Until
     // the next boundary re-sends (whatever model that turn wants), `mode.model`
@@ -557,7 +582,8 @@ export async function claudeRemote(opts: {
             return;
         }
         pullingNext = true;
-        opts.nextMessage().then(async (next) => {
+        opts.nextMessage().then(async (pulled) => {
+            let next = withoutRetiredModel(pulled);
             if (!next) {
                 messages.end();
                 return;
@@ -587,7 +613,7 @@ export async function claudeRemote(opts: {
             updateThinking(true);
             turn.pushed();
             const uuid = promptUuid(next.uuid);
-            if (uuid.uuid) commandTracker.track(uuid.uuid);
+            if (uuid.uuid) commandTracker.track(uuid.uuid, { message: next.message, mode: next.mode });
             timingMarks = { pushedAt: next.enqueuedAt ?? Date.now() };
             messages.push({
                 type: 'user',
@@ -668,6 +694,21 @@ export async function claudeRemote(opts: {
 
             if (message.type === 'assistant' && message.error) {
                 lastAssistantError = message.error;
+            }
+            // B-634 ③: Claude Code says the model this session runs does not
+            // exist. Put the live Query back on the default (bounded; a late
+            // answer is covered by the next boundary's re-send) and stop
+            // holding the id for the rest of the session.
+            const retired = opts.retiredModels ? retiredModelFrom(message, mode.model) : null;
+            if (retired) {
+                opts.retiredModels!.retire(retired);
+                mode = { ...mode, model: undefined };
+                logger.debug(`[claudeRemote] Model ${retired} reported model_not_found; moving the session to the default model`);
+                opts.onCompletionEvent?.(retiredModelNotice(retired));
+                void withTimeout(response.setModel(undefined), SET_MODEL_TIMEOUT_MS, 'set_model').catch((e) => {
+                    logger.debug(`[claudeRemote] setModel(default) after model_not_found failed: ${e instanceof Error ? e.message : String(e)}`);
+                    modelUnconfirmed = true;
+                });
             }
             if (message.type === 'assistant' && timingMarks.firstAssistantAt === undefined) {
                 timingMarks.firstAssistantAt = Date.now();
@@ -838,5 +879,16 @@ export async function claudeRemote(opts: {
         }
     } finally {
         updateThinking(false);
+        // B-634 ②: whatever the Query ended on (a crash, a teardown), a
+        // message Claude Code never started is not answered — say so. Only a
+        // CLI that emits lifecycle frames can confirm at all; without them
+        // every message would look unconfirmed.
+        if (cliCapabilities.has(MSG_LIFECYCLE_CAPABILITY)) {
+            const unconfirmed = commandTracker.takeUnconfirmed();
+            if (unconfirmed.length > 0) {
+                logger.debug(`[claudeRemote] Query ended with ${unconfirmed.length} user message(s) never started: ${unconfirmed.map((c) => c.uuid).join(', ')}`);
+                opts.onCommandsUnconfirmed?.(unconfirmed, { aborted: opts.signal?.aborted === true });
+            }
+        }
     }
 }

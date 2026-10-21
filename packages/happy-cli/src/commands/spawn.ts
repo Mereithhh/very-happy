@@ -36,6 +36,8 @@
  *       (the session likely EXISTS — the URL is still printed)
  */
 
+import { chooseProject, joinProject } from '@/projects/attribution'
+import { sharedProjectsClient } from '@/projects/client'
 import chalk from 'chalk'
 import { readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -80,6 +82,10 @@ export interface SpawnCommandOptions {
     model?: string
     /** B-492: fork this session (id) instead of starting from scratch. */
     fork?: string
+    /** B-649: join this project before the first message (explicit attribution). */
+    project?: string
+    /** B-649: do not inherit the calling session's project. */
+    noProject?: boolean
     json: boolean
     help: boolean
 }
@@ -155,6 +161,13 @@ export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
             if (value === undefined) throw new Error('--fork requires a session id')
             if (!/^[a-zA-Z0-9_-]{1,128}$/.test(value)) throw new Error(`Invalid session id for --fork: ${value}`)
             options.fork = value
+        } else if (arg === '--project') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--project requires a project id')
+            if (!/^[a-zA-Z0-9_-]{1,128}$/.test(value)) throw new Error(`Invalid project id for --project: ${value}`)
+            options.project = value
+        } else if (arg === '--no-project') {
+            options.noProject = true
         } else if (arg === '--json') {
             options.json = true
         } else if (arg === '--help' || arg === '-h') {
@@ -165,6 +178,9 @@ export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
     }
     if (options.prompt !== undefined && options.promptFile !== undefined) {
         throw new Error('--prompt and --prompt-file are mutually exclusive')
+    }
+    if (options.project !== undefined && options.noProject) {
+        throw new Error('--project and --no-project are mutually exclusive')
     }
     return options
 }
@@ -208,6 +224,12 @@ ${chalk.bold('Options:')}
   --env KEY=VALUE        Extra environment for the session process. Repeatable.
                             \${VAR} is expanded against the daemon's environment;
                             an unresolved reference fails the spawn.
+  --project <id>         Put the new session in this Very Happy project before
+                            its first message (it then starts with the project's
+                            instructions and decisions).
+  --no-project           Do not inherit the project of the session that runs
+                            this command (by default a session spawned from
+                            inside a project session joins the same project).
   --json                 Machine-readable output: {"sessionId", "url",
                             "permissionMode", …}
   -h, --help             Show this help
@@ -418,6 +440,19 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         process.exit(1)
     }
 
+    // B-649: attribution before the first message, so its first turn already
+    // carries the project prefix. Explicit --project > the calling session's
+    // project (lineage via VH_PEER_SESSION_ID); a fork inherits its source in
+    // the daemon. Best effort: never fails the spawn.
+    const projectChoice = chooseProject({
+        project: options.project, noProject: options.noProject,
+        parentSessionId: forkSource ? null : (process.env.VH_PEER_SESSION_ID ?? null),
+    })
+    const projectOutcome = await joinProject(sharedProjectsClient(), sessionId, projectChoice)
+    if (options.project && !projectOutcome.joined) {
+        console.error(chalk.yellow('Warning:'), `Could not add the session to project ${options.project}: ${projectOutcome.reason}`)
+    }
+
     let promptError: string | null = null
     let sentMeta: FirstMessageMeta | null = null
     if (prompt !== undefined) {
@@ -440,6 +475,9 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         }
         if (forkSource) {
             payload.forkedFrom = forkSource.parentSessionId
+        }
+        if (projectOutcome.joined) {
+            payload.project = { id: projectOutcome.projectId, via: projectOutcome.via }
         }
         if (sentMeta && sentMeta.model !== undefined) {
             payload.model = sentMeta.model

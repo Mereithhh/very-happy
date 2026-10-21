@@ -113,7 +113,8 @@ function subscribe(listener: () => void) {
   listeners.add(listener);
   if (!timer) {
     void refreshProjects();
-    unsubscribeResume = sync.onResume(() => { void refreshProjects(); });
+    // Optional-call: some test harnesses mock `sync` without onResume; polling still covers resume.
+    unsubscribeResume = typeof sync.onResume === 'function' ? sync.onResume(() => { void refreshProjects(); }) : undefined;
     timer = setInterval(() => { if (!document.hidden) void refreshProjects(); }, 20_000);
   }
   return () => {
