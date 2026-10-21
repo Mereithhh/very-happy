@@ -33,7 +33,7 @@ export interface AsciiFieldEnv {
   cancelFrame(id: number): void;
   matchMedia(query: string): MQL | null;
   doc: { hidden: boolean; addEventListener(t: string, fn: () => void): void; removeEventListener(t: string, fn: () => void): void; documentElement: Element; createElement(tag: string): HTMLElement };
-  win: { devicePixelRatio?: number; innerWidth: number; innerHeight: number; addEventListener(t: string, fn: (e: Event) => void, o?: AddEventListenerOptions): void; removeEventListener(t: string, fn: (e: Event) => void, o?: boolean | EventListenerOptions): void };
+  win: { devicePixelRatio?: number; innerWidth: number; innerHeight: number; scrollY?: number; addEventListener(t: string, fn: (e: Event) => void, o?: AddEventListenerOptions): void; removeEventListener(t: string, fn: (e: Event) => void, o?: boolean | EventListenerOptions): void };
   getContext(canvas: HTMLCanvasElement, opts?: CanvasRenderingContext2DSettings): Ctx | null;
   cssVar(el: Element, name: string): string;
   IntersectionObserver?: typeof IntersectionObserver;
@@ -336,22 +336,22 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   }
 
   /**
-   * Scroll offset of the host in px (0 at rest). The rect is read only after a
-   * scroll/resize, at the start of the frame before any style write, so it never
-   * forces an extra layout.
+   * Scroll offset of the host in px (0 at rest). The host's document offset is
+   * measured once per resize; per frame only `scrollY` is read, which never
+   * forces style or layout (the landing scrolls the window).
    */
-  let scrollPx = 0;
+  let docTop = 0;
   let scrollDirty = true;
   function scrollShift(): number {
     if (!usesScroll || reduced) return 0;
+    const y = env.win.scrollY ?? 0;
     if (scrollDirty) {
       scrollDirty = false;
-      const top = host.getBoundingClientRect().top;
-      scrollPx = Math.max(-env.win.innerHeight, Math.min(env.win.innerHeight, -top));
+      docTop = host.getBoundingClientRect().top + y;
     }
-    return scrollPx;
+    const top = docTop - y;
+    return Math.max(-env.win.innerHeight, Math.min(env.win.innerHeight, -top));
   }
-  const onScroll = () => { scrollDirty = true; };
 
   /**
    * Camera position of a layer in world cells. Scrolling moves nearer layers
@@ -628,7 +628,6 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
   reducedQuery?.addEventListener?.('change', onReducedChange);
   env.doc.addEventListener('visibilitychange', onVisibility);
   if (wantsMouse) env.win.addEventListener('pointermove', onPointer, { passive: true });
-  if (usesScroll) env.win.addEventListener('scroll', onScroll, { passive: true, capture: true });
 
   readTheme();
   if (reduced) paintStatic();
@@ -646,7 +645,6 @@ export function startAsciiField(host: HTMLElement, options: AsciiFieldOptions, e
     reducedQuery?.removeEventListener?.('change', onReducedChange);
     env.doc.removeEventListener('visibilitychange', onVisibility);
     if (wantsMouse) env.win.removeEventListener('pointermove', onPointer);
-    if (usesScroll) env.win.removeEventListener('scroll', onScroll, { capture: true });
     for (const l of layers) for (const p of l.planes) p.canvas.remove();
     for (const k of creatures) k.el.remove();
     creatures = [];

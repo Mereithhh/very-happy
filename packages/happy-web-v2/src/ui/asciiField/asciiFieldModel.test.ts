@@ -37,11 +37,11 @@ describe('B-720 AsciiField presets — depth of field', () => {
     for (const name of presets) expect(PRESETS[name].fps).toBeLessThanOrEqual(MAX_FPS);
   });
 
-  it('phones / low-end drop the blurred far layer, keep no live blur and no mouse parallax', () => {
+  it('phones / low-end drop the blurred far layer, keep no live blur and no mouse/scroll parallax', () => {
     for (const name of presets) {
       const lite = specForTier(name, 'lite');
       expect(lite.layers.length).toBe(PRESETS[name].layers.length - 1);
-      expect(lite.layers.every((l) => l.blurPx === 0 && l.mousePx === 0)).toBe(true);
+      expect(lite.layers.every((l) => l.blurPx === 0 && l.mousePx === 0 && l.scroll === 0)).toBe(true);
       expect(lite.fps).toBeLessThanOrEqual(24);
       expect(specForTier(name, 'full')).toBe(PRESETS[name]);
     }

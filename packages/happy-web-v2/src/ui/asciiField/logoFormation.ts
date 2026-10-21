@@ -84,8 +84,11 @@ export function startLogoFormation(mark: HTMLElement, stage: HTMLElement, opts: 
   const pad = Math.ceil(BLUR_PX[2] * 2 * dpr) + 1;
   const gw = Math.ceil(cellW * dpr) + 2 * pad;
   const gh = Math.ceil(cellH * dpr) + 2 * pad;
+  // Atlases are built per focus level on first use, so start-up work spreads over frames.
   const atlas = new Map<string, HTMLCanvasElement>();
-  for (let level = 0; level < BLUR_PX.length; level++) {
+  const built = new Set<number>();
+  const buildLevel = (level: number) => {
+    built.add(level);
     for (const ch of FIELD_RAMP) {
       const g = document.createElement('canvas');
       g.width = gw;
@@ -100,7 +103,7 @@ export function startLogoFormation(mark: HTMLElement, stage: HTMLElement, opts: 
       gc.fillText(ch, gw / 2, gh / 2);
       atlas.set(`${level}${ch}`, g);
     }
-  }
+  };
 
   // Animation time advances with frames, at most 1/15 s per frame: if the page is
   // busy right after load the moment slows down instead of skipping to the end.
@@ -122,6 +125,7 @@ export function startLogoFormation(mark: HTMLElement, stage: HTMLElement, opts: 
     for (const p of particles) {
       const f = particleAt(p, t);
       if (!f) continue;
+      if (!built.has(f.blur)) buildLevel(f.blur);
       const g = atlas.get(`${f.blur}${f.glyph}`);
       if (!g) continue;
       ctx.globalAlpha = f.alpha;

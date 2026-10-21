@@ -108,14 +108,14 @@ export const PRESETS: Record<AsciiFieldPreset, AsciiFieldSpec> = {
 
 /**
  * Phones / low-end: drop the farthest (blurred) layer, no live blur, no mouse
- * parallax, lower frame rate. Keeps the two sharpest planes so depth still reads.
+ * or scroll parallax, lower frame rate. Keeps the two sharpest planes so depth still reads.
  */
 export function specForTier(preset: AsciiFieldPreset, tier: AsciiFieldTier): AsciiFieldSpec {
   const spec = PRESETS[preset];
   if (tier === 'full') return spec;
   return {
     ...spec,
-    layers: spec.layers.slice(1).map((layer) => ({ ...layer, blurPx: 0, mousePx: 0 })),
+    layers: spec.layers.slice(1).map((layer) => ({ ...layer, blurPx: 0, mousePx: 0, scroll: 0 })),
     fps: Math.min(spec.fps, 24),
   };
 }
