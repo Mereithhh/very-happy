@@ -2,7 +2,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 const en = {
   launchFailed: 'Startup needs attention', retryHint: 'The computer relaunches automatically a few times with backoff. If it still fails, fix the cause and choose Retry launch. Sending a message does not restart the agent.', unknownHint: 'The launch outcome is unconfirmed, so the computer will not relaunch on its own. After confirming the old process has stopped, retry the launch or cancel the task.', retryLaunch: 'Retry launch', retryConfirm: 'I confirmed the previous launch process has stopped', retryRequested: 'Retry requested', retryUpgrade: 'Update the CLI on this computer to retry from here; until then, cancel and reassign the task.', configure: 'Computer, project and agent', chatIntro: 'Describe the goal. Your lead will organize the work and continue in chat.', title: 'Start a team', start: 'Start working', goal: 'What would you like done?', goalHint: 'For example: review this project, fix the most important issues in parallel, and test the changes.',
   project: 'Project folder', browse: 'Choose folder', machine: 'Computer', lead: 'Team lead', automatic: 'New teams run without per-tool approvals by default; you can change this in team settings. We prepare the collaboration instructions and open the lead’s conversation.',
-  options: 'Team options', name: 'Team name (optional)', model: 'Model (optional)', modelHint: 'Leave blank to use this agent’s default.', members: 'New members', parallel: 'Tasks progressing at once', settingsHint: 'Applies to new assignments. Running members keep their current configuration. Parents waiting for children do not occupy a work slot.',
+  options: 'Team options', name: 'Team name (optional)', model: 'Default model', modelHint: 'Leave blank to use this agent’s default.', members: 'New members', parallel: 'Tasks progressing at once', settingsHint: 'Applies to new assignments. Running members keep their current configuration. Parents waiting for children do not occupy a work slot.',
   preparing: 'Preparing your team', preparingHint: 'Starting the lead and connecting its conversation. You can leave this page and return from your history.',
   offline: 'This computer is offline. Reconnect it to start a team.', machineRequired: 'Connect a computer to start a team.', upgrade: 'This computer needs a newer CLI to start teams automatically. Check its update status.', machineSettings: 'View computer', unavailable: 'Team collaboration is unavailable for this account. Ordinary conversations still work.',
   failed: 'The team could not start', failedHint: 'Open the task to inspect the failure and recovery options. Do not create another team while the previous launch is uncertain.',
@@ -12,11 +12,15 @@ const en = {
   setup: 'Start this team', setupHint: 'Choose a project and describe the goal. We will create and connect a lead for this team.',
   save: 'Save team options', skillTerminal: 'Starting from a terminal?', skillHint: 'Only terminal setup needs an installation command. Creating a team here prepares the instructions for you.',
   history: 'Team progress', raw: 'Original message', message: 'Team update', error: 'Something went wrong. Your request is kept so retrying will not create a duplicate.',
+  modelDefault: 'Follow the harness default', modelCustom: 'custom (this computer)', modelNotListed: 'not in this computer’s list',
+  modelNotListedHint: 'The saved model is not in this harness’s list on this computer. It is kept; pick another one if members fail to start.',
+  harnessUnavailable: 'not installed', harnessUnavailableHint: 'This harness is not available on the team’s computer; new members will fail to start until it is installed.',
+  leadAndMembers: 'Harness (lead and new members)',
 };
 const zh: typeof en = {
   launchFailed: '启动需处理', retryHint: '电脑会按退避自动重试几次；仍失败时，修复原因后点「重试启动」。发送消息不会重新启动 agent。', unknownHint: '启动结果未确认，电脑不会自动重试。确认旧进程已停止后，可重试启动或取消任务。', retryLaunch: '重试启动', retryConfirm: '我已确认上一次启动的进程已停止', retryRequested: '已请求重试', retryUpgrade: '这台电脑的 CLI 更新后才能在这里重试；在此之前请取消任务并重新分派。', configure: '电脑、项目与 Agent', chatIntro: '说说你想完成什么，负责人会组织工作，并在对话中继续。', title: '新建团队', start: '开始协作', goal: '你想完成什么？', goalHint: '例如：检查这个项目，组队并行修复最重要的问题，并测试修改结果。',
   project: '项目文件夹', browse: '选择文件夹', machine: '执行电脑', lead: '负责人使用', automatic: '新建团队默认免审批执行，可在团队设置中调整。系统会准备协作指引，并打开负责人的对话。',
-  options: '团队选项', name: '团队名称（选填）', model: '模型（选填）', modelHint: '留空使用该 agent 的默认模型。', members: '新成员默认使用', parallel: '同时推进的任务数', settingsHint: '对新分派的工作生效，运行中的成员保留当前配置。等待子任务的父任务不占推进名额。',
+  options: '团队选项', name: '团队名称（选填）', model: '默认模型', modelHint: '留空使用该 agent 的默认模型。', members: '新成员默认使用', parallel: '同时推进的任务数', settingsHint: '对新分派的工作生效，运行中的成员保留当前配置。等待子任务的父任务不占推进名额。',
   preparing: '正在准备团队', preparingHint: '正在启动负责人并连接对话。可以离开此页，稍后从历史列表回来。',
   offline: '这台电脑当前离线，重新连接后即可启动团队。', machineRequired: '连接一台电脑，即可开始团队协作。', upgrade: '这台电脑需要新版 CLI 才能自动启动团队，请查看更新状态。', machineSettings: '查看电脑', unavailable: '当前账号尚未开放团队协作，普通对话仍可正常使用。',
   failed: '团队尚未启动成功', failedHint: '打开任务查看失败原因和恢复操作。启动结果未确认前，请勿重复创建团队。',
@@ -26,5 +30,9 @@ const zh: typeof en = {
   setup: '启动这个团队', setupHint: '选择项目并描述目标，系统会为这个团队创建并连接负责人。',
   save: '保存团队选项', skillTerminal: '想从终端发起？', skillHint: '从终端使用时可查看安装命令；在这里创建团队会自动准备协作指引。',
   history: '团队进展', raw: '原始消息', message: '团队动态', error: '操作未完成，已保留请求；重试不会重复创建。',
+  modelDefault: '跟随 harness 默认', modelCustom: '自定义（这台电脑）', modelNotListed: '不在这台电脑的列表里',
+  modelNotListedHint: '已保存的模型不在这台电脑上该 harness 的模型列表里。仍会保留；如果成员启动失败，换一个模型。',
+  harnessUnavailable: '未安装', harnessUnavailableHint: '团队所在电脑上没有这个 harness，装好之前新成员会启动失败。',
+  leadAndMembers: 'Harness（负责人和新成员）',
 };
 export function useFirstUseCopy() { return useTranslation().lang.startsWith('zh') ? zh : en; }

@@ -14,6 +14,8 @@ import { useFirstUseCopy } from './firstUseCopy';
 import { decideQuickChat } from '@/utils/quickChat';
 import { recordRecentMachinePath } from '@/app/newChat';
 import { Spinner } from '@/ui/Spinner';
+import { TeamHarnessModelFields } from './TeamHarnessModelFields';
+import { preferredTeamAssistant } from './teamHarnessModel';
 
 export type TeamLaunchInput = { goal: string; directory: string; assistant: 'claude' | 'codex' | 'pi-acp'; model?: string };
 export function supportsTeamLaunch(machine: { metadata?: unknown; active?: boolean; activeAt?: number }) {
@@ -101,12 +103,12 @@ export function TeamStartForm({ machineId: fixedMachine, intentScope = 'create',
     <fieldset disabled={busy || !!intent || !restored}>
       <label>{c.goal}<textarea name="goal" value={goal} onChange={e => setGoal(e.target.value)} required maxLength={32000} placeholder={c.goalHint} autoFocus /></label>
       <details open={configOpen} onToggle={e => setConfigOpen(e.currentTarget.open)}><summary>{c.configure}<span className="team-start-context">{machine ? machineLabel(machine) : c.machine} · {directory || c.project} · {assistant === 'claude' ? 'Claude Code' : assistant === 'codex' ? 'Codex' : 'pi'}</span></summary>
-      {!fixedMachine && <label>{c.machine}<select value={machineId} onChange={e => { setMachine(e.target.value); setDirectory(''); setPicking(false); }} required><option value="">{c.machine}</option>{machines.map(m => <option value={m.id} key={m.id}>{machineLabel(m)}{!isMachineOnline(m) ? ' · offline' : ''}</option>)}</select></label>}
+      {!fixedMachine && <label>{c.machine}<select value={machineId} onChange={e => { const next = machines.find(m => m.id === e.target.value); setMachine(e.target.value); setDirectory(''); setPicking(false); const a = preferredTeamAssistant(next?.metadata, assistant); if (a !== assistant) { setAssistant(a); setModel(''); } }} required><option value="">{c.machine}</option>{machines.map(m => <option value={m.id} key={m.id}>{machineLabel(m)}{!isMachineOnline(m) ? ' · offline' : ''}</option>)}</select></label>}
       <label>{c.project}<div className="team-folder-input"><input value={directory} onChange={e => setDirectory(e.target.value)} required list="team-projects" placeholder="/path/to/project" /><button type="button" disabled={!machine || !isMachineOnline(machine)} onClick={() => setPicking(!picking)}><FolderOpen size={16} />{c.browse}</button></div></label>
       <datalist id="team-projects">{(presets ?? []).map(p => <option value={p.path} key={p.id} />)}</datalist>
       {picking && machine && <div className="team-folder-browser"><FsBrowser machineId={machineId} initialPath={directory || machine.metadata?.homeDir || '/'} onPickDir={path => { setDirectory(path); setPicking(false); }} /></div>}
-      <label>{c.lead}<select name="assistant" value={assistant} onChange={e => { setAssistant(e.target.value as TeamLaunchInput['assistant']); setModel(''); }}><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="pi-acp">pi</option></select></label>
-      <div className="team-start-options"><label>{c.name}<input name="name" value={name} onChange={e => setName(e.target.value)} maxLength={128} /></label><label>{c.model}<input name="model" value={model} onChange={e => setModel(e.target.value)} maxLength={128} placeholder={c.modelHint} /></label></div></details>
+      {/* B-698: the launch harness/model also become the team's defaults for new members (server reducer). */}
+      <div className="team-start-options"><TeamHarnessModelFields machineId={machineId} assistant={assistant} model={model} onAssistant={setAssistant} onModel={setModel} harnessLabel={c.leadAndMembers} /><label>{c.name}<input name="name" value={name} onChange={e => setName(e.target.value)} maxLength={128} /></label></div></details>
     </fieldset>
     {!ready && <p role="status">{machine ? isMachineOnline(machine) ? c.upgrade : c.offline : c.machineRequired} <Link to={machine ? `/machine/${machine.id}` : '/machine/connect'}>{c.machineSettings} →</Link></p>}
     {intent && <p role="status">{zh ? '已有启动请求，已恢复原来的目标和设置。继续会查询或完成同一次启动，不会创建第二个团队。' : 'Your original goal and settings are restored. Continue the saved launch without creating another team.'}</p>}

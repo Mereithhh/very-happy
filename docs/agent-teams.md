@@ -60,7 +60,15 @@ collaboration instructions in the background. No session ID entry or additional
 join step is required. Old wrappers without the capability need a new session.
 
 Team options choose the default agent/model for new assignments and the maximum
-number of concurrently progressing leaf tasks. A parent waiting for unfinished
+number of concurrently progressing leaf tasks. The harness select lists only the
+harnesses the team's computer can run (Claude Code, Codex, pi; Gemini is not a
+team harness yet), and the default model is a select built from that harness's
+models on the computer — the bundled list, models published by pi sessions, and
+the computer's custom models (**Settings → Models & providers**) — with
+"Follow the harness default" first. Switching the harness resets the model; a
+saved model that is no longer listed stays selected and is flagged. When the lead
+delegates without `assistant`/`model`, the new member uses these defaults; the
+new-team form's harness and model become the first defaults. A parent waiting for unfinished
 children yields its slot; this is a work limit, not an OS-process limit. Running
 members keep their original model configuration. The current team still uses one
 execution computer.
