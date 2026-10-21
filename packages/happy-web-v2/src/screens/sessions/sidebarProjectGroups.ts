@@ -109,30 +109,33 @@ export function foldersOfRows(rows: WorkspaceRowLike[]): { machineId: string; pa
 }
 
 /**
- * B-647 settings migration. Grouping now lives in `sidebarGrouping`
- * ('project' default | 'none'); `sidebarGroupMode` / `sidebarGroupByTag` stay
- * in the schema (add-only) but no longer drive the lens. A device that had
- * picked tag grouping gets the one-time 「标签分组已合并到项目」 notice.
+ * Grouping settings (B-647, revised by B-675). The lens lives in
+ * `sidebarGrouping` ('project' default | 'tag' | 'none'); `sidebarGroupMode` /
+ * `sidebarGroupByTag` stay in the schema (add-only), no longer drive the lens,
+ * and are mirrored for an old-Web rollback.
+ *
+ * A device whose legacy fields still say tag never touched the grouping menu
+ * since B-647 (picking a lens there rewrites them), so its last explicit
+ * choice was tag grouping: it gets the one-time 「按标签分组回来了」 notice.
  */
+export type SidebarGrouping = 'project' | 'tag' | 'none';
+
+export function resolveSidebarGrouping(saved: string | undefined): SidebarGrouping {
+  return saved === 'tag' || saved === 'none' ? saved : 'project';
+}
+
 export function usedTagGrouping(savedGroupMode: string | undefined, legacyGroupByTag: boolean | undefined): boolean {
   return savedGroupMode === 'tag' || legacyGroupByTag === true;
 }
 
-/** Old-Web rollback keeps something sensible: project ↔ workspace, none ↔ none. */
-export function legacyGroupModeFor(grouping: 'project' | 'none'): 'workspace' | 'none' {
-  return grouping === 'project' ? 'workspace' : 'none';
+/** Show the B-675 notice: pre-B-647 tag user, not on the tag lens, not dismissed. */
+export function showTagGroupingBackNotice(prefs: { sidebarGrouping?: string; sidebarGroupMode?: string; sidebarGroupByTag?: boolean; tagGroupingBackNoticeDismissed?: boolean }): boolean {
+  return usedTagGrouping(prefs.sidebarGroupMode, prefs.sidebarGroupByTag)
+    && resolveSidebarGrouping(prefs.sidebarGrouping) !== 'tag'
+    && prefs.tagGroupingBackNoticeDismissed !== true;
 }
 
-/** First-tag buckets the tag→project action offers, most used first. */
-export function tagCandidates(rows: { tags?: string[] }[]): { tag: string; count: number }[] {
-  const counts = new Map<string, { tag: string; count: number }>();
-  for (const r of rows) {
-    const tag = r.tags?.[0]?.trim();
-    if (!tag) continue;
-    const k = tag.toLowerCase();
-    const c = counts.get(k) ?? { tag, count: 0 };
-    c.count++;
-    counts.set(k, c);
-  }
-  return [...counts.values()].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+/** Old-Web rollback keeps something sensible: project ↔ workspace, tag ↔ tag, none ↔ none. */
+export function legacyGroupModeFor(grouping: SidebarGrouping): { sidebarGroupMode: 'workspace' | 'tag' | 'none'; sidebarGroupByTag: boolean } {
+  return { sidebarGroupMode: grouping === 'project' ? 'workspace' : grouping, sidebarGroupByTag: grouping === 'tag' };
 }

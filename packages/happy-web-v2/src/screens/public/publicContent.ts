@@ -288,7 +288,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'list', items: ['Instructions: stable rules in Markdown, versioned, with history.', 'Log: decisions, findings, and handoffs written by agents. Entries take effect immediately; you can review or revoke any of them.', 'Folders: one primary folder where new sessions start, plus others on any machine or repository.', 'Sessions and teams: everything working on the project, with each session’s status.'] },
       ] },
       { heading: 'A sidebar grouped by project', blocks: [
-        { type: 'p', text: 'The sidebar groups sessions by project by default. Sessions outside a project are grouped by folder, and a folder group becomes a project in one click from its header. Tag grouping is gone; an existing tag can be turned into a project. The grouping menu still offers a flat list.' },
+        { type: 'p', text: 'The sidebar groups sessions by project by default. Sessions outside a project are grouped by folder, and a folder group becomes a project in one click from its header. The grouping menu also offers grouping by tag, where each tag group can become a project in one click, and a flat list.' },
         { type: 'p', text: 'Click a project name to open its page: start a session in it, see each session’s status and whether it received the project context, edit the instructions, review or revoke log entries, and manage its folders and teams.' },
       ] },
       { heading: 'How sessions join a project', blocks: [
