@@ -3,13 +3,13 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { TeamOperation, TeamState } from '@slopus/happy-wire';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), send: vi.fn(), key: vi.fn(), persisted: vi.fn(), prepare: vi.fn(), remove: vi.fn(), archive: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), send: vi.fn(), key: vi.fn(), persisted: vi.fn(), prepare: vi.fn(), resolve: vi.fn(), remove: vi.fn(), archive: vi.fn() }));
 vi.mock('axios', () => ({ default: { create: () => ({ get: mocks.get, post: mocks.post }), isAxiosError: () => false } }));
 vi.mock('@/configuration', () => ({ configuration: { happyHomeDir: '', serverUrl: '' } }));
 vi.mock('@/persistence', () => ({ readPersistedSessions: mocks.persisted }));
 vi.mock('@/commands/sessionMessage', () => ({ sendUserMessage: mocks.send, waitForSessionKey: mocks.key }));
 vi.mock('@/sessions/sessionOps', () => ({ archiveSession: mocks.archive }));
-vi.mock('./worktree', () => ({ prepareTeamWorktree: mocks.prepare, removeTeamWorktree: mocks.remove }));
+vi.mock('./worktree', () => ({ prepareTeamWorktree: mocks.prepare, resolveTeamRepository: mocks.resolve, removeTeamWorktree: mocks.remove }));
 import { createTeamWorker } from './worker';
 import { readReceipt, writeReceipt } from './journal';
 
@@ -41,6 +41,7 @@ beforeEach(() => {
     mocks.persisted.mockReturnValue({});
     stopAndWait.mockReset().mockResolvedValue(undefined);
     mocks.prepare.mockResolvedValue({ directory: '/isolated', repository: '/repo', branch: 'codex/team-op1' });
+    mocks.resolve.mockImplementation(async (_home: string, repository: string) => repository);
     mocks.key.mockResolvedValue(new Uint8Array(32));
     mocks.send.mockResolvedValue(undefined);
     mocks.remove.mockResolvedValue(undefined);
@@ -161,6 +162,43 @@ describe('daemon team effect recovery', () => {
             setup(retried);
             await worker.tick();
             expect(spawn).toHaveBeenCalledTimes(6);
+            expect(readReceipt(home, 'op1')).toMatchObject({ phase: 'completed', retryConsumed: 42 });
+        } finally { clock.mockRestore(); }
+    });
+    it('B-706: a reactivated bot launches from the source behind its removed worktree; an unusable one backs off with the cause', async () => {
+        let now = 1_000_000;
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+        try {
+            // The old launch's receipt records where its worktree came from.
+            writeReceipt(home, { operationId: 'old-op', teamId: 'team1', claimId: 'old-claim', phase: 'completed', directory: join(home, 'teams', 'worktrees', 'old-op'), repository: '/repo', branch: 'codex/team-old-op' });
+            const operation = { ...op(), directory: join(home, 'teams', 'worktrees', 'old-op') }; setup(operation);
+            mocks.resolve.mockImplementationOnce(async (_home: string, repository: string, sourceOf: (id: string) => string | undefined) => repository.endsWith('/old-op') ? sourceOf('old-op')! : repository);
+            const worker = start(); await settled(worker);
+            expect(mocks.prepare).toHaveBeenCalledWith(home, '/repo', 'op1');
+            expect(spawn).toHaveBeenCalledTimes(1);
+
+            // Nothing to fall back to: a definite preflight failure, reported once per attempt with backoff.
+            rmSync(join(home, 'teams', 'effects'), { recursive: true, force: true });
+            spawn.mockClear(); mocks.post.mockClear();
+            mocks.resolve.mockRejectedValue(new Error('Team repository is unavailable: /gone is missing or not a Git checkout. Restore the folder or delegate with an existing repository, then choose Retry launch.'));
+            setup({ ...op(), directory: '/gone' });
+            await worker.tick();
+            expect(spawn).not.toHaveBeenCalled();
+            expect(readReceipt(home, 'op1')).toMatchObject({ phase: 'prepared', spawnFailures: 1, retryAt: now + 10_000 });
+            const failures = () => mocks.post.mock.calls.filter(c => c[1].action?.type === 'fail-operation');
+            expect(failures()[0][1].action.error).toContain('Team repository is unavailable: /gone');
+            expect(failures()[0][1].action.error).toContain('automatic retry 2/5 in 10s');
+            await worker.tick(); await worker.tick();
+            expect(failures()).toHaveLength(1); // no longer re-failed on every poll
+            for (const delay of [10_000, 30_000, 60_000, 120_000]) { now += delay; await worker.tick(); }
+            expect(failures().pop()?.[1].action.error).toContain('automatic retries exhausted after 5 attempts');
+            now += 3_600_000; await worker.tick();
+            expect(failures()).toHaveLength(5);
+            // Owner「重试启动」 after fixing the folder (the server also re-reads the source repository).
+            mocks.resolve.mockImplementation(async (_home: string, repository: string) => repository);
+            setup({ ...op(), directory: '/repo', status: 'failed', claimId: 'claim1', retryRequestedAt: 42 });
+            await worker.tick();
+            expect(spawn).toHaveBeenCalledTimes(1);
             expect(readReceipt(home, 'op1')).toMatchObject({ phase: 'completed', retryConsumed: 42 });
         } finally { clock.mockRestore(); }
     });
