@@ -27,6 +27,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       'changelog.releases.oct21.drafts',
       'changelog.releases.oct21.mentions',
       'changelog.releases.oct21.search',
+      'changelog.releases.oct21.panels',
       'changelog.releases.oct21.mobile',
       'changelog.releases.oct21.keys',
       'changelog.releases.oct21.fixes',
@@ -42,6 +43,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     itemKeys: [
       'changelog.releases.oct21a.projects',
       'changelog.releases.oct21a.pi',
+      'changelog.releases.oct21a.panels',
       'changelog.releases.oct21a.stop',
       'changelog.releases.oct21a.reliability',
     ],
