@@ -136,6 +136,9 @@ daemon 在 `onChildExited` 时若该会话刚被批准休眠：恢复记录写 `
 - `mergeReconnectMetadata` 清掉 `hibernation` 键（新 CLI 才有）。
 - 唤醒时 web 把 `metadata.permissionMode` 作为 resume RPC 的 `permissionMode` 传入（daemon 已有白名单
   `sanitizeSpawnPermissionMode`），header 不会在唤醒后跳回 default。
+  Automation `send` 的 daemon 侧唤醒（`wakeHibernated`）没有 Web 调用者：B-696 起以
+  `keepPublishedPermissionMode` 让 daemon 用服务端 metadata 里上个 wrapper 发布的模式
+  （`publishedRelaunchPermissionMode`，Claude 走同一 outbound 白名单，无发布值则不传）。
 - **B-679 推广到普通 offline 退出**：SIGTERM/SIGINT（`sessions stop`、daemon stop/升级、关机）退出的 wrapper
   在同一 tick 里取 `messageCursor` 并 `freezeInbound()`，在 session-end 前以 3 s 上限 awaited 写
   `metadata.exitCursor = { at, seq, v: 1 }`；新 wrapper 用 `applyReconnectReplay`（休眠戳优先，其次 exitCursor）

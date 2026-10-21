@@ -116,4 +116,4 @@ B-258 发布后复发：simon 机器上更新前已开的 wrapper 进程（铁�
 
 **兼容矩阵。** 新 Web + ≤0.2.88：Web 在线时逐卡裸 allow，下一条消息 meta=bypass 后不再问；无 Web 在线时第一张卡等人。新 Web + 0.2.89：有卡即 RPC，整段不再问，显示永远未确认。新 Web + 0.2.90+：打开即 upgrade-only 对齐 → confirmed。旧 Web + 新 CLI：不变。assistant：本地未明确选 yolo 不代批不发 meta。多设备 × 旧 CLI：选过的设备与 override 生效，另一台只显示未确认；相反 local 的设备发消息会降级（既有，B1 收口）。codex/gemini/openclaw/mirror：不触碰。settings 禁用 bypass：不产生 Happy 卡（handler 在 bypass 下先放行）。
 
-**明写不做。** 不对代码默认执法/发送；不自动重放；不改协议。第二批：sessionModeSync 乐观窗口、CLI 读 `system/init.permissionMode`、approve-with-mode 不嵌套、CLI 队列陈旧 meta、RPC 通道 default 降级保护、resume 透传 `--permission-mode`（B-683 已做：Web 的恢复/重启一律带「本机显式选择 ?? 上个 wrapper 发布值」，见 `relaunchPermissionMode`）、B-263。
+**明写不做。** 不对代码默认执法/发送；不自动重放；不改协议。第二批：sessionModeSync 乐观窗口、CLI 读 `system/init.permissionMode`、approve-with-mode 不嵌套、CLI 队列陈旧 meta、RPC 通道 default 降级保护、resume 透传 `--permission-mode`（B-683 已做：Web 的恢复/重启一律带「本机显式选择 ?? 上个 wrapper 发布值」，见 `relaunchPermissionMode`；B-696 补上 daemon 自身的 Automation 休眠唤醒：沿用上个 wrapper 发布值，见 CLI `publishedRelaunchPermissionMode`）、B-263。
