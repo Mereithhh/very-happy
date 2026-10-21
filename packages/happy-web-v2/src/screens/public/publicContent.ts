@@ -71,7 +71,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       "blocks": [
         {
           "type": "p",
-          "text": "Choose Teams → New team, select a project folder and computer, and describe your goal. Very Happy starts the lead, provides the official collaboration instructions, and opens its conversation. No manual skill installation is needed in the app. To lead from an existing conversation, choose Start a team from this conversation in its More menu. The command below is only for terminal setup. Reading a skill alone does not connect an unmanaged terminal."
+          "text": "Choose Teams → New team, select a project folder and computer, and describe your goal. Very Happy starts the lead, provides the official collaboration instructions, and opens its conversation. By default the lead delegates rather than coding itself, runs independent tasks in parallel, keeps overlapping work apart, and records decisions with project_note in the team's project; link the team to a project so this context survives compaction and members can read it. No manual skill installation is needed in the app. To lead from an existing conversation, choose Start a team from this conversation in its More menu. The command below is only for terminal setup. Reading a skill alone does not connect an unmanaged terminal."
         },
         {
           "type": "code",

@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { createTeamsClient, TeamConnectionPreflightError } from './client';
 import { teamScopePath } from './context';
 import { sendUserMessage, waitForSessionKey } from '@/commands/sessionMessage';
-import { TEAM_SKILL } from './resources';
+import { TEAM_LEAD_PLAYBOOK, TEAM_SKILL } from './resources';
 
 export const TEAMS_ADOPT_CAPABILITY = 'teams-adopt-v1';
 export const TeamAdoptSchema = z.object({
@@ -84,7 +84,7 @@ export function createTeamAdoption(sessionId: string) {
             try {
                 intent = await retainIntent(path, input);
                 const connected = await client.initialize(input, { resumeAdoption: true, expectedTeamId: intent.resolvedTeamId, onTeamResolved: teamId => retainTeam(path, input, teamId, intent?.guidanceDelivered) });
-                const instructions = `${TEAM_SKILL}\n\nThis session is now connected as the team lead. Call team_inspect to read the authoritative state before continuing the user's goal. Do not call team_create or team_join again.`;
+                const instructions = `${TEAM_SKILL}\n\nThis session is now connected as the team lead. Call team_inspect to read the authoritative state before continuing the user's goal. Do not call team_create or team_join again.\n\n${TEAM_LEAD_PLAYBOOK}`;
                 if (!intent.guidanceDelivered) {
                     const key = await waitForSessionKey(sessionId, 10_000);
                     await sendUserMessage(sessionId, key, instructions, 'teams', { localId: `teams-adopt-${input.requestId}`, sentFrom: 'team' });
