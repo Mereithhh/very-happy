@@ -575,6 +575,12 @@ export async function claudeRemote(opts: {
     // (a pre-empted turn and the one that pre-empted it) used to park two
     // waiters on the queue, which then pushed two queued messages back to back;
     // B-509 is one message per turn end.
+    // B-662: the flag drops in the same synchronous step that hands the
+    // message to the Query (or ends it), not in a trailing `.finally` a few
+    // microtasks later: a result landing in that window (a prompt answered at
+    // once, or one more `await` on the pull path) found the flag still up,
+    // returned as "already waiting", and nothing pulled again — the queued
+    // message sat there until the session was restarted.
     let pullingNext = false;
     const pullNextMessage = () => {
         if (pullingNext) {
@@ -585,6 +591,7 @@ export async function claudeRemote(opts: {
         opts.nextMessage().then(async (pulled) => {
             let next = withoutRetiredModel(pulled);
             if (!next) {
+                pullingNext = false;
                 messages.end();
                 return;
             }
@@ -615,6 +622,7 @@ export async function claudeRemote(opts: {
             const uuid = promptUuid(next.uuid);
             if (uuid.uuid) commandTracker.track(uuid.uuid, { message: next.message, mode: next.mode });
             timingMarks = { pushedAt: next.enqueuedAt ?? Date.now() };
+            pullingNext = false;
             messages.push({
                 type: 'user',
                 parent_tool_use_id: null,
@@ -623,9 +631,8 @@ export async function claudeRemote(opts: {
                 message: { role: 'user', content: next.message },
             });
         }).catch(() => {
-            messages.end();
-        }).finally(() => {
             pullingNext = false;
+            messages.end();
         });
     };
 
