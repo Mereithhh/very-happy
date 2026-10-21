@@ -103,6 +103,22 @@ function harnessTeam(now: number): TeamState {
   };
 }
 
+/** B-729: the production shape of 10-22 — roll-pool-cot's spawned Lead (sR)
+ *  later created roll-pool and joined it as lead; roll-pool-cot reused its
+ *  worker (sW1 → sW2). sR used to render outside both teams. */
+function b729Teams(now: number): TeamState[] {
+  const spawn = (teamId: string, botId: string, generation: number, sessionId: string): TeamOperation => ({ id: `op-${botId}-${generation}`, teamId, machineId: 'm1', taskId: `task-${botId}`, botId, attemptId: `att-${botId}-${generation}`, generation, type: 'spawn', status: 'completed', claimId: 'c', claimedAt: now, error: null, sessionId, directory: '/home/dev/pool', assistant: 'claude', prompt: 'goal', createdAt: now - (10 - generation) * 60_000 }) as TeamOperation;
+  const bot = (id: string, name: string, sessionId: string | null, extra: Partial<TeamState['bots'][number]> = {}) => ({ id, name, sessionId, root: false, generation: 1, managed: true, assistant: 'claude', directory: null, ...extra }) as TeamState['bots'][number];
+  return [
+    { id: 'cot', name: 'roll-pool-cot', machineId: 'm1', version: 1, createdAt: now - 7200_000, tasks: [], messages: [],
+      bots: [bot('cot-lead', 'Lead', 'sR', { root: true }), bot('cot-w', 'xhub-key-fetch', 'sW2', { generation: 2 })],
+      operations: [spawn('cot', 'cot-lead', 1, 'sR'), spawn('cot', 'cot-w', 1, 'sW1'), spawn('cot', 'cot-w', 2, 'sW2')] },
+    { id: 'pool', name: 'roll-pool', machineId: 'm1', version: 1, createdAt: now - 600_000, tasks: [], messages: [],
+      bots: [bot('pool-root', 'roll-pool', 'sR', { root: true, managed: false }), bot('pool-a', 'or-gemini-eval', 'sP')],
+      operations: [spawn('pool', 'pool-a', 1, 'sP')] },
+  ];
+}
+
 function seed() {
   const now = Date.now();
   storage.getState().applyLocalSettings({
@@ -146,8 +162,12 @@ function seed() {
       .map((name, k) => fakeSession(`s${10 + k}`, `${name} idle chat`, 10 + k, k < 4 ? { tags: [['web', 'api', 'web', 'docs'][k]] } : {})),
     // B-674: retired team members — their sessions are archived.
     ...RETIRED_MEMBERS.map((name, k) => fakeSession(`s${30 + k}`, `${name} worker`, 30 + k, { archived: true })),
+    fakeSession('sR', 'Coordinate coding agents via Very Happy teams', 0, { tags: ['teams'] }),
+    fakeSession('sW1', 'xhub key fetch (gen 1)', 6),
+    fakeSession('sW2', 'xhub key fetch (gen 2)', 2),
+    fakeSession('sP', 'or-gemini-eval', 1),
   ]);
-  setTeamNavigationDevOverride([harnessTeam(now)]);
+  setTeamNavigationDevOverride([harnessTeam(now), ...b729Teams(now)]);
   // projects API answered with no projects yet: every project-gated control shows
   setProjectsDevOverride({ status: 'ready', projects: [], members: [] });
   storage.getState().applyReady();

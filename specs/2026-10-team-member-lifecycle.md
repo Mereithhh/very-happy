@@ -34,7 +34,7 @@ Owner：「已经不用的 team 也会占据一个成员……我现在 21 个�
 
 **视图**：`teamView` 响应附加 `memberCounts` 和 `bots[].activity`，按完整状态计算，只出现在响应里、不持久化。team_inspect 透传 JSON，所以 agent 也能看到。
 
-**历史与重新激活**：bot 名下的任务 attempts 和各 spawn op 的 sessionId 就是它的历史。用 `assigneeBotId` 委派给 inactive 的 bot，即 generation+1 后启动新会话和新 worktree。不新增 action。
+**历史与重新激活**：bot 名下的任务 attempts、各 spawn op 的 sessionId 和 `previousSessionIds` 就是它的历史。B-729 起，join（adopt/重绑）替换会话、stop 或人工对账解绑会话时，server 把旧 sessionId 记进可选的 `TeamBot.previousSessionIds`（最早的在前，最多 32 个；旧 server 没有这个字段，旧 Web 会忽略）。Web 侧栏归属（`teamSessionMembership`）只认当前绑定、spawn 完成回执和 `previousSessionIds`。同一会话被多处认领时不再丢弃，按「当前绑定 > spawn 回执 > 历史」定唯一归属，平局时较新的团队优先。较早代的会话折进「已停用」。用 `assigneeBotId` 委派给 inactive 的 bot，即 generation+1 后启动新会话和新 worktree。不新增 action。
 
 **Web**：成员折叠与「已停用 N 个」由 B-690（#642）负责，它会把本地的 `teamMemberInactive` 换成 `teamBotActivity`（带上 `sessionArchived`）。共享函数已先由 #646 单独合入。server 的 `memberCounts` 不知道会话是否已归档，所以 Web 应带上归档信息自己重算。
 

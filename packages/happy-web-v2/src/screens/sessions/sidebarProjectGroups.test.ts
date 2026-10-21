@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectView, TeamState } from '@slopus/happy-wire';
 import { groupRowsByTag } from './sidebarTagGroups';
-import { groupTeamNavigation } from './teamNavigation';
+import { groupTeamNavigation, teamSessionMembership } from './teamNavigation';
 import { foldersOfRows, groupRowsByProject, legacyGroupModeFor, usedTagGrouping } from './sidebarProjectGroups';
 
 const project = (id: string, extra: Partial<ProjectView> = {}): ProjectView => ({ id, name: id, goal: null, instructions: '', instructionsVersion: 0, instructionsUpdatedBy: null, instructionsUpdatedAt: null, folders: [], defaults: {}, archivedAt: null, createdAt: 1, updatedAt: 1, teamIds: [], automationIds: [], ...extra });
@@ -149,5 +149,45 @@ describe('B-723 (O1): an unattached team groups under its own repository', () =>
     const t = team('t', ['lead', 'w1']);
     const { unassigned } = groupRowsByProject([row('w1', 'm', '/a'), row('lead', 'm', '/b')], [], [], [t]);
     expect(unassigned.map(g => g.path)).toEqual(['/a']);
+  });
+});
+
+/**
+ * B-729: the production shape on 10-22 — a Lead spawned by roll-pool-cot that
+ * created and joined roll-pool, a reused worker's two generations, plus the Owner's own
+ * chats started in a team worktree folder (no team field: never pulled in).
+ * Composed the way Sidebar.tsx composes each lens, every team conversation is a
+ * team child in all three, and no unrelated row is.
+ */
+describe('B-729 team conversations nest identically in every lens', () => {
+  type R = { key: string; sessionId?: string; machineId?: string; workspacePath?: string; tags?: string[]; teamHistoryLink?: true };
+  const spawn = (teamId: string, botId: string, generation: number, sessionId: string) => ({ id: `${botId}-${generation}`, teamId, machineId: 'm', taskId: 't', botId, attemptId: 'a', generation, type: 'spawn' as const, status: 'completed' as const, claimId: 'c', claimedAt: 1, error: null, sessionId, directory: '/repo', assistant: 'claude' as const, prompt: '', createdAt: generation });
+  const cot = team('cot', ['L', 'w2'], { createdAt: 2 });
+  cot.bots[1].generation = 2;
+  cot.operations = [spawn('cot', 'cot-b0', 1, 'L'), spawn('cot', 'cot-b1', 1, 'w1'), spawn('cot', 'cot-b1', 2, 'w2')];
+  const pool = team('pool', ['L', 'p'], { createdAt: 3 }); // the spawned Lead later created and joined it
+  pool.bots[0].managed = false;
+  const teams = [pool, cot];
+  const rows: R[] = [row('L', 'm', '/wt/L'), row('mine', 'm', '/wt/L'), row('w1', 'm', '/wt/w1'), row('w2', 'm', '/wt/w2'), row('p', 'm', '/repo'), row('other', 'm', '/repo', ['x'])];
+  const placement = (sections: ReturnType<typeof groupTeamNavigation<R>>[]) => Object.fromEntries(sections.flat().flatMap(e => e.kind === 'row' ? [[e.row.key, e.team?.id ?? null]] : []));
+  const expected = { L: 'pool', w1: 'cot', w2: 'cot', p: 'pool', mine: null, other: null };
+  const nest = (r: R[], t: TeamState[]) => groupTeamNavigation(r, t, new Set(['cot', 'pool', 't']));
+  it('project lens', () => {
+    const g = groupRowsByProject(rows, [], [], teams);
+    expect(placement([...g.unassigned.map(u => nest(u.rows, u.teams)), ...(g.teamsGroup ? [nest(g.teamsGroup.rows, g.teamsGroup.teams)] : [])])).toEqual(expected);
+  });
+  it('tag lens', () => {
+    const m = teamSessionMembership(teams);
+    const isTeamRow = (r: R) => !!r.sessionId && m.has(r.sessionId);
+    expect(placement([...groupRowsByTag(rows.filter(r => !isTeamRow(r))).map(x => x.rows.map(row => ({ kind: 'row' as const, row }))), nest(rows.filter(isTeamRow), teams)])).toEqual(expected);
+  });
+  it('no grouping', () => {
+    expect(placement([nest(rows, teams)])).toEqual(expected);
+  });
+  it('an unanchored history link nests with its team even when that team also heads a project group', () => {
+    const t = team('t', ['s1', 's2']);
+    const g = groupRowsByProject([row('s1'), history('s2')], [project('q')], [member('q', 's1')], [t]);
+    expect(g.teamsGroup!.teams.map(x => x.id)).toEqual(['t']);
+    expect(placement([nest(g.teamsGroup!.rows, g.teamsGroup!.teams)])).toEqual({ s2: 't' });
   });
 });

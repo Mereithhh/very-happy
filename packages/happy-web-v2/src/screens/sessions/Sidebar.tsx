@@ -67,10 +67,10 @@ import { rowRenameMenuTranslationKeys } from './sidebarRowMenu';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import { useTeamNavigation } from './useTeamNavigation';
-import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamSessionMembership, unstartedTeamMembers, teamLeadSessionId } from './teamNavigation';
+import { botHistorySessionId, groupTeamNavigation, missingTeamSessionIds, teamInactiveGroupId, teamMemberCount, teamMemberInactive, teamSessionMembership, teamSessionSuperseded, unstartedTeamMembers, teamLeadSessionId } from './teamNavigation';
 import { SidebarTeamRow } from './SidebarTeamRow';
 import { useTeamNavigationCopy } from './teamNavigationCopy';
-import type { TeamState } from '@slopus/happy-wire';
+import type { TeamBot, TeamState } from '@slopus/happy-wire';
 import './sidebar.css';
 import { SidebarOrderHint } from './SidebarOrderHint';
 import { MajorUpdateEntry } from '@/app/MajorUpdateEntry';
@@ -583,7 +583,8 @@ export function Sidebar() {
     const pendingRow = (team: TeamState) => ({bot, task, failed, href}: ReturnType<typeof unstartedTeamMembers>[number]): Row => ({ key: `member:${team.id}:${bot.id}`, kind: 'session', href, title: bot.root ? teamCopy.lead : bot.name, subtitle: failed ? teamCopy.failed : task ? teamCopy.preparing : teamCopy.noSession, ts: team.createdAt, createdAt: team.createdAt, teamHistoryLink: true });
     const unstarted = (team: TeamState, inactive: boolean) => unstartedTeamMembers(team).filter(({ bot }) => (inactiveMembers.unstarted.get(team.id)?.has(bot.id) ?? false) === inactive);
     const fold = {
-      isInactive: (r: Row) => !!r.sessionId && inactiveMembers.sessions.has(r.sessionId),
+      // B-729: an earlier generation's conversation folds too, even while the member is active.
+      isInactive: (r: Row, team: TeamState, bot: TeamBot | undefined) => !!r.sessionId && (inactiveMembers.sessions.has(r.sessionId) || (!!bot && teamSessionSuperseded(team, bot, r.sessionId))),
       open: inactiveOpenTeams,
       extra: (team: TeamState) => inactiveMembers.unstarted.get(team.id)?.size ?? 0,
     };
