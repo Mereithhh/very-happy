@@ -433,22 +433,27 @@
    overflow horizontally. The landing page scrolls with the document instead. */
 .pub-page.pub-landing { overflow: clip visible; }
 
-/* B-720 — AsciiField placements. Hero: full-bleed depth field under the copy and
+/* B-720 — AsciiField placements. Masks and copy pools apply only once a field is
+   ready (.is-ready), so first paint carries no extra mask layers. Hero: full-bleed depth field under the copy and
    stage, faded under the headline column so copy stays AA; the old tunnel ring
    steps back so the field is the first impression. Sections get restrained
    accents (a divider strip, a field behind the closing CTA); docs a header band. */
-.pub-hero > .pub-hero-ascii { inset: -68px calc(50% - 50vw) 0; z-index: -1; -webkit-mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 85%, transparent 100%); mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 85%, transparent 100%); }
+.pub-hero > .pub-hero-ascii { inset: -68px calc(50% - 50vw) 0; z-index: -1; }
+.pub-hero > .pub-hero-ascii.is-ready { -webkit-mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 85%, transparent 100%); mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 85%, transparent 100%); }
 /* A soft canvas-coloured pool behind the headline column: the field stays vivid
    around it while the copy on top keeps AA contrast (measured from pixels). */
-.pub-hero:has(> .pub-hero-ascii) .pub-hero-copy::before { position: absolute; inset: -40px -56px -40px -40px; z-index: -1; pointer-events: none; background: var(--bg-0); -webkit-mask-image: linear-gradient(90deg, transparent, var(--text) 7%, var(--text) 93%, transparent), linear-gradient(transparent, var(--text) 7%, var(--text) 93%, transparent); -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent, var(--text) 7%, var(--text) 93%, transparent), linear-gradient(transparent, var(--text) 7%, var(--text) 93%, transparent); mask-composite: intersect; content: ''; }
-.pub-hero:has(> .pub-hero-ascii)::after { opacity: .38; }
-.pub-ascii-divider { position: relative; height: 84px; margin: 0 calc(50% - 50vw); -webkit-mask-image: linear-gradient(90deg, transparent, var(--text) 18%, var(--text) 82%, transparent), linear-gradient(transparent, var(--text) 30%, var(--text) 70%, transparent); -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent, var(--text) 18%, var(--text) 82%, transparent), linear-gradient(transparent, var(--text) 30%, var(--text) 70%, transparent); mask-composite: intersect; }
+.pub-hero:has(> .pub-hero-ascii.is-ready) .pub-hero-copy::before { position: absolute; inset: -40px -56px -40px -40px; z-index: -1; pointer-events: none; background: var(--bg-0); -webkit-mask-image: linear-gradient(90deg, transparent, var(--text) 7%, var(--text) 93%, transparent), linear-gradient(transparent, var(--text) 7%, var(--text) 93%, transparent); -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent, var(--text) 7%, var(--text) 93%, transparent), linear-gradient(transparent, var(--text) 7%, var(--text) 93%, transparent); mask-composite: intersect; content: ''; }
+.pub-hero:has(> .pub-hero-ascii.is-ready)::after { opacity: .38; }
+.pub-ascii-divider { position: relative; height: 84px; margin: 0 calc(50% - 50vw); }
+.pub-ascii-divider:has(> .is-ready) { -webkit-mask-image: linear-gradient(90deg, transparent, var(--text) 18%, var(--text) 82%, transparent), linear-gradient(transparent, var(--text) 30%, var(--text) 70%, transparent); -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent, var(--text) 18%, var(--text) 82%, transparent), linear-gradient(transparent, var(--text) 30%, var(--text) 70%, transparent); mask-composite: intersect; }
 .pub-final { position: relative; }
 .pub-final:has(> .pub-final-ascii) > div:not(.pub-actions):not(.ascii-field) { position: relative; }
-.pub-final:has(> .pub-final-ascii) > div:not(.pub-actions):not(.ascii-field)::before, .docs-article-header::before { position: absolute; inset: -28px -40px; z-index: -1; pointer-events: none; background: var(--bg-0); -webkit-mask-image: linear-gradient(90deg, transparent, var(--text) 7%, var(--text) 93%, transparent), linear-gradient(transparent, var(--text) 7%, var(--text) 93%, transparent); -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent, var(--text) 7%, var(--text) 93%, transparent), linear-gradient(transparent, var(--text) 7%, var(--text) 93%, transparent); mask-composite: intersect; content: ''; }
+.pub-final:has(> .pub-final-ascii.is-ready) > div:not(.pub-actions):not(.ascii-field)::before, .docs-page:has(.docs-ascii-band > .is-ready) .docs-article-header::before { position: absolute; inset: -28px -40px; z-index: -1; pointer-events: none; background: var(--bg-0); -webkit-mask-image: linear-gradient(90deg, transparent, var(--text) 7%, var(--text) 93%, transparent), linear-gradient(transparent, var(--text) 7%, var(--text) 93%, transparent); -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent, var(--text) 7%, var(--text) 93%, transparent), linear-gradient(transparent, var(--text) 7%, var(--text) 93%, transparent); mask-composite: intersect; content: ''; }
 .docs-article-header { position: relative; }
-.pub-final > .pub-final-ascii { inset: 0 calc(50% - 50vw); z-index: -1; -webkit-mask-image: linear-gradient(transparent, var(--text) 35%, var(--text) 80%, transparent); mask-image: linear-gradient(transparent, var(--text) 35%, var(--text) 80%, transparent); }
-.docs-ascii-band { position: absolute; top: 0; right: 0; left: 0; z-index: -1; height: 340px; -webkit-mask-image: linear-gradient(var(--text) 0, var(--text) 45%, transparent 100%), linear-gradient(90deg, transparent 0, transparent calc((100% - 1240px) / 2 + 240px), var(--text) calc((100% - 1240px) / 2 + 330px)); -webkit-mask-composite: source-in; mask-image: linear-gradient(var(--text) 0, var(--text) 45%, transparent 100%), linear-gradient(90deg, transparent 0, transparent calc((100% - 1240px) / 2 + 240px), var(--text) calc((100% - 1240px) / 2 + 330px)); mask-composite: intersect; }
+.pub-final > .pub-final-ascii { inset: 0 calc(50% - 50vw); z-index: -1; }
+.pub-final > .pub-final-ascii.is-ready { -webkit-mask-image: linear-gradient(transparent, var(--text) 35%, var(--text) 80%, transparent); mask-image: linear-gradient(transparent, var(--text) 35%, var(--text) 80%, transparent); }
+.docs-ascii-band { position: absolute; top: 0; right: 0; left: 0; z-index: -1; height: 340px; }
+.docs-ascii-band:has(> .is-ready) { -webkit-mask-image: linear-gradient(var(--text) 0, var(--text) 45%, transparent 100%), linear-gradient(90deg, transparent 0, transparent calc((100% - 1240px) / 2 + 240px), var(--text) calc((100% - 1240px) / 2 + 330px)); -webkit-mask-composite: source-in; mask-image: linear-gradient(var(--text) 0, var(--text) 45%, transparent 100%), linear-gradient(90deg, transparent 0, transparent calc((100% - 1240px) / 2 + 240px), var(--text) calc((100% - 1240px) / 2 + 330px)); mask-composite: intersect; }
 /* B-720 × B-724: the hero mark. Static SVG from first paint; the formation canvas
    (logoFormation.ts) overlays the hero while it plays, then the mark breathes. */
 .pub-hero-mark { width: clamp(128px, 10.5vw, 160px); aspect-ratio: 1; margin: 0 0 var(--sp-6); color: var(--text); transform-origin: 50% 50%; }
@@ -457,8 +462,8 @@
 @keyframes pub-mark-breathe { 50% { transform: translateY(-2px) scale(1.025); } }
 @media (prefers-reduced-motion: reduce) { .pub-hero-mark svg { animation: none; } }
 @media (max-width: 760px) {
-  .pub-hero > .pub-hero-ascii { -webkit-mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 80%, transparent 100%); mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 80%, transparent 100%); }
-  .pub-hero:has(> .pub-hero-ascii) .pub-hero-copy::before { inset: -28px -48px; }
+  .pub-hero > .pub-hero-ascii.is-ready { -webkit-mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 80%, transparent 100%); mask-image: linear-gradient(to bottom, var(--text) 0, var(--text) 80%, transparent 100%); }
+  .pub-hero:has(> .pub-hero-ascii.is-ready) .pub-hero-copy::before { inset: -28px -48px; }
   .pub-ascii-divider { height: 56px; }
   .pub-hero-mark { width: 92px; margin-bottom: var(--sp-5); }
   .docs-ascii-band { height: 220px; }
