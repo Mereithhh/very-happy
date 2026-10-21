@@ -19,7 +19,10 @@ import { displayNameOf, identityOf } from '@/app/social/accountDirectory';
 import { enforceAccountWriteRate } from '@/app/api/resourceLimits';
 import { SessionShareError, openSessionDataKey } from './sessionShares';
 import { decryptWithDataKey } from './sessionCrypto';
-import { makePathScrubber, projectLinkPage, scrubLinkText } from './linkProjection';
+import { LinkPage, makePathScrubber, oversizePlaceholder, scrubLinkText } from './linkProjection';
+
+/** Public page rows are fetched this many at a time (rows can be ~1 MB each). */
+const PUBLIC_FETCH_BATCH = 4;
 import { inTx } from '@/storage/inTx';
 import { forever } from '@/utils/forever';
 import { delay } from '@/utils/delay';
@@ -330,22 +333,46 @@ export async function publicLinkMessages(link: LinkRow, afterSeq: number, limit:
     const meta = decryptWithDataKey(new Uint8Array(Buffer.from(session.metadata, 'base64')), dek) as Record<string, any> | null;
     const scrub = makePathScrubber({ cwd: meta?.path, homeDir: meta?.homeDir });
     const ceiling = link.scope === 'snapshot' ? (link.snapshotSeq ?? 0) : undefined;
-    const rows = await db.sessionMessage.findMany({
-        where: { sessionId: session.id, seq: ceiling === undefined ? { gt: afterSeq } : { gt: afterSeq, lte: ceiling } },
-        orderBy: { seq: 'asc' },
-        take: limit + 1,
-        select: { id: true, seq: true, content: true, createdAt: true },
-    });
-    const page = rows.length > limit ? rows.slice(0, limit) : rows;
-    // The page is budgeted as a whole: it may stop early, and the client pages on from lastSeq.
-    const { projected, consumed } = projectLinkPage(page, (row) => {
+    type Row = { id: string; seq: number; content: unknown; createdAt: Date };
+    const cipherOf = (row: Row) => {
         const content = row.content as { t?: string; c?: string } | null;
-        if (content?.t !== 'encrypted' || typeof content.c !== 'string') return null;
-        return decryptWithDataKey(new Uint8Array(Buffer.from(content.c, 'base64')), dek);
-    }, scrub);
-    const messages: PublicLinkMessage[] = projected.map(({ record, content }) => ({ id: record.id, seq: record.seq, createdAt: record.createdAt.getTime(), content }));
-    const hasMore = rows.length > consumed;
-    return { messages, hasMore, lastSeq: consumed ? page[consumed - 1].seq : afterSeq };
+        return content?.t === 'encrypted' && typeof content.c === 'string' ? content.c : null;
+    };
+    const page = new LinkPage<Row>({
+        cipherLength: (row) => cipherOf(row)?.length ?? 0,
+        decode: (row) => {
+            const c = cipherOf(row);
+            return c ? decryptWithDataKey(new Uint8Array(Buffer.from(c, 'base64')), dek) : null;
+        },
+        oversize: (row) => oversizePlaceholder(row.id, row.createdAt.getTime()),
+        scrub,
+    });
+    // Rows are read in small batches so a page of huge rows does not first load
+    // `limit` of them from the database; the page budget decides when to stop.
+    let cursor = afterSeq;
+    let lastSeq = afterSeq;
+    let hasMore = false;
+    while (page.consumed < limit) {
+        const batch: Row[] = await db.sessionMessage.findMany({
+            where: { sessionId: session.id, seq: ceiling === undefined ? { gt: cursor } : { gt: cursor, lte: ceiling } },
+            orderBy: { seq: 'asc' },
+            take: Math.min(PUBLIC_FETCH_BATCH, limit - page.consumed) + 1,
+            select: { id: true, seq: true, content: true, createdAt: true },
+        });
+        const room = Math.min(PUBLIC_FETCH_BATCH, limit - page.consumed);
+        let stopped = false;
+        for (const row of batch.slice(0, room)) {
+            if (!page.offer(row)) { stopped = true; break; }
+            lastSeq = row.seq;
+        }
+        cursor = lastSeq;
+        if (stopped) { hasMore = true; break; }
+        if (batch.length <= room) { hasMore = false; break; }
+        hasMore = true;
+        if (page.full) break;
+    }
+    const messages: PublicLinkMessage[] = page.projected.map(({ record, content }) => ({ id: record.id, seq: record.seq, createdAt: record.createdAt.getTime(), content }));
+    return { messages, hasMore, lastSeq };
 }
 
 // ---------------------------------------------------------------- settings: everything I shared

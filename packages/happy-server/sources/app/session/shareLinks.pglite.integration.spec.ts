@@ -257,4 +257,35 @@ describe('B-701 share links and grant expiry (pglite)', () => {
         await shares.updateSessionGrantRole(ownerId, sessionId, granteeId, undefined, 7);
         expect(await shares.listPendingSessionInvites(granteeId)).toHaveLength(1);
     });
+
+    // Re-review 4 #1/#3 against the real read path: heavy records that project to nothing
+    // cost one page budget per GET, paging still reaches the end, oversize rows are not decrypted.
+    it('public messages: heavy reasoning rows are paged by ciphertext budget; oversize rows become a placeholder', async () => {
+        const heavySession = (await db.session.create({ data: { accountId: ownerId, tag: randomBytes(8).toString('hex'), metadata: Buffer.from(crypto.encryptWithDataKey(metadataPlain, dek)).toString('base64'), dataEncryptionKey: (await db.session.findUniqueOrThrow({ where: { id: sessionId } })).dataEncryptionKey } })).id;
+        const reasoning = Buffer.from(crypto.encryptWithDataKey({ role: 'agent', content: { type: 'codex', data: { type: 'reasoning', message: 'r'.repeat(500 * 1024) } } }, dek)).toString('base64');
+        for (let seq = 1; seq <= 12; seq++) await db.sessionMessage.create({ data: { sessionId: heavySession, seq, content: { t: 'encrypted', c: reasoning } } });
+        await db.sessionMessage.create({ data: { sessionId: heavySession, seq: 13, content: { t: 'encrypted', c: 'A'.repeat(1024 * 1024 + 8) } } }); // over the gate, not even valid ciphertext
+        await db.sessionMessage.create({ data: { sessionId: heavySession, seq: 14, content: { t: 'encrypted', c: Buffer.from(crypto.encryptWithDataKey({ role: 'user', content: { type: 'text', text: 'the end' } }, dek)).toString('base64') } } });
+        await db.session.update({ where: { id: heavySession }, data: { seq: 14 } });
+        const { link, secret } = await links.createShareLink({ ownerId, sessionId: heavySession, scope: 'live', expiresInDays: 1 });
+        const row = await links.resolvePublicLink({ linkId: link.id, secret });
+        let after = 0; let pages = 0; let worst = 0; const shown: unknown[] = [];
+        for (;;) {
+            const t0 = performance.now();
+            const page = await links.publicLinkMessages(row, after, 200);
+            worst = Math.max(worst, performance.now() - t0);
+            pages++;
+            shown.push(...page.messages);
+            after = page.lastSeq;
+            if (!page.hasMore) break;
+            expect(pages).toBeLessThan(20);
+        }
+        expect(worst).toBeLessThan(1000);
+        expect(pages).toBeGreaterThan(1); // ~700 KB ciphertext per row, 2 MB per page
+        expect(after).toBe(14);
+        const text = JSON.stringify(shown);
+        expect(text).toContain('too large to show on a share page');
+        expect(text).toContain('the end');
+        expect(text).not.toContain('rrrrrrrr');
+    }, 60000);
 });

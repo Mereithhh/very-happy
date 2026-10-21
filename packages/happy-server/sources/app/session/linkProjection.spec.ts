@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LinkBudget, makePathScrubber, projectLinkPage, projectRecordForLink, scrubLinkText } from './linkProjection';
+import { LinkBudget, MAX_RECORD_CIPHER, OVERSIZE_TEXT, isSecretKey, makePathScrubber, projectLinkPage, projectRecordForLink, scrubLinkText } from './linkProjection';
 
 const fake = (...parts: string[]) => parts.join('');
 
@@ -146,19 +146,22 @@ describe('B-701 link projection (whitelist)', () => {
         expect(json(out)).toContain('[truncated]');
     });
 
-    it('a 1 MB record of short keys projects in < 200 ms', () => {
+    // Most of this is V8 enumerating a 110k-key dictionary object (Object.keys alone
+    // ≈ the same time); the review accepted ~220 ms per record given the page budget
+    // (a page never decrypts more than 2 MB of ciphertext). Bound with headroom for CI.
+    it('a 1 MB record of short keys projects in < 400 ms', () => {
         const args: Record<string, number> = {};
         for (let i = 0; i < 110_000; i++) args[`k${i}`] = 1;
         const record = env(args);
         expect(JSON.stringify(record).length).toBeGreaterThan(1_000_000);
         const { best } = timed(() => projectRecordForLink(record, scrub));
-        expect(best).toBeLessThan(200);
+        expect(best).toBeLessThan(400);
     });
 
     it('a page of 200 such records is bounded as a whole and pages on', () => {
         const heavy = env({ list: new Array(250_000).fill(''), text: 'eyJ-'.repeat(64 * 1024) });
         const records = new Array(200).fill(heavy);
-        const { best, out } = timed(() => projectLinkPage(records, (r) => r, scrub));
+        const { best, out } = timed(() => projectLinkPage({ records, cipherLength: () => 0, decode: (r) => r, scrub }));
         expect(best).toBeLessThan(1000);
         const page = out as ReturnType<typeof projectLinkPage>;
         expect(page.consumed).toBeGreaterThan(0);
@@ -176,5 +179,58 @@ describe('B-701 link projection (whitelist)', () => {
         expect(out.content.data.ev.args.more[49]).toContain('[truncated]'); // values are cut once the budget is gone, keys are not
         const keys = projectRecordForLink(env({ '/home/alice/x': 1, '~/x': 2, '/Users/bob/x': 3 }), scrub) as any;
         expect(keys.content.data.ev.args).toEqual({ '~/x': 1, '~/x~2': 2, '~/x~3': 3 });
+    });
+
+    // Re-review 4 #1: records that project to NOTHING (reasoning) still pay for decrypt + parse.
+    it('a page of 200 heavy reasoning records charges ciphertext up front and stops early', () => {
+        let decoded = 0;
+        const reasoning = { role: 'agent', content: { type: 'codex', data: { type: 'reasoning', message: 'r'.repeat(600 * 1024) } } };
+        const records = Array.from({ length: 200 }, (_, i) => ({ id: i, cipher: 900 * 1024 }));
+        const t0 = performance.now();
+        const page = projectLinkPage({ records, cipherLength: (r) => r.cipher, decode: () => { decoded++; return reasoning; }, scrub });
+        expect(performance.now() - t0).toBeLessThan(1000);
+        expect(page.projected).toHaveLength(0);
+        expect(page.consumed).toBe(decoded);
+        expect(decoded).toBeLessThanOrEqual(3); // 2 MB of ciphertext per page
+        expect(decoded).toBeGreaterThanOrEqual(1);
+    });
+
+    // Re-review 4 #3: an oversize record is never decrypted or parsed.
+    it('a record over the ciphertext gate is replaced by a placeholder without decoding', () => {
+        let decoded = 0;
+        const page = projectLinkPage({
+            records: [{ id: 'big', cipher: MAX_RECORD_CIPHER + 1 }, { id: 'ok', cipher: 100 }],
+            cipherLength: (r) => r.cipher,
+            decode: () => { decoded++; return { role: 'user', content: { type: 'text', text: 'hi' } }; },
+            oversize: (r) => ({ role: 'session', content: { type: 'session', data: { id: `oversize-${r.id}`, time: 1, role: 'agent', turn: 'x', ev: { t: 'service', text: OVERSIZE_TEXT } } } }),
+            scrub,
+        });
+        expect(decoded).toBe(1);
+        expect(page.consumed).toBe(2);
+        expect(json(page.projected[0].content)).toContain(OVERSIZE_TEXT);
+    });
+
+    // Re-review 4 #2: a key that names a secret hides its value, whatever the value looks like.
+    it('values under secret-named keys are redacted, nested too; ordinary keys are not', () => {
+        for (const k of ['password', 'DB_PASSWORD', 'apiKey', 'x-api-key', 'Authorization', 'sessionToken', 'client_secret', 'AWS_SECRET_ACCESS_KEY', 'privateKey', 'cookie', 'DATABASE_URL']) expect(isSecretKey(k), k).toBe(true);
+        for (const k of ['author', 'passage', 'tokenizer', 'command', 'file_path', 'description']) expect(isSecretKey(k), k).toBe(false);
+        const out = projectRecordForLink(env({
+            password: 'hunter2hunter2', apiKey: 12345678,
+            env: { DB_PASSWORD: 'pw-0001', NODE_ENV: 'production', nested: [{ apiKey: 'k-abcdef' }, { Authorization: 'Basic dXNlcjpwYXNz' }] },
+            headers: { Authorization: 'xyz' }, author: 'alice',
+        }), scrub) as any;
+        const args = out.content.data.ev.args;
+        expect(args.password).toBe('[redacted]');
+        expect(args.apiKey).toBe('[redacted]');
+        expect(args.env.DB_PASSWORD).toBe('[redacted]');
+        expect(args.env.NODE_ENV).toBe('production');
+        expect(args.env.nested[0].apiKey).toBe('[redacted]');
+        expect(args.env.nested[1].Authorization).toBe('[redacted]');
+        expect(args.headers.Authorization).toBe('[redacted]');
+        expect(args.author).toBe('alice');
+        expect(json(out)).not.toMatch(/hunter2|pw-0001|k-abcdef|dXNlcjpwYXNz|12345678/);
+        // .env text inside a string value is covered by the assignment scanner.
+        const text = projectRecordForLink({ role: 'user', content: { type: 'text', text: 'DB_PASSWORD=pw-0001\nAPI_KEY=abc12345\nPORT=3005' } }, scrub) as any;
+        expect(text.content.text).toBe('DB_PASSWORD=[redacted]\nAPI_KEY=[redacted]\nPORT=3005');
     });
 });

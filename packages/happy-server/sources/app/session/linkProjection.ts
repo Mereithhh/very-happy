@@ -129,7 +129,9 @@ function scrubFreeform(value: unknown, depth = 0): unknown {
             if (!Object.prototype.hasOwnProperty.call(value, k)) continue;
             if (budget?.exhausted) { out[uniqueKey(out, TRUNCATED_MARKER)] = TRUNCATED_MARKER; break; }
             const v = value[k];
-            const next = scrubFreeform(v, depth + 1);
+            // A key that names a secret (password, DB_PASSWORD, apiKey, Authorization…) hides its
+            // whole value, whatever the value looks like — shape-based masking cannot see "hunter2".
+            const next = isSecretKey(k) ? REDACTED_VALUE : scrubFreeform(v, depth + 1);
             if (next === undefined) continue;
             // Free-form keys are agent-chosen text: scrub + mask them too, and never let
             // two keys collapse into one after rewriting.
@@ -138,6 +140,22 @@ function scrubFreeform(value: unknown, depth = 0): unknown {
         return out;
     }
     return value;
+}
+
+const REDACTED_VALUE = '[redacted]';
+const SECRET_KEY_WORDS = new Set(['password', 'passwords', 'passwd', 'passphrase', 'pwd', 'secret', 'secrets', 'token', 'tokens', 'credential', 'credentials', 'auth', 'authorization', 'cookie', 'cookies', 'session', 'dsn']);
+const SECRET_KEY_JOINED = /apikey|accesskey|privatekey|secretkey|clientsecret|databaseurl|connectionstring/;
+
+/**
+ * Does this free-form key name a secret? Case, `_` and `-` insensitive and
+ * word based: `DB_PASSWORD`, `apiKey`, `x-api-key`, `Authorization`,
+ * `sessionToken` → yes; `author`, `passage`, `tokenizer` → no.
+ */
+export function isSecretKey(key: string): boolean {
+    if (key.length > 128) return false;
+    const words = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    if (words.some((w) => SECRET_KEY_WORDS.has(w))) return true;
+    return SECRET_KEY_JOINED.test(words.join(''));
 }
 
 /** A structural list cut to what the node budget still allows. */
@@ -352,30 +370,76 @@ export function scrubLinkText(value: string, scrub: (s: string) => string): stri
     return new LinkBudget(scrub).text(value);
 }
 
-/** One page of a link transcript: also bounded as a whole (text + nodes across records). */
+/** One page of a link transcript: also bounded as a whole (ciphertext + text + nodes across records). */
 export const MAX_PAGE_TEXT = 1024 * 1024;
 export const MAX_PAGE_NODES = 100_000;
+/** Ciphertext a page may decrypt + parse, charged BEFORE decoding — records that project to nothing still pay. */
+export const MAX_PAGE_CIPHER = 2 * 1024 * 1024;
+/** A single record whose ciphertext is larger than this is never decrypted or parsed for a link. */
+export const MAX_RECORD_CIPHER = 1024 * 1024;
+export const OVERSIZE_TEXT = 'This message is too large to show on a share page.';
+
+/** What the viewer sees instead of an oversize record (renders as a service line). */
+export function oversizePlaceholder(id: string, time: number): Obj {
+    return { role: 'session', content: { type: 'session', data: { id: `oversize-${id}`, time, role: 'agent', turn: `oversize-${id}`, ev: { t: 'service', text: OVERSIZE_TEXT } } } };
+}
+
+export interface LinkPageHooks<T> {
+    /** Ciphertext length — known before any decrypt. */
+    cipherLength: (record: T) => number;
+    decode: (record: T) => unknown;
+    /** Placeholder for a record over MAX_RECORD_CIPHER (not decrypted). */
+    oversize?: (record: T) => Obj | null;
+    scrub: (s: string) => string;
+}
 
 /**
- * Project records in order until the page budget is spent. Returns how many
- * input records were consumed — the caller pages on from there, so a page of
- * 200 huge records costs about as much as one budget, not 200.
+ * One budgeted page. `offer()` each record in order: it first pays its
+ * CIPHERTEXT length (decrypt + JSON.parse cost), then whatever its projection
+ * used. Once a budget is spent `offer()` answers false and the page is done;
+ * the caller pages on from the last consumed record. A page of huge records —
+ * even ones that project to nothing — costs about one budget, not one per row.
  */
-export function projectLinkPage<T>(records: T[], decode: (record: T) => unknown, scrub: (s: string) => string): { projected: Array<{ record: T; content: Obj }>; consumed: number } {
-    let textLeft = MAX_PAGE_TEXT;
-    let nodesLeft = MAX_PAGE_NODES;
-    const projected: Array<{ record: T; content: Obj }> = [];
-    let consumed = 0;
-    for (const record of records) {
-        if (consumed > 0 && (textLeft <= 0 || nodesLeft <= 0)) break;
-        const budget = new LinkBudget(scrub, Math.min(MAX_RECORD_TEXT, Math.max(textLeft, MIN_STRING_COST)), Math.min(MAX_RECORD_NODES, Math.max(nodesLeft, 1)));
+export class LinkPage<T> {
+    private cipherLeft = MAX_PAGE_CIPHER;
+    private textLeft = MAX_PAGE_TEXT;
+    private nodesLeft = MAX_PAGE_NODES;
+    readonly projected: Array<{ record: T; content: Obj }> = [];
+    consumed = 0;
+    constructor(private readonly hooks: LinkPageHooks<T>) {}
+
+    get full(): boolean {
+        return this.consumed > 0 && (this.cipherLeft <= 0 || this.textLeft <= 0 || this.nodesLeft <= 0);
+    }
+
+    /** Consume `record` (true) or refuse it because this page is spent (false). */
+    offer(record: T): boolean {
+        if (this.full) return false;
+        const cipher = this.hooks.cipherLength(record);
+        if (cipher > MAX_RECORD_CIPHER) {
+            this.consumed++;
+            this.cipherLeft -= MIN_STRING_COST;
+            const placeholder = this.hooks.oversize?.(record);
+            if (placeholder) this.projected.push({ record, content: placeholder });
+            return true;
+        }
+        if (this.consumed > 0 && cipher > this.cipherLeft) return false; // would overrun: next page
+        this.cipherLeft -= Math.max(MIN_STRING_COST, cipher);
+        const budget = new LinkBudget(this.hooks.scrub, Math.min(MAX_RECORD_TEXT, Math.max(this.textLeft, MIN_STRING_COST)), Math.min(MAX_RECORD_NODES, Math.max(this.nodesLeft, 1)));
         const textStart = budget.textLeft;
         const nodesStart = budget.nodesLeft;
-        const content = projectRecordForLink(decode(record), scrub, budget);
-        textLeft -= textStart - budget.textLeft;
-        nodesLeft -= nodesStart - budget.nodesLeft;
-        consumed++;
-        if (content) projected.push({ record, content });
+        const content = projectRecordForLink(this.hooks.decode(record), this.hooks.scrub, budget);
+        this.textLeft -= textStart - budget.textLeft;
+        this.nodesLeft -= nodesStart - budget.nodesLeft;
+        this.consumed++;
+        if (content) this.projected.push({ record, content });
+        return true;
     }
-    return { projected, consumed };
+}
+
+/** Convenience: run a page over an in-memory list. */
+export function projectLinkPage<T>(input: LinkPageHooks<T> & { records: T[] }): { projected: Array<{ record: T; content: Obj }>; consumed: number } {
+    const page = new LinkPage(input);
+    for (const record of input.records) if (!page.offer(record)) break;
+    return { projected: page.projected, consumed: page.consumed };
 }

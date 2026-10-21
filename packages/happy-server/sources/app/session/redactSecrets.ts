@@ -64,6 +64,8 @@ const isWordOrParen = (code: number) => code === 40 || (code < 128 && NAME_CHAR[
  * prefix — the regex form is what backtracked catastrophically.
  */
 export function maskSecretAssignments(text: string): string {
+    // Nothing to find unless a secret word occurs at all (one linear scan).
+    if (!SECRET_WORD.test(text)) return text;
     let out = '';
     let copied = 0;
     const seps = /[=:]/g;
@@ -79,7 +81,7 @@ export function maskSecretAssignments(text: string): string {
         if (before === 34 || before === 39) { nameQuote = before; q--; }
         let start = q;
         while (start > copied && isNameChar(text.charCodeAt(start - 1)) && q - start < MAX_NAME) start--;
-        if (start === q || isNameChar(text.charCodeAt(start - 1))) continue;
+        if (q - start < 3 || isNameChar(text.charCodeAt(start - 1))) continue; // shortest secret word is "DSN"
         if (nameQuote && text.charCodeAt(start - 1) !== nameQuote) continue;
         if (!SECRET_WORD.test(text.slice(start, q))) continue;
         if (text.charCodeAt(sep) === 58 && text.charCodeAt(sep + 1) === 47) continue; // "://" is a URL, not an assignment
