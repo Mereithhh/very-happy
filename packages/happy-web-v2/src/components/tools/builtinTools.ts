@@ -58,6 +58,16 @@ export interface ResolvedBuiltinTool {
 }
 
 // ── small tolerant accessors ────────────────────────────────────────────────
+/** B-723: a team tool result's 「N members」 excludes inactive ones — the
+ *  server's `memberCounts` / per-bot `activity` (happy-wire teamBotActivity,
+ *  B-692); an old server sends neither, so every bot counts. */
+export function teamSummaryMemberCount(team: Record<string, unknown>): number {
+    const bots = Array.isArray(team.bots) ? team.bots : [];
+    const counts = obj(team.memberCounts);
+    const inactive = typeof counts.inactive === 'number' ? counts.inactive : null;
+    if (inactive !== null) return Math.max(0, bots.length - inactive);
+    return bots.filter((bot) => obj(bot).activity !== 'inactive').length;
+}
 function obj(v: unknown): Record<string, unknown> {
     return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -463,12 +473,12 @@ export function builtinToolDigest(r: ResolvedBuiltinTool, tool: Pick<ToolCall, '
         if (json !== null) {
             if (r.name === 'team_create' || r.name === 'team_join') {
                 const name = str(team.name);
-                const bots = Array.isArray(team.bots) ? team.bots.length : null;
+                const bots = Array.isArray(team.bots) ? teamSummaryMemberCount(team) : null;
                 if (name) digest.lines.push(bots != null ? t('tools.builtin.teamSummary', { name, members: bots }) : name);
                 teamLink(teamId, null);
             } else if (r.name === 'team_inspect') {
                 const tasks = Array.isArray(team.tasks) ? team.tasks.length : 0;
-                const bots = Array.isArray(team.bots) ? team.bots.length : 0;
+                const bots = Array.isArray(team.bots) ? teamSummaryMemberCount(team) : 0;
                 const messages = Array.isArray(team.messages) ? team.messages.length : 0;
                 if (str(team.name)) digest.lines.push(t('tools.builtin.inspectSummary', { name: str(team.name)!, tasks, bots, messages }));
                 teamLink(teamId, null);

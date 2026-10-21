@@ -11,6 +11,7 @@ import { newSessionTimingStart } from './newSessionTiming';
 import { prefetchSessionDetail } from './prefetchSessionDetail';
 
 export { recordRecentMachinePath } from './recentMachinePath';
+import { currentSpawnOrigin, hasUserGesture } from '@/sync/spawnOrigin';
 
 /**
  * The ONE quick "new chat" entry point (chat sibling of newTerminal.ts's
@@ -77,7 +78,12 @@ export async function createChatOrConfigure(
         recents: state.settings.recentMachinePaths ?? [],
         alwaysAsk: state.settings.newSessionAlwaysAsk === true,
     });
-    if (decision.kind === 'configure') {
+    // B-723 (O5): the quick path creates a session at once, with no first
+    // message — only ever as the direct result of a click / key press. Anything
+    // else (a late async call, a replayed handler) gets the dialog instead of
+    // an empty 「新对话」 nobody asked for.
+    if (decision.kind === 'configure' || !hasUserGesture(typeof navigator === 'undefined' ? undefined : navigator as Navigator & { userActivation?: { isActive: boolean } })) {
+        if (decision.kind !== 'configure') console.warn('[newChat] quick chat without a user gesture; opening the dialog instead', currentSpawnOrigin('quick'));
         openConfigure(target);
         return;
     }

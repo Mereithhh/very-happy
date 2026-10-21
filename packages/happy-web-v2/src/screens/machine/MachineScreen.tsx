@@ -129,7 +129,7 @@ export function MachineScreen() {
     setSpawning(true);
     try {
       const directory = resolveAbsolutePath(raw, homeDir);
-      let result = await machineSpawnNewSession({ machineId: machine.id, directory, agent: defaultAgent, permissionMode });
+      let result = await machineSpawnNewSession({ source: 'machine', machineId: machine.id, directory, agent: defaultAgent, permissionMode });
       if (result.type === 'requestToApproveDirectoryCreation') {
         const ok = await Modal.confirm(result.directory, undefined, {
           confirmText: t('common.create'),
@@ -139,6 +139,7 @@ export function MachineScreen() {
           return;
         }
         result = await machineSpawnNewSession({
+          source: 'machine',
           machineId: machine.id,
           directory,
           agent: defaultAgent,

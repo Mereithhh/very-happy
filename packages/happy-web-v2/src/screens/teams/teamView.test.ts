@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("@/i18n/useTranslation", () => ({ useTranslation: () => ({ lang: "en" }) }));
 import type { TeamTask, TeamState } from "@slopus/happy-wire";
 import {
   attentionOperations,
@@ -8,7 +9,11 @@ import {
   machineSupportsTeamRetry,
   newestTeam,
   taskRows,
+  teamOperationErrorKind,
+  teamRetrySupport,
+  TEAM_OPERATION_ERROR_KINDS,
 } from "./teamView";
+import { WORKSPACE_COPY } from "./workspaceCopy";
 const task = (id: string, parentTaskId: string | null) =>
   ({ id, parentTaskId }) as TeamTask;
 describe("team task tree", () => {
@@ -131,5 +136,39 @@ describe("B-691 retained cleanup entries", () => {
     const { open, resolved } = attentionOperations({ operations: ops } as TeamState);
     expect(open.map((o) => o.id)).toEqual(["open", "claimed"]);
     expect(resolved.map((o) => o.id)).toEqual(["done"]);
+  });
+});
+
+describe("B-723", () => {
+  const op = (extra: Record<string, unknown>) => ({ id: "o", type: "spawn", status: "failed", claimId: null, error: null, ...extra }) as unknown as TeamState["operations"][number];
+  it("O2: a launch closed before it started never needs the owner", () => {
+    const team = { operations: [op({ id: "closed", error: "task_closed_before_spawn" }), op({ id: "unknown", status: "unknown", claimId: "c", error: "Spawn outcome unknown; reconcile the worker before retrying" }), op({ id: "stop", type: "stop", claimId: "c", error: "task_closed_before_spawn" })] } as unknown as TeamState;
+    expect(attentionOperations(team).open.map((o) => o.id)).toEqual(["unknown", "stop"]);
+  });
+  it("O2: daemon errors map to translated summaries; unknown text stays generic", () => {
+    expect(teamOperationErrorKind("task_closed_before_spawn")).toBe("closedBeforeSpawn");
+    expect(teamOperationErrorKind("Spawn outcome unknown; reconcile the worker before retrying")).toBe("outcomeUnknown");
+    expect(teamOperationErrorKind("Unmerged work retained on b at /w: 2 commits are not pushed or merged; push or merge, then retry cleanup")).toBe("unmergedWork");
+    expect(teamOperationErrorKind("Uncommitted work retained at /w (1 changed file): commit and push it, or discard it, then retry cleanup")).toBe("uncommittedWork");
+    expect(teamOperationErrorKind("Local execution receipt missing; verify the old process before manual reconciliation")).toBe("receiptMissing");
+    expect(teamOperationErrorKind("Team repository is unavailable: /r is missing or not a Git checkout. Restore the folder or delegate with an existing repository, then choose Retry launch.")).toBe("repositoryMissing");
+    expect(teamOperationErrorKind("spawn x ENOENT (automatic retry 2/3 in 30s)")).toBe("startupRetrying");
+    expect(teamOperationErrorKind("spawn x ENOENT (automatic retries exhausted after 3 attempts; use Retry launch after fixing the cause)")).toBe("startupExhausted");
+    expect(teamOperationErrorKind("something new")).toBe("other");
+    expect(teamOperationErrorKind(null)).toBeNull();
+  });
+  it("O2: every error kind, operation type and status has English and Chinese copy", () => {
+    for (const copy of [WORKSPACE_COPY.en, WORKSPACE_COPY.zh]) {
+      for (const kind of TEAM_OPERATION_ERROR_KINDS) expect(copy.opError[kind], kind).toBeTruthy();
+      for (const type of ["spawn", "stop"]) expect(copy.opType[type]).toBeTruthy();
+      for (const status of ["pending", "claimed", "completed", "failed", "unknown"]) expect(copy.opStatus[status]).toBeTruthy();
+    }
+    expect(WORKSPACE_COPY.zh.opError.outcomeUnknown).not.toMatch(/[A-Za-z]{4,}/);
+  });
+  it("O3: retry support is unknown until the machine and its metadata arrive", () => {
+    expect(teamRetrySupport(undefined)).toBeNull();
+    expect(teamRetrySupport({ metadata: null })).toBeNull();
+    expect(teamRetrySupport({ metadata: { teamRetryVersion: 1 } }, 2)).toBe(false);
+    expect(teamRetrySupport({ metadata: { teamRetryVersion: 2 } }, 2)).toBe(true);
   });
 });
