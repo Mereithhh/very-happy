@@ -2644,6 +2644,7 @@ export const en = {
                 harness: 'Install or update Claude Code, Codex, Gemini CLI or pi from the web: the daemon installs only the fixed official package into your user-level npm directory, never with sudo, and the agent is available right away.',
                 playbook: 'Team leads follow a default playbook: delegate first, run independent work in parallel, keep members off the same files, record decisions in the team’s project, and check evidence before accepting. Members read the project context before they start.',
                 project: 'Team leads and members start with their team project’s instructions and decisions, and can add to its log.',
+                scope: 'A team member that is restarted, resumed or woken keeps its team tools and scope.',
                 pi: 'pi’s context meter reads against the model’s real window: set it per model in Settings → Models & providers (glm-5.3 200k), or it is inferred from a known model, or shown as unknown. /compact really compacts, and the meter updates on the next answer.',
             },
             oct21b: {

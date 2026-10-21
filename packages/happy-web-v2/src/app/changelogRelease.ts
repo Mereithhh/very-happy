@@ -206,6 +206,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       'changelog.releases.oct22a.harness',
       'changelog.releases.oct22a.playbook',
       'changelog.releases.oct22a.project',
+      'changelog.releases.oct22a.scope',
       'changelog.releases.oct22a.pi',
     ],
   },
