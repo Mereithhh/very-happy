@@ -16,12 +16,12 @@ function HarnessInstallRow({ machineId, harness, daemon, agent, status, mode }: 
     const action = useHarnessInstall(machineId, harness, daemon);
     const versions = mode === 'install' ? '—' : `${agent.installed ?? '—'}${agent.latest ? ` → ${agent.latest}` : ''}`;
     return <Item title={source.label} detail={versions}
-        subtitle={action.status ?? <>{t('agentUpdates.external')} · <a href={source.docs} target="_blank" rel="noreferrer">{t('agentUpdates.guide')}</a></>}
+        subtitle={action.status ?? <>{mode === 'install' ? t('harnessInstall.notOnMachine') : t('agentUpdates.external')} · <a href={source.docs} target="_blank" rel="noreferrer">{t('agentUpdates.guide')}</a></>}
         right={<>
             <Badge dot={false} tone={mode === 'install' || action.failed ? 'warn' : status === 'update-available' ? 'warn' : 'muted'}>
                 {mode === 'install' ? t('harnessInstall.notInstalled') : t(`agentUpdates.${status}` as 'agentUpdates.current')}
             </Badge>
-            <Button size="xs" variant="secondary" loading={action.installing} onClick={() => void action.start()}>
+            <Button variant="secondary" loading={action.installing} onClick={() => void action.start()}>
                 {mode === 'install' ? t('harnessInstall.install') : t('harnessInstall.update')}
             </Button>
         </>}/>;

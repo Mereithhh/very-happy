@@ -464,7 +464,7 @@ function AgentSetupInstall({ machineId, harness, daemonState }: { machineId: str
   return (
     <>
       <div>
-        <Button size="sm" variant="primary" loading={action.installing} onClick={() => void action.start()}>
+        <Button variant="primary" loading={action.installing} onClick={() => void action.start()}>
           {t('harnessInstall.installOnMachine', { agent: harness })}
         </Button>
       </div>
