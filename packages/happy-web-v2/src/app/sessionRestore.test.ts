@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   advanceRestoreState,
@@ -8,6 +9,7 @@ import {
   restoreEligibility,
   RESTORE_AWAIT_ONLINE_TIMEOUT_MS,
   RESTORE_ONLINE_GRACE_MS,
+  relaunchPermissionMode,
   type RestoreState,
 } from './sessionRestoreRules';
 import { canReleaseQueuedMessage } from '@/screens/session/queuedMessages';
@@ -126,5 +128,36 @@ describe('B-265 composer gate', () => {
     expect(canReleaseQueuedMessage('idle', false, 'send')).toBe(true);
     expect(canReleaseQueuedMessage('idle', false, 'restore-first')).toBe(false);
     expect(canReleaseQueuedMessage('waiting-start', false, 'send')).toBe(false);
+  });
+});
+
+describe('B-683 relaunch keeps the user permission mode', () => {
+  const claude = { metadata: { flavor: 'claude', permissionMode: 'bypassPermissions' } as any };
+  it('a plain (non-hibernated) restore forwards the mode the last wrapper published', () => {
+    expect(relaunchPermissionMode({ ...claude, permissionMode: null })).toBe('bypassPermissions');
+  });
+  it('this device\'s explicit pick wins over the published mode', () => {
+    expect(relaunchPermissionMode({ ...claude, permissionMode: 'acceptEdits' })).toBe('acceptEdits');
+  });
+  it('claude values go through the outbound allowlist (yolo → bypass, unknown → default)', () => {
+    expect(relaunchPermissionMode({ ...claude, permissionMode: 'yolo' })).toBe('bypassPermissions');
+    expect(relaunchPermissionMode({ ...claude, permissionMode: 'dontAsk' })).toBe('default');
+  });
+  it('no intent anywhere → no flag (never the code default)', () => {
+    expect(relaunchPermissionMode({ metadata: { flavor: 'claude' } as any, permissionMode: null })).toBeUndefined();
+    expect(relaunchPermissionMode({ metadata: undefined as any })).toBeUndefined();
+  });
+  it('other flavors forward their published mode as-is (daemon allowlists it)', () => {
+    expect(relaunchPermissionMode({ metadata: { flavor: 'codex', permissionMode: 'acceptEdits' } as any, permissionMode: 'safe-yolo' })).toBe('acceptEdits');
+    expect(relaunchPermissionMode({ metadata: { flavor: 'codex' } as any })).toBeUndefined();
+  });
+  it('both relaunch RPCs carry it (restore + restart)', () => {
+    const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const restore = strip(readFileSync(new URL('./sessionRestore.ts', import.meta.url), 'utf8'));
+    const restart = strip(readFileSync(new URL('./sessionRestartAction.ts', import.meta.url), 'utf8'));
+    expect(restore).toContain('const permissionMode = relaunchPermissionMode(session);');
+    expect(restore).toMatch(/machineResumeSession\(\s*\{ machineId: eligibility\.machineId, sessionId, \.\.\.\(permissionMode \? \{ permissionMode \} : \{\}\) \}/);
+    expect(restart).toContain('const permissionMode = relaunchPermissionMode(session);');
+    expect(restart).toMatch(/machineRestartSession\(\s*\{ machineId: eligibility\.machineId, sessionId, \.\.\.\(permissionMode \? \{ permissionMode \} : \{\}\) \}/);
   });
 });

@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 import { storage } from '@/sync/storage';
 import { machineRestartSession } from '@/sync/ops';
+import { relaunchPermissionMode } from './sessionRestoreRules';
 import {
   advanceRestartState,
   mapRestartError,
@@ -73,8 +74,10 @@ export async function restartBrokenSession(sessionId: string): Promise<boolean> 
   }
   const startedAt = Date.now();
   store.set(sessionId, { phase: 'spawning', startedAt });
+  // B-683: the restarted wrapper starts from its flag; keep the user's mode.
+  const permissionMode = relaunchPermissionMode(session);
   const result = await machineRestartSession(
-    { machineId: eligibility.machineId, sessionId },
+    { machineId: eligibility.machineId, sessionId, ...(permissionMode ? { permissionMode } : {}) },
     { timeoutMs: RESTART_RPC_TIMEOUT_MS },
   );
   if (result.type === 'success') {

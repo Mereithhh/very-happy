@@ -15,6 +15,7 @@
  * in isolation); the store + the restore action live in sessionRestore.ts.
  */
 import type { Machine, Session } from '@/sync/storageTypes';
+import { normalizeClaudeOutboundMode } from '@/sync/permissionModeOutbound';
 import { isHibernated } from './sessionHibernation';
 
 export type RestoreReason =
@@ -88,6 +89,30 @@ export function restoreEligibility(
   // this module free of store imports.
   if (!machines[machineId].active) return { ok: false, reason: 'machine-offline' };
   return { ok: true, machineId };
+}
+
+/**
+ * B-683: the permission mode a relaunch (restore / restart) must hand the
+ * daemon. The relaunched wrapper starts from its `--permission-mode` flag and
+ * nothing else (no flag → `default`, by design: absence never means full
+ * access) and then PUBLISHES that mode, which the web adopts as truth — so a
+ * relaunch without the flag silently turned 「自动执行」 into 「默认」.
+ *
+ * Only user intent is forwarded (permission-mode spec A3): this device's
+ * explicit pick (`session.permissionMode`, null when nobody chose) and else the
+ * mode the last wrapper actually ran (`metadata.permissionMode`). The code
+ * default is never sent. Claude values go through the outbound allowlist; other
+ * flavors forward their published mode as-is (the daemon allowlists it — B-587
+ * already did this for hibernation wakes).
+ */
+export function relaunchPermissionMode(
+  session: Pick<Session, 'metadata'> & { permissionMode?: string | null },
+): string | undefined {
+  const published = session.metadata?.permissionMode ?? null;
+  if ((session.metadata?.flavor ?? 'claude') === 'claude') {
+    return normalizeClaudeOutboundMode(session.permissionMode ?? published) ?? undefined;
+  }
+  return published ?? undefined;
 }
 
 /** composerGate ONLY: an ARCHIVED offline session's composer restores first;
