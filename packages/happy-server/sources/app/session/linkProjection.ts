@@ -8,7 +8,7 @@
  * After projection every string is path-scrubbed (the session cwd becomes its
  * folder name, home directories become `~`) and secret-masked.
  */
-import { redactSecrets } from './redactSecrets';
+import { MAX_REDACT_INPUT, TRUNCATED_SUFFIX, redactSecrets } from './redactSecrets';
 
 export interface LinkProjectionContext {
     /** Session working directory (metadata.path) — rewritten to its basename. */
@@ -57,7 +57,10 @@ export function makePathScrubber(ctx: LinkProjectionContext): (s: string) => str
 }
 
 const DROP_ANY_TYPES = new Set(['thinking', 'redacted_thinking', 'image', 'document']);
-const DATA_URI = /^data:[\w.+-]{1,64}\/[\w.+-]{1,64};base64,/i;
+/** A base64 data URI anywhere in a string (markdown image, HTML, JSON) — replaced, not just detected. */
+const DATA_URI = /data:[\w.+-]{1,64}\/[\w.+-]{1,64};base64,[A-Za-z0-9+/=]*/gi;
+/** Total characters one record may put through masking (a 1 MB record stays well under 200 ms). */
+export const MAX_RECORD_TEXT = 256 * 1024;
 
 /**
  * Tool inputs / outputs are free-form JSON chosen by the agent. Keep their
@@ -66,7 +69,7 @@ const DATA_URI = /^data:[\w.+-]{1,64}\/[\w.+-]{1,64};base64,/i;
  */
 function scrubFreeform(value: unknown, depth = 0): unknown {
     if (depth > 12) return undefined;
-    if (typeof value === 'string') return DATA_URI.test(value) ? '[image]' : value;
+    if (typeof value === 'string') return value;
     if (Array.isArray(value)) {
         return value.map((item) => scrubFreeform(item, depth + 1)).filter((item) => item !== undefined);
     }
@@ -211,15 +214,34 @@ function projectAgentContent(content: unknown): Obj | null {
     return data ? { type: content.type, data } : null;
 }
 
+/** Applies `fn` to every string value AND every object key (keys are agent-chosen in free-form JSON). */
 function mapStrings(value: unknown, fn: (s: string) => string): unknown {
     if (typeof value === 'string') return fn(value);
     if (Array.isArray(value)) return value.map((v) => mapStrings(v, fn));
     if (isObj(value)) {
         const out: Obj = {};
-        for (const [k, v] of Object.entries(value)) out[k] = mapStrings(v, fn);
+        for (const [k, v] of Object.entries(value)) out[fn(k)] = mapStrings(v, fn);
         return out;
     }
     return value;
+}
+
+/**
+ * The per-string pipeline for link output, with a per-record character budget:
+ * cap → strip data URIs → rewrite paths → mask secrets. Once the record has
+ * spent MAX_RECORD_TEXT characters, further strings are cut to a marker, so
+ * the work per record is bounded no matter how large it is.
+ */
+export function makeLinkTextFilter(scrub: (s: string) => string, budget = MAX_RECORD_TEXT): (s: string) => string {
+    let remaining = budget;
+    return (input) => {
+        if (remaining <= 0) return input.length ? TRUNCATED_SUFFIX.trim() : input;
+        const limit = Math.min(MAX_REDACT_INPUT, remaining);
+        let s = input.length > limit ? input.slice(0, limit) + TRUNCATED_SUFFIX : input;
+        remaining -= Math.min(input.length, limit);
+        s = s.replace(DATA_URI, '[image]');
+        return redactSecrets(scrub(s));
+    };
 }
 
 /**
@@ -249,10 +271,10 @@ export function projectRecordForLink(record: unknown, scrub: (s: string) => stri
         const safeMeta = pick({ sentFrom: str(meta.sentFrom), displayText: str(meta.displayText), sharedBy: shared !== undefined ? { accountId: 'shared', displayName: shared } : undefined });
         if (Object.keys(safeMeta).length > 0) out.meta = safeMeta;
     }
-    return mapStrings(out, (s) => redactSecrets(scrub(s))) as Obj;
+    return mapStrings(out, makeLinkTextFilter(scrub)) as Obj;
 }
 
 /** Title / project name for the page header: same scrub + mask. */
 export function scrubLinkText(value: string, scrub: (s: string) => string): string {
-    return redactSecrets(scrub(value));
+    return makeLinkTextFilter(scrub)(value);
 }

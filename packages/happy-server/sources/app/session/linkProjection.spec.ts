@@ -78,4 +78,43 @@ describe('B-701 link projection (whitelist)', () => {
         expect(scrubLinkText('Rotate key sk-ant-' + 'api03-abcdefghijklmnopqrstuvwxyz0123 in /home/alice/x', scrub)).toBe('Rotate key [redacted] in ~/x');
         expect(scrubLinkText('API_KEY=abcdef123', scrub)).toBe('API_KEY=[redacted]');
     });
+
+    it('free-form object KEYS are path-scrubbed and secret-masked too', () => {
+        const token = 'gh' + 'p_abcdefghijklmnopqrstuvwxyz0123456789';
+        const out = projectRecordForLink({ role: 'session', content: { type: 'session', data: { id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'tool-call-start', call: 'c', name: 'Edit', title: 't', description: 'd', args: {
+            [`/home/alice/work/secret-project/${token}`]: 1,
+            ['OPENAI_API_KEY=' + 'sk-' + 'proj-abcdefghijklmnopqrstuvwxyz']: 'x',
+        } } } } }, scrub);
+        const s = json(out);
+        expect(s).not.toMatch(/\/home\/alice|abcdefghijklmnopqrstuvwxyz/);
+        expect(s).toContain('secret-project/[redacted]');
+        expect(s).toContain('OPENAI_API_KEY=[redacted]');
+    });
+
+    it('data URIs are removed anywhere in a string (markdown, HTML), not only at the start', () => {
+        const out = projectRecordForLink({ role: 'session', content: { type: 'session', data: { id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'text', text: `Here: ![shot](data:image/png;base64,${IMG}) and <img src="data:image/jpeg;base64,${IMG}"> done` } } } }, scrub);
+        const s = json(out);
+        expect(s).not.toContain(IMG.slice(0, 16));
+        expect(s).toContain('![shot]([image])');
+        expect((out as any).content.data.ev.text).toContain('<img src="[image]">');
+        expect(s).toContain('done');
+    });
+
+    // Re-review: a record is bounded as a whole, not just per string.
+    it('a 1 MB adversarial record projects in < 200 ms', () => {
+        const field = (i: number) => ['eyJ-', 'a-', 'TOKEN=', '"secret": "', 'a://b:', 'Bearer '][i % 6].repeat(32 * 1024 / 6);
+        const args: Record<string, string> = {};
+        for (let i = 0; i < 32; i++) args[`f${i}`] = field(i);
+        const record = { role: 'session', content: { type: 'session', data: { id: 'e', time: 1, role: 'agent', turn: 't', ev: { t: 'tool-call-start', call: 'c', name: 'n', title: 't', description: 'd', args } } } };
+        expect(JSON.stringify(record).length).toBeGreaterThan(1_000_000);
+        let out: unknown = null;
+        let best = Infinity;
+        for (let r = 0; r < 3; r++) {
+            const t0 = performance.now();
+            out = projectRecordForLink(record, scrub);
+            best = Math.min(best, performance.now() - t0);
+        }
+        expect(best).toBeLessThan(200);
+        expect(JSON.stringify(out).length).toBeLessThan(400 * 1024);
+    });
 });

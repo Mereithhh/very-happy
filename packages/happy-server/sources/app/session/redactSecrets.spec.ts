@@ -93,13 +93,23 @@ describe('B-701 redactSecrets', () => {
             'eyJ' + 'a'.repeat(size / 2) + '.' + 'b'.repeat(size / 2 - 10),
             'Bearer '.repeat(size / 7),
             '_TOKEN_'.repeat(size / 7) + '=',
+            // Re-review: many "eyJ" starts inside one base64url run (was ~270 ms per 32 KB).
+            'eyJ-'.repeat(size / 4),
+            ('eyJ' + 'a'.repeat(20) + '.').repeat(size / 24),
+            'a://b:'.repeat(size / 6),
         ];
+        // Each input's cost is the best of 3 runs, so a GC pause or a busy CI
+        // neighbour does not read as a regex blow-up (a real ReDoS is 100x over).
         let worst = 0;
         for (let i = 0; i < 200; i++) {
             const input = shapes[i % shapes.length];
-            const t0 = performance.now();
-            redactSecrets(input);
-            worst = Math.max(worst, performance.now() - t0);
+            let best = Infinity;
+            for (let r = 0; r < 3; r++) {
+                const t0 = performance.now();
+                redactSecrets(input);
+                best = Math.min(best, performance.now() - t0);
+            }
+            worst = Math.max(worst, best);
         }
         expect(worst).toBeLessThan(50);
     });

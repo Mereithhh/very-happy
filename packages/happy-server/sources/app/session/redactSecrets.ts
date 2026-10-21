@@ -28,7 +28,7 @@ const PATTERNS: Array<[RegExp, string | ((...m: string[]) => string)]> = [
     // Greedy body + optional footer = no backtracking.
     [/-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY-----(?:[A-Za-z0-9+/=\s:,.]|-(?!-)){0,8192}(?:-----END [A-Z0-9 ]{0,40}PRIVATE KEY-----)?/g, REDACTED],
     // Credentials embedded in URLs: scheme://user:pass@host
-    [/\b([a-z][a-z0-9+.-]{0,30}:\/\/)([^\s:@/]{1,128}):([^\s@/]{1,256})@/gi, (_m, scheme, user) => `${scheme}${user}:${REDACTED}@`],
+    [/(?<![a-z0-9+.-])([a-z][a-z0-9+.-]{0,30}:\/\/)([^\s:@/]{1,128}):([^\s@/]{1,256})@/gi, (_m, scheme, user) => `${scheme}${user}:${REDACTED}@`],
     // Authorization headers / token words (case-insensitive: "bearer", "BEARER").
     [/\b(Bearer|Basic|token)\s+[A-Za-z0-9._~+/=-]{16,4096}/gi, (_m, kind) => `${kind} ${REDACTED}`],
     // Well-known token shapes.
@@ -43,7 +43,9 @@ const PATTERNS: Array<[RegExp, string | ((...m: string[]) => string)]> = [
     [/\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{16,255}/g, REDACTED],
     [/\bnpm_[A-Za-z0-9]{30,255}/g, REDACTED],
     // JWT: three base64url segments, header starts with eyJ.
-    [/\beyJ[A-Za-z0-9_-]{8,4096}\.[A-Za-z0-9_-]{8,8192}\.[A-Za-z0-9_-]{8,4096}/g, REDACTED],
+    // The look-behind admits only token starts (not every "eyJ" inside a longer
+    // base64url run), which keeps the per-start backtracking from going quadratic.
+    [/(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,4096}\.[A-Za-z0-9_-]{8,8192}\.[A-Za-z0-9_-]{8,4096}/g, REDACTED],
 ];
 
 const NAME_CHAR = new Uint8Array(128);
