@@ -22,7 +22,7 @@ export function PublicHeader() {
         <NavLink className="pub-nav-secondary" to="/docs">{copy.shell.docs}</NavLink>
         <a className="pub-nav-secondary" href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
         <a className="pub-nav-login" href={`${import.meta.env.BASE_URL}login`}>{copy.shell.signIn}</a>
-        <QuickThemeToggle className="pub-theme-toggle" />
+        <QuickThemeToggle className="pub-theme-toggle" labels={{ light: copy.shell.switchToLight, dark: copy.shell.switchToDark }} />
         <a className="pub-nav-cta" href={`${import.meta.env.BASE_URL}login`}>{copy.shell.getStarted}</a>
       </nav>
     </header></>

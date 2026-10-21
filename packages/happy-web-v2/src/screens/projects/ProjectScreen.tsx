@@ -360,7 +360,7 @@ function ProjectSettings({ detail, c, onChanged }: { detail: ProjectDetailRespon
       {attachable.length > 0 && <div className="pj-field-row">{attachable.map((t) => <button key={t.id} type="button" className="pj-ghost" onClick={() => void run(() => projectsApi.attachTeam(project.id, t.id))}><UsersRound size={14} />{c.attachTeam}: {t.name}</button>)}</div>}
       <div className="pj-field-row pj-danger-row">
         <button type="button" className="pj-ghost" onClick={() => void run(() => projectsApi.update(project.id, { archived: !project.archivedAt }))}>{project.archivedAt ? c.unarchive : c.archive}</button>
-        <button type="button" className="pj-danger" onClick={async () => { if (await Modal.confirm(c.delete, c.deleteConfirm)) { try { await projectsApi.remove(project.id); void refreshProjects(); navigate('/'); } catch { toast.error(c.failed); } } }}>{c.delete}</button>
+        <button type="button" className="pj-danger" onClick={async () => { if (await Modal.confirm(c.delete, c.deleteConfirm, { confirmText: c.delete, destructive: true })) { try { await projectsApi.remove(project.id); void refreshProjects(); navigate('/'); } catch { toast.error(c.failed); } } }}>{c.delete}</button>
       </div>
     </section>
   );

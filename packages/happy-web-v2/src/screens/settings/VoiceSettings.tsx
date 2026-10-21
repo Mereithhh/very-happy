@@ -351,7 +351,7 @@ export function VoiceSettings() {
                         <Item
                             key={machine.id}
                             title={machineLabel(machine)}
-                            subtitle={machine.active ? 'online' : 'offline'}
+                            subtitle={machine.active ? t('status.online') : t('status.offline')}
                             left={<Server size={16} />}
                             right={assistantMachineId === machine.id ? <Check size={16} /> : undefined}
                             onClick={() => setAssistantMachineId(machine.id)}
