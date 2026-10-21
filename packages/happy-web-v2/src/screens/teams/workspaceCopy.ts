@@ -18,6 +18,27 @@ const en = {
   cleanupHint: 'Cleanup keeps a worktree that still has uncommitted files or commits that are not pushed or merged. Push, merge or commit, then retry cleanup. If you already handled it yourself, mark it as handled.',
   cleanupUpgrade: 'Update the CLI on this computer to retry cleanup from here.',
   resolvedCount: (n: number) => `${n} handled ${n === 1 ? 'item' : 'items'}`,
+  // B-723 (O2/O3): team operation labels and error summaries; the raw daemon text stays under 「Details」.
+  opType: { spawn: 'Start member', stop: 'Clean up member' } as Record<string, string>,
+  opStatus: { pending: 'Waiting', claimed: 'In progress', completed: 'Done', failed: 'Failed', unknown: 'Outcome unknown' } as Record<string, string>,
+  opDetails: 'Details', retryChecking: 'Checking what this computer supports…',
+  opError: {
+    closedBeforeSpawn: 'The task closed before this member started. Nothing to do.',
+    outcomeUnknown: 'It is not known whether the member started. Check that its session is not running, then mark this as handled.',
+    receiptMissing: 'This computer lost its record of the run. Check that the old process is gone, then mark this as handled.',
+    uncommittedWork: 'The worktree still has uncommitted files, so it was kept.',
+    unmergedWork: 'The worktree has commits that are not pushed or merged, so it was kept.',
+    repositoryMissing: 'The team repository is missing or is not a Git checkout. Restore it, then retry the launch.',
+    noRepository: 'No repository was chosen for this member.',
+    worktreeConflict: 'The member worktree is used by another branch or repository. Check it, then mark this as handled.',
+    brokenWorktree: 'The member worktree is damaged (its Git link is broken). Check it, then mark this as handled.',
+    bindingChanged: 'The member was restarted or reassigned while cleaning up. Resources were kept; check them, then mark this as handled.',
+    ownershipUnknown: 'It is not clear which worktree this member owned, so nothing was deleted. Check it, then mark this as handled.',
+    directoryApproval: 'The project folder needs approval on this computer before the member can start.',
+    startupRetrying: 'The member failed to start. Retrying automatically.',
+    startupExhausted: 'The member failed to start after several attempts. Fix the cause, then retry the launch.',
+    other: 'The operation did not finish.',
+  } as Record<string, string>,
 };
 const zh: typeof en = {
   lastEvent: '最近事件', title: '团队', overview: '工作台', schedules: '定时安排', settings: '团队设置',
@@ -38,5 +59,27 @@ const zh: typeof en = {
   cleanupHint: '工作区里还有未提交的文件，或有未推送、未合并的提交时，会保留它不清理。推送、合并或提交后点「重试清理」；如果已经自行处理，点「标记为已处理」。',
   cleanupUpgrade: '这台电脑的 CLI 更新后才能在这里重试清理。',
   resolvedCount: (n: number) => `已处理 ${n} 条`,
+  opType: { spawn: '启动成员', stop: '回收成员' },
+  opStatus: { pending: '等待中', claimed: '执行中', completed: '已完成', failed: '失败', unknown: '结果未知' },
+  opDetails: '详情', retryChecking: '正在确认这台电脑支持的操作…',
+  opError: {
+    closedBeforeSpawn: '任务在成员启动前已关闭，无需处理。',
+    outcomeUnknown: '无法确认成员是否已启动。请确认它的会话没有在运行，再标记为已处理。',
+    receiptMissing: '这台电脑丢失了本次执行的记录。请确认旧进程已经结束，再标记为已处理。',
+    uncommittedWork: '工作区里还有未提交的文件，已保留。',
+    unmergedWork: '工作区里有未推送或未合并的提交，已保留。',
+    repositoryMissing: '团队仓库不存在，或不是 Git 仓库。恢复后重试启动。',
+    noRepository: '没有为这个成员选择仓库。',
+    worktreeConflict: '成员的工作区被其他分支或仓库占用。请检查后标记为已处理。',
+    brokenWorktree: '成员的工作区已损坏（Git 链接失效）。请检查后标记为已处理。',
+    bindingChanged: '回收时成员被重启或重新指派，资源已保留。请检查后标记为已处理。',
+    ownershipUnknown: '无法确认这个成员用的是哪个工作区，没有删除任何内容。请检查后标记为已处理。',
+    directoryApproval: '需要先在这台电脑上允许使用项目目录，成员才能启动。',
+    startupRetrying: '成员启动失败，正在自动重试。',
+    startupExhausted: '成员多次启动失败。排除原因后重试启动。',
+    other: '操作没有完成。',
+  },
 };
+/** Both languages, for tests that every key has copy. */
+export const WORKSPACE_COPY = { en, zh };
 export function useWorkspaceCopy() { return useTranslation().lang === 'zh-Hans' ? zh : en; }

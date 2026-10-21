@@ -28,4 +28,12 @@ describe('summarizeSpawnSessionForLog', () => {
     expect(serialized).not.toContain('/private/customer/project');
     expect(serialized).not.toContain('thread-secret-ish');
   });
+
+  it('B-723: logs the Web origin of a spawn, allowlisted shapes only', () => {
+    expect(summarizeSpawnSessionForLog({ origin: { source: 'quick', route: '/teams/:id', visible: true, gesture: false } }).origin)
+      .toEqual({ source: 'quick', route: '/teams/:id', visible: true, gesture: false });
+    const hostile = summarizeSpawnSessionForLog({ origin: { source: 'quick; rm -rf', route: '/private/customer project', visible: 'yes', gesture: 1 } });
+    expect(hostile.origin).toEqual({ source: 'invalid', route: 'invalid', visible: null, gesture: null });
+    expect(summarizeSpawnSessionForLog({}).origin).toBeUndefined();
+  });
 });

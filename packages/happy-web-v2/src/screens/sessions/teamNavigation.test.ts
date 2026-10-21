@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TEAM_MEMBER_IDLE_MS, type TeamState } from '@slopus/happy-wire';
-import { groupTeamNavigation, teamSessionMembership, botHistorySessionId, missingTeamSessionIds, unstartedTeamMembers, teamInactiveGroupId, teamMemberInactive, teamMemberCount, type TeamNavigationEntry } from './teamNavigation';
+import { groupTeamNavigation, teamSessionMembership, botHistorySessionId, missingTeamSessionIds, unstartedTeamMembers, teamInactiveGroupId, teamMemberInactive, teamMemberCount, teamRoster, teamHomeDirectory, isTeamWorktreePath, type TeamNavigationEntry } from './teamNavigation';
 import { defaultCollapsed } from './sidebarCollapsedGroups';
 const label = (e: TeamNavigationEntry<{ sessionId: string }>) => e.kind === 'row' ? e.row.sessionId : e.kind === 'team' ? e.team.id : `inactive:${e.count}:${e.open ? 'open' : 'closed'}`;
 const team = (id: string, sessionIds: string[]): TeamState => ({ id, name: id, machineId: 'm', version: 1, createdAt: 1, bots: sessionIds.map((sessionId, i) => ({ id: `${id}-${i}`, sessionId, name: `Member ${i}`, generation: 1, root: i === 0, managed: true, assistant: 'claude', directory: null })), tasks: [], operations: [], messages: [] });
@@ -138,5 +138,23 @@ describe('B-690 one rule for 「已停用」 members', () => {
     const rows = [{ sessionId: 'lead' }];
     expect(groupTeamNavigation(rows, [t], new Set(['team']), { isInactive: () => false, open: new Set(), extra: () => 2 }).map(label))
       .toEqual(['team', 'lead', 'inactive:2:closed']);
+  });
+});
+
+describe('B-723', () => {
+  const b = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, sessionId: `s-${id}`, generation: 1, root: false, managed: true, assistant: 'claude', directory: null, ...extra });
+  const t = (bots: ReturnType<typeof b>[], extra: Record<string, unknown> = {}) => ({ id: 't', name: 't', machineId: 'm', version: 1, bots, tasks: [], messages: [], operations: [], createdAt: 1, ...extra }) as unknown as TeamState;
+  it('D1: teamRoster lists current members lead-first and counts inactive ones', () => {
+    const team = t([b('w1'), b('gone', { lastEvent: 'exited' }), b('lead', { root: true }), b('none', { sessionId: null }), b('archived')]);
+    const roster = teamRoster(team, { sessionArchived: id => id === 's-archived' });
+    expect(roster.members.map(x => x.id)).toEqual(['lead', 'w1']);
+    expect(roster.inactive).toBe(3);
+  });
+  it('O1: teamHomeDirectory prefers the launch repo and never returns a member worktree', () => {
+    expect(teamHomeDirectory(t([b('lead', { root: true, directory: '/h/.happy/teams/worktrees/x' })], { creationLaunch: { directory: '/repo' } }))).toBe('/repo');
+    expect(teamHomeDirectory(t([b('lead', { root: true, directory: '/h/.happy/teams/worktrees/x' })]))).toBeNull();
+    expect(teamHomeDirectory(t([b('lead', { root: true, directory: '/repo3' })]))).toBe('/repo3');
+    expect(isTeamWorktreePath('C:\\Users\\u\\.happy\\teams\\worktrees\\abc')).toBe(true);
+    expect(isTeamWorktreePath('/home/u/code/teams/worktrees-notes')).toBe(false);
   });
 });

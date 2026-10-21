@@ -37,8 +37,12 @@ worktree, supplies the official skill, and opens the lead conversation. App user
 do not install skills manually. The lead lives for this goal; after acceptance its
 session can be cleaned up, while unmerged changes remain preserved.
 
-Team names appear alongside ordinary conversations in history. Expand a team to
-open a member conversation, or select its name for goal, progress, and results.
+Team names appear alongside ordinary conversations in history. Select a team's
+name to chat with its lead (a team whose lead has no conversation yet opens its
+board); the row shows the lead's status. The chevron (or → / ←) expands the
+member list without navigating, and the board icon at the end of the row — or
+**Open board** in its right-click / long-press menu — opens goal, progress, and
+results.
 Members no longer in use fold into one **N inactive** row, both under the expanded
 team in the sidebar and in the team page's member list; open it to reach their
 history (this device remembers the choice, shared by both places). A member is

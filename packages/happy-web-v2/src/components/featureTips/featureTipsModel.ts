@@ -12,6 +12,9 @@
 export const FEATURE_TIPS_SEEN_STORAGE = 'vh.featureTips.seen.v1';
 /** nothing pops up during the first seconds after a load */
 export const FEATURE_TIP_STARTUP_MS = 3000;
+/** Boxes a tip must not cover: the composer, the floating onboarding cards and
+ *  the session restore banner (`.mrb`, B-723 — its 「恢复」 button must stay clickable). */
+export const FEATURE_TIP_AVOID_SELECTOR = '.sd-foot, .pwa-install, .notif-optin, .cli-update, .mrb';
 
 export type FeatureTipId = 'quick-open' | 'prompt-rail' | 'review-all' | 'session-peek';
 

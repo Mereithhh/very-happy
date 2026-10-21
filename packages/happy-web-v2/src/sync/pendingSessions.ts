@@ -350,6 +350,7 @@ export function createPendingSessionStore(deps: PendingSessionDeps) {
             let result: SpawnSessionResult;
             try {
                 result = await deps.spawn({
+                    source: record.source,
                     machineId: record.machineId,
                     directory: record.path,
                     agent: record.agent,
