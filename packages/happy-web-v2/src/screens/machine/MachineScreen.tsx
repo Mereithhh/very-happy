@@ -67,6 +67,9 @@ export function MachineScreen() {
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showImport, setShowImport] = useState<ImportHistoryAgent | null>(null);
+  // B-678: every hook stays above the `if (!machine)` early return — a cold
+  // load renders once before the machine arrives (React #310 otherwise).
+  const [claudeAuthBusy, setClaudeAuthBusy] = useState<null | 'probe' | 'repair' | 'store'>(null);
 
   const online = machine ? isMachineOnline(machine) : false;
   const name = machine?.metadata?.displayName || machine?.metadata?.host || id || '';
@@ -202,7 +205,6 @@ export function MachineScreen() {
   // B-276: daemon-context Claude auth preflight (trust-gated on daemonPid).
   const claudeAuth = readClaudeAuth(machine);
   const claudeAuthMachineId = machine.id;
-  const [claudeAuthBusy, setClaudeAuthBusy] = useState<null | 'probe' | 'repair' | 'store'>(null);
   const applyClaudeAuthResult = (result: ClaudeAuthRpcResult, successKey?: 'machine.claudeAuth.probed' | 'machine.claudeAuth.repaired' | 'machine.claudeAuth.storeSaved') => {
     if (!result.ok) {
       toast.error(result.unsupported ? t('machine.claudeAuth.unsupported') : `${t('machine.claudeAuth.failed')}: ${result.error}`);
