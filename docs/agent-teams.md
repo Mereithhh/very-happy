@@ -23,7 +23,8 @@ cross-machine routing is not available.
 - Configure each coding agent's normal credentials. Teams does not grant provider access.
   Owners choose approval behavior in the team execution settings.
 - Use a Git checkout for automatic isolated worktrees. Preserve and integrate
-  changes before cleanup; a dirty or unmerged worktree is intentionally retained.
+  changes before cleanup; a worktree with uncommitted files or commits that are
+  not pushed or merged is intentionally retained.
 
 An unavailable/disabled server reports that state. An old daemon cannot receive a
 Teams delegation; it does not fall back to Claude or the legacy assistant.
@@ -59,6 +60,14 @@ For an existing managed conversation, use **More → Start a team from this
 conversation**. Its wrapper establishes the scoped connection and delivers the
 collaboration instructions in the background. No session ID entry or additional
 join step is required. Old wrappers without the capability need a new session.
+
+A member whose task was accepted or cancelled and whose cleanup finished is
+**inactive**: it no longer counts as a member, its tasks and sessions stay
+readable, and a new delegation with the same agent, model and folder reuses it
+instead of adding another member. Delegating to a member that is still being
+cleaned up queues the task; it starts once the cleanup completes. Delegating to an
+inactive member by name reactivates it in a fresh session and worktree. The
+member limit (32) counts active members only.
 
 Team options choose the default agent/model for new assignments and the maximum
 number of concurrently progressing leaf tasks. The harness select lists only the
@@ -149,7 +158,14 @@ source adapter; a schedule by itself does not import or complete Todo items.
 - A message marked delivered is not a processing acknowledgement from the model.
   Inspect the session and result instead of assuming a notification was handled.
 - Cleanup stops only team-created managed workers. User-linked sessions are not
-  automatically destroyed; dirty or unmerged team worktrees retain their results.
+  automatically destroyed. A worker may switch to its own branch in the team
+  worktree: once that branch is pushed or merged (including squash merges) and
+  the worktree is clean, cleanup removes the worktree and keeps the branch. A
+  worktree that was already removed counts as cleaned. Uncommitted files or
+  unpushed commits keep the worktree; the entry explains what to push, commit or
+  discard. Then choose **Retry cleanup** (otherwise it is re-checked every few
+  minutes), or **Mark as handled** if you dealt with it yourself. Handled entries
+  fold away under the attention list.
 - A member that fails to start shows the real cause (for example the agent
   process exited during startup with its last error). When the computer has
   confirmed the failed process is gone, it relaunches the same task

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import type { TeamOperation, TeamState, TeamResponse, TeamAction } from '@slopus/happy-wire';
 import { configuration } from '@/configuration';
@@ -12,7 +12,7 @@ import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/r
 import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
 import { readReceipt, writeReceipt, type TeamEffectReceipt } from './journal';
 import { prepareTeamWorktree, removeTeamWorktree } from './worktree';
-import { afterStartupFailure, consumeOwnerRetry, ownerRetryPending, spawnGate, startupFailureMessage, TEAM_SPAWN_MAX_ATTEMPTS } from './spawnRetry';
+import { afterStartupFailure, consumeOwnerRetry, ownerRetryPending, spawnGate, startupFailureMessage, TEAM_CLEANUP_RETRY_MS, TEAM_SPAWN_MAX_ATTEMPTS } from './spawnRetry';
 
 export interface TeamWorkerDeps {
     machineId: string;
@@ -139,6 +139,15 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
                 }
                 await complete(op, receipt);
             } else {
+                // B-691: a retained cleanup is re-checked every few minutes (it used to
+                // stop/archive/inspect every 5 s, ~2000 times a week per entry), and at
+                // once when the owner chooses「重试清理」.
+                if (ownerRetryPending(op, receipt)) {
+                    const { retryAt: _retryAt, ...rest } = receipt;
+                    receipt = { ...rest, retryConsumed: op.retryRequestedAt };
+                    writeReceipt(home, receipt);
+                    deps.log(`Teams operation ${op.id} cleanup retry requested by owner`);
+                } else if (receipt.retryAt !== undefined && Date.now() < receipt.retryAt) return;
                 const team: TeamState = (await http.get(`/v1/teams/${encodeURIComponent(op.teamId)}`)).data.team;
                 const latest = team.operations.find(candidate => candidate.id === op.id);
                 if (latest?.status === 'completed') { writeReceipt(home, { ...receipt, phase: 'completed' }); return; }
@@ -164,7 +173,13 @@ export function createTeamWorker(deps: TeamWorkerDeps) {
             const unknown = op.type === 'spawn' && receipt.phase === 'spawning';
             // Keep the receipt and claim: a subsequent pass can recover partial spawn/message/cleanup.
             const detail = error instanceof Error ? error.message : 'Team operation failed';
-            await action(op.teamId, `failure-${op.id}-${receipt.phase}`, { type: 'fail-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, error: detail.slice(0, 1000), unknown }).catch(() => {});
+            if (op.type === 'stop') {
+                receipt = { ...receipt, retryAt: Date.now() + TEAM_CLEANUP_RETRY_MS };
+                try { writeReceipt(home, receipt); } catch { /* retried on the next pass */ }
+            }
+            // B-691: one request per distinct reason, so a changed reason (e.g. the owner
+            // pushed but left a file) replaces the stale one instead of replaying it.
+            await action(op.teamId, `failure-${op.id}-${receipt.phase}-${createHash('sha256').update(detail).digest('hex').slice(0, 12)}`, { type: 'fail-operation', operationId: op.id, machineId: deps.machineId, claimId: receipt.claimId, error: detail.slice(0, 1000), unknown }).catch(() => {});
             deps.log(`Teams operation ${op.id} ${unknown ? 'needs reconciliation' : 'will retry'}`);
         }
     }

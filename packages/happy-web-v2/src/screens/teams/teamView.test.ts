@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { TeamTask, TeamState } from "@slopus/happy-wire";
 import {
+  attentionOperations,
   canReconcileOperation,
+  canRetryCleanup,
   canRetryLaunch,
   machineSupportsTeamRetry,
   newestTeam,
@@ -111,5 +113,23 @@ describe("B-689 launch retry entry", () => {
     expect(machineSupportsTeamRetry({ teamLaunchVersion: 1 })).toBe(false);
     expect(machineSupportsTeamRetry(null)).toBe(false);
     expect(machineSupportsTeamRetry({ teamRetryVersion: 1 }, 2)).toBe(false);
+  });
+});
+
+describe("B-691 retained cleanup entries", () => {
+  const stop = (patch: Partial<TeamState["operations"][number]> = {}) =>
+    ({ id: "s", type: "stop", status: "failed", claimId: "c", ...patch }) as TeamState["operations"][number];
+  it("offers Retry cleanup only for a failed, unresolved stop", () => {
+    expect(canRetryCleanup(stop())).toBe(true);
+    expect(canRetryCleanup(stop({ status: "unknown" }))).toBe(false);
+    expect(canRetryCleanup(stop({ type: "spawn" }))).toBe(false);
+    expect(canRetryCleanup(stop({ claimId: null }))).toBe(false);
+    expect(canRetryCleanup(stop({ manualResolution: { note: "n", at: 1 } }))).toBe(false);
+  });
+  it("folds handled entries away from what still needs the owner", () => {
+    const ops = [stop({ id: "open" }), stop({ id: "done", status: "completed", manualResolution: { note: "pushed", at: 2 } }), stop({ id: "ok", status: "completed" }), stop({ id: "claimed", status: "claimed" })];
+    const { open, resolved } = attentionOperations({ operations: ops } as TeamState);
+    expect(open.map((o) => o.id)).toEqual(["open", "claimed"]);
+    expect(resolved.map((o) => o.id)).toEqual(["done"]);
   });
 });

@@ -291,3 +291,8 @@
 .teams-screen .teams-launch-retry button { display: inline-flex; align-items: center; gap: var(--sp-2); }
 /* B-698: inline note under the harness / model selects (saved value not on this machine). */
 .team-field-warn { display: block; margin-top: 4px; color: var(--warn); font-size: var(--fs-11); line-height: 1.45; font-weight: 400; }
+
+/* B-691: retry cleanup / mark as handled row, and the folded handled entries. */
+.teams-screen .teams-op-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.teams-screen .teams-op-actions button { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.teams-screen .teams-resolved > summary { color: var(--text-dim); }

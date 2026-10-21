@@ -14,6 +14,10 @@ const en = {
   cleanup: 'Cleanup', cleanupPending: 'Cleanup pending', cleanupFailed: 'Cleanup needs attention',
   cleanupDone: 'Cleaned up', cleanupNone: 'Not requested', attention: 'Execution needs attention',
   cancelled: 'Cancelled', unnamedMachine: 'Team machine',
+  retryCleanup: 'Retry cleanup', markHandled: 'Mark as handled',
+  cleanupHint: 'Cleanup keeps a worktree that still has uncommitted files or commits that are not pushed or merged. Push, merge or commit, then retry cleanup. If you already handled it yourself, mark it as handled.',
+  cleanupUpgrade: 'Update the CLI on this computer to retry cleanup from here.',
+  resolvedCount: (n: number) => `${n} handled ${n === 1 ? 'item' : 'items'}`,
 };
 const zh: typeof en = {
   lastEvent: '最近事件', title: '团队', overview: '工作台', schedules: '定时安排', settings: '团队设置',
@@ -30,5 +34,9 @@ const zh: typeof en = {
   cleanup: '资源回收', cleanupPending: '等待回收', cleanupFailed: '回收需要处理',
   cleanupDone: '已回收', cleanupNone: '尚未请求', attention: '执行需要处理',
   cancelled: '已取消', unnamedMachine: '执行机器',
+  retryCleanup: '重试清理', markHandled: '标记为已处理',
+  cleanupHint: '工作区里还有未提交的文件，或有未推送、未合并的提交时，会保留它不清理。推送、合并或提交后点「重试清理」；如果已经自行处理，点「标记为已处理」。',
+  cleanupUpgrade: '这台电脑的 CLI 更新后才能在这里重试清理。',
+  resolvedCount: (n: number) => `已处理 ${n} 条`,
 };
 export function useWorkspaceCopy() { return useTranslation().lang === 'zh-Hans' ? zh : en; }

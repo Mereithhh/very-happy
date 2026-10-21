@@ -13,8 +13,12 @@ import type { TeamEffectReceipt } from './journal';
  * automatically; only an owner retry, after confirming the old process is
  * gone, moves it back to `prepared`.
  */
-/** Published as machine metadata `teamRetryVersion`: 1 = spawn relaunch. */
-export const TEAM_RETRY_CAPABILITY_VERSION = 1;
+/** Published as machine metadata `teamRetryVersion`: 1 = spawn relaunch,
+ *  2 = also cleanup retry (B-691). */
+export const TEAM_RETRY_CAPABILITY_VERSION = 2;
+
+/** B-691: a retained cleanup is re-checked this often (owner retry: at once). */
+export const TEAM_CLEANUP_RETRY_MS = 5 * 60_000;
 
 export const TEAM_SPAWN_RETRY_DELAYS_MS = [10_000, 30_000, 60_000, 120_000] as const;
 export const TEAM_SPAWN_MAX_ATTEMPTS = TEAM_SPAWN_RETRY_DELAYS_MS.length + 1;

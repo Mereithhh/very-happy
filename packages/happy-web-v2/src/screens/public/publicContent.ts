@@ -97,7 +97,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         },
         {
           "type": "note",
-          "text": "Connecting an existing conversation establishes its scope and delivers the official instructions in the background. Team options choose the default agent/model and concurrent leaf work limit. Waiting parents yield to children; unmerged results remain preserved."
+          "text": "Connecting an existing conversation establishes its scope and delivers the official instructions in the background. Team options choose the default agent/model and concurrent leaf work limit. Waiting parents yield to children; unmerged results remain preserved. Members whose work was accepted or cancelled and whose cleanup finished become inactive: they no longer count as members, and new work with the same agent, model and folder reuses them. Work delegated to a member still being cleaned up queues until the cleanup completes."
         }
       ]
     },
@@ -119,7 +119,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       "blocks": [
         {
           "type": "p",
-          "text": "Acceptance and cleanup are separate. Teams stops only its own managed workers and preserves dirty or unmerged worktrees. Inspect the results, integrate the branch, and verify the old process stopped before recording a manual reconciliation. That action records your verification; it does not stop a process, delete files, or restart work."
+          "text": "Acceptance and cleanup are separate. Teams stops only its own managed workers. A worktree whose branch is pushed or merged (including squash merges) and that has no uncommitted files is removed, keeping the branch; one already removed counts as cleaned; uncommitted files or unpushed commits keep it, with the next step shown. Retry cleanup after pushing, or mark the entry as handled; handled entries fold away. Inspect the results, integrate the branch, and verify the old process stopped before recording a manual reconciliation. That action records your verification; it does not stop a process, delete files, or restart work."
         },
         {
           "type": "note",

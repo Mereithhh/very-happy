@@ -29,4 +29,119 @@ describe('team owned worktrees', () => {
             expect(existsSync(work.directory)).toBe(false);
         } finally { rmSync(home, { recursive: true, force: true }); }
     });
+
+    // B-691: workers switch to their own team/B-xxx branch, push it, and land it
+    // (squash). Cleanup used to stop at "branch changed"; it must now clean what
+    // is safe and still never delete unpushed or uncommitted work.
+    const setup = () => {
+        const root = join(homedir(), 'code/github/skills/tmp/agent-teams-implementation/tests');
+        mkdirSync(root, { recursive: true });
+        const home = mkdtempSync(join(root, 'cleanup-'));
+        const origin = join(home, 'origin.git'); const repo = join(home, 'repo'); mkdirSync(repo);
+        const git = (cwd: string, args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Teams test', '-c', 'user.email=teams@example.invalid', ...args], { stdio: 'pipe' }).toString().trim();
+        git(home, ['init', '--bare', '-b', 'main', origin]);
+        git(repo, ['init', '-b', 'main']); git(repo, ['commit', '--allow-empty', '-m', 'initial']);
+        git(repo, ['remote', 'add', 'origin', origin]); git(repo, ['push', '-u', 'origin', 'main']);
+        git(repo, ['remote', 'set-head', 'origin', 'main']);
+        // The source checkout is detached like dev-sg's shared checkout: its HEAD proves nothing new.
+        git(repo, ['checkout', '--detach']);
+        const commit = (dir: string, file: string) => { writeFileSync(join(dir, file), file); git(dir, ['add', file]); git(dir, ['commit', '-m', file]); };
+        return { home, origin, repo, git, commit };
+    };
+    const refExists = (git: (cwd: string, args: string[]) => string, repo: string, ref: string) => { try { git(repo, ['show-ref', '--verify', ref]); return true; } catch { return false; } };
+
+    it('cleans a worktree whose own team/B-xxx branch was pushed, keeping that branch', async () => {
+        const { home, repo, git, commit } = setup();
+        try {
+            const work = await prepareTeamWorktree(home, repo, 'op2');
+            git(work.directory, ['checkout', '-b', 'team/B-1-fix']); commit(work.directory, 'fix.txt');
+            await expect(removeTeamWorktree(work)).rejects.toThrow('Unmerged work retained on team/B-1-fix');
+            expect(existsSync(work.directory)).toBe(true);
+            git(work.directory, ['push', '-u', 'origin', 'team/B-1-fix']);
+            await removeTeamWorktree(work);
+            expect(existsSync(work.directory)).toBe(false);
+            expect(refExists(git, repo, `refs/heads/${work.branch}`)).toBe(false);
+            expect(refExists(git, repo, 'refs/heads/team/B-1-fix')).toBe(true);
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+    it('cleans a squash-merged branch whose remote branch was deleted', async () => {
+        const { home, repo, origin, git, commit } = setup();
+        try {
+            const work = await prepareTeamWorktree(home, repo, 'op3');
+            git(work.directory, ['checkout', '-b', 'team/B-2-feat']); commit(work.directory, 'a.txt'); commit(work.directory, 'b.txt');
+            git(work.directory, ['push', '-u', 'origin', 'team/B-2-feat']);
+            // land-pr: squash onto main, delete the remote branch, fetch --prune.
+            const lander = join(home, 'lander'); git(home, ['clone', '-q', origin, lander]);
+            git(lander, ['merge', '--squash', 'origin/team/B-2-feat']); git(lander, ['commit', '-m', 'B-2 squash']);
+            git(lander, ['push', 'origin', 'main', ':team/B-2-feat']);
+            git(repo, ['fetch', '--prune', 'origin']);
+            await removeTeamWorktree(work);
+            expect(existsSync(work.directory)).toBe(false);
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+    it('never deletes uncommitted files or unpushed detached commits', async () => {
+        const { home, repo, git, commit } = setup();
+        try {
+            const work = await prepareTeamWorktree(home, repo, 'op4');
+            git(work.directory, ['checkout', '-b', 'team/B-3']); commit(work.directory, 'c.txt'); git(work.directory, ['push', 'origin', 'team/B-3']);
+            writeFileSync(join(work.directory, 'scratch.txt'), 'unsaved');
+            await expect(removeTeamWorktree(work)).rejects.toThrow('Uncommitted work retained');
+            expect(existsSync(join(work.directory, 'scratch.txt'))).toBe(true);
+            rmSync(join(work.directory, 'scratch.txt'));
+            git(work.directory, ['checkout', '--detach']); commit(work.directory, 'd.txt');
+            await expect(removeTeamWorktree(work)).rejects.toThrow('Unmerged work retained on a detached HEAD');
+            expect(existsSync(work.directory)).toBe(true);
+            git(work.directory, ['checkout', 'team/B-3']); // the detached commit is now only in the reflog…
+            await removeTeamWorktree(work); // …HEAD itself is pushed, so this is the owner's choice already made
+            expect(existsSync(work.directory)).toBe(false);
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+    it('keeps everything when the team branch itself holds unpushed commits', async () => {
+        const { home, repo, git, commit } = setup();
+        try {
+            const work = await prepareTeamWorktree(home, repo, 'op5');
+            commit(work.directory, 'e.txt'); // on codex/team-op5
+            git(work.directory, ['checkout', '-b', 'team/B-4', 'origin/main']);
+            await expect(removeTeamWorktree(work)).rejects.toThrow(`Unmerged work retained on ${work.branch}`);
+            expect(existsSync(work.directory)).toBe(true);
+            expect(refExists(git, repo, `refs/heads/${work.branch}`)).toBe(true);
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+    it('treats a worktree directory that is already gone as cleaned', async () => {
+        const { home, repo, git } = setup();
+        try {
+            const work = await prepareTeamWorktree(home, repo, 'op6');
+            rmSync(work.directory, { recursive: true, force: true });
+            await removeTeamWorktree(work);
+            expect(refExists(git, repo, `refs/heads/${work.branch}`)).toBe(false);
+            expect(git(repo, ['worktree', 'list'])).not.toContain('op6');
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+    it('refuses to touch a registered worktree whose git link is broken', async () => {
+        const { home, repo } = setup();
+        try {
+            const work = await prepareTeamWorktree(home, repo, 'op7');
+            rmSync(join(work.directory, '.git'));
+            writeFileSync(join(work.directory, 'keep.txt'), 'keep');
+            await expect(removeTeamWorktree(work)).rejects.toThrow('git link is broken');
+            expect(existsSync(join(work.directory, 'keep.txt'))).toBe(true);
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+    it('treats an already removed worktree as cleaned, leaving leftover caches untouched', async () => {
+        const { home, repo, git } = setup();
+        try {
+            // dev-sg: `git worktree remove` ran, then a dev server recreated node_modules/.vite.
+            const work = await prepareTeamWorktree(home, repo, 'op8');
+            git(repo, ['worktree', 'remove', work.directory]);
+            mkdirSync(join(work.directory, 'node_modules', '.vite'), { recursive: true });
+            writeFileSync(join(work.directory, 'node_modules', '.vite', '_metadata.json'), '{}');
+            await removeTeamWorktree(work);
+            expect(existsSync(join(work.directory, 'node_modules', '.vite', '_metadata.json'))).toBe(true);
+            const empty = await prepareTeamWorktree(home, repo, 'op9');
+            git(repo, ['worktree', 'remove', empty.directory]); mkdirSync(empty.directory);
+            await removeTeamWorktree(empty);
+            expect(existsSync(empty.directory)).toBe(false);
+        } finally { rmSync(home, { recursive: true, force: true }); }
+    });
 });
+
