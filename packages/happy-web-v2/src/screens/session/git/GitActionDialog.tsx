@@ -12,6 +12,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Bot, ChevronRight, ExternalLink, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Button, CopyButton, Spinner, toast } from '@/ui';
+import { Checkbox } from '@/ui/Checkbox';
 import { useDelayedFlag } from '@/ui/useDelayedFlag';
 import type { ShellFlavor } from '../diffComments/gitDiff';
 import { restoreToComposer, useHasComposer } from '../composerRestore';
@@ -241,8 +242,7 @@ export function GitActionDialog({
             <fieldset className="gd-files" disabled={running}>
                 <legend className="gd-sr">{zh ? '要提交的文件' : 'Files to commit'}</legend>
                 <label className="gd-file gd-file--all">
-                    <input type="checkbox" checked={allSelected}
-                        ref={(el) => { if (el) el.indeterminate = !allSelected && chosen.length > 0; }}
+                    <Checkbox checked={allSelected} indeterminate={!allSelected && chosen.length > 0}
                         onChange={() => setSelected(allSelected ? new Set() : new Set(candidates.map((c) => c.path)))}/>
                     <span>{zh ? `全部 ${candidates.length} 个文件` : `All ${candidates.length} files`}</span>
                     {!allSelected && <span className="gd-count">{zh ? `已选 ${chosen.length}` : `${chosen.length} selected`}</span>}
@@ -250,7 +250,7 @@ export function GitActionDialog({
                 <div className="gd-file-list">
                     {candidates.map((c) => (
                         <label key={c.path} className="gd-file" title={c.oldPath ? `${c.oldPath} → ${c.path}` : c.path}>
-                            <input type="checkbox" checked={selected.has(c.path)} onChange={() => setSelected((prev) => {
+                            <Checkbox checked={selected.has(c.path)} onChange={() => setSelected((prev) => {
                                 const next = new Set(prev);
                                 if (next.has(c.path)) next.delete(c.path); else next.add(c.path);
                                 return next;
@@ -269,7 +269,7 @@ export function GitActionDialog({
                     onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitCommit(); } }}/>
             </label>
             <label className="gd-check">
-                <input type="checkbox" checked={pushAfter && canPush} disabled={running || !canPush} onChange={(e) => setPushAfter(e.target.checked)}/>
+                <Checkbox checked={pushAfter && canPush} disabled={running || !canPush} onCheckedChange={setPushAfter}/>
                 <span>{zh ? '提交后推送' : 'Push after commit'}{plan.target && <span className="gd-mono"> · {plan.target}</span>}</span>
             </label>
             {!plan.remote && <p className="so-description">{buildFailureText('no-remote', zh)}</p>}
@@ -322,7 +322,7 @@ export function GitActionDialog({
                         <textarea className="gd-input gd-textarea" value={prBody} disabled={running} rows={4} onChange={(e) => setPrBody(e.target.value)}/>
                     </label>
                     <label className="gd-check">
-                        <input type="checkbox" checked={draft} disabled={running} onChange={(e) => setDraft(e.target.checked)}/>
+                        <Checkbox checked={draft} disabled={running} onCheckedChange={setDraft}/>
                         <span>{zh ? '草稿' : 'Draft'}</span>
                     </label>
                     {plan.needsPush && !plan.protectedBranch && canPush && <p className="so-description">{divergentNote || (zh ? `会先把 ${probe.branch} 推送到 ${plan.target ?? '远端'}。` : `${probe.branch} is pushed to ${plan.target ?? 'the remote'} first.`)}</p>}

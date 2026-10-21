@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { Button, Spinner } from '@/ui';
+import { Combobox } from '@/ui/Combobox';
 import { useTranslation } from '@/i18n/useTranslation';
 import { claudeRuntimeRequest, isRuntimeStatus, runtimeOutcome, type RuntimeStatus } from './claudeRuntimeControl';
 import './sessionOptionsDialog.css';
@@ -107,9 +108,12 @@ export function ClaudeRuntimeDialog({sessionId,open,onOpenChange}:{sessionId:str
                     </div></div>)}
                 </section>
                 <section><h3>{t('runtimeControls.rewind')}</h3><p className="so-description">{t('runtimeControls.rewindHelp')}</p>
-                    <label className="runtime-checkpoint"><span>{t('runtimeControls.checkpoint')}</span><select value={checkpoint} disabled={disabled || !status.canRewind} onChange={e=>{setCheckpoint(e.target.value);setPreview(null);setLastId('');}}>
-                        <option value="">{t('runtimeControls.chooseCheckpoint')}</option>{status.checkpoints.map(point=><option key={point.id} value={point.id}>{point.title}</option>)}
-                    </select></label>
+                    <div className="runtime-checkpoint"><span id={`runtime-checkpoint-${sessionId}`}>{t('runtimeControls.checkpoint')}</span>
+                        <Combobox label={t('runtimeControls.checkpoint')} labelledBy={`runtime-checkpoint-${sessionId}`} size="md" searchable
+                            value={checkpoint || null} placeholder={t('runtimeControls.chooseCheckpoint')} disabled={disabled || !status.canRewind}
+                            options={status.checkpoints.map(point=>({value:point.id,label:point.title}))}
+                            onChange={value=>{setCheckpoint(value);setPreview(null);setLastId('');}}/>
+                    </div>
                     <Button disabled={disabled || !status.canRewind || !checkpoint} onClick={()=>void action('rewind-preview',{userMessageId:checkpoint})}>{t('runtimeControls.preview')}</Button>
                     {preview && <div className="runtime-preview"><p>{preview.error || t(preview.canRewind?'runtimeControls.rewindReady':'runtimeControls.rewindUnavailable')}</p>
                         <ul>{preview.filesChanged?.map(path=><li key={path}>{path}</li>)}</ul>

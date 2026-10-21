@@ -40,6 +40,28 @@ describe('B-586 new worktree fields', () => {
         expect(next.location).toBe(`/r.worktrees/${next.branch.replace('/', '-')}`);
     });
 
+    it('base branch is a searchable picker (B-714): typing filters, Enter picks', () => {
+        const many: WorktreeInfoState = { phase: 'done', result: { ok: true, data: { ...(info as any).result.data, branches: ['main', 'dev', 'feat/x'] } } };
+        const onChange = vi.fn();
+        const draft = { enabled: true, baseRef: 'main', branch: 'vh/a', location: '/r.worktrees/vh-a', locationEdited: false };
+        act(() => root.render(<NewWorktreeFields lang="en" supported draft={draft} onChange={onChange} info={many} />));
+        onChange.mockClear();
+        expect(host.querySelector('select')).toBeNull();
+        const trigger = host.querySelector<HTMLButtonElement>('#nwt-base')!;
+        expect(trigger.getAttribute('role')).toBe('combobox');
+        expect(trigger.getAttribute('aria-labelledby')).toBe('nwt-base-label');
+        act(() => { trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); });
+        const search = document.querySelector<HTMLInputElement>('.vh-picker-search')!;
+        expect(search).not.toBeNull();
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'feat');
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect([...document.querySelectorAll('[role="option"]')].map((o) => o.textContent)).toEqual(['feat/x']);
+        act(() => { search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+        expect(onChange).toHaveBeenCalledWith({ ...draft, baseRef: 'feat/x' });
+    });
+
     it('ready only with info + valid fields', () => {
         const draft = { enabled: true, baseRef: 'main', branch: 'vh/a', location: '/r.worktrees/vh-a', locationEdited: false };
         expect(worktreeDraftReady(draft, info)).toBe(true);

@@ -1,3 +1,4 @@
+import { Summary } from '@/ui/Summary';
 import { teamOperationErrorKind } from './teamView';
 import { useWorkspaceCopy } from './workspaceCopy';
 
@@ -17,6 +18,6 @@ export function OperationError({ error, className }: { error: string | null | un
   if (!summary || !error) return null;
   return <div className={['teams-op-error', className].filter(Boolean).join(' ')}>
     <p>{summary}</p>
-    <details className="teams-op-error-details"><summary>{c.opDetails}</summary><code>{error}</code></details>
+    <details className="teams-op-error-details"><Summary>{c.opDetails}</Summary><code>{error}</code></details>
   </div>;
 }

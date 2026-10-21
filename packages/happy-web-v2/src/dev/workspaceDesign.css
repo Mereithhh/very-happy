@@ -166,7 +166,7 @@
 .wd-settings-row > div { flex:1; min-width:0; }
 .wd-settings-row label { font-size:13px; }
 .wd-settings-row p { color:var(--text-faint); font-size:12px; line-height:1.5; margin:3px 0 0; }
-.wd-settings-row select { max-width:45%; flex:none; color:var(--text); background:var(--bg-1); border:1px solid var(--line); border-radius:var(--r-sm); padding:5px 8px; font:12px var(--font-sans); }
+.wd-settings-row .wd-settings-select { max-width:45%; flex:none; }
 .wd-switch { width:38px; height:24px; padding:3px; border-radius:var(--r-pill); background:var(--bg-3); display:flex; align-items:center; flex:none; }
 .wd-switch span { width:18px; height:18px; border-radius:50%; background:var(--text-faint); }
 .wd-switch[aria-checked='true'] { background:var(--text); }
@@ -195,7 +195,7 @@
  .wd-settings-mobile-search { display:flex; }
  .wd-settings-row { gap:12px; flex-wrap:wrap; }
  .wd-settings-row > div { flex-basis:65%; }
- .wd-settings-row select { max-width:100%; }
+ .wd-settings-row .wd-settings-select { max-width:100%; }
  .wd-settings-content h1 { margin-bottom:22px; }
  /* Width fallback also covers phone browsers without pointer emulation. */
  #root .wd :is(input, textarea, select) { font-size:16px; }

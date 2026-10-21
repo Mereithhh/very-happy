@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FolderKanban, MoreHorizontal, Send, UsersRound, Zap, History, Undo2, Plus, Link2, LogOut } from 'lucide-react';
 import { ActionDropdownMenu } from '@/ui/Menu';
@@ -15,6 +15,9 @@ import { getSessionName } from '@/utils/sessionUtils';
 import { machineLabel } from '@/utils/machineUtils';
 import { toast } from '@/ui/Toast';
 import { Modal } from '@/modal';
+import { Combobox } from '@/ui/Combobox';
+import { Segmented } from '@/ui/Segmented';
+import { SelectMenu } from '@/ui/SelectMenu';
 import { bucketItems, injectionStateOf, summarizeInjection, utf8Bytes, INSTRUCTIONS_MAX_BYTES, type InjectionState } from './projectPage';
 import { useProjectCopy, type ProjectCopy } from './projectCopy';
 import './projects.css';
@@ -124,13 +127,18 @@ function ProjectComposer({ detail, c }: { detail: ProjectDetailResponse; c: Proj
       />
       <div className="pj-composer-bar">
         {folder ? (
-          <label className="pj-composer-summary">
-            <span className="pj-muted">{c.folder}</span>
-            <select value={folderIndex} onChange={(e) => setFolderIndex(Number(e.target.value))} aria-label={c.folder}>
-              {folders.map((f, i) => <option key={`${f.machineId}:${f.path}`} value={i}>{f.path}{f.primary ? ` · ${c.primary}` : ''}</option>)}
-            </select>
+          <div className="pj-composer-summary">
+            <span className="pj-muted" aria-hidden="true">{c.folder}</span>
+            <SelectMenu
+              variant="soft"
+              className="pj-folder-select"
+              label={c.folder}
+              value={String(Math.min(folderIndex, folders.length - 1))}
+              onChange={(v) => setFolderIndex(Number(v))}
+              options={folders.map((f, i) => ({ value: String(i), label: `${f.path}${f.primary ? ` · ${c.primary}` : ''}` }))}
+            />
             {machine && <span className="pj-muted mono">{machineLabel(machine)}</span>}
-          </label>
+          </div>
         ) : <span className="pj-muted">{c.noFolder}</span>}
         <button type="button" className="pj-send" disabled={!folder || !text.trim() || busy} onClick={send} aria-label={c.send} title={`${c.send} (⌘↵)`}><Send size={16} /></button>
       </div>
@@ -316,9 +324,13 @@ function ProjectLog({ detail, c, onChanged }: { detail: ProjectDetailResponse; c
       </span></h2>
       <p className="pj-muted pj-hint">{c.logHint}</p>
       <div className="pj-note-form">
-        <select value={newKind} onChange={(e) => setNewKind(e.target.value as ProjectLogKind)} aria-label={c.addNote}>
-          <option value="decision">{c.decision}</option><option value="finding">{c.finding}</option><option value="handoff">{c.handoff}</option>
-        </select>
+        <Segmented<ProjectLogKind>
+          className="pj-note-kind"
+          label={c.addNote}
+          value={newKind}
+          onChange={setNewKind}
+          options={[{ value: 'decision', label: c.decision }, { value: 'finding', label: c.finding }, { value: 'handoff', label: c.handoff }]}
+        />
         <input value={title} maxLength={200} placeholder={c.titlePh} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void add(); }} />
         <button type="button" className="pj-primary" disabled={!title.trim()} onClick={() => void add()}><Plus size={14} />{c.addNote}</button>
         <textarea value={body} rows={2} placeholder={c.bodyPh} onChange={(e) => setBody(e.target.value)} />
@@ -354,6 +366,7 @@ function ProjectSettings({ detail, c, onChanged }: { detail: ProjectDetailRespon
   const [goal, setGoal] = useState(project.goal ?? '');
   const [machineId, setMachineId] = useState(machines[0]?.id ?? '');
   const [path, setPath] = useState('');
+  const machineLabelId = useId();
   const run = async (work: () => Promise<unknown>) => { try { await work(); await onChanged(); } catch { toast.error(c.failed); } };
   // B-726: any live team can join — the server adds the team's folder when its machine is new to the project.
   const attachable = teams.filter((t) => t.archivedAt === undefined && !project.teamIds.includes(t.id));
@@ -374,7 +387,17 @@ function ProjectSettings({ detail, c, onChanged }: { detail: ProjectDetailRespon
         </div>
       ))}
       <div className="pj-field-row">
-        <label>{c.machine}<select value={machineId} onChange={(e) => setMachineId(e.target.value)}>{machines.map((m) => <option key={m.id} value={m.id}>{machineLabel(m)}</option>)}</select></label>
+        <div className="pj-field">
+          <span id={machineLabelId}>{c.machine}</span>
+          <Combobox
+            size="md"
+            labelledBy={machineLabelId}
+            label={c.machine}
+            value={machineId}
+            onChange={setMachineId}
+            options={machines.map((m) => ({ value: m.id, label: machineLabel(m) }))}
+          />
+        </div>
         <label className="pj-grow">{c.path}<input value={path} placeholder="/home/me/code/repo" onChange={(e) => setPath(e.target.value)} /></label>
         <button type="button" className="pj-ghost" disabled={!machineId || !path.trim()} onClick={() => void run(async () => { await projectsApi.update(project.id, { folders: [...project.folders, { machineId, path: path.trim(), primary: project.folders.length === 0 }] }); setPath(''); })}><Plus size={14} />{c.addFolder}</button>
       </div>

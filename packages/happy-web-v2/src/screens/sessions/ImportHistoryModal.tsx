@@ -34,7 +34,7 @@ import { HistorySearchPanel } from './HistorySearchPanel';
 import { resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import { resolveAgentAvailability } from '@/utils/agentAvailability';
 import { recordRecentMachinePath } from '@/app/newChat';
-import { Button, Spinner, useToast } from '@/ui';
+import { Button, Combobox, Spinner, useToast } from '@/ui';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { NoMachinesNotice } from './NoMachinesNotice';
@@ -348,12 +348,16 @@ export function ImportHistoryModal({ onClose, initialMachineId, initialAgent = '
 
             {online.length > 1 && (
               <>
-                <label className="ns-label">{t('newSession.machine')}</label>
-                <select className="ns-select" value={machineId} disabled={running} onChange={(e) => setMachineId(e.target.value)}>
-                  {online.map((m) => (
-                    <option key={m.id} value={m.id}>{machineLabel(m)}</option>
-                  ))}
-                </select>
+                <label className="ns-label" id="ih-machine-label">{t('newSession.machine')}</label>
+                <Combobox
+                  label={t('newSession.machine')}
+                  labelledBy="ih-machine-label"
+                  size="md"
+                  value={machineId}
+                  disabled={running}
+                  onChange={setMachineId}
+                  options={online.map((m) => ({ value: m.id, label: machineLabel(m) }))}
+                />
               </>
             )}
 

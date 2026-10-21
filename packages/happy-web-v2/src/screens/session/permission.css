@@ -86,12 +86,13 @@
   color: var(--text);
   font-size: var(--chat-fs-control);
 }
-.perm-elicitation label {
+.perm-elicitation label,
+.perm-elicitation-field {
   display: grid;
   gap: var(--chat-space);
 }
-.perm-elicitation input,
-.perm-elicitation select {
+.perm-elicitation-segmented { justify-self: start; }
+.perm-elicitation label > input {
   border: 0;
   border-radius: var(--r-btn);
   background: var(--fill-soft);

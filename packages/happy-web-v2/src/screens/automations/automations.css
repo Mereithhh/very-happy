@@ -597,25 +597,12 @@ a.au-machine:hover {
   min-width: 0;
 }
 .au-run-summary-toggle {
-  cursor: pointer;
   font-size: var(--fs-12);
   color: var(--text-dim);
-  list-style: none;
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-}
-.au-run-summary-toggle::-webkit-details-marker {
-  display: none;
-}
-.au-run-summary-toggle::before {
-  content: '▸';
-  color: var(--text-faint);
-  flex-shrink: 0;
-}
-.au-run-body[open] > .au-run-summary-toggle::before {
-  content: '▾';
 }
 .au-run-summary-preview {
   min-width: 0;
@@ -773,11 +760,14 @@ a.au-machine:hover {
   min-height: 34px;
   align-self: end;
 }
-.au-check input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--text);
+.au-field .vh-select-trigger.au-picker {
+  width: 100%;
+}
+.au-field.is-error .vh-select-trigger.au-picker {
+  border-color: var(--danger);
+}
+.au-field .au-segmented {
+  align-self: flex-start;
 }
 .au-choice {
   grid-column: 1 / -1;

@@ -44,7 +44,6 @@
   align-items: baseline;
   gap: var(--sp-2);
 }
-.ns-select,
 .ns-input {
   background: var(--bg-2);
   border: 1px solid var(--line);
@@ -60,7 +59,6 @@
   font-family: var(--font-mono), monospace;
   line-height: 1.5;
 }
-.ns-select:focus,
 .ns-input:focus,
 .ns-initial:focus {
   outline: none;
@@ -269,7 +267,6 @@
     align-items: flex-start;
     padding-top: max(10dvh, env(safe-area-inset-top));
   }
-  .ns-select,
   .ns-input {
     font-size: var(--fs-16);
   }
@@ -506,3 +503,6 @@
 @media (pointer: coarse) {
   .hs-row-head .vh-btn { min-height: 44px; }
 }
+
+/* B-714: online dot in the machine picker trigger */
+.ns-machine-dot { width: 8px; height: 8px; }

@@ -27,6 +27,7 @@ import { useAllMachines, useLocalSettingMutable } from '@/sync/storage';
 import { machineTodoComplete, machineTodoCreate, machineTodoList, type TodoFailure, type TodoItem } from '@/sync/todoOps';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
 import { EmptyState, OrbitLoader, Spinner, StatusDot, toast } from '@/ui';
+import { Combobox } from '@/ui/Combobox';
 import { isSetupNeeded, todoFailureText } from './todoFailureText';
 import {
     completionReducer,
@@ -160,18 +161,14 @@ export function ExternalTodosScreen() {
                     <div className="td-source" title={t('todos.machine')}>
                         <StatusDot status={machine && isMachineOnline(machine) ? 'connected' : 'offline'} size={8} />
                         {machines.length > 1 ? (
-                            <select
-                                className="td-select mono"
+                            <Combobox
+                                variant="chip"
+                                className="td-select"
+                                label={t('todos.machine')}
                                 value={machineId}
-                                aria-label={t('todos.machine')}
-                                onChange={(e) => setStoredMachineId(e.target.value)}
-                            >
-                                {machines.map((m) => (
-                                    <option key={m.id} value={m.id}>
-                                        {machineLabel(m)}
-                                    </option>
-                                ))}
-                            </select>
+                                onChange={setStoredMachineId}
+                                options={machines.map((m) => ({ value: m.id, label: machineLabel(m), meta: isMachineOnline(m) ? undefined : t('status.offline') }))}
+                            />
                         ) : (
                             <span className="td-machine mono">{machineName}</span>
                         )}

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { z } from 'zod';
 import { useSession, useProfile } from '@/sync/storage';
 import { apiSocket } from '@/sync/apiSocket';
 import { getServerUrl } from '@/sync/serverConfig';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useTeamNavigation, refreshTeamNavigation } from '@/screens/sessions/useTeamNavigation';
+import { SelectMenu } from '@/ui/SelectMenu';
 import { pendingIntentKey, readPendingIntent, retainPendingIntent, clearPendingIntent } from './pendingIntent';
 const intentSchema = z.object({ requestId: z.string().min(1), name: z.string().min(1), teamId: z.string().min(1).optional() });
 type Intent = z.infer<typeof intentSchema>;
@@ -14,7 +15,7 @@ export function AdoptTeamForm(props: {sessionId:string;onDone:()=>void}) {
   return <AdoptTeamFormContent key={`${getServerUrl()}:${profile.id}:${props.sessionId}`} {...props} />;
 }
 function AdoptTeamFormContent({sessionId,onDone}: {sessionId:string;onDone:()=>void}) {
-  const {lang} = useTranslation(); const zh=lang.startsWith('zh');
+  const {lang} = useTranslation(); const zh=lang.startsWith('zh'); const fieldId=useId();
   const session=useSession(sessionId); const teams=useTeamNavigation(); const profile=useProfile();
   const key=profile.id ? pendingIntentKey(getServerUrl(),profile.id,`adopt:${sessionId}`) : '';
   const [teamId,setTeamId]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
@@ -67,7 +68,7 @@ function AdoptTeamFormContent({sessionId,onDone}: {sessionId:string;onDone:()=>v
     }catch{setError(zh?'无法保存连接请求，未发起连接。请检查浏览器存储。':'Cannot save the connection request. Nothing was sent; check browser storage.');}
   }}>
     <p>{zh?'保留当前对话，让它担任负责人。系统会连接团队并发送协作指引。':'Keep this conversation and make it the team lead. We connect the team and send the collaboration instructions.'}</p>
-    <label>{zh?'团队':'Team'}<select value={teamId} disabled={busy||!!intent||!restored} onChange={e=>setTeamId(e.target.value)}><option value="">{zh?'创建新团队':'Create a new team'}</option>{teams.filter(t=>t.machineId===session?.metadata?.machineId).map(t=><option value={t.id} key={t.id}>{t.name}</option>)}</select></label>
+    <div className="teams-field"><span id={`${fieldId}-team`}>{zh?'团队':'Team'}</span><SelectMenu variant="soft" size="md" label={zh?'团队':'Team'} labelledBy={`${fieldId}-team`} value={teamId} disabled={busy||!!intent||!restored} onChange={setTeamId} options={[{value:'',label:zh?'创建新团队':'Create a new team'},...teams.filter(t=>t.machineId===session?.metadata?.machineId).map(t=>({value:t.id,label:t.name}))]} /></div>
     {intent&&<p role="status">{zh?'已有连接请求，继续处理原请求；离开页面后也可以回来重试。':'A saved connection request is being resumed. You can leave and return to retry it.'}</p>}
     {!eligible&&<p role="status">{zh?'此会话尚不支持直接组队，请使用新版 CLI 新建会话。':'This conversation cannot connect a team directly. Start a new session with the updated CLI.'}</p>}
     {error&&<p role="alert">{error}</p>}

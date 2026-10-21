@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Copy, FileSearch } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
+import { Summary } from '@/ui/Summary';
 import { openFsPreview } from '@/sync/filePreviewOpen';
 import { FileDownloadAction } from '../files/FileDownloadAction';
 import { clipboardPreview } from '@/sync/clipboardHistory';
@@ -22,7 +23,7 @@ export function ToolHistoryView({entries, machineId, sessionId, failed = false, 
     const {lang} = useTranslation();
     const zh = lang.startsWith('zh');
     return <details className="tool-history">
-        <summary>{zh ? '复制与预览记录' : 'Copy and preview history'}{entries.length > 0 && ` · ${entries.length}`}</summary>
+        <Summary>{zh ? '复制与预览记录' : 'Copy and preview history'}{entries.length > 0 && ` · ${entries.length}`}</Summary>
         <div className="tool-history-body vh-scroll-fade">
             <ToolHistoryEntries entries={entries} machineId={machineId} sessionId={sessionId} failed={failed} onRetry={onRetry} />
         </div>
@@ -57,7 +58,7 @@ export function ToolHistoryEntries({entries, machineId, sessionId, failed = fals
             </div>
             {entry.text === null ? <p>{zh ? '正文未保存或暂时无法解密' : 'Content was not saved or cannot be decrypted yet'} {onRetry && <button type="button" onClick={onRetry}>{zh ? '重试' : 'Retry'}</button>}</p>
                 : entry.kind === 'preview' ? <p className="tool-history-path">{entry.text}</p>
-                : <details className="tool-history-content"><summary>{clipboardPreview(entry.text, 100) || (zh ? '空文本' : 'Empty text')}</summary><pre>{entry.text}</pre></details>}
+                : <details className="tool-history-content"><Summary>{clipboardPreview(entry.text, 100) || (zh ? '空文本' : 'Empty text')}</Summary><pre>{entry.text}</pre></details>}
             {entry.truncated && <p className="tool-history-note">{zh ? '内容过长，仅保留节选。' : 'Long content: only an excerpt is retained.'}</p>}
         </li>)}</ol>
     </>;

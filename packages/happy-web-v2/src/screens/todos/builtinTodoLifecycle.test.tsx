@@ -87,11 +87,12 @@ async function submit(selector: string) {
     await act(async () => query<HTMLFormElement>(selector).dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 }
 async function selectMachine(value: string) {
-    await act(async () => {
-        const select = query<HTMLSelectElement>('select[aria-label="todos.machine"]');
-        select.value = value;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    // B-714: the machine picker is a Combobox (trigger → listbox option)
+    const trigger = query<HTMLButtonElement>('button[aria-label="todos.machine"]');
+    await act(async () => { trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); });
+    const option = document.querySelector<HTMLElement>(`[role="option"][data-value="${value}"]`);
+    if (!option) throw new Error(`Missing machine option: ${value}`);
+    await act(async () => option.click());
 }
 
 // These are behavioral regressions over mounted React components, not source assertions.

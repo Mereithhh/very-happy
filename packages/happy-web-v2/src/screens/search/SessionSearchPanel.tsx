@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Archive, Download, Search, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
+import { Combobox, SelectMenu } from '@/ui';
 import { storage, useAllMachines } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import type { Message } from '@/sync/typesMessage';
@@ -33,6 +34,7 @@ import { findTrackedSessionId, splitHighlights } from '@/screens/sessions/histor
 import { shortenCwd, type HistoryAgent } from '@/screens/sessions/claudeHistoryImport';
 import { formatSessionAge } from '@/screens/sessions/newTerminalAttach';
 import { requestChatJump } from './chatJump';
+import { pickerOwnsKey } from './pickerOwnsKey';
 import { SESSION_SEARCH_HINT, SESSION_SEARCH_OPEN_EVENT } from './sessionSearchEvents';
 import { useContentSearch } from './useContentSearch';
 import {
@@ -275,9 +277,10 @@ function SessionSearchPanel({ onClose, onImport }: {
 
     const onKeyDown = (e: React.KeyboardEvent) => {
         if (e.nativeEvent.isComposing) return;
+        if (pickerOwnsKey(e)) return;
         if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
         // Arrows / Enter drive the result list only from the search field: a focused filter
-        // <select> or snippet button keeps its own keys.
+        // picker trigger or snippet button keeps its own keys.
         if (e.target !== inputRef.current) return;
         const delta = listArrowDelta(e);
         if (delta !== null) {
@@ -349,21 +352,44 @@ function SessionSearchPanel({ onClose, onImport }: {
                                 onClick={() => setFilter('status', o.v)}>{o.label}</button>
                         ))}
                     </div>
-                    <select className="ss-select" aria-label={t('sessionSearch.projectLabel')} value={filters.projectId ?? ''} onChange={(e) => setFilter('projectId', e.target.value || null)}>
-                        <option value="">{t('sessionSearch.projectAny')}</option>
-                        {projects.projects.filter((p) => !p.archivedAt).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                    <select className="ss-select" aria-label={t('sessionSearch.agentLabel')} value={filters.agent ?? ''} onChange={(e) => setFilter('agent', e.target.value || null)}>
-                        <option value="">{t('sessionSearch.agentAny')}</option>
-                        {agents.map((a) => <option key={a} value={a}>{a}</option>)}
-                    </select>
-                    <select className="ss-select" aria-label={t('sessionSearch.machineLabel')} value={filters.machineId ?? ''} onChange={(e) => setFilter('machineId', e.target.value || null)}>
-                        <option value="">{t('sessionSearch.machineAny')}</option>
-                        {machines.map((m) => <option key={m.id} value={m.id}>{machineLabel(m)}{m.active ? '' : ` · ${t('sessionSearch.offlineLabel')}`}</option>)}
-                    </select>
-                    <select className="ss-select" aria-label={t('sessionSearch.timeLabel')} value={filters.time} onChange={(e) => setFilter('time', e.target.value as TimeFilter)}>
-                        {timeOptions.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
-                    </select>
+                    <Combobox
+                        variant="chip"
+                        className="ss-filter"
+                        label={t('sessionSearch.projectLabel')}
+                        value={filters.projectId ?? ''}
+                        onChange={(v) => setFilter('projectId', v || null)}
+                        options={[
+                            { value: '', label: t('sessionSearch.projectAny') },
+                            ...projects.projects.filter((p) => !p.archivedAt).map((p) => ({ value: p.id, label: p.name })),
+                        ]}
+                    />
+                    <SelectMenu
+                        variant="chip"
+                        className="ss-filter"
+                        label={t('sessionSearch.agentLabel')}
+                        value={filters.agent ?? ''}
+                        onChange={(v) => setFilter('agent', v || null)}
+                        options={[{ value: '', label: t('sessionSearch.agentAny') }, ...agents.map((a) => ({ value: a, label: a }))]}
+                    />
+                    <Combobox
+                        variant="chip"
+                        className="ss-filter"
+                        label={t('sessionSearch.machineLabel')}
+                        value={filters.machineId ?? ''}
+                        onChange={(v) => setFilter('machineId', v || null)}
+                        options={[
+                            { value: '', label: t('sessionSearch.machineAny') },
+                            ...machines.map((m) => ({ value: m.id, label: machineLabel(m), ...(m.active ? {} : { meta: t('sessionSearch.offlineLabel') }) })),
+                        ]}
+                    />
+                    <SelectMenu
+                        variant="chip"
+                        className="ss-filter"
+                        label={t('sessionSearch.timeLabel')}
+                        value={filters.time}
+                        onChange={(v) => setFilter('time', v)}
+                        options={timeOptions.map((o) => ({ value: o.v, label: o.label }))}
+                    />
                 </div>
                 {!empty && (notice.length > 0 || contentSkipped || coverage.pending.length > 0) && (
                     <div className={`ss-notice${coverage.incomplete || contentSkipped ? ' is-incomplete' : ''}`} role="status">

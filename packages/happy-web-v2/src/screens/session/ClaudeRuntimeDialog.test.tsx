@@ -35,3 +35,20 @@ it('clears old MCP results when the same session changes Query generation',async
  expect(host.textContent).not.toContain('old-server');
  expect([...host.querySelectorAll('button')].find(b=>b.textContent==='runtimeControls.reloadSkills')!.disabled).toBe(false);
 });
+it('picks a rewind checkpoint from the searchable picker (B-714)',async()=>{
+ const points=[{id:'u1',title:'first prompt'},{id:'u2',title:'second prompt '+'x'.repeat(100)}];
+ rpc.mockImplementation((_id,_method,r)=>r.action==='status'?Promise.resolve({...status(),checkpoints:points}):Promise.resolve({operationId:'op'}));
+ await show('a');
+ expect(host.querySelector('select')).toBeNull();
+ const picker=host.querySelector<HTMLButtonElement>('.runtime-checkpoint [role="combobox"]')!;
+ expect(picker.textContent).toBe('runtimeControls.chooseCheckpoint');
+ expect([...host.querySelectorAll('button')].find(b=>b.textContent==='runtimeControls.preview')!.disabled).toBe(true);
+ await act(async()=>picker.click());
+ expect(document.querySelector('[data-vh-picker-surface] input')).not.toBeNull();
+ const option=[...document.querySelectorAll<HTMLElement>('[data-vh-picker-surface] [role="option"]')].find(el=>el.textContent?.startsWith('second'))!;
+ expect(option.title).toBe(points[1].title);
+ await act(async()=>option.click());
+ expect(picker.textContent).toBe(points[1].title);
+ await click('runtimeControls.preview');
+ expect(rpc).toHaveBeenCalledWith('a','claude-runtime-control',{action:'rewind-preview',userMessageId:'u2'});
+});

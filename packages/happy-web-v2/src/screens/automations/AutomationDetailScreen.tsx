@@ -11,6 +11,7 @@ import type { Automation, AutomationRun } from '@slopus/happy-wire';
 import { BackButton } from '@/app/BackButton';
 import { Modal } from '@/modal';
 import { CopyButton, EmptyState, Spinner, toast } from '@/ui';
+import { Summary } from '@/ui/Summary';
 import { useTranslation } from '@/i18n/useTranslation';
 import { AUTOMATIONS_DETAIL_POLL_MS, useAutomations, useAutomationsPoll } from '@/sync/automationsStore';
 import {
@@ -174,9 +175,9 @@ function RunRow({
       )}
       {hasBody && (
         <details className="au-run-body">
-          <summary className="au-run-summary-toggle">
+          <Summary className="au-run-summary-toggle">
             <span className="au-run-summary-preview">{(run.error ?? run.summary ?? '').split('\n')[0]}</span>
-          </summary>
+          </Summary>
           {run.error && (
             <pre className="au-pre au-pre--error">
               {run.error}

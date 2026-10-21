@@ -28,15 +28,18 @@
   gap: 12px;
   margin: 16px 0;
 }
-.teams-screen label {
+.teams-screen label,
+.teams-screen .teams-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
+/* B-714: SelectMenu / Combobox triggers and Segmented items bring their own
+   styling — the generic button rules below skip them. */
 .teams-screen input,
 .teams-screen textarea,
-.teams-screen select,
-.teams-screen button {
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)) {
   font: inherit;
   color: var(--text);
   /* B-614 (CDS): controls are fill-only — the cards and dialogs around them own
@@ -50,17 +53,17 @@
   max-width: 100%;
   transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-micro) var(--ease-out);
 }
-.teams-screen button:not(:disabled):hover { background: var(--fill-soft-hover); }
-.teams-screen button:not(:disabled):active { transform: scale(0.98); }
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):hover { background: var(--fill-soft-hover); }
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):active { transform: scale(0.98); }
 .teams-screen textarea {
   min-height: 80px;
   resize: vertical;
 }
-.teams-screen button {
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)) {
   cursor: pointer;
   align-self: end;
 }
-.teams-screen button:disabled {
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -124,8 +127,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .teams-screen input,
-  .teams-screen textarea,
-  .teams-screen select {
+  .teams-screen textarea {
     font-size: var(--fs-16);
   }
 }
@@ -143,11 +145,8 @@
   flex-direction: row;
   align-items: center;
 }
-.teams-screen .teams-confirm input {
-  flex-shrink: 0;
-  width: 24px;
-  min-height: 32px;
-}
+/* the picker's required proxy is an <input>: keep the generic field rules off it */
+.teams-screen .vh-picker-proxy { width: 1px; min-height: 0; padding: 0; }
 
 /* Workspace: content and state first; forms live in a focused dialog/settings. */
 
@@ -157,7 +156,7 @@
 .teams-back { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; min-height: 32px; font-size: 13px; }
 .teams-heading-actions, .teams-work-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .teams-heading-actions a { font-size: 13px; color: var(--text-dim); }
-.teams-screen button, .teams-talk { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)), .teams-talk { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .teams-tabs { display: flex; gap: 16px; margin-top: 20px; border-bottom: 1px solid var(--line); }
 .teams-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 12px 0; color: var(--text-dim); }
 .teams-tabs button:not(:disabled):hover { background: none; color: var(--text); }
@@ -174,11 +173,8 @@
 .teams-member-info { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
 .teams-member-info strong { font-size: var(--fs-13); }
 /* B-690: inactive members fold behind one quiet disclosure (sidebar's 「已停用 N 个」 row). */
-.teams-members-inactive > summary { display: flex; align-items: center; gap: var(--sp-2); min-height: 32px; padding: 4px 0; border-top: 1px solid var(--line); color: var(--text-dim); font-size: var(--fs-13); cursor: pointer; list-style: none; }
-.teams-members-inactive > summary::-webkit-details-marker { display: none; }
+.teams-members-inactive > summary { gap: var(--sp-2); min-height: 32px; padding: 4px 0; border-top: 1px solid var(--line); color: var(--text-dim); font-size: var(--fs-13); }
 .teams-members-inactive > summary:hover, .teams-members-inactive > summary:focus-visible { outline: none; color: var(--text); }
-.teams-members-inactive-chevron { transition: transform var(--dur-base) var(--ease-out); }
-.teams-members-inactive[open] .teams-members-inactive-chevron { transform: rotate(90deg); }
 .teams-members-inactive-hint { margin: 0 0 4px; color: var(--text-faint); font-size: var(--fs-12); }
 .teams-member-info > span { color: var(--text-dim); }
 .teams-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -198,7 +194,7 @@
   .teams-screen .teams-task-preview:not(:disabled):hover, .teams-list-card:hover { background: var(--bg-1); box-shadow: var(--panel-shadow-hover); transform: translateY(-1.5px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .teams-screen .teams-task-preview:not(:disabled):hover, .teams-list-card:hover, .teams-screen button:not(:disabled):active { transform: none; }
+  .teams-screen .teams-task-preview:not(:disabled):hover, .teams-list-card:hover, .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)):not(:disabled):active { transform: none; }
 }
 .teams-task-preview strong { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 /* B-687: the card is a 4-line preview of the goal's own lines; the dialog shows all of it. */
@@ -244,14 +240,16 @@
 /* First use follows the ordinary conversation visual language. */
 .teams-screen .team-start-form { display: flex; flex-direction: column; gap: var(--sp-3); }
 .team-start-form fieldset { display: flex; flex-direction: column; gap: var(--sp-4); border: 0; padding: 0; margin: 0; min-width: 0; }
-.team-start-form input, .team-start-form select, .team-start-form textarea { font-size: var(--fs-16); width: 100%; }
+.team-start-form input:not(:where(.vh-picker-proxy)), .team-start-form textarea { font-size: var(--fs-16); width: 100%; }
+.team-start-form .vh-select-trigger { width: 100%; }
+.team-start-summary { display: block; min-width: 0; }
 .team-start-form textarea { min-height: 112px; }
 .team-folder-input { display: flex; align-items: stretch; gap: var(--sp-2); }
 .team-folder-input input { min-width: 0; flex: 1; }
 .team-folder-input button { display: inline-flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
 .team-folder-browser { height: 300px; min-height: 180px; overflow: auto; border: 0; border-radius: var(--r-btn); background: var(--fill-hover); }
 .team-start-form details summary { min-height: 32px; cursor: pointer; padding-block: var(--sp-3); }
-.team-start-form details label + label { margin-top: var(--sp-3); }
+.team-start-form details :is(label, .teams-field) + :is(label, .teams-field) { margin-top: var(--sp-3); }
 .team-start-assurance { color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
 .team-launch-state { border: 0; border-radius: var(--r-md); background: var(--bg-1); box-shadow: var(--panel-shadow); padding: var(--sp-4); margin-top: var(--sp-4); }
 .team-goal p { font-size: var(--fs-16); white-space: pre-wrap; }
@@ -266,10 +264,10 @@
   .team-folder-input button { width: 100%; justify-content: center; }
 }
 
-@media (pointer: coarse) { .teams-screen input, .teams-screen select, .teams-screen textarea { font-size: var(--fs-16); } }
+@media (pointer: coarse) { .teams-screen input, .teams-screen textarea { font-size: var(--fs-16); } }
 
 @media (pointer: coarse) {
- .teams-screen button, .teams-screen input, .teams-screen select, .teams-talk, .teams-back, .teams-screen summary { min-height:44px; }
+ .teams-screen button:not(:where(.vh-select-trigger, .vh-segmented > *)), .teams-screen input:not(:where(.vh-picker-proxy)), .teams-talk, .teams-back, .teams-screen summary { min-height:44px; }
 }
 
 .team-chat-intro { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); }
