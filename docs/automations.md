@@ -168,7 +168,7 @@ first: an agent waiting for input, a failed or expired run, a run nobody picked
 up because the machine is offline. Each row starts with a round check —
 tap it to acknowledge — and can open the session, run the automation again, or
 cancel a run that is still open; the header offers **Acknowledge all**. The band
-renders nothing when nothing needs you; the entry in the sidebar's **⋯** menu carries the count, and the ⋯ button shows the total.
+renders nothing when nothing needs you; the sidebar's Automations entry carries the count (on a short window or the phone it sits under **More features ▾** / **More ▾**, which shows the total).
 
 A flagged run is tied to the sessions it is about: its own session plus the
 ones a JSON payload names (`sessions[].id`, `sessions[]`, `sessionId`,

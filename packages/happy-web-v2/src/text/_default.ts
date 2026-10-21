@@ -1809,6 +1809,14 @@ export const en = {
         moreEntries: 'More',
         newMenu: 'More ways to create',
         openHelp: 'Help & getting started',
+        help: 'Help',
+        newTeam: 'New team',
+        // B-713: capability rows (团队/自动化/待办/联系人) and the fold for the ones that don't fit
+        capabilities: 'Features',
+        moreCapabilities: 'More features',
+        // phone chip row: short labels, the aria-label says 新建项目/新建团队
+        chipProject: 'Project',
+        chipTeam: 'Team',
         filterAll: 'All',
         filterActive: 'Active',
         filterArchived: 'Archived',
